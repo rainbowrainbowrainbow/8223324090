@@ -247,7 +247,59 @@ const TASK_KIND_LABELS = {
     decision: 'Рішення'
 };
 
+const TASK_CENTER_MODE_CONFIG = Object.freeze({
+    overview: Object.freeze({ label: 'Огляд', defaultView: 'inbox', description: 'Вхідні, сьогодні та винятки' }),
+    team: Object.freeze({ label: 'Команда', defaultView: 'team', description: 'Відповідальні та очікування' }),
+    planning: Object.freeze({ label: 'Планування', defaultView: 'next', description: 'Наступні дні, відкладення та канбан' }),
+    library: Object.freeze({ label: 'Бібліотека', defaultView: 'templates', description: 'Шаблони, рутини та архів' })
+});
+const TASK_CENTER_MODE_VALUES = Object.freeze(Object.keys(TASK_CENTER_MODE_CONFIG));
+const TASK_CENTER_LEGACY_VIEW_MAP = Object.freeze({
+    inbox: Object.freeze({ mode: 'overview', filter: 'inbox' }),
+    today: Object.freeze({ mode: 'overview', filter: 'today' }),
+    my: Object.freeze({ mode: 'overview', filter: 'my' }),
+    done_today: Object.freeze({ mode: 'overview', filter: 'done_today' }),
+    waiting: Object.freeze({ mode: 'team', filter: 'waiting' }),
+    team: Object.freeze({ mode: 'team', filter: 'team' }),
+    next: Object.freeze({ mode: 'planning', filter: 'next' }),
+    week: Object.freeze({ mode: 'planning', filter: 'week' }),
+    deferred: Object.freeze({ mode: 'planning', filter: 'deferred' }),
+    board: Object.freeze({ mode: 'planning', filter: 'board' }),
+    routines: Object.freeze({ mode: 'library', filter: 'routines' }),
+    templates: Object.freeze({ mode: 'library', filter: 'templates' }),
+    archive: Object.freeze({ mode: 'library', filter: 'archive' })
+});
+const TASK_CENTER_LEGACY_VIEWS = Object.freeze(Object.keys(TASK_CENTER_LEGACY_VIEW_MAP));
+
+function normalizeTaskCenterMode(value = 'overview') {
+    const mode = String(value || '').trim().toLowerCase();
+    return TASK_CENTER_MODE_VALUES.includes(mode) ? mode : 'overview';
+}
+
+function taskCenterModeForView(view = 'inbox') {
+    return TASK_CENTER_LEGACY_VIEW_MAP[String(view || '').trim()]?.mode || 'overview';
+}
+
+function resolveTaskCenterRoute(params = new URLSearchParams()) {
+    const requestedMode = String(params.get('mode') || '').trim().toLowerCase();
+    const requestedView = String(params.get('view') || '').trim().toLowerCase();
+    const explicitMode = TASK_CENTER_MODE_VALUES.includes(requestedMode) ? requestedMode : '';
+    const legacy = TASK_CENTER_LEGACY_VIEW_MAP[requestedView] || null;
+    const mode = explicitMode || legacy?.mode || 'overview';
+    const view = legacy && (!explicitMode || legacy.mode === mode)
+        ? requestedView
+        : TASK_CENTER_MODE_CONFIG[mode].defaultView;
+    return Object.freeze({ mode, view, legacy: Boolean(legacy && !explicitMode) });
+}
+
+function taskCenterModeUrl(mode = currentTaskMode) {
+    const url = new URL(window.location.href);
+    url.searchParams.set('mode', normalizeTaskCenterMode(mode));
+    url.searchParams.delete('view');
+    return url;
+}
 let currentView = 'inbox';
+let currentTaskMode = 'overview';
 let currentCategory = 'all';
 let currentSubcategory = 'all';
 let currentScopeFilter = 'all';
@@ -859,19 +911,23 @@ function scheduleSlotConfig(slotKey) {
 }
 
 function taskScheduleStart(task = {}) {
-    return task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || null;
+    return window.TaskUiShared?.taskScheduledStart?.(task)
+        || task.scheduledStartAt || task.scheduled_start_at || task.schedule?.startAt || null;
 }
 
 function taskScheduleEnd(task = {}) {
-    return task.scheduledEndAt || task.scheduled_end_at || task.schedule?.endAt || null;
+    return window.TaskUiShared?.taskScheduledEnd?.(task)
+        || task.scheduledEndAt || task.scheduled_end_at || task.schedule?.endAt || null;
 }
 
 function taskScheduleStatus(task = {}) {
-    return task.scheduleStatus || task.schedule_status || task.schedule?.status || (taskScheduleStart(task) ? 'scheduled' : 'unscheduled');
+    return window.TaskUiShared?.taskScheduleStatus?.(task)
+        || task.scheduleStatus || task.schedule_status || task.schedule?.status || (taskScheduleStart(task) ? 'scheduled' : 'unscheduled');
 }
 
 function taskScheduleSlot(task = {}) {
-    return task.scheduleSlot || task.schedule_slot || task.schedule?.slot || null;
+    return window.TaskUiShared?.taskScheduleSlot?.(task)
+        || task.scheduleSlot || task.schedule_slot || task.schedule?.slot || null;
 }
 
 function taskScheduleDate(task = {}) {
@@ -949,6 +1005,7 @@ function currentUserTaskOwnerOption() {
 }
 
 function taskOwnerUserId(task = {}) {
+    if (window.TaskUiShared?.taskOwnerUserId) return window.TaskUiShared.taskOwnerUserId(task);
     const parsed = Number(task.ownerUserId || task.owner_user_id || 0);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : null;
 }
@@ -1021,10 +1078,12 @@ function taskWorkspaceDisplayRank(task = {}) {
 }
 
 function getTaskOwnerLabel(task = {}) {
+    if (window.TaskUiShared?.taskOwnerLabel) return window.TaskUiShared.taskOwnerLabel(task) || '';
     return taskTextValue(task.ownerLabel || task.owner_label || task.assigned_to || task.owner);
 }
 
 function getTaskOwnerState(task = {}) {
+    if (window.TaskUiShared?.taskOwnerState) return window.TaskUiShared.taskOwnerState(task);
     return task.ownerState || task.owner_state || (taskOwnerUserId(task) ? 'typed' : (getTaskOwnerLabel(task) ? 'legacy_unknown_owner' : 'unassigned'));
 }
 
@@ -1161,11 +1220,74 @@ function sortTasksForDisplay(tasks = []) {
     return [...tasks].sort(compareTasksForDisplay);
 }
 
-function setBoardView(view = 'inbox') {
-    currentView = view;
-    document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === view));
+function setTaskCenterToolsOpen(isOpen) {
+    const controls = document.getElementById('taskCenterLegacyControls');
+    const toggle = document.getElementById('taskCenterToolsToggle');
+    if (controls) controls.hidden = !isOpen;
+    if (toggle) toggle.setAttribute('aria-expanded', isOpen ? 'true' : 'false');
 }
 
+function syncTaskCenterShell() {
+    const mode = normalizeTaskCenterMode(currentTaskMode);
+    const shell = document.getElementById('taskCenterShell');
+    const description = document.getElementById('taskCenterModeDescription');
+    const context = document.getElementById('taskCenterBusinessContext');
+    if (shell) shell.dataset.taskMode = mode;
+    if (description) description.textContent = TASK_CENTER_MODE_CONFIG[mode].description;
+    if (context) {
+        const businessContext = taskBusinessContext();
+        context.textContent = businessContext
+            ? `Контекст: ${businessContext}. Робочі задачі, команда та планування в одному місці.`
+            : 'Мої робочі задачі, команда та планування в одному місці.';
+    }
+    document.querySelectorAll('.task-center-mode-tab[data-task-mode]').forEach(tab => {
+        const active = tab.dataset.taskMode === mode;
+        tab.classList.toggle('active', active);
+        tab.setAttribute('aria-selected', active ? 'true' : 'false');
+    });
+}
+
+function setBoardView(view = 'inbox', mode = taskCenterModeForView(view)) {
+    currentView = TASK_CENTER_LEGACY_VIEWS.includes(view) ? view : 'inbox';
+    currentTaskMode = normalizeTaskCenterMode(mode);
+    document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === currentView));
+    syncTaskCenterShell();
+}
+
+function activateTaskMode(mode = 'overview') {
+    const nextMode = normalizeTaskCenterMode(mode);
+    assistantTaskFilter = '';
+    setTaskCenterToolsOpen(false);
+    activateTaskView(TASK_CENTER_MODE_CONFIG[nextMode].defaultView, { mode: nextMode });
+    const url = taskCenterModeUrl(nextMode);
+    window.history.pushState({ taskMode: nextMode }, '', url);
+}
+
+function setupTaskCenterShell() {
+    document.querySelectorAll('.task-center-mode-tab').forEach(tab => {
+        tab.addEventListener('click', () => activateTaskMode(tab.dataset.taskMode || 'overview'));
+        tab.addEventListener('keydown', (event) => {
+            if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+            event.preventDefault();
+            const tabs = Array.from(document.querySelectorAll('.task-center-mode-tab'));
+            const index = tabs.indexOf(tab);
+            const targetIndex = event.key === 'Home' ? 0
+                : event.key === 'End' ? tabs.length - 1
+                    : (index + (event.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+            const target = tabs[targetIndex];
+            target?.focus();
+            if (target) activateTaskMode(target.dataset.taskMode || 'overview');
+        });
+    });
+    document.getElementById('taskCenterToolsToggle')?.addEventListener('click', () => {
+        const controls = document.getElementById('taskCenterLegacyControls');
+        setTaskCenterToolsOpen(Boolean(controls?.hidden));
+    });
+    document.querySelectorAll('.task-center-metric[data-summary-view]').forEach(card => {
+        card.addEventListener('click', () => activateTaskView(card.dataset.summaryView || 'my'));
+    });
+    syncTaskCenterShell();
+}
 function syncTaskScopeFilters() {
     document.querySelectorAll('[data-scope]').forEach(chip => {
         const active = chip.dataset.scope === currentScopeFilter;
@@ -1213,16 +1335,15 @@ function applyTaskViewShell(view = currentView) {
     syncTaskSurfaceVisibility(view);
 }
 
-function activateTaskView(view = 'inbox') {
-    currentView = view;
+function activateTaskView(view = 'inbox', { mode = taskCenterModeForView(view) } = {}) {
+    const nextView = TASK_CENTER_LEGACY_VIEWS.includes(view) ? view : 'inbox';
     assistantTaskFilter = '';
-    setBoardView(view);
-    applyTaskViewShell(view);
+    setBoardView(nextView, mode);
+    applyTaskViewShell(nextView);
     updateTaskExplainability();
-    if (view === 'templates') loadTemplates();
+    if (nextView === 'templates') void loadTemplates();
     else void loadAllTasks();
 }
-
 function keepNewTaskVisible(task = {}, fallback = {}) {
     const comparableTask = { ...fallback, ...task };
     const category = task.category || fallback.category || 'admin';
@@ -1362,16 +1483,24 @@ async function initPage() {
         initTaskBusinessContext(user);
         bootStep('business-context:ready', { businessContext: taskBusinessContext() });
         const params = new URLSearchParams(window.location.search);
-        const requestedView = params.get('view');
+        const requestedView = String(params.get('view') || '').trim().toLowerCase();
+        const requestedMode = String(params.get('mode') || '').trim().toLowerCase();
+        const initialRoute = resolveTaskCenterRoute(params);
+        currentTaskMode = initialRoute.mode;
+        currentView = initialRoute.view;
         assistantTaskFilter = normalizeAssistantTaskFilter(params.get('assistantFilter'));
-        const allowedViews = ['inbox', 'today', 'next', 'deferred', 'waiting', 'team', 'my', 'week', 'board', 'routines', 'done_today', 'archive', 'templates'];
-        if (requestedView && allowedViews.includes(requestedView)) currentView = requestedView;
-        if (assistantTaskFilter === 'overdue' && !requestedView) currentView = 'team';
-        if (requestedView === 'focus' || currentView === 'focus') currentView = 'today';
-
+        if (requestedView === 'focus') {
+            currentTaskMode = 'overview';
+            currentView = 'today';
+        }
+        if (assistantTaskFilter === 'overdue' && !requestedView && !requestedMode) {
+            currentTaskMode = 'team';
+            currentView = 'team';
+        }
         await _loadAssigneeDropdown();
         bootStep('owners:loaded', { count: _assigneeList.length });
         setupTaskComposer();
+        setupTaskCenterShell();
         setupTaskGovernanceMenu();
         setupTaskSoundControls();
         setupTaskActionDelegation();
@@ -1462,10 +1591,12 @@ async function initPage() {
         const preferencesResult = await apiGetTaskPreferences();
         if (preferencesResult?.preferences) applyTaskSoundPreferences(preferencesResult.preferences);
         else renderTaskSoundControls();
-        document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === currentView));
+        setBoardView(currentView, currentTaskMode);
+        applyTaskViewShell(currentView);
         bootStep('permissions:loaded', { hasPermissions: Boolean(userPermissions) });
 
         await loadAllTasks({ fatal: true });
+        if (currentView === 'templates') await loadTemplates();
         bootStep('tasks:loaded', { count: Array.isArray(allTasks) ? allTasks.length : 0 });
         openTaskDeepLink();
         bootStep('render:done');
@@ -2023,21 +2154,22 @@ function getViewLabel(view = currentView) {
     return labels[view] || view;
 }
 
-function taskMode(t = {}) { return t.taskMode || t.task_mode || 'work'; }
-function taskKind(t = {}) { return t.taskKind || t.task_kind || 'action'; }
-function taskVisibility(t = {}) { return t.visibility || (taskMode(t) === 'private' ? 'private' : 'team'); }
-function taskWorkflow(t = {}) { return t.workflowState || t.workflow_state || (t.status === 'done' ? 'done' : 'todo'); }
-function taskDueDate(t = {}) { return (taskScheduleStart(t) || t.snoozedUntil || t.snoozed_until || t.deadline || t.remindAt || t.remind_at || t.date || '').slice(0, 10); }
-function isActiveTask(t) { return !['done', 'archived', 'cancelled'].includes(t.status); }
-function taskSnoozedUntil(t = {}) { return t.snoozedUntil || t.snoozed_until || ''; }
+function taskMode(t = {}) { return window.TaskUiShared?.taskMode?.(t) || t.taskMode || t.task_mode || 'work'; }
+function taskKind(t = {}) { return window.TaskUiShared?.taskKind?.(t) || t.taskKind || t.task_kind || 'action'; }
+function taskVisibility(t = {}) { return window.TaskUiShared?.taskVisibility?.(t) || t.visibility || (taskMode(t) === 'private' ? 'private' : 'team'); }
+function taskWorkflow(t = {}) { return window.TaskUiShared?.taskWorkflow?.(t) || t.workflowState || t.workflow_state || (t.status === 'done' ? 'done' : 'todo'); }
+function taskDueDate(t = {}) { return window.TaskUiShared?.taskDueDate?.(t) || (taskScheduleStart(t) || t.snoozedUntil || t.snoozed_until || t.date || t.deadline || t.remindAt || t.remind_at || '').slice(0, 10); }
+function isActiveTask(t) { return window.TaskUiShared?.taskIsActive?.(t) ?? !['done', 'archived', 'cancelled'].includes(t.status); }
+function taskSnoozedUntil(t = {}) { return window.TaskUiShared?.taskSnoozedUntil?.(t) || t.snoozedUntil || t.snoozed_until || ''; }
 function isDeferredTask(t = {}) {
+    if (window.TaskUiShared?.taskIsDeferred) return window.TaskUiShared.taskIsDeferred(t);
     const raw = taskSnoozedUntil(t);
     if (!raw) return false;
     const date = new Date(raw);
     return !Number.isNaN(date.getTime()) && date > new Date();
 }
-function isWaitingTask(t) { return taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'; }
-function isPrivateTask(t) { return taskVisibility(t) === 'private' || taskMode(t) === 'private'; }
+function isWaitingTask(t) { return window.TaskUiShared?.taskIsWaiting?.(t) ?? (taskWorkflow(t) === 'waiting' || taskKind(t) === 'waiting'); }
+function isPrivateTask(t) { return window.TaskUiShared?.taskIsPrivate?.(t) ?? (taskVisibility(t) === 'private' || taskMode(t) === 'private'); }
 function isTeamTask(t) { return taskVisibility(t) === 'team' && taskMode(t) === 'work'; }
 function isInboxTask(t) { return isActiveTask(t) && !isDeferredTask(t) && (taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline && !taskScheduleStart(t))); }
 function isRoutineTask(t) { return taskKind(t) === 'routine' || t.type === 'recurring'; }
@@ -2186,12 +2318,11 @@ function updateTaskExplainability() {
 function resetTaskFilters() {
     currentCategory = 'all';
     currentSubcategory = 'all';
-    currentView = 'inbox';
     currentScopeFilter = 'all';
+    setBoardView('inbox', 'overview');
     renderCategoryFilters();
     renderSubcategoryFilters();
     syncTaskScopeFilters();
-    document.querySelectorAll('.board-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.view === 'inbox'));
     syncTaskSurfaceVisibility();
     renderBoard();
 }
@@ -2317,6 +2448,10 @@ function updateCounts() {
     setCount('summaryToday', todayTasks.length);
     setCount('summaryWaiting', active.filter(isWaitingTask).length);
     setCount('summaryDoneToday', doneToday.length);
+    setCount('taskCenterMetricMy', myTasks.length);
+    setCount('taskCenterMetricToday', todayTasks.length);
+    setCount('taskCenterMetricWaiting', active.filter(isWaitingTask).length);
+    setCount('taskCenterMetricTeam', active.filter(isTeamTask).length);
 
     // A paged view knows its complete server-side total even before every page is
     // loaded; keep the active navigation counter truthful instead of reflecting a
@@ -2325,13 +2460,13 @@ function updateCounts() {
     if (!Number.isFinite(total) || taskPagination?.view !== currentView) return;
     const activeCountTargets = {
         inbox: ['countInbox'],
-        today: ['countToday', 'summaryToday'],
+        today: ['countToday', 'summaryToday', 'taskCenterMetricToday'],
         next: ['countNext'],
         deferred: ['countDeferred'],
-        waiting: ['countWaiting', 'summaryWaiting'],
-        team: ['countTeam'],
+        waiting: ['countWaiting', 'summaryWaiting', 'taskCenterMetricWaiting'],
+        team: ['countTeam', 'taskCenterMetricTeam'],
         week: ['countWeek'],
-        my: ['countMy', 'summaryMy'],
+        my: ['countMy', 'summaryMy', 'taskCenterMetricMy'],
         done_today: ['countDoneToday', 'summaryDoneToday']
     };
     (activeCountTargets[currentView] || []).forEach(id => setCount(id, total));
@@ -4983,6 +5118,7 @@ async function closeTaskDetailOverlay(force) {
         return window.UnsafeDismissGuard.attemptCloseEditableSurface(overlay, () => {
             overlay.remove();
             _taskDetailInitialState = null;
+            window.TaskDetailDrawer?.clearOpenParam?.();
         }, {
             force,
             isDirty: isTaskDetailDirty,
@@ -4998,6 +5134,7 @@ async function closeTaskDetailOverlay(force) {
     }
     overlay.remove();
     _taskDetailInitialState = null;
+    window.TaskDetailDrawer?.clearOpenParam?.();
     return true;
 }
 window.closeTaskDetailOverlay = closeTaskDetailOverlay;
@@ -5263,14 +5400,77 @@ function openBanquetDepositTaskForCompletion(taskId) {
     openTaskDetail(taskId);
 }
 
-async function openTaskDetail(taskId) {
+function renderTaskDetailSource(task = {}) {
+    const source = task.drawer?.source || task.taskContext?.source || null;
+    if (!source || (!source.type && !source.id && !source.module && !source.surface)) {
+        return '<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>Створено вручну або джерело не вказано</span></section>';
+    }
+    const label = source.label || source.type || source.module || 'Джерело задачі';
+    const meta = [source.id ? `#${source.id}` : '', source.module, source.surface].filter(Boolean).join(' · ');
+    const link = source.href
+        ? `<a href="${escapeHtml(source.href)}" data-task-source-link>Відкрити CRM-джерело</a>`
+        : '<span class="task-detail-source-unavailable">CRM-перехід недоступний для цього типу джерела</span>';
+    return `<section class="task-detail-source-card"><strong>Джерело задачі</strong><span>${escapeHtml(label)}${meta ? ` · ${escapeHtml(meta)}` : ''}</span>${link}</section>`;
+}
+
+function renderTaskDetailContext(task = {}) {
+    const expectedResult = task.expectedResult || task.expected_result || task.controlMeta?.expectedResult || '';
+    const businessContext = task.businessContext || task.business_context || task.taskContext?.businessContext || 'не вказано';
+    const dependencies = Array.isArray(task.dependencies) ? task.dependencies : [];
+    const dependencyTitles = dependencies.map(item => item?.title).filter(Boolean).join(', ');
+    const dependencySummary = dependencyTitles || (Number(task.openDependencyCount || task.open_dependency_count || 0)
+        ? (task.blockedByTitles || task.blocked_by_titles || 'потрібно завершити попередні задачі')
+        : 'Відкритих залежностей немає');
+    const reportRequired = task.drawer?.completion?.reportRequired === true || task.reportRequired === true || task.requiresReport === true;
+    const snoozedUntil = task.snoozedUntil || task.snoozed_until || '';
+    return `<section class="task-detail-context-card"><strong>Контекст і результат</strong><span><b>Бізнес-контекст:</b> ${escapeHtml(businessContext)}</span><span><b>Очікуваний результат:</b> ${escapeHtml(expectedResult || 'не задано')}</span><span><b>Залежності:</b> ${escapeHtml(dependencySummary)}</span><span><b>Звіт про виконання:</b> ${reportRequired ? 'обов’язковий' : 'не потрібен'}</span>${snoozedUntil ? `<span><b>Відкладено до:</b> ${escapeHtml(snoozedUntil)}</span>` : ''}</section>`;
+}
+
+function applyTaskDetailActionPermissions(task = {}) {
+    const actions = task.drawer?.actions || {};
+    const overlay = document.getElementById('taskDetailOverlay');
+    if (!overlay) return;
+    const editable = actions.edit !== false;
+    if (!editable) {
+        overlay.querySelectorAll('input, textarea, select, [data-detail-schedule-slot], #_tdSubtaskAdd').forEach(control => {
+            control.disabled = true;
+            control.setAttribute('aria-disabled', 'true');
+        });
+    }
+    overlay.querySelectorAll('[data-task-drawer-action]').forEach(button => {
+        const action = button.dataset.taskDrawerAction;
+        const allowed = actions[action] !== false && (editable || ['close', 'history', 'openSource'].includes(action));
+        button.disabled = !allowed;
+        button.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+    });
+    if (actions.manageObservers === false) {
+        overlay.querySelectorAll('#_tdObservers, [data-task-drawer-action="manageObservers"]').forEach(control => {
+            control.disabled = true;
+            control.setAttribute('aria-disabled', 'true');
+        });
+    }
+}
+async function openTaskDetail(taskId, options = {}) {
+    if (window.TaskDetailDrawer) return window.TaskDetailDrawer.open(taskId, options);
+    return renderTaskDetailDrawer(taskId, options);
+}
+
+async function renderTaskDetailDrawer(taskId) {
     try {
-        const res = await taskApiFetchWithAuth(`/api/tasks/${taskId}`, { headers: {} });
-        if (!res) return;
-        if (!res.ok) { showNotification('Задачу не знайдено', 'error'); return; }
-        const task = await res.json();
-        const t = task.data || task;
-        if (!t || !t.id) { showNotification('Задачу не знайдено', 'error'); return; }
+        const detailResult = window.TaskDetailDrawer
+            ? await window.TaskDetailDrawer.load(taskId, { fetcher: (url) => taskApiFetchWithAuth(url, { headers: {} }) })
+            : null;
+        if (detailResult && !detailResult.ok) {
+            window.TaskDetailDrawer.showError(detailResult);
+            return;
+        }
+        const t = detailResult?.task;
+        if (!t || !t.id) {
+            const error = { status: 404, error: 'Задачу не знайдено' };
+            if (window.TaskDetailDrawer) window.TaskDetailDrawer.showError(error);
+            else showNotification(error.error, 'error');
+            return;
+        }
         const depositTask = isBanquetDepositTask(t);
         const depositId = depositTask ? banquetDepositTaskId(t) : null;
         let depositProjection = null;
@@ -5328,6 +5528,11 @@ async function openTaskDetail(taskId) {
         const detailSubtasks = Array.isArray(t.subtasks) ? t.subtasks : [];
         const detailSubtaskSummary = taskSubtaskSummary(t);
         const detailSubtaskProgress = detailSubtaskSummary.progress || 0;
+        const drawerActions = t.drawer?.actions || {};
+        const canSaveTaskDetail = drawerActions.save !== false;
+        const canCompleteTaskDetail = drawerActions.complete !== false;
+        const canReassignTaskDetail = drawerActions.reassign !== false;
+        const canRescheduleTaskDetail = drawerActions.reschedule !== false;
 
         overlay.dataset.taskVersion = t.version || 1;
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
@@ -5414,6 +5619,8 @@ async function openTaskDetail(taskId) {
                     </div>
                     ${taskWhy ? `<div style="margin-top:6px;font-size:12px;color:var(--gray-500)">${escapeHtml(taskWhy)}</div>` : ''}
                 </div>
+                ${renderTaskDetailContext(t)}
+                ${renderTaskDetailSource(t)}
                 ${renderBanquetDepositTaskPanel(t, depositProjection, { label: _lbl, input: _inp })}
                 <div style="border:1px solid rgba(20,184,166,0.20);border-radius:10px;padding:10px;background:rgba(20,184,166,0.06)">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
@@ -5440,7 +5647,7 @@ async function openTaskDetail(taskId) {
                         ${observerSelectHtml}
                     </select>
                     <div id="_tdObserversHint" style="font-size:12px;color:var(--gray-500);margin-top:6px">Ctrl/Cmd + клік: вибрати кількох спостерігачів. Власник задачі вже має повний доступ.</div>
-                    <button type="button" onclick="saveTaskObservers(${t.id})" style="margin-top:8px;border:1px solid rgba(20,184,166,0.34);background:rgba(20,184,166,0.12);color:#0f766e;border-radius:8px;padding:7px 10px;font-weight:800;cursor:pointer">Зберегти доступ</button>
+                    <button type="button" data-task-drawer-action="manageObservers" onclick="saveTaskObservers(${t.id})" style="margin-top:8px;border:1px solid rgba(20,184,166,0.34);background:rgba(20,184,166,0.12);color:#0f766e;border-radius:8px;padding:7px 10px;font-weight:800;cursor:pointer">Зберегти доступ</button>
                 </div>
                 <div class="action-history-card task-detail-history-card">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:8px">
@@ -5451,10 +5658,10 @@ async function openTaskDetail(taskId) {
                 </div>
             </div>
             <div style="padding:12px 20px;border-top:1px solid var(--gray-100);display:flex;gap:8px;flex-wrap:wrap">
-                <button onclick="saveTaskDetail(${t.id})" style="flex:2;min-width:120px;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#10B981,#059669);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
-                <button onclick="taskDetailComplete(${t.id})" ${t.status === 'done' ? 'disabled' : ''} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#10B981;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Done</button>
-                <button onclick="taskDetailReassign(${t.id})" style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#2563EB;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reassign</button>
-                <button onclick="taskDetailReschedule(${t.id})" style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#F59E0B;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reschedule</button>
+                <button data-task-drawer-action="save" onclick="saveTaskDetail(${t.id})" ${canSaveTaskDetail ? '' : 'disabled'} style="flex:2;min-width:120px;padding:10px;border:none;border-radius:10px;background:linear-gradient(135deg,#10B981,#059669);color:#fff;font-weight:700;cursor:pointer;font-family:inherit;font-size:13px">💾 Зберегти</button>
+                <button data-task-drawer-action="complete" onclick="taskDetailComplete(${t.id})" ${t.status === 'done' || !canCompleteTaskDetail ? 'disabled' : ''} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#10B981;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Done</button>
+                <button data-task-drawer-action="reassign" onclick="taskDetailReassign(${t.id})" ${canReassignTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#2563EB;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reassign</button>
+                <button data-task-drawer-action="reschedule" onclick="taskDetailReschedule(${t.id})" ${canRescheduleTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#F59E0B;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reschedule</button>
                 <button onclick="closeTaskDetailOverlay(false)" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
             </div>
         </div>`;
@@ -5475,6 +5682,7 @@ async function openTaskDetail(taskId) {
         updateTaskDetailSubtaskProgress();
         rememberBanquetDepositFormState();
         resetTaskDetailDirtyState();
+        applyTaskDetailActionPermissions(t);
         if (window.UnsafeDismissGuard) window.UnsafeDismissGuard.remember(overlay);
         loadTaskHistory(t.id);
         loadTaskObservers(t.id);
@@ -5485,6 +5693,7 @@ async function openTaskDetail(taskId) {
         if (card) { card.style.outline = '2px solid #10B981'; card.scrollIntoView({ behavior: 'smooth', block: 'center' }); }
     } catch (err) { showNotification('Помилка: ' + err.message, 'error'); }
 }
+if (window.TaskDetailDrawer) window.TaskDetailDrawer.registerRenderer(renderTaskDetailDrawer, closeTaskDetailOverlay);
 window.openTaskDetail = openTaskDetail;
 
 function historyActionTitle(actionType) {

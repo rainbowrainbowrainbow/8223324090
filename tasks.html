@@ -1771,7 +1771,33 @@
         <div class="alerts-panel-v4" id="alertsPanel"></div>
 
         <main id="main-content" class="page-container">
-            <div class="tasks-summary-strip" id="tasksSummaryStrip" aria-label="Швидкий огляд задач">
+            <section class="task-center-shell" id="taskCenterShell" data-task-mode="overview" aria-label="Центр задач">
+                <header class="task-center-header">
+                    <div>
+                        <p class="task-center-eyebrow">Операційний простір</p>
+                        <h1>Центр задач</h1>
+                        <p class="task-center-subtitle" id="taskCenterBusinessContext">Мої робочі задачі, команда та планування в одному місці.</p>
+                    </div>
+                    <button type="button" class="task-center-tools-toggle" id="taskCenterToolsToggle" aria-expanded="false" aria-controls="taskCenterLegacyControls">Фільтри та інструменти</button>
+                </header>
+
+                <div class="task-center-metrics" aria-label="Оперативні показники">
+                    <button type="button" class="task-center-metric" data-summary-view="my"><span>Мої активні</span><strong id="taskCenterMetricMy">0</strong></button>
+                    <button type="button" class="task-center-metric" data-summary-view="today"><span>Сьогодні</span><strong id="taskCenterMetricToday">0</strong></button>
+                    <button type="button" class="task-center-metric" data-summary-view="waiting"><span>Чекаю</span><strong id="taskCenterMetricWaiting">0</strong></button>
+                    <button type="button" class="task-center-metric" data-summary-view="team"><span>Командні</span><strong id="taskCenterMetricTeam">0</strong></button>
+                </div>
+
+                <div class="task-center-mode-tabs" role="tablist" aria-label="Режими Центру задач">
+                    <button type="button" class="task-center-mode-tab active" role="tab" aria-selected="true" data-task-mode="overview">Огляд</button>
+                    <button type="button" class="task-center-mode-tab" role="tab" aria-selected="false" data-task-mode="team">Команда</button>
+                    <button type="button" class="task-center-mode-tab" role="tab" aria-selected="false" data-task-mode="planning">Планування</button>
+                    <button type="button" class="task-center-mode-tab" role="tab" aria-selected="false" data-task-mode="library">Бібліотека</button>
+                </div>
+                <p class="task-center-mode-description" id="taskCenterModeDescription">Вхідні, сьогодні та винятки</p>
+            </section>
+
+            <div class="tasks-summary-strip" id="tasksSummaryStrip" aria-label="Швидкий огляд задач" hidden>
                 <button type="button" class="tasks-summary-card" data-summary-view="my">
                     <span>Мої активні</span>
                     <strong id="summaryMy">0</strong>
@@ -1790,6 +1816,7 @@
                 </button>
             </div>
 
+            <section class="task-center-context-zone" id="taskCenterLegacyControls" hidden aria-label="Додаткові фільтри та інструменти">
             <section class="tasks-filter-shell is-secondary-collapsed" id="tasksFilterShell" aria-label="Фільтри задач">
             <div class="tasks-toolbar-row">
                 <div class="tasks-filter-summary">
@@ -1866,6 +1893,8 @@
                     </section>
                 </div>
             </div>
+
+            </section>
 
             <div class="quick-add task-composer" id="quickAdd" data-assignee-mode="self">
                 <div class="task-composer-primary">
@@ -2096,6 +2125,7 @@
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script src="js/sound-engine.js?v=0.80.41"></script>
     <script src="js/task-ui-shared.js?v=0.80.41"></script>
+    <script src="js/task-detail-drawer.js?v=0.80.41"></script>
     <script src="js/task-create.js?v=0.80.41"></script>
     <script src="js/task-ui.js?v=0.80.41"></script>
     <script src="js/tasks-page.js?v=0.80.41"></script>

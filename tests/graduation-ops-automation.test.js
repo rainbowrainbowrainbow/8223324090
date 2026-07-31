@@ -187,7 +187,7 @@ describe('Graduation ops automation contract', () => {
         const scheduler = readRepoFile('services/scheduler.js');
         const server = readRepoFile('server.js');
         const timeline = readRepoFile('js/timeline.js');
-        const tasksRoute = readRepoFile('routes/tasks.js');
+        const taskContract = readRepoFile('services/taskContract.js');
         const tasksPage = readRepoFile('js/tasks-page.js');
 
         assert.match(graduationRoute, /syncGraduationOpsSafe/);
@@ -202,7 +202,7 @@ describe('Graduation ops automation contract', () => {
         assert.match(timeline, /initGraduationSegmentInteractions/);
         assert.match(timeline, /graduation-segment-track/);
         assert.match(timeline, /apiUpdateBooking/);
-        assert.match(tasksRoute, /controlMode/);
+        assert.match(taskContract, /controlMode/);
         assert.match(tasksPage, /special-control/);
     });
 

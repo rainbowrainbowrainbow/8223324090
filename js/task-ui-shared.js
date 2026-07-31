@@ -111,8 +111,200 @@
         return normalized;
     }
 
+    const TASK_WORKFLOW_VALUES = Object.freeze(['inbox', 'todo', 'in_progress', 'waiting', 'scheduled', 'done', 'archived']);
+
+    function taskText(value) {
+        if (value === undefined || value === null) return '';
+        if (typeof value === 'object') return String(value.label || value.name || value.username || value.title || '').trim();
+        return String(value).trim();
+    }
+
+    function taskToken(value, fallback = '') {
+        const token = taskText(value).toLowerCase();
+        return token || fallback;
+    }
+
+    function taskOwnerUserId(task = {}) {
+        const value = Number(task.ownerUserId ?? task.owner_user_id ?? 0);
+        return Number.isInteger(value) && value > 0 ? value : null;
+    }
+
+    function taskOwnerLabel(task = {}) {
+        return taskText(
+            task.ownerLabel ?? task.owner_label ?? task.ownerName ?? task.owner_name
+            ?? task.ownerUsername ?? task.owner_username ?? task.assignedTo ?? task.assigned_to ?? task.owner
+        ) || null;
+    }
+
+    function taskOwnerState(task = {}) {
+        const explicit = taskToken(task.ownerState ?? task.owner_state);
+        if (explicit === 'typed' || explicit === 'legacy_unknown_owner' || explicit === 'unassigned') return explicit;
+        if (taskOwnerUserId(task)) return 'typed';
+        return taskOwnerLabel(task) ? 'legacy_unknown_owner' : 'unassigned';
+    }
+
+    function taskMode(task = {}) {
+        return taskToken(task.taskMode ?? task.task_mode ?? task.mode, 'work');
+    }
+
+    function taskKind(task = {}) {
+        return taskToken(task.taskKind ?? task.task_kind ?? task.kind, 'action');
+    }
+
+    function taskVisibility(task = {}) {
+        return taskToken(task.visibility, taskMode(task) === 'private' ? 'private' : 'team');
+    }
+
+    function taskStatus(task = {}) {
+        return normalizeTaskStatus(task.status ?? task.taskStatus ?? task.task_status ?? 'todo');
+    }
+
+    function taskWorkflow(task = {}) {
+        const explicit = taskToken(task.workflowState ?? task.workflow_state ?? task.workflow);
+        if (TASK_WORKFLOW_VALUES.includes(explicit)) return explicit;
+        const status = taskStatus(task);
+        if (status === 'done') return 'done';
+        if (status === 'archived') return 'archived';
+        if (status === 'in_progress') return 'in_progress';
+        return 'todo';
+    }
+
+    function taskScheduledStart(task = {}) {
+        return task.scheduledStartAt || task.scheduled_start_at || task.schedule?.scheduledStartAt || task.schedule?.startAt || null;
+    }
+
+    function taskScheduledEnd(task = {}) {
+        return task.scheduledEndAt || task.scheduled_end_at || task.schedule?.scheduledEndAt || task.schedule?.endAt || null;
+    }
+
+    function taskSnoozedUntil(task = {}) {
+        return task.snoozedUntil || task.snoozed_until || null;
+    }
+
+    function taskDueValue(task = {}) {
+        return taskScheduledStart(task)
+            || taskSnoozedUntil(task)
+            || task.date
+            || task.deadline
+            || task.remindAt
+            || task.remind_at
+            || null;
+    }
+
+    function taskDateKey(value) {
+        const key = taskText(value).slice(0, 10);
+        return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
+    }
+
+    function taskDueDate(task = {}) {
+        return taskDateKey(taskDueValue(task));
+    }
+
+    function taskScheduleStatus(task = {}) {
+        return taskToken(task.scheduleStatus ?? task.schedule_status ?? task.schedule?.status, taskScheduledStart(task) ? 'scheduled' : 'unscheduled');
+    }
+
+    function taskScheduleSlot(task = {}) {
+        return taskText(task.scheduleSlot ?? task.schedule_slot ?? task.schedule?.slot) || null;
+    }
+
+    function taskIsActive(task = {}) {
+        return !['done', 'archived', 'cancelled'].includes(taskStatus(task));
+    }
+
+    function taskIsDeferred(task = {}, now = new Date()) {
+        const value = taskSnoozedUntil(task);
+        const until = value ? new Date(value) : null;
+        return Boolean(until && !Number.isNaN(until.getTime()) && until > now);
+    }
+
+    function taskIsWaiting(task = {}) {
+        return taskWorkflow(task) === 'waiting' || taskKind(task) === 'waiting' || taskStatus(task) === 'waiting' || task.waiting === true;
+    }
+
+    function taskIsPrivate(task = {}) {
+        return taskVisibility(task) === 'private' || taskMode(task) === 'private';
+    }
+
+    function taskContext(task = {}) {
+        return {
+            source: {
+                type: task.sourceType ?? task.source_type ?? null,
+                id: task.sourceId ?? task.source_id ?? null,
+                module: task.sourceModule ?? task.source_module ?? null,
+                surface: task.sourceSurface ?? task.source_surface ?? null
+            },
+            businessContext: task.businessContext ?? task.business_context ?? null,
+            relatedEntity: {
+                type: task.relatedEntityType ?? task.related_entity_type ?? task.sourceEntityType ?? task.source_entity_type ?? null,
+                id: task.relatedEntityId ?? task.related_entity_id ?? task.sourceEntityId ?? task.source_entity_id ?? null
+            },
+            subtasks: {
+                count: Number(task.subtaskCount ?? task.subtask_count ?? 0),
+                doneCount: Number(task.subtaskDoneCount ?? task.subtask_done_count ?? 0),
+                items: Array.isArray(task.subtasks) ? task.subtasks : []
+            },
+            dependencies: {
+                count: Number(task.dependencyCount ?? task.dependency_count ?? 0),
+                openCount: Number(task.openDependencyCount ?? task.open_dependency_count ?? 0)
+            },
+            report: {
+                required: task.reportRequired === true || task.requiresReport === true || task.report_required === true,
+                id: task.reportId ?? task.report_id ?? null
+            },
+            observers: {
+                count: Number(task.observerCount ?? task.observer_count ?? 0),
+                userIds: Array.isArray(task.observerUserIds) ? task.observerUserIds : [],
+                items: Array.isArray(task.observers) ? task.observers : []
+            }
+        };
+    }
+
+    function normalizeTask(task = {}) {
+        const source = task && typeof task === 'object' ? task : {};
+        return {
+            ...source,
+            ownerUserId: taskOwnerUserId(source),
+            ownerLabel: taskOwnerLabel(source),
+            ownerState: taskOwnerState(source),
+            status: taskStatus(source),
+            workflowState: taskWorkflow(source),
+            taskMode: taskMode(source),
+            taskKind: taskKind(source),
+            visibility: taskVisibility(source),
+            scheduledStartAt: taskScheduledStart(source),
+            scheduledEndAt: taskScheduledEnd(source),
+            snoozedUntil: taskSnoozedUntil(source),
+            dueAt: taskDueValue(source),
+            dueDate: taskDueDate(source),
+            taskContext: taskContext(source)
+        };
+    }
     global.TaskUiShared = Object.freeze({
         TASK_PRIORITY_OPTIONS,
+        TASK_WORKFLOW_VALUES,
+        normalizeTask,
+        taskContext,
+        taskOwnerUserId,
+        taskOwnerLabel,
+        taskOwnerState,
+        taskMode,
+        taskKind,
+        taskVisibility,
+        taskStatus,
+        taskWorkflow,
+        taskScheduledStart,
+        taskScheduledEnd,
+        taskSnoozedUntil,
+        taskDueValue,
+        taskDueDate,
+        taskDateKey,
+        taskScheduleStatus,
+        taskScheduleSlot,
+        taskIsActive,
+        taskIsDeferred,
+        taskIsWaiting,
+        taskIsPrivate,
         TASK_PRIORITY_VALUES,
         TASK_PRIORITY_RANK,
         PRIORITY_ICONS,

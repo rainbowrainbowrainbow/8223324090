@@ -150,8 +150,7 @@ test('task payload normalizers expose durable postponement metadata with compute
     assert.equal(scheduled.lastPostponedAt, null);
 
     for (const relativePath of [
-        'routes/tasks.js',
-        'services/taskCabinetProjection.js',
+        'services/taskContract.js',
         'services/taskExecution.js',
         'services/taskScheduling.js'
     ]) {

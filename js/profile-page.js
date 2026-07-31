@@ -3575,19 +3575,23 @@ function normalizedCabinetTaskToken(value, fallback = '') {
 }
 
 function cabinetTaskMode(task = {}) {
-    return normalizedCabinetTaskToken(task.taskMode || task.task_mode || task.mode, 'work');
+    return window.TaskUiShared?.taskMode?.(task)
+        || normalizedCabinetTaskToken(task.taskMode || task.task_mode || task.mode, 'work');
 }
 
 function cabinetTaskKind(task = {}) {
-    return normalizedCabinetTaskToken(task.taskKind || task.task_kind || task.kind, 'action');
+    return window.TaskUiShared?.taskKind?.(task)
+        || normalizedCabinetTaskToken(task.taskKind || task.task_kind || task.kind, 'action');
 }
 
 function cabinetTaskWorkflow(task = {}) {
-    return normalizedCabinetTaskToken(task.workflowState || task.workflow_state || task.workflow, 'todo');
+    return window.TaskUiShared?.taskWorkflow?.(task)
+        || normalizedCabinetTaskToken(task.workflowState || task.workflow_state || task.workflow, 'todo');
 }
 
 function cabinetTaskVisibility(task = {}) {
-    return normalizedCabinetTaskToken(task.visibility, cabinetTaskMode(task) === 'private' ? 'private' : 'team');
+    return window.TaskUiShared?.taskVisibility?.(task)
+        || normalizedCabinetTaskToken(task.visibility, cabinetTaskMode(task) === 'private' ? 'private' : 'team');
 }
 
 function cabinetTaskCategory(task = {}) {
@@ -4870,26 +4874,29 @@ function cabinetTaskCreatedTime(task = {}) {
 }
 
 function cabinetTaskDueKey(task = {}) {
-    const raw = task.scheduledStartAt || task.scheduled_start_at || task.snoozedUntil || task.snoozed_until || task.deadline || task.remindAt || task.remind_at || task.date || '';
+    if (window.TaskUiShared?.taskDueDate) return window.TaskUiShared.taskDueDate(task);
+    const raw = task.scheduledStartAt || task.scheduled_start_at || task.snoozedUntil || task.snoozed_until || task.date || task.deadline || task.remindAt || task.remind_at || '';
     const key = String(raw || '').slice(0, 10);
     return /^\d{4}-\d{2}-\d{2}$/.test(key) ? key : '';
 }
 
 function cabinetTaskDueValue(task = {}) {
+    if (window.TaskUiShared?.taskDueValue) return window.TaskUiShared.taskDueValue(task) || '';
     return task.scheduledStartAt
         || task.scheduled_start_at
         || task.schedule?.startAt
         || task.snoozedUntil
         || task.snoozed_until
+        || task.date
         || task.deadline
         || task.remindAt
         || task.remind_at
-        || task.date
         || '';
 }
 
 function cabinetTaskScheduleStartTime(task = {}) {
-    const raw = task.scheduledStartAt || task.scheduled_start_at || task.schedule?.scheduledStartAt || task.schedule?.startAt || '';
+    const raw = window.TaskUiShared?.taskScheduledStart?.(task)
+        || task.scheduledStartAt || task.scheduled_start_at || task.schedule?.scheduledStartAt || task.schedule?.startAt || '';
     const parsed = raw ? Date.parse(raw) : NaN;
     return Number.isNaN(parsed) ? null : parsed;
 }
@@ -6924,7 +6931,11 @@ async function handleCabinetTaskActionClick(event) {
     }
 
     if (action === 'open') {
-        window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
+        if (window.TaskDetailDrawer?.open) {
+            window.TaskDetailDrawer.open(taskId, { view: 'my', sourceSurface: 'profile_my_day' });
+        } else {
+            window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
+        }
         return;
     }
 

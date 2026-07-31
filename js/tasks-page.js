@@ -1791,11 +1791,6 @@ async function initPage() {
                 activateTaskView(tab.dataset.view || 'inbox');
             });
         });
-        document.getElementById('tasksSummaryStrip')?.addEventListener('click', (e) => {
-            const card = e.target.closest('[data-summary-view]');
-            if (!card) return;
-            activateTaskView(card.dataset.summaryView || 'my');
-        });
 
         renderCategoryFilters();
         renderSubcategoryFilters();

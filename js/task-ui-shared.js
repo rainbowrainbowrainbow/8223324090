@@ -280,6 +280,59 @@
             taskContext: taskContext(source)
         };
     }
+    const TASK_MUTATION_CHANNEL = 'eventgenix:task-mutations:v1';
+    const TASK_MUTATION_ACTIONS = Object.freeze(['create', 'update', 'complete', 'reschedule', 'reassign', 'archive']);
+    const taskMutationOriginId = global.crypto?.randomUUID?.()
+        || `task-ui-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    let taskMutationChannel = null;
+
+    function normalizeTaskMutationAction(value = 'update') {
+        const normalized = String(value || '').trim().toLowerCase().replace(/^task_/, '');
+        if (normalized === 'status' || normalized === 'done') return 'complete';
+        if (normalized === 'snooze') return 'reschedule';
+        return TASK_MUTATION_ACTIONS.includes(normalized) ? normalized : 'update';
+    }
+
+    function dispatchTaskMutation(detail = {}) {
+        if (typeof global.dispatchEvent !== 'function' || typeof global.CustomEvent !== 'function') return;
+        global.dispatchEvent(new global.CustomEvent('crm:tasks-updated', { detail }));
+    }
+
+    function getTaskMutationChannel() {
+        if (taskMutationChannel || typeof global.BroadcastChannel !== 'function') return taskMutationChannel;
+        taskMutationChannel = new global.BroadcastChannel(TASK_MUTATION_CHANNEL);
+        taskMutationChannel.onmessage = event => {
+            const detail = event?.data || {};
+            if (detail.contract !== 'task_mutation_v1' || detail.originId === taskMutationOriginId) return;
+            dispatchTaskMutation({ ...detail, crossTab: true });
+        };
+        return taskMutationChannel;
+    }
+
+    function emitTaskMutation(detail = {}) {
+        const taskId = Number(detail.taskId ?? detail.task_id);
+        const event = {
+            ...detail,
+            contract: 'task_mutation_v1',
+            action: normalizeTaskMutationAction(detail.action),
+            taskId: Number.isInteger(taskId) && taskId > 0 ? taskId : null,
+            source: String(detail.source || 'task_ui').trim() || 'task_ui',
+            originId: taskMutationOriginId,
+            eventId: global.crypto?.randomUUID?.() || `task-event-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+            emittedAt: new Date().toISOString()
+        };
+        dispatchTaskMutation(event);
+        getTaskMutationChannel()?.postMessage(event);
+        return event;
+    }
+
+    const TaskMutationSync = Object.freeze({
+        channelName: TASK_MUTATION_CHANNEL,
+        emit: emitTaskMutation,
+        originId: () => taskMutationOriginId,
+        normalizeAction: normalizeTaskMutationAction,
+        connect: getTaskMutationChannel
+    });
     global.TaskUiShared = Object.freeze({
         TASK_PRIORITY_OPTIONS,
         TASK_WORKFLOW_VALUES,
@@ -318,6 +371,7 @@
         taskMutationFailure,
         taskOfflineFailure,
         normalizeTaskMutationResult,
-        applyPriorityClasses
+        applyPriorityClasses,
+        TaskMutationSync
     });
 })(window);

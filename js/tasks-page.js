@@ -314,7 +314,155 @@ let taskTeamControlProjection = null;
 let taskTeamControlLoading = false;
 let taskTeamControlError = null;
 let taskTeamControlFilters = { from: '', to: '', ownerUserId: '', department: '', status: '' };
+const TASK_CENTER_URL_STATUSES = Object.freeze(['todo', 'in_progress', 'waiting', 'scheduled', 'done', 'archived', 'cancelled']);
+const TASK_CENTER_URL_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low']);
+const TASK_CENTER_URL_SOURCES = Object.freeze(['manual', 'booking', 'lead', 'customer', 'event', 'order', 'hr', 'finance', 'automation']);
+let taskCenterQueryState = { mode: 'overview', queue: 'inbox', ownerUserId: '', dateFrom: '', dateTo: '', status: [], priority: [], category: '', source: '', search: '' };
+let taskSavedViews = [];
+let taskSavedViewsRevision = 0;
+let taskCenterSavedViewSaving = false;
+let taskCenterSearchTimer = null;
+
+function taskCenterDateParam(value = '') {
+    const date = String(value || '').trim();
+    return /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+}
+
+function taskCenterListParam(value, allowed = []) {
+    const values = String(value || '').split(',').map(item => item.trim()).filter(item => allowed.includes(item));
+    return [...new Set(values)];
+}
+
+function normalizeTaskCenterQueryState(input = {}) {
+    const mode = normalizeTaskCenterMode(input.mode || currentTaskMode || 'overview');
+    const requestedQueue = String(input.queue || input.view || '').trim();
+    const queue = TASK_CENTER_LEGACY_VIEWS.includes(requestedQueue)
+        ? requestedQueue
+        : TASK_CENTER_MODE_CONFIG[mode].defaultView;
+    const ownerUserId = /^\d+$/.test(String(input.ownerUserId ?? input.owner ?? ''))
+        ? String(Number(input.ownerUserId ?? input.owner))
+        : '';
+    const dateFrom = taskCenterDateParam(input.dateFrom ?? input.from);
+    const dateTo = taskCenterDateParam(input.dateTo ?? input.to);
+    return {
+        mode,
+        queue,
+        ownerUserId,
+        dateFrom,
+        dateTo: dateFrom && dateTo && dateTo < dateFrom ? dateFrom : dateTo,
+        status: taskCenterListParam(input.status, TASK_CENTER_URL_STATUSES),
+        priority: taskCenterListParam(input.priority, TASK_CENTER_URL_PRIORITIES),
+        category: String(input.category || '').trim().toLowerCase().slice(0, 48),
+        source: TASK_CENTER_URL_SOURCES.includes(String(input.source || '').trim().toLowerCase())
+            ? String(input.source).trim().toLowerCase()
+            : '',
+        search: String(input.search ?? input.q ?? '').trim().slice(0, 120)
+    };
+}
+
+function taskCenterQueryStateFromUrl(params = new URLSearchParams(window.location.search)) {
+    const route = resolveTaskCenterRoute(params);
+    return normalizeTaskCenterQueryState({
+        mode: route.mode,
+        queue: params.get('queue') || route.view,
+        ownerUserId: params.get('owner'),
+        dateFrom: params.get('from'),
+        dateTo: params.get('to'),
+        status: params.get('status'),
+        priority: params.get('priority'),
+        category: params.get('category'),
+        source: params.get('source'),
+        search: params.get('search') || params.get('q')
+    });
+}
+
+function taskCenterUrlForState(state = taskCenterQueryState) {
+    const normalized = normalizeTaskCenterQueryState(state);
+    const url = new URL(window.location.href);
+    ['view', 'queue', 'owner', 'from', 'to', 'status', 'priority', 'category', 'source', 'search', 'q'].forEach(key => url.searchParams.delete(key));
+    url.searchParams.set('mode', normalized.mode);
+    url.searchParams.set('queue', normalized.queue);
+    if (normalized.ownerUserId) url.searchParams.set('owner', normalized.ownerUserId);
+    if (normalized.dateFrom) url.searchParams.set('from', normalized.dateFrom);
+    if (normalized.dateTo) url.searchParams.set('to', normalized.dateTo);
+    if (normalized.status.length) url.searchParams.set('status', normalized.status.join(','));
+    if (normalized.priority.length) url.searchParams.set('priority', normalized.priority.join(','));
+    if (normalized.category) url.searchParams.set('category', normalized.category);
+    if (normalized.source) url.searchParams.set('source', normalized.source);
+    if (normalized.search) url.searchParams.set('search', normalized.search);
+    return url;
+}
+
+function syncTaskCenterUrl({ replace = false } = {}) {
+    if (typeof window === 'undefined' || !window.history) return;
+    const url = taskCenterUrlForState(taskCenterQueryState);
+    const method = replace ? 'replaceState' : 'pushState';
+    window.history[method]({ taskCenterQueryState }, '', url);
+}
+
+function applyTaskCenterQueryState(state = {}, { syncShell = true } = {}) {
+    taskCenterQueryState = normalizeTaskCenterQueryState(state);
+    currentTaskMode = taskCenterQueryState.mode;
+    currentView = taskCenterQueryState.queue;
+    currentCategory = taskCenterQueryState.category || 'all';
+    currentSubcategory = 'all';
+    taskTeamControlFilters = {
+        ...taskTeamControlFilters,
+        from: taskCenterQueryState.dateFrom,
+        to: taskCenterQueryState.dateTo,
+        ownerUserId: taskCenterQueryState.ownerUserId,
+        status: taskCenterQueryState.status[0] || ''
+    };
+    if (syncShell) {
+        setBoardView(currentView, currentTaskMode);
+        syncTaskCenterShell();
+        renderCategoryFilters();
+        renderSubcategoryFilters();
+        renderTaskCenterQueryControls();
+    }
+}
+
+function updateTaskCenterQueryState(patch = {}, options = {}) {
+    applyTaskCenterQueryState({ ...taskCenterQueryState, ...patch });
+    syncTaskCenterUrl({ replace: options.replace === true });
+    if (options.reload !== false) void loadAllTasks();
+}
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
+let taskCapabilities = {};
+
+function taskCapabilityDecision(capability, fallbackAllowed = false) {
+    const decision = taskCapabilities?.[capability];
+    if (typeof decision?.allowed === 'boolean') return decision;
+    return {
+        allowed: fallbackAllowed === true,
+        reasonCode: fallbackAllowed === true ? null : 'TASK_ACTION_FORBIDDEN'
+    };
+}
+
+function taskCapabilityAllowed(capability, fallbackAllowed = false) {
+    return taskCapabilityDecision(capability, fallbackAllowed).allowed === true;
+}
+
+function taskPermissionReasonLabel(reasonCode) {
+    const labels = {
+        TASK_ACTION_FORBIDDEN: '\u0414\u0456\u044f \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430 \u0434\u043b\u044f \u0432\u0430\u0448\u043e\u0457 \u0440\u043e\u043b\u0456.',
+        TASK_CREATE_FORBIDDEN: '\u0421\u0442\u0432\u043e\u0440\u0435\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435 \u0434\u043b\u044f \u0432\u0430\u0448\u043e\u0457 \u0440\u043e\u043b\u0456.',
+        TASK_DELETE_FORBIDDEN: '\u0412\u0438\u0434\u0430\u043b\u0435\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435 \u0434\u043b\u044f \u0432\u0430\u0448\u043e\u0457 \u0440\u043e\u043b\u0456.',
+        TASK_REVIEW_FORBIDDEN: '\u041e\u0446\u0456\u043d\u044e\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447\u0456 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435 \u0434\u043b\u044f \u0432\u0430\u0448\u043e\u0457 \u0440\u043e\u043b\u0456.',
+        TASK_REVIEW_REQUIRES_DONE: '\u041e\u0446\u0456\u043d\u0438\u0442\u0438 \u043c\u043e\u0436\u043d\u0430 \u043b\u0438\u0448\u0435 \u0432\u0438\u043a\u043e\u043d\u0430\u043d\u0443 \u0437\u0430\u0434\u0430\u0447\u0443.',
+        TASK_MUTATION_FORBIDDEN: '\u0417\u043c\u0456\u043d\u044e\u0432\u0430\u0442\u0438 \u0446\u044e \u0437\u0430\u0434\u0430\u0447\u0443 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e.',
+        TASK_REASSIGN_FORBIDDEN: '\u0417\u043c\u0456\u043d\u0430 \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0446\u044f \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.',
+        TASK_RESCHEDULE_FORBIDDEN: '\u041f\u0435\u0440\u0435\u043f\u043b\u0430\u043d\u0443\u0432\u0430\u043d\u043d\u044f \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435 \u0434\u043b\u044f \u0446\u0456\u0454\u0457 \u0437\u0430\u0434\u0430\u0447\u0456.',
+        TASK_ALREADY_TERMINAL: '\u0417\u0430\u0434\u0430\u0447\u0430 \u0432\u0436\u0435 \u0432 \u0442\u0435\u0440\u043c\u0456\u043d\u0430\u043b\u044c\u043d\u043e\u043c\u0443 \u0441\u0442\u0430\u043d\u0456.',
+        TASK_OBSERVERS_FORBIDDEN: '\u041a\u0435\u0440\u0443\u0432\u0430\u0442\u0438 \u0441\u043f\u043e\u0441\u0442\u0435\u0440\u0456\u0433\u0430\u0447\u0430\u043c\u0438 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u043e.'
+    };
+    return labels[reasonCode] || labels.TASK_ACTION_FORBIDDEN;
+}
+
+function taskCapabilityReason(capability, fallbackAllowed = false) {
+    return taskPermissionReasonLabel(taskCapabilityDecision(capability, fallbackAllowed).reasonCode);
+}
+
 let pageCurrentUser = null;
 let currentTaskBusinessContext = 'event_genix';
 let currentMaysternyaTaskFilter = 'all';
@@ -340,13 +488,11 @@ const taskCardSubtaskCache = new Map();
 const loadingTaskSubtaskIds = new Set();
 
 function notifyTaskWidgetsChanged(detail = {}) {
-    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-    window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
-        detail: {
-            source: 'tasks_page',
-            ...detail
-        }
-    }));
+    const payload = { source: 'tasks_page', ...detail };
+    if (window.TaskUiShared?.TaskMutationSync?.emit) return window.TaskUiShared.TaskMutationSync.emit(payload);
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return null;
+    window.dispatchEvent(new CustomEvent('crm:tasks-updated', { detail: payload }));
+    return payload;
 }
 
 function normalizeTaskSoundPreferences(input = {}) {
@@ -1266,10 +1412,7 @@ function activateTaskMode(mode = 'overview') {
     assistantTaskFilter = '';
     setTaskCenterToolsOpen(false);
     activateTaskView(TASK_CENTER_MODE_CONFIG[nextMode].defaultView, { mode: nextMode });
-    const url = taskCenterModeUrl(nextMode);
-    window.history.pushState({ taskMode: nextMode }, '', url);
 }
-
 function setupTaskCenterShell() {
     document.querySelectorAll('.task-center-mode-tab').forEach(tab => {
         tab.addEventListener('click', () => activateTaskMode(tab.dataset.taskMode || 'overview'));
@@ -1295,6 +1438,132 @@ function setupTaskCenterShell() {
     });
     syncTaskCenterShell();
 }
+function taskCenterOwnerOptions() {
+    return [`<option value="">\u0423\u0441\u0456 \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0446\u0456</option>`, ...(_assigneeList || []).map(owner => {
+        const id = Number(owner?.id || owner?.userId || 0);
+        if (!Number.isInteger(id) || id <= 0) return '';
+        const label = owner.name || owner.username || `User #${id}`;
+        return `<option value="${id}" ${String(id) === taskCenterQueryState.ownerUserId ? 'selected' : ''}>${escapeHtml(label)}</option>`;
+    })].join('');
+}
+
+function taskCenterSelectOptions(values, selected, emptyLabel) {
+    return [`<option value="">${escapeHtml(emptyLabel)}</option>`, ...values.map(value =>
+        `<option value="${value}" ${selected.includes(value) ? 'selected' : ''}>${escapeHtml(value)}</option>`
+    )].join('');
+}
+
+function renderTaskCenterQueryControls() {
+    const shell = document.getElementById('taskCenterShell');
+    if (!shell) return;
+    let host = document.getElementById('taskCenterQueryControls');
+    if (!host) {
+        host = document.createElement('section');
+        host.id = 'taskCenterQueryControls';
+        host.className = 'task-center-query-controls';
+        host.setAttribute('aria-label', '\u0424\u0456\u043b\u044c\u0442\u0440\u0438 \u0442\u0430 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u0456 \u0432\u0438\u0433\u043b\u044f\u0434\u0438 \u0437\u0430\u0434\u0430\u0447');
+        shell.appendChild(host);
+    }
+    const state = taskCenterQueryState;
+    const categoryOptions = [`<option value="">\u0423\u0441\u0456 \u043a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u0457</option>`, ...getTopLevelTaskCategoryOrder().map(category =>
+        `<option value="${escapeHtml(category)}" ${state.category === category ? 'selected' : ''}>${escapeHtml(getCategoryConfig(category).label)}</option>`
+    )].join('');
+    const savedOptions = [`<option value="">\u0417\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u0456 \u0432\u0438\u0433\u043b\u044f\u0434\u0438</option>`, ...taskSavedViews.map(view =>
+        `<option value="${escapeHtml(view.id)}">${escapeHtml(view.name)}</option>`
+    )].join('');
+    host.innerHTML = `<div class="task-center-query-row">
+        <label><span>\u041f\u043e\u0448\u0443\u043a</span><input type="search" data-task-center-query="search" value="${escapeHtml(state.search)}" placeholder="\u041d\u0430\u0437\u0432\u0430, ID, \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c \u0430\u0431\u043e CRM-\u043a\u043e\u043d\u0442\u0435\u043a\u0441\u0442"></label>
+        <label><span>\u0412\u0438\u043a\u043e\u043d\u0430\u0432\u0435\u0446\u044c</span><select data-task-center-query="ownerUserId">${taskCenterOwnerOptions()}</select></label>
+        <label><span>\u0412\u0456\u0434</span><input type="date" data-task-center-query="dateFrom" value="${state.dateFrom}"></label>
+        <label><span>\u0414\u043e</span><input type="date" data-task-center-query="dateTo" value="${state.dateTo}"></label>
+        <label><span>\u0421\u0442\u0430\u0442\u0443\u0441</span><select data-task-center-query="status">${taskCenterSelectOptions(TASK_CENTER_URL_STATUSES, state.status, '\u0423\u0441\u0456')}</select></label>
+        <label><span>\u041f\u0440\u0456\u043e\u0440\u0438\u0442\u0435\u0442</span><select data-task-center-query="priority">${taskCenterSelectOptions(TASK_CENTER_URL_PRIORITIES, state.priority, '\u0423\u0441\u0456')}</select></label>
+        <label><span>\u041a\u0430\u0442\u0435\u0433\u043e\u0440\u0456\u044f</span><select data-task-center-query="category">${categoryOptions}</select></label>
+        <label><span>\u0414\u0436\u0435\u0440\u0435\u043b\u043e</span><select data-task-center-query="source">${taskCenterSelectOptions(TASK_CENTER_URL_SOURCES, state.source ? [state.source] : [], '\u0423\u0441\u0456')}</select></label>
+    </div><div class="task-center-saved-views-row">
+        <select data-task-saved-view>${savedOptions}</select>
+        <button type="button" class="btn-secondary" data-task-save-view ${taskCenterSavedViewSaving ? 'disabled aria-busy="true"' : ''}>\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434</button>
+        <button type="button" class="btn-secondary" data-task-delete-saved-view disabled>\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438</button>
+    </div>`;
+    if (host.dataset.bound === 'true') return;
+    host.dataset.bound = 'true';
+    host.addEventListener('input', event => {
+        if (event.target?.dataset?.taskCenterQuery !== 'search') return;
+        window.clearTimeout(taskCenterSearchTimer);
+        taskCenterSearchTimer = window.setTimeout(() => updateTaskCenterQueryState({ search: event.target.value || '' }, { replace: true }), 250);
+    });
+    host.addEventListener('change', event => {
+        const field = event.target?.dataset?.taskCenterQuery;
+        if (field) {
+            const value = event.target.value || '';
+            updateTaskCenterQueryState((field === 'status' || field === 'priority') ? { [field]: value ? [value] : [] } : { [field]: value });
+            return;
+        }
+        const view = taskSavedViews.find(item => item.id === event.target?.value);
+        if (event.target?.dataset?.taskSavedView && view?.state) updateTaskCenterQueryState(view.state);
+        const remove = host.querySelector('[data-task-delete-saved-view]');
+        if (remove) { remove.disabled = !view; remove.dataset.taskSavedViewId = view?.id || ''; }
+    });
+    host.addEventListener('click', event => {
+        if (event.target.closest('[data-task-save-view]')) void saveCurrentTaskCenterView();
+        const remove = event.target.closest('[data-task-delete-saved-view]');
+        if (remove?.dataset.taskSavedViewId) void deleteTaskCenterSavedView(remove.dataset.taskSavedViewId);
+    });
+}
+
+async function persistTaskSavedViews(nextViews) {
+    if (taskCenterSavedViewSaving) return null;
+    taskCenterSavedViewSaving = true;
+    renderTaskCenterQueryControls();
+    try {
+        const result = await apiPatchTaskPreferences({ savedTaskViews: nextViews, savedTaskViewsRevision: taskSavedViewsRevision });
+        if (!result?.success) {
+            if (result?.code === 'TASK_SAVED_VIEWS_CONFLICT' && result.preferences) {
+                taskSavedViews = result.preferences.savedTaskViews || [];
+                taskSavedViewsRevision = Number(result.preferences.savedTaskViewsRevision || 0);
+            }
+            showNotification(result?.error || '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0437\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434.', 'error');
+            return null;
+        }
+        taskSavedViews = result.preferences?.savedTaskViews || [];
+        taskSavedViewsRevision = Number(result.preferences?.savedTaskViewsRevision || 0);
+        return result;
+    } finally {
+        taskCenterSavedViewSaving = false;
+        renderTaskCenterQueryControls();
+    }
+}
+
+async function saveCurrentTaskCenterView() {
+    if (taskCenterSavedViewSaving) return;
+    if (typeof formModal !== 'function') {
+        showNotification('\u0424\u043e\u0440\u043c\u0430 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043d\u044f \u0432\u0438\u0433\u043b\u044f\u0434\u0443 \u0442\u0438\u043c\u0447\u0430\u0441\u043e\u0432\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.', 'error');
+        return;
+    }
+    const values = await formModal('\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434 \u0437\u0430\u0434\u0430\u0447', [
+        {
+            key: 'name',
+            label: '\u041d\u0430\u0437\u0432\u0430 \u0432\u0438\u0433\u043b\u044f\u0434\u0443',
+            type: 'text',
+            required: true,
+            placeholder: '\u041d\u0430\u043f\u0440\u0438\u043a\u043b\u0430\u0434: \u041c\u043e\u0457 \u043f\u0440\u043e\u0441\u0442\u0440\u043e\u0447\u0435\u043d\u0456'
+        }
+    ], {
+        okText: '\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438',
+        cancelText: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438'
+    });
+    const name = String(values?.name || '').trim();
+    const id = window.crypto?.randomUUID?.();
+    if (!name || !id) return;
+    if (await persistTaskSavedViews([...taskSavedViews, { id, name, state: taskCenterQueryState }])) {
+        showNotification('\u0412\u0438\u0433\u043b\u044f\u0434 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e.', 'success');
+    }
+}
+async function deleteTaskCenterSavedView(viewId) {
+    const view = taskSavedViews.find(item => item.id === viewId);
+    if (!view || !await confirmModal(`\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u0432\u0438\u0433\u043b\u044f\u0434 \"${view.name}\"?`, { type: 'danger', okText: '\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438', cancelText: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438' })) return;
+    if (await persistTaskSavedViews(taskSavedViews.filter(item => item.id !== viewId))) showNotification('\u0417\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u0438\u0439 \u0432\u0438\u0433\u043b\u044f\u0434 \u0432\u0438\u0434\u0430\u043b\u0435\u043d\u043e.', 'success');
+}
 function syncTaskScopeFilters() {
     document.querySelectorAll('[data-scope]').forEach(chip => {
         const active = chip.dataset.scope === currentScopeFilter;
@@ -1310,7 +1579,7 @@ function setTaskScopeFilter(scope = 'all') {
 }
 
 function shouldShowOperationPackBar(view = currentView) {
-    if (view === 'templates' || userPermissions?.canCreateTasks === false) return false;
+    if (view === 'templates' || !taskCapabilityAllowed('create', userPermissions?.canCreateTasks !== false)) return false;
     return currentCategory === 'orders' || currentCategory === 'checklist';
 }
 
@@ -1324,7 +1593,7 @@ function syncTaskSurfaceVisibility(view = currentView) {
     const templatesSection = document.getElementById('templatesSection');
     const subcatFilters = document.getElementById('subcatFilters');
     const scopeFilters = document.getElementById('taskScopeFilters');
-    const canCreate = userPermissions?.canCreateTasks !== false;
+    const canCreate = taskCapabilityAllowed('create', userPermissions?.canCreateTasks !== false);
     if (catFilters) catFilters.hidden = isTemplates;
     if (subcatFilters) subcatFilters.hidden = isTemplates;
     if (scopeFilters) scopeFilters.hidden = isTemplates;
@@ -1342,10 +1611,13 @@ function applyTaskViewShell(view = currentView) {
     syncTaskSurfaceVisibility(view);
 }
 
-function activateTaskView(view = 'inbox', { mode = taskCenterModeForView(view) } = {}) {
+function activateTaskView(view = 'inbox', { mode = taskCenterModeForView(view), skipUrl = false } = {}) {
     const nextView = TASK_CENTER_LEGACY_VIEWS.includes(view) ? view : 'inbox';
     assistantTaskFilter = '';
     setBoardView(nextView, mode);
+    taskCenterQueryState = normalizeTaskCenterQueryState({ ...taskCenterQueryState, mode: currentTaskMode, queue: nextView });
+    if (!skipUrl) syncTaskCenterUrl();
+    renderTaskCenterQueryControls();
     applyTaskViewShell(nextView);
     updateTaskExplainability();
     if (nextView === 'templates') void loadTemplates();
@@ -1492,24 +1764,21 @@ async function initPage() {
         const params = new URLSearchParams(window.location.search);
         const requestedView = String(params.get('view') || '').trim().toLowerCase();
         const requestedMode = String(params.get('mode') || '').trim().toLowerCase();
-        const initialRoute = resolveTaskCenterRoute(params);
-        currentTaskMode = initialRoute.mode;
-        currentView = initialRoute.view;
+        applyTaskCenterQueryState(taskCenterQueryStateFromUrl(params), { syncShell: false });
         assistantTaskFilter = normalizeAssistantTaskFilter(params.get('assistantFilter'));
         if (requestedView === 'focus') {
-            currentTaskMode = 'overview';
             currentView = 'today';
+            applyTaskCenterQueryState({ ...taskCenterQueryState, mode: 'overview', queue: 'today' }, { syncShell: false });
         }
         if (assistantTaskFilter === 'overdue' && !requestedView && !requestedMode) {
-            currentTaskMode = 'team';
-            currentView = 'team';
-        }
-        await _loadAssigneeDropdown();
+            applyTaskCenterQueryState({ ...taskCenterQueryState, mode: 'team', queue: 'team' }, { syncShell: false });
+        }        await _loadAssigneeDropdown();
         bootStep('owners:loaded', { count: _assigneeList.length });
         setupTaskComposer();
         setupTaskCenterShell();
         setupTaskGovernanceMenu();
         setupTaskSoundControls();
+        renderTaskCenterQueryControls();
         setupTaskActionDelegation();
         setupTaskFilterToggle();
         setupMaysternyaTaskOpsBar();
@@ -1539,13 +1808,8 @@ async function initPage() {
         document.getElementById('catFilters')?.addEventListener('click', (e) => {
             const chip = e.target.closest('.cat-chip');
             if (!chip) return;
-            currentCategory = chip.dataset.cat || 'all';
-            currentSubcategory = 'all';
-            renderCategoryFilters();
-            renderSubcategoryFilters();
-            syncTaskSurfaceVisibility();
-            renderBoard();
-        });
+            updateTaskCenterQueryState({ category: (chip.dataset.cat || 'all') === 'all' ? '' : (chip.dataset.cat || '') });
+            syncTaskSurfaceVisibility();        });
         document.getElementById('subcatFilters')?.addEventListener('click', (e) => {
             const chip = e.target.closest('.subcat-chip');
             if (!chip) return;
@@ -1592,12 +1856,17 @@ async function initPage() {
         // v20.9.16: Load permissions and apply UI restrictions
         const permsResult = await apiGetTaskPermissions();
         if (permsResult && permsResult.permissions) {
-            userPermissions = permsResult.permissions;
+            userPermissions = { ...permsResult.permissions, capabilities: permsResult.capabilities || {} };
+            taskCapabilities = permsResult.capabilities || {};
             applyPermissionsUI(userPermissions);
         }
         const preferencesResult = await apiGetTaskPreferences();
-        if (preferencesResult?.preferences) applyTaskSoundPreferences(preferencesResult.preferences);
-        else renderTaskSoundControls();
+        if (preferencesResult?.preferences) {
+            applyTaskSoundPreferences(preferencesResult.preferences);
+            taskSavedViews = preferencesResult.preferences.savedTaskViews || [];
+            taskSavedViewsRevision = Number(preferencesResult.preferences.savedTaskViewsRevision || 0);
+        } else renderTaskSoundControls();
+        renderTaskCenterQueryControls();
         setBoardView(currentView, currentTaskMode);
         applyTaskViewShell(currentView);
         bootStep('permissions:loaded', { hasPermissions: Boolean(userPermissions) });
@@ -1620,16 +1889,24 @@ async function initPage() {
 
 // v20.9.16: Hide/show UI elements based on role permissions
 function applyPermissionsUI(perms) {
-    // Hide quick-add form if user cannot create tasks
-    if (!perms.canCreateTasks) {
-        const quickAdd = document.getElementById('quickAdd');
-        if (quickAdd) quickAdd.hidden = true;
-        const operationPackBar = document.getElementById('operationPackBar');
-        if (operationPackBar) operationPackBar.hidden = true;
-        // Also hide templates tab (only creators can add templates)
-        const templatesTab = document.querySelector('[data-view="templates"]');
-        if (templatesTab) templatesTab.style.display = 'none';
+    const canCreate = taskCapabilityAllowed('create', perms?.canCreateTasks !== false);
+    const quickAdd = document.getElementById('quickAdd');
+    let notice = document.getElementById('taskCreatePermissionNotice');
+    if (!notice && quickAdd) {
+        notice = document.createElement('p');
+        notice.id = 'taskCreatePermissionNotice';
+        notice.className = 'task-permission-notice';
+        notice.setAttribute('role', 'status');
+        quickAdd.insertAdjacentElement('afterend', notice);
     }
+    if (notice) {
+        notice.hidden = canCreate;
+        notice.textContent = canCreate ? '' : taskCapabilityReason('create', false);
+    }
+    const operationPackBar = document.getElementById('operationPackBar');
+    if (operationPackBar) operationPackBar.hidden = !canCreate;
+    const templatesTab = document.querySelector('[data-view="templates"]');
+    if (templatesTab) templatesTab.style.display = canCreate ? '' : 'none';
     syncTaskSurfaceVisibility();
 }
 
@@ -1705,14 +1982,23 @@ async function apiPatchTaskStatus(id, status) {
     }
 }
 
-async function apiGetTasksPage({ view = currentView, page = 1, limit = 100 } = {}) {
+async function apiGetTasksPage({ view = currentView, page = 1, limit = 100, signal } = {}) {
     const params = new URLSearchParams({
         pagination: '1',
         view: String(view || 'inbox'),
         page: String(Math.max(1, Number(page) || 1)),
         limit: String(Math.max(1, Math.min(500, Number(limit) || 100)))
     });
-    const response = await taskApiFetch(`${API_BASE}/tasks?${params}`, { headers: getAuthHeaders(false) });
+    const state = taskCenterQueryState;
+    if (state.ownerUserId) params.set('owner_user_id', state.ownerUserId);
+    if (state.dateFrom) params.set('date_from', state.dateFrom);
+    if (state.dateTo) params.set('date_to', state.dateTo);
+    if (state.status.length) params.set('status', state.status.join(','));
+    if (state.priority.length) params.set('priority', state.priority.join(','));
+    if (state.category) params.set('category', state.category);
+    if (state.source) params.set('source', state.source);
+    if (state.search) params.set('search', state.search);
+    const response = await taskApiFetch(`${API_BASE}/tasks?${params}`, { headers: getAuthHeaders(false), signal });
     if (handleAuthError(response)) throw new Error('Unauthorized');
     if (!response?.ok) throw new Error(`Tasks API error: ${response?.status || 'offline'}`);
     const payload = await response.json();
@@ -1721,7 +2007,6 @@ async function apiGetTasksPage({ view = currentView, page = 1, limit = 100 } = {
     }
     return payload;
 }
-
 async function apiGetTaskOverview() {
     const response = await taskApiFetch(`${API_BASE}/tasks/overview`, { headers: getAuthHeaders(false) });
     if (handleAuthError(response)) throw new Error('Unauthorized');
@@ -2130,6 +2415,11 @@ async function loadAllTasks(options = {}) {
     const { fatal = false, append = false } = options;
     if (!append && typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview') return loadTaskOverview({ fatal });
     if (!append && typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode)) return loadTaskTeamControl({ fatal });
+    if (!append) {
+        window.__taskCenterRequestAbortController?.abort();
+        window.__taskCenterRequestAbortController = typeof AbortController === 'function' ? new AbortController() : null;
+    }
+    const requestSignal = window.__taskCenterRequestAbortController?.signal;
     const loadSeq = ++taskLoadSeq;
     const board = document.getElementById('boardContent');
     if (board && !append) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
@@ -2139,7 +2429,7 @@ async function loadAllTasks(options = {}) {
     }
     try {
         const targetPage = append ? Math.max(1, Number(taskPagination.nextPage) || Number(taskPagination.page || 0) + 1) : 1;
-        const payload = await apiGetTasksPage({ view: currentView, page: targetPage, limit: taskPagination.limit || 100 });
+        const payload = await apiGetTasksPage({ view: currentView, page: targetPage, limit: taskPagination.limit || 100, signal: requestSignal });
         if (loadSeq !== taskLoadSeq) return;
         const incoming = payload.tasks;
         allTasks = append
@@ -2359,7 +2649,7 @@ function getVisibilityNote() {
     const notes = [];
     if (visibility === 'own') notes.push('Показано тільки задачі, призначені вам');
     if (visibility === 'department') notes.push('Показано ваші задачі та задачі відділу');
-    if (userPermissions?.canCreateTasks === false) notes.push('Створення задач недоступне для вашої ролі');
+    if (!taskCapabilityAllowed('create', userPermissions?.canCreateTasks !== false)) notes.push(taskCapabilityReason('create', false));
     return notes.join('; ');
 }
 
@@ -3398,14 +3688,14 @@ function renderTaskRowMenuItems(task = {}) {
             'data-priority': item.value
         }
     }));
-    const destructiveItems = (!userPermissions || userPermissions.canDeleteTasks)
-        ? [{
-            label: 'Видалити задачу',
-            detail: 'незворотна дія',
-            tone: 'danger',
-            attrs: { 'data-task-action': 'delete', 'data-task-id': taskId }
-        }]
-        : [];
+    const deleteDecision = taskCapabilityDecision('delete', userPermissions?.canDeleteTasks === true);
+    const destructiveItems = [{
+        label: '\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438 \u0437\u0430\u0434\u0430\u0447\u0443',
+        detail: deleteDecision.allowed ? '\u043d\u0435\u0437\u0432\u043e\u0440\u043e\u0442\u043d\u0430 \u0434\u0456\u044f' : taskPermissionReasonLabel(deleteDecision.reasonCode),
+        tone: 'danger',
+        disabled: !deleteDecision.allowed,
+        attrs: { 'data-task-action': 'delete', 'data-task-id': taskId }
+    }];
     return window.TaskUI?.renderMenuItems([
         ...moveItems,
         ...scheduleItems,
@@ -4480,6 +4770,10 @@ function dateFromCaptureIntent() {
 }
 
 async function addTask() {
+    if (!taskCapabilityAllowed('create', userPermissions?.canCreateTasks !== false)) {
+        showNotification(taskCapabilityReason('create', false), 'error');
+        return;
+    }
     const mainDraft = readTaskComposerDraft();
     const batchDrafts = quickTaskBatchItems.map(taskDraftFromBatchItem);
     const drafts = [mainDraft, ...batchDrafts];
@@ -4514,6 +4808,7 @@ async function addTask() {
 
     resetTaskComposerAfterCreate();
     showTaskCreateSuccessToast(createdTasks, drafts, postCreateWarningCount);
+    createdTasks.forEach(task => notifyTaskWidgetsChanged({ action: 'create', taskId: task?.id }));
     await loadAllTasks();
 }
 
@@ -5069,6 +5364,10 @@ async function deleteTask(eventOrTaskId, maybeTaskId) {
         eventOrTaskId.preventDefault?.();
         eventOrTaskId.stopPropagation?.();
         taskId = maybeTaskId;
+    }
+    if (!taskCapabilityAllowed('delete', userPermissions?.canDeleteTasks === true)) {
+        showNotification(taskCapabilityReason('delete', false), 'error');
+        return;
     }
     clearBulkSelection();
     if (!await confirmModal('Видалити цю задачу?', { type: 'danger', okText: 'Видалити' })) return;
@@ -5690,9 +5989,10 @@ function renderTaskDetailContext(task = {}) {
 
 function applyTaskDetailActionPermissions(task = {}) {
     const actions = task.drawer?.actions || {};
+    const reasons = task.drawer?.actionReasons || {};
     const overlay = document.getElementById('taskDetailOverlay');
     if (!overlay) return;
-    const editable = actions.edit !== false;
+    const editable = actions.edit === true;
     if (!editable) {
         overlay.querySelectorAll('input, textarea, select, [data-detail-schedule-slot], #_tdSubtaskAdd').forEach(control => {
             control.disabled = true;
@@ -5701,15 +6001,46 @@ function applyTaskDetailActionPermissions(task = {}) {
     }
     overlay.querySelectorAll('[data-task-drawer-action]').forEach(button => {
         const action = button.dataset.taskDrawerAction;
-        const allowed = actions[action] !== false && (editable || ['close', 'history', 'openSource'].includes(action));
+        const allowed = actions[action] === true || ['close', 'history', 'openSource'].includes(action);
+        const reason = allowed ? '' : taskPermissionReasonLabel(reasons[action]);
         button.disabled = !allowed;
         button.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+        if (reason) {
+            button.title = reason;
+            button.setAttribute('aria-describedby', 'taskDetailPermissionHint');
+        } else {
+            button.removeAttribute('title');
+            button.removeAttribute('aria-describedby');
+        }
     });
-    if (actions.manageObservers === false) {
+    const assignee = overlay.querySelector('#_tdAssigned');
+    if (assignee) {
+        const allowed = actions.reassign === true;
+        assignee.disabled = !allowed;
+        assignee.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+        assignee.title = allowed ? '' : taskPermissionReasonLabel(reasons.reassign);
+    }
+    if (actions.manageObservers !== true) {
         overlay.querySelectorAll('#_tdObservers, [data-task-drawer-action="manageObservers"]').forEach(control => {
             control.disabled = true;
             control.setAttribute('aria-disabled', 'true');
         });
+    }
+    let hint = overlay.querySelector('#taskDetailPermissionHint');
+    if (!hint) {
+        hint = document.createElement('p');
+        hint.id = 'taskDetailPermissionHint';
+        hint.style.cssText = 'margin:0 20px 12px;color:var(--gray-500);font-size:12px;line-height:1.4';
+        hint.setAttribute('role', 'status');
+        const footer = overlay.querySelector('[data-task-drawer-action="save"]')?.parentElement;
+        footer?.insertAdjacentElement('beforebegin', hint);
+    }
+    if (hint) {
+        const denied = Object.entries(reasons)
+            .filter(([action, reason]) => reason && actions[action] === false)
+            .map(([, reason]) => taskPermissionReasonLabel(reason));
+        hint.textContent = [...new Set(denied)].join(' ');
+        hint.hidden = !hint.textContent;
     }
 }
 async function openTaskDetail(taskId, options = {}) {
@@ -5791,10 +6122,12 @@ async function renderTaskDetailDrawer(taskId) {
         const detailSubtaskSummary = taskSubtaskSummary(t);
         const detailSubtaskProgress = detailSubtaskSummary.progress || 0;
         const drawerActions = t.drawer?.actions || {};
-        const canSaveTaskDetail = drawerActions.save !== false;
-        const canCompleteTaskDetail = drawerActions.complete !== false;
-        const canReassignTaskDetail = drawerActions.reassign !== false;
-        const canRescheduleTaskDetail = drawerActions.reschedule !== false;
+        const canSaveTaskDetail = drawerActions.save === true;
+        const canCompleteTaskDetail = drawerActions.complete === true;
+        const canReassignTaskDetail = drawerActions.reassign === true;
+        const canRescheduleTaskDetail = drawerActions.reschedule === true;
+        const canReviewTaskDetail = drawerActions.review === true;
+        const canDeleteTaskDetail = drawerActions.delete === true;
 
         overlay.dataset.taskVersion = t.version || 1;
         overlay.innerHTML = `<div style="background:var(--white,#fff);border-radius:16px;max-width:520px;width:100%;max-height:85vh;overflow-y:auto;box-shadow:0 20px 60px rgba(0,0,0,0.3)">
@@ -5924,6 +6257,8 @@ async function renderTaskDetailDrawer(taskId) {
                 <button data-task-drawer-action="complete" onclick="taskDetailComplete(${t.id})" ${t.status === 'done' || !canCompleteTaskDetail ? 'disabled' : ''} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#10B981;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Done</button>
                 <button data-task-drawer-action="reassign" onclick="taskDetailReassign(${t.id})" ${canReassignTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#2563EB;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reassign</button>
                 <button data-task-drawer-action="reschedule" onclick="taskDetailReschedule(${t.id})" ${canRescheduleTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#F59E0B;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">Reschedule</button>
+                <button data-task-drawer-action="review" onclick="taskDetailReview(${t.id})" ${canReviewTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:#7C3AED;color:#fff;cursor:pointer;font-family:inherit;font-size:13px">\u041e\u0446\u0456\u043d\u0438\u0442\u0438</button>
+                <button data-task-drawer-action="delete" onclick="deleteTask(${t.id})" ${canDeleteTaskDetail ? '' : 'disabled'} style="flex:1;min-width:110px;padding:10px;border:1px solid #FCA5A5;border-radius:10px;background:#FEF2F2;color:#B91C1C;cursor:pointer;font-family:inherit;font-size:13px">\u0412\u0438\u0434\u0430\u043b\u0438\u0442\u0438</button>
                 <button onclick="closeTaskDetailOverlay(false)" style="flex:1;padding:10px;border:1px solid var(--gray-200);border-radius:10px;background:none;cursor:pointer;font-family:inherit;font-size:13px">Скасувати</button>
             </div>
         </div>`;
@@ -6100,6 +6435,44 @@ async function taskDetailReassign(taskId) {
 }
 window.taskDetailReassign = taskDetailReassign;
 
+async function taskDetailReview(taskId) {
+    const action = document.querySelector('[data-task-drawer-action="review"]');
+    if (action?.disabled) {
+        showNotification(action.title || taskPermissionReasonLabel('TASK_REVIEW_FORBIDDEN'), 'error');
+        return;
+    }
+    if (typeof formModal !== 'function') {
+        showNotification('\u0424\u043e\u0440\u043c\u0430 \u043e\u0446\u0456\u043d\u044e\u0432\u0430\u043d\u043d\u044f \u0442\u0438\u043c\u0447\u0430\u0441\u043e\u0432\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0430.', 'error');
+        return;
+    }
+    const values = await formModal('\u041e\u0446\u0456\u043d\u0438\u0442\u0438 \u0432\u0438\u043a\u043e\u043d\u0430\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447\u0456', [
+        { key: 'score', label: '\u041e\u0446\u0456\u043d\u043a\u0430 (1\u201310)', type: 'number', min: 1, max: 10, required: true, defaultValue: '10' },
+        { key: 'comment', label: '\u041a\u043e\u043c\u0435\u043d\u0442\u0430\u0440', type: 'textarea', placeholder: '\u041a\u043e\u0440\u043e\u0442\u043a\u0438\u0439 \u0437\u0432\u043e\u0440\u043e\u0442\u043d\u0438\u0439 \u0437\u0432\u2019\u044f\u0437\u043e\u043a' }
+    ], { okText: '\u0417\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u043e\u0446\u0456\u043d\u043a\u0443', cancelText: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438' });
+    if (!values) return;
+    const score = Number(values.score);
+    if (!Number.isInteger(score) || score < 1 || score > 10) {
+        showNotification('\u041e\u0446\u0456\u043d\u043a\u0430 \u043c\u0430\u0454 \u0431\u0443\u0442\u0438 \u0432\u0456\u0434 1 \u0434\u043e 10.', 'error');
+        return;
+    }
+    const response = await taskApiFetchWithAuth('/api/tasks/' + taskId + '/review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ score, comment: String(values.comment || '').trim() || null })
+    });
+    if (!response) return;
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || !payload?.success) {
+        showNotification(payload?.error || '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u0437\u0431\u0435\u0440\u0435\u0433\u0442\u0438 \u043e\u0446\u0456\u043d\u043a\u0443.', 'error');
+        return;
+    }
+    showNotification('\u041e\u0446\u0456\u043d\u043a\u0443 \u0437\u0431\u0435\u0440\u0435\u0436\u0435\u043d\u043e.', 'success');
+    notifyTaskWidgetsChanged({ action: 'update', taskId });
+    await loadAllTasks();
+    await renderTaskDetailDrawer(taskId);
+}
+window.taskDetailReview = taskDetailReview;
+
 async function taskDetailReschedule(taskId) {
     const date = document.getElementById('_tdScheduleDate')?.value || getTodayStr();
     const durationMinutes = Math.max(5, parseInt(document.getElementById('_tdScheduleDuration')?.value, 10) || 30);
@@ -6214,9 +6587,17 @@ window.TasksPage = {
 
 if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
     let externalTaskRefreshTimer = null;
+    window.addEventListener('popstate', () => {
+        const state = taskCenterQueryStateFromUrl(new URLSearchParams(window.location.search));
+        applyTaskCenterQueryState(state);
+        applyTaskViewShell(currentView);
+        if (currentView === 'templates') void loadTemplates();
+        else void loadAllTasks({ fatal: false });
+    });
     window.addEventListener('crm:tasks-updated', (event) => {
         const detail = event?.detail || {};
-        if (detail.source === 'tasks_page') return;
+        const localOrigin = window.TaskUiShared?.TaskMutationSync?.originId?.();
+        if (detail.originId ? detail.originId === localOrigin : detail.source === 'tasks_page') return;
         window.clearTimeout(externalTaskRefreshTimer);
         externalTaskRefreshTimer = window.setTimeout(() => {
             loadAllTasks({ fatal: false }).catch(error => {

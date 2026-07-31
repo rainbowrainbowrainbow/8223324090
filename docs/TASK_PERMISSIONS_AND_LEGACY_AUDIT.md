@@ -1,6 +1,10 @@
 # Task permissions and legacy-data audit
 
-Date: 2026-07-31Scope: static code audit plus attempted read-only PostgreSQL aggregate audit.Status: **decision document; no roles, permissions, auth, database schema, or production data changed.**
+Date: 2026-07-31
+
+Scope: static code audit plus attempted read-only PostgreSQL aggregate audit.
+
+Status: **decision document; no roles, permissions, auth, database schema, or production data changed.**
 
 ## Evidence sources
 
@@ -50,7 +54,7 @@ No default access should be broadened. The proposed matrix is intended to make c
 
 ## Legacy task-data audit rules
 
-The following queries are designed to run inside `BEGIN READ ONLY` and return aggregate counts only.
+The reproducible runner is `scripts/audit-legacy-task-data-read-only.js`. It accepts only `PRODUCTION_READONLY_DATABASE_URL`, opens one `BEGIN READ ONLY` transaction, verifies `SHOW transaction_read_only`, executes aggregate `SELECT` queries only, and always finishes with `ROLLBACK`. Its stdout contains only `rule`, `count`, and `classification` fields.
 
 | Rule | Deterministic auto-fix candidate? | Classification |
 |---|---|---|
@@ -66,17 +70,30 @@ The following queries are designed to run inside `BEGIN READ ONLY` and return ag
 
 ## Exact count status
 
-**Not executed — counts are intentionally not represented as zero.**
+**Preflight timestamp: 2026-07-31T19:11:41.5642631+03:00. Exact counts are not represented as zero.**
 
-The repository has no `.env` and the permitted local CRM secrets file contains test-login data but no `DATABASE_URL`, `PRODUCTION_READONLY_DATABASE_URL`, `TASK_AUDIT_DATABASE_URL`, or `PG*` connection components. Therefore no PostgreSQL connection was available to perform the requested `BEGIN READ ONLY` aggregate audit.
+The runner was invoked, but the current execution environment does not expose `PRODUCTION_READONLY_DATABASE_URL` in Process, User, or Machine scope. The runner exited with `TASK_LEGACY_AUDIT_READ_ONLY_DATABASE_REQUIRED` before creating a PostgreSQL connection. No production query was executed.
 
-To complete this section, provide one operator-controlled read-only connection string through `PRODUCTION_READONLY_DATABASE_URL` (or an equivalent read-only audit variable). The audit must:
+When the variable is available to the process, run:
 
-1. start `BEGIN READ ONLY`;
-2. verify `SHOW transaction_read_only = on`;
-3. execute aggregate `SELECT` statements only;
-4. record only counts and no customer/task text in this document;
-5. roll back and close the connection.
+```powershell
+node scripts/audit-legacy-task-data-read-only.js --format markdown
+```
+
+The runner's method is intentionally aggregate-only:
+
+| Runner rule | Aggregate methodology | Classification |
+|---|---|---|
+| `ambiguous_owner` | `owner_user_id` is absent and legacy owner fields conflict or do not map to exactly one active user by typed id or username | manual review |
+| `unique_owner_backfill_candidate` | `owner_user_id` is absent and one consistent legacy token maps to exactly one active user | deterministic candidate; requires later approval |
+| `status_workflow_conflict` | terminal status/workflow contradiction, or active status with terminal workflow | manual review |
+| `date_deadline_schedule_conflict` | nonblank legacy date, deadline day, and Kyiv schedule day disagree | manual review |
+| `completed_but_active` | `completed_at` is present while status is nonterminal | manual review |
+| `missing_business_context` | business context is null or blank | manual review |
+| `orphan_source` | known canonical booking, lead, customer, report, event, conversation, or reply reference is absent; unknown/external sources are excluded | manual review |
+| `active_duplicates` | canonical `duplicateSignatureSql` groups have more than one active task | manual review |
+
+The produced counts must replace this status section together with the actual audit timestamp. Neither task titles, descriptions, owner values, nor CRM source values are emitted or stored here.
 
 ## Required decisions before implementation
 

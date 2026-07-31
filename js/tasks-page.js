@@ -307,6 +307,13 @@ let assistantTaskFilter = '';
 let allTasks = [];
 let taskLoadSeq = 0;
 let taskPagination = { page: 0, limit: 100, total: 0, hasMore: false, loadingMore: false, view: 'inbox' };
+let taskOverviewProjection = null;
+let taskOverviewLoading = false;
+let taskOverviewError = null;
+let taskTeamControlProjection = null;
+let taskTeamControlLoading = false;
+let taskTeamControlError = null;
+let taskTeamControlFilters = { from: '', to: '', ownerUserId: '', department: '', status: '' };
 let userPermissions = null; // v20.9.16: loaded from /api/tasks/permissions
 let pageCurrentUser = null;
 let currentTaskBusinessContext = 'event_genix';
@@ -1715,6 +1722,30 @@ async function apiGetTasksPage({ view = currentView, page = 1, limit = 100 } = {
     return payload;
 }
 
+async function apiGetTaskOverview() {
+    const response = await taskApiFetch(`${API_BASE}/tasks/overview`, { headers: getAuthHeaders(false) });
+    if (handleAuthError(response)) throw new Error('Unauthorized');
+    if (!response?.ok) throw new Error(`Task overview API error: ${response?.status || 'offline'}`);
+    const payload = await response.json();
+    if (!payload?.success || !payload.counts || !Array.isArray(payload.queue) || !payload.meta?.paginationIndependent) {
+        throw new Error('/api/tasks/overview contract is invalid');
+    }
+    return payload;
+}
+async function apiGetTaskTeamControl(filters = {}) {
+    const params = new URLSearchParams();
+    Object.entries(filters).forEach(([key, value]) => {
+        if (value !== undefined && value !== null && String(value).trim() !== '') params.set(key, String(value));
+    });
+    const response = await taskApiFetch(`${API_BASE}/tasks/team-control?${params}`, { headers: getAuthHeaders(false) });
+    if (handleAuthError(response)) throw new Error('Unauthorized');
+    if (!response?.ok) throw new Error(`Task team control API error: ${response?.status || 'offline'}`);
+    const payload = await response.json();
+    if (!payload?.success || !Array.isArray(payload.owners) || !Array.isArray(payload.dates) || !payload.meta?.paginationIndependent) {
+        throw new Error('/api/tasks/team-control contract is invalid');
+    }
+    return payload;
+}
 async function apiPatchTaskPriority(id, priority) {
     try {
         const response = await taskApiFetch(`${API_BASE}/tasks/${id}/priority`, {
@@ -2027,8 +2058,78 @@ function renderSubcategoryFilters() {
     `).join('');
 }
 
+function taskOverviewModeActive() {
+    return typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview';
+}
+
+async function loadTaskOverview(options = {}) {
+    const { fatal = false } = options;
+    const loadSeq = ++taskLoadSeq;
+    const board = document.getElementById('boardContent');
+    taskOverviewLoading = true;
+    taskOverviewError = null;
+    if (board) renderBoard();
+    try {
+        const payload = await apiGetTaskOverview();
+        if (loadSeq !== taskLoadSeq) return;
+        taskOverviewProjection = payload;
+        allTasks = payload.queue.map(item => item.task).filter(Boolean);
+        taskPagination = { page: 1, limit: allTasks.length, total: Number(payload.meta?.exceptionTotal || 0), hasMore: Boolean(payload.meta?.hasMore), loadingMore: false, view: 'overview' };
+        taskOverviewLoading = false;
+        updateCounts();
+        renderBoard();
+    } catch (err) {
+        if (loadSeq !== taskLoadSeq) return;
+        console.error('loadTaskOverview error:', err);
+        taskOverviewLoading = false;
+        taskOverviewError = err;
+        if (fatal) throw err;
+        renderBoard();
+    }
+}
+function taskTeamControlModeActive() {
+    return typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode);
+}
+
+function normalizeTaskTeamControlFilters() {
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(taskTeamControlFilters.from || '') ? taskTeamControlFilters.from : getTodayStr();
+    const defaultToDate = new Date(`${from}T12:00:00Z`);
+    defaultToDate.setUTCDate(defaultToDate.getUTCDate() + 6);
+    const defaultTo = defaultToDate.toISOString().slice(0, 10);
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(taskTeamControlFilters.to || '') ? taskTeamControlFilters.to : defaultTo;
+    return { ...taskTeamControlFilters, from, to: to < from ? from : to };
+}
+
+async function loadTaskTeamControl(options = {}) {
+    const { fatal = false } = options;
+    const loadSeq = ++taskLoadSeq;
+    taskTeamControlLoading = true;
+    taskTeamControlError = null;
+    renderBoard();
+    try {
+        const filters = normalizeTaskTeamControlFilters();
+        const payload = await apiGetTaskTeamControl(filters);
+        if (loadSeq !== taskLoadSeq) return;
+        taskTeamControlFilters = { ...taskTeamControlFilters, from: payload.meta?.from || filters.from, to: payload.meta?.to || filters.to };
+        taskTeamControlProjection = payload;
+        allTasks = payload.owners.flatMap(owner => owner.tasks || []).map(item => item.task).filter(Boolean);
+        taskPagination = { page: 1, limit: allTasks.length, total: allTasks.length, hasMore: false, loadingMore: false, view: currentTaskMode };
+        taskTeamControlLoading = false;
+        updateCounts();
+        renderBoard();
+    } catch (err) {
+        if (loadSeq !== taskLoadSeq) return;
+        console.error('loadTaskTeamControl error:', err);
+        taskTeamControlLoading = false;
+        taskTeamControlError = err;
+        if (fatal) throw err;
+        renderBoard();
+    }
+}
 async function loadAllTasks(options = {}) {
     const { fatal = false, append = false } = options;
+    if (!append && typeof currentTaskMode !== 'undefined' && currentTaskMode === 'overview') return loadTaskOverview({ fatal });
+    if (!append && typeof currentTaskMode !== 'undefined' && ['team', 'planning'].includes(currentTaskMode)) return loadTaskTeamControl({ fatal });
     const loadSeq = ++taskLoadSeq;
     const board = document.getElementById('boardContent');
     if (board && !append) board.innerHTML = '<div class="loading-spinner">Завантаження задач…</div>';
@@ -2678,6 +2779,14 @@ function renderBoard() {
     updateTaskExplainability();
     renderMaysternyaTaskOpsBar();
     renderOperationsSummary();
+    if (taskOverviewModeActive()) {
+        renderTaskOverview(container);
+        return;
+    }
+    if (taskTeamControlModeActive()) {
+        renderTaskTeamControl(container);
+        return;
+    }
 
     switch (currentView) {
         case 'inbox': renderSimpleTaskView(container, 'inbox', t => isInboxTask(t), 'Інбокс чистий. Нові задачі без контексту зʼявлятимуться тут.', t => taskWorkflow(t) === 'inbox' || (!t.date && !t.deadline)); break;
@@ -2707,6 +2816,142 @@ function renderBoard() {
     renderTaskPagination(container);
 }
 
+function renderTaskOverview(container) {
+    if (!container) return;
+    if (taskOverviewLoading) {
+        container.innerHTML = '<div class="loading-spinner">Завантаження операційного огляду…</div>';
+        return;
+    }
+    if (taskOverviewError || !taskOverviewProjection) {
+        container.innerHTML = '<div class="empty-state">Не вдалося завантажити операційний огляд. <button type="button" class="btn-secondary" data-task-retry>Повторити</button></div>';
+        return;
+    }
+    const counts = taskOverviewProjection.counts || {};
+    const queue = Array.isArray(taskOverviewProjection.queue) ? taskOverviewProjection.queue : [];
+    const countItems = [
+        ['overdue', 'Прострочено'], ['urgent', 'Термінові'], ['blocked', 'Заблоковано'],
+        ['unassigned', 'Без відповідального'], ['stale', 'Без руху'], ['due_today', 'Термін сьогодні']
+    ].filter(([code]) => Number(counts[code] || 0) > 0);
+    const countHtml = countItems.length
+        ? `<div class="task-overview-counts" aria-label="Причини, що потребують рішення">${countItems.map(([code, label]) => `<span class="task-overview-count" data-exception="${code}"><strong>${Number(counts[code] || 0)}</strong> ${escapeHtml(label)}</span>`).join('')}</div>`
+        : '';
+    const meta = taskOverviewProjection.meta || {};
+    if (!queue.length) {
+        container.innerHTML = `<section class="task-overview" aria-live="polite"><header class="task-overview-header"><div><p class="task-overview-eyebrow">Операційний огляд</p><h2>Винятків, що потребують рішення, немає</h2><p>Перевірено ${Number(meta.activeTotal || 0)} активних задач у доступному контексті.</p></div></header>${countHtml}</section>`;
+        return;
+    }
+    const queueHtml = queue.map(item => {
+        const reasons = Array.isArray(item.reasons) ? item.reasons : [];
+        const reasonHtml = reasons.map(entry => {
+            const duration = Number.isFinite(Number(entry.riskDays)) && Number(entry.riskDays) > 0
+                ? ` · ${Number(entry.riskDays)} дн.`
+                : '';
+            return `<span class="task-overview-reason" data-exception="${escapeHtml(entry.code)}">${escapeHtml(entry.label)}${duration}</span>`;
+        }).join('');
+        const task = item.task || {};
+        const taskId = Number(task.id || 0);
+        const due = task.schedule?.date || task.scheduledDate || task.date || task.deadline || 'Без дати';
+        const owner = task.ownerLabel || task.owner_name || task.assigned_to || task.owner || 'Не призначено';
+        return `<article class="task-overview-item"><div class="task-overview-item-head"><div class="task-overview-reasons">${reasonHtml}</div><span class="task-overview-action">Рекомендована дія: ${escapeHtml(item.recommendedAction || '')}</span></div><div class="task-card task-work-row" data-task-open="true" data-task-id="${taskId}" tabindex="0" role="button" aria-label="Відкрити задачу: ${escapeHtml(task.title || 'Без назви')}"><div class="task-card-title">${escapeHtml(task.title || 'Без назви')}</div><div class="task-card-meta"><span>${escapeHtml(owner)}</span><span>${escapeHtml(String(due).slice(0, 10))}</span></div><div class="task-card-actions task-row-actions"><button type="button" class="task-row-primary" data-task-action="open-detail" data-task-id="${taskId}">Відкрити деталі</button></div></div></article>`;
+    }).join('');
+    const more = meta.hasMore ? `<p class="task-overview-more">Показано ${Number(meta.returned || queue.length)} з ${Number(meta.exceptionTotal || queue.length)} задач. Звузьте контекст або відкрийте деталі потрібної задачі.</p>` : '';
+    container.innerHTML = `<section class="task-overview" aria-live="polite"><header class="task-overview-header"><div><p class="task-overview-eyebrow">Операційний огляд</p><h2>Черга винятків</h2><p>Причина та рекомендована дія показані для кожної задачі. Перевірено ${Number(meta.activeTotal || 0)} активних задач без залежності від pagination.</p></div></header>${countHtml}<div class="task-overview-queue">${queueHtml}</div>${more}</section>`;
+}
+function taskTeamControlMetric(label, value, tone = '') {
+    return `<span class="task-team-metric ${tone ? `is-${tone}` : ''}"><strong>${Number(value || 0)}</strong>${escapeHtml(label)}</span>`;
+}
+
+function taskTeamControlFiltersHtml(projection) {
+    const meta = projection.meta || {};
+    const owners = (projection.owners || []).filter(owner => owner.ownerUserId);
+    const departments = [...new Set(owners.map(owner => owner.department).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'uk'));
+    const filters = normalizeTaskTeamControlFilters();
+    const ownerOptions = owners.map(owner => `<option value="${owner.ownerUserId}" ${String(filters.ownerUserId) === String(owner.ownerUserId) ? 'selected' : ''}>${escapeHtml(owner.ownerLabel)}</option>`).join('');
+    const departmentOptions = departments.map(department => `<option value="${escapeHtml(department)}" ${filters.department === department ? 'selected' : ''}>${escapeHtml(department)}</option>`).join('');
+    return `<div class="task-team-filters" role="group" aria-label="Фільтри командного контролю">
+        <label>Від <input type="date" value="${escapeHtml(filters.from)}" data-task-team-filter="from"></label>
+        <label>До <input type="date" value="${escapeHtml(filters.to)}" data-task-team-filter="to"></label>
+        <label>Відповідальний <select data-task-team-filter="ownerUserId"><option value="">Усі</option>${ownerOptions}</select></label>
+        ${meta.capacityAvailable ? `<label>Відділ <select data-task-team-filter="department"><option value="">Усі</option>${departmentOptions}</select></label>` : ''}
+        <label>Статус <select data-task-team-filter="status"><option value="">Активні</option><option value="todo" ${filters.status === 'todo' ? 'selected' : ''}>До виконання</option><option value="in_progress" ${filters.status === 'in_progress' ? 'selected' : ''}>У роботі</option><option value="waiting" ${filters.status === 'waiting' ? 'selected' : ''}>Чекаю</option></select></label>
+        <span class="task-team-context">Контекст: ${escapeHtml(taskBusinessContext())}</span>
+    </div>`;
+}
+
+function renderTaskTeamControl(container) {
+    if (!container) return;
+    if (taskTeamControlLoading) {
+        container.innerHTML = '<div class="loading-spinner">Завантаження командного контролю…</div>';
+        return;
+    }
+    if (taskTeamControlError || !taskTeamControlProjection) {
+        container.innerHTML = '<div class="empty-state">Не вдалося завантажити командний контроль. <button type="button" class="btn-secondary" data-task-retry>Повторити</button></div>';
+        return;
+    }
+    const projection = taskTeamControlProjection;
+    const meta = projection.meta || {};
+    const heading = currentTaskMode === 'planning' ? 'Планування навантаження' : 'Контроль команди';
+    const capacityNote = meta.capacityAvailable
+        ? 'Capacity розрахована з доступного HR-графіка.'
+        : 'Capacity unavailable: ваш доступ не включає HR-графік; нулі не підставляються.';
+    const filters = taskTeamControlFiltersHtml(projection);
+    if (currentTaskMode === 'planning') {
+        const header = projection.dates.map(date => `<th scope="col">${escapeHtml(formatDateShort(date))}</th>`).join('');
+        const rows = projection.owners.map(owner => {
+            const cells = owner.days.map(day => {
+                const capacity = day.capacity?.status === 'available'
+                    ? `${day.capacity.minutes} хв`
+                    : 'capacity unavailable';
+                const overload = Number(day.overloadMinutes || 0) > 0 ? `<b>+${day.overloadMinutes} хв</b>` : '';
+                const scheduled = day.scheduledTasks.length
+                    ? day.scheduledTasks.map(item => `<button type="button" data-task-action="open-detail" data-task-id="${item.task.id}">${escapeHtml(item.task.title || 'Без назви')}</button>`).join('')
+                    : '<span>—</span>';
+                return `<td class="${Number(day.overloadMinutes || 0) > 0 ? 'is-overload' : ''}"><small>${escapeHtml(capacity)}</small><strong>${day.scheduledEffortMinutes} хв</strong>${overload}<div class="task-planning-day-tasks">${scheduled}</div></td>`;
+            }).join('');
+            return `<tr><th scope="row"><strong>${escapeHtml(owner.ownerLabel)}</strong><small>${owner.metrics.knownEffortMinutes} хв відомого effort · ${owner.metrics.unknownEffortTasks} без оцінки</small></th>${cells}</tr>`;
+        }).join('');
+        const unscheduled = (projection.unscheduled || []).slice(0, 50).map(item => {
+            const task = item.task || {};
+            const canSchedule = task.drawer?.actions?.reschedule !== false;
+            return `<article class="task-planning-unscheduled" data-team-plan-task="${task.id}"><div><strong>${escapeHtml(task.title || 'Без назви')}</strong><small>${escapeHtml(item.ownerLabel || 'Не призначено')} · ${item.facts?.effortMinutes ?? 'без effort'} хв</small></div><label><span>Дата</span><input type="date" value="${escapeHtml(meta.from || getTodayStr())}" data-task-team-plan-date="${task.id}"></label><label><span>Слот</span><select data-task-team-plan-slot="${task.id}"><option value="morning">Ранок</option><option value="midday">День</option><option value="afternoon">Після обіду</option><option value="evening">Вечір</option></select></label><button type="button" class="btn-secondary" data-task-team-schedule="${task.id}" ${canSchedule ? '' : 'disabled'}>Запланувати</button><button type="button" class="btn-secondary" data-task-action="open-detail" data-task-id="${task.id}">Деталі</button></article>`;
+        }).join('') || '<div class="empty-state">Усі доступні задачі вже мають слот або немає доступних задач.</div>';
+        container.innerHTML = `<section class="task-team-control" aria-live="polite"><header><p class="task-overview-eyebrow">Центр задач</p><h2>${heading}</h2><p>${escapeHtml(capacityNote)}</p></header>${filters}<div class="task-planning-table-wrap"><table class="task-planning-table"><thead><tr><th>Відповідальний</th>${header}</tr></thead><tbody>${rows}</tbody></table></div><section class="task-planning-unscheduled-list"><h3>Без слоту</h3>${unscheduled}</section></section>`;
+        return;
+    }
+    const cards = projection.owners.map(owner => {
+        const m = owner.metrics;
+        const capacity = meta.capacityAvailable
+            ? `${owner.overloadDays ? `Перевантажено днів: ${owner.overloadDays}` : 'Перевантаження не виявлено'}`
+            : 'capacity unavailable';
+        return `<article class="task-team-owner-card"><header><div><h3>${escapeHtml(owner.ownerLabel)}</h3><p>${escapeHtml(owner.department || 'Відділ недоступний')}</p></div><button type="button" class="btn-secondary" data-task-team-owner-open="${owner.ownerUserId || ''}" ${owner.ownerUserId ? '' : 'disabled'}>Показати задачі</button></header><div class="task-team-metrics">${taskTeamControlMetric('активні', m.active)}${taskTeamControlMetric('прострочені', m.overdue, 'danger')}${taskTeamControlMetric('термінові', m.urgent, 'danger')}${taskTeamControlMetric('заблоковані', m.blocked, 'danger')}${taskTeamControlMetric('до 3 днів', m.dueSoon)}${taskTeamControlMetric('без дати', m.noDate)}${taskTeamControlMetric('хв effort', m.knownEffortMinutes)}${taskTeamControlMetric('без оцінки', m.unknownEffortTasks)}</div><p class="task-team-capacity">${escapeHtml(capacity)} · у слотах: ${m.scheduledEffortMinutes} хв · без слоту: ${m.unscheduledTasks}</p></article>`;
+    }).join('') || '<div class="empty-state">У доступному контексті немає активних командних задач.</div>';
+    container.innerHTML = `<section class="task-team-control" aria-live="polite"><header><p class="task-overview-eyebrow">Центр задач</p><h2>${heading}</h2><p>${escapeHtml(capacityNote)}</p></header>${filters}<div class="task-team-owner-grid">${cards}</div></section>`;
+}
+
+async function scheduleTaskFromTeamControl(button) {
+    const taskId = Number(button.dataset.taskTeamSchedule || 0);
+    if (!taskId || !guardTaskWrite('планувати задачі')) return;
+    const date = document.querySelector(`[data-task-team-plan-date="${taskId}"]`)?.value || getTodayStr();
+    const slot = document.querySelector(`[data-task-team-plan-slot="${taskId}"]`)?.value || 'morning';
+    const item = taskTeamControlProjection?.unscheduled?.find(entry => Number(entry.task?.id) === taskId);
+    const durationMinutes = Number(item?.facts?.effortMinutes) || 30;
+    const previous = taskTeamControlProjection;
+    taskTeamControlProjection = {
+        ...previous,
+        unscheduled: (previous?.unscheduled || []).filter(entry => Number(entry.task?.id) !== taskId)
+    };
+    button.disabled = true;
+    renderBoard();
+    const result = await apiScheduleTask(taskId, { schedule: { date, slot, durationMinutes }, sourceSurface: 'task_page' });
+    if (!result?.success) {
+        taskTeamControlProjection = previous;
+        renderBoard();
+        showNotification(result?.error || 'Не вдалося запланувати задачу; зміни відкочено', 'error');
+        return;
+    }
+    showNotification((result.proposals || []).length ? 'Слот зайнятий: збережено пропозицію часу' : 'Задачу заплановано', (result.proposals || []).length ? 'info' : 'success');
+    await loadTaskTeamControl();
+}
 function renderSimpleTaskView(container, view, predicate, emptyText, completedPredicate = predicate) {
     const activeBase = allTasks.filter(predicate);
     const completedBase = showCompletedInSlices ? allTasks.filter(t => t.status === 'done' && completedPredicate(t)) : [];
@@ -4630,7 +4875,18 @@ function setupTaskActionDelegation() {
             event.preventDefault();
             return;
         }
-        const retryButton = event.target.closest('[data-task-retry]');
+        const scheduleButton = event.target.closest('[data-task-team-schedule]');
+        if (scheduleButton && board.contains(scheduleButton)) {
+            event.preventDefault();
+            await scheduleTaskFromTeamControl(scheduleButton);
+            return;
+        }
+        const ownerButton = event.target.closest('[data-task-team-owner-open]');
+        if (ownerButton && board.contains(ownerButton)) {
+            taskTeamControlFilters.ownerUserId = ownerButton.dataset.taskTeamOwnerOpen || '';
+            activateTaskView('team', { mode: 'team' });
+            return;
+        }        const retryButton = event.target.closest('[data-task-retry]');
         if (retryButton && board.contains(retryButton)) {
             event.preventDefault();
             await loadAllTasks();
@@ -4667,6 +4923,12 @@ function setupTaskActionDelegation() {
     });
 
     board.addEventListener('change', async (event) => {
+        const teamFilter = event.target.closest('[data-task-team-filter]');
+        if (teamFilter && board.contains(teamFilter)) {
+            taskTeamControlFilters[teamFilter.dataset.taskTeamFilter] = teamFilter.value || '';
+            await loadTaskTeamControl();
+            return;
+        }
         if (event.target.matches('[data-task-priority-select]')) {
             event.stopPropagation();
             await updateTaskPriorityQuick(event.target);

@@ -179,6 +179,8 @@ function defaultTaskPreferences(userId) {
         task_sound_enabled: true,
         task_sound_volume: 0.4,
         task_sound_theme: 'subtle',
+        saved_task_views: [],
+        saved_task_views_revision: 0,
         created_at: null,
         updated_at: null
     };

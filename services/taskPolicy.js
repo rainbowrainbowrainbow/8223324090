@@ -1,5 +1,23 @@
 const { getPermissions } = require('../config/roles');
 
+// These sets mirror the legacy requireRole(...) expansion used by task routes.
+// They describe existing route access for UI contracts; they do not grant access.
+const TASK_ROUTE_CAPABILITY_ROLES = Object.freeze({
+    create: Object.freeze([
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
+        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin',
+        'senior_instructor', 'instructor'
+    ]),
+    delete: Object.freeze([
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
+        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
+    ]),
+    review: Object.freeze([
+        'creator', 'director', 'vice_director', 'senior_manager', 'manager',
+        'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
+    ])
+});
+
 const ACTIVE_TASK_STATUS_SQL = "COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')";
 
 function normalizeUserId(user) {
@@ -159,6 +177,31 @@ function canReassignTask(user, task = {}) {
     return perms.canAssignAnyone === true || perms.taskVisibility === 'all' || perms.taskVisibility === 'department';
 }
 
+const TASK_ROUTE_CAPABILITY_REASON_CODES = Object.freeze({
+    create: 'TASK_CREATE_FORBIDDEN',
+    delete: 'TASK_DELETE_FORBIDDEN',
+    review: 'TASK_REVIEW_FORBIDDEN'
+});
+function userRoleValues(user = {}) {
+    const raw = Array.isArray(user.roles) ? user.roles : [user.role];
+    return raw
+        .map(value => String(value || '').trim())
+        .filter(Boolean);
+}
+
+function canUseTaskRouteCapability(user, capability) {
+    const allowedRoles = TASK_ROUTE_CAPABILITY_ROLES[capability];
+    if (!allowedRoles) return false;
+    const roles = userRoleValues(user);
+    return roles.includes('creator') || roles.some(role => allowedRoles.includes(role));
+}
+function taskRouteCapabilityDecision(user, capability) {
+    const allowed = canUseTaskRouteCapability(user, capability);
+    return {
+        allowed,
+        reasonCode: allowed ? null : (TASK_ROUTE_CAPABILITY_REASON_CODES[capability] || 'TASK_ACTION_FORBIDDEN')
+    };
+}
 function taskControlMeta(task = {}) {
     const value = task.control_meta || task.controlMeta || {};
     if (!value) return {};
@@ -197,6 +240,8 @@ function taskOwnerState(task = {}) {
 
 module.exports = {
     ACTIVE_TASK_STATUS_SQL,
+    TASK_ROUTE_CAPABILITY_ROLES,
+    TASK_ROUTE_CAPABILITY_REASON_CODES,
     buildTaskObserverMatch,
     buildTaskOwnerMatch,
     buildTaskVisibilityScope,
@@ -206,10 +251,13 @@ module.exports = {
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
+    canUseTaskRouteCapability,
     normalizeUserId,
     observesTask,
     ownsTask,
     taskOwnerState,
+    taskRouteCapabilityDecision,
     userDisplayName,
+    userRoleValues,
     userNameTokens
 };

@@ -4,7 +4,8 @@ const {
     canManageTaskObservers,
     canMutateTask,
     canReassignTask,
-    canRescheduleTask
+    canRescheduleTask,
+    taskRouteCapabilityDecision
 } = require('./taskPolicy');
 
 const SOURCE_LABELS = Object.freeze({
@@ -58,21 +59,43 @@ function isTerminalTask(task = {}) {
     return ['done', 'archived', 'cancelled'].includes(String(task.status || '').trim());
 }
 
-function taskDrawerActions(task = {}, user = {}) {
+function taskDrawerActionContract(task = {}, user = {}) {
     const canEdit = canMutateTask(user, task);
     const terminal = isTerminalTask(task);
-    return {
+    const review = taskRouteCapabilityDecision(user, 'review');
+    const remove = taskRouteCapabilityDecision(user, 'delete');
+    const actions = {
         view: true,
         edit: canEdit,
         save: canEdit,
         complete: canEdit && !terminal,
-        reassign: canEdit && canReassignTask(user, task),
+        reassign: canReassignTask(user, task),
         reschedule: canRescheduleTask(user, task),
         manageObservers: canManageTaskObservers(user, task),
         manageSubtasks: canEdit,
+        review: review.allowed && String(task.status || '').trim() === 'done',
+        delete: remove.allowed,
         readHistory: true,
         openSource: Boolean(taskSourceSummary(task)?.href)
     };
+    return {
+        actions,
+        reasons: {
+            edit: canEdit ? null : 'TASK_MUTATION_FORBIDDEN',
+            save: canEdit ? null : 'TASK_MUTATION_FORBIDDEN',
+            complete: canEdit ? (terminal ? 'TASK_ALREADY_TERMINAL' : null) : 'TASK_MUTATION_FORBIDDEN',
+            reassign: actions.reassign ? null : 'TASK_REASSIGN_FORBIDDEN',
+            reschedule: actions.reschedule ? null : 'TASK_RESCHEDULE_FORBIDDEN',
+            manageObservers: actions.manageObservers ? null : 'TASK_OBSERVERS_FORBIDDEN',
+            manageSubtasks: canEdit ? null : 'TASK_MUTATION_FORBIDDEN',
+            review: review.allowed ? (actions.review ? null : 'TASK_REVIEW_REQUIRES_DONE') : review.reasonCode,
+            delete: remove.reasonCode
+        }
+    };
+}
+
+function taskDrawerActions(task = {}, user = {}) {
+    return taskDrawerActionContract(task, user).actions;
 }
 
 function taskControlMeta(task = {}) {
@@ -89,11 +112,13 @@ function taskControlMeta(task = {}) {
 function withTaskDrawerContract(task = {}, user = {}) {
     const source = taskSourceSummary(task);
     const controlMeta = taskControlMeta(task);
+    const actionContract = taskDrawerActionContract(task, user);
     return {
         ...task,
         drawer: {
             contract: 'task_drawer_v1',
-            actions: taskDrawerActions(task, user),
+            actions: actionContract.actions,
+            actionReasons: actionContract.reasons,
             source,
             completion: {
                 reportRequired: task.reportRequired === true || task.requiresReport === true || controlMeta.reportRequired === true || controlMeta.requiresReport === true,
@@ -107,6 +132,7 @@ module.exports = {
     SOURCE_LABELS,
     safeSourceHref,
     taskControlMeta,
+    taskDrawerActionContract,
     taskDrawerActions,
     taskSourceSummary,
     withTaskDrawerContract

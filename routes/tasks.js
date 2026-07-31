@@ -18,7 +18,9 @@ const {
     buildTaskVisibilityScope,
     canManageTaskObservers,
     canMutateTask,
-    normalizeUserId
+    canReassignTask,
+    normalizeUserId,
+    taskRouteCapabilityDecision
 } = require('../services/taskPolicy');
 const {
     completeTask,
@@ -37,6 +39,7 @@ const { withTaskDrawerContract } = require('../services/taskDetailContract');
 const { buildTaskOverview } = require('../services/taskOverviewProjection');
 const { buildTaskTeamControlProjection } = require('../services/taskTeamControlProjection');
 const { loadTaskOwnerCapacity, normalizeTaskPlanningRange } = require('../services/taskTeamCapacityReadModel');
+const { savedViewsPatchFromBody, taskSavedViewsFromPreferences } = require('../services/taskSavedViews');
 const {
     attachTaskSchedule,
     canonicalTaskOrderSql,
@@ -817,6 +820,12 @@ async function resolveTypedTaskOwner(input = {}, actor = null) {
 }
 
 const normalizeTaskPayload = normalizeTaskContractPayload;
+function serializeTaskPreferences(preferences = {}) {
+    return {
+        ...preferences,
+        ...taskSavedViewsFromPreferences(preferences)
+    };
+}
 
 function sourceSurface(body = {}, fallback = 'task_detail') {
     const raw = String(body.sourceSurface || body.source_surface || fallback).trim();
@@ -868,7 +877,7 @@ router.get('/', async (req, res) => {
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
             source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
-            view, include_duplicates, includeDuplicates, pagination, paginated
+            view, include_duplicates, includeDuplicates, pagination, paginated, priority, source, search, q
         } = req.query;
         const conditions = [];
         const params = [];
@@ -884,7 +893,16 @@ router.get('/', async (req, res) => {
                 params.push(statuses);
             }
         }
-        if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
+        if (priority) {
+            const priorities = String(priority).split(',').map(value => value.trim()).filter(value => VALID_PRIORITIES.includes(value));
+            if (priorities.length === 1) {
+                conditions.push(`t.priority = $${idx++}`);
+                params.push(priorities[0]);
+            } else if (priorities.length > 1) {
+                conditions.push(`t.priority = ANY($${idx++}::text[])`);
+                params.push(priorities);
+            }
+        }        if (date && /^\d{4}-\d{2}-\d{2}$/.test(date)) {
             conditions.push(`t.date = $${idx++}`);
             params.push(date);
         }
@@ -985,7 +1003,41 @@ router.get('/', async (req, res) => {
             conditions.push(`t.source_module = $${idx++}`);
             params.push(String(srcModule).slice(0, 80));
         }
-        const srcEntityType = source_entity_type || sourceEntityType;
+        const sourceFilter = String(source || '').trim().toLowerCase().slice(0, 80);
+        if (sourceFilter) {
+            conditions.push(`(
+                LOWER(COALESCE(t.source_module, '')) = $${idx}
+                OR LOWER(COALESCE(t.source_entity_type, '')) = $${idx}
+                OR LOWER(COALESCE(t.related_entity_type, '')) = $${idx}
+            )`);
+            params.push(sourceFilter);
+            idx += 1;
+        }
+        const searchTerm = String(search || q || '').trim().slice(0, 120);
+        if (searchTerm) {
+            const like = `%${searchTerm.replace(/[\\%_]/g, '\\$&')}%`;
+            const exactId = /^\d+$/.test(searchTerm) ? Number(searchTerm) : null;
+            const searchParam = `$${idx++}`;
+            params.push(like);
+            const searchIdParam = exactId ? `$${idx++}` : null;
+            if (exactId) params.push(exactId);
+            conditions.push(`(
+                t.title ILIKE ${searchParam} ESCAPE '\\'
+                OR COALESCE(t.description, '') ILIKE ${searchParam} ESCAPE '\\'
+                OR COALESCE(t.owner, '') ILIKE ${searchParam} ESCAPE '\\'
+                OR COALESCE(t.assigned_to, '') ILIKE ${searchParam} ESCAPE '\\'
+                OR COALESCE(t.source_module, '') ILIKE ${searchParam} ESCAPE '\\'
+                OR COALESCE(t.source_entity_type, '') ILIKE ${searchParam} ESCAPE '\\'
+                OR COALESCE(t.related_entity_type, '') ILIKE ${searchParam} ESCAPE '\\'
+                OR EXISTS (
+                    SELECT 1 FROM users search_owner
+                    WHERE search_owner.id = t.owner_user_id
+                      AND (COALESCE(search_owner.name, '') ILIKE ${searchParam} ESCAPE '\\'
+                           OR COALESCE(search_owner.username, '') ILIKE ${searchParam} ESCAPE '\\')
+                )
+                ${searchIdParam ? `OR t.id = ${searchIdParam}` : ''}
+            )`);
+        }        const srcEntityType = source_entity_type || sourceEntityType;
         const srcEntityId = source_entity_id || sourceEntityId;
         const packIdFilter = pack_id || packId;
         const packStatusFilter = pack_status || packStatus;
@@ -1337,7 +1389,10 @@ router.get('/team-control', async (req, res) => {
 // v20.9.16: GET /api/tasks/permissions — current user's task permissions
 router.get('/permissions', (req, res) => {
     const perms = getPermissions(req.user?.role);
-    res.json({ success: true, permissions: perms, role: req.user?.role });
+    const capabilities = Object.fromEntries(
+        ['create', 'delete', 'review'].map(capability => [capability, taskRouteCapabilityDecision(req.user, capability)])
+    );
+    res.json({ success: true, permissions: perms, capabilities, role: req.user?.role });
 });
 
 // GET /api/tasks/owners — active assignable users for typed task ownership
@@ -1507,7 +1562,7 @@ router.get('/preferences', async (req, res) => {
         const userId = normalizeUserId(req.user);
         if (!userId) return res.status(401).json({ error: 'Unauthenticated' });
         const prefs = await ensureTaskPreferences(pool, userId);
-        res.json({ success: true, preferences: prefs });
+        res.json({ success: true, preferences: serializeTaskPreferences(prefs) });
     } catch (err) {
         log.error('Task preferences lookup error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1533,6 +1588,7 @@ router.patch('/preferences', async (req, res) => {
             task_sound_volume: value => Math.max(0, Math.min(1, Number(value) || 0)),
             task_sound_theme: value => TASK_SOUND_THEMES.includes(String(value || '').trim()) ? String(value).trim() : 'subtle'
         };
+        const savedViewsPatch = savedViewsPatchFromBody(req.body || {});
         const sets = [];
         const values = [];
         Object.entries(allowed).forEach(([field, normalize]) => {
@@ -1543,20 +1599,42 @@ router.patch('/preferences', async (req, res) => {
                 sets.push(`${field} = $${values.length}`);
             }
         });
-        if (!sets.length) {
+        let savedViewsRevisionCondition = '';
+        if (savedViewsPatch) {
+            values.push(JSON.stringify(savedViewsPatch.views));
+            sets.push(`saved_task_views = $${values.length}::jsonb`);
+            sets.push('saved_task_views_revision = COALESCE(saved_task_views_revision, 0) + 1');
+            values.push(savedViewsPatch.revision);
+            savedViewsRevisionCondition = ` AND COALESCE(saved_task_views_revision, 0) = $${values.length}`;
+        }        if (!sets.length) {
             const prefs = await ensureTaskPreferences(pool, userId);
-            return res.json({ success: true, preferences: prefs });
+            return res.json({ success: true, preferences: serializeTaskPreferences(prefs) });
         }
         values.push(userId);
         const result = await pool.query(
             `UPDATE task_user_preferences
              SET ${sets.join(', ')}, updated_at = NOW()
-             WHERE user_id = $${values.length}
+             WHERE user_id = $${values.length}${savedViewsRevisionCondition}
              RETURNING *`,
             values
         );
-        res.json({ success: true, preferences: result.rows[0] });
+        if (!result.rows.length && savedViewsPatch) {
+            const current = await pool.query(
+                `SELECT saved_task_views, saved_task_views_revision
+                 FROM task_user_preferences
+                 WHERE user_id = $1`,
+                [userId]
+            );
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_SAVED_VIEWS_CONFLICT',
+                error: 'Saved views were changed in another session. Reload and retry.',
+                preferences: serializeTaskPreferences(current.rows[0] || {})
+            });
+        }
+        res.json({ success: true, preferences: serializeTaskPreferences(result.rows[0] || {}) });
     } catch (err) {
+        if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message, code: err.code || 'TASK_SAVED_VIEWS_INVALID' });
         log.error('Task preferences update error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
@@ -3243,9 +3321,32 @@ router.post('/bulk', requireRole('admin', 'user'), async (req, res) => {
         const intIds = ids.map(id => parseInt(id)).filter(id => !isNaN(id));
         if (intIds.length === 0) return res.status(400).json({ error: 'No valid ids' });
 
-        const params = [intIds];
+        const requestedIds = [...new Set(intIds)];
+        const params = [requestedIds];
         const visibility = buildTaskVisibilityScope(req.user, params, 't');
         const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
+        const targetResult = await pool.query(
+            `SELECT t.* FROM tasks t WHERE t.id = ANY($1::int[]) ${visibility} ${businessCondition}`,
+            params
+        );
+        if (targetResult.rows.length !== requestedIds.length) {
+            return res.status(404).json({ success: false, error: 'Task not found', code: 'TASK_BULK_TARGET_NOT_FOUND' });
+        }
+        const mutationForbidden = targetResult.rows.filter(task => !canMutateTask(req.user, task));
+        if (mutationForbidden.length) {
+            return res.status(403).json({
+                success: false,
+                error: 'Insufficient permissions to modify every selected task',
+                code: 'TASK_BULK_MUTATION_FORBIDDEN'
+            });
+        }
+        if (action === 'assign' && targetResult.rows.some(task => !canReassignTask(req.user, task))) {
+            return res.status(403).json({
+                success: false,
+                error: 'Insufficient permissions to reassign every selected task',
+                code: 'TASK_BULK_REASSIGN_FORBIDDEN'
+            });
+        }
         let result;
         if (action === 'archive') {
             result = await pool.query(

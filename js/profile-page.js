@@ -63,13 +63,11 @@ const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
 
 function notifyTaskWidgetsChanged(detail = {}) {
-    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return;
-    window.dispatchEvent(new CustomEvent('crm:tasks-updated', {
-        detail: {
-            source: 'profile_my_cabinet',
-            ...detail
-        }
-    }));
+    const payload = { source: 'profile_my_cabinet', ...detail };
+    if (window.TaskUiShared?.TaskMutationSync?.emit) return window.TaskUiShared.TaskMutationSync.emit(payload);
+    if (typeof window === 'undefined' || typeof window.dispatchEvent !== 'function') return null;
+    window.dispatchEvent(new CustomEvent('crm:tasks-updated', { detail: payload }));
+    return payload;
 }
 
 function normalizeCabinetTaskSoundSettings(input = {}) {
@@ -7342,6 +7340,7 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
+    notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
     if (input) input.value = '';
     setCabinetCreatePriority('normal');
     const subtaskList = document.getElementById('cabinetSubtaskList');
@@ -8860,7 +8859,8 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
     });
     window.addEventListener('crm:tasks-updated', (event) => {
         const detail = event?.detail || {};
-        if (detail.source === 'profile_my_cabinet') return;
+        const localOrigin = window.TaskUiShared?.TaskMutationSync?.originId?.();
+        if (detail.originId ? detail.originId === localOrigin : detail.source === 'profile_my_cabinet') return;
         if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;
         window.clearTimeout(profileTaskProjectionRefreshTimer);
         profileTaskProjectionRefreshTimer = window.setTimeout(() => {

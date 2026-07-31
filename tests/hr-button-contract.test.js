@@ -801,7 +801,9 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
         "id: 'pulse'",
         "label: 'Пульс компанії'",
         'function hrPulseNavItems',
-        'items: hrPulseNavItems()',
+        'items: hrPulseNavItems',
+        'function hrNavGroupItems',
+        'items: hrNavGroupItems(group).filter(isHrNavItemVisible)',
         'function renderHrPulseNavButton',
         "{ id: 'workers', label: 'Робітники', tab: 'team', bucket: 'workers', visible: () => canSeeHrTeamBucket('workers') }",
         "{ id: 'interns', label: 'Стажери', tab: 'team', bucket: 'interns', visible: () => canSeeHrTeamBucket('interns') }",
@@ -842,7 +844,59 @@ test('HR grouped nav buttons expose routing and future visibility contract', () 
     ]) {
         assert.ok(HR_JS.includes(token), `missing ${token}`);
     }
+    assert.equal(HR_JS.includes('items: hrPulseNavItems()'), false, 'Pulse items must not be frozen before HR authentication finishes');
     assert.equal(HR_JS.includes("{ id: 'team', label: 'Команда', tab: 'team' }"), false, 'team workspace must use concrete people bucket tabs');
+});
+
+test('HR Pulse navigation resolves capabilities with the authenticated user at render time', () => {
+    const switcherWindow = {
+        resolveCapability(user, capability) {
+            return { allowed: Array.isArray(user?.allowed) && user.allowed.includes(capability) };
+        }
+    };
+    const switcherContext = vm.createContext({
+        window: switcherWindow,
+        document: { querySelector: () => null }
+    });
+    vm.runInContext(HR_PULSE_SWITCHER_JS, switcherContext);
+
+    const creator = {
+        allowed: ['hr.today.view', 'hr.schedule.view', 'hr.reports.view']
+    };
+    const restricted = {
+        allowed: ['hr.today.view', 'hr.schedule.view']
+    };
+    assert.deepEqual(
+        Array.from(switcherWindow.HrPulseSwitcher.items({ user: creator }), item => item.id),
+        ['today', 'schedule', 'reports']
+    );
+    assert.deepEqual(
+        Array.from(switcherWindow.HrPulseSwitcher.items({ user: restricted }), item => item.id),
+        ['today', 'schedule']
+    );
+    assert.deepEqual(
+        Array.from(switcherWindow.HrPulseSwitcher.items(), item => item.id),
+        [],
+        'capability-aware switcher must fail closed until a user is provided'
+    );
+
+    const pulseHelperSource = HR_JS.slice(
+        HR_JS.indexOf('function hrPulseSwitcher()'),
+        HR_JS.indexOf('function renderHrPulseNavButton(')
+    );
+    const helperContext = vm.createContext({
+        window: switcherWindow,
+        currentUser: null,
+        getHrCurrentUser() { return helperContext.currentUser; }
+    });
+    vm.runInContext(pulseHelperSource, helperContext);
+    assert.deepEqual(Array.from(vm.runInContext('hrPulseNavItems()', helperContext), item => item.id), []);
+    helperContext.currentUser = creator;
+    assert.deepEqual(
+        Array.from(vm.runInContext('hrPulseNavItems()', helperContext), item => item.id),
+        ['today', 'schedule', 'reports'],
+        'Pulse items must recover after authentication without reloading the module'
+    );
 });
 
 test('HR Pulse command cards replace legacy nav PNG switcher without weakening routing', () => {

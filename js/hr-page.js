@@ -273,7 +273,7 @@ function hrPulseSwitcher() {
 function hrPulseNavItems() {
     const switcher = hrPulseSwitcher();
     if (!switcher || typeof switcher.items !== 'function') return [];
-    return switcher.items().map(item => ({
+    return switcher.items({ user: getHrCurrentUser() }).map(item => ({
         ...item,
         href: item.hrHref || ''
     }));
@@ -310,7 +310,7 @@ const HR_NAV_GROUPS = [
     {
         id: 'pulse',
         label: 'Пульс компанії',
-        items: hrPulseNavItems()
+        items: hrPulseNavItems
     },
     {
         id: 'people',
@@ -2801,6 +2801,11 @@ function isHrNavItemVisible(item) {
     return typeof item.visible === 'function' ? item.visible(getHrCurrentUser()) : true;
 }
 
+function hrNavGroupItems(group) {
+    const items = typeof group?.items === 'function' ? group.items() : group?.items;
+    return Array.isArray(items) ? items : [];
+}
+
 function isHrStructureWorkspaceTab(target) {
     return HR_STRUCTURE_WORKSPACE_TABS.has(target);
 }
@@ -2884,7 +2889,7 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
         .filter(group => workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse')
         .map(group => ({
             ...group,
-            items: group.items.filter(isHrNavItemVisible)
+            items: hrNavGroupItems(group).filter(isHrNavItemVisible)
         }))
         .filter(group => group.items.length > 0);
     const groupTitleHidden = workspaceMode || pulseMode ? ' hidden' : '';

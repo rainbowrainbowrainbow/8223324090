@@ -57,7 +57,8 @@
     function canViewItem(item, options = {}) {
         if (typeof options.canView === 'function') return options.canView(item) !== false;
         if (!item.capability || typeof global.resolveCapability !== 'function') return true;
-        const user = typeof global.AppState !== 'undefined' ? global.AppState.currentUser : null;
+        const user = options.user || null;
+        if (!user) return false;
         return global.resolveCapability(user, item.capability, { type: 'action' }).allowed === true;
     }
 
@@ -107,6 +108,7 @@
         const root = typeof container === 'string' ? document.querySelector(container) : container;
         if (!root) return;
         root.innerHTML = renderTabs({
+            ...options,
             tag: 'a',
             className: 'staff-pulse-tab ui-tab-card',
             classPrefix: 'staff-pulse-tab',

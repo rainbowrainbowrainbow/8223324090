@@ -20,7 +20,8 @@ function renderStaffPulseSwitcher() {
     const container = document.getElementById('staffPulseNavItems');
     const switcher = typeof window !== 'undefined' ? window.HrPulseSwitcher : null;
     if (!container || !switcher || typeof switcher.renderStaffNav !== 'function') return;
-    switcher.renderStaffNav(container, { activeId: 'schedule' });
+    const user = typeof AppState !== 'undefined' ? AppState.currentUser : null;
+    switcher.renderStaffNav(container, { activeId: 'schedule', user });
 }
 
 let staffScheduleInitPromise = null;

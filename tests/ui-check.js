@@ -1920,7 +1920,8 @@ checkPage('staff.html', (doc, html) => {
         && !staffCode.includes('function isStaffScheduleEmbedMode')
         && !staffCode.includes('function applyStaffScheduleEmbedMode')
         && !staffCode.includes("params.get('embed')")
-        && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule' })")
+        && staffCode.includes("const user = typeof AppState !== 'undefined' ? AppState.currentUser : null")
+        && staffCode.includes("switcher.renderStaffNav(container, { activeId: 'schedule', user })")
         && pulseSwitcherCode.includes('const PULSE_ITEMS')
         && pulseSwitcherCode.includes("id: 'today'")
         && pulseSwitcherCode.includes("id: 'schedule'")
@@ -6308,7 +6309,9 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
         "payroll: { tab: 'salary' }",
         "id: 'pulse'",
         'function hrPulseNavItems',
-        'items: hrPulseNavItems()',
+        'items: hrPulseNavItems',
+        'function hrNavGroupItems',
+        'items: hrNavGroupItems(group).filter(isHrNavItemVisible)',
         'function renderHrPulseNavButton',
         "label: 'KPI'",
         "workspaceGroupId ? group.id === workspaceGroupId : group.id === 'pulse'",

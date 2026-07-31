@@ -91,6 +91,27 @@ Access verification before the audit:
 | `orphan_source` | 2 | manual review |
 | `active_duplicates` | 1 | manual review |
 
+### Status/workflow conflict breakdown
+
+**Breakdown timestamp: 2026-07-31T21:38:01.5755245+03:00.** The reproducible runner is `scripts/audit-task-status-workflow-breakdown-read-only.js`; it used the same dedicated read-only connection, one `BEGIN READ ONLY` transaction, `transaction_read_only = on` verification, aggregate `SELECT` only, and `ROLLBACK`.
+
+| Status | Workflow state | Count |
+|---|---|---:|
+| `archived` | `todo` | 532 |
+| `archived` | `inbox` | 68 |
+| `archived` | `scheduled` | 23 |
+| `done` | `todo` | 13 |
+| `archived` | `waiting` | 2 |
+| `archived` | `in_progress` | 1 |
+
+All 639 rows have a terminal `status` and a nonterminal explicit workflow. There are no rows in the inverse case: an active `status` paired with a terminal workflow.
+
+### Migration decision — closed, no migration
+
+No migration file will be created. The only deterministic owner-backfill cohort has count **0**. The remaining status/workflow rows are not malformed data with a safe mechanical repair: the current Task Center contract gives an explicit `workflow_state` priority over `status`. Replacing those explicit workflows with `archived` or `done` would change current filtering, board, and operational-state semantics.
+
+Safe next path: create a separate product-policy task only if a real user-facing inconsistency is confirmed. That task must define the canonical terminal-state behavior, verify it on selected test records, and use a new audit before any write proposal. No automatic `UPDATE` or bulk repair is allowed.
+
 The runner's method is intentionally aggregate-only:
 
 | Runner rule | Aggregate methodology | Classification |
@@ -111,8 +132,8 @@ No task titles, descriptions, owner values, CRM source values, or connection det
 1. Approve or reject an authorization fix for **P0 bulk mutation enforcement**.
 2. Choose which P1 UI parity gaps to fix: create, reassign, delete, review, and denial reasons.
 3. Approve or amend the proposed capability names and `before -> after` matrix.
-4. Choose which deterministic normalization rules, if any, may appear in a future migration.
-5. Approve a separate migration task only after the exact rules, affected-row counts, backup, and rollback path are agreed.
+4. Legacy normalization migration is closed: no nonzero deterministic cohort exists and no migration file may be created from this audit.
+5. If a real status/workflow product issue is confirmed later, create a new policy-and-audit task before proposing any write.
 
 ## Draft rollback approach (no migration exists)
 
@@ -127,4 +148,4 @@ The product owner approved only the following permissions-parity work:
 - No role definitions, role expansion, or backend access broadening.
 - No legacy-data migration file, database change, production migration, deploy, or production data mutation.
 
-The legacy-data counts are complete. No normalization migration is approved or created.
+The legacy-data counts and status/workflow breakdown are complete. Legacy normalization is closed: no migration is approved or created.

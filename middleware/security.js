@@ -13,7 +13,7 @@ function securityHeaders(req, res, next) {
         "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
         "font-src 'self' https://fonts.gstatic.com",
         "img-src 'self' data: blob: https://tempfile.aiquickdraw.com https://*.aiquickdraw.com https://*.kie.ai https://*.supabase.co https://*.clarity.ms https://c.bing.com",
-        "connect-src 'self' ws: wss: https://*.up.railway.app https://docs.google.com https://*.clarity.ms https://c.bing.com",
+        "connect-src 'self' ws: wss: https://*.up.railway.app https://cdn.jsdelivr.net https://docs.google.com https://*.clarity.ms https://c.bing.com",
         "frame-src 'self' blob:",
         "frame-ancestors 'self'"
     ].join('; '));

@@ -60,6 +60,13 @@
         .status.ready { color: #34D399; }
         .status.recognized { color: #A78BFA; }
         .status.error { color: #F87171; }
+        .status-actions {
+            display: flex;
+            justify-content: center;
+            margin: -4px 16px 12px;
+        }
+        .status-actions[hidden] { display: none; }
+        .status-retry { min-height: 44px; }
 
         .result {
             text-align: center;
@@ -201,7 +208,10 @@
         <div class="date" id="dateDisplay"></div>
     </div>
 
-    <div id="statusMsg" class="status loading">Завантаження моделі розпізнавання...</div>
+    <div id="statusMsg" class="status loading" role="status" aria-live="polite">Завантаження моделі розпізнавання...</div>
+    <div id="statusActions" class="status-actions" hidden>
+        <button type="button" id="retryCheckinInitBtn" class="btn btn-secondary status-retry">Спробувати ще раз</button>
+    </div>
 
     <div class="camera-container">
         <video id="video" autoplay muted playsinline></video>
@@ -230,9 +240,9 @@
     </div>
 
     <!-- face-api.js CDN -->
-    <script src="/js/config.js?v=0.80.46"></script>
-    <script src="/js/api.js?v=0.80.46"></script>
-    <script src="/js/auth.js?v=0.80.46"></script>
+    <script src="/js/config.js?v=0.80.47"></script>
+    <script src="/js/api.js?v=0.80.47"></script>
+    <script src="/js/auth.js?v=0.80.47"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script>
     (function() {
@@ -242,6 +252,8 @@
         let isProcessing = false;
         let lastRecognizedId = null;
         let lastRecognizedTime = 0;
+        let initializationInFlight = false;
+        const MODEL_LOAD_TIMEOUT_MS = 30000;
 
         function headers() {
             if (typeof getAuthHeaders === 'function') return getAuthHeaders(true);
@@ -266,30 +278,81 @@
                 mode === 'checkin' ? 'Режим: Check-in' : 'Режим: Check-out';
         };
 
+        function setRetryVisible(visible) {
+            var actions = document.getElementById('statusActions');
+            if (actions) actions.hidden = !visible;
+        }
+
+        function setStatus(msg, cls, options) {
+            var el = document.getElementById('statusMsg');
+            el.textContent = msg;
+            el.className = 'status ' + (cls || '');
+            setRetryVisible(Boolean(options && options.retry));
+        }
+
+        function withTimeout(promise, timeoutMs, message) {
+            var timeoutId;
+            var timeout = new Promise(function(resolve, reject) {
+                timeoutId = setTimeout(function() {
+                    reject(new Error(message));
+                }, timeoutMs);
+            });
+            return Promise.race([promise, timeout]).finally(function() {
+                clearTimeout(timeoutId);
+            });
+        }
+
+        function cameraErrorMessage(err) {
+            var name = String(err && err.name || '');
+            if (name === 'NotAllowedError' || name === 'PermissionDeniedError') {
+                return 'Доступ до камери не надано. Дозвольте камеру в браузері та спробуйте ще раз.';
+            }
+            if (name === 'NotFoundError' || name === 'DevicesNotFoundError') {
+                return 'Камеру не знайдено. Підключіть камеру та спробуйте ще раз.';
+            }
+            return 'Не вдалося запустити камеру. Перевірте підключення та спробуйте ще раз.';
+        }
+
+        function showInitializationError(err, phase) {
+            console.error('[Checkin] Initialization failed', err);
+            var isModelTimeout = String(err && err.message || '').includes('Час завантаження моделі');
+            var message = phase === 'model'
+                ? (isModelTimeout
+                    ? 'Модель розпізнавання не завантажилася вчасно. Перевірте інтернет і спробуйте ще раз.'
+                    : 'Не вдалося завантажити модель розпізнавання. Перевірте інтернет і спробуйте ще раз.')
+                : 'Не вдалося підготувати Check-in. Спробуйте ще раз.';
+            setStatus(message, 'error', { retry: true });
+        }
+
         // Camera
         async function startCamera() {
+            if (!navigator.mediaDevices || typeof navigator.mediaDevices.getUserMedia !== 'function') {
+                setStatus('Цей браузер не підтримує доступ до камери.', 'error', { retry: true });
+                return false;
+            }
             try {
                 var stream = await navigator.mediaDevices.getUserMedia({
                     video: { width: 640, height: 480, facingMode: 'user' }
                 });
                 document.getElementById('video').srcObject = stream;
+                return true;
             } catch (err) {
-                setStatus('Помилка камери: ' + err.message, 'error');
+                setStatus(cameraErrorMessage(err), 'error', { retry: true });
+                return false;
             }
-        }
-
-        function setStatus(msg, cls) {
-            var el = document.getElementById('statusMsg');
-            el.textContent = msg;
-            el.className = 'status ' + (cls || '');
         }
 
         // Load face-api models
         async function loadModels() {
             var MODEL_URL = 'https://cdn.jsdelivr.net/npm/@vladmandic/face-api@1.7.13/model/';
-            await faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL);
-            await faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL);
-            await faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL);
+            if (!window.faceapi || !faceapi.nets) {
+                throw new Error('Бібліотека розпізнавання недоступна');
+            }
+            await withTimeout(Promise.all([
+                faceapi.nets.tinyFaceDetector.loadFromUri(MODEL_URL),
+                faceapi.nets.faceLandmark68TinyNet.loadFromUri(MODEL_URL),
+                faceapi.nets.faceRecognitionNet.loadFromUri(MODEL_URL)
+            ]), MODEL_LOAD_TIMEOUT_MS, 'Час завантаження моделі вичерпано');
             setStatus('Модель завантажена. Запуск камери...', 'loading');
         }
 
@@ -538,18 +601,37 @@
             return true;
         }
 
-        async function init() {
-            if (!(await requireAuthorizedSession())) return;
+        async function initializeCheckin() {
+            if (initializationInFlight) return;
+            initializationInFlight = true;
+            setRetryVisible(false);
+            try {
+                if (!(await requireAuthorizedSession())) return;
 
-            await loadModels();
-            await startCamera();
-            await loadDescriptors();
-            await loadLog();
-            setStatus('Готово! Поверніться до камери', 'ready');
-            detectLoop();
+                setStatus('Завантаження моделі розпізнавання...', 'loading');
+                try {
+                    await loadModels();
+                } catch (err) {
+                    showInitializationError(err, 'model');
+                    return;
+                }
+                var cameraReady = await startCamera();
+                if (!cameraReady) return;
+                await loadDescriptors();
+                await loadLog();
+
+                setStatus('Готово! Поверніться до камери', 'ready');
+                detectLoop();
+            } catch (err) {
+                showInitializationError(err, 'init');
+            } finally {
+                initializationInFlight = false;
+            }
         }
 
-        init();
+        window.retryCheckinInitialization = initializeCheckin;
+        document.getElementById('retryCheckinInitBtn')?.addEventListener('click', initializeCheckin);
+        initializeCheckin();
     })();
     </script>
 </body>

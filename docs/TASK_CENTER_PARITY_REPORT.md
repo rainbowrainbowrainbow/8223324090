@@ -13,7 +13,7 @@ Task Center release candidate перевірено без Tasks 7.3–7.5. Legac
 
 - legacy UI/code не видалявся;
 - міграції не запускалися;
-- `db/migrations/308_task_saved_views_preferences.sql` лишається migration draft і не запускалася на production;
+- `db/migrations/309_task_saved_views_preferences.sql` лишається migration draft і не запускалася на production;
 - roles, auth і permissions не змінювалися;
 - version bump, merge і deploy не виконувалися;
 - browser smoke блокував усі task/preferences mutations.

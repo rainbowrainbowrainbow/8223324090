@@ -11,7 +11,7 @@ ephemeral UI draft, but it is not a source of truth.
 
 ## Proposed additive schema
 
-Future migration filename: `308_task_saved_views_preferences.sql`.
+Future migration filename: `309_task_saved_views_preferences.sql`.
 
 ```sql
 -- MIGRATION_KIND: schema

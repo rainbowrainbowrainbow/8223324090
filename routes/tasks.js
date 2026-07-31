@@ -32,9 +32,9 @@ const {
     rescheduleTask
 } = require('../services/taskExecution');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
-const { deriveTaskIntelligence } = require('../services/taskIntelligence');
+const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
+const { withTaskDrawerContract } = require('../services/taskDetailContract');
 const {
-    attachTaskSchedule,
     canonicalTaskOrderSql,
     dateOnly: taskKyivDateOnly,
     getAvailability,
@@ -812,87 +812,7 @@ async function resolveTypedTaskOwner(input = {}, actor = null) {
     };
 }
 
-function normalizeTaskPayload(row) {
-    const scheduledRow = attachTaskSchedule(row);
-    const ownerLabel = row.owner_name || row.owner_username || row.assigned_to || row.owner || null;
-    const ownerState = row.owner_user_id ? 'typed' : (row.assigned_to || row.owner ? 'legacy_unknown_owner' : 'unassigned');
-    const status = row.status || 'todo';
-    const taskMode = row.task_mode || 'work';
-    const taskKind = row.task_kind || 'action';
-    const visibility = row.visibility || (taskMode === 'private' ? 'private' : 'team');
-    const workflowState = row.workflow_state || workflowFromStatus(status);
-    const controlMeta = taskControlMeta(row);
-    const explicitRescheduleFalse = value => value === false || value === 'false' || value === '0' || value === 0 || value === 'off' || value === 'no';
-    const canReschedule = !explicitRescheduleFalse(controlMeta.canReschedule)
-        && !explicitRescheduleFalse(controlMeta.allowReschedule)
-        && !explicitRescheduleFalse(controlMeta.rescheduleAllowed);
-    const reportId = taskCompletionReportId(row);
-    const reportRequired = taskRequiresCompletionReport(row);
-    const subtaskCount = Number(row.subtask_count || 0);
-    const subtaskDoneCount = Number(row.subtask_done_count || 0);
-    const progress = subtaskProgress(subtaskDoneCount, subtaskCount);
-    const subtasks = Array.isArray(row.subtasks) ? row.subtasks.map(normalizeSubtaskRow) : [];
-    return {
-        ...scheduledRow,
-        ownerLabel,
-        ownerState,
-        ownerUserId: row.owner_user_id || null,
-        taskMode,
-        taskKind,
-        visibility,
-        observerCount: Number(row.observer_count || 0),
-        viewerIsObserver: row.viewer_is_observer === true,
-        viewerObserverAccessLevel: row.viewer_observer_access_level || null,
-        observers: Array.isArray(row.observers) ? row.observers : [],
-        observerUserIds: Array.isArray(row.observers) ? row.observers.map(item => item.userId || item.user_id).filter(Boolean) : [],
-        materialAccess: row.viewer_is_observer === true ? 'observer_full_read' : 'policy_default',
-        workflowState,
-        focusRank: row.focus_rank || 0,
-        remindAt: row.remind_at || null,
-        snoozedUntil: row.snoozed_until || null,
-        nextNotificationAt: row.next_notification_at || null,
-        completedAt: row.completed_at || null,
-        archivedAt: row.archived_at || null,
-        archiveReason: row.archive_reason || null,
-        duplicateOfTaskId: row.duplicate_of_task_id || null,
-        eveningReviewDate: row.evening_review_date || null,
-        relatedEntityType: row.related_entity_type || null,
-        relatedEntityId: row.related_entity_id || null,
-        sourceModule: row.source_module || null,
-        effortMinutes: row.effort_minutes || null,
-        subcategory: row.subcategory || null,
-        checklistTemplateKey: row.checklist_template_key || null,
-        sourceEntityType: row.source_entity_type || null,
-        sourceEntityId: row.source_entity_id || null,
-        packId: row.pack_id || null,
-        packStatus: row.pack_status || null,
-        ownerRole: row.owner_role || null,
-        slaMinutes: row.sla_minutes || null,
-        escalateAfter: row.escalate_after || null,
-        controlMode: row.control_mode || 'normal',
-        criticalReason: row.critical_reason || null,
-        controlMeta,
-        canReschedule,
-        allowReschedule: canReschedule,
-        reportRequired,
-        requiresReport: reportRequired,
-        reportId,
-        subtaskCount,
-        subtaskDoneCount,
-        subtaskProgress: progress,
-        subtaskProgressPercent: progress,
-        subtasks,
-        dependencyCount: Number(row.dependency_count || 0),
-        openDependencyCount: Number(row.open_dependency_count || 0),
-        blockedByTitles: row.blocked_by_titles || null,
-        isBlocked: Number(row.open_dependency_count || 0) > 0,
-        intelligence: deriveTaskIntelligence({
-            ...row,
-            owner_label: ownerLabel,
-            ownerState
-        })
-    };
-}
+const normalizeTaskPayload = normalizeTaskContractPayload;
 
 function sourceSurface(body = {}, fallback = 'task_detail') {
     const raw = String(body.sourceSurface || body.source_surface || fallback).trim();
@@ -1698,7 +1618,8 @@ router.get('/:id', async (req, res) => {
                     COALESCE(st.done, 0)::int AS subtask_done_count,
                     COALESCE(dep.total, 0)::int AS dependency_count,
                     COALESCE(dep.open, 0)::int AS open_dependency_count,
-                    dep.blocked_by_titles
+                    dep.blocked_by_titles,
+                    COALESCE(dep.dependencies, '[]'::json) AS dependencies
              FROM tasks t
              LEFT JOIN users u ON u.id = t.owner_user_id
              LEFT JOIN (
@@ -1755,7 +1676,7 @@ router.get('/:id', async (req, res) => {
             params
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Task not found' });
-        res.json(normalizeTaskPayload(result.rows[0]));
+        res.json(withTaskDrawerContract(normalizeTaskPayload(result.rows[0]), req.user));
     } catch (err) {
         log.error('Get by id error', err);
         res.status(500).json({ error: 'Internal server error' });

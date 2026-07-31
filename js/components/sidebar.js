@@ -153,7 +153,7 @@ const Sidebar = (() => {
         { href: '/dashboard',    icon: '🏠', label: 'Дашборд',       access: 'all',            group: 'today' },
         { href: '/',             icon: '📅', label: 'Таймлайн', access: 'timeline',       group: 'today' },
         { href: '/maysternya-doli', icon: '◇', label: 'Таймлайн МД', access: 'maysternya_doli', group: 'today' },
-        { href: '/tasks',        icon: '✅', label: 'Задачі',        access: 'tasks',          group: 'today', statusKey: 'tasks' },
+        { href: '/tasks',        icon: '✅', label: 'Центр задач', access: 'tasks',          group: 'today', statusKey: 'tasks' },
         { href: '/chat',         icon: '💬', label: 'Чат',           access: 'chat',           group: 'today', statusKey: 'chat' },
         { href: '/staff',        icon: '🗓️', label: 'Графік',        access: 'schedule_daily', group: 'today', quickAccessOnly: true },
 

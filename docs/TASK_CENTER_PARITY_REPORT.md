@@ -90,10 +90,9 @@ Browser smoke перевіряє:
 
 Нижче лише перелік для окремого підтвердження. У Task 8.1R нічого з нього не видалено.
 
-### Evidence-backed dead candidate
+### Completed cleanup
 
-1. `tasks.html` — `#tasksSummaryStrip`: елемент завжди `hidden`, не наповнюється і не має render owner.
-2. `js/tasks-page.js` — click-listener на `#tasksSummaryStrip` у page initialization: після видалення порожнього strip стає dead listener.
+1. Task 8.2A: removed tasksSummaryStrip, its unreferenced styles, and the corresponding click-listener after a complete reference audit. Legacy compatibility controls remain unchanged.
 
 ### Conditional compatibility candidates
 

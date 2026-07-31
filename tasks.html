@@ -1169,41 +1169,6 @@
             width: 100%;
             box-sizing: border-box;
         }
-        .tasks-summary-strip {
-            display: grid;
-            grid-template-columns: repeat(4, minmax(0, 1fr));
-            gap: 10px;
-        }
-        .tasks-summary-card {
-            display: grid;
-            gap: 4px;
-            min-height: 72px;
-            padding: 14px 16px;
-            border-radius: 16px;
-            border: 1px solid rgba(15, 23, 42, 0.1);
-            background: rgba(255, 255, 255, 0.88);
-            color: var(--gray-700);
-            text-align: left;
-            cursor: pointer;
-            font: inherit;
-            box-shadow: 0 12px 28px rgba(15, 23, 42, 0.06);
-        }
-        .tasks-summary-card span {
-            color: var(--gray-500);
-            font-size: 12px;
-            font-weight: 900;
-        }
-        .tasks-summary-card strong {
-            color: var(--gray-900);
-            font-size: 24px;
-            font-weight: 900;
-            line-height: 1;
-        }
-        .tasks-summary-card:hover,
-        .tasks-summary-card:focus-visible {
-            border-color: rgba(20, 184, 166, 0.34);
-            box-shadow: 0 14px 32px rgba(15, 23, 42, 0.1);
-        }
         .tasks-filter-shell {
             display: grid;
             gap: 10px;
@@ -1307,7 +1272,6 @@
         }
         .task-due-chip:focus-visible,
         .task-scope-chip:focus-visible,
-        .tasks-summary-card:focus-visible,
         .task-card-actions button:focus-visible,
         .task-card:focus-visible {
             outline: 2px solid rgba(20,184,166,0.5);
@@ -1469,8 +1433,6 @@
             box-sizing: border-box;
             max-width: 100%;
         }
-        html[data-theme="dark"] .tasks-summary-card,
-        body.dark-mode .tasks-summary-card,
         html[data-theme="dark"] .tasks-filter-shell,
         body.dark-mode .tasks-filter-shell,
         html[data-theme="dark"] .quick-add.task-composer,
@@ -1478,14 +1440,6 @@
             background: rgba(15, 23, 42, 0.82);
             border-color: rgba(148, 163, 184, 0.16);
             box-shadow: none;
-        }
-        html[data-theme="dark"] .tasks-summary-card span,
-        body.dark-mode .tasks-summary-card span {
-            color: #94a3b8;
-        }
-        html[data-theme="dark"] .tasks-summary-card strong,
-        body.dark-mode .tasks-summary-card strong {
-            color: #f8fafc;
         }
         html[data-theme="dark"] .tasks-filter-shell .board-tab,
         body.dark-mode .tasks-filter-shell .board-tab,
@@ -1604,9 +1558,6 @@
             }
         }
         @media (max-width: 1180px) {
-            .tasks-summary-strip {
-                grid-template-columns: repeat(2, minmax(0, 1fr));
-            }
             .task-composer-primary {
                 grid-template-columns: repeat(2, minmax(0, 1fr));
             }
@@ -1633,7 +1584,6 @@
             }
         }
         @media (max-width: 768px) {
-            .tasks-summary-strip { grid-template-columns: repeat(2, minmax(0, 1fr)); }
             .kanban { grid-template-columns: 1fr; gap: 12px; }
             .kanban-col { padding: 10px; }
             .quick-add:not(.task-composer) { flex-wrap: wrap; }
@@ -1796,25 +1746,6 @@
                 </div>
                 <p class="task-center-mode-description" id="taskCenterModeDescription">Вхідні, сьогодні та винятки</p>
             </section>
-
-            <div class="tasks-summary-strip" id="tasksSummaryStrip" aria-label="Швидкий огляд задач" hidden>
-                <button type="button" class="tasks-summary-card" data-summary-view="my">
-                    <span>Мої активні</span>
-                    <strong id="summaryMy">0</strong>
-                </button>
-                <button type="button" class="tasks-summary-card" data-summary-view="today">
-                    <span>Сьогодні</span>
-                    <strong id="summaryToday">0</strong>
-                </button>
-                <button type="button" class="tasks-summary-card" data-summary-view="waiting">
-                    <span>Чекаю</span>
-                    <strong id="summaryWaiting">0</strong>
-                </button>
-                <button type="button" class="tasks-summary-card" data-summary-view="done_today">
-                    <span>Готово сьогодні</span>
-                    <strong id="summaryDoneToday">0</strong>
-                </button>
-            </div>
 
             <section class="task-center-context-zone" id="taskCenterLegacyControls" hidden aria-label="Додаткові фільтри та інструменти">
             <section class="tasks-filter-shell is-secondary-collapsed" id="tasksFilterShell" aria-label="Фільтри задач">

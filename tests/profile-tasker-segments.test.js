@@ -520,7 +520,45 @@ test('profile My Day state keeps list mode separate from due preset', () => {
     assert.equal(ctx.getCabinetMyDayState().selectedDuePreset, 'today');
     assert.equal(ctx.getCabinetMyDayState().listMode, 'all');
 });
+test('profile My Day due changes keep the draft composer DOM intact', () => {
+    const ctx = loadProfileTaskerContext();
+    const taskCreateCtx = loadTaskCreateContext();
+    const title = { value: 'Перевірити чернетку без створення' };
+    const date = { value: '' };
+    const chips = ['today', 'tomorrow', 'custom'].map(value => ({
+        dataset: { cabinetDuePreset: value },
+        classList: { toggle() {} },
+        setAttribute() {}
+    }));
+    let renderCalls = 0;
 
+    ctx.TaskCreate = taskCreateCtx.TaskCreate;
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            if (id === 'cabinetTaskTitle') return title;
+            if (id === 'cabinetTaskDate') return date;
+            return null;
+        },
+        querySelectorAll() {
+            return chips;
+        }
+    };
+    ctx.renderCabinetActiveTab = () => {
+        renderCalls += 1;
+        title.value = '';
+    };
+
+    ctx.setCabinetDuePreset('tomorrow', { source: 'chip', rerender: true });
+    assert.equal(title.value, 'Перевірити чернетку без створення');
+    assert.equal(renderCalls, 0);
+
+    date.value = '2099-05-31';
+    ctx.setCabinetDuePreset('custom', { source: 'date-input', rerender: true });
+    assert.equal(title.value, 'Перевірити чернетку без створення');
+    assert.equal(date.value, '2099-05-31');
+    assert.equal(renderCalls, 0);
+});
 test('profile My Day fixed workspace ignores composer due preset for visible task columns', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();

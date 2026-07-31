@@ -3908,7 +3908,7 @@ function setCabinetTaskComposerExpanded(expanded = true, options = {}) {
 }
 window.setCabinetTaskComposerExpanded = setCabinetTaskComposerExpanded;
 
-function setCabinetDuePreset(preset = 'today', options = {}) {
+function setCabinetDuePreset(preset = 'today') {
     cabinetCreateDuePreset = normalizeCabinetDuePreset(preset);
     const date = document.getElementById?.('cabinetTaskDate');
     if (date && cabinetCreateDuePreset !== 'custom') date.value = cabinetDueDateForPreset(cabinetCreateDuePreset);
@@ -3918,12 +3918,6 @@ function setCabinetDuePreset(preset = 'today', options = {}) {
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     if (cabinetCreateDuePreset === 'custom') setCabinetTaskComposerExpanded(true, { focusDate: true });
-    const shouldRerenderFocusedList = options.rerender === true
-        && getCabinetMyDayListMode() === 'focused'
-        && (cabinetCreateDuePreset !== 'custom' || options.source === 'date-input');
-    if (shouldRerenderFocusedList && typeof document?.getElementById === 'function') {
-        renderCabinetActiveTab();
-    }
 }
 
 function syncCabinetTaskCreateMode() {
@@ -8108,10 +8102,7 @@ function attachProfileListeners() {
     document.querySelectorAll('[data-cabinet-due-preset]').forEach(button => {
         if (button.dataset.cabinetDueBound === 'true') return;
         button.dataset.cabinetDueBound = 'true';
-        button.addEventListener('click', () => setCabinetDuePreset(button.dataset.cabinetDuePreset, {
-            source: 'chip',
-            rerender: button.dataset.cabinetDuePreset !== 'custom'
-        }));
+        button.addEventListener('click', () => setCabinetDuePreset(button.dataset.cabinetDuePreset));
     });
     document.querySelectorAll('[data-cabinet-list-mode]').forEach(button => {
         if (button.dataset.cabinetListModeBound === 'true') return;
@@ -8158,13 +8149,10 @@ function attachProfileListeners() {
     if (cabinetDate && cabinetDate.dataset.cabinetDateBound !== 'true') {
         cabinetDate.dataset.cabinetDateBound = 'true';
         cabinetDate.addEventListener('change', () => {
-            setCabinetDuePreset('custom', {
-                source: 'date-input',
-                rerender: true
-            });
+            setCabinetDuePreset('custom');
             const focusDate = cabinetSelectedDueDate();
             if (!focusDate) return;
-            refreshMyCabinetTab({ silent: false, keepExistingOnError: true })
+            refreshMyCabinetTab({ silent: true, keepExistingOnError: true })
                 .catch(error => console.warn('Profile cabinet custom focus refresh failed', error));
         });
     }

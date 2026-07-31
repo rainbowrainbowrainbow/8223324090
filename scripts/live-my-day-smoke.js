@@ -13,6 +13,7 @@
  *   npm run smoke:my-day -- https://example.up.railway.app
  *   LIVE_SMOKE_URL=https://example.up.railway.app LIVE_SMOKE_USER=... LIVE_SMOKE_PASS=... npm run smoke:my-day
  *   LIVE_SMOKE_TOKEN=<jwt> npm run smoke:my-day -- https://example.up.railway.app
+ *   LIVE_MY_DAY_VERIFY_DRAFT=true npm run smoke:my-day -- https://example.up.railway.app
  */
 
 const assert = require('node:assert/strict');
@@ -24,6 +25,7 @@ const TARGET_URL = process.argv.find(arg => /^https?:\/\//i.test(arg))
     || readEnv('LIVE_MY_DAY_URL', 'LIVE_SMOKE_URL', 'TEST_URL');
 const BUSINESS_CONTEXT = readEnv('LIVE_MY_DAY_BUSINESS_CONTEXT', 'LIVE_SMOKE_BUSINESS_CONTEXT') || 'event_genix';
 const HEADLESS = readEnv('LIVE_MY_DAY_HEADLESS', 'LIVE_SMOKE_HEADLESS') !== 'false';
+const VERIFY_DRAFT = readEnv('LIVE_MY_DAY_VERIFY_DRAFT') === 'true';
 const TIMEOUT_MS = Number(readEnv('LIVE_MY_DAY_TIMEOUT_MS', 'LIVE_SMOKE_TIMEOUT_MS') || 30000);
 const RUN_ID = `my-day-${new Date().toISOString().replace(/[:.]/g, '-')}`;
 const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'live-my-day-smoke', RUN_ID);
@@ -123,6 +125,23 @@ async function login(base) {
     };
 }
 
+async function hydrateSessionPermissions(base, session) {
+    if (!session?.token) throw new Error('authenticated smoke session is missing an access token');
+    if (!session?.user || typeof session.user !== 'object') {
+        throw new Error('authenticated smoke session is missing a user profile');
+    }
+    const payload = await fetchJson(base, '/api/auth/permissions', { token: session.token });
+    const permissions = payload?.permissions && !payload?.capabilities
+        ? payload.permissions
+        : payload;
+    return {
+        ...session,
+        user: {
+            ...session.user,
+            permissions
+        }
+    };
+}
 function requirePlaywright() {
     try {
         return require('playwright');
@@ -291,6 +310,30 @@ async function assertNoHorizontalOverflow(page, label) {
     assert.ok(metrics.workspaceRight <= metrics.viewportWidth + 4, `${label}: workspace stays inside viewport`);
 }
 
+async function assertComposerDraftSurvivesDueChanges(page) {
+    const title = page.locator('#cabinetTaskTitle');
+    const date = page.locator('#cabinetTaskDate');
+    const draft = `Smoke draft ${RUN_ID} — do not create`;
+    await title.evaluate((input, value) => { input.value = value; }, draft);
+
+    for (const preset of ['today', 'tomorrow', 'day_after_tomorrow', 'plus_3_days', 'month_end', 'no_date', 'custom']) {
+        const button = page.locator(`[data-cabinet-due-preset="${preset}"]`);
+        await button.click();
+        assert.equal(await title.inputValue(), draft, `${preset}: due change keeps the typed draft`);
+        assert.equal(await button.getAttribute('aria-pressed'), 'true', `${preset}: due chip is selected`);
+    }
+
+    const focusedProjection = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('focusDate') === '2099-05-31';
+    });
+    await date.fill('2099-05-31');
+    await focusedProjection;
+    await page.waitForTimeout(180);
+    assert.equal(await title.inputValue(), draft, 'custom date background refresh keeps the typed draft');
+    assert.equal(await date.inputValue(), '2099-05-31', 'custom date remains selected');
+    return true;
+}
 async function runViewport(browser, base, session, viewport, label) {
     let context;
     let page;
@@ -302,6 +345,7 @@ async function runViewport(browser, base, session, viewport, label) {
         await assertFullProfileHeader(page);
         await waitForProfileShell(page, base, 'myday');
         await assertMyDayShell(page);
+        const draftVerified = VERIFY_DRAFT ? await assertComposerDraftSurvivesDueChanges(page) : false;
         const overdue = await assertOverdueTriageSurface(page);
         await assertCompletedHistoryDisclosure(page);
         await assertNoHorizontalOverflow(page, label);
@@ -309,7 +353,8 @@ async function runViewport(browser, base, session, viewport, label) {
         assertNoForbiddenTaskWrites(forbidden, label);
         return {
             viewport: `${viewport.width}x${viewport.height}`,
-            overdueRows: overdue.rows
+            overdueRows: overdue.rows,
+            draftVerified
         };
     } finally {
         await page?.close().catch(() => {});
@@ -329,7 +374,7 @@ async function run() {
         fail('Playwright is not available. Run through: npx --yes --package playwright node scripts/live-my-day-smoke.js');
     }
 
-    const session = await login(base);
+    const session = await hydrateSessionPermissions(base, await login(base));
     const browser = await playwright.chromium.launch({ headless: HEADLESS });
     try {
         const desktop = await runViewport(browser, base, session, VIEWPORTS.desktop, 'desktop');
@@ -338,6 +383,7 @@ async function run() {
         console.log(`Live My Day smoke OK: ${base}`);
         console.log(`  OK desktop: ${desktop.viewport}, overdueRows=${desktop.overdueRows}`);
         console.log(`  OK mobile: ${mobile.viewport}, overdueRows=${mobile.overdueRows}`);
+        if (VERIFY_DRAFT) console.log('  OK composer draft: all due presets and custom date preserve input');
         console.log('  OK read-only guard: no task mutation requests');
         console.log(`  OK screenshots: ${path.relative(ROOT, OUTPUT_DIR)}`);
     } finally {

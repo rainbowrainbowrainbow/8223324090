@@ -3364,8 +3364,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.topbarRightmostId, 'logoutBtn', `logout button is the rightmost visible topbar control at ${label}`);
         assert.equal(metrics.viewToggleLabel, 'Фільтри', `view trigger is renamed to filters at ${label}`);
         assert.equal(metrics.visibleTimelineViewLabels.includes('Вигляд'), false, `old view label is not visible at ${label}`);
-        assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle', `date row contains date controls and the view trigger at ${label}`);
-        assert.equal(metrics.dateInteractiveNonzeroCount, 5, `date row controls keep visible hit targets at ${label}`);
+        assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|exportPdfBtn|exportTimelineBtn|timelineViewPanelToggle', `date row contains date controls, export actions, and the view trigger at ${label}`);
+        assert.equal(metrics.dateInteractiveNonzeroCount, 7, `date row controls keep visible hit targets at ${label}`);
         assert.ok(metrics.utilityRowHeight <= 52, `date utility row stays compact at ${label}: ${metrics.utilityRowHeight}px`);
         assert.ok(metrics.dateControlsHeight <= 52, `date controls stay compact at ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 96, `command center does not create a large empty band at ${label}: ${metrics.commandCenterHeight}px`);
@@ -3447,8 +3447,8 @@ async function assertTimelineHeaderAnd15MinuteGeometry(page, date, bookingId) {
         assert.equal(metrics.topbarRightmostId, 'logoutBtn', `logout button is the rightmost visible topbar control at narrow ${label}`);
         assert.equal(metrics.viewToggleLabel, 'Фільтри', `view trigger is renamed to filters at narrow ${label}`);
         assert.equal(metrics.visibleTimelineViewLabels.includes('Вигляд'), false, `old view label is not visible at narrow ${label}`);
-        assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|timelineViewPanelToggle', `date row contains date controls and the view trigger at narrow ${label}`);
-        assert.equal(metrics.dateInteractiveNonzeroCount, 5, `date row controls keep visible hit targets at narrow ${label}`);
+        assert.equal(metrics.dateInteractiveIds, 'prevDay|timelineDate|todayBtn|nextDay|exportPdfBtn|exportTimelineBtn|timelineViewPanelToggle', `date row contains date controls, export actions, and the view trigger at narrow ${label}`);
+        assert.equal(metrics.dateInteractiveNonzeroCount, 7, `date row controls keep visible hit targets at narrow ${label}`);
         assert.ok(metrics.utilityRowHeight <= 144, `date utility row wraps compactly at narrow ${label}: ${metrics.utilityRowHeight}px`);
         assert.ok(metrics.dateControlsHeight <= 104, `date controls wrap compactly at narrow ${label}: ${metrics.dateControlsHeight}px`);
         assert.ok(metrics.commandCenterHeight <= 156, `command center avoids a large empty band at narrow ${label}: ${metrics.commandCenterHeight}px`);

@@ -3883,8 +3883,7 @@ body.timeline-dashboard-page .schedule-command-center .timeline-constructor-btn 
         order: 2;
     }
 
-    body.timeline-dashboard-page .schedule-command-center .action-buttons #productSalesBtn,
-    body.timeline-dashboard-page .schedule-command-center .action-buttons #exportTimelineBtn {
+    body.timeline-dashboard-page .schedule-command-center .action-buttons #productSalesBtn {
         order: 2;
     }
 
@@ -4025,7 +4024,7 @@ body.timeline-dashboard-page .schedule-command-center .action-buttons #timelineC
     order: 4;
 }
 
-body.timeline-dashboard-page .schedule-command-center .action-buttons :where(#undoBtn, #productSalesBtn, #exportTimelineBtn) {
+body.timeline-dashboard-page .schedule-command-center .action-buttons :where(#undoBtn, #productSalesBtn) {
     order: 5;
 }
 
@@ -4180,7 +4179,7 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--le
         order: 4;
     }
 
-    body.timeline-dashboard-page .schedule-command-center .action-buttons :where(#undoBtn, #productSalesBtn, #exportTimelineBtn) {
+    body.timeline-dashboard-page .schedule-command-center .action-buttons :where(#undoBtn, #productSalesBtn) {
         order: 5;
     }
 }
@@ -5978,6 +5977,46 @@ body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--ac
     margin-left: 0 !important;
 }
 
+/* v0.80.39: print/image export actions live in the date row without wrapping over the timeline. */
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > :where(button, .date-button-shell) {
+    flex: 0 0 auto !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > :where(#exportPdfBtn, #exportTimelineBtn, #timelineViewPanelToggle) {
+    min-width: max-content !important;
+    white-space: nowrap !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportPdfBtn {
+    min-width: 64px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportTimelineBtn {
+    min-width: 86px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #timelineViewPanelToggle {
+    min-width: 106px !important;
+}
+
+body.timeline-dashboard-page .schedule-command-center .action-buttons:not(:has(> :not(.hidden):not([hidden]):not(.timeline-hidden-by-config):not(.timeline-permission-hidden):not(.is-empty))) {
+    display: none !important;
+}
+
+@media (max-width: 430px) {
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportPdfBtn {
+        min-width: 58px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #exportTimelineBtn {
+        min-width: 76px !important;
+    }
+
+    body.timeline-dashboard-page .schedule-command-center .date-navigation-cluster > #timelineViewPanelToggle {
+        min-width: 92px !important;
+    }
+}
+
 /* v0.77.83: filters open as a normal-flow collapsible shelf under the date row. */
 body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open {
     width: min(1040px, 100%) !important;
@@ -6098,14 +6137,19 @@ body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeli
 
     body.timeline-dashboard-page .schedule-command-center .schedule-command-zone--date {
         width: 100% !important;
-        flex-wrap: wrap !important;
+        flex-wrap: nowrap !important;
         gap: 6px !important;
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        overscroll-behavior-x: contain;
+        scrollbar-width: thin;
     }
 
     body.timeline-dashboard-page .schedule-command-center .schedule-command-row--utility .date-navigation-cluster {
-        width: 100% !important;
-        flex-wrap: wrap !important;
-        overflow-x: hidden !important;
+        width: max-content !important;
+        max-width: none !important;
+        flex-wrap: nowrap !important;
+        overflow-x: visible !important;
     }
 
     body.timeline-dashboard-page .schedule-command-center.toolbarContainer.is-view-panel-open {

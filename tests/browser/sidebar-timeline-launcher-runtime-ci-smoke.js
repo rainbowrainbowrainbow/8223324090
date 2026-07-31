@@ -177,8 +177,7 @@ async function run() {
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForFunction(() => window.isAuthenticatedRuntimeReady?.() === true && document.querySelector('[data-sidebar-timeline-launcher]'));
         assert.equal((await readState(page)).expanded, 'false', 'collapsed state persists after reload');
-        await page.locator('[data-sidebar-extra-toggle-section]').focus();
-        await page.keyboard.press('Enter');
+        await page.locator('[data-sidebar-extra-toggle-section]').press('Enter');
         await page.waitForFunction(() => document.querySelector('.sidebar-design-extra-list')?.hidden === false);
         await page.waitForTimeout(100);
         assert.equal((await readState(page)).expanded, 'true', 'Enter performs exactly one toggle');

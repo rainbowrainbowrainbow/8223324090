@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.42 - Центр задач: основа та drawer
+
+### Release / Versioning / (31.07.2026) [codex]
+- **Центр задач: основа та drawer** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.41 - Таймлайн: експорт для всіх
 
 ### Release / Versioning / (31.07.2026) [codex]

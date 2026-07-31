@@ -4,7 +4,7 @@
 const router = require('express').Router();
 const crypto = require('crypto');
 const { pool } = require('../db');
-const { requireRole, authenticateToken } = require('../middleware/auth');
+const { requireRole, authenticateToken, canUseAction } = require('../middleware/auth');
 const { buildTaskPaginationMetadata } = require('../services/taskPagination');
 
 // v39.8: Security — require authentication for all task endpoints
@@ -34,6 +34,9 @@ const {
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
 const { withTaskDrawerContract } = require('../services/taskDetailContract');
+const { buildTaskOverview } = require('../services/taskOverviewProjection');
+const { buildTaskTeamControlProjection } = require('../services/taskTeamControlProjection');
+const { loadTaskOwnerCapacity, normalizeTaskPlanningRange } = require('../services/taskTeamCapacityReadModel');
 const {
     attachTaskSchedule,
     canonicalTaskOrderSql,
@@ -1181,6 +1184,156 @@ router.get('/', async (req, res) => {
     }
 });
 
+// GET /api/tasks/overview — full-scope, read-only exception projection.
+// This deliberately does not use the list endpoint pagination: counts must describe
+// every task the current user is allowed to see in the current business context.
+router.get('/overview', async (req, res) => {
+    try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+
+        const params = [];
+        const conditions = [
+            `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`,
+            activeDuplicateCanonicalFilterSql('t'),
+            pushTaskBusinessScopeCondition(params, businessScope, 't')
+        ];
+        const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        if (visibility) conditions.push(visibility.replace(/^AND\s+/i, ''));
+        const where = `WHERE ${conditions.join(' AND ')}`;
+        const result = await pool.query(
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                    COALESCE(dep.total, 0)::int AS dependency_count,
+                    COALESCE(dep.open, 0)::int AS open_dependency_count,
+                    dep.blocked_by_titles
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             LEFT JOIN (
+                SELECT d.task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
+                       STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
+                           FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
+                FROM task_dependencies d
+                JOIN tasks owner_task ON owner_task.id = d.task_id
+                JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                    AND COALESCE(blocker.business_context, 'event_genix') = COALESCE(owner_task.business_context, 'event_genix')
+                GROUP BY d.task_id
+             ) dep ON dep.task_id = t.id
+             ${where}
+             ORDER BY t.id ASC`,
+            params
+        );
+        const tasks = result.rows.map(row => withTaskDrawerContract(normalizeTaskPayload(row, { user: req.user }), req.user));
+        const overview = buildTaskOverview(tasks);
+        res.json({
+            success: true,
+            ...overview,
+            meta: {
+                ...overview.meta,
+                paginationIndependent: true,
+                businessScope: taskBusinessScopeMeta(businessScope)
+            }
+        });
+    } catch (err) {
+        log.error('Task overview error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+// GET /api/tasks/team-control — task-scoped workload and planning projection.
+// HR schedule-derived capacity is included only for users who already hold
+// hr.schedule.view; task visibility and business scope always apply first.
+router.get('/team-control', async (req, res) => {
+    try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+        const capacityAvailable = canUseAction(req.user, 'hr.schedule.view');
+        const range = normalizeTaskPlanningRange(req.query || {});
+        const ownerUserId = /^\d+$/.test(String(req.query.ownerUserId || req.query.owner_user_id || ''))
+            ? Number(req.query.ownerUserId || req.query.owner_user_id)
+            : null;
+        const status = String(req.query.status || '').trim();
+        const department = String(req.query.department || '').trim();
+        if (department && !capacityAvailable) {
+            return res.status(403).json({ success: false, error: 'Capacity data is unavailable for the current access level' });
+        }
+
+        const params = [];
+        const conditions = [
+            `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`,
+            activeDuplicateCanonicalFilterSql('t'),
+            pushTaskBusinessScopeCondition(params, businessScope, 't')
+        ];
+        if (ownerUserId) {
+            params.push(ownerUserId);
+            conditions.push(`t.owner_user_id = $${params.length}`);
+        }
+        if (FILTERABLE_STATUSES.includes(status) && status !== 'overdue') {
+            params.push(status);
+            conditions.push(`COALESCE(t.status, 'todo') = $${params.length}`);
+        }
+        const visibility = buildTaskVisibilityScope(req.user, params, 't');
+        if (visibility) conditions.push(visibility.replace(/^AND\s+/i, ''));
+        const staffJoin = capacityAvailable
+            ? `LEFT JOIN LATERAL (
+                    SELECT ep.staff_id
+                    FROM employee_profiles ep
+                    WHERE ep.user_id = t.owner_user_id AND ep.is_active = true
+                    ORDER BY ep.id DESC
+                    LIMIT 1
+               ) owner_profile ON true
+               LEFT JOIN staff owner_staff ON owner_staff.id = owner_profile.staff_id`
+            : '';
+        const departmentField = capacityAvailable ? ', owner_staff.department AS owner_department' : '';
+        const where = `WHERE ${conditions.join(' AND ')}`;
+        const result = await pool.query(
+            `SELECT t.*, u.name AS owner_name, u.username AS owner_username
+                    ${departmentField},
+                    COALESCE(dep.total, 0)::int AS dependency_count,
+                    COALESCE(dep.open, 0)::int AS open_dependency_count,
+                    dep.blocked_by_titles
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             ${staffJoin}
+             LEFT JOIN (
+                SELECT d.task_id,
+                       COUNT(*)::int AS total,
+                       COUNT(*) FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled'))::int AS open,
+                       STRING_AGG(blocker.title, ', ' ORDER BY blocker.id)
+                           FILTER (WHERE COALESCE(blocker.status, 'todo') NOT IN ('done','archived','cancelled')) AS blocked_by_titles
+                FROM task_dependencies d
+                JOIN tasks owner_task ON owner_task.id = d.task_id
+                JOIN tasks blocker ON blocker.id = d.depends_on_task_id
+                    AND COALESCE(blocker.business_context, 'event_genix') = COALESCE(owner_task.business_context, 'event_genix')
+                GROUP BY d.task_id
+             ) dep ON dep.task_id = t.id
+             ${where}
+             ORDER BY t.id ASC`,
+            params
+        );
+        let tasks = result.rows.map(row => withTaskDrawerContract(normalizeTaskPayload(row, { user: req.user }), req.user));
+        if (department) tasks = tasks.filter(task => String(task.owner_department || '').trim() === department);
+        const capacityRows = capacityAvailable ? await loadTaskOwnerCapacity(pool, tasks, range) : [];
+        const projection = buildTaskTeamControlProjection(tasks, {
+            ...range,
+            capacityRows,
+            capacityAvailable
+        });
+        res.json({
+            success: true,
+            ...projection,
+            meta: {
+                ...projection.meta,
+                paginationIndependent: true,
+                businessScope: taskBusinessScopeMeta(businessScope),
+                filters: { ownerUserId, department: department || null, status: status || null }
+            }
+        });
+    } catch (err) {
+        log.error('Task team control error', err);
+        res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
 // v20.9.16: GET /api/tasks/permissions — current user's task permissions
 router.get('/permissions', (req, res) => {
     const perms = getPermissions(req.user?.role);

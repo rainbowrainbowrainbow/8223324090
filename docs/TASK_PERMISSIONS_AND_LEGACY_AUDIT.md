@@ -2,9 +2,9 @@
 
 Date: 2026-07-31
 
-Scope: static code audit plus attempted read-only PostgreSQL aggregate audit.
+Scope: static code audit plus completed read-only PostgreSQL aggregate audit.
 
-Status: **decision document; no roles, permissions, auth, database schema, or production data changed.**
+Status: **decision document; no application roles, permissions, auth, database schema, or production task data changed. A dedicated database read-only audit role was provisioned solely to perform the aggregate audit.**
 
 ## Evidence sources
 
@@ -70,15 +70,26 @@ The reproducible runner is `scripts/audit-legacy-task-data-read-only.js`. It acc
 
 ## Exact count status
 
-**Preflight timestamp: 2026-07-31T19:11:41.5642631+03:00. Exact counts are not represented as zero.**
+**Audit timestamp: 2026-07-31T21:06:35.1961128+03:00.** The audit completed through the dedicated `eventgenix_audit_ro` PostgreSQL role.
 
-The runner was invoked, but the current execution environment does not expose `PRODUCTION_READONLY_DATABASE_URL` in Process, User, or Machine scope. The runner exited with `TASK_LEGACY_AUDIT_READ_ONLY_DATABASE_REQUIRED` before creating a PostgreSQL connection. No production query was executed.
+Access verification before the audit:
 
-When the variable is available to the process, run:
+- `CONNECT` to the production database and `USAGE` on `public`: granted.
+- Public objects readable: **346 / 346**.
+- Write privileges on those objects: **0**.
+- Superuser, role/database creation, replication, RLS bypass, inherited memberships, and `CREATE` on `public`: all disabled.
+- The audit transaction used `BEGIN READ ONLY`, verified `transaction_read_only = on`, and finished with `ROLLBACK`.
 
-```powershell
-node scripts/audit-legacy-task-data-read-only.js --format markdown
-```
+| Runner rule | Exact count | Classification |
+|---|---:|---|
+| `ambiguous_owner` | 9 | manual review |
+| `unique_owner_backfill_candidate` | 0 | deterministic candidate |
+| `status_workflow_conflict` | 639 | manual review |
+| `date_deadline_schedule_conflict` | 1 | manual review |
+| `completed_but_active` | 0 | manual review |
+| `missing_business_context` | 0 | manual review |
+| `orphan_source` | 2 | manual review |
+| `active_duplicates` | 1 | manual review |
 
 The runner's method is intentionally aggregate-only:
 
@@ -93,15 +104,15 @@ The runner's method is intentionally aggregate-only:
 | `orphan_source` | known canonical booking, lead, customer, report, event, conversation, or reply reference is absent; unknown/external sources are excluded | manual review |
 | `active_duplicates` | canonical `duplicateSignatureSql` groups have more than one active task | manual review |
 
-The produced counts must replace this status section together with the actual audit timestamp. Neither task titles, descriptions, owner values, nor CRM source values are emitted or stored here.
+No task titles, descriptions, owner values, CRM source values, or connection details were emitted or stored in this report.
 
 ## Required decisions before implementation
 
 1. Approve or reject an authorization fix for **P0 bulk mutation enforcement**.
 2. Choose which P1 UI parity gaps to fix: create, reassign, delete, review, and denial reasons.
 3. Approve or amend the proposed capability names and `before -> after` matrix.
-4. Provide a read-only DB audit connection to obtain exact counts.
-5. After counts are available, choose which deterministic rules may appear in a migration. A migration file must not be created before that separate approval.
+4. Choose which deterministic normalization rules, if any, may appear in a future migration.
+5. Approve a separate migration task only after the exact rules, affected-row counts, backup, and rollback path are agreed.
 
 ## Draft rollback approach (no migration exists)
 
@@ -116,4 +127,4 @@ The product owner approved only the following permissions-parity work:
 - No role definitions, role expansion, or backend access broadening.
 - No legacy-data migration file, database change, production migration, deploy, or production data mutation.
 
-The legacy-data counts and normalization rules remain blocked on an operator-provided read-only database audit.
+The legacy-data counts are complete. No normalization migration is approved or created.

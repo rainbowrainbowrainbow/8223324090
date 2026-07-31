@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.41 - Таймлайн: експорт для всіх
+
+### Release / Versioning / (31.07.2026) [codex]
+- **Друк і PNG-експорт для всіх** — кнопки таймлайну більше не залежать від capability `export_data` або context export access; доступні кожному авторизованому користувачу.
+
+---
+
 ## v0.80.40 - Надійний Railway deploy
 
 ### Release / Versioning / (31.07.2026) [codex]

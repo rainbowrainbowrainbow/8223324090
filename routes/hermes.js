@@ -6,6 +6,7 @@ const {
     HERMES_INTEGRATION_ID,
     hermesAuth
 } = require('../middleware/hermesAuth');
+const { canUseAction } = require('../middleware/auth');
 const { createHermesScheduleRouter } = require('./hermes-schedule');
 const {
     buildTaskVisibilityScope,
@@ -99,6 +100,7 @@ const {
     skipNotificationOutboxEvent,
     toNotificationOutboxApiEvent
 } = require('../services/notificationOutbox');
+const defaultStaffAccountOnboardingService = require('../services/hermesStaffAccountOnboarding');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Hermes');
@@ -147,6 +149,11 @@ const SUPPORTED_ACTIONS = [
     'notification_outbox.debug',
     'staff.read',
     'staff.create',
+    'staff_account_onboarding.preview',
+    'staff_account_onboarding.request',
+    'staff_account_onboarding.read',
+    'staff_account_onboarding.approve',
+    'staff_account_onboarding.reject',
     'staff_schedule.read',
     'staff_schedule.preview',
     'staff_schedule.apply',
@@ -1992,6 +1999,31 @@ function buildCapabilitiesPayload(env = process.env) {
                 createRequiresManageStaff: true,
                 createScheduleWrites: 0
             },
+            staffAccountOnboarding: {
+                preview: 'POST /api/hermes/staff-account-onboarding/preview',
+                createRequest: 'POST /api/hermes/staff-account-onboarding/requests',
+                detail: 'GET /api/hermes/staff-account-onboarding/requests/:requestId',
+                approve: 'POST /api/hermes/staff-account-onboarding/requests/:requestId/approve',
+                reject: 'POST /api/hermes/staff-account-onboarding/requests/:requestId/reject',
+                flowVersion: 'EG_STAFF_ACCOUNT_ONBOARDING_APPROVAL_FLOW_V1',
+                businessContext: 'event_genix',
+                requestStatuses: ['pending_approval', 'rejected', 'executing', 'executed', 'failed'],
+                previewWrites: 0,
+                createRequestStaffWrites: 0,
+                createRequestAccountWrites: 0,
+                approveRequiresConfirmation: true,
+                approveRequiresIdempotencyKey: true,
+                approveRequiresManageStaff: true,
+                approveRequiresManageAccounts: true,
+                rejectRequiresConfirmation: true,
+                rejectRequiresIdempotencyKey: true,
+                oneTimeLoginMaterialStoredInApprovalRequest: false,
+                credentialMaterialReturnedInHermesResponse: false,
+                secureCredentialHandoffRequired: true,
+                scheduleWrites: 0,
+                salaryWrites: 0,
+                staffTelegramNotifications: 0
+            },
             staffSchedule: {
                 list: 'GET /api/hermes/staff-schedule',
                 preview: 'POST /api/hermes/staff-schedule/preview',
@@ -2036,11 +2068,127 @@ function buildCapabilitiesPayload(env = process.env) {
     };
 }
 
+function assertHermesStaffAccountOnboardingAccess(req, res) {
+    if (canUseAction(req.user, 'manage_staff') && canUseAction(req.user, 'manage_accounts')) {
+        return true;
+    }
+    sendHermesError(
+        res,
+        403,
+        'HERMES_STAFF_ACCOUNT_ONBOARDING_ACTION_FORBIDDEN',
+        'Hermes staff/account onboarding requires manage_staff and manage_accounts'
+    );
+    return false;
+}
+
+function sendStaffAccountOnboardingError(res, err, fallbackCode, fallbackMessage) {
+    if (err.statusCode && err.statusCode < 500) {
+        return sendHermesError(
+            res,
+            err.statusCode,
+            err.code || fallbackCode,
+            err.message || fallbackMessage,
+            err.details ? { details: err.details } : (err.meta || null)
+        );
+    }
+    log.error(fallbackMessage, err);
+    return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', fallbackMessage);
+}
+
+function staffAccountOnboardingPayloadFromBody(body = {}) {
+    return body && typeof body === 'object' && body.payload && typeof body.payload === 'object'
+        ? body.payload
+        : body;
+}
+
+function staffAccountOnboardingApprovalConfigFromBody(body = {}) {
+    if (!body || typeof body !== 'object') return {};
+    return body.approval || body.approvalConfig || body.approval_config || {};
+}
+
+function credentialNotice(credential, handoff = {}) {
+    if (!credential) {
+        return {
+            issued: false,
+            returned: false,
+            password: null
+        };
+    }
+    return {
+        issued: true,
+        username: credential.username || null,
+        password: '[REDACTED]',
+        oneTime: true,
+        returned: false,
+        handoffAttempted: handoff.attempted === true,
+        handoffDelivered: handoff.delivered === true
+    };
+}
+
+async function deliverStaffAccountOnboardingCredential({ secureCredentialHandoff, result, actor, req }) {
+    const credential = result?.credential || null;
+    if (!credential) {
+        return {
+            attempted: false,
+            delivered: false,
+            available: false,
+            password: null
+        };
+    }
+    if (!secureCredentialHandoff) {
+        return {
+            attempted: false,
+            delivered: false,
+            available: true,
+            password: '[REDACTED]',
+            mode: 'secure_handoff_not_configured',
+            message: 'Credential was generated but is not returned in Hermes API response; configure secureCredentialHandoff in the bot runtime.'
+        };
+    }
+    const handoffResult = await secureCredentialHandoff({
+        credential,
+        request: result.request,
+        actor,
+        req
+    });
+    return {
+        attempted: true,
+        delivered: handoffResult?.delivered === true,
+        channel: handoffResult?.channel || null,
+        target: handoffResult?.target || null,
+        password: '[REDACTED]',
+        meta: handoffResult?.meta || null
+    };
+}
+
+function staffAccountOnboardingResponseBody(result = {}, extra = {}) {
+    const body = {
+        success: result.success !== false,
+        request: result.request || null,
+        meta: {
+            ...(result.meta || {}),
+            ...(extra.meta || {}),
+            sanitized: true,
+            credentialReturned: false,
+            oneTimeLoginMaterialStoredInApprovalRequest: false
+        }
+    };
+    if (extra.credentialHandoff) {
+        body.credential = credentialNotice(result.credential, extra.credentialHandoff);
+        body.credentialHandoff = extra.credentialHandoff;
+    }
+    return body;
+}
+
 function createHermesRouter(options = {}) {
     const router = express.Router();
     const authMiddleware = options.authMiddleware || hermesAuth;
     const query = options.pool || pool;
     const env = options.env || process.env;
+    const staffAccountOnboardingService = options.staffAccountOnboardingService || defaultStaffAccountOnboardingService;
+    const secureCredentialHandoff = typeof options.secureCredentialHandoff === 'function'
+        ? options.secureCredentialHandoff
+        : null;
     const menuImageUploadOptions = options.menuImageUploadOptions || {};
     const rateLimiter = options.rateLimiter !== undefined
         ? options.rateLimiter
@@ -2063,6 +2211,186 @@ function createHermesRouter(options = {}) {
 
     router.get('/task-watchdog/preview', taskWatchdogPreviewHandler);
     router.post('/task-watchdog/callback-dry-run', taskWatchdogCallbackDryRunHandler);
+
+    router.post('/staff-account-onboarding/preview', async (req, res) => {
+        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        try {
+            const result = await staffAccountOnboardingService.previewStaffAccountOnboarding({
+                pool: query,
+                payload: staffAccountOnboardingPayloadFromBody(req.body || {}),
+                actor: req.user,
+                approval: staffAccountOnboardingApprovalConfigFromBody(req.body || {})
+            });
+            return res.json({
+                ...result,
+                meta: {
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    projection: 'staff_account_onboarding.preview',
+                    sanitized: true,
+                    readOnly: true,
+                    staffWrites: 0,
+                    accountWrites: 0,
+                    scheduleWrites: 0,
+                    salaryWrites: 0,
+                    staffTelegramNotifications: 0
+                }
+            });
+        } catch (err) {
+            return sendStaffAccountOnboardingError(
+                res,
+                err,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_PREVIEW_FAILED',
+                'Hermes staff/account onboarding preview failed'
+            );
+        }
+    });
+
+    router.post('/staff-account-onboarding/requests', requireHermesMutationGuard, async (req, res) => {
+        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        try {
+            return await withHermesIdempotency(req, res, async () => {
+                const result = await staffAccountOnboardingService.createPendingStaffAccountOnboardingRequest({
+                    pool: query,
+                    payload: staffAccountOnboardingPayloadFromBody(req.body || {}),
+                    actor: req.user,
+                    approval: staffAccountOnboardingApprovalConfigFromBody(req.body || {})
+                });
+                return {
+                    status: 201,
+                    body: staffAccountOnboardingResponseBody(result, {
+                        meta: {
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            projection: 'staff_account_onboarding.request',
+                            nextAction: 'approver_card',
+                            staffWrites: 0,
+                            accountWrites: 0,
+                            scheduleWrites: 0,
+                            salaryWrites: 0,
+                            staffTelegramNotifications: 0
+                        }
+                    })
+                };
+            }, { pool: query });
+        } catch (err) {
+            return sendStaffAccountOnboardingError(
+                res,
+                err,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_REQUEST_FAILED',
+                'Hermes staff/account onboarding request failed'
+            );
+        }
+    });
+
+    router.get('/staff-account-onboarding/requests/:requestId', async (req, res) => {
+        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        try {
+            const request = await staffAccountOnboardingService.getStaffAccountOnboardingRequest({
+                pool: query,
+                requestId: req.params.requestId
+            });
+            return res.json({
+                success: true,
+                request,
+                meta: {
+                    sourceSurface: 'hermes',
+                    source: HERMES_INTEGRATION_ID,
+                    projection: 'staff_account_onboarding.detail',
+                    sanitized: true,
+                    readOnly: true,
+                    credentialReturned: false
+                }
+            });
+        } catch (err) {
+            return sendStaffAccountOnboardingError(
+                res,
+                err,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_DETAIL_FAILED',
+                'Hermes staff/account onboarding detail failed'
+            );
+        }
+    });
+
+    router.post('/staff-account-onboarding/requests/:requestId/approve', requireHermesMutationGuard, async (req, res) => {
+        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        try {
+            return await withHermesIdempotency(req, res, async () => {
+                const result = await staffAccountOnboardingService.approveStaffAccountOnboardingRequest({
+                    pool: query,
+                    requestId: req.params.requestId,
+                    actor: req.user,
+                    req
+                });
+                const credentialHandoff = await deliverStaffAccountOnboardingCredential({
+                    secureCredentialHandoff,
+                    result,
+                    actor: req.user,
+                    req
+                });
+                return {
+                    status: 200,
+                    body: staffAccountOnboardingResponseBody(result, {
+                        credentialHandoff,
+                        meta: {
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            projection: 'staff_account_onboarding.approve',
+                            staffWrites: result.meta?.staffWrites || 0,
+                            accountWrites: result.meta?.accountWrites || 0,
+                            scheduleWrites: 0,
+                            salaryWrites: 0,
+                            staffTelegramNotifications: 0,
+                            secureCredentialHandoffRequired: true
+                        }
+                    })
+                };
+            }, { pool: query });
+        } catch (err) {
+            return sendStaffAccountOnboardingError(
+                res,
+                err,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_APPROVE_FAILED',
+                'Hermes staff/account onboarding approve failed'
+            );
+        }
+    });
+
+    router.post('/staff-account-onboarding/requests/:requestId/reject', requireHermesMutationGuard, async (req, res) => {
+        if (!assertHermesStaffAccountOnboardingAccess(req, res)) return;
+        try {
+            return await withHermesIdempotency(req, res, async () => {
+                const result = await staffAccountOnboardingService.rejectStaffAccountOnboardingRequest({
+                    pool: query,
+                    requestId: req.params.requestId,
+                    actor: req.user,
+                    reason: req.body?.reason || req.body?.rejectionReason || req.body?.rejection_reason || ''
+                });
+                return {
+                    status: 200,
+                    body: staffAccountOnboardingResponseBody(result, {
+                        meta: {
+                            sourceSurface: 'hermes',
+                            source: HERMES_INTEGRATION_ID,
+                            projection: 'staff_account_onboarding.reject',
+                            staffWrites: 0,
+                            accountWrites: 0,
+                            scheduleWrites: 0,
+                            salaryWrites: 0,
+                            staffTelegramNotifications: 0
+                        }
+                    })
+                };
+            }, { pool: query });
+        } catch (err) {
+            return sendStaffAccountOnboardingError(
+                res,
+                err,
+                'HERMES_STAFF_ACCOUNT_ONBOARDING_REJECT_FAILED',
+                'Hermes staff/account onboarding reject failed'
+            );
+        }
+    });
 
     router.get('/diagnostics/owner-workload', async (req, res) => {
         try {

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.44 - Hermes bot-native staff onboarding
+
+### Release / Versioning / (31.07.2026) [codex]
+- **'Hermes bot-native staff onboarding'** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.43 - HR: відновлено навігацію Пульсу компанії
 
 ### HR / Навігація / (31.07.2026) [codex]

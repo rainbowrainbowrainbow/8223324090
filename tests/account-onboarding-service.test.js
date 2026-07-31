@@ -258,7 +258,7 @@ test('post-commit chat failure returns a warning without exposing credentials to
     });
     assert.equal(result.loginReady, true);
     assert.equal(result.receipt.warnings[0]?.code, 'DEFAULT_CHAT_SETUP_FAILED');
-    assert.match(result.credential.password, /^[A-Za-z0-9]+$/);
+    assert.match(result.credential.password, /^[A-Z][A-Za-z]+-[A-Z][A-Za-z]+-\d{2}$/);
     assert.ok(harness.calls.some(call => call.text === 'COMMIT'));
     const auditText = JSON.stringify(harness.auditParams);
     assert.doesNotMatch(auditText, new RegExp(result.credential.password));

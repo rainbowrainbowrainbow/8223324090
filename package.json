@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.54",
+  "version": "0.80.55",
   "eventGenix": {
-    "releaseLabel": "CI HR permissions і сесії"
+    "releaseLabel": "My Day: чернетка та безпечна передача задач"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

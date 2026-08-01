@@ -16,7 +16,10 @@ const {
     revokeAllUserTokens,
     canUseAction
 } = require('../middleware/auth');
-const { ACTION_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
+const {
+    ACTION_PERMISSION_BY_KEY,
+    getPublicPagePermissionMetadata
+} = require('../config/permissionRegistry');
 const {
     CAPABILITY_TYPES,
     normalizeCapabilityList,
@@ -351,6 +354,7 @@ router.get('/', requireAction('manage_accounts'), async (req, res) => {
 router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
     const configurableActions = Object.values(ACTION_PERMISSION_BY_KEY).filter(action => action.deprecated !== true);
     const configurableActionPermissions = Object.fromEntries(configurableActions.map(action => [action.key, action.defaultRoles]));
+    const pages = getPublicPagePermissionMetadata();
     res.json({
         hierarchy: ROLE_HIERARCHY,
         rolePresets: {
@@ -364,6 +368,7 @@ router.get('/roles', requireAction('manage_accounts'), async (req, res) => {
             support: ['barista', 'wardrobe', 'cleaning', 'maintenance', 'dishwasher', 'waiter']
         },
         pageAccess: PAGE_ACCESS,
+        pages,
         actionPermissions: configurableActionPermissions,
         nonDelegableActions: Array.from(NON_DELEGABLE_ACTIONS),
         professionRoleMap: PROFESSION_ACCOUNT_ROLE_MAP,

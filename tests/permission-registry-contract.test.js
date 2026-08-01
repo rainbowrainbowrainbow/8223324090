@@ -109,6 +109,32 @@ test('registry describes exactly the current 42 canonical page and 29 action key
     assert.deepEqual(sorted(nonDelegable), sorted(Array.from(backend.NON_DELEGABLE_ACTIONS)), 'non-delegable action drift');
 });
 
+test('public page metadata is a complete safe projection of the registry', () => {
+    const publicPages = registry.getPublicPagePermissionMetadata();
+    assert.equal(publicPages.length, registry.PAGE_PERMISSIONS.length);
+    assert.deepEqual(sorted(publicPages.map(entry => entry.key)), sorted(registry.PAGE_PERMISSIONS.map(entry => entry.key)));
+    assertUnique(publicPages.map(entry => entry.key), 'public page metadata keys');
+
+    for (const entry of publicPages) {
+        assert.ok(entry.label, `${entry.key}: public label must not be empty`);
+        assert.ok(entry.group, `${entry.key}: public group must not be empty`);
+        assert.ok(entry.groupLabel, `${entry.key}: public groupLabel must not be empty`);
+        assert.ok(entry.canonicalPath, `${entry.key}: public canonicalPath must not be empty`);
+        assert.ok(Array.isArray(entry.aliases), `${entry.key}: public aliases must be an array`);
+        assert.ok(Array.isArray(entry.roles), `${entry.key}: public roles must be an array`);
+        assert.equal(typeof entry.explicitAllow, 'boolean', `${entry.key}: public explicitAllow must be boolean`);
+        assert.equal(Object.hasOwn(entry, 'frontendConsumers'), false, `${entry.key}: frontend consumers must stay private`);
+        assert.equal(Object.hasOwn(entry, 'backendConsumers'), false, `${entry.key}: backend consumers must stay private`);
+        assert.equal(Object.hasOwn(entry, 'apiConsumers'), false, `${entry.key}: API consumers must stay private`);
+    }
+
+    const aliases = new Set(publicPages.flatMap(entry => entry.aliases));
+    publicPages.forEach(entry => assert.equal(aliases.has(entry.key), false, `${entry.key}: alias must not become a toggle`));
+
+    const userRoutes = fs.readFileSync(path.join(ROOT, 'routes', 'users.js'), 'utf8');
+    assert.match(userRoutes, /getPublicPagePermissionMetadata/);
+    assert.match(userRoutes, /pages,/);
+});
 test('sidebar links are fully represented by page permission entries', () => {
     const source = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
     const start = source.indexOf('const NAV_ITEMS = [');
@@ -199,6 +225,15 @@ test('deprecated toggles are hidden and canonical pages have one key', () => {
     assert.equal(registry.canonicalizePageKey('/analytics'), '/finance');
 });
 
+test('account editor consumes API page metadata instead of a duplicated page catalog', () => {
+    const accountUi = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
+    assert.match(accountUi, /let accountPageDefinitions = \[\]/);
+    assert.match(accountUi, /Array\.isArray\(data\?\.pages\)/);
+    assert.match(accountUi, /function getAccountPageDefinitions/);
+    assert.doesNotMatch(accountUi, /const ACCOUNT_PAGE_LABELS\s*=/);
+    assert.doesNotMatch(accountUi, /function accountAccessPageGroup\s*\(/);
+    assert.match(accountUi, /group: page\.groupLabel \|\| page\.group/);
+});
 test('booking scope uses capabilities and payroll actions expose human labels', () => {
     const visibility = fs.readFileSync(path.join(ROOT, 'services', 'bookingVisibility.js'), 'utf8');
     assert.match(visibility, /canUseAction\(user, 'view_all'\)/);

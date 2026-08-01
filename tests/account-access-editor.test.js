@@ -70,6 +70,27 @@ test('page modules expose inherited/allow without inventing a page deny array', 
     assert.equal(Object.hasOwn(model.draft, 'pageDenylist'), false);
 });
 
+test('registry page metadata keeps human labels in the editor model', () => {
+    const model = editor.createModel({
+        initial: { role: 'admin', pageAllowlist: [] },
+        pages: [
+            { key: '/demo', label: 'Demo', group: 'Система', defaultRoles: [] },
+            { key: '/hermes-studio', label: 'Hermes Studio', group: 'Продукт', defaultRoles: ['admin'] },
+            { key: '/booking-summary.html', label: 'Підсумок бронювання', group: 'Система', defaultRoles: [] },
+            { key: '/certificates/new', label: 'Видати сертифікат або абонемент', group: 'Продукт', defaultRoles: [] },
+            { key: '/accounting-deposits', label: 'Перевірка завдатків', group: 'Продажі та фінанси', defaultRoles: [] }
+        ]
+    });
+    const definitions = new Map(model.config.capabilities.map(definition => [definition.key, definition]));
+
+    assert.equal(definitions.get('/demo').label, 'Demo');
+    assert.equal(definitions.get('/hermes-studio').label, 'Hermes Studio');
+    assert.equal(definitions.get('/booking-summary.html').label, 'Підсумок бронювання');
+    assert.equal(definitions.get('/certificates/new').label, 'Видати сертифікат або абонемент');
+    assert.equal(definitions.get('/accounting-deposits').label, 'Перевірка завдатків');
+    assert.equal(definitions.get('/accounting-deposits').group, 'Продажі та фінанси');
+    assert.equal(Array.from(definitions.values()).some(definition => definition.label === definition.key), false);
+});
 test('access editor owns its workspace and hr-page no longer uses formModal for access', () => {
     const html = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
     const bridge = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
@@ -91,6 +112,7 @@ test('access editor owns its workspace and hr-page no longer uses formModal for 
     assert.match(moduleSource, /role="alertdialog"/);
     assert.match(moduleSource, /data-action="discard"/);
     assert.match(moduleSource, /ignoreServer: true/);
+    assert.match(moduleSource, /const group = definition\.group \|\| \(definition\.type === 'page'/);
     assert.match(moduleSource, /if \(model\.saving\) return/);
     assert.match(moduleSource, /document\.addEventListener\('keydown'/);
     assert.match(moduleSource, /element\.inert = true/);

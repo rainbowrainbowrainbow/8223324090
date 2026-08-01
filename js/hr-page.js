@@ -5652,6 +5652,7 @@ let accountUsers = [];
 let accountRoleHierarchy = [];
 let accountBusinessContexts = [];
 let accountActionDefinitions = [];
+let accountPageDefinitions = [];
 let accountRolePresets = {};
 let accountProfessionRoleMap = {};
 let accountPageAccessMatrix = {};
@@ -5728,43 +5729,6 @@ const ACCOUNT_ACTION_LABELS = {
     close_payroll_period: 'Зарплата: закриття періоду',
     manage_payroll_rules: 'Зарплата: керування правилами'
 };
-const ACCOUNT_PAGE_LABELS = {
-    '/': 'Таймлайн',
-    '/dashboard': 'Dashboard',
-    '/tasks': 'Задачі',
-    '/chat': 'Чат',
-    '/chat-settings': 'Налаштування чату',
-    '/center': 'Центр цін',
-    '/art': 'Арт',
-    '/content': 'Контент',
-    '/designer': 'Дизайнер',
-    '/designs': 'Дизайни',
-    '/graduation': 'Випускні',
-    '/customers': 'Клієнти',
-    '/staff': 'Staff',
-    '/warehouse': 'Склад',
-    '/training': 'Навчання',
-    '/programs': 'Програми',
-    '/hr': 'HR',
-    '/checkin': 'Check-in',
-    '/finance': 'Фінанси',
-    '/status': 'Статус',
-    '/guardian-ops': 'Охорона',
-    '/omni': 'Omni',
-    '/copilot': 'Клешня',
-    '/sound': 'Звук',
-    '/afisha': 'Афіша',
-    '/certificates': 'Сертифікати',
-    '/sales-funnel': 'Воронка',
-    '/report-agent': 'Звіт-агент',
-    '/reports': 'Звіти',
-    '/game': 'Гра',
-    '/profile': 'Профіль',
-    '/quiz': 'Квіз',
-    '/room': 'Кімната',
-    '/shop': 'Магазин'
-};
-
 function canManageAccountSecurity() {
     if (typeof canAccess === 'function') return canAccess('manage_accounts');
     return ACCOUNT_SECURITY_ROLES.includes(AppState.currentUser?.role);
@@ -5994,24 +5958,40 @@ function getAccountActionOptions(selected = [], options = {}) {
 
 function getAccountPageOptions(selected = []) {
     const current = new Set(normalizeAccountListInput(selected));
-    const pages = Object.keys(accountPageAccessMatrix || {}).length
-        ? Object.keys(accountPageAccessMatrix)
-        : Object.keys(ACCOUNT_PAGE_LABELS);
-    const priority = ['/', '/dashboard', '/tasks', '/customers', '/sales-funnel', '/leads', '/hr', '/maysternya-doli'];
-    return Array.from(new Set(pages.filter(Boolean)))
-        .sort((a, b) => {
-            const ai = priority.indexOf(a);
-            const bi = priority.indexOf(b);
-            if (ai >= 0 || bi >= 0) return (ai >= 0 ? ai : 999) - (bi >= 0 ? bi : 999);
-            return (ACCOUNT_PAGE_LABELS[a] || a).localeCompare(ACCOUNT_PAGE_LABELS[b] || b, 'uk');
-        })
+    return getAccountPageDefinitions()
+        .slice()
+        .sort((left, right) => String(left.label || left.key).localeCompare(String(right.label || right.key), 'uk'))
         .map(page => ({
-            value: page,
-            label: `${ACCOUNT_PAGE_LABELS[page] || page} · ${page}`,
-            selected: current.has(page)
+            value: page.key,
+            label: page.label || page.key,
+            selected: current.has(page.key)
         }));
 }
 
+function getAccountPageDefinitions() {
+    if (accountPageDefinitions.length) return accountPageDefinitions;
+
+    // Compatibility fallback for a cached/older /api/users/roles response.
+    // New responses always receive labels and groups from permissionRegistry.
+    return Object.entries(accountPageAccessMatrix || {}).map(([key, roles]) => ({
+        key,
+        label: key,
+        group: 'system',
+        groupLabel: 'Інші модулі',
+        roles: Array.isArray(roles) ? roles : [],
+        explicitAllow: true
+    }));
+}
+
+function getAccountPageDefinition(key) {
+    const pageKey = String(key || '').trim();
+    return getAccountPageDefinitions().find(page => page.key === pageKey) || null;
+}
+
+function accountPageLabel(key) {
+    const page = getAccountPageDefinition(key);
+    return page?.label || String(key || '').trim();
+}
 function normalizeAccountRoleSelection(primaryRole = 'animator', extraRoles = []) {
     const roles = [];
     const primary = String(primaryRole || '').trim();
@@ -6037,7 +6017,7 @@ function formatAccountRoleAccessPack(primaryRole = 'animator', extraRoles = [], 
     const roleNames = roles.map(role => ROLE_LABELS[role] || role).join(', ') || 'роль не вибрано';
     const pageEntries = Object.entries(accountPageAccessMatrix || {})
         .filter(([, allowedRoles]) => accessMatrixAllowsAnyRole(allowedRoles, roles))
-        .map(([page]) => ACCOUNT_PAGE_LABELS[page] || page)
+        .map(([page]) => accountPageLabel(page))
         .filter(Boolean);
     const actionEntries = Object.entries(accountActionPermissionsMatrix || {})
         .filter(([, allowedRoles]) => accessMatrixAllowsAnyRole(allowedRoles, roles))
@@ -6049,7 +6029,7 @@ function formatAccountRoleAccessPack(primaryRole = 'animator', extraRoles = [], 
     const denyEntries = normalizeAccountArray(manualDeny)
         .map(action => ACCOUNT_ACTION_LABELS[action] || action);
     const pageAllowEntries = normalizeAccountArray(manualPages)
-        .map(page => ACCOUNT_PAGE_LABELS[page] || page);
+        .map(page => accountPageLabel(page));
     const shortList = (items, empty = 'немає') => {
         const unique = Array.from(new Set(items));
         if (!unique.length) return empty;
@@ -6099,6 +6079,11 @@ function commitAccountRoleDefinitions(data = {}) {
         accountActionDefinitions = data.actions;
     } else if (data?.actionPermissions && typeof data.actionPermissions === 'object') {
         accountActionDefinitions = Object.keys(data.actionPermissions).map(key => ({ key, roles: data.actionPermissions[key] || [] }));
+    }
+    if (Array.isArray(data?.pages)) {
+        accountPageDefinitions = data.pages
+            .filter(page => page && typeof page.key === 'string' && page.key.trim())
+            .map(page => ({ ...page, key: page.key.trim() }));
     }
     if (data?.pageAccess && typeof data.pageAccess === 'object') {
         accountPageAccessMatrix = data.pageAccess;
@@ -8939,15 +8924,6 @@ async function openAccountPasswordModal(userId, button) {
     await loadAccountCenter({ resetFilters: true });
 }
 
-function accountAccessPageGroup(page = '') {
-    if (page === '/hr' || page === '/staff' || page === '/training' || page === '/checkin') return 'HR та команда';
-    if (page === '/finance' || page === '/reports' || page === '/report-agent') return 'Фінанси та звіти';
-    if (page === '/customers' || page === '/sales-funnel' || page === '/omni') return 'CRM та продажі';
-    if (page === '/timeline' || page === '/booking-summary.html' || page === '/tasks') return 'Операції';
-    if (page === '/chat' || page === '/copilot') return 'Комунікації та помічники';
-    return 'Інші модулі';
-}
-
 async function openAccountAccessEditor(userId, button) {
     if (!canManageAccountAccess()) {
         showNotification('Зміна доступу доступна тільки creator/director', 'error');
@@ -8981,12 +8957,15 @@ async function openAccountAccessEditor(userId, button) {
     }
 
     const currentBusinessContexts = normalizeAccountBusinessSelection(user.business_contexts || user.businessContexts);
-    const pages = getAccountPageOptions(user.page_allowlist || user.pageAllowlist).map(option => ({
-        key: option.value,
-        label: ACCOUNT_PAGE_LABELS[option.value] || option.label || option.value,
-        group: accountAccessPageGroup(option.value),
-        defaultRoles: accountPageAccessMatrix[option.value] || []
-    }));
+    const pages = getAccountPageDefinitions()
+        .filter(page => page.deprecated !== true)
+        .map(page => ({
+            key: page.key,
+            label: page.label || page.key,
+            group: page.groupLabel || page.group || 'Інші модулі',
+            defaultRoles: Array.isArray(page.roles) ? page.roles : (accountPageAccessMatrix[page.key] || []),
+            explicitAllow: page.explicitAllow !== false
+        }));
     const actions = (accountActionDefinitions || []).filter(action => action?.key && action.deprecated !== true).map(action => ({
         key: action.key,
         label: action.label || ACCOUNT_ACTION_LABELS[action.key] || action.key,

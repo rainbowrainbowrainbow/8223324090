@@ -25,22 +25,10 @@ let editTags = [];
 // AUTH CHECK (same pattern as tasks-page)
 // ==========================================
 (async function initAuth() {
-    const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        document.getElementById('loginOverlay').classList.remove('hidden');
-        document.getElementById('mainApp')?.classList.add('hidden');
-        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
-        return;
-    }
-
-    // Verify token with server
+    // apiVerifyToken owns refresh-only session recovery and verification.
     try {
-        const res = await fetch('/api/auth/verify', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) throw new Error('Token invalid');
-        const data = await res.json();
-        const user = data.user || data;
+        const user = await apiVerifyToken();
+        if (!user) throw new Error('Token invalid');
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
@@ -1580,7 +1568,7 @@ function buildCatalogPageHtml(pkg) {
             </div>
             <!-- FOOTER -->
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.80.51" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.80.52" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>
@@ -1674,7 +1662,7 @@ function buildAutoPageHtml(page) {
                 ${page.description && itemsHtml ? `<div class="cat-desc" style="margin-top:12px">${esc(page.description)}</div>` : ''}
             </div>
             <div class="cat-footer">
-                <img src="/images/logo_element.png?v=0.80.51" alt="Парк Закревського" class="cat-footer-logo">
+                <img src="/images/logo_element.png?v=0.80.52" alt="Парк Закревського" class="cat-footer-logo">
                 <div class="cat-footer-info">
                     <span>📍 Парк Закревського • вул. Закревського 61/2, Київ</span>
                     <span>📞 0800 75 35 53</span>

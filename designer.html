@@ -11,13 +11,13 @@
     <title>Event Genix | Дизайнер</title>
     <meta name="description" content="Event Genix — Дизайнер: каталоги, гайдлайн, бренд">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.80.51">
-    <link rel="stylesheet" href="css/layout.css?v=0.80.51">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.51">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.51">
-    <link rel="stylesheet" href="css/modals.css?v=0.80.51">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.51">
-    <link rel="stylesheet" href="css/responsive.css?v=0.80.51">
+    <link rel="stylesheet" href="css/base.css?v=0.80.52">
+    <link rel="stylesheet" href="css/layout.css?v=0.80.52">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.52">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.52">
+    <link rel="stylesheet" href="css/modals.css?v=0.80.52">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.52">
+    <link rel="stylesheet" href="css/responsive.css?v=0.80.52">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -278,25 +278,22 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.80.51"></script>
-    <script src="js/api.js?v=0.80.51"></script>
-    <script src="js/auth.js?v=0.80.51"></script>
-    <script src="js/components/sidebar.js?v=0.80.51"></script>
+    <script src="js/config.js?v=0.80.52"></script>
+    <script src="js/api.js?v=0.80.52"></script>
+    <script src="js/auth.js?v=0.80.52"></script>
+    <script src="js/components/sidebar.js?v=0.80.52"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
     <script>
     // Auth check — unhide mainApp
     (async function() {
-        const token = localStorage.getItem('pzp_token');
-        if (token) {
-            const user = await apiVerifyToken();
-            if (user) {
-                AppState.currentUser = user;
-                var ls = document.getElementById('loginScreen'); if (ls) ls.classList.add('hidden');
-                var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
-                if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
-                else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
-                return;
-            }
+        const user = await apiVerifyToken();
+        if (user) {
+            AppState.currentUser = user;
+            var ls = document.getElementById('loginScreen'); if (ls) ls.classList.add('hidden');
+            var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+            return;
         }
         window.location.href = '/';
     })();
@@ -313,7 +310,7 @@
         });
     });
     </script>
-<script src="js/ui.js?v=0.80.51"></script>
-    <script src="js/alerts.js?v=0.80.51"></script>
+<script src="js/ui.js?v=0.80.52"></script>
+    <script src="js/alerts.js?v=0.80.52"></script>
 </body>
 </html>

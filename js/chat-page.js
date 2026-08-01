@@ -1253,36 +1253,26 @@
         });
     }
 
-    function _checkAuthAndInit() {
+    async function _checkAuthAndInit() {
         _chatBootStep('auth:start');
         _preloadSounds();
         _loadOfflineQueue();
 
         _applyChatThemeFromStorage();
 
-        // Auth check (standalone page pattern)
-        var token = localStorage.getItem('pzp_token');
-        if (!token) {
+        // apiVerifyToken owns refresh-only session recovery before chat connects.
+        var verified = await apiVerifyToken();
+        if (!verified) {
             window.location.href = '/';
             return;
         }
-        _chatBootStep('auth:token');
-
-        var savedUser = localStorage.getItem('pzp_current_user');
-        if (savedUser) {
-            try {
-                var parsed = JSON.parse(savedUser);
-                _currentUserId = String(parsed.id || parsed.userId);
-                _currentUsername = parsed.username;
-                window._chatUserRole = parsed.role || '';
-                if (typeof AppState !== 'undefined') AppState.currentUser = parsed;
-                var userEl = document.getElementById('currentUser');
-                if (userEl) userEl.textContent = parsed.name || parsed.username || '';
-                _chatBootStep('auth:cached-user', { role: parsed.role || '', username: parsed.username || '' });
-            } catch (e) {
-                console.error('[Chat] Failed to parse saved user:', e);
-            }
-        }
+        _currentUserId = String(verified.id || verified.userId);
+        _currentUsername = verified.username;
+        window._chatUserRole = verified.role || '';
+        if (typeof AppState !== 'undefined') AppState.currentUser = verified;
+        var userEl = document.getElementById('currentUser');
+        if (userEl) userEl.textContent = verified.name || verified.username || '';
+        _chatBootStep('auth:verified', { role: verified.role || '', username: verified.username || '' });
 
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();

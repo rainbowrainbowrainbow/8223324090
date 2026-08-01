@@ -16,20 +16,12 @@ function escapeHtml(str) {
 // ==========================================
 
 async function apiRequest(method, url, body) {
-    const token = localStorage.getItem('pzp_token');
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (body) headers['Content-Type'] = 'application/json';
-    const res = await fetch(url, {
+    const res = await apiFetchWithAuthRetry(url, {
         method,
-        headers,
+        headers: getAuthHeaders(Boolean(body)),
         body: body ? JSON.stringify(body) : undefined
     });
-    if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
-        return;
-    }
+    if (!res || handleAuthError(res)) return;
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -574,13 +566,6 @@ window.CrmAnalyticsWidgets = {
 async function initStandaloneAnalyticsPage() {
     if (typeof initDarkMode === 'function') initDarkMode();
 
-    const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        window.location.href = '/';
-        document.getElementById('mainApp')?.classList.add('hidden');
-        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
-        return;
-    }
 
     try {
         const user = await apiVerifyToken();

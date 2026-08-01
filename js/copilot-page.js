@@ -62,9 +62,10 @@ const CopilotPage = (() => {
         // If already authenticated, return immediately
         if (AppState?.currentUser) return;
 
-        // Try to restore from localStorage
-        const token = localStorage.getItem('pzp_token');
-        if (!token) { window.location.href = '/'; return; }
+        // apiVerifyToken owns refresh-only session recovery.
+        const verified = await apiVerifyToken();
+        if (!verified) { window.location.href = '/'; return; }
+        AppState.currentUser = verified;
 
         const savedUser = localStorage.getItem('pzp_current_user');
         if (savedUser) {

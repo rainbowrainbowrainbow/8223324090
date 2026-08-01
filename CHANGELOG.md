@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.52 - Auth: refresh-only сесії
+
+### Auth / Надійність / (01.08.2026) [codex]
+- **Refresh-only сесії більше не відкидаються** — protected pages передають перевірку до `apiVerifyToken()`, який сам відновлює access token через чинний refresh token.
+- **Запити після відновлення сесії стабільні** — Finance, Training, Afisha, Analytics, Warehouse, Shop, Room, Quiz і mini-game використовують shared auth retry; `403` не виконує logout.
+- **Регресії закриті тестом inventory** — тест контролює всі виправлені standalone bootstrap-и й не дозволить повернути `pzp_token` precheck до `apiVerifyToken()`.
+
+---
+
 ## v0.80.51 - Permissions: надійне завантаження
 
 ### Permissions / Надійність / (01.08.2026) [codex]

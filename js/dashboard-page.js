@@ -1222,11 +1222,6 @@ const DashboardPage = (() => {
     }
 
     async function runDashboardInit() {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) {
-            window.location.href = '/';
-            return;
-        }
 
         // Set username
         const savedUser = localStorage.getItem('pzp_current_user');

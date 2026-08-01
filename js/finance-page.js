@@ -11,20 +11,12 @@
 // ==========================================
 
 async function apiRequest(method, url, body) {
-    const token = localStorage.getItem('pzp_token');
-    const headers = {};
-    if (token) headers['Authorization'] = `Bearer ${token}`;
-    if (body) headers['Content-Type'] = 'application/json';
-    const res = await fetch(url, {
+    const res = await apiFetchWithAuthRetry(url, {
         method,
-        headers,
+        headers: getAuthHeaders(Boolean(body)),
         body: body ? JSON.stringify(body) : undefined
     });
-    if (res.status === 401 || res.status === 403) {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
-        return;
-    }
+    if (!res || handleAuthError(res)) return;
     if (!res.ok) {
         const err = await res.json().catch(() => ({}));
         throw new Error(err.error || `HTTP ${res.status}`);
@@ -967,21 +959,15 @@ function payrollIdempotencyKey(prefix, id) {
 }
 
 async function payrollApiRequest(method, url, body, headers = {}) {
-    const token = localStorage.getItem('pzp_token');
-    const requestHeaders = { ...headers };
-    if (token) requestHeaders.Authorization = `Bearer ${token}`;
+    const requestHeaders = { ...headers, ...getAuthHeaders(false) };
     if (body) requestHeaders['Content-Type'] = 'application/json';
-    const res = await fetch(url, {
+    const res = await apiFetchWithAuthRetry(url, {
         method,
         headers: requestHeaders,
         body: body ? JSON.stringify(body) : undefined
     });
+    if (!res || handleAuthError(res)) return null;
     const data = await res.json().catch(() => ({}));
-    if (res.status === 401) {
-        localStorage.removeItem('pzp_token');
-        window.location.href = '/';
-        return null;
-    }
     if (!res.ok || data?.success === false) {
         const err = new Error(data?.error || data?.message || `HTTP ${res.status}`);
         err.status = res.status;
@@ -1859,9 +1845,8 @@ async function exportPayrollCSV() {
         touchWindow = typeof openTouchDownloadWindow === 'function'
             ? openTouchDownloadWindow('Payroll CSV')
             : null;
-        const token = localStorage.getItem('pzp_token');
-        const response = await fetch(`/api/payroll/export?month=${encodeURIComponent(month)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const response = await apiFetchWithAuthRetry(`/api/payroll/export?month=${encodeURIComponent(month)}`, {
+            headers: getAuthHeaders(false)
         });
         if (!response.ok) throw new Error('Payroll export failed');
         const blob = await response.blob();
@@ -1890,9 +1875,8 @@ async function exportPayrollXLSX() {
         touchWindow = typeof openTouchDownloadWindow === 'function'
             ? openTouchDownloadWindow('Payroll Excel')
             : null;
-        const token = localStorage.getItem('pzp_token');
-        const response = await fetch(`/api/payroll/export-xlsx?month=${encodeURIComponent(month)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const response = await apiFetchWithAuthRetry(`/api/payroll/export-xlsx?month=${encodeURIComponent(month)}`, {
+            headers: getAuthHeaders(false)
         });
         if (!response.ok) throw new Error('Payroll Excel export failed');
         const blob = await response.blob();
@@ -2311,9 +2295,8 @@ async function exportCSV() {
             ? openTouchDownloadWindow('Finance CSV')
             : null;
         const { from, to } = getFilterDates();
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/finance/export?from=${from}&to=${to}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await apiFetchWithAuthRetry(`/api/finance/export?from=${from}&to=${to}`, {
+            headers: getAuthHeaders(false)
         });
         if (!res.ok) throw new Error('Export failed');
         const blob = await res.blob();
@@ -2346,9 +2329,8 @@ async function exportXLSX() {
             ? openTouchDownloadWindow('Finance Excel')
             : null;
         const { from, to } = getFilterDates();
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`/api/finance/export-xlsx?from=${from}&to=${to}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await apiFetchWithAuthRetry(`/api/finance/export-xlsx?from=${from}&to=${to}`, {
+            headers: getAuthHeaders(false)
         });
         if (!res.ok) throw new Error('Export failed');
         const blob = await res.blob();
@@ -2522,15 +2504,7 @@ async function initFinancePage() {
     // Dark mode
     if (typeof initDarkMode === 'function') initDarkMode();
 
-    // Auth check
-    const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        window.location.href = '/';
-        document.getElementById('mainApp')?.classList.add('hidden');
-        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
-        return;
-    }
-
+    // Auth check. apiVerifyToken owns refresh-only session recovery.
     try {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');

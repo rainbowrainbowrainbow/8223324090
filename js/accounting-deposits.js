@@ -236,13 +236,6 @@
     }
 
     async function bootstrapAccountingDepositsShell() {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) {
-            document.getElementById('mainApp')?.classList.add('hidden');
-            if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
-            window.location.href = '/';
-            return false;
-        }
 
         try {
             const user = await apiVerifyToken();

@@ -435,11 +435,6 @@
     }
 
     async function initSession() {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) {
-            window.location.href = '/';
-            return false;
-        }
 
         try {
             const user = await apiVerifyToken();

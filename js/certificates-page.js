@@ -721,11 +721,6 @@
     }
 
     async function bootstrapAuthenticatedShell() {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) {
-            redirectToLogin();
-            return null;
-        }
 
         const user = await apiVerifyToken();
         if (!user) {

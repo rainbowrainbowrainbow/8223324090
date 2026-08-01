@@ -663,3 +663,68 @@ test('apiVerifyToken clears stored auth state when refresh is rejected', async (
     assert.equal(store.has('pzp_current_user'), false);
     assert.equal(store.has('pzp_session'), false);
 });
+
+test('protected page bootstrap inventory delegates refresh-only sessions to apiVerifyToken', () => {
+    const surfaces = [
+        ['finance', 'js/finance-page.js', 'async function initFinancePage()'],
+        ['training', 'js/training-page.js', 'async function initTrainingShell()'],
+        ['accounting deposits', 'js/accounting-deposits.js', 'async function bootstrapAccountingDepositsShell()'],
+        ['afisha', 'js/afisha-page.js', 'async function bootstrapAfishaShell()'],
+        ['analytics', 'js/analytics-page.js', 'async function initStandaloneAnalyticsPage()'],
+        ['warehouse', 'js/warehouse-page.js', 'async function initPage()'],
+        ['dashboard', 'dashboard.html', '// Check session on load'],
+        ['designer', 'designer.html', '// Auth check — unhide mainApp'],
+        ['room', 'room.html', 'async function initRoomPage()'],
+        ['quiz', 'quiz.html', 'async function initQuizPage()'],
+        ['shop', 'js/shop-page.js', 'async function initShopPage()'],
+        ['certificates', 'js/certificates-page.js', 'async function bootstrapAuthenticatedShell()'],
+        ['customers', 'js/customers-page.js', 'async function initPage()'],
+        ['copilot', 'js/copilot-page.js', 'async function waitForAuth()'],
+        ['omni', 'omni.html', '// Auth check (standalone page pattern'],
+        ['chat', 'js/chat-page.js', 'async function _checkAuthAndInit()'],
+        ['guardian ops', 'js/guardian-ops-page.js', 'async function initSession()'],
+        ['designs', 'js/designs-page.js', '(async function initAuth()'],
+        ['mini-game', 'js/minigame-match3.js', 'async function initGamePage()'],
+        ['art director', 'js/art-director-page.js', 'async function initAuth()']
+    ];
+
+    for (const [name, relativePath, marker] of surfaces) {
+        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+        const start = code.indexOf(marker);
+        const verifyCall = code.indexOf('apiVerifyToken()', start);
+        const bootstrapBeforeVerify = code.slice(start, verifyCall);
+        assert.ok(start >= 0, `${name} bootstrap marker missing`);
+        assert.ok(verifyCall > start, `${name} must call apiVerifyToken`);
+        assert.doesNotMatch(
+            bootstrapBeforeVerify,
+            /localStorage\.getItem\(['"]pzp_token['"]\)/,
+            `${name} must not reject refresh-only sessions before verification`
+        );
+    }
+});
+
+test('Task 4 protected request surfaces use shared refresh retry and preserve 403 handling', () => {
+    for (const [name, relativePath] of [
+        ['finance', 'js/finance-page.js'],
+        ['training', 'js/training-page.js'],
+        ['afisha', 'js/afisha-page.js'],
+        ['analytics', 'js/analytics-page.js'],
+        ['warehouse', 'js/warehouse-page.js'],
+        ['shop', 'js/shop-page.js'],
+        ['room', 'room.html'],
+        ['quiz', 'quiz.html'],
+        ['mini-game', 'js/minigame-match3.js']
+    ]) {
+        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+        assert.match(code, /apiFetchWithAuthRetry\(/, `${name} must use shared refresh retry`);
+    }
+
+    for (const relativePath of ['js/finance-page.js', 'js/analytics-page.js']) {
+        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+        const requestStart = code.indexOf('async function apiRequest(');
+        const requestEnd = code.indexOf('\n}\n', requestStart) + 3;
+        const requestCode = code.slice(requestStart, requestEnd);
+        assert.doesNotMatch(requestCode, /res\.status === 401 \|\| res\.status === 403/);
+        assert.match(requestCode, /handleAuthError\(res\)/);
+    }
+});

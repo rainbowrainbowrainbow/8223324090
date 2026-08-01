@@ -27,8 +27,8 @@ function escapeHtml(str) {
 
 async function shopApiGet(path) {
     try {
-        const r = await fetch(`/api${path}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(r)) return null;
+        const r = await apiFetchWithAuthRetry(`/api${path}`, { headers: getAuthHeaders(false) });
+        if (!r || handleAuthError(r)) return null;
         if (!r.ok) return null;
         return await r.json();
     } catch (e) { console.error('Shop API GET', path, e); return null; }
@@ -36,8 +36,8 @@ async function shopApiGet(path) {
 
 async function shopApiPost(path, body) {
     try {
-        const r = await fetch(`/api${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(body) });
-        if (handleAuthError(r)) return null;
+        const r = await apiFetchWithAuthRetry(`/api${path}`, { method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(body) });
+        if (!r || handleAuthError(r)) return null;
         return await r.json();
     } catch (e) { console.error('Shop API POST', path, e); return null; }
 }
@@ -48,8 +48,9 @@ async function initShopPage() {
         document.documentElement.setAttribute('data-theme', 'dark');
         document.documentElement.style.colorScheme = 'dark';
     }
-    const token = localStorage.getItem('pzp_token');
-    if (!token) { window.location.href = '/'; return; }
+    const user = await apiVerifyToken();
+    if (!user) { window.location.href = '/'; return; }
+    if (typeof AppState !== 'undefined') AppState.currentUser = user;
 
     const [items, inventory, wallet] = await Promise.all([
         shopApiGet('/shop'),

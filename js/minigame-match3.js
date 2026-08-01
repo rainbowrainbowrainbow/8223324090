@@ -938,7 +938,7 @@ async function endGame() {
 
     try {
         if (isBossMode) {
-            const r = await fetch('/api/minigame/boss/complete', {
+            const r = await apiFetchWithAuthRetry('/api/minigame/boss/complete', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({ score: totalScore })
@@ -946,7 +946,7 @@ async function endGame() {
             const data = await r.json();
             if (data.error) console.warn('Boss submit:', data.error);
         } else {
-            const r = await fetch('/api/minigame/complete', {
+            const r = await apiFetchWithAuthRetry('/api/minigame/complete', {
                 method: 'POST',
                 headers: getAuthHeaders(),
                 body: JSON.stringify({ score: totalScore, coins_earned: coinsEarned })
@@ -1269,14 +1269,15 @@ async function initGamePage() {
         document.documentElement.setAttribute('data-theme', 'dark');
         document.documentElement.style.colorScheme = 'dark';
     }
-    const token = localStorage.getItem('pzp_token');
-    if (!token) { window.location.href = '/'; return; }
+    const user = await apiVerifyToken();
+    if (!user) { window.location.href = '/'; return; }
+    if (typeof AppState !== 'undefined') AppState.currentUser = user;
 
     try {
         const [statusRes, recordsRes, bossRes] = await Promise.all([
-            fetch('/api/minigame/status', { headers: getAuthHeaders(false) }),
-            fetch('/api/minigame/daily-records', { headers: getAuthHeaders(false) }),
-            fetch('/api/minigame/boss', { headers: getAuthHeaders(false) })
+            apiFetchWithAuthRetry('/api/minigame/status', { headers: getAuthHeaders(false) }),
+            apiFetchWithAuthRetry('/api/minigame/daily-records', { headers: getAuthHeaders(false) }),
+            apiFetchWithAuthRetry('/api/minigame/boss', { headers: getAuthHeaders(false) })
         ]);
         if (handleAuthError(statusRes)) return;
         gameStatus = await statusRes.json();
@@ -1522,7 +1523,7 @@ function startBossRound() {
 
 async function resetMinigame() {
     try {
-        const r = await fetch('/api/minigame/reset', { method: 'POST', headers: getAuthHeaders() });
+        const r = await apiFetchWithAuthRetry('/api/minigame/reset', { method: 'POST', headers: getAuthHeaders() });
         const data = await r.json();
         if (data.success) location.reload();
         else showNotification(data.error || 'Помилка скидання', 'error');

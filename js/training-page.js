@@ -5,10 +5,8 @@
 (function() {
     'use strict';
 
-    const token = localStorage.getItem('pzp_token');
-    if (!token) { window.location.href = '/'; return; }
     const API = window.API_BASE || '';
-    const headers = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+    const headers = { 'Content-Type': 'application/json' };
 
     let currentRole = 'all';
     let articlesData = [];
@@ -204,14 +202,19 @@
         if (button) button.classList.toggle('hidden', !canManageOnboarding());
     }
 
-    async function trainingJson(path, options = {}) {
-        const response = await fetch(API + path, {
+    async function trainingRequest(path, options = {}) {
+        return apiFetchWithAuthRetry(path, {
             ...options,
             headers: {
                 ...headers,
                 ...(options.headers || {})
             }
         });
+    }
+
+    async function trainingJson(path, options = {}) {
+        const response = await trainingRequest(path, options);
+        if (!response || handleAuthError(response)) return null;
         const data = await response.json().catch(() => null);
         if (!response.ok || data?.success === false) {
             throw new Error(data?.error || `HTTP ${response.status}`);
@@ -222,7 +225,7 @@
     // ═══ Overview Stats ═══
     async function loadOverviewStats() {
         try {
-            const res = await fetch(API + '/api/training/overview-stats', { headers });
+            const res = await trainingRequest(API + '/api/training/overview-stats', { headers });
             if (!res.ok) return;
             const data = await res.json();
             document.getElementById('statArticles').textContent = data.totalArticles || 0;
@@ -237,7 +240,7 @@
         const grid = document.getElementById('articlesGrid');
         try {
             const roleParam = currentRole !== 'all' ? `?role=${currentRole}` : '';
-            const res = await fetch(API + '/api/training/knowledge-base' + roleParam, { headers });
+            const res = await trainingRequest(API + '/api/training/knowledge-base' + roleParam, { headers });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             articlesData = data.articles || [];
@@ -283,7 +286,7 @@
         const modal = document.getElementById('readModal');
 
         try {
-            const res = await fetch(API + '/api/training/knowledge-base/' + id, { headers });
+            const res = await trainingRequest(API + '/api/training/knowledge-base/' + id, { headers });
             if (!res.ok) throw new Error('Not found');
             const article = await res.json();
 
@@ -316,7 +319,7 @@
             const markReadBtn = modal.querySelector('.btn-mark-read');
             if (markReadBtn) markReadBtn.addEventListener('click', async function() {
                 try {
-                    await fetch(API + '/api/training/knowledge-base/' + article.id + '/mark-read', { method: 'POST', headers });
+                    await trainingRequest(API + '/api/training/knowledge-base/' + article.id + '/mark-read', { method: 'POST', headers });
                     this.textContent = '✓ Готово!';
                     this.style.background = 'var(--success)';
                     loadOverviewStats();
@@ -340,7 +343,7 @@
     async function loadTests() {
         const grid = document.getElementById('testsGrid');
         try {
-            const res = await fetch(API + '/api/training/tests-list', { headers });
+            const res = await trainingRequest(API + '/api/training/tests-list', { headers });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             testsData = data.tests || [];
@@ -382,7 +385,7 @@
         const modal = document.getElementById('quizModal');
 
         try {
-            const res = await fetch(API + '/api/training/tests/' + articleId, { headers });
+            const res = await trainingRequest(API + '/api/training/tests/' + articleId, { headers });
             if (!res.ok) throw new Error('No test');
             const test = await res.json();
 
@@ -457,7 +460,7 @@
         const timeSpent = Math.round((Date.now() - startTime) / 1000);
 
         try {
-            const res = await fetch(API + '/api/training/tests/' + testId + '/submit', {
+            const res = await trainingRequest(API + '/api/training/tests/' + testId + '/submit', {
                 method: 'POST', headers,
                 body: JSON.stringify({ answers, timeSpent })
             });
@@ -496,7 +499,7 @@
     async function loadProgress() {
         const section = document.getElementById('progressSection');
         try {
-            const res = await fetch(API + '/api/training/progress', { headers });
+            const res = await trainingRequest(API + '/api/training/progress', { headers });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
 
@@ -552,7 +555,7 @@
     async function loadLeaderboard() {
         const content = document.getElementById('leaderboardContent');
         try {
-            const res = await fetch(API + '/api/training/leaderboard', { headers });
+            const res = await trainingRequest(API + '/api/training/leaderboard', { headers });
             if (!res.ok) throw new Error('Failed');
             const data = await res.json();
             const lb = data.leaderboard || [];

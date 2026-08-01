@@ -3273,11 +3273,6 @@ let searchTimeout = null;
 async function initPage() {
     initDarkMode();
 
-    const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        window.location.href = '/';
-        return;
-    }
 
     const user = await apiVerifyToken();
     if (!user) {

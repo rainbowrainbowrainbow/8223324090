@@ -92,11 +92,6 @@ function escapeHtml(str) {
 
 async function initPage() {
     initDarkMode();
-    const token = localStorage.getItem('pzp_token');
-    if (!token) {
-        window.location.href = '/';
-        return;
-    }
 
     const user = await apiVerifyToken();
     if (!user) {
@@ -1722,9 +1717,8 @@ async function exportProcXlsx() {
         const params = new URLSearchParams();
         if (dept) params.set('department', dept);
         if (status) params.set('status', status);
-        const token = localStorage.getItem('pzp_token');
-        const res = await fetch(`${API_BASE}/procurement/export-xlsx?${params}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
+        const res = await apiFetchWithAuthRetry(`${API_BASE}/procurement/export-xlsx?${params}`, {
+            headers: getAuthHeaders(false)
         });
         if (!res.ok) throw new Error('Export failed');
         const blob = await res.blob();

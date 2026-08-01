@@ -940,14 +940,7 @@ function initSidebar() {
 }
 
 async function initAuth() {
-    const token = localStorage.getItem('pzp_token');
-    const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
-
-    if (!token || !savedUser) {
-        document.getElementById('loginOverlay')?.classList.remove('hidden');
-        return false;
-    }
-
+    // apiVerifyToken owns refresh-only session recovery.
     const user = await apiVerifyToken();
     if (!user) {
         document.getElementById('loginOverlay')?.classList.remove('hidden');

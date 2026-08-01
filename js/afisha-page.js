@@ -108,7 +108,7 @@
     }
 
     async function parseApiResponse(response) {
-        if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
+        if (!response || (typeof handleAuthError === 'function' && handleAuthError(response))) return null;
         if (!response.ok) {
             const data = await response.json().catch(() => ({}));
             const err = new Error(data.error || `HTTP ${response.status}`);
@@ -121,11 +121,11 @@
     async function api(method, path, body = null) {
         const options = { method, headers: getHeaders(method !== 'GET') };
         if (body && method !== 'GET') options.body = JSON.stringify(body);
-        return parseApiResponse(await fetch(`/api${path}`, options));
+        return parseApiResponse(await apiFetchWithAuthRetry(`/api${path}`, options));
     }
 
     async function apiForm(method, path, formData) {
-        return parseApiResponse(await fetch(`/api${path}`, {
+        return parseApiResponse(await apiFetchWithAuthRetry(`/api${path}`, {
             method,
             headers: getHeaders(false),
             body: formData
@@ -768,11 +768,6 @@
     }
 
     async function bootstrapAfishaShell() {
-        const token = localStorage.getItem('pzp_token');
-        if (!token) {
-            window.location.href = '/';
-            return false;
-        }
 
         try {
             const user = await apiVerifyToken();

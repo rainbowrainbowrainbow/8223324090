@@ -2531,6 +2531,9 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');
 
+        if (typeof hydrateActionPermissions === 'function') {
+            await hydrateActionPermissions(user);
+        }
         AppState.currentUser = user;
         const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
 

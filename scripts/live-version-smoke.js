@@ -16,11 +16,13 @@ const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VALID_METADATA_STATUSES = new Set([
     'configured',
     'railway',
+    'manual',
     'mixed',
     'partial',
     'unavailable',
     'conflict'
 ]);
+const COMPLETE_METADATA_STATUSES = new Set(['railway', 'mixed']);
 const DEFAULT_FETCH_RETRIES = 3;
 const DEFAULT_FETCH_TIMEOUT_MS = 15000;
 const DEFAULT_FETCH_RETRY_DELAY_MS = 1500;
@@ -96,12 +98,30 @@ async function fetchText(url) {
     fail(lastError?.message || `${url} request failed`);
 }
 
+function resolveExpectedDeploymentTarget(env = process.env, options = {}) {
+    const allowMissing = options.allowMissing === true;
+    const expectedCommit = String(env.VERSION_SMOKE_EXPECT_COMMIT || '').trim().toLowerCase();
+    const expectedBranch = String(env.VERSION_SMOKE_EXPECT_BRANCH || '').trim();
+
+    if (!expectedCommit && !expectedBranch && allowMissing) {
+        return { expectedCommit: null, expectedBranch: null };
+    }
+    if (!FULL_COMMIT_SHA_PATTERN.test(expectedCommit)) {
+        throw new Error('VERSION_SMOKE_EXPECT_COMMIT must be the exact 40-character deployed SHA');
+    }
+    if (!expectedBranch
+        || expectedBranch.length > 255
+        || /[\u0000-\u001f\u007f]/.test(expectedBranch)) {
+        throw new Error('VERSION_SMOKE_EXPECT_BRANCH must be the exact deployed source branch');
+    }
+    return { expectedCommit, expectedBranch };
+}
+
 function assertDeploymentMetadata(versionJson, options = {}) {
     const {
         requireComplete = true,
         expectedCommit = null,
-        expectedBranch = null,
-        allowUnverifiedManualCommit = false
+        expectedBranch = null
     } = options;
 
     if (!Object.prototype.hasOwnProperty.call(versionJson, 'commitSha')) {
@@ -151,14 +171,18 @@ function assertDeploymentMetadata(versionJson, options = {}) {
                 throw new Error(`/api/version deploymentMetadata.${field} has invalid format`);
             }
         }
-        if (requireComplete && (!meta.complete || ['partial', 'unavailable', 'conflict'].includes(meta.status))) {
-            throw new Error(`/api/version deployment metadata is not complete: ${meta.status}`);
+        if (meta.status === 'manual' && meta.complete) {
+            throw new Error('/api/version manual metadata must remain unverified');
         }
+        const manualVerification = meta.status === 'manual'
+            && Boolean(expectedCommit && expectedBranch);
         if (requireComplete
-            && !expectedCommit
-            && meta.commitShaSource === 'RELEASE_DEPLOY_COMMIT'
-            && !allowUnverifiedManualCommit) {
-            throw new Error('/api/version uses manual RELEASE_DEPLOY_COMMIT metadata; set VERSION_SMOKE_EXPECT_COMMIT to the exact deployed commit');
+            && (!meta.complete || !COMPLETE_METADATA_STATUSES.has(meta.status))
+            && !manualVerification) {
+            if (meta.status === 'manual') {
+                throw new Error('/api/version uses manual metadata; set VERSION_SMOKE_EXPECT_COMMIT and VERSION_SMOKE_EXPECT_BRANCH to the exact deployed target');
+            }
+            throw new Error(`/api/version deployment metadata is not complete: ${meta.status}`);
         }
     }
     if (requireComplete && !versionJson.commitSha) {
@@ -180,6 +204,10 @@ async function main() {
         fail('provide a URL as an argument or VERSION_SMOKE_URL/TEST_URL');
     }
 
+    const requireComplete = process.env.VERSION_SMOKE_ALLOW_MISSING_METADATA !== 'true';
+    const expectedTarget = resolveExpectedDeploymentTarget(process.env, {
+        allowMissing: !requireComplete
+    });
     const base = normalizeBase(target);
     const versionText = await fetchText(`${base}/api/version`);
     let versionJson;
@@ -196,10 +224,9 @@ async function main() {
         fail(`/api/version releaseLabel is "${versionJson.releaseLabel}", expected "${expectedLabel}"`);
     }
     assertDeploymentMetadata(versionJson, {
-        requireComplete: process.env.VERSION_SMOKE_ALLOW_MISSING_METADATA !== 'true',
-        expectedCommit: process.env.VERSION_SMOKE_EXPECT_COMMIT || process.env.RELEASE_DEPLOY_COMMIT || null,
-        expectedBranch: process.env.VERSION_SMOKE_EXPECT_BRANCH || process.env.RELEASE_DEPLOY_BRANCH || null,
-        allowUnverifiedManualCommit: process.env.VERSION_SMOKE_ALLOW_UNVERIFIED_MANUAL_COMMIT === 'true'
+        requireComplete,
+        expectedCommit: expectedTarget.expectedCommit,
+        expectedBranch: expectedTarget.expectedBranch
     });
 
     const html = await fetchText(`${base}/`);
@@ -226,6 +253,8 @@ if (require.main === module) {
 module.exports = {
     FULL_COMMIT_SHA_PATTERN,
     VALID_METADATA_STATUSES,
+    COMPLETE_METADATA_STATUSES,
     assertDeploymentMetadata,
+    resolveExpectedDeploymentTarget,
     main
 };

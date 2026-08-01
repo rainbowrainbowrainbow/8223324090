@@ -219,6 +219,8 @@ function main() {
     console.log(`[release:railway-up] commit=${head}`);
     console.log(`[release:railway-up] cleanExport=${options.cleanExport ? 'true' : 'false'}`);
     console.log(`[release:railway-up] message=${message}`);
+    console.log(`[release:railway-up] postDeploySmoke=VERSION_SMOKE_EXPECT_COMMIT=${head} `
+        + `VERSION_SMOKE_EXPECT_BRANCH=${options.branch} npm run version:smoke -- <live-url>`);
 
     let exportInfo = null;
     let deploySource = '.';

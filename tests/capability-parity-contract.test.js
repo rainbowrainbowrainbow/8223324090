@@ -26,6 +26,7 @@ function loadFrontendResolver() {
         ACTION_CAPABILITY_ALIASES: catalog.actionAliases,
         ACTION_LEGACY_KEYS: catalog.actionLegacyKeys,
         EXPLICIT_ALLOW_DISABLED_PAGES: new Set(catalog.explicitAllowDisabledPages),
+        EXPLICIT_ALLOW_DISABLED_ACTIONS: new Set(catalog.explicitAllowDisabledActions),
         NON_DELEGABLE_ACTIONS: new Set(catalog.nonDelegableActions),
         AppState: { currentUser: null, authPermissions: null },
         frontendResolver: null
@@ -188,7 +189,9 @@ test('Finance management keeps creator, director and accountant parity with expl
         assert.equal(assertParity({ role }, capability, { type: 'action' }).allowed, true, `${role} must manage Finance by default`);
     }
     assert.equal(assertParity({ role: 'vice_director' }, capability, { type: 'action' }).allowed, false, 'vice director must not receive Finance management by default');
-    assert.equal(assertParity({ role: 'animator', action_allowlist: [capability] }, capability, { type: 'action' }).allowed, true, 'explicit allow must grant Finance management');
+    const explicitAllow = assertParity({ role: 'animator', action_allowlist: [capability] }, capability, { type: 'action' });
+    assert.deepEqual([explicitAllow.allowed, explicitAllow.reason], [false, 'explicit_allow_disabled']);
+    assert.equal(assertParity({ role: 'animator', extra_roles: ['accountant'] }, capability, { type: 'action' }).allowed, true, 'approved extra role preserves Finance access');
     const denied = assertParity({ role: 'accountant', action_allowlist: [capability], action_denylist: [capability] }, capability, { type: 'action' });
     assert.deepEqual([denied.allowed, denied.source, denied.reason], [false, 'explicit_deny', 'listed_in_explicit_deny']);
 });

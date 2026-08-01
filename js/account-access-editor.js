@@ -73,12 +73,12 @@
         const key = definition.key;
         if (definition.type === 'page') {
             next.pageAllowlist = next.pageAllowlist.filter(item => item !== key);
-            if (mode === 'allow') next.pageAllowlist.push(key);
+            if (mode === 'allow' && definition.explicitAllow !== false) next.pageAllowlist.push(key);
             return normalizeState(next);
         }
         next.actionAllowlist = next.actionAllowlist.filter(item => item !== key);
         next.actionDenylist = next.actionDenylist.filter(item => item !== key);
-        if (mode === 'allow' && definition.delegable !== false) next.actionAllowlist.push(key);
+        if (mode === 'allow' && definition.delegable !== false && definition.explicitAllow !== false) next.actionAllowlist.push(key);
         if (mode === 'deny') next.actionDenylist.push(key);
         return normalizeState(next);
     }
@@ -104,7 +104,7 @@
         const allowedRoles = Array.isArray(definition.defaultRoles) ? definition.defaultRoles : [];
         const mode = capabilityMode(state, definition);
         if (mode === 'deny') return { allowed: false, source: 'explicit_deny', sourceRole: null, reason: 'listed_in_explicit_deny' };
-        if (mode === 'allow' && definition.delegable !== false) return { allowed: true, source: 'explicit_allow', sourceRole: null, reason: 'listed_in_explicit_allow' };
+        if (mode === 'allow' && definition.delegable !== false && definition.explicitAllow !== false) return { allowed: true, source: 'explicit_allow', sourceRole: null, reason: 'listed_in_explicit_allow' };
         const sourceRole = roles.find(role => allowedRoles.includes(role));
         return sourceRole
             ? { allowed: true, source: 'role_preset', sourceRole, reason: 'granted_by_role_preset' }
@@ -191,7 +191,8 @@
         const mode = capabilityMode(model.draft, definition);
         const decision = model.decision(definition);
         const denySupported = definition.type === 'action';
-        const allowSupported = definition.type === 'page' || definition.delegable !== false;
+        const allowSupported = definition.explicitAllow !== false
+            && (definition.type === 'page' || definition.delegable !== false);
         return `<article class="aae-capability" data-capability="${escapeHtml(definition.key)}" data-type="${definition.type}">
             <div class="aae-capability-copy">
                 <div class="aae-capability-title"><strong>${escapeHtml(definition.label || definition.key)}</strong><code>${escapeHtml(definition.key)}</code></div>

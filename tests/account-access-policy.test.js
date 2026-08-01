@@ -73,8 +73,8 @@ test('legacy page aliases canonicalize for reads and writes', () => {
     );
 
     const aliasGrant = resolveCapability({ role: 'animator', page_allowlist: ['/analytics'] }, '/finance');
-    assert.equal(aliasGrant.allowed, true);
-    assert.equal(aliasGrant.source, 'explicit_allow');
+    assert.equal(aliasGrant.allowed, false);
+    assert.equal(aliasGrant.reason, 'explicit_allow_disabled');
 
     const specialPageGrant = resolveCapability({ role: 'animator', page_allowlist: ['/maysternya-doli'] }, '/maysternya-doli');
     assert.equal(specialPageGrant.allowed, false);
@@ -128,10 +128,35 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     assert.equal(Object.keys(snapshot.pages).length, 42);
     assert.equal(Object.keys(snapshot.actions).length, 29);
     assert.equal(snapshot.pages['/analytics'], undefined);
-    assert.equal(snapshot.pages['/finance'], true);
+    assert.equal(snapshot.pages['/finance'], false);
     assert.equal(snapshot.actions.export_data, false);
-    assert.equal(snapshot.decisions['page:/finance'].source, 'explicit_allow');
+    assert.equal(snapshot.decisions['page:/finance'].reason, 'explicit_allow_disabled');
     assert.equal(snapshot.decisions['action:export_data'].source, 'explicit_deny');
     assert.equal(snapshot.catalog.pageAliases['/analytics'], '/finance');
     assert.ok(snapshot.catalog.nonDelegableActions.includes('manage_accounts'));
+    assert.ok(snapshot.catalog.explicitAllowDisabledPages.includes('/finance'));
+    assert.ok(snapshot.catalog.explicitAllowDisabledActions.includes('finance.manage'));
+});
+
+test('Finance explicit grants are rejected by strict account-access writes', () => {
+    assert.throws(
+        () => normalizeCapabilityList(['/finance'], 'page', {
+            strict: true,
+            excludeExplicitAllowDisabled: true,
+            fieldName: 'pageAllowlist'
+        }),
+        error => error instanceof CapabilityValidationError
+            && error.code === 'EXPLICIT_ALLOW_DISABLED_CAPABILITY'
+            && error.details.explicitAllowDisabledKeys.includes('/finance')
+    );
+    assert.throws(
+        () => normalizeCapabilityList(['finance.manage'], 'action', {
+            strict: true,
+            excludeExplicitAllowDisabled: true,
+            fieldName: 'actionAllowlist'
+        }),
+        error => error instanceof CapabilityValidationError
+            && error.code === 'EXPLICIT_ALLOW_DISABLED_CAPABILITY'
+            && error.details.explicitAllowDisabledKeys.includes('finance.manage')
+    );
 });

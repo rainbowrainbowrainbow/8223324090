@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.59 - Finance: role fence і CI contracts
+
+### Release / Versioning / (01.08.2026) [codex]
+- **Один Finance role fence** — доступ до сторінки, прямого URL, GET API та керуючих кнопок мають лише `creator`, `director` і `accountant`; інші ролі fail-closed навіть за explicit allow.
+- **Явна заборона делегування Finance** — редактор доступів і server-side validation більше не зберігають explicit page/action allow для `/finance` та `finance.manage`; explicit deny і payroll/account guards збережено.
+- **Контракти стали обов’язковими в CI** — Finance та HR capability-тести запускаються у `npm test`, а тест перевіряє, що їх неможливо «осиротити» поза fast baseline.
+
+---
+
 ## v0.80.58 - Sidebar: захист Finance fallback
 
 ### Release / Versioning / (01.08.2026) [codex]

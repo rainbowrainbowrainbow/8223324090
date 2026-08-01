@@ -558,6 +558,7 @@ function clearRuntimePermissionCatalog(user) {
     ACTION_CAPABILITY_ALIASES = Object.create(null);
     ACTION_LEGACY_KEYS = Object.create(null);
     EXPLICIT_ALLOW_DISABLED_PAGES = new Set();
+    EXPLICIT_ALLOW_DISABLED_ACTIONS = new Set();
     NON_DELEGABLE_ACTIONS = new Set();
 }
 
@@ -571,6 +572,7 @@ function applyActionPermissions(user, permissions) {
     ACTION_CAPABILITY_ALIASES = catalog.actionAliases || Object.create(null);
     ACTION_LEGACY_KEYS = catalog.actionLegacyKeys || Object.create(null);
     EXPLICIT_ALLOW_DISABLED_PAGES = new Set(catalog.explicitAllowDisabledPages || []);
+    EXPLICIT_ALLOW_DISABLED_ACTIONS = new Set(catalog.explicitAllowDisabledActions || []);
     NON_DELEGABLE_ACTIONS = new Set(catalog.nonDelegableActions || []);
     if (Array.isArray(permissions.pageAllowlist)) {
         user.pageAllowlist = permissions.pageAllowlist;
@@ -961,6 +963,7 @@ let PAGE_CAPABILITY_ALIASES = Object.create(null);
 let ACTION_CAPABILITY_ALIASES = Object.create(null);
 let ACTION_LEGACY_KEYS = Object.create(null);
 let EXPLICIT_ALLOW_DISABLED_PAGES = new Set();
+let EXPLICIT_ALLOW_DISABLED_ACTIONS = new Set();
 let NON_DELEGABLE_ACTIONS = new Set();
 
 const ROLE_PREVIEW_STORAGE_KEY = 'pzp_test_role';
@@ -1604,7 +1607,9 @@ function resolveCapability(user, capability, context = {}) {
     }
 
     const actionNonDelegable = requestedType === 'action' && NON_DELEGABLE_ACTIONS.has(key);
-    const explicitAllowSupported = requestedType !== 'page' || !EXPLICIT_ALLOW_DISABLED_PAGES.has(key);
+    const explicitAllowSupported = requestedType === 'page'
+        ? !EXPLICIT_ALLOW_DISABLED_PAGES.has(key)
+        : !EXPLICIT_ALLOW_DISABLED_ACTIONS.has(key);
     if (explicitAllowSupported && !actionNonDelegable && overrideKeys.some(candidate => allowlist.includes(candidate))) {
         return _frontendCapabilityDecision(normalized, true, 'explicit_allow', null, 'listed_in_explicit_allow');
     }

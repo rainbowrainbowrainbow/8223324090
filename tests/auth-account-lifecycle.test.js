@@ -902,12 +902,12 @@ test('account action overrides drive final permissions and protect against self-
 
         const denyUpdate = await request(baseUrl, 'PATCH', `/api/users/${createAnimator.data.user.id}/access`, {
             role: 'animator',
-            pageAllowlist: ['/analytics'],
+            pageAllowlist: [],
             actionAllowlist: [],
             actionDenylist: ['delete_booking']
         }, creatorToken());
         assert.equal(denyUpdate.status, 200);
-        assert.deepEqual(denyUpdate.data.pageAllowlist, ['/finance']);
+        assert.deepEqual(denyUpdate.data.pageAllowlist, []);
 
         const deniedLogin = await request(baseUrl, 'POST', '/api/auth/login', {
             username: 'action.operator',

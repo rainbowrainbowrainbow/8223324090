@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 const { requireAction } = require('../middleware/auth');
+const { resolveCapability } = require('../services/accountAccessPolicy');
 const express = require('express');
 const financeRouter = require('../routes/finance');
 
@@ -76,4 +77,35 @@ test('explicit Finance deny receives 403 from a real mutation endpoint before ro
         assert.equal(response.status, 403);
         assert.deepEqual(await response.json(), { error: 'Insufficient permissions' });
     });
+});
+
+test('Finance role fence ignores page and action explicit allows', async () => {
+    const restricted = { role: 'senior_manager', page_allowlist: ['/finance'], action_allowlist: ['finance.manage'] };
+    const page = resolveCapability(restricted, '/finance', { type: 'page' });
+    const action = resolveCapability(restricted, 'finance.manage', { type: 'action' });
+    assert.deepEqual([page.allowed, page.reason], [false, 'explicit_allow_disabled']);
+    assert.deepEqual([action.allowed, action.reason], [false, 'explicit_allow_disabled']);
+    assert.equal(resolveCapability({ role: 'senior_manager', extra_roles: ['accountant'] }, '/finance', { type: 'page' }).allowed, true);
+    assert.equal(resolveCapability({ role: 'senior_manager', extra_roles: ['accountant'] }, 'finance.manage', { type: 'action' }).allowed, true);
+    assert.ok(financePage.includes("canAccessPage('/finance')"));
+
+    await withFinanceRouter(restricted, async baseUrl => {
+        const response = await fetch(baseUrl + '/api/finance/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({})
+        });
+        assert.equal(response.status, 403);
+    });
+});
+
+test('critical Finance and HR permission contracts are mandatory CI coverage', () => {
+    const packageJson = require('../package.json');
+    const workflow = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
+    assert.match(packageJson.scripts['test:permission-contracts'], /finance-permission-contract.test.js/);
+    assert.match(packageJson.scripts['test:permission-contracts'], /hr-capability-contract.test.js/);
+    assert.match(packageJson.scripts.verify, /npm run test:permission-contracts/);
+    const fastBaseline = workflow.indexOf('Run fast verification baseline');
+    assert.ok(fastBaseline >= 0);
+    assert.match(workflow.slice(fastBaseline, fastBaseline + 160), /run: npm test/);
 });

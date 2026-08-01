@@ -10,6 +10,11 @@ const {
     canUseAction
 } = require('../middleware/auth');
 const {
+    PAGE_PERMISSION_BY_KEY,
+    ACTION_PERMISSION_BY_KEY,
+    canonicalizePageKey
+} = require('../config/permissionRegistry');
+const {
     BUSINESS_CONTEXTS,
     DEFAULT_BUSINESS_CONTEXT
 } = require('./businessContext');
@@ -377,6 +382,12 @@ function normalizeAccess(value, primaryProfessionKey) {
     if (pageAllowlist.length > 50 || pageAllowlist.some(page => !page.startsWith('/'))) {
         throw onboardingError('Некоректний список дозволених сторінок', 400, 'ACCOUNT_ONBOARDING_INVALID_PAGE_ALLOWLIST');
     }
+    const explicitAllowDisabledPages = pageAllowlist
+        .map(page => canonicalizePageKey(page))
+        .filter(page => PAGE_PERMISSION_BY_KEY[page]?.explicitAllow === false);
+    if (explicitAllowDisabledPages.length) {
+        throw onboardingError('Цей доступ до сторінки не можна надати вручну', 400, 'ACCOUNT_ONBOARDING_EXPLICIT_ALLOW_DISABLED', { pages: explicitAllowDisabledPages });
+    }
 
     const validActions = new Set(Object.keys(ACTION_PERMISSIONS));
     const rawAllowlist = normalizeStringArray(firstDefined(source.actionAllowlist, source.action_allowlist));
@@ -384,8 +395,12 @@ function normalizeAccess(value, primaryProfessionKey) {
     if (rawAllowlist.some(action => !validActions.has(action)) || actionDenylist.some(action => !validActions.has(action))) {
         throw onboardingError('Некоректний action override', 400, 'ACCOUNT_ONBOARDING_INVALID_ACTION_OVERRIDE');
     }
+    const explicitAllowDisabledActions = rawAllowlist.filter(action => ACTION_PERMISSION_BY_KEY[action]?.explicitAllow === false);
+    if (explicitAllowDisabledActions.length) {
+        throw onboardingError('Цю дію не можна надати вручну', 400, 'ACCOUNT_ONBOARDING_EXPLICIT_ALLOW_DISABLED', { actions: explicitAllowDisabledActions });
+    }
     const denySet = new Set(actionDenylist);
-    const actionAllowlist = rawAllowlist.filter(action => !NON_DELEGABLE_ACTIONS.has(action) && !denySet.has(action));
+    const actionAllowlist = rawAllowlist.filter(action => ACTION_PERMISSION_BY_KEY[action]?.explicitAllow !== false && !NON_DELEGABLE_ACTIONS.has(action) && !denySet.has(action));
 
     let businessContexts = [DEFAULT_BUSINESS_CONTEXT];
     let defaultBusinessContext = DEFAULT_BUSINESS_CONTEXT;

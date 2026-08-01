@@ -320,7 +320,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/finance', label: 'Фінанси та аналітика', group: 'sales', canonicalPath: '/finance', aliases: ['/analytics'],
-        defaultRoles: FINANCE_ANALYTICS_ACCESS, risk: 'critical', sidebarLinks: ['/finance'],
+        defaultRoles: FINANCE_ANALYTICS_ACCESS, explicitAllow: false, risk: 'critical', sidebarLinks: ['/finance'],
         frontendConsumers: [source('finance.html', 'js/auth.js')],
         apiConsumers: [api('routes/finance.js', '/api/finance', null), api('routes/analytics.js', '/api/analytics', null), api('routes/payroll.js', '/api/payroll', null)]
     }),
@@ -483,6 +483,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),    action({
         key: 'finance.manage', label: 'Керування фінансовими транзакціями', group: 'finance', defaultRoles: FINANCE_ANALYTICS_ACCESS, risk: 'critical',
         backendConsumers: [source('routes/finance.js', "const requireFinanceManagement = requireAction('finance.manage');", { enforces: true })],
+        explicitAllow: false,
         frontendConsumers: [source('js/finance-page.js', "financeCanManageTransactions()", { enforces: true })],
         apiConsumers: [api('routes/finance.js', '/api/finance mutating endpoints', 'finance.manage', 'Applies to every POST, PUT, PATCH and DELETE request before payroll and account-specific guards.')]
     }),

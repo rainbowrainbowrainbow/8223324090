@@ -113,6 +113,7 @@ function normalizeCapabilityList(value, type, options = {}) {
     const result = [];
     const unknownKeys = [];
     const nonDelegableKeys = [];
+    const explicitAllowDisabledKeys = [];
 
     for (const rawKey of normalizeRawList(value)) {
         const normalized = normalizeCapability(rawKey, { type });
@@ -124,6 +125,10 @@ function normalizeCapabilityList(value, type, options = {}) {
             && normalized.type === CAPABILITY_TYPES.ACTION
             && NON_DELEGABLE_ACTIONS.has(normalized.key)) {
             nonDelegableKeys.push(normalized.key);
+            continue;
+        }
+        if (options.excludeExplicitAllowDisabled === true && normalized.definition.explicitAllow === false) {
+            explicitAllowDisabledKeys.push(normalized.key);
             continue;
         }
         if (!result.includes(normalized.key)) result.push(normalized.key);
@@ -138,7 +143,16 @@ function normalizeCapabilityList(value, type, options = {}) {
         );
     }
 
-    return { values: result, unknownKeys, nonDelegableKeys };
+    if (options.strict === true && explicitAllowDisabledKeys.length) {
+        const fieldName = options.fieldName || `${type} capabilities`;
+        throw new CapabilityValidationError(
+            `${fieldName} contains capabilities that cannot be granted explicitly: ${explicitAllowDisabledKeys.join(', ')}`,
+            'EXPLICIT_ALLOW_DISABLED_CAPABILITY',
+            { field: fieldName, explicitAllowDisabledKeys }
+        );
+    }
+
+    return { values: result, unknownKeys, nonDelegableKeys, explicitAllowDisabledKeys };
 }
 
 function normalizePageAllowlist(userOrValue) {
@@ -246,6 +260,7 @@ function buildCapabilityCatalog() {
         actionAliases: ACTION_ALIAS_TO_CANONICAL,
         actionLegacyKeys: Object.freeze(Object.fromEntries(ACTION_PERMISSION_ENTRIES.map(entry => [entry.key, entry.legacyKeys || []]))),
         explicitAllowDisabledPages: Object.freeze(PAGE_PERMISSIONS.filter(entry => entry.explicitAllow === false).map(entry => entry.key)),
+        explicitAllowDisabledActions: Object.freeze(ACTION_PERMISSION_ENTRIES.filter(entry => entry.explicitAllow === false).map(entry => entry.key)),
         nonDelegableActions: Object.freeze(Array.from(NON_DELEGABLE_ACTIONS))
     });
 }

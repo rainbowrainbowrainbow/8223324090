@@ -100,3 +100,19 @@ test('access editor owns its workspace and hr-page no longer uses formModal for 
     assert.match(workflow, /Run effective access editor browser smoke/);
     assert.match(workflow, /test:browser:account-access/);
 });
+
+test('account access editor cannot draft explicit-allow-disabled Finance access', () => {
+    const model = editor.createModel({
+        initial: { role: 'senior_manager', pageAllowlist: [], actionAllowlist: [], actionDenylist: [] },
+        pages: [{ key: '/finance', label: 'Finance', defaultRoles: ['creator', 'director', 'accountant'], explicitAllow: false }],
+        actions: [{ key: 'finance.manage', label: 'Manage finance', defaultRoles: ['creator', 'director', 'accountant'], explicitAllow: false, delegable: true }]
+    });
+    const financePage = model.config.capabilities.find(item => item.key === '/finance');
+    const financeManage = model.config.capabilities.find(item => item.key === 'finance.manage');
+    model.setMode(financePage, 'allow');
+    model.setMode(financeManage, 'allow');
+    assert.deepEqual(model.draft.pageAllowlist, []);
+    assert.deepEqual(model.draft.actionAllowlist, []);
+    assert.equal(model.decision(financePage).allowed, false);
+    assert.equal(model.decision(financeManage).allowed, false);
+});

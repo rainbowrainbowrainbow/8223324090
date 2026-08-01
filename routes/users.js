@@ -133,12 +133,16 @@ function accountActionDenylist(account = {}) {
 function normalizeActionAllowlist(value, options = {}) {
     return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION, {
         ...options,
-        excludeNonDelegable: true
+        excludeNonDelegable: true,
+        excludeExplicitAllowDisabled: true
     }).values;
 }
 
 function normalizePageAllowlistInput(value, options = {}) {
-    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, options).values;
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, {
+        ...options,
+        excludeExplicitAllowDisabled: true
+    }).values;
 }
 
 function assertSelfAccountAccessSafe(actor, prospectiveAccount) {

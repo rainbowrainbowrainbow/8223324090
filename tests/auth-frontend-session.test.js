@@ -722,7 +722,10 @@ test('Task 4 protected request surfaces use shared refresh retry and preserve 40
     for (const relativePath of ['js/finance-page.js', 'js/analytics-page.js']) {
         const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
         const requestStart = code.indexOf('async function apiRequest(');
-        const requestEnd = code.indexOf('\n}\n', requestStart) + 3;
+        const closingMatch = code.slice(requestStart).match(/\r?\n}\r?\n/);
+        const requestEnd = closingMatch
+            ? requestStart + closingMatch.index + closingMatch[0].length
+            : requestStart;
         const requestCode = code.slice(requestStart, requestEnd);
         assert.doesNotMatch(requestCode, /res\.status === 401 \|\| res\.status === 403/);
         assert.match(requestCode, /handleAuthError\(res\)/);

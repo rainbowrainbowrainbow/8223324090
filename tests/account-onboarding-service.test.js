@@ -264,3 +264,19 @@ test('post-commit chat failure returns a warning without exposing credentials to
     assert.doesNotMatch(auditText, new RegExp(result.credential.password));
     assert.doesNotMatch(auditText, /password/i);
 });
+
+test('onboarding rejects role-fenced Finance explicit allows', () => {
+    const pagePayload = onboardingPayload('finance.page.allow');
+    pagePayload.access.pageAllowlist = ['/finance'];
+    assert.throws(
+        () => normalizeAccountOnboardingPayload(pagePayload),
+        error => error.code === 'ACCOUNT_ONBOARDING_EXPLICIT_ALLOW_DISABLED'
+    );
+
+    const actionPayload = onboardingPayload('finance.action.allow');
+    actionPayload.access.actionAllowlist = ['finance.manage'];
+    assert.throws(
+        () => normalizeAccountOnboardingPayload(actionPayload),
+        error => error.code === 'ACCOUNT_ONBOARDING_EXPLICIT_ALLOW_DISABLED'
+    );
+});

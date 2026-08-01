@@ -785,7 +785,9 @@ function financeCanUsePayrollAction(action) {
 }
 
 function financeCanManageTransactions() {
-    return financeCanUsePayrollAction('finance.manage');
+    return typeof canAccessPage === 'function'
+        && canAccessPage('/finance')
+        && financeCanUsePayrollAction('finance.manage');
 }
 
 const PAYROLL_INSTALLMENT_KIND_LABELS = {

@@ -34,6 +34,7 @@ let profileMaterialsState = {
 let myCabinetData = null;
 let myCabinetLoadError = '';
 let myTasksSegment = 'all';
+let cabinetProjectionRequestSequence = 0;
 let cabinetCreateDuePreset = 'today';
 let cabinetMyDayListMode = 'focused';
 let cabinetMyDaySegment = 'today';
@@ -1186,6 +1187,7 @@ function setMyCabinetProjectionData(data, options = {}) {
 }
 
 async function loadMyCabinetProjection(options = {}) {
+    const requestSequence = ++cabinetProjectionRequestSequence;
     const focusDate = normalizeCabinetDuePreset(cabinetCreateDuePreset) === 'custom'
         ? cabinetSelectedDueDate()
         : '';
@@ -1193,6 +1195,7 @@ async function loadMyCabinetProjection(options = {}) {
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
     const data = await apiGet(path);
+    if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
     return setMyCabinetProjectionData(data, {
         keepExistingOnError: options.keepExistingOnError,
         message: options.message
@@ -7288,9 +7291,16 @@ async function createCabinetTask(event, mode) {
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
-    const payload = window.TaskCreate?.buildPayload
-        ? window.TaskCreate.buildPayload(draft, { sourceModule: 'profile_my_cabinet', sourceSurface: 'profile_my_cabinet', scheduleSlot: 'morning' })
-        : {
+    let payload;
+    if (window.TaskCreate?.buildPayload) {
+        payload = window.TaskCreate.buildPayload(draft, {
+            sourceModule: 'profile_my_cabinet',
+            sourceSurface: 'profile_my_cabinet',
+            scheduleSlot: 'morning'
+        });
+    } else {
+        const dueDate = cabinetDueDateForPreset(draft.duePreset, draft.scheduleDate);
+        payload = {
             title,
             ownerUserId: draft.ownerUserId,
             category: draft.category,
@@ -7299,9 +7309,6 @@ async function createCabinetTask(event, mode) {
             task_kind: draft.kind,
             visibility: draft.visibility,
             workflow_state: draft.workflowState,
-            date: selectedDate || new Date().toISOString().slice(0, 10),
-            schedule: { date: selectedDate || new Date().toISOString().slice(0, 10), slot: 'morning', durationMinutes: 30 },
-            effort_minutes: 30,
             source_type: 'manual',
             source_module: 'profile_my_cabinet',
             subtasks: draft.subtasks,
@@ -7311,6 +7318,16 @@ async function createCabinetTask(event, mode) {
                 allowReschedule: draft.allowReschedule
             }
         };
+        if (draft.reportRequired) {
+            payload.reportRequired = true;
+            payload.controlMeta.reportRequired = true;
+        }
+        if (dueDate) {
+            payload.date = dueDate;
+            payload.schedule = { date: dueDate, slot: 'morning', durationMinutes: 30 };
+            payload.effort_minutes = 30;
+        }
+    }
     const result = window.TaskCreate?.createTask
         ? await window.TaskCreate.createTask(payload, {
             onDuplicate: err => {
@@ -7345,6 +7362,7 @@ async function createCabinetTask(event, mode) {
     setCabinetSubtaskDraftStatus('');
     document.getElementById('cabinetSubtaskAcceptDraftBtn')?.setAttribute('hidden', '');
     setCabinetDecompositionMode('none', { keepRows: true, keepStatus: true });
+    cabinetCreateDuePreset = 'today';
     cabinetTaskComposerExpanded = false;
     if (typeof showNotification === 'function') {
         showCabinetTaskCreateSuccessToast(result, draft, verification, postCreateWarningCount);

@@ -60,10 +60,10 @@ const BUSINESS_PROFILE = {
     }]
 };
 
-function cabinetProjection() {
+function cabinetProjection(state = {}) {
     return {
         success: true,
-        all: [],
+        all: state.createdTask ? [state.createdTask] : [],
         activeMyDay: [],
         today: [],
         overdue: [],
@@ -140,7 +140,35 @@ async function installFixtureRoutes(context, baseUrl, state) {
             return route.abort('blockedbyclient');
         }
         if (!['GET', 'HEAD', 'OPTIONS'].includes(request.method())) {
-            state.mutations.push(`${request.method()} ${url.pathname}${url.search}`);
+            const mutation = `${request.method()} ${url.pathname}${url.search}`;
+            state.mutations.push(mutation);
+            if (!url.pathname.startsWith('/api/')) {
+                state.unexpectedMutations.push(mutation);
+                return route.abort('blockedbyclient');
+            }
+            if (request.method() === 'POST' && url.pathname === '/api/tasks/decomposition-suggestions') {
+                state.suggestionRequests += 1;
+                return json(route, { success: true, suggestions: [] });
+            }
+            if (request.method() === 'POST' && ['/api/achievements/check', '/api/quests/check-titles'].includes(url.pathname)) {
+                return json(route, { success: true });
+            }
+            if (request.method() === 'POST' && url.pathname === '/api/tasks') {
+                let payload = {};
+                try {
+                    payload = request.postDataJSON() || {};
+                } catch (_) {
+                    state.unexpectedMutations.push(mutation);
+                    return json(route, { success: false, error: 'Fixture payload is invalid' }, 400);
+                }
+                state.taskCreatePayloads.push(payload);
+                if (state.createMode === 'fail') {
+                    return json(route, { success: false, error: 'Fixture create failure' }, 503);
+                }
+                state.createdTask = { id: 991, ...payload };
+                return json(route, { success: true, task: state.createdTask });
+            }
+            state.unexpectedMutations.push(mutation);
             return route.abort('blockedbyclient');
         }
         if (!url.pathname.startsWith('/api/')) return route.continue();
@@ -163,7 +191,7 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/tasks/my-cabinet') {
             state.cabinetRequests += 1;
             if (url.searchParams.get('focusDate')) await new Promise(resolve => setTimeout(resolve, 120));
-            return json(route, cabinetProjection());
+            return json(route, cabinetProjection(state));
         }
         if (url.pathname === '/api/tasks/owners') return json(route, { success: true, users: [] });
         if (url.pathname === '/api/tasks/permissions') return json(route, { success: true, permissions: {} });
@@ -177,7 +205,8 @@ async function assertDraftSurvivesDueChanges(page, state) {
     const title = page.locator('#cabinetTaskTitle');
     const date = page.locator('#cabinetTaskDate');
     const draft = 'Browser regression draft — do not create';
-    await title.evaluate((input, value) => { input.value = value; }, draft);
+    await title.click();
+    await title.pressSequentially(draft, { delay: 1 });
 
     for (const preset of ['today', 'tomorrow', 'day_after_tomorrow', 'plus_3_days', 'month_end', 'no_date', 'custom']) {
         await page.locator(`[data-cabinet-due-preset="${preset}"]`).click();
@@ -197,6 +226,112 @@ async function assertDraftSurvivesDueChanges(page, state) {
     assert.equal(await date.inputValue(), '2099-05-31', 'custom date remains selected');
     assert.ok(state.cabinetRequests > beforeCustomRefresh, 'custom date runs a background projection GET');
 }
+async function assertFullComposerContract(page, state) {
+    const readComposer = () => page.evaluate(() => ({
+        title: document.getElementById('cabinetTaskTitle')?.value || '',
+        date: document.getElementById('cabinetTaskDate')?.value || '',
+        category: document.getElementById('cabinetTaskCategory')?.value || '',
+        mode: document.getElementById('cabinetTaskMode')?.value || '',
+        kind: document.getElementById('cabinetTaskKind')?.value || '',
+        priority: document.getElementById('cabinetTaskPriority')?.value || '',
+        visibility: document.getElementById('cabinetTaskVisibility')?.value || '',
+        reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
+        allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked === true,
+        subtasks: Array.from(document.querySelectorAll('#cabinetSubtaskList [data-cabinet-subtask-title]'), input => input.value)
+    }));
+    const title = page.locator('#cabinetTaskTitle');
+    const toggle = page.locator('[data-cabinet-composer-toggle]');
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+    await page.locator('#cabinetTaskCategory').selectOption('event');
+    await page.locator('#cabinetTaskMode').selectOption('personal');
+    await page.locator('#cabinetTaskKind').selectOption('action');
+    await page.locator('#cabinetTaskPriority').selectOption('high');
+    await page.locator('#cabinetTaskVisibility').selectOption('me_only');
+    await page.locator('#cabinetTaskReportRequired').check();
+    await page.locator('#cabinetTaskAllowReschedule').uncheck();
+    await page.locator('.cabinet-subtask-list-toolbar .cabinet-subtask-add').click();
+    await page.locator('#cabinetSubtaskList [data-cabinet-subtask-title]').fill('Browser checklist child');
+    const expected = await readComposer();
+
+    const assertRetained = async label => {
+        const actual = await readComposer();
+        for (const key of ['title', 'category', 'mode', 'kind', 'priority', 'visibility', 'reportRequired', 'allowReschedule']) {
+            assert.equal(actual[key], expected[key], `${label} keeps ${key}`);
+        }
+        assert.deepEqual(actual.subtasks, expected.subtasks, `${label} keeps subtasks`);
+    };
+
+    for (const preset of ['today', 'tomorrow', 'day_after_tomorrow', 'plus_3_days', 'month_end', 'no_date', 'custom']) {
+        await page.locator(`[data-cabinet-due-preset="${preset}"]`).click();
+        await assertRetained(`${preset} after full composer input`);
+    }
+
+    const customDate = page.locator('#cabinetTaskDate');
+    const customProjection = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('focusDate') === '2099-05-31';
+    });
+    await customDate.fill('2099-05-31');
+    await customProjection;
+    await assertRetained('custom-date background projection');
+    assert.equal(await customDate.inputValue(), '2099-05-31', 'custom date stays after a background projection');
+
+    const isTaskCreate = response => {
+        const url = new URL(response.url());
+        return response.request().method() === 'POST' && url.pathname === '/api/tasks';
+    };
+    const failedCreate = page.waitForResponse(isTaskCreate);
+    await page.locator('.cabinet-task-create-submit').click();
+    assert.equal((await failedCreate).status(), 503, '503 fixture create is delivered to the composer');
+    await assertRetained('503 create failure');
+    assert.equal(await customDate.inputValue(), '2099-05-31', '503 create failure keeps custom date');
+
+    state.createMode = 'success';
+    const successfulCreate = page.waitForResponse(isTaskCreate);
+    await page.locator('.cabinet-task-create-submit').click();
+    assert.equal((await successfulCreate).status(), 200, 'verified fixture create succeeds');
+    await page.waitForFunction(() => document.getElementById('cabinetTaskTitle')?.value === '');
+
+    const payload = state.taskCreatePayloads.at(-1);
+    assert.equal(payload.title, expected.title, 'payload title is exact');
+    assert.equal(payload.category, 'event', 'payload category is exact');
+    assert.equal(payload.task_mode, 'personal', 'payload mode is exact');
+    assert.equal(payload.task_kind, 'checklist', 'payload uses checklist for a task with subtasks');
+    assert.equal(payload.priority, 'high', 'payload priority is exact');
+    assert.equal(payload.visibility, 'me_only', 'payload visibility is exact');
+    assert.equal(payload.reportRequired, true, 'payload report requirement is exact');
+    assert.equal(payload.allowReschedule, false, 'payload reschedule control is exact');
+    assert.equal(payload.date, '2099-05-31', 'payload custom date is exact');
+    assert.equal(payload.schedule?.date, '2099-05-31', 'payload schedule date is exact');
+    assert.equal(payload.schedule?.durationMinutes, 30, 'payload schedule duration is exact');
+    assert.deepEqual(payload.subtasks, [{ title: 'Browser checklist child', sort_order: 0, source_type: 'manual', is_done: false }], 'payload subtasks are exact');
+
+    const reset = await readComposer();
+    assert.deepEqual({
+        title: reset.title,
+        category: reset.category,
+        mode: reset.mode,
+        kind: reset.kind,
+        priority: reset.priority,
+        visibility: reset.visibility,
+        reportRequired: reset.reportRequired,
+        allowReschedule: reset.allowReschedule,
+        subtasks: reset.subtasks
+    }, {
+        title: '',
+        category: 'personal',
+        mode: 'personal',
+        kind: 'action',
+        priority: 'normal',
+        visibility: 'me_only',
+        reportRequired: false,
+        allowReschedule: true,
+        subtasks: []
+    }, 'verified success resets every composer field to defaults');
+    assert.equal(reset.date, await page.evaluate(() => window.TaskCreate.todayStr()), 'verified success resets the due date to today');
+    assert.equal(await title.inputValue(), '', 'verified success clears title after the projection confirms the row');
+}
+
 
 async function run() {
     const { chromium } = requirePlaywright();
@@ -206,7 +341,7 @@ async function run() {
         serviceWorkers: 'block',
         viewport: { width: 1440, height: 900 }
     });
-    const state = { requests: [], mutations: [], rootNavigations: [], cabinetRequests: 0 };
+    const state = { requests: [], mutations: [], unexpectedMutations: [], rootNavigations: [], cabinetRequests: 0, suggestionRequests: 0, taskCreatePayloads: [], createMode: 'fail', createdTask: null };
     const pageErrors = [];
     await context.addInitScript(({ user, permissions }) => {
         localStorage.setItem('pzp_token', 'my-day-draft-read-only-fixture');
@@ -225,8 +360,11 @@ async function run() {
         await page.waitForSelector('.cabinet-shell.cabinet-command-center');
         await page.waitForSelector('#cabinetTaskTitle');
         await assertDraftSurvivesDueChanges(page, state);
+        await assertFullComposerContract(page, state);
         assert.ok(state.requests.some(item => item.includes('/api/tasks/my-cabinet')), 'browser uses the My Day projection endpoint');
-        assert.deepEqual(state.mutations.filter(item => item.includes('/api/tasks')), [], 'browser issued no task mutation');
+        assert.equal(state.taskCreatePayloads.length, 2, 'browser exercised exactly one failed and one successful create');
+        assert.ok(state.suggestionRequests >= 1, 'browser input uses mocked decomposition suggestions');
+        assert.deepEqual(state.unexpectedMutations, [], 'browser issues no unapproved fixture mutation');
         assert.deepEqual(state.rootNavigations, [], 'authenticated profile fixture did not redirect to root');
         assert.deepEqual(pageErrors, [], `browser runtime has no uncaught errors: ${pageErrors.join('; ')}`);
         console.log('My Day draft browser smoke passed');

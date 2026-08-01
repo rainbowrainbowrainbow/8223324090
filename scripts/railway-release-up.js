@@ -14,12 +14,14 @@ const {
 
 const DEFAULT_SERVICE = '8223324090';
 const DEFAULT_ENVIRONMENT = 'production';
+const DEFAULT_PROJECT = 'bc28b46c-d4bc-491c-893a-d8401c633668';
 const DEFAULT_LIVE_URL = 'https://8223324090-production.up.railway.app';
 const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;
 const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;
 
 function parseArgs(argv) {
     const options = {
+        project: process.env.RELEASE_RAILWAY_PROJECT || process.env.RAILWAY_PROJECT_ID || DEFAULT_PROJECT,
         service: process.env.RELEASE_RAILWAY_SERVICE || process.env.RAILWAY_SERVICE || DEFAULT_SERVICE,
         environment: process.env.RELEASE_RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT || DEFAULT_ENVIRONMENT,
         branch: process.env.RELEASE_DEPLOY_BRANCH || '',
@@ -44,6 +46,8 @@ function parseArgs(argv) {
             options.exportRoot = requireValue(argv, index += 1, arg);
         } else if (arg === '--service') {
             options.service = requireValue(argv, index += 1, arg);
+        } else if (arg === '--project') {
+            options.project = requireValue(argv, index += 1, arg);
         } else if (arg === '--environment') {
             options.environment = requireValue(argv, index += 1, arg);
         } else if (arg === '--branch') {
@@ -133,6 +137,15 @@ function assertSafeBranchName(branch) {
     if (!branch) fail('RELEASE_DEPLOY_BRANCH or --branch is required.');
     if (!/^[A-Za-z0-9._/-]+$/.test(branch) || branch.includes('..') || branch.startsWith('/') || branch.endsWith('/')) {
         fail(`Unsafe deploy branch name: ${branch}`);
+    }
+}
+
+function assertSafeRailwayTarget(options) {
+    if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(options.project)) {
+        fail(`Invalid Railway project ID: ${options.project || '(missing)'}`);
+    }
+    if (!options.service || !options.environment) {
+        fail('Railway service and environment are required.');
     }
 }
 
@@ -258,6 +271,7 @@ function runPostDeploySmoke(liveUrl, head, branch) {
 function main() {
     const options = parseArgs(process.argv.slice(2));
     assertSafeBranchName(options.branch);
+    assertSafeRailwayTarget(options);
     assertCleanWorktree();
     const liveUrl = normalizeLiveUrl(options.liveUrl);
 
@@ -271,6 +285,7 @@ function main() {
     }
 
     const message = options.message || `Release v${pkg.version} ${pkg.eventGenix?.releaseLabel || pkg.name} (${shortSha(head)}; ${options.branch})`;
+    console.log(`[release:railway-up] project=${options.project}`);
     console.log(`[release:railway-up] service=${options.service}`);
     console.log(`[release:railway-up] environment=${options.environment}`);
     console.log(`[release:railway-up] branch=${options.branch}`);
@@ -281,7 +296,7 @@ function main() {
 
     if (options.dryRun) {
         console.log('[release:railway-up] dry-run > git archive --format=tar HEAD + deployment manifest');
-        console.log(`[release:railway-up] dry-run > railway up <clean-export> --path-as-root --service ${options.service} --environment ${options.environment}`);
+        console.log(`[release:railway-up] dry-run > railway up <clean-export> --path-as-root --project ${options.project} --service ${options.service} --environment ${options.environment}`);
         console.log(`[release:railway-up] dry-run > VERSION_SMOKE_EXPECT_COMMIT=${head} VERSION_SMOKE_EXPECT_BRANCH=${options.branch} npm run version:smoke -- ${liveUrl}`);
         return;
     }
@@ -294,6 +309,8 @@ function main() {
             'up',
             exportInfo.sourceDir,
             '--path-as-root',
+            '--project',
+            options.project,
             '--service',
             options.service,
             '--environment',
@@ -311,6 +328,7 @@ if (require.main === module) main();
 
 module.exports = {
     parseArgs,
+    assertSafeRailwayTarget,
     validateExport,
     createCleanExport,
     runPostDeploySmoke

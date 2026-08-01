@@ -89,6 +89,49 @@
         return taskOfflineFailure(null, fallback);
     }
 
+    const PRIVATE_HANDOFF_CONFIRM_CODE = 'TASK_PRIVATE_HANDOFF_CONFIRM_REQUIRED';
+
+    function privateTaskHandoffFromResult(result = {}) {
+        const handoff = result?.meta?.privateHandoff;
+        if (result?.code !== PRIVATE_HANDOFF_CONFIRM_CODE
+            || handoff?.confirmationRequired !== true
+            || handoff?.actorWillLoseAccess !== true) {
+            return null;
+        }
+        return handoff;
+    }
+
+    function privateTaskHandoffMessage(handoff = {}) {
+        const nextOwner = String(handoff.nextOwner?.label || handoff.nextOwner?.name || handoff.nextOwner?.username || '')
+            .trim() || '\u043d\u043e\u0432\u043e\u043c\u0443 \u0432\u0438\u043a\u043e\u043d\u0430\u0432\u0446\u044e';
+        const privacyLabel = handoff.visibility === 'me_only'
+            ? '\u043e\u0441\u043e\u0431\u0438\u0441\u0442\u0430'
+            : '\u043f\u0440\u0438\u0432\u0430\u0442\u043d\u0430';
+        return `\u0426\u044f ${privacyLabel} \u0437\u0430\u0434\u0430\u0447\u0430 \u0431\u0443\u0434\u0435 \u043f\u0435\u0440\u0435\u0434\u0430\u043d\u0430 ${nextOwner}. \u041f\u0456\u0441\u043b\u044f \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u0432\u0438 \u0432\u0442\u0440\u0430\u0442\u0438\u0442\u0435 \u0434\u043e \u043d\u0435\u0457 \u0434\u043e\u0441\u0442\u0443\u043f.`;
+    }
+
+    async function executePrivateTaskHandoff(request, options = {}) {
+        if (typeof request !== 'function') {
+            return { success: false, error: 'Private handoff request is unavailable.' };
+        }
+        const firstResult = await request(false);
+        const handoff = privateTaskHandoffFromResult(firstResult);
+        if (!handoff) return firstResult;
+
+        const confirm = options.confirm || global.confirmModal;
+        if (typeof confirm !== 'function') {
+            return { ...firstResult, confirmationUnavailable: true };
+        }
+        const confirmed = await confirm(privateTaskHandoffMessage(handoff), {
+            type: 'warning',
+            icon: '\ud83d\udd12',
+            okText: '\u041f\u0435\u0440\u0435\u0434\u0430\u0442\u0438 \u0456 \u0432\u0442\u0440\u0430\u0442\u0438\u0442\u0438 \u0434\u043e\u0441\u0442\u0443\u043f',
+            cancelText: '\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438'
+        });
+        if (!confirmed) return { ...firstResult, cancelled: true };
+        return request(true);
+    }
+
     function applyPriorityClasses(element, priority = 'normal', options = {}) {
         if (!element) return normalizeTaskPriority(priority);
         const normalized = normalizeTaskPriority(priority);
@@ -371,6 +414,9 @@
         taskMutationFailure,
         taskOfflineFailure,
         normalizeTaskMutationResult,
+        PRIVATE_HANDOFF_CONFIRM_CODE,
+        privateTaskHandoffFromResult,
+        executePrivateTaskHandoff,
         applyPriorityClasses,
         TaskMutationSync
     });

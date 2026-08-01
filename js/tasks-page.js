@@ -2265,12 +2265,16 @@ async function apiPatchTaskSubtask(taskId, subtaskId, data) {
     }
 }
 
-async function apiReassignTask(taskId, ownerUserId) {
+async function apiReassignTask(taskId, ownerUserId, options = {}) {
     try {
+        const payload = { ownerUserId, sourceSurface: 'task_page' };
+        if (options.confirmPrivateHandoff === true) {
+            payload.confirmPrivateHandoff = true;
+        }
         const response = await taskApiFetch(`${API_BASE}/tasks/${taskId}/reassign`, {
             method: 'POST',
             headers: getAuthHeaders(),
-            body: JSON.stringify({ ownerUserId, sourceSurface: 'task_page' })
+            body: JSON.stringify(payload)
         });
         if (handleAuthError(response)) return null;
         return await response.json();
@@ -6418,7 +6422,16 @@ async function taskDetailReassign(taskId) {
         showNotification('Оберіть typed owner для reassignment', 'error');
         return;
     }
-    const result = await apiReassignTask(taskId, ownerUserId);
+    const executePrivateTaskHandoff = window.TaskUiShared?.executePrivateTaskHandoff;
+    if (typeof executePrivateTaskHandoff !== 'function') {
+        showNotification('\u041f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043f\u0435\u0440\u0435\u0434\u0430\u0447\u0456 \u043f\u0440\u0438\u0432\u0430\u0442\u043d\u043e\u0457 \u0437\u0430\u0434\u0430\u0447\u0456 \u0442\u0438\u043c\u0447\u0430\u0441\u043e\u0432\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435.', 'error');
+        return;
+    }
+    const result = await executePrivateTaskHandoff(
+        confirmed => apiReassignTask(taskId, ownerUserId, { confirmPrivateHandoff: confirmed === true }),
+        { confirm: confirmTaskUiAction }
+    );
+    if (result?.cancelled) return;
     if (result?.success) {
         showNotification('Owner задачі змінено', 'success');
         await loadTaskHistory(taskId);

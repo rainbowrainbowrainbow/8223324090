@@ -24,6 +24,7 @@ const {
 } = require('../services/taskPolicy');
 const {
     completeTask,
+    assertPrivateTaskHandoffConfirmed,
     getAssignableTaskOwner,
     listTaskOwnerCandidates,
     taskCompletionReportId,
@@ -2474,6 +2475,7 @@ router.post('/:id/reassign', async (req, res) => {
         const result = await reassignTaskOwner(req.params.id, ownerUserId, req.user, {
             sourceSurface: sourceSurface(req.body),
             route: 'tasks_task_reassign',
+            confirmPrivateHandoff: req.body?.confirmPrivateHandoff === true,
             businessScope
         });
         notifyTaskAssignment(result.task, req.user?.username || 'system').catch(() => {});
@@ -2931,6 +2933,29 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         const assigned_to = typedOwner?.assignedToSnapshot || b.assigned_to || b.assignedTo || old.assigned_to;
         const owner_user_id = typedOwner ? typedOwner.ownerUserId : old.owner_user_id;
         const owner = b.owner !== undefined ? b.owner : old.owner;
+        const directLegacyOwnerChanged = !typedOwner && (
+            (b.assigned_to !== undefined && normalizedComparable(b.assigned_to) !== normalizedComparable(old.assigned_to))
+            || (b.assignedTo !== undefined && normalizedComparable(b.assignedTo) !== normalizedComparable(old.assigned_to))
+            || (b.owner !== undefined && normalizedComparable(b.owner) !== normalizedComparable(old.owner))
+        );
+        if (directLegacyOwnerChanged) {
+            const err = new Error('Use the canonical reassign endpoint to change a task owner.');
+            err.statusCode = 400;
+            err.code = 'TASK_REASSIGN_USE_CANONICAL_ENDPOINT';
+            throw err;
+        }
+        if (typedOwner && Number(old.owner_user_id || 0) !== Number(typedOwner.ownerUserId)) {
+            if (!canReassignTask(req.user, old)) {
+                const err = new Error('You cannot reassign this task');
+                err.statusCode = 403;
+                err.code = 'TASK_REASSIGN_FORBIDDEN';
+                throw err;
+            }
+            await assertPrivateTaskHandoffConfirmed(old, typedOwner.owner, req.user, {
+                pool,
+                confirmPrivateHandoff: b.confirmPrivateHandoff === true
+            });
+        }
         const category = b.category || old.category;
         const task_type = b.task_type || b.taskType || old.task_type;
         const deadline = b.deadline !== undefined ? b.deadline : old.deadline;
@@ -3123,6 +3148,9 @@ router.put('/:id', requireRole('admin', 'user'), async (req, res) => {
         });
         _alertPush();
     } catch (err) {
+        if (err.statusCode && err.statusCode < 500) {
+            return sendTaskActionError(res, err);
+        }
         log.error('Update error', err);
         res.status(500).json({ error: 'Internal server error' });
     }

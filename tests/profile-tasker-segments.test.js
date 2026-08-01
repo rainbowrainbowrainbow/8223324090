@@ -2273,6 +2273,9 @@ test('My Day critical actions reuse existing subtask and reassign endpoints', as
         if (path.endsWith('/subtasks')) return { success: true, subtask: { id: calls.length, title: body.title } };
         return { success: true };
     };
+    ctx.TaskUiShared = {
+        executePrivateTaskHandoff: async request => request(false)
+    };
 
     const split = await ctx.splitCabinetPostponementTask(301);
     assert.equal(split.created.length, 2);
@@ -2283,6 +2286,39 @@ test('My Day critical actions reuse existing subtask and reassign endpoints', as
     assert.equal(calls[2].path, '/tasks/301/reassign');
     assert.equal(calls[2].body.ownerUserId, 44);
     assert.equal(calls[2].body.sourceSurface, 'profile_my_cabinet_postponement_action');
+});
+
+test('My Day reassign retries only after shared private handoff confirmation', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    ctx.formModal = async () => ({ ownerUserId: '44' });
+    ctx.apiGet = async () => ({ success: true, users: [{ id: 44, label: 'Receiver', role: 'manager' }] });
+    ctx.TaskUiShared = {
+        executePrivateTaskHandoff: async request => {
+            const first = await request(false);
+            assert.equal(first.success, false);
+            assert.equal(first.code, 'TASK_PRIVATE_HANDOFF_CONFIRM_REQUIRED');
+            return request(true);
+        }
+    };
+    ctx.apiPost = async (path, body) => {
+        calls.push({ path, body });
+        if (calls.length === 1) {
+            return {
+                success: false,
+                code: 'TASK_PRIVATE_HANDOFF_CONFIRM_REQUIRED',
+                meta: { privateHandoff: { confirmationRequired: true, actorWillLoseAccess: true } }
+            };
+        }
+        return { success: true };
+    };
+
+    await ctx.reassignCabinetPostponementTask(302, { ownerUserId: 7 });
+
+    assert.equal(calls.length, 2);
+    assert.equal(calls[0].path, '/tasks/302/reassign');
+    assert.equal(calls[0].body.confirmPrivateHandoff, undefined);
+    assert.equal(calls[1].body.confirmPrivateHandoff, true);
 });
 
 test('My Day cancel action requires confirmation and archives without DELETE', async () => {

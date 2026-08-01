@@ -68,6 +68,17 @@ const ACTION_STATUS = Object.freeze({
     PARTIAL: 'partial'
 });
 
+// UI-facing names for stable page group keys. Keeping this next to
+// PAGE_PERMISSIONS avoids a second page-group dictionary in account screens.
+const PAGE_PERMISSION_GROUP_LABELS = Object.freeze({
+    today: 'Сьогодні та операції',
+    sales: 'Продажі та фінанси',
+    team: 'Команда та HR',
+    product: 'Продукт',
+    system: 'Система',
+    personal: 'Особисте'
+});
+
 function source(file, symbol, options = {}) {
     return Object.freeze({
         file,
@@ -688,10 +699,32 @@ function canonicalizePageKey(value) {
         || normalized;
 }
 
+/**
+ * Safe projection for account-management clients.
+ * Registry entries also contain implementation consumers and source paths;
+ * those stay server-only.
+ */
+function getPublicPagePermissionMetadata() {
+    return PAGE_PERMISSIONS.map(entry => ({
+        key: entry.key,
+        label: entry.label,
+        group: entry.group,
+        groupLabel: PAGE_PERMISSION_GROUP_LABELS[entry.group] || entry.group,
+        canonicalPath: entry.canonicalPath,
+        aliases: [...entry.aliases],
+        roles: [...entry.defaultRoles],
+        risk: entry.risk,
+        status: entry.status,
+        deprecated: entry.deprecated === true,
+        explicitAllow: entry.explicitAllow !== false
+    }));
+}
+
 module.exports = {
     ROLE_HIERARCHY,
     PAGE_STATUS,
     ACTION_STATUS,
+    PAGE_PERMISSION_GROUP_LABELS,
     PAGE_PERMISSIONS,
     ACTION_PERMISSIONS,
     HR_TABS,
@@ -700,5 +733,6 @@ module.exports = {
     ACTION_PERMISSION_BY_KEY,
     HR_TAB_BY_ID,
     PAGE_ALIAS_TO_CANONICAL,
-    canonicalizePageKey
+    canonicalizePageKey,
+    getPublicPagePermissionMetadata
 };

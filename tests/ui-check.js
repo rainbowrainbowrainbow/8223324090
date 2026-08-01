@@ -7041,6 +7041,21 @@ check('HR Account Center uses the dedicated effective-access workspace',
     && hrCode.includes('accountActionPermissionsMatrix')
     && htmlContains('routes/users.js', 'rolePresets:')
     && htmlContains('routes/users.js', 'action.deprecated !== true'));
+check('HR Account Center receives human page metadata from permissionRegistry',
+    htmlContains('routes/users.js', 'getPublicPagePermissionMetadata')
+    && htmlContains('routes/users.js', 'pages,')
+    && permissionRegistryCode.includes('function getPublicPagePermissionMetadata')
+    && permissionRegistryCode.includes("key: '/demo', label: 'Demo'")
+    && permissionRegistryCode.includes("key: '/hermes-studio', label: 'Hermes Studio'")
+    && permissionRegistryCode.includes("key: '/booking-summary.html', label: 'Підсумок бронювання'")
+    && permissionRegistryCode.includes("key: '/certificates/new', label: 'Видати сертифікат або абонемент'")
+    && permissionRegistryCode.includes("key: '/accounting-deposits', label: 'Перевірка завдатків'")
+    && hrCode.includes('let accountPageDefinitions = []')
+    && hrCode.includes('function getAccountPageDefinitions')
+    && hrCode.includes('Array.isArray(data?.pages)')
+    && hrCode.includes('group: page.groupLabel || page.group')
+    && !hrCode.includes('const ACCOUNT_PAGE_LABELS =')
+    && !hrCode.includes('function accountAccessPageGroup('));
 check('HR Account Center hides protected account actions before API calls', hrCode.includes('function currentAccountCanMutateTarget') && hrCode.includes('function currentAccountCanToggleTarget') && hrCode.includes('function renderAccountActionMenu') && hrCode.includes('user.protected_account === true') && hrCode.includes('Системний або захищений акаунт') && hrCode.includes('currentAccountCanMutateTarget(user)') && hrCode.includes('currentAccountCanToggleTarget(user)'));
 check('Extensionless CRM HTML routes are no-store to avoid stale HR tab DOM', securityMiddlewareCode.includes('STATIC_HTML_ROUTE_PATHS') && securityMiddlewareCode.includes("'/hr'") && securityMiddlewareCode.includes('function isHtmlPagePath') && securityMiddlewareCode.includes("res.set('Cache-Control', 'no-cache, no-store, must-revalidate')"));
 check('Service worker script is not served as immutable static JS', securityMiddlewareCode.includes("p === '/sw.js'") && securityMiddlewareCode.includes('stale workers can keep serving') && securityMiddlewareCode.includes("res.set('Cache-Control', 'no-cache, no-store, must-revalidate')"));

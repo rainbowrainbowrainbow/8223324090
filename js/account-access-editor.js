@@ -216,7 +216,7 @@
         }).filter(definition => capabilityMatches(model, definition));
         const groups = new Map();
         definitions.forEach(definition => {
-            const group = definition.type === 'page' ? 'Сторінки та модулі' : definition.group || 'Інші';
+            const group = definition.group || (definition.type === 'page' ? 'Сторінки та модулі' : 'Інші');
             if (!groups.has(group)) groups.set(group, []);
             groups.get(group).push(definition);
         });

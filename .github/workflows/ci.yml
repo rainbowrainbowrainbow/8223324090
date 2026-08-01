@@ -86,6 +86,9 @@ jobs:
       - name: Run HR Today metrics browser smoke
         run: npm run test:browser:hr-today
 
+      - name: Run HR Pulse refresh-only permission hydration browser smoke
+        run: npm run test:browser:hr-pulse
+
       - name: Run HR onboarding cross-surface browser smoke
         run: npm run test:browser:hr-onboarding
 

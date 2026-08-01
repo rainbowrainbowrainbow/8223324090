@@ -582,6 +582,12 @@ async function run() {
     }
 }
 
-run().catch(error => {
-    fail(error?.stack || error?.message || String(error));
-});
+if (!TARGET_URL && process.env.CI === 'true') {
+    require('./hr-pulse-auth-hydration-ci-smoke').run().catch(error => {
+        fail(error?.stack || error?.message || String(error));
+    });
+} else {
+    run().catch(error => {
+        fail(error?.stack || error?.message || String(error));
+    });
+}

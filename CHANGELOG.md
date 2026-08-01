@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.54 - CI HR permissions і сесії
+
+### CI / Надійність / (01.08.2026) [codex]
+- **HR Pulse став обов’язковим browser gate** — CI відкриває реальну статичну сторінку `/hr` з порожнім localStorage, refresh-only сесією та hydration через `/api/auth/permissions`, після чого перевіряє «Сьогодні», «Графік» і «Звіти».
+- **Збої прав і Check-in мають окремі контракти** — fast baseline охоплює retry/error lifecycle permissions та CSP/model-loading Check-in без запуску камери й без attendance mutation.
+- **Регресію legacy bootstrap заблоковано** — inventory protected pages і refresh-only lifecycle лишаються обов’язковою перевіркою, тому новий `pzp_token` precheck не пройде CI.
+---
+
 ## v0.80.53 - Staff і Training: права за capabilities
 
 ### HR / Доступ / (01.08.2026) [codex]

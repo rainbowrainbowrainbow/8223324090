@@ -70,6 +70,9 @@ jobs:
 
       - name: Install Chromium
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
+      - name: Run My Day draft regression browser smoke
+        run: npm run test:browser:my-day-draft
+
 
       - name: Run effective access editor browser smoke
         run: npm run test:browser:account-access

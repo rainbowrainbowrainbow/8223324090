@@ -3534,7 +3534,11 @@ const Sidebar = (() => {
     function _canUseSidebarFinanceCurrencyFallback(user = _getCurrentSidebarUser()) {
         const role = _getSidebarActiveRole(user);
         const financeItem = { href: '/finance', access: 'finance' };
-        return hasAccess(financeItem, role)
+        const canManageFinance = typeof window.canUseAction === 'function'
+            ? window.canUseAction('finance.manage')
+            : (typeof canUseAction === 'function' && canUseAction('finance.manage'));
+        return canManageFinance
+            && hasAccess(financeItem, role)
             && _businessAllowsSidebarItem(financeItem, user)
             && _isNavItemVisible(financeItem, user, role);
     }

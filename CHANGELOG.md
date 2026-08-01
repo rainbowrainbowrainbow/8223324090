@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.58 - Sidebar: захист Finance fallback
+
+### Release / Versioning / (01.08.2026) [codex]
+- **Захист sidebar Finance fallback** — sidebar більше не робить захищений Finance-запит для сесії без `finance.manage`; це прибирає зайвий 403 у console на HR та інших не-Finance сторінках.
+
+---
+
 ## v0.80.57 - Release metadata: стабільний deploy proof
 
 ### Release / Надійність / (01.08.2026) [codex]

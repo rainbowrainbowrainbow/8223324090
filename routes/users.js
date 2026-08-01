@@ -225,6 +225,23 @@ function normalizePageAllowlistInput(value, options = {}) {
     }).values;
 }
 
+function normalizePageAllowlistUpdateInput(value, options = {}) {
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, options).values;
+}
+
+function assertNoNewExplicitAllowDisabledPages(requestedAllowlist, currentAllowlist, fieldName = 'pageAllowlist') {
+    if (!Array.isArray(requestedAllowlist)) return;
+    const currentKeys = new Set(normalizePageAllowlist(currentAllowlist));
+    const { explicitAllowDisabledKeys } = normalizeCapabilityList(requestedAllowlist, CAPABILITY_TYPES.PAGE, {
+        excludeExplicitAllowDisabled: true
+    });
+    const newlyAddedKeys = explicitAllowDisabledKeys.filter(key => !currentKeys.has(key));
+    if (!newlyAddedKeys.length) return;
+
+    // Reuse the canonical validator so callers receive the existing 400 contract.
+    normalizePageAllowlistInput(newlyAddedKeys, { strict: true, fieldName });
+}
+
 function assertSelfAccountAccessSafe(actor, prospectiveAccount) {
     if (!actor || !prospectiveAccount || Number(actor.id) !== Number(prospectiveAccount.id)) return;
     if (!canUseAction(prospectiveAccount, 'manage_accounts') || !canUseAction(prospectiveAccount, 'manage_users')) {
@@ -846,7 +863,7 @@ async function updateAccountAccess(req, res) {
             ? Array.from(new Set(extraRoles.filter(item => ROLE_HIERARCHY.includes(item) && item !== role))).slice(0, 3)
             : null;
         const normalizedPageAllowlist = pageAllowlistInput !== undefined
-            ? normalizePageAllowlistInput(pageAllowlistInput, { strict: true, fieldName: 'pageAllowlist' }).slice(0, 50)
+            ? normalizePageAllowlistUpdateInput(pageAllowlistInput, { strict: true, fieldName: 'pageAllowlist' }).slice(0, 50)
             : null;
         const normalizedPageDenylist = pageDenylistInput !== undefined
             ? normalizePageDenylistInput(pageDenylistInput, { strict: true, fieldName: 'pageDenylist' }).slice(0, 50)
@@ -888,6 +905,7 @@ async function updateAccountAccess(req, res) {
         const oldExtraRoles = normalizeStoredArray(current.extra_roles);
         const oldPageAllowlist = normalizePageAllowlist(current);
         const oldPageDenylist = accountPageDenylist(current);
+        assertNoNewExplicitAllowDisabledPages(normalizedPageAllowlist, oldPageAllowlist);
         const oldActionAllowlist = accountActionAllowlist(current);
         const oldActionDenylist = accountActionDenylist(current);
         const oldBusinessContexts = normalizeStoredArray(current.business_contexts);

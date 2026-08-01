@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.62 - Доступи: metadata сторінок
+
+### Release / Versioning / (01.08.2026) [codex]
+- **Єдиний каталог сторінок** — `/api/users/roles` віддає safe `pages` metadata, згенерований безпосередньо з `permissionRegistry`.
+- **Зрозумілий редактор доступів** — labels і групи сторінок беруться з registry; технічні назви на кшталт `/demo · /demo` більше не показуються.
+- **Без зміни доступів** — ролі, allowlists, resolver, БД і production data не змінювалися.
+
+---
+
 ## v0.80.61 - Безпечний QA lease та read-only wallet
 
 ### Release / Versioning / (01.08.2026) [codex]

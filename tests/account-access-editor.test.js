@@ -93,6 +93,19 @@ test('page modules support inherited, allow and deny with canonical draft keys',
     assert.deepEqual(conflictingStoredState.draft.pageDenylist, ['/reports']);
 });
 
+test('stored-list diff ignores canonical key ordering', () => {
+    const model = editor.createModel({
+        initial: { role: 'admin', pageAllowlist: ['/reports', '/customers'] },
+        pages: [
+            { key: '/reports', canonicalPath: '/reports', label: 'Reports', group: 'Sales', defaultRoles: ['admin'] },
+            { key: '/customers', canonicalPath: '/customers', label: 'Customers', group: 'Sales', defaultRoles: ['admin'] }
+        ]
+    });
+    model.draft = { ...model.draft, pageAllowlist: ['/customers', '/reports'] };
+    assert.equal(model.isDirty(), false);
+    assert.deepEqual(model.diff(), []);
+});
+
 test('page group actions preview effective changes before applying the draft', () => {
     const model = editor.createModel({
         initial: { role: 'senior_manager', pageAllowlist: [], pageDenylist: [] },

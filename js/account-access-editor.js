@@ -169,7 +169,7 @@
     }
 
     function modeLabel(mode) {
-        return ({ inherited: 'РЈСЃРїР°РґРєРѕРІР°РЅРѕ', allow: 'Allow', deny: 'Deny' })[mode] || 'РЈСЃРїР°РґРєРѕРІР°РЅРѕ';
+        return ({ inherited: '\u0423\u0441\u043f\u0430\u0434\u043a\u043e\u0432\u0430\u043d\u043e', allow: 'Allow', deny: 'Deny' })[mode] || '\u0423\u0441\u043f\u0430\u0434\u043a\u043e\u0432\u0430\u043d\u043e';
     }
 
     function decisionSummary(decision, labels) {
@@ -178,10 +178,10 @@
 
     function renderEffectiveDiff(model, changes) {
         if (!changes.length) return '';
-        return '<h4>Effective access Р·РјС–РЅРёС‚СЊСЃСЏ</h4><ul class="aae-effective-diff" data-effective-diff>'
+        return '<h4>Effective access \u0437\u043c\u0456\u043d\u0438\u0442\u044c\u0441\u044f</h4><ul class="aae-effective-diff" data-effective-diff>'
             + changes.slice(0, 30).map(change => '<li><code>' + escapeHtml(change.definition.key) + '</code>'
-                + '<span>Stored: ' + escapeHtml(modeLabel(change.previousMode)) + ' в†’ ' + escapeHtml(modeLabel(change.nextMode)) + '</span>'
-                + '<span>Effective: ' + escapeHtml(decisionSummary(change.previous, model.config.roleLabels)) + ' в†’ ' + escapeHtml(decisionSummary(change.next, model.config.roleLabels)) + '</span>'
+                + '<span>Stored: ' + escapeHtml(modeLabel(change.previousMode)) + ' \u2192 ' + escapeHtml(modeLabel(change.nextMode)) + '</span>'
+                + '<span>Effective: ' + escapeHtml(decisionSummary(change.previous, model.config.roleLabels)) + ' \u2192 ' + escapeHtml(decisionSummary(change.next, model.config.roleLabels)) + '</span>'
                 + '</li>').join('') + '</ul>';
     }
 
@@ -189,9 +189,9 @@
         const pending = model.pendingGroupAction;
         const token = items.map(item => item.type + ':' + item.key).join('|');
         if (!pending || pending.token !== token) return '';
-        return '<div class="aae-group-preview" data-group-preview role="status" aria-live="polite"><span><strong>РџРѕРїРµСЂРµРґРЅС–Р№ РїРµСЂРµРіР»СЏРґ:</strong> '
-            + escapeHtml(modeLabel(pending.mode)) + ' РґР»СЏ ' + pending.changedCount + ' РјРѕР¶Р»РёРІРѕСЃС‚РµР№; effective Р·РјС–РЅ: '
-            + pending.effectiveChanges.length + '.</span><div><button type="button" data-action="cancel-group-action">РЎРєР°СЃСѓРІР°С‚Рё</button><button type="button" class="aae-primary" data-action="apply-group-action">Р—Р°СЃС‚РѕСЃСѓРІР°С‚Рё</button></div></div>';
+        return '<div class="aae-group-preview" data-group-preview role="status" aria-live="polite"><span><strong>\u041f\u043e\u043f\u0435\u0440\u0435\u0434\u043d\u0456\u0439 \u043f\u0435\u0440\u0435\u0433\u043b\u044f\u0434:</strong> '
+            + escapeHtml(modeLabel(pending.mode)) + ' \u0434\u043b\u044f ' + pending.changedCount + ' \u043c\u043e\u0436\u043b\u0438\u0432\u043e\u0441\u0442\u0435\u0439; effective \u0437\u043c\u0456\u043d: '
+            + pending.effectiveChanges.length + '.</span><div><button type="button" data-action="cancel-group-action">\u0421\u043a\u0430\u0441\u0443\u0432\u0430\u0442\u0438</button><button type="button" class="aae-primary" data-action="apply-group-action">\u0417\u0430\u0441\u0442\u043e\u0441\u0443\u0432\u0430\u0442\u0438</button></div></div>';
     }
 
     function fieldDiff(before, after) {
@@ -201,12 +201,14 @@
             ['actionDenylist', 'Явно заборонені дії'], ['businessContexts', 'Бізнеси'],
             ['defaultBusinessContext', 'Бізнес за замовченням']
         ];
-        return fields.filter(([key]) => JSON.stringify(before[key]) !== JSON.stringify(after[key])).map(([key, label]) => ({
-            key,
-            label,
-            before: Array.isArray(before[key]) ? before[key].join(', ') || '—' : before[key] || '—',
-            after: Array.isArray(after[key]) ? after[key].join(', ') || '—' : after[key] || '—'
-        }));
+        const valueForDiff = value => Array.isArray(value)
+            ? uniqueStrings(value).slice().sort().join(', ') || '\u2014'
+            : value == null || value === '' ? '\u2014' : String(value);
+        return fields.map(([key, label]) => {
+            const previous = valueForDiff(before[key]);
+            const next = valueForDiff(after[key]);
+            return previous === next ? null : { key, label, before: previous, after: next };
+        }).filter(Boolean);
     }
 
     function effectiveDiff(config, before, after) {

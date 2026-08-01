@@ -108,6 +108,18 @@ test('truth table preserves deny, allow, primary role, extra role, and default-d
     }
 });
 
+test('page deny canonicalizes aliases and wins over allow and role in both runtimes', () => {
+    const decision = assertParity({
+        role: 'creator',
+        page_allowlist: ['/chat'],
+        page_denylist: ['/kleshnya']
+    }, '/chat', { type: 'page' });
+    assert.deepEqual(
+        [decision.allowed, decision.source, decision.sourceRole, decision.reason],
+        [false, 'explicit_deny', null, 'listed_in_explicit_deny']
+    );
+});
+
 test('every registered capability has identical frontend and backend decisions', () => {
     for (const entry of [...registry.PAGE_PERMISSIONS, ...registry.ACTION_PERMISSIONS]) {
         const context = { type: entry.type };
@@ -129,7 +141,13 @@ test('every registered capability has identical frontend and backend decisions',
             assertParity(user, entry.key, context);
         }
 
-        if (entry.type === 'action') {
+        if (entry.type === 'page') {
+            assertParity({
+                role: allowedRole || deniedRole,
+                page_allowlist: [entry.key],
+                page_denylist: [entry.key]
+            }, entry.key, context);
+        } else {
             assertParity({
                 role: allowedRole || deniedRole,
                 action_allowlist: [entry.key],

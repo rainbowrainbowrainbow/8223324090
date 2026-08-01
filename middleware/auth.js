@@ -18,6 +18,7 @@ const {
     NON_DELEGABLE_ACTIONS,
     normalizeRoleList,
     normalizePageAllowlist,
+    normalizePageDenylist,
     normalizeActionOverrideList,
     resolveCapability
 } = require('../services/accountAccessPolicy');
@@ -59,6 +60,7 @@ function canUseAction(user, action) {
 function buildAuthUserPayload(user) {
     const extraRoles = Array.isArray(user?.extra_roles) ? user.extra_roles : (Array.isArray(user?.extraRoles) ? user.extraRoles : []);
     const pageAllowlist = normalizePageAllowlist(user);
+    const pageDenylist = normalizePageDenylist(user);
     const actionAllowlist = normalizeActionOverrideList(user?.action_allowlist || user?.actionAllowlist);
     const actionDenylist = normalizeActionOverrideList(user?.action_denylist || user?.actionDenylist);
     const roles = normalizeRoleList({ ...user, extraRoles });
@@ -81,6 +83,8 @@ function buildAuthUserPayload(user) {
         extraRoles: roles.filter(role => role !== user.role),
         pageAllowlist,
         page_allowlist: pageAllowlist,
+        pageDenylist,
+        page_denylist: pageDenylist,
         actionAllowlist,
         actionDenylist,
         action_allowlist: actionAllowlist,
@@ -147,7 +151,7 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         }
 
         const freshAccessState = await pool.query(
-            `SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts,
+            `SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts,
                     default_business_context, name, telegram_chat_id, is_active
              FROM users WHERE id = $1`,
             [userId]
@@ -389,7 +393,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
 
     // Get user
     const userResult = await pool.query(
-        'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
+        'SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
         [oldToken.user_id]
     );
 
@@ -427,7 +431,7 @@ async function revokeRefreshToken(refreshToken) {
          WHERE rt.token_hash = $1
            AND rt.user_id = u.id
            AND rt.revoked_at IS NULL
-         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.name, u.telegram_chat_id`,
+         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.page_denylist, u.action_allowlist, u.action_denylist, u.name, u.telegram_chat_id`,
         [tokenHash]
     );
     return result.rows[0] || null;
@@ -475,6 +479,7 @@ module.exports = {
     NON_DELEGABLE_ACTIONS,
     normalizeRoleList,
     normalizePageAllowlist,
+    normalizePageDenylist,
     normalizeActionOverrideList,
     userHasAnyRole,
     userMaxRoleLevel,

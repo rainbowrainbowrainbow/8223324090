@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.63 - Доступи: явна заборона сторінок
+
+### Release / Versioning / (01.08.2026) [codex]
+- **Явна заборона сторінок** — додано окремий `page_denylist`: deny має пріоритет над allow і role preset, а reset повертає успадкований доступ.
+- **Один effective access contract** — login, refresh, `/api/auth/permissions`, users API та frontend resolver однаково canonicalize aliases і повертають джерело рішення.
+- **Безпечна PostgreSQL migration** — нове `TEXT[] NOT NULL DEFAULT '{}'` поле додається без backfill або масового переписування production users.
+
+---
+
 ## v0.80.62 - Доступи: metadata сторінок
 
 ### Release / Versioning / (01.08.2026) [codex]

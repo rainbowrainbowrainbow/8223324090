@@ -6,11 +6,23 @@
 
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
-const { describe, it, before } = require('node:test');
+const { describe, it, before, after } = require('node:test');
+const { Pool } = require('pg');
 const { getToken, request, testDate } = require('../helpers');
 
 const enabled = process.env.RUN_PERMISSION_CAPABILITIES_INTEGRATION === 'true';
 const accounts = Object.create(null);
+let schemaPool = null;
+
+function createSchemaPool() {
+    const databaseUrl = String(process.env.DATABASE_URL || '');
+    return new Pool(databaseUrl
+        ? {
+            connectionString: databaseUrl,
+            ssl: databaseUrl.includes('localhost') ? false : { rejectUnauthorized: false }
+        }
+        : {});
+}
 
 function requireDisposableTarget() {
     assert.equal(enabled, true, 'set RUN_PERMISSION_CAPABILITIES_INTEGRATION=true');
@@ -34,12 +46,14 @@ async function permissions(token) {
 describe('disposable token-backed permission capability contract', { skip: !enabled }, () => {
     before(async () => {
         requireDisposableTarget();
+        schemaPool = createSchemaPool();
         const creatorToken = await getToken();
         const suffix = `${process.pid}_${Date.now()}_${crypto.randomBytes(2).toString('hex')}`;
         const definitions = [
             {
                 key: 'admin',
                 role: 'admin',
+                extraRoles: ['accountant'],
                 actionAllowlist: ['hr.today.view', 'hr.schedule.view'],
                 actionDenylist: ['hr.schedule.manage', 'hr.reports.view', 'hr.reports.export']
             },
@@ -55,8 +69,9 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 password,
                 name: `Disposable Permission QA ${definition.key} ${suffix}`,
                 role: definition.role,
-                extraRoles: [],
+                extraRoles: definition.extraRoles || [],
                 pageAllowlist: ['/hr'],
+                pageDenylist: [],
                 actionAllowlist: definition.actionAllowlist,
                 actionDenylist: definition.actionDenylist,
                 businessContexts: ['event_genix'],
@@ -69,11 +84,37 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 username,
                 password,
                 role: definition.role,
+                extraRoles: definition.extraRoles || [],
                 actionAllowlist: definition.actionAllowlist,
                 actionDenylist: definition.actionDenylist,
                 token: await login(username, password)
             };
         }
+    });
+
+    after(async () => {
+        if (schemaPool) await schemaPool.end();
+    });
+
+    it('applies the additive page_denylist migration with the expected PostgreSQL contract', async () => {
+        const result = await schemaPool.query(
+            `SELECT data_type, udt_name, is_nullable, column_default
+             FROM information_schema.columns
+             WHERE table_schema = 'public'
+               AND table_name = 'users'
+               AND column_name = 'page_denylist'`
+        );
+        assert.equal(result.rows.length, 1);
+        assert.equal(result.rows[0].data_type, 'ARRAY');
+        assert.equal(result.rows[0].udt_name, '_text');
+        assert.equal(result.rows[0].is_nullable, 'NO');
+        assert.match(String(result.rows[0].column_default), /'\{\}'::text\[\]/);
+        const migration = await schemaPool.query(
+            `SELECT COUNT(*)::int AS count
+             FROM schema_migrations
+             WHERE version = '311_user_page_permission_denies'`
+        );
+        assert.equal(migration.rows[0].count, 1);
     });
 
     it('keeps representative role tokens aligned with the effective permission preview', async () => {
@@ -113,6 +154,65 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(mutation.status, 403, 'mutation must be rejected before parsing or writing payload');
     });
 
+    it('persists canonical page deny, preserves it for legacy PATCH, and resets to inherited access', async () => {
+        const creatorToken = await getToken();
+        const account = accounts.admin;
+        const inherited = await permissions(account.token);
+        assert.equal(inherited.pages['/reports'], true);
+        assert.equal(inherited.capabilities['page:/reports'].source, 'role_preset');
+        assert.equal(inherited.capabilities['page:/reports'].sourceRole, 'accountant');
+        assert.deepEqual(inherited.pageDenylist, []);
+
+        const conflict = await request('PATCH', `/api/users/${account.id}/access`, {
+            role: account.role,
+            pageAllowlist: ['/chat'],
+            pageDenylist: ['/kleshnya']
+        }, creatorToken);
+        assert.equal(conflict.status, 400);
+        assert.equal(conflict.data?.code, 'CAPABILITY_ALLOW_DENY_CONFLICT');
+        assert.deepEqual(conflict.data?.details?.conflicts, ['/chat']);
+
+        const unknown = await request('PATCH', `/api/users/${account.id}/access`, {
+            role: account.role,
+            pageDenylist: ['/unknown-page-deny']
+        }, creatorToken);
+        assert.equal(unknown.status, 400);
+        assert.equal(unknown.data?.code, 'UNKNOWN_CAPABILITY_KEYS');
+
+        const deny = await request('PATCH', `/api/users/${account.id}/access`, {
+            role: account.role,
+            pageDenylist: ['/reports.html']
+        }, creatorToken);
+        assert.equal(deny.status, 200, JSON.stringify(deny.data));
+        assert.deepEqual(deny.data?.pageDenylist, ['/reports']);
+        account.token = await login(account.username, account.password);
+        const denied = await permissions(account.token);
+        assert.equal(denied.pages['/reports'], false);
+        assert.equal(denied.capabilities['page:/reports'].source, 'explicit_deny');
+        assert.deepEqual(denied.pageDenylist, ['/reports']);
+
+        const compatibility = await request('PATCH', `/api/users/${account.id}/access`, {
+            role: account.role,
+            actionAllowlist: account.actionAllowlist,
+            actionDenylist: account.actionDenylist
+        }, creatorToken);
+        assert.equal(compatibility.status, 200, JSON.stringify(compatibility.data));
+        assert.deepEqual(compatibility.data?.pageDenylist, ['/reports']);
+        account.token = await login(account.username, account.password);
+        assert.equal((await permissions(account.token)).pages['/reports'], false);
+
+        const reset = await request('PATCH', `/api/users/${account.id}/access`, {
+            role: account.role,
+            pageDenylist: []
+        }, creatorToken);
+        assert.equal(reset.status, 200, JSON.stringify(reset.data));
+        assert.deepEqual(reset.data?.pageDenylist, []);
+        account.token = await login(account.username, account.password);
+        const resetPermissions = await permissions(account.token);
+        assert.equal(resetPermissions.pages['/reports'], true);
+        assert.equal(resetPermissions.capabilities['page:/reports'].source, 'role_preset');
+    });
+
     it('rejects unknown/conflicting PATCH keys and preserves effective access after relogin', async () => {
         const creatorToken = await getToken();
         const account = accounts.admin;
@@ -142,7 +242,11 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(update.status, 200, JSON.stringify(update.data));
 
         const currentToken = await request('GET', '/api/auth/permissions', null, account.token);
-        assert.equal(currentToken.status, 403, 'access PATCH must apply the new deny to the existing token');
+        assert.ok([200, 403].includes(currentToken.status), 'existing token must be revoked or rehydrated from fresh access state');
+        if (currentToken.status === 200) {
+            assert.equal(currentToken.data?.capabilities?.['action:hr.reports.view']?.allowed, false);
+            assert.equal(currentToken.data?.capabilities?.['action:hr.reports.export']?.allowed, false);
+        }
         account.token = await login(account.username, account.password);
         const afterRelogin = await permissions(account.token);
         assert.equal(afterRelogin.capabilities['action:hr.schedule.view'].allowed, true);

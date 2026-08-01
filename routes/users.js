@@ -191,12 +191,23 @@ function normalizeActionOverrideList(value, options = {}) {
     return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION, options).values;
 }
 
+function accountPageDenylist(account = {}) {
+    return normalizeCapabilityList(
+        account.page_denylist || account.pageDenylist,
+        CAPABILITY_TYPES.PAGE
+    ).values;
+}
+
 function accountActionAllowlist(account = {}) {
     return normalizeActionOverrideList(account.action_allowlist || account.actionAllowlist);
 }
 
 function accountActionDenylist(account = {}) {
     return normalizeActionOverrideList(account.action_denylist || account.actionDenylist);
+}
+
+function normalizePageDenylistInput(value, options = {}) {
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, options).values;
 }
 
 function normalizeActionAllowlist(value, options = {}) {
@@ -306,6 +317,8 @@ function decorateManagedAccount(row = {}, actor = null) {
         ...row,
         page_allowlist: normalizePageAllowlist(row),
         pageAllowlist: normalizePageAllowlist(row),
+        page_denylist: accountPageDenylist(row),
+        pageDenylist: accountPageDenylist(row),
         action_allowlist: accountActionAllowlist(row),
         actionAllowlist: accountActionAllowlist(row),
         action_denylist: accountActionDenylist(row),
@@ -326,7 +339,7 @@ router.use(authenticateToken);
 router.get('/', requireAction('manage_accounts'), async (req, res) => {
     try {
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist,
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.page_denylist, u.action_allowlist, u.action_denylist,
                     u.business_contexts, u.default_business_context, u.is_active, u.created_at, u.last_seen_at,
                     u.password_changed_at, u.session_revoked_at,
                     ep.staff_id, ep.id AS profile_id, ep.full_name AS profile_name, ep.is_active AS profile_active,
@@ -582,7 +595,7 @@ router.get('/:id/workspace', requireAction('manage_accounts'), async (req, res) 
             return res.status(400).json({ success: false, error: 'Некоректний account id' });
         }
         const result = await pool.query(
-            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist,
+            `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.page_allowlist, u.page_denylist,
                     u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context,
                     u.is_active, u.created_at, u.last_seen_at, u.password_changed_at, u.session_revoked_at,
                     ep.id AS profile_id, ep.staff_id, ep.full_name AS profile_name, ep.is_active AS profile_active,
@@ -664,7 +677,7 @@ router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) 
             `UPDATE users
              SET name = $1
              WHERE id = $2
-             RETURNING id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active`,
+             RETURNING id, username, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active`,
             [String(name).trim(), parseInt(id, 10)]
         );
 
@@ -820,6 +833,7 @@ async function updateAccountAccess(req, res) {
         const { id } = req.params;
         const { role, extraRoles, businessContexts } = req.body;
         const pageAllowlistInput = req.body.pageAllowlist ?? req.body.page_allowlist;
+        const pageDenylistInput = req.body.pageDenylist ?? req.body.page_denylist;
         const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
         const actionDenylistInput = req.body.actionDenylist ?? req.body.action_denylist;
         const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
@@ -834,6 +848,9 @@ async function updateAccountAccess(req, res) {
         const normalizedPageAllowlist = pageAllowlistInput !== undefined
             ? normalizePageAllowlistInput(pageAllowlistInput, { strict: true, fieldName: 'pageAllowlist' }).slice(0, 50)
             : null;
+        const normalizedPageDenylist = pageDenylistInput !== undefined
+            ? normalizePageDenylistInput(pageDenylistInput, { strict: true, fieldName: 'pageDenylist' }).slice(0, 50)
+            : null;
         const normalizedActionAllowlist = actionAllowlistInput !== undefined
             ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : null;
@@ -844,7 +861,7 @@ async function updateAccountAccess(req, res) {
         client = await pool.connect();
         await client.query('BEGIN');
         const target = await client.query(
-            `SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist,
+            `SELECT id, username, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist,
                     action_denylist, business_contexts, default_business_context, is_active
              FROM users WHERE id = $1 FOR UPDATE`,
             [parseInt(id)]
@@ -870,6 +887,7 @@ async function updateAccountAccess(req, res) {
         const oldRole = current.role;
         const oldExtraRoles = normalizeStoredArray(current.extra_roles);
         const oldPageAllowlist = normalizePageAllowlist(current);
+        const oldPageDenylist = accountPageDenylist(current);
         const oldActionAllowlist = accountActionAllowlist(current);
         const oldActionDenylist = accountActionDenylist(current);
         const oldBusinessContexts = normalizeStoredArray(current.business_contexts);
@@ -897,11 +915,13 @@ async function updateAccountAccess(req, res) {
             role,
             extra_roles: normalizedExtraRoles || oldExtraRoles,
             page_allowlist: normalizedPageAllowlist || oldPageAllowlist,
+            page_denylist: normalizedPageDenylist || oldPageDenylist,
             action_allowlist: normalizedActionAllowlist || oldActionAllowlist,
             action_denylist: normalizedActionDenylist || oldActionDenylist,
             business_contexts: normalizedBusinessContexts || oldBusinessContexts,
             default_business_context: normalizedDefaultBusinessContext || oldDefaultBusinessContext
         };
+        assertNoCapabilityConflicts(prospectiveAccount.page_allowlist, prospectiveAccount.page_denylist, CAPABILITY_TYPES.PAGE);
         assertNoCapabilityConflicts(prospectiveAccount.action_allowlist, prospectiveAccount.action_denylist);
         assertSelfAccountAccessSafe(req.user, prospectiveAccount);
         await assertLastActiveCreatorInvariant(client, current, {
@@ -915,18 +935,20 @@ async function updateAccountAccess(req, res) {
              SET role = $1,
                  extra_roles = COALESCE($2::text[], extra_roles),
                  page_allowlist = COALESCE($3::text[], page_allowlist),
-                 action_allowlist = COALESCE($4::text[], action_allowlist),
-                 action_denylist = COALESCE($5::text[], action_denylist),
-                 business_contexts = COALESCE($6::text[], business_contexts),
-                 default_business_context = COALESCE($7::text, default_business_context),
+                 page_denylist = COALESCE($4::text[], page_denylist),
+                 action_allowlist = COALESCE($5::text[], action_allowlist),
+                 action_denylist = COALESCE($6::text[], action_denylist),
+                 business_contexts = COALESCE($7::text[], business_contexts),
+                 default_business_context = COALESCE($8::text, default_business_context),
                  session_revoked_at = NOW()
-             WHERE id = $8
-             RETURNING id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context`,
-            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext, parseInt(id)]
+             WHERE id = $9
+             RETURNING id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context`,
+            [role, normalizedExtraRoles, normalizedPageAllowlist, normalizedPageDenylist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext, parseInt(id)]
         );
         const updatedUser = updated.rows[0] || target.rows[0];
         const newExtraRoles = normalizeStoredArray(updatedUser.extra_roles);
         const newPageAllowlist = normalizePageAllowlist(updatedUser);
+        const newPageDenylist = accountPageDenylist(updatedUser);
         const newActionAllowlist = accountActionAllowlist(updatedUser);
         const newActionDenylist = accountActionDenylist(updatedUser);
         const newBusinessContexts = normalizeStoredArray(updatedUser.business_contexts);
@@ -946,6 +968,8 @@ async function updateAccountAccess(req, res) {
                 newExtraRoles,
                 oldPageAllowlist,
                 newPageAllowlist,
+                oldPageDenylist,
+                newPageDenylist,
                 oldActionAllowlist,
                 newActionAllowlist,
                 oldActionDenylist,
@@ -959,6 +983,7 @@ async function updateAccountAccess(req, res) {
                     role: oldRole !== updatedUser.role,
                     extraRoles: !sameStringArray(oldExtraRoles, newExtraRoles),
                     pageAllowlist: !sameStringArray(oldPageAllowlist, newPageAllowlist),
+                    pageDenylist: !sameStringArray(oldPageDenylist, newPageDenylist),
                     actionAllowlist: !sameStringArray(oldActionAllowlist, newActionAllowlist),
                     actionDenylist: !sameStringArray(oldActionDenylist, newActionDenylist),
                     businessContexts: !sameStringArray(oldBusinessContexts, newBusinessContexts),
@@ -979,6 +1004,8 @@ async function updateAccountAccess(req, res) {
             newRole: updatedUser.role,
             extraRoles: newExtraRoles,
             pageAllowlist: newPageAllowlist,
+            pageDenylist: newPageDenylist,
+            page_denylist: newPageDenylist,
             actionAllowlist: newActionAllowlist,
             actionDenylist: newActionDenylist,
             action_allowlist: newActionAllowlist,
@@ -1181,6 +1208,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
     try {
         const { password, name, role, extraRoles, businessContexts } = req.body;
         const pageAllowlistInput = req.body.pageAllowlist ?? req.body.page_allowlist;
+        const pageDenylistInput = req.body.pageDenylist ?? req.body.page_denylist;
         const actionAllowlistInput = req.body.actionAllowlist ?? req.body.action_allowlist;
         const actionDenylistInput = req.body.actionDenylist ?? req.body.action_denylist;
         const requestedDefaultBusinessContext = req.body.defaultBusinessContext ?? req.body.default_business_context;
@@ -1215,12 +1243,16 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
         const normalizedPageAllowlist = pageAllowlistInput !== undefined
             ? normalizePageAllowlistInput(pageAllowlistInput, { strict: true, fieldName: 'pageAllowlist' }).slice(0, 50)
             : [];
+        const normalizedPageDenylist = pageDenylistInput !== undefined
+            ? normalizePageDenylistInput(pageDenylistInput, { strict: true, fieldName: 'pageDenylist' }).slice(0, 50)
+            : [];
         const normalizedActionAllowlist = actionAllowlistInput !== undefined
             ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : [];
         const normalizedActionDenylist = actionDenylistInput !== undefined
             ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist' })
             : [];
+        assertNoCapabilityConflicts(normalizedPageAllowlist, normalizedPageDenylist, CAPABILITY_TYPES.PAGE);
         assertNoCapabilityConflicts(normalizedActionAllowlist, normalizedActionDenylist);
         const normalizedDefaultBusinessContext = defaultBusinessContextForSelection(
             requestedDefaultBusinessContext,
@@ -1248,8 +1280,8 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             throw new Error('password_hash_verified_after_create_failed');
         }
         const result = await client.query(
-            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active',
-            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext]
+            'INSERT INTO users (username, password_hash, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, password_changed_at) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW()) RETURNING id, username, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active',
+            [username, hash, name.trim(), primaryRole, normalizedExtraRoles, normalizedPageAllowlist, normalizedPageDenylist, normalizedActionAllowlist, normalizedActionDenylist, normalizedBusinessContexts, normalizedDefaultBusinessContext]
         );
         const loginCheck = await verifyIssuedCredential({
             client,
@@ -1275,7 +1307,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             target: result.rows[0],
             eventType: 'account_created',
             reason: 'account_management',
-            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, actionAllowlist: normalizedActionAllowlist, actionDenylist: normalizedActionDenylist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
+            details: { role: primaryRole, extraRoles: normalizedExtraRoles, pageAllowlist: normalizedPageAllowlist, pageDenylist: normalizedPageDenylist, actionAllowlist: normalizedActionAllowlist, actionDenylist: normalizedActionDenylist, businessContexts: normalizedBusinessContexts, defaultBusinessContext: normalizedDefaultBusinessContext, staffLinked: !!staffId, oneTimeIssued: issueOneTime, loginReady: loginCheck.loginReady },
             req,
             client,
             strict: true

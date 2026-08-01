@@ -916,7 +916,7 @@ test('account security journal records semantic account, password, role, login, 
 });
 
 test('account action overrides drive final permissions and protect against self-lockout', async () => {
-    await withAuthApp(async ({ baseUrl }) => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
         const createAnimator = await request(baseUrl, 'POST', '/api/users', {
             username: 'action.operator',
             password: 'ActionPass789!',
@@ -997,6 +997,37 @@ test('account action overrides drive final permissions and protect against self-
             role: 'senior_manager'
         }, creatorToken());
         assert.equal(createPageManager.status, 200);
+
+        const newExplicitAllowDisabledPage = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageAllowlist: ['/finance']
+        }, creatorToken());
+        assert.equal(newExplicitAllowDisabledPage.status, 400);
+        assert.equal(newExplicitAllowDisabledPage.data.code, 'EXPLICIT_ALLOW_DISABLED_CAPABILITY');
+        assert.deepEqual(newExplicitAllowDisabledPage.data.details.explicitAllowDisabledKeys, ['/finance']);
+
+        const legacyPageManager = fakePool.state.users.find(user => user.id === createPageManager.data.user.id);
+        legacyPageManager.page_allowlist = ['/finance', '/maysternya-doli'];
+        const preserveLegacyExplicitAllowDisabledPages = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageAllowlist: ['/finance', '/maysternya-doli', '/reports']
+        }, creatorToken());
+        assert.equal(preserveLegacyExplicitAllowDisabledPages.status, 200);
+        assert.deepEqual(preserveLegacyExplicitAllowDisabledPages.data.pageAllowlist, ['/finance', '/maysternya-doli', '/reports']);
+
+        const removeLegacyExplicitAllowDisabledPages = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageAllowlist: []
+        }, creatorToken());
+        assert.equal(removeLegacyExplicitAllowDisabledPages.status, 200);
+        assert.deepEqual(removeLegacyExplicitAllowDisabledPages.data.pageAllowlist, []);
+
+        const reAddRemovedExplicitAllowDisabledPage = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageAllowlist: ['/finance']
+        }, creatorToken());
+        assert.equal(reAddRemovedExplicitAllowDisabledPage.status, 400);
+        assert.equal(reAddRemovedExplicitAllowDisabledPage.data.code, 'EXPLICIT_ALLOW_DISABLED_CAPABILITY');
 
         const inheritedPageLogin = await request(baseUrl, 'POST', '/api/auth/login', {
             username: 'page.manager',

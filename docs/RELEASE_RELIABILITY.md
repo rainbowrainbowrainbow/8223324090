@@ -7,24 +7,45 @@
 ## Production Branch
 
 Manual Railway deploys must expose commit/branch evidence through `/api/version`.
-Use Railway git metadata when it is present. If manual/API exact-SHA deploy does
-not provide `RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_BRANCH`, configure explicit
-runtime metadata:
+`RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_BRANCH` are the platform sources of
+truth and always take priority over manual metadata. If they disagree with
+`RELEASE_DEPLOY_COMMIT` or `RELEASE_DEPLOY_BRANCH`, `/api/version` returns the
+platform values with `deploymentMetadata.status = conflict` and `complete = false`.
+
+The helper still writes the non-secret manual pair before a deploy because it
+records the intended release target:
 
 ```bash
 RELEASE_DEPLOY_COMMIT=<exact-release-sha>
 RELEASE_DEPLOY_BRANCH=codex/zrs-financial-integrity
 ```
 
-`npm run version:smoke` and `npm run release:timeline-proof` must be fail-closed
-for production release acceptance when this metadata is unavailable, partial, or
-conflicting. Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
-`RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared
-against the exact intended SHA. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is
-allowed only for local/dev diagnostics.
+When only the manual pair is available, `/api/version` reports
+`deploymentMetadata.status = manual` and `complete = false`. This is intentional:
+manual metadata is an operator assertion, not evidence of the commit actually
+running on Railway.
 
-Остання фактично перевірена production release-гілка Railway (28.07.2026):
-`codex/zrs-financial-integrity`.
+Every post-deploy `version:smoke` must receive the exact target separately. It
+must never fall back to `RELEASE_DEPLOY_*` from the operator shell:
+
+```powershell
+$env:VERSION_SMOKE_EXPECT_COMMIT = '<exact-release-sha>'
+$env:VERSION_SMOKE_EXPECT_BRANCH = 'codex/zrs-financial-integrity'
+npm run version:smoke -- https://<live-crm-host>
+```
+
+The smoke fails for a conflict, a stale manual SHA, a mismatched branch, or a
+missing exact target. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is allowed
+only for local/dev diagnostics.
+
+Runtime observation (read-only, 2026-08-01): the live API reported
+`RELEASE_DEPLOY_COMMIT` and `RELEASE_DEPLOY_BRANCH` as its metadata sources;
+platform commit/branch evidence was not exposed by the runtime contract.
+
+Read-only live observation (2026-08-01) reported
+`codex/lead-guest-context-v08018-final`, but its source is manual/unverified
+metadata. Re-confirm the active Railway deploy source before every release or
+rollback; do not treat this historic observation as an authorization to deploy.
 
 Перед кожним release або rollback треба read-only перевіркою підтвердити активну
 Railway source branch і явно передати її в командах через

@@ -11,7 +11,10 @@ const {
     normalizeCommitSha,
     normalizeSourceBranch
 } = require('../services/release');
-const { assertDeploymentMetadata } = require('../scripts/live-version-smoke');
+const {
+    assertDeploymentMetadata,
+    resolveExpectedDeploymentTarget
+} = require('../scripts/live-version-smoke');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -43,25 +46,53 @@ test('release metadata exposes normalized Railway commit and source branch', () 
     assert.doesNotThrow(() => assertDeploymentMetadata(metadata));
 });
 
-test('release metadata prefers configured manual deploy commit and branch over Railway branch drift', () => {
-    const commitSha = '1111111111111111111111111111111111111111';
+test('release metadata exposes the platform commit and fails closed on stale manual metadata', () => {
+    const manualCommit = '1111111111111111111111111111111111111111';
+    const railwayCommit = '2222222222222222222222222222222222222222';
     const metadata = getReleaseMetadata({
-        RELEASE_DEPLOY_COMMIT: commitSha.toUpperCase(),
-        RELEASE_DEPLOY_BRANCH: 'codex/production',
-        RAILWAY_GIT_COMMIT_SHA: commitSha,
+        RELEASE_DEPLOY_COMMIT: manualCommit,
+        RELEASE_DEPLOY_BRANCH: 'codex/stale-release',
+        RAILWAY_GIT_COMMIT_SHA: railwayCommit,
         RAILWAY_GIT_BRANCH: 'main'
     });
 
-    assert.equal(metadata.commitSha, commitSha);
-    assert.equal(metadata.sourceBranch, 'codex/production');
+    assert.equal(metadata.commitSha, railwayCommit);
+    assert.equal(metadata.sourceBranch, 'main');
+    assert.equal(metadata.deploymentMetadata.commitShaSource, 'RAILWAY_GIT_COMMIT_SHA');
+    assert.equal(metadata.deploymentMetadata.sourceBranchSource, 'RAILWAY_GIT_BRANCH');
     assert.deepEqual(metadata.deploymentMetadata, {
-        status: 'configured',
-        complete: true,
+        status: 'conflict',
+        complete: false,
+        commitShaSource: 'RAILWAY_GIT_COMMIT_SHA',
+        sourceBranchSource: 'RAILWAY_GIT_BRANCH',
+        invalidSources: [],
+        warnings: [
+            'manual_commit_conflicts_with_railway_commit',
+            'manual_branch_conflicts_with_railway_branch'
+        ]
+    });
+    assert.throws(() => assertDeploymentMetadata(metadata), /not complete: conflict/);
+});
+
+test('manual-only release metadata remains unverified until the smoke receives an exact target', () => {
+    const commitSha = '1111111111111111111111111111111111111111';
+    const metadata = getReleaseMetadata({
+        RELEASE_DEPLOY_COMMIT: commitSha,
+        RELEASE_DEPLOY_BRANCH: 'codex/production'
+    });
+
+    assert.deepEqual(metadata.deploymentMetadata, {
+        status: 'manual',
+        complete: false,
         commitShaSource: 'RELEASE_DEPLOY_COMMIT',
         sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
         invalidSources: [],
-        warnings: ['release_branch_overrides_railway_branch']
+        warnings: ['manual_metadata_unverified']
     });
+    assert.throws(
+        () => assertDeploymentMetadata(metadata),
+        /set VERSION_SMOKE_EXPECT_COMMIT and VERSION_SMOKE_EXPECT_BRANCH/
+    );
     assert.doesNotThrow(() => assertDeploymentMetadata(metadata, {
         expectedCommit: commitSha,
         expectedBranch: 'codex/production'
@@ -141,7 +172,7 @@ test('version smoke requires stable complete metadata by default', () => {
                 commitShaSource: 'RELEASE_DEPLOY_COMMIT',
                 sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
                 invalidSources: [],
-                warnings: ['release_commit_overrides_railway_commit']
+                warnings: ['manual_commit_conflicts_with_railway_commit']
             }
         }),
         /deployment metadata is not complete: conflict/
@@ -159,19 +190,19 @@ test('version smoke requires stable complete metadata by default', () => {
                 warnings: []
             }
         }),
-        /set VERSION_SMOKE_EXPECT_COMMIT/
+        /not complete: configured/
     );
     assert.throws(
         () => assertDeploymentMetadata({
             commitSha: 'a'.repeat(40),
             sourceBranch: 'codex/production',
             deploymentMetadata: {
-                status: 'configured',
-                complete: true,
+                status: 'manual',
+                complete: false,
                 commitShaSource: 'RELEASE_DEPLOY_COMMIT',
                 sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
                 invalidSources: [],
-                warnings: []
+                warnings: ['manual_metadata_unverified']
             }
         }, {
             expectedCommit: 'b'.repeat(40),
@@ -179,6 +210,30 @@ test('version smoke requires stable complete metadata by default', () => {
         }),
         /expected/
     );
+});
+
+test('version smoke requires an explicit exact deployment target outside diagnostic mode', () => {
+    const commitSha = 'abcdef0123456789abcdef0123456789abcdef01';
+
+    assert.throws(
+        () => resolveExpectedDeploymentTarget({}),
+        /VERSION_SMOKE_EXPECT_COMMIT/
+    );
+    assert.throws(
+        () => resolveExpectedDeploymentTarget({ VERSION_SMOKE_EXPECT_COMMIT: commitSha }),
+        /VERSION_SMOKE_EXPECT_BRANCH/
+    );
+    assert.deepEqual(resolveExpectedDeploymentTarget({
+        VERSION_SMOKE_EXPECT_COMMIT: commitSha.toUpperCase(),
+        VERSION_SMOKE_EXPECT_BRANCH: ' codex/production '
+    }), {
+        expectedCommit: commitSha,
+        expectedBranch: 'codex/production'
+    });
+    assert.deepEqual(resolveExpectedDeploymentTarget({}, { allowMissing: true }), {
+        expectedCommit: null,
+        expectedBranch: null
+    });
 });
 
 
@@ -191,6 +246,9 @@ test('version smoke retries transient fetch failures with timeout controls', () 
     assert.match(script, /AbortController/);
     assert.match(script, /async function fetchTextOnce/);
     assert.match(script, /statusCode >= 500/);
+    assert.match(script, /resolveExpectedDeploymentTarget\(process\.env/);
+    assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT/);
+    assert.doesNotMatch(script, /process\.env\.RELEASE_DEPLOY_(COMMIT|BRANCH)/);
 });
 test('/api/version remains a public response from the canonical release service', () => {
     const route = fs.readFileSync(path.join(ROOT, 'routes', 'settings.js'), 'utf8');

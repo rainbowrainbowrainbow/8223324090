@@ -38,6 +38,7 @@ function createFakePool() {
             role: 'accountant',
             extra_roles: [],
             page_allowlist: [],
+            page_denylist: [],
             action_allowlist: [],
             action_denylist: [],
             business_contexts: ['event_genix'],
@@ -84,7 +85,7 @@ function createFakePool() {
                 };
             }
 
-            if (/SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = \$1/i.test(text)) {
+            if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = \$1/i.test(text)) {
                 return { rows: [state.user] };
             }
 

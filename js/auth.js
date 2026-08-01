@@ -578,6 +578,10 @@ function applyActionPermissions(user, permissions) {
         user.pageAllowlist = permissions.pageAllowlist;
         user.page_allowlist = permissions.pageAllowlist;
     }
+    if (Array.isArray(permissions.pageDenylist)) {
+        user.pageDenylist = permissions.pageDenylist;
+        user.page_denylist = permissions.pageDenylist;
+    }
     if (permissions.actionAllowlist) {
         user.actionAllowlist = permissions.actionAllowlist;
         user.action_allowlist = permissions.actionAllowlist;
@@ -1538,6 +1542,15 @@ function getUserPageAllowlist(user = AppState.currentUser || {}) {
     return Array.from(new Set(pages.map(_normalizePagePath).filter(Boolean)));
 }
 
+function getUserPageDenylist(user = AppState.currentUser || {}) {
+    const pages = [];
+    if (Array.isArray(user.pageDenylist)) pages.push(...user.pageDenylist);
+    if (Array.isArray(user.page_denylist)) pages.push(...user.page_denylist);
+    const permissions = user === AppState.currentUser ? (AppState.authPermissions || user.permissions || {}) : (user.permissions || {});
+    if (Array.isArray(permissions.pageDenylist)) pages.push(...permissions.pageDenylist);
+    return Array.from(new Set(pages.map(_normalizePagePath).filter(Boolean)));
+}
+
 function hasMinRole(minRole) {
     return getUserRoles().some(role => (ROLE_LEVEL[role] || 0) >= (ROLE_LEVEL[minRole] || 99));
 }
@@ -1599,7 +1612,7 @@ function resolveCapability(user, capability, context = {}) {
         ? getUserPageAllowlist(effectiveUser)
         : getCurrentUserActionList('actionAllowlist', 'action_allowlist', effectiveUser);
     const denylist = requestedType === 'page'
-        ? []
+        ? getUserPageDenylist(effectiveUser)
         : getCurrentUserActionList('actionDenylist', 'action_denylist', effectiveUser);
     const overrideKeys = requestedType === 'action' ? [key, ...(ACTION_LEGACY_KEYS[key] || [])] : [key];
     if (overrideKeys.some(candidate => denylist.includes(candidate))) {

@@ -165,6 +165,16 @@ function normalizePageAllowlist(userOrValue) {
     return normalizeCapabilityList(values, CAPABILITY_TYPES.PAGE).values;
 }
 
+function normalizePageDenylist(userOrValue) {
+    const values = [];
+    if (Array.isArray(userOrValue)) values.push(...userOrValue);
+    else if (userOrValue && typeof userOrValue === 'object') {
+        if (Array.isArray(userOrValue.page_denylist)) values.push(...userOrValue.page_denylist);
+        if (Array.isArray(userOrValue.pageDenylist)) values.push(...userOrValue.pageDenylist);
+    }
+    return normalizeCapabilityList(values, CAPABILITY_TYPES.PAGE).values;
+}
+
 function normalizeActionOverrideList(value) {
     return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION).values;
 }
@@ -185,10 +195,7 @@ function explicitListsFor(user, type) {
     if (type === CAPABILITY_TYPES.PAGE) {
         return {
             allow: normalizePageAllowlist(user),
-            deny: normalizeCapabilityList(
-                user?.page_denylist || user?.pageDenylist,
-                CAPABILITY_TYPES.PAGE
-            ).values
+            deny: normalizePageDenylist(user)
         };
     }
     return {
@@ -301,6 +308,7 @@ module.exports = {
     normalizeCapability,
     normalizeCapabilityList,
     normalizePageAllowlist,
+    normalizePageDenylist,
     normalizeActionOverrideList,
     assertNoCapabilityConflicts,
     resolveCapability,

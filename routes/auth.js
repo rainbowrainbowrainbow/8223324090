@@ -15,7 +15,7 @@ const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
-    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, requireAction
+    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, normalizePageDenylist, requireAction
 } = require('../middleware/auth');
 const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
@@ -202,7 +202,7 @@ router.post('/login', async (req, res) => {
         }
 
         const result = await pool.query(
-            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.telegram_chat_id, u.is_active,
+            `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.page_denylist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.telegram_chat_id, u.is_active,
                     u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
@@ -274,7 +274,7 @@ router.get('/verify', authenticateToken, async (req, res) => {
     try {
         // Read fresh role from DB (JWT may have stale role after role migration)
         const result = await pool.query(
-            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.telegram_chat_id, u.avatar_emoji, u.avatar_color, upe.avatar_url
+            `SELECT u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.page_denylist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.telegram_chat_id, u.avatar_emoji, u.avatar_color, upe.avatar_url
              FROM users u
              LEFT JOIN user_profiles_ext upe ON upe.username = u.username
              WHERE u.username = $1 AND u.is_active = true`,
@@ -1479,6 +1479,7 @@ router.get('/permissions', authenticateToken, (req, res) => {
     const role = req.user.role;
     const roles = normalizeRoleList(req.user);
     const pageAllowlist = normalizePageAllowlist(req.user);
+    const pageDenylist = normalizePageDenylist(req.user);
     const level = roles.reduce((max, item) => Math.max(max, ROLE_LEVEL[item] ?? -1), -1);
     const snapshot = buildCapabilitySnapshot(req.user);
     const pageSources = {};
@@ -1496,6 +1497,7 @@ router.get('/permissions', authenticateToken, (req, res) => {
         role,
         roles,
         pageAllowlist,
+        pageDenylist,
         actionAllowlist: req.user.actionAllowlist || req.user.action_allowlist || [],
         actionDenylist: req.user.actionDenylist || req.user.action_denylist || [],
         level,
@@ -1524,7 +1526,7 @@ router.post('/impersonate', authenticateToken, requireAction('manage_accounts'),
         }
 
         const result = await pool.query(
-            'SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
+            'SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
             [parseInt(userId)]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'User not found' });
@@ -1571,7 +1573,7 @@ router.get('/users-list', authenticateToken, requireAction('manage_accounts'), a
             return res.status(403).json({ error: 'Only creator can list users' });
         }
         const result = await pool.query(
-            'SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE is_active = true ORDER BY name'
+            'SELECT id, username, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE is_active = true ORDER BY name'
         );
         res.json(result.rows.filter(user => !isProtectedSystemAccount(user)));
     } catch (err) {

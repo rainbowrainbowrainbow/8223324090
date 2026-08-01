@@ -2,12 +2,15 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
     CapabilityValidationError,
     normalizeCapability,
     normalizeCapabilityList,
     normalizePageAllowlist,
+    normalizePageDenylist,
     assertNoCapabilityConflicts,
     resolveCapability,
     buildCapabilitySnapshot
@@ -42,6 +45,37 @@ test('resolveCapability applies deny, allow, role preset, then default deny', ()
     assert.equal(defaultDenied.reason, 'no_matching_grant');
 });
 
+test('page permissions support inherited, explicit allow, and explicit deny', () => {
+    const inherited = resolveCapability({ role: 'director' }, '/reports', { type: 'page' });
+    assert.deepEqual(
+        [inherited.allowed, inherited.source, inherited.sourceRole, inherited.reason],
+        [true, 'role_preset', 'director', 'granted_by_role_preset']
+    );
+
+    const explicitlyAllowed = resolveCapability({
+        role: 'animator',
+        page_allowlist: ['/reports']
+    }, '/reports', { type: 'page' });
+    assert.deepEqual(
+        [explicitlyAllowed.allowed, explicitlyAllowed.source, explicitlyAllowed.sourceRole, explicitlyAllowed.reason],
+        [true, 'explicit_allow', null, 'listed_in_explicit_allow']
+    );
+
+    const explicitlyDenied = resolveCapability({
+        role: 'director',
+        page_allowlist: ['/reports'],
+        page_denylist: ['/reports']
+    }, '/reports', { type: 'page' });
+    assert.deepEqual(
+        [explicitlyDenied.allowed, explicitlyDenied.source, explicitlyDenied.sourceRole, explicitlyDenied.reason],
+        [false, 'explicit_deny', null, 'listed_in_explicit_deny']
+    );
+
+    const legacyUser = resolveCapability({ role: 'director' }, '/reports', { type: 'page' });
+    assert.equal(legacyUser.allowed, true);
+    assert.deepEqual(normalizePageDenylist({ role: 'director' }), []);
+});
+
 test('unknown capability keys fail closed and strict writes reject them', () => {
     const decision = resolveCapability({ role: 'creator' }, 'unknown_permission');
     assert.equal(decision.allowed, false);
@@ -71,6 +105,12 @@ test('legacy page aliases canonicalize for reads and writes', () => {
         normalizePageAllowlist({ page_allowlist: ['/kleshnya', '/chat', '/hr.html'] }),
         ['/chat', '/hr']
     );
+    assert.deepEqual(
+        normalizePageDenylist({ page_denylist: ['/kleshnya', '/chat', '/hr.html'] }),
+        ['/chat', '/hr']
+    );
+    const aliasDeny = resolveCapability({ role: 'creator', page_denylist: ['/kleshnya'] }, '/chat');
+    assert.deepEqual([aliasDeny.allowed, aliasDeny.source], [false, 'explicit_deny']);
 
     const aliasGrant = resolveCapability({ role: 'animator', page_allowlist: ['/analytics'] }, '/finance');
     assert.equal(aliasGrant.allowed, false);
@@ -122,6 +162,7 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     const snapshot = buildCapabilitySnapshot({
         role: 'manager',
         page_allowlist: ['/analytics'],
+        page_denylist: ['/reports'],
         action_denylist: ['export_data']
     });
 
@@ -131,6 +172,7 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     assert.equal(snapshot.pages['/finance'], false);
     assert.equal(snapshot.actions.export_data, false);
     assert.equal(snapshot.decisions['page:/finance'].reason, 'explicit_allow_disabled');
+    assert.equal(snapshot.decisions['page:/reports'].source, 'explicit_deny');
     assert.equal(snapshot.decisions['action:export_data'].source, 'explicit_deny');
     assert.equal(snapshot.catalog.pageAliases['/analytics'], '/finance');
     assert.ok(snapshot.catalog.nonDelegableActions.includes('manage_accounts'));
@@ -159,4 +201,16 @@ test('Finance explicit grants are rejected by strict account-access writes', () 
             && error.code === 'EXPLICIT_ALLOW_DISABLED_CAPABILITY'
             && error.details.explicitAllowDisabledKeys.includes('finance.manage')
     );
+});
+test('page deny migration is additive, idempotent, and does not rewrite users', () => {
+    const migration = fs.readFileSync(
+        path.join(__dirname, '..', 'db', 'migrations', '311_user_page_permission_denies.sql'),
+        'utf8'
+    );
+    assert.match(migration, /-- MIGRATION_KIND: schema/);
+    assert.match(migration, /-- SAFETY:/);
+    assert.match(migration, /-- ROLLBACK:/);
+    assert.match(migration, /ADD COLUMN IF NOT EXISTS page_denylist TEXT\[\] NOT NULL DEFAULT '\{\}'::text\[\]/);
+    assert.match(migration, /CREATE INDEX IF NOT EXISTS idx_users_page_denylist_gin/);
+    assert.doesNotMatch(migration, /^\s*(UPDATE|INSERT|DELETE)\b/im);
 });

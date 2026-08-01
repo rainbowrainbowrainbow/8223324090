@@ -42,6 +42,7 @@ function createFakePool() {
             role: 'creator',
             extra_roles: [],
             page_allowlist: [],
+            page_denylist: [],
             action_allowlist: [],
             action_denylist: [],
             business_contexts: ['event_genix', 'dar', 'maysternya_doli', 'crm'],
@@ -69,6 +70,7 @@ function createFakePool() {
             role: row.role,
             extra_roles: row.extra_roles || [],
             page_allowlist: row.page_allowlist || [],
+            page_denylist: row.page_denylist || [],
             action_allowlist: row.action_allowlist || [],
             action_denylist: row.action_denylist || [],
             business_contexts: row.business_contexts || ['event_genix'],
@@ -166,6 +168,7 @@ function createFakePool() {
                 role: user.role,
                 extra_roles: user.extra_roles || [],
                 page_allowlist: user.page_allowlist || [],
+                page_denylist: user.page_denylist || [],
                 action_allowlist: user.action_allowlist || [],
                 action_denylist: user.action_denylist || [],
                 business_contexts: user.business_contexts || ['event_genix'],
@@ -179,8 +182,8 @@ function createFakePool() {
             }] : [] };
         }
 
-        if (/INSERT INTO users \(username, password_hash, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, password_changed_at\)/i.test(text)) {
-            const [username, passwordHash, name, role, extraRoles, pageAllowlist, actionAllowlist, actionDenylist, businessContexts, defaultBusinessContext] = params;
+        if (/INSERT INTO users \(username, password_hash, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, password_changed_at\)/i.test(text)) {
+            const [username, passwordHash, name, role, extraRoles, pageAllowlist, pageDenylist, actionAllowlist, actionDenylist, businessContexts, defaultBusinessContext] = params;
             const row = {
                 id: state.nextUserId++,
                 username,
@@ -189,6 +192,7 @@ function createFakePool() {
                 role,
                 extra_roles: Array.isArray(extraRoles) ? extraRoles : [],
                 page_allowlist: Array.isArray(pageAllowlist) ? pageAllowlist : [],
+                page_denylist: Array.isArray(pageDenylist) ? pageDenylist : [],
                 action_allowlist: Array.isArray(actionAllowlist) ? actionAllowlist : [],
                 action_denylist: Array.isArray(actionDenylist) ? actionDenylist : [],
                 business_contexts: Array.isArray(businessContexts) ? businessContexts : ['event_genix'],
@@ -238,12 +242,12 @@ function createFakePool() {
             return { rows };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist(?:, action_allowlist, action_denylist)?, business_contexts, default_business_context, name(?:, telegram_chat_id)?, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name(?:, telegram_chat_id)?, is_active(?:, session_revoked_at)? FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{ ...publicUser(row), session_revoked_at: row.session_revoked_at || null }] : [] };
         }
 
-        if (/SELECT id, username, role, extra_roles, page_allowlist(?:, action_allowlist, action_denylist)?, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
+        if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context FROM users WHERE id = \$1/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{
                 id: row.id,
@@ -251,6 +255,7 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
+                page_denylist: row.page_denylist || [],
                 action_allowlist: row.action_allowlist || [],
                 action_denylist: row.action_denylist || [],
                 business_contexts: row.business_contexts || ['event_genix'],
@@ -258,7 +263,7 @@ function createFakePool() {
             }] : [] };
         }
 
-        if (/SELECT id, username, name, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active FROM users WHERE id = \$1 FOR UPDATE/i.test(text)) {
+        if (/SELECT id, username, name, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, is_active FROM users WHERE id = \$1 FOR UPDATE/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[0]));
             return { rows: row ? [{
                 id: row.id,
@@ -267,6 +272,7 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
+                page_denylist: row.page_denylist || [],
                 action_allowlist: row.action_allowlist || [],
                 action_denylist: row.action_denylist || [],
                 business_contexts: row.business_contexts || ['event_genix'],
@@ -383,7 +389,7 @@ function createFakePool() {
             return { rows: [], rowCount: count };
         }
 
-        if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.action_allowlist, u\.action_denylist, u\.business_contexts, u\.default_business_context, u\.name/i.test(text)
+        if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.page_denylist, u\.action_allowlist, u\.action_denylist, u\.business_contexts, u\.default_business_context, u\.name/i.test(text)
             && /WHERE u\.username = \$1 AND u\.is_active = true/i.test(text)) {
             const row = state.users.find(item => item.username === params[0] && item.is_active !== false);
             return { rows: row ? [{ ...publicUser(row), avatar_emoji: null, avatar_color: null, avatar_url: null }] : [] };
@@ -424,16 +430,17 @@ function createFakePool() {
             return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
         }
 
-        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*action_allowlist = COALESCE\(\$4::text\[\], action_allowlist\),\s*action_denylist = COALESCE\(\$5::text\[\], action_denylist\),\s*business_contexts = COALESCE\(\$6::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$7::text, default_business_context\),\s*session_revoked_at = NOW\(\)\s*WHERE id = \$8\s*RETURNING id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context/i.test(text)) {
-            const row = state.users.find(item => Number(item.id) === Number(params[7]));
+        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*page_denylist = COALESCE\(\$4::text\[\], page_denylist\),\s*action_allowlist = COALESCE\(\$5::text\[\], action_allowlist\),\s*action_denylist = COALESCE\(\$6::text\[\], action_denylist\),\s*business_contexts = COALESCE\(\$7::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$8::text, default_business_context\),\s*session_revoked_at = NOW\(\)\s*WHERE id = \$9\s*RETURNING id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[8]));
             if (row) {
                 row.role = params[0];
                 if (Array.isArray(params[1])) row.extra_roles = params[1];
                 if (Array.isArray(params[2])) row.page_allowlist = params[2];
-                if (Array.isArray(params[3])) row.action_allowlist = params[3];
-                if (Array.isArray(params[4])) row.action_denylist = params[4];
-                if (Array.isArray(params[5])) row.business_contexts = params[5];
-                if (params[6]) row.default_business_context = params[6];
+                if (Array.isArray(params[3])) row.page_denylist = params[3];
+                if (Array.isArray(params[4])) row.action_allowlist = params[4];
+                if (Array.isArray(params[5])) row.action_denylist = params[5];
+                if (Array.isArray(params[6])) row.business_contexts = params[6];
+                if (params[7]) row.default_business_context = params[7];
                 row.session_revoked_at = new Date();
             }
             return { rows: row ? [{
@@ -442,6 +449,7 @@ function createFakePool() {
                 role: row.role,
                 extra_roles: row.extra_roles || [],
                 page_allowlist: row.page_allowlist || [],
+                page_denylist: row.page_denylist || [],
                 action_allowlist: row.action_allowlist || [],
                 action_denylist: row.action_denylist || [],
                 business_contexts: row.business_contexts || ['event_genix'],
@@ -599,6 +607,7 @@ test('protected system accounts cannot be impersonated', async () => {
             role: 'bot',
             extra_roles: [],
             page_allowlist: [],
+            page_denylist: [],
             action_allowlist: [],
             action_denylist: [],
             business_contexts: ['event_genix'],
@@ -980,6 +989,81 @@ test('account action overrides drive final permissions and protect against self-
         assert.equal(deniedPermissions.status, 200);
         assert.equal(deniedPermissions.data.actions.delete_booking, false);
         assert.equal(deniedPermissions.data.actionSources.delete_booking, 'explicit_deny');
+
+        const createPageManager = await request(baseUrl, 'POST', '/api/users', {
+            username: 'page.manager',
+            password: 'PagePass789!',
+            name: 'Page Manager',
+            role: 'senior_manager'
+        }, creatorToken());
+        assert.equal(createPageManager.status, 200);
+
+        const inheritedPageLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'page.manager',
+            password: 'PagePass789!'
+        });
+        assert.equal(inheritedPageLogin.status, 200);
+        const inheritedPagePermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, inheritedPageLogin.data.accessToken);
+        assert.equal(inheritedPagePermissions.status, 200);
+        assert.equal(inheritedPagePermissions.data.pages['/reports'], true);
+        assert.equal(inheritedPagePermissions.data.pageSources['/reports'], 'role_preset');
+        assert.deepEqual(inheritedPagePermissions.data.pageDenylist, []);
+
+        const pageAliasConflict = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageAllowlist: ['/chat'],
+            pageDenylist: ['/kleshnya']
+        }, creatorToken());
+        assert.equal(pageAliasConflict.status, 400);
+        assert.equal(pageAliasConflict.data.code, 'CAPABILITY_ALLOW_DENY_CONFLICT');
+        assert.deepEqual(pageAliasConflict.data.details.conflicts, ['/chat']);
+
+        const unknownPageDeny = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageDenylist: ['/unknown-page-deny']
+        }, creatorToken());
+        assert.equal(unknownPageDeny.status, 400);
+        assert.equal(unknownPageDeny.data.code, 'UNKNOWN_CAPABILITY_KEYS');
+        assert.deepEqual(unknownPageDeny.data.details.unknownKeys, ['/unknown-page-deny']);
+
+        const pageDenyUpdate = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageDenylist: ['/reports']
+        }, creatorToken());
+        assert.equal(pageDenyUpdate.status, 200);
+        assert.deepEqual(pageDenyUpdate.data.pageDenylist, ['/reports']);
+
+        const compatibilityUpdate = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            actionAllowlist: [],
+            actionDenylist: []
+        }, creatorToken());
+        assert.equal(compatibilityUpdate.status, 200);
+        assert.deepEqual(compatibilityUpdate.data.pageDenylist, ['/reports'], 'legacy PATCH omission must not erase an existing deny');
+
+        const deniedPageLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'page.manager',
+            password: 'PagePass789!'
+        });
+        assert.equal(deniedPageLogin.status, 200);
+        assert.deepEqual(deniedPageLogin.data.user.pageDenylist, ['/reports']);
+        const deniedPagePermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, deniedPageLogin.data.accessToken);
+        assert.equal(deniedPagePermissions.data.pages['/reports'], false);
+        assert.equal(deniedPagePermissions.data.pageSources['/reports'], 'explicit_deny');
+
+        const pageReset = await request(baseUrl, 'PATCH', `/api/users/${createPageManager.data.user.id}/access`, {
+            role: 'senior_manager',
+            pageDenylist: []
+        }, creatorToken());
+        assert.equal(pageReset.status, 200);
+        assert.deepEqual(pageReset.data.pageDenylist, []);
+        const resetPageLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'page.manager',
+            password: 'PagePass789!'
+        });
+        const resetPagePermissions = await request(baseUrl, 'GET', '/api/auth/permissions', undefined, resetPageLogin.data.accessToken);
+        assert.equal(resetPagePermissions.data.pages['/reports'], true);
+        assert.equal(resetPagePermissions.data.pageSources['/reports'], 'role_preset');
 
         const createHr = await request(baseUrl, 'POST', '/api/users', {
             username: 'hr.operator',

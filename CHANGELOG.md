@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.57 - Release metadata: стабільний deploy proof
+
+### Release / Надійність / (01.08.2026) [codex]
+- **Стабільне очікування Railway** — automatic post-deploy proof тепер має до трьох хвилин на фактичне переключення live, тож штатна затримка CDN/rollout не створює хибний failed release.
+- **Strict verification збережено** — helper завершується успішно лише після точного збігу live version, full SHA, source branch і artifact-backed metadata.
+---
+
 ## v0.80.56 - Release metadata: доказ deploy
 
 ### Release / Надійність / (01.08.2026) [codex]

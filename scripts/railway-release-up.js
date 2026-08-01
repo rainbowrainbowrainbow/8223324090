@@ -15,7 +15,7 @@ const {
 const DEFAULT_SERVICE = '8223324090';
 const DEFAULT_ENVIRONMENT = 'production';
 const DEFAULT_LIVE_URL = 'https://8223324090-production.up.railway.app';
-const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 12;
+const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;
 const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;
 
 function parseArgs(argv) {

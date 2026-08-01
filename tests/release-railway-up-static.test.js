@@ -21,6 +21,8 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /readDeploymentManifest\(\{ rootDir: sourceDir/);
     assert.match(script, /DEPLOYMENT_MANIFEST_FILENAME/);
     assert.match(script, /runPostDeploySmoke\(liveUrl, head, options\.branch\)/);
+    assert.match(script, /const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;/);
+    assert.match(script, /const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
     assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
     assert.match(script, /git archive/);

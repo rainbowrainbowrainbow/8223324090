@@ -12,11 +12,25 @@ const {
     normalizeSourceBranch
 } = require('../services/release');
 const {
+    buildDeploymentManifest,
+    DEPLOYMENT_MANIFEST_FORMAT,
+    DEPLOYMENT_MANIFEST_SCHEMA_VERSION
+} = require('../services/releaseDeploymentManifest');
+const {
     assertDeploymentMetadata,
     resolveExpectedDeploymentTarget
 } = require('../scripts/live-version-smoke');
 
 const ROOT = path.resolve(__dirname, '..');
+const EMPTY_MANIFEST_PATH = path.join(ROOT, '.missing-release-manifest-for-test.json');
+
+function manifest(commitSha = 'abcdef0123456789abcdef0123456789abcdef01', sourceBranch = 'codex/production') {
+    return buildDeploymentManifest({
+        applicationVersion: pkg.version,
+        commitSha,
+        sourceBranch
+    });
+}
 
 test('release metadata exposes normalized Railway commit and source branch', () => {
     const commitSha = 'ABCDEF0123456789ABCDEF0123456789ABCDEF01';
@@ -24,7 +38,7 @@ test('release metadata exposes normalized Railway commit and source branch', () 
         TEST_MODE: 'true',
         RAILWAY_GIT_COMMIT_SHA: commitSha,
         RAILWAY_GIT_BRANCH: ' codex/production '
-    });
+    }, { manifestPath: EMPTY_MANIFEST_PATH });
 
     assert.deepEqual(metadata, {
         success: true,
@@ -46,81 +60,97 @@ test('release metadata exposes normalized Railway commit and source branch', () 
     assert.doesNotThrow(() => assertDeploymentMetadata(metadata));
 });
 
-test('release metadata exposes the platform commit and fails closed on stale manual metadata', () => {
-    const manualCommit = '1111111111111111111111111111111111111111';
-    const railwayCommit = '2222222222222222222222222222222222222222';
-    const metadata = getReleaseMetadata({
-        RELEASE_DEPLOY_COMMIT: manualCommit,
-        RELEASE_DEPLOY_BRANCH: 'codex/stale-release',
-        RAILWAY_GIT_COMMIT_SHA: railwayCommit,
-        RAILWAY_GIT_BRANCH: 'main'
-    });
-
-    assert.equal(metadata.commitSha, railwayCommit);
-    assert.equal(metadata.sourceBranch, 'main');
-    assert.equal(metadata.deploymentMetadata.commitShaSource, 'RAILWAY_GIT_COMMIT_SHA');
-    assert.equal(metadata.deploymentMetadata.sourceBranchSource, 'RAILWAY_GIT_BRANCH');
-    assert.deepEqual(metadata.deploymentMetadata, {
-        status: 'conflict',
-        complete: false,
-        commitShaSource: 'RAILWAY_GIT_COMMIT_SHA',
-        sourceBranchSource: 'RAILWAY_GIT_BRANCH',
-        invalidSources: [],
-        warnings: [
-            'manual_commit_conflicts_with_railway_commit',
-            'manual_branch_conflicts_with_railway_branch'
-        ]
-    });
-    assert.throws(() => assertDeploymentMetadata(metadata), /not complete: conflict/);
-});
-
-test('manual-only release metadata remains unverified until the smoke receives an exact target', () => {
+test('release metadata trusts the deployment artifact when platform metadata is unavailable', () => {
     const commitSha = '1111111111111111111111111111111111111111';
-    const metadata = getReleaseMetadata({
-        RELEASE_DEPLOY_COMMIT: commitSha,
-        RELEASE_DEPLOY_BRANCH: 'codex/production'
-    });
+    const metadata = getReleaseMetadata({}, { deploymentManifest: manifest(commitSha) });
 
+    assert.equal(metadata.commitSha, commitSha);
+    assert.equal(metadata.sourceBranch, 'codex/production');
     assert.deepEqual(metadata.deploymentMetadata, {
-        status: 'manual',
-        complete: false,
-        commitShaSource: 'RELEASE_DEPLOY_COMMIT',
-        sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
+        status: 'manifest',
+        complete: true,
+        commitShaSource: 'DEPLOYMENT_MANIFEST',
+        sourceBranchSource: 'DEPLOYMENT_MANIFEST',
         invalidSources: [],
-        warnings: ['manual_metadata_unverified']
+        warnings: []
     });
-    assert.throws(
-        () => assertDeploymentMetadata(metadata),
-        /set VERSION_SMOKE_EXPECT_COMMIT and VERSION_SMOKE_EXPECT_BRANCH/
-    );
     assert.doesNotThrow(() => assertDeploymentMetadata(metadata, {
         expectedCommit: commitSha,
         expectedBranch: 'codex/production'
     }));
 });
 
-test('release metadata returns null when Railway git metadata is unavailable', () => {
+test('stale manual metadata cannot conceal an artifact-backed release', () => {
+    const artifactCommit = '1111111111111111111111111111111111111111';
     const metadata = getReleaseMetadata({
-        GITHUB_SHA: '1111111111111111111111111111111111111111',
-        COMMIT_SHA: '2222222222222222222222222222222222222222',
-        GIT_BRANCH: 'local-branch'
-    });
+        RELEASE_DEPLOY_COMMIT: '2222222222222222222222222222222222222222',
+        RELEASE_DEPLOY_BRANCH: 'codex/stale-release'
+    }, { deploymentManifest: manifest(artifactCommit, 'codex/production') });
 
-    assert.equal(metadata.commitSha, null);
-    assert.equal(metadata.sourceBranch, null);
+    assert.equal(metadata.commitSha, artifactCommit);
+    assert.equal(metadata.sourceBranch, 'codex/production');
     assert.deepEqual(metadata.deploymentMetadata, {
+        status: 'conflict',
+        complete: false,
+        commitShaSource: 'DEPLOYMENT_MANIFEST',
+        sourceBranchSource: 'DEPLOYMENT_MANIFEST',
+        invalidSources: [],
+        warnings: ['manual_metadata_conflicts_with_deployment_manifest']
+    });
+    assert.throws(() => assertDeploymentMetadata(metadata), /not complete: conflict/);
+});
+
+test('platform metadata remains primary and conflicts fail closed', () => {
+    const railwayCommit = '3333333333333333333333333333333333333333';
+    const metadata = getReleaseMetadata({
+        RAILWAY_GIT_COMMIT_SHA: railwayCommit,
+        RAILWAY_GIT_BRANCH: 'main'
+    }, { deploymentManifest: manifest('4444444444444444444444444444444444444444', 'codex/production') });
+
+    assert.equal(metadata.commitSha, railwayCommit);
+    assert.equal(metadata.sourceBranch, 'main');
+    assert.equal(metadata.deploymentMetadata.status, 'conflict');
+    assert.equal(metadata.deploymentMetadata.complete, false);
+    assert.deepEqual(metadata.deploymentMetadata.warnings, ['manifest_conflicts_with_railway_metadata']);
+    assert.throws(() => assertDeploymentMetadata(metadata), /not complete: conflict/);
+});
+
+test('malformed or missing artifact metadata fails closed without falling back to manual assertions', () => {
+    const malformed = getReleaseMetadata({
+        RELEASE_DEPLOY_COMMIT: '1111111111111111111111111111111111111111',
+        RELEASE_DEPLOY_BRANCH: 'codex/production'
+    }, { deploymentManifest: { malformed: true } });
+    assert.equal(malformed.commitSha, null);
+    assert.equal(malformed.sourceBranch, null);
+    assert.deepEqual(malformed.deploymentMetadata, {
         status: 'unavailable',
         complete: false,
         commitShaSource: null,
         sourceBranchSource: null,
-        invalidSources: [],
-        warnings: []
+        invalidSources: ['DEPLOYMENT_MANIFEST'],
+        warnings: ['deployment_manifest_invalid:manifest_keys_invalid']
     });
-    assert.throws(
-        () => assertDeploymentMetadata(metadata),
-        /deployment metadata is not complete: unavailable/
-    );
-    assert.doesNotThrow(() => assertDeploymentMetadata(metadata, { requireComplete: false }));
+    assert.throws(() => assertDeploymentMetadata(malformed), /not complete: unavailable/);
+
+    const missing = getReleaseMetadata({}, { manifestPath: EMPTY_MANIFEST_PATH });
+    assert.equal(missing.deploymentMetadata.status, 'unavailable');
+    assert.equal(missing.deploymentMetadata.complete, false);
+    assert.throws(() => assertDeploymentMetadata(missing), /not complete: unavailable/);
+});
+
+test('legacy manual metadata is explicitly incomplete even when it matches the expected target', () => {
+    const commitSha = '1111111111111111111111111111111111111111';
+    const metadata = getReleaseMetadata({
+        RELEASE_DEPLOY_COMMIT: commitSha,
+        RELEASE_DEPLOY_BRANCH: 'codex/production'
+    }, { manifestPath: EMPTY_MANIFEST_PATH });
+
+    assert.equal(metadata.deploymentMetadata.status, 'manual');
+    assert.equal(metadata.deploymentMetadata.complete, false);
+    assert.throws(() => assertDeploymentMetadata(metadata, {
+        expectedCommit: commitSha,
+        expectedBranch: 'codex/production'
+    }), /not complete: manual/);
 });
 
 test('release metadata rejects malformed SHA and unsafe branch values', () => {
@@ -133,92 +163,19 @@ test('release metadata rejects malformed SHA and unsafe branch values', () => {
     const metadata = getReleaseMetadata({
         RAILWAY_GIT_COMMIT_SHA: 'abc123',
         RAILWAY_GIT_BRANCH: 'codex/production\nINTERNAL=value'
-    });
+    }, { manifestPath: EMPTY_MANIFEST_PATH });
     assert.equal(metadata.commitSha, null);
     assert.equal(metadata.sourceBranch, null);
     assert.deepEqual(metadata.deploymentMetadata.invalidSources, [
         'RAILWAY_GIT_COMMIT_SHA',
         'RAILWAY_GIT_BRANCH'
     ]);
+    assert.equal(metadata.deploymentMetadata.status, 'partial');
 });
 
-test('version smoke requires stable complete metadata by default', () => {
-    assert.throws(
-        () => assertDeploymentMetadata({ sourceBranch: null }),
-        /missing commitSha/
-    );
-    assert.throws(
-        () => assertDeploymentMetadata({ commitSha: null }),
-        /missing sourceBranch/
-    );
-    assert.throws(
-        () => assertDeploymentMetadata({ commitSha: 'abc123', sourceBranch: 'codex/production' }),
-        /invalid format/
-    );
-    assert.throws(
-        () => assertDeploymentMetadata({
-            commitSha: 'a'.repeat(40),
-            sourceBranch: 'codex/production\nSECRET=value'
-        }),
-        /sourceBranch has invalid format/
-    );
-    assert.throws(
-        () => assertDeploymentMetadata({
-            commitSha: 'a'.repeat(40),
-            sourceBranch: 'codex/production',
-            deploymentMetadata: {
-                status: 'conflict',
-                complete: false,
-                commitShaSource: 'RELEASE_DEPLOY_COMMIT',
-                sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
-                invalidSources: [],
-                warnings: ['manual_commit_conflicts_with_railway_commit']
-            }
-        }),
-        /deployment metadata is not complete: conflict/
-    );
-    assert.throws(
-        () => assertDeploymentMetadata({
-            commitSha: 'a'.repeat(40),
-            sourceBranch: 'codex/production',
-            deploymentMetadata: {
-                status: 'configured',
-                complete: true,
-                commitShaSource: 'RELEASE_DEPLOY_COMMIT',
-                sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
-                invalidSources: [],
-                warnings: []
-            }
-        }),
-        /not complete: configured/
-    );
-    assert.throws(
-        () => assertDeploymentMetadata({
-            commitSha: 'a'.repeat(40),
-            sourceBranch: 'codex/production',
-            deploymentMetadata: {
-                status: 'manual',
-                complete: false,
-                commitShaSource: 'RELEASE_DEPLOY_COMMIT',
-                sourceBranchSource: 'RELEASE_DEPLOY_BRANCH',
-                invalidSources: [],
-                warnings: ['manual_metadata_unverified']
-            }
-        }, {
-            expectedCommit: 'b'.repeat(40),
-            expectedBranch: 'codex/production'
-        }),
-        /expected/
-    );
-});
-
-test('version smoke requires an explicit exact deployment target outside diagnostic mode', () => {
+test('version smoke requires an exact expected target and accepts only complete artifact metadata', () => {
     const commitSha = 'abcdef0123456789abcdef0123456789abcdef01';
-
-    assert.throws(
-        () => resolveExpectedDeploymentTarget({}),
-        /VERSION_SMOKE_EXPECT_COMMIT/
-    );
+    assert.throws(() => resolveExpectedDeploymentTarget({}), /VERSION_SMOKE_EXPECT_COMMIT/);
     assert.throws(
         () => resolveExpectedDeploymentTarget({ VERSION_SMOKE_EXPECT_COMMIT: commitSha }),
         /VERSION_SMOKE_EXPECT_BRANCH/
@@ -234,26 +191,36 @@ test('version smoke requires an explicit exact deployment target outside diagnos
         expectedCommit: null,
         expectedBranch: null
     });
+
+    const complete = getReleaseMetadata({}, { deploymentManifest: manifest(commitSha) });
+    assert.doesNotThrow(() => assertDeploymentMetadata(complete, {
+        expectedCommit: commitSha,
+        expectedBranch: 'codex/production'
+    }));
 });
 
-
-test('version smoke retries transient fetch failures with timeout controls', () => {
+test('version smoke keeps retry and artifact expectations in the runtime contract', () => {
     const script = fs.readFileSync(path.join(ROOT, 'scripts', 'live-version-smoke.js'), 'utf8');
-
     assert.match(script, /VERSION_SMOKE_RETRIES/);
     assert.match(script, /VERSION_SMOKE_TIMEOUT_MS/);
     assert.match(script, /VERSION_SMOKE_RETRY_DELAY_MS/);
     assert.match(script, /AbortController/);
-    assert.match(script, /async function fetchTextOnce/);
-    assert.match(script, /statusCode >= 500/);
-    assert.match(script, /resolveExpectedDeploymentTarget\(process\.env/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT/);
+    assert.match(script, /COMPLETE_METADATA_STATUSES = new Set\(\['railway', 'manifest'\]\)/);
+    assert.doesNotMatch(script, /manualVerification/);
     assert.doesNotMatch(script, /process\.env\.RELEASE_DEPLOY_(COMMIT|BRANCH)/);
 });
+
 test('/api/version remains a public response from the canonical release service', () => {
     const route = fs.readFileSync(path.join(ROOT, 'routes', 'settings.js'), 'utf8');
     const routeBlock = route.match(/router\.get\('\/version'[\s\S]*?\n\}\);/)?.[0] || '';
-
     assert.match(routeBlock, /res\.json\(getReleaseMetadata\(\)\)/);
     assert.doesNotMatch(routeBlock, /process\.env|RAILWAY_|GITHUB_|COMMIT|BRANCH/);
+});
+
+test('manifest format remains explicit and version-bound', () => {
+    const value = manifest();
+    assert.equal(value.format, DEPLOYMENT_MANIFEST_FORMAT);
+    assert.equal(value.schemaVersion, DEPLOYMENT_MANIFEST_SCHEMA_VERSION);
+    assert.equal(value.applicationVersion, pkg.version);
 });

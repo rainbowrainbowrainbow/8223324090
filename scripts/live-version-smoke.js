@@ -16,13 +16,14 @@ const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/;
 const VALID_METADATA_STATUSES = new Set([
     'configured',
     'railway',
+    'manifest',
     'manual',
     'mixed',
     'partial',
     'unavailable',
     'conflict'
 ]);
-const COMPLETE_METADATA_STATUSES = new Set(['railway', 'mixed']);
+const COMPLETE_METADATA_STATUSES = new Set(['railway', 'manifest']);
 const DEFAULT_FETCH_RETRIES = 3;
 const DEFAULT_FETCH_TIMEOUT_MS = 15000;
 const DEFAULT_FETCH_RETRY_DELAY_MS = 1500;
@@ -174,14 +175,7 @@ function assertDeploymentMetadata(versionJson, options = {}) {
         if (meta.status === 'manual' && meta.complete) {
             throw new Error('/api/version manual metadata must remain unverified');
         }
-        const manualVerification = meta.status === 'manual'
-            && Boolean(expectedCommit && expectedBranch);
-        if (requireComplete
-            && (!meta.complete || !COMPLETE_METADATA_STATUSES.has(meta.status))
-            && !manualVerification) {
-            if (meta.status === 'manual') {
-                throw new Error('/api/version uses manual metadata; set VERSION_SMOKE_EXPECT_COMMIT and VERSION_SMOKE_EXPECT_BRANCH to the exact deployed target');
-            }
+        if (requireComplete && (!meta.complete || !COMPLETE_METADATA_STATUSES.has(meta.status))) {
             throw new Error(`/api/version deployment metadata is not complete: ${meta.status}`);
         }
     }

@@ -7,7 +7,7 @@ const test = require('node:test');
 
 const ROOT = path.join(__dirname, '..');
 
-test('Railway release helper deploys the pushed clean worktree as root', () => {
+test('Railway release helper deploys a pushed clean artifact with manifest and mandatory live proof', () => {
     const scriptPath = path.join(ROOT, 'scripts', 'railway-release-up.js');
     const script = fs.readFileSync(scriptPath, 'utf8');
     const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
@@ -17,23 +17,19 @@ test('Railway release helper deploys the pushed clean worktree as root', () => {
     assert.match(pkg.scripts['release:railway-up:dry-run:branch'], /scripts\/railway-release-up\.js --dry-run --branch$/);
     assert.match(script, /git\(\['status', '--porcelain'\]\)/);
     assert.match(script, /git\(\['ls-remote', 'origin'/);
-    assert.match(script, /RELEASE_DEPLOY_BRANCH/);
-    assert.match(script, /RELEASE_DEPLOY_COMMIT/);
-    assert.match(script, /RELEASE_DEPLOY_COMMIT=\$\{head\}/);
-    assert.match(script, /RELEASE_DEPLOY_BRANCH=\$\{options\.branch\}/);
-    assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT=\$\{head\}/);
-    assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH=\$\{options\.branch\}/);
+    assert.match(script, /writeDeploymentManifest\(sourceDir/);
+    assert.match(script, /readDeploymentManifest\(\{ rootDir: sourceDir/);
+    assert.match(script, /DEPLOYMENT_MANIFEST_FILENAME/);
+    assert.match(script, /runPostDeploySmoke\(liveUrl, head, options\.branch\)/);
+    assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
+    assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
     assert.match(script, /git archive/);
     assert.match(script, /createCleanExport/);
     assert.match(script, /validateExport/);
-    assert.match(script, /RELEASE_RAILWAY_CLEAN_EXPORT/);
-    assert.match(script, /--no-clean-export/);
-    assert.match(script, /'up',\s*\n\s*deploySource,\s*\n\s*'--path-as-root'/);
-    assert.match(script, /'variable',\s*\n\s*'set'/);
+    assert.match(script, /'up',\s*\n\s*exportInfo\.sourceDir,\s*\n\s*'--path-as-root'/);
     assert.match(script, /shell:\s*false/);
-    assert.doesNotMatch(script, /shell:\s*process\.platform/);
-    assert.match(script, /resolveCommandExecutable/);
-    assert.match(script, /RELEASE_RAILWAY_BIN/);
-    assert.match(script, /where\.exe/);
-    assert.match(script, /railway\.exe/);
+    assert.doesNotMatch(script, /'variable',\s*\n\s*'set'/);
+    assert.doesNotMatch(script, /RELEASE_DEPLOY_COMMIT=\$\{head\}/);
+    assert.doesNotMatch(script, /RELEASE_DEPLOY_BRANCH=\$\{options\.branch\}/);
+    assert.doesNotMatch(script, /--skip-variable-set|--no-clean-export/);
 });

@@ -113,10 +113,10 @@ Preferred workflow for normal product work:
 
 ## Deploy And Branch Boundaries
 
-- Last verified Railway production release branch (2026-07-28): `codex/zrs-financial-integrity`.
+- Last verified Railway production release branch (2026-08-01): `codex/lead-guest-context-v08018-final`.
 - Production deployment policy (2026-07-20): Railway GitHub auto-deploy is disabled for the production app service. Production deploy must be promoted manually only after the required GitHub CI checks are green for the exact release SHA.
-- Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release-proof/rollback notes.
-- Manual Railway deploys must expose deploy evidence through `/api/version`: either valid Railway `RAILWAY_GIT_COMMIT_SHA`/`RAILWAY_GIT_BRANCH` metadata or explicit runtime `RELEASE_DEPLOY_COMMIT=<exact-sha>` and `RELEASE_DEPLOY_BRANCH=<branch>`. Run release smokes with the same `RELEASE_DEPLOY_COMMIT`/`RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared against the exact intended SHA. `npm run version:smoke` and `npm run release:timeline-proof` are expected to fail if production commit/branch metadata is unavailable. Prefer `npm run release:railway-up`; it deploys a clean `git archive` export by default instead of uploading the working directory.
+- Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` to `release:railway-up` and release-proof notes.
+- Manual Railway deploys must expose deploy evidence through `/api/version`: valid Railway `RAILWAY_GIT_COMMIT_SHA`/`RAILWAY_GIT_BRANCH` metadata, or the exact `eventgenix-release-deployment.json` manifest generated inside the helper's clean `git archive` export. `RELEASE_DEPLOY_COMMIT` and `RELEASE_DEPLOY_BRANCH` are legacy, incomplete metadata; do not set them in Railway or use them as release identity. `npm run release:railway-up` proves the exact uploaded SHA and branch automatically; standalone `npm run version:smoke` must receive `VERSION_SMOKE_EXPECT_COMMIT` and `VERSION_SMOKE_EXPECT_BRANCH`. Release smokes fail closed if metadata is unavailable, manual, malformed, or conflicting.
 - Historical docs mention `codex/timeline-leads-hardening` and `deployed`; neither is the active deploy source unless the user explicitly says Railway was reconfigured.
 - Never upload files through the GitHub UI.
 - If the current user task explicitly asks for deploy, use the active workflow and do not ask for a second deploy confirmation.

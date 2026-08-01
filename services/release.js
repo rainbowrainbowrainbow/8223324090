@@ -1,11 +1,18 @@
-const pkg = require('../package.json');
+'use strict';
 
-const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
-const SOURCE_BRANCH_MAX_LENGTH = 255;
+const pkg = require('../package.json');
+const {
+    FULL_COMMIT_SHA_PATTERN,
+    normalizeCommitSha,
+    normalizeSourceBranch,
+    validateDeploymentManifest,
+    readDeploymentManifest
+} = require('./releaseDeploymentManifest');
+
 const METADATA_STATUSES = new Set([
     'railway',
+    'manifest',
     'manual',
-    'mixed',
     'partial',
     'unavailable',
     'conflict'
@@ -13,21 +20,6 @@ const METADATA_STATUSES = new Set([
 
 function getReleaseLabel() {
     return String(pkg.eventGenix?.releaseLabel || pkg.releaseLabel || '').trim();
-}
-
-function normalizeCommitSha(value) {
-    const commitSha = String(value || '').trim();
-    return FULL_COMMIT_SHA_PATTERN.test(commitSha) ? commitSha.toLowerCase() : null;
-}
-
-function normalizeSourceBranch(value) {
-    const sourceBranch = String(value || '').trim();
-    if (!sourceBranch
-        || sourceBranch.length > SOURCE_BRANCH_MAX_LENGTH
-        || /[\u0000-\u001f\u007f]/.test(sourceBranch)) {
-        return null;
-    }
-    return sourceBranch;
 }
 
 function normalizedEnvValue(env, name, normalizer) {
@@ -43,78 +35,118 @@ function normalizedEnvValue(env, name, normalizer) {
     };
 }
 
-function chooseCommitSha(env) {
-    const configured = normalizedEnvValue(env, 'RELEASE_DEPLOY_COMMIT', normalizeCommitSha);
-    const railway = normalizedEnvValue(env, 'RAILWAY_GIT_COMMIT_SHA', normalizeCommitSha);
-    const warnings = [];
-
-    if (configured.value && railway.value && configured.value !== railway.value) {
-        warnings.push('manual_commit_conflicts_with_railway_commit');
-    }
-
+function readEnvPair(env, commitName, branchName) {
+    const commit = normalizedEnvValue(env, commitName, normalizeCommitSha);
+    const branch = normalizedEnvValue(env, branchName, normalizeSourceBranch);
     return {
-        // Railway metadata identifies the commit actually running on the platform.
-        // RELEASE_DEPLOY_COMMIT is an operator assertion and must never conceal it.
-        value: railway.value || configured.value,
-        source: railway.value ? railway.name : (configured.value ? configured.name : null),
-        warnings,
-        invalidSources: [configured, railway]
+        commit,
+        branch,
+        rawPresent: commit.rawPresent || branch.rawPresent,
+        complete: Boolean(commit.value && branch.value),
+        invalidSources: [commit, branch]
             .filter(item => item.rawPresent && !item.value)
             .map(item => item.name)
     };
 }
 
-function chooseSourceBranch(env) {
-    const configured = normalizedEnvValue(env, 'RELEASE_DEPLOY_BRANCH', normalizeSourceBranch);
-    const railway = normalizedEnvValue(env, 'RAILWAY_GIT_BRANCH', normalizeSourceBranch);
+function resolveManifest(options = {}) {
+    if (Object.prototype.hasOwnProperty.call(options, 'deploymentManifest')) {
+        const checked = validateDeploymentManifest(options.deploymentManifest, { expectedVersion: pkg.version });
+        return checked.valid
+            ? { state: 'valid', manifest: checked.manifest, reason: null }
+            : { state: 'invalid', manifest: null, reason: checked.reason };
+    }
+    return readDeploymentManifest({
+        rootDir: options.manifestRoot,
+        filePath: options.manifestPath,
+        expectedVersion: pkg.version
+    });
+}
+
+function samePair(left, right) {
+    return left.commit.value === right.commit.value && left.branch.value === right.branch.value;
+}
+
+function selectedPair(source, commitSha, sourceBranch, commitSource, branchSource) {
+    return { source, commitSha, sourceBranch, commitSource, branchSource };
+}
+
+function getReleaseMetadata(env = process.env, options = {}) {
+    const railway = readEnvPair(env, 'RAILWAY_GIT_COMMIT_SHA', 'RAILWAY_GIT_BRANCH');
+    const manual = readEnvPair(env, 'RELEASE_DEPLOY_COMMIT', 'RELEASE_DEPLOY_BRANCH');
+    const manifestResult = resolveManifest(options);
+    const manifest = manifestResult.state === 'valid'
+        ? {
+            commit: { value: manifestResult.manifest.commitSha },
+            branch: { value: manifestResult.manifest.sourceBranch },
+            complete: true
+        }
+        : null;
     const warnings = [];
+    const invalidSources = [...railway.invalidSources, ...manual.invalidSources];
+    if (manifestResult.state === 'invalid') invalidSources.push('DEPLOYMENT_MANIFEST');
 
-    if (configured.value && railway.value && configured.value !== railway.value) {
-        warnings.push('manual_branch_conflicts_with_railway_branch');
+    let selected = null;
+    let status = 'unavailable';
+
+    if (railway.rawPresent) {
+        if (!railway.complete) {
+            status = 'partial';
+            warnings.push('railway_metadata_partial');
+        } else {
+            selected = selectedPair(
+                'railway',
+                railway.commit.value,
+                railway.branch.value,
+                railway.commit.name,
+                railway.branch.name
+            );
+            status = 'railway';
+            if (manifest && !samePair(railway, manifest)) {
+                status = 'conflict';
+                warnings.push('manifest_conflicts_with_railway_metadata');
+            }
+            if (manual.complete && !samePair(railway, manual)) {
+                status = 'conflict';
+                warnings.push('manual_metadata_conflicts_with_railway_metadata');
+            }
+        }
+    } else if (manifest) {
+        selected = selectedPair(
+            'manifest',
+            manifest.commit.value,
+            manifest.branch.value,
+            'DEPLOYMENT_MANIFEST',
+            'DEPLOYMENT_MANIFEST'
+        );
+        status = 'manifest';
+        if (manual.complete && !samePair(manifest, manual)) {
+            status = 'conflict';
+            warnings.push('manual_metadata_conflicts_with_deployment_manifest');
+        }
+    } else if (manifestResult.state === 'invalid') {
+        status = 'unavailable';
+        warnings.push(`deployment_manifest_invalid:${manifestResult.reason}`);
+    } else if (manual.rawPresent) {
+        if (manual.complete) {
+            selected = selectedPair(
+                'manual',
+                manual.commit.value,
+                manual.branch.value,
+                manual.commit.name,
+                manual.branch.name
+            );
+            status = 'manual';
+            warnings.push('manual_metadata_unverified');
+        } else {
+            status = 'partial';
+            warnings.push('manual_metadata_partial');
+        }
     }
 
-    return {
-        value: railway.value || configured.value,
-        source: railway.value ? railway.name : (configured.value ? configured.name : null),
-        warnings,
-        invalidSources: [configured, railway]
-            .filter(item => item.rawPresent && !item.value)
-            .map(item => item.name)
-    };
-}
-
-function resolveMetadataStatus(commitSha, sourceBranch, commitSource, branchSource, warnings) {
-    if (warnings.some(warning => warning.endsWith('_conflicts_with_railway_commit')
-        || warning.endsWith('_conflicts_with_railway_branch'))) {
-        return 'conflict';
-    }
-    if (!commitSha && !sourceBranch) return 'unavailable';
-    if (!commitSha || !sourceBranch) return 'partial';
-    if (commitSource === 'RAILWAY_GIT_COMMIT_SHA') {
-        return branchSource === 'RAILWAY_GIT_BRANCH' ? 'railway' : 'mixed';
-    }
-    // A manual SHA can be compared by the post-deploy smoke, but it is not
-    // evidence from the platform and therefore cannot be complete here.
-    if (commitSource === 'RELEASE_DEPLOY_COMMIT') return 'manual';
-    return 'unavailable';
-}
-
-function getReleaseMetadata(env = process.env) {
-    const commitSha = chooseCommitSha(env);
-    const sourceBranch = chooseSourceBranch(env);
-    const warnings = [...commitSha.warnings, ...sourceBranch.warnings];
-    const status = resolveMetadataStatus(
-        commitSha.value,
-        sourceBranch.value,
-        commitSha.source,
-        sourceBranch.source,
-        warnings
-    );
     if (!METADATA_STATUSES.has(status)) {
         throw new Error(`Unsupported release metadata status: ${status}`);
     }
-    const manualOnly = commitSha.source === 'RELEASE_DEPLOY_COMMIT';
-    if (manualOnly) warnings.push('manual_metadata_unverified');
 
     return {
         success: true,
@@ -122,19 +154,14 @@ function getReleaseMetadata(env = process.env) {
         releaseLabel: getReleaseLabel(),
         name: 'Event Genix',
         testMode: env.TEST_MODE === 'true',
-        commitSha: commitSha.value,
-        sourceBranch: sourceBranch.value,
+        commitSha: selected?.commitSha || null,
+        sourceBranch: selected?.sourceBranch || null,
         deploymentMetadata: {
             status,
-            complete: Boolean(commitSha.value
-                && sourceBranch.value
-                && !manualOnly
-                && status !== 'conflict'
-                && status !== 'partial'
-                && status !== 'unavailable'),
-            commitShaSource: commitSha.source,
-            sourceBranchSource: sourceBranch.source,
-            invalidSources: [...new Set([...commitSha.invalidSources, ...sourceBranch.invalidSources])],
+            complete: status === 'railway' || status === 'manifest',
+            commitShaSource: selected?.commitSource || null,
+            sourceBranchSource: selected?.branchSource || null,
+            invalidSources: [...new Set(invalidSources)],
             warnings: [...new Set(warnings)]
         }
     };

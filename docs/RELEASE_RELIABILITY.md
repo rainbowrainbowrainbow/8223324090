@@ -6,57 +6,51 @@
 
 ## Production Branch
 
-Manual Railway deploys must expose commit/branch evidence through `/api/version`.
-`RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_BRANCH` are the platform sources of
-truth and always take priority over manual metadata. If they disagree with
-`RELEASE_DEPLOY_COMMIT` or `RELEASE_DEPLOY_BRANCH`, `/api/version` returns the
-platform values with `deploymentMetadata.status = conflict` and `complete = false`.
+Manual Railway CLI uploads must expose commit/branch evidence through `/api/version`.
+The evidence order is strict:
 
-The helper still writes the non-secret manual pair before a deploy because it
-records the intended release target:
+1. `RAILWAY_GIT_COMMIT_SHA` and `RAILWAY_GIT_BRANCH`, when Railway provides both;
+2. `eventgenix-release-deployment.json` bundled in the exact uploaded clean export;
+3. legacy `RELEASE_DEPLOY_*` only as an incomplete diagnostic state.
 
-```bash
-RELEASE_DEPLOY_COMMIT=<exact-release-sha>
-RELEASE_DEPLOY_BRANCH=codex/zrs-financial-integrity
-```
+The deployment manifest is created by `scripts/railway-release-up.js` immediately
+inside the clean `git archive` export. It records the exact pushed HEAD, branch,
+and package version that are uploaded to Railway. Runtime rejects malformed,
+stale-version, missing, or conflicting artifact metadata. A manual env pair can
+never override a valid manifest or Railway Git metadata.
 
-When only the manual pair is available, `/api/version` reports
-`deploymentMetadata.status = manual` and `complete = false`. This is intentional:
-manual metadata is an operator assertion, not evidence of the commit actually
-running on Railway.
+`RELEASE_DEPLOY_COMMIT` and `RELEASE_DEPLOY_BRANCH` must not be used as runtime
+release identity. They are legacy inputs only and should be absent from the
+production service after the migration. If either remains and conflicts with the
+manifest/platform pair, `/api/version` returns `status = conflict` and
+`complete = false`.
 
-Every post-deploy `version:smoke` must receive the exact target separately. It
-must never fall back to `RELEASE_DEPLOY_*` from the operator shell:
+The release helper runs strict post-deploy proof automatically with the exact
+HEAD and branch. For a separate read-only proof, pass the expected target
+explicitly:
 
 ```powershell
 $env:VERSION_SMOKE_EXPECT_COMMIT = '<exact-release-sha>'
-$env:VERSION_SMOKE_EXPECT_BRANCH = 'codex/zrs-financial-integrity'
+$env:VERSION_SMOKE_EXPECT_BRANCH = 'codex/lead-guest-context-v08018-final'
 npm run version:smoke -- https://<live-crm-host>
 ```
 
-The smoke fails for a conflict, a stale manual SHA, a mismatched branch, or a
-missing exact target. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is allowed
-only for local/dev diagnostics.
+`version:smoke` fails for manual, partial, unavailable, malformed, stale, or
+conflicting metadata. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is local/dev
+only and never a release acceptance override.
 
-Runtime observation (read-only, 2026-08-01): the live API reported
-`RELEASE_DEPLOY_COMMIT` and `RELEASE_DEPLOY_BRANCH` as its metadata sources;
-platform commit/branch evidence was not exposed by the runtime contract.
-
-Read-only live observation (2026-08-01) reported
-`codex/lead-guest-context-v08018-final`, but its source is manual/unverified
-metadata. Re-confirm the active Railway deploy source before every release or
-rollback; do not treat this historic observation as an authorization to deploy.
+Re-confirm the active Railway deploy source read-only before every release or
+rollback; do not rely on historical branch names in this document.
 
 Перед кожним release або rollback треба read-only перевіркою підтвердити активну
-Railway source branch і явно передати її в командах через
-`RELEASE_DEPLOY_BRANCH=<branch>`. Не покладатися на fallback у release-proof
-скрипті. `codex/timeline-leads-hardening` і `deployed` є історичними deploy
-sources, доки власник окремо не підтвердить переналаштування Railway.
+Railway source branch і явно передати її helper через trailing branch argument.
+`codex/timeline-leads-hardening` і `deployed` є історичними deploy sources,
+доки власник окремо не підтвердить переналаштування Railway.
 
-Production deploy policy з 20.07.2026: Railway GitHub auto-deploy вимкнений
-для production app service. Production deploy має запускатися вручну тільки
-після зелених required GitHub CI checks на точному release SHA. Деплоїти треба
-саме перевірений SHA, а не випадковий стан локальної директорії.
+Production deploy policy: Railway GitHub auto-deploy вимкнений для production app
+service. Production deploy запускається вручну тільки після зелених required
+GitHub CI checks на точному release SHA. Деплоїти треба саме перевірений SHA, а
+не випадковий стан локальної директорії.
 
 Якщо Railway знову стартує deploy одразу після push і раніше завершення CI, це
 process drift: release не закривати як доставлений, доки CI не зелений і live
@@ -64,34 +58,30 @@ version/health smoke не підтверджені.
 
 ## Preferred Railway Deploy Helper
 
-For manual production deploys, prefer the repo helper over raw railway up:
-
-~~~bash
-RELEASE_DEPLOY_BRANCH=codex/zrs-financial-integrity npm run release:railway-up -- --service 8223324090 --environment production
-~~~
-
-On PowerShell/Windows, do not pass named flags through `npm run`: npm can consume
-them before Node receives them. Use one of the safe branch wrappers below (the
-branch is the only trailing argument), or invoke the helper directly.
+For manual production deploys, prefer the repo helper over raw `railway up`:
 
 ~~~powershell
 # Safe dry run: cannot deploy.
-npm run release:railway-up:dry-run:branch -- codex/zrs-financial-integrity
+npm run release:railway-up:dry-run:branch -- codex/lead-guest-context-v08018-final
 
-# Production deploy after CI is green.
-npm run release:railway-up:branch -- codex/zrs-financial-integrity
+# Production deploy after CI is green. The helper writes the deployment manifest
+# into a clean git-archive export and runs strict post-deploy version proof.
+npm run release:railway-up:branch -- codex/lead-guest-context-v08018-final
 ~~~
 
-For a non-default service/environment, invoke the helper directly:
+For a non-default service, environment, or URL, invoke the helper directly:
 
 ~~~powershell
-node scripts/railway-release-up.js --branch codex/zrs-financial-integrity --service 8223324090 --environment production
+node scripts/railway-release-up.js --branch codex/lead-guest-context-v08018-final --service 8223324090 --environment production --live-url https://<live-crm-host>
 ~~~
 
-The helper resolves the bundled native Railway CLI on Windows. For a non-standard installation, set `RELEASE_RAILWAY_BIN` to the exact `railway.exe` path.
-
-The helper fails closed when the worktree is dirty, when local HEAD is not the same SHA as origin/<branch>, or when the deploy branch is missing. By default it creates a clean `git archive` export of the exact HEAD, validates release assets in that export, then deploys that export path with `railway up <clean-export> --path-as-root`. It sets the non-secret `RELEASE_DEPLOY_COMMIT` / `RELEASE_DEPLOY_BRANCH` metadata before the deploy. Use raw `railway up` only if the helper itself is unavailable, and then deploy a clean archive/export path, not a dirty workspace directory, plus the metadata variables.
-
+The helper fails closed when the worktree is dirty, when local HEAD is not the
+same SHA as `origin/<branch>`, when the branch is unsafe/missing, when the
+clean export lacks the release manifest, or when live `/api/version` does not
+prove the uploaded SHA and branch. It never writes `RELEASE_DEPLOY_*` to
+Railway. Use raw `railway up` only if the helper itself is unavailable; in that
+case the deploy is not a complete release proof until an equivalent manifest
+and strict live verification exist.
 ## Production Branch Rule Exception
 
 Owner decision on 2026-07-19: keep production commit `0658c09c7`

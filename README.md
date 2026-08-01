@@ -243,14 +243,7 @@ the repository.
 - Railway GitHub auto-deploy is disabled for the production app service.
   Production deploys must be promoted manually only after the required GitHub
   CI checks are green for the exact release SHA. Deploy the exact validated SHA; use `npm run release:railway-up`, which deploys a clean git-archive export by default, and do not rely on an implicit local-directory upload for production release.
-- Manual Railway deploys must leave exact deploy evidence in `/api/version`:
-  valid Railway git metadata or explicit `RELEASE_DEPLOY_COMMIT=<exact-sha>` and
-  `RELEASE_DEPLOY_BRANCH=<branch>` runtime metadata. `npm run version:smoke` and
-  `npm run release:timeline-proof` must fail if production commit/branch metadata
-  is unavailable. Run release smokes with the same `RELEASE_DEPLOY_COMMIT` and
-  `RELEASE_DEPLOY_BRANCH` in the operator shell so the live API is compared
-  against the exact intended SHA. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is
-  local/dev only, not a release gate override.
+- Manual Railway deploys must leave exact deploy evidence in `/api/version`: valid Railway Git metadata or the `eventgenix-release-deployment.json` artifact generated inside the helper’s clean `git archive` export. `RELEASE_DEPLOY_*` is legacy, incomplete metadata and must not be used as release identity. The helper runs strict `version:smoke` against its exact uploaded SHA and branch; standalone proof must set `VERSION_SMOKE_EXPECT_COMMIT` and `VERSION_SMOKE_EXPECT_BRANCH`. `VERSION_SMOKE_ALLOW_MISSING_METADATA=true` is local/dev only, not a release gate override.
 - Push release/rollback commits only to the confirmed active Railway branch.
 - Always pass the confirmed branch explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` for release proof notes; do not rely on a script fallback.
 - Treat `codex/timeline-leads-hardening` and `deployed` as historical deploy sources unless the owner explicitly confirms a Railway reconfiguration.

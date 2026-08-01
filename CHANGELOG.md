@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.56 - Release metadata: доказ deploy
+
+### Release / Надійність / (01.08.2026) [codex]
+- **Доказ походження релізу через artifact** — `release:railway-up` додає в чистий upload `eventgenix-release-deployment.json` з версією, full SHA та source branch саме з pushed HEAD.
+- **Legacy env більше не є джерелом істини** — `/api/version` приймає `RELEASE_DEPLOY_*` лише як неповні legacy metadata й fail-closed позначає manual, malformed або конфліктні значення.
+- **Автоматичний deploy proof** — helper перевіряє чистий worktree, pushed branch, manifest та після upload виконує strict live `version:smoke` для точного SHA і branch.
+---
+
 ## v0.80.55 - My Day: чернетка та безпечна передача задач
 
 ### Release / Versioning / (01.08.2026) [codex]

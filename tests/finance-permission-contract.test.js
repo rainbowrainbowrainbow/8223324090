@@ -36,7 +36,7 @@ test('Finance mutation router guard is capability-based and keeps account/payrol
 });
 
 test('Finance hydrates capabilities before exposing the verified user to shared auth', () => {
-    const hydration = financePage.indexOf('await hydrateActionPermissions(user);');
+    const hydration = financePage.indexOf('await hydrateActionPermissions(user)');
     const currentUser = financePage.indexOf('AppState.currentUser = user;');
     assert.ok(hydration >= 0, 'Finance must hydrate the capability catalog during initialization');
     assert.ok(currentUser > hydration, 'Finance must not expose a verified user before capability hydration completes');

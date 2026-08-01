@@ -2514,7 +2514,11 @@ function refreshData() {
 // INIT
 // ==========================================
 
-document.addEventListener('DOMContentLoaded', async () => {
+let financePageInitInFlight = false;
+
+async function initFinancePage() {
+    if (financePageInitInFlight) return;
+    financePageInitInFlight = true;
     // Dark mode
     if (typeof initDarkMode === 'function') initDarkMode();
 
@@ -2531,8 +2535,16 @@ document.addEventListener('DOMContentLoaded', async () => {
         const user = await apiVerifyToken();
         if (!user) throw new Error('Invalid token');
 
-        if (typeof hydrateActionPermissions === 'function') {
-            await hydrateActionPermissions(user);
+        const permissions = typeof hydrateActionPermissions === 'function'
+            ? await hydrateActionPermissions(user)
+            : null;
+        if (!permissions) {
+            financePageInitInFlight = false;
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            if (typeof renderPermissionBootstrapError === 'function') {
+                renderPermissionBootstrapError({ containerId: 'tabDashboard', target: document.getElementById('tabDashboard'), retry: initFinancePage });
+            }
+            return;
         }
         AppState.currentUser = user;
         const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
@@ -2773,7 +2785,9 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (new URLSearchParams(window.location.search).get('currency') === 'rates' || window.location.hash === '#currency-rates') {
         setTimeout(() => openCurrencyRatesModal({ updateUrl: false }), 0);
     }
-});
+}
+
+document.addEventListener('DOMContentLoaded', () => { void initFinancePage(); });
 
 // ==========================================
 // v30.6: CASH REGISTER SHIFTS

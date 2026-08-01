@@ -528,46 +528,136 @@ async function hydrateBusinessOperatingProfile(user = AppState.currentUser) {
     return profile;
 }
 
-async function hydrateActionPermissions(user = AppState.currentUser) {
-    if (!user) return null;
-    try {
-        const headers = typeof getAuthHeaders === 'function'
-            ? getAuthHeaders(false)
-            : { Authorization: `Bearer ${localStorage.getItem(AUTH_ACCESS_TOKEN_KEY) || localStorage.getItem('pzp_token') || ''}` };
-        const response = await fetch('/api/auth/permissions', { headers });
-        if (!response.ok) return null;
-        const permissions = await response.json();
-        AppState.authPermissions = permissions;
-        user.permissions = permissions;
-        const catalog = permissions.capabilityCatalog || {};
-        PAGE_ACCESS = catalog.pageRoles || Object.create(null);
-        ACTION_PERMISSIONS = catalog.actionRoles || Object.create(null);
-        PAGE_CAPABILITY_ALIASES = catalog.pageAliases || Object.create(null);
-        ACTION_CAPABILITY_ALIASES = catalog.actionAliases || Object.create(null);
-        ACTION_LEGACY_KEYS = catalog.actionLegacyKeys || Object.create(null);
-        EXPLICIT_ALLOW_DISABLED_PAGES = new Set(catalog.explicitAllowDisabledPages || []);
-        NON_DELEGABLE_ACTIONS = new Set(catalog.nonDelegableActions || []);
-        if (Array.isArray(permissions.pageAllowlist)) {
-            user.pageAllowlist = permissions.pageAllowlist;
-            user.page_allowlist = permissions.pageAllowlist;
-        }
-        if (permissions.actionAllowlist) {
-            user.actionAllowlist = permissions.actionAllowlist;
-            user.action_allowlist = permissions.actionAllowlist;
-        }
-        if (permissions.actionDenylist) {
-            user.actionDenylist = permissions.actionDenylist;
-            user.action_denylist = permissions.actionDenylist;
-        }
-        try {
-            localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
-        } catch {}
-        return permissions;
-    } catch {
-        return null;
+const PERMISSION_RETRY_DELAY_MS = 250;
+let permissionLifecycle = { status: 'idle', attempt: 0, failure: null, updatedAt: 0 };
+
+function getPermissionLifecycle() {
+    return { ...permissionLifecycle };
+}
+
+function setPermissionLifecycle(status, details = {}) {
+    permissionLifecycle = {
+        status,
+        attempt: Number(details.attempt || 0),
+        failure: details.failure || null,
+        updatedAt: Date.now()
+    };
+    if (typeof AppState !== 'undefined' && AppState) AppState.permissionLifecycle = getPermissionLifecycle();
+    if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+        window.dispatchEvent(new CustomEvent('permissions:lifecycle', { detail: getPermissionLifecycle() }));
+    }
+    return permissionLifecycle;
+}
+
+function clearRuntimePermissionCatalog(user) {
+    if (typeof AppState !== 'undefined' && AppState) AppState.authPermissions = null;
+    if (user && typeof user === 'object') delete user.permissions;
+    PAGE_ACCESS = Object.create(null);
+    ACTION_PERMISSIONS = Object.create(null);
+    PAGE_CAPABILITY_ALIASES = Object.create(null);
+    ACTION_CAPABILITY_ALIASES = Object.create(null);
+    ACTION_LEGACY_KEYS = Object.create(null);
+    EXPLICIT_ALLOW_DISABLED_PAGES = new Set();
+    NON_DELEGABLE_ACTIONS = new Set();
+}
+
+function applyActionPermissions(user, permissions) {
+    AppState.authPermissions = permissions;
+    user.permissions = permissions;
+    const catalog = permissions.capabilityCatalog || {};
+    PAGE_ACCESS = catalog.pageRoles || Object.create(null);
+    ACTION_PERMISSIONS = catalog.actionRoles || Object.create(null);
+    PAGE_CAPABILITY_ALIASES = catalog.pageAliases || Object.create(null);
+    ACTION_CAPABILITY_ALIASES = catalog.actionAliases || Object.create(null);
+    ACTION_LEGACY_KEYS = catalog.actionLegacyKeys || Object.create(null);
+    EXPLICIT_ALLOW_DISABLED_PAGES = new Set(catalog.explicitAllowDisabledPages || []);
+    NON_DELEGABLE_ACTIONS = new Set(catalog.nonDelegableActions || []);
+    if (Array.isArray(permissions.pageAllowlist)) {
+        user.pageAllowlist = permissions.pageAllowlist;
+        user.page_allowlist = permissions.pageAllowlist;
+    }
+    if (permissions.actionAllowlist) {
+        user.actionAllowlist = permissions.actionAllowlist;
+        user.action_allowlist = permissions.actionAllowlist;
+    }
+    if (permissions.actionDenylist) {
+        user.actionDenylist = permissions.actionDenylist;
+        user.action_denylist = permissions.actionDenylist;
     }
 }
 
+function permissionLoadError(status, cause) {
+    const error = cause instanceof Error ? cause : new Error(`Permissions request failed${status ? ` (${status})` : ''}`);
+    error.status = Number(status || error.status || 0) || 0;
+    error.retryable = error.status >= 500 || error.status === 0;
+    return error;
+}
+
+function permissionFailureMessage() {
+    const failure = permissionLifecycle.failure || {};
+    if (failure.status === 401) return 'Сесію не вдалося підтвердити під час завантаження прав. Дані сторінки не показані.';
+    if (failure.status === 403) return 'Сервер не надав набір прав для цієї сесії. Дані сторінки не показані.';
+    return 'Не вдалося тимчасово завантажити права доступу. Дані сторінки не показані, щоб не приховати дозволені дії помилково.';
+}
+
+function renderPermissionBootstrapError(options = {}) {
+    const target = options.target || document.getElementById(options.containerId || 'main-content');
+    if (!target) return;
+    const retry = typeof options.retry === 'function' ? options.retry : null;
+    target.innerHTML = `<div class="page-fatal-error permission-bootstrap-error" role="alert" data-permission-state="error"><h3>Права доступу тимчасово недоступні</h3><p>${_escHtml(permissionFailureMessage())}</p>${retry ? '<button type="button" class="btn btn-primary" data-permission-retry>Повторити</button>' : ''}</div>`;
+    const button = target.querySelector('[data-permission-retry]');
+    if (button && retry) {
+        button.addEventListener('click', async () => {
+            if (button.disabled) return;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            try { await retry(); }
+            finally {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            }
+        });
+    }
+}
+async function hydrateActionPermissions(user = AppState.currentUser, options = {}) {
+    if (!user) {
+        clearRuntimePermissionCatalog(user);
+        setPermissionLifecycle('error', { failure: { status: 0, retryable: false, message: 'Authenticated user is unavailable' } });
+        return null;
+    }
+    const maxAttempts = options.retry === false ? 1 : 2;
+    clearRuntimePermissionCatalog(user);
+    for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        setPermissionLifecycle('loading', { attempt });
+        try {
+            const headers = typeof getAuthHeaders === 'function'
+                ? getAuthHeaders(false)
+                : { Authorization: `Bearer ${localStorage.getItem(AUTH_ACCESS_TOKEN_KEY) || localStorage.getItem('pzp_token') || ''}` };
+            const response = await fetch('/api/auth/permissions', { headers });
+            if (!response.ok) throw permissionLoadError(response.status);
+            const permissions = await response.json();
+            applyActionPermissions(user, permissions);
+            setPermissionLifecycle('ready', { attempt });
+            try {
+                localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
+            } catch {}
+            return permissions;
+        } catch (cause) {
+            const error = permissionLoadError(cause?.status, cause);
+            const failure = { status: error.status, retryable: error.retryable, message: error.message };
+            if (error.retryable && attempt < maxAttempts) {
+                if (Number(options.retryDelayMs ?? PERMISSION_RETRY_DELAY_MS) > 0) {
+                    await new Promise(resolve => setTimeout(resolve, Number(options.retryDelayMs ?? PERMISSION_RETRY_DELAY_MS)));
+                }
+                continue;
+            }
+            clearRuntimePermissionCatalog(user);
+            setPermissionLifecycle('error', { attempt, failure });
+            return null;
+        }
+    }
+    return null;
+}
 function hasStoredRefreshSession() {
     return Boolean(localStorage.getItem(AUTH_REFRESH_TOKEN_KEY));
 }
@@ -1543,6 +1633,8 @@ function resolveCapability(user, capability, context = {}) {
 
 if (typeof window !== 'undefined') {
     window.hydrateActionPermissions = hydrateActionPermissions;
+    window.getPermissionLifecycle = getPermissionLifecycle;
+    window.renderPermissionBootstrapError = renderPermissionBootstrapError;
     window.resolveCapability = resolveCapability;
 }
 

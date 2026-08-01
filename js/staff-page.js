@@ -8165,10 +8165,19 @@ async function initStaffSchedulePage(options = {}) {
             return;
         }
 
-        if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        let permissions = user.permissions || null;
         if (mode !== 'hr' && typeof hydrateActionPermissions === 'function') {
-            await hydrateActionPermissions(user);
+            permissions = await hydrateActionPermissions(user);
         }
+        if (mode !== 'hr' && !permissions) {
+            staffScheduleInitPromise = null;
+            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            if (typeof renderPermissionBootstrapError === 'function') {
+                renderPermissionBootstrapError({ target: host, retry: () => initStaffSchedulePage(options) });
+            }
+            return;
+        }
+        if (typeof AppState !== 'undefined') AppState.currentUser = user;
         if (mode !== 'hr') renderStaffPulseSwitcher();
         if (mode !== 'hr') {
             const _userEl = document.getElementById('currentUser');

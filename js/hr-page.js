@@ -2638,10 +2638,17 @@ async function initPage() {
     const user = await apiVerifyToken();
     if (!user) { window.location.href = '/'; return; }
 
-    AppState.currentUser = user;
-    if (typeof hydrateActionPermissions === 'function') {
-        await hydrateActionPermissions(user);
+    const permissions = typeof hydrateActionPermissions === 'function'
+        ? await hydrateActionPermissions(user)
+        : null;
+    if (!permissions) {
+        if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+        if (typeof renderPermissionBootstrapError === 'function') {
+            renderPermissionBootstrapError({ containerId: 'tab-today', target: document.getElementById('tab-today'), retry: initPage });
+        }
+        return;
     }
+    AppState.currentUser = user;
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -2874,6 +2881,11 @@ function bindHrNavClicks() {
 function renderHrNav(activeTarget = requestedHrTarget()) {
     const nav = document.getElementById('hrNav');
     if (!nav) return;
+    const permissionState = typeof getPermissionLifecycle === 'function' ? getPermissionLifecycle() : null;
+    if (permissionState && permissionState.status !== 'ready') {
+        nav.innerHTML = '<div class="hr-nav-loading" data-permission-state="loading">Завантаження прав доступу...</div>';
+        return;
+    }
     const resolved = resolveHrTabTarget(activeTarget);
     const target = resolved.tab || activeTarget;
     const workspaceGroupId = hrWorkspaceGroupId(target);

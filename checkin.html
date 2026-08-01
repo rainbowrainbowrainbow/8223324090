@@ -241,9 +241,9 @@
     </div>
 
     <!-- face-api.js CDN -->
-    <script src="/js/config.js?v=0.80.50"></script>
-    <script src="/js/api.js?v=0.80.50"></script>
-    <script src="/js/auth.js?v=0.80.50"></script>
+    <script src="/js/config.js?v=0.80.51"></script>
+    <script src="/js/api.js?v=0.80.51"></script>
+    <script src="/js/auth.js?v=0.80.51"></script>
     <script src="https://cdn.jsdelivr.net/npm/face-api.js@0.22.2/dist/face-api.min.js"></script>
     <script>
     (function() {
@@ -584,9 +584,16 @@
                 return false;
             }
 
-            if (typeof AppState !== 'undefined') AppState.currentUser = user;
             if (typeof hydrateBusinessOperatingProfile === 'function') await hydrateBusinessOperatingProfile(user);
-            if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
+            const permissions = typeof hydrateActionPermissions === 'function'
+                ? await hydrateActionPermissions(user)
+                : null;
+            if (!permissions) {
+                setStatus('Не вдалося завантажити права доступу. Повторіть спробу.', 'error');
+                setRetryVisible(true);
+                return false;
+            }
+            if (typeof AppState !== 'undefined') AppState.currentUser = user;
 
             if (typeof canAccessPage === 'function' && !canAccessPage('/checkin')) {
                 const fallback = typeof getAuthenticatedTimelineStartPage === 'function'

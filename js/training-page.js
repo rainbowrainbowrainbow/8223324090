@@ -20,12 +20,19 @@
     const ONBOARDING_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
 
     // ═══ Init ═══
-    initTrainingShell();
-    initTabs();
-    initRoleFilter();
-    initOnboarding();
-    loadOverviewStats();
-    activateTrainingTab(getInitialTrainingTab(), { updateHash: false });
+    let trainingPageInitialized = false;
+    void initializeTrainingPage();
+
+    async function initializeTrainingPage() {
+        const permissionsReady = await initTrainingShell();
+        if (!permissionsReady || trainingPageInitialized) return;
+        trainingPageInitialized = true;
+        initTabs();
+        initRoleFilter();
+        initOnboarding();
+        loadOverviewStats();
+        activateTrainingTab(getInitialTrainingTab(), { updateHash: false });
+    }
 
     function restoreTrainingShellVisibility() {
         document.body.classList.remove('auth-screen', 'page-exiting', 'shell-baseline');
@@ -71,15 +78,22 @@
                     else window.location.href = '/';
                     return;
                 }
-                if (typeof AppState !== 'undefined') AppState.currentUser = user;
-                if (typeof hydrateActionPermissions === 'function') {
-                    await hydrateActionPermissions(user);
+                const permissions = typeof hydrateActionPermissions === 'function'
+                    ? await hydrateActionPermissions(user)
+                    : null;
+                if (!permissions) {
+                    if (typeof renderPermissionBootstrapError === 'function') {
+                        renderPermissionBootstrapError({ target: document.getElementById('trainingPage'), retry: initializeTrainingPage });
+                    }
+                    return false;
                 }
+                if (typeof AppState !== 'undefined') AppState.currentUser = user;
                 currentUser = user;
                 try { localStorage.setItem('pzp_current_user', JSON.stringify(user)); } catch {}
                 const userEl = document.getElementById('currentUser');
                 if (userEl) userEl.textContent = user.name || user.username || '';
             }
+            return true;
         } catch (err) {
             console.warn('[training] auth verification fallback', err);
         } finally {

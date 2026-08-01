@@ -291,6 +291,15 @@ async function assertFullComposerContract(page, state) {
     await page.locator('.cabinet-task-create-submit').click();
     assert.equal((await successfulCreate).status(), 200, 'verified fixture create succeeds');
     await page.waitForFunction(() => document.getElementById('cabinetTaskTitle')?.value === '');
+    await page.waitForFunction(() => {
+        const form = document.getElementById('cabinetTaskComposer');
+        return form
+            && document.getElementById('cabinetTaskCategory')?.value === 'personal'
+            && document.getElementById('cabinetTaskMode')?.value === 'personal'
+            && document.getElementById('cabinetTaskReportRequired')?.checked === false
+            && document.getElementById('cabinetTaskAllowReschedule')?.checked === true
+            && !form.querySelector('[data-cabinet-subtask-title]');
+    });
 
     const payload = state.taskCreatePayloads.at(-1);
     assert.equal(payload.title, expected.title, 'payload title is exact');

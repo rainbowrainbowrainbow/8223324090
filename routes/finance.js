@@ -9,7 +9,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
-const { requireRole } = require('../middleware/auth');
+const { requireRole, requireAction } = require('../middleware/auth');
 const { publish } = require('../services/eventBus');
 const { getSalaryReport } = require('../services/payroll');
 const { classifyLegacyManualSalaryFinance } = require('../services/payrollSettlement');
@@ -24,6 +24,12 @@ function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 
 // RBAC: Finance access — creator, director, accountant only
 router.use(requireRole('creator', 'director', 'accountant'));
+const FINANCE_MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const requireFinanceManagement = requireAction('finance.manage');
+router.use((req, res, next) => {
+    if (!FINANCE_MUTATION_METHODS.has(req.method)) return next();
+    return requireFinanceManagement(req, res, next);
+});
 const BUSINESS_SQL_DEFAULT = `'${DEFAULT_BUSINESS_CONTEXT}'`;
 
 // ==========================================

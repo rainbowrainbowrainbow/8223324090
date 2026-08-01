@@ -481,6 +481,12 @@ const ACTION_PERMISSIONS = Object.freeze([
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.payroll.manage'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr payroll mutations', null, 'Enforced by requireHrCapabilityContract.')]
     }),    action({
+        key: 'finance.manage', label: 'Керування фінансовими транзакціями', group: 'finance', defaultRoles: FINANCE_ANALYTICS_ACCESS, risk: 'critical',
+        backendConsumers: [source('routes/finance.js', "const requireFinanceManagement = requireAction('finance.manage');", { enforces: true })],
+        frontendConsumers: [source('js/finance-page.js', "financeCanManageTransactions()", { enforces: true })],
+        apiConsumers: [api('routes/finance.js', '/api/finance mutating endpoints', 'finance.manage', 'Applies to every POST, PUT, PATCH and DELETE request before payroll and account-specific guards.')]
+    }),
+    action({
         key: 'create_booking', label: 'Створювати бронювання', group: 'bookings',
         defaultRoles: [...ADMIN_UP, 'reception'], risk: 'high',
         frontendConsumers: [source('js/auth.js', "canAccess('create_booking')", { enforces: true })],

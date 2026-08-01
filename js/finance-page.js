@@ -328,6 +328,10 @@ async function fetchSalaryReport() {
 }
 
 async function saveTransaction() {
+    if (!financeCanManageTransactions()) {
+        showNotification('Недостатньо прав для керування фінансовими транзакціями', 'error');
+        return;
+    }
     const btn = document.getElementById('saveTransBtn');
     if (btn && btn.disabled) return;
     const type = document.getElementById('editType')?.value;
@@ -367,6 +371,10 @@ async function saveTransaction() {
 }
 
 async function deleteTransaction(id) {
+    if (!financeCanManageTransactions()) {
+        showNotification('Недостатньо прав для керування фінансовими транзакціями', 'error');
+        return;
+    }
     if (!await confirmModal('Видалити транзакцію?', { type: 'danger', okText: 'Видалити' })) return;
     try {
         await apiRequest('DELETE', `/api/finance/transactions/${id}`);
@@ -647,8 +655,9 @@ function renderTransactionTable() {
         return;
     }
 
+    const canManageTransactions = financeCanManageTransactions();
     tbody.innerHTML = FinState.transactions.map(t => `
-        <tr onclick="editTransaction(${t.id})" title="Натисніть для редагування">
+        <tr${canManageTransactions ? ` onclick="editTransaction(${t.id})" title="Натисніть для редагування"` : ''}>
             <td>${formatDate(t.date)}</td>
             <td><span class="fin-type-badge ${t.type}">${t.type === 'income' ? 'Дохід' : 'Витрата'}</span></td>
             <td>${escapeHtml(t.categoryIcon) || ''} ${escapeHtml(t.categoryName) || '—'}</td>
@@ -781,6 +790,10 @@ function financeCanUsePayrollAction(action) {
     if (typeof canUseAction === 'function') return canUseAction(action) === true;
     if (typeof canAccess === 'function') return canAccess(action) === true;
     return false;
+}
+
+function financeCanManageTransactions() {
+    return financeCanUsePayrollAction('finance.manage');
 }
 
 const PAYROLL_INSTALLMENT_KIND_LABELS = {
@@ -2116,6 +2129,10 @@ function isAccountModalDirty() {
 }
 
 function openTransModal(id) {
+    if (!financeCanManageTransactions()) {
+        showNotification('Недостатньо прав для керування фінансовими транзакціями', 'error');
+        return;
+    }
     FinState.editingId = id || null;
     const modal = document.getElementById('transEditModal');
     const title = document.getElementById('transEditTitle');
@@ -2517,18 +2534,11 @@ document.addEventListener('DOMContentLoaded', async () => {
         AppState.currentUser = user;
         const _userEl = document.getElementById('currentUser'); if (_userEl) _userEl.textContent = user.name || user.username;
 
-        // Role-based visibility
-        const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
-        if (MANAGE_ROLES.includes(user.role)) {
-            const addBtn = document.getElementById('addTransactionBtn');
-            if (addBtn) addBtn.style.display = '';
-            const addExpBtn = document.getElementById('addExpenseBtn');
-            if (addExpBtn) addExpBtn.style.display = '';
-            const exportBtn = document.getElementById('exportCsvBtn');
-            if (exportBtn) exportBtn.style.display = '';
-            const xlsxBtn = document.getElementById('exportXlsxBtn');
-            if (xlsxBtn) xlsxBtn.style.display = '';
-        }
+        const canManageTransactions = financeCanManageTransactions();
+        const addBtn = document.getElementById('addTransactionBtn');
+        if (addBtn) addBtn.style.display = canManageTransactions ? '' : 'none';
+        const addExpBtn = document.getElementById('addExpenseBtn');
+        if (addExpBtn) addExpBtn.style.display = canManageTransactions ? '' : 'none';
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     } catch (err) {

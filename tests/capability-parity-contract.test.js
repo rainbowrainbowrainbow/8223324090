@@ -157,3 +157,14 @@ test('unknown keys fail closed in both runtimes', () => {
     assertParity({ role: 'creator' }, '/not-a-real-page', { type: 'page' });
     assertParity({ role: 'creator' }, 'not_a_real_action', { type: 'action' });
 });
+
+test('Finance management keeps creator, director and accountant parity with explicit overrides', () => {
+    const capability = 'finance.manage';
+    for (const role of ['creator', 'director', 'accountant']) {
+        assert.equal(assertParity({ role }, capability, { type: 'action' }).allowed, true, `${role} must manage Finance by default`);
+    }
+    assert.equal(assertParity({ role: 'vice_director' }, capability, { type: 'action' }).allowed, false, 'vice director must not receive Finance management by default');
+    assert.equal(assertParity({ role: 'animator', action_allowlist: [capability] }, capability, { type: 'action' }).allowed, true, 'explicit allow must grant Finance management');
+    const denied = assertParity({ role: 'accountant', action_allowlist: [capability], action_denylist: [capability] }, capability, { type: 'action' });
+    assert.deepEqual([denied.allowed, denied.source, denied.reason], [false, 'explicit_deny', 'listed_in_explicit_deny']);
+});

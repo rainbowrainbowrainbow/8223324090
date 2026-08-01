@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.60 - Безпечний authenticated production QA
+
+### Release / Versioning / (01.08.2026) [codex]
+- **Безпечний authenticated production QA** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Постійний manual release gate** — додано `npm run qa:live:authenticated` для авторизованої перевірки `/`, HR, Staff, Training, Finance і Check-in у production без CI credentials.
+- **Безпека QA-сесії** — браузер пропускає лише read-only запити та auth login/refresh; будь-яку іншу мутацію блокує до відправки. Тимчасова роль `creator` повертається у `finally` і перевіряється новою сесією.
+- **Check-in без камери** — runner симулює `NotAllowedError`, перевіряє вихід із model loading і не створює attendance/face descriptor. CSP error є fatal для QA.
+
+---
+
 ## v0.80.59 - Finance: role fence і CI contracts
 
 ### Release / Versioning / (01.08.2026) [codex]

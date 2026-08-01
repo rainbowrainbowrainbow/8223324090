@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.59",
+  "version": "0.80.60",
   "eventGenix": {
-    "releaseLabel": "Finance: role fence і CI contracts"
+    "releaseLabel": "Безпечний authenticated production QA"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -11,7 +11,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "npm run verify",
-    "verify": "npm run check:runtime && npm run check:version && npm run test:version-tooling && npm run check:access && npm run check:action-permissions && npm run check:permission-registry && npm run check:capability-policy && npm run test:permission-contracts && npm run check:account-access-surface && npm run check:account-access-editor && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:attendance-plan && npm run test:attendance-datafix && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:payroll-contracts && npm run test:ticket-contract && npm run test:unit:hr-org-tree && npm run test:unit && npm run test:my-day && npm run test:ui",
+    "verify": "npm run check:runtime && npm run check:version && npm run test:version-tooling && npm run check:access && npm run check:action-permissions && npm run check:permission-registry && npm run check:capability-policy && npm run test:permission-contracts && npm run test:live-authenticated-qa-contract && npm run check:account-access-surface && npm run check:account-access-editor && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:attendance-plan && npm run test:attendance-datafix && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:payroll-contracts && npm run test:ticket-contract && npm run test:unit:hr-org-tree && npm run test:unit && npm run test:my-day && npm run test:ui",
     "check:runtime": "node scripts/check-runtime.js",
     "version:current": "node scripts/current-version.js",
     "check:version": "node scripts/version-sync.js",
@@ -20,6 +20,7 @@
     "check:permission-registry": "node --test tests/permission-registry-contract.test.js",
     "check:capability-policy": "node --test tests/account-access-policy.test.js tests/capability-parity-contract.test.js",
     "test:permission-contracts": "node --test tests/finance-permission-contract.test.js tests/hr-capability-contract.test.js",
+    "test:live-authenticated-qa-contract": "node --test tests/live-authenticated-surface-qa.test.js",
     "check:account-access-surface": "node scripts/check-account-access-surface.js",
     "check:account-access-editor": "node --test tests/account-access-editor.test.js",
     "check:auth-boundary": "node scripts/check-auth-boundary.js",
@@ -125,6 +126,7 @@
     "release:gate": "node scripts/release-gate.js",
     "release:staff-schedule:verify": "node scripts/staff-schedule-release-verify.js",
     "smoke:live": "node scripts/live-smoke.js",
+    "qa:live:authenticated": "npm exec --yes --package=playwright -c \"node scripts/live-authenticated-surface-qa.js\"",
     "smoke:hr-structure": "npx --yes --package playwright node tests/browser/live-hr-structure-smoke.js",
     "smoke:lead-kanban": "node scripts/live-lead-kanban-smoke.js",
     "smoke:lead-conversion": "npx --yes --package playwright node scripts/live-lead-conversion-smoke.js",

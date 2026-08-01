@@ -20,19 +20,19 @@
     <link rel="apple-touch-icon" href="images/apple-touch-icon.png">
     <link rel="manifest" href="manifest.json">
     <!-- CSS Modules (порядок завантаження важливий!) -->
-    <link rel="stylesheet" href="css/base.css?v=0.80.59">
-    <link rel="stylesheet" href="css/auth.css?v=0.80.59">
-    <link rel="stylesheet" href="css/layout.css?v=0.80.59">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.59">
-    <link rel="stylesheet" href="css/timeline.css?v=0.80.59">
-    <link rel="stylesheet" href="css/panel.css?v=0.80.59">
-    <link rel="stylesheet" href="css/modals.css?v=0.80.59">
-    <link rel="stylesheet" href="css/controls.css?v=0.80.59">
-    <link rel="stylesheet" href="css/features.css?v=0.80.59">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.59">
-    <link rel="stylesheet" href="css/responsive.css?v=0.80.59">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.59">
-    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.80.59">
+    <link rel="stylesheet" href="css/base.css?v=0.80.60">
+    <link rel="stylesheet" href="css/auth.css?v=0.80.60">
+    <link rel="stylesheet" href="css/layout.css?v=0.80.60">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.60">
+    <link rel="stylesheet" href="css/timeline.css?v=0.80.60">
+    <link rel="stylesheet" href="css/panel.css?v=0.80.60">
+    <link rel="stylesheet" href="css/modals.css?v=0.80.60">
+    <link rel="stylesheet" href="css/controls.css?v=0.80.60">
+    <link rel="stylesheet" href="css/features.css?v=0.80.60">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.60">
+    <link rel="stylesheet" href="css/responsive.css?v=0.80.60">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.60">
+    <link rel="stylesheet" href="css/kleshnya-widget.css?v=0.80.60">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -48,11 +48,11 @@
         <div class="login-container">
             <div class="login-logo">
                 <img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="login-gear-icon">
-                <div class="login-release-badge" aria-label="Поточний реліз 0.80.59">✨ 0.80.59</div>
+                <div class="login-release-badge" aria-label="Поточний реліз 0.80.60">✨ 0.80.60</div>
                 <h1>Event Genix</h1>
-                <p class="tagline">AI First CRM v0.80.59 — Finance: role fence і CI contracts</p>
+                <p class="tagline">AI First CRM v0.80.60 — Безпечний authenticated production QA</p>
             </div>
-            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.80.59</button>
+            <button type="button" id="changelogBtn" class="btn-changelog">Що нового у v0.80.60</button>
             <form id="loginForm" class="login-form">
                 <div class="form-group">
                     <label for="username">Ім'я</label>
@@ -1819,7 +1819,15 @@
             <span class="modal-close">&times;</span>
             <h3>Що нового</h3>
             <div class="changelog-list">
-                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                <div class="changelog-section">
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                <div class="changelog-section">
+                    <h4>v0.80.60 — Безпечний authenticated production QA</h4>
+                    <ul>
+                        <li><b>Безпечний authenticated production QA</b> — новий ручний production gate перевіряє HR, Staff, Training, Finance і Check-in після повної авторизації.</li>
+                        <li><b>QA без бізнес-мутацій</b> — браузер блокує усі неавторизаційні POST/PATCH/PUT/DELETE, а тимчасова роль для ізольованого QA-акаунта гарантовано повертається.</li>
+                        <li><b>Check-in перевіряється без камери</b> — сценарій обробляє відмову в camera permission і контролює CSP/model loading.</li>
+                    </ul>
+                </div>
+<div class="changelog-section">
                     <h4>v0.80.59 — Finance: role fence і CI contracts</h4>
                     <ul>
                         <li><b>Finance: role fence і CI contracts</b> — release marker, cache tags and visible version metadata were prepared automatically.</li>
@@ -3421,7 +3429,7 @@
                         <li><b>Контрольована write-QA</b> — «Зберегти основне» перевіряється на QA-працівнику з автоматичним відкатом значення.</li>
                     </ul>
                 </div>
-                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.80.59" aria-live="polite">
+                    <div id="changelogHistory" data-src="changelog-history.fragment?v=0.80.60" aria-live="polite">
                     <div class="center-state"><strong>Повна історія завантажиться за потреби</strong><small>Відкрийте цей журнал, щоб переглянути попередні релізи.</small></div>
                 </div>
             </div>
@@ -3724,45 +3732,45 @@
     </div>
 
     <!-- JS Modules (порядок завантаження важливий!) -->
-    <script src="js/timeline-context.js?v=0.80.59"></script>
-    <script src="js/timeline-visibility.js?v=0.80.59"></script>
-    <script src="js/kitchen-menu-images.js?v=0.80.59"></script>
-    <script src="js/config.js?v=0.80.59"></script>
-    <script src="js/api.js?v=0.80.59"></script>
-    <script src="js/ui.js?v=0.80.59"></script>
-    <script src="js/auth.js?v=0.80.59"></script>
-    <script src="js/crm-create-handoff.js?v=0.80.59"></script>
-    <script src="js/timeline-interaction-model.js?v=0.80.59"></script>
-    <script src="js/timeline-cache.js?v=0.80.59"></script>
-    <script src="js/timeline-resource-identity.js?v=0.80.59"></script>
-    <script src="js/timeline-banquet-inspector-helpers.js?v=0.80.59"></script>
-    <script src="js/event-cards.js?v=0.80.59"></script>
-    <script src="js/invite-config.js?v=0.80.59"></script>
-    <script src="js/invite-share.js?v=0.80.59"></script>
-    <script src="js/timeline.js?v=0.80.59"></script>
-    <script src="js/booking-drawer-state.js?v=0.80.59"></script>
-    <script src="js/booking-banquet-selector.js?v=0.80.59"></script>
-    <script src="js/booking-save-path.js?v=0.80.59"></script>
-    <script src="js/booking-package-renderer.js?v=0.80.59"></script>
-    <script src="js/booking-tickets.js?v=0.80.59"></script>
-    <script src="js/booking-banquet-detail.js?v=0.80.59"></script>
-    <script src="js/booking-activity-schedule.js?v=0.80.59"></script>
-    <script src="js/booking.js?v=0.80.59"></script>
-    <script src="js/settings.js?v=0.80.59"></script>
-    <script src="js/booking-form.js?v=0.80.59"></script>
-    <script src="js/booking-linked.js?v=0.80.59"></script>
-    <script src="js/settings-dashboard.js?v=0.80.59"></script>
-    <script src="js/settings-history.js?v=0.80.59"></script>
-    <script src="js/settings-afisha.js?v=0.80.59"></script>
-    <script src="js/settings-certificates.js?v=0.80.59"></script>
-    <script src="js/offline.js?v=0.80.59"></script>
-    <script src="js/crm-feature-registry.js?v=0.80.59"></script>
-    <script src="js/search.js?v=0.80.59"></script>
-    <script src="js/ws.js?v=0.80.59"></script>
-    <script src="js/app.js?v=0.80.59"></script>
-    <script src="js/kleshnya-widget.js?v=0.80.59"></script>
-    <script src="js/components/sidebar.js?v=0.80.59"></script>
+    <script src="js/timeline-context.js?v=0.80.60"></script>
+    <script src="js/timeline-visibility.js?v=0.80.60"></script>
+    <script src="js/kitchen-menu-images.js?v=0.80.60"></script>
+    <script src="js/config.js?v=0.80.60"></script>
+    <script src="js/api.js?v=0.80.60"></script>
+    <script src="js/ui.js?v=0.80.60"></script>
+    <script src="js/auth.js?v=0.80.60"></script>
+    <script src="js/crm-create-handoff.js?v=0.80.60"></script>
+    <script src="js/timeline-interaction-model.js?v=0.80.60"></script>
+    <script src="js/timeline-cache.js?v=0.80.60"></script>
+    <script src="js/timeline-resource-identity.js?v=0.80.60"></script>
+    <script src="js/timeline-banquet-inspector-helpers.js?v=0.80.60"></script>
+    <script src="js/event-cards.js?v=0.80.60"></script>
+    <script src="js/invite-config.js?v=0.80.60"></script>
+    <script src="js/invite-share.js?v=0.80.60"></script>
+    <script src="js/timeline.js?v=0.80.60"></script>
+    <script src="js/booking-drawer-state.js?v=0.80.60"></script>
+    <script src="js/booking-banquet-selector.js?v=0.80.60"></script>
+    <script src="js/booking-save-path.js?v=0.80.60"></script>
+    <script src="js/booking-package-renderer.js?v=0.80.60"></script>
+    <script src="js/booking-tickets.js?v=0.80.60"></script>
+    <script src="js/booking-banquet-detail.js?v=0.80.60"></script>
+    <script src="js/booking-activity-schedule.js?v=0.80.60"></script>
+    <script src="js/booking.js?v=0.80.60"></script>
+    <script src="js/settings.js?v=0.80.60"></script>
+    <script src="js/booking-form.js?v=0.80.60"></script>
+    <script src="js/booking-linked.js?v=0.80.60"></script>
+    <script src="js/settings-dashboard.js?v=0.80.60"></script>
+    <script src="js/settings-history.js?v=0.80.60"></script>
+    <script src="js/settings-afisha.js?v=0.80.60"></script>
+    <script src="js/settings-certificates.js?v=0.80.60"></script>
+    <script src="js/offline.js?v=0.80.60"></script>
+    <script src="js/crm-feature-registry.js?v=0.80.60"></script>
+    <script src="js/search.js?v=0.80.60"></script>
+    <script src="js/ws.js?v=0.80.60"></script>
+    <script src="js/app.js?v=0.80.60"></script>
+    <script src="js/kleshnya-widget.js?v=0.80.60"></script>
+    <script src="js/components/sidebar.js?v=0.80.60"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/alerts.js?v=0.80.59"></script>
+    <script src="js/alerts.js?v=0.80.60"></script>
 </body>
 </html>

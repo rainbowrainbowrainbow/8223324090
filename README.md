@@ -134,6 +134,7 @@ npm run test:db:isolated
 npm run test:integration
 npm run release:gate
 npm run smoke:live -- https://<live-crm-host>
+npm run qa:live:authenticated
 npm run smoke:my-day -- https://<live-crm-host>
 npm run health
 ```
@@ -164,6 +165,7 @@ Notes:
 - `node --test tests/<file>.test.js` is still preferred for focused service or route tests.
 - `npm run release:gate` is the pre-deploy gate: it checks current version/branch state and runs the full local verification baseline; with a live URL it also runs live smoke/proof.
 - `npm run smoke:live -- https://<live-crm-host>` is the post-deploy smoke: version, light health, readiness/deep schema diagnostics, and authenticated bookings/lines/leads contracts.
+- `npm run qa:live:authenticated` is the manual authenticated production release gate for HR, Staff, Training, Finance and Check-in. It reads only the dedicated local QA credentials, blocks browser business mutations, and restores the QA role in `finally`; see [docs/LIVE_AUTHENTICATED_SURFACE_QA.md](docs/LIVE_AUTHENTICATED_SURFACE_QA.md).
 - `npm run smoke:my-day -- https://<live-crm-host>` is the read-only browser smoke for `Profile -> Мій день`: compact capsule, two-column today/overdue workspace, collapsed completion history, responsive overflow, and no task mutation requests.
 - `npm run smoke:cake-decorations -- https://8223324090-production.up.railway.app` is the reusable live smoke for cake decoration products and booking catalog behavior; see [docs/CAKE_DECORATIONS_LIVE_SMOKE_RUNBOOK.md](docs/CAKE_DECORATIONS_LIVE_SMOKE_RUNBOOK.md).
 - `npm run version:sync` runs the same version tool in fix mode and edits files.

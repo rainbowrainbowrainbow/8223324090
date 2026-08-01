@@ -7061,6 +7061,16 @@ check('Extensionless CRM HTML routes are no-store to avoid stale HR tab DOM', se
 check('Service worker script is not served as immutable static JS', securityMiddlewareCode.includes("p === '/sw.js'") && securityMiddlewareCode.includes('stale workers can keep serving') && securityMiddlewareCode.includes("res.set('Cache-Control', 'no-cache, no-store, must-revalidate')"));
 check('Content edit modals force-close only after durable actions', contentCode.includes('attemptCloseEditableSurface(modal') && contentCode.includes('await closeModal(true)') && contentCode.includes('await closeCardModal(true)'));
 
+check('HR Account Center page deny editor uses canonical tri-state state and preview',
+    hrCode.includes('pageDenylist: normalizeAccountArray(user.page_denylist || user.pageDenylist)')
+    && hrCode.includes('pageDenylist: normalizeAccountListInput(draft.pageDenylist)')
+    && accountAccessEditorCode.includes('function pageCanonicalMap')
+    && accountAccessEditorCode.includes('pageDenylist')
+    && accountAccessEditorCode.includes('data-group-preview')
+    && accountAccessEditorCode.includes('renderEffectiveDiff')
+    && accountAccessEditorCode.includes('pendingGroupAction')
+    && accountAccessEditorCode.includes("definition.type === 'page' || definition.type === 'action'"));
+
 // Check Timeline/Kleshnya shell collapse keeps geometry in CSS
 check('Timeline sidebar collapse is class-based', appCode.includes("sidebar.classList.add('collapsed')") && appCode.includes("sidebar.classList.toggle('collapsed')"));
 check('Timeline sidebar collapse avoids inline shell offsets', !appCode.includes('style.marginLeft') && !appCode.includes("style.width = 'calc(100% - 64px)'"));

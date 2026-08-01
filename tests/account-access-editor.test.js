@@ -57,17 +57,61 @@ test('one capability cannot remain in allow and deny arrays', () => {
     assert.deepEqual(model.draft.actionDenylist, []);
 });
 
-test('page modules expose inherited/allow without inventing a page deny array', () => {
+test('page modules support inherited, allow and deny with canonical draft keys', () => {
+    const definition = { key: '/reports', canonicalPath: '/reports', aliases: ['/reports.html'], label: 'Reports', defaultRoles: ['senior_manager'] };
     const model = editor.createModel({
-        initial: { role: 'animator', pageAllowlist: [] },
-        pages: [{ key: '/finance', label: 'Finance', defaultRoles: ['accountant'] }]
+        initial: { role: 'senior_manager', pageAllowlist: ['/reports.html', '/reports'], pageDenylist: [] },
+        pages: [definition]
     });
-    const definition = model.config.capabilities[0];
-    model.setMode(definition, 'allow');
-    assert.deepEqual(model.draft.pageAllowlist, ['/finance']);
-    model.setMode(definition, 'deny');
+    const reports = model.config.capabilities[0];
+
+    assert.deepEqual(model.draft.pageAllowlist, ['/reports']);
+    assert.deepEqual(model.draft.pageDenylist, []);
+    assert.equal(model.decision(reports).source, 'explicit_allow');
+
+    model.setMode(reports, 'deny');
     assert.deepEqual(model.draft.pageAllowlist, []);
-    assert.equal(Object.hasOwn(model.draft, 'pageDenylist'), false);
+    assert.deepEqual(model.draft.pageDenylist, ['/reports']);
+    assert.deepEqual(model.effectiveDiff()[0].previousMode, 'allow');
+    assert.deepEqual(model.effectiveDiff()[0].nextMode, 'deny');
+    assert.equal(model.decision(reports).source, 'explicit_deny');
+
+    model.setMode(reports, 'allow');
+    assert.deepEqual(model.draft.pageAllowlist, ['/reports']);
+    assert.deepEqual(model.draft.pageDenylist, []);
+
+    model.setMode(reports, 'inherited');
+    assert.deepEqual(model.draft.pageAllowlist, []);
+    assert.deepEqual(model.draft.pageDenylist, []);
+    assert.equal(model.decision(reports).source, 'role_preset');
+
+    const conflictingStoredState = editor.createModel({
+        initial: { role: 'senior_manager', pageAllowlist: ['/reports.html'], pageDenylist: ['/reports'] },
+        pages: [definition]
+    });
+    assert.deepEqual(conflictingStoredState.draft.pageAllowlist, []);
+    assert.deepEqual(conflictingStoredState.draft.pageDenylist, ['/reports']);
+});
+
+test('page group actions preview effective changes before applying the draft', () => {
+    const model = editor.createModel({
+        initial: { role: 'senior_manager', pageAllowlist: [], pageDenylist: [] },
+        pages: [
+            { key: '/reports', canonicalPath: '/reports', label: 'Reports', group: 'Sales', defaultRoles: ['senior_manager'] },
+            { key: '/customers', canonicalPath: '/customers', label: 'Customers', group: 'Sales', defaultRoles: ['senior_manager'] }
+        ]
+    });
+    const pages = model.config.capabilities;
+    const preview = model.previewGroup(pages, 'deny', 'Sales');
+
+    assert.deepEqual(model.draft.pageDenylist, []);
+    assert.equal(preview.changedCount, 2);
+    assert.equal(preview.effectiveChanges.length, 2);
+    assert.deepEqual(preview.nextState.pageDenylist, ['/reports', '/customers']);
+
+    model.draft = preview.nextState;
+    assert.deepEqual(model.draft.pageAllowlist, []);
+    assert.deepEqual(model.draft.pageDenylist, ['/reports', '/customers']);
 });
 
 test('registry page metadata keeps human labels in the editor model', () => {
@@ -112,6 +156,9 @@ test('access editor owns its workspace and hr-page no longer uses formModal for 
     assert.match(moduleSource, /role="alertdialog"/);
     assert.match(moduleSource, /data-action="discard"/);
     assert.match(moduleSource, /ignoreServer: true/);
+    assert.match(moduleSource, /pageDenylist/);
+    assert.match(moduleSource, /data-group-preview/);
+    assert.match(moduleSource, /renderEffectiveDiff/);
     assert.match(moduleSource, /const group = definition\.group \|\| \(definition\.type === 'page'/);
     assert.match(moduleSource, /if \(model\.saving\) return/);
     assert.match(moduleSource, /document\.addEventListener\('keydown'/);
@@ -135,6 +182,8 @@ test('account access editor cannot draft explicit-allow-disabled Finance access'
     model.setMode(financeManage, 'allow');
     assert.deepEqual(model.draft.pageAllowlist, []);
     assert.deepEqual(model.draft.actionAllowlist, []);
-    assert.equal(model.decision(financePage).allowed, false);
+    model.setMode(financePage, 'deny');
+    assert.deepEqual(model.draft.pageDenylist, ['/finance']);
+    assert.equal(model.decision(financePage).source, 'explicit_deny');
     assert.equal(model.decision(financeManage).allowed, false);
 });

@@ -93,6 +93,7 @@ test.beforeEach(async ({ page }) => {
 
 test('blocks accidental dismissal, traps/restores focus, and preserves page deny after failed save', async ({ page }) => {
     await openEditor(page, { failFirst: true });
+    await page.waitForFunction(() => document.activeElement?.dataset?.tab === 'overview');
     expect(await page.evaluate(() => document.activeElement?.dataset?.tab)).toBe('overview');
     await expect(page.locator('#background')).toHaveAttribute('aria-hidden', 'true');
 
@@ -157,6 +158,9 @@ test('supports page inherited to deny, deny to allow, allow to reset and preview
     await expect(page.locator('[data-effective-diff]')).toBeVisible();
     await expect(page.locator('[data-effective-diff]')).toContainText('Stored:');
     await expect(page.locator('[data-effective-diff]')).toContainText('Effective:');
+    const effectiveDiffText = await page.locator('[data-effective-diff]').innerText();
+    assert.ok(effectiveDiffText.includes(String.fromCodePoint(0x423, 0x441, 0x43f, 0x430, 0x434, 0x43a, 0x43e, 0x432, 0x430, 0x43d, 0x43e)));
+    assert.equal(effectiveDiffText.includes(String.fromCodePoint(0x420, 0x408, 0x421)), false);
 });
 
 test('canonicalizes conflicting aliases and persists page deny across test-backend relogin', async ({ page }) => {

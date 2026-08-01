@@ -964,6 +964,124 @@ test('profile My Day custom date projection requests focusDate without sending i
     assert.equal(requested.at(-1), '/tasks/my-cabinet');
 });
 
+test('TaskCreate buildPayload keeps the full My Day due contract for every preset', () => {
+    const ctx = loadTaskCreateContext();
+    const today = ctx.TaskCreate.todayStr();
+    const dueCases = {
+        today,
+        tomorrow: addDaysToDateKey(today, 1),
+        day_after_tomorrow: addDaysToDateKey(today, 2),
+        plus_3_days: addDaysToDateKey(today, 3),
+        month_end: monthEndDateKey(today),
+        custom: '2099-05-31',
+        no_date: ''
+    };
+
+    for (const [duePreset, expectedDate] of Object.entries(dueCases)) {
+        const payload = ctx.TaskCreate.buildPayload({
+            title: `Due contract ${duePreset}`,
+            duePreset,
+            scheduleDate: '2099-05-31',
+            mode: 'personal',
+            kind: 'action',
+            category: 'personal',
+            priority: 'high',
+            visibility: 'me_only',
+            durationMinutes: 45,
+            scheduleSlot: 'afternoon'
+        });
+
+        if (!expectedDate) {
+            assert.equal(Object.hasOwn(payload, 'date'), false, `${duePreset} omits date`);
+            assert.equal(Object.hasOwn(payload, 'schedule'), false, `${duePreset} omits schedule`);
+            assert.equal(Object.hasOwn(payload, 'effort_minutes'), false, `${duePreset} omits scheduled effort`);
+            continue;
+        }
+
+        assert.equal(payload.date, expectedDate, `${duePreset} uses the canonical date`);
+        assert.equal(payload.schedule.date, expectedDate, `${duePreset} keeps the canonical schedule date`);
+        assert.equal(payload.schedule.slot, 'afternoon', `${duePreset} keeps the canonical schedule slot`);
+        assert.equal(payload.schedule.durationMinutes, 45, `${duePreset} keeps the canonical schedule duration`);
+        assert.equal(payload.effort_minutes, 45, `${duePreset} keeps effort with the date`);
+    }
+});
+
+test('profile My Day ignores an older custom-date projection response', async () => {
+    const ctx = loadProfileTaskerContext();
+    const controls = new Map([
+        ['cabinetTaskDate', { value: '2099-05-30' }]
+    ]);
+    const pending = [];
+    ctx.document = {
+        addEventListener() {},
+        getElementById(id) {
+            return controls.get(id) || null;
+        },
+        querySelectorAll() {
+            return [];
+        }
+    };
+    ctx.apiGet = url => new Promise(resolve => pending.push({ url, resolve }));
+    vm.runInContext("cabinetCreateDuePreset = 'custom'; myCabinetData = { marker: 'initial' }; myCabinetLoadError = '';", ctx);
+
+    const olderRequest = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
+    controls.get('cabinetTaskDate').value = '2099-05-31';
+    const newerRequest = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
+
+    assert.equal(pending[0].url, '/tasks/my-cabinet?focusDate=2099-05-30');
+    assert.equal(pending[1].url, '/tasks/my-cabinet?focusDate=2099-05-31');
+
+    pending[1].resolve({ marker: 'newest' });
+    await newerRequest;
+    pending[0].resolve(null);
+    await olderRequest;
+
+    const state = vm.runInContext('({ data: myCabinetData, error: myCabinetLoadError })', ctx);
+    assert.equal(state.data.marker, 'newest');
+    assert.equal(state.error, '');
+});
+
+test('profile My Day fallback payload leaves no_date unscheduled', async () => {
+    const ctx = loadProfileTaskerContext();
+    const elements = installCabinetCreateDom(ctx, 'Fallback no date task');
+    const notices = [];
+    let createdPayload = null;
+
+    elements.get('cabinetTaskPriority').value = 'high';
+    elements.get('cabinetTaskReportRequired').checked = true;
+    elements.get('cabinetTaskAllowReschedule').checked = false;
+    ctx.TaskCreate = undefined;
+    ctx.AppState = { currentUser: { id: 17 } };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    ctx.refreshCabinetPulseCounts = async () => {};
+    ctx.renderCabinetActiveTab = () => {};
+    ctx.apiPost = async (url, payload) => {
+        assert.equal(url, '/tasks');
+        createdPayload = payload;
+        return { success: true, task: { id: 930, title: payload.title } };
+    };
+    ctx.apiGet = async url => {
+        if (url === '/tasks/my-cabinet') {
+            return { all: [{ id: 930, title: 'Fallback no date task' }], today: [], overdue: [], waiting: [], private: [], completedHistory: [] };
+        }
+        return null;
+    };
+    vm.runInContext("cabinetCreateDuePreset = 'no_date';", ctx);
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createdPayload.title, 'Fallback no date task');
+    assert.equal(createdPayload.priority, 'high');
+    assert.equal(createdPayload.reportRequired, true);
+    assert.equal(createdPayload.controlMeta.reportRequired, true);
+    assert.equal(createdPayload.allowReschedule, false);
+    assert.equal(Object.hasOwn(createdPayload, 'date'), false);
+    assert.equal(Object.hasOwn(createdPayload, 'schedule'), false);
+    assert.equal(Object.hasOwn(createdPayload, 'effort_minutes'), false);
+    assert.equal(elements.get('cabinetTaskTitle').value, '');
+    assert.equal(notices.at(-1)?.type, 'success');
+});
+
 function installCabinetCreateDom(ctx, title) {
     const elements = new Map();
     const addElement = (id, node) => elements.set(id, node);

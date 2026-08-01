@@ -1914,7 +1914,7 @@ router.get('/attendance', requireRole(...STAFF_ATTENDANCE_READ_ROLES), async (re
 });
 
 // GET /api/staff/:id/shift-preferences - staff-level default shift times by profession and day type
-router.get('/:id/shift-preferences', async (req, res) => {
+router.get('/:id/shift-preferences', requireAction('hr.schedule.view'), async (req, res) => {
     try {
         const staffId = Number(req.params.id);
         if (!Number.isInteger(staffId) || staffId <= 0) {

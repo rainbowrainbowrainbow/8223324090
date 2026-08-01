@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.53 - Staff і Training: права за capabilities
+
+### HR / Доступ / (01.08.2026) [codex]
+- **Графік і персонал мають окремі права** — Staff перевіряє `hr.schedule.view`, `hr.schedule.manage`, `hr.staff.view` і `hr.staff.manage` окремо; кнопки змін графіка та створення працівників більше не залежать від hardcoded ролей.
+- **Training використовує канонічне право** — онбординг керується `manage_staff`, тому explicit allow та explicit deny збігаються з рішенням сервера.
+- **Читання типових змін захищене** — `/api/staff/:id/shift-preferences` вимагає `hr.schedule.view`; production accounts і permission records не змінювалися.
+
+---
+
 ## v0.80.52 - Auth: refresh-only сесії
 
 ### Auth / Надійність / (01.08.2026) [codex]

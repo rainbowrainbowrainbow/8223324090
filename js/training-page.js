@@ -15,7 +15,6 @@
     let onboardingLoaded = false;
 
     const TRAINING_TABS = new Set(['materials', 'tests', 'progress', 'leaderboard', 'onboarding']);
-    const ONBOARDING_MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr', 'admin'];
 
     // ═══ Init ═══
     let trainingPageInitialized = false;
@@ -194,7 +193,8 @@
     }
 
     function canManageOnboarding() {
-        return ONBOARDING_MANAGE_ROLES.includes(getStoredUser()?.role);
+        if (typeof canUseAction === 'function') return canUseAction('manage_staff');
+        return typeof canAccess === 'function' && canAccess('manage_staff');
     }
 
     function updateOnboardingAccess() {

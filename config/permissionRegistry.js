@@ -443,23 +443,23 @@ const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'hr.schedule.view', label: 'Перегляд HR-графіка', group: 'hr', defaultRoles: ALL_STAFF, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
-        frontendConsumers: [source('js/hr-page.js', "'hr.schedule.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.schedule.view'", { enforces: true })],
-        apiConsumers: [api('routes/hr.js', '/api/hr/shifts', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff/schedule', 'hr.schedule.view')]
+        frontendConsumers: [source('js/hr-page.js', "'hr.schedule.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.schedule.view'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.schedule.view')", { enforces: true })],
+        apiConsumers: [api('routes/hr.js', '/api/hr/shifts', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff/schedule and shift-preferences reads', 'hr.schedule.view')]
     }),
     action({
         key: 'hr.schedule.manage', label: 'Керування HR-графіком', group: 'hr', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
-        frontendConsumers: [source('js/hr-page.js', "'hr.schedule.manage'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr schedule mutations', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff schedule mutations', 'hr.schedule.manage')]
+        frontendConsumers: [source('js/hr-page.js', "'hr.schedule.manage'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.schedule.manage')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr schedule mutations', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff schedule mutations', 'hr.schedule.manage')]
     }),
     action({
         key: 'hr.staff.view', label: 'Перегляд HR-даних персоналу', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
-        frontendConsumers: [source('js/hr-page.js', "'hr.staff.view'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/staff and structure reads', null, 'Enforced by requireHrCapabilityContract.')]
+        frontendConsumers: [source('js/hr-page.js', "'hr.staff.view'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.staff.view')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr/staff and structure reads', null, 'Enforced by requireHrCapabilityContract.')]
     }),
     action({
         key: 'hr.staff.manage', label: 'Керування HR-даними персоналу', group: 'hr', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
-        frontendConsumers: [source('js/hr-page.js', "'hr.staff.manage'", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr staff mutations', null, 'Enforced by requireHrCapabilityContract.')]
+        frontendConsumers: [source('js/hr-page.js', "'hr.staff.manage'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.staff.manage')", { enforces: true })], apiConsumers: [api('routes/hr.js', '/api/hr staff mutations', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff profile mutations', 'hr.staff.manage')]
     }),
     action({
         key: 'hr.reports.view', label: 'Перегляд HR-звітів', group: 'hr', defaultRoles: HR_PAGE_ACCESS, risk: 'critical',
@@ -572,7 +572,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'manage_staff', label: 'Керувати персоналом', group: 'hr',
         defaultRoles: [...MANAGER_UP, 'hr', 'admin'], risk: 'critical',
-        frontendConsumers: [source('js/hr-page.js', "canAccess('manage_staff')", { enforces: true })],
+        frontendConsumers: [source('js/hr-page.js', "canAccess('manage_staff')", { enforces: true }), source('js/training-page.js', "canUseAction('manage_staff')", { enforces: true })],
         backendConsumers: [source('routes/hermes-schedule.js', "canUseAction(req.user, 'manage_staff')", { enforces: true }), source('routes/training.js', "canUseAction(req.user, 'manage_staff')", { enforces: true })],
         apiConsumers: [
             api('routes/hr.js', '/api/hr management endpoints', null, 'Replaced by granular HR capabilities.'),

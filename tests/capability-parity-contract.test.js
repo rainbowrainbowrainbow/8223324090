@@ -158,6 +158,30 @@ test('unknown keys fail closed in both runtimes', () => {
     assertParity({ role: 'creator' }, 'not_a_real_action', { type: 'action' });
 });
 
+test('Staff schedule, staff management, and Training onboarding honor canonical capability overrides', () => {
+    const capabilities = ['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'manage_staff'];
+
+    for (const role of ['manager', 'hr', 'admin']) {
+        for (const capability of capabilities) {
+            assert.equal(assertParity({ role }, capability, { type: 'action' }).allowed, true, `${role} must receive ${capability} by default`);
+        }
+    }
+
+    assert.equal(assertParity({ role: 'instructor' }, 'hr.schedule.view', { type: 'action' }).allowed, true, 'instructor can view the schedule');
+    for (const capability of ['hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'manage_staff']) {
+        assert.equal(assertParity({ role: 'instructor' }, capability, { type: 'action' }).allowed, false, `instructor must not receive ${capability} by default`);
+    }
+
+    const allowed = { role: 'instructor', action_allowlist: ['hr.schedule.manage', 'hr.staff.manage', 'manage_staff'] };
+    for (const capability of allowed.action_allowlist) {
+        assert.equal(assertParity(allowed, capability, { type: 'action' }).allowed, true, `explicit allow must grant ${capability}`);
+    }
+
+    const denied = { role: 'manager', action_denylist: capabilities };
+    for (const capability of capabilities) {
+        assert.equal(assertParity(denied, capability, { type: 'action' }).allowed, false, `explicit deny must block ${capability}`);
+    }
+});
 test('Finance management keeps creator, director and accountant parity with explicit overrides', () => {
     const capability = 'finance.manage';
     for (const role of ['creator', 'director', 'accountant']) {

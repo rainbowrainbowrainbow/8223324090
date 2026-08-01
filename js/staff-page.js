@@ -101,7 +101,10 @@ const StaffState = {
     showLoadView: false,
     showLinkView: false,    // v39.1: account linking overlay
     viewMode: 'schedule',
-    canManage: false,
+    canViewSchedule: false,
+    canManageSchedule: false,
+    canViewStaff: false,
+    canManageStaff: false,
     linkData: [],           // v39.1: link-status data
     linkStats: null,        // v39.1: { total, linked, unlinked, freelance }
     allUsers: [],           // v39.1: all users for linking
@@ -919,7 +922,7 @@ function scheduleCellAriaLabel(emp, date, entry, status, shiftStart, shiftEnd, a
     }
     const healthSummary = scheduleHealthIssueSummary(healthIssues);
     if (healthSummary) parts.push(healthSummary);
-    parts.push(StaffState.canManage ? 'Enter або пробіл відкриває редагування' : 'Enter або пробіл відкриває перегляд');
+    parts.push(StaffState.canManageSchedule ? 'Enter або пробіл відкриває редагування' : 'Enter або пробіл відкриває перегляд');
     return parts.join('. ');
 }
 
@@ -3828,7 +3831,7 @@ function scheduleAttendanceDetails(entry = null, record = null, date = '') {
 }
 
 function scheduleAttendanceActionButtons(staffId, date, details = {}) {
-    if (!StaffState.canManage || date !== todayStr()) return '';
+    if (!StaffState.canManageSchedule || date !== todayStr()) return '';
     if (!SCHEDULE_ATTENDANCE_STATUSES.has(details.status)) return '';
     const buttons = [];
     if (['planned', 'absent', 'manual_review'].includes(details.status)) {
@@ -4483,7 +4486,7 @@ function renderSchedule() {
 
     // Cell activation handlers
     tbody.querySelectorAll('.sch-cell').forEach(cell => {
-        if (!StaffState.canManage) cell.setAttribute('aria-readonly', 'true');
+        if (!StaffState.canManageSchedule) cell.setAttribute('aria-readonly', 'true');
     });
     bindScheduleCellActivation(tbody);
     bindScheduleGroupToggles(tbody);
@@ -5614,7 +5617,7 @@ function updateSchedulePlanSummary(scope) {
         const pending = scope === 'schedule'
             ? Boolean(StaffState.editingCell?.mutationPending || StaffState.editingCell?.shiftPreferencesLoading)
             : _staffFillMutationPending;
-        const readOnly = scope === 'schedule' && !StaffState.canManage;
+        const readOnly = scope === 'schedule' && !StaffState.canManageSchedule;
         saveButton.disabled = pending || readOnly || !validation.valid;
     }
     const validationMessageId = updateScheduleSaveValidation(scope, validation);
@@ -5975,7 +5978,7 @@ function setScheduleShiftPreferenceActiveDay(dayType = '') {
 }
 
 function applyRecommendedScheduleShiftPreference(preferences = [], mode = false, options = {}) {
-    if (!mode || !StaffState.canManage) return;
+    if (!mode || !StaffState.canManageSchedule) return;
     const editing = StaffState.editingCell;
     if (!editing) return;
     if (options.onlyIfState && getStaffScheduleState() !== options.onlyIfState) return;
@@ -6029,7 +6032,7 @@ function renderScheduleShiftPreferencePanel(preferences = [], options = {}) {
         </div>
         <div class="sch-shift-preference-options">
             ${current.map(row => `
-                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" data-shift-pref-source="${escapeHtml(row.source)}" aria-pressed="${row.dayType === activeDayType ? 'true' : 'false'}" ${StaffState.canManage ? '' : 'disabled'}>
+                <button type="button" class="sch-shift-preference-option ${row.dayType === activeDayType ? 'is-recommended' : ''}" data-shift-pref-day="${escapeHtml(row.dayType)}" data-shift-pref-start="${escapeHtml(row.startTime)}" data-shift-pref-end="${escapeHtml(row.endTime)}" data-shift-pref-source="${escapeHtml(row.source)}" aria-pressed="${row.dayType === activeDayType ? 'true' : 'false'}" ${StaffState.canManageSchedule ? '' : 'disabled'}>
                     <strong>${escapeHtml(SCHEDULE_SHIFT_PREFERENCE_DAY_LABELS[row.dayType] || row.dayType)}</strong>
                     <span>${escapeHtml(row.startTime)}-${escapeHtml(row.endTime)}</span>
                     <small>${row.source === 'fallback' ? 'Fallback' : 'Збережено'}</small>
@@ -6124,7 +6127,7 @@ function openEditModal(staffId, date, options = {}) {
     if (!scheduleRangeDataReady()) return;
     const emp = StaffState.staff.find(s => s.id === staffId);
     if (!emp) return;
-    if (StaffState.canManage && !isScheduleableStaffForUi(emp, date)) {
+    if (StaffState.canManageSchedule && !isScheduleableStaffForUi(emp, date)) {
         showNotification(scheduleableStaffErrorMessage({ code: 'STAFF_NOT_SCHEDULEABLE' }), 'error');
         return;
     }
@@ -6141,7 +6144,7 @@ function openEditModal(staffId, date, options = {}) {
         rangeKey: scheduleCommittedRangeKey(),
         sessionId: ++StaffState.scheduleModalSessionSeq,
         mutationPending: false,
-        shiftPreferencesLoading: StaffState.canManage
+        shiftPreferencesLoading: StaffState.canManageSchedule
             && !Array.isArray(StaffState.shiftPreferences[staffId])
             && !entry?.shift_start
             && !entry?.shift_end,
@@ -6150,7 +6153,7 @@ function openEditModal(staffId, date, options = {}) {
         staleConflict: null
     };
 
-    document.getElementById('schModalTitle').textContent = `${StaffState.canManage ? 'План дня' : 'Перегляд плану'}: ${emp.name} — ${date}`;
+    document.getElementById('schModalTitle').textContent = `${StaffState.canManageSchedule ? 'План дня' : 'Перегляд плану'}: ${emp.name} — ${date}`;
 
     document.getElementById('schStatus').value = entry?.status || 'working';
     document.getElementById('schNote').value = entry?.note || '';
@@ -6162,7 +6165,7 @@ function openEditModal(staffId, date, options = {}) {
     });
 
     const isReplacement = isReplacementEntry(entry);
-    const canReplace = StaffState.canManage
+    const canReplace = StaffState.canManageSchedule
         && entry?.id
         && ['working', 'remote'].includes(entry.status)
         && entry.shift_start
@@ -6192,7 +6195,7 @@ function openEditModal(staffId, date, options = {}) {
     }
 
     toggleTimeFields();
-    setScheduleModalReadOnly(!StaffState.canManage);
+    setScheduleModalReadOnly(!StaffState.canManageSchedule);
     const stateBeforePreferences = getStaffScheduleState();
     const overlay = document.getElementById('schModalOverlay');
     overlay?.setAttribute?.('aria-busy', 'false');
@@ -6208,7 +6211,7 @@ function openEditModal(staffId, date, options = {}) {
                 modal.classList.remove('visible');
                 modal.classList.add('hidden');
             },
-            initialFocus: () => StaffState.canManage
+            initialFocus: () => StaffState.canManageSchedule
                 ? document.getElementById('schStatus')
                 : document.getElementById('schCancelBtn'),
             onRequestClose: () => closeEditModal(false),
@@ -6345,7 +6348,7 @@ function toggleTimeFields() {
     }
     const entry = getEditingScheduleEntry();
     const isReplacement = isReplacementEntry(entry);
-    const canReplace = visible && StaffState.canManage && entry?.id && entry.shift_start && entry.shift_end;
+    const canReplace = visible && StaffState.canManageSchedule && entry?.id && entry.shift_start && entry.shift_end;
     const replaceBtn = document.getElementById('schReplaceBtn');
     const clearReplacementBtn = document.getElementById('schClearReplacementBtn');
     if (replaceBtn) replaceBtn.hidden = !canReplace;
@@ -8187,19 +8190,21 @@ async function initStaffSchedulePage(options = {}) {
             if (typeof bindLogoutButton === 'function') bindLogoutButton();
         }
 
-        const MANAGE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'hr'];
-        const canManage = MANAGE_ROLES.includes(user.role);
-        StaffState.canManage = canManage;
+        const canUseStaffCapability = action => typeof canAccess === 'function' && canAccess(action);
+        StaffState.canViewSchedule = canUseStaffCapability('hr.schedule.view');
+        StaffState.canManageSchedule = canUseStaffCapability('hr.schedule.manage');
+        StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
+        StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage');
         const ADMIN_ROLES = ['creator', 'director'];
         const isAdmin = ADMIN_ROLES.includes(user.role);
         const addBtn = document.getElementById('addStaffBtn');
-        if (addBtn) addBtn.style.display = canManage ? '' : 'none';
+        if (addBtn) addBtn.style.display = StaffState.canManageStaff ? '' : 'none';
 
-        // Show admin-only buttons
+        // Schedule mutations use their own capability and stay independent from staff profile management.
         const copyBtn = document.getElementById('copyWeekBtn');
         const fillBtn = document.getElementById('fillWeekBtn');
-        if (copyBtn) copyBtn.style.display = canManage ? '' : 'none';
-        if (fillBtn) fillBtn.style.display = canManage ? '' : 'none';
+        if (copyBtn) copyBtn.style.display = StaffState.canManageSchedule ? '' : 'none';
+        if (fillBtn) fillBtn.style.display = StaffState.canManageSchedule ? '' : 'none';
 
         // v39.1: Show bulk create and import buttons only for creator/director
         const bulkBtn = document.getElementById('bulkCreateBtn');
@@ -8232,7 +8237,7 @@ async function initStaffSchedulePage(options = {}) {
         bindSchedulePlanEditor('schedule');
         document.getElementById('schShiftPreferencePanel')?.addEventListener('click', event => {
             const button = event.target.closest('[data-shift-pref-start][data-shift-pref-end]');
-            if (!button || button.disabled || !StaffState.canManage) return;
+            if (!button || button.disabled || !StaffState.canManageSchedule) return;
             applyScheduleShiftPreference({
                 professionKey: getActiveScheduleSegmentCard()?.querySelector('[data-segment-field="profession"]')?.value,
                 dayType: button.dataset.shiftPrefDay,

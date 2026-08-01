@@ -4,6 +4,8 @@ const {
     canMutateTask,
     canReassignTask,
     canRescheduleTask,
+    isPrivateTaskVisibility,
+    privateTaskHandoffNeedsConfirmation,
     normalizeUserId,
     taskOwnerState,
     userDisplayName
@@ -465,6 +467,44 @@ async function updateTaskStatus(taskId, status, actor, options = {}) {
     });
 }
 
+async function actorRetainsTaskObserverAccess(taskId, actor, options = {}) {
+    const actorId = normalizeUserId(actor);
+    if (!actorId) return false;
+    const query = options.pool || pool;
+    const result = await query.query(
+        `SELECT 1
+         FROM task_observers
+         WHERE task_id = $1
+           AND user_id = $2
+         LIMIT 1`,
+        [taskId, actorId]
+    );
+    return result.rows.length > 0;
+}
+
+async function assertPrivateTaskHandoffConfirmed(task, nextOwner, actor, options = {}) {
+    if (!isPrivateTaskVisibility(task)) return;
+    const actorRetainsObserverAccess = await actorRetainsTaskObserverAccess(task.id, actor, options);
+    if (!privateTaskHandoffNeedsConfirmation(task, actor, nextOwner?.id, actorRetainsObserverAccess)) return;
+    if (options.confirmPrivateHandoff === true) return;
+
+    const err = new Error('This private task will be transferred and you will lose access. Confirm the handoff to continue.');
+    err.statusCode = 409;
+    err.code = 'TASK_PRIVATE_HANDOFF_CONFIRM_REQUIRED';
+    err.meta = {
+        privateHandoff: {
+            confirmationRequired: true,
+            actorWillLoseAccess: true,
+            visibility: String(task.visibility || '').trim().toLowerCase(),
+            nextOwner: {
+                id: nextOwner?.id || null,
+                label: nextOwner?.label || nextOwner?.name || nextOwner?.username || null
+            }
+        }
+    };
+    throw err;
+}
+
 async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
     return withTaskExecutionTransaction(options, async query => {
         const task = await getVisibleTask(taskId, actor, { pool: query, businessScope: options.businessScope || options.businessContext });
@@ -478,6 +518,7 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
             err.code = 'TASK_OWNER_UNCHANGED';
             throw err;
         }
+        await assertPrivateTaskHandoffConfirmed(task, owner, actor, { pool: query, confirmPrivateHandoff: options.confirmPrivateHandoff === true });
         const result = await query.query(
             `UPDATE tasks
              SET owner_user_id = $2,
@@ -524,6 +565,7 @@ async function reassignTaskOwner(taskId, ownerUserId, actor, options = {}) {
 
 module.exports = {
     ASSIGNABLE_TASK_ROLES,
+    assertPrivateTaskHandoffConfirmed,
     completeTask,
     getAssignableTaskOwner,
     getVisibleTask,

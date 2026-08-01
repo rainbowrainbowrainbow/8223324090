@@ -5399,10 +5399,19 @@ async function reassignCabinetPostponementTask(taskId, task = {}) {
         }
     ], { icon: '👤', okText: 'Змінити виконавця', cancelText: 'Скасувати' });
     if (!values?.ownerUserId) return { cancelled: true };
-    const result = await apiPost(`/tasks/${taskId}/reassign`, {
-        ownerUserId: Number(values.ownerUserId),
-        sourceSurface: 'profile_my_cabinet_postponement_action'
+    const executePrivateTaskHandoff = window.TaskUiShared?.executePrivateTaskHandoff;
+    if (typeof executePrivateTaskHandoff !== 'function') {
+        throw new Error('\u041f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043f\u0435\u0440\u0435\u0434\u0430\u0447\u0456 \u043f\u0440\u0438\u0432\u0430\u0442\u043d\u043e\u0457 \u0437\u0430\u0434\u0430\u0447\u0456 \u0442\u0438\u043c\u0447\u0430\u0441\u043e\u0432\u043e \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435.');
+    }
+    const result = await executePrivateTaskHandoff(confirmed => {
+        const payload = {
+            ownerUserId: Number(values.ownerUserId),
+            sourceSurface: 'profile_my_cabinet_postponement_action'
+        };
+        if (confirmed === true) payload.confirmPrivateHandoff = true;
+        return apiPost(`/tasks/${taskId}/reassign`, payload);
     });
+    if (result?.cancelled) return result;
     if (!result?.success) throw new Error(result?.error || 'Не вдалося змінити виконавця.');
     return result;
 }

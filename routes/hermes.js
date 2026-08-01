@@ -225,7 +225,8 @@ const HERMES_SUBTASK_TOGGLE_ALLOWED_FIELDS = new Set([
 
 const HERMES_REASSIGN_ALLOWED_FIELDS = new Set([
     'ownerUserId',
-    'assignee'
+    'assignee',
+    'confirmPrivateHandoff'
 ]);
 
 const HERMES_RESCHEDULE_ALLOWED_FIELDS = new Set([
@@ -859,7 +860,13 @@ function normalizeHermesReassignPayload(body = {}) {
     if (!ownerUserId) {
         throw hermesHttpError(400, 'HERMES_INVALID_TASK_OWNER', 'ownerUserId or assignee.id is required');
     }
-    return { ownerUserId };
+    if (body.confirmPrivateHandoff !== undefined && typeof body.confirmPrivateHandoff !== 'boolean') {
+        throw hermesHttpError(400, 'HERMES_INVALID_TASK_PAYLOAD', 'confirmPrivateHandoff must be a boolean');
+    }
+    return {
+        ownerUserId,
+        confirmPrivateHandoff: body.confirmPrivateHandoff === true
+    };
 }
 
 function normalizeHermesReschedulePayload(body = {}) {
@@ -3728,6 +3735,7 @@ function createHermesRouter(options = {}) {
                     pool: mutationPool,
                     businessScope,
                     sourceSurface: 'hermes',
+                    confirmPrivateHandoff: payload.confirmPrivateHandoff === true,
                     route: 'hermes_task_reassign'
                 });
                 const body = hermesMutationTaskBody(req, businessScope, result.task, {
@@ -3745,7 +3753,7 @@ function createHermesRouter(options = {}) {
             });
         } catch (err) {
             if (err.statusCode && err.statusCode < 500) {
-                return sendHermesError(res, err.statusCode, err.code || 'HERMES_TASK_MUTATION_FAILED', err.message);
+                return sendHermesError(res, err.statusCode, err.code || 'HERMES_TASK_MUTATION_FAILED', err.message, err.meta || null);
             }
             log.error('Hermes task reassign error', err);
             return sendHermesError(res, 500, 'HERMES_INTERNAL_ERROR', 'Hermes task reassign failed');

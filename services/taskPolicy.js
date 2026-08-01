@@ -177,6 +177,22 @@ function canReassignTask(user, task = {}) {
     return perms.canAssignAnyone === true || perms.taskVisibility === 'all' || perms.taskVisibility === 'department';
 }
 
+function taskVisibilityValue(task = {}) {
+    return String(task.visibility || task.taskVisibility || '').trim().toLowerCase();
+}
+
+function isPrivateTaskVisibility(task = {}) {
+    return ['private', 'me_only'].includes(taskVisibilityValue(task));
+}
+
+function privateTaskHandoffNeedsConfirmation(task = {}, actor = {}, nextOwnerUserId, actorRetainsObserverAccess = false) {
+    const actorId = normalizeUserId(actor);
+    const nextOwnerId = Number(nextOwnerUserId || 0);
+    if (!isPrivateTaskVisibility(task) || !actorId || !Number.isInteger(nextOwnerId) || nextOwnerId <= 0) return false;
+    if (nextOwnerId === actorId || actorRetainsObserverAccess === true) return false;
+    return ownsTask(actor, task);
+}
+
 const TASK_ROUTE_CAPABILITY_REASON_CODES = Object.freeze({
     create: 'TASK_CREATE_FORBIDDEN',
     delete: 'TASK_DELETE_FORBIDDEN',
@@ -252,10 +268,12 @@ module.exports = {
     canReassignTask,
     canRescheduleTask,
     canUseTaskRouteCapability,
+    isPrivateTaskVisibility,
     normalizeUserId,
     observesTask,
     ownsTask,
     taskOwnerState,
+    privateTaskHandoffNeedsConfirmation,
     taskRouteCapabilityDecision,
     userDisplayName,
     userRoleValues,

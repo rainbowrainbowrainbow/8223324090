@@ -112,6 +112,44 @@ function createFakePool() {
             return { rows: user ? [{ is_active: user.is_active, session_revoked_at: user.session_revoked_at }] : [] };
         }
 
+        if (/SELECT qa_creator_lease_id::text AS qa_creator_lease_id, qa_creator_lease_expires_at FROM users/i.test(text)) {
+            const user = state.users.find(item => Number(item.id) === Number(params[0]));
+            const expectedLeaseId = params[1] || null;
+            const leaseIsActive = user
+                && user.qa_creator_lease_id
+                && user.qa_creator_lease_expires_at
+                && new Date(user.qa_creator_lease_expires_at) > new Date()
+                && (!expectedLeaseId || user.qa_creator_lease_id === expectedLeaseId);
+            return {
+                rows: leaseIsActive ? [{
+                    qa_creator_lease_id: user.qa_creator_lease_id,
+                    qa_creator_lease_expires_at: user.qa_creator_lease_expires_at
+                }] : []
+            };
+        }
+
+        if (/SELECT id, username, role, is_active FROM users WHERE id = \$1 FOR UPDATE/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{ id: row.id, username: row.username, role: row.role, is_active: row.is_active !== false }] : [] };
+        }
+
+        if (/SELECT u\.id, u\.username, u\.name, u\.role, u\.extra_roles, u\.is_active,/i.test(text)
+            && /qa_creator_lease_id::text AS qa_creator_lease_id/i.test(text)
+            && /FROM users u/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{
+                id: row.id,
+                username: row.username,
+                name: row.name,
+                role: row.role,
+                extra_roles: row.extra_roles || [],
+                is_active: row.is_active !== false,
+                qa_creator_lease_id: row.qa_creator_lease_id || null,
+                qa_creator_lease_expires_at: row.qa_creator_lease_expires_at || null,
+                has_active_staff_profile: false
+            }] : [] };
+        }
+
         if (/SELECT id FROM users WHERE LOWER\(username\) = LOWER\(\$1\)/i.test(text)) {
             const excludeId = params.length > 1 ? Number(params[1]) : null;
             const user = state.users.find(item => item.username.toLowerCase() === String(params[0] || '').toLowerCase()
@@ -366,6 +404,26 @@ function createFakePool() {
             }
             return { rows: row ? [{ id: row.id, username: row.username }] : [], rowCount: row ? 1 : 0 };
         }
+        if (/UPDATE users\s+SET qa_creator_lease_id = \$1::uuid,\s*qa_creator_lease_expires_at = NOW\(\) \+ \(\$2 \* INTERVAL '1 second'\),\s*qa_creator_lease_granted_by_user_id = \$3/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[3]));
+            if (row) {
+                row.qa_creator_lease_id = params[0];
+                row.qa_creator_lease_expires_at = new Date(Date.now() + Number(params[1]) * 1000);
+                row.qa_creator_lease_granted_by_user_id = Number(params[2]);
+            }
+            return { rows: row ? [{ qa_creator_lease_id: row.qa_creator_lease_id, qa_creator_lease_expires_at: row.qa_creator_lease_expires_at }] : [], rowCount: row ? 1 : 0 };
+        }
+
+        if (/UPDATE users\s+SET qa_creator_lease_id = NULL,\s*qa_creator_lease_expires_at = NULL,\s*qa_creator_lease_granted_by_user_id = NULL\s*WHERE id = \$1 AND qa_creator_lease_id = \$2::uuid/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]) && item.qa_creator_lease_id === params[1]);
+            if (row) {
+                row.qa_creator_lease_id = null;
+                row.qa_creator_lease_expires_at = null;
+                row.qa_creator_lease_granted_by_user_id = null;
+            }
+            return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
+        }
+
         if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*action_allowlist = COALESCE\(\$4::text\[\], action_allowlist\),\s*action_denylist = COALESCE\(\$5::text\[\], action_denylist\),\s*business_contexts = COALESCE\(\$6::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$7::text, default_business_context\),\s*session_revoked_at = NOW\(\)\s*WHERE id = \$8\s*RETURNING id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist, business_contexts, default_business_context/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[7]));
             if (row) {
@@ -1084,5 +1142,54 @@ test('created one-time account returns a visible credential that logs in through
         });
         assert.equal(login.status, 200);
         assert.equal(login.data.user.username, 'one.time.operator');
+    });
+});
+
+test('isolated QA creator lease expires fail-closed and never changes the stored role', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const created = await request(baseUrl, 'POST', '/api/users', {
+            username: 'dedicated.qa',
+            password: 'DedicatedQaPass789!',
+            name: 'Dedicated QA',
+            role: 'senior_manager'
+        }, creatorToken());
+        assert.equal(created.status, 200, JSON.stringify(created.data));
+        const qaUser = fakePool.state.users.find(user => user.username === 'dedicated.qa');
+        assert.equal(qaUser.role, 'senior_manager');
+
+        const started = await request(baseUrl, 'POST', `/api/users/${qaUser.id}/qa-creator-lease`, {
+            durationSeconds: 15 * 60
+        }, creatorToken());
+        assert.equal(started.status, 200, JSON.stringify(started.data));
+        assert.equal(started.data.role, 'creator');
+        assert.ok(started.data.leaseId);
+        assert.equal(qaUser.role, 'senior_manager', 'lease must not write users.role');
+
+        const qaLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'dedicated.qa',
+            password: 'DedicatedQaPass789!'
+        });
+        assert.equal(qaLogin.status, 200, JSON.stringify(qaLogin.data));
+        assert.equal(qaLogin.data.user.role, 'creator');
+        assert.equal(qaLogin.data.user.qaCreatorLeaseId, started.data.leaseId);
+
+        const temporaryActorCannotLease = await request(baseUrl, 'POST', `/api/users/${qaUser.id}/qa-creator-lease`, {
+            durationSeconds: 15 * 60
+        }, qaLogin.data.token);
+        assert.equal(temporaryActorCannotLease.status, 403);
+        assert.equal(temporaryActorCannotLease.data.code, 'QA_CREATOR_LEASE_ACTOR_FORBIDDEN');
+
+        qaUser.qa_creator_lease_expires_at = new Date(Date.now() - 1_000);
+        const expiredAccess = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, qaLogin.data.token);
+        assert.equal(expiredAccess.status, 200);
+        assert.equal(expiredAccess.data.user.role, 'senior_manager', 'expired lease must fall back to the stored role');
+
+        const revoked = await request(baseUrl, 'DELETE', `/api/users/${qaUser.id}/qa-creator-lease`, {
+            leaseId: started.data.leaseId
+        }, creatorToken());
+        assert.equal(revoked.status, 200, JSON.stringify(revoked.data));
+        assert.equal(qaUser.qa_creator_lease_id, null);
+        assert.equal(qaUser.qa_creator_lease_expires_at, null);
+        assert.equal(qaUser.role, 'senior_manager');
     });
 });

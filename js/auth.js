@@ -2852,6 +2852,8 @@ async function profileLoadMoreActivity() {
 // v22.5: Daily login reward check
 async function checkDailyLogin() {
     try {
+        // The authenticated production QA runner is read-only and must not claim rewards.
+        if (window.__eventGenixLiveQaReadOnly === true) return;
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         const r = await fetch('/api/wallet/daily-login', {

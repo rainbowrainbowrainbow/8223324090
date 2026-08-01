@@ -13,6 +13,7 @@ const {
 
 const ROOT = path.resolve(__dirname, '..');
 const runnerSource = fs.readFileSync(path.join(ROOT, 'scripts', 'live-authenticated-surface-qa.js'), 'utf8');
+const authSource = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 const workflow = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
 
 test('authenticated live QA parses Retry-After without exposing secrets', () => {
@@ -36,6 +37,8 @@ test('authenticated live QA allows only read-only browser calls and login', () =
     assert.equal(browserRequestIsAllowed('POST', 'https://crm.example/api/wallet/daily-login'), false);
     assert.equal(browserRequestIsAllowed('POST', 'https://crm.example/api/finance/transactions'), false);
     assert.equal(browserRequestIsAllowed('PATCH', 'https://crm.example/api/users/1/access'), false);
+    assert.equal(browserRequestIsAllowed('POST', 'https://crm.example/api/users/1/qa-creator-lease'), false);
+    assert.equal(browserRequestIsAllowed('DELETE', 'https://crm.example/api/users/1/qa-creator-lease'), false);
     assert.equal(browserRequestIsAllowed('DELETE', 'https://crm.example/api/finance/transactions/1'), false);
 });
 
@@ -44,11 +47,16 @@ test('authenticated live QA is a manual gate with a role restoration contract', 
     assert.match(packageJson.scripts['qa:live:authenticated'], /live-authenticated-surface-qa\.js/);
     assert.match(packageJson.scripts.verify, /test:live-authenticated-qa-contract/);
     assert.doesNotMatch(workflow, /qa:live:authenticated/);
-    assert.match(runnerSource, /finally\s*\{[\s\S]*setQaRole\(base, creatorToken, qaUser\.id, originalRole\)/);
+    assert.match(runnerSource, /finally\s*\{[\s\S]*revokeQaCreatorLease\(base, creatorToken, qaUser\.id, qaCreatorLease\?\.leaseId\)/);
     assert.match(runnerSource, /await verifyUser\(base, restoredToken\)/);
     assert.match(runnerSource, /await readPermissions\(base, restoredToken\)/);
-    assert.match(runnerSource, /KNOWN_AUTOMATIC_BLOCKED_PATHS/);
-    assert.match(runnerSource, /unexpectedBrowserMutations\.length === 0/);
+    assert.match(runnerSource, /createQaCreatorLease\(base, creatorToken, qaUser\.id\)/);
+    assert.match(runnerSource, /QA_CREATOR_LEASE_SECONDS/);
+    assert.match(runnerSource, /window\.__eventGenixLiveQaReadOnly = true/);
+    assert.match(authSource, /window\.__eventGenixLiveQaReadOnly === true/);
+    assert.doesNotMatch(runnerSource, /KNOWN_AUTOMATIC_BLOCKED_PATHS/);
+    assert.doesNotMatch(runnerSource, /wallet\/daily-login/);
+    assert.match(runnerSource, /browserMutations\.length === 0/);
     assert.match(runnerSource, /cameraCalls === 1/);
     assert.match(runnerSource, /function requirePlaywright\(\)/);
     assert.match(runnerSource, /const \{ chromium \} = requirePlaywright\(\);/);

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.61 - Безпечний QA lease та read-only wallet
+
+### Release / Versioning / (01.08.2026) [codex]
+- **Безпечний QA lease та read-only wallet** — release marker, cache tags and visible version metadata were prepared automatically.
+- **Автоматичне протухання QA creator** — тимчасове підвищення більше не змінює базову роль акаунта: після expiry, revoke або перезапуску доступ повертається до збереженої ролі.
+- **Read-only live QA без wallet мутації** — спеціальний browser context не запускає автоматичний `daily-login` POST; будь-які інші browser mutations як і раніше блокуються до відправлення.
+
+---
+
 ## v0.80.60 - Безпечний authenticated production QA
 
 ### Release / Versioning / (01.08.2026) [codex]

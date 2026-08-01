@@ -11,7 +11,7 @@ const MAX_RETRIES = 4;
 const MAX_RETRY_AFTER_MS = 30_000;
 const SAFE_BROWSER_METHODS = new Set(['GET', 'HEAD']);
 const SAFE_BROWSER_POST_PATHS = new Set(['/api/auth/login', '/api/auth/refresh']);
-const KNOWN_AUTOMATIC_BLOCKED_PATHS = new Set(['/api/wallet/daily-login']);
+const QA_CREATOR_LEASE_SECONDS = 15 * 60;
 const QA_ROLE_MARKER = /(?:qa|test|codex|smoke|verifier)/i;
 
 class QaError extends Error {
@@ -90,7 +90,7 @@ function safeResourceOrigin(input) {
 }
 function classifyConsoleError(message) {
     const value = String(message || '').toLowerCase();
-    if (value.includes('wallet') || value.includes('daily-login')) return 'wallet_auto_request_blocked';
+
     if (value.includes('notallowederror') || value.includes('[checkin] initialization failed')) return 'checkin_camera_denial_expected';
     if (value.includes('content security policy') || value.includes('csp')) return 'csp_error';
     if (value.includes('blockedbyclient') || value.includes('net::err_failed')) return 'runner_blocked_request';
@@ -188,13 +188,23 @@ function capabilityAllowed(permissions, type, key) {
     return Boolean(legacy?.[key]);
 }
 
-async function setQaRole(base, creatorToken, qaUserId, role) {
-    const result = await fetchJson(base, `/api/users/${encodeURIComponent(qaUserId)}/access`, {
-        method: 'PATCH',
+async function createQaCreatorLease(base, creatorToken, qaUserId) {
+    const result = await fetchJson(base, `/api/users/${encodeURIComponent(qaUserId)}/qa-creator-lease`, {
+        method: 'POST',
         token: creatorToken,
-        body: { role }
+        body: { durationSeconds: QA_CREATOR_LEASE_SECONDS }
     });
-    assert(result.success === true && result.newRole === role, 'qa_role_transition_failed');
+    assert(result.success === true && typeof result.leaseId === 'string' && result.role === 'creator', 'qa_role_lease_create_failed');
+    return { leaseId: result.leaseId, expiresAt: result.expiresAt || null };
+}
+
+async function revokeQaCreatorLease(base, creatorToken, qaUserId, leaseId) {
+    const result = await fetchJson(base, `/api/users/${encodeURIComponent(qaUserId)}/qa-creator-lease`, {
+        method: 'DELETE',
+        token: creatorToken,
+        body: { leaseId }
+    });
+    assert(result.success === true && result.leaseId === leaseId, 'qa_role_lease_revoke_failed');
 }
 
 async function waitFor(page, predicate, code, timeout = 35_000) {
@@ -233,6 +243,7 @@ async function runBrowserChecks(base, config, report) {
     const consoleState = { errors: 0, warnings: 0, cspErrors: 0, errorKinds: Object.create(null), requestFailures: Object.create(null) };
     const permissionResponses = [];
     await context.addInitScript(() => {
+        window.__eventGenixLiveQaReadOnly = true;
         window.__eventGenixLiveQaCameraCalls = 0;
         navigator.mediaDevices = navigator.mediaDevices || {};
         navigator.mediaDevices.getUserMedia = async () => {
@@ -251,9 +262,7 @@ async function runBrowserChecks(base, config, report) {
     page.on('requestfailed', request => {
         const resourceType = request.resourceType() || 'unknown';
         const origin = safeResourceOrigin(request.url());
-        const requestPath = sanitizedApiPath(request.url());
-        const label = KNOWN_AUTOMATIC_BLOCKED_PATHS.has(requestPath) ? 'blocked_automatic' : resourceType;
-        incrementCount(consoleState.requestFailures, `${label}@${origin}`);
+        incrementCount(consoleState.requestFailures, `${resourceType}@${origin}`);
     });
     page.on('response', response => {
         if (safeRequestPath(response.url()) === '/api/auth/permissions') permissionResponses.push(response.status());
@@ -332,8 +341,7 @@ async function runBrowserChecks(base, config, report) {
         await browser.close().catch(() => {});
     }
     if (browserMutations.length) report.blockedBrowserRequests = browserMutations;
-    const unexpectedBrowserMutations = browserMutations.filter(request => !KNOWN_AUTOMATIC_BLOCKED_PATHS.has(request.path));
-    assert(unexpectedBrowserMutations.length === 0, 'qa_browser_mutation_blocked');
+    assert(browserMutations.length === 0, 'qa_browser_mutation_blocked');
     report.permissionLifecycle = { permissionsResponses: permissionResponses.filter(status => status === 200).length, ready: true };
     report.console = consoleState;
     assert(consoleState.cspErrors === 0, 'qa_csp_error');
@@ -353,6 +361,7 @@ async function main() {
     let qaUser;
     let originalRole;
     let originalFinanceAccess;
+    let qaCreatorLease = null;
     let elevationApplied = false;
     let primaryFailure = null;
     try {
@@ -372,7 +381,7 @@ async function main() {
         originalRole = qaUser.role;
         assert(qaUser.role !== 'creator', 'qa_account_already_creator');
         assert(QA_ROLE_MARKER.test(`${qaUser.username || ''} ${qaUser.name || ''}`), 'qa_account_marker_missing');
-        await setQaRole(base, creatorToken, qaUser.id, 'creator');
+        qaCreatorLease = await createQaCreatorLease(base, creatorToken, qaUser.id);
         elevationApplied = true;
         report.temporaryCreator.applied = true;
         await runBrowserChecks(base, config, report);
@@ -382,7 +391,7 @@ async function main() {
         if (elevationApplied && qaUser && originalRole) {
             try {
                 const creatorToken = await login(base, config.LIVE_CREATOR_USER, config.LIVE_CREATOR_PASS);
-                await setQaRole(base, creatorToken, qaUser.id, originalRole);
+                await revokeQaCreatorLease(base, creatorToken, qaUser.id, qaCreatorLease?.leaseId);
                 const restoredToken = await login(base, config.LIVE_SMOKE_USER, config.LIVE_SMOKE_PASS);
                 const restoredUser = await verifyUser(base, restoredToken);
                 const restoredPermissions = await readPermissions(base, restoredToken);

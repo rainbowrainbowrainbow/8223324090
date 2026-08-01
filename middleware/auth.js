@@ -21,6 +21,7 @@ const {
     normalizeActionOverrideList,
     resolveCapability
 } = require('../services/accountAccessPolicy');
+const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
 
 const log = createLogger('Auth');
 
@@ -70,6 +71,8 @@ function buildAuthUserPayload(user) {
         user?.staff_id,
         user?.staffId
     ].map(value => Number(value)).filter(value => Number.isInteger(value) && value > 0)));
+    const qaCreatorLeaseId = user?.qaCreatorLeaseId || user?.qa_creator_lease_id || null;
+    const qaCreatorLeaseExpiresAt = user?.qaCreatorLeaseExpiresAt || user?.qa_creator_lease_expires_at || null;
     return {
         id: user.id,
         username: user.username,
@@ -91,7 +94,11 @@ function buildAuthUserPayload(user) {
         staff_ids: staffIds,
         name: user.name,
         telegram_chat_id: user.telegram_chat_id || user.telegramChatId || null,
-        telegramChatId: user.telegram_chat_id || user.telegramChatId || null
+        telegramChatId: user.telegram_chat_id || user.telegramChatId || null,
+        ...(qaCreatorLeaseId && qaCreatorLeaseExpiresAt ? {
+            qaCreatorLeaseId,
+            qaCreatorLeaseExpiresAt
+        } : {})
     };
 }
 
@@ -160,6 +167,9 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
         if (freshUser.is_active === false) {
             throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
         }
+        const accessUser = user?.qaCreatorLeaseId
+            ? await resolveActiveQaCreatorLease(freshUser, pool, { expectedLeaseId: user.qaCreatorLeaseId })
+            : freshUser;
 
         let staffState = { rows: [] };
         if (includeStaffProfile) {
@@ -182,7 +192,7 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
 
         return {
             ...user,
-            ...buildAuthUserPayload({ ...freshUser, staffIds }),
+            ...buildAuthUserPayload({ ...accessUser, staffIds }),
             iat: user.iat,
             exp: user.exp,
             imp: user.imp,
@@ -388,7 +398,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
         return { error: 'User not found or deactivated', status: 403 };
     }
 
-    const user = userResult.rows[0];
+    const user = await resolveActiveQaCreatorLease(userResult.rows[0], pool);
 
     // Issue new pair
     const { accessToken, refreshToken: newRefreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });

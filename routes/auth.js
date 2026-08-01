@@ -18,6 +18,7 @@ const {
     buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, requireAction
 } = require('../middleware/auth');
 const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
+const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
 const {
@@ -212,7 +213,7 @@ router.post('/login', async (req, res) => {
         );
 
         // v39.9: Unified error message prevents username enumeration
-        const user = result.rows[0];
+        let user = result.rows[0];
         const passwordMatches = user && user.is_active !== false
             ? await credentials.passwordCandidates.reduce(async (matchedPromise, candidate) => {
                 if (await matchedPromise) return true;
@@ -227,6 +228,8 @@ router.post('/login', async (req, res) => {
             log.warn(`Login failed for "${loginIdentifier}" (${reason}${credentials.parsedCredentialBlock ? ', parsed_credential_block' : ''})`);
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
+
+        user = await resolveActiveQaCreatorLease(user, pool);
 
         // v38.4.0: Issue access + refresh token pair
         const deviceInfo = req.headers['user-agent'] || '';
@@ -280,7 +283,14 @@ router.get('/verify', authenticateToken, async (req, res) => {
         if (result.rows.length === 0) {
             return res.status(403).json({ error: 'User not found or deactivated' });
         }
-        const user = result.rows[0];
+        const user = {
+            ...result.rows[0],
+            role: req.user.role,
+            ...(req.user.qaCreatorLeaseId ? {
+                qaCreatorLeaseId: req.user.qaCreatorLeaseId,
+                qaCreatorLeaseExpiresAt: req.user.qaCreatorLeaseExpiresAt
+            } : {})
+        };
         res.json({ user: { ...buildAuthUserPayload(user), ...userAvatarPayload(user) } });
     } catch (err) {
         res.status(500).json({ error: 'Verification failed' });

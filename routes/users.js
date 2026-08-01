@@ -3,6 +3,7 @@
  * Creator + Director only: list users, change roles, reset passwords, deactivate
  */
 const router = require('express').Router();
+const crypto = require('crypto');
 const bcrypt = require('bcryptjs');
 const { pool } = require('../db');
 const {
@@ -50,10 +51,75 @@ const {
 } = require('../services/accountOnboarding');
 const { normalizeStaffCompanyStructurePayload } = require('../services/staffDisplayGroups');
 const { curateProfessionCatalogRows } = require('../services/professions');
+const {
+    QA_CREATOR_ROLE,
+    normalizeQaCreatorLeaseDuration,
+    normalizeLeaseId,
+    isQaLeaseCandidate
+} = require('../services/qaCreatorLease');
 
 const log = createLogger('Users');
 
 const ACCOUNT_MANAGER_ROLES = ['creator', 'director'];
+
+function qaCreatorLeaseError(message, code, statusCode = 400) {
+    const error = new Error(message);
+    error.code = code;
+    error.statusCode = statusCode;
+    return error;
+}
+
+function qaLeaseAccountId(value) {
+    const parsed = Number.parseInt(value, 10);
+    if (!Number.isInteger(parsed) || parsed <= 0) {
+        throw qaCreatorLeaseError('Некоректний account id', 'QA_CREATOR_LEASE_ACCOUNT_INVALID');
+    }
+    return parsed;
+}
+
+async function assertPermanentCreatorForQaLease(client, actor) {
+    const actorResult = await client.query(
+        'SELECT id, username, role, is_active FROM users WHERE id = $1 FOR UPDATE',
+        [actor?.id]
+    );
+    const permanentActor = actorResult.rows[0];
+    if (!permanentActor || permanentActor.is_active === false || permanentActor.role !== QA_CREATOR_ROLE) {
+        throw qaCreatorLeaseError('Лише постійний creator може керувати QA lease', 'QA_CREATOR_LEASE_ACTOR_FORBIDDEN', 403);
+    }
+    return permanentActor;
+}
+
+async function selectQaLeaseTarget(client, userId) {
+    const result = await client.query(
+        `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.is_active,
+                u.qa_creator_lease_id::text AS qa_creator_lease_id, u.qa_creator_lease_expires_at,
+                EXISTS (
+                    SELECT 1
+                    FROM employee_profiles ep
+                    WHERE ep.user_id = u.id
+                      AND COALESCE(ep.is_active, true) IS TRUE
+                ) AS has_active_staff_profile
+         FROM users u
+         WHERE u.id = $1
+         FOR UPDATE`,
+        [userId]
+    );
+    return result.rows[0] || null;
+}
+
+function assertQaLeaseTarget(target, actorId) {
+    if (!target) throw qaCreatorLeaseError('QA account не знайдено', 'QA_CREATOR_LEASE_TARGET_MISSING', 404);
+    if (Number(target.id) === Number(actorId)) {
+        throw qaCreatorLeaseError('Не можна видати QA lease самому собі', 'QA_CREATOR_LEASE_SELF_FORBIDDEN', 403);
+    }
+    if (target.is_active === false || accountRoles(target).includes(QA_CREATOR_ROLE)) {
+        throw qaCreatorLeaseError('QA account не придатний для тимчасового creator lease', 'QA_CREATOR_LEASE_TARGET_FORBIDDEN', 403);
+    }
+    if (target.has_active_staff_profile || !isQaLeaseCandidate(target)) {
+        throw qaCreatorLeaseError('Lease дозволений лише ізольованому QA account', 'QA_CREATOR_LEASE_TARGET_NOT_ISOLATED', 403);
+    }
+    assertAccountMutable(target, 'qa_creator_lease');
+}
 function normalizeRoleSet(...roleLists) {
     const roles = [];
     roleLists.flat().forEach(role => {
@@ -642,6 +708,106 @@ router.patch('/:id/profile', requireAction('manage_accounts'), async (req, res) 
 // PATCH /api/users/:id/role — change user role (creator + director only)
 router.patch('/:id/access', requireAction('manage_accounts'), updateAccountAccess);
 router.patch('/:id/role', requireAction('manage_accounts'), updateAccountAccess);
+
+// A QA lease overlays creator access without ever changing the account's base role.
+router.post('/:id/qa-creator-lease', requireAction('manage_accounts'), async (req, res) => {
+    let client = null;
+    try {
+        const userId = qaLeaseAccountId(req.params.id);
+        const durationSeconds = normalizeQaCreatorLeaseDuration(req.body?.durationSeconds);
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const actor = await assertPermanentCreatorForQaLease(client, req.user);
+        const target = await selectQaLeaseTarget(client, userId);
+        assertQaLeaseTarget(target, actor.id);
+
+        const leaseId = crypto.randomUUID();
+        const updated = await client.query(
+            `UPDATE users
+             SET qa_creator_lease_id = $1::uuid,
+                 qa_creator_lease_expires_at = NOW() + ($2 * INTERVAL '1 second'),
+                 qa_creator_lease_granted_by_user_id = $3
+             WHERE id = $4
+             RETURNING qa_creator_lease_id::text AS qa_creator_lease_id, qa_creator_lease_expires_at`,
+            [leaseId, durationSeconds, actor.id, userId]
+        );
+        const lease = updated.rows[0];
+        if (!lease) throw qaCreatorLeaseError('QA lease не вдалося створити', 'QA_CREATOR_LEASE_CREATE_FAILED', 500);
+        await recordAccountSecurityEvent({
+            actor,
+            target,
+            eventType: 'qa_creator_lease_started',
+            reason: 'authenticated_live_qa',
+            details: { durationSeconds, expiresAt: lease.qa_creator_lease_expires_at, leaseId },
+            req,
+            client,
+            strict: true
+        });
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            leaseId: lease.qa_creator_lease_id,
+            expiresAt: lease.qa_creator_lease_expires_at,
+            role: QA_CREATOR_ROLE
+        });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        log.error('Create QA creator lease error', err);
+        res.status(err.statusCode || 500).json({
+            error: err.statusCode ? err.message : 'Internal server error',
+            ...(err.code ? { code: err.code } : {})
+        });
+    } finally {
+        client?.release();
+    }
+});
+
+router.delete('/:id/qa-creator-lease', requireAction('manage_accounts'), async (req, res) => {
+    let client = null;
+    try {
+        const userId = qaLeaseAccountId(req.params.id);
+        const leaseId = normalizeLeaseId(req.body?.leaseId);
+        if (!leaseId) throw qaCreatorLeaseError('Некоректний QA lease id', 'QA_CREATOR_LEASE_ID_INVALID');
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const actor = await assertPermanentCreatorForQaLease(client, req.user);
+        const target = await selectQaLeaseTarget(client, userId);
+        assertQaLeaseTarget(target, actor.id);
+        const revoked = await client.query(
+            `UPDATE users
+             SET qa_creator_lease_id = NULL,
+                 qa_creator_lease_expires_at = NULL,
+                 qa_creator_lease_granted_by_user_id = NULL
+             WHERE id = $1 AND qa_creator_lease_id = $2::uuid
+             RETURNING id`,
+            [userId, leaseId]
+        );
+        if (!revoked.rowCount) {
+            throw qaCreatorLeaseError('QA lease вже протух або був замінений', 'QA_CREATOR_LEASE_NOT_ACTIVE', 409);
+        }
+        await recordAccountSecurityEvent({
+            actor,
+            target,
+            eventType: 'qa_creator_lease_revoked',
+            reason: 'authenticated_live_qa',
+            details: { leaseId },
+            req,
+            client,
+            strict: true
+        });
+        await client.query('COMMIT');
+        res.json({ success: true, leaseId });
+    } catch (err) {
+        if (client) await client.query('ROLLBACK').catch(() => {});
+        log.error('Revoke QA creator lease error', err);
+        res.status(err.statusCode || 500).json({
+            error: err.statusCode ? err.message : 'Internal server error',
+            ...(err.code ? { code: err.code } : {})
+        });
+    } finally {
+        client?.release();
+    }
+});
 
 async function updateAccountAccess(req, res) {
     let client = null;

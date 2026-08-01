@@ -20,30 +20,58 @@
         return Array.from(new Set(list.map(item => String(item || '').trim()).filter(Boolean)));
     }
 
-    function normalizeState(value = {}) {
+    function pageCanonicalMap(pages = []) {
+        const mapping = Object.create(null);
+        pages.forEach(page => {
+            const canonical = String(page?.canonicalPath || page?.key || '').trim();
+            if (!canonical) return;
+            [page.key, canonical, ...(Array.isArray(page.aliases) ? page.aliases : [])].forEach(value => {
+                const raw = String(value || '').trim();
+                if (!raw) return;
+                mapping[raw] = canonical;
+                const withoutHash = raw.split('#')[0].split('?')[0].replace(/\/$/, '') || '/';
+                mapping[withoutHash] = canonical;
+            });
+        });
+        return mapping;
+    }
+
+    function canonicalPageList(value, mapping = {}) {
+        return uniqueStrings(value).map(item => {
+            const withoutHash = item.split('#')[0].split('?')[0].replace(/\/$/, '') || '/';
+            return mapping[item] || mapping[withoutHash] || item;
+        }).filter(Boolean).filter((item, index, list) => list.indexOf(item) === index);
+    }
+
+    function normalizeState(value = {}, config = {}) {
+        const pageMapping = config.pageCanonicalMap || config;
         const businesses = uniqueStrings(value.businessContexts || value.business_contexts);
         const fallbackBusiness = businesses[0] || 'event_genix';
+        const pageDenylist = canonicalPageList(value.pageDenylist || value.page_denylist, pageMapping);
+        const actionDenylist = uniqueStrings(value.actionDenylist || value.action_denylist);
         return {
             role: String(value.role || 'animator'),
             extraRoles: uniqueStrings(value.extraRoles || value.extra_roles).filter(role => role !== value.role),
-            pageAllowlist: uniqueStrings(value.pageAllowlist || value.page_allowlist),
-            actionAllowlist: uniqueStrings(value.actionAllowlist || value.action_allowlist),
-            actionDenylist: uniqueStrings(value.actionDenylist || value.action_denylist),
+            pageAllowlist: canonicalPageList(value.pageAllowlist || value.page_allowlist, pageMapping).filter(key => !pageDenylist.includes(key)),
+            pageDenylist,
+            actionAllowlist: uniqueStrings(value.actionAllowlist || value.action_allowlist).filter(key => !actionDenylist.includes(key)),
+            actionDenylist,
             businessContexts: businesses.length ? businesses : [fallbackBusiness],
             defaultBusinessContext: String(value.defaultBusinessContext || value.default_business_context || fallbackBusiness)
         };
     }
 
-    function cloneState(value) {
-        return normalizeState(JSON.parse(JSON.stringify(value || {})));
+    function cloneState(value, config = {}) {
+        return normalizeState(JSON.parse(JSON.stringify(value || {})), config);
     }
 
-    function stableState(value) {
-        const state = normalizeState(value);
+    function stableState(value, config = {}) {
+        const state = normalizeState(value, config);
         return JSON.stringify({
             role: state.role,
             extraRoles: state.extraRoles.slice().sort(),
             pageAllowlist: state.pageAllowlist.slice().sort(),
+            pageDenylist: state.pageDenylist.slice().sort(),
             actionAllowlist: state.actionAllowlist.slice().sort(),
             actionDenylist: state.actionDenylist.slice().sort(),
             businessContexts: state.businessContexts.slice().sort(),
@@ -62,25 +90,30 @@
 
     function capabilityMode(state, definition) {
         const key = definition.key;
-        if (definition.type === 'page') return state.pageAllowlist.includes(key) ? 'allow' : 'inherited';
+        if (definition.type === 'page') {
+            if (state.pageDenylist.includes(key)) return 'deny';
+            return state.pageAllowlist.includes(key) ? 'allow' : 'inherited';
+        }
         if (state.actionDenylist.includes(key)) return 'deny';
         if (state.actionAllowlist.includes(key)) return 'allow';
         return 'inherited';
     }
 
-    function setCapabilityMode(state, definition, mode) {
-        const next = cloneState(state);
+    function setCapabilityMode(state, definition, mode, config = {}) {
+        const next = cloneState(state, config);
         const key = definition.key;
         if (definition.type === 'page') {
             next.pageAllowlist = next.pageAllowlist.filter(item => item !== key);
+            next.pageDenylist = next.pageDenylist.filter(item => item !== key);
             if (mode === 'allow' && definition.explicitAllow !== false) next.pageAllowlist.push(key);
-            return normalizeState(next);
+            if (mode === 'deny') next.pageDenylist.push(key);
+            return normalizeState(next, config);
         }
         next.actionAllowlist = next.actionAllowlist.filter(item => item !== key);
         next.actionDenylist = next.actionDenylist.filter(item => item !== key);
         if (mode === 'allow' && definition.delegable !== false && definition.explicitAllow !== false) next.actionAllowlist.push(key);
         if (mode === 'deny') next.actionDenylist.push(key);
-        return normalizeState(next);
+        return normalizeState(next, config);
     }
 
     function effectiveUser(baseUser, state) {
@@ -92,6 +125,8 @@
             extra_roles: state.extraRoles,
             pageAllowlist: state.pageAllowlist,
             page_allowlist: state.pageAllowlist,
+            pageDenylist: state.pageDenylist,
+            page_denylist: state.pageDenylist,
             actionAllowlist: state.actionAllowlist,
             action_allowlist: state.actionAllowlist,
             actionDenylist: state.actionDenylist,
@@ -133,10 +168,36 @@
         return `${sources[decision?.source] || decision?.source || 'Невідоме джерело'}${role}`;
     }
 
+    function modeLabel(mode) {
+        return ({ inherited: 'РЈСЃРїР°РґРєРѕРІР°РЅРѕ', allow: 'Allow', deny: 'Deny' })[mode] || 'РЈСЃРїР°РґРєРѕРІР°РЅРѕ';
+    }
+
+    function decisionSummary(decision, labels) {
+        return (decision?.allowed ? 'Allow' : 'Deny') + ' · ' + sourceLabel(decision, labels);
+    }
+
+    function renderEffectiveDiff(model, changes) {
+        if (!changes.length) return '';
+        return '<h4>Effective access Р·РјС–РЅРёС‚СЊСЃСЏ</h4><ul class="aae-effective-diff" data-effective-diff>'
+            + changes.slice(0, 30).map(change => '<li><code>' + escapeHtml(change.definition.key) + '</code>'
+                + '<span>Stored: ' + escapeHtml(modeLabel(change.previousMode)) + ' в†’ ' + escapeHtml(modeLabel(change.nextMode)) + '</span>'
+                + '<span>Effective: ' + escapeHtml(decisionSummary(change.previous, model.config.roleLabels)) + ' в†’ ' + escapeHtml(decisionSummary(change.next, model.config.roleLabels)) + '</span>'
+                + '</li>').join('') + '</ul>';
+    }
+
+    function renderGroupPreview(model, items) {
+        const pending = model.pendingGroupAction;
+        const token = items.map(item => item.type + ':' + item.key).join('|');
+        if (!pending || pending.token !== token) return '';
+        return '<div class="aae-group-preview" data-group-preview role="status" aria-live="polite"><span><strong>РџРѕРїРµСЂРµРґРЅС–Р№ РїРµСЂРµРіР»СЏРґ:</strong> '
+            + escapeHtml(modeLabel(pending.mode)) + ' РґР»СЏ ' + pending.changedCount + ' РјРѕР¶Р»РёРІРѕСЃС‚РµР№; effective Р·РјС–РЅ: '
+            + pending.effectiveChanges.length + '.</span><div><button type="button" data-action="cancel-group-action">РЎРєР°СЃСѓРІР°С‚Рё</button><button type="button" class="aae-primary" data-action="apply-group-action">Р—Р°СЃС‚РѕСЃСѓРІР°С‚Рё</button></div></div>';
+    }
+
     function fieldDiff(before, after) {
         const fields = [
             ['role', 'Основна роль'], ['extraRoles', 'Додаткові ролі'],
-            ['pageAllowlist', 'Явно дозволені сторінки'], ['actionAllowlist', 'Явно дозволені дії'],
+            ['pageAllowlist', 'Явно дозволені сторінки'], ['pageDenylist', 'Явно заборонені сторінки'], ['actionAllowlist', 'Явно дозволені дії'],
             ['actionDenylist', 'Явно заборонені дії'], ['businessContexts', 'Бізнеси'],
             ['defaultBusinessContext', 'Бізнес за замовченням']
         ];
@@ -152,31 +213,60 @@
         return config.capabilities.map(definition => {
             const previous = decisionFor(config, before, definition);
             const next = decisionFor(config, after, definition);
-            return previous.allowed === next.allowed ? null : { definition, previous, next };
+            const previousMode = capabilityMode(before, definition);
+            const nextMode = capabilityMode(after, definition);
+            const decisionChanged = previous.allowed !== next.allowed
+                || previous.source !== next.source
+                || previous.sourceRole !== next.sourceRole;
+            return previousMode === nextMode && !decisionChanged
+                ? null
+                : { definition, previous, next, previousMode, nextMode };
         }).filter(Boolean);
     }
 
+    function previewGroupAction(config, state, definitions, mode, group = '') {
+        let nextState = cloneState(state, config);
+        let changedCount = 0;
+        definitions.forEach(definition => {
+            const beforeMode = capabilityMode(nextState, definition);
+            nextState = setCapabilityMode(nextState, definition, mode, config);
+            if (beforeMode !== capabilityMode(nextState, definition)) changedCount += 1;
+        });
+        const effectiveChanges = effectiveDiff(config, state, nextState);
+        return {
+            group,
+            mode,
+            token: definitions.map(item => item.type + ':' + item.key).join('|'),
+            definitions: definitions.map(item => ({ key: item.key, type: item.type })),
+            nextState,
+            changedCount,
+            effectiveChanges
+        };
+    }
+
     function createModel(options = {}) {
-        const initial = normalizeState(options.initial || options.user || {});
         const pages = (options.pages || []).map(item => ({ ...item, type: 'page', group: item.group || 'Сторінки' }));
         const actions = (options.actions || []).map(item => ({ ...item, type: 'action', group: item.group || 'Інші дії' }));
-        const config = { ...options, capabilities: [...pages, ...actions] };
+        const config = { ...options, capabilities: [...pages, ...actions], pageCanonicalMap: pageCanonicalMap(pages) };
+        const initial = normalizeState(options.initial || options.user || {}, config);
         return {
             config,
             initial,
-            draft: cloneState(initial),
+            draft: cloneState(initial, config),
             activeTab: 'overview',
             search: '',
             selectedOnly: false,
             pendingPreset: null,
+            pendingGroupAction: null,
             confirmClose: false,
             saving: false,
             saveError: '',
-            isDirty() { return stableState(this.initial) !== stableState(this.draft); },
+            isDirty() { return stableState(this.initial, config) !== stableState(this.draft, config); },
             decision(definition, state = this.draft) { return decisionFor(config, state, definition); },
-            setMode(definition, mode) { this.draft = setCapabilityMode(this.draft, definition, mode); },
+            setMode(definition, mode) { this.draft = setCapabilityMode(this.draft, definition, mode, config); },
             diff(state = this.draft) { return fieldDiff(this.initial, state); },
-            effectiveDiff(state = this.draft) { return effectiveDiff(config, this.initial, state); }
+            effectiveDiff(state = this.draft) { return effectiveDiff(config, this.initial, state); },
+            previewGroup(definitions, mode, group) { return previewGroupAction(config, this.draft, definitions, mode, group); }
         };
     }
 
@@ -190,7 +280,7 @@
     function renderCapabilityCard(model, definition) {
         const mode = capabilityMode(model.draft, definition);
         const decision = model.decision(definition);
-        const denySupported = definition.type === 'action';
+        const denySupported = definition.type === 'page' || definition.type === 'action';
         const allowSupported = definition.explicitAllow !== false
             && (definition.type === 'page' || definition.delegable !== false);
         return `<article class="aae-capability" data-capability="${escapeHtml(definition.key)}" data-type="${definition.type}">
@@ -225,10 +315,11 @@
             <header><div><h3>${escapeHtml(group)}</h3><span>${items.length} можливостей</span></div>
                 <div class="aae-group-actions" role="group" aria-label="Групові дії: ${escapeHtml(group)}">
                     <button type="button" data-group-mode="allow">Дозволити все</button>
-                    ${items.some(item => item.type === 'action') ? '<button type="button" data-group-mode="deny">Заборонити все</button>' : ''}
+                    <button type="button" data-group-mode="deny">Заборонити все</button>
                     <button type="button" data-group-mode="inherited">Скинути</button>
                 </div>
             </header>
+            ${renderGroupPreview(model, items)}
             <div class="aae-capability-list">${items.map(item => renderCapabilityCard(model, item)).join('')}</div>
         </section>`).join('');
     }
@@ -238,7 +329,7 @@
         const allowed = decisions.filter(item => item.allowed).length;
         const denied = decisions.length - allowed;
         const explicitAllow = model.draft.pageAllowlist.length + model.draft.actionAllowlist.length;
-        const explicitDeny = model.draft.actionDenylist.length;
+        const explicitDeny = model.draft.pageDenylist.length + model.draft.actionDenylist.length;
         const changes = model.diff();
         const effectiveChanges = model.effectiveDiff();
         const pending = model.pendingPreset;
@@ -254,7 +345,7 @@
         </section>` : ''}
         <section class="aae-diff" aria-labelledby="aaeDiffTitle"><h3 id="aaeDiffTitle">Before / after</h3>
             ${changes.length ? `<div class="aae-diff-list">${changes.map(change => `<div><strong>${escapeHtml(change.label)}</strong><span>${escapeHtml(change.before)}</span><b>→</b><span>${escapeHtml(change.after)}</span></div>`).join('')}</div>` : '<p class="aae-empty">Draft поки не відрізняється від збереженого доступу.</p>'}
-            ${effectiveChanges.length ? `<h4>Effective access зміниться</h4><ul>${effectiveChanges.slice(0, 30).map(change => `<li><code>${escapeHtml(change.definition.key)}</code><span>${change.previous.allowed ? 'Allow' : 'Deny'} → ${change.next.allowed ? 'Allow' : 'Deny'}</span></li>`).join('')}</ul>` : ''}
+            ${renderEffectiveDiff(model, effectiveChanges)}
         </section>`;
     }
 
@@ -407,10 +498,10 @@
             model.saveError = '';
             rerender();
             try {
-                const response = await options.onSave?.(cloneState(model.draft));
+                const response = await options.onSave?.(cloneState(model.draft, model.config));
                 if (response === false || response?.success === false) throw new Error(response?.error || 'Не вдалося зберегти доступ');
-                model.initial = cloneState(model.draft);
-                cleanup({ saved: true, state: cloneState(model.draft), response });
+                model.initial = cloneState(model.draft, model.config);
+                cleanup({ saved: true, state: cloneState(model.draft, model.config), response });
             } catch (error) {
                 model.saving = false;
                 model.saveError = error?.message || 'Не вдалося зберегти доступ. Draft збережено у редакторі.';
@@ -430,6 +521,7 @@
             if (button.dataset.tab) {
                 model.activeTab = button.dataset.tab;
                 model.confirmClose = false;
+                model.pendingGroupAction = null;
                 rerender({ preserveFocus: false });
                 root.querySelector(`[data-tab="${model.activeTab}"]`)?.focus();
                 return;
@@ -437,18 +529,18 @@
             if (button.dataset.mode) {
                 const definition = capabilityFromElement(button);
                 if (definition) model.setMode(definition, button.dataset.mode);
+                model.pendingGroupAction = null;
                 rerender();
                 return;
             }
             if (button.dataset.groupMode) {
                 const group = button.closest('[data-group]');
-                group?.querySelectorAll('[data-capability]').forEach(card => {
-                    const definition = model.config.capabilities.find(item => item.key === card.dataset.capability && item.type === card.dataset.type);
-                    if (!definition) return;
-                    if (button.dataset.groupMode === 'deny' && definition.type !== 'action') return;
-                    model.setMode(definition, button.dataset.groupMode);
-                });
-                rerender();
+                const definitions = Array.from(group?.querySelectorAll('[data-capability]') || []).map(card => (
+                    model.config.capabilities.find(item => item.key === card.dataset.capability && item.type === card.dataset.type)
+                )).filter(Boolean);
+                model.pendingGroupAction = model.previewGroup(definitions, button.dataset.groupMode, group?.dataset.group || '');
+                rerender({ preserveFocus: false });
+                root.querySelector('[data-action="apply-group-action"]')?.focus();
                 return;
             }
             if (button.dataset.preset !== undefined) {
@@ -461,18 +553,26 @@
             const action = button.dataset.action;
             if (action === 'close') requestClose();
             if (action === 'save') void save();
+            if (action === 'cancel-group-action') { model.pendingGroupAction = null; rerender(); }
+            if (action === 'apply-group-action' && model.pendingGroupAction) {
+                model.draft = cloneState(model.pendingGroupAction.nextState, model.config);
+                model.pendingGroupAction = null;
+                rerender({ preserveFocus: false });
+            }
             if (action === 'continue-editing') { model.confirmClose = false; rerender({ preserveFocus: false }); focusPrimary(); }
             if (action === 'discard') cleanup({ saved: false, discarded: true });
             if (action === 'cancel-preset') { model.pendingPreset = null; rerender(); }
             if (action === 'apply-preset' && model.pendingPreset) {
-                model.draft = normalizeState({ ...model.draft, ...model.pendingPreset.values });
+                model.draft = normalizeState({ ...model.draft, ...model.pendingPreset.values }, model.config);
                 model.pendingPreset = null;
+                model.pendingGroupAction = null;
                 rerender();
             }
         }
 
         function onChange(event) {
             const target = event.target;
+            model.pendingGroupAction = null;
             if (target.matches('[data-field="role"]')) {
                 model.draft.role = target.value;
                 model.draft.extraRoles = model.draft.extraRoles.filter(role => role !== target.value);
@@ -499,6 +599,7 @@
         function onInput(event) {
             if (!event.target.matches('[data-search]')) return;
             model.search = event.target.value;
+            model.pendingGroupAction = null;
             rerender();
         }
 

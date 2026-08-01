@@ -8961,6 +8961,8 @@ async function openAccountAccessEditor(userId, button) {
         .filter(page => page.deprecated !== true)
         .map(page => ({
             key: page.key,
+            canonicalPath: page.canonicalPath || page.key,
+            aliases: Array.isArray(page.aliases) ? page.aliases : [],
             label: page.label || page.key,
             group: page.groupLabel || page.group || 'Інші модулі',
             defaultRoles: Array.isArray(page.roles) ? page.roles : (accountPageAccessMatrix[page.key] || []),
@@ -8981,6 +8983,7 @@ async function openAccountAccessEditor(userId, button) {
             role: user.role || 'animator',
             extraRoles: normalizeAccountArray(user.extra_roles || user.extraRoles),
             pageAllowlist: normalizeAccountArray(user.page_allowlist || user.pageAllowlist),
+            pageDenylist: normalizeAccountArray(user.page_denylist || user.pageDenylist),
             actionAllowlist: normalizeAccountArray(user.action_allowlist || user.actionAllowlist),
             actionDenylist: normalizeAccountArray(user.action_denylist || user.actionDenylist),
             businessContexts: currentBusinessContexts,
@@ -9004,6 +9007,7 @@ async function openAccountAccessEditor(userId, button) {
                     defaultBusinessContext: getAccountDefaultBusinessValue({ defaultBusinessContext: draft.defaultBusinessContext }, draft.businessContexts),
                     extraRoles: normalizeAccountListInput(draft.extraRoles),
                     pageAllowlist: normalizeAccountListInput(draft.pageAllowlist),
+                    pageDenylist: normalizeAccountListInput(draft.pageDenylist),
                     actionAllowlist: normalizeAccountListInput(draft.actionAllowlist),
                     actionDenylist: normalizeAccountListInput(draft.actionDenylist)
                 }

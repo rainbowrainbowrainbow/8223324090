@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.65 - Доступи: тристановий доступ до сторінок
+
+### Access editor / (02.08.2026) [codex]
+- **Три стани для кожної сторінки** — Inherited, Explicit Allow та Explicit Deny тепер доступні у редакторі й передаються окремим pageDenylist.
+- **Canonical без конфліктів** — alias автоматично зводиться до канонічного ключа; один ключ не може залишитися одночасно у page allow і page deny.
+- **Зрозумілий preview** — групова зміна спочатку показує кількість stored та effective змін, а before/after показує режим, результат і джерело рішення.
+- **Безпечне збереження** — draft не губиться після failed PATCH; backdrop, keyboard focus, restore focus та mobile sticky footer збережені.
+
+---
+
 ## v0.80.64 - Доступи: сумісність старих акаунтів
 
 ### Release / Versioning / (02.08.2026) [codex]

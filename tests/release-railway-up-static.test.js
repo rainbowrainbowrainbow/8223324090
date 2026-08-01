@@ -23,12 +23,15 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /runPostDeploySmoke\(liveUrl, head, options\.branch\)/);
     assert.match(script, /const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;/);
     assert.match(script, /const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;/);
+    assert.match(script, /const DEFAULT_PROJECT = '[0-9a-f-]{36}';/);
+    assert.match(script, /RELEASE_RAILWAY_PROJECT \|\| process\.env\.RAILWAY_PROJECT_ID \|\| DEFAULT_PROJECT/);
+    assert.match(script, /assertSafeRailwayTarget\(options\)/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
     assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
     assert.match(script, /git archive/);
     assert.match(script, /createCleanExport/);
     assert.match(script, /validateExport/);
-    assert.match(script, /'up',\s*\n\s*exportInfo\.sourceDir,\s*\n\s*'--path-as-root'/);
+    assert.match(script, /'up',\s*\n\s*exportInfo\.sourceDir,\s*\n\s*'--path-as-root',\s*\n\s*'--project',\s*\n\s*options\.project/);
     assert.match(script, /shell:\s*false/);
     assert.doesNotMatch(script, /'variable',\s*\n\s*'set'/);
     assert.doesNotMatch(script, /RELEASE_DEPLOY_COMMIT=\$\{head\}/);

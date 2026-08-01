@@ -82,6 +82,14 @@ prove the uploaded SHA and branch. It never writes `RELEASE_DEPLOY_*` to
 Railway. Use raw `railway up` only if the helper itself is unavailable; in that
 case the deploy is not a complete release proof until an equivalent manifest
 and strict live verification exist.
+
+The helper also passes the production Railway project ID explicitly. This is
+required for clean or detached worktrees: a Railway CLI invocation without a
+linked project can otherwise create a new project instead of deploying the
+existing service. Use `RELEASE_RAILWAY_PROJECT` or `--project` only when the
+owner has explicitly approved a Railway project change. Before deployment,
+verify that `railway status --json` resolves project `fortunate-appreciation`,
+environment `production`, service `8223324090`, and the expected live domain.
 ## Production Branch Rule Exception
 
 Owner decision on 2026-07-19: keep production commit `0658c09c7`

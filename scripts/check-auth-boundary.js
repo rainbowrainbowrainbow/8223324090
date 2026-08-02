@@ -10,6 +10,7 @@
 const fs = require('fs');
 const path = require('path');
 const {
+    INTEGRATION_AUTH_CONTRACTS,
     PUBLIC_API_ROUTES,
     QUERY_TOKEN_AUTH_ROUTES
 } = require('../config/authBoundary');
@@ -122,6 +123,39 @@ function validateRouteEntry(entry, label, { queryToken = false } = {}) {
     }
 }
 
+function validateIntegrationContract(entry, label) {
+    if (!entry.integrationContract) return;
+    const contract = INTEGRATION_AUTH_CONTRACTS?.[entry.integrationContract];
+    if (!contract) {
+        fail(`${label}: missing integration contract ${entry.integrationContract}`);
+        return;
+    }
+    if (!Array.isArray(contract.guardFiles) || contract.guardFiles.length === 0) {
+        fail(`${label}: integration contract requires guardFiles`);
+    }
+    if (!Array.isArray(contract.testFiles) || contract.testFiles.length === 0) {
+        fail(`${label}: integration contract requires focused testFiles`);
+    }
+
+    for (const guard of contract.guardFiles || []) {
+        if (!guard?.file) {
+            fail(`${label}: integration guard is missing file`);
+            continue;
+        }
+        ensureFile(guard.file, label);
+        const source = exists(guard.file) ? read(guard.file) : '';
+        for (const needle of guard.needles || []) {
+            if (!source.includes(needle)) fail(`${label}: ${needle} missing from ${guard.file}`);
+        }
+        ensureDocMentions(doc, guard.file, label);
+    }
+
+    for (const testFile of contract.testFiles || []) {
+        ensureFile(testFile, label);
+        ensureDocMentions(doc, testFile, label);
+    }
+}
+
 const doc = fs.existsSync(DOC_PATH) ? fs.readFileSync(DOC_PATH, 'utf8') : '';
 const middleware = fs.readFileSync(MIDDLEWARE_PATH, 'utf8');
 
@@ -140,6 +174,7 @@ for (const entry of PUBLIC_API_ROUTES) {
     const label = `public API route ${entryLabel(entry)}`;
     validateRouteEntry(entry, label);
     ensureDocMentions(doc, entryLabel(entry), label);
+    validateIntegrationContract(entry, label);
 }
 
 for (const entry of QUERY_TOKEN_AUTH_ROUTES) {
@@ -198,4 +233,4 @@ if (failures.length) {
     process.exit(1);
 }
 
-console.log(`Auth boundary check passed: ${PUBLIC_API_ROUTES.length} public API exceptions, ${QUERY_TOKEN_AUTH_ROUTES.length} query-token exceptions.`);
+console.log(`Auth boundary check passed: ${PUBLIC_API_ROUTES.length} public API exceptions, ${Object.keys(INTEGRATION_AUTH_CONTRACTS || {}).length} integration contracts, ${QUERY_TOKEN_AUTH_ROUTES.length} query-token exceptions.`);

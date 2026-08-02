@@ -64,50 +64,38 @@ function getNormalizer() {
 // ═══════════════════════════════════════════════
 
 async function verifyViberSignature(req) {
-    const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: webhookBusinessContext(req) });
-    const token = runtime.token || process.env.VIBER_TOKEN;
-    if (!token) return true; // skip if not configured
     const sig = req.headers['x-viber-content-signature'];
     if (!sig) return false;
+    const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: webhookBusinessContext(req) });
+    const token = runtime.token || process.env.VIBER_TOKEN;
+    if (!token) return false;
     const expected = crypto.createHmac('sha256', token)
         .update(JSON.stringify(req.body))
         .digest('hex');
-    try {
-        return crypto.timingSafeEqual(Buffer.from(sig, 'hex'), Buffer.from(expected, 'hex'));
-    } catch {
-        return false; // length mismatch
-    }
+    return timingSafeTextEqual(sig, expected);
 }
 
 async function verifyWebhookSecret(req, envKey, channel, fieldName = 'webhookSecret') {
-    const runtime = channel ? await resolveOmniRuntimeConfig(channel, { businessContext: webhookBusinessContext(req) }) : {};
-    const secret = runtime[fieldName] || process.env[envKey];
-    if (!secret) return true; // skip if not configured
     const provided = req.headers['x-webhook-secret'];
     if (!provided) return false;
-    try {
-        return crypto.timingSafeEqual(Buffer.from(provided), Buffer.from(secret));
-    } catch {
-        return false;
-    }
+    const runtime = channel ? await resolveOmniRuntimeConfig(channel, { businessContext: webhookBusinessContext(req) }) : {};
+    const secret = runtime[fieldName] || process.env[envKey];
+    if (!secret) return false;
+    return timingSafeTextEqual(provided, secret);
 }
 
 async function verifyMetaSignature(req) {
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) return false;
     const businessContext = webhookBusinessContext(req);
     const facebook = await resolveOmniRuntimeConfig('facebook', { businessContext });
     const instagram = await resolveOmniRuntimeConfig('instagram', { businessContext });
     const secret = facebook.appSecret || instagram.appSecret || process.env.META_APP_SECRET;
-    if (!secret) return true; // skip if not configured
-    const sig = req.headers['x-hub-signature-256'];
-    if (!sig) return false;
+    if (!secret) return false;
     const expected = 'sha256=' + crypto.createHmac('sha256', secret)
         .update(JSON.stringify(req.body))
         .digest('hex');
-    try {
-        return crypto.timingSafeEqual(Buffer.from(sig), Buffer.from(expected));
-    } catch {
-        return false;
-    }
+    return timingSafeTextEqual(sig, expected);
 }
 
 function parseId(val) {
@@ -240,7 +228,7 @@ router.get('/webhook/meta', (req, res) => {
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-    if (mode === 'subscribe' && process.env.META_VERIFY_TOKEN && token === process.env.META_VERIFY_TOKEN) {
+    if (mode === 'subscribe' && timingSafeTextEqual(token, process.env.META_VERIFY_TOKEN)) {
         return res.status(200).send(challenge);
     }
     res.sendStatus(403);
@@ -745,3 +733,12 @@ router.post('/setup/viber', auth, async (req, res) => {
 });
 
 module.exports = router;
+
+function timingSafeTextEqual(provided, expected) {
+    const providedBuffer = Buffer.from(String(provided || ''), 'utf8');
+    const expectedBuffer = Buffer.from(String(expected || ''), 'utf8');
+    return providedBuffer.length > 0
+        && expectedBuffer.length > 0
+        && providedBuffer.length === expectedBuffer.length
+        && crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+}

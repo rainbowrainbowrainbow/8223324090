@@ -1,4 +1,5 @@
 const { describe, it, afterEach } = require('node:test');
+// Focused integration auth coverage lives in this fixture.
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
@@ -129,7 +130,7 @@ function createLifecyclePool() {
     };
 }
 
-function loadOmniRouter(hubMock) {
+function loadOmniRouter(hubMock, runtimeConfig = TEST_OMNI_WEBHOOK_CONFIG) {
     clearModules();
     installMock('../services/omni-hub', hubMock);
     installMock('../middleware/auth', {
@@ -138,7 +139,7 @@ function loadOmniRouter(hubMock) {
     });
     installMock('../services/adminAudit', { logAdminAction: async () => {} });
     installMock('../services/omni-accounts', {
-        resolveOmniRuntimeConfig: async () => ({}),
+        resolveOmniRuntimeConfig: async channel => runtimeConfig[channel] || {},
         getOmniAccountStatusesAsync: async () => [],
         getOmniAccountStatusAsync: async () => null,
         upsertOmniConnection: async () => ({}),
@@ -162,13 +163,35 @@ async function postJson(router, routePath, payload, headers = {}) {
         const address = server.address();
         const res = await fetch(`http://127.0.0.1:${address.port}${routePath}`, {
             method: 'POST',
-            headers: { 'content-type': 'application/json', ...headers },
+            headers: { 'content-type': 'application/json', ...integrationHeaders(routePath, payload, headers) },
             body: JSON.stringify(payload),
         });
         return { status: res.status, body: await res.json() };
     } finally {
         await new Promise(resolve => server.close(resolve));
     }
+}
+
+function integrationHeaders(routePath, payload, headers) {
+    const next = { ...headers };
+    if (routePath === '/webhook/viber' && !next['x-viber-content-signature']) {
+        next['x-viber-content-signature'] = crypto.createHmac('sha256', TEST_OMNI_WEBHOOK_CONFIG.viber.token)
+            .update(JSON.stringify(payload))
+            .digest('hex');
+    }
+    if (routePath === '/webhook/sms' && !next['x-webhook-secret']) {
+        next['x-webhook-secret'] = TEST_OMNI_WEBHOOK_CONFIG.sms.webhookSecret;
+    }
+    if (routePath === '/webhook/binotel' && !next['x-webhook-secret']) {
+        next['x-webhook-secret'] = TEST_OMNI_WEBHOOK_CONFIG.binotel.webhookSecret;
+    }
+    if (routePath === '/webhook/meta' && !next['x-hub-signature-256']) {
+        const digest = crypto.createHmac('sha256', TEST_OMNI_WEBHOOK_CONFIG.facebook.appSecret)
+            .update(JSON.stringify(payload))
+            .digest('hex');
+        next['x-hub-signature-256'] = `sha256=${digest}`;
+    }
+    return next;
 }
 
 describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
@@ -396,6 +419,64 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         }
     });
 
+    it('fails closed without a configured Omni secret and does not accept a user JWT', async () => {
+        const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+        delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+        const calls = { inbound: [] };
+        let runtimeConfigLookups = 0;
+        const noConfigLookupExpected = new Proxy({}, {
+            get() {
+                runtimeConfigLookups += 1;
+                return {};
+            }
+        });
+        const router = loadOmniRouter({
+            processInboundMessage: async normalized => calls.inbound.push(normalized),
+            applyProviderLifecycleReceipt: async () => {}
+        }, noConfigLookupExpected);
+
+        try {
+            const res = await postJson(router, '/webhook/telegram', {
+                update_id: 12,
+                message: { message_id: 12, text: 'blocked', chat: { id: 123, type: 'private' } }
+            }, { authorization: 'Bearer user-jwt-must-not-substitute-integration-secret' });
+
+            assert.equal(res.status, 403);
+            assert.deepEqual(res.body, { ok: false, error: 'invalid secret' });
+            assert.equal(calls.inbound.length, 0);
+            assert.equal(runtimeConfigLookups, 0);
+        } finally {
+            if (previous === undefined) delete process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
+            else process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = previous;
+        }
+    });
+
+    it('rejects wrong per-channel credentials before Omni services and preserves valid provider acknowledgements', async () => {
+        const calls = { inbound: [], lifecycle: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async normalized => calls.inbound.push(normalized),
+            applyProviderLifecycleReceipt: async receipt => calls.lifecycle.push(receipt)
+        });
+
+        const denied = [
+            ['/webhook/viber', { event: 'message' }, { 'x-viber-content-signature': 'wrong' }],
+            ['/webhook/sms', { message_id: 'sms-denied', status: 'DELIVRD' }, { 'x-webhook-secret': 'wrong' }],
+            ['/webhook/meta', { object: 'page', entry: [] }, { 'x-hub-signature-256': 'sha256=wrong' }],
+            ['/webhook/binotel', { call_id: 'binotel-denied' }, { 'x-webhook-secret': 'wrong' }]
+        ];
+        for (const [routePath, payload, headers] of denied) {
+            const res = await postJson(router, routePath, payload, headers);
+            assert.equal(res.status, 403, routePath);
+        }
+        assert.equal(calls.inbound.length, 0);
+        assert.equal(calls.lifecycle.length, 0);
+
+        const meta = await postJson(router, '/webhook/meta', { object: 'page', entry: [] });
+        assert.equal(meta.status, 200);
+        assert.deepEqual(meta.body, { ok: true });
+
+    });
+
     it('acknowledges invalid Telegram omni payloads without creating messages', async () => {
         const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
         process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'omni-test-secret';
@@ -546,4 +627,12 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         assert.match(migration, /'later_failed'/);
         assert.doesNotMatch(migration, /UPDATE\s+conversation_messages/i);
     });
+});
+const crypto = require('node:crypto');
+
+const TEST_OMNI_WEBHOOK_CONFIG = Object.freeze({
+    viber: { token: 'omni-viber-test-secret' },
+    sms: { webhookSecret: 'omni-sms-test-secret' },
+    binotel: { webhookSecret: 'omni-binotel-test-secret' },
+    facebook: { appSecret: 'omni-meta-test-secret' }
 });

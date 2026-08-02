@@ -84,6 +84,11 @@ describe('API auth boundary middleware', () => {
         app.post('/api/leads/webhook/maysternya-availability', (req, res) => res.json({ ok: true, public: true, webhook: 'maysternya-availability' }));
         app.get('/api/leads/webhook/status', (req, res) => res.json({ ok: true, public: true, readiness: true }));
         app.post('/api/omni/webhook/telegram', (req, res) => res.json({ ok: true, public: true, provider: 'telegram' }));
+        app.post('/api/omni/webhook/viber', (req, res) => res.json({ ok: true, public: true, provider: 'viber' }));
+        app.post('/api/omni/webhook/sms', (req, res) => res.json({ ok: true, public: true, provider: 'sms' }));
+        app.get('/api/omni/webhook/meta', (req, res) => res.json({ ok: true, public: true, provider: 'meta' }));
+        app.post('/api/omni/webhook/meta', (req, res) => res.json({ ok: true, public: true, provider: 'meta' }));
+        app.post('/api/omni/webhook/binotel', (req, res) => res.json({ ok: true, public: true, provider: 'binotel' }));
         app.use('/api/hermes', createHermesRouter({ authMiddleware: hermesBoundaryTestAuth }));
         app.get('/api/bookings', (req, res) => res.json({ ok: true, protected: true }));
         app.get('/api/graduation/catalog/export', (req, res) => {
@@ -108,6 +113,11 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/leads/webhook/maysternya-availability' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/leads/webhook/status' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/telegram' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/viber' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/sms' }), true);
+        assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/webhook/meta' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/meta' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/binotel' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/hermes/capabilities' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/status/public' }), true);
@@ -115,6 +125,7 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/ready' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/health/deep' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/bookings' }), false);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/unknown' }), false);
     });
 
     it('allows the landing demo request without JWT', async () => {

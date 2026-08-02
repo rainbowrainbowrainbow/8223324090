@@ -356,7 +356,7 @@ const PAGE_PERMISSIONS = Object.freeze([
         key: '/omni', label: 'Комунікації', group: 'sales', canonicalPath: '/omni',
         defaultRoles: MANAGER_UP, risk: 'high', sidebarLinks: ['/omni', '/omni#accounts'],
         frontendConsumers: [source('omni.html', 'js/auth.js')],
-        apiConsumers: [api('routes/omnichannel.js', '/api/omni', null)]
+        apiConsumers: [api('routes/omnichannel.js', '/api/omni', null, 'CRM UI access is role/JWT based; public provider webhooks use the independent machine-auth contract in config/authBoundary.js.')]
     }),
     page({
         key: '/copilot', label: 'AI менеджер', group: 'sales', canonicalPath: '/copilot',
@@ -405,7 +405,7 @@ const PAGE_PERMISSIONS = Object.freeze([
         key: '/report-agent', label: 'Звіт-агент', group: 'sales', canonicalPath: '/report-agent',
         defaultRoles: ['creator', 'director', 'vice_director'], risk: 'high',
         frontendConsumers: [source('report-agent.html', 'js/auth.js')],
-        apiConsumers: [api('routes/report-bot.js', '/api/report-bot', null), api('routes/agents.js', '/api/agents', null)]
+        apiConsumers: [api('routes/report-bot.js', '/api/report-bot', null, 'Public report-bot routes require their own webhook secret or bot API key; user permissions are not machine credentials.'), api('routes/agents.js', '/api/agents', null)]
     }),
     page({
         key: '/reports', label: 'Звіти', group: 'sales', canonicalPath: '/reports',
@@ -423,7 +423,7 @@ const PAGE_PERMISSIONS = Object.freeze([
         key: '/profile', label: 'Профіль', group: 'personal', canonicalPath: '/profile',
         defaultRoles: ROLE_HIERARCHY, risk: 'medium', status: PAGE_STATUS.REDUNDANT,
         frontendConsumers: [source('profile.html', 'js/auth.js')],
-        apiConsumers: [api('routes/personal-accounts.js', '/api/personal-accounts', null), api('routes/achievements.js', '/api/achievements', null)]
+        apiConsumers: [api('routes/personal-accounts.js', '/api/personal-accounts', null, 'Bot API key and verified account-owner checks remain independent from page access.'), api('routes/achievements.js', '/api/achievements', null)]
     }),
     page({
         key: '/quiz', label: 'Квіз', group: 'personal', canonicalPath: '/quiz',

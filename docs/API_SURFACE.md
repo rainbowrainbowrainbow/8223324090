@@ -68,6 +68,7 @@ focused route tests in the same pack.
 | `/api/marketing-agent` | `routes/marketing-agent.js` | marketing-agent |
 | `/api/minigame` | `routes/minigame.js` | minigame |
 | `/api/music` | `routes/music.js` | music |
+| `/api/my-day` | `routes/my-day.js` | personal My Day taxonomy and task classification |
 | `/api/notes` | `routes/notes.js` | notes |
 | `/api/omni` | `routes/omnichannel.js` | omnichannel |
 | `/api/packages` | `routes/packages.js` | packages |

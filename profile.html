@@ -4790,6 +4790,72 @@
             }
         }
     </style>
+    <style>
+
+        .my-day-classification-fields {
+            display: grid;
+            grid-template-columns: minmax(150px, 1fr) minmax(180px, 1fr);
+            gap: 10px;
+            width: 100%;
+        }
+        .my-day-classification-fields label,
+        .my-day-editor-fields label,
+        .my-day-taxonomy-card label {
+            display: grid;
+            gap: 5px;
+            color: var(--text-secondary, #475569);
+            font-size: 12px;
+            font-weight: 700;
+        }
+        .my-day-classification-fields select,
+        .my-day-editor-fields select,
+        .my-day-taxonomy-card input {
+            width: 100%;
+            min-height: 34px;
+        }
+        .my-day-taxonomy-notice {
+            grid-column: 1 / -1;
+            margin: 0;
+            color: var(--text-muted, #64748b);
+            font-size: 12px;
+        }
+        .my-day-taxonomy-notice.is-error { color: #b91c1c; }
+        .my-day-task-chip {
+            align-items: center;
+            background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 14%, transparent);
+            border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 45%, transparent);
+            border-radius: 999px;
+            color: var(--text-primary, #1e293b);
+            display: inline-flex;
+            font-size: 11px;
+            font-weight: 700;
+            gap: 3px;
+            line-height: 1.15;
+            max-width: 150px;
+            padding: 3px 7px;
+        }
+        .my-day-task-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .my-day-task-chip--more { background: var(--surface-muted, #f1f5f9); border-color: transparent; }
+        .my-day-taxonomy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+        .my-day-taxonomy-card { border: 1px solid var(--border-color, #e2e8f0); border-radius: 12px; padding: 14px; }
+        .my-day-taxonomy-card h3 { margin: 0 0 10px; }
+        .my-day-taxonomy-card form { align-items: end; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 68px 62px auto; }
+        .my-day-taxonomy-primary { min-height: 34px; white-space: nowrap; }
+        .my-day-taxonomy-list { display: grid; gap: 7px; list-style: none; margin: 12px 0 0; padding: 0; }
+        .my-day-taxonomy-row { align-items: center; display: grid; gap: 7px; grid-template-columns: 24px minmax(0, 1fr) auto auto; }
+        .my-day-taxonomy-swatch { align-items: center; border-radius: 50%; color: #fff; display: inline-flex; height: 24px; justify-content: center; width: 24px; }
+        .my-day-taxonomy-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+        .my-day-taxonomy-row button { min-height: 30px; }
+        .my-day-taxonomy-empty { color: var(--text-muted, #64748b); font-size: 13px; }
+        .my-day-editor-fields { display: grid; gap: 10px; min-width: min(320px, 80vw); }
+        @media (max-width: 680px) {
+            .my-day-classification-fields, .my-day-taxonomy-grid { grid-template-columns: 1fr; }
+            .my-day-taxonomy-card form { grid-template-columns: minmax(0, 1fr) 68px 62px; }
+            .my-day-taxonomy-card form button { grid-column: 1 / -1; }
+            .my-day-taxonomy-row { grid-template-columns: 24px minmax(0, 1fr) auto; }
+            .my-day-taxonomy-row button:last-child { grid-column: 2 / -1; }
+        }
+    </style>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -4868,6 +4934,7 @@
     <script src="js/task-detail-drawer.js?v=0.80.72"></script>
     <script src="js/task-create.js?v=0.80.72"></script>
     <script src="js/task-ui.js?v=0.80.72"></script>
+    <script src="js/my-day-classification.js?v=0.80.72"></script>
     <script src="js/profile-page.js?v=0.80.72"></script>
     <script src="js/alerts.js?v=0.80.72"></script>
 </body>

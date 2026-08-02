@@ -2433,6 +2433,7 @@ function renderProfileSettingsTab() {
                 </div>
             </section>
             ${renderProfileSecurityPanel()}
+            ${window.MyDayClassification?.renderSettings?.() || ''}
         </div>`;
 }
 
@@ -4809,6 +4810,8 @@ function openCabinetTaskActionMenu(button) {
         ${renderCabinetMoveMenuItems(task)}
         ${window.TaskUI?.renderMenuItems([
             { label: 'Відкрити у повному списку', detail: 'деталі, історія, спостерігачі', attrs: { 'data-cabinet-task-action': 'open', 'data-task-id': taskId } }
+            ,
+            { label: '\u041d\u0430\u043f\u0440\u044f\u043c \u0456 \u0432\u043f\u043b\u0438\u0432\u0438', detail: '\u043e\u0441\u043e\u0431\u0438\u0441\u0442\u0435 \u043c\u0430\u0440\u043a\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447\u0456', attrs: { 'data-cabinet-task-action': 'classification', 'data-task-id': taskId } },
         ]) || ''}`;
     const root = window.TaskUI?.openActionMenu(button, menuHtml, { title: 'Перенести в...' });
     root?.querySelectorAll('[data-cabinet-task-action]').forEach(actionButton => {
@@ -5595,7 +5598,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         dueState,
         relationLabel,
         scheduleStatus
-    }).join('') : '';
+    }).join('') + (window.MyDayClassification?.renderTaskBadges?.(task.myDay) || '') : '';
     const metadataHtml = isMyDayCard ? visibleBadges : `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -5792,6 +5795,7 @@ function renderCabinetTaskComposer(options = {}) {
                     </div>
                 </div>
                 <div class="cabinet-task-composer-meta-advanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
+                    ${window.MyDayClassification?.renderComposerFields?.() || ''}
                     <label for="cabinetTaskDate">
                         <span>Дата</span>
                         <input id="cabinetTaskDate" type="date" value="${escapeHtml(dateValue)}">
@@ -6898,6 +6902,12 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
+    if (action === 'classification') {
+        await window.MyDayClassification?.openTaskEditor?.(button, findCabinetTask(taskId) || {}, async () => {
+            await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
+        });
+        return;
+    }
     if (action === 'more') {
         openCabinetTaskActionMenu(button);
         return;
@@ -7274,6 +7284,14 @@ async function createCabinetTask(event, mode) {
         if (typeof showNotification === 'function') showNotification('Заповніть назву задачі', 'error');
         return;
     }
+    let myDayClassification = null;
+    try {
+        myDayClassification = window.MyDayClassification?.readComposerClassification?.() || null;
+    } catch (error) {
+        if (typeof showNotification === 'function') showNotification(error.message || '\u041d\u0435 \u0432\u0434\u0430\u043b\u043e\u0441\u044f \u043f\u0440\u043e\u0447\u0438\u0442\u0430\u0442\u0438 \u043c\u0430\u0440\u043a\u0443\u0432\u0430\u043d\u043d\u044f.', 'error');
+        return;
+    }
+
     const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
     const selectedMode = mode || document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
@@ -7360,6 +7378,14 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
+    if (myDayClassification && (myDayClassification.directionId || myDayClassification.impactIds.length)) {
+        try {
+            await window.MyDayClassification?.saveTaskClassification?.(verification.taskId, myDayClassification);
+        } catch (error) {
+            if (typeof showNotification === 'function') showNotification(error.message || '\u0417\u0430\u0434\u0430\u0447\u0443 \u0441\u0442\u0432\u043e\u0440\u0435\u043d\u043e, \u0430\u043b\u0435 \u043c\u0430\u0440\u043a\u0443\u0432\u0430\u043d\u043d\u044f \u043d\u0435 \u0437\u0431\u0435\u0440\u0435\u0433\u043b\u043e\u0441\u044f.', 'warning');
+        }
+    }
+
     notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
     if (input) input.value = '';
     setCabinetCreatePriority('normal');
@@ -8191,6 +8217,29 @@ function attachProfileListeners() {
     bindCabinetTaskDragDrop();
     bindCabinetSubtaskDragDrop();
     bindCabinetSubtasks();
+
+    const myDayClassification = window.MyDayClassification;
+    if (myDayClassification && (activeTab === 'myday' || activeTab === 'settings')) {
+        const rerenderMyDayClassificationSurface = async () => {
+            if (activeTab === 'myday') {
+                renderCabinetActiveTab();
+                return;
+            }
+            const tabContent = document.getElementById('tabContent');
+            if (tabContent && activeTab === 'settings') {
+                tabContent.innerHTML = renderTabContent();
+                attachProfileListeners();
+            }
+        };
+        myDayClassification.bind(document, rerenderMyDayClassificationSurface);
+        if (!myDayClassification.state.loaded && !myDayClassification.state.loading && !myDayClassification.state.error) {
+            const taxonomyLoad = myDayClassification.load();
+            if (myDayClassification.state.loading) rerenderMyDayClassificationSurface();
+            taxonomyLoad.then(rerenderMyDayClassificationSurface).catch(() => {
+                rerenderMyDayClassificationSurface();
+            });
+        }
+    }
 
     // Inventory slot click — equip/unequip
     document.querySelectorAll('.inventory-slot[data-item-id]').forEach(slot => {

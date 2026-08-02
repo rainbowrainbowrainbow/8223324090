@@ -34,6 +34,7 @@ const {
     appendTaskBusinessScopeSql,
     taskBusinessScopeMeta
 } = require('./taskBusinessScope');
+const { loadTaskClassifications } = require('./myDayTaxonomy');
 
 const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;
 const MAX_TASK_CABINET_PLANNING_ROW_LIMIT = 500;
@@ -431,6 +432,10 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistorySourceRows = Array.isArray(completedHistoryResult.rows)
         ? completedHistoryResult.rows
         : [];
+    const myDayTaskIds = [...new Set([...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows]
+        .map(row => Number(row.id || row.task_id || row.taskId))
+        .filter(id => Number.isInteger(id) && id > 0))];
+    const myDayClassificationsByTaskId = await loadTaskClassifications(queryable, userId, myDayTaskIds);
     const explanationTaskIds = [...new Set(
         [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows]
             .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
@@ -440,10 +445,11 @@ async function buildTaskCabinetProjection(options = {}) {
     const postponementEventsByTaskId = await listLatestTaskPostponementEvents(explanationTaskIds, {
         pool: queryable
     });
-    const normalizeProjectionRow = row => normalizeTaskPayload(row, {
-        postponementEvent: postponementEventsByTaskId.get(Number(row.id || row.task_id || row.taskId)) || null,
-        user
-    });
+    const normalizeProjectionRow = row => {
+        const taskId = Number(row.id || row.task_id || row.taskId);
+        const task = normalizeTaskPayload(row, { postponementEvent: postponementEventsByTaskId.get(taskId) || null, user });
+        return { ...task, myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] } };
+    };
     const rows = activeSourceRows.map(normalizeProjectionRow);
     const planningRows = planningSourceRows.map(normalizeProjectionRow);
     const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);

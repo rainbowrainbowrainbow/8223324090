@@ -457,6 +457,13 @@ function canUseHrCapability(capability, user = getHrCurrentUser()) {
     return typeof canAccess === 'function' && canAccess(capability) === true;
 }
 
+function canExportHrReports() {
+    const hasExportData = typeof canUseAction === 'function'
+        ? canUseAction('export_data') === true
+        : (typeof canAccess === 'function' && canAccess('export_data') === true);
+    return canUseHrCapability('hr.reports.export') && hasExportData;
+}
+
 function canViewPayrollWorkspace() {
     return canUseHrCapability('hr.payroll.view');
 }
@@ -2177,6 +2184,9 @@ function renderHrPrintOperations() {
             `).join('')
             : '<div class="hr-print-operation-item">Черга PDF порожня.</div>';
     }
+    if (!canExportHrReports()) {
+        jobsRoot?.querySelectorAll('[data-hr-print-operation="preview-job"]').forEach(button => button.remove());
+    }
 }
 
 async function loadHrPrintOperations({ silent = false } = {}) {
@@ -2322,6 +2332,10 @@ async function saveHrPrintAutomation() {
 }
 
 async function previewHrPrintJob(id, filename = '') {
+    if (!canExportHrReports()) {
+        showNotification('HR export permission required', 'error');
+        return;
+    }
     invalidateHrPrintPreview('Завантажуємо збережений PDF із черги…');
     const requestSeq = hrPrintDocumentsState.requestSeq;
     const state = document.getElementById('hrPrintPreviewState');
@@ -2397,6 +2411,10 @@ async function handleHrPrintOperation(event) {
 
 async function generateHrPrintPreview() {
     if (hrPrintDocumentsState.generating) return;
+    if (!canExportHrReports()) {
+        showNotification('HR export permission required', 'error');
+        return;
+    }
     let payload;
     try {
         payload = hrPrintRequestPayload();
@@ -2520,6 +2538,10 @@ function closeHrPrintDocuments() {
 
 async function openHrPrintDocuments(event) {
     const overlay = document.getElementById('hrPrintDocumentsModal');
+    if (!canExportHrReports()) {
+        showNotification('HR export permission required', 'error');
+        return;
+    }
     if (!overlay) return;
     hrPrintDocumentsState.open = true;
     hrPrintDocumentsState.opener = event?.currentTarget || document.activeElement;
@@ -2578,7 +2600,13 @@ function initHrPrintDocuments() {
     const monthInput = document.getElementById('hrPrintDocumentMonth');
     if (dateInput) dateInput.value = today;
     if (monthInput) monthInput.value = today.slice(0, 7);
-    document.getElementById('btnHrPrintDocuments')?.addEventListener('click', openHrPrintDocuments);
+    const printDocumentsButton = document.getElementById('btnHrPrintDocuments');
+    if (printDocumentsButton) {
+        const canExport = canExportHrReports();
+        printDocumentsButton.hidden = !canExport;
+        printDocumentsButton.disabled = !canExport;
+    }
+    printDocumentsButton?.addEventListener('click', openHrPrintDocuments);
     document.getElementById('hrPrintDocumentsClose')?.addEventListener('click', closeHrPrintDocuments);
     document.getElementById('hrPrintPreviewButton')?.addEventListener('click', generateHrPrintPreview);
     document.getElementById('hrPrintDownloadButton')?.addEventListener('click', downloadHrPrintPdf);
@@ -16088,8 +16116,8 @@ async function loadReports() {
         sel.addEventListener('change', loadReports);
         const reportExport = document.getElementById('reportExport');
         if (reportExport) {
-            reportExport.hidden = !canUseHrCapability('hr.reports.export');
-            reportExport.disabled = !canUseHrCapability('hr.reports.export');
+            reportExport.hidden = !canExportHrReports();
+            reportExport.disabled = !canExportHrReports();
             reportExport.addEventListener('click', exportCSV);
         }
     }
@@ -16204,7 +16232,7 @@ async function loadRoleAssignmentsReport() {
 }
 
 async function exportCSV() {
-    if (!canUseHrCapability('hr.reports.export')) {
+    if (!canExportHrReports()) {
         showNotification('Немає доступу до експорту HR-звітів', 'error');
         return;
     }

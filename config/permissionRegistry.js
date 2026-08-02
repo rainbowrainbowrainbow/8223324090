@@ -668,6 +668,7 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('js/customers-page.js', "canAccess('export_data')", { enforces: true }),
             source('js/finance-page.js', "financeCanUsePayrollAction('export_data')", { enforces: true }),
             source('js/graduation.js', "canUseGraduationCapability('export_data')", { enforces: true }),
+            source('js/hr-page.js', "canUseAction('export_data')", { enforces: true }),
             source('js/reports-page.js', "canAccess('export_data')", { enforces: true }),
             source('js/warehouse-page.js', "canAccess('export_data')", { enforces: true })
         ],
@@ -679,9 +680,11 @@ const ACTION_PERMISSIONS = Object.freeze([
             api('routes/finance.js', '/api/finance/export, /export-xlsx, and /act/:bookingId', 'export_data'),
             api('routes/graduation.js', '/api/graduation generated exports', 'export_data'),
             api('routes/procurement.js', '/api/procurement/export-xlsx', 'export_data'),
+            api('routes/hr.js', '/api/hr/report/export and attendance PDF exports', 'export_data'),
+            api('routes/payroll.js', '/api/payroll/export and /export-xlsx', 'export_data'),
             api('routes/reports.js', '/api/reports/table/export-*', 'export_data')
         ],
-        notes: 'Generic data exports are authorized before their file/query preparation. Payroll and HR exports keep their granular capabilities.'
+        notes: 'Generic data exports are authorized before their file/query preparation. Payroll and HR exports require this capability in addition to their granular payroll or HR-report permission.'
     }),
     action({
         key: 'manage_staff', label: 'Керувати персоналом', group: 'hr',

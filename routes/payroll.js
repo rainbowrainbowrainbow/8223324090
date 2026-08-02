@@ -369,7 +369,7 @@ router.get('/range-preview', requireAction('view_payroll'), async (req, res) => 
     }
 });
 
-router.get('/export', requireAction('view_payroll'), async (req, res) => {
+router.get('/export', requireAction('view_payroll'), requireAction('export_data'), async (req, res) => {
     try {
         const month = String(req.query.month || '').trim();
         if (!/^\d{4}-\d{2}$/.test(month)) {
@@ -501,7 +501,7 @@ router.get('/export', requireAction('view_payroll'), async (req, res) => {
     }
 });
 
-router.get('/export-xlsx', requireAction('view_payroll'), async (req, res) => {
+router.get('/export-xlsx', requireAction('view_payroll'), requireAction('export_data'), async (req, res) => {
     try {
         const month = String(req.query.month || '').trim();
         if (!/^\d{4}-\d{2}$/.test(month)) {

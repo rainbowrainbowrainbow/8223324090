@@ -794,6 +794,10 @@ function financeCanExportData() {
 }
 
 
+function financeCanExportPayroll() {
+    return financeCanUsePayrollAction('view_payroll') && financeCanUsePayrollAction('export_data');
+}
+
 const PAYROLL_INSTALLMENT_KIND_LABELS = {
     advance: 'Аванс',
     final: 'Фінальна зарплата'
@@ -1845,6 +1849,10 @@ async function generateSalaryReport() {
 
 async function exportPayrollCSV() {
     const month = document.getElementById('salaryMonth')?.value;
+    if (!financeCanExportPayroll()) {
+        showNotification('Payroll export permission required', 'error');
+        return;
+    }
     if (!month) return;
     let touchWindow = null;
     try {
@@ -1875,6 +1883,10 @@ async function exportPayrollCSV() {
 
 async function exportPayrollXLSX() {
     const month = document.getElementById('salaryMonth')?.value;
+    if (!financeCanExportPayroll()) {
+        showNotification('Payroll export permission required', 'error');
+        return;
+    }
     if (!month) return;
     let touchWindow = null;
     try {
@@ -2007,6 +2019,7 @@ function renderSalaryReportTable(data) {
         panel.innerHTML = '<div class="salary-muted">Немає зарплатних даних за цей період.</div>';
         return;
     }
+    const canExportPayroll = financeCanExportPayroll();
 
     panel.innerHTML = `
         <div class="salary-report-tools">
@@ -2016,8 +2029,8 @@ function renderSalaryReportTable(data) {
                 <div class="salary-role-hours-note">Оплачувані години професій можуть перевищувати фізичні години через одночасну роботу.</div>
             </div>
             <div>
-                <button type="button" class="btn-page-secondary" id="salaryReportExportBtn">CSV</button>
-                <button type="button" class="btn-page-secondary" id="salaryReportExportXlsxBtn">Excel</button>
+                ${canExportPayroll ? `<button type="button" class="btn-page-secondary" id="salaryReportExportBtn">CSV</button>
+                <button type="button" class="btn-page-secondary" id="salaryReportExportXlsxBtn">Excel</button>` : ''}
                 <button type="button" class="btn-page-secondary" id="salaryReportRefreshBtn">Оновити</button>
             </div>
         </div>

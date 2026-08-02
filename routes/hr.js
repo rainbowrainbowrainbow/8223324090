@@ -5929,7 +5929,7 @@ router.post('/shifts/copy-week', requireHrManage, async (req, res) => {
 // ==========================================
 
 // POST /api/hr/attendance-documents/pdf — private server-owned HR form generation.
-router.post('/attendance-documents/pdf', requireAction('hr.reports.export'), async (req, res) => {
+router.post('/attendance-documents/pdf', requireAction('hr.reports.export'), requireAction('export_data'), async (req, res) => {
     const safeContext = {
         templateId: String(req.body?.templateId || '').slice(0, 32),
         rosterMode: String(req.body?.rosterMode || '').slice(0, 32),
@@ -6033,7 +6033,7 @@ router.get('/attendance-document-jobs', async (req, res) => {
     }
 });
 
-router.get('/attendance-document-jobs/:id/pdf', async (req, res) => {
+router.get('/attendance-document-jobs/:id/pdf', requireAction('export_data'), async (req, res) => {
     try {
         const artifact = await getHrAttendanceDocumentJobPdf(req.params.id, pool);
         res.set({
@@ -7043,7 +7043,7 @@ router.get('/report/daily', async (req, res) => {
 });
 
 // GET /api/hr/report/export — CSV export
-router.get('/report/export', async (req, res) => {
+router.get('/report/export', requireAction('export_data'), async (req, res) => {
     try {
         const { from, to } = req.query;
         if (!from || !to) return res.status(400).json({ success: false, error: 'Потрібні from та to' });

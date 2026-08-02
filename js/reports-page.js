@@ -421,6 +421,12 @@ const ReportsPage = (() => {
         return !!state && isPayrollTemplateLike(state);
     }
 
+    function canExportCanonicalPayroll() {
+        return typeof canAccess === 'function'
+            && canAccess('view_payroll') === true
+            && canAccess('export_data') === true;
+    }
+
     function normalizeLegacyPayrollColumn(column = {}) {
         const key = String(column.key || '').trim().toLowerCase();
         const label = String(column.label || '').trim().toLowerCase();
@@ -1800,7 +1806,7 @@ const ReportsPage = (() => {
             if (el) el.disabled = readOnly || _reportTableBusy || !state || locked;
         });
 
-        const canExportTable = isPayrollTableState() || (typeof canAccess === 'function'
+        const canExportTable = (isPayrollTableState() && canExportCanonicalPayroll()) || (typeof canAccess === 'function'
             && canAccess('export_data')
             && canAccess('view_revenue'));
         [
@@ -1808,7 +1814,10 @@ const ReportsPage = (() => {
             'reportTemplateExportXlsxBtn'
         ].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.disabled = _reportTableBusy || !state || !canExportTable;
+            if (el) {
+                el.hidden = !canExportTable;
+                el.disabled = _reportTableBusy || !state || !canExportTable;
+            }
         });
 
         if (closeBtn) closeBtn.disabled = readOnly || _reportTableBusy || !state || locked || !hasMeaningfulTableData();
@@ -2627,6 +2636,10 @@ const ReportsPage = (() => {
 
     async function downloadCanonicalPayrollExport(format) {
         if (!_reportTableState) return;
+        if (!canExportCanonicalPayroll()) {
+            showNotification('Payroll export permission required', 'error');
+            return;
+        }
         const month = payrollTableMonth();
         if (!month) {
             showNotification('Для canonical payroll export потрібен один місяць у payroll table', 'warning');

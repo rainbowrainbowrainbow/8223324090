@@ -84,7 +84,8 @@ test('frontend and backend contain the tab, endpoint, export, and payroll-shapin
 
     assert.match(frontend, /reports:\s*'hr\.reports\.view'/);
     assert.match(frontend, /firstAllowedHrTab\(\)/);
-    assert.match(frontend, /reportExport\.hidden = !canUseHrCapability\('hr\.reports\.export'\)/);
+    assert.match(frontend, /function canExportHrReports\(\)/);
+    assert.match(frontend, /reportExport\.hidden = !canExportHrReports\(\)/);
     assert.match(switcher, /capability:\s*'hr\.reports\.view'/);
     assert.match(hrRoute, /function requireHrCapabilityContract/);
     assert.match(hrRoute, /routePath === '\/report\/export'.*hr\.reports\.export/s);

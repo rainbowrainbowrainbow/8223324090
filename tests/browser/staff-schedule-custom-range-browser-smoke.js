@@ -3750,6 +3750,7 @@ async function runDesktopFlow(browser, base) {
         await captureFixtureDepartmentScheduleSurfaces(page);
         await assertScheduleShiftPreferenceQuickLabels(page);
 
+        await applyManualRange(page, '2026-07-01', '2026-07-09');
         await applyPreset(page, 'first-half');
         const firstHalfFrom = await page.locator('#scheduleDateFrom').inputValue();
         const firstHalfTo = await page.locator('#scheduleDateTo').inputValue();

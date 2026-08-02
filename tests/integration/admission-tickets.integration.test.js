@@ -379,10 +379,17 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
             '/api/center/tickets/regular_child/tariffs?businessContext=event_genix',
             { token: seniorManagerToken, body: mutationPayload }
         );
-        assert.equal(seniorWrite.status, 201, JSON.stringify(seniorWrite.body));
-        assert.equal(seniorWrite.body.tariff.revision, 2);
-        assert.equal(seniorWrite.body.tariff.amountUah, 351);
-        assert.equal(seniorWrite.body.previousTariff.revision, 1);
+        assert.equal(seniorWrite.status, 403);
+
+        const creatorWrite = await apiRequest(
+            'POST',
+            '/api/center/tickets/regular_child/tariffs?businessContext=event_genix',
+            { token: creatorToken, body: mutationPayload }
+        );
+        assert.equal(creatorWrite.status, 201, JSON.stringify(creatorWrite.body));
+        assert.equal(creatorWrite.body.tariff.revision, 2);
+        assert.equal(creatorWrite.body.tariff.amountUah, 351);
+        assert.equal(creatorWrite.body.previousTariff.revision, 1);
 
         const darCatalog = await apiRequest(
             'GET',
@@ -1627,7 +1634,7 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
             'POST',
             '/api/center/tickets/regular_child/tariffs?businessContext=event_genix',
             {
-                token: seniorManagerToken,
+                token: creatorToken,
                 body: {
                     admissionContext: 'reserved_table_room',
                     dayType: 'weekday',
@@ -1670,7 +1677,7 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
             'POST',
             '/api/center/tickets/regular_child/tariffs?businessContext=event_genix',
             {
-                token: seniorManagerToken,
+                token: creatorToken,
                 body: {
                     admissionContext: 'standard',
                     dayType: 'weekday',

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.67 - Доступи: фінанси, налаштування та експорт
+
+### Release / Versioning / (02.08.2026) [codex]
+- **Доступи: фінанси, налаштування та експорт** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.66 - Доступи: виправлення редактора
 
 ### Access editor hotfix / (02.08.2026) [codex]

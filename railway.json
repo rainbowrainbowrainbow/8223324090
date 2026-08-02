@@ -4,7 +4,7 @@
     "builder": "NIXPACKS"
   },
   "deploy": {
-    "startCommand": "npm run hermes:outbox:worker:read-only || true; node -e \"setInterval(()=>{},3600000)\"",
+    "startCommand": "node scripts/hermes-notification-outbox-worker.js --mode=read_only --include-stats=1 > /tmp/eg-tasker-outbox-readonly-smoke.json 2>&1 || true; cat /tmp/eg-tasker-outbox-readonly-smoke.json || true; node -e \"setInterval(()=>{},3600000)\"",
     "restartPolicyType": "ON_FAILURE",
     "restartPolicyMaxRetries": 1
   }

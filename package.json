@@ -19,7 +19,7 @@
     "check:action-permissions": "node scripts/check-action-permissions.js",
     "check:permission-registry": "node --test tests/permission-registry-contract.test.js",
     "check:capability-policy": "node --test tests/account-access-policy.test.js tests/capability-parity-contract.test.js",
-    "test:permission-contracts": "node --test tests/finance-permission-contract.test.js tests/revenue-access-group-a.test.js tests/revenue-access-group-b.test.js tests/center-revenue-permission.test.js tests/manage-settings-system-surfaces.test.js tests/revenue-access-surface-contract.test.js tests/hr-capability-contract.test.js",
+    "test:permission-contracts": "node --test tests/finance-permission-contract.test.js tests/banquet-deposit-revenue-access.test.js tests/revenue-access-group-a.test.js tests/revenue-access-group-b.test.js tests/center-revenue-permission.test.js tests/manage-settings-system-surfaces.test.js tests/revenue-access-surface-contract.test.js tests/hr-capability-contract.test.js",
     "test:live-authenticated-qa-contract": "node --test tests/live-authenticated-surface-qa.test.js tests/qa-creator-lease.test.js",
     "check:account-access-surface": "node scripts/check-account-access-surface.js",
     "check:account-access-editor": "node --test tests/account-access-editor.test.js",

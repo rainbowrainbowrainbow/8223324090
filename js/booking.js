@@ -5625,6 +5625,34 @@ function setBookingDepositFieldsLocked(locked) {
         el.setAttribute('aria-disabled', disabled ? 'true' : 'false');
     });
 }
+function bookingCanViewDepositRevenue() {
+    const lifecycle = typeof getPermissionLifecycle === 'function'
+        ? getPermissionLifecycle()
+        : null;
+    return lifecycle?.status === 'ready'
+        && typeof canAccess === 'function'
+        && canAccess('view_revenue') === true;
+}
+
+function syncBookingDepositRevenueAccess() {
+    const allowed = bookingCanViewDepositRevenue();
+    const section = document.getElementById('bookingDepositSection');
+    if (!section) return allowed;
+
+    section.hidden = !allowed;
+    section.setAttribute('aria-hidden', allowed ? 'false' : 'true');
+    if (!allowed) {
+        bookingDepositFieldElements().forEach(el => {
+            el.value = '';
+            el.disabled = true;
+            el.setAttribute('aria-disabled', 'true');
+        });
+        const statusEl = document.getElementById('bookingDepositHydrationStatus');
+        if (statusEl) statusEl.hidden = true;
+    }
+    return allowed;
+}
+
 
 function ensureBookingDepositHydrationStatusElement() {
     const section = document.getElementById('bookingDepositSection');
@@ -5773,6 +5801,10 @@ function resetBookingDepositHydrationState() {
 
 async function hydrateBookingDepositFromServer(bookingId) {
     const cleanBookingId = String(bookingId || '').trim();
+    if (!syncBookingDepositRevenueAccess()) {
+        return setBookingDepositHydrationState(String(bookingId || '').trim(), 'restricted', false);
+    }
+
     if (!cleanBookingId || typeof apiGetBanquetDepositByBooking !== 'function') {
         return setBookingDepositHydrationState(cleanBookingId, 'unavailable', false);
     }
@@ -7872,6 +7904,7 @@ async function openBookingPanel(time, lineId, options = {}) {
     panelEl?.classList.toggle('booking-panel--minimal-timeline', isMinimalTimelineBookingMode());
     panelEl?.classList.toggle('booking-panel--education-timeline', isEducationTimelineBookingMode());
     panelEl?.classList.toggle('booking-panel--room-first', isRoomFirstTimelineView());
+    syncBookingDepositRevenueAccess();
     const lines = await getLinesForDate(AppState.selectedDate);
     const roomFirst = isRoomFirstTimelineView();
     const requestedLineId = String(lineId || '').trim();
@@ -15539,8 +15572,12 @@ function bookingDetailDepositHasCanonicalRecord(projection = null) {
 }
 
 function bookingDetailCanViewDepositMoney() {
-    if (typeof canAccess === 'function') return canAccess('view_revenue');
-    return !isViewer();
+    const lifecycle = typeof getPermissionLifecycle === 'function'
+        ? getPermissionLifecycle()
+        : null;
+    return lifecycle?.status === 'ready'
+        && typeof canAccess === 'function'
+        && canAccess('view_revenue') === true;
 }
 
 function bookingDetailDepositReceivedDate(deposit = {}) {
@@ -16149,6 +16186,8 @@ function bookingSummaryPreviewUrl(booking = {}, banquetSnapshot = null) {
 async function loadBanquetDepositStatusForDetails(booking = {}, banquetSnapshot = null) {
     const container = document.getElementById('bookingBanquetDepositStatus');
     if (!container) return;
+    if (!bookingCanViewDepositRevenue()) return;
+
     const canonicalProjection = banquetSnapshot?.deposit;
     if (canonicalProjection && typeof canonicalProjection === 'object') {
         container.outerHTML = renderBanquetDepositStatusSection(

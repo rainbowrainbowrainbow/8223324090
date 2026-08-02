@@ -13,11 +13,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: 'function bookingDetailTimelineIdentity(booking = {})',
         end: 'function renderFullBanquetDetail(anchorBooking = {}, allBookings = [], snapshot = null)',
-        sha256: '009a4aec5a4a75c28f0eb3b48f68e549f1c60c85cbeef0d93d8d245bbd5a10a7',
+        sha256: '5f0d5d22ad9b657307e4e392313abf40071c84b6e1f14342723d3c18fe404c44',
         approval: {
-            approvedBy: 'Product owner (explicit Codex Task 4 approval)',
-            approvedOn: '2026-07-21',
-            reason: 'Canonical booking details identify active banquet groups with a cancelled or missing primary before exposing mutation controls.'
+            approvedBy: 'Product owner (explicit Codex Task 5 approval)',
+            approvedOn: '2026-08-02',
+            reason: 'Revenue access hardening adds a capability guard to canonical banquet deposit details; booking identity priorities, endpoint sources, and modal ownership are unchanged.'
         },
         requiredNeedles: [
             'function bookingDetailTimelineIdentity(booking = {})',

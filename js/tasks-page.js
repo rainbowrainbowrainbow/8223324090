@@ -5599,8 +5599,20 @@ function depositProjectionForTask(task = {}, projection = null) {
     };
 }
 
+function taskCanViewBanquetDepositRevenue() {
+    const lifecycle = typeof getPermissionLifecycle === 'function'
+        ? getPermissionLifecycle()
+        : null;
+    return lifecycle?.status === 'ready'
+        && typeof canAccess === 'function'
+        && canAccess('view_revenue') === true;
+}
+
 function renderBanquetDepositTaskPanel(task = {}, projection = null, styles = {}) {
     if (!isBanquetDepositTask(task)) return '';
+    if (!taskCanViewBanquetDepositRevenue()) {
+        return '<div role="status" style="font-size:12px;color:var(--gray-600)">\u0424\u0456\u043d\u0430\u043d\u0441\u043e\u0432\u0456 \u0434\u0430\u043d\u0456 \u0437\u0430\u0432\u0434\u0430\u0442\u043a\u0443 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0456 \u0434\u043b\u044f \u0432\u0430\u0448\u043e\u0433\u043e \u0434\u043e\u0441\u0442\u0443\u043f\u0443.</div>';
+    }
     const data = depositProjectionForTask(task, projection);
     const depositId = data.depositId || '';
     const verified = ['accountant_verified', 'corrected'].includes(data.status);
@@ -5907,6 +5919,11 @@ async function reloadBanquetDepositForm(depositId) {
 }
 
 async function confirmBanquetDepositFromTask(taskId) {
+    if (!taskCanViewBanquetDepositRevenue()) {
+        showNotification('\u0424\u0456\u043d\u0430\u043d\u0441\u043e\u0432\u0456 \u0434\u0430\u043d\u0456 \u0437\u0430\u0432\u0434\u0430\u0442\u043a\u0443 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0456 \u0434\u043b\u044f \u0432\u0430\u0448\u043e\u0433\u043e \u0434\u043e\u0441\u0442\u0443\u043f\u0443.', 'warning');
+        return false;
+    }
+
     const panel = taskDetailDepositPanel();
     if (!panel) return true;
     const depositId = Number(panel.dataset.depositId || 0);
@@ -6066,7 +6083,9 @@ async function renderTaskDetailDrawer(taskId) {
         const depositTask = isBanquetDepositTask(t);
         const depositId = depositTask ? banquetDepositTaskId(t) : null;
         let depositProjection = null;
-        if (depositTask && depositId) {
+        if (depositTask && !taskCanViewBanquetDepositRevenue()) {
+            depositProjection = { success: false, code: 'VIEW_REVENUE_REQUIRED' };
+        } else if (depositTask && depositId) {
             depositProjection = await apiGetBanquetDeposit(depositId);
         } else if (depositTask) {
             depositProjection = { success: false, error: 'У задачі немає id завдатку' };

@@ -565,6 +565,7 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('js/auth.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/app.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/booking.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/tasks-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/booking-summary-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/center-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/customers-page.js', "canAccess('view_revenue')", { enforces: true }),
@@ -578,6 +579,8 @@ const ACTION_PERMISSIONS = Object.freeze([
         ],
         backendConsumers: [
             source('routes/auth.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/banquets.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/banquet-deposits.js', "requireAction('view_revenue')", { enforces: true }),
             source('routes/board.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
             source('routes/bookings.js', "canUseAction(user, 'view_revenue')", { enforces: true }),
             source('routes/center.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
@@ -598,6 +601,8 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('routes/warehouse.js', "canUseAction(req.user, 'view_revenue')", { enforces: true })
         ],
         apiConsumers: [
+            api('routes/banquets.js', '/api/banquets mixed group reads and deposit projections', 'view_revenue'),
+            api('routes/banquet-deposits.js', '/api/banquet-deposits read and mutation endpoints', 'view_revenue'),
             api('routes/analytics.js', '/api/analytics revenue endpoints', 'view_revenue'),
             api('routes/backup.js', '/api/backup full artifact exports', 'view_revenue'),
             api('routes/bookings.js', '/api/bookings/:id/banquet-summary.pdf', 'view_revenue'),

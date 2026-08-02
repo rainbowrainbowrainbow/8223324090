@@ -2,7 +2,7 @@
 
 const { isDeepStrictEqual } = require('node:util');
 const router = require('express').Router();
-const { authenticateToken, requireAction } = require('../middleware/auth');
+const { authenticateToken, canUseAction, requireAction } = require('../middleware/auth');
 const { validateDate, validateId, validateBanquetCreationContext } = require('../services/booking');
 const {
     timelineContextFromRequest,
@@ -35,6 +35,7 @@ const {
     getDepositProjectionForKnownContext,
     resolveDepositContextFromBooking
 } = require('../services/banquetDeposits');
+const { shapeBanquetGroupForRevenueAccess } = require('../services/revenueAccessPolicy');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Banquets');
@@ -171,19 +172,23 @@ async function sendReadResult(req, res, snapshot) {
     if (!visible?.members?.length) {
         return res.status(404).json(bookingAccessDeniedPayload());
     }
-    const groupId = visible.groupId || visible.group?.id || null;
-    const primaryBookingId = visible.bookings?.primary?.id || visible.group?.primaryBookingId || null;
-    const deposit = await getDepositProjectionForKnownContext({
-        businessContext: visible.businessContext,
-        primaryBookingId,
-        banquetGroupId: groupId,
-        customerId: visible.customer?.id || visible.group?.customerId || null,
-        eventDate: visible.group?.date || null,
-        clientName: visible.customer?.name || null,
-        banquetNumber: visible.group?.groupName || null,
-        needsBookingLink: !primaryBookingId
-    });
-    return res.json({ ...visible, deposit });
+    const canViewRevenue = canUseAction(req.user, 'view_revenue');
+    const payload = { ...visible };
+    if (canViewRevenue) {
+        const groupId = visible.groupId || visible.group?.id || null;
+        const primaryBookingId = visible.bookings?.primary?.id || visible.group?.primaryBookingId || null;
+        payload.deposit = await getDepositProjectionForKnownContext({
+            businessContext: visible.businessContext,
+            primaryBookingId,
+            banquetGroupId: groupId,
+            customerId: visible.customer?.id || visible.group?.customerId || null,
+            eventDate: visible.group?.date || null,
+            clientName: visible.customer?.name || null,
+            banquetNumber: visible.group?.groupName || null,
+            needsBookingLink: !primaryBookingId
+        });
+    }
+    return res.json(shapeBanquetGroupForRevenueAccess(payload, canViewRevenue));
 }
 
 function sendWriteError(res, err) {
@@ -525,7 +530,7 @@ router.patch('/:groupId/arrival', requireAction('edit_booking'), async (req, res
     }
 });
 
-router.get('/by-booking/:bookingId/deposit', async (req, res) => {
+router.get('/by-booking/:bookingId/deposit', requireAction('view_revenue'), async (req, res) => {
     try {
         const { bookingId } = req.params;
         if (!validateId(bookingId)) return res.status(400).json({ success: false, error: 'Invalid booking ID' });
@@ -544,7 +549,7 @@ router.get('/by-booking/:bookingId/deposit', async (req, res) => {
     }
 });
 
-router.get('/:groupId/deposit', async (req, res) => {
+router.get('/:groupId/deposit', requireAction('view_revenue'), async (req, res) => {
     try {
         const { groupId } = req.params;
         if (!validateId(groupId)) return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });

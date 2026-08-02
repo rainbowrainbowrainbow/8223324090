@@ -61,6 +61,7 @@ Do not update the hash just to make CI green.
 
 ## Approval Log
 
+- 2026-08-02, `booking-detail-identity`: explicit product-owner Task 5 approval for `view_revenue` redaction in canonical banquet deposit detail UI. Booking identity priorities, endpoint sources, and modal ownership are unchanged.
 - 2026-07-24, `service-booking-row-map`: explicit product-owner delivery approval for preserving explicit zero banquet ticket counts. `services/booking.js` now maps `banquet_guests`, `banquet_adults`, and `banquet_tables` with nullish semantics so `0` survives detail and timeline projections.
 - 2026-07-21, `booking-detail-identity` and `booking-detail-safe-open`: explicit product-owner Task 4 approval. Active banquet groups with a cancelled or missing primary remain readable, but canonical detail/edit flow suppresses mutation controls and can open only a clean standard replacement form without restoring the primary or transferring customer, deposit, or membership data.
 - 2026-07-17, `route-project-timeline-identity` and `service-booking-row-map`: explicit product-owner approval for room identity Task 3. `room_resource_id` is now the first room projection identity and is exposed by the canonical booking row mapper; legacy room text remains a recovery/display snapshot.

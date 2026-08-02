@@ -195,6 +195,7 @@ test('Task 4 permission contracts are mandatory baseline coverage', () => {
     const script = require('../package.json').scripts['test:permission-contracts'];
     for (const filename of [
         'finance-permission-contract.test.js',
+        'banquet-deposit-revenue-access.test.js',
         'hr-capability-contract.test.js',
         'revenue-access-group-a.test.js',
         'revenue-access-group-b.test.js',

@@ -66,6 +66,38 @@ const FINANCIAL_EXACT_KEYS = new Set([
     'totalspent'
 ]);
 
+const BANQUET_FINANCIAL_EXACT_KEYS = new Set([
+    'accountingnote',
+    'accountingstatus',
+    'deposit',
+    'depositstatus',
+    'duedate',
+    'financetransactionid',
+    'managernote',
+    'managerstatus',
+    'payment',
+    'paymentmethod',
+    'paymentstatus',
+    'transactionid',
+    'transactionreference',
+    'accounting',
+    'balance',
+    'billing',
+    'discounts',
+    'invoice',
+    'paid',
+    'paidamount',
+    'paymentdetails',
+    'paymentreference',
+    'payments',
+    'transaction',
+    'total',
+    'totals'
+]);
+
+const BANQUET_FINANCIAL_KEY_PREFIXES = ['accounting', 'deposit', 'payment', 'transaction'];
+
+
 const MONEY_TEXT_PATTERN = /(?:\d(?:[\d\s.,]*\d)?\s*(?:грн|uah|usd|eur|[₴$€])|[₴$€]\s*\d(?:[\d\s.,]*\d)?)/giu;
 
 function keyParts(key) {
@@ -186,6 +218,34 @@ function shapeBanquetSummaryForRevenueAccess(summary, allowed) {
     return redacted;
 }
 
+function redactBanquetFinancialFields(value) {
+    if (typeof value === 'string') {
+        const parsedContainer = parseJsonContainerString(value);
+        if (!parsedContainer) return value;
+        const redactedContainer = redactBanquetFinancialFields(parsedContainer);
+        return isDeepStrictEqual(parsedContainer, redactedContainer)
+            ? value
+            : JSON.stringify(redactedContainer);
+    }
+    if (Array.isArray(value)) return value.map(redactBanquetFinancialFields);
+    if (!value || typeof value !== 'object') return value;
+    if (value instanceof Date || Buffer.isBuffer(value)) return value;
+
+    const redacted = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+        const normalized = normalizedKey(key);
+        if (BANQUET_FINANCIAL_EXACT_KEYS.has(normalized) || BANQUET_FINANCIAL_KEY_PREFIXES.some(prefix => normalized.startsWith(prefix))) continue;
+        redacted[key] = redactBanquetFinancialFields(nestedValue);
+    }
+    return redacted;
+}
+
+function shapeBanquetGroupForRevenueAccess(snapshot, allowed) {
+    if (allowed) return snapshot;
+    return redactBanquetFinancialFields(redactRevenueFields(snapshot));
+}
+
+
 function installRevenueResponseShaper(req, res, next, canViewRevenue, options = {}) {
     if (canViewRevenue) return next();
     const sendJson = res.json.bind(res);
@@ -206,5 +266,6 @@ module.exports = {
     parseOptionalRevenueAmount,
     shapeRevenuePayload,
     shapeBanquetSummaryForRevenueAccess,
+    shapeBanquetGroupForRevenueAccess,
     installRevenueResponseShaper
 };

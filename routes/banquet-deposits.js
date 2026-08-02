@@ -1,7 +1,7 @@
 'use strict';
 
 const router = require('express').Router();
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken, requireAction, requireRole } = require('../middleware/auth');
 const {
     businessContextFromRequest,
     requireBusinessContext
@@ -21,6 +21,7 @@ const log = createLogger('BanquetDeposits');
 const VIEW_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'accountant'];
 const CONFIRM_ROLES = ['accountant', 'director'];
 const ACCOUNTING_REVIEW_ROLES = ['accountant', 'director', 'creator'];
+const requireRevenueView = requireAction('view_revenue');
 
 router.use(authenticateToken);
 
@@ -113,7 +114,7 @@ function sendDepositError(res, err) {
     return res.status(500).json({ success: false, error: 'Internal server error' });
 }
 
-router.get('/', requireRole(...ACCOUNTING_REVIEW_ROLES), async (req, res) => {
+router.get('/', requireRole(...ACCOUNTING_REVIEW_ROLES), requireRevenueView, async (req, res) => {
     try {
         const businessContext = businessContextFromRequest(req);
         if (!requireBusinessContext(req, res, businessContext)) return;
@@ -128,7 +129,7 @@ router.get('/', requireRole(...ACCOUNTING_REVIEW_ROLES), async (req, res) => {
     }
 });
 
-router.get('/:id', requireRole(...VIEW_ROLES), async (req, res) => {
+router.get('/:id', requireRole(...VIEW_ROLES), requireRevenueView, async (req, res) => {
     try {
         const depositId = parseDepositId(req.params.id);
         if (!depositId) {
@@ -144,7 +145,7 @@ router.get('/:id', requireRole(...VIEW_ROLES), async (req, res) => {
     }
 });
 
-router.post('/:id/review-start', requireRole(...ACCOUNTING_REVIEW_ROLES), async (req, res) => {
+router.post('/:id/review-start', requireRole(...ACCOUNTING_REVIEW_ROLES), requireRevenueView, async (req, res) => {
     try {
         const depositId = parseDepositId(req.params.id);
         if (!depositId) {
@@ -165,7 +166,7 @@ router.post('/:id/review-start', requireRole(...ACCOUNTING_REVIEW_ROLES), async 
     }
 });
 
-router.post('/:id/confirm', requireRole(...CONFIRM_ROLES), async (req, res) => {
+router.post('/:id/confirm', requireRole(...CONFIRM_ROLES), requireRevenueView, async (req, res) => {
     try {
         const depositId = parseDepositId(req.params.id);
         if (!depositId) {
@@ -196,7 +197,7 @@ router.post('/:id/confirm', requireRole(...CONFIRM_ROLES), async (req, res) => {
     }
 });
 
-router.patch('/:id/accounting', requireRole(...ACCOUNTING_REVIEW_ROLES), async (req, res) => {
+router.patch('/:id/accounting', requireRole(...ACCOUNTING_REVIEW_ROLES), requireRevenueView, async (req, res) => {
     try {
         const depositId = parseDepositId(req.params.id);
         if (!depositId) {
@@ -228,7 +229,7 @@ router.patch('/:id/accounting', requireRole(...ACCOUNTING_REVIEW_ROLES), async (
     }
 });
 
-router.patch('/:id', requireRole(...CONFIRM_ROLES), async (req, res) => {
+router.patch('/:id', requireRole(...CONFIRM_ROLES), requireRevenueView, async (req, res) => {
     try {
         const depositId = parseDepositId(req.params.id);
         if (!depositId) {

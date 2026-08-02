@@ -23,6 +23,7 @@
     }
 
 function renderBanquetDepositStatusSection(anchorBooking = {}, snapshot = null, projection = { loading: true }) {
+    if (!bookingDetailCanViewDepositMoney()) return '';
     const primaryBooking = banquetSnapshotPrimaryBooking(snapshot, anchorBooking) || anchorBooking;
     const anchorId = bookingDetailId(anchorBooking);
     const primaryBookingId = bookingDetailId(primaryBooking) || anchorId;

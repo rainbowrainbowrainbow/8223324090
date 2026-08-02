@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.72 - Доступи: фінальний аудит і guardrails
+
+### Безпека доступів / (02.08.2026) [codex]
+- **Фінальний захист доступів** — XLSX графіка потребує `hr.schedule.view` і `export_data`; catalog, lead assistant та AI-іконки програм керуються лише через `manage_settings`.
+- **Guardrails** — registry, auth-boundary та API checks відловлюють дрейф export/settings/integration ownership ще до CI.
+
+---
+
 ## v0.80.71 - Доступи: зовнішні інтеграції та webhooks
 
 ### Безпека доступів / (02.08.2026) [codex]

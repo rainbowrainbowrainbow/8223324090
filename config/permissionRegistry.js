@@ -573,6 +573,7 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('js/finance-page.js', "financeCanUsePayrollAction('view_revenue')", { enforces: true }),
             source('js/graduation.js', "canUseGraduationCapability('view_revenue')", { enforces: true }),
             source('js/leads-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('center.html', "canAccess('view_revenue')", { enforces: true }),
             source('js/reports-page.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/task-create.js', "canAccess('view_revenue')", { enforces: true }),
             source('js/warehouse-page.js', "canAccess('view_revenue')", { enforces: true })
@@ -598,6 +599,7 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('routes/sales.js', "requireAction('view_revenue')", { enforces: true }),
             source('routes/search.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
             source('routes/tasks.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/subscription.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
             source('routes/warehouse.js', "canUseAction(req.user, 'view_revenue')", { enforces: true })
         ],
         apiConsumers: [
@@ -615,7 +617,8 @@ const ACTION_PERMISSIONS = Object.freeze([
             api('routes/sales.js', '/api/sales/booking-upsells', 'view_revenue'),
             api('routes/reports.js', '/api/reports financial reports', 'view_revenue'),
             api('routes/settings.js', '/api/settings/stats/:dateFrom/:dateTo', 'view_revenue'),
-            api('routes/stats.js', '/api/stats revenue endpoints', 'view_revenue')
+            api('routes/stats.js', '/api/stats revenue endpoints', 'view_revenue'),
+            api('routes/subscription.js', '/api/subscription/status amount and amount mutation', null, 'Mixed response is shaped with canUseAction before serialization; amount writes use a dedicated pre-service guard.')
         ],
         notes: 'Server guards block financial-only endpoints; mixed booking and dashboard payloads redact financial fields.'
     }),
@@ -635,6 +638,8 @@ const ACTION_PERMISSIONS = Object.freeze([
         ],
         backendConsumers: [
             source('routes/demo.js', "canUseAction(req.user, 'manage_settings')", { enforces: true }),
+            source('routes/packages.js', "requireAction('manage_settings')", { enforces: true }),
+            source('routes/subscription.js', "requireAction('manage_settings')", { enforces: true }),
             source('routes/settings.js', "requireSettingsManagement = requireAction('manage_settings')", { enforces: true })
         ],
         apiConsumers: [
@@ -648,7 +653,9 @@ const ACTION_PERMISSIONS = Object.freeze([
             api('routes/reports.js', '/api/reports/workflow-settings', 'manage_settings'),
             api('routes/settings.js', '/api/settings management mutations and sensitive reads', 'manage_settings'),
             api('routes/status.js', '/api/status internal administration', 'manage_settings'),
-            api('routes/support.js', '/api/support SLA and retention policies', 'manage_settings')
+            api('routes/support.js', '/api/support SLA and retention policies', 'manage_settings'),
+            api('routes/packages.js', '/api/packages mutations and feature flag administration', 'manage_settings'),
+            api('routes/subscription.js', '/api/subscription PATCH and internal notes', 'manage_settings')
         ],
         notes: 'System-setting mutations and sensitive settings reads require this capability; public and user-specific settings remain available.'
     }),

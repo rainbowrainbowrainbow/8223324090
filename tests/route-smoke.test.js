@@ -5282,14 +5282,20 @@ describe('route-level API safety smoke', () => {
         assert.match(update.params[9], /Updated topic/);
     });
 
-    it('keeps public package reads open but protects package mutations', async () => {
-        const list = await request('GET', '/api/packages');
+    it('requires bearer auth for package catalog reads and mutations', async () => {
+        const noAuthRead = await request('GET', '/api/packages');
+        assert.equal(noAuthRead.status, 401);
+
+        const list = await request('GET', '/api/packages', undefined, withAuth());
         assert.equal(list.status, 200, JSON.stringify(list.data));
         assert.equal(list.data.success, true);
         assert.equal(list.data.packages[0].code, 'demo');
 
         const noAuthPost = await request('POST', '/api/packages', { code: 'x', name: 'X' });
         assert.equal(noAuthPost.status, 401);
+
+        const queryTokenRead = await request('GET', `/api/packages?token=${authToken}`);
+        assert.equal(queryTokenRead.status, 401);
 
         const queryTokenPost = await request('POST', `/api/packages?token=${authToken}`, { code: 'x', name: 'X' });
         assert.equal(queryTokenPost.status, 401);

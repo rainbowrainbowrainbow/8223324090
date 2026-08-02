@@ -186,7 +186,7 @@ test('report workflow and demo-mode settings fail closed in backend and UI', () 
 
     assert.match(demoRoute, /if \(canUseAction\(req\.user, 'manage_settings'\)\) payload\.demoEnabled = demoEnabled;/);
     assert.match(demoRoute, /router\.post\('\/toggle', requireRole\('admin'\), requireAction\('manage_settings'\)/);
-    assert.match(demoPage, /canManageSettings = typeof canAccess === 'function' && canAccess\('manage_settings'\) === true;/);
+    assert.match(demoPage, /function resolveManageSettingsAccess\(\)[\s\S]*lifecycle\?\.status === 'ready'[\s\S]*canAccess\('manage_settings'\) === true/);
     assert.match(demoPage, /if \(!canManageSettings\) \{[\s\S]{0,180}Недостатньо прав для зміни системних налаштувань/);
     assert.match(demoHtml, /class="demo-toggle-bar hidden"[^>]*id="demoToggleBar"[^>]*aria-hidden="true"/);
 });
@@ -196,6 +196,7 @@ test('Task 4 permission contracts are mandatory baseline coverage', () => {
     for (const filename of [
         'finance-permission-contract.test.js',
         'banquet-deposit-revenue-access.test.js',
+        'subscription-packages-access.test.js',
         'hr-capability-contract.test.js',
         'revenue-access-group-a.test.js',
         'revenue-access-group-b.test.js',

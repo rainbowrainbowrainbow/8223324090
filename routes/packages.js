@@ -4,10 +4,13 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { authenticateToken, requireAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Packages');
+const requireSettingsManagement = requireAction('manage_settings');
+
+router.use(authenticateToken);
 
 // ==========================================
 // PACKAGES
@@ -25,7 +28,8 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/packages/:code — Single package
-router.get('/:code', async (req, res) => {
+function registerPackageCatalogDetailRoute() {
+    router.get('/:code', async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM packages WHERE code = $1', [req.params.code]);
         if (result.rows.length === 0) {
@@ -34,7 +38,7 @@ router.get('/:code', async (req, res) => {
 
         // Get features available for this package
         const flagsResult = await pool.query(
-            "SELECT * FROM feature_flags WHERE package_min IS NULL OR package_min = $1 OR package_min IN (SELECT code FROM packages WHERE sort_order <= (SELECT sort_order FROM packages WHERE code = $1)) ORDER BY name",
+            "SELECT code, name, description, package_min FROM feature_flags WHERE package_min IS NULL OR package_min = $1 OR package_min IN (SELECT code FROM packages WHERE sort_order <= (SELECT sort_order FROM packages WHERE code = $1)) ORDER BY name",
             [req.params.code]
         );
 
@@ -47,10 +51,11 @@ router.get('/:code', async (req, res) => {
         log.error('GET /:code error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
     }
-});
+    });
+}
 
 // POST /api/packages — Create package (admin)
-router.post('/', requireRole('admin'), async (req, res) => {
+router.post('/', requireSettingsManagement, async (req, res) => {
     try {
         const { code, name, description, price_monthly, features, sort_order } = req.body;
         if (!code || !name) {
@@ -73,7 +78,7 @@ router.post('/', requireRole('admin'), async (req, res) => {
 });
 
 // PUT /api/packages/:code — Update package (admin)
-router.put('/:code', requireRole('admin'), async (req, res) => {
+router.put('/:code', requireSettingsManagement, async (req, res) => {
     try {
         const { name, description, price_monthly, features, is_active, sort_order } = req.body;
         const result = await pool.query(
@@ -104,7 +109,7 @@ router.put('/:code', requireRole('admin'), async (req, res) => {
 // ==========================================
 
 // GET /api/packages/flags/all — List all feature flags
-router.get('/flags/all', async (req, res) => {
+router.get('/flags/all', requireSettingsManagement, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM feature_flags ORDER BY name');
         res.json({ success: true, flags: result.rows });
@@ -115,7 +120,7 @@ router.get('/flags/all', async (req, res) => {
 });
 
 // PUT /api/packages/flags/:code — Toggle feature flag (admin)
-router.put('/flags/:code', requireRole('admin'), async (req, res) => {
+router.put('/flags/:code', requireSettingsManagement, async (req, res) => {
     try {
         const { is_enabled } = req.body;
         const result = await pool.query(
@@ -134,7 +139,7 @@ router.put('/flags/:code', requireRole('admin'), async (req, res) => {
 });
 
 // POST /api/packages/flags — Create feature flag (admin)
-router.post('/flags', requireRole('admin'), async (req, res) => {
+router.post('/flags', requireSettingsManagement, async (req, res) => {
     try {
         const { code, name, description, is_enabled, package_min } = req.body;
         if (!code || !name) {
@@ -158,7 +163,7 @@ router.post('/flags', requireRole('admin'), async (req, res) => {
 // ==========================================
 // COMPARE — Package comparison table
 // ==========================================
-router.get('/compare/all', async (req, res) => {
+router.get('/compare/all', requireSettingsManagement, async (req, res) => {
     try {
         const packagesResult = await pool.query('SELECT * FROM packages WHERE is_active = true ORDER BY sort_order');
         const flagsResult = await pool.query('SELECT * FROM feature_flags ORDER BY name');
@@ -186,5 +191,8 @@ router.get('/compare/all', async (req, res) => {
         res.status(500).json({ success: false, error: 'Помилка' });
     }
 });
+// Register parameter routes after static /flags and /compare routes.
+registerPackageCatalogDetailRoute();
+
 
 module.exports = router;

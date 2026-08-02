@@ -1776,8 +1776,14 @@
         }
 
         // === SUBSCRIPTION REMINDER ===
+        const subscriptionCanViewRevenue = () => {
+            const lifecycle = typeof getPermissionLifecycle === 'function' ? getPermissionLifecycle() : null;
+            return lifecycle?.status === 'ready'
+                && typeof canAccess === 'function'
+                && canAccess('view_revenue') === true;
+        };
         const banner = document.getElementById('subscriptionBanner');
-        if (banner) {
+        if (banner && subscriptionCanViewRevenue()) {
             fetch('/api/subscription/status', {
                 headers: { 'Authorization': 'Bearer ' + token }
             })

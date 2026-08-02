@@ -163,12 +163,6 @@ const PUBLIC_API_ROUTES = [
     },
     {
         method: 'GET',
-        path: '/packages',
-        owner: 'packages',
-        reason: 'Public landing/package materials need unauthenticated package reads.'
-    },
-    {
-        method: 'GET',
         path: '/status/public',
         owner: 'status',
         reason: 'Public status page uses this read-only endpoint without user JWT.'

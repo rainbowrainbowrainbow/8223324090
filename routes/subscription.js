@@ -4,7 +4,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole, authenticateToken } = require('../middleware/auth'); 
+const { authenticateToken, canUseAction, requireAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Subscription');
@@ -35,6 +35,15 @@ async function ensureTable() {
 // GET /api/subscription/status
 // v39.8: Security — require authentication
 router.use(authenticateToken);
+
+function requireSubscriptionAmountAccess(req, res, next) {
+    if (!Object.prototype.hasOwnProperty.call(req.body || {}, 'amount')
+        || canUseAction(req.user, 'view_revenue')) {
+        return next();
+    }
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
+
 router.get('/status', async (req, res) => {
     try {
         await ensureTable();
@@ -48,16 +57,17 @@ router.get('/status', async (req, res) => {
         today.setHours(0, 0, 0, 0);
         const daysUntil = nextDate ? Math.ceil((nextDate - today) / (1000 * 60 * 60 * 24)) : null;
 
-        res.json({
+        const payload = {
             success: true,
             planName: sub.plan_name,
-            amount: sub.amount,
             nextPaymentDate: sub.next_payment_date,
             billingPeriod: sub.billing_period,
             daysUntilPayment: daysUntil,
-            status: daysUntil === null ? 'unknown' : daysUntil < 0 ? 'overdue' : 'active',
-            notes: sub.notes
-        });
+            status: daysUntil === null ? 'unknown' : daysUntil < 0 ? 'overdue' : 'active'
+        };
+        if (canUseAction(req.user, 'view_revenue')) payload.amount = sub.amount;
+        if (canUseAction(req.user, 'manage_settings')) payload.notes = sub.notes;
+        res.json(payload);
     } catch (err) {
         log.error('GET /subscription/status error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
@@ -65,7 +75,7 @@ router.get('/status', async (req, res) => {
 });
 
 // PATCH /api/subscription — update subscription info (director/creator only)
-router.patch('/', requireRole('director', 'creator'), async (req, res) => {
+router.patch('/', requireAction('manage_settings'), requireSubscriptionAmountAccess, async (req, res) => {
     try {
         await ensureTable();
         const { amount, nextPaymentDate, billingPeriod, planName, notes } = req.body;

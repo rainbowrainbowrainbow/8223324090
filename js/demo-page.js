@@ -9,6 +9,13 @@ let packages = [];
 let flags = [];
 let isAdminUser = false;
 let canManageSettings = false;
+function resolveManageSettingsAccess() {
+    const lifecycle = typeof getPermissionLifecycle === 'function' ? getPermissionLifecycle() : null;
+    return lifecycle?.status === 'ready'
+        && typeof canAccess === 'function'
+        && canAccess('manage_settings') === true;
+}
+
 let activeTab = 'scenarios';
 let currentSession = null;
 let currentStep = 0;
@@ -86,6 +93,7 @@ function setupTabs() {
     document.querySelectorAll('.demo-tab').forEach(tab => {
         tab.addEventListener('click', () => {
             const tabName = tab.dataset.tab;
+            if (tabName === 'flags' && !canManageSettings) return;
             if (tabName === activeTab) return;
             document.querySelectorAll('.demo-tab').forEach(t => t.classList.remove('active'));
             document.querySelectorAll('.demo-tab-content').forEach(c => c.classList.remove('active'));
@@ -107,6 +115,19 @@ function syncDemoSettingsUi() {
     }
     const toggle = document.getElementById('demoToggle');
     if (toggle) toggle.disabled = !canManageSettings;
+    const flagsTab = document.querySelector('.demo-tab[data-tab="flags"]');
+    if (flagsTab) {
+        flagsTab.hidden = !canManageSettings;
+        flagsTab.disabled = !canManageSettings;
+        flagsTab.setAttribute('aria-hidden', canManageSettings ? 'false' : 'true');
+    }
+    const flagsContent = document.getElementById('tab-flags');
+    if (flagsContent) flagsContent.hidden = !canManageSettings;
+    if (!canManageSettings && activeTab === 'flags') {
+        activeTab = 'scenarios';
+        document.querySelectorAll('.demo-tab').forEach(tab => tab.classList.toggle('active', tab.dataset.tab === 'scenarios'));
+        document.querySelectorAll('.demo-tab-content').forEach(content => content.classList.toggle('active', content.id === 'tab-scenarios'));
+    }
 }
 
 // ==========================================
@@ -358,6 +379,12 @@ function renderPackages(pkgs) {
 // ==========================================
 
 async function loadFlags() {
+    if (!canManageSettings) {
+        const container = document.getElementById('flagsList');
+        if (container) container.innerHTML = '<div class="demo-empty" role="status">\u0414\u043e\u0441\u0442\u0443\u043f \u0434\u043e feature flags \u043e\u0431\u043c\u0435\u0436\u0435\u043d\u043e</div>';
+        return;
+    }
+
     const data = await apiGet('/packages/flags/all');
     if (!data?.success) {
         document.getElementById('flagsList').innerHTML = '<div class="demo-empty">Помилка</div>';
@@ -382,7 +409,7 @@ function renderFlags(items) {
             <span class="flag-desc">${escapeHtml(f.description || '')}</span>
             ${f.package_min ? `<span class="flag-pkg">${f.package_min}+</span>` : '<span class="flag-pkg">всі</span>'}
             <span class="flag-status ${f.is_enabled ? 'on' : 'off'}">${f.is_enabled ? '✓ ON' : '✕ OFF'}</span>
-            ${isAdminUser ? `<label class="toggle-switch" style="flex-shrink:0">
+            ${canManageSettings ? `<label class="toggle-switch" style="flex-shrink:0">
                 <input type="checkbox" ${f.is_enabled ? 'checked' : ''} onchange="toggleFlag('${f.code}', this.checked)">
                 <span class="toggle-slider"></span>
             </label>` : ''}
@@ -391,6 +418,10 @@ function renderFlags(items) {
 }
 
 async function toggleFlag(code, enabled) {
+    if (!canManageSettings) {
+        showNotification('\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043d\u044c\u043e \u043f\u0440\u0430\u0432 \u0434\u043b\u044f \u0437\u043c\u0456\u043d\u0438 feature flags', 'error');
+        return;
+    }
     const result = await apiPut(`/packages/flags/${code}`, { is_enabled: enabled });
     if (result.success) {
         showNotification(`${code} → ${enabled ? 'ON' : 'OFF'}`, 'success');
@@ -457,7 +488,7 @@ async function initAuth() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
-    canManageSettings = typeof canAccess === 'function' && canAccess('manage_settings') === true;
+    canManageSettings = resolveManageSettingsAccess();
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
@@ -492,11 +523,14 @@ async function initDemoPage() {
     setupTabs();
 
     // Demo toggle
-    if (canManageSettings) {
-        document.getElementById('demoToggle')?.addEventListener('change', (e) => {
-            toggleDemoMode(e.target.checked);
-        });
-    }
+    document.getElementById('demoToggle')?.addEventListener('change', (e) => {
+        toggleDemoMode(e.target.checked);
+    });
+    window.addEventListener('permissions:lifecycle', () => {
+        canManageSettings = resolveManageSettingsAccess();
+        syncDemoSettingsUi();
+    });
+
 
     // Player modal close
     document.getElementById('playerModalClose')?.addEventListener('click', () => {

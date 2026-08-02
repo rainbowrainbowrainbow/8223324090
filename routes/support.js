@@ -4,7 +4,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken, requireMinRole } = require('../middleware/auth');
+const { authenticateToken, requireAction, requireMinRole } = require('../middleware/auth');
 
 const log = createLogger('Support');
 
@@ -197,7 +197,7 @@ router.get('/sla', async (req, res) => {
 });
 
 // POST /api/support/sla — create SLA rule
-router.post('/sla', async (req, res) => {
+router.post('/sla', requireAction('manage_settings'), async (req, res) => {
     try {
         const { name, category, priority, response_minutes, resolve_minutes, escalation_after_minutes, escalation_to } = req.body;
         if (!name) return res.status(400).json({ error: 'Назва обов\'язкова' });
@@ -220,7 +220,7 @@ router.post('/sla', async (req, res) => {
 // ============================================
 
 // GET /api/support/retention — list policies
-router.get('/retention', async (req, res) => {
+router.get('/retention', requireAction('manage_settings'), async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM retention_policies ORDER BY table_name');
         res.json(result.rows);
@@ -241,7 +241,7 @@ const RETENTION_ALLOWED_COLUMNS = new Set([
 ]);
 
 // POST /api/support/retention/run — execute retention cleanup (requires manager+)
-router.post('/retention/run', requireMinRole('manager'), async (req, res) => {
+router.post('/retention/run', requireMinRole('manager'), requireAction('manage_settings'), async (req, res) => {
     try {
         const policies = await pool.query('SELECT * FROM retention_policies WHERE is_active = true');
         const results = [];
@@ -286,7 +286,7 @@ router.post('/retention/run', requireMinRole('manager'), async (req, res) => {
 });
 
 // PUT /api/support/retention/:id — update policy
-router.put('/retention/:id', async (req, res) => {
+router.put('/retention/:id', requireAction('manage_settings'), async (req, res) => {
     try {
         const { retention_days, is_active } = req.body;
         const result = await pool.query(

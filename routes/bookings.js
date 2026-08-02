@@ -104,8 +104,9 @@ let _triggerAlertBroadcast;
 try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } catch {}
 function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 const { createLogger } = require('../utils/logger');
+const { shapeBanquetSummaryForRevenueAccess } = require('../services/revenueAccessPolicy');
 
-const { requireAction, authenticateToken, userHasAnyRole } = require('../middleware/auth');
+const { requireAction, canUseAction, authenticateToken, userHasAnyRole } = require('../middleware/auth');
 const log = createLogger('Bookings');
 
 // v39.8: Security — require authentication for all booking endpoints
@@ -163,6 +164,13 @@ function bookingContextSql(alias = '', placeholder = '$1') {
     return `${bookingContextColumnSql(column)} = ${placeholder}`;
 }
 
+
+function summaryForRevenueAccess(summary, user) {
+    return shapeBanquetSummaryForRevenueAccess(
+        summary,
+        canUseAction(user, 'view_revenue')
+    );
+}
 function bookingActiveStatusSql(alias = '') {
     const column = alias ? `${alias}.status` : 'status';
     return `LOWER(COALESCE(NULLIF(BTRIM(${column}), ''), 'confirmed')) != 'cancelled'`;
@@ -3208,14 +3216,14 @@ router.get('/:id/banquet-summary', async (req, res) => {
     try {
         const summary = await resolveBanquetSummaryForRequest(req, res);
         if (!summary || res.headersSent) return;
-        res.json(summary);
+        res.json(summaryForRevenueAccess(summary, req.user));
     } catch (err) {
         log.error('GET /bookings/:id/banquet-summary error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
     }
 });
 
-router.get('/:id/banquet-summary.pdf', async (req, res) => {
+router.get('/:id/banquet-summary.pdf', requireAction('view_revenue'), requireAction('export_data'), async (req, res) => {
     try {
         const summary = await resolveBanquetSummaryForRequest(req, res);
         if (!summary || res.headersSent) return;

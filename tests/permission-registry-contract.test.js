@@ -50,6 +50,15 @@ function assertUnique(values, label) {
     assert.equal(new Set(values).size, values.length, `${label} must be unique`);
 }
 
+function routeFilesWithLiteralAction(actionKey) {
+    return fs.readdirSync(path.join(ROOT, 'routes'), { withFileTypes: true })
+        .filter(entry => entry.isFile() && entry.name.endsWith('.js'))
+        .map(entry => `routes/${entry.name}`)
+        .filter(file => fs.readFileSync(path.join(ROOT, file), 'utf8')
+            .includes(`requireAction('${actionKey}')`))
+        .sort();
+}
+
 function assertConsumerExists(consumer, label) {
     assert.equal(typeof consumer, 'object', `${label} must be an object`);
     assert.equal(typeof consumer.file, 'string', `${label}.file must be a string`);
@@ -208,8 +217,14 @@ test('every active capability is linked to both a frontend and backend consumer'
 });
 
 test('deprecated toggles are hidden and canonical pages have one key', () => {
-    const deprecatedKeys = ['cancel_booking', 'view_own', 'manage_users', 'view_revenue', 'manage_settings', 'export_data'];
+    const deprecatedKeys = ['cancel_booking', 'view_own', 'manage_users'];
     deprecatedKeys.forEach(key => assert.equal(registry.ACTION_PERMISSION_BY_KEY[key]?.deprecated, true, `${key} must remain compatibility-only`));
+    ['view_revenue', 'manage_settings', 'export_data'].forEach(key => {
+        const action = registry.ACTION_PERMISSION_BY_KEY[key];
+        assert.equal(action?.deprecated, false, `${key} must be active after server enforcement is added`);
+        assert.equal(action?.status, 'active', `${key} must not remain frontend-only`);
+        assert.ok(action?.apiConsumers.some(consumer => consumer.enforcement === 'action'), `${key} must declare an action API consumer`);
+    });
 
     const userRoutes = fs.readFileSync(path.join(ROOT, 'routes', 'users.js'), 'utf8');
     const accountUi = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
@@ -223,6 +238,20 @@ test('deprecated toggles are hidden and canonical pages have one key', () => {
     assert.equal(registry.canonicalizePageKey('/leads'), '/sales-funnel');
     assert.equal(registry.canonicalizePageKey('/art-director'), '/art');
     assert.equal(registry.canonicalizePageKey('/analytics'), '/finance');
+});
+
+test('critical action API inventory matches literal route guards', () => {
+    for (const actionKey of ['view_revenue', 'manage_settings', 'export_data']) {
+        const declared = registry.ACTION_PERMISSION_BY_KEY[actionKey].apiConsumers
+            .filter(consumer => consumer.enforcement === 'action')
+            .map(consumer => consumer.file);
+
+        assert.deepEqual(
+            sorted(new Set(declared)),
+            routeFilesWithLiteralAction(actionKey),
+            `${actionKey}: literal route guards and registry API consumers drift`
+        );
+    }
 });
 
 test('account editor consumes API page metadata instead of a duplicated page catalog', () => {

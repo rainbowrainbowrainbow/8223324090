@@ -81,7 +81,9 @@ function mockAuthExports() {
             next();
         },
         requireRole: pass,
-        requireMinRole: pass
+        requireMinRole: pass,
+        requireAction: pass,
+        canUseAction: () => true
     };
 }
 

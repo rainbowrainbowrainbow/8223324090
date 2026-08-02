@@ -4,7 +4,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole } = require('../middleware/auth');
+const { canUseAction } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { getKyivDate, getKyivDateStr } = require('../services/booking');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
@@ -25,8 +25,7 @@ router.get('/stats', async (req, res) => {
         const yesterdayDate = getKyivDate();
         yesterdayDate.setDate(yesterdayDate.getDate() - 1);
         const yesterday = `${yesterdayDate.getFullYear()}-${String(yesterdayDate.getMonth() + 1).padStart(2, '0')}-${String(yesterdayDate.getDate()).padStart(2, '0')}`;
-        const role = req.user.role;
-        const REVENUE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+        const canViewRevenue = canUseAction(req.user, 'view_revenue');
         const bookingParams = [today];
         const bookingBusinessCondition = pushBusinessScopeCondition(bookingParams, businessScope, 'b');
         const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
@@ -86,8 +85,8 @@ router.get('/stats', async (req, res) => {
                  WHERE (t.date = $1 OR (t.deadline IS NOT NULL AND t.deadline::date = CURRENT_DATE) OR t.date IS NULL)
                    AND ${taskBusinessCondition}`, taskParams
             ),
-            // 3: Revenue today (only for senior_manager+)
-            REVENUE_ROLES.includes(role) ?
+            // 3: Revenue today (only with view_revenue capability)
+            canViewRevenue ?
                 pool.query(
                     `SELECT COALESCE(SUM(b.price), 0)::int as revenue FROM bookings b
                      WHERE b.date = $1 AND b.status != 'cancelled'
@@ -103,7 +102,7 @@ router.get('/stats', async (req, res) => {
         const tasks = get(2);
         const rev = get(3);
 
-        res.json({
+        const payload = {
             bookings: bk.total || 0,
             confirmed: bk.confirmed || 0,
             preliminary: bk.preliminary || 0,
@@ -111,7 +110,6 @@ router.get('/stats', async (req, res) => {
             tasksDone: tasks.done_today || 0,
             tasksRemaining: tasks.remaining || 0,
             tasksTotal: tasks.total || 0,
-            revenue: rev.revenue,
             date: today,
             businessScope: {
                 mode: businessScope.mode,
@@ -119,7 +117,9 @@ router.get('/stats', async (req, res) => {
                 selectedContexts: businessScope.selectedContexts,
                 readOnly: businessScope.readOnly
             }
-        });
+        };
+        if (canViewRevenue) payload.revenue = rev.revenue;
+        res.json(payload);
     } catch (err) {
         log.error('Board stats error', err);
         res.status(500).json({ error: 'Internal server error' });

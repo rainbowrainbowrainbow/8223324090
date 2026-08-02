@@ -789,6 +789,10 @@ function financeCanManageTransactions() {
         && canAccessPage('/finance')
         && financeCanUsePayrollAction('finance.manage');
 }
+function financeCanExportData() {
+    return financeCanUsePayrollAction('export_data') && financeCanUsePayrollAction('view_revenue');
+}
+
 
 const PAYROLL_INSTALLMENT_KIND_LABELS = {
     advance: 'Аванс',
@@ -2291,6 +2295,10 @@ function switchTab(tabName, options = {}) {
 // ==========================================
 
 async function exportCSV() {
+    if (!financeCanExportData()) {
+        showNotification('Недостатньо прав для експорту фінансів', 'error');
+        return;
+    }
     let touchWindow = null;
     try {
         touchWindow = typeof openTouchDownloadWindow === 'function'
@@ -2325,6 +2333,10 @@ async function exportCSV() {
 // ==========================================
 
 async function exportXLSX() {
+    if (!financeCanExportData()) {
+        showNotification('Недостатньо прав для експорту фінансів', 'error');
+        return;
+    }
     let touchWindow = null;
     try {
         touchWindow = typeof openTouchDownloadWindow === 'function'
@@ -2530,6 +2542,10 @@ async function initFinancePage() {
         if (addBtn) addBtn.style.display = canManageTransactions ? '' : 'none';
         const addExpBtn = document.getElementById('addExpenseBtn');
         if (addExpBtn) addExpBtn.style.display = canManageTransactions ? '' : 'none';
+        const canExportFinance = financeCanExportData();
+        ['exportCsvBtn', 'exportXlsxBtn'].forEach(id => {
+            document.getElementById(id)?.classList.toggle('hidden', !canExportFinance);
+        });
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     } catch (err) {

@@ -384,7 +384,7 @@ function resolveHeaderSettingsAction() {
     const registered = _headerSettingsActionRegistry.get(currentPath);
     if (registered) return registered;
 
-    if (currentPath === '/' && window.TimelineVisibility?.openSettingsCenter) {
+    if (currentPath === '/' && canAccess('manage_settings') && window.TimelineVisibility?.openSettingsCenter) {
         return () => window.TimelineVisibility.openSettingsCenter();
     }
 
@@ -1806,7 +1806,7 @@ function showMainApp() {
     // Timeline print and image export are available to every authenticated user.
     setTimelinePermissionHidden('exportTimelineBtn', false);
     setTimelinePermissionHidden('exportPdfBtn', false);
-    setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'));
+    setTimelinePermissionHidden('productSalesBtn', !canAccess('view_revenue'));
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli') {
         const canUse = action => window.TimelineBusinessContext.canUseAction(action, AppState.currentUser);

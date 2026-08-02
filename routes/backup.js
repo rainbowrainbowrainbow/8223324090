@@ -12,7 +12,7 @@ const { generateBackupArtifact, sendBackupToTelegram } = require('../services/ba
 const { getKyivDateStr } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
 const { logAdminAction, logAdminActionStrict } = require('../services/adminAudit');
-const { requireRole } = require('../middleware/auth');
+const { requireAction, requireRole } = require('../middleware/auth');
 const { loadBackupCatalog } = require('../services/backupCatalog');
 const { isValidRecoveryPassphrase } = require('../services/backupArtifact');
 const {
@@ -37,6 +37,9 @@ const ENCRYPTION_KEY_HEADER = 'x-backup-encryption-key';
 // The same role gate is mounted before the large JSON parser in server.js.
 // Keep the route-local gate as defense in depth and for direct router tests.
 router.use(requireRole('creator', 'director'));
+const requireDataExport = requireAction('export_data');
+const requireRevenueView = requireAction('view_revenue');
+const requireSettingsManagement = requireAction('manage_settings');
 
 function recoveryErrorResponse(res, error, requestId) {
     const status = Number.isInteger(error?.statusCode) ? error.statusCode : 500;
@@ -174,7 +177,7 @@ async function runRestoreRequest(req, res, artifact) {
     }
 }
 
-router.post('/create', async (req, res) => {
+router.post('/create', requireDataExport, requireRevenueView, async (req, res) => {
     try {
         const result = await sendBackupToTelegram({
             passphrase: getEncryptionPassphrase(req)
@@ -201,7 +204,7 @@ router.post('/create', async (req, res) => {
     }
 });
 
-router.get('/download', async (req, res) => {
+router.get('/download', requireDataExport, requireRevenueView, async (req, res) => {
     try {
         const artifact = await generateBackupArtifact();
         const validated = validateBackupArtifact(artifact);
@@ -230,7 +233,7 @@ router.get('/download', async (req, res) => {
     }
 });
 
-router.get('/verify', async (req, res) => {
+router.get('/verify', requireSettingsManagement, async (req, res) => {
     try {
         const startedAt = Date.now();
         const artifact = await generateBackupArtifact();
@@ -254,7 +257,7 @@ router.get('/verify', async (req, res) => {
     }
 });
 
-router.get('/download-encrypted', async (req, res) => {
+router.get('/download-encrypted', requireDataExport, requireRevenueView, async (req, res) => {
     try {
         const passphrase = getEncryptionPassphrase(req);
         if (!passphrase) {
@@ -293,7 +296,7 @@ router.get('/download-encrypted', async (req, res) => {
     }
 });
 
-router.post('/restore', async (req, res) => {
+router.post('/restore', requireSettingsManagement, async (req, res) => {
     try {
         if (req.body?.sql !== undefined) {
             return res.status(400).json({ error: 'BACKUP_RAW_SQL_FORBIDDEN' });
@@ -308,7 +311,7 @@ router.post('/restore', async (req, res) => {
     }
 });
 
-router.post('/restore-encrypted', async (req, res) => {
+router.post('/restore-encrypted', requireSettingsManagement, async (req, res) => {
     try {
         const passphrase = getEncryptionPassphrase(req);
         if (!passphrase || !req.body?.envelope) {
@@ -322,7 +325,7 @@ router.post('/restore-encrypted', async (req, res) => {
     }
 });
 
-router.get('/tables', async (req, res) => {
+router.get('/tables', requireSettingsManagement, async (req, res) => {
     let client;
     try {
         client = await pool.connect();

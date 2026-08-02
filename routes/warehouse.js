@@ -3,8 +3,9 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { authenticateToken, canUseAction, requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const costumeInventory = require('../services/costumeInventory');
 const warehousePhotoIntake = require('../services/warehousePhotoIntake');
 const {
@@ -16,8 +17,29 @@ const {
 const log = createLogger('Warehouse');
 
 // v39.8: Security — require authentication for all warehouse endpoints
-const { authenticateToken } = require('../middleware/auth');
 router.use(authenticateToken);
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue')
+));
+function requireWarehouseRevenueFieldWrite(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue') || !Object.prototype.hasOwnProperty.call(req.body || {}, 'purchaseUnitPrice')) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
+function hasExplicitWarehousePhotoIntakePrice(body = {}) {
+    const submittedDraft = body?.draft || body || {};
+    return Boolean(
+        submittedDraft
+        && typeof submittedDraft === 'object'
+        && Object.prototype.hasOwnProperty.call(submittedDraft, 'price')
+    );
+}
+function requireWarehousePhotoIntakeRevenueWrite(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue') || !hasExplicitWarehousePhotoIntakePrice(req.body || {})) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
 // v40: Validate :id param is numeric
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
 
@@ -700,12 +722,13 @@ router.get('/photo-intake/:id', requireRole(...MANAGE_ROLES), async (req, res) =
 });
 
 // POST /api/warehouse/photo-intake/:id/confirm - write reviewed draft into warehouse truth
-router.post('/photo-intake/:id/confirm', requireRole(...MANAGE_ROLES), async (req, res) => {
+router.post('/photo-intake/:id/confirm', requireRole(...MANAGE_ROLES), requireWarehousePhotoIntakeRevenueWrite, async (req, res) => {
     try {
         const result = await warehousePhotoIntake.confirmIntake(req.params.id, {
             actor: req.user?.username || req.user?.name || 'crm',
             draft: req.body?.draft || req.body || {},
-            warehouseStockId: req.body?.warehouseStockId || req.body?.stockId || null
+            warehouseStockId: req.body?.warehouseStockId || req.body?.stockId || null,
+            allowRevenueWrite: canUseAction(req.user, 'view_revenue')
         });
         if (!result.success) return res.status(result.status || 400).json(result);
         res.json(result);
@@ -958,7 +981,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/warehouse — Create new stock item (admin/manager)
-router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
+router.post('/', requireRole(...MANAGE_ROLES), requireWarehouseRevenueFieldWrite, async (req, res) => {
     try {
         const businessContext = requestWarehouseBusinessContext(req, res);
         if (!businessContext) return;
@@ -1005,13 +1028,13 @@ router.post('/', requireRole(...MANAGE_ROLES), async (req, res) => {
 });
 
 // PUT /api/warehouse/:id — Update stock item (admin/manager)
-router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
+router.put('/:id', requireRole(...MANAGE_ROLES), requireWarehouseRevenueFieldWrite, async (req, res) => {
     try {
         const businessContext = requestWarehouseBusinessContext(req, res);
         if (!businessContext) return;
         const { id } = req.params;
         const existing = await pool.query(
-            `SELECT id, name, category, unit, owner, location_id FROM warehouse_stock WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
+            `SELECT id, name, category, unit, owner, location_id, purchase_unit_price FROM warehouse_stock WHERE id = $1 AND ${businessScopeSql('', '$2')}`,
             [id, businessContext]
         );
         if (existing.rows.length === 0) {
@@ -1027,7 +1050,7 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
             name, category = 'consumable', minQuantity = 0,
             unit = 'шт', notes = null, owner = 'park',
             locationId = null, preferredContractorId = null, sku = null,
-            purchaseUnitPrice = 0, isProcuredExternally = false
+            purchaseUnitPrice, isProcuredExternally = false
         } = req.body;
         const normalizedLocationId = toOptionalInt(locationId);
         const normalizedContractorId = toOptionalInt(preferredContractorId);
@@ -1050,7 +1073,10 @@ router.put('/:id', requireRole(...MANAGE_ROLES), async (req, res) => {
             [
                 name.trim(), category, minQuantity, unit, notes, req.user.username, owner,
                 normalizedLocationId, normalizedContractorId, sku || null,
-                toOptionalMoney(purchaseUnitPrice), isProcuredExternally === true, id, businessContext
+                purchaseUnitPrice !== undefined
+                    ? toOptionalMoney(purchaseUnitPrice)
+                    : existing.rows[0].purchase_unit_price,
+                isProcuredExternally === true, id, businessContext
             ]
         );
 

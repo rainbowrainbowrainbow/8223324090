@@ -94,6 +94,7 @@ function loadBackupAuditRouter({
         }],
         ['../services/adminAudit', { logAdminAction, logAdminActionStrict }],
         ['../middleware/auth', {
+            requireAction: () => (_req, _res, next) => next(),
             requireRole: () => (_req, _res, next) => next()
         }],
         ['../services/backupCatalog', { loadBackupCatalog: async () => ({ tables: [] }) }],
@@ -458,12 +459,27 @@ test('Telegram backup delivery is encrypted and fails closed without a key', () 
     );
 });
 
-test('large restore parser runs after auth and the creator/director role gate', () => {
+test('backup recovery metadata and restore routes require manage_settings', () => {
+    const source = read('routes', 'backup.js');
+    assert.match(source, /const requireSettingsManagement = requireAction\('manage_settings'\);/);
+    assert.match(source, /const requireRevenueView = requireAction\('view_revenue'\);/);
+    assert.match(source, /router\.get\('\/verify', requireSettingsManagement,/);
+    assert.match(source, /router\.post\('\/restore', requireSettingsManagement,/);
+    assert.match(source, /router\.post\('\/restore-encrypted', requireSettingsManagement,/);
+    assert.match(source, /router\.get\('\/tables', requireSettingsManagement,/);
+    assert.match(source, /router\.post\('\/create', requireDataExport, requireRevenueView,/);
+    assert.match(source, /router\.get\('\/download', requireDataExport, requireRevenueView,/);
+    assert.match(source, /router\.get\('\/download-encrypted', requireDataExport, requireRevenueView,/);
+});
+
+test('large restore parser runs after auth, role and manage_settings gates', () => {
     const source = read('server.js');
     const auth = source.indexOf("app.use('/api', apiAuthBoundary(authenticateToken))");
     const role = source.indexOf('const backupRestorePreParserGuard', auth);
-    const parser = source.indexOf('express.json({ limit: BACKUP_RESTORE_JSON_LIMIT })', role);
-    assert.ok(auth >= 0 && role > auth && parser > role);
+    const settings = source.indexOf("const backupRestorePreParserSettingsGuard = requireAction('manage_settings');", role);
+    const parser = source.indexOf('express.json({ limit: BACKUP_RESTORE_JSON_LIMIT })', settings);
+    assert.ok(auth >= 0 && role > auth && settings > role && parser > settings);
+    assert.match(source, /backupRestorePreParserGuard,\s*backupRestorePreParserSettingsGuard,\s*express\.json/);
     assert.match(source, /const requestPath = String\(req\.originalUrl \|\| req\.url \|\| req\.path \|\| ''\)/);
     assert.match(source, /if \(isBackupRestoreRequest\(req\)\) return next\(\)/);
     assert.equal(isBackupRestoreRequestPath('/api/backup/restore'), true);

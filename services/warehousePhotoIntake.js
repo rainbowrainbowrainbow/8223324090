@@ -556,6 +556,13 @@ function mergeDraft(current, overrides = {}) {
     });
 }
 
+function effectiveDraftHasPrice(current = {}, overrides = {}) {
+    const effectivePrice = Object.prototype.hasOwnProperty.call(overrides || {}, 'price')
+        ? overrides.price
+        : current?.price;
+    return effectivePrice !== undefined && effectivePrice !== null && effectivePrice !== '';
+}
+
 async function confirmIntake(id, options = {}) {
     const client = await pool.connect();
     try {
@@ -577,6 +584,10 @@ async function confirmIntake(id, options = {}) {
         if (!MANUAL_REVIEW_STATUSES.has(row.status)) {
             await client.query('ROLLBACK');
             return { success: false, status: 409, error: 'intake_not_reviewable' };
+        }
+        if (options.allowRevenueWrite === false && effectiveDraftHasPrice(row.draft || {}, options.draft || {})) {
+            await client.query('ROLLBACK');
+            return { success: false, status: 403, error: 'Insufficient permissions' };
         }
 
         const draft = mergeDraft(row.draft || {}, options.draft || {});

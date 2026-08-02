@@ -210,6 +210,10 @@
     }
 
     function canConfigure() {
+        const settingsDecision = typeof window.resolveCapability === 'function'
+            ? window.resolveCapability(window.AppState?.currentUser || null, 'manage_settings', { type: 'action' })
+            : null;
+        if (settingsDecision?.allowed !== true) return false;
         const api = contextApi();
         if (!api?.canUseAction) return false;
         return api.canUseAction('settings', window.AppState?.currentUser || null);
@@ -1009,7 +1013,7 @@
         const authenticated = hasAuthenticatedTimelineUser();
         const allowed = authenticated && canConfigure();
         if (state.toggleBtn) {
-            state.toggleBtn.classList.remove('hidden');
+            state.toggleBtn.classList.toggle('hidden', !allowed);
             state.toggleBtn.dataset.timelineSettingsAllowed = allowed ? 'true' : 'false';
         }
         if (!allowed && state.constructorActive) toggleConstructorMode(false);

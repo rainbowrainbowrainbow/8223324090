@@ -96,6 +96,23 @@
             : [workingRole, user.effectiveRole, user.workingRole, user.activeRole, user.role, ...(user.roles || []), ...(user.extraRoles || []), ...(user.extra_roles || [])];
         return roles.filter(Boolean).some(role => SUMMARY_ARRIVAL_EDIT_ROLES.has(String(role)));
     }
+    function summaryCanExportPdf() {
+        if (currentSummary?.modeContract?.showPrices === false) return false;
+        try {
+            return typeof canAccess === 'function'
+                && canAccess('view_revenue')
+                && canAccess('export_data');
+        } catch {
+            return false;
+        }
+    }
+
+    function syncSummaryPdfAccess() {
+        const button = el('bookingSummaryClientPdf');
+        if (!button) return;
+        button.hidden = !summaryCanExportPdf();
+    }
+
 
     function summaryArrivalGroupId(summary = currentSummary) {
         return String(summary?.group?.id || currentSummaryRequest.groupId || '').trim();
@@ -1445,6 +1462,10 @@
             showToast('Банкетний лист ще не завантажений');
             return;
         }
+        if (!summaryCanExportPdf()) {
+            showToast('Недостатньо прав для експорту PDF');
+            return;
+        }
         const token = storedToken();
         if (!token) {
             showToast('Потрібно увійти в CRM, щоб експортувати PDF');
@@ -1528,6 +1549,7 @@
         }
 
         currentSummary = data;
+        syncSummaryPdfAccess();
         renderWarnings(summaryModeSection(data, 'warnings', mode) ? data.warnings : []);
         renderDocument(data);
         renderArrivalEditor(data, { edit: params.get('editArrival') === '1' });
@@ -1593,6 +1615,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
+        syncSummaryPdfAccess();
+        window.addEventListener('crm:authenticated-runtime-ready', syncSummaryPdfAccess, { once: true });
         bindActions();
         loadSummary().catch(err => {
             console.error('[booking-summary] load failed', err);

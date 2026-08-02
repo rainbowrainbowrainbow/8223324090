@@ -5,7 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const { pool } = require('../db');
-const { authenticateToken, ROLE_LEVEL } = require('../middleware/auth');
+const { authenticateToken, canUseAction, ROLE_LEVEL } = require('../middleware/auth');
 const { getDefaultWidgets, canAccessDashboardWidget } = require('../config/roles');
 const { createLogger } = require('../utils/logger');
 const { getKyivDateStr } = require('../services/booking');
@@ -22,6 +22,7 @@ const {
     requireBusinessScope,
     pushBusinessScopeCondition
 } = require('../services/businessContext');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 
 const log = createLogger('Dashboard');
 const SALES_LEAD_TYPE_FILTER = "COALESCE(lead_type, 'quality') = 'quality'";
@@ -41,6 +42,33 @@ const URGENT_TASK_MOVEMENT_ACTION_TYPES = [
 
 // All routes require authentication
 router.use(authenticateToken);
+
+function shapeDashboardRevenue(req, res, next) {
+    return installRevenueResponseShaper(
+        req,
+        res,
+        next,
+        canUseAction(req.user, 'view_revenue'),
+        { redactText: true }
+    );
+}
+
+const REVENUE_ONLY_DASHBOARD_WIDGETS = new Set([
+    'finance_today',
+    'reports_today',
+    'director_pnl'
+]);
+
+function requireDashboardWidgetRevenue(req, res, next) {
+    if (!REVENUE_ONLY_DASHBOARD_WIDGETS.has(req.params.type)) return next();
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
+
+function allowDashboardPublicCatalogResponse(req, res, next) {
+    if (req.params.type === 'catalogs') res.locals.revenueResponseMode = 'public-catalog';
+    return next();
+}
 
 function dashboardBusinessScope(req, res) {
     const scope = resolveBusinessScope(req);
@@ -839,7 +867,7 @@ router.put('/config', async (req, res) => {
 });
 
 // GET /api/dashboard/widgets/:type — widget-specific data
-router.get('/widgets/:type', async (req, res) => {
+router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublicCatalogResponse, shapeDashboardRevenue, async (req, res) => {
     try {
         const { type } = req.params;
         const widgetAccess = canAccessDashboardWidget(req.user.role, type, ROLE_LEVEL);
@@ -1823,7 +1851,7 @@ router.get('/roles', async (req, res) => {
 });
 
 // GET /api/dashboard/today — aggregate "today" data for quick overview
-router.get('/today', async (req, res) => {
+router.get('/today', shapeDashboardRevenue, async (req, res) => {
     try {
         const businessScope = dashboardBusinessScope(req, res);
         if (!businessScope) return;

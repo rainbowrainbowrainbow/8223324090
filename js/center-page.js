@@ -24,6 +24,53 @@ let admissionTicketCatalog = null;
 let admissionTicketCatalogLoading = false;
 let admissionTicketTariffSaving = false;
 let canEditAdmissionTicketTariffs = false;
+let canViewCenterRevenue = false;
+let canManageCenterSettings = false;
+const CENTER_FINANCIAL_ONLY_SECTIONS = new Set([
+    'chartsSection', 'conversionSection', 'goalsSection', 'pricesSection',
+    'discountsSection', 'proposalsSection', 'reconciliationSection'
+]);
+
+function syncCenterRevenueUi() {
+    document.querySelectorAll('.center-section').forEach(section => {
+        if (CENTER_FINANCIAL_ONLY_SECTIONS.has(section.id)) section.hidden = !canViewCenterRevenue;
+    });
+    const loyaltyRecalculate = document.querySelector('[data-revenue-action="recalculate-loyalty"]');
+    if (loyaltyRecalculate) loyaltyRecalculate.hidden = !canViewCenterRevenue;
+}
+
+function scrubCenterFinancialFragments() {
+    if (canViewCenterRevenue) return;
+
+    document.querySelectorAll('#kpiGrid .kpi-card').forEach(card => {
+        const label = card.querySelector('.kpi-card-label')?.textContent.trim();
+        if (card.querySelector('.kpi-card-value.revenue') || label === 'Сер. чек') card.remove();
+    });
+    document.querySelectorAll('#centerTruthStrip .center-truth-card').forEach(card => {
+        if (card.querySelector('small')?.textContent.includes('підтверджених')) card.remove();
+    });
+    document.querySelectorAll([
+        '.briefing-day-count',
+        '.addon-row-revenue',
+        '.client-card .revenue',
+        '.client-booking-price'
+    ].join(',')).forEach(element => element.remove());
+
+    const briefingSummary = document.querySelector('#briefingContent .briefing-card:first-child > div:nth-child(2)');
+    if (briefingSummary?.lastElementChild?.textContent.trim() === '\u2014') briefingSummary.lastElementChild.remove();
+    const performanceTable = document.querySelector('#perfContent table');
+    const financialColumns = [...(performanceTable?.querySelectorAll('thead th') || [])]
+        .map((header, index) => ({ index, label: header.textContent.trim() }))
+        .filter(column => ['Виручка', 'Сер. чек'].includes(column.label))
+        .map(column => column.index)
+        .sort((a, b) => b - a);
+    performanceTable?.querySelectorAll('tr').forEach(row => {
+        financialColumns.forEach(index => row.children[index]?.remove());
+    });
+    document.querySelectorAll('#clientBookingsContent .client-profile-stat').forEach(stat => {
+        if (stat.querySelector('.client-profile-stat-label')?.textContent.trim() === 'Витрачено') stat.remove();
+    });
+}
 const centerSectionState = new Map();
 
 const BANQUET_TERMS_PRICE_RULES = Object.freeze([
@@ -392,8 +439,16 @@ function timeAgo(dateStr) {
 }
 
 function formatPrice(amount) {
+    if (!canViewCenterRevenue) return '\u2014';
     if (amount === null || amount === undefined) return '0 ₴';
     return Number(amount).toLocaleString('uk-UA') + ' ₴';
+}
+
+function formatCatalogPrice(amount) {
+    if (amount === null || amount === undefined) return '0 ₴';
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) return '0 ₴';
+    return numericAmount.toLocaleString('uk-UA') + ' ₴';
 }
 
 function escapeHtml(str) {
@@ -591,6 +646,7 @@ function renderKPI(kpi, period) {
         </div>
     `;
     renderCenterTruth(centerData);
+    scrubCenterFinancialFragments();
 }
 
 // ==========================================
@@ -1211,11 +1267,14 @@ function renderLoyaltyTiers(tiers, customerCounts) {
 
     grid.innerHTML = tiers.map(t => {
         const count = customerCounts ? (customerCounts[t.name] || 0) : 0;
+        const financialDetails = canViewCenterRevenue
+            ? `<div class="loyalty-tier-discount" style="color: ${t.color}">${t.discount_percent}%</div>
+            <div class="loyalty-tier-reqs">від ${t.min_bookings} броней / ${formatPrice(t.min_spent)}</div>`
+            : `<div class="loyalty-tier-reqs">від ${t.min_bookings} броней</div>`;
         return `
         <div class="loyalty-tier-card" style="background: ${t.color}15; border-color: ${t.color}40">
             <div class="loyalty-tier-name" style="color: ${t.color}">${escapeHtml(t.name)}</div>
-            <div class="loyalty-tier-discount" style="color: ${t.color}">${t.discount_percent}%</div>
-            <div class="loyalty-tier-reqs">від ${t.min_bookings} броней / ${formatPrice(t.min_spent)}</div>
+            ${financialDetails}
             <div class="loyalty-tier-count">${count} клієнтів</div>
         </div>`;
     }).join('');
@@ -1229,6 +1288,7 @@ function renderLoyaltyTiers(tiers, customerCounts) {
 }
 
 async function recalculateLoyalty() {
+    if (!canViewCenterRevenue) return;
     showNotification('Перерахунок лояльності...', '');
     const result = await apiRecalculateLoyalty();
     if (result.success) {
@@ -1928,7 +1988,7 @@ function renderHeatmap(data) {
             const ed = typeof e.date === 'string' ? e.date : e.date?.toISOString().split('T')[0];
             return ed === dateStr;
         });
-        const revStr = rev ? ` | ${formatPrice(rev.revenue)}` : '';
+        const revStr = canViewCenterRevenue && rev ? ` | ${formatPrice(rev.revenue)}` : '';
 
         currentWeek.push(inRange
             ? `<div class="heatmap-cell level-${level}" title="${dateStr}: ${count} бронювань${revStr}"></div>`
@@ -2165,7 +2225,7 @@ function renderCatalog(products) {
         const kids = p.kidsCapacity || p.kids_capacity || '';
         const age = p.ageRange || p.age_range || '';
         const meta = [dur, hosts, kids, age].filter(Boolean).join(' | ');
-        const priceVal = p.isPerChild || p.is_per_child ? `${formatPrice(p.price)}/дит` : formatPrice(p.price);
+        const priceVal = p.isPerChild || p.is_per_child ? `${formatCatalogPrice(p.price)}/дит` : formatCatalogPrice(p.price);
         return `
         <div class="catalog-card">
             <div class="catalog-card-icon">${icon}</div>
@@ -2428,8 +2488,8 @@ function renderOpsIssue(issue = {}) {
 
 function renderOpsBooking(booking = {}) {
     const isPreliminary = booking.status === 'preliminary';
-    const paymentTone = Number(booking.debtAmount || 0) > 0 ? 'warning' : 'ok';
-    const paymentLabel = Number(booking.debtAmount || 0) > 0 ? `борг ${opsMoney(booking.debtAmount)}` : 'оплачено';
+    const paymentTone = canViewCenterRevenue && Number(booking.debtAmount || 0) > 0 ? 'warning' : 'ok';
+    const paymentLabel = canViewCenterRevenue ? (Number(booking.debtAmount || 0) > 0 ? `борг ${opsMoney(booking.debtAmount)}` : 'оплачено') : null;
     return `<div class="center-ops-row">
         <div class="center-ops-time">${escapeHtml(booking.time || '—')}</div>
         <div class="center-ops-row-main">
@@ -2437,7 +2497,7 @@ function renderOpsBooking(booking = {}) {
             ${opsRowMeta([booking.room, booking.clientName, booking.status])}
         </div>
         <div class="center-ops-row-tags">
-            ${opsBadge(paymentLabel, paymentTone)}
+            ${paymentLabel ? opsBadge(paymentLabel, paymentTone) : ''}
             ${isPreliminary ? opsBadge('не підтверджено', 'warning') : opsBadge('підтверджено', 'ok')}
         </div>
         <div class="center-ops-actions">
@@ -3000,9 +3060,13 @@ async function initAuth() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
-    canEditAdmissionTicketTariffs = typeof hasMinRole === 'function'
+    canViewCenterRevenue = typeof canAccess === 'function' && canAccess('view_revenue');
+    canManageCenterSettings = typeof canAccess === 'function' && canAccess('manage_settings');
+    canEditAdmissionTicketTariffs = canViewCenterRevenue
+        && canManageCenterSettings
+        && (typeof hasMinRole === 'function'
         ? hasMinRole('senior_manager')
-        : ['creator', 'director', 'vice_director', 'senior_manager'].includes(user.role);
+        : ['creator', 'director', 'vice_director', 'senior_manager'].includes(user.role));
 
     // Set username
     const userEl = document.getElementById('currentUser');
@@ -3167,6 +3231,7 @@ function renderAdmissionTicketCatalog() {
                 </tbody>
             </table>
         </div>`;
+    scrubCenterFinancialFragments();
 }
 
 async function loadAdmissionTicketCatalog({ force = false } = {}) {
@@ -3370,6 +3435,7 @@ async function initCenterPage() {
     }
 
     bindAdmissionTicketCatalogUi();
+    syncCenterRevenueUi();
     if (new URLSearchParams(window.location.search).get('tab') === 'tickets') {
         void loadAdmissionTicketCatalog();
     }
@@ -3464,6 +3530,7 @@ function enhanceCenterSectionHeaders() {
 }
 
 function centerSectionLoader(sectionId) {
+    if (!canViewCenterRevenue && CENTER_FINANCIAL_ONLY_SECTIONS.has(sectionId)) return null;
     const loaders = {
         kpiSection: loadOverview,
         hotLeadsSection: loadHotLeads,
@@ -3528,6 +3595,7 @@ async function loadCenterSection(sectionId, { force = false } = {}) {
     const promise = Promise.resolve()
         .then(loader)
         .then(() => {
+            scrubCenterFinancialFragments();
             const failed = Boolean(section?.querySelector('.center-state.is-error, .center-state--error, .center-error'));
             centerSectionState.set(sectionId, { status: failed ? 'error' : 'loaded', promise: null });
             if (failed) centerSectionRetry(section);

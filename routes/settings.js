@@ -55,7 +55,8 @@ const {
     saveGuardianSettings
 } = require('../services/ai-config');
 
-const { requireRole, requireMinRole, authenticateToken } = require('../middleware/auth');
+const { requireRole, requireMinRole, requireAction, authenticateToken } = require('../middleware/auth');
+const { isSafeSettingReadKey } = require('../services/settingsAccessPolicy');
 const log = createLogger('Settings');
 
 function activeBookingStatusSql(alias = '') {
@@ -238,7 +239,12 @@ router.get('/health/deep', async (req, res) => {
 // v39.8: Security — require authentication for remaining endpoints
 router.use(authenticateToken);
 
-const CHAT_SETTINGS_ROLES = ['creator', 'director', 'admin'];
+const CHAT_SETTINGS_ROLES = ['creator', 'director'];
+const requireSettingsManagement = requireAction('manage_settings');
+function requireSettingReadAccess(req, res, next) {
+    if (isSafeSettingReadKey(req.params?.key)) return next();
+    return requireSettingsManagement(req, res, next);
+}
 
 function auditChatSettings(req, target, details) {
     logAdminAction('chat_settings_update', 'settings', {
@@ -251,7 +257,7 @@ function auditChatSettings(req, target, details) {
 }
 
 // v0.55.1: Dedicated chat/AI/integration/guardian settings surface.
-router.get('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.get('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         res.json(await getChatSettingsBundle());
     } catch (err) {
@@ -260,7 +266,7 @@ router.get('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, re
     }
 });
 
-router.get('/settings/ai/providers', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.get('/settings/ai/providers', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         res.json(await getAIProviderDiagnostics());
     } catch (err) {
@@ -269,7 +275,7 @@ router.get('/settings/ai/providers', requireRole(...CHAT_SETTINGS_ROLES), async 
     }
 });
 
-router.put('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.put('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         const body = req.body || {};
         if (body.chatAi) await saveChatAISettings(body.chatAi);
@@ -285,7 +291,7 @@ router.put('/settings/chat', requireRole(...CHAT_SETTINGS_ROLES), async (req, re
     }
 });
 
-router.get('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.get('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         res.json(publicAIConfig(await getUnifiedAIConfig({ scope: 'chat_ai' })));
     } catch (err) {
@@ -294,7 +300,7 @@ router.get('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), async (req,
     }
 });
 
-router.put('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.put('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         await saveChatAISettings(req.body || {});
         auditChatSettings(req, 'chat_ai', {
@@ -310,7 +316,7 @@ router.put('/settings/chat/ai', requireRole(...CHAT_SETTINGS_ROLES), async (req,
     }
 });
 
-router.post('/settings/chat/ai/test', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.post('/settings/chat/ai/test', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         const result = await testUnifiedAIConfig({
             scope: 'chat_ai',
@@ -323,7 +329,7 @@ router.post('/settings/chat/ai/test', requireRole(...CHAT_SETTINGS_ROLES), async
     }
 });
 
-router.get('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.get('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         res.json(await getStoredIntegrationsSettings());
     } catch (err) {
@@ -332,7 +338,7 @@ router.get('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), a
     }
 });
 
-router.put('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.put('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         const settings = await saveIntegrationsSettings(req.body || {});
         auditChatSettings(req, 'chat_integrations', settings);
@@ -343,7 +349,7 @@ router.put('/settings/chat/integrations', requireRole(...CHAT_SETTINGS_ROLES), a
     }
 });
 
-router.get('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.get('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         const [settings, ai] = await Promise.all([
             getStoredGuardianSettings(),
@@ -356,7 +362,7 @@ router.get('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), async
     }
 });
 
-router.put('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), async (req, res) => {
+router.put('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), requireSettingsManagement, async (req, res) => {
     try {
         const settings = await saveGuardianSettings(req.body || {});
         auditChatSettings(req, 'guardian_ai', {
@@ -376,7 +382,7 @@ router.put('/settings/chat/guardian', requireRole(...CHAT_SETTINGS_ROLES), async
     }
 });
 
-router.get('/stats/:dateFrom/:dateTo', requireRole('creator', 'director'), async (req, res) => {
+router.get('/stats/:dateFrom/:dateTo', requireRole('creator', 'director'), requireAction('view_revenue'), async (req, res) => {
     try {
         const { dateFrom, dateTo } = req.params;
         if (!validateDate(dateFrom) || !validateDate(dateTo)) {
@@ -447,7 +453,7 @@ router.get('/settings/timeline-visibility', async (req, res) => {
     }
 });
 
-router.put('/settings/timeline-visibility', async (req, res) => {
+router.put('/settings/timeline-visibility', requireSettingsManagement, async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
         const view = timelineVisibilityViewFromRequest(req);
@@ -517,7 +523,7 @@ router.get('/settings/timeline-display', async (req, res) => {
     }
 });
 
-router.put('/settings/timeline-display', async (req, res) => {
+router.put('/settings/timeline-display', requireSettingsManagement, async (req, res) => {
     try {
         const context = timelineContextFromRequest(req);
         if (!requireTimelineAction(req, res, context, 'settings')) return;
@@ -608,7 +614,7 @@ router.get('/business/cabinet', async (req, res) => {
     }
 });
 
-router.put('/business/cabinet', requireRole('creator', 'director'), async (req, res) => {
+router.put('/business/cabinet', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const scope = resolveBusinessScope(req);
         if (!requireWritableBusinessScope(req, res, scope)) return;
@@ -649,7 +655,7 @@ router.put('/business/cabinet', requireRole('creator', 'director'), async (req, 
     }
 });
 
-router.get('/settings/:key', async (req, res) => {
+router.get('/settings/:key', requireSettingReadAccess, async (req, res) => {
     try {
         const key = req.params.key;
         const cached = settingsCache.get(key);
@@ -665,7 +671,7 @@ router.get('/settings/:key', async (req, res) => {
     }
 });
 
-router.post('/settings', requireRole('creator', 'director'), async (req, res) => {
+router.post('/settings', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const { key, value } = req.body;
         if (!key || !validateSettingKey(key)) {
@@ -692,7 +698,7 @@ router.post('/settings', requireRole('creator', 'director'), async (req, res) =>
 });
 
 // v33.3: PUT /api/settings/language — dedicated language endpoint
-router.put('/settings/language', requireRole('creator', 'director', 'admin', 'user'), async (req, res) => {
+router.put('/settings/language', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const { value } = req.body;
         if (!['uk', 'en'].includes(value)) {
@@ -817,7 +823,7 @@ router.get('/rooms/free/:date/:time/:duration', async (req, res) => {
 // v39.8: /health moved before auth middleware (see above)
 
 // v8.3: Automation rules CRUD
-router.get('/automation-rules', async (req, res) => {
+router.get('/automation-rules', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM automation_rules ORDER BY created_at DESC LIMIT 500');
         res.json(result.rows);
@@ -828,7 +834,7 @@ router.get('/automation-rules', async (req, res) => {
     }
 });
 
-router.post('/automation-rules', requireRole('creator', 'director'), async (req, res) => {
+router.post('/automation-rules', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const { name, trigger_type, trigger_condition, actions, days_before } = req.body;
         if (!name || !trigger_condition || !actions) {
@@ -846,7 +852,7 @@ router.post('/automation-rules', requireRole('creator', 'director'), async (req,
     }
 });
 
-router.put('/automation-rules/:id', requireRole('creator', 'director'), async (req, res) => {
+router.put('/automation-rules/:id', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const { id } = req.params;
         const { name, trigger_type, trigger_condition, actions, days_before, is_active } = req.body;
@@ -861,7 +867,7 @@ router.put('/automation-rules/:id', requireRole('creator', 'director'), async (r
     }
 });
 
-router.delete('/automation-rules/:id', requireRole('creator', 'director'), async (req, res) => {
+router.delete('/automation-rules/:id', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         await pool.query('DELETE FROM automation_rules WHERE id = $1', [req.params.id]);
         res.json({ success: true });
@@ -872,7 +878,7 @@ router.delete('/automation-rules/:id', requireRole('creator', 'director'), async
 });
 
 // v17.9.0: System status — management-only comprehensive health dashboard
-router.get('/system-status', requireRole('creator', 'director', 'vice_director', 'senior_manager'), async (req, res) => {
+router.get('/system-status', requireRole('creator', 'director'), requireSettingsManagement, async (req, res) => {
     try {
         const startMs = Date.now();
 

@@ -4,7 +4,8 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, canUseAction } = require('../middleware/auth');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     requireBusinessScope,
@@ -22,6 +23,13 @@ const log = createLogger('History');
 
 // All history routes require authentication
 router.use(authenticateToken);
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue'),
+    { redactText: true }
+));
 
 router.get('/', async (req, res) => {
     try {

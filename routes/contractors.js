@@ -7,12 +7,23 @@ const { pool } = require('../db');
 const { sendTelegramMessage } = require('../services/telegram');
 const { createLogger } = require('../utils/logger');
 
-const { authenticateToken, requireRole } = require('../middleware/auth');
+const { authenticateToken, canUseAction, requireRole } = require('../middleware/auth');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const log = createLogger('Contractors');
 
 // RBAC: Contractors — authentication + management only
 router.use(authenticateToken);
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue')
+));
+function requireContractorRevenueFieldWrite(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue') || !Object.prototype.hasOwnProperty.call(req.body || {}, 'priceNote')) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
 
 // GET /api/contractors — list all contractors with stats
 router.get('/', async (req, res) => {
@@ -241,7 +252,7 @@ router.get('/:id', async (req, res) => {
 });
 
 // POST /api/contractors — create contractor
-router.post('/', async (req, res) => {
+router.post('/', requireContractorRevenueFieldWrite, async (req, res) => {
     try {
         const {
             name, specialty, telegram_chat_id, telegram_username, phone, notes, category, sla_response_minutes,
@@ -295,7 +306,7 @@ router.post('/', async (req, res) => {
 });
 
 // PUT /api/contractors/:id — update contractor
-router.put('/:id', async (req, res) => {
+router.put('/:id', requireContractorRevenueFieldWrite, async (req, res) => {
     try {
         const { id } = req.params;
         const {
@@ -303,6 +314,11 @@ router.put('/:id', async (req, res) => {
             preferredChannel, firstMessageTemplate, repeatOrderTemplate, introContext,
             orderingNotes, isPreferred, reliabilityScore, priceNote, leadTimeDays, minimumOrderNote
         } = req.body;
+        const existing = await pool.query('SELECT price_note FROM contractors WHERE id = $1', [id]);
+        if (existing.rows.length === 0) {
+            return res.status(404).json({ error: 'Підрядника не знайдено' });
+        }
+        const nextPriceNote = priceNote !== undefined ? (priceNote || null) : existing.rows[0].price_note;
 
         const result = await pool.query(
             `UPDATE contractors SET name=$1, specialty=$2, telegram_chat_id=$3, telegram_username=$4,
@@ -325,7 +341,7 @@ router.put('/:id', async (req, res) => {
                 orderingNotes || null,
                 isPreferred === true,
                 Number(reliabilityScore || 0),
-                priceNote || null,
+                nextPriceNote,
                 leadTimeDays || null,
                 minimumOrderNote || null,
                 id

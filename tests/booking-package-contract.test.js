@@ -7326,5 +7326,6 @@ test('Customers create deep link uses canonical modal and customer handoff contr
     assert.ok(customersJs.includes("handoffApi.sendCreated(request, 'customer.created', { customerId: normalizedCustomerId })"));
     assert.ok(customersJs.includes('completeCustomerCreateHandoff(result.id)'));
     assert.ok(customersJs.includes("'reception'"));
-    assert.ok(customersJs.includes("document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';"));
+    assert.ok(customersJs.includes("document.getElementById('exportCsvBtn').style.display = canManage && canExportCustomerData(true) ? '' : 'none';"));
+    assert.ok(customersJs.includes("document.getElementById('exportVcfBtn').style.display = canManage && canExportCustomerData() ? '' : 'none';"));
 });

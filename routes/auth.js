@@ -15,9 +15,11 @@ const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
-    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, normalizePageDenylist, requireAction
+    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, normalizePageDenylist, requireAction,
+    canUseAction
 } = require('../middleware/auth');
 const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
+const { shapeRevenuePayload } = require('../services/revenueAccessPolicy');
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
 const { createLogger } = require('../utils/logger');
 const { LOGIN_IDENTITY_WHERE_SQL, normalizeLoginIdentifier } = require('../services/authIdentity');
@@ -375,6 +377,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         ownerT.match = `${ownerT.match} AND ${ownerTBusinessCondition}`;
         const MANAGEMENT_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'admin'];
         const isAdminRole = MANAGEMENT_ROLES.includes(user.role);
+        const canViewRevenue = canUseAction(req.user, 'view_revenue');
         const teamTaskParams = [];
         const teamTaskBusinessCondition = pushBusinessScopeCondition(teamTaskParams, businessScope, 't');
         const pointTaskParams = [username];
@@ -970,7 +973,7 @@ router.get('/profile', authenticateToken, async (req, res) => {
         // Auto-check achievements
         await _checkAndGrantAchievements(username, { tasks, bookings, streak, points });
 
-        res.json({
+        const profilePayload = {
             user: {
                 username: user.username,
                 name: user.name,
@@ -1006,8 +1009,9 @@ router.get('/profile', authenticateToken, async (req, res) => {
             profilePreferences: {
                 cockpitWidgets: normalizeProfileCockpitWidgets(user.profile_cockpit_widgets)
             },
-            showRevenue: isAdminRole
-        });
+            showRevenue: canViewRevenue
+        };
+        res.json(shapeRevenuePayload(profilePayload, canViewRevenue));
     } catch (err) {
         log.error('Profile error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1361,7 +1365,10 @@ router.get('/action-log', authenticateToken, async (req, res) => {
             'SELECT COUNT(*)::int as total FROM user_action_log WHERE username = $1',
             [targetUser]
         );
-        res.json({ items: result.rows, total: countR.rows[0].total });
+        res.json(shapeRevenuePayload(
+            { items: result.rows, total: countR.rows[0].total },
+            canUseAction(req.user, 'view_revenue')
+        ));
     } catch (err) {
         log.error('Action log error', err);
         res.status(500).json({ error: 'Internal server error' });

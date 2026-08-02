@@ -28,7 +28,7 @@ function centerSectionMarkup(id, label) {
     </section>`;
 }
 
-function createHarness() {
+function createHarness({ canViewRevenue = true } = {}) {
     const dom = new JSDOM(`<!doctype html><html><body>
         ${centerSectionMarkup('kpiSection', 'KPI')}
         ${centerSectionMarkup('chartsSection', 'Charts')}
@@ -47,6 +47,9 @@ function createHarness() {
     });
 
     vm.runInContext(`
+        let canViewCenterRevenue = ${canViewRevenue};
+        const CENTER_FINANCIAL_ONLY_SECTIONS = new Set(['chartsSection', 'goalsSection']);
+        function scrubCenterFinancialFragments() {}
         const centerSectionState = new Map();
         ${centerPageSource.slice(lifecycleStart, lifecycleEnd)}
         this.__centerLazyLoadingHooks = {
@@ -112,6 +115,23 @@ test('Center loads every restored visible section once and skips collapsed secti
     await hooks.loadInitiallyVisibleCenterSections();
     assert.equal(harness.callCount('loadOverview'), 1, 'KPI cache prevents a duplicate request');
     assert.equal(harness.callCount('loadCharts'), 1, 'restored Charts cache prevents a duplicate request');
+    harness.dom.window.close();
+});
+
+test('Center denied revenue access does not load restored financial-only sections', async () => {
+    const harness = createHarness({ canViewRevenue: false });
+    harness.dom.window.localStorage.setItem('center_collapsed', JSON.stringify({
+        chartsSection: false,
+        goalsSection: false
+    }));
+
+    harness.hooks.enhanceCenterSectionHeaders();
+    harness.hooks.restoreCollapsedState();
+    await harness.hooks.loadInitiallyVisibleCenterSections();
+
+    assert.equal(harness.callCount('loadOverview'), 1);
+    assert.equal(harness.callCount('loadCharts'), 0);
+    assert.equal(harness.callCount('loadGoals'), 0);
     harness.dom.window.close();
 });
 

@@ -587,24 +587,26 @@
         const id = taskId(task || options.task || {}) || taskId({ id: options.taskId || options.task_id });
         if (!id) throw new Error('Не вдалося визначити задачу для звіту');
         const title = task.title || options.title || `Задача #${id}`;
+        const canViewRevenue = typeof canAccess === 'function' && canAccess('view_revenue');
+        const reportFields = [
+            {
+                key: 'reportText',
+                label: 'Що зроблено',
+                type: 'textarea',
+                required: true,
+                placeholder: 'Коротко опишіть результат, нюанси або що треба знати після виконання...'
+            },
+            ...(canViewRevenue ? [{
+                key: 'amount',
+                label: 'Сума, якщо є',
+                type: 'number',
+                defaultValue: '',
+                placeholder: '0'
+            }] : [])
+        ];
         let values = null;
         if (typeof formModal === 'function') {
-            values = await formModal('Звіт перед виконанням', [
-                {
-                    key: 'reportText',
-                    label: 'Що зроблено',
-                    type: 'textarea',
-                    required: true,
-                    placeholder: 'Коротко опишіть результат, нюанси або що треба знати після виконання...'
-                },
-                {
-                    key: 'amount',
-                    label: 'Сума, якщо є',
-                    type: 'number',
-                    defaultValue: '',
-                    placeholder: '0'
-                }
-            ], {
+            values = await formModal('Звіт перед виконанням', reportFields, {
                 okText: 'Зберегти звіт і виконати',
                 cancelText: 'Скасувати',
                 type: 'info',
@@ -616,18 +618,19 @@
             values = reportText ? { reportText, amount: '' } : null;
         }
         if (!values) return null;
+        const reportPayload = {
+            reportText: values.reportText,
+            category: 'Задача',
+            type: 'expense',
+            sourceSurface: options.sourceSurface || 'task_detail',
+            taskTitle: title
+        };
+        if (canViewRevenue) reportPayload.amount = values.amount;
         const base = typeof API_BASE === 'string' ? API_BASE : '/api';
         const response = await fetch(scopedTaskApiUrl(`${base}/tasks/${id}/completion-report`), {
             method: 'POST',
             headers: typeof getAuthHeaders === 'function' ? getAuthHeaders() : { 'Content-Type': 'application/json' },
-            body: JSON.stringify(scopedTaskPayload({
-                reportText: values.reportText,
-                amount: values.amount,
-                category: 'Задача',
-                type: 'expense',
-                sourceSurface: options.sourceSurface || 'task_detail',
-                taskTitle: title
-            }))
+            body: JSON.stringify(scopedTaskPayload(reportPayload))
         });
         if (typeof handleAuthError === 'function' && handleAuthError(response)) return null;
         const payload = await response.json().catch(() => ({}));

@@ -25,6 +25,9 @@ function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt
 // RBAC: Finance access — creator, director, accountant only
 router.use(requireRole('creator', 'director', 'accountant'));
 const FINANCE_MUTATION_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const requireFinanceRevenueView = requireAction('view_revenue');
+const requireFinanceExport = requireAction('export_data');
+router.use(requireFinanceRevenueView);
 const requireFinanceManagement = requireAction('finance.manage');
 router.use((req, res, next) => {
     if (!FINANCE_MUTATION_METHODS.has(req.method)) return next();
@@ -856,7 +859,7 @@ router.get('/budget/comparison', async (req, res) => {
 // EXCEL EXPORT (v17.0)
 // ==========================================
 
-router.get('/export-xlsx', async (req, res) => {
+router.get('/export-xlsx', requireFinanceExport, async (req, res) => {
     try {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
@@ -932,7 +935,7 @@ router.get('/export-xlsx', async (req, res) => {
 // CSV EXPORT
 // ==========================================
 
-router.get('/export', async (req, res) => {
+router.get('/export', requireFinanceExport, async (req, res) => {
     try {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;
@@ -1573,7 +1576,7 @@ router.post('/currency/convert', async (req, res) => {
 // v30.6: ACT OF COMPLETED WORK (Акт виконаних робіт)
 // ==========================================
 
-router.get('/act/:bookingId', async (req, res) => {
+router.get('/act/:bookingId', requireFinanceExport, async (req, res) => {
     try {
         const businessContext = requestFinanceBusinessContext(req, res);
         if (!businessContext) return;

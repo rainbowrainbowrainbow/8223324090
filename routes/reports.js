@@ -8,7 +8,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { requireRole } = require('../middleware/auth');
+const { requireAction, requireRole } = require('../middleware/auth');
 const {
     DEFAULT_BUSINESS_CONTEXT,
     businessContextFromRequest,
@@ -27,6 +27,13 @@ function getKleshnya() { return require('../services/kleshnya'); }
 
 // RBAC: Reports access — aligned with /reports page/sidebar visibility.
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'accountant'));
+const requireReportsRevenue = requireAction('view_revenue');
+router.use((req, res, next) => {
+    if (req.path === '/workflow-settings' || req.path === '/workflow-settings/') {
+        return next();
+    }
+    return requireReportsRevenue(req, res, next);
+});
 
 // ==========================================
 // HELPERS
@@ -1623,7 +1630,7 @@ router.post('/table/close', async (req, res) => {
 // ==========================================
 // TABLE EXPORTS - current table payload or locked snapshot
 // ==========================================
-router.post('/table/export-csv', async (req, res) => {
+router.post('/table/export-csv', requireAction('export_data'), async (req, res) => {
     try {
         const { table } = normalizeTablePayload(req.body);
         if (isPayrollTable(table)) {
@@ -1641,7 +1648,7 @@ router.post('/table/export-csv', async (req, res) => {
     }
 });
 
-router.post('/table/export-xlsx', async (req, res) => {
+router.post('/table/export-xlsx', requireAction('export_data'), async (req, res) => {
     try {
         const { table } = normalizeTablePayload(req.body);
         if (isPayrollTable(table)) {
@@ -1693,7 +1700,7 @@ router.post('/table/export-xlsx', async (req, res) => {
 // ==========================================
 // REPORT APPROVAL WORKFLOW - task-backed accountant review
 // ==========================================
-router.get('/workflow-settings', async (req, res) => {
+router.get('/workflow-settings', requireAction('manage_settings'), async (req, res) => {
     try {
         res.json(await getReportWorkflowSettings(req));
     } catch (err) {
@@ -1702,7 +1709,7 @@ router.get('/workflow-settings', async (req, res) => {
     }
 });
 
-router.put('/workflow-settings', async (req, res) => {
+router.put('/workflow-settings', requireAction('manage_settings'), async (req, res) => {
     try {
         res.json(await saveReportWorkflowSettings(req, req.body || {}));
     } catch (err) {

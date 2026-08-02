@@ -216,7 +216,7 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/chat-settings', label: 'Налаштування чату', group: 'system', canonicalPath: '/chat-settings',
-        defaultRoles: ['creator', 'director', 'admin'], risk: 'critical',
+        defaultRoles: ['creator', 'director'], risk: 'critical',
         frontendConsumers: [source('chat-settings.html', 'js/auth.js')],
         apiConsumers: [api('routes/settings.js', '/api/settings', null), api('routes/guardian.js', '/api/guardian', null)]
     }),
@@ -561,25 +561,115 @@ const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'view_revenue', label: 'Бачити виручку', group: 'finance',
         defaultRoles: [...MANAGER_UP, 'accountant'], risk: 'critical',
-        status: ACTION_STATUS.FRONTEND_ONLY, deprecated: true,
-        frontendConsumers: [source('js/booking.js', "canAccess('view_revenue')", { enforces: true })],
-        notes: 'UI masking exists, but no matching server-side data guard was found.'
+        frontendConsumers: [
+            source('js/auth.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/app.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/booking.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/booking-summary-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/center-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/customers-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/dashboard-page.js', "canUseDashboardAction('view_revenue')", { enforces: true }),
+            source('js/finance-page.js', "financeCanUsePayrollAction('view_revenue')", { enforces: true }),
+            source('js/graduation.js', "canUseGraduationCapability('view_revenue')", { enforces: true }),
+            source('js/leads-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/reports-page.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/task-create.js', "canAccess('view_revenue')", { enforces: true }),
+            source('js/warehouse-page.js', "canAccess('view_revenue')", { enforces: true })
+        ],
+        backendConsumers: [
+            source('routes/auth.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/board.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/bookings.js', "canUseAction(user, 'view_revenue')", { enforces: true }),
+            source('routes/center.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/contractors.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/customers.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/dashboard.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/event-queue.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/graduation.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/hermes.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/history.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/leads.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/loyalty.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/print.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/procurement.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/sales.js', "requireAction('view_revenue')", { enforces: true }),
+            source('routes/search.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/tasks.js', "canUseAction(req.user, 'view_revenue')", { enforces: true }),
+            source('routes/warehouse.js', "canUseAction(req.user, 'view_revenue')", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/analytics.js', '/api/analytics revenue endpoints', 'view_revenue'),
+            api('routes/backup.js', '/api/backup full artifact exports', 'view_revenue'),
+            api('routes/bookings.js', '/api/bookings/:id/banquet-summary.pdf', 'view_revenue'),
+            api('routes/center.js', '/api/center financial reads and settings-backed prices', 'view_revenue'),
+            api('routes/customers.js', '/api/customers financial analytics and exports', 'view_revenue'),
+            api('routes/finance.js', '/api/finance', 'view_revenue'),
+            api('routes/graduation.js', '/api/graduation financial mutations and exports', 'view_revenue'),
+            api('routes/print.js', '/api/print/jobs revenue-bearing payloads', 'view_revenue'),
+            api('routes/procurement.js', '/api/procurement/export-xlsx', 'view_revenue'),
+            api('routes/sales.js', '/api/sales/booking-upsells', 'view_revenue'),
+            api('routes/reports.js', '/api/reports financial reports', 'view_revenue'),
+            api('routes/settings.js', '/api/settings/stats/:dateFrom/:dateTo', 'view_revenue'),
+            api('routes/stats.js', '/api/stats revenue endpoints', 'view_revenue')
+        ],
+        notes: 'Server guards block financial-only endpoints; mixed booking and dashboard payloads redact financial fields.'
     }),
     action({
         key: 'manage_settings', label: 'Керувати налаштуваннями', group: 'system',
         defaultRoles: ['creator', 'director'], risk: 'critical', delegable: false,
-        status: ACTION_STATUS.FRONTEND_ONLY, deprecated: true,
-        frontendConsumers: [source('js/auth.js', "canAccess('manage_settings')", { enforces: true })],
-        notes: 'UI visibility exists, while settings APIs use independent role/route guards.'
+        frontendConsumers: [
+            source('js/auth.js', "canAccess('manage_settings')", { enforces: true }),
+            source('js/chat-settings-page.js', "resolveCapability(user, 'manage_settings'", { enforces: true }),
+            source('js/center-page.js', "canAccess('manage_settings')", { enforces: true }),
+            source('js/demo-page.js', "canAccess('manage_settings')", { enforces: true }),
+            source('js/graduation.js', "canUseGraduationCapability('manage_settings')", { enforces: true }),
+            source('js/reports-page.js', "canAccess('manage_settings')", { enforces: true }),
+            source('js/settings.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true }),
+            source('js/timeline-settings-page.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true }),
+            source('js/timeline-visibility.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true })
+        ],
+        backendConsumers: [
+            source('routes/demo.js', "canUseAction(req.user, 'manage_settings')", { enforces: true }),
+            source('routes/settings.js', "requireSettingsManagement = requireAction('manage_settings')", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/backup.js', '/api/backup recovery metadata and restore', 'manage_settings'),
+            api('routes/center.js', '/api/center settings-backed prices and goals', 'manage_settings'),
+            api('routes/demo.js', '/api/demo/toggle', 'manage_settings'),
+            api('routes/event-queue.js', '/api/events/rules configuration and logs', 'manage_settings'),
+            api('routes/graduation.js', '/api/graduation system settings', 'manage_settings'),
+            api('routes/page-statuses.js', '/api/page-statuses mutations', 'manage_settings'),
+            api('routes/print.js', '/api/print/templates mutations', 'manage_settings'),
+            api('routes/reports.js', '/api/reports/workflow-settings', 'manage_settings'),
+            api('routes/settings.js', '/api/settings management mutations and sensitive reads', 'manage_settings'),
+            api('routes/status.js', '/api/status internal administration', 'manage_settings'),
+            api('routes/support.js', '/api/support SLA and retention policies', 'manage_settings')
+        ],
+        notes: 'System-setting mutations and sensitive settings reads require this capability; public and user-specific settings remain available.'
     }),
     action({
         key: 'export_data', label: 'Експорт даних', group: 'data',
-        defaultRoles: MANAGER_UP, risk: 'critical', status: ACTION_STATUS.FRONTEND_ONLY, deprecated: true,
+        defaultRoles: MANAGER_UP, risk: 'critical',
         frontendConsumers: [
-            source('js/auth.js', "canAccess('export_data')", { enforces: true }),
-            source('js/app.js', "canAccess('export_data')", { enforces: true })
+            source('js/app.js', "canAccess('export_data')", { enforces: true }),
+            source('js/booking-summary-page.js', "canAccess('export_data')", { enforces: true }),
+            source('js/customers-page.js', "canAccess('export_data')", { enforces: true }),
+            source('js/finance-page.js', "financeCanUsePayrollAction('export_data')", { enforces: true }),
+            source('js/graduation.js', "canUseGraduationCapability('export_data')", { enforces: true }),
+            source('js/reports-page.js', "canAccess('export_data')", { enforces: true }),
+            source('js/warehouse-page.js', "canAccess('export_data')", { enforces: true })
         ],
-        notes: 'Several export endpoints do not enforce this action server-side.'
+        apiConsumers: [
+            api('routes/analytics.js', '/api/analytics/product-sales/export', 'export_data'),
+            api('routes/backup.js', '/api/backup full artifact exports', 'export_data'),
+            api('routes/bookings.js', '/api/bookings/:id/banquet-summary.pdf', 'export_data'),
+            api('routes/customers.js', '/api/customers export endpoints', 'export_data'),
+            api('routes/finance.js', '/api/finance/export, /export-xlsx, and /act/:bookingId', 'export_data'),
+            api('routes/graduation.js', '/api/graduation generated exports', 'export_data'),
+            api('routes/procurement.js', '/api/procurement/export-xlsx', 'export_data'),
+            api('routes/reports.js', '/api/reports/table/export-*', 'export_data')
+        ],
+        notes: 'Generic data exports are authorized before their file/query preparation. Payroll and HR exports keep their granular capabilities.'
     }),
     action({
         key: 'manage_staff', label: 'Керувати персоналом', group: 'hr',

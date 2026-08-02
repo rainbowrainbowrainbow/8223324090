@@ -1555,7 +1555,7 @@
                 <div class="center-section" id="loyaltySection">
                     <div class="center-section-title" onclick="toggleSection(this)">
                         <span class="collapse-arrow">▼</span> Програма лояльності
-                        <button type="button" class="btn-center-action" onclick="event.stopPropagation();recalculateLoyalty()">Перерахувати</button>
+                        <button type="button" class="btn-center-action" data-revenue-action="recalculate-loyalty" onclick="event.stopPropagation();recalculateLoyalty()" hidden>Перерахувати</button>
                     </div>
                     <div class="section-body">
                         <div class="loyalty-tiers-grid" id="loyaltyTiersGrid">

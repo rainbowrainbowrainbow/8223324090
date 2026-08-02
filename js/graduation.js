@@ -34,6 +34,63 @@
     let graduationStartTime = '10:00';
     let graduationEndTime = '';
 
+    function storedGraduationUser() {
+        try {
+            const raw = localStorage.getItem('pzp_current_user');
+            if (!raw) return null;
+            const user = JSON.parse(raw);
+            return user && typeof user === 'object' && !Array.isArray(user) ? user : null;
+        } catch (err) {
+            return null;
+        }
+    }
+
+    function currentGraduationUser() {
+        const appUser = window.AppState?.currentUser;
+        if (appUser && typeof appUser === 'object' && !Array.isArray(appUser)) return appUser;
+        return storedGraduationUser();
+    }
+
+    function canUseGraduationCapability(capability) {
+        const user = currentGraduationUser();
+        if (!user || typeof window.resolveCapability !== 'function') return false;
+        try {
+            return window.resolveCapability(user, capability, { type: 'action' }).allowed === true;
+        } catch (err) {
+            return false;
+        }
+    }
+
+    function canViewGraduationRevenue() {
+        return canUseGraduationCapability('view_revenue');
+    }
+
+    function guardGraduationRevenue() {
+        if (canViewGraduationRevenue()) return true;
+        showNotification('Недостатньо прав для перегляду фінансових даних випускного', 'error');
+        return false;
+    }
+
+    function canManageGraduationSettings() {
+        return canViewGraduationRevenue() && canUseGraduationCapability('manage_settings');
+    }
+
+    function guardGraduationSettings() {
+        if (canManageGraduationSettings()) return true;
+        showNotification('Недостатньо прав для зміни фінансових налаштувань випускного', 'error');
+        return false;
+    }
+
+    function canExportGraduationData(includeRevenue = false) {
+        return canUseGraduationCapability('export_data') && (!includeRevenue || canViewGraduationRevenue());
+    }
+
+    function guardGraduationExport(includeRevenue = false) {
+        if (canExportGraduationData(includeRevenue)) return true;
+        showNotification('Недостатньо прав для експорту даних випускного', 'error');
+        return false;
+    }
+
     // #14: Category colors
     const CATEGORY_COLORS = {
         main: { bg: 'rgba(201,168,76,0.12)', border: '#C9A84C', text: '#C9A84C' },
@@ -451,11 +508,17 @@
         if (!content) return;
 
         switch (currentTab) {
-            case 'constructor': renderConstructor(content); break;
-            case 'packages': renderPackages(content); break;
+            case 'constructor':
+                renderConstructor(content);
+                break;
+            case 'packages':
+                renderPackages(content);
+                break;
             case 'quotes': renderQuotes(content); break;
             case 'diplomas': renderDiplomas(content); break;
-            case 'settings': renderSettings(content); break;
+            case 'settings':
+                if (guardGraduationSettings()) renderSettings(content);
+                break;
             case 'analytics': renderAnalytics(content); break;
         }
 
@@ -474,8 +537,10 @@
         }
 
         const totals = calcTotals();
+        const canViewRevenue = canViewGraduationRevenue();
+        const canManageSettings = canManageGraduationSettings();
         const minPrice = getMinPricePerChild();
-        const belowMin = totals.totalPerChild > 0 && totals.totalPerChild < minPrice;
+        const belowMin = canViewRevenue && totals.totalPerChild > 0 && totals.totalPerChild < minPrice;
         const conflicts = getConflicts();
         const kidsWarnings = getKidsWarnings();
         const recommendations = getRecommendations();
@@ -493,12 +558,13 @@
                         <button class="grad-stepper-btn" onclick="GradPage.adjustKids(1)">+</button>
                     </div>
                 </div>
+                ${canViewRevenue ? `
                 <div class="grad-field">
                     <label>Знижка %</label>
                     <input type="number" id="gradDiscount" value="${currentDiscount}" min="0" max="100"
                         onchange="GradPage.updateDiscount(this.value)" style="font-size:16px">
-                </div>
-                ${isDirector() ? `
+                </div>` : ''}
+                ${canManageSettings ? `
                 <div class="grad-field director-only">
                     <label>Коефіцієнт</label>
                     <input type="number" id="gradCoeff" value="${getCoefficient()}" step="0.1" min="1"
@@ -591,6 +657,7 @@
         <div class="grad-summary ${belowMin ? 'grad-summary-error' : ''}">
             ${belowMin ? `<div class="grad-error">⚠️ Мінімум ${minPrice} ₴/дитина!</div>` : ''}
             <div class="grad-summary-grid">
+                ${canViewRevenue ? `
                 <div class="grad-summary-item">
                     <span class="grad-summary-label">👶 Вартість 1 дитина</span>
                     <span class="grad-summary-value">${formatPrice(totals.totalPerChild)}</span>
@@ -598,7 +665,7 @@
                 <div class="grad-summary-item">
                     <span class="grad-summary-label">💰 Всього (${totals.kids} діт.)</span>
                     <span class="grad-summary-value grad-summary-main">${formatPrice(totals.totalAll)}</span>
-                </div>
+                </div>` : ''}
                 <div class="grad-summary-item">
                     <span class="grad-summary-label">⏱️ Тривалість</span>
                     <span class="grad-summary-value">${formatDuration(totals.totalDuration)}</span>
@@ -607,7 +674,7 @@
                     <span class="grad-summary-label">🎭 Аніматорів</span>
                     <span class="grad-summary-value">${totals.animators}</span>
                 </div>
-                ${isDirector() ? `
+                ${isDirector() && canViewRevenue ? `
                 <div class="grad-summary-item director-only">
                     <span class="grad-summary-label">📊 Собівартість</span>
                     <span class="grad-summary-value">${formatPrice(totals.totalCost)}</span>
@@ -621,7 +688,7 @@
                     <span class="grad-summary-value">${totals.margin.toFixed(1)}%</span>
                 </div>
                 ` : ''}
-                ${userRole === 'creator' ? `
+                ${userRole === 'creator' && canViewRevenue ? `
                 <div class="grad-summary-item creator-only">
                     <span class="grad-summary-label">💸 Відкат (10%)</span>
                     <span class="grad-summary-value" style="color:#EF4444">${formatPrice(totals.kickback)}</span>
@@ -629,6 +696,7 @@
                 ` : ''}
             </div>
 
+            ${canViewRevenue ? `
             <div class="grad-customer-row" id="gradCustomerRow">
                 <label>👤 Клієнт</label>
                 <div class="grad-customer-search">
@@ -643,13 +711,16 @@
                 <button class="grad-btn grad-btn-primary" onclick="GradPage.saveQuote()">
                     💾 Зберегти
                 </button>
+                ${canExportGraduationData(true) ? `
                 <button class="grad-btn grad-btn-secondary" onclick="GradPage.generateProposal()">
                     📄 КП клієнту
                 </button>
                 <button class="grad-btn grad-btn-secondary" onclick="GradPage.printProposal()">
                     🖨️ Друк
                 </button>
+                ` : ''}
             </div>
+            ` : ''}
         </div>`;
 
         container.innerHTML = html;
@@ -723,9 +794,11 @@
                 <div class="grad-service-name">${_esc(svc.name)} ${badge}</div>
                 <div class="grad-service-meta">
                     ${svc.durationMin ? `<span>${svc.durationMin} хв</span>` : ''}
+                    ${canViewGraduationRevenue() ? `
                     <span class="grad-price-badge ${isFormula ? 'grad-formula' : 'grad-fixed'}">
                         ${isFormula ? 'формула' : 'фікс'}
                     </span>
+                    ` : ''}
                     ${entryNote}
                 </div>
             </div>
@@ -792,7 +865,7 @@
             <button class="grad-btn grad-btn-sm" onclick="GradPage.showComparison()" ${comparePackageSlugs.size < 2 ? 'disabled' : ''}>
                 📊 Порівняти (${comparePackageSlugs.size})
             </button>
-            <button class="grad-btn grad-btn-sm" onclick="GradPage.exportCatalog()" title="Експорт каталогу для друку">
+            <button class="grad-btn grad-btn-sm" onclick="GradPage.exportCatalog()" ${canExportGraduationData() ? '' : 'hidden disabled'} title="Експорт каталогу для друку">
                 📤 Експорт каталогу
             </button>
         </div>
@@ -954,8 +1027,8 @@
         viewer.innerHTML = `
             <div class="catalog-viewer-topbar">
                 <div class="catalog-topbar-actions">
-                    <button onclick="GradPage.exportCatalog()">📤 Експорт</button>
-                    <button onclick="GradPage.printPackagePage(${catalogViewerIndex})">🖨️ Друк</button>
+                    <button onclick="GradPage.exportCatalog()" ${canExportGraduationData() ? '' : 'hidden disabled'}>📤 Експорт</button>
+                    <button onclick="GradPage.printPackagePage(${catalogViewerIndex})" ${canExportGraduationData() ? '' : 'hidden disabled'}>🖨️ Друк</button>
                 </div>
                 <button class="catalog-nav-btn" onclick="GradPage.catalogNav(-1)" ${catalogViewerIndex === 0 ? 'disabled' : ''}>◀</button>
                 <span class="catalog-page-counter">${catalogViewerIndex + 1} / ${packages.length}</span>
@@ -1077,6 +1150,7 @@
     }
 
     function exportCatalog() {
+        if (!guardGraduationExport()) return;
         const token = localStorage.getItem('pzp_token');
         const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token);
         if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
@@ -1084,6 +1158,7 @@
     }
 
     function printPackagePage(index) {
+        if (!guardGraduationExport()) return;
         const token = localStorage.getItem('pzp_token');
         const pkg = packages[index];
         if (!pkg) return;
@@ -1179,16 +1254,16 @@
                     <div class="grad-quote-number">${q.quoteNumber}</div>
                     <div class="grad-quote-info">
                         <span>👶 ${q.kidsCount} дітей</span>
-                        <span>💰 ${formatPrice(q.totalAll)}</span>
+                        ${canViewGraduationRevenue() ? `<span>💰 ${formatPrice(q.totalAll)}</span>` : ''}
                     </div>
                     <div class="grad-quote-status" style="color:${statusColors[q.status] || '#999'}">
                         ${statusIcons[q.status] || ''} ${statusLabels[q.status] || q.status}
                     </div>
                     <div class="grad-quote-date">${new Date(q.createdAt).toLocaleDateString('uk-UA')}</div>
                     <div class="grad-quote-actions">
-                        <button class="grad-btn grad-btn-sm" onclick="GradPage.loadQuote(${q.id})">Відкрити</button>
-                        ${q.status !== 'booked' ? `<button class="grad-btn grad-btn-sm" onclick="GradPage.viewProposal(${q.id})">КП</button>` : ''}
-                        ${q.status === 'approved' ? `<button class="grad-btn grad-btn-sm grad-btn-book" onclick="GradPage.convertToBooking(${q.id})">📅 Бронювати</button>` : ''}
+                        ${canViewGraduationRevenue() ? `<button class="grad-btn grad-btn-sm" onclick="GradPage.loadQuote(${q.id})">Відкрити</button>` : ''}
+                        ${q.status !== 'booked' && canExportGraduationData(true) ? `<button class="grad-btn grad-btn-sm" onclick="GradPage.viewProposal(${q.id})">КП</button>` : ''}
+                        ${q.status === 'approved' && canViewGraduationRevenue() ? `<button class="grad-btn grad-btn-sm grad-btn-book" onclick="GradPage.convertToBooking(${q.id})">📅 Бронювати</button>` : ''}
                     </div>
                 </div>`;
             }
@@ -1285,7 +1360,9 @@
         const rosterDisabled = hasRoster ? '' : 'disabled';
         const quoteOptions = quotes.map(q => `
             <option value="${q.id}" ${String(q.id) === String(diplomaQuoteId) ? 'selected' : ''}>
-                ${_esc(q.quoteNumber || `Quote ${q.id}`)} · ${q.kidsCount || 0} дітей · ${formatPrice(q.totalAll || 0)}
+                ${_esc(q.quoteNumber || `Quote ${q.id}`)} · ${q.kidsCount || 0} дітей${
+                    canViewGraduationRevenue() ? ` · ${formatPrice(q.totalAll)}` : ''}
+                }
             </option>`).join('');
 
         container.innerHTML = `
@@ -1348,12 +1425,12 @@
                     <div class="grad-diploma-step-actions grad-diploma-output-actions">
                         <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.generateDiplomaWishes()" ${rosterDisabled}>Автопобажання</button>
                         <button type="button" class="grad-btn grad-btn-sm grad-btn-primary" onclick="GradPage.previewDiploma()" ${rosterDisabled}>Preview диплом</button>
-                        <button type="button" class="grad-btn grad-btn-sm grad-btn-primary-soft" onclick="GradPage.exportDiplomasPdf()" ${rosterDisabled}>Зберегти всі в PDF</button>
+                        <button type="button" class="grad-btn grad-btn-sm grad-btn-primary-soft" onclick="GradPage.exportDiplomasPdf()" ${canExportGraduationData() ? rosterDisabled : 'hidden disabled'}>Зберегти всі в PDF</button>
                     </div>
                     <div class="grad-diploma-utility-actions" aria-label="Табличний експорт">
-                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${rosterDisabled}>CSV</button>
-                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${rosterDisabled}>XLSX</button>
-                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${rosterDisabled}>Print sheet</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('csv')" ${canExportGraduationData() ? rosterDisabled : 'hidden disabled'}>CSV</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.exportDiplomaRoster('xlsx')" ${canExportGraduationData() ? rosterDisabled : 'hidden disabled'}>XLSX</button>
+                        <button type="button" class="grad-btn grad-btn-sm" onclick="GradPage.printDiplomaSheet()" ${canExportGraduationData() ? rosterDisabled : 'hidden disabled'}>Print sheet</button>
                     </div>
                 </section>
             </div>
@@ -1613,6 +1690,7 @@
     }
 
     async function exportDiplomasPdf() {
+        if (!guardGraduationExport()) return;
         if (!diplomaQuoteId) return;
         const touchWindow = typeof openTouchDownloadWindow === 'function'
             ? openTouchDownloadWindow('PDF дипломів')
@@ -1648,6 +1726,7 @@
     }
 
     async function printDiplomaSheet() {
+        if (!guardGraduationExport()) return;
         if (!diplomaQuoteId) return;
         try {
             await openHtmlExport(`/graduation/quotes/${diplomaQuoteId}/diplomas/print-sheet?print=1`, 'Готуємо print sheet...');
@@ -1657,6 +1736,7 @@
     }
 
     async function exportDiplomaRoster(kind) {
+        if (!guardGraduationExport()) return;
         if (!diplomaQuoteId) return;
         const ext = kind === 'xlsx' ? 'xlsx' : 'csv';
         const filename = `graduation_children_${diplomaQuoteId}.${ext}`;
@@ -1706,12 +1786,14 @@
         }
 
         const d = analyticsData;
-        const funnel = d.funnel;
-        const avg = d.averageCheck;
+        const funnel = d.funnel || { total: 0, draft: 0, sent: 0, approved: 0, booked: 0, cancelled: 0, conversionRate: 0 };
+        const avg = d.averageCheck || {};
+        const popularity = Array.isArray(d.popularity) ? d.popularity : [];
 
         let html = `
         <div class="grad-analytics">
             <div class="grad-analytics-cards">
+                ${canViewGraduationRevenue() ? `
                 <div class="grad-analytics-card">
                     <div class="grad-analytics-icon">💰</div>
                     <div class="grad-analytics-num">${formatPrice(avg.perChild)}</div>
@@ -1721,15 +1803,15 @@
                     <div class="grad-analytics-icon">📊</div>
                     <div class="grad-analytics-num">${formatPrice(avg.total)}</div>
                     <div class="grad-analytics-label">Середній чек всього</div>
-                </div>
+                </div>` : ''}
                 <div class="grad-analytics-card">
                     <div class="grad-analytics-icon">👶</div>
-                    <div class="grad-analytics-num">${avg.avgKids}</div>
+                    <div class="grad-analytics-num">${avg.avgKids || 0}</div>
                     <div class="grad-analytics-label">Середня кількість дітей</div>
                 </div>
                 <div class="grad-analytics-card">
                     <div class="grad-analytics-icon">📈</div>
-                    <div class="grad-analytics-num">${funnel.conversionRate}%</div>
+                    <div class="grad-analytics-num">${funnel.conversionRate || 0}%</div>
                     <div class="grad-analytics-label">Конверсія → бронювання</div>
                 </div>
             </div>
@@ -1746,7 +1828,7 @@
 
             <h3 class="grad-section-title">Популярність послуг</h3>
             <div class="grad-popularity">
-                ${d.popularity.map(p => `
+                ${popularity.map(p => `
                 <div class="grad-pop-row">
                     <span class="grad-pop-name">${p.serviceName}</span>
                     <div class="grad-pop-bar-container">
@@ -1773,7 +1855,7 @@
     }
 
     function renderSettings(container) {
-        if (!isDirector()) {
+        if (!isDirector() || !canManageGraduationSettings()) {
             container.innerHTML = '<div class="grad-empty">Доступ лише для директора</div>';
             return;
         }
@@ -1822,6 +1904,10 @@
     // #43: FAB button for mobile
     function renderFAB() {
         let fab = document.getElementById('gradFAB');
+        if (!canViewGraduationRevenue()) {
+            if (fab) fab.style.display = 'none';
+            return;
+        }
         if (currentTab !== 'constructor') {
             if (fab) fab.style.display = 'none';
             return;
@@ -1996,6 +2082,7 @@
     }
 
     async function saveQuote() {
+        if (!guardGraduationRevenue()) return;
         const totals = calcTotals();
         if (selectedServiceIds.size === 0) {
             showNotification('Оберіть хоча б одну послугу', 'error');
@@ -2032,6 +2119,7 @@
     }
 
     async function loadQuote(id) {
+        if (!guardGraduationRevenue()) return;
         try {
             const quote = await gradApi('GET', `/graduation/quotes/${id}`);
             const svcList = quote.selectedServices || [];
@@ -2057,6 +2145,7 @@
     }
 
     async function generateProposal() {
+        if (!guardGraduationExport(true)) return;
         const totals = calcTotals();
         if (selectedServiceIds.size === 0) {
             showNotification('Оберіть хоча б одну послугу', 'error');
@@ -2102,6 +2191,7 @@
     }
 
     function viewProposal(id) {
+        if (!guardGraduationExport(true)) return;
         const token = localStorage.getItem('pzp_token');
         const url = `${API_BASE}/graduation/quotes/${encodeURIComponent(id)}/proposal?token=${encodeURIComponent(token || '')}`;
         if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
@@ -2110,6 +2200,7 @@
 
     // #22: Convert quote to booking
     async function convertToBooking(id) {
+        if (!guardGraduationRevenue()) return;
         const result2 = await formModal('Конвертувати в бронювання', [
             { key: 'date', label: 'Дата бронювання', type: 'date', required: true },
             { key: 'time', label: 'Час початку', type: 'time', defaultValue: graduationStartTime || '10:00', required: true },
@@ -2133,12 +2224,13 @@
         const svc = services.find(s => s.id === id);
         if (!svc) return;
 
+        const canViewRevenue = canViewGraduationRevenue();
         const kids = getKidsCount();
         const price = getEffectivePrice(svc);
         const colors = CATEGORY_COLORS[svc.category] || CATEGORY_COLORS.main;
-        const cost = svc.costType === 'mk_external'
-            ? price * kids * getMkExternalRate()
-            : calcServiceCost(svc, kids);
+        const cost = canViewRevenue
+            ? (svc.costType === 'mk_external' ? price * kids * getMkExternalRate() : calcServiceCost(svc, kids))
+            : null;
 
         const modal = document.getElementById('gradInfoModal');
         if (!modal) return;
@@ -2155,17 +2247,17 @@
             <div class="grad-modal-details">
                 <div class="grad-modal-row"><span>⏱️ Тривалість:</span><span>${svc.durationMin || 0} хв</span></div>
                 <div class="grad-modal-row"><span>💰 Ціна за дитину:</span><span>${formatPrice(price)}</span></div>
-                <div class="grad-modal-row"><span>📋 Тип ціни:</span><span>${svc.priceType === 'formula' ? 'Формула' : 'Фіксована'}</span></div>
-                ${svc.priceType === 'formula' ? `<div class="grad-modal-row"><span>🏢 Ціна парку:</span><span>${formatPrice(svc.pricePark)}</span></div>` : ''}
+                ${canViewRevenue ? `<div class="grad-modal-row"><span>📋 Тип ціни:</span><span>${svc.priceType === 'formula' ? 'Формула' : 'Фіксована'}</span></div>` : ''}
+                ${canViewRevenue && svc.priceType === 'formula' ? `<div class="grad-modal-row"><span>🏢 Ціна парку:</span><span>${formatPrice(svc.pricePark)}</span></div>` : ''}
                 ${svc.minKids > 0 ? `<div class="grad-modal-row"><span>👶 Мін. дітей:</span><span>${svc.minKids}</span></div>` : ''}
                 ${svc.maxKids > 0 ? `<div class="grad-modal-row"><span>👶 Макс. дітей:</span><span>${svc.maxKids}</span></div>` : ''}
-                ${isDirector() ? `
+                ${isDirector() && canViewRevenue ? `
                 <hr style="border-color:rgba(255,255,255,0.1);margin:12px 0">
                 <div class="grad-modal-row"><span>📊 Собівартість (${kids} діт.):</span><span>${formatPrice(cost)}</span></div>
                 <div class="grad-modal-row"><span>📋 Тип витрат:</span><span>${svc.costType === 'mk_external' ? 'МК зовнішній (80%)' : 'Стандарт'}</span></div>
                 ` : ''}
             </div>
-            ${isDirector() ? `
+            ${canManageGraduationSettings() ? `
             <div class="grad-modal-edit">
                 <button class="grad-btn grad-btn-sm" onclick="GradPage.editServicePrice(${svc.id})">Редагувати ціну</button>
             </div>
@@ -2176,6 +2268,7 @@
     }
 
     async function editServicePrice(id) {
+        if (!guardGraduationSettings()) return;
         const svc = services.find(s => s.id === id);
         if (!svc) return;
         const newPrice = await promptModal(`Нова ціна за дитину для "${svc.name}":`, { defaultValue: String(getEffectivePrice(svc)), inputType: 'number' });
@@ -2198,6 +2291,7 @@
     }
 
     async function saveSetting(input) {
+        if (!guardGraduationSettings()) return;
         const key = input.dataset.key;
         const value = parseFloat(input.value);
         if (isNaN(value)) return;
@@ -2212,6 +2306,7 @@
     }
 
     async function resetPrices() {
+        if (!guardGraduationSettings()) return;
         if (!await confirmModal('Скинути всі ціни до стандартних?', { type: 'danger' })) return;
         try {
             services = await gradApi('GET', '/graduation/services');
@@ -2233,6 +2328,10 @@
     }
 
     function switchTab(tab) {
+        if (tab === 'settings' && !canManageGraduationSettings()) {
+            guardGraduationSettings();
+            return;
+        }
         currentTab = tab;
         if (tab === 'settings' && !isDirector()) currentTab = 'constructor';
         if (tab === 'analytics' && !isDirector()) currentTab = 'constructor';
@@ -2264,8 +2363,24 @@
 
     // === INIT ===
 
+    function syncGraduationAccessUi(rerender = false) {
+        const user = currentGraduationUser();
+        if (user?.role) userRole = user.role;
+        if (currentTab === 'settings' && !canManageGraduationSettings()) {
+            currentTab = 'constructor';
+        }
+
+        document.querySelector('.grad-tab[data-tab="settings"]')?.style.setProperty(
+            'display',
+            isDirector() && canManageGraduationSettings() ? '' : 'none'
+        );
+        document.querySelector('.grad-tab[data-tab="analytics"]')?.style.setProperty('display', isDirector() ? '' : 'none');
+        if (rerender) renderCurrentTab();
+    }
+
     function init() {
-        userRole = getUserRole();
+        userRole = currentGraduationUser()?.role || getUserRole();
+        syncGraduationAccessUi();
         loadAll();
 
         // Load analytics in background for popularity badges
@@ -2279,10 +2394,8 @@
             tab.addEventListener('click', () => switchTab(tab.dataset.tab));
         });
 
-        if (!isDirector()) {
-            document.querySelector('.grad-tab[data-tab="settings"]')?.style.setProperty('display', 'none');
-            document.querySelector('.grad-tab[data-tab="analytics"]')?.style.setProperty('display', 'none');
-        }
+        window.addEventListener('app:user-changed', () => syncGraduationAccessUi(true));
+        window.addEventListener('permissions:lifecycle', () => syncGraduationAccessUi(true));
 
         // Close customer dropdown on outside click
         document.addEventListener('click', (e) => {

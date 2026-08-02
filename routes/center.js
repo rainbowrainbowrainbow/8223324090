@@ -17,7 +17,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { requireMinRole, authenticateToken } = require('../middleware/auth');
+const { canUseAction, requireAction, requireMinRole, authenticateToken } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const {
     businessContextFromRequest,
@@ -32,12 +32,36 @@ const { logAdminAction } = require('../services/adminAudit');
 const {
     parseAvailabilityWindows
 } = require('../services/booking');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 
 const log = createLogger('Center');
+const requireCenterRevenue = requireAction('view_revenue');
+const requireCenterSettings = requireAction('manage_settings');
 
 // v39.8: Security — require authentication for all center endpoints
 router.use(authenticateToken);
 router.use(requireMinRole('manager'));
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue')
+));
+
+function shapeCenterReadOnlyRevenueText(req, res, next) {
+    return installRevenueResponseShaper(
+        req,
+        res,
+        next,
+        canUseAction(req.user, 'view_revenue'),
+        { redactText: true }
+    );
+}
+
+function allowPublicCatalogRevenueResponse(_req, res, next) {
+    res.locals.revenueResponseMode = 'public-catalog';
+    return next();
+}
 
 // ==========================================
 // HELPERS
@@ -410,7 +434,7 @@ router.get('/workers', async (req, res) => {
 // ==========================================
 
 // GET /api/center/tickets — ticket catalog and read-only tariff history (manager+)
-router.get('/tickets', async (req, res) => {
+router.get('/tickets', allowPublicCatalogRevenueResponse, async (req, res) => {
     try {
         const businessContext = businessContextFromRequest(req);
         if (!requireBusinessContext(req, res, businessContext)) return;
@@ -426,7 +450,7 @@ router.get('/tickets', async (req, res) => {
 });
 
 // POST /api/center/tickets/:code/tariffs — append tariff revision (senior_manager+)
-router.post('/tickets/:code/tariffs', requireMinRole('senior_manager'), async (req, res) => {
+router.post('/tickets/:code/tariffs', requireMinRole('senior_manager'), requireCenterSettings, requireCenterRevenue, async (req, res) => {
     try {
         const businessContext = businessContextFromRequest(req);
         if (!requireBusinessContext(req, res, businessContext)) return;
@@ -462,7 +486,7 @@ router.post('/tickets/:code/tariffs', requireMinRole('senior_manager'), async (r
 // ==========================================
 
 // GET /api/center/prices — all price rules
-router.get('/prices', async (req, res) => {
+router.get('/prices', requireCenterRevenue, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM price_rules ORDER BY category, code');
         res.json({ success: true, prices: result.rows });
@@ -474,7 +498,7 @@ router.get('/prices', async (req, res) => {
 });
 
 // GET /api/center/prices/positions — product catalog positions with price-rule linkage
-router.get('/prices/positions', async (req, res) => {
+router.get('/prices/positions', requireCenterRevenue, async (req, res) => {
     try {
         const result = await pool.query(`
             SELECT
@@ -539,7 +563,7 @@ router.get('/prices/positions', async (req, res) => {
 });
 
 // GET /api/center/prices/:code — single price rule
-router.get('/prices/:code', async (req, res) => {
+router.get('/prices/:code', requireCenterRevenue, async (req, res) => {
     try {
         const result = await pool.query('SELECT * FROM price_rules WHERE code = $1', [req.params.code]);
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
@@ -552,7 +576,7 @@ router.get('/prices/:code', async (req, res) => {
 
 // PUT /api/center/prices/:code — update price (senior_manager+)
 // v20.9.25: syncs price to products table if product_id is linked
-router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
+router.put('/prices/:code', requireMinRole('senior_manager'), requireCenterSettings, requireCenterRevenue, async (req, res) => {
     const client = await pool.connect();
     try {
         const { value, name, unit, category, description, effectiveFrom, productId } = req.body;
@@ -665,7 +689,7 @@ router.put('/prices/:code', requireMinRole('senior_manager'), async (req, res) =
 });
 
 // v33.3: GET /api/center/prices/:code/history — price change history
-router.get('/prices/:code/history', async (req, res) => {
+router.get('/prices/:code/history', requireCenterRevenue, async (req, res) => {
     try {
         const result = await pool.query(
             'SELECT * FROM price_history WHERE price_code = $1 ORDER BY changed_at DESC LIMIT 50',
@@ -679,7 +703,7 @@ router.get('/prices/:code/history', async (req, res) => {
 });
 
 // POST /api/center/prices — create new price rule (senior_manager+)
-router.post('/prices', requireMinRole('senior_manager'), async (req, res) => {
+router.post('/prices', requireMinRole('senior_manager'), requireCenterSettings, requireCenterRevenue, async (req, res) => {
     try {
         const { code, name, value, unit, category, description } = req.body;
         if (!code || !name || value === undefined) {
@@ -700,7 +724,7 @@ router.post('/prices', requireMinRole('senior_manager'), async (req, res) => {
 });
 
 // DELETE /api/center/prices/:code — delete price rule (senior_manager+)
-router.delete('/prices/:code', requireMinRole('senior_manager'), async (req, res) => {
+router.delete('/prices/:code', requireMinRole('senior_manager'), requireCenterSettings, requireCenterRevenue, async (req, res) => {
     try {
         const result = await pool.query('DELETE FROM price_rules WHERE code = $1 RETURNING code', [req.params.code]);
         if (result.rows.length === 0) return res.status(404).json({ success: false, error: 'Ціну не знайдено' });
@@ -869,7 +893,7 @@ router.get('/clients/:id/bookings', async (req, res) => {
 // REVENUE GOALS (v19.9)
 // ==========================================
 
-router.get('/goals', async (req, res) => {
+router.get('/goals', requireCenterRevenue, async (req, res) => {
     try {
         const result = await pool.query("SELECT value FROM settings WHERE key = 'center_revenue_goals'");
         if (result.rows.length === 0) return res.json({ success: true, goals: null });
@@ -880,7 +904,7 @@ router.get('/goals', async (req, res) => {
     }
 });
 
-router.post('/goals', requireMinRole('senior_manager'), async (req, res) => {
+router.post('/goals', requireMinRole('senior_manager'), requireCenterSettings, requireCenterRevenue, async (req, res) => {
     try {
         const { weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings } = req.body;
         const data = JSON.stringify({ weeklyRevenue, weeklyBookings, monthlyRevenue, monthlyBookings, updatedBy: req.user.username, updatedAt: new Date().toISOString() });
@@ -980,6 +1004,7 @@ router.get('/briefing', async (req, res) => {
 
 router.get('/operations/today', async (req, res) => {
     try {
+        const canViewRevenue = canUseAction(req.user, 'view_revenue');
         const now = getKyivNow();
         const today = formatDateISO(now);
         const yesterdayDate = new Date(now);
@@ -1185,9 +1210,15 @@ router.get('/operations/today', async (req, res) => {
             })
         ]);
 
+        const bookingRevenueState = new Map();
         const bookings = bookingsRes.rows.map(row => {
             const price = Number(row.price || 0);
             const paidAmount = Number(row.paid_amount || 0);
+            bookingRevenueState.set(String(row.id), {
+                price,
+                paidAmount,
+                paymentStatus: row.payment_status || 'pending'
+            });
             return {
                 id: row.id,
                 date: normalizeDateText(row.date),
@@ -1198,10 +1229,12 @@ router.get('/operations/today', async (req, res) => {
                 category: row.category || '',
                 status: row.status || '',
                 room: row.room || '',
-                price,
-                paymentStatus: row.payment_status || 'pending',
-                paidAmount,
-                debtAmount: Math.max(0, price - paidAmount),
+                ...(canViewRevenue ? {
+                    price,
+                    paymentStatus: row.payment_status || 'pending',
+                    paidAmount,
+                    debtAmount: Math.max(0, price - paidAmount)
+                } : {}),
                 customerId: row.customer_id || null,
                 clientName: row.customer_name || row.group_name || row.label || '',
                 customerPhone: row.customer_phone || ''
@@ -1239,12 +1272,13 @@ router.get('/operations/today', async (req, res) => {
         const onShiftNow = shifts.filter(shift => shift.isCurrent && !['absent', 'excused'].includes(shift.attendance.status));
         const lateStaff = shifts.filter(shift => shift.date === today && shift.attendance.status === 'late');
         const noShowStaff = shifts.filter(shift => shift.date === today && shift.attendance.status === 'absent');
-        const pendingPayments = bookings.filter(booking =>
-            booking.status === 'confirmed'
-            && booking.price > 0
-            && booking.paymentStatus !== 'paid'
-            && booking.paidAmount < booking.price
-        );
+        const pendingPayments = bookings.filter(booking => {
+            const revenueState = bookingRevenueState.get(String(booking.id));
+            return booking.status === 'confirmed'
+                && revenueState.price > 0
+                && revenueState.paymentStatus !== 'paid'
+                && revenueState.paidAmount < revenueState.price;
+        });
         const unconfirmedBookings = bookings.filter(booking => booking.status === 'preliminary');
         const openTasks = tasksRes.rows.map(row => ({
             id: row.id,
@@ -1263,7 +1297,7 @@ router.get('/operations/today', async (req, res) => {
             id: row.id,
             type: row.type,
             category: row.category || '',
-            description: row.description || '',
+            ...(canViewRevenue ? { description: row.description || '' } : {}),
             submittedBy: row.submitted_by || '',
             submittedVia: row.submitted_via || '',
             status: row.status || 'new',
@@ -1296,7 +1330,13 @@ router.get('/operations/today', async (req, res) => {
         const incidents = [
             ...noShowStaff.map(shift => operationsIssue('staff_no_show', 'critical', `${shift.name}: не вийшов`, `${shift.plannedStart || '—'}-${shift.plannedEnd || '—'}`, { staffId: shift.staffId })),
             ...lateStaff.map(shift => operationsIssue('staff_late', 'warning', `${shift.name}: запізнюється`, `${shift.plannedStart || '—'}-${shift.plannedEnd || '—'}`, { staffId: shift.staffId })),
-            ...pendingPayments.slice(0, 8).map(booking => operationsIssue('payment_pending', 'warning', `Оплата: ${booking.label}`, `Борг ${booking.debtAmount} грн`, { bookingId: booking.id })),
+            ...pendingPayments.slice(0, 8).map(booking => operationsIssue(
+                'payment_pending',
+                'warning',
+                `Оплата: ${booking.label}`,
+                canViewRevenue ? `Борг ${booking.debtAmount} грн` : 'Є непогашений залишок',
+                { bookingId: booking.id }
+            )),
             ...unconfirmedBookings.slice(0, 8).map(booking => operationsIssue('booking_unconfirmed', 'warning', `Не підтверджено: ${booking.label}`, [booking.time, booking.clientName].filter(Boolean).join(' · '), { bookingId: booking.id })),
             ...openTasks.filter(task => task.isOverdue).slice(0, 8).map(task => operationsIssue('task_overdue', 'critical', `Прострочена задача: ${task.title}`, task.assignedTo || 'без відповідального', { taskId: task.id })),
             ...pendingReports.filter(report => report.approvalStatus !== 'approved').slice(0, 8).map(report => operationsIssue('report_pending', 'warning', `Звіт #${report.id} потребує уваги`, report.category || report.status, { reportId: report.id }))
@@ -1346,7 +1386,7 @@ router.get('/operations/today', async (req, res) => {
 // FINANCIAL RECONCILIATION (v19.9)
 // ==========================================
 
-router.get('/reconciliation', async (req, res) => {
+router.get('/reconciliation', requireCenterRevenue, async (req, res) => {
     try {
         const now = getKyivNow();
         const monthStart = formatDateISO(getMonthStart(now));
@@ -1443,6 +1483,9 @@ router.get('/program-performance', async (req, res) => {
         const from = req.query.from || monthStart;
         const to = req.query.to || today;
         const scoped = scopedBookingParams(req.user, [from, to]);
+        const performanceOrder = canUseAction(req.user, 'view_revenue')
+            ? 'revenue DESC'
+            : 'total DESC, program_name';
 
         const result = await pool.query(`
             SELECT
@@ -1457,7 +1500,7 @@ router.get('/program-performance', async (req, res) => {
             WHERE b.date::date >= $1::date AND b.date::date <= $2::date AND b.linked_to IS NULL AND b.status != 'cancelled'
             ${scoped.sql}
             GROUP BY b.program_id, b.program_name, b.category
-            ORDER BY revenue DESC
+            ORDER BY ${performanceOrder}
         `, scoped.params);
 
         res.json({ success: true, programs: result.rows, period: { from, to } });
@@ -1528,7 +1571,7 @@ router.get('/cross-sell', async (req, res) => {
 // EVENT TIMELINE (v19.9)
 // ==========================================
 
-router.get('/event-log', async (req, res) => {
+router.get('/event-log', shapeCenterReadOnlyRevenueText, async (req, res) => {
     try {
         const lim = Math.min(parseInt(req.query.limit) || 50, 200);
         const result = await pool.query(`

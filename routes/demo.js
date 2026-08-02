@@ -5,7 +5,7 @@
 const router = require('express').Router();
 const jwt = require('jsonwebtoken');
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 
 const { JWT_SECRET } = require('../middleware/auth');
@@ -294,16 +294,17 @@ router.get('/overview', async (req, res) => {
             ORDER BY run_count DESC LIMIT 5
         `);
 
-        res.json({
+        const payload = {
             success: true,
-            demoEnabled,
             scenarioCount,
             sessionCount,
             completedCount,
             completionRate: sessionCount > 0 ? Math.round((completedCount / sessionCount) * 100) : 0,
             avgRating,
             popularScenarios: popularResult.rows
-        });
+        };
+        if (canUseAction(req.user, 'manage_settings')) payload.demoEnabled = demoEnabled;
+        res.json(payload);
     } catch (err) {
         log.error('GET /overview error', err);
         res.status(500).json({ success: false, error: 'Помилка' });
@@ -311,7 +312,7 @@ router.get('/overview', async (req, res) => {
 });
 
 // POST /api/demo/toggle — Enable/disable demo mode (admin)
-router.post('/toggle', requireRole('admin'), async (req, res) => {
+router.post('/toggle', requireRole('admin'), requireAction('manage_settings'), async (req, res) => {
     try {
         const { enabled } = req.body;
         await pool.query(

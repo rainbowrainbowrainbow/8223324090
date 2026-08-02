@@ -708,6 +708,18 @@ function syncLeadReadOnlyUi() {
     });
 }
 
+function canViewLeadRevenue() {
+    return typeof canAccess === 'function' && canAccess('view_revenue');
+}
+
+function syncLeadRevenueUi() {
+    const canViewRevenue = canViewLeadRevenue();
+    const budgetGroup = document.getElementById('ccBudgetGroup');
+    const budgetInput = document.getElementById('ccBudget');
+    if (budgetGroup) budgetGroup.hidden = !canViewRevenue;
+    if (budgetInput) budgetInput.disabled = !canViewRevenue;
+}
+
 function initLeadBusinessContext(user) {
     const api = window.CrmBusinessContext;
     currentBusinessContext = api?.initPage?.({
@@ -768,6 +780,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         if (savedUser && typeof AppState !== 'undefined') AppState.currentUser = JSON.parse(savedUser);
     } catch {}
     initLeadBusinessContext(typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    syncLeadRevenueUi();
 
     normalizeLeadCanonicalRoute();
     setupEvents();
@@ -1082,6 +1095,7 @@ function filterByType(type) {
 }
 
 function leadPotentialValue(lead) {
+    if (!canViewLeadRevenue()) return 0;
     const value = Number(lead?.potential_value ?? lead?.potentialValue ?? lead?.budget_approx ?? 0);
     return Number.isFinite(value) && value > 0 ? value : 0;
 }
@@ -1725,8 +1739,10 @@ function workspaceDateTime(value) {
 }
 
 function workspaceMoney(value) {
-    const num = parseInt(value, 10);
-    if (!num) return '0 ₴';
+    if (!canViewLeadRevenue()) return '—';
+    if (value === null || value === undefined || value === '') return '—';
+    const num = Number(value);
+    if (!Number.isFinite(num)) return '—';
     return num.toLocaleString('uk-UA') + ' ₴';
 }
 
@@ -3937,7 +3953,9 @@ async function showCustomerCardModal(leadId) {
     document.getElementById('ccGuestCount').value = '';
     document.getElementById('ccChildrenCount').value = lead?.children_count || '';
     setCelebrantsEditorValue('ccCelebrants', normalizeLeadCelebrants(lead || {}), { markInitial: true });
-    document.getElementById('ccBudget').value = '';
+    const budgetInput = document.getElementById('ccBudget');
+    if (budgetInput) budgetInput.value = '';
+    syncLeadRevenueUi();
     document.getElementById('ccHowFound').value = '';
     document.getElementById('ccNotes').value = '';
 
@@ -3954,7 +3972,7 @@ async function showCustomerCardModal(leadId) {
             if (c.event_date) document.getElementById('ccEventDate').value = c.event_date.split('T')[0];
             if (c.guest_count) document.getElementById('ccGuestCount').value = c.guest_count;
             if (c.children_count) document.getElementById('ccChildrenCount').value = c.children_count;
-            if (c.budget_approx) document.getElementById('ccBudget').value = c.budget_approx;
+            if (canViewLeadRevenue() && c.budget_approx && budgetInput) budgetInput.value = c.budget_approx;
             if (c.how_found) document.getElementById('ccHowFound').value = c.how_found;
             if (c.notes) document.getElementById('ccNotes').value = c.notes;
         }
@@ -3978,12 +3996,12 @@ async function saveCustomerCard() {
         guest_count: parseInt(document.getElementById('ccGuestCount')?.value) || null,
         children_count: parseInt(document.getElementById('ccChildrenCount')?.value) || null,
         celebrants: ccCelebrants,
-        budget_approx: parseInt(document.getElementById('ccBudget')?.value) || null,
         how_found: document.getElementById('ccHowFound')?.value || null,
         email: document.getElementById('ccEmail')?.value || null,
         channel: document.getElementById('ccChannel')?.value || null,
         notes: document.getElementById('ccNotes')?.value || null
     };
+    if (canViewLeadRevenue()) body.budget_approx = parseInt(document.getElementById('ccBudget')?.value) || null;
     if (!body.children_count && body.celebrants.length) body.children_count = body.celebrants.length;
 
     // Also update lead name/phone if changed

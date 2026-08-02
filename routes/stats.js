@@ -8,7 +8,7 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { requireRole } = require('../middleware/auth');
+const { requireRole, requireAction } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const {
     resolveBusinessScope,
@@ -199,6 +199,7 @@ const CATEGORY_NAMES = {
 // ==========================================
 
 router.use(requireRole('manager'));
+router.use(requireAction('view_revenue'));
 
 // ==========================================
 // GET /revenue — Aggregated revenue + daily breakdown + comparison

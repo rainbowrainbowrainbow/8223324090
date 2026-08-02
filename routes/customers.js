@@ -8,10 +8,11 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { exportLimiter } = require('../middleware/rateLimit');
-const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
+const { authenticateToken, canUseAction, requireAction, requireRole, requireMinRole } = require('../middleware/auth');
 const { getCustomerCommunicationContext } = require('../services/customerCommunicationHub');
 const { buildCustomerSearchQuery } = require('../services/customerSearchQuery');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const { syncBirthdayTagsForCustomer } = require('../services/customerBirthdayTags');
 const {
     CustomerChildrenError,
@@ -48,8 +49,20 @@ const log = createLogger('Customers');
 // All customer routes require authentication
 router.use(authenticateToken);
 router.use(requireRole('admin', 'reception'));
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue')
+));
 // v40: Validate :id param is numeric
 router.param('id', (req, res, next, val) => { if (val && !/^\d+$/.test(val)) return res.status(400).json({ error: 'Invalid ID format' }); next(); });
+const requireDataExport = requireAction('export_data');
+function requireChildrenReviewExport(req, res, next) {
+    if (String(req.query?.format || '').toLowerCase() !== 'csv') return next();
+    return requireDataExport(req, res, next);
+}
+
 
 // v30.4: Predefined tag templates
 const PREDEFINED_TAGS = [
@@ -849,7 +862,7 @@ async function queryUpcomingBirthdayRows(businessContext, days) {
 }
 
 // Children manual review: list/export ambiguous legacy child rows without changing data.
-router.get('/children-review', requireRole('manager', 'admin'), async (req, res) => {
+router.get('/children-review', requireRole('manager', 'admin'), requireChildrenReviewExport, async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -1170,7 +1183,12 @@ router.get('/rfm', async (req, res) => {
             else segments.lost++;
         }
 
-        res.json({ customers: withScores, segments, total: withScores.length });
+        const payload = { customers: withScores, total: withScores.length };
+        if (canUseAction(req.user, 'view_revenue')) {
+            payload.segments = segments;
+        }
+
+        res.json(payload);
     } catch (err) {
         log.error('RFM analytics error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1204,13 +1222,14 @@ router.get('/segments', async (req, res) => {
         `, params);
 
         const row = result.rows[0];
+        const canViewRevenue = canUseAction(req.user, 'view_revenue');
         res.json({
             success: true,
             segments: {
                 active: parseInt(row.active) || 0,
                 sleeping: parseInt(row.sleeping) || 0,
                 new: parseInt(row.new) || 0,
-                vip: parseInt(row.vip) || 0
+                ...(canViewRevenue ? { vip: parseInt(row.vip) || 0 } : {})
             }
         });
     } catch (err) {
@@ -1246,7 +1265,7 @@ router.get('/birthdays', async (req, res) => {
 });
 
 // v15.1: CSV export — v19.14: rate limited
-router.get('/export', exportLimiter, async (req, res) => {
+router.get('/export', requireAction('export_data'), requireAction('view_revenue'), exportLimiter, async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -1308,7 +1327,7 @@ router.get('/export', exportLimiter, async (req, res) => {
 });
 
 // v17.0: Excel export — v19.14: rate limited
-router.get('/export-xlsx', exportLimiter, async (req, res) => {
+router.get('/export-xlsx', requireAction('export_data'), requireAction('view_revenue'), exportLimiter, async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -1391,6 +1410,7 @@ router.get('/stats', async (req, res) => {
         if (!businessContext) return;
 
         // PostgreSQL: JOIN bookings for real stats
+        const canViewRevenue = canUseAction(req.user, 'view_revenue');
         const totalParams = [];
         const totalContextSql = customerContextCondition(totalParams, businessContext);
         const totalResult = await pool.query(`SELECT COUNT(*) FROM customers WHERE ${totalContextSql}`, totalParams);
@@ -1400,7 +1420,7 @@ router.get('/stats', async (req, res) => {
              FROM customers WHERE ${totalContextSql} GROUP BY ${sourceExpr} ORDER BY count DESC`,
             totalParams
         );
-        const topResult = await pool.query(
+        const topResult = canViewRevenue ? await pool.query(
             `SELECT c.id, c.name,
                     COALESCE(b.cnt, 0) AS total_bookings,
                     COALESCE(b.spent, 0) AS total_spent,
@@ -1412,26 +1432,37 @@ router.get('/stats', async (req, res) => {
              ) b ON b.customer_id = c.id
              WHERE ${totalContextSql}
              ORDER BY COALESCE(b.spent, 0) DESC LIMIT 5`
-            , totalParams);
+            , totalParams) : { rows: [] };
+        const recentSpendProjection = canViewRevenue
+            ? 'COALESCE(b.spent, 0) AS total_spent,'
+            : '';
+        const recentSpendAggregation = canViewRevenue
+            ? ', COALESCE(SUM(price),0) AS spent'
+            : '';
         const recentResult = await pool.query(
             `SELECT c.id, c.name,
                     COALESCE(b.cnt, 0) AS total_bookings,
-                    COALESCE(b.spent, 0) AS total_spent,
+                    ${recentSpendProjection}
                     c.created_at
              FROM customers c
              LEFT JOIN (
-                 SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent
+                 SELECT customer_id, COUNT(*) AS cnt${recentSpendAggregation}
                  FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
              ) b ON b.customer_id = c.id
              WHERE ${totalContextSql}
              ORDER BY c.created_at DESC LIMIT 5`
             , totalParams);
+        const avgSpendProjection = canViewRevenue
+            ? ', ROUND(AVG(b.spent), 0) AS avg_spent'
+            : '';
+        const avgSpendAggregation = canViewRevenue
+            ? ', COALESCE(SUM(price),0) AS spent'
+            : '';
         const avgResult = await pool.query(
-            `SELECT ROUND(AVG(b.cnt), 1) AS avg_bookings,
-                    ROUND(AVG(b.spent), 0) AS avg_spent
+            `SELECT ROUND(AVG(b.cnt), 1) AS avg_bookings${avgSpendProjection}
              FROM customers c
              INNER JOIN (
-                 SELECT customer_id, COUNT(*) AS cnt, COALESCE(SUM(price),0) AS spent
+                 SELECT customer_id, COUNT(*) AS cnt${avgSpendAggregation}
                  FROM bookings WHERE status != 'cancelled' AND COALESCE(business_context, 'event_genix') = $1 GROUP BY customer_id
              ) b ON b.customer_id = c.id
              WHERE ${totalContextSql}`
@@ -1442,7 +1473,10 @@ router.get('/stats', async (req, res) => {
             bySource: sourceResult.rows.map(r => ({ source: r.source, count: parseInt(r.count) })),
             topBySpent: topResult.rows.map(mapCustomerRow),
             recentCustomers: recentResult.rows.map(mapCustomerRow),
-            averages: avgResult.rows[0] || { avg_bookings: 0, avg_spent: 0 }
+            averages: avgResult.rows[0] || {
+                avg_bookings: 0,
+                ...(canViewRevenue ? { avg_spent: 0 } : {})
+            }
         });
     } catch (err) {
         log.error('Customer stats error', err);
@@ -1696,7 +1730,7 @@ router.get('/journey-stats', async (req, res) => {
 // v30.4: LTV
 // ==========================================
 
-router.get('/ltv', async (req, res) => {
+router.get('/ltv', requireAction('view_revenue'), async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -1958,7 +1992,7 @@ router.post('/:id/communications', async (req, res) => {
 // v30.4: VCARD EXPORT
 // ==========================================
 
-router.get('/export-vcf', exportLimiter, async (req, res) => {
+router.get('/export-vcf', requireAction('export_data'), exportLimiter, async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -2141,6 +2175,10 @@ router.get('/', async (req, res) => {
         const dateTo = (req.query.dateTo || '').trim();
         const sortBy = (req.query.sortBy || 'updated_at').trim();
         const tag = (req.query.tag || '').trim();
+
+        if (sortBy === 'total_spent' && !canUseAction(req.user, 'view_revenue')) {
+            return res.status(403).json({ error: 'Insufficient permissions' });
+        }
 
 
         // PostgreSQL

@@ -8,12 +8,54 @@
 const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, canUseAction } = require('../middleware/auth');
+const { redactRevenueFieldKeys } = require('../services/revenueAccessPolicy');
 
 const log = createLogger('Loyalty');
 
+function hasOwnBodyField(req, field) {
+    return Object.prototype.hasOwnProperty.call(req.body || {}, field);
+}
+
+function requireRevenueForExplicitFields(...fields) {
+    return (req, res, next) => {
+        if (canUseAction(req.user, 'view_revenue')) return next();
+        if (!fields.some(field => hasOwnBodyField(req, field))) return next();
+        return res.status(403).json({ error: 'Insufficient permissions' });
+    };
+}
+
+function requireLoyaltyRevenue(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
+
+function redactLoyaltyRevenueFields(value) {
+    if (Array.isArray(value)) return value.map(redactLoyaltyRevenueFields);
+    if (!value || typeof value !== 'object') return redactRevenueFieldKeys(value);
+    if (value instanceof Date || Buffer.isBuffer(value)) return value;
+
+    const isDiscountRecord = ['percent', 'fixed'].includes(value.type)
+        && (Object.prototype.hasOwnProperty.call(value, 'code') || Object.prototype.hasOwnProperty.call(value, 'value'));
+    const shaped = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+        if (key === 'min_order') continue;
+        if (key === 'value' && isDiscountRecord) continue;
+        shaped[key] = redactLoyaltyRevenueFields(nestedValue);
+    }
+    return redactRevenueFieldKeys(shaped);
+}
+
+function shapeLoyaltyRevenueResponse(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    const sendJson = res.json.bind(res);
+    res.json = payload => sendJson(redactLoyaltyRevenueFields(payload));
+    return next();
+}
+
 // All loyalty routes require authentication
 router.use(authenticateToken);
+router.use(shapeLoyaltyRevenueResponse);
 
 // ─── LOYALTY TIERS ───────────────────────────────────────────────────────────
 
@@ -31,7 +73,7 @@ router.get('/tiers', async (req, res) => {
 });
 
 // PUT /api/loyalty/tiers/:id — Update a tier
-router.put('/tiers/:id', async (req, res) => {
+router.put('/tiers/:id', requireRevenueForExplicitFields('min_spent', 'discount_percent'), async (req, res) => {
     try {
         const { id } = req.params;
         const { name, min_bookings, min_spent, discount_percent, color } = req.body;
@@ -61,7 +103,7 @@ router.put('/tiers/:id', async (req, res) => {
 });
 
 // POST /api/loyalty/tiers — Create a new tier
-router.post('/tiers', async (req, res) => {
+router.post('/tiers', requireRevenueForExplicitFields('min_spent', 'discount_percent'), async (req, res) => {
     try {
         const { name, min_bookings, min_spent, discount_percent, color, sort_order } = req.body;
 
@@ -143,13 +185,16 @@ router.get('/customers', async (req, res) => {
             params
         );
         const total = countResult.rows[0].total;
+        const orderBy = canUseAction(req.user, 'view_revenue')
+            ? 'c.total_spent DESC'
+            : 'c.updated_at DESC NULLS LAST, c.id DESC';
 
         const result = await pool.query(
             `SELECT c.*, lt.name AS tier_name, lt.discount_percent, lt.color AS tier_color
              FROM customers c
              LEFT JOIN loyalty_tiers lt ON c.loyalty_tier_id = lt.id
              ${where}
-             ORDER BY c.total_spent DESC
+             ORDER BY ${orderBy}
              LIMIT $${idx++} OFFSET $${idx++}`,
             [...params, limit, offset]
         );
@@ -170,7 +215,7 @@ router.get('/customers', async (req, res) => {
 // ─── RECALCULATE ─────────────────────────────────────────────────────────────
 
 // POST /api/loyalty/recalculate — Recalculate all customers' loyalty tiers
-router.post('/recalculate', async (req, res) => {
+router.post('/recalculate', requireLoyaltyRevenue, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -243,7 +288,7 @@ router.get('/discounts', async (req, res) => {
 });
 
 // POST /api/loyalty/discounts — Create a new discount code
-router.post('/discounts', async (req, res) => {
+router.post('/discounts', requireLoyaltyRevenue, async (req, res) => {
     try {
         const { code, name, type, value, min_order, max_uses, valid_from, valid_until, category } = req.body;
 
@@ -283,7 +328,7 @@ router.post('/discounts', async (req, res) => {
 });
 
 // PUT /api/loyalty/discounts/:id — Update a discount code
-router.put('/discounts/:id', async (req, res) => {
+router.put('/discounts/:id', requireLoyaltyRevenue, async (req, res) => {
     try {
         const { id } = req.params;
         const { code, name, type, value, min_order, max_uses, valid_from, valid_until, category, is_active } = req.body;
@@ -308,14 +353,21 @@ router.put('/discounts/:id', async (req, res) => {
                 type = COALESCE($3, type),
                 value = COALESCE($4, value),
                 min_order = COALESCE($5, min_order),
-                max_uses = $6,
-                valid_from = $7,
-                valid_until = $8,
-                category = $9,
-                is_active = COALESCE($10, is_active),
+                max_uses = CASE WHEN $6::boolean THEN $7 ELSE max_uses END,
+                valid_from = CASE WHEN $8::boolean THEN $9::date ELSE valid_from END,
+                valid_until = CASE WHEN $10::boolean THEN $11::date ELSE valid_until END,
+                category = CASE WHEN $12::boolean THEN $13 ELSE category END,
+                is_active = COALESCE($14, is_active),
                 updated_at = NOW()
-             WHERE id = $11 RETURNING *`,
-            [code, name, type, value, min_order, max_uses, valid_from, valid_until, category, is_active, id]
+             WHERE id = $15 RETURNING *`,
+            [
+                code, name, type, value, min_order,
+                hasOwnBodyField(req, 'max_uses'), max_uses,
+                hasOwnBodyField(req, 'valid_from'), valid_from,
+                hasOwnBodyField(req, 'valid_until'), valid_until,
+                hasOwnBodyField(req, 'category'), category,
+                is_active, id
+            ]
         );
 
         log.info(`Discount code updated: ${id}`);
@@ -327,7 +379,7 @@ router.put('/discounts/:id', async (req, res) => {
 });
 
 // DELETE /api/loyalty/discounts/:id — Soft delete (set is_active=false)
-router.delete('/discounts/:id', async (req, res) => {
+router.delete('/discounts/:id', requireLoyaltyRevenue, async (req, res) => {
     try {
         const { id } = req.params;
 
@@ -350,7 +402,7 @@ router.delete('/discounts/:id', async (req, res) => {
 });
 
 // POST /api/loyalty/discounts/validate — Validate a discount code for a booking
-router.post('/discounts/validate', async (req, res) => {
+router.post('/discounts/validate', requireRevenueForExplicitFields('price'), async (req, res) => {
     try {
         const { code, price, category } = req.body;
 
@@ -454,7 +506,7 @@ router.get('/proposals', async (req, res) => {
 });
 
 // POST /api/loyalty/proposals — Create a new proposal
-router.post('/proposals', async (req, res) => {
+router.post('/proposals', requireRevenueForExplicitFields('discount_code_id'), async (req, res) => {
     try {
         const { title, description, discount_code_id, target_segment, start_date, end_date, banner_color } = req.body;
 
@@ -477,7 +529,7 @@ router.post('/proposals', async (req, res) => {
 });
 
 // PUT /api/loyalty/proposals/:id — Update a proposal
-router.put('/proposals/:id', async (req, res) => {
+router.put('/proposals/:id', requireRevenueForExplicitFields('discount_code_id'), async (req, res) => {
     try {
         const { id } = req.params;
         const { title, description, discount_code_id, target_segment, start_date, end_date, is_active, banner_color } = req.body;
@@ -491,14 +543,21 @@ router.put('/proposals/:id', async (req, res) => {
             `UPDATE discount_proposals SET
                 title = COALESCE($1, title),
                 description = COALESCE($2, description),
-                discount_code_id = $3,
-                target_segment = COALESCE($4, target_segment),
-                start_date = $5,
-                end_date = $6,
-                is_active = COALESCE($7, is_active),
-                banner_color = COALESCE($8, banner_color)
-             WHERE id = $9 RETURNING *`,
-            [title, description, discount_code_id, target_segment, start_date, end_date, is_active, banner_color, id]
+                discount_code_id = CASE WHEN $3::boolean THEN $4 ELSE discount_code_id END,
+                target_segment = COALESCE($5, target_segment),
+                start_date = CASE WHEN $6::boolean THEN $7::date ELSE start_date END,
+                end_date = CASE WHEN $8::boolean THEN $9::date ELSE end_date END,
+                is_active = COALESCE($10, is_active),
+                banner_color = COALESCE($11, banner_color)
+             WHERE id = $12 RETURNING *`,
+            [
+                title, description,
+                hasOwnBodyField(req, 'discount_code_id'), discount_code_id,
+                target_segment,
+                hasOwnBodyField(req, 'start_date'), start_date,
+                hasOwnBodyField(req, 'end_date'), end_date,
+                is_active, banner_color, id
+            ]
         );
 
         log.info(`Proposal updated: ${id}`);

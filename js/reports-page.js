@@ -211,6 +211,22 @@ const ReportsPage = (() => {
             : !isReportsBusinessReadOnly();
     }
 
+    function canManageReportWorkflowSettings() {
+        return typeof canAccess === 'function' && canAccess('manage_settings') === true;
+    }
+
+    function syncReportWorkflowSettingsAccess() {
+        const allowed = canManageReportWorkflowSettings();
+        const section = document.getElementById('reportApprovalWorkflow');
+        if (section) {
+            section.hidden = !allowed;
+            section.setAttribute('aria-hidden', allowed ? 'false' : 'true');
+        }
+        const saveButton = document.getElementById('reportApprovalSaveBtn');
+        if (saveButton && !allowed) saveButton.disabled = true;
+        return allowed;
+    }
+
     function reportsApiUrl(url) {
         return window.CrmBusinessContext?.apiUrl
             ? window.CrmBusinessContext.apiUrl(url, reportsBusinessContext())
@@ -1259,6 +1275,7 @@ const ReportsPage = (() => {
             }
         } catch { return; }
         if (typeof initDarkMode === 'function') initDarkMode();
+        syncReportWorkflowSettingsAccess();
         initReportsBusinessContext(AppState.currentUser);
 
         await setupReportTemplateWorkspace();
@@ -1403,6 +1420,7 @@ const ReportsPage = (() => {
     }
 
     async function loadWorkflowSettings() {
+        if (!syncReportWorkflowSettingsAccess()) return;
         try {
             _reportWorkflowSettings = await apiRequest('GET', '/api/reports/workflow-settings');
             _reportApprovalUsers = Array.isArray(_reportWorkflowSettings.users) ? _reportWorkflowSettings.users : [];
@@ -1442,6 +1460,10 @@ const ReportsPage = (() => {
     }
 
     async function saveWorkflowSettings() {
+        if (!canManageReportWorkflowSettings()) {
+            showNotification('Недостатньо прав для зміни маршруту перевірки звітів', 'error');
+            return;
+        }
         if (!guardReportsWrite('зберігати маршрут перевірки звітів')) return;
         const select = document.getElementById('reportApprovalAssignee');
         try {
@@ -1778,12 +1800,15 @@ const ReportsPage = (() => {
             if (el) el.disabled = readOnly || _reportTableBusy || !state || locked;
         });
 
+        const canExportTable = isPayrollTableState() || (typeof canAccess === 'function'
+            && canAccess('export_data')
+            && canAccess('view_revenue'));
         [
             'reportTemplateExportCsvBtn',
             'reportTemplateExportXlsxBtn'
         ].forEach(id => {
             const el = document.getElementById(id);
-            if (el) el.disabled = _reportTableBusy || !state;
+            if (el) el.disabled = _reportTableBusy || !state || !canExportTable;
         });
 
         if (closeBtn) closeBtn.disabled = readOnly || _reportTableBusy || !state || locked || !hasMeaningfulTableData();
@@ -2646,6 +2671,10 @@ const ReportsPage = (() => {
         if (!_reportTableState) return;
         if (isPayrollTableState()) {
             return downloadCanonicalPayrollExport(format);
+        }
+        if (typeof canAccess !== 'function' || !canAccess('export_data') || !canAccess('view_revenue')) {
+            showNotification('Недостатньо прав для експорту звіту', 'error');
+            return;
         }
         const payload = buildReportTablePayload();
         const token = localStorage.getItem('pzp_token');

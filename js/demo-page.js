@@ -8,6 +8,7 @@ let scenarios = [];
 let packages = [];
 let flags = [];
 let isAdminUser = false;
+let canManageSettings = false;
 let activeTab = 'scenarios';
 let currentSession = null;
 let currentStep = 0;
@@ -98,6 +99,16 @@ function setupTabs() {
     });
 }
 
+function syncDemoSettingsUi() {
+    const toggleBar = document.getElementById('demoToggleBar');
+    if (toggleBar) {
+        toggleBar.classList.toggle('hidden', !canManageSettings);
+        toggleBar.setAttribute('aria-hidden', canManageSettings ? 'false' : 'true');
+    }
+    const toggle = document.getElementById('demoToggle');
+    if (toggle) toggle.disabled = !canManageSettings;
+}
+
 // ==========================================
 // OVERVIEW + SCENARIOS TAB
 // ==========================================
@@ -113,8 +124,8 @@ async function loadOverview() {
     // Set toggle state
     const toggle = document.getElementById('demoToggle');
     const statusText = document.getElementById('demoStatusText');
-    if (toggle) toggle.checked = data.demoEnabled;
-    if (statusText) {
+    if (canManageSettings && toggle) toggle.checked = data.demoEnabled;
+    if (canManageSettings && statusText) {
         statusText.textContent = data.demoEnabled ? 'Увімкнено' : 'Вимкнено';
         statusText.className = 'demo-toggle-status ' + (data.demoEnabled ? 'on' : 'off');
     }
@@ -394,6 +405,10 @@ async function toggleFlag(code, enabled) {
 // ==========================================
 
 async function toggleDemoMode(enabled) {
+    if (!canManageSettings) {
+        showNotification('Недостатньо прав для зміни системних налаштувань', 'error');
+        return;
+    }
     const result = await apiPost('/demo/toggle', { enabled });
     if (result.success) {
         const statusText = document.getElementById('demoStatusText');
@@ -442,6 +457,7 @@ async function initAuth() {
     else if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     const ADMIN_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
     isAdminUser = ADMIN_ROLES.includes(user.role);
+    canManageSettings = typeof canAccess === 'function' && canAccess('manage_settings') === true;
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
@@ -472,12 +488,15 @@ async function initDemoPage() {
         return;
     }
 
+    syncDemoSettingsUi();
     setupTabs();
 
     // Demo toggle
-    document.getElementById('demoToggle')?.addEventListener('change', (e) => {
-        toggleDemoMode(e.target.checked);
-    });
+    if (canManageSettings) {
+        document.getElementById('demoToggle')?.addEventListener('change', (e) => {
+            toggleDemoMode(e.target.checked);
+        });
+    }
 
     // Player modal close
     document.getElementById('playerModalClose')?.addEventListener('click', () => {

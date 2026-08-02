@@ -1230,7 +1230,7 @@
                 <div class="page-header">
                     <h2>Закупки</h2>
                     <div style="display:flex;gap:8px;">
-                        <button type="button" onclick="exportProcXlsx()" class="btn-page-secondary">Excel</button>
+                        <button type="button" id="procurementExportXlsxBtn" onclick="exportProcXlsx()" class="btn-page-secondary">Excel</button>
                         <button type="button" onclick="openProcForm()" class="btn-page-primary">+ Новий список</button>
                     </div>
                 </div>
@@ -1252,7 +1252,7 @@
                         <option value="purchased">Закуплено</option>
                         <option value="delivered">Доставлено</option>
                     </select>
-                    <button type="button" onclick="loadSuggestions()" class="wh-toggle">Авто з нестач</button>
+                    <button type="button" id="procurementAutoSuggestBtn" onclick="loadSuggestions()" class="wh-toggle">Авто з нестач</button>
                 </div>
 
                 <div id="procKitchenDemandSignals" class="proc-demand-signals"></div>

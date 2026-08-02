@@ -2,6 +2,7 @@ const { describe, it } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const express = require('express');
 
 const {
     normalizeDraft,
@@ -12,6 +13,116 @@ const {
 
 function readRepoFile(...parts) {
     return fs.readFileSync(path.join(__dirname, '..', ...parts), 'utf8');
+}
+
+function installCachedModule(id, exportsValue) {
+    require.cache[id] = {
+        id,
+        filename: id,
+        loaded: true,
+        exports: exportsValue
+    };
+}
+
+function loadWarehousePhotoIntakeService(pool) {
+    const serviceId = require.resolve('../services/warehousePhotoIntake');
+    const dbId = require.resolve('../db');
+    const telegramId = require.resolve('../services/telegram');
+    const previous = new Map([
+        [serviceId, require.cache[serviceId]],
+        [dbId, require.cache[dbId]],
+        [telegramId, require.cache[telegramId]]
+    ]);
+
+    delete require.cache[serviceId];
+    installCachedModule(dbId, { pool });
+    installCachedModule(telegramId, {
+        downloadTelegramFileById: async () => { throw new Error('unexpected Telegram download'); },
+        getTelegramBotConfigStatus: () => ({ configured: false })
+    });
+
+    const service = require('../services/warehousePhotoIntake');
+    return {
+        service,
+        restore() {
+            delete require.cache[serviceId];
+            for (const [id, entry] of previous) {
+                if (entry) require.cache[id] = entry;
+                else delete require.cache[id];
+            }
+        }
+    };
+}
+
+function loadWarehouseAccessRouter(confirmIntake) {
+    const routeId = require.resolve('../routes/warehouse');
+    const dbId = require.resolve('../db');
+    const authId = require.resolve('../middleware/auth');
+    const costumeInventoryId = require.resolve('../services/costumeInventory');
+    const photoIntakeId = require.resolve('../services/warehousePhotoIntake');
+    const previous = new Map([
+        [routeId, require.cache[routeId]],
+        [dbId, require.cache[dbId]],
+        [authId, require.cache[authId]],
+        [costumeInventoryId, require.cache[costumeInventoryId]],
+        [photoIntakeId, require.cache[photoIntakeId]]
+    ]);
+
+    delete require.cache[routeId];
+    installCachedModule(dbId, {
+        pool: {
+            query: async () => { throw new Error('denied request reached database'); },
+            connect: async () => { throw new Error('denied request reached database'); }
+        }
+    });
+    installCachedModule(authId, {
+        authenticateToken: (_req, _res, next) => next(),
+        canUseAction: (user, action) => action !== 'view_revenue' || !user?.action_denylist?.includes(action),
+        requireRole: (...roles) => (req, res, next) => (
+            roles.includes(req.user?.role)
+                ? next()
+                : res.status(403).json({ error: 'Insufficient permissions' })
+        )
+    });
+    installCachedModule(costumeInventoryId, {});
+    installCachedModule(photoIntakeId, { confirmIntake });
+
+    const router = require('../routes/warehouse');
+    return {
+        router,
+        restore() {
+            delete require.cache[routeId];
+            for (const [id, entry] of previous) {
+                if (entry) require.cache[id] = entry;
+                else delete require.cache[id];
+            }
+        }
+    };
+}
+
+async function withWarehouseAccessRouter(router, run) {
+    const app = express();
+    app.use(express.json());
+    app.use((req, _res, next) => {
+        const revenueAllowed = req.get('x-test-revenue') === 'allowed';
+        req.user = {
+            role: 'creator',
+            username: 'warehouse-access-test',
+            action_denylist: revenueAllowed ? [] : ['view_revenue']
+        };
+        next();
+    });
+    app.use('/warehouse', router);
+
+    const server = await new Promise(resolve => {
+        const instance = app.listen(0, '127.0.0.1', () => resolve(instance));
+    });
+
+    try {
+        await run('http://127.0.0.1:' + server.address().port);
+    } finally {
+        await new Promise(resolve => server.close(resolve));
+    }
 }
 
 describe('warehouse Telegram photo intake contract', () => {
@@ -55,6 +166,96 @@ describe('warehouse Telegram photo intake contract', () => {
         assert.match(telegramRoute, /wh_intake_confirm:/);
         assert.match(html, /warehouseIntakeTitle/);
         assert.match(frontend, /confirmWarehouseIntake/);
+    });
+
+    it('blocks explicit photo-intake price writes before the service without view_revenue', async () => {
+        const confirmCalls = [];
+        const loaded = loadWarehouseAccessRouter(async (id, options) => {
+            confirmCalls.push({ id, options });
+            return { success: true, item: { id, draft: options.draft } };
+        });
+
+        try {
+            await withWarehouseAccessRouter(loaded.router, async baseUrl => {
+                const postConfirm = (body, allowed = false) => fetch(baseUrl + '/warehouse/photo-intake/91/confirm', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'x-test-revenue': allowed ? 'allowed' : 'denied'
+                    },
+                    body: JSON.stringify(body)
+                });
+
+                for (const payload of [{ draft: { price: 125 } }, { price: 125 }]) {
+                    const deniedResponse = await postConfirm(payload);
+                    assert.equal(deniedResponse.status, 403);
+                    assert.deepEqual(await deniedResponse.json(), { error: 'Insufficient permissions' });
+                }
+                assert.equal(confirmCalls.length, 0);
+
+                const operationalResponse = await postConfirm({ draft: { name: 'Paper cups', quantity: 12 } });
+                assert.equal(operationalResponse.status, 200);
+                assert.equal(confirmCalls.length, 1);
+                assert.equal(confirmCalls[0].options.allowRevenueWrite, false);
+
+                const allowedResponse = await postConfirm({ draft: { price: 125 } }, true);
+                assert.equal(allowedResponse.status, 200);
+                assert.equal(confirmCalls.length, 2);
+                assert.equal(confirmCalls[1].options.draft.price, 125);
+                assert.equal(confirmCalls[1].options.allowRevenueWrite, true);
+            });
+        } finally {
+            loaded.restore();
+        }
+    });
+
+    it('blocks a hidden stored draft price before warehouse persistence without view_revenue', async () => {
+        const statements = [];
+        let releaseCount = 0;
+        const client = {
+            async query(sql) {
+                const statement = String(sql).trim();
+                statements.push(statement);
+                if (statement === 'BEGIN' || statement === 'ROLLBACK') return { rows: [], rowCount: 0 };
+                if (statement.includes('SELECT * FROM warehouse_photo_intakes')) {
+                    return {
+                        rowCount: 1,
+                        rows: [{
+                            id: 91,
+                            status: 'needs_review',
+                            draft: {
+                                name: 'Paper cups',
+                                category: 'craft',
+                                quantity: 12,
+                                unit: 'шт',
+                                price: 125
+                            },
+                            match_candidates: []
+                        }]
+                    };
+                }
+                throw new Error('denied confirmation reached warehouse write SQL: ' + statement);
+            },
+            release() {
+                releaseCount += 1;
+            }
+        };
+        const loaded = loadWarehousePhotoIntakeService({ connect: async () => client });
+
+        try {
+            const result = await loaded.service.confirmIntake(91, {
+                actor: 'warehouse-access-test',
+                draft: { name: 'Updated paper cups' },
+                allowRevenueWrite: false
+            });
+
+            assert.deepEqual(result, { success: false, status: 403, error: 'Insufficient permissions' });
+            assert.equal(releaseCount, 1);
+            assert.equal(statements.filter(statement => statement === 'ROLLBACK').length, 1);
+            assert.equal(statements.some(statement => /INSERT INTO warehouse_stock|UPDATE warehouse_stock/.test(statement)), false);
+        } finally {
+            loaded.restore();
+        }
     });
 
     it('keeps warehouse object editing discoverable and guarded', () => {

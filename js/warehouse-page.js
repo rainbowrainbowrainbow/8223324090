@@ -90,6 +90,31 @@ function escapeHtml(str) {
     return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function canViewProcurementRevenue() {
+    return typeof canAccess === 'function' && canAccess('view_revenue');
+}
+
+function guardProcurementRevenueMutation() {
+    if (canViewProcurementRevenue()) return true;
+    showNotification(
+        'Недостатньо прав для операції, що переносить закупівельну ціну',
+        'error'
+    );
+    return false;
+}
+
+function syncProcurementRevenueMutationUi(root = document) {
+    if (canViewProcurementRevenue()) return;
+    root.querySelectorAll(
+        '[onclick^="createProcurementFromStockItem("], [onclick^="receiveProcItem("], '
+        + '[onclick^="createKitchenDemandProcurement("], [onchange^="toggleProcItem("], '
+        + '[onclick^="removeProcItem("]'
+    ).forEach(button => {
+        button.hidden = true;
+        button.disabled = true;
+    });
+}
+
 async function initPage() {
     initDarkMode();
 
@@ -112,6 +137,17 @@ async function initPage() {
     if (addLocationBtn) addLocationBtn.style.display = canManage ? '' : 'none';
     const addCostumeBtn = document.getElementById('addCostumeBtn');
     if (addCostumeBtn) addCostumeBtn.hidden = !canManage;
+    const canViewRevenue = canViewProcurementRevenue();
+    const canExportProcurement = typeof canAccess === 'function' && canAccess('export_data') && canViewRevenue;
+    const procurementExport = document.getElementById('procurementExportXlsxBtn');
+    if (procurementExport) procurementExport.hidden = !canExportProcurement;
+    const procurementPriceInput = document.getElementById('pd-item-price');
+    if (procurementPriceInput) procurementPriceInput.hidden = !canViewRevenue;
+    const procurementAutoSuggest = document.getElementById('procurementAutoSuggestBtn');
+    if (procurementAutoSuggest) procurementAutoSuggest.hidden = !canViewRevenue;
+    const warehousePriceInput = document.getElementById('wf-purchase-price');
+    const warehousePriceField = warehousePriceInput?.closest('.form-field');
+    if (warehousePriceField) warehousePriceField.hidden = !canViewRevenue;
 
     if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
@@ -518,6 +554,7 @@ function renderStock() {
             </div>
         </div>`;
     }).join('');
+    syncProcurementRevenueMutationUi();
 }
 
 // ==========================================
@@ -740,7 +777,7 @@ function openItemForm(itemId = null) {
         const skuEl = document.getElementById('wf-sku');
         if (skuEl) skuEl.value = item.sku || '';
         const priceEl = document.getElementById('wf-purchase-price');
-        if (priceEl) priceEl.value = item.purchaseUnitPrice || 0;
+        if (priceEl && canViewProcurementRevenue()) priceEl.value = item.purchaseUnitPrice || 0;
         const procuredEl = document.getElementById('wf-procured-externally');
         if (procuredEl) procuredEl.checked = item.isProcuredExternally === true;
         var ownerEl = document.getElementById('wf-owner');
@@ -763,7 +800,7 @@ function openItemForm(itemId = null) {
         const skuElNew = document.getElementById('wf-sku');
         if (skuElNew) skuElNew.value = '';
         const priceElNew = document.getElementById('wf-purchase-price');
-        if (priceElNew) priceElNew.value = 0;
+        if (priceElNew && canViewProcurementRevenue()) priceElNew.value = 0;
         const procuredElNew = document.getElementById('wf-procured-externally');
         if (procuredElNew) procuredElNew.checked = false;
         var ownerElNew = document.getElementById('wf-owner');
@@ -792,9 +829,11 @@ async function saveItem() {
         locationId: document.getElementById('wf-location')?.value || null,
         preferredContractorId: document.getElementById('wf-contractor')?.value || null,
         sku: document.getElementById('wf-sku')?.value.trim() || null,
-        purchaseUnitPrice: parseFloat(document.getElementById('wf-purchase-price')?.value || '0') || 0,
         isProcuredExternally: document.getElementById('wf-procured-externally')?.checked === true
     };
+    if (canViewProcurementRevenue()) {
+        item.purchaseUnitPrice = parseFloat(document.getElementById('wf-purchase-price')?.value || '0') || 0;
+    }
 
     if (!item.name) {
         showNotification('Назва обов\'язкова', 'error');
@@ -905,6 +944,7 @@ function closeMovementModal() {
 }
 
 async function createProcurementFromStockItem(itemId) {
+    if (!guardProcurementRevenueMutation()) return;
     const result = await apiCreateProcurementFromStockItem(itemId, { targetLocationId: currentLocationId || null });
     if (result?.success && result.list) {
         showNotification('Закупку створено з дефіциту', 'success');
@@ -1394,6 +1434,7 @@ function renderProcurementKitchenDemand() {
 }
 
 async function createKitchenDemandProcurement(stockId) {
+    if (!guardProcurementRevenueMutation()) return;
     const signal = procurementKitchenDemand.find(item => String(item.stockId) === String(stockId));
     if (!signal) return;
     const result = await apiCreateProcurementFromStockItem(stockId, {
@@ -1433,7 +1474,8 @@ function renderProcLists() {
 
     container.innerHTML = procLists.map(list => {
         const progress = list.itemCount > 0 ? Math.round((list.purchasedCount / list.itemCount) * 100) : 0;
-        const totalFmt = list.totalEstimated > 0 ? `${list.totalEstimated.toLocaleString('uk-UA')} ₴` : '';
+        const totalFmt = canViewProcurementRevenue() && list.totalEstimated > 0
+            ? `<span class="proc-card-total">${list.totalEstimated.toLocaleString('uk-UA')} ₴</span>` : '';
 
         return `<div class="proc-card" onclick="openProcDetail(${list.id})">
             <div class="proc-card-header">
@@ -1449,7 +1491,7 @@ function renderProcLists() {
                 <span>${list.itemCount || 0} позицій</span>
             </div>
             <div class="proc-card-footer">
-                <span class="proc-card-total">${totalFmt}</span>
+                ${totalFmt}
                 <div class="proc-progress">
                     <div class="proc-progress-bar"><div class="proc-progress-fill" style="width:${progress}%"></div></div>
                     <span>${list.purchasedCount || 0}/${list.itemCount || 0}</span>
@@ -1541,7 +1583,9 @@ async function openProcDetail(listId) {
     renderProcDetailItems(data.items || []);
 
     const complBtn = document.getElementById('procCompleteBtn');
-    complBtn.style.display = (data.status === 'draft' || data.status === 'approved' || data.status === 'in_progress') ? '' : 'none';
+    const canComplete = canViewProcurementRevenue()
+        && (data.status === 'draft' || data.status === 'approved' || data.status === 'in_progress');
+    complBtn.style.display = canComplete ? '' : 'none';
 
     document.getElementById('procDetailModal').style.display = '';
 }
@@ -1554,7 +1598,8 @@ function renderProcDetailItems(items) {
     }
 
     container.innerHTML = items.map(item => {
-        const priceFmt = item.estimatedPrice > 0 ? `${(item.quantity * item.estimatedPrice).toLocaleString('uk-UA')} ₴` : '';
+        const priceFmt = canViewProcurementRevenue() && item.estimatedPrice > 0
+            ? `<span class="proc-item-price">${(item.quantity * item.estimatedPrice).toLocaleString('uk-UA')} ₴</span>` : '';
         const nameClass = item.isPurchased ? 'proc-item-name proc-item-purchased' : 'proc-item-name';
 
         return `<div class="proc-item-row">
@@ -1564,12 +1609,13 @@ function renderProcDetailItems(items) {
             <span style="color:var(--gray-400);font-size:12px;">${item.quantity} ${escapeHtml(item.unit)}</span>
             ${item.targetLocationName ? `<span class="wh-owner-badge">${escapeHtml(item.targetLocationName)}</span>` : ''}
             ${item.contractorName ? `<span class="wh-owner-badge">${escapeHtml(item.contractorName)}</span>` : ''}
-            <span class="proc-item-price">${priceFmt}</span>
+            ${priceFmt}
             ${item.contractorId || currentProcDetail?.contractorId ? `<button class="wh-btn" onclick="openProcItemContractorCard(${item.id})" title="Контакт підрядника" style="width:28px;height:28px;font-size:12px;">🤝</button>` : ''}
             <button class="wh-btn restock" onclick="receiveProcItem(${item.id})" title="Оприбуткувати" style="width:28px;height:28px;font-size:12px;">↧</button>
             <button class="wh-btn danger" onclick="removeProcItem(${currentProcListId}, ${item.id})" title="Видалити" style="width:28px;height:28px;font-size:12px;">✕</button>
         </div>`;
     }).join('');
+    syncProcurementRevenueMutationUi(container);
 }
 
 function closeProcDetail() {
@@ -1582,7 +1628,7 @@ async function addProcItem() {
     if (!currentProcListId) return;
     const name = document.getElementById('pd-item-name')?.value.trim();
     const qty = parseInt(document.getElementById('pd-item-qty')?.value) || 1;
-    const price = parseInt(document.getElementById('pd-item-price')?.value) || 0;
+    const price = canViewProcurementRevenue() ? (parseInt(document.getElementById('pd-item-price')?.value) || 0) : null;
     const contractorId = document.getElementById('pd-item-contractor')?.value || currentProcDetail?.contractorId || null;
 
     if (!name) {
@@ -1590,14 +1636,14 @@ async function addProcItem() {
         return;
     }
 
-    const result = await apiAddProcurementItem(currentProcListId, {
-        name, quantity: qty, estimatedPrice: price, contractorId
-    });
+    const itemPayload = { name, quantity: qty, contractorId };
+    if (canViewProcurementRevenue()) itemPayload.estimatedPrice = price;
+    const result = await apiAddProcurementItem(currentProcListId, itemPayload);
 
     if (result && result.success) {
         document.getElementById('pd-item-name').value = '';
         document.getElementById('pd-item-qty').value = 1;
-        document.getElementById('pd-item-price').value = 0;
+        if (canViewProcurementRevenue()) document.getElementById('pd-item-price').value = 0;
         await openProcDetail(currentProcListId);
     } else {
         showNotification(result?.error || 'Помилка', 'error');
@@ -1605,6 +1651,7 @@ async function addProcItem() {
 }
 
 async function toggleProcItem(listId, itemId, checked) {
+    if (!guardProcurementRevenueMutation()) return;
     try {
         await apiUpdateProcurementItem(listId, itemId, { isPurchased: checked });
     } catch (e) {
@@ -1614,6 +1661,7 @@ async function toggleProcItem(listId, itemId, checked) {
 }
 
 async function removeProcItem(listId, itemId) {
+    if (!guardProcurementRevenueMutation()) return;
     try {
         await apiDeleteProcurementItem(listId, itemId);
         await openProcDetail(listId);
@@ -1623,16 +1671,18 @@ async function removeProcItem(listId, itemId) {
 }
 
 async function receiveProcItem(itemId) {
+    if (!guardProcurementRevenueMutation()) return;
     if (!currentProcListId) return;
     const item = (currentProcDetail?.items || []).find(x => String(x.id) === String(itemId));
     const locationId = currentProcDetail?.targetLocationId || item?.targetLocationId || currentLocationId || '';
-    const result = await apiReceiveProcurementItem(currentProcListId, itemId, {
+    const receiptPayload = {
         receivedQty: item?.quantity || 1,
         locationId,
-        finalPrice: item?.estimatedPrice || 0,
         contractorId: item?.contractorId || currentProcDetail?.contractorId || null,
         warehouseStockId: item?.warehouseStockId || item?.stockId || null
-    });
+    };
+    if (canViewProcurementRevenue()) receiptPayload.finalPrice = item?.estimatedPrice || 0;
+    const result = await apiReceiveProcurementItem(currentProcListId, itemId, receiptPayload);
     if (result?.success) {
         showNotification('Позицію оприбутковано на склад', 'success');
         await Promise.all([openProcDetail(currentProcListId), loadStock(), loadHistory()]);
@@ -1642,6 +1692,7 @@ async function receiveProcItem(itemId) {
 }
 
 async function completeProcList() {
+    if (!guardProcurementRevenueMutation()) return;
     if (!currentProcListId) return;
     if (!await confirmModal('Закупити все? Позиції, пов\'язані зі складом, будуть поповнені автоматично.', { type: 'warning', okText: 'Закупити' })) return;
 
@@ -1656,6 +1707,10 @@ async function completeProcList() {
 }
 
 async function loadSuggestions() {
+    if (!canViewProcurementRevenue()) {
+        showNotification('Недостатньо прав для автоматичного формування закупівель із цінами', 'error');
+        return;
+    }
     const data = await apiGetProcurementSuggestions();
     const suggestions = data.suggestions || [];
     if (suggestions.length === 0) {
@@ -1707,6 +1762,10 @@ async function loadSuggestions() {
 }
 
 async function exportProcXlsx() {
+    if (typeof canAccess !== 'function' || !canAccess('export_data') || !canViewProcurementRevenue()) {
+        showNotification('Недостатньо прав для експорту закупівель', 'error');
+        return;
+    }
     let touchWindow = null;
     try {
         touchWindow = typeof openTouchDownloadWindow === 'function'

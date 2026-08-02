@@ -349,6 +349,11 @@ const DashboardPage = (() => {
         content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
         operations:     { icon: '⚙️', title: 'Операції', minRole: 'vice_director' },
     };
+    const DASHBOARD_REVENUE_WIDGETS = new Set([
+        'finance_today',
+        'reports_today',
+        'director_pnl'
+    ]);
 
     const ROLE_DASHBOARD_BASE_WIDGETS = {
         creator: ['personal_tasker', 'quick_stats', 'my_focus', 'funnel', 'director_pnl', 'staff_today', 'event_risk_summary', 'team_tasks', 'task_health', 'exceptions', 'team_online', 'bookings_today', 'leads_new', 'catalogs', 'weather', 'currency', 'announcements', 'tasks', 'my_schedule', 'alerts', 'hr_overview', 'content_pipeline', 'operations'],
@@ -749,6 +754,35 @@ const DashboardPage = (() => {
         return canUseWidgetForRole(widgetKey, getEffectiveDashboardRole());
     }
 
+    function canUseDashboardAction(action) {
+        const resolver = window.resolveCapability;
+        const user = AppState.currentUser;
+        if (typeof resolver !== 'function' || !user) return false;
+
+        try {
+            const realDecision = resolver(user, action, {
+                type: 'action',
+                previewRole: ''
+            });
+            if (realDecision?.allowed !== true) return false;
+
+            const previewRole = String(window.RolePreview?.getPreviewRole?.() || '').trim();
+            if (!previewRole) return true;
+            return resolver(user, action, {
+                type: 'action',
+                previewRole,
+                ignoreServer: true
+            })?.allowed === true;
+        } catch (err) {
+            console.warn(`[dashboard] Capability resolution failed for ${action}:`, err);
+            return false;
+        }
+    }
+
+    function canViewDashboardRevenue() {
+        return canUseDashboardAction('view_revenue');
+    }
+
     function getRoleBaseWidgets(role) {
         return ROLE_DASHBOARD_BASE_WIDGETS[role] || ROLE_DASHBOARD_BASE_WIDGETS._default;
     }
@@ -769,6 +803,7 @@ const DashboardPage = (() => {
         if (DASHBOARD_RETIRED_WIDGETS.has(widgetKey)) return false;
         const def = WIDGET_DEFS[widgetKey];
         if (!def) return false;
+        if (DASHBOARD_REVENUE_WIDGETS.has(widgetKey) && !canViewDashboardRevenue()) return false;
         if (getRoleBaseWidgets(role).includes(widgetKey)) return true;
         return roleMeetsMinRole(role, def.minRole);
     }
@@ -1541,7 +1576,7 @@ const DashboardPage = (() => {
             .map(el => el.dataset.widget)
             .filter(Boolean);
         const source = domWidgets.length ? domWidgets : normalizeDashboardWidgets(_config?.widgets || []);
-        return [...new Set(source)].slice(0, 30);
+        return [...new Set(source.filter(canUseWidget))].slice(0, 30);
     }
 
     function buildDashboardAssistantPayload(userMessage, voiceMode = false) {
@@ -5879,6 +5914,11 @@ const DashboardPage = (() => {
 
     async function loadWidgetData(type, targetContainer = null) {
         const container = targetContainer || document.getElementById(`widget-${type}`);
+        if (DASHBOARD_REVENUE_WIDGETS.has(type) && !canViewDashboardRevenue()) {
+            delete _widgetData[type];
+            if (container) container.innerHTML = '';
+            return;
+        }
         if (!container) return;
 
         if (type === 'funnel') {
@@ -6083,6 +6123,11 @@ const DashboardPage = (() => {
     }
 
     function renderQuickStats(data, container) {
+        const revenueStat = canViewDashboardRevenue() ? `
+                <div class="stat-item">
+                    <div class="stat-value">${formatCurrency(data.revenueToday || 0)}</div>
+                    <div class="stat-label">Виручка</div>
+                </div>` : '';
         container.innerHTML = `
             <div class="stats-grid">
                 <div class="stat-item">
@@ -6093,10 +6138,7 @@ const DashboardPage = (() => {
                     <div class="stat-value">${data.activeTasks || 0}</div>
                     <div class="stat-label">Активних задач</div>
                 </div>
-                <div class="stat-item">
-                    <div class="stat-value">${formatCurrency(data.revenueToday || 0)}</div>
-                    <div class="stat-label">Виручка</div>
-                </div>
+                ${revenueStat}
             </div>
         `;
     }
@@ -6642,6 +6684,10 @@ const DashboardPage = (() => {
     }
 
     function renderFinanceToday(data, container) {
+        if (!canViewDashboardRevenue()) {
+            container.innerHTML = '';
+            return;
+        }
         const fmt = (v) => {
             if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
             return Math.round(v) + '';
@@ -6669,6 +6715,10 @@ const DashboardPage = (() => {
     }
 
     function renderReportsToday(data, container) {
+        if (!canViewDashboardRevenue()) {
+            container.innerHTML = '';
+            return;
+        }
         const fmt = (v) => {
             if (v >= 1000) return (v / 1000).toFixed(1).replace(/\.0$/, '') + 'k';
             return Math.round(v) + '';
@@ -6804,11 +6854,13 @@ const DashboardPage = (() => {
             return;
         }
         const dayNames = ['Нд', 'Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб'];
-        const totalRev = data.days.reduce((s, d) => s + (d.revenue || 0), 0);
+        const revenueStat = canViewDashboardRevenue()
+            ? `<div class="stat-item"><div class="stat-value">${formatCurrency(data.days.reduce((sum, day) => sum + (day.revenue || 0), 0))}</div><div class="stat-label">Виручка</div></div>`
+            : '';
         const totalCount = data.days.reduce((s, d) => s + (d.count || 0), 0);
         let html = `<div class="stats-grid" style="margin-bottom:8px">
             <div class="stat-item"><div class="stat-value">${totalCount}</div><div class="stat-label">Бронювань</div></div>
-            <div class="stat-item"><div class="stat-value">${formatCurrency(totalRev)}</div><div class="stat-label">Виручка</div></div>
+            ${revenueStat}
         </div>`;
         html += '<div style="display:flex;gap:4px;align-items:flex-end;height:80px;margin-top:8px">';
         const maxCount = Math.max(...data.days.map(d => d.count || 0), 1);
@@ -6891,6 +6943,10 @@ const DashboardPage = (() => {
 
     // v39.10: Director P&L
     function renderDirectorPnl(data, container) {
+        if (!canViewDashboardRevenue()) {
+            container.innerHTML = '';
+            return;
+        }
         const w = data.week || {};
         const m = data.month || {};
         container.innerHTML = `

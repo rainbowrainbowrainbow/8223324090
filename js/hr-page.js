@@ -5685,8 +5685,8 @@ let accountOnboardingState = {
 };
 const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
 const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
-const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts']);
-const ACCOUNT_DEPRECATED_ACTIONS = new Set(['cancel_booking', 'view_own', 'manage_users', 'view_revenue', 'manage_settings', 'export_data']);
+const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_settings']);
+const ACCOUNT_DEPRECATED_ACTIONS = new Set(['cancel_booking', 'view_own', 'manage_users']);
 const ACCOUNT_BUSINESS_SWITCH_ROLES = new Set(['creator', 'director']);
 const ACCOUNT_ROLE_PRESET_LABELS = {
     executive: 'Керівництво',

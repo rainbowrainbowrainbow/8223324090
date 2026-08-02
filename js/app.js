@@ -810,13 +810,17 @@ function setProductSalesLoading(isLoading) {
 }
 
 function showProductSalesModal() {
-    if (typeof canAccess === 'function' && !canAccess('export_data')) {
+    if (typeof canAccess !== 'function' || !canAccess('view_revenue')) {
         showNotification('Недостатньо прав для перегляду продажів', 'error');
         return;
     }
     const modal = document.getElementById('productSalesModal');
     const monthInput = document.getElementById('productSalesMonth');
     if (!modal || !monthInput) return;
+    const canExport = typeof canAccess === 'function' && canAccess('export_data');
+    ['productSalesXlsxBtn', 'productSalesCsvBtn'].forEach(id => {
+        document.getElementById(id)?.classList.toggle('hidden', !canExport);
+    });
     if (!monthInput.value) monthInput.value = getProductSalesMonthValue();
     modal.classList.remove('hidden');
     loadProductSalesReport();
@@ -976,6 +980,10 @@ function renderProductSalesReport(data) {
 }
 
 async function downloadProductSalesExport(format) {
+    if (typeof canAccess !== 'function' || !canAccess('export_data') || !canAccess('view_revenue')) {
+        showNotification('Недостатньо прав для експорту продажів', 'error');
+        return;
+    }
     let touchWindow = null;
     setProductSalesLoading(true);
     try {

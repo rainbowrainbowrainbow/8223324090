@@ -14,7 +14,7 @@ loadLocalEnv(__dirname);
 
 // --- Core modules ---
 const { pool, initDatabase } = require('./db');
-const { authenticateToken, requireRole } = require('./middleware/auth');
+const { authenticateToken, requireAction, requireRole } = require('./middleware/auth');
 const { apiAuthBoundary } = require('./middleware/apiAuthBoundary');
 const { businessScopeWriteGuard } = require('./middleware/businessScopeGuard');
 const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
@@ -222,9 +222,11 @@ app.use('/api/leads/landing', landingLeadLimiter);
 // Auth middleware: protect all API endpoints except public ones
 app.use('/api', apiAuthBoundary(authenticateToken));
 const backupRestorePreParserGuard = requireRole('creator', 'director');
+const backupRestorePreParserSettingsGuard = requireAction('manage_settings');
 app.use(
     ['/api/backup/restore', '/api/backup/restore-encrypted'],
     backupRestorePreParserGuard,
+    backupRestorePreParserSettingsGuard,
     express.json({ limit: BACKUP_RESTORE_JSON_LIMIT })
 );
 

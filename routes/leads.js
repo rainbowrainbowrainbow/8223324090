@@ -24,7 +24,8 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { notifyNewLead } = require('../services/leadNotifier');
-const { authenticateToken, requireRole, requireMinRole } = require('../middleware/auth');
+const { authenticateToken, canUseAction, requireRole, requireMinRole } = require('../middleware/auth');
+const { redactRevenueFieldKeys } = require('../services/revenueAccessPolicy');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { buildTaskVisibilityScope } = require('../services/taskPolicy');
 const { getAssignableTaskOwner } = require('../services/taskExecution');
@@ -68,6 +69,65 @@ function getKleshnya() { return require('../services/kleshnya'); }
 function getBanquetDeposits() { return require('../services/banquetDeposits'); }
 
 const log = createLogger('Leads');
+
+function hasOwnBodyField(req, field) {
+    return Object.prototype.hasOwnProperty.call(req.body || {}, field);
+}
+
+function requireRevenueForExplicitFields(...fields) {
+    return (req, res, next) => {
+        if (canUseAction(req.user, 'view_revenue')) return next();
+        if (!fields.some(field => hasOwnBodyField(req, field))) return next();
+        return res.status(403).json({ error: 'Insufficient permissions' });
+    };
+}
+
+function stripLeadPotentialFields(value) {
+    if (Array.isArray(value)) return value.map(stripLeadPotentialFields);
+    if (!value || typeof value !== 'object') return value;
+    if (value instanceof Date || Buffer.isBuffer(value)) return value;
+
+    const stripped = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+        const normalizedKey = String(key).replace(/[^a-z0-9]/gi, '').toLowerCase();
+        if (normalizedKey === 'potentialvalue') continue;
+        stripped[key] = stripLeadPotentialFields(nestedValue);
+    }
+    return stripped;
+}
+
+function stripLegacyCustomerCardBudgetLines(value) {
+    if (typeof value === 'string') {
+        if (!value.includes('[legacy customer_card:')) return value;
+        return value
+            .split(/\n{2,}/)
+            .map(section => {
+                if (!section.includes('[legacy customer_card:')) return section;
+                return section
+                    .split('\n')
+                    .filter(line => !/^\s*Бюджет\s*:/iu.test(line))
+                    .join('\n');
+            })
+            .filter(Boolean)
+            .join('\n\n');
+    }
+    if (Array.isArray(value)) return value.map(stripLegacyCustomerCardBudgetLines);
+    if (!value || typeof value !== 'object') return value;
+    if (value instanceof Date || Buffer.isBuffer(value)) return value;
+
+    return Object.fromEntries(
+        Object.entries(value).map(([key, nestedValue]) => [key, stripLegacyCustomerCardBudgetLines(nestedValue)])
+    );
+}
+
+function shapeRevenueResponse(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    const sendJson = res.json.bind(res);
+    res.json = payload => sendJson(stripLegacyCustomerCardBudgetLines(
+        stripLeadPotentialFields(redactRevenueFieldKeys(payload))
+    ));
+    return next();
+}
 
 const LEAD_ASSIGNEE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer', 'admin'];
 
@@ -2410,7 +2470,7 @@ router.get('/assignees', async (req, res) => {
 });
 
 // GET /api/leads — list all leads with optional filters
-router.get('/', async (req, res) => {
+router.get('/', shapeRevenueResponse, async (req, res) => {
     try {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
@@ -2426,7 +2486,7 @@ router.get('/', async (req, res) => {
 });
 
 // GET /api/leads/hot — leads that need attention (24h+ since creation, still 'new')
-router.get('/hot', async (req, res) => {
+router.get('/hot', shapeRevenueResponse, async (req, res) => {
     try {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
@@ -2535,7 +2595,7 @@ router.get('/stats', async (req, res) => {
 });
 
 // POST /api/leads — create new lead
-router.post('/', async (req, res) => {
+router.post('/', shapeRevenueResponse, async (req, res) => {
     let client = null;
     let transactionStarted = false;
     try {
@@ -2726,7 +2786,7 @@ router.post('/', async (req, res) => {
 });
 
 // PATCH /api/leads/:id/stage - narrow Kanban stage move path
-router.patch('/:id/stage', async (req, res) => {
+router.patch('/:id/stage', shapeRevenueResponse, async (req, res) => {
     let businessContext = null;
     let leadId = null;
     try {
@@ -2927,7 +2987,7 @@ router.patch('/:id/stage', async (req, res) => {
 });
 
 // PATCH /api/leads/:id — update lead
-router.patch('/:id', async (req, res) => {
+router.patch('/:id', requireRevenueForExplicitFields('potential_value', 'potentialValue'), shapeRevenueResponse, async (req, res) => {
     let businessContext = null;
     let leadId = null;
     try {
@@ -3254,7 +3314,7 @@ router.patch('/:id', async (req, res) => {
 });
 
 // POST /api/leads/:id/collaboration-task — atomic collaboration handoff
-router.post('/:id/collaboration-task', async (req, res) => {
+router.post('/:id/collaboration-task', shapeRevenueResponse, async (req, res) => {
     const client = await pool.connect();
     let transactionStarted = false;
     try {
@@ -3370,7 +3430,7 @@ router.post('/:id/collaboration-task', async (req, res) => {
 });
 
 // POST /api/leads/:id/link-customer — explicit operator-confirmed lead/customer link
-router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
+router.post('/:id/link-customer', requireRole('manager'), shapeRevenueResponse, async (req, res) => {
     const client = await pool.connect();
     try {
         const businessContext = ensureBusinessContext(req, res);
@@ -3511,7 +3571,7 @@ router.post('/:id/link-customer', requireRole('manager'), async (req, res) => {
 
 // GET /api/leads/pipeline — pipeline funnel by stages (v29.1.0)
 // Stages: new → contacted → info_sent → deal → deposit_received → waiting → completed → closed / lost
-router.get('/pipeline', async (req, res) => {
+router.get('/pipeline', shapeRevenueResponse, async (req, res) => {
     try {
         const businessScope = ensureBusinessScope(req, res);
         if (!businessScope) return;
@@ -3627,7 +3687,7 @@ router.get('/:id/booking-context', async (req, res) => {
 
 
 // GET /api/leads/:id/workspace — unified manager workspace case composition
-router.get('/:id/workspace', async (req, res) => {
+router.get('/:id/workspace', shapeRevenueResponse, async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -4243,7 +4303,7 @@ router.post('/webhook/viber', async (req, res) => {
 // ============================================================
 
 // GET /api/leads/:id/card — get customer card for lead
-router.get('/:id/card', async (req, res) => {
+router.get('/:id/card', shapeRevenueResponse, async (req, res) => {
     try {
         const businessContext = ensureBusinessContext(req, res);
         if (!businessContext) return;
@@ -4273,7 +4333,7 @@ router.get('/:id/card', async (req, res) => {
 });
 
 // POST /api/leads/:id/card — create/update customer card
-router.post('/:id/card', async (req, res) => {
+router.post('/:id/card', requireRevenueForExplicitFields('budget_approx', 'budgetApprox'), shapeRevenueResponse, async (req, res) => {
     let client;
     let businessContext = null;
     let leadId = null;
@@ -4345,7 +4405,7 @@ router.post('/:id/card', async (req, res) => {
             event_date: event_date || null,
             guest_count: guest_count || null,
             children_count: children_count || null,
-            budget_approx: budgetValue.provided ? budgetValue.value : null,
+            budget_approx: budgetValue.provided ? budgetValue.value : (lead.potential_value ?? null),
             how_found: how_found || null,
             email: email || null,
             channel: channel || null,

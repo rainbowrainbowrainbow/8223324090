@@ -3202,7 +3202,7 @@ check('Shared header settings fallback does not mutate capability policy or bypa
     && permissionRegistryCode.includes("key: '/timeline-settings'")
     && permissionRegistryCode.includes("defaultRoles: ['creator', 'director']")
     && permissionRegistryCode.includes("key: '/chat-settings'")
-    && permissionRegistryCode.includes("defaultRoles: ['creator', 'director', 'admin']")
+    && /key: '\/chat-settings'[\s\S]{0,240}defaultRoles: \['creator', 'director'\]/.test(permissionRegistryCode)
     && permissionRegistryCode.includes("key: '/checkin'")
     && accountAccessPolicyCode.includes('const PAGE_ACCESS = Object.freeze')
     && !permissionRegistryCode.includes('headerSettings'));
@@ -4572,7 +4572,7 @@ const linkSavedLeadToFallbackCustomerBlock = sourceBlock(leadsCode, 'async funct
 const saveLeadBlock = sourceBlock(leadsCode, 'async function saveLead', 'async function deleteLead');
 const leadDomReadyBlock = sourceBlock(leadsCode, "document.addEventListener('DOMContentLoaded'", 'async function checkTestMode');
 const leadCustomerSearchEndpointCount = (leadsCode.match(/\/api\/customers\/search/g) || []).length;
-const legacyLeadPatchRouteBlock = sourceBlock(leadsRouteCode, "router.patch('/:id', async", "// POST /api/leads/:id/collaboration-task");
+const legacyLeadPatchRouteBlock = sourceBlock(leadsRouteCode, "router.patch('/:id',", "// POST /api/leads/:id/collaboration-task");
 check('Lead deal stage refreshes kanban even when customer card prompt is dismissed',
     updateLeadStageBlock.includes("const openedCustomerCard = stage === 'deal'")
     && updateLeadStageBlock.includes('if (!openedCustomerCard) {')
@@ -4723,7 +4723,7 @@ check('Lead dedicated stage endpoint keeps the critical transaction narrow',
     && leadsRouteCode.includes('updated_at = NOW()')
     && leadsRouteCode.includes("source: 'leads.stage_patch'")
     && leadsRouteCode.includes("PATCH /leads/:id/stage retryable write conflict")
-    && leadsRouteCode.indexOf("router.patch('/:id/stage'") < leadsRouteCode.indexOf("router.patch('/:id', async"));
+    && leadsRouteCode.indexOf("router.patch('/:id/stage'") < leadsRouteCode.indexOf("router.patch('/:id',"));
 check('Lead kanban stage moves use optimistic locking',
     htmlContains('db/migrations/275_leads_updated_at_trigger.sql', 'CREATE TRIGGER trg_leads_updated_at')
     && leadsRouteCode.includes("code: 'lead_version_conflict'")
@@ -4784,7 +4784,7 @@ check('Customers page supports canonical create deep link handoff without broade
     && customersCode.includes('function canManageCustomerActions')
     && customersCode.includes('const canCreate = canCreateCustomer(user);')
     && customersCode.includes("document.getElementById('addCustomerBtn').style.display = canCreate ? '' : 'none';")
-    && customersCode.includes("document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';")
+    && customersCode.includes("document.getElementById('exportCsvBtn').style.display = canManage && canExportCustomerData(true) ? '' : 'none';")
     && customersCode.includes("document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';")
     && customersCode.includes('function maybeOpenCustomerCreateFromUrl')
     && customersCode.includes('openEditModal(null, options);')
@@ -4801,7 +4801,16 @@ check('Reception create permission does not expose customer edit delete import o
     && customersCode.includes('window.editCustomer = async function(id)')
     && customersCode.includes('if (!canManageCustomerActions())')
     && customersCode.includes('${canManageCustomerActions() ? `<button type="button" class="btn-page-secondary entity-card-action" onclick="editCustomer(${customer.id})"')
-    && customersCode.includes("document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';"));
+    && customersCode.includes("document.getElementById('exportVcfBtn').style.display = canManage && canExportCustomerData() ? '' : 'none';"));
+check('Customers financial export UI requires explicit revenue and export capabilities',
+    customersCode.includes('function canViewCustomerRevenue()')
+    && customersCode.includes("return typeof canAccess === 'function' && canAccess('view_revenue');")
+    && customersCode.includes('function canExportCustomerData(includeRevenue = false)')
+    && customersCode.includes("if (typeof canAccess !== 'function' || !canAccess('export_data')) return false;")
+    && customersCode.includes('return !includeRevenue || canViewCustomerRevenue();')
+    && customersCode.includes("document.getElementById('exportCsvBtn').style.display = canManage && canExportCustomerData(true) ? '' : 'none';")
+    && customersCode.includes("document.getElementById('exportVcfBtn').style.display = canManage && canExportCustomerData() ? '' : 'none';")
+    && customersCode.includes('if (!guardCustomerExport(true)) return;'));
 check('Customers page opens existing customer deep links', customersCode.includes('getCustomerDeepLinkId') && customersCode.includes("params.get('open')") && customersCode.includes("params.get('highlight')"));
 check('Customers ignore stale list responses before changing CRM state', customersCode.includes('let customersRequestController = null') && customersCode.includes('let customersRequestSeq = 0') && customersCode.includes('customersRequestController?.abort();') && customersCode.includes('signal: customersRequestController?.signal') && customersCode.includes('if (requestSeq !== customersRequestSeq) return false;') && customersCode.includes("err?.name === 'AbortError'"));
 check('Center defers section data and upgrades section headers to accessible buttons', centerCode.includes('const centerSectionState = new Map()') && centerCode.includes('await loadInitiallyVisibleCenterSections();') && centerCode.includes("const defaultOpen = ['kpiSection'];") && !centerCode.includes('await Promise.all([\n        loadOverview(),') && centerCode.includes('function loadInitiallyVisibleCenterSections') && centerCode.includes('function isInitiallyVisibleCenterSection') && centerCode.includes('function loadCenterSection') && centerCode.includes('function centerSectionRetry') && centerCode.includes('function clearCenterSectionRetry') && centerCode.includes('function enhanceCenterSectionHeaders') && centerCode.includes("toggle.setAttribute('aria-controls'") && centerCode.includes("toggle.setAttribute('aria-expanded'") && htmlContains('center.html', '.center-section-toggle') && htmlContains('center.html', '.center-section-toggle:focus-visible'));
@@ -7079,7 +7088,21 @@ check('Timeline create toolbar button is absent while deep-link booking flow sta
 check('Timeline product sales API loads monthly report', appCode.includes('/api/analytics/product-sales?') && appCode.includes('loadProductSalesReport'));
 check('Timeline product sales export supports CSV and XLSX', appCode.includes("downloadProductSalesExport('csv')") && appCode.includes("downloadProductSalesExport('xlsx')"));
 check('Timeline product sales supports pinata quick filter', appCode.includes("categorySelect.value = 'pinata'"));
-check('Timeline product sales permission gate does not hide universal timeline export actions', authCode.includes('function setTimelinePermissionHidden') && !authCode.includes("setTimelinePermissionHidden('newBookingBtn'") && authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', false)") && authCode.includes("setTimelinePermissionHidden('exportPdfBtn', false)") && !authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'))") && !authCode.includes("setTimelinePermissionHidden('exportPdfBtn', !canAccess('export_data'))") && !authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canUse('export'))") && !authCode.includes("setTimelinePermissionHidden('exportPdfBtn', !canUse('export'))") && authCode.includes("setTimelinePermissionHidden('productSalesBtn', !canAccess('export_data'))") && timelineVisibilityCode.includes("visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn')") && !authCode.includes("exportBtn.style.display = 'none'"));
+check('Timeline product sales separates revenue viewing from data export while preserving universal timeline exports',
+    authCode.includes('function setTimelinePermissionHidden')
+    && !authCode.includes("setTimelinePermissionHidden('newBookingBtn'")
+    && authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', false)")
+    && authCode.includes("setTimelinePermissionHidden('exportPdfBtn', false)")
+    && !authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canAccess('export_data'))")
+    && !authCode.includes("setTimelinePermissionHidden('exportPdfBtn', !canAccess('export_data'))")
+    && !authCode.includes("setTimelinePermissionHidden('exportTimelineBtn', !canUse('export'))")
+    && !authCode.includes("setTimelinePermissionHidden('exportPdfBtn', !canUse('export'))")
+    && authCode.includes("setTimelinePermissionHidden('productSalesBtn', !canAccess('view_revenue'))")
+    && appCode.includes("if (typeof canAccess !== 'function' || !canAccess('view_revenue'))")
+    && appCode.includes("const canExport = typeof canAccess === 'function' && canAccess('export_data');")
+    && appCode.includes("if (typeof canAccess !== 'function' || !canAccess('export_data') || !canAccess('view_revenue'))")
+    && timelineVisibilityCode.includes("visualBlock('export', 'Верхня панель', 'Експорт', '#exportTimelineBtn, #exportPdfBtn')")
+    && !authCode.includes("exportBtn.style.display = 'none'"));
 
 // ═══════════════════════════════════════════════════
 // RESULTS

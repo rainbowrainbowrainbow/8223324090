@@ -4,9 +4,13 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireRole } = require('../middleware/auth');
+const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
 const { validateBookingWithinWorkingHours } = require('../services/booking');
 const { createLogger } = require('../utils/logger');
+const {
+    isFinancialFieldKey,
+    redactRevenueFieldKeys
+} = require('../services/revenueAccessPolicy');
 const ExcelJS = require('exceljs');
 const {
     DEFAULT_DIPLOMA_TEMPLATE,
@@ -28,6 +32,79 @@ const {
 } = require('../services/graduationOpsAutomation');
 
 const log = createLogger('Graduation');
+const requireGraduationRevenue = requireAction('view_revenue');
+const GRADUATION_PRICING_DEFAULTS = Object.freeze({ coefficient: 6, markup: 1.15 });
+const GRADUATION_QUOTE_FINANCIAL_MUTATION_KEYS = new Set([
+    'kidsCount',
+    'kids_count',
+    'discountPercent',
+    'discount_percent',
+    'selectedServices',
+    'selected_services',
+    'packageId',
+    'package_id',
+    'totalPerChild',
+    'total_per_child',
+    'totalAll',
+    'total_all',
+    'totalCost',
+    'total_cost',
+    'totalProfit',
+    'total_profit',
+    'profitMargin',
+    'profit_margin'
+]);
+
+function canViewGraduationRevenue(req) {
+    return canUseAction(req.user, 'view_revenue');
+}
+
+function shapeGraduationRevenuePayload(payload, req) {
+    return canViewGraduationRevenue(req)
+        ? payload
+        : redactRevenueFieldKeys(payload);
+}
+
+function payloadTouchesFinancialFields(value) {
+    if (Array.isArray(value)) return value.some(payloadTouchesFinancialFields);
+    if (!value || typeof value !== 'object') return false;
+    return Object.entries(value).some(([key, nestedValue]) => (
+        isFinancialFieldKey(key) || payloadTouchesFinancialFields(nestedValue)
+    ));
+}
+
+function requireRevenueForFinancialMutation(req, res, next) {
+    if (!payloadTouchesFinancialFields(req.body)) return next();
+    return requireGraduationRevenue(req, res, next);
+}
+
+function requireQuoteRevenueForFinancialMutation(req, res, next) {
+    const body = req.body && typeof req.body === 'object' ? req.body : {};
+    const touchesQuoteComposition = Object.keys(body).some(key => (
+        GRADUATION_QUOTE_FINANCIAL_MUTATION_KEYS.has(key)
+    ));
+    if (!touchesQuoteComposition && !payloadTouchesFinancialFields(body)) return next();
+    return requireGraduationRevenue(req, res, next);
+}
+
+async function loadGraduationPricingSettings() {
+    const result = await pool.query(
+        "SELECT key, value FROM graduation_settings WHERE key IN ('coefficient', 'markup')"
+    );
+    const settings = { ...GRADUATION_PRICING_DEFAULTS };
+    for (const row of result.rows) settings[row.key] = Number(row.value);
+    return settings;
+}
+
+function calculateCatalogPrice(row, pricingSettings = GRADUATION_PRICING_DEFAULTS) {
+    const pricePark = Number(row.price_park) || 0;
+    const pricePerChild = Number(row.price_per_child) || 0;
+    if (row.price_type !== 'formula' || !pricePark) return pricePerChild;
+    const coefficient = Number(pricingSettings.coefficient) || GRADUATION_PRICING_DEFAULTS.coefficient;
+    const markup = Number(pricingSettings.markup) || GRADUATION_PRICING_DEFAULTS.markup;
+    return Math.ceil((pricePark / coefficient * markup) / 10) * 10;
+}
+
 function getKleshnya() { return require('../services/kleshnya'); }
 function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
@@ -75,6 +152,30 @@ function mapServiceRow(row) {
         operationKind: row.operation_kind || null,
         automationFlags: row.automation_flags || {}
     };
+}
+
+function mapPublicServiceRow(row, pricingSettings) {
+    return {
+        id: row.id,
+        sortOrder: row.sort_order,
+        name: row.name,
+        description: row.description,
+        durationMin: row.duration_min,
+        pricePerChild: calculateCatalogPrice(row, pricingSettings),
+        category: row.category,
+        minKids: row.min_kids,
+        maxKids: row.max_kids,
+        entryRule: row.entry_rule,
+        isActive: row.is_active,
+        catalogDescription: row.catalog_description || null,
+        timelineVisible: row.timeline_visible !== false,
+        operationKind: row.operation_kind || null,
+        automationFlags: row.automation_flags || {}
+    };
+}
+
+function mapServiceRowForAccess(row, req, pricingSettings) {
+    return canViewGraduationRevenue(req) ? mapServiceRow(row) : mapPublicServiceRow(row, pricingSettings);
 }
 
 function mapChildPackRow(row, childrenCountOverride = null) {
@@ -329,6 +430,42 @@ function mapQuoteRow(row, childPack = null) {
     };
 }
 
+function buildGraduationQuoteUpdate(body, id) {
+    const input = body && typeof body === 'object' ? body : {};
+    const assignments = [];
+    const values = [];
+    const addOptional = (column, key, transform = value => value) => {
+        if (!Object.prototype.hasOwnProperty.call(input, key)) return;
+        values.push(transform(input[key]));
+        assignments.push(`${column} = $${values.length}`);
+    };
+    const nullable = value => value === '' ? null : value;
+
+    addOptional('kids_count', 'kidsCount');
+    addOptional('discount_percent', 'discountPercent');
+    addOptional('selected_services', 'selectedServices', value => value === null ? null : JSON.stringify(value));
+    addOptional('package_id', 'packageId', nullable);
+    addOptional('total_per_child', 'totalPerChild');
+    addOptional('total_all', 'totalAll');
+    addOptional('total_cost', 'totalCost');
+    addOptional('total_profit', 'totalProfit');
+    addOptional('profit_margin', 'profitMargin');
+    addOptional('notes', 'notes');
+    addOptional('customer_id', 'customerId', nullable);
+    addOptional('event_date', 'eventDate', nullable);
+    addOptional('event_start_time', 'eventStartTime', nullable);
+    addOptional('event_end_time', 'eventEndTime', nullable);
+    addOptional('event_time_mode', 'eventTimeMode', nullable);
+    addOptional('service_timing', 'serviceTiming', value => value === null ? null : JSON.stringify(value));
+
+    assignments.push('updated_at = NOW()');
+    values.push(id);
+    return {
+        query: `UPDATE graduation_quotes SET ${assignments.join(', ')} WHERE id = $${values.length} RETURNING *`,
+        values
+    };
+}
+
 // GET /api/graduation/settings — глобальні параметри
 router.get('/settings', async (req, res) => {
     try {
@@ -337,7 +474,7 @@ router.get('/settings', async (req, res) => {
         for (const row of result.rows) {
             settings[row.key] = { value: row.value, label: row.label };
         }
-        res.json(settings);
+        res.json(shapeGraduationRevenuePayload(settings, req));
     } catch (err) {
         log.error('Get settings error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -345,7 +482,7 @@ router.get('/settings', async (req, res) => {
 });
 
 // PUT /api/graduation/settings — оновити параметри (director/creator)
-router.put('/settings', requireRole('creator', 'director'), async (req, res) => {
+router.put('/settings', requireRole('creator', 'director'), requireAction('manage_settings'), requireAction('view_revenue'), async (req, res) => {
     try {
         const { settings } = req.body;
         if (!settings || typeof settings !== 'object') {
@@ -403,7 +540,8 @@ router.get('/services', async (req, res) => {
             ? 'SELECT * FROM graduation_services WHERE is_active = true ORDER BY sort_order'
             : 'SELECT * FROM graduation_services ORDER BY sort_order';
         const result = await pool.query(query);
-        res.json(result.rows.map(mapServiceRow));
+        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings();
+        res.json(result.rows.map(row => mapServiceRowForAccess(row, req, pricingSettings)));
     } catch (err) {
         log.error('List services error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -411,7 +549,7 @@ router.get('/services', async (req, res) => {
 });
 
 // PUT /api/graduation/services/:id — оновити послугу (director/creator)
-router.put('/services/:id', requireRole('creator', 'director'), async (req, res) => {
+router.put('/services/:id', requireRole('creator', 'director'), requireAction('manage_settings'), requireRevenueForFinancialMutation, async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT id FROM graduation_services WHERE id = $1', [id]);
@@ -470,7 +608,8 @@ router.put('/services/:id', requireRole('creator', 'director'), async (req, res)
             }
         }
 
-        res.json(mapServiceRow(updated));
+        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings();
+        res.json(mapServiceRowForAccess(updated, req, pricingSettings));
     } catch (err) {
         log.error('Update service error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -485,7 +624,7 @@ router.get('/packages', async (req, res) => {
         );
         const items = await pool.query(
             `SELECT pi.package_id, pi.service_id, pi.override_price,
-                    s.name as service_name, s.price_per_child, s.duration_min,
+                    s.name as service_name, s.price_park, s.price_per_child, s.duration_min,
                     s.description as service_description, s.category, s.price_type,
                     s.sort_order, s.timeline_visible, s.operation_kind
              FROM graduation_package_items pi
@@ -494,17 +633,19 @@ router.get('/packages', async (req, res) => {
         );
 
         const itemMap = {};
+        const pricingSettings = await loadGraduationPricingSettings();
         for (const item of items.rows) {
             if (!itemMap[item.package_id]) itemMap[item.package_id] = [];
+            const catalogPrice = item.override_price || calculateCatalogPrice(item, pricingSettings);
             itemMap[item.package_id].push({
                 serviceId: item.service_id,
                 serviceName: item.service_name,
                 overridePrice: item.override_price,
-                pricePerChild: item.override_price || item.price_per_child,
+                pricePerChild: catalogPrice,
                 durationMin: item.duration_min,
                 description: item.service_description,
                 category: item.category,
-                priceType: item.price_type,
+                ...(canViewGraduationRevenue(req) ? { priceType: item.price_type } : {}),
                 sortOrder: item.sort_order,
                 timelineVisible: item.timeline_visible !== false,
                 operationKind: item.operation_kind || null
@@ -555,6 +696,7 @@ router.get('/packages/:slug', async (req, res) => {
             [pkg.rows[0].id]
         );
 
+        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings();
         res.json({
             id: pkg.rows[0].id,
             name: pkg.rows[0].name,
@@ -562,7 +704,7 @@ router.get('/packages/:slug', async (req, res) => {
             description: pkg.rows[0].description || '',
             imageUrl: pkg.rows[0].image_url || null,
             services: items.rows.map(r => ({
-                ...mapServiceRow(r),
+                ...mapServiceRowForAccess(r, req, pricingSettings),
                 overridePrice: r.override_price
             }))
         });
@@ -573,7 +715,7 @@ router.get('/packages/:slug', async (req, res) => {
 });
 
 // POST /api/graduation/quotes — створити конфігурацію
-router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('view_revenue'), async (req, res) => {
     try {
         const { kidsCount, discountPercent, selectedServices, packageId, totalPerChild,
                 totalAll, totalCost, totalProfit, profitMargin, notes, customerId,
@@ -648,7 +790,10 @@ router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'mana
             );
             packsById = new Map(packs.rows.map(row => [String(row.id), row]));
         }
-        res.json(result.rows.map(row => mapQuoteRow(row, packsById.get(String(row.child_pack_id)))));
+        const quotes = result.rows.map(row => (
+            mapQuoteRow(row, packsById.get(String(row.child_pack_id)))
+        ));
+        res.json(shapeGraduationRevenuePayload(quotes, req));
     } catch (err) {
         log.error('List quotes error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -664,7 +809,7 @@ router.get('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
             return res.status(404).json({ error: 'Quote not found' });
         }
         const pack = await loadQuoteChildPack(pool, result.rows[0]);
-        res.json(mapQuoteRow(result.rows[0], pack));
+        res.json(shapeGraduationRevenuePayload(mapQuoteRow(result.rows[0], pack), req));
     } catch (err) {
         log.error('Get quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -672,7 +817,7 @@ router.get('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
 });
 
 // PUT /api/graduation/quotes/:id — оновити конфігурацію
-router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', 'manager'), requireQuoteRevenueForFinancialMutation, async (req, res) => {
     try {
         const { id } = req.params;
         const existing = await pool.query('SELECT id FROM graduation_quotes WHERE id = $1', [id]);
@@ -680,38 +825,19 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
             return res.status(404).json({ error: 'Quote not found' });
         }
 
-        const b = req.body;
-        const result = await pool.query(
-            `UPDATE graduation_quotes SET
-                kids_count = COALESCE($1, kids_count),
-                discount_percent = COALESCE($2, discount_percent),
-                selected_services = COALESCE($3, selected_services),
-                package_id = $4,
-                total_per_child = COALESCE($5, total_per_child),
-                total_all = COALESCE($6, total_all),
-                total_cost = COALESCE($7, total_cost),
-                total_profit = COALESCE($8, total_profit),
-                profit_margin = COALESCE($9, profit_margin),
-                notes = COALESCE($10, notes),
-                customer_id = $11,
-                event_date = $12,
-                event_start_time = COALESCE($13, event_start_time),
-                event_end_time = COALESCE($14, event_end_time),
-                event_time_mode = COALESCE($15, event_time_mode),
-                service_timing = COALESCE($16, service_timing),
-                updated_at = NOW()
-            WHERE id = $17 RETURNING *`,
-            [
-                b.kidsCount, b.discountPercent,
-                b.selectedServices ? JSON.stringify(b.selectedServices) : null,
-                b.packageId || null, b.totalPerChild, b.totalAll, b.totalCost,
-                b.totalProfit, b.profitMargin, b.notes, b.customerId || null,
-                b.eventDate || null, b.eventStartTime || null, b.eventEndTime || null,
-                ['manual', 'preset', 'floating'].includes(b.eventTimeMode) ? b.eventTimeMode : null,
-                Array.isArray(b.serviceTiming) ? JSON.stringify(b.serviceTiming) : null,
-                id
-            ]
-        );
+        const b = req.body || {};
+        if (Object.prototype.hasOwnProperty.call(b, 'eventTimeMode')
+            && b.eventTimeMode !== null
+            && !['manual', 'preset', 'floating'].includes(b.eventTimeMode)) {
+            return res.status(400).json({ error: 'Invalid eventTimeMode' });
+        }
+        if (Object.prototype.hasOwnProperty.call(b, 'serviceTiming')
+            && b.serviceTiming !== null
+            && !Array.isArray(b.serviceTiming)) {
+            return res.status(400).json({ error: 'serviceTiming must be an array or null' });
+        }
+        const update = buildGraduationQuoteUpdate(b, id);
+        const result = await pool.query(update.query, update.values);
 
         let pack = null;
         if (b.childPack || b.childPackId || b.child_pack_id || b.diplomaContextText || b.wordingMode) {
@@ -722,10 +848,10 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
 
         const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_update');
         log.info(`Quote ${id} updated by ${req.user.username}`);
-        res.json({
+        res.json(shapeGraduationRevenuePayload({
             ...mapQuoteRow(result.rows[0], pack),
             opsAutomation
-        });
+        }, req));
     } catch (err) {
         log.error('Update quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -752,10 +878,10 @@ router.patch('/quotes/:id/status', requireRole('creator', 'director', 'senior_ma
 
         log.info(`Quote ${id} status → ${status} by ${req.user.username}`);
         const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_status');
-        res.json({
+        res.json(shapeGraduationRevenuePayload({
             ...mapQuoteRow(result.rows[0]),
             opsAutomation
-        });
+        }, req));
     } catch (err) {
         log.error('Update quote status error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -763,7 +889,7 @@ router.patch('/quotes/:id/status', requireRole('creator', 'director', 'senior_ma
 });
 
 // POST /api/graduation/quotes/:id/booking — створити бронювання
-router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('view_revenue'), async (req, res) => {
     try {
         const { id } = req.params;
         const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
@@ -1045,11 +1171,11 @@ router.post('/child-packs/:packId/link-quote', requireRole('creator', 'director'
         const pack = await linkPackToQuote(pool, req.params.packId, quote.id, { bookingId: quote.booking_id || null });
         if (!pack) return res.status(404).json({ error: 'Child pack not found' });
         const opsAutomation = await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_link');
-        res.json({
+        res.json(shapeGraduationRevenuePayload({
             pack: mapChildPackRow(pack),
             quote: mapQuoteRow(await getQuoteRow(pool, quote.id), pack),
             opsAutomation
-        });
+        }, req));
     } catch (err) {
         log.error('Link graduation child pack error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1067,7 +1193,7 @@ router.get('/diploma/template', requireRole('creator', 'director', 'senior_manag
 });
 
 // PATCH /api/graduation/diploma/template — update default diploma copy/settings
-router.patch('/diploma/template', requireRole('creator', 'director'), async (req, res) => {
+router.patch('/diploma/template', requireRole('creator', 'director'), requireAction('manage_settings'), async (req, res) => {
     try {
         const current = await ensureDefaultDiplomaTemplate();
         const b = req.body || {};
@@ -1120,7 +1246,12 @@ router.get('/quotes/:id/children', requireRole('creator', 'director', 'senior_ma
             diplomaContextText: childPackContextText(pack),
             wordingMode: pack?.wording_mode || 'standard'
         };
-        res.json({ quote: mapQuoteRow(quote, pack), pack: mapChildPackRow(pack), children, summary });
+        res.json(shapeGraduationRevenuePayload({
+            quote: mapQuoteRow(quote, pack),
+            pack: mapChildPackRow(pack),
+            children,
+            summary
+        }, req));
     } catch (err) {
         log.error('List graduation children error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1336,7 +1467,7 @@ router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 's
 });
 
 // GET /api/graduation/quotes/:id/diplomas/export/pdf — ready multi-page PDF with all diplomas
-router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
@@ -1387,7 +1518,7 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
 });
 
 // GET /api/graduation/quotes/:id/diplomas/export/csv — roster CSV
-router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
@@ -1406,7 +1537,7 @@ router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director',
 });
 
 // GET /api/graduation/quotes/:id/diplomas/export/xlsx — roster XLSX
-router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
@@ -1449,7 +1580,7 @@ router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director'
 });
 
 // GET /api/graduation/quotes/:id/diplomas/print-sheet — roster print sheet
-router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
         const quote = await getGraduationQuoteOr404(req.params.id, res);
         if (!quote) return;
@@ -1469,7 +1600,7 @@ router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director'
 
 // GET /api/graduation/quotes/:id/proposal — генерація КП (HTML)
 // Query-token support for window.open lives in middleware/apiAuthBoundary.js.
-router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), requireAction('view_revenue'), async (req, res) => {
     try {
         const { id } = req.params;
         const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
@@ -1619,7 +1750,7 @@ router.get('/analytics', requireRole('creator', 'director'), async (req, res) =>
             totalAll += parseInt(r.cnt);
         }
 
-        res.json({
+        res.json(shapeGraduationRevenuePayload({
             popularity,
             averageCheck: {
                 perChild: Math.round(parseFloat(avg.avg_per_child)),
@@ -1636,7 +1767,7 @@ router.get('/analytics', requireRole('creator', 'director'), async (req, res) =>
                 cancelled: funnel.cancelled || 0,
                 conversionRate: totalAll > 0 ? Math.round((funnel.booked || 0) / totalAll * 100) : 0
             }
-        });
+        }, req));
     } catch (err) {
         log.error('Analytics error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -1725,7 +1856,7 @@ async function onSettingsChanged(key, newValue, username) {
 
 // GET /api/graduation/catalog/export — print-ready HTML catalog
 // Query-token support for window.open lives in middleware/apiAuthBoundary.js.
-router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
+router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
         const pkgResult = await pool.query(
             'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'

@@ -134,6 +134,11 @@
         return document.getElementById(id);
     }
 
+    function canManageSystemSettings() {
+        if (typeof window.resolveCapability !== 'function') return false;
+        return window.resolveCapability(window.AppState?.currentUser || null, 'manage_settings', { type: 'action' }).allowed === true;
+    }
+
     function escapeHtml(value) {
         return String(value ?? '')
             .replace(/&/g, '&amp;')
@@ -738,8 +743,9 @@
         const el = $('timelineSettingsSaveStatus');
         const saveBtn = $('timelineSettingsSaveBtn');
         const resetBtn = $('timelineSettingsResetBtn');
-        if (saveBtn) saveBtn.disabled = state.saving || (!state.visibilityDirty && !state.displayDirty);
-        if (resetBtn) resetBtn.disabled = state.saving;
+        const canManage = canManageSystemSettings();
+        if (saveBtn) saveBtn.disabled = !canManage || state.saving || (!state.visibilityDirty && !state.displayDirty);
+        if (resetBtn) resetBtn.disabled = !canManage || state.saving;
         if (!el) return;
         if (state.saving) {
             el.dataset.status = 'saving';
@@ -781,6 +787,10 @@
     }
 
     async function saveSettings() {
+        if (!canManageSystemSettings()) {
+            notify('\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043d\u044c\u043e \u043f\u0440\u0430\u0432 \u0434\u043b\u044f \u043a\u0435\u0440\u0443\u0432\u0430\u043d\u043d\u044f \u043d\u0430\u043b\u0430\u0448\u0442\u0443\u0432\u0430\u043d\u043d\u044f\u043c\u0438 \u0442\u0430\u0439\u043c\u043b\u0430\u0439\u043d\u0443.', 'error');
+            return;
+        }
         if (state.saving) return;
         state.saving = true;
         renderSaveStatus();
@@ -809,6 +819,10 @@
     }
 
     async function resetSettings() {
+        if (!canManageSystemSettings()) {
+            notify('\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043d\u044c\u043e \u043f\u0440\u0430\u0432 \u0434\u043b\u044f \u043a\u0435\u0440\u0443\u0432\u0430\u043d\u043d\u044f \u043d\u0430\u043b\u0430\u0448\u0442\u0443\u0432\u0430\u043d\u043d\u044f\u043c\u0438 \u0442\u0430\u0439\u043c\u043b\u0430\u0439\u043d\u0443.', 'error');
+            return;
+        }
         if (typeof window.confirmModal !== 'function') {
             notify('CRM confirm modal ще не завантажився. Спробуйте ще раз за секунду.', 'error');
             return;
@@ -1036,6 +1050,7 @@
         renderContexts();
         renderPresets();
         renderSaveStatus();
+        window.addEventListener('crm:authenticated-runtime-ready', renderSaveStatus);
         await loadContextSettings();
     }
 

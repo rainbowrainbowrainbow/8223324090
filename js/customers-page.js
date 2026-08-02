@@ -310,6 +310,22 @@ function canCreateCustomer(user = currentCustomerUser()) {
 function canManageCustomerActions(user = currentCustomerUser()) {
     return customerUserHasAnyRole(user, CUSTOMER_MANAGE_ROLES);
 }
+
+function canViewCustomerRevenue() {
+    return typeof canAccess === 'function' && canAccess('view_revenue');
+}
+
+function canExportCustomerData(includeRevenue = false) {
+    if (typeof canAccess !== 'function' || !canAccess('export_data')) return false;
+    return !includeRevenue || canViewCustomerRevenue();
+}
+
+function guardCustomerExport(includeRevenue = false) {
+    if (canExportCustomerData(includeRevenue)) return true;
+    showNotification('Недостатньо прав для експорту даних клієнтів', 'error');
+    return false;
+}
+
 function customerApiUrl(url) {
     return window.CrmBusinessContext?.apiUrl
         ? window.CrmBusinessContext.apiUrl(url, customerBusinessContext())
@@ -703,7 +719,7 @@ function renderChildrenReviewTab() {
                 </div>
                 <div class="children-review-actions">
                     <button type="button" class="btn-page-secondary" data-review-action="refresh">Оновити</button>
-                    <button type="button" class="btn-page-secondary" data-review-action="export">Експорт CSV</button>
+                    ${canExportCustomerData() ? '<button type="button" class="btn-page-secondary" data-review-action="export">Експорт CSV</button>' : ''}
                 </div>
             </div>
             ${renderChildrenReviewEditor()}
@@ -811,6 +827,7 @@ async function saveChildrenReviewEditor() {
 }
 
 function exportChildrenReviewCsv() {
+    if (!guardCustomerExport()) return;
     const token = localStorage.getItem('pzp_token');
     const touchWindow = typeof openTouchDownloadWindow === 'function'
         ? openTouchDownloadWindow('Ревізія дітей')
@@ -2090,6 +2107,12 @@ function renderStats() {
     }
     const s = CrmState.stats;
     const maysternyaMode = isMaysternyaCustomerContext();
+    const revenueCard = canViewCustomerRevenue() ? `
+        <div class="stat-card">
+            <div class="stat-value">${formatMoney(parseInt(s.averages?.avg_spent) || 0)}</div>
+            <div class="stat-label">${maysternyaMode ? 'Сер. оплата' : 'Сер. витрати'}</div>
+        </div>
+    ` : '';
     el.innerHTML = `
         <div class="stat-card">
             <div class="stat-value">${s.total}</div>
@@ -2099,10 +2122,7 @@ function renderStats() {
             <div class="stat-value">${s.averages?.avg_bookings || 0}</div>
             <div class="stat-label">${maysternyaMode ? 'Сер. сесій' : 'Сер. візитів'}</div>
         </div>
-        <div class="stat-card">
-            <div class="stat-value">${formatMoney(parseInt(s.averages?.avg_spent) || 0)}</div>
-            <div class="stat-label">${maysternyaMode ? 'Сер. оплата' : 'Сер. витрати'}</div>
-        </div>
+        ${revenueCard}
         <div class="stat-card">
             <div class="stat-value">${s.bySource?.length || 0}</div>
             <div class="stat-label">Джерел</div>
@@ -2113,10 +2133,11 @@ function renderStats() {
 function renderCustomerTable() {
     const tbody = document.getElementById('customerTableBody');
     const maysternyaMode = isMaysternyaCustomerContext();
+    const canViewRevenue = canViewCustomerRevenue();
     syncCustomerPresentationUi();
     renderCustomerExplainability();
     if (CrmState.customers.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="7">
+        tbody.innerHTML = `<tr><td colspan="${canViewRevenue ? 7 : 6}">
             ${customerEmptyHtml()}
         </td></tr>`;
         return;
@@ -2127,7 +2148,7 @@ function renderCustomerTable() {
         const sourceLabel = getCustomerSourceLabel(c.source);
         const tagsHtml = (c.tags || []).map(t => renderCustomerTagPill(t)).join('');
         const childrenLabel = customerChildrenInlineLabel(c);
-        const ltvBadge = c.ltv > 10000 ? ' 🔥' : '';
+        const ltvBadge = canViewRevenue && c.ltv > 10000 ? ' 🔥' : '';
         return `<tr data-id="${c.id}">
             <td>
                 <div class="customer-name">${escapeHtml(c.name)}${ltvBadge}</div>
@@ -2138,7 +2159,7 @@ function renderCustomerTable() {
             <td>${c.instagram ? '@' + escapeHtml(c.instagram) : '—'}</td>
             <td><span class="badge badge-source badge-source-${escapeHtml(sourceKey)}">${escapeHtml(sourceLabel)}</span></td>
             <td><span class="badge badge-visits">${c.totalBookings}</span></td>
-            <td><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>
+            ${canViewRevenue ? `<td><span class="badge badge-spent">${formatMoney(c.totalSpent)}</span></td>` : ''}
             <td>${formatDate(c.lastVisit)}</td>
         </tr>`;
     }).join('');
@@ -2239,6 +2260,7 @@ async function showCustomerDetail(id) {
             fetchCustomerCommunicationContext(id).catch(() => null)
         ]);
         const maysternyaMode = isMaysternyaCustomerContext();
+        const canViewRevenue = canViewCustomerRevenue();
 
         let html = `
             <div class="entity-card-shell entity-card-shell-view entity-card-customer" data-entity-card-mode="customer">
@@ -2280,10 +2302,10 @@ async function showCustomerDetail(id) {
                         <div class="field-label">${maysternyaMode ? 'Сесій' : 'Бронювань'}</div>
                         <div class="field-value">${customer.totalBookings}</div>
                     </div>
-                    <div class="detail-field">
+                    ${canViewRevenue ? `<div class="detail-field">
                         <div class="field-label">${maysternyaMode ? 'Оплачено' : 'Витрачено'}</div>
                         <div class="field-value">${formatMoney(customer.totalSpent)}</div>
-                    </div>
+                    </div>` : ''}
                     <div class="detail-field">
                         <div class="field-label">${maysternyaMode ? 'Перша сесія' : 'Перший візит'}</div>
                         <div class="field-value">${formatDate(customer.firstVisit)}</div>
@@ -2310,7 +2332,7 @@ async function showCustomerDetail(id) {
         </div>`;
 
         // v30.4: LTV
-        if (customer.ltv > 0) {
+        if (canViewRevenue && customer.ltv > 0) {
             html += `<div class="detail-section">
                 <h4>LTV (Lifetime Value)</h4>
                 <div class="stat-value" style="font-size:24px;color:var(--primary)">${formatMoney(customer.ltv)}</div>
@@ -2360,7 +2382,7 @@ async function showCustomerDetail(id) {
                     <span>${statusIcon}</span>
                     <span style="font-weight:700">${escapeHtml(dateTimeText || 'Дата не вказана')}</span>
                     <span>${escapeHtml(b.label || b.programName || '')}</span>
-                    <span style="color:var(--gray-400);margin-left:auto">${b.price ? formatMoney(b.price) : ''}</span>
+                    ${canViewRevenue ? `<span style="color:var(--gray-400);margin-left:auto">${b.price ? formatMoney(b.price) : ''}</span>` : ''}
                 </div>`;
             }
             html += `</div></div>`;
@@ -2800,13 +2822,13 @@ async function loadDuplicates() {
                     <div class="dup-card">
                         <b>${escapeHtml(d.name1)}</b><br>
                         📞 ${escapeHtml(d.phone1 || '—')} · IG: ${escapeHtml(d.ig1 || '—')}<br>
-                        ${d.bookings1} бронювань · ${formatMoney(d.spent1)}
+                        ${d.bookings1} бронювань${canViewCustomerRevenue() ? ` · ${formatMoney(d.spent1)}` : ''}
                     </div>
                     <span class="dup-match">= ${d.match_type === 'phone' ? '📞' : '📷'}</span>
                     <div class="dup-card">
                         <b>${escapeHtml(d.name2)}</b><br>
                         📞 ${escapeHtml(d.phone2 || '—')} · IG: ${escapeHtml(d.ig2 || '—')}<br>
-                        ${d.bookings2} бронювань · ${formatMoney(d.spent2)}
+                        ${d.bookings2} бронювань${canViewCustomerRevenue() ? ` · ${formatMoney(d.spent2)}` : ''}
                     </div>
                     <button class="btn-page-primary" onclick="mergeCustomers(${d.id1},${d.id2})" style="padding:6px 12px;font-size:12px;min-height:36px">Об'єднати →</button>
                 </div>
@@ -3137,13 +3159,17 @@ window.sendBulk = async function() {
 // ==========================================
 
 function exportVcf() {
+    if (!guardCustomerExport()) return;
     const token = localStorage.getItem('pzp_token');
     const touchWindow = typeof openTouchDownloadWindow === 'function'
         ? openTouchDownloadWindow('vCard клієнтів')
         : null;
     fetch(customerApiUrl('/api/customers/export-vcf'), {
         headers: { 'Authorization': `Bearer ${token}` }
-    }).then(res => res.blob()).then(blob => {
+    }).then(res => {
+        if (!res.ok) throw new Error('vCard export failed');
+        return res.blob();
+    }).then(blob => {
         const filename = `customers_${new Date().toISOString().slice(0, 10)}.vcf`;
         if (typeof finishBlobDownload === 'function') {
             finishBlobDownload(blob, filename, { touchWindow, successMessage: 'vCard підготовлено' });
@@ -3190,6 +3216,10 @@ async function importVcf(file) {
 // ==========================================
 
 function switchTab(tab) {
+    if (tab === 'rfm' && !canViewCustomerRevenue()) {
+        showNotification('Недостатньо прав для перегляду фінансової RFM-аналітики', 'error');
+        tab = 'list';
+    }
     CrmState.activeTab = tab;
     document.querySelectorAll('.crm-tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
     const tabs = ['tabList', 'tabRfm', 'tabDuplicates', 'tabNps', 'tabChildrenReview', 'tabBulk'];
@@ -3221,7 +3251,7 @@ async function refreshData() {
         renderPagination();
     }
     syncCustomerReadOnlyUi();
-    if (CrmState.activeTab === 'rfm') {
+    if (CrmState.activeTab === 'rfm' && canViewCustomerRevenue()) {
         await fetchRFM();
         renderRFM();
     }
@@ -3236,6 +3266,7 @@ async function refreshData() {
 // ==========================================
 
 function downloadCSV() {
+    if (!guardCustomerExport(true)) return;
     const token = localStorage.getItem('pzp_token');
     const touchWindow = typeof openTouchDownloadWindow === 'function'
         ? openTouchDownloadWindow('CSV клієнтів')
@@ -3243,7 +3274,10 @@ function downloadCSV() {
     // Use a hidden link to trigger download with auth
     fetch(customerApiUrl('/api/customers/export'), {
         headers: { 'Authorization': `Bearer ${token}` }
-    }).then(res => res.blob()).then(blob => {
+    }).then(res => {
+        if (!res.ok) throw new Error('Customer CSV export failed');
+        return res.blob();
+    }).then(blob => {
         const filename = `customers_${new Date().toISOString().slice(0, 10)}.csv`;
         if (typeof finishBlobDownload === 'function') {
             finishBlobDownload(blob, filename, { touchWindow, successMessage: 'CSV підготовлено' });
@@ -3288,12 +3322,26 @@ async function initPage() {
     const canManage = canManageCustomerActions(user);
     const canCreate = canCreateCustomer(user);
     const canReviewChildren = canManage || user.role === 'admin';
+    const canViewRevenue = canViewCustomerRevenue();
     document.getElementById('addCustomerBtn').style.display = canCreate ? '' : 'none';
-    document.getElementById('exportCsvBtn').style.display = canManage ? '' : 'none';
-    document.getElementById('exportVcfBtn').style.display = canManage ? '' : 'none';
+    document.getElementById('exportCsvBtn').style.display = canManage && canExportCustomerData(true) ? '' : 'none';
+    document.getElementById('exportVcfBtn').style.display = canManage && canExportCustomerData() ? '' : 'none';
     document.getElementById('importVcfBtn').style.display = canManage ? '' : 'none';
     const childrenReviewTab = document.querySelector('.crm-tab[data-tab="children-review"]');
     if (childrenReviewTab) childrenReviewTab.style.display = canReviewChildren ? '' : 'none';
+    const rfmTab = document.querySelector('.crm-tab[data-tab="rfm"]');
+    if (rfmTab) rfmTab.style.display = canViewRevenue ? '' : 'none';
+    const spentHeader = document.getElementById('customerSpentHeader');
+    if (spentHeader) spentHeader.style.display = canViewRevenue ? '' : 'none';
+    if (!canViewRevenue) {
+        const sortFilter = document.getElementById('sortFilter');
+        sortFilter?.querySelectorAll('option[value="total_spent"], option[value="ltv"]')
+            .forEach(option => option.remove());
+        if (['total_spent', 'ltv'].includes(CrmState.filters.sortBy)) {
+            CrmState.filters.sortBy = 'updated_at';
+            if (sortFilter) sortFilter.value = 'updated_at';
+        }
+    }
     syncCustomerReadOnlyUi();
 
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -3407,7 +3455,7 @@ async function initPage() {
 
     // Load initial data
     await refreshData();
-    if (initialTab && initialTab !== 'list') switchTab(initialTab);
+    if (initialTab && initialTab !== 'list' && (initialTab !== 'rfm' || canViewRevenue)) switchTab(initialTab);
     if (!maybeOpenCustomerCreateFromUrl()) openCustomerDeepLink();
 }
 

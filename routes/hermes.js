@@ -7,6 +7,10 @@ const {
     hermesAuth
 } = require('../middleware/hermesAuth');
 const { canUseAction } = require('../middleware/auth');
+const {
+    installRevenueResponseShaper,
+    parseOptionalRevenueAmount
+} = require('../services/revenueAccessPolicy');
 const { createHermesScheduleRouter } = require('./hermes-schedule');
 const {
     buildTaskVisibilityScope,
@@ -770,12 +774,12 @@ function normalizeHermesCompletionReportPayload(body = {}) {
     }
 
     const reportType = ['income', 'expense'].includes(body.type) ? body.type : 'expense';
-    const amount = Number.parseFloat(body.amount);
+    const amount = parseOptionalRevenueAmount(body);
 
     return {
         reportText,
         type: reportType,
-        amount: Number.isFinite(amount) ? amount : 0,
+        amount,
         category: cleanNullableString(body.category, 120) || DEFAULT_COMPLETION_REPORT_CATEGORY
     };
 }
@@ -2185,6 +2189,24 @@ function staffAccountOnboardingResponseBody(result = {}, extra = {}) {
         body.credentialHandoff = extra.credentialHandoff;
     }
     return body;
+}
+
+function requireHermesRevenueAmountAccess(req, res, next) {
+    const hasAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'amount');
+    if (!hasAmount || canUseAction(req.user, 'view_revenue')) return next();
+    return res.status(403).json({
+        success: false,
+        error: 'Insufficient permissions'
+    });
+}
+
+function shapeHermesRevenueResponse(req, res, next) {
+    return installRevenueResponseShaper(
+        req,
+        res,
+        next,
+        canUseAction(req.user, 'view_revenue')
+    );
 }
 
 function createHermesRouter(options = {}) {
@@ -3605,7 +3627,7 @@ function createHermesRouter(options = {}) {
         }
     });
 
-    router.post('/tasks/:id/completion-report', requireHermesMutationGuard, async (req, res) => {
+    router.post('/tasks/:id/completion-report', requireHermesMutationGuard, requireHermesRevenueAmountAccess, shapeHermesRevenueResponse, async (req, res) => {
         let payload;
         let businessScope;
         const taskId = parsePositiveInt(req.params.id);

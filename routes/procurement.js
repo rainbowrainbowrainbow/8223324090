@@ -8,11 +8,27 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
-const { requireRole } = require('../middleware/auth');
+const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 const log = createLogger('Procurement');
 
 // RBAC: Procurement — management + admin only
 router.use(requireRole('creator', 'director', 'vice_director', 'senior_manager', 'manager', 'admin'));
+const requireProcurementRevenue = requireAction('view_revenue');
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue')
+));
+
+function requireProcurementRevenueFieldWrite(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    const protectedFields = ['estimatedPrice', 'actualPrice', 'finalPrice'];
+    const hasProtectedField = protectedFields.some(field => Object.prototype.hasOwnProperty.call(req.body || {}, field));
+    if (!hasProtectedField) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
 
 const VALID_DEPARTMENTS = ['animators', 'admin', 'cafe', 'tech', 'cleaning', 'security'];
 const VALID_STATUSES = ['draft', 'approved', 'in_progress', 'purchased', 'delivered', 'cancelled'];
@@ -114,7 +130,7 @@ function mapItemRow(row) {
 
 // GET /api/procurement — list all procurement lists
 // POST /api/procurement/from-stock-item/:stockItemId - create low-stock procurement draft
-router.post('/from-stock-item/:stockItemId', async (req, res) => {
+router.post('/from-stock-item/:stockItemId', requireProcurementRevenue, async (req, res) => {
     const client = await pool.connect();
     try {
         const { stockItemId } = req.params;
@@ -249,6 +265,8 @@ router.get('/', async (req, res) => {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+router.get('/export-xlsx', requireAction('export_data'), requireAction('view_revenue'), exportProcurementXlsx);
 
 // GET /api/procurement/:id — get single list with items
 router.get('/:id', async (req, res) => {
@@ -403,7 +421,7 @@ router.delete('/:id', async (req, res) => {
 // ==========================================
 
 // POST /api/procurement/:id/items — add item to list
-router.post('/:id/items', async (req, res) => {
+router.post('/:id/items', requireProcurementRevenueFieldWrite, async (req, res) => {
     try {
         const { id } = req.params;
         const {
@@ -453,7 +471,7 @@ router.post('/:id/items', async (req, res) => {
 });
 
 // PUT /api/procurement/:id/items/:itemId — update item
-router.put('/:id/items/:itemId', async (req, res) => {
+router.put('/:id/items/:itemId', requireProcurementRevenue, async (req, res) => {
     try {
         const { id, itemId } = req.params;
         const {
@@ -501,7 +519,7 @@ router.put('/:id/items/:itemId', async (req, res) => {
 });
 
 // DELETE /api/procurement/:id/items/:itemId — remove item
-router.delete('/:id/items/:itemId', async (req, res) => {
+router.delete('/:id/items/:itemId', requireProcurementRevenue, async (req, res) => {
     try {
         const { id, itemId } = req.params;
         const result = await pool.query(
@@ -524,7 +542,7 @@ router.delete('/:id/items/:itemId', async (req, res) => {
 
 // POST /api/procurement/:id/complete — mark as purchased + auto-restock warehouse
 // POST /api/procurement/:id/items/:itemId/receive - receive item into a concrete warehouse location
-router.post('/:id/items/:itemId/receive', async (req, res) => {
+router.post('/:id/items/:itemId/receive', requireProcurementRevenue, requireProcurementRevenueFieldWrite, async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
@@ -542,7 +560,7 @@ router.post('/:id/items/:itemId/receive', async (req, res) => {
     }
 });
 
-router.post('/:id/complete', async (req, res) => {
+router.post('/:id/complete', requireProcurementRevenue, async (req, res) => {
     const client = await pool.connect();
     try {
         const { id } = req.params;
@@ -723,7 +741,7 @@ router.get('/suggestions/kitchen-demand', async (req, res) => {
 // EXCEL EXPORT
 // ==========================================
 
-router.get('/export-xlsx', async (req, res) => {
+async function exportProcurementXlsx(req, res) {
     try {
         const conditions = [];
         const params = [];
@@ -798,7 +816,7 @@ router.get('/export-xlsx', async (req, res) => {
         log.error('GET /export-xlsx error', err);
         res.status(500).json({ error: 'Internal server error' });
     }
-});
+}
 
 // ==========================================
 // HELPERS

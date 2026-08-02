@@ -7,7 +7,8 @@
         integrations: null,
         modelOptions: null,
         defaultModels: null,
-        providerDiagnostics: null
+        providerDiagnostics: null,
+        canManageSettings: false
     };
 
     var FALLBACK_MODEL_OPTIONS = {
@@ -37,8 +38,64 @@
         );
     }
 
-    function _isAuthError(err) {
-        return err && (err.status === 401 || err.status === 403);
+    function _isAuthenticationError(err) {
+        return err && err.status === 401;
+    }
+
+    function _isAuthorizationError(err) {
+        return err && err.status === 403;
+    }
+
+    function _storedUser() {
+        try {
+            var raw = localStorage.getItem('pzp_current_user');
+            return raw ? JSON.parse(raw) : null;
+        } catch (e) {
+            return null;
+        }
+    }
+
+    function _canManageSettings() {
+        var user = window.AppState?.currentUser || _storedUser();
+        if (user && typeof window.resolveCapability === 'function') {
+            return window.resolveCapability(user, 'manage_settings', { type: 'action' }).allowed === true;
+        }
+        return _state.canManageSettings === true ? true : null;
+    }
+
+    function _setControlsDisabled(disabled) {
+        document.querySelectorAll('.chat-settings-grid input, .chat-settings-grid select, .chat-settings-grid button')
+            .forEach(function (control) { control.disabled = disabled; });
+    }
+
+    function _showSettingsAccessDenied() {
+        var message = 'Недостатньо прав для керування налаштуваннями чату';
+        _state.canManageSettings = false;
+        _setControlsDisabled(true);
+        _setLoadFailedStatus(message);
+        var alert = $('chatSettingsAlert');
+        if (alert) {
+            clearTimeout(alert._hideTimer);
+            alert.hidden = false;
+            alert.textContent = message;
+            alert.className = 'chat-settings-alert chat-settings-alert--error';
+        }
+        _revealShell();
+    }
+
+    function _handleRequestAccessError(err) {
+        if (_isAuthenticationError(err)) return true;
+        if (_isAuthorizationError(err)) {
+            _showSettingsAccessDenied();
+            return true;
+        }
+        return false;
+    }
+
+    function _guardManageSettings() {
+        if (_canManageSettings() === true) return true;
+        _showSettingsAccessDenied();
+        return false;
     }
 
     function _handleAuthRequired() {
@@ -61,7 +118,7 @@
             var err = new Error(data.error || data.message || 'Request failed');
             err.status = resp.status;
             err.data = data;
-            if (_isAuthError(err) && typeof handleAuthError === 'function') {
+            if (resp.status === 401 && typeof handleAuthError === 'function') {
                 handleAuthError(resp);
             }
             throw err;
@@ -278,12 +335,18 @@
             _handleAuthRequired();
             return;
         }
+        if (_canManageSettings() === false) {
+            _showSettingsAccessDenied();
+            return;
+        }
         try {
             var data = await _request('GET', '/api/settings/chat');
+            _state.canManageSettings = true;
+            _setControlsDisabled(false);
             _render(data);
             _revealShell();
         } catch (err) {
-            if (_isAuthError(err)) return;
+            if (_handleRequestAccessError(err)) return;
             console.error('[ChatSettings] load failed', err);
             _setLoadFailedStatus('Не вдалося завантажити');
             _revealShell();
@@ -292,6 +355,7 @@
     }
 
     async function _saveChatAi() {
+        if (!_guardManageSettings()) return;
         try {
             var data = await _request('PUT', '/api/settings/chat/ai', {
                 enabled: $('chatAiEnabled')?.checked !== false,
@@ -302,13 +366,14 @@
             _setStatus($('chatAiStatus'), data);
             _notify('AI налаштування чату збережено', 'success');
         } catch (err) {
-            if (_isAuthError(err)) return;
+            if (_handleRequestAccessError(err)) return;
             console.error('[ChatSettings] save AI failed', err);
             _notify('Не вдалось зберегти AI налаштування', 'error');
         }
     }
 
     async function _testChatAi() {
+        if (!_guardManageSettings()) return;
         var btn = $('chatAiTestBtn');
         if (btn) btn.disabled = true;
         try {
@@ -316,16 +381,17 @@
             _setStatus($('chatAiStatus'), result);
             _notify(result.message || 'AI підключення працює', 'success');
         } catch (err) {
-            if (_isAuthError(err)) return;
+            if (_handleRequestAccessError(err)) return;
             var result = err.data || {};
             _setStatus($('chatAiStatus'), result);
             _notify(result.message || 'AI підключення не пройшло перевірку', 'warning');
         } finally {
-            if (btn) btn.disabled = false;
+            if (btn) btn.disabled = _canManageSettings() !== true;
         }
     }
 
     async function _saveIntegrations() {
+        if (!_guardManageSettings()) return;
         try {
             _state.integrations = await _request('PUT', '/api/settings/chat/integrations', {
                 channels: $('chatIntegrationChannels')?.checked !== false,
@@ -335,13 +401,14 @@
             });
             _notify('Інтеграції чату збережено', 'success');
         } catch (err) {
-            if (_isAuthError(err)) return;
+            if (_handleRequestAccessError(err)) return;
             console.error('[ChatSettings] save integrations failed', err);
             _notify('Не вдалось зберегти інтеграції', 'error');
         }
     }
 
     async function _saveGuardian() {
+        if (!_guardManageSettings()) return;
         try {
             var data = await _request('PUT', '/api/settings/chat/guardian', {
                 enabled: $('guardianEnabled')?.checked !== false,
@@ -355,13 +422,14 @@
             _setStatus($('guardianAiStatus'), data.ai || {});
             _notify('Guardian налаштування збережено', 'success');
         } catch (err) {
-            if (_isAuthError(err)) return;
+            if (_handleRequestAccessError(err)) return;
             console.error('[ChatSettings] save Guardian failed', err);
             _notify('Не вдалось зберегти Guardian налаштування', 'error');
         }
     }
 
     async function _refreshProviderDiagnostics() {
+        if (!_guardManageSettings()) return;
         var btn = $('aiProviderRefreshBtn');
         if (btn) btn.disabled = true;
         try {
@@ -369,11 +437,11 @@
             _renderProviderDiagnostics(_state.providerDiagnostics);
             _notify('AI provider diagnostics оновлено', 'success');
         } catch (err) {
-            if (_isAuthError(err)) return;
+            if (_handleRequestAccessError(err)) return;
             console.error('[ChatSettings] provider diagnostics failed', err);
             _notify('Не вдалося оновити AI provider diagnostics', 'error');
         } finally {
-            if (btn) btn.disabled = false;
+            if (btn) btn.disabled = _canManageSettings() !== true;
         }
     }
 

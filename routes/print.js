@@ -3,14 +3,168 @@
  * Template library, preflight validation, print routing.
  */
 const router = require('express').Router();
+const { isDeepStrictEqual } = require('node:util');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, canUseAction, requireAction } = require('../middleware/auth');
+const {
+    installRevenueResponseShaper,
+    isFinancialFieldKey,
+    redactMoneyText,
+    redactRevenueFields
+} = require('../services/revenueAccessPolicy');
 
 const log = createLogger('Print');
+const requirePrintRevenue = requireAction('view_revenue');
+const PRINT_CONTEXTUAL_REVENUE_FIELDS = new Map([
+    ['cert_gift', new Set(['value'])]
+]);
+
+function isPlainObject(value) {
+    if (!value || Object.prototype.toString.call(value) !== '[object Object]') return false;
+    const prototype = Object.getPrototypeOf(value);
+    return prototype === Object.prototype || prototype === null;
+}
+
+function normalizedPrintKey(key) {
+    return String(key || '')
+        .replace(/([a-z0-9])([A-Z])/g, '$1_$2')
+        .toLowerCase()
+        .replace(/[^a-z0-9]+/g, '');
+}
+
+function parsePrintJsonContainer(value) {
+    if (typeof value !== 'string') return null;
+    const trimmed = value.trim();
+    const looksLikeContainer = (trimmed.startsWith('{') && trimmed.endsWith('}'))
+        || (trimmed.startsWith('[') && trimmed.endsWith(']'));
+    if (!looksLikeContainer) return null;
+    try {
+        const parsed = JSON.parse(trimmed);
+        return parsed && typeof parsed === 'object' ? parsed : null;
+    } catch {
+        return null;
+    }
+}
+
+function containsPrintRevenueData(value, templateCode) {
+    const contextualFields = PRINT_CONTEXTUAL_REVENUE_FIELDS.get(String(templateCode || '').toLowerCase())
+        || new Set();
+
+    function inspect(nestedValue) {
+        if (typeof nestedValue === 'string') {
+            const parsed = parsePrintJsonContainer(nestedValue);
+            if (parsed) return inspect(parsed);
+            return redactMoneyText(nestedValue) !== nestedValue;
+        }
+        if (Array.isArray(nestedValue)) return nestedValue.some(inspect);
+        if (!nestedValue || typeof nestedValue !== 'object') return false;
+        if (nestedValue instanceof Date || Buffer.isBuffer(nestedValue)) return false;
+
+        return Object.entries(nestedValue).some(([key, childValue]) => {
+            const normalizedKey = normalizedPrintKey(key);
+            if (contextualFields.has(normalizedKey) || isFinancialFieldKey(key)) return true;
+            if (normalizedKey === 'deposit'
+                && (childValue === null || typeof childValue !== 'object')) return true;
+            return inspect(childValue);
+        });
+    }
+
+    return inspect(value);
+}
+
+function redactPrintContextualFields(value, contextualFields) {
+    if (typeof value === 'string') {
+        const parsed = parsePrintJsonContainer(value);
+        if (!parsed) return value;
+        const redacted = redactPrintContextualFields(parsed, contextualFields);
+        return isDeepStrictEqual(parsed, redacted) ? value : JSON.stringify(redacted);
+    }
+    if (Array.isArray(value)) {
+        return value.map(item => redactPrintContextualFields(item, contextualFields));
+    }
+    if (!value || typeof value !== 'object') return value;
+    if (value instanceof Date || Buffer.isBuffer(value)) return value;
+
+    const projected = {};
+    for (const [key, nestedValue] of Object.entries(value)) {
+        if (contextualFields.has(normalizedPrintKey(key))) continue;
+        projected[key] = redactPrintContextualFields(nestedValue, contextualFields);
+    }
+    return projected;
+}
+
+function projectPrintJobRevenue(payload, fallbackTemplateCode = null) {
+    if (Array.isArray(payload)) {
+        return payload.map(item => projectPrintJobRevenue(item, fallbackTemplateCode));
+    }
+    if (!payload || typeof payload !== 'object') return redactRevenueFields(payload);
+    if (payload instanceof Date || Buffer.isBuffer(payload)) return payload;
+
+    if (Object.prototype.hasOwnProperty.call(payload, 'job')) {
+        const projectedWrapper = redactRevenueFields(payload);
+        projectedWrapper.job = projectPrintJobRevenue(payload.job, fallbackTemplateCode);
+        return projectedWrapper;
+    }
+
+    const projected = redactRevenueFields(payload);
+    const templateCode = payload.template_code || fallbackTemplateCode;
+    const contextualFields = PRINT_CONTEXTUAL_REVENUE_FIELDS.get(String(templateCode || '').toLowerCase())
+        || new Set();
+    if (Object.prototype.hasOwnProperty.call(projected, 'data')) {
+        projected.data = redactPrintContextualFields(projected.data, contextualFields);
+    }
+    return projected;
+}
+
+function requirePlainPrintJobData(req, res, next) {
+    const body = isPlainObject(req.body) ? req.body : {};
+    const data = Object.prototype.hasOwnProperty.call(body, 'data') ? body.data : {};
+    if (!isPlainObject(data)) {
+        return res.status(400).json({ error: 'data must be a JSON object' });
+    }
+    req.body = { ...body, data };
+    return next();
+}
+
+async function loadPrintJobTemplate(req, res, next) {
+    try {
+        const templateId = req.body?.template_id;
+        if (!templateId) {
+            res.locals.printTemplate = null;
+            return next();
+        }
+        const result = await pool.query('SELECT * FROM print_templates WHERE id = $1', [templateId]);
+        res.locals.printTemplate = result.rows[0] || null;
+        return next();
+    } catch (err) {
+        log.error('Load print template error', err);
+        return res.status(500).json({ error: 'Internal server error' });
+    }
+}
+
+function requirePrintJobRevenue(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    const templateCode = res.locals.printTemplate?.code;
+    if (!containsPrintRevenueData(req.body?.data, templateCode)) return next();
+    return requirePrintRevenue(req, res, next);
+}
+
+function shapePrintJobRevenue(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    const sendJson = res.json.bind(res);
+    res.json = payload => sendJson(projectPrintJobRevenue(payload, res.locals.printTemplate?.code));
+    return next();
+}
 
 // All print routes require authentication
 router.use(authenticateToken);
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue')
+));
 
 // ============================================
 // Print Templates
@@ -33,7 +187,7 @@ router.get('/templates', async (req, res) => {
 });
 
 // POST /api/print/templates — create template
-router.post('/templates', async (req, res) => {
+router.post('/templates', requireAction('manage_settings'), async (req, res) => {
     try {
         const { code, name, category, format, width_mm, height_mm, dpi, color_space, required_fields, font_requirements } = req.body;
         if (!code || !name) {
@@ -58,7 +212,7 @@ router.post('/templates', async (req, res) => {
 });
 
 // PUT /api/print/templates/:id — update template
-router.put('/templates/:id', async (req, res) => {
+router.put('/templates/:id', requireAction('manage_settings'), async (req, res) => {
     try {
         const { name, category, format, width_mm, height_mm, dpi, color_space, required_fields, font_requirements, is_active } = req.body;
         const result = await pool.query(
@@ -161,16 +315,11 @@ router.post('/preflight', async (req, res) => {
 // ============================================
 
 // POST /api/print/jobs — create print job (with auto-preflight)
-router.post('/jobs', async (req, res) => {
+router.post('/jobs', requirePlainPrintJobData, loadPrintJobTemplate, requirePrintJobRevenue, shapePrintJobRevenue, async (req, res) => {
     try {
         const { template_id, booking_id, certificate_id, data, target } = req.body;
 
-        // Get template
-        let template = null;
-        if (template_id) {
-            const t = await pool.query('SELECT * FROM print_templates WHERE id = $1', [template_id]);
-            template = t.rows[0];
-        }
+        const template = res.locals.printTemplate;
 
         // Auto-determine routing
         let finalTarget = target || 'local_printer';
@@ -220,7 +369,7 @@ router.post('/jobs', async (req, res) => {
 });
 
 // GET /api/print/jobs — list jobs
-router.get('/jobs', async (req, res) => {
+router.get('/jobs', shapePrintJobRevenue, async (req, res) => {
     try {
         const { status } = req.query;
         let query = `SELECT pj.*, pt.name as template_name, pt.code as template_code
@@ -237,7 +386,7 @@ router.get('/jobs', async (req, res) => {
 });
 
 // PUT /api/print/jobs/:id/status — update job status
-router.put('/jobs/:id/status', async (req, res) => {
+router.put('/jobs/:id/status', shapePrintJobRevenue, async (req, res) => {
     try {
         const { status, error } = req.body;
         const validStatuses = ['queued', 'printing', 'completed', 'failed', 'cancelled'];
@@ -256,7 +405,11 @@ router.put('/jobs/:id/status', async (req, res) => {
         params.push(req.params.id);
 
         const result = await pool.query(
-            `UPDATE print_jobs SET ${setClause} WHERE id = $${params.length} RETURNING *`,
+            `WITH updated_job AS (
+                UPDATE print_jobs SET ${setClause} WHERE id = $${params.length} RETURNING *
+             )
+             SELECT updated_job.*, pt.code AS template_code
+             FROM updated_job LEFT JOIN print_templates pt ON pt.id = updated_job.template_id`,
             params
         );
         if (result.rows.length === 0) {

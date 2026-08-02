@@ -99,6 +99,13 @@ function loadDashboardHarness(options = {}) {
         );
         assert.ok(pageJs.includes('window.__boardTest'), 'dashboard board internals hook was not installed');
     }
+    if (options.exposeRevenueInternals) {
+        pageJs = pageJs.replace(
+            /    return \{\r?\n        init,/,
+            '    window.__dashboardRevenueTest = { canUseWidgetForRole, renderBoardWidgetPickerOptions, renderQuickStats, renderWeekBookings, loadWidgetData };\n\n    return {\n        init,'
+        );
+        assert.ok(pageJs.includes('window.__dashboardRevenueTest'), 'dashboard revenue internals hook was not installed');
+    }
     const dom = new JSDOM(`<!doctype html>
         <main>
             <div id="dashboardGrid"></div>
@@ -146,7 +153,8 @@ function loadDashboardHarness(options = {}) {
     return {
         dom,
         DashboardPage: vm.runInContext('DashboardPage', dom.getInternalVMContext()),
-        boardTest: vm.runInContext('window.__boardTest', dom.getInternalVMContext())
+        boardTest: vm.runInContext('window.__boardTest', dom.getInternalVMContext()),
+        revenueTest: vm.runInContext('window.__dashboardRevenueTest', dom.getInternalVMContext())
     };
 }
 
@@ -683,4 +691,71 @@ test('dashboard sandbox UX exposes tool families, canvas hints, and cancel reset
     assert.equal(canvas.dataset.activeTool, 'select');
     assert.equal(canvas.dataset.toolFamily, 'navigate');
     assert.equal(doc.querySelector('[data-board-tool="select"]')?.getAttribute('aria-pressed'), 'true');
+});
+
+test('dashboard revenue widgets require real capability and mixed widgets keep only operational counts', async () => {
+    const { dom, revenueTest } = loadDashboardHarness({ exposeRevenueInternals: true });
+    let realAllowed = false;
+    let previewAllowed = true;
+    let previewRole = 'creator';
+    let fetchCalls = 0;
+    const decisions = [];
+
+    dom.window.RolePreview = {
+        getPreviewRole: () => previewRole,
+        getEffectiveRole: () => previewRole || 'creator'
+    };
+    dom.window.resolveCapability = (_user, action, context = {}) => {
+        decisions.push({ action, context: { ...context } });
+        return { allowed: context.previewRole ? previewAllowed : realAllowed };
+    };
+    dom.window.fetch = async () => {
+        fetchCalls += 1;
+        return { ok: true, json: async () => ({ success: true, data: {} }) };
+    };
+
+    for (const widget of ['finance_today', 'reports_today', 'director_pnl']) {
+        assert.equal(revenueTest.canUseWidgetForRole(widget, 'creator'), false, `${widget} must respect the real deny`);
+    }
+    assert.ok(decisions.some(({ action, context }) => action === 'view_revenue' && context.previewRole === ''));
+
+    const pickerHtml = revenueTest.renderBoardWidgetPickerOptions();
+    assert.doesNotMatch(pickerHtml, /finance_today|reports_today|director_pnl/);
+    assert.match(pickerHtml, /quick_stats/);
+    assert.match(pickerHtml, /week_bookings/);
+
+    const quickStats = dom.window.document.createElement('div');
+    revenueTest.renderQuickStats({ bookingsToday: 7, activeTasks: 3, revenueToday: 987654 }, quickStats);
+    assert.deepEqual([...quickStats.querySelectorAll('.stat-value')].map(node => node.textContent), ['7', '3']);
+    assert.doesNotMatch(quickStats.textContent, /987654|Виручка/);
+
+    const weekBookings = dom.window.document.createElement('div');
+    revenueTest.renderWeekBookings({
+        from: '2026-08-02',
+        days: [
+            { date: '2026-08-02', count: 2, confirmed: 1, pending: 1, revenue: 456789 },
+            { date: '2026-08-03', count: 3, confirmed: 3, pending: 0, revenue: 654321 }
+        ]
+    }, weekBookings);
+    assert.equal(weekBookings.querySelector('.stats-grid .stat-value')?.textContent, '5');
+    assert.equal(weekBookings.querySelectorAll('.stats-grid .stat-item').length, 1);
+    assert.doesNotMatch(weekBookings.textContent, /456789|654321|Виручка/);
+
+    const deniedContainer = dom.window.document.createElement('div');
+    deniedContainer.textContent = 'stale financial content';
+    await revenueTest.loadWidgetData('director_pnl', deniedContainer);
+    assert.equal(fetchCalls, 0);
+    assert.equal(deniedContainer.innerHTML, '');
+
+    realAllowed = true;
+    previewAllowed = false;
+    previewRole = 'manager';
+    assert.equal(revenueTest.canUseWidgetForRole('finance_today', 'creator'), false, 'preview may narrow real access');
+
+    previewAllowed = true;
+    previewRole = 'creator';
+    assert.equal(revenueTest.canUseWidgetForRole('director_pnl', 'creator'), true);
+
+    delete dom.window.resolveCapability;
+    assert.equal(revenueTest.canUseWidgetForRole('director_pnl', 'creator'), false, 'missing canonical resolver must fail closed');
 });

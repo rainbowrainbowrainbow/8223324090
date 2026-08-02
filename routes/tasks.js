@@ -5,6 +5,10 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { requireRole, authenticateToken, canUseAction } = require('../middleware/auth');
+const {
+    installRevenueResponseShaper,
+    parseOptionalRevenueAmount
+} = require('../services/revenueAccessPolicy');
 const { buildTaskPaginationMetadata } = require('../services/taskPagination');
 
 // v39.8: Security — require authentication for all task endpoints
@@ -1998,7 +2002,22 @@ router.put('/:id/observers', requireRole('admin', 'user'), async (req, res) => {
     }
 });
 
-router.post('/:id/completion-report', async (req, res) => {
+function requireTaskReportAmountAccess(req, res, next) {
+    const hasAmount = Object.prototype.hasOwnProperty.call(req.body || {}, 'amount');
+    if (!hasAmount || canUseAction(req.user, 'view_revenue')) return next();
+    return res.status(403).json({ error: 'Insufficient permissions' });
+}
+
+function shapeTaskReportRevenueResponse(req, res, next) {
+    return installRevenueResponseShaper(
+        req,
+        res,
+        next,
+        canUseAction(req.user, 'view_revenue')
+    );
+}
+
+router.post('/:id/completion-report', requireTaskReportAmountAccess, shapeTaskReportRevenueResponse, async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
@@ -2008,7 +2027,7 @@ router.post('/:id/completion-report', async (req, res) => {
             return res.status(400).json({ success: false, error: 'Заповніть звіт перед виконанням задачі', code: 'TASK_REPORT_TEXT_REQUIRED' });
         }
         const reportType = ['income', 'expense'].includes(req.body?.type) ? req.body.type : 'expense';
-        const amount = Number.parseFloat(req.body?.amount);
+        const amount = parseOptionalRevenueAmount(req.body || {});
         const rawData = {
             taskCompletionReport: {
                 taskId: task.id,
@@ -2029,7 +2048,7 @@ router.post('/:id/completion-report', async (req, res) => {
             [
                 activeTaskBusinessContext(task.business_context),
                 reportType,
-                Number.isFinite(amount) ? amount : 0,
+                amount,
                 `Звіт по задачі #${task.id}: ${task.title || 'Без назви'}\n\n${reportText}`,
                 req.body?.category || 'Задача',
                 req.user?.name || req.user?.displayName || req.user?.username || 'Unknown',
@@ -2058,7 +2077,12 @@ router.post('/:id/completion-report', async (req, res) => {
         );
         res.status(201).json({
             success: true,
-            report: { id: report.id, category: report.category, amount: Number(report.amount || 0), createdAt: report.created_at || null },
+            report: {
+                id: report.id,
+                category: report.category,
+                amount: parseOptionalRevenueAmount({ amount: report.amount }),
+                createdAt: report.created_at || null
+            },
             reportId: report.id,
             task: normalizeTaskPayload(update.rows[0] || task),
             meta: {

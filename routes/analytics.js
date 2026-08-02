@@ -9,7 +9,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 
-const { requireRole } = require('../middleware/auth');
+const { requireRole, requireAction } = require('../middleware/auth');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const {
     resolveBusinessScope,
@@ -32,6 +32,7 @@ function leadTypeStatsFromRows(rows = []) {
 
 // RBAC: Analytics - manager-up, aligned with middleware/js/sidebar page access.
 router.use(requireRole('manager'));
+router.use(requireAction('view_revenue'));
 
 // ==========================================
 // CACHE (5-minute TTL)
@@ -1065,7 +1066,7 @@ router.get('/product-sales', async (req, res) => {
 // GET /api/analytics/product-sales/export — CSV/XLSX export
 // ==========================================
 
-router.get('/product-sales/export', async (req, res) => {
+router.get('/product-sales/export', requireAction('export_data'), async (req, res) => {
     try {
         const businessScope = analyticsBusinessScope(req, res);
         if (!businessScope) return;

@@ -1377,6 +1377,7 @@ async function withApp(rows, links, fn, options = {}) {
             next();
         },
         requireAction: () => (_req, _res, next) => next(),
+        canUseAction: (...args) => options.canUseAction ? options.canUseAction(...args) : true,
         userHasAnyRole: (user, roles) => roles.includes(user?.role)
     });
     installMock('../services/bookingVisibility', {
@@ -4095,6 +4096,7 @@ test('GET banquet summary excludes cancelled banquet group activities', async ()
 });
 
 test('GET banquet summary reads confirmed deposit from canonical banquet_deposits before legacy JSON', async () => {
+    let canViewRevenue = true;
     await withApp([
         bookingRow({
             id: 'BK-ROOT',
@@ -4109,6 +4111,12 @@ test('GET banquet summary reads confirmed deposit from canonical banquet_deposit
                     amount: 700,
                     paymentMethod: 'cash',
                     paymentStatus: 'legacy'
+                },
+                bookingPackage: {
+                    warnings: [{
+                        code: 'currency_sentinel',
+                        message: 'Internal total 9 999 UAH'
+                    }]
                 }
             }
         })
@@ -4127,7 +4135,41 @@ test('GET banquet summary reads confirmed deposit from canonical banquet_deposit
         assert.equal(data.deposit.receivedDate, '2099-06-19');
         assert.equal(data.deposit.accountantTaskId, 77);
         assert.equal(data.warnings.some(warning => warning.code === 'deposit_not_specified'), false);
+        assert.equal(
+            data.warnings.find(warning => warning.code === 'currency_sentinel')?.message,
+            'Internal total 9 999 UAH'
+        );
+
+        canViewRevenue = false;
+        const limitedRes = await fetch(`${baseUrl}/api/bookings/BK-ROOT/banquet-summary?businessContext=event_genix&groupId=BQ-DEPOSIT`);
+        const limited = await limitedRes.json();
+
+        assert.equal(limitedRes.status, 200, JSON.stringify(limited));
+        assert.equal(limited.totals, undefined);
+        assert.equal(limited.finance, undefined);
+        assert.deepEqual(limited.deposit, {
+            id: 42,
+            paymentStatus: 'accountant_verified',
+            status: 'accountant_verified',
+            source: 'canonical_banquet_deposits',
+            sourceKind: 'accountant_confirmed',
+            receivedDate: '2099-06-19',
+            verifiedAt: '2099-06-19T09:00:00.000Z',
+            accountantTaskId: 77
+        });
+        assert.equal(limited.event.status, 'confirmed');
+        assert.equal(limited.event.room, 'Room A');
+        assert.equal(limited.arrival.time, '11:45');
+        assert.ok(limited.orderRows.some(row => row.type === 'program' && row.title === 'Banquet root'));
+        assert.equal(limited.modeContract.showPrices, false);
+        assert.equal(limited.modeContract.sections.finance, false);
+        const limitedWarning = limited.warnings.find(warning => warning.code === 'currency_sentinel');
+        assert.ok(limitedWarning);
+        assert.doesNotMatch(limitedWarning.message, /9\s*999\s*UAH/i);
+        assert.match(limitedWarning.message, /\[\u0441\u0443\u043c\u0430 \u043f\u0440\u0438\u0445\u043e\u0432\u0430\u043d\u0430\]/);
+
     }, {
+        canUseAction: (_user, action) => action !== 'view_revenue' || canViewRevenue,
         banquetGroups: [{
             id: 'BQ-DEPOSIT',
             business_context: 'event_genix',
@@ -4168,7 +4210,7 @@ test('GET banquet summary reads confirmed deposit from canonical banquet_deposit
             source_payload: {
                 accountantConfirmation: {
                     receivedDate: '2099-06-19',
-                    note: 'Verified by route test'
+                    note: 'Verified 1 500 UAH by route test'
                 }
             },
             verified_at: '2099-06-19T09:00:00.000Z',

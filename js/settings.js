@@ -1522,7 +1522,20 @@ async function loadTimelineDisplaySettingsIntoModal() {
     await renderTimelineResourcesManager();
 }
 
+function canManageSystemSettings() {
+    if (typeof window.resolveCapability !== 'function') return false;
+    return window.resolveCapability(window.AppState?.currentUser || null, 'manage_settings', {
+        type: 'action'
+    }).allowed === true;
+}
+
+function guardSystemSettings() {
+    if (canManageSystemSettings()) return true;
+    showNotification('\u041d\u0435\u0434\u043e\u0441\u0442\u0430\u0442\u043d\u044c\u043e \u043f\u0440\u0430\u0432 \u0434\u043b\u044f \u043a\u0435\u0440\u0443\u0432\u0430\u043d\u043d\u044f \u043d\u0430\u043b\u0430\u0448\u0442\u0443\u0432\u0430\u043d\u043d\u044f\u043c\u0438', 'error');
+    return false;
+}
 async function saveTimelineDisplaySettingsFromSettings() {
+    if (!guardSystemSettings()) return;
     const payload = collectTimelineDisplaySettingsFromControls();
     try {
         if (typeof apiSaveBusinessCabinet === 'function') {
@@ -1768,17 +1781,21 @@ async function handleTimelineResourceListClick(event) {
 }
 
 async function showSettings() {
+    const canManageSettings = canManageSystemSettings();
     const animators = getSavedAnimators();
     const animatorsTextarea = document.getElementById('settingsAnimatorsList');
     if (animatorsTextarea) animatorsTextarea.value = animators.join('\n');
 
-    await loadTimelineDisplaySettingsIntoModal();
+    const timelineSection = document.getElementById('settingsTimelineDisplaySection');
+    if (timelineSection) timelineSection.style.display = canManageSettings ? '' : 'none';
+    if (canManageSettings) await loadTimelineDisplaySettingsIntoModal();
 
     const tgSection = document.getElementById('settingsTelegramSection');
     if (tgSection) {
-        tgSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
+        tgSection.style.display = canManageSettings ? 'block' : 'none';
     }
 
+    if (canManageSettings) {
     // Load chat ID into input (user can also type it manually)
     const chatId = await apiGetSetting('telegram_chat_id');
     const chatIdInput = document.getElementById('settingsTelegramChatId');
@@ -1832,6 +1849,7 @@ async function showSettings() {
             } catch (e) { showToast('❌ ' + e.message, 'error'); }
         };
     }
+    }
 
     // v12.6: Load contractors
     const contractorsSection = document.getElementById('settingsContractorsSection');
@@ -1843,15 +1861,17 @@ async function showSettings() {
     // v8.3: Load automation rules
     const automationSection = document.getElementById('settingsAutomationSection');
     if (automationSection) {
-        automationSection.style.display = AppState.currentUser.role === 'admin' ? 'block' : 'none';
-        if (AppState.currentUser.role === 'admin') renderAutomationRules();
+        automationSection.style.display = canManageSettings ? 'block' : 'none';
+        if (canManageSettings) renderAutomationRules();
     }
 
     // v8.4: Certificates moved to timeline panel (see openCertificatesPanel)
 
     document.getElementById('settingsModal')?.classList.remove('hidden');
-    fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
-    fetchAndRenderThreads();
+    if (canManageSettings) {
+        fetchAndRenderTelegramChats('settingsTelegramChatId', 'settingsTelegramChats');
+        fetchAndRenderThreads();
+    }
 }
 
 // v5.11: Save all notification settings (digest + reminder + auto-delete)

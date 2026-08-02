@@ -1,7 +1,15 @@
 const express = require('express');
 const router = express.Router();
-const { authenticateToken, resolveCapability } = require('../middleware/auth');
+const { authenticateToken, canUseAction, resolveCapability } = require('../middleware/auth');
+const { installRevenueResponseShaper } = require('../services/revenueAccessPolicy');
 router.use(authenticateToken);
+router.use((req, res, next) => installRevenueResponseShaper(
+    req,
+    res,
+    next,
+    canUseAction(req.user, 'view_revenue'),
+    { redactText: true }
+));
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');

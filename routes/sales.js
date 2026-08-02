@@ -4,10 +4,13 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
+const { requireAction, requireMinRole, authenticateToken } = require('../middleware/auth');
+const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { createLogger } = require('../utils/logger');
 
 const log = createLogger('Sales');
+const requireSalesRevenue = requireAction('view_revenue');
+const requireBookingEdit = requireAction('edit_booking');
 
 // GET /api/sales/call-script — active call script
 // v39.8: Security — require authentication
@@ -38,7 +41,7 @@ router.get('/upsells', async (req, res) => {
 });
 
 // POST /api/sales/booking-upsells — add upsells to a booking
-router.post('/booking-upsells', async (req, res) => {
+router.post('/booking-upsells', requireBookingEdit, requireSalesRevenue, async (req, res) => {
     const { booking_id, upsells } = req.body;
     if (!booking_id || !Array.isArray(upsells)) {
         return res.status(400).json({ error: 'Потрібен booking_id та масив upsells' });
@@ -47,6 +50,20 @@ router.post('/booking-upsells', async (req, res) => {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const bookingParams = [booking_id];
+        const bookingScope = getVisibleBookingScope(req.user, bookingParams, 'b');
+        const visibleBooking = await client.query(
+            `SELECT b.id
+             FROM bookings b
+             WHERE b.id = $1
+               ${bookingScope.sql}
+             LIMIT 1`,
+            bookingParams
+        );
+        if (visibleBooking.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return res.status(404).json({ error: 'Бронювання не знайдено' });
+        }
 
         for (const u of upsells) {
             if (!u.name) continue;
@@ -68,11 +85,18 @@ router.post('/booking-upsells', async (req, res) => {
 });
 
 // GET /api/sales/booking-upsells/:bookingId — get upsells for a booking
-router.get('/booking-upsells/:bookingId', async (req, res) => {
+router.get('/booking-upsells/:bookingId', requireSalesRevenue, async (req, res) => {
     try {
+        const params = [req.params.bookingId];
+        const bookingScope = getVisibleBookingScope(req.user, params, 'b');
         const result = await pool.query(
-            'SELECT * FROM booking_upsells WHERE booking_id = $1 ORDER BY added_at',
-            [req.params.bookingId]
+            `SELECT bu.*
+             FROM booking_upsells bu
+             JOIN bookings b ON b.id = bu.booking_id
+             WHERE bu.booking_id = $1
+               ${bookingScope.sql}
+             ORDER BY bu.added_at`,
+            params
         );
         res.json({ upsells: result.rows });
     } catch (err) {

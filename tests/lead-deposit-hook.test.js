@@ -310,6 +310,7 @@ async function withLeadApp(options, run) {
             };
             next();
         },
+        canUseAction: () => true,
         requireRole: () => (_req, _res, next) => next(),
         requireMinRole: () => (_req, _res, next) => next()
     });

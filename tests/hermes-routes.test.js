@@ -1228,7 +1228,7 @@ async function withHermesCreateServer(fakePool, testFn, options = {}) {
     const app = express();
     app.use(express.json());
     app.use('/api/hermes', createHermesRouter({
-        authMiddleware: hermesTestAuth,
+        authMiddleware: options.authMiddleware || hermesTestAuth,
         pool: fakePool,
         skipNotifications: options.skipNotifications !== false,
         env: options.env || {},
@@ -3616,6 +3616,7 @@ describe('Hermes task write routes', () => {
             assert.equal(res.data.meta.autoComplete, false);
             assert.equal(fakePool.reports.length, 1);
             assert.equal(fakePool.reports[0].id, 41000);
+            assert.equal(fakePool.reports[0].amount, 0);
             assert.equal(fakePool.reports[0].raw_data.taskCompletionReport.sourceSurface, 'hermes');
             assert.equal(fakePool.reports[0].raw_data.taskCompletionReport.taskId, 710);
             assert.equal(fakePool.tasks.get(710).control_meta.reportId, 41000);
@@ -3625,6 +3626,38 @@ describe('Hermes task write routes', () => {
             assert.equal(serialized.includes('secret-token-123'), false);
             assert.equal(serialized.includes('raw_data'), false);
             assert.equal(serialized.includes('"control_meta":'), false);
+        });
+    });
+
+    it('persists a null amount when a revenue-denied actor omits it', async () => {
+        const fakePool = createHermesCreateFakePool({
+            tasks: [[714, taskRow(714, {
+                status: 'todo',
+                workflow_state: 'todo',
+                control_meta: { reportRequired: true }
+            })]]
+        });
+        const deniedRevenueAuth = (req, res, next) => hermesTestAuth(req, res, () => {
+            req.user.action_denylist = ['view_revenue'];
+            next();
+        });
+
+        await withHermesCreateServer(fakePool, async ({ baseUrl }) => {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks/714/completion-report', {
+                reportText: 'Operational completion without a financial amount',
+                type: 'expense',
+                category: 'Task',
+                businessContext: 'event_genix'
+            }, mutationHeaders('completion-report-null-amount'));
+
+            assert.equal(res.status, 201, res.text);
+            assert.equal(res.data.success, true);
+            assert.equal(res.data.reportId, 41000);
+            assert.equal(fakePool.reports.length, 1);
+            assert.equal(fakePool.reports[0].amount, null);
+            assert.equal(fakePool.tasks.get(714).control_meta.reportId, 41000);
+        }, {
+            authMiddleware: deniedRevenueAuth
         });
     });
 

@@ -8,7 +8,7 @@
  */
 const router = require('express').Router();
 const { pool } = require('../db');
-const { requireMinRole, authenticateToken } = require('../middleware/auth'); 
+const { requireAction, requireMinRole, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('PageStatuses');
 
@@ -30,7 +30,7 @@ router.get('/', async (req, res) => {
 });
 
 // PATCH /api/page-statuses/:path — update status (director+)
-router.patch('/*', requireMinRole('director'), async (req, res) => {
+router.patch('/*', requireMinRole('director'), requireAction('manage_settings'), async (req, res) => {
     try {
         const pagePath = '/' + req.params[0];
         const { status } = req.body;

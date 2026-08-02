@@ -37,6 +37,8 @@ async function setupReportsDom(setupOptions = {}) {
 
     window.AppState = {};
     window.apiVerifyToken = async () => ({ id: 1, username: 'serhiy', role: 'creator' });
+    const deniedActions = new Set(setupOptions.deniedActions || []);
+    window.canAccess = action => !deniedActions.has(action);
     window.initDarkMode = () => {};
     window.showAuthenticatedPageShell = () => {};
     window.confirmModal = async () => true;

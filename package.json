@@ -124,7 +124,12 @@
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
     "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\"",
-    "release:railway-up": "node scripts/railway-release-up.js"
+    "release:railway-up": "node scripts/railway-release-up.js",
+    "hermes:outbox:worker": "node scripts/hermes-notification-outbox-worker.js",
+    "hermes:outbox:worker:read-only": "node scripts/hermes-notification-outbox-worker.js --mode=read_only --include-stats=1",
+    "hermes:outbox:worker:dry-run": "node scripts/hermes-notification-outbox-worker.js --mode=dry_run --include-stats=1",
+    "hermes:outbox:worker:live-once": "node scripts/hermes-notification-outbox-worker.js --mode=live_once --include-stats=1",
+    "test:hermes-outbox-worker": "node --test tests/hermes-notification-outbox-worker.test.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

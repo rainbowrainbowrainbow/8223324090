@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.69 - Доступи: підписка та пакети
+
+### Release / Versioning / (02.08.2026) [codex]
+- **Доступи: підписка та пакети** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.68 - Доступи: фінанси банкетів
 
 ### Release / Versioning / (02.08.2026) [codex]

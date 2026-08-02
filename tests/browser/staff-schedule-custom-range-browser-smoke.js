@@ -3734,6 +3734,9 @@ async function runDesktopFlow(browser, base) {
         await captureFixtureDepartmentScheduleSurfaces(page);
         await assertScheduleShiftPreferenceQuickLabels(page);
 
+        // Anchor half-month preset assertions to the fixture month; otherwise the
+        // browser's current month rolls these expectations forward over time.
+        await applyManualRange(page, '2026-07-01', '2026-07-31');
         await applyPreset(page, 'first-half');
         const firstHalfFrom = await page.locator('#scheduleDateFrom').inputValue();
         const firstHalfTo = await page.locator('#scheduleDateTo').inputValue();

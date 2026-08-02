@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.70 - Доступи: payroll та HR export
+
+### Release / Versioning / (02.08.2026) [codex]
+- **Доступи: payroll та HR export** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.69 - Доступи: підписка та пакети
 
 ### Release / Versioning / (02.08.2026) [codex]

@@ -455,7 +455,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         key: 'hr.schedule.view', label: 'Перегляд HR-графіка', group: 'hr', defaultRoles: ALL_STAFF, risk: 'high',
         backendConsumers: [source('routes/hr.js', 'function requireHrCapabilityContract', { enforces: true })],
         frontendConsumers: [source('js/hr-page.js', "'hr.schedule.view'", { enforces: true }), source('js/hr-pulse-switcher.js', "'hr.schedule.view'", { enforces: true }), source('js/staff-page.js', "canUseStaffCapability('hr.schedule.view')", { enforces: true })],
-        apiConsumers: [api('routes/hr.js', '/api/hr/shifts', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff/schedule and shift-preferences reads', 'hr.schedule.view')]
+        apiConsumers: [api('routes/hr.js', '/api/hr/shifts', null, 'Enforced by requireHrCapabilityContract.'), api('routes/staff.js', '/api/staff/schedule reads, shift-preferences reads, and schedule/export-xlsx', 'hr.schedule.view')]
     }),
     action({
         key: 'hr.schedule.manage', label: 'Керування HR-графіком', group: 'hr', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
@@ -634,13 +634,17 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('js/reports-page.js', "canAccess('manage_settings')", { enforces: true }),
             source('js/settings.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true }),
             source('js/timeline-settings-page.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true }),
-            source('js/timeline-visibility.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true })
+            source('js/timeline-visibility.js', "resolveCapability(window.AppState?.currentUser || null, 'manage_settings'", { enforces: true }),
+            source('js/programs-page.js', "canAccess('manage_settings')", { enforces: true })
         ],
         backendConsumers: [
             source('routes/demo.js', "canUseAction(req.user, 'manage_settings')", { enforces: true }),
             source('routes/packages.js', "requireAction('manage_settings')", { enforces: true }),
             source('routes/subscription.js', "requireAction('manage_settings')", { enforces: true }),
-            source('routes/settings.js', "requireSettingsManagement = requireAction('manage_settings')", { enforces: true })
+            source('routes/settings.js', "requireSettingsManagement = requireAction('manage_settings')", { enforces: true }),
+            source('routes/catalogs.js', "requireAction('manage_settings')", { enforces: true }),
+            source('routes/omnichannel.js', "manageLeadAssistantSettings = requireAction('manage_settings')", { enforces: true }),
+            source('routes/products.js', "requireAction('manage_settings')", { enforces: true })
         ],
         apiConsumers: [
             api('routes/backup.js', '/api/backup recovery metadata and restore', 'manage_settings'),
@@ -655,7 +659,10 @@ const ACTION_PERMISSIONS = Object.freeze([
             api('routes/status.js', '/api/status internal administration', 'manage_settings'),
             api('routes/support.js', '/api/support SLA and retention policies', 'manage_settings'),
             api('routes/packages.js', '/api/packages mutations and feature flag administration', 'manage_settings'),
-            api('routes/subscription.js', '/api/subscription PATCH and internal notes', 'manage_settings')
+            api('routes/subscription.js', '/api/subscription PATCH and internal notes', 'manage_settings'),
+            api('routes/catalogs.js', '/api/catalogs/settings/:catalogId mutation', 'manage_settings'),
+            api('routes/omnichannel.js', '/api/omni/lead-assistant/settings mutation', 'manage_settings'),
+            api('routes/products.js', '/api/products/program-icon-settings read and mutation', 'manage_settings')
         ],
         notes: 'System-setting mutations and sensitive settings reads require this capability; public and user-specific settings remain available.'
     }),
@@ -682,7 +689,8 @@ const ACTION_PERMISSIONS = Object.freeze([
             api('routes/procurement.js', '/api/procurement/export-xlsx', 'export_data'),
             api('routes/hr.js', '/api/hr/report/export and attendance PDF exports', 'export_data'),
             api('routes/payroll.js', '/api/payroll/export and /export-xlsx', 'export_data'),
-            api('routes/reports.js', '/api/reports/table/export-*', 'export_data')
+            api('routes/reports.js', '/api/reports/table/export-*', 'export_data'),
+            api('routes/staff.js', '/api/staff/schedule/export-xlsx', 'export_data')
         ],
         notes: 'Generic data exports are authorized before their file/query preparation. Payroll and HR exports require this capability in addition to their granular payroll or HR-report permission.'
     }),

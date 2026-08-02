@@ -198,6 +198,16 @@ const mountedRouteFiles = new Set([
 ]);
 compareSets('routes directory vs server.js route mounts', mountedRouteFiles, routeFiles);
 
+const ACCESS_HARDENED_ROUTE_FILES = [
+    'routes/banquets.js', 'routes/banquet-deposits.js', 'routes/subscription.js',
+    'routes/packages.js', 'routes/payroll.js', 'routes/hr.js', 'routes/reports.js',
+    'routes/staff.js', 'routes/catalogs.js', 'routes/omnichannel.js', 'routes/products.js'
+];
+for (const routeFile of ACCESS_HARDENED_ROUTE_FILES) {
+    if (!routeFiles.includes(routeFile)) fail(`access-hardened route missing: ${routeFile}`);
+    if (!mountedRouteFiles.has(routeFile)) fail(`access-hardened route is not mounted: ${routeFile}`);
+}
+
 for (const mount of mounts) {
     if (!routeFiles.includes(mount.routeFile)) {
         fail(`${mount.mount}: ${mount.routeFile} does not exist`);

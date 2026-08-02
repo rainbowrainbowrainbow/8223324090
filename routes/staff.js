@@ -868,7 +868,7 @@ router.get('/schedule', requireAction('hr.schedule.view'), async (req, res) => {
 });
 
 // POST /api/staff/schedule/export-xlsx — render the current visible schedule as a real multi-sheet workbook
-router.post('/schedule/export-xlsx', requireAction('hr.schedule.view'), async (req, res) => {
+router.post('/schedule/export-xlsx', requireAction('hr.schedule.view'), requireAction('export_data'), async (req, res) => {
     try {
         const { buffer, filename } = await buildStaffScheduleWorkbookBuffer(req.body || {});
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

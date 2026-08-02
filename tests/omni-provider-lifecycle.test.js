@@ -136,6 +136,7 @@ function loadOmniRouter(hubMock, runtimeConfig = TEST_OMNI_WEBHOOK_CONFIG) {
     installMock('../middleware/auth', {
         authenticateToken: (req, res, next) => next(),
         requireMinRole: () => (req, res, next) => next(),
+        requireAction: () => (req, res, next) => next(),
     });
     installMock('../services/adminAudit', { logAdminAction: async () => {} });
     installMock('../services/omni-accounts', {

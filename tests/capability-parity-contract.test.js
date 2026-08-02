@@ -213,3 +213,21 @@ test('Finance management keeps creator, director and accountant parity with expl
     const denied = assertParity({ role: 'accountant', action_allowlist: [capability], action_denylist: [capability] }, capability, { type: 'action' });
     assert.deepEqual([denied.allowed, denied.source, denied.reason], [false, 'explicit_deny', 'listed_in_explicit_deny']);
 });
+
+test('Task 4-8 critical capabilities keep their independent grants and explicit deny precedence', () => {
+    const creator = { role: 'creator' };
+    const manager = { role: 'manager' };
+    const deniedCreator = {
+        role: 'creator',
+        action_denylist: ['view_revenue', 'manage_settings', 'export_data']
+    };
+
+    for (const capability of ['view_revenue', 'manage_settings', 'export_data']) {
+        assert.equal(assertParity(creator, capability, { type: 'action' }).allowed, true, `creator must receive ${capability}`);
+        assert.equal(assertParity(deniedCreator, capability, { type: 'action' }).allowed, false, `explicit deny must block ${capability}`);
+    }
+
+    assert.equal(assertParity(manager, 'view_revenue', { type: 'action' }).allowed, true);
+    assert.equal(assertParity(manager, 'export_data', { type: 'action' }).allowed, true);
+    assert.equal(assertParity(manager, 'manage_settings', { type: 'action' }).allowed, false);
+});

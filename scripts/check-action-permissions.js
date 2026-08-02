@@ -158,6 +158,39 @@ for (const [user, capability] of actionParityCases) {
     }
 }
 
+const TASK_4_TO_8_CRITICAL_GUARDS = [
+    { file: 'routes/staff.js', label: 'staff schedule XLSX export', needles: ["router.post('/schedule/export-xlsx', requireAction('hr.schedule.view'), requireAction('export_data')", 'buildStaffScheduleWorkbookBuffer'] },
+    { file: 'routes/catalogs.js', label: 'catalog settings mutation', needles: ["router.put('/settings/:catalogId', requireAction('manage_settings')"] },
+    { file: 'routes/omnichannel.js', label: 'lead-assistant settings mutation', needles: ["const manageLeadAssistantSettings = requireAction('manage_settings')", "router.put('/lead-assistant/settings', auth, manageLeadAssistantSettings"] },
+    { file: 'routes/products.js', label: 'program-icon settings', needles: ["router.get('/program-icon-settings', requireAction('manage_settings')", "router.put('/program-icon-settings', requireAction('manage_settings')"] },
+    { file: 'js/staff-page.js', label: 'staff schedule export UI', needles: ["StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data')", 'if (!StaffState.canExportSchedule)'] },
+    { file: 'js/programs-page.js', label: 'program-icon settings UI', needles: ["canAccess('manage_settings')", 'syncProgramIconSettingsAccess()'] }
+];
+
+for (const contract of TASK_4_TO_8_CRITICAL_GUARDS) {
+    const filename = path.join(ROOT, contract.file);
+    const source = fs.existsSync(filename) ? fs.readFileSync(filename, 'utf8') : '';
+    for (const needle of contract.needles) {
+        if (!source.includes(needle)) fail(`${contract.label}: missing ${needle} in ${contract.file}`);
+    }
+}
+
+const exportRouteFiles = fs.readdirSync(path.join(ROOT, 'routes'), { withFileTypes: true })
+    .filter(entry => entry.isFile() && entry.name.endsWith('.js'))
+    .map(entry => `routes/${entry.name}`);
+
+for (const routeFile of exportRouteFiles) {
+    const source = fs.readFileSync(path.join(ROOT, routeFile), 'utf8');
+    const exportRouteLines = source.split(/\r?\n/).filter(line => (
+        /router\.(?:get|post|put|patch|delete)\(\s*['"][^'"]*\/export[^'"]*['"]/.test(line)
+    ));
+    for (const line of exportRouteLines) {
+        if (!line.includes("requireAction('export_data')") && !line.includes('requireFinanceExport')) {
+            fail(`${routeFile}: export route lacks export_data or a documented domain export guard: ${line.trim()}`);
+        }
+    }
+}
+
 if (failures.length) {
     console.error('Action permission drift check failed:');
     failures.forEach(item => console.error(`- ${item}`));

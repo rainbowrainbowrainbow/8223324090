@@ -39,6 +39,22 @@ function canManageProducts() {
     return !isProductBusinessReadOnly() && !AppState.embedded && AppState.currentUser && roles.includes(AppState.currentUser.role);
 }
 
+function canManageProgramIconSettings() {
+    const lifecycle = typeof getPermissionLifecycle === 'function' ? getPermissionLifecycle() : null;
+    return lifecycle?.status === 'ready'
+        && typeof canAccess === 'function'
+        && canAccess('manage_settings');
+}
+
+function syncProgramIconSettingsAccess() {
+    const button = document.getElementById('programIconSettingsBtn');
+    if (!button) return;
+    const allowed = canManageProgramIconSettings();
+    button.hidden = !allowed;
+    button.disabled = !allowed;
+    button.setAttribute('aria-disabled', allowed ? 'false' : 'true');
+}
+
 function getDocumentKindLabel(kind) {
     const labels = {
         google_doc: 'Google Doc',
@@ -142,6 +158,8 @@ async function initPage() {
     }
 
     AppState.currentUser = user;
+    if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
+    syncProgramIconSettingsAccess();
     if (isEmbeddedEarly) AppState.embedded = true;
     const userEl = document.getElementById('currentUser');
     if (userEl) userEl.textContent = user.name;
@@ -2862,6 +2880,10 @@ async function pollProductIconGeneration(productId, attempt = 0) {
 }
 
 async function openProgramIconSettingsModal() {
+    if (!canManageProgramIconSettings()) {
+        showNotification('Немає доступу до налаштувань AI-іконок програм', 'error');
+        return false;
+    }
     if (!guardProductWrite('налаштовувати AI-іконки програм')) return;
     const modal = document.getElementById('programIconSettingsModal');
     if (!modal) return;
@@ -2934,6 +2956,10 @@ function setProgramIconSettingsStatus(message, type = '') {
 }
 
 async function saveProgramIconSettingsFromModal() {
+    if (!canManageProgramIconSettings()) {
+        showNotification('Немає доступу до налаштувань AI-іконок програм', 'error');
+        return false;
+    }
     if (!guardProductWrite('налаштовувати AI-іконки програм')) return;
     if (productIconSettingsSaving) return;
     productIconSettingsSaving = true;

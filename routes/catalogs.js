@@ -10,7 +10,7 @@ const https   = require('https');
 const { pool }  = require('../db');
 const { uploadFromUrl, makeFilename } = require('../services/imageStorage');
 const { callUnifiedChatCompletion } = require('../services/ai-config');
-const { requireRole, authenticateToken } = require('../middleware/auth');
+const { requireRole, requireAction, authenticateToken } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const log = createLogger('Catalogs');
 function getKleshnya() { return require('../services/kleshnya'); }
@@ -617,7 +617,7 @@ router.get('/settings/:catalogId', async (req, res) => {
     } catch (err) { res.status(500).json({ success: false, error: 'Internal server error' }); }
 });
 
-router.put('/settings/:catalogId', requireRole('admin', 'creator', 'director', 'art_director', 'manager'), async (req, res) => {
+router.put('/settings/:catalogId', requireAction('manage_settings'), async (req, res) => {
     try {
         const { autoEnabled, trendFrequency, trendRegion } = req.body;
         const sets = ['updated_at = NOW()'], vals = [];

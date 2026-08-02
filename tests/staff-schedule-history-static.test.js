@@ -246,6 +246,7 @@ window.__staffScheduleRangeBehaviorApi = {
             hoursData: options.hoursData || null,
             showHours: Boolean(options.showHours),
             showLoadView: false,
+            canExportSchedule: options.canExportSchedule !== false,
             displayGroups: options.displayGroups || [],
             staff: []
         });

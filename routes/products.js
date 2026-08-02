@@ -5,6 +5,7 @@ const router = require('express').Router();
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { requireRole, authenticateToken } = require('../middleware/auth'); 
+const { requireAction } = require('../middleware/auth');
 const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const { createLogger } = require('../utils/logger');
 const {
@@ -1295,7 +1296,7 @@ router.get('/catalogs', async (req, res) => {
     }
 });
 
-router.get('/program-icon-settings', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+router.get('/program-icon-settings', requireAction('manage_settings'), async (req, res) => {
     try {
         const settings = await loadProgramIconSettings();
         const runtime = resolveProgramIconRuntime(settings);
@@ -1318,7 +1319,7 @@ router.get('/program-icon-settings', requireRole(...PRODUCT_MUTATION_ROLES), asy
     }
 });
 
-router.put('/program-icon-settings', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
+router.put('/program-icon-settings', requireAction('manage_settings'), async (req, res) => {
     try {
         const result = await saveProgramIconSettings(req.body?.settings || req.body || {}, req.user.username);
         if (result.errors.length) {

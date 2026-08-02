@@ -103,6 +103,7 @@ const StaffState = {
     viewMode: 'schedule',
     canViewSchedule: false,
     canManageSchedule: false,
+    canExportSchedule: false,
     canViewStaff: false,
     canManageStaff: false,
     linkData: [],           // v39.1: link-status data
@@ -3089,11 +3090,14 @@ function scheduleCurrentRangeLabel() {
 
 function syncScheduleRangeActionAvailability() {
     const ready = scheduleRangeDataReady();
-    ['exportExcelBtn', 'printBtn'].forEach(id => {
+    [
+        ['exportExcelBtn', ready && StaffState.canExportSchedule],
+        ['printBtn', ready]
+    ].forEach(([id, enabled]) => {
         const button = document.getElementById(id);
         if (!button) return;
-        button.disabled = !ready;
-        button.setAttribute('aria-disabled', ready ? 'false' : 'true');
+        button.disabled = !enabled;
+        button.setAttribute('aria-disabled', enabled ? 'false' : 'true');
     });
 
     ['fillWeekBtn', 'copyWeekBtn'].forEach(id => {
@@ -7930,6 +7934,10 @@ function buildScheduleWorkbookHtml(options = {}) {
 }
 
 async function handleExcelExport() {
+    if (!StaffState.canExportSchedule) {
+        showNotification('Немає доступу до експорту графіка', 'error');
+        return false;
+    }
     if (!scheduleRangeDataReady()) {
         showNotification('Експорт доступний лише для підтвердженого періоду', 'error');
         return false;
@@ -8194,6 +8202,7 @@ async function initStaffSchedulePage(options = {}) {
         StaffState.canViewSchedule = canUseStaffCapability('hr.schedule.view');
         StaffState.canManageSchedule = canUseStaffCapability('hr.schedule.manage');
         StaffState.canViewStaff = canUseStaffCapability('hr.staff.view');
+        StaffState.canExportSchedule = StaffState.canViewSchedule && canUseStaffCapability('export_data');
         StaffState.canManageStaff = canUseStaffCapability('hr.staff.manage');
         const ADMIN_ROLES = ['creator', 'director'];
         const isAdmin = ADMIN_ROLES.includes(user.role);
@@ -8210,6 +8219,13 @@ async function initStaffSchedulePage(options = {}) {
         const bulkBtn = document.getElementById('bulkCreateBtn');
         const importBtn = document.getElementById('importExcelBtn');
         if (bulkBtn) bulkBtn.style.display = isAdmin && mode !== 'hr' ? '' : 'none';
+        const exportBtn = document.getElementById('exportExcelBtn');
+        if (exportBtn) {
+            exportBtn.hidden = !StaffState.canExportSchedule;
+            exportBtn.disabled = true;
+            exportBtn.setAttribute('aria-disabled', 'true');
+        }
+
         if (importBtn) importBtn.style.display = isAdmin ? '' : 'none';
 
         // Load data

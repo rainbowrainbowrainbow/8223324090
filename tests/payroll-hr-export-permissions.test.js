@@ -116,3 +116,34 @@ test('permission registry and frontend keep payroll and HR export controls fail-
     assert.match(hrPage, /function canExportHrReports\(\)[\s\S]*?canUseHrCapability\('hr\.reports\.export'\)/);
     assert.match(hrPage, /async function generateHrPrintPreview\(\) \{[\s\S]*?if \(!canExportHrReports\(\)\) \{/);
 });
+
+test('staff schedule XLSX export requires schedule view and export_data before workbook work', () => {
+    const instructor = { id: 7, role: 'instructor' };
+    const manager = { id: 8, role: 'manager' };
+    const deniedManager = { id: 9, role: 'manager', action_denylist: ['export_data'] };
+
+    assert.equal(canUseAction(instructor, 'hr.schedule.view'), true);
+    assert.equal(canUseAction(instructor, 'export_data'), false);
+    assert.deepEqual(runActionGuards(instructor, ['hr.schedule.view', 'export_data']), {
+        handlerCalled: false,
+        response: { statusCode: 403, payload: { error: 'Insufficient permissions' } }
+    });
+
+    assert.equal(canUseAction(manager, 'hr.schedule.view'), true);
+    assert.equal(canUseAction(manager, 'export_data'), true);
+    assert.deepEqual(runActionGuards(manager, ['hr.schedule.view', 'export_data']), { handlerCalled: true, response: null });
+
+    assert.equal(canUseAction(deniedManager, 'export_data'), false);
+    assert.deepEqual(runActionGuards(deniedManager, ['hr.schedule.view', 'export_data']), {
+        handlerCalled: false,
+        response: { statusCode: 403, payload: { error: 'Insufficient permissions' } }
+    });
+
+    const staffRoutes = read('routes/staff.js');
+    const registry = read('config/permissionRegistry.js');
+    const staffPage = read('js/staff-page.js');
+    assert.match(staffRoutes, /router\.post\('\/schedule\/export-xlsx', requireAction\('hr\.schedule\.view'\), requireAction\('export_data'\), async \(req, res\) => \{[\s\S]*?await buildStaffScheduleWorkbookBuffer\(/);
+    assert.match(registry, /api\('routes\/staff\.js', '\/api\/staff\/schedule\/export-xlsx', 'export_data'\)/);
+    assert.match(staffPage, /StaffState\.canExportSchedule = StaffState\.canViewSchedule && canUseStaffCapability\('export_data'\);/);
+    assert.match(staffPage, /async function handleExcelExport\(\) \{[\s\S]*?if \(!StaffState\.canExportSchedule\) \{/);
+});

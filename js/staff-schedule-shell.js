@@ -50,7 +50,7 @@
                         </div>
                     </div>
                     <div class="staff-schedule-header-actions" aria-label="Дії з графіком">
-                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel" disabled aria-disabled="true">Експорт</button>
+                        <button type="button" id="exportExcelBtn" class="btn-page-toolbar staff-schedule-action-button" title="Експорт графіку в Excel" hidden disabled aria-disabled="true">Експорт</button>
                         <button type="button" id="printBtn" class="btn-page-toolbar staff-schedule-action-button" title="Друк Excel-таблиці графіку" disabled aria-disabled="true">Друк</button>
                     </div>
                     <div class="staff-schedule-search-row" role="search" aria-label="Пошук співробітників у графіку">

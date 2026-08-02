@@ -8,7 +8,7 @@ const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
 const { createLogger } = require('../utils/logger');
-const { authenticateToken: auth, requireMinRole } = require('../middleware/auth');
+const { authenticateToken: auth, requireMinRole, requireAction } = require('../middleware/auth');
 const { logAdminAction } = require('../services/adminAudit');
 const {
     businessContextFromRequest,
@@ -289,7 +289,7 @@ router.post('/webhook/binotel', async (req, res) => {
 // ═══════════════════════════════════════════════
 
 const manageConnections = requireMinRole('manager');
-const manageLeadAssistantSettings = requireMinRole('senior_manager');
+const manageLeadAssistantSettings = requireAction('manage_settings');
 
 async function auditConnectionAction(req, action, channel, result) {
     logAdminAction(`omni_connection_${action}`, 'omni_connections', {

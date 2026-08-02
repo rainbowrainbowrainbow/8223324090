@@ -130,6 +130,15 @@ function validateIntegrationContract(entry, label) {
         fail(`${label}: missing integration contract ${entry.integrationContract}`);
         return;
     }
+    if (!contract.owner) {
+        fail(`${label}: integration contract requires an explicit owner`);
+    } else if (contract.owner !== entry.owner) {
+        fail(`${label}: integration contract owner ${contract.owner} does not match route owner ${entry.owner}`);
+    }
+    if (typeof contract.authentication !== 'string' || !contract.authentication.trim()) {
+        fail(`${label}: integration contract requires an authentication mechanism`);
+    }
+
     if (!Array.isArray(contract.guardFiles) || contract.guardFiles.length === 0) {
         fail(`${label}: integration contract requires guardFiles`);
     }

@@ -100,3 +100,25 @@ The product owner approved only the following permissions-parity work:
 - No legacy-data migration file, database change, production migration, deploy, or production data mutation.
 
 The legacy-data counts and normalization rules remain blocked on an operator-provided read-only database audit.
+
+## Access-system baseline after Tasks 4?8 (2026-08-02)
+
+This section records the completed access-system work and does not change the
+separate legacy task-data decision above.
+
+- `view_revenue` protects financial fields in booking/banquet and subscription
+  responses; financial-only deposit operations deny before business services.
+- `manage_settings` governs subscription/package/feature-flag administration
+  and the remaining system configuration mutations: catalog settings,
+  lead-assistant settings, and program-icon settings.
+- `export_data` is additive: payroll, HR report, attendance PDF, and schedule
+  XLSX exports require both their relevant domain capability and this export
+  capability. A payroll or HR view alone is insufficient.
+- Public integration exceptions are owned by explicit integration contracts
+  with an owner, authentication mechanism, source guard, and focused tests.
+- The registry, route guards, and frontend visibility are checked together by
+  the access, action-permission, permission-registry, capability-policy,
+  auth-boundary, and API-surface checks.
+
+Remaining risk: this document's older P0/P1 task-policy findings are not part
+of Tasks 4?8 and remain subject to their own approved implementation scope.

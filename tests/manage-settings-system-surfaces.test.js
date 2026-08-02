@@ -82,3 +82,21 @@ test('page-status writes and internal status administration require manage_setti
     assert.match(status, /router\.get\('\/public', async/);
     assert.doesNotMatch(status, /router\.get\('\/public', (?:authenticateToken, )?requireAction\('manage_settings'\)/);
 });
+
+test('catalog, lead-assistant, and program-icon settings use manage_settings', () => {
+    const catalogs = routeSource('catalogs.js');
+    const omnichannel = routeSource('omnichannel.js');
+    const products = routeSource('products.js');
+
+    assert.match(catalogs, /const \{ requireRole, requireAction, authenticateToken \} = require\('\.\.\/middleware\/auth'\);/);
+    assert.match(catalogs, /router\.put\('\/settings\/:catalogId', requireAction\('manage_settings'\), async/);
+
+    assert.match(omnichannel, /const \{ authenticateToken: auth, requireMinRole, requireAction \} = require\('\.\.\/middleware\/auth'\);/);
+    assert.match(omnichannel, /const manageLeadAssistantSettings = requireAction\('manage_settings'\);/);
+    assert.match(omnichannel, /router\.put\('\/lead-assistant\/settings', auth, manageLeadAssistantSettings, async/);
+
+    assert.match(products, /const \{ requireRole, authenticateToken \} = require\('\.\.\/middleware\/auth'\);/);
+    assert.match(products, /const \{ requireAction \} = require\('\.\.\/middleware\/auth'\);/);
+    assert.match(products, /router\.get\('\/program-icon-settings', requireAction\('manage_settings'\), async/);
+    assert.match(products, /router\.put\('\/program-icon-settings', requireAction\('manage_settings'\), async/);
+});

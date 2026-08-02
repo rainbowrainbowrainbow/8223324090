@@ -94,13 +94,48 @@ function fixtureServer() {
     });
 }
 
-async function waitForStableCounts(page) {
-    await page.waitForFunction(() => {
-        const badges = [...document.querySelectorAll('[data-sidebar-timeline-count-mode]')];
-        return badges.length === 2 && badges.every(badge => /^\d+$/.test(badge.textContent.trim()) && badge.dataset.sidebarTimelineCountStatus === 'ready');
-    });
-    await page.evaluate(() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve))));
-    assert.equal(await page.locator('[data-sidebar-timeline-count-status="ready"]').count(), 2, 'both runtime badges remain ready');
+async function waitForStableSidebarRuntime(page, expectedListHidden) {
+    // Auth readiness fires before the sidebar's async summary refresh finishes.
+    // Wait for the exact shared Favorites DOM to survive two frames, so a late
+    // sidebar render cannot replace the keyboard target between focus and press.
+    await page.waitForLoadState('networkidle');
+    const stableReadyBadgeCount = await page.waitForFunction(async expectedHidden => {
+        const snapshot = () => {
+            const root = document.getElementById('sidebarDesignExtras');
+            const list = root?.querySelector('.sidebar-design-extra-list');
+            const toggle = root?.querySelector('[data-sidebar-extra-toggle-section]');
+            const launcher = list?.querySelector('[data-sidebar-timeline-launcher]');
+            const modes = launcher ? [...launcher.querySelectorAll('[data-sidebar-timeline-mode]')] : [];
+            const badges = modes.map(mode => mode.querySelector('[data-sidebar-timeline-count-mode]'));
+            const ready = Boolean(
+                root
+                && list
+                && toggle
+                && launcher
+                && list.hidden === expectedHidden
+                && toggle.getAttribute('aria-expanded') === String(!expectedHidden)
+                && modes.length === 2
+                && badges.length === 2
+                && badges.every(badge => badge
+                    && /^\d+$/.test(badge.textContent.trim())
+                    && badge.dataset.sidebarTimelineCountStatus === 'ready')
+            );
+            return { root, list, toggle, launcher, modes, badges, ready };
+        };
+        const initial = snapshot();
+        if (!initial.ready) return false;
+        await new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+        const current = snapshot();
+        if (!current.ready) return false;
+        const unchanged = initial.root === current.root
+            && initial.list === current.list
+            && initial.toggle === current.toggle
+            && initial.launcher === current.launcher
+            && initial.modes.every((mode, index) => mode === current.modes[index])
+            && initial.badges.every((badge, index) => badge === current.badges[index]);
+        return unchanged ? current.badges.length : false;
+    }, expectedListHidden);
+    assert.equal(await stableReadyBadgeCount.jsonValue(), 2, 'both runtime badges are ready after the sidebar becomes idle');
 }
 
 async function readState(page) {
@@ -149,8 +184,7 @@ async function run() {
     page.setDefaultTimeout(20000);
     try {
         await page.goto(`${fixture.base}/?businessContext=event_genix&date=2099-01-01`, { waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => window.isAuthenticatedRuntimeReady?.() === true && document.querySelector('[data-sidebar-timeline-launcher]'));
-        await waitForStableCounts(page);
+        await waitForStableSidebarRuntime(page, false);
         let current = await readState(page);
         const canonical = new URL(current.href);
         assert.equal(current.context, 'event_genix', 'default business context is active');
@@ -164,9 +198,8 @@ async function run() {
             assert.ok(mode.badge.height >= 14 && mode.badge.height <= 18, `${mode.key} badge remains compact`);
         });
 
-        await page.locator('[data-sidebar-extra-toggle-section]').focus();
-        await page.keyboard.press('Space');
-        await page.waitForFunction(() => document.querySelector('.sidebar-design-extra-list')?.hidden === true);
+        await page.locator('[data-sidebar-extra-toggle-section]').press('Space');
+        await waitForStableSidebarRuntime(page, true);
         current = await readState(page);
         assert.equal(current.expanded, 'false', 'Space collapses Favorites');
         assert.equal(current.launcher.height, 0, 'collapsed launcher has no geometry');
@@ -175,12 +208,10 @@ async function run() {
         assert.equal((await readState(page)).focusInsideList, false, 'Tab skips hidden controls');
 
         await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => window.isAuthenticatedRuntimeReady?.() === true && document.querySelector('[data-sidebar-timeline-launcher]'));
+        await waitForStableSidebarRuntime(page, true);
         assert.equal((await readState(page)).expanded, 'false', 'collapsed state persists after reload');
-        await page.locator('[data-sidebar-extra-toggle-section]').focus();
-        await page.keyboard.press('Enter');
-        await page.waitForFunction(() => document.querySelector('.sidebar-design-extra-list')?.hidden === false);
-        await page.waitForTimeout(100);
+        await page.locator('[data-sidebar-extra-toggle-section]').press('Enter');
+        await waitForStableSidebarRuntime(page, false);
         assert.equal((await readState(page)).expanded, 'true', 'Enter performs exactly one toggle');
 
         const timeOrigin = (await readState(page)).timeOrigin;

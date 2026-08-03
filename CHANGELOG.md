@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.77 - Мій день: стабільність внеску і темної теми
+
+### Мій день / (03.08.2026) [codex]
+- **Внесок більше не зациклює запити** — один перехід у режим `Внесок` створює один `GET /api/my-day/contribution`, повторні 401/429/error не запускають нескінченний retry loop.
+- **Замість нескінченного loading показується контрольований стан помилки** — матриця не зависає у `Завантаження матриці внеску...`, зберігає попередній успішний контент і чекає ручного `Оновити`.
+- **Темна тема для `День | Звички | Внесок` відновлена** — tabs, date inputs, contribution/habit/settings cards, tables, chips, empty/error/loading states мають темний surface і читабельний контраст.
+- **Release guardrails посилені** — live My Day smoke перевіряє точні labels, відсутність replacement characters, desktop/mobile overflow і computed contrast active/inactive tabs.
+
+---
+
 ## v0.80.76 - Мій день: завершення персональної системи
 
 ### Мій день / (03.08.2026) [codex]

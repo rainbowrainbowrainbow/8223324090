@@ -175,6 +175,57 @@ Habits do not create recurring tasks, dependencies, overdue items, task
 statuses, or task time. Habit minutes and task minutes are separate. There is
 no streak engine.
 
+
+## Manual starter kit
+
+The starter kit is not a startup bootstrap, global/default production seed,
+historical-task backfill, login side effect, deploy side effect, or hidden data
+creation. It is a caller-owned manual action from the internal My Day setup
+surface.
+
+Canonical endpoint: `POST /api/my-day/starter-kit`.
+
+Contract:
+
+- The endpoint requires the existing authenticated caller and never accepts an
+  arbitrary `userId`.
+- It creates rows only with `req.user.id` in the already existing
+  `my_day_directions`, `my_day_impacts`, `my_day_habits`, and
+  `my_day_habit_impacts` tables.
+- It runs in one transaction and uses caller-scoped idempotency by normalized
+  name.
+- Repeating the action returns a created/skipped summary and creates no
+  duplicate starter rows.
+- Existing caller-owned taxonomy or habits are never overwritten. Name matches
+  keep the existing color, icon, archive state, order, metric, cadence, target,
+  direction, and impacts unchanged.
+- It does not create tasks, dependencies, overdue items, task time entries,
+  active timers, or habit check-ins.
+- Failures return the normal safe Ukrainian My Day error response.
+
+Canonical payload:
+
+- Directions: `EventGenix CRM`, `Парк Закревського`, `Дженікс / події`,
+  `Особисте життя`.
+- Impacts: `Дохід і клієнти`, `Якість сервісу`, `Системність`, `Здоров'я`,
+  `Фізична форма`, `Відновлення`, `Побут і комфорт`, `Навчання`.
+- Habits:
+  - `Ранкова зарядка`: `minutes`, target `10`, `daily`, direction
+    `Особисте життя`, impacts `Здоров'я` and `Фізична форма`.
+  - `Планування дня`: `boolean`, target `1`, `daily`, direction
+    `Особисте життя`, impact `Системність`.
+  - `Відновлення без екранів`: `minutes`, target `30`, `daily`, direction
+    `Особисте життя`, impact `Відновлення`.
+
+UX:
+
+- If the user has no active direction, impact, or habit, setup shows an
+  onboarding card titled `Почати з базового набору` with an exact preview and
+  the action `Застосувати базовий набір`.
+- If the user already has personal My Day data, the same action is available
+  only inside a collapsed `Додати базовий набір` block.
+- On success, the UI reloads the canonical taxonomy and habits state and shows
+  the created/skipped result.
 ## API contract
 
 All new personal routes use \`/api/my-day\`, require the existing
@@ -250,6 +301,7 @@ an explicit permitted completion action.
 | `PATCH /api/my-day/habits/:id` | Edit, pause/resume, archive, or restore through `isPaused` and `isArchived`. |
 | `PUT /api/my-day/habits/:habitId/check-ins/:localDate` | Idempotently replace one caller check-in. |
 | `DELETE /api/my-day/habits/:habitId/check-ins/:localDate` | Undo one caller check-in. |
+| `POST /api/my-day/starter-kit` | Apply the manual caller-owned starter kit idempotently and return created/skipped summary. |
 | `GET /api/my-day/contribution?from=YYYY-MM-DD&to=YYYY-MM-DD` | Return the personal matrix for inclusive range up to 92 days. |
 
 ## My Day projection

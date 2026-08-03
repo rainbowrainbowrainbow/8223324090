@@ -15,9 +15,16 @@
         settingsLoading: false,
         settingsLoaded: false,
         error: '',
-        settingsError: ''
+        settingsError: '',
+        starterKit: { loading: false, error: '', result: null }
     };
 
+
+    const STARTER_KIT_PREVIEW = Object.freeze({
+        directions: ['EventGenix CRM', 'Парк Закревського', 'Дженікс / події', 'Особисте життя'],
+        impacts: ['Дохід і клієнти', 'Якість сервісу', 'Системність', "Здоров'я", 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання'],
+        habits: ['Ранкова зарядка', 'Планування дня', 'Відновлення без екранів']
+    });
     function headers() {
         return typeof window.getAuthHeaders === 'function'
             ? window.getAuthHeaders()
@@ -36,6 +43,18 @@
         return `${values.year}-${values.month}-${values.day}`;
     }
 
+
+    async function starterKitRequest() {
+        const response = await fetch('/api/my-day/starter-kit', {
+            method: 'POST',
+            headers: headers()
+        });
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok || body.success === false) {
+            throw new Error(body.error || 'Не вдалося застосувати базовий набір My Day.');
+        }
+        return body;
+    }
     async function request(path, options = {}) {
         const response = await fetch('/api/my-day/habits' + path, {
             ...options,
@@ -392,6 +411,35 @@
             });
         });
 
+
+        root?.querySelectorAll('[data-my-day-apply-starter-kit]').forEach(button => {
+            if (button.dataset.myDayStarterKitBound === 'true') return;
+            button.dataset.myDayStarterKitBound = 'true';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                state.starterKit.loading = true;
+                state.starterKit.error = '';
+                try {
+                    const payload = await starterKitRequest();
+                    state.starterKit.result = payload.starterKit || null;
+                    state.loaded = false;
+                    state.settingsLoaded = false;
+                    await Promise.all([
+                        window.MyDayClassification?.load?.(true),
+                        load(true),
+                        loadSettings(true)
+                    ]);
+                    window.showNotification?.('Базовий набір My Day застосовано.', 'success');
+                } catch (error) {
+                    state.starterKit.error = error.message || 'Не вдалося застосувати базовий набір My Day.';
+                    window.showNotification?.(state.starterKit.error, 'error');
+                } finally {
+                    state.starterKit.loading = false;
+                    if (button.isConnected) button.disabled = false;
+                    await onChanged?.();
+                }
+            });
+        });
         const dateInput = root?.querySelector('[data-my-day-habits-date]');
         if (dateInput && dateInput.dataset.myDayHabitsDateBound !== 'true') {
             dateInput.dataset.myDayHabitsDateBound = 'true';
@@ -562,6 +610,53 @@
         state.setupEditor = '';
     }
 
+
+    function activeSetupCounts() {
+        const directions = (window.MyDayClassification?.state?.directions || []).filter(item => item.isActive !== false).length;
+        const impacts = (window.MyDayClassification?.state?.impacts || []).filter(item => item.isActive !== false).length;
+        const habits = state.settingsHabits.filter(habit => !habit.isArchived).length;
+        return { directions, impacts, habits, total: directions + impacts + habits };
+    }
+
+    function renderStarterPreview(title, items) {
+        return `<div class="my-day-starter-preview-group"><strong>${escape(title)}</strong><div>${items.map(item => `<span>${escape(item)}</span>`).join('')}</div></div>`;
+    }
+
+    function renderStarterKitSummary() {
+        const result = state.starterKit.result;
+        if (!result) return '';
+        const created = result.created || {};
+        const skipped = result.skipped || {};
+        return `<p class="my-day-starter-result" role="status">Створено: ${Number(created.directions || 0)} напрямів, ${Number(created.impacts || 0)} впливів, ${Number(created.habits || 0)} звичок. Пропущено існуючих: ${Number(skipped.directions || 0) + Number(skipped.impacts || 0) + Number(skipped.habits || 0)}.</p>`;
+    }
+
+    function renderStarterKitContent() {
+        return `<div class="my-day-starter-card-body">
+            <p>Це ручний персональний набір. Він створиться тільки після натискання і не створює задачі, таймери або check-ins.</p>
+            <div class="my-day-starter-preview">
+                ${renderStarterPreview('Напрями', STARTER_KIT_PREVIEW.directions)}
+                ${renderStarterPreview('Впливи', STARTER_KIT_PREVIEW.impacts)}
+                ${renderStarterPreview('Звички', STARTER_KIT_PREVIEW.habits)}
+            </div>
+            ${state.starterKit.error ? `<p class="my-day-taxonomy-notice is-error" role="alert">${escape(state.starterKit.error)}</p>` : ''}
+            ${renderStarterKitSummary()}
+            <button type="button" class="my-day-setup-primary" data-my-day-apply-starter-kit ${state.starterKit.loading ? 'disabled' : ''}>${state.starterKit.loading ? 'Застосування…' : 'Застосувати базовий набір'}</button>
+        </div>`;
+    }
+
+    function renderStarterKitCard() {
+        const counts = activeSetupCounts();
+        if (counts.total === 0) {
+            return `<section class="profile-work-panel my-day-starter-card is-empty" data-my-day-starter-card aria-labelledby="myDayStarterTitle">
+                <div class="my-day-section-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayStarterTitle">Почати з базового набору</h2><p>Швидкий старт для напрямів, впливів і перших звичок.</p></div></div>
+                ${renderStarterKitContent()}
+            </section>`;
+        }
+        return `<details class="profile-work-panel my-day-starter-card is-collapsed" data-my-day-starter-card>
+            <summary>Додати базовий набір</summary>
+            ${renderStarterKitContent()}
+        </details>`;
+    }
     function renderSetupSurface() {
         return `<section class="cabinet-shell cabinet-command-center my-day-setup-surface" id="myDaySetupSurface" aria-labelledby="myDaySetupTitle" data-my-day-setup-surface aria-busy="${state.settingsLoading ? 'true' : 'false'}">
             <div class="my-day-setup-header">
@@ -572,6 +667,7 @@
                 </div>
             </div>
             <div class="my-day-setup-sections">
+                ${renderStarterKitCard()}
                 ${window.MyDayClassification?.renderSettings?.() || ''}
                 ${renderSettings()}
             </div>

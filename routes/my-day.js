@@ -19,6 +19,7 @@ const {
 } = require('../services/myDayTaxonomy');
 const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
 const { buildMyDayContribution } = require('../services/myDayContribution');
+const { applyMyDayStarterKit } = require('../services/myDayStarterKit');
 
 router.use(authenticateToken);
 router.param('taskId', (req, res, next, value) => {
@@ -157,6 +158,15 @@ async function withMyDayTransaction(work) {
     finally { client.release(); }
 }
 
+
+router.post('/starter-kit', async (req, res) => {
+    try {
+        const starterKit = await withMyDayTransaction(client => applyMyDayStarterKit(client, currentUserId(req)));
+        res.status(201).json({ success: true, starterKit });
+    } catch (error) {
+        sendMyDayError(res, error);
+    }
+});
 router.get('/timer', async (req, res) => {
     try { res.json({ success: true, timer: await activeTimer(pool, currentUserId(req)) }); }
     catch (error) { sendMyDayError(res, error); }

@@ -182,6 +182,140 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 /* My Day life system habits and compact time entries. */
 
+.my-day-life-header {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: space-between;
+    margin: 0 0 12px;
+}
+
+.my-day-life-setup-action,
+.my-day-setup-back {
+    align-items: center;
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 8px;
+    background: rgba(248, 250, 252, 0.86);
+    color: #334155;
+    cursor: pointer;
+    display: inline-flex;
+    font-weight: 800;
+    min-height: 36px;
+    padding: 0 12px;
+}
+
+.my-day-life-setup-action:hover,
+.my-day-setup-back:hover {
+    border-color: rgba(37, 99, 235, 0.36);
+    color: #1d4ed8;
+}
+
+.my-day-life-setup-action:focus-visible,
+.my-day-setup-back:focus-visible {
+    outline: 2px solid rgba(37, 99, 235, 0.45);
+    outline-offset: 2px;
+}
+
+.my-day-setup-surface {
+    display: grid;
+    gap: 16px;
+}
+
+.my-day-setup-header {
+    align-items: flex-start;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    justify-content: space-between;
+}
+
+.my-day-setup-header h2 {
+    margin: 0;
+}
+
+.my-day-setup-sections {
+    display: grid;
+    gap: 16px;
+}
+
+.my-day-classification-fields {
+    display: grid;
+    grid-template-columns: minmax(150px, 1fr) minmax(180px, 1fr);
+    gap: 10px;
+    width: 100%;
+}
+
+.my-day-classification-fields label,
+.my-day-editor-fields label,
+.my-day-taxonomy-card label {
+    display: grid;
+    gap: 5px;
+    color: var(--text-secondary, #475569);
+    font-size: 12px;
+    font-weight: 700;
+}
+
+.my-day-classification-fields select,
+.my-day-editor-fields select,
+.my-day-taxonomy-card input {
+    width: 100%;
+    min-height: 34px;
+}
+
+.my-day-taxonomy-notice {
+    grid-column: 1 / -1;
+    margin: 0;
+    color: var(--text-muted, #64748b);
+    font-size: 12px;
+}
+
+.my-day-taxonomy-notice.is-error { color: #b91c1c; }
+
+.my-day-task-chip {
+    align-items: center;
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 14%, transparent);
+    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 45%, transparent);
+    border-radius: 999px;
+    color: var(--text-primary, #1e293b);
+    display: inline-flex;
+    font-size: 11px;
+    font-weight: 700;
+    gap: 3px;
+    line-height: 1.15;
+    max-width: 150px;
+    padding: 3px 7px;
+}
+
+.my-day-task-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-day-task-chip--more { background: var(--surface-muted, #f1f5f9); border-color: transparent; }
+.my-day-taxonomy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
+.my-day-taxonomy-card { border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 14px; }
+.my-day-taxonomy-card h3 { margin: 0 0 10px; }
+.my-day-taxonomy-card form { align-items: end; display: grid; gap: 8px; grid-template-columns: minmax(0, 1fr) 68px 62px auto; }
+.my-day-taxonomy-primary { min-height: 34px; white-space: nowrap; }
+.my-day-taxonomy-list { display: grid; gap: 7px; list-style: none; margin: 12px 0 0; padding: 0; }
+.my-day-taxonomy-row { display: block; }
+.my-day-taxonomy-row form { align-items: end; display: grid; gap: 8px; grid-template-columns: 24px minmax(120px, 1fr) 68px 62px auto auto; }
+.my-day-taxonomy-row.is-archived { opacity: 0.72; }
+.my-day-taxonomy-swatch { align-items: center; border-radius: 50%; color: #fff; display: inline-flex; height: 24px; justify-content: center; width: 24px; }
+.my-day-taxonomy-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-day-taxonomy-row button { min-height: 30px; }
+.my-day-taxonomy-secondary { min-height: 34px; white-space: nowrap; }
+.my-day-taxonomy-empty { color: var(--text-muted, #64748b); font-size: 13px; }
+.my-day-editor-fields { display: grid; gap: 10px; min-width: min(320px, 80vw); }
+
+@media (max-width: 680px) {
+    .my-day-life-header,
+    .my-day-life-setup-action,
+    .my-day-setup-back { width: 100%; }
+    .my-day-classification-fields,
+    .my-day-taxonomy-grid { grid-template-columns: 1fr; }
+    .my-day-taxonomy-card form { grid-template-columns: minmax(0, 1fr) 68px 62px; }
+    .my-day-taxonomy-card form button { grid-column: 1 / -1; }
+    .my-day-taxonomy-row form { grid-template-columns: 24px minmax(0, 1fr) 68px; }
+    .my-day-taxonomy-row form button { grid-column: 2 / -1; }
+}
 
 .my-day-life-tabs {
     display: inline-flex;
@@ -387,6 +521,30 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-life-tabs b
     color: var(--my-day-life-secondary);
 }
 
+body.dark-mode .profile-page.profile-work-mode .my-day-life-setup-action,
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-back,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-life-setup-action,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-back {
+    background: rgba(15, 23, 42, 0.78);
+    border-color: var(--my-day-life-border-strong);
+    color: var(--my-day-life-secondary);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-life-setup-action:hover,
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-back:hover,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-life-setup-action:hover,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-back:hover {
+    border-color: rgba(94, 234, 212, 0.50);
+    color: var(--my-day-life-text);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-life-setup-action:focus-visible,
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-back:focus-visible,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-life-setup-action:focus-visible,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-back:focus-visible {
+    outline-color: rgba(94, 234, 212, 0.78);
+}
+
 body.dark-mode .profile-page.profile-work-mode .my-day-life-tabs button:hover,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-life-tabs button:hover {
     background: rgba(148, 163, 184, 0.14);
@@ -550,9 +708,11 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-pr
 body.dark-mode .profile-page.profile-work-mode .my-day-habit-actions button,
 body.dark-mode .profile-page.profile-work-mode .my-day-habit-settings-actions button,
 body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-row button,
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-secondary,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-actions button,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-settings-actions button,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-row button {
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-row button,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-secondary {
     background: rgba(15, 23, 42, 0.68);
     border: 1px solid var(--my-day-life-border);
     color: var(--my-day-life-secondary);

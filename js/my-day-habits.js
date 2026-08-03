@@ -3,6 +3,9 @@
 
     const state = {
         mode: 'day',
+        surface: 'main',
+        returnMode: 'day',
+        pendingFocus: '',
         date: kyivDate(),
         habits: [],
         settingsHabits: [],
@@ -97,13 +100,15 @@
     }
 
     function renderModeTabs() {
-        return `<div class="my-day-life-tabs" role="tablist" aria-label="Режими Мій день">
-            <button type="button" role="tab" id="myDayModeDay" aria-selected="${state.mode === 'day'}" aria-controls="myDayDayPanel" data-my-day-life-mode="day" class="${state.mode === 'day' ? 'is-active' : ''}">День</button>
-            <button type="button" role="tab" id="myDayModeHabits" aria-selected="${state.mode === 'habits'}" aria-controls="myDayHabitsPanel" data-my-day-life-mode="habits" class="${state.mode === 'habits' ? 'is-active' : ''}">Звички</button>
-            <button type="button" role="tab" id="myDayModeContribution" aria-selected="${state.mode === 'contribution'}" aria-controls="myDayContributionPanel" data-my-day-life-mode="contribution" class="${state.mode === 'contribution' ? 'is-active' : ''}">Внесок</button>
+        return `<div class="my-day-life-header">
+            <div class="my-day-life-tabs" role="tablist" aria-label="Режими Мій день">
+                <button type="button" role="tab" id="myDayModeDay" aria-selected="${state.mode === 'day'}" aria-controls="myDayDayPanel" data-my-day-life-mode="day" class="${state.mode === 'day' ? 'is-active' : ''}">День</button>
+                <button type="button" role="tab" id="myDayModeHabits" aria-selected="${state.mode === 'habits'}" aria-controls="myDayHabitsPanel" data-my-day-life-mode="habits" class="${state.mode === 'habits' ? 'is-active' : ''}">Звички</button>
+                <button type="button" role="tab" id="myDayModeContribution" aria-selected="${state.mode === 'contribution'}" aria-controls="myDayContributionPanel" data-my-day-life-mode="contribution" class="${state.mode === 'contribution' ? 'is-active' : ''}">Внесок</button>
+            </div>
+            <button type="button" class="my-day-life-setup-action" data-my-day-open-setup>Налаштувати Мій день</button>
         </div>`;
     }
-
     function chip(record, kind) {
         if (!record) return '';
         return `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${escape(record.icon || '*')} <span>${escape(record.name)}</span></span>`;
@@ -249,6 +254,8 @@
                 const nextMode = button.dataset.myDayLifeMode;
                 const previousMode = state.mode;
                 state.mode = nextMode === 'habits' || nextMode === 'contribution' ? nextMode : 'day';
+                state.surface = 'main';
+                state.returnMode = state.mode;
                 if (previousMode === 'contribution' && state.mode !== 'contribution') {
                     window.MyDayContribution?.cancel?.('mode-exit');
                 }
@@ -256,6 +263,29 @@
                 if (state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded && !window.MyDayContribution.state.error) {
                     await window.MyDayContribution.load();
                 }
+                await onChanged?.();
+            });
+        });
+
+        root?.querySelectorAll('[data-my-day-open-setup]').forEach(button => {
+            if (button.dataset.myDaySetupBound === 'true') return;
+            button.dataset.myDaySetupBound = 'true';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                try {
+                    await openSetup();
+                    await onChanged?.();
+                } finally {
+                    if (button.isConnected) button.disabled = false;
+                }
+            });
+        });
+
+        root?.querySelectorAll('[data-my-day-setup-back]').forEach(button => {
+            if (button.dataset.myDaySetupBackBound === 'true') return;
+            button.dataset.myDaySetupBackBound = 'true';
+            button.addEventListener('click', async () => {
+                closeSetup();
                 await onChanged?.();
             });
         });
@@ -369,14 +399,46 @@
             button.dataset.myDayHabitArchiveBound = 'true';
             button.addEventListener('click', () => mutate(button, () => request('/' + encodeURIComponent(button.dataset.myDayHabitArchive), { method: 'PATCH', body: JSON.stringify({ isArchived: button.dataset.archived !== 'true' }) }), onChanged));
         });
+
+        applyPendingFocus();
+    }
+
+    async function openSetup(options = {}) {
+        const currentMode = state.mode === 'habits' || state.mode === 'contribution' ? state.mode : 'day';
+        state.returnMode = options.returnMode || currentMode;
+        state.surface = 'setup';
+        if (state.returnMode === 'contribution') window.MyDayContribution?.cancel?.('setup-open');
+        if (options.focusHabitName) state.pendingFocus = 'habit-create';
+        await Promise.all([
+            window.MyDayClassification?.load?.(),
+            loadSettings()
+        ]);
+    }
+
+    function closeSetup() {
+        state.surface = 'main';
+        state.mode = state.returnMode === 'habits' || state.returnMode === 'contribution' ? state.returnMode : 'day';
+        state.pendingFocus = '';
+    }
+
+    function renderSetupSurface() {
+        return `<section class="cabinet-shell cabinet-command-center my-day-setup-surface" id="myDaySetupSurface" aria-labelledby="myDaySetupTitle" data-my-day-setup-surface aria-busy="${state.settingsLoading ? 'true' : 'false'}">
+            <div class="my-day-setup-header">
+                <button type="button" class="my-day-setup-back" data-my-day-setup-back>← Назад до Мого дня</button>
+                <div>
+                    <span class="profile-kicker">Мій день</span>
+                    <h2 id="myDaySetupTitle">Налаштувати Мій день</h2>
+                </div>
+            </div>
+            <div class="my-day-setup-sections">
+                ${window.MyDayClassification?.renderSettings?.() || ''}
+                ${renderSettings()}
+            </div>
+        </section>`;
     }
 
     async function openSettingsCreate() {
-        if (typeof window.switchTab === 'function') {
-            await window.switchTab('settings');
-        }
-        await loadSettings();
-        focusHabitCreateForm();
+        await openSetup({ focusHabitName: true });
     }
 
     function focusHabitCreateForm() {
@@ -389,5 +451,10 @@
         else setTimeout(focusTarget, 0);
     }
 
-    window.MyDayHabits = { bind, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, renderModeTabs, renderPanel, renderSettings, state };
+    function applyPendingFocus() {
+        if (state.surface !== 'setup' || state.pendingFocus !== 'habit-create') return;
+        state.pendingFocus = '';
+        focusHabitCreateForm();
+    }
+    window.MyDayHabits = { bind, closeSetup, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, openSetup, renderModeTabs, renderPanel, renderSettings, renderSetupSurface, state };
 }());

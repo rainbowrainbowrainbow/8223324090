@@ -7,7 +7,9 @@ impacts, blockers, actual task time, habits, and the contribution matrix.
 
 The system lives in **Profile → My Day**. Its three modes are **Day**,
 **Habits**, and **Contribution**. Management of directions, impacts, and habits
-lives in **Profile → Settings → My Day**. There is no new top-level page,
+lives in an internal **My Day setup surface** opened from
+**Profile → My Day → Налаштувати Мій день**. It is not a fourth My Day mode and
+not part of general **Profile → Settings**. There is no new top-level page,
 sidebar item, role, permission, or navigation-access rule.
 
 My Day extends the existing personal task projection
@@ -274,6 +276,17 @@ batched with aggregate joins/subqueries in the projection; no query is executed
 per task. Completed history follows the same object contract.
 
 ## UX contract
+
+### Setup surface
+
+My Day has one mode tablist with exactly **День**, **Звички**, and **Внесок**.
+The secondary action **Налаштувати Мій день** opens an internal setup surface
+with title **Налаштувати Мій день**, a **← Назад до Мого дня** action, and two
+sections: **Напрями та впливи** and **Звички**. Setup is not a tab, modal,
+action menu, sidebar page, or general Profile Settings section. Back restores
+the previous My Day mode. The empty Habits action **Створити звичку** opens this
+setup surface and focuses the habit name field. Create and edit forms in setup
+are rendered in-page, not through modals or action menus.
 
 ### Day
 

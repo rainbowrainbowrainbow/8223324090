@@ -2433,8 +2433,6 @@ function renderProfileSettingsTab() {
                 </div>
             </section>
             ${renderProfileSecurityPanel()}
-            ${window.MyDayClassification?.renderSettings?.() || ''}
-            ${window.MyDayHabits?.renderSettings?.() || ''}
         </div>`;
 }
 
@@ -6269,6 +6267,9 @@ function renderCabinetMyDaySecondary(activeSegment = getCabinetMyDaySegment(), c
 }
 
 function renderMyDayCommandCenterTab() {
+    if (window.MyDayHabits?.state?.surface === 'setup') {
+        return `<div class="my-day-life-shell">${window.MyDayHabits?.renderSetupSurface?.() || ''}</div>`;
+    }
     const myDayState = getCabinetMyDayState();
     const todayState = {
         ...myDayState,
@@ -8264,17 +8265,9 @@ function attachProfileListeners() {
     }
 
     const myDayClassification = window.MyDayClassification;
-    if (myDayClassification && (activeTab === 'myday' || activeTab === 'settings')) {
+    if (myDayClassification && activeTab === 'myday') {
         const rerenderMyDayClassificationSurface = async () => {
-            if (activeTab === 'myday') {
-                renderCabinetActiveTab();
-                return;
-            }
-            const tabContent = document.getElementById('tabContent');
-            if (tabContent && activeTab === 'settings') {
-                tabContent.innerHTML = renderTabContent();
-                attachProfileListeners();
-            }
+            renderCabinetActiveTab();
         };
         myDayClassification.bind(document, rerenderMyDayClassificationSurface);
         if (!myDayClassification.state.loaded && !myDayClassification.state.loading && !myDayClassification.state.error) {
@@ -8287,17 +8280,9 @@ function attachProfileListeners() {
     }
 
     const myDayHabits = window.MyDayHabits;
-    if (myDayHabits && (activeTab === 'myday' || activeTab === 'settings')) {
+    if (myDayHabits && activeTab === 'myday') {
         const rerenderMyDayHabitsSurface = async () => {
-            if (activeTab === 'myday') {
-                renderCabinetActiveTab();
-                return;
-            }
-            const tabContent = document.getElementById('tabContent');
-            if (tabContent && activeTab === 'settings') {
-                tabContent.innerHTML = renderTabContent();
-                attachProfileListeners();
-            }
+            renderCabinetActiveTab();
         };
         myDayHabits.bind(document, rerenderMyDayHabitsSurface);
         if (activeTab === 'myday' && myDayHabits.state.mode === 'habits' && !myDayHabits.state.loaded && !myDayHabits.state.loading) {
@@ -8313,7 +8298,7 @@ function attachProfileListeners() {
         if (activeTab === 'myday' && window.MyDayContribution) {
             window.MyDayContribution.bind(document, rerenderMyDayHabitsSurface);
         }
-        if (activeTab === 'settings' && !myDayHabits.state.settingsLoaded && !myDayHabits.state.settingsLoading) {
+        if (myDayHabits.state.surface === 'setup' && !myDayHabits.state.settingsLoaded && !myDayHabits.state.settingsLoading) {
             const settingsLoad = myDayHabits.loadSettings();
             if (myDayHabits.state.settingsLoading) rerenderMyDayHabitsSurface();
             settingsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);

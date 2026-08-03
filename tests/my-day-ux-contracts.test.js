@@ -44,14 +44,63 @@ test('boolean habit uses native checkbox with idempotent PUT and DELETE undo', (
     assert.match(css, /\.my-day-habit-check-label:focus-within/);
 });
 
-test('empty Habits state opens existing settings and focuses habit create form', () => {
+test('My Day setup surface is internal and not a fourth tab', () => {
+    const profile = read('js/profile-page.js');
+    const habitsUi = read('js/my-day-habits.js');
+    const css = read('css/pages-profile.css');
+    assert.match(habitsUi, /surface: 'main'/);
+    assert.match(habitsUi, /data-my-day-open-setup>Налаштувати Мій день/);
+    assert.match(habitsUi, /function renderSetupSurface\(\)/);
+    assert.match(habitsUi, /data-my-day-setup-surface/);
+    assert.match(habitsUi, /data-my-day-setup-back/);
+    assert.match(habitsUi, /← Назад до Мого дня/);
+    assert.match(profile, /state\?\.surface === 'setup'/);
+    assert.match(css, /\.my-day-setup-surface/);
+    assert.match(css, /\.my-day-life-setup-action/);
+    assert.doesNotMatch(habitsUi, /data-my-day-life-mode="setup"/);
+});
+
+test('My Day setup catalog edit stays in-page without prompt modal', () => {
+    const taxonomyUi = read('js/my-day-classification.js');
+    const css = read('css/pages-profile.css');
+    assert.match(taxonomyUi, /data-my-day-taxonomy-edit-row/);
+    assert.match(taxonomyUi, /my-day-taxonomy-inline-field/);
+    assert.match(taxonomyUi, /button type="submit" class="my-day-taxonomy-secondary">Зберегти/);
+    assert.doesNotMatch(taxonomyUi, /promptModal|data-my-day-taxonomy-edit="/);
+    assert.match(css, /\.my-day-taxonomy-row form/);
+    assert.match(css, /\.my-day-taxonomy-secondary/);
+});
+
+test('Profile Settings no longer renders My Day management forms', () => {
+    const profile = read('js/profile-page.js');
+    const start = profile.indexOf('function renderProfileSettingsTab()');
+    const end = profile.indexOf('function renderProfileSecurityPanel()', start);
+    const settingsRenderer = profile.slice(start, end);
+    assert.doesNotMatch(settingsRenderer, /MyDayClassification\?\.renderSettings/);
+    assert.doesNotMatch(settingsRenderer, /MyDayHabits\?\.renderSettings/);
+    assert.match(settingsRenderer, /renderProfileSecurityPanel\(\)/);
+});
+
+test('empty Habits state opens My Day setup and focuses habit create form', () => {
     const habitsUi = read('js/my-day-habits.js');
     assert.ok(habitsUi.includes('data-my-day-habit-open-create>' + CREATE_HABIT_LABEL));
     assert.match(habitsUi, /async function openSettingsCreate\(\)/);
-    assert.match(habitsUi, /window\.switchTab\('settings'\)/);
+    assert.match(habitsUi, /openSetup\(\{ focusHabitName: true \}\)/);
+    assert.doesNotMatch(habitsUi, /switchTab\('settings'\)/);
     assert.match(habitsUi, /function focusHabitCreateForm\(\)/);
     assert.match(habitsUi, /document\.querySelector\('\[data-my-day-habit-create\]'\)/);
     assert.match(habitsUi, /input\[name="name"\]/);
+    assert.match(habitsUi, /pendingFocus = 'habit-create'/);
+});
+
+test('setup Back restores the previous My Day mode without changing Day or Contribution renderers', () => {
+    const profile = read('js/profile-page.js');
+    const habitsUi = read('js/my-day-habits.js');
+    assert.match(habitsUi, /state\.returnMode = options\.returnMode \|\| currentMode/);
+    assert.match(habitsUi, /state\.mode = state\.returnMode === 'habits' \|\| state\.returnMode === 'contribution'/);
+    assert.match(habitsUi, /MyDayContribution\?\.cancel\?\.\('setup-open'\)/);
+    assert.match(profile, /renderCabinetTaskComposer\(\{ segment: 'personal', mode: 'personal' \}\)/);
+    assert.match(profile, /MyDayContribution\?\.renderPanel/);
 });
 
 test('empty Contribution keeps selected dates and renders zero total cards', () => {

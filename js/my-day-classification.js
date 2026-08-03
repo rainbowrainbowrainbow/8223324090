@@ -174,11 +174,15 @@
         const title = kind === 'directions' ? 'Напрями' : 'Впливи';
         const active = records.filter(record => record.isActive !== false);
         const archived = records.filter(record => record.isActive === false);
-        const row = record => `<li class="my-day-taxonomy-row">
-            <span class="my-day-taxonomy-swatch" style="background:${escape(record.color)}">${escape(record.icon)}</span>
-            <span class="my-day-taxonomy-name">${escape(record.name)}</span>
-            <button type="button" data-my-day-taxonomy-edit="${kind}" data-id="${record.id}">Перейменувати</button>
-            <button type="button" data-my-day-taxonomy-toggle="${kind}" data-id="${record.id}" data-active="${record.isActive ? 'true' : 'false'}">${record.isActive ? 'Архівувати' : 'Відновити'}</button>
+        const row = record => `<li class="my-day-taxonomy-row ${record.isActive ? '' : 'is-archived'}">
+            <form data-my-day-taxonomy-edit-row="${kind}" data-id="${record.id}">
+                <span class="my-day-taxonomy-swatch" style="background:${escape(record.color)}">${escape(record.icon)}</span>
+                <label class="my-day-taxonomy-inline-field">Назва <input name="name" maxlength="100" required value="${escape(record.name)}"></label>
+                <label class="my-day-taxonomy-inline-field">Колір <input name="color" type="color" value="${escape(record.color)}"></label>
+                <label class="my-day-taxonomy-inline-field">Іконка <input name="icon" maxlength="32" value="${escape(record.icon)}"></label>
+                <button type="submit" class="my-day-taxonomy-secondary">Зберегти</button>
+                <button type="button" data-my-day-taxonomy-toggle="${kind}" data-id="${record.id}" data-active="${record.isActive ? 'true' : 'false'}">${record.isActive ? 'Архівувати' : 'Відновити'}</button>
+            </form>
         </li>`;
         return `<section class="my-day-taxonomy-card" data-my-day-taxonomy-card="${kind}">
             <h3>${title}</h3>
@@ -260,27 +264,25 @@
             });
         });
 
-        root?.querySelectorAll('[data-my-day-taxonomy-edit]').forEach(button => {
-            if (button.dataset.myDayBound === 'true') return;
-            button.dataset.myDayBound = 'true';
-            button.addEventListener('click', async () => {
-                if (typeof window.promptModal !== 'function') {
-                    window.showNotification?.('Діалог перейменування недоступний. Оновіть сторінку.', 'error');
-                    return;
-                }
-                const nextName = await window.promptModal('Нова назва', { defaultValue: button.closest('li')?.querySelector('.my-day-taxonomy-name')?.textContent || '' });
-                if (nextName === null) return;
+        root?.querySelectorAll('[data-my-day-taxonomy-edit-row]').forEach(form => {
+            if (form.dataset.myDayBound === 'true') return;
+            form.dataset.myDayBound = 'true';
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                const kind = form.dataset.myDayTaxonomyEditRow;
+                const body = Object.fromEntries(new FormData(form).entries());
+                const button = form.querySelector('button[type="submit"]');
                 button.disabled = true;
                 try {
-                    await request('/' + button.dataset.myDayTaxonomyEdit + '/' + encodeURIComponent(button.dataset.id), {
+                    await request('/' + kind + '/' + encodeURIComponent(form.dataset.id), {
                         method: 'PATCH',
-                        body: JSON.stringify({ name: nextName })
+                        body: JSON.stringify(body)
                     });
                     await load(true);
                     await onChanged?.();
                 } catch (error) {
-                    window.showNotification?.(error.message || 'Не вдалося перейменувати елемент.', 'error');
-                    button.disabled = false;
+                    window.showNotification?.(error.message || 'Не вдалося оновити елемент.', 'error');
+                    if (button.isConnected) button.disabled = false;
                 }
             });
         });

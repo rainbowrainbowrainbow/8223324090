@@ -247,9 +247,15 @@
             button.dataset.myDayLifeBound = 'true';
             button.addEventListener('click', async () => {
                 const nextMode = button.dataset.myDayLifeMode;
+                const previousMode = state.mode;
                 state.mode = nextMode === 'habits' || nextMode === 'contribution' ? nextMode : 'day';
+                if (previousMode === 'contribution' && state.mode !== 'contribution') {
+                    window.MyDayContribution?.cancel?.('mode-exit');
+                }
                 if (state.mode === 'habits' && !state.loaded) await load();
-                if (state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded) await window.MyDayContribution.load();
+                if (state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded && !window.MyDayContribution.state.error) {
+                    await window.MyDayContribution.load();
+                }
                 await onChanged?.();
             });
         });

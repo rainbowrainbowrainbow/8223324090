@@ -3,6 +3,7 @@
 
     const API_URL = '/api/my-day/contribution';
     const KYIV_TIMEZONE = 'Europe/Kyiv';
+    const REQUEST_TIMEOUT_MS = 15000;
 
     const state = {
         from: addDays(kyivDate(), -6),
@@ -12,6 +13,8 @@
         loaded: false,
         error: ''
     };
+    let pendingRequest = null;
+    let requestSequence = 0;
 
     function escape(value) {
         return String(value ?? '').replace(/[&<>"']/g, char => ({
@@ -56,35 +59,91 @@
 
     function requestUrl() {
         const params = new URLSearchParams({ from: state.from, to: state.to });
-        return `${API_URL}?${params.toString()}`;
+        const path = `${API_URL}?${params.toString()}`;
+        return typeof window !== 'undefined' && window.CrmBusinessContext?.apiUrl
+            ? window.CrmBusinessContext.apiUrl(path)
+            : path;
     }
 
-    async function requestContribution() {
+    function authHeaders() {
+        const headers = typeof window !== 'undefined' && typeof window.getAuthHeaders === 'function'
+            ? window.getAuthHeaders(false)
+            : {};
+        return { Accept: 'application/json', ...headers };
+    }
+
+    function errorMessage(response, payload = {}) {
+        if (response?.status === 401) return 'Потрібна повторна авторизація для завантаження матриці внеску.';
+        if (response?.status === 429) return 'Забагато запитів. Зачекайте хвилину і повторіть вручну.';
+        return payload.error || 'Не вдалося завантажити матрицю внеску.';
+    }
+
+    async function requestContribution(signal) {
         const response = await fetch(requestUrl(), {
             credentials: 'include',
-            headers: { Accept: 'application/json' }
+            headers: authHeaders(),
+            signal
         });
         const payload = await response.json().catch(() => ({}));
         if (!response.ok || payload.success === false) {
-            throw new Error(payload.error || 'Не вдалося завантажити матрицю внеску.');
+            if (typeof window !== 'undefined' && typeof window.handleAuthError === 'function') {
+                window.handleAuthError(response);
+            }
+            throw new Error(errorMessage(response, payload));
         }
         return payload;
     }
 
-    async function load(force = false) {
-        if (state.loading) return state;
-        if (state.loaded && !force) return state;
+    function cancel(reason = 'cancelled') {
+        requestSequence += 1;
+        if (pendingRequest?.controller && !pendingRequest.controller.signal.aborted) {
+            pendingRequest.controller.abort(reason);
+        }
+        pendingRequest = null;
+        state.loading = false;
+    }
+
+    function load(force = false) {
+        if (pendingRequest && !force) return pendingRequest.promise;
+        if (pendingRequest && force) cancel('refresh');
+        if (state.loaded && !force) return Promise.resolve(state);
+        if (state.error && !force) return Promise.resolve(state);
         state.loading = true;
         state.error = '';
-        try {
-            state.data = await requestContribution();
-            state.loaded = true;
-        } catch (error) {
-            state.error = error.message || 'Не вдалося завантажити матрицю внеску.';
-        } finally {
-            state.loading = false;
-        }
-        return state;
+        const controller = new AbortController();
+        const token = ++requestSequence;
+        let timedOut = false;
+        const timeoutId = setTimeout(() => {
+            timedOut = true;
+            controller.abort('timeout');
+        }, REQUEST_TIMEOUT_MS);
+        const promise = (async () => {
+            try {
+                const payload = await requestContribution(controller.signal);
+                if (token !== requestSequence || controller.signal.aborted) return state;
+                state.data = payload;
+                state.loaded = true;
+            } catch (error) {
+                if (token !== requestSequence) return state;
+                if (timedOut) {
+                    state.error = 'Завантаження матриці внеску тривало понад 15 секунд. Повторіть вручну.';
+                    state.loaded = false;
+                    return state;
+                }
+                if (controller.signal.aborted || error?.name === 'AbortError') return state;
+                state.error = error.message || 'Не вдалося завантажити матрицю внеску.';
+                state.loaded = false;
+            } finally {
+                clearTimeout(timeoutId);
+                if (token === requestSequence) {
+                    state.loading = false;
+                    pendingRequest = null;
+                }
+            }
+            return state;
+        })();
+        pendingRequest = { controller, promise, token };
+        return promise;
     }
 
     function metricCard(label, value, hint) {
@@ -266,5 +325,5 @@
         });
     }
 
-    window.MyDayContribution = { bind, load, renderPanel, state };
+    window.MyDayContribution = { bind, cancel, load, renderPanel, state };
 }());

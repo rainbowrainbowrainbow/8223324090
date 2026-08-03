@@ -237,16 +237,47 @@ async function assertMyDayLifeModes(page, label) {
     await page.waitForSelector('.my-day-life-tabs [role="tab"]');
     const labels = await page.$$eval('.my-day-life-tabs [role="tab"]', nodes => nodes.map(node => node.textContent.trim()));
     assert.deepEqual(labels, ['День', 'Звички', 'Внесок'], `${label}: My Day mode labels are canonical`);
-    const modes = [
-        { key: 'day', panel: '#myDayDayPanel', name: 'День' },
-        { key: 'habits', panel: '#myDayHabitsPanel', name: 'Звички' },
-        { key: 'contribution', panel: '#myDayContributionPanel', name: 'Внесок' }
-    ];
-    for (const mode of modes) {
-        await page.locator(`[data-my-day-life-mode="${mode.key}"]`).click();
-        await page.waitForSelector(`${mode.panel}[role="tabpanel"]`);
-        await assertNoReplacementCharacters(page, `${label}: ${mode.name}`);
-        await assertNoHorizontalOverflow(page, `${label}: ${mode.name}`);
+    const contributionRequests = [];
+    const onContributionRequest = request => {
+        const url = new URL(request.url());
+        if (request.method() === 'GET' && url.pathname === '/api/my-day/contribution') {
+            contributionRequests.push(url.toString());
+        }
+    };
+    page.on('request', onContributionRequest);
+    try {
+        const modes = [
+            { key: 'day', panel: '#myDayDayPanel', name: 'День' },
+            { key: 'habits', panel: '#myDayHabitsPanel', name: 'Звички' },
+            { key: 'contribution', panel: '#myDayContributionPanel', name: 'Внесок' }
+        ];
+        for (const mode of modes) {
+            if (mode.key === 'contribution') {
+                const responsePromise = page.waitForResponse(response => {
+                    const url = new URL(response.url());
+                    return url.pathname === '/api/my-day/contribution';
+                });
+                await page.locator(`[data-my-day-life-mode="${mode.key}"]`).click();
+                const response = await responsePromise;
+                assert.ok(response.ok(), `${label}: Contribution endpoint returned ${response.status()}`);
+                await page.waitForFunction(() => document.querySelector('#myDayContributionPanel')?.getAttribute('aria-busy') === 'false', null, { timeout: TIMEOUT_MS });
+                await page.waitForTimeout(300);
+                assert.equal(contributionRequests.length, 1, `${label}: one Contribution open sends exactly one GET`);
+                assert.equal(await page.locator('#myDayContributionPanel .is-error:visible, #myDayContributionPanel [role="alert"]:visible').count(), 0, `${label}: Contribution has no visible error`);
+            } else {
+                await page.locator(`[data-my-day-life-mode="${mode.key}"]`).click();
+                await page.waitForSelector(`${mode.panel}[role="tabpanel"]`);
+            }
+            await assertNoReplacementCharacters(page, `${label}: ${mode.name}`);
+            await assertNoHorizontalOverflow(page, `${label}: ${mode.name}`);
+        }
+        await page.locator('[data-my-day-life-mode="day"]').click();
+        await page.waitForSelector('#myDayDayPanel[role="tabpanel"]');
+        const requestsAfterExit = contributionRequests.length;
+        await page.waitForTimeout(400);
+        assert.equal(contributionRequests.length, requestsAfterExit, `${label}: leaving Contribution sends no additional GET`);
+    } finally {
+        page.off('request', onContributionRequest);
     }
 }
 async function assertMyDayShell(page) {

@@ -8305,7 +8305,7 @@ function attachProfileListeners() {
             if (myDayHabits.state.loading) rerenderMyDayHabitsSurface();
             habitsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
         }
-        if (activeTab === 'myday' && myDayHabits.state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded && !window.MyDayContribution.state.loading) {
+        if (activeTab === 'myday' && myDayHabits.state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded && !window.MyDayContribution.state.loading && !window.MyDayContribution.state.error) {
             const contributionLoad = window.MyDayContribution.load();
             if (window.MyDayContribution.state.loading) rerenderMyDayHabitsSurface();
             contributionLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);

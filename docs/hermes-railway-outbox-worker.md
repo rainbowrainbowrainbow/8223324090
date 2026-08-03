@@ -41,6 +41,7 @@ HERMES_OUTBOX_BATCH_DUPLICATE_GUARD_MINUTES=120
 HERMES_OUTBOX_APPROVED_EVENT_IDS=task_created:123:owner:4  # optional exact live_once allowlist
 HERMES_OUTBOX_REQUIRE_APPROVED_EVENT_IDS=0|1
 HERMES_OUTBOX_OWNER_TARGETS_JSON={...}
+HERMES_OUTBOX_ALLOW_BRIDGE_FALLBACK=0                 # shared bridge fallback is not a live route
 HERMES_OUTBOX_WORKER_LIMIT=20
 HERMES_OUTBOX_WORKER_MAX_EVENTS=5
 HERMES_OUTBOX_ALLOW_SEND=0 until live cutover
@@ -69,8 +70,11 @@ HERMES_OUTBOX_ALLOW_CRM_MUTATION=1
 HERMES_OUTBOX_CONFIRM_SEND=1
 TELEGRAM_BOT_TOKEN is present
 all approved owners have Telegram targets configured
+shared bridge fallback targets are not used for live delivery
 HERMES_OUTBOX_SEND_BUTTONS=0
 ```
+
+Live gate failures return before stats/list/source reads, so a misconfigured live run does not touch CRM/outbox read APIs before the gate verdict. Programmatic `runLoop()` defaults to `read_only_loop`; it is not live unless an explicit live loop mode is supplied.
 
 ## Batch policy
 
@@ -84,6 +88,9 @@ maxEvents is a global live-run budget across immediate + batch events
 activeOwnerIds can narrow a pilot to owner4 even while the approved allowlist stays 4,3,40,13,1
 approvedEventIds can narrow live_once smokes to exact selected events
 batch duplicate guard holds recently attempted batch event ids for 120 minutes by default
+corrupt/unreadable batch state fails closed instead of widening delivery
+batch state write is attempted before claim/send; write failure does not claim rows
+Telegram/error fields are sanitized before logs/result/fail payloads
 ```
 
 The duplicate guard writes `lastSendAttemptAt` and selected event ids to the batch state before the Telegram send. If the process crashes after send but before ack, the next loop will not resend the same pending event ids during the guard window.

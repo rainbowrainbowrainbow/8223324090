@@ -109,8 +109,10 @@ function normalizeTelegramTarget(value) {
     };
 }
 
-function parseOwnerTargets(env = {}) {
+function parseOwnerTargetsDetailed(env = {}, options = {}) {
     const targets = new Map();
+    let bridgeFallbackUsed = false;
+    const bridgeFallbackRequested = boolEnv(env.HERMES_OUTBOX_USE_KLESHNYA_BRIDGE_CHAT_ID);
     const jsonText = textOrNull(env.HERMES_OUTBOX_OWNER_TARGETS_JSON);
     if (jsonText) {
         try {
@@ -140,16 +142,28 @@ function parseOwnerTargets(env = {}) {
         }
     }
 
-    if (boolEnv(env.HERMES_OUTBOX_USE_KLESHNYA_BRIDGE_CHAT_ID)) {
+    if (bridgeFallbackRequested && options.allowBridgeFallback) {
         const bridgeTarget = normalizeTelegramTarget(env.KLESHNYA_BRIDGE_CHAT_ID);
         if (bridgeTarget) {
             for (const ownerId of DEFAULT_APPROVED_OWNER_IDS) {
-                if (!targets.has(ownerId)) targets.set(ownerId, bridgeTarget);
+                if (!targets.has(ownerId)) {
+                    targets.set(ownerId, bridgeTarget);
+                    bridgeFallbackUsed = true;
+                }
             }
         }
     }
 
-    return targets;
+    return {
+        targets,
+        bridgeFallbackRequested,
+        bridgeFallbackAllowed: Boolean(options.allowBridgeFallback),
+        bridgeFallbackUsed
+    };
+}
+
+function parseOwnerTargets(env = {}, options = {}) {
+    return parseOwnerTargetsDetailed(env, options).targets;
 }
 
 function buildConfig(env = process.env, cliArgs = {}) {
@@ -194,6 +208,9 @@ function buildConfig(env = process.env, cliArgs = {}) {
         positiveInteger(cliArgs.limit || env.HERMES_OUTBOX_WORKER_LIMIT, DEFAULT_LIMIT)
     );
 
+    const allowBridgeFallback = boolEnv(cliArgs.allowBridgeFallback || env.HERMES_OUTBOX_ALLOW_BRIDGE_FALLBACK);
+    const ownerTargets = parseOwnerTargetsDetailed(env, { allowBridgeFallback });
+
     return {
         ok: true,
         mode,
@@ -201,7 +218,10 @@ function buildConfig(env = process.env, cliArgs = {}) {
         ownerAllowlist,
         ownerAllowlistExact: sameNumberSet(ownerAllowlist, DEFAULT_APPROVED_OWNER_IDS),
         activeOwnerIds,
-        ownerTargets: parseOwnerTargets(env),
+        ownerTargets: ownerTargets.targets,
+        bridgeFallbackRequested: ownerTargets.bridgeFallbackRequested,
+        bridgeFallbackAllowed: ownerTargets.bridgeFallbackAllowed,
+        bridgeFallbackUsed: ownerTargets.bridgeFallbackUsed,
         approvedEventIds: parseEventIdList(
             cliArgs.approvedEventIds || cliArgs.eventIds || cliArgs.eventId || env.HERMES_OUTBOX_APPROVED_EVENT_IDS || env.HERMES_OUTBOX_EVENT_IDS
         ),
@@ -276,6 +296,15 @@ function escapeHtml(value) {
         .replace(/"/g, '&quot;');
 }
 
+function sanitizeForLog(value) {
+    const text = String(value ?? '');
+    return text
+        .replace(/\b\d{8,12}:[A-Za-z0-9_-]{20,}\b/g, '[REDACTED_TELEGRAM_BOT_TOKEN]')
+        .replace(/bot[A-Za-z0-9:_-]{20,}/g, 'bot[REDACTED]')
+        .replace(/((?:chat_id|chatId|chat_id\\?"?)\s*[=:]\s*\\?"?)-?\d{6,}/g, '$1[REDACTED_CHAT_ID]')
+        .slice(0, 500);
+}
+
 function formatTaskMessage(event = {}) {
     const payload = eventPayload(event);
     const taskId = taskIdOf(event);
@@ -348,11 +377,19 @@ function roundMinutes(value) {
 
 function recentBatchAttemptGuard(config = {}, ownerUserId, eventIds = [], now = new Date()) {
     const state = readBatchState(config, ownerUserId);
+    const requestedIds = eventIds.map(String).filter(Boolean);
+    if (state.stateReadError) {
+        return {
+            active: true,
+            reason: 'state_read_error_fail_closed',
+            stateReadError: true,
+            heldEventIds: requestedIds
+        };
+    }
     const lastAttemptAt = parseDateOrNull(state.lastSendAttemptAt);
     const lastAttemptEventIds = Array.isArray(state.lastSendAttemptEventIds)
         ? state.lastSendAttemptEventIds.map(String)
         : [];
-    const requestedIds = eventIds.map(String).filter(Boolean);
     const heldEventIds = requestedIds.filter(eventId => lastAttemptEventIds.includes(eventId));
     if (!lastAttemptAt || heldEventIds.length === 0) {
         return { active: false };
@@ -378,8 +415,9 @@ function recentBatchAttemptGuard(config = {}, ownerUserId, eventIds = [], now = 
 }
 
 function batchDue(config = {}, ownerUserId, now = new Date()) {
-    if (config.batchForce) return { due: true, reason: 'force' };
     const state = readBatchState(config, ownerUserId);
+    if (state.stateReadError) return { due: false, reason: 'state_read_error_fail_closed', stateReadError: true };
+    if (config.batchForce) return { due: true, reason: 'force' };
     const lastSentAt = parseDateOrNull(state.lastSentAt);
     if (!lastSentAt) return { due: true, reason: 'no_previous_batch', stateReadError: Boolean(state.stateReadError) };
     const elapsedMinutes = Math.max(0, (now.getTime() - lastSentAt.getTime()) / 60000);
@@ -526,6 +564,11 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
         }
         const claimed = [];
         try {
+            writeBatchState(config, bucket.ownerUserId, {
+                lastSendAttemptAt: new Date().toISOString(),
+                lastSendAttemptEventIds: selected.map(item => item.plan.eventId),
+                lastSendAttemptTaskIds: selected.map(item => item.plan.taskId)
+            });
             for (const item of selected) {
                 summary.crm_mutation_attempted = true;
                 await deps.claimNotificationOutboxEvent(item.plan.eventId, {
@@ -534,11 +577,6 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
                 });
                 claimed.push(item);
             }
-            writeBatchState(config, bucket.ownerUserId, {
-                lastSendAttemptAt: new Date().toISOString(),
-                lastSendAttemptEventIds: selected.map(item => item.plan.eventId),
-                lastSendAttemptTaskIds: selected.map(item => item.plan.taskId)
-            });
             summary.send_attempted = true;
             const sent = await deps.sendTelegramMessage(bucket.target.chatId, renderBatchMessage({ ...bucket, events: selected }, config), {
                 batch: true,
@@ -569,7 +607,7 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
                     await deps.failNotificationOutboxEvent(item.plan.eventId, {
                         workerId: config.workerId,
                         errorCode: sent?.errorCode || 'TELEGRAM_BATCH_SEND_FAILED',
-                        errorMessage: sent?.description || 'Telegram batch send failed',
+                        errorMessage: sanitizeForLog(sent?.description || 'Telegram batch send failed'),
                         retryable: true
                     });
                 }
@@ -580,7 +618,7 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
         } catch (err) {
             processed.status = 'batch_worker_error';
             processed.errorCode = err.code || err.reasonCode || 'BATCH_WORKER_ERROR';
-            processed.message = err.message || 'Batch worker error';
+            processed.message = sanitizeForLog(err.message || 'Batch worker error');
             summary.failed_count += Math.max(1, selected.length);
         }
         summary.batch_processed.push(processed);
@@ -643,6 +681,7 @@ function liveGateBlockers(config) {
     }
     if (config.requireApprovedEventIds && !config.approvedEventIds.length) blockers.push('APPROVED_EVENT_IDS_REQUIRED');
     if (config.approvedEventIds.length && config.mode === 'live_loop') blockers.push('APPROVED_EVENT_IDS_NOT_SUPPORTED_FOR_LIVE_LOOP');
+    if (config.bridgeFallbackUsed) blockers.push('BRIDGE_FALLBACK_TARGETS_NOT_ALLOWED_FOR_LIVE');
     if (!config.localCronPausedConfirmed) blockers.push('LOCAL_CRON_PAUSED_CONFIRMATION_MISSING');
     if (!config.allowSend) blockers.push('HERMES_OUTBOX_ALLOW_SEND_REQUIRED');
     if (!config.allowCrmMutation) blockers.push('HERMES_OUTBOX_ALLOW_CRM_MUTATION_REQUIRED');
@@ -708,7 +747,7 @@ async function sendTelegramMessage(chatId, text, options = {}) {
         status: response.status,
         messageId: body?.result?.message_id || null,
         errorCode: body?.error_code || null,
-        description: body?.description || null
+        description: body?.description ? sanitizeForLog(body.description) : null
     };
 }
 
@@ -726,7 +765,6 @@ async function runOnce(options = {}) {
             crm_mutation_attempted: false
         };
     }
-    const deps = options.deps || defaultDependencies(env);
     const summary = {
         ok: true,
         status: 'OK',
@@ -759,12 +797,20 @@ async function runOnce(options = {}) {
         processed: []
     };
 
+    if (summary.liveGateBlockers.length) {
+        summary.ok = false;
+        summary.status = 'BLOCKED_LIVE_GATES';
+        return summary;
+    }
+
+    const deps = options.deps || defaultDependencies(env);
+
     if (options.includeStats && typeof deps.getNotificationOutboxStats === 'function') {
         try {
             const stats = await deps.getNotificationOutboxStats();
             summary.stats = stats?.stats || stats || null;
         } catch (err) {
-            summary.stats_error = err.code || err.message || 'STATS_FAILED';
+            summary.stats_error = sanitizeForLog(err.code || err.message || 'STATS_FAILED');
         }
     }
 
@@ -775,7 +821,7 @@ async function runOnce(options = {}) {
         summary.ok = false;
         summary.status = 'BLOCKED_SOURCE_UNAVAILABLE';
         summary.source_error_code = err.code || err.reasonCode || 'SOURCE_UNAVAILABLE';
-        summary.source_error_message = err.message || '';
+        summary.source_error_message = sanitizeForLog(err.message || '');
         return summary;
     }
     summary.fetched = events.length;
@@ -805,12 +851,6 @@ async function runOnce(options = {}) {
 
     if (config.mode === 'read_only' || config.mode === 'dry_run') {
         summary.status = config.mode === 'read_only' ? 'READ_ONLY_PLAN' : 'DRY_RUN_PLAN';
-        return summary;
-    }
-
-    if (summary.liveGateBlockers.length) {
-        summary.ok = false;
-        summary.status = 'BLOCKED_LIVE_GATES';
         return summary;
     }
 
@@ -846,7 +886,7 @@ async function runOnce(options = {}) {
                 await deps.failNotificationOutboxEvent(plan.eventId, {
                     workerId: config.workerId,
                     errorCode: sent?.errorCode || 'TELEGRAM_SEND_FAILED',
-                    errorMessage: sent?.description || 'Telegram send failed',
+                    errorMessage: sanitizeForLog(sent?.description || 'Telegram send failed'),
                     retryable: true
                 });
                 processed.status = 'send_failed_marked_retryable';
@@ -856,7 +896,7 @@ async function runOnce(options = {}) {
         } catch (err) {
             processed.status = 'worker_error';
             processed.errorCode = err.code || err.reasonCode || 'WORKER_ERROR';
-            processed.message = err.message || 'Worker error';
+            processed.message = sanitizeForLog(err.message || 'Worker error');
             summary.failed_count += 1;
         }
         summary.processed.push(processed);
@@ -874,11 +914,11 @@ async function runOnce(options = {}) {
 
 async function runLoop(options = {}) {
     const env = options.env || process.env;
-    const requestedMode = textOrNull((options.cliArgs || {}).mode || env.HERMES_OUTBOX_WORKER_MODE) || 'live_loop';
-    const cliArgs = { ...(options.cliArgs || {}), mode: LOOP_MODE_TO_ONCE_MODE[requestedMode] || 'live_once' };
+    const requestedMode = textOrNull((options.cliArgs || {}).mode || env.HERMES_OUTBOX_WORKER_MODE) || 'read_only_loop';
+    const cliArgs = { ...(options.cliArgs || {}), mode: LOOP_MODE_TO_ONCE_MODE[requestedMode] || requestedMode };
     const config = buildConfig(env, cliArgs);
     const deps = options.deps || defaultDependencies(env);
-    const intervalMs = Math.max(1, config.loopIntervalSeconds) * 1000;
+    const intervalMs = Math.max(1, config.ok ? config.loopIntervalSeconds : DEFAULT_LOOP_INTERVAL_SECONDS) * 1000;
     const results = [];
     let stopping = false;
     const stop = () => { stopping = true; };
@@ -925,7 +965,7 @@ async function main(argv = process.argv.slice(2), env = process.env) {
 
 if (require.main === module) {
     main().catch(err => {
-        process.stderr.write(`${JSON.stringify({ ok: false, status: 'WORKER_CRASH', errorCode: err.code || 'WORKER_CRASH', message: err.message })}\n`);
+        process.stderr.write(`${JSON.stringify({ ok: false, status: 'WORKER_CRASH', errorCode: err.code || 'WORKER_CRASH', message: sanitizeForLog(err.message) })}\n`);
         process.exitCode = 1;
     });
 }

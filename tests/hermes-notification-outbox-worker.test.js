@@ -115,6 +115,59 @@ test('owner16 is hard-blocked even when a target exists', () => {
     assert.ok(plan.blockers.includes(worker.OWNER16_BLOCK_CODE));
 });
 
+test('owner16 in active or batch owner scopes blocks live gates', () => {
+    const activeConfig = worker.buildConfig(targetEnv({
+        HERMES_OUTBOX_WORKER_MODE: 'live_once',
+        HERMES_OUTBOX_ACTIVE_OWNER_USER_IDS: '4,16',
+        HERMES_OUTBOX_ALLOW_SEND: '1',
+        HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+        HERMES_OUTBOX_CONFIRM_SEND: '1',
+        HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+        TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+    }));
+    assert.ok(worker.liveGateBlockers(activeConfig).includes(worker.OWNER16_BLOCK_CODE));
+
+    const batchConfig = worker.buildConfig(targetEnv({
+        HERMES_OUTBOX_WORKER_MODE: 'live_once',
+        HERMES_OUTBOX_BATCH_ENABLED: '1',
+        HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4,16',
+        HERMES_OUTBOX_ALLOW_SEND: '1',
+        HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+        HERMES_OUTBOX_CONFIRM_SEND: '1',
+        HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+        TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+    }));
+    assert.ok(worker.liveGateBlockers(batchConfig).includes(worker.OWNER16_BLOCK_CODE));
+});
+
+test('bridge chat fallback does not silently configure owner targets without explicit gate', () => {
+    const config = worker.buildConfig(baseEnv({
+        HERMES_OUTBOX_USE_KLESHNYA_BRIDGE_CHAT_ID: '1',
+        KLESHNYA_BRIDGE_CHAT_ID: 'telegram:999999'
+    }));
+    assert.equal(config.bridgeFallbackRequested, true);
+    assert.equal(config.bridgeFallbackAllowed, false);
+    assert.equal(config.bridgeFallbackUsed, false);
+    assert.equal(config.ownerTargets.has(4), false);
+    assert.ok(worker.classifyEvent(event(4, 1), config).blockers.includes('TELEGRAM_TARGET_MISSING'));
+});
+
+test('bridge chat fallback is blocked as a live target even when explicitly enabled', () => {
+    const config = worker.buildConfig(baseEnv({
+        HERMES_OUTBOX_WORKER_MODE: 'live_once',
+        HERMES_OUTBOX_USE_KLESHNYA_BRIDGE_CHAT_ID: '1',
+        HERMES_OUTBOX_ALLOW_BRIDGE_FALLBACK: '1',
+        KLESHNYA_BRIDGE_CHAT_ID: 'telegram:999999',
+        HERMES_OUTBOX_ALLOW_SEND: '1',
+        HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+        HERMES_OUTBOX_CONFIRM_SEND: '1',
+        HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+        TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+    }));
+    assert.equal(config.bridgeFallbackUsed, true);
+    assert.ok(worker.liveGateBlockers(config).includes('BRIDGE_FALLBACK_TARGETS_NOT_ALLOWED_FOR_LIVE'));
+});
+
 test('read_only run builds a plan and never claims, sends, acks, or fails', async () => {
     const calls = [];
     const result = await worker.runOnce({
@@ -179,6 +232,43 @@ test('live_once without local cron pause proof blocks before claim/send', async 
     assert.ok(result.liveGateBlockers.includes('LOCAL_CRON_PAUSED_CONFIRMATION_MISSING'));
     assert.equal(result.send_attempted, false);
     assert.equal(result.crm_mutation_attempted, false);
+    assert.deepEqual(calls.map(call => call[0]), []);
+});
+
+test('live gate failures return before source stats or list calls', async () => {
+    const calls = [];
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps: {
+            getNotificationOutboxStats: async () => { calls.push(['stats']); return { stats: {} }; },
+            listNotificationOutboxEvents: async () => { calls.push(['list']); return { events: [event(4, 1)] }; },
+            claimNotificationOutboxEvent: async () => { calls.push(['claim']); },
+            sendTelegramMessage: async () => { calls.push(['send']); }
+        },
+        includeStats: true
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'BLOCKED_LIVE_GATES');
+    assert.deepEqual(calls, []);
+});
+
+test('runLoop defaults to read-only instead of live when no mode is explicit', async () => {
+    const calls = [];
+    const results = await worker.runLoop({
+        once: true,
+        env: targetEnv(),
+        deps: depsFor([event(4, 1)], calls)
+    });
+    assert.equal(results.length, 1);
+    assert.equal(results[0].status, 'READ_ONLY_PLAN');
+    assert.equal(results[0].send_attempted, false);
+    assert.equal(results[0].crm_mutation_attempted, false);
     assert.deepEqual(calls.map(call => call[0]), ['list']);
 });
 
@@ -448,4 +538,90 @@ test('batch duplicate guard holds recently attempted event ids instead of resend
     assert.equal(second.batch_processed[0].status, 'held_duplicate_guard');
     assert.deepEqual(second.batch_processed[0].heldEventIds, ['task_created:1:owner:4', 'task_created:2:owner:4']);
     assert.deepEqual(secondCalls.map(call => call[0]), ['list']);
+});
+
+test('corrupt batch state fails closed before claim/send', async () => {
+    const calls = [];
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eg-outbox-batch-corrupt-'));
+    fs.writeFileSync(path.join(stateDir, 'owner-4.json'), '{not-json', 'utf8');
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            HERMES_OUTBOX_BATCH_ENABLED: '1',
+            HERMES_OUTBOX_BATCH_FORCE: '1',
+            HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4',
+            HERMES_OUTBOX_BATCH_STATE_DIR: stateDir,
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps: depsFor([event(4, 1), event(4, 2)], calls)
+    });
+    assert.equal(result.send_attempted, false);
+    assert.equal(result.crm_mutation_attempted, false);
+    assert.equal(result.batch_processed[0].status, 'held_duplicate_guard');
+    assert.equal(result.batch_processed[0].duplicateGuard.stateReadError, true);
+    assert.deepEqual(calls.map(call => call[0]), ['list']);
+});
+
+test('batch state write failure happens before any claim/send CRM mutation', async () => {
+    const calls = [];
+    const stateDir = path.join(os.tmpdir(), `eg-outbox-batch-file-${Date.now()}`);
+    fs.writeFileSync(stateDir, 'not-a-directory', 'utf8');
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            HERMES_OUTBOX_BATCH_ENABLED: '1',
+            HERMES_OUTBOX_BATCH_FORCE: '1',
+            HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4',
+            HERMES_OUTBOX_BATCH_STATE_DIR: stateDir,
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps: depsFor([event(4, 1), event(4, 2)], calls)
+    });
+    assert.equal(result.ok, false);
+    assert.equal(result.status, 'LIVE_RUN_WITH_FAILURES');
+    assert.equal(result.send_attempted, false);
+    assert.equal(result.crm_mutation_attempted, false);
+    assert.equal(result.batch_processed[0].status, 'batch_worker_error');
+    assert.deepEqual(calls.map(call => call[0]), ['list']);
+});
+
+test('Telegram and worker error messages are redacted before failing outbox rows', async () => {
+    const calls = [];
+    const deps = depsFor([event(4, 1)], calls);
+    deps.sendTelegramMessage = async chatId => {
+        calls.push(['send', chatId]);
+        const fakeToken = `123456789:${'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdef'}`;
+        return {
+            ok: false,
+            errorCode: 'TELEGRAM_400',
+            description: `bad request with token ${fakeToken} and chat_id=100400400`
+        };
+    };
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps
+    });
+    const failCall = calls.find(call => call[0] === 'fail');
+    assert.ok(failCall, 'expected fail call');
+    const errorMessage = failCall[2].errorMessage;
+    assert.doesNotMatch(errorMessage, /123456789:/);
+    assert.doesNotMatch(errorMessage, /100400400/);
+    assert.match(errorMessage, /\[REDACTED_TELEGRAM_BOT_TOKEN\]/);
+    assert.match(errorMessage, /\[REDACTED_CHAT_ID\]/);
+    assert.equal(result.failed_count, 1);
 });

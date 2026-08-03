@@ -123,12 +123,14 @@
 
     function renderHabitControl(habit) {
         if (habit.metric === 'boolean') {
-            return `<button type="button" class="my-day-habit-check ${habit.completed ? 'is-done' : ''}" data-my-day-habit-check="${escape(habit.id)}" aria-pressed="${habit.completed ? 'true' : 'false'}">${habit.completed ? '✓' : '○'}</button>`;
+            return `<label class="my-day-habit-check-label ${habit.completed ? 'is-done' : ''}">
+                <input type="checkbox" class="my-day-habit-check" data-my-day-habit-check="${escape(habit.id)}" ${habit.completed ? 'checked' : ''} aria-label="Позначити звичку ${escape(habit.name)} виконаною">
+                <span aria-hidden="true">${habit.completed ? '✓' : '○'}</span>
+            </label>`;
         }
         return `<label class="my-day-habit-value"><span>${habit.metric === 'minutes' ? 'Хв' : 'К-сть'}</span><input type="number" min="0" step="1" value="${escape(habit.progress?.value || '')}" data-my-day-habit-value="${escape(habit.id)}" aria-label="Фактичне значення звички ${escape(habit.name)}"></label>
             <button type="button" class="my-day-taxonomy-primary" data-my-day-habit-save="${escape(habit.id)}">Зберегти</button>`;
     }
-
     function renderHabitCard(habit) {
         const weekly = habit.weeklyProgress ? `<span class="my-day-habit-weekly">Тиждень: ${escape(habit.weeklyProgress.completed)} / ${escape(habit.weeklyProgress.target)}</span>` : '';
         return `<article class="my-day-habit-card ${habit.completed ? 'is-done' : ''} ${habit.skipped ? 'is-skipped' : ''}" data-my-day-habit-card="${escape(habit.id)}">
@@ -151,7 +153,10 @@
         const status = state.error ? `<div class="profile-empty-professional is-error" role="alert"><p>${escape(state.error)}</p><button type="button" data-my-day-habits-retry>Повторити</button></div>` : '';
         const body = state.loading && !state.loaded
             ? '<div class="profile-empty-professional" aria-live="polite">Завантаження звичок...</div>'
-            : (state.habits.length ? `<div class="my-day-habit-list">${state.habits.map(renderHabitCard).join('')}</div>` : '<div class="profile-empty-professional">Активних звичок на цю дату немає.</div>');
+            : (state.habits.length ? `<div class="my-day-habit-list">${state.habits.map(renderHabitCard).join('')}</div>` : `<div class="profile-empty-professional my-day-habit-empty-state">
+                <p>Активних звичок на цю дату немає.</p>
+                <button type="button" class="my-day-taxonomy-primary" data-my-day-habit-open-create>Створити звичку</button>
+            </div>`);
         return `<div class="cabinet-shell cabinet-command-center" id="myDayHabitsPanel" role="tabpanel" aria-labelledby="myDayModeHabits" aria-busy="${state.loading ? 'true' : 'false'}">
             <div class="my-day-habits-toolbar">
                 <label>Дата <input type="date" value="${escape(state.date)}" data-my-day-habits-date></label>
@@ -160,7 +165,6 @@
             ${status || body}
         </div>`;
     }
-
     function weekdayInputs(selected = []) {
         const selectedSet = new Set((selected || []).map(Number));
         return [1, 2, 3, 4, 5, 6, 7].map(day => `<label><input type="checkbox" name="selectedWeekdays" value="${day}" ${selectedSet.has(day) ? 'checked' : ''}>${day}</label>`).join('');
@@ -271,9 +275,28 @@
         root?.querySelectorAll('[data-my-day-habit-check]').forEach(button => {
             if (button.dataset.myDayHabitBound === 'true') return;
             button.dataset.myDayHabitBound = 'true';
-            button.addEventListener('click', () => mutate(button, () => request('/' + encodeURIComponent(button.dataset.myDayHabitCheck) + '/check-ins/' + encodeURIComponent(state.date), { method: 'PUT', body: JSON.stringify({ state: 'done', value: 1 }) }), onChanged));
+            button.addEventListener('change', () => {
+                const checked = button.checked;
+                const path = '/' + encodeURIComponent(button.dataset.myDayHabitCheck) + '/check-ins/' + encodeURIComponent(state.date);
+                return mutate(button, () => checked
+                    ? request(path, { method: 'PUT', body: JSON.stringify({ state: 'done', value: 1 }) })
+                    : request(path, { method: 'DELETE' }), onChanged);
+            });
         });
 
+        root?.querySelectorAll('[data-my-day-habit-open-create]').forEach(button => {
+            if (button.dataset.myDayHabitOpenCreateBound === 'true') return;
+            button.dataset.myDayHabitOpenCreateBound = 'true';
+            button.addEventListener('click', async () => {
+                button.disabled = true;
+                try {
+                    await openSettingsCreate();
+                    await onChanged?.();
+                } finally {
+                    if (button.isConnected) button.disabled = false;
+                }
+            });
+        });
         root?.querySelectorAll('[data-my-day-habit-save]').forEach(button => {
             if (button.dataset.myDayHabitSaveBound === 'true') return;
             button.dataset.myDayHabitSaveBound = 'true';
@@ -342,5 +365,23 @@
         });
     }
 
-    window.MyDayHabits = { bind, kyivDate, load, loadSettings, renderModeTabs, renderPanel, renderSettings, state };
+    async function openSettingsCreate() {
+        if (typeof window.switchTab === 'function') {
+            await window.switchTab('settings');
+        }
+        await loadSettings();
+        focusHabitCreateForm();
+    }
+
+    function focusHabitCreateForm() {
+        const focusTarget = () => {
+            const form = document.querySelector('[data-my-day-habit-create]');
+            const target = form?.querySelector('input[name="name"], select, button, input, textarea');
+            target?.focus?.({ preventScroll: false });
+        };
+        if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(focusTarget);
+        else setTimeout(focusTarget, 0);
+    }
+
+    window.MyDayHabits = { bind, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, renderModeTabs, renderPanel, renderSettings, state };
 }());

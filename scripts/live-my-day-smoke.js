@@ -228,6 +228,27 @@ async function assertFullProfileHeader(page) {
     assert.ok(await page.locator('.profile-friendly-shell:not(.profile-work-header--myday)').count() > 0, 'normal profile route keeps full header class path');
 }
 
+async function assertNoReplacementCharacters(page, label) {
+    const hasReplacement = await page.evaluate(() => document.body.innerText.includes('\uFFFD'));
+    assert.equal(hasReplacement, false, `${label}: page text has no replacement characters`);
+}
+
+async function assertMyDayLifeModes(page, label) {
+    await page.waitForSelector('.my-day-life-tabs [role="tab"]');
+    const labels = await page.$$eval('.my-day-life-tabs [role="tab"]', nodes => nodes.map(node => node.textContent.trim()));
+    assert.deepEqual(labels, ['День', 'Звички', 'Внесок'], `${label}: My Day mode labels are canonical`);
+    const modes = [
+        { key: 'day', panel: '#myDayDayPanel', name: 'День' },
+        { key: 'habits', panel: '#myDayHabitsPanel', name: 'Звички' },
+        { key: 'contribution', panel: '#myDayContributionPanel', name: 'Внесок' }
+    ];
+    for (const mode of modes) {
+        await page.locator(`[data-my-day-life-mode="${mode.key}"]`).click();
+        await page.waitForSelector(`${mode.panel}[role="tabpanel"]`);
+        await assertNoReplacementCharacters(page, `${label}: ${mode.name}`);
+        await assertNoHorizontalOverflow(page, `${label}: ${mode.name}`);
+    }
+}
 async function assertMyDayShell(page) {
     await page.waitForSelector('[data-profile-my-day-capsule]');
     await page.waitForSelector('.cabinet-shell.cabinet-command-center');
@@ -244,7 +265,7 @@ async function assertMyDayShell(page) {
     assert.equal(await page.locator('.cabinet-support-panel').count(), 0, 'CRM signal/support panels do not push down My Day focus');
 
     const shell = await page.evaluate(() => {
-        const workspace = document.querySelector('[data-cabinet-my-day-layout="today-overdue"]');
+        const workspace = document.querySelector('[data-cabinet-my-day-layout="today-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
         const today = document.querySelector('.cabinet-day-column--today');
         const overdue = document.querySelector('.cabinet-day-column--overdue');
         const completed = document.querySelector('.cabinet-completed-details');
@@ -293,7 +314,7 @@ async function assertOverdueTriageSurface(page) {
 async function assertNoHorizontalOverflow(page, label) {
     const metrics = await page.evaluate(() => {
         const profile = document.querySelector('.profile-page');
-        const workspace = document.querySelector('[data-cabinet-my-day-layout="today-overdue"]');
+        const workspace = document.querySelector('[data-cabinet-my-day-layout="today-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
         const profileBox = profile?.getBoundingClientRect();
         const workspaceBox = workspace?.getBoundingClientRect();
         return {
@@ -349,6 +370,7 @@ async function runViewport(browser, base, session, viewport, label) {
         const overdue = await assertOverdueTriageSurface(page);
         await assertCompletedHistoryDisclosure(page);
         await assertNoHorizontalOverflow(page, label);
+        await assertMyDayLifeModes(page, label);
         await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}.png`), fullPage: true });
         assertNoForbiddenTaskWrites(forbidden, label);
         return {

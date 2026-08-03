@@ -176,24 +176,52 @@
         </section>`;
     }
 
-    function renderPanel() {
-        const data = state.data || {};
-        const range = data.range || { from: state.from, to: state.to, timezone: KYIV_TIMEZONE };
-        const hasData = normalizeNumber(data.totals?.taskCount)
+    function emptyContributionData(range, source = {}) {
+        const totals = source.totals || {};
+        return {
+            ...source,
+            range,
+            totals: {
+                taskCount: normalizeNumber(totals.taskCount),
+                taskMinutes: normalizeNumber(totals.taskMinutes),
+                habitCompletions: normalizeNumber(totals.habitCompletions),
+                habitMinutes: normalizeNumber(totals.habitMinutes)
+            },
+            directions: Array.isArray(source.directions) ? source.directions : [],
+            impacts: Array.isArray(source.impacts) ? source.impacts : [],
+            days: Array.isArray(source.days) ? source.days : [],
+            unclassified: source.unclassified || {
+                label: 'Без напряму',
+                taskCount: 0,
+                taskMinutes: 0,
+                habitCompletions: 0,
+                habitMinutes: 0
+            }
+        };
+    }
+
+    function contributionHasData(data) {
+        return Boolean(normalizeNumber(data.totals?.taskCount)
             || normalizeNumber(data.totals?.taskMinutes)
             || normalizeNumber(data.totals?.habitCompletions)
-            || normalizeNumber(data.totals?.habitMinutes);
+            || normalizeNumber(data.totals?.habitMinutes));
+    }
+
+    function renderPanel() {
+        const source = state.data || {};
+        const range = source.range || { from: state.from, to: state.to, timezone: KYIV_TIMEZONE };
+        const data = emptyContributionData(range, source);
+        const hasData = contributionHasData(data);
         const status = state.error
             ? `<div class="profile-empty-professional is-error" role="alert"><p>${escape(state.error)}</p><button type="button" data-my-day-contribution-refresh>Повторити</button></div>`
             : '';
         const body = state.loading && !state.loaded
             ? '<div class="profile-empty-professional" aria-live="polite">Завантаження матриці внеску...</div>'
-            : (hasData
-                ? `${renderTotals(data)}
-                   ${renderMatrix('Напрями', 'Кожна задача або звичка потрапляє в один напрям або в “Без напряму”.', [...(data.directions || []), data.unclassified].filter(Boolean), 'Напрями ще не мають внеску.', { id: 'myDayContributionDirectionsTitle' })}
-                   ${renderMatrix('Впливи', 'Впливи можуть перетинатися: один елемент може рахуватись у кілька впливів.', data.impacts || [], 'Впливи ще не мають внеску.', { id: 'myDayContributionImpactsTitle' })}
-                   ${renderDays(data.days || [])}`
-                : `<div class="profile-empty-professional">За ${escape(range.from)} — ${escape(range.to)} ще немає завершених задач, time entries або виконаних звичок.</div>`);
+            : `${renderTotals(data)}
+                   ${hasData ? '' : `<div class="profile-empty-professional my-day-contribution-zero-state">За ${escape(range.from)} — ${escape(range.to)} ще немає завершених задач, time entries або виконаних звичок.</div>`}
+                   ${renderMatrix('Напрями', 'Кожна задача або звичка потрапляє в один напрям або в “Без напряму”.', [...data.directions, data.unclassified].filter(Boolean), 'Напрями ще не мають внеску.', { id: 'myDayContributionDirectionsTitle' })}
+                   ${renderMatrix('Впливи', 'Впливи можуть перетинатися: один елемент може рахуватись у кілька впливів.', data.impacts, 'Впливи ще не мають внеску.', { id: 'myDayContributionImpactsTitle' })}
+                   ${renderDays(data.days)}`;
         return `<div class="cabinet-shell cabinet-command-center" id="myDayContributionPanel" role="tabpanel" aria-labelledby="myDayModeContribution" aria-busy="${state.loading ? 'true' : 'false'}">
             <div class="my-day-contribution-toolbar">
                 <div>
@@ -206,10 +234,9 @@
                     <button type="submit">Оновити</button>
                 </form>
             </div>
-            ${status || body}
+            ${status}${body}
         </div>`;
     }
-
     function bind(root, onChanged) {
         const form = root?.querySelector('[data-my-day-contribution-range]');
         if (form && form.dataset.myDayContributionBound !== 'true') {

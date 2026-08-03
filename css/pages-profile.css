@@ -221,8 +221,32 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .my-day-habit-main { justify-content: space-between; }
 .my-day-habit-main h3 { margin: 0 0 6px; font-size: 0.98rem; }
 .my-day-habit-badges { display: flex; gap: 6px; flex-wrap: wrap; }
-.my-day-habit-check { width: 44px; height: 44px; border-radius: 50%; border: 1px solid rgba(148, 163, 184, 0.5); background: #fff; font-size: 1.2rem; cursor: pointer; }
-.my-day-habit-check.is-done { background: #16a34a; color: #fff; border-color: #16a34a; }
+.my-day-habit-empty-state,
+.my-day-contribution-zero-state { display: grid; justify-items: center; gap: 10px; }
+.my-day-habit-check-label {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    border: 1px solid rgba(148, 163, 184, 0.5);
+    background: #fff;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: inline-grid;
+    place-items: center;
+    position: relative;
+}
+.my-day-habit-check-label.is-done { background: #16a34a; color: #fff; border-color: #16a34a; }
+.my-day-habit-check-label:focus-within { outline: 2px solid rgba(37, 99, 235, 0.45); outline-offset: 2px; }
+.my-day-habit-check {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    opacity: 0;
+    cursor: pointer;
+}
+.my-day-habit-check:disabled { cursor: not-allowed; }
+.my-day-habit-check:disabled + span { opacity: 0.55; }
 .my-day-habit-value { display: flex; align-items: center; gap: 6px; }
 .my-day-habit-value input { width: 96px; }
 .my-day-habit-settings-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; min-width: 0; }

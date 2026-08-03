@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.74 - Мій день: облік часу у внеску
+
+### Release / Versioning / (03.08.2026) [codex]
+- **Мій день: облік часу у внеску** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.73 - Мій день: система особистої продуктивності
 
 ### ̳� ���� / (03.08.2026) [codex]

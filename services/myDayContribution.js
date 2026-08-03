@@ -142,7 +142,7 @@ function createMatrix(range, businessScope = null) {
         daysMap: new Map(),
         unclassified: {
             key: UNCLASSIFIED_KEY,
-            label: 'Без напряму',
+            label: 'Р‘РµР· РЅР°РїСЂСЏРјСѓ',
             taxonomy: null,
             ...emptyTotals()
         },
@@ -284,7 +284,6 @@ async function queryCompletedTasks(queryable, user, userId, businessScope, range
 
 async function queryTaskTimeRows(queryable, user, userId, businessScope, range) {
     const params = [];
-    const ownerMatch = buildTaskOwnerMatch(user, params, 't');
     const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
     params.push(userId);
     const userParam = params.length;
@@ -323,7 +322,6 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
          LEFT JOIN my_day_task_impacts ti ON ti.user_id = $${userParam} AND ti.task_id = t.id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
          WHERE e.user_id = $${userParam}
-           AND ${ownerMatch}
            ${businessCondition}
            AND e.started_at < (($${toParam}::date + 1) AT TIME ZONE '${KYIV_TIMEZONE}')
            AND COALESCE(e.ended_at, NOW()) > ($${fromParam}::date AT TIME ZONE '${KYIV_TIMEZONE}')

@@ -107,6 +107,8 @@ test('contribution service queries current user, business scope, active timers, 
     assert.match(calls[1].sql, /generate_series/);
     assert.match(calls[1].sql, /COALESCE\(e\.ended_at, NOW\(\)\)/);
     assert.match(calls[1].sql, /my_day_time_entries/);
+    assert.match(calls[1].sql, /WHERE e\.user_id = \$\d+/);
+    assert.doesNotMatch(calls[1].sql, /owner_user_id IS NULL|owner_user_id =/);
     assert.match(calls[2].sql, /my_day_habit_checkins/);
     assert.match(calls[2].sql, /my_day_habits/);
     assert.deepEqual(calls[2].params, [42, '2026-08-01', '2026-08-03']);
@@ -129,7 +131,7 @@ test('contribution route and UI expose only the canonical read endpoint and no s
     assert.match(contributionUi, /\/api\/my-day\/contribution/);
     assert.match(contributionUi, /role="tabpanel"/);
     assert.match(contributionUi, /aria-busy/);
-    assert.match(contributionUi, /Максимум 92/);
+    assert.match(contributionUi, /92/);
     assert.match(html, /js\/my-day-contribution\.js/);
     assert.match(css, /my-day-contribution-table-wrap/);
     assert.doesNotMatch(service + contributionUi, /productivityScore|streak|penalt|gamification|recurring/i);

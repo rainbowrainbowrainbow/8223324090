@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.76 - Мій день: завершення персональної системи
+
+### Мій день / (03.08.2026) [codex]
+- **Виправлено вкладку `Внесок`** — режим тепер має канонічну українську назву без mojibake, replacement characters або зламаного тексту.
+- **Завершено UX звичок** — boolean-звичка працює як доступний native checkbox, а empty state має дію `Створити звичку` з переходом у налаштування та фокусом на форму.
+- **Матриця внеску стала прозорою у zero-state** — навіть без даних показуються обраний період, completed tasks, task minutes, habit completions і habit minutes з нульовими значеннями, без productivity score.
+- **Українські labels/errors захищені тестами** — додано text-integrity та UX-regression coverage для режимів `День | Звички | Внесок`, checkbox behavior, empty states і mobile overflow.
+
+---
+
 ## v0.80.75 - Мій день: київські межі часу
 
 ### Release / Versioning / (03.08.2026) [codex]

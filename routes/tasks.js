@@ -118,6 +118,12 @@ const {
     normalizeTaskCabinetFocusDate
 } = require('../services/taskCabinetProjection');
 
+const {
+    addTaskDependency,
+    dependencyError,
+    listTaskDependencies,
+    removeTaskDependency
+} = require('../services/taskDependencies');
 const { sendTelegramMessage, getConfiguredChatId } = require('../services/telegram');
 const { formatTaskNotification } = require('../services/templates');
 const log = createLogger('Tasks');
@@ -573,32 +579,11 @@ async function replaceTaskObservers(task, observerIds = [], actor) {
 
 async function createTaskDependencyRows(taskId, dependencyIds = []) {
     const ids = normalizeDependencyIds(dependencyIds).filter(id => Number(id) !== Number(taskId));
-    if (!ids.length) return [];
-    const owner = await pool.query(
-        "SELECT COALESCE(business_context, 'event_genix') AS business_context FROM tasks WHERE id = $1 LIMIT 1",
-        [taskId]
-    );
-    const businessContext = owner.rows[0]?.business_context || 'event_genix';
-    const allowed = await pool.query(
-        "SELECT id FROM tasks WHERE id = ANY($1::int[]) AND COALESCE(business_context, 'event_genix') = $2",
-        [ids, businessContext]
-    );
-    const scopedIds = allowed.rows.map(row => Number(row.id)).filter(Boolean);
-    if (!scopedIds.length) return [];
-    const values = [];
-    const placeholders = scopedIds.map((id, index) => {
-        const offset = index * 2;
-        values.push(taskId, id);
-        return `($${offset + 1}, $${offset + 2})`;
-    });
-    const result = await pool.query(
-        `INSERT INTO task_dependencies (task_id, depends_on_task_id)
-         VALUES ${placeholders.join(', ')}
-         ON CONFLICT (task_id, depends_on_task_id) DO NOTHING
-         RETURNING *`,
-        values
-    );
-    return result.rows;
+    const states = [];
+    for (const dependsOnTaskId of ids) {
+        states.push(await addTaskDependency(pool, { taskId, dependsOnTaskId }));
+    }
+    return states;
 }
 
 async function attachSubtaskSummary(task, options = {}) {
@@ -1785,6 +1770,140 @@ router.get('/my-cabinet', async (req, res) => {
 });
 
 // GET /api/tasks/productivity — personal task productivity cockpit data
+async function loadPersonalDependencyTask(queryable, rawTaskId, user, businessScope, options = {}) {
+    const id = Number(rawTaskId);
+    if (!Number.isInteger(id) || id <= 0) throw dependencyError('Invalid task dependency identifier.');
+    const params = [id];
+    const visibility = buildTaskVisibilityScope(user, params, 't');
+    const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
+    const result = await queryable.query(
+        `SELECT t.* FROM tasks t
+         WHERE t.id = $1 ${visibility} ${businessCondition}
+         LIMIT 1${options.forUpdate ? ' FOR UPDATE' : ''}`,
+        params
+    );
+    const task = result.rows?.[0];
+    if (!task) throw dependencyError('Task not found.', 404, 'TASK_DEPENDENCY_NOT_FOUND');
+    if (options.mutable && !canMutateTask(user, task)) {
+        throw dependencyError('You cannot change this task.', 403, 'TASK_DEPENDENCY_FORBIDDEN');
+    }
+    const userId = normalizeUserId(user);
+    if (!userId || Number(task.owner_user_id || 0) !== userId) {
+        throw dependencyError('Prerequisites are available only for your personal tasks.', 403, 'TASK_DEPENDENCY_CROSS_USER_FORBIDDEN');
+    }
+    return task;
+}
+
+async function withDependencyTransaction(work) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await work(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (error) {
+        try { await client.query('ROLLBACK'); } catch {}
+        throw error;
+    } finally {
+        client.release();
+    }
+}
+
+router.get('/:id/dependencies', async (req, res) => {
+    try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+        await loadPersonalDependencyTask(pool, req.params.id, req.user, businessScope);
+        const state = await listTaskDependencies(pool, req.params.id);
+        res.json({ success: true, dependencies: state.dependencies, state });
+    } catch (error) {
+        sendTaskActionError(res, error);
+    }
+});
+
+router.post('/:id/dependencies', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const state = await withDependencyTransaction(async client => {
+            await loadPersonalDependencyTask(client, req.params.id, req.user, businessScope, { mutable: true, forUpdate: true });
+            await loadPersonalDependencyTask(client, req.body?.dependsOnTaskId, req.user, businessScope, { forUpdate: true });
+            return addTaskDependency(client, { taskId: req.params.id, dependsOnTaskId: req.body?.dependsOnTaskId });
+        });
+        res.status(201).json({ success: true, dependencies: state.dependencies, state });
+        _alertPush();
+    } catch (error) {
+        sendTaskActionError(res, error);
+    }
+});
+
+router.delete('/:id/dependencies/:dependsOnTaskId', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const state = await withDependencyTransaction(async client => {
+            await loadPersonalDependencyTask(client, req.params.id, req.user, businessScope, { mutable: true, forUpdate: true });
+            return removeTaskDependency(client, { taskId: req.params.id, dependsOnTaskId: req.params.dependsOnTaskId });
+        });
+        res.json({ success: true, dependencies: state.dependencies, state });
+        _alertPush();
+    } catch (error) {
+        sendTaskActionError(res, error);
+    }
+});
+
+router.post('/:id/dependencies/quick-create', requireRole('admin', 'user'), async (req, res) => {
+    const title = String(req.body?.title || '').trim();
+    if (!title) return res.status(400).json({ success: false, error: 'title required', code: 'TASK_DEPENDENCY_VALIDATION_ERROR' });
+    try {
+        const businessScope = requireTaskWriteScope(req, res);
+        if (!businessScope) return;
+        const userId = normalizeUserId(req.user);
+        const afterCommit = [];
+        const result = await withDependencyTransaction(async client => {
+            const blockedTask = await loadPersonalDependencyTask(client, req.params.id, req.user, businessScope, { mutable: true, forUpdate: true });
+            const prerequisite = await getKleshnya().createTask({
+                businessContext: activeTaskBusinessContext(blockedTask.business_context),
+                title,
+                date: todayKyivDate(),
+                priority: 'normal',
+                assigned_to: blockedTask.assigned_to || null,
+                owner: blockedTask.owner || null,
+                owner_user_id: blockedTask.owner_user_id,
+                task_type: 'human',
+                source_type: 'manual',
+                category: blockedTask.category || 'personal',
+                task_mode: blockedTask.task_mode || 'personal',
+                task_kind: 'action',
+                visibility: blockedTask.visibility || 'me_only',
+                workflow_state: 'inbox',
+                source_module: 'profile_my_day_prerequisite',
+                created_by: req.user?.username || 'system',
+                created_by_user_id: userId,
+                duplicateMode: 'reject'
+            }, { pool: client, afterCommit });
+            if (prerequisite.duplicateSkipped) throw dependencyError('A matching prerequisite already exists.', 409, 'TASK_DUPLICATE_ACTIVE');
+            const state = await addTaskDependency(client, { taskId: blockedTask.id, dependsOnTaskId: prerequisite.id });
+            await client.query(
+                `INSERT INTO my_day_task_metadata (user_id, task_id, direction_id)
+                 SELECT user_id, $2, direction_id
+                 FROM my_day_task_metadata
+                 WHERE user_id = $1 AND task_id = $3
+                 ON CONFLICT (user_id, task_id) DO NOTHING`,
+                [userId, prerequisite.id, blockedTask.id]
+            );
+            return { prerequisite, state };
+        });
+        afterCommit.forEach(callback => {
+            try { callback(); } catch (error) { log.warn(`Quick prerequisite after-commit callback failed: ${error.message}`); }
+        });
+        res.status(201).json({ success: true, task: normalizeTaskPayload(result.prerequisite), dependencies: result.state.dependencies, state: result.state });
+        _alertPush();
+    } catch (error) {
+        sendTaskActionError(res, error);
+    }
+});
+
 router.get('/productivity', async (req, res) => {
     try {
         const businessScope = requireTaskReadScope(req, res);

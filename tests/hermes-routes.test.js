@@ -344,6 +344,10 @@ function createCabinetFakePool(options = {}) {
             if (/FROM my_day_task_metadata m/i.test(compact)) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/FROM task_dependencies d/i.test(compact)) {
+                return { rows: [], rowCount: 0 };
+            }
+
 
             if (/FROM tasks t/i.test(compact)) {
                 return { rows: taskRows, rowCount: taskRows.length };

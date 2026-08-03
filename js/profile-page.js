@@ -4812,6 +4812,8 @@ function openCabinetTaskActionMenu(button) {
             { label: 'Відкрити у повному списку', detail: 'деталі, історія, спостерігачі', attrs: { 'data-cabinet-task-action': 'open', 'data-task-id': taskId } }
             ,
             { label: '\u041d\u0430\u043f\u0440\u044f\u043c \u0456 \u0432\u043f\u043b\u0438\u0432\u0438', detail: '\u043e\u0441\u043e\u0431\u0438\u0441\u0442\u0435 \u043c\u0430\u0440\u043a\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447\u0456', attrs: { 'data-cabinet-task-action': 'classification', 'data-task-id': taskId } },
+            { label: '\u041f\u043e\u0442\u0440\u0456\u0431\u043d\u043e \u0441\u043f\u043e\u0447\u0430\u0442\u043a\u0443', detail: '\u0434\u043e\u0434\u0430\u0442\u0438 \u0430\u0431\u043e \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0437\u0430\u0434\u0430\u0447\u0443-\u043f\u0435\u0440\u0435\u0434\u0443\u043c\u043e\u0432\u0443', attrs: { 'data-cabinet-task-action': 'dependencies', 'data-task-id': taskId } },
+            ...(task.isBlocked ? [{ label: '\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0438 \u043f\u043e\u043f\u0440\u0438 \u0431\u043b\u043e\u043a\u0435\u0440', detail: '\u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044f \u043d\u0435 \u0431\u043b\u043e\u043a\u0443\u0454\u0442\u044c\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u043d\u043e', attrs: { 'data-cabinet-task-action': 'complete-despite-blocker', 'data-task-id': taskId } }] : []),
         ]) || ''}`;
     const root = window.TaskUI?.openActionMenu(button, menuHtml, { title: 'Перенести в...' });
     root?.querySelectorAll('[data-cabinet-task-action]').forEach(actionButton => {
@@ -4908,6 +4910,9 @@ function compareCabinetTasksForDisplay(a = {}, b = {}) {
     const aIsNew = lastCabinetCreatedTaskId && String(a.id || a.taskId || a.task_id) === String(lastCabinetCreatedTaskId);
     const bIsNew = lastCabinetCreatedTaskId && String(b.id || b.taskId || b.task_id) === String(lastCabinetCreatedTaskId);
     if (aIsNew !== bIsNew) return aIsNew ? -1 : 1;
+    const aBlocked = Boolean(a.isBlocked);
+    const bBlocked = Boolean(b.isBlocked);
+    if (aBlocked !== bBlocked) return aBlocked ? 1 : -1;
 
     const priorityDiff = cabinetTaskPriorityRank(a) - cabinetTaskPriorityRank(b);
     if (priorityDiff) return priorityDiff;
@@ -5598,7 +5603,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         dueState,
         relationLabel,
         scheduleStatus
-    }).join('') + (window.MyDayClassification?.renderTaskBadges?.(task.myDay) || '') : '';
+    }).join('') + (window.MyDayClassification?.renderTaskBadges?.(task.myDay) || '') + (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') : '';
     const metadataHtml = isMyDayCard ? visibleBadges : `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -6898,6 +6903,23 @@ async function handleCabinetTaskActionClick(event) {
     }
 
     if (action === 'postponement-explanation') {
+    if (action === 'dependencies') {
+        await window.MyDayDependencies?.openManager?.(button, findCabinetTask(taskId) || {}, async () => {
+            await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
+        });
+        return;
+    }
+
+    if (action === 'dependency-open') {
+        if (window.TaskDetailDrawer?.open) window.TaskDetailDrawer.open(taskId, { view: 'my', sourceSurface: 'profile_my_day_dependency' });
+        else window.location.href = `/tasks?view=my&open=${encodeURIComponent(taskId)}`;
+        return;
+    }
+
+    if (action === 'complete-despite-blocker') {
+        await setCabinetTaskStatus(taskId, 'done', { previousStatus: 'todo', task: findCabinetTask(taskId) || {} });
+        return;
+    }
         openCabinetPostponementExplanation(button);
         return;
     }

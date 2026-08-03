@@ -260,6 +260,7 @@ app.use('/api/backup', require('./routes/backup'));
 app.use('/api/products', require('./routes/products'));
 app.use('/api/tasks', require('./routes/tasks'));
 app.use('/api/my-day', require('./routes/my-day'));
+app.use('/api/my-day/habits', require('./routes/my-day-habits'));
 app.use('/api/task-templates', require('./routes/task-templates'));
 app.use('/api/staff', require('./routes/staff'));
 app.use('/api/certificates', require('./routes/certificates'));

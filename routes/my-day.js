@@ -132,7 +132,7 @@ router.put('/tasks/:taskId/classification', async (req, res) => {
     }
 });
 
-+async function withMyDayTransaction(work) {
+async function withMyDayTransaction(work) {
     const client = await pool.connect();
     try { await client.query('BEGIN'); const result = await work(client); await client.query('COMMIT'); return result; }
     catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }

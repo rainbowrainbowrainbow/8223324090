@@ -72,5 +72,8 @@ test('My Day UI keeps plan and fact separate and restores active timer', () => {
     assert.match(ui, /Факт:/);
     assert.match(ui, /timer-start/);
     assert.match(ui, /timer-stop/);
+    assert.match(ui, /time-entries/);
+    assert.match(ui, /data-my-day-time-edit/);
+    assert.match(ui, /data-my-day-time-delete/);
     assert.match(ui, /aria-live/);
 });

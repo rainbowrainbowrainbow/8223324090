@@ -2434,6 +2434,7 @@ function renderProfileSettingsTab() {
             </section>
             ${renderProfileSecurityPanel()}
             ${window.MyDayClassification?.renderSettings?.() || ''}
+            ${window.MyDayHabits?.renderSettings?.() || ''}
         </div>`;
 }
 
@@ -6300,8 +6301,12 @@ function renderMyDayCommandCenterTab() {
         privateTasks,
         privatePreview
     };
+    if (window.MyDayHabits?.state?.mode === 'habits') {
+        return `<div class="my-day-life-shell">${window.MyDayHabits?.renderModeTabs?.() || ''}${window.MyDayHabits?.renderPanel?.() || ''}</div>`;
+    }
     return `
-        <div class="cabinet-shell cabinet-command-center">
+        <div class="cabinet-shell cabinet-command-center" id="myDayDayPanel" role="tabpanel" aria-labelledby="myDayModeDay">
+            ${window.MyDayHabits?.renderModeTabs?.() || ''}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             ${window.MyDayTimeTracking?.renderActiveTimerStrip?.() || ''}
             ${renderCabinetCompletedHistoryStrip()}
@@ -6903,13 +6908,17 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (['timer-start', 'timer-stop', 'time-entry'].includes(action)) {
-        try { await window.MyDayTimeTracking?.handleAction?.(action, taskId, () => refreshMyCabinetTab({ silent: false, keepExistingOnError: true })); }
+    if (['timer-start', 'timer-stop', 'time-entry', 'time-entries'].includes(action)) {
+        try { await window.MyDayTimeTracking?.handleAction?.(action, taskId, () => refreshMyCabinetTab({ silent: false, keepExistingOnError: true }), button); }
         catch (error) { if (typeof showNotification === 'function') showNotification(error.message || 'Time update failed', 'error'); }
         return;
     }
 
     if (action === 'postponement-explanation') {
+        openCabinetPostponementExplanation(button);
+        return;
+    }
+
     if (action === 'dependencies') {
         await window.MyDayDependencies?.openManager?.(button, findCabinetTask(taskId) || {}, async () => {
             await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
@@ -6925,9 +6934,6 @@ async function handleCabinetTaskActionClick(event) {
 
     if (action === 'complete-despite-blocker') {
         await setCabinetTaskStatus(taskId, 'done', { previousStatus: 'todo', task: findCabinetTask(taskId) || {} });
-        return;
-    }
-        openCabinetPostponementExplanation(button);
         return;
     }
 
@@ -8274,6 +8280,32 @@ function attachProfileListeners() {
             taxonomyLoad.then(rerenderMyDayClassificationSurface).catch(() => {
                 rerenderMyDayClassificationSurface();
             });
+        }
+    }
+
+    const myDayHabits = window.MyDayHabits;
+    if (myDayHabits && (activeTab === 'myday' || activeTab === 'settings')) {
+        const rerenderMyDayHabitsSurface = async () => {
+            if (activeTab === 'myday') {
+                renderCabinetActiveTab();
+                return;
+            }
+            const tabContent = document.getElementById('tabContent');
+            if (tabContent && activeTab === 'settings') {
+                tabContent.innerHTML = renderTabContent();
+                attachProfileListeners();
+            }
+        };
+        myDayHabits.bind(document, rerenderMyDayHabitsSurface);
+        if (activeTab === 'myday' && myDayHabits.state.mode === 'habits' && !myDayHabits.state.loaded && !myDayHabits.state.loading) {
+            const habitsLoad = myDayHabits.load();
+            if (myDayHabits.state.loading) rerenderMyDayHabitsSurface();
+            habitsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
+        }
+        if (activeTab === 'settings' && !myDayHabits.state.settingsLoaded && !myDayHabits.state.settingsLoading) {
+            const settingsLoad = myDayHabits.loadSettings();
+            if (myDayHabits.state.settingsLoading) rerenderMyDayHabitsSurface();
+            settingsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
         }
     }
 

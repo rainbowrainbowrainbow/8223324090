@@ -373,6 +373,9 @@ function createFakePool() {
                     updated_at: '2026-05-14T12:00:00Z'
                 }] };
             }
+            if (/UPDATE my_day_time_entries SET ended_at = NOW\(\)/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
 
             if (/UPDATE tasks/i.test(text) && /SET owner_user_id =/i.test(text) && /RETURNING \*/i.test(text)) {
                 return { rows: [{

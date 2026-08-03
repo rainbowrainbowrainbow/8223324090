@@ -20,6 +20,7 @@ const { subtaskCompletionState } = require('./taskSubtasks');
 const { appendTaskBusinessScopeSql } = require('./taskBusinessScope');
 const { rescheduleTask: canonicalRescheduleTask } = require('./taskReschedule');
 const { postponementAttentionLevel } = require('./taskPostponementPolicy');
+const { stopActiveTimerForUser } = require('./myDayTimeTracking');
 
 const ASSIGNABLE_TASK_ROLES = [
     'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -382,6 +383,7 @@ async function completeTask(taskId, actor, options = {}) {
             throw err;
         }
         const updated = normalizeTaskRow(result.rows[0]);
+        await stopActiveTimerForUser(query, normalizeUserId(actor), { taskId: task.id });
         const historyEvent = await logTaskActionEvent({
             taskId: task.id,
             actionType: TASK_ACTION_TYPES.COMPLETED,

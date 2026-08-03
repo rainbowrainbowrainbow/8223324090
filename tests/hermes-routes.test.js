@@ -347,6 +347,9 @@ function createCabinetFakePool(options = {}) {
             if (/FROM task_dependencies d/i.test(compact)) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/FROM my_day_time_entries/i.test(compact)) {
+                return { rows: [], rowCount: 0 };
+            }
 
 
             if (/FROM tasks t/i.test(compact)) {
@@ -1200,6 +1203,9 @@ function createHermesCreateFakePool(options = {}) {
 
         if (compact.startsWith('UPDATE tasks SET task_kind')) {
             return { rows: [], rowCount: 1 };
+        }
+        if (compact.startsWith('UPDATE my_day_time_entries SET ended_at = NOW()')) {
+            return { rows: [], rowCount: 0 };
         }
 
         throw new Error(`Unexpected create fake query: ${compact}`);

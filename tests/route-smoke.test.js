@@ -2960,6 +2960,9 @@ function createFakePool() {
                 });
                 return { rows: [updated] };
             }
+            if (/UPDATE my_day_time_entries SET ended_at = NOW\(\)/i.test(text)) {
+                return { rows: [], rowCount: 0 };
+            }
             if (/SELECT t\.\* FROM tasks t WHERE t\.id = \$1/i.test(text)) {
                 const task = routeSmokeTask(params[0]);
                 return { rows: task ? [task] : [] };

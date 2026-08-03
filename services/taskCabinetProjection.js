@@ -36,6 +36,7 @@ const {
 } = require('./taskBusinessScope');
 const { loadTaskClassifications } = require('./myDayTaxonomy');
 const { loadTaskDependencyStates } = require('./taskDependencies');
+const { loadTaskTimeTotals } = require('./myDayTimeTracking');
 
 const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;
 const MAX_TASK_CABINET_PLANNING_ROW_LIMIT = 500;
@@ -438,6 +439,7 @@ async function buildTaskCabinetProjection(options = {}) {
         .filter(id => Number.isInteger(id) && id > 0))];
     const myDayClassificationsByTaskId = await loadTaskClassifications(queryable, userId, myDayTaskIds);
     const dependencyStatesByTaskId = await loadTaskDependencyStates(queryable, myDayTaskIds);
+    const taskTimeTotalsByTaskId = await loadTaskTimeTotals(queryable, userId, myDayTaskIds);
     const explanationTaskIds = [...new Set(
         [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows]
             .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
@@ -457,7 +459,7 @@ async function buildTaskCabinetProjection(options = {}) {
             blocked_by_titles: dependencyState?.blockedByTitles || null,
             dependencies: dependencyState?.dependencies || []
         }, { postponementEvent: postponementEventsByTaskId.get(taskId) || null, user });
-        return { ...task, myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] } };
+        return { ...task, actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0, myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] } };
     };
     const rows = activeSourceRows.map(normalizeProjectionRow);
     const planningRows = planningSourceRows.map(normalizeProjectionRow);

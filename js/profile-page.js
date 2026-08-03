@@ -5603,7 +5603,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         dueState,
         relationLabel,
         scheduleStatus
-    }).join('') + (window.MyDayClassification?.renderTaskBadges?.(task.myDay) || '') + (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') : '';
+    }).join('') + (window.MyDayClassification?.renderTaskBadges?.(task.myDay) || '') + (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') + (window.MyDayTimeTracking?.renderTaskControls?.(task) || '') : '';
     const metadataHtml = isMyDayCard ? visibleBadges : `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -6303,6 +6303,7 @@ function renderMyDayCommandCenterTab() {
     return `
         <div class="cabinet-shell cabinet-command-center">
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
+            ${window.MyDayTimeTracking?.renderActiveTimerStrip?.() || ''}
             ${renderCabinetCompletedHistoryStrip()}
             ${renderCabinetLoadNotice()}
             <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: сьогодні і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="today-overdue">
@@ -6899,6 +6900,12 @@ async function handleCabinetTaskActionClick(event) {
     const taskId = normalizeCabinetTaskId(button?.dataset?.taskId);
     if (!taskId) {
         if (typeof showNotification === 'function') showNotification('Не вдалося визначити задачу', 'error');
+        return;
+    }
+
+    if (['timer-start', 'timer-stop', 'time-entry'].includes(action)) {
+        try { await window.MyDayTimeTracking?.handleAction?.(action, taskId, () => refreshMyCabinetTab({ silent: false, keepExistingOnError: true })); }
+        catch (error) { if (typeof showNotification === 'function') showNotification(error.message || 'Time update failed', 'error'); }
         return;
     }
 
@@ -8239,6 +8246,13 @@ function attachProfileListeners() {
     bindCabinetTaskDragDrop();
     bindCabinetSubtaskDragDrop();
     bindCabinetSubtasks();
+
+    const myDayTimeTracking = window.MyDayTimeTracking;
+    if (myDayTimeTracking && activeTab === 'myday' && !myDayTimeTracking.state.loaded && !myDayTimeTracking.state.loading) {
+        myDayTimeTracking.load().then(() => {
+            if (activeTab === 'myday') renderCabinetActiveTab();
+        }).catch(error => console.warn('My Day timer load failed', error));
+    }
 
     const myDayClassification = window.MyDayClassification;
     if (myDayClassification && (activeTab === 'myday' || activeTab === 'settings')) {

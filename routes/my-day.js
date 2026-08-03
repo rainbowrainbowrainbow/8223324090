@@ -4,6 +4,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
+const { updateTaskStatus } = require('../services/taskExecution');
 const {
     appendTaskBusinessScopeSql,
     ensureWritableTaskBusinessScope
@@ -15,6 +16,7 @@ const {
     replaceTaskClassification,
     updateTaxonomy
 } = require('../services/myDayTaxonomy');
+const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
 
 router.use(authenticateToken);
 router.param('taskId', (req, res, next, value) => {
@@ -130,4 +132,65 @@ router.put('/tasks/:taskId/classification', async (req, res) => {
     }
 });
 
++async function withMyDayTransaction(work) {
+    const client = await pool.connect();
+    try { await client.query('BEGIN'); const result = await work(client); await client.query('COMMIT'); return result; }
+    catch (error) { try { await client.query('ROLLBACK'); } catch {} throw error; }
+    finally { client.release(); }
+}
+
+router.get('/timer', async (req, res) => {
+    try { res.json({ success: true, timer: await activeTimer(pool, currentUserId(req)) }); }
+    catch (error) { sendMyDayError(res, error); }
+});
+
+router.post('/timer/start', async (req, res) => {
+    const businessScope = ensureWritableTaskBusinessScope(req, res);
+    if (!businessScope) return;
+    try {
+        const timer = await withMyDayTransaction(async client => {
+            const userId = currentUserId(req);
+            const task = await loadMyCabinetTask(client, req.user, businessScope, req.body?.taskId);
+            if (!task) throw myDayError('Р вЂ”Р В°Р Т‘Р В°РЎвЂЎРЎС“ Р Р…Р Вµ Р В·Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р С•.', 404, 'MY_DAY_TASK_NOT_FOUND');
+            if (!canMutateTask(req.user, task)) throw myDayError('Р СњР ВµР СР В°РЎвЂќ Р С—РЎР‚Р В°Р Р† Р В·Р В°Р С—РЎС“РЎРѓР С”Р В°РЎвЂљР С‘ РЎвЂљР В°Р в„–Р СР ВµРЎР‚ Р Т‘Р В»РЎРЏ РЎвЂ РЎвЂ“РЎвЂќРЎвЂ” Р В·Р В°Р Т‘Р В°РЎвЂЎРЎвЂ“.', 403, 'MY_DAY_TIMER_FORBIDDEN');
+            if (['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(String(task.status || '').toLowerCase())) throw myDayError('Р СњР Вµ Р СР С•Р В¶Р Р…Р В° Р В·Р В°Р С—РЎС“РЎРѓР С”Р В°РЎвЂљР С‘ РЎвЂљР В°Р в„–Р СР ВµРЎР‚ Р Т‘Р В»РЎРЏ Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р ВµР Р…Р С•РЎвЂ” Р В·Р В°Р Т‘Р В°РЎвЂЎРЎвЂ“.', 409, 'MY_DAY_TIMER_TASK_CLOSED');
+            if (String(task.status || 'todo').toLowerCase() === 'todo') await updateTaskStatus(task.id, 'in_progress', req.user, { pool: client, businessScope, sourceSurface: 'profile_my_cabinet', route: 'my_day_timer_start' });
+            return startTimer(client, { userId, taskId: task.id });
+        });
+        res.json({ success: true, timer: timer.entry, unchanged: timer.unchanged, switchedFromTaskId: timer.switchedFromTaskId });
+    } catch (error) { sendMyDayError(res, error); }
+});
+
+router.post('/timer/stop', async (req, res) => {
+    try { res.json({ success: true, timer: await withMyDayTransaction(client => stopActiveTimerForUser(client, currentUserId(req))) }); }
+    catch (error) { sendMyDayError(res, error); }
+});
+
+router.get('/time-entries', async (req, res) => {
+    try { res.json({ success: true, entries: await listTimeEntries(pool, currentUserId(req), { from: req.query.from, to: req.query.to }) }); }
+    catch (error) { sendMyDayError(res, error); }
+});
+
+router.post('/time-entries', async (req, res) => {
+    const businessScope = ensureWritableTaskBusinessScope(req, res);
+    if (!businessScope) return;
+    try {
+        const entry = await withMyDayTransaction(async client => {
+            const task = await loadMyCabinetTask(client, req.user, businessScope, req.body?.taskId);
+            if (!task) throw myDayError('Р вЂ”Р В°Р Т‘Р В°РЎвЂЎРЎС“ Р Р…Р Вµ Р В·Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р С•.', 404, 'MY_DAY_TASK_NOT_FOUND');
+            return createManualEntry(client, { ...req.body, userId: currentUserId(req), taskId: task.id });
+        });
+        res.status(201).json({ success: true, entry });
+    } catch (error) { sendMyDayError(res, error); }
+});
+
+router.patch('/time-entries/:id', async (req, res) => {
+    try { res.json({ success: true, entry: await withMyDayTransaction(client => updateManualEntry(client, { ...req.body, userId: currentUserId(req), entryId: req.params.id })) }); }
+    catch (error) { sendMyDayError(res, error); }
+});
+
+router.delete('/time-entries/:id', async (req, res) => {
+    try { await withMyDayTransaction(client => deleteTimeEntry(client, currentUserId(req), req.params.id)); res.status(204).end(); }
+    catch (error) { sendMyDayError(res, error); }
+});
 module.exports = router;

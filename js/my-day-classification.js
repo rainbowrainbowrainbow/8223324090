@@ -9,6 +9,13 @@
         error: ''
     };
 
+    const TAXONOMY_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316'];
+
+    const TAXONOMY_ICONS = {
+        directions: ['•', '💼', '🏠', '🎯', '⚙️', '🎉', '🧠', '💪'],
+        impacts: ['•', '⚡', '❤️', '🛡️', '📈', '🌿', '🏃', '😊']
+    };
+
     function headers() {
         return typeof window.getAuthHeaders === 'function'
             ? window.getAuthHeaders()
@@ -169,32 +176,111 @@
         });
     }
 
+    function currentSetupEditor() {
+        return window.MyDayHabits?.state?.setupEditor || '';
+    }
+
+    function setSetupEditor(key = '') {
+        if (typeof window.MyDayHabits?.setSetupEditor === 'function') {
+            window.MyDayHabits.setSetupEditor(key);
+        }
+    }
+
+    function catalogMeta(kind) {
+        return kind === 'directions'
+            ? { title: 'Напрями', singular: 'напрям', add: 'Додати напрям', description: 'Один персональний напрям показує, до якого проєкту або сфери належить задача.', defaultColor: '#6366f1' }
+            : { title: 'Впливи', singular: 'вплив', add: 'Додати вплив', description: 'Впливи описують результат задачі: здоровʼя, відпочинок, гроші, якість роботи.', defaultColor: '#0ea5e9' };
+    }
+
+    function renderColorChoices(name, selectedColor) {
+        const selected = selectedColor || TAXONOMY_COLORS[0];
+        return `<div class="my-day-choice-grid my-day-color-grid" role="radiogroup" aria-label="Колір">${TAXONOMY_COLORS.map(color => `<label class="my-day-color-choice ${color.toLowerCase() === selected.toLowerCase() ? 'is-selected' : ''}">
+            <input type="radio" name="${name}" value="${escape(color)}" ${color.toLowerCase() === selected.toLowerCase() ? 'checked' : ''}>
+            <span class="my-day-color-swatch" style="--my-day-swatch:${escape(color)}" aria-hidden="true"></span>
+            <span class="sr-only">${escape(color)}</span>
+        </label>`).join('')}</div>`;
+    }
+
+    function renderIconChoices(kind, selectedIcon) {
+        const icons = TAXONOMY_ICONS[kind] || TAXONOMY_ICONS.directions;
+        const selected = selectedIcon || icons[0];
+        return `<div class="my-day-choice-grid my-day-icon-grid" role="radiogroup" aria-label="Іконка">${icons.map(icon => `<label class="my-day-icon-choice ${icon === selected ? 'is-selected' : ''}">
+            <input type="radio" name="icon" value="${escape(icon)}" ${icon === selected ? 'checked' : ''}>
+            <span aria-hidden="true">${escape(icon)}</span>
+            <span class="sr-only">Іконка ${escape(icon)}</span>
+        </label>`).join('')}</div>`;
+    }
+
+    function renderCatalogEditor(kind, record = null) {
+        const meta = catalogMeta(kind);
+        const color = record?.color || meta.defaultColor;
+        const icon = record?.icon || '•';
+        const attr = record
+            ? `data-my-day-taxonomy-edit-row="${kind}" data-id="${escape(record.id)}"`
+            : `data-my-day-taxonomy-create="${kind}"`;
+        return `<form class="my-day-catalog-editor" ${attr} aria-label="${record ? 'Редагувати' : 'Створити'} ${meta.singular}">
+            <div class="my-day-editor-title">
+                <strong>${record ? 'Редагувати' : meta.add}</strong>
+                <span>${record ? 'Зміни збережуться тільки для цього персонального каталогу.' : 'Додай коротку назву, колір і зрозумілу іконку.'}</span>
+            </div>
+            <label class="my-day-setup-field my-day-setup-field--full">Назва
+                <input name="name" maxlength="100" required value="${escape(record?.name || '')}" autocomplete="off">
+            </label>
+            <fieldset class="my-day-choice-field"><legend>Колір</legend>${renderColorChoices('color', color)}</fieldset>
+            <fieldset class="my-day-choice-field"><legend>Іконка</legend>${renderIconChoices(kind, icon)}</fieldset>
+            <div class="my-day-editor-actions">
+                <button type="button" class="my-day-setup-secondary" data-my-day-taxonomy-cancel>Скасувати</button>
+                <button type="submit" class="my-day-setup-primary">${record ? 'Зберегти' : meta.add}</button>
+            </div>
+        </form>`;
+    }
+
+    function taxonomyBody(form) {
+        const data = new FormData(form);
+        return {
+            name: String(data.get('name') || '').trim(),
+            color: data.get('color') || '#64748b',
+            icon: data.get('icon') || '•'
+        };
+    }
+
+    function renderCatalogRow(kind, record) {
+        const isActive = record.isActive !== false;
+        const editorKey = `taxonomy:edit:${kind}:${record.id}`;
+        const isEditing = currentSetupEditor() === editorKey;
+        return `<li class="my-day-taxonomy-row ${isActive ? '' : 'is-archived'}" data-my-day-taxonomy-row="${kind}:${escape(record.id)}">
+            <div class="my-day-taxonomy-row-card">
+                <span class="my-day-taxonomy-swatch" style="background:${escape(record.color || '#64748b')}">${escape(record.icon || '•')}</span>
+                <div class="my-day-taxonomy-summary">
+                    <strong class="my-day-taxonomy-name">${escape(record.name)}</strong>
+                    <span class="my-day-taxonomy-state">${isActive ? 'Активний' : 'Архів'}</span>
+                </div>
+                <div class="my-day-taxonomy-actions">
+                    <button type="button" class="my-day-setup-ghost" data-my-day-taxonomy-edit="${kind}" data-id="${escape(record.id)}">Редагувати</button>
+                    <button type="button" class="my-day-setup-secondary" data-my-day-taxonomy-toggle="${kind}" data-id="${escape(record.id)}" data-active="${isActive ? 'true' : 'false'}">${isActive ? 'Архівувати' : 'Відновити'}</button>
+                </div>
+            </div>
+            ${isEditing ? renderCatalogEditor(kind, record) : ''}
+        </li>`;
+    }
+
     function renderCatalog(kind, records) {
-        const singular = kind === 'directions' ? 'напрям' : 'вплив';
-        const title = kind === 'directions' ? 'Напрями' : 'Впливи';
+        const meta = catalogMeta(kind);
         const active = records.filter(record => record.isActive !== false);
         const archived = records.filter(record => record.isActive === false);
-        const row = record => `<li class="my-day-taxonomy-row ${record.isActive ? '' : 'is-archived'}">
-            <form data-my-day-taxonomy-edit-row="${kind}" data-id="${record.id}">
-                <span class="my-day-taxonomy-swatch" style="background:${escape(record.color)}">${escape(record.icon)}</span>
-                <label class="my-day-taxonomy-inline-field">Назва <input name="name" maxlength="100" required value="${escape(record.name)}"></label>
-                <label class="my-day-taxonomy-inline-field">Колір <input name="color" type="color" value="${escape(record.color)}"></label>
-                <label class="my-day-taxonomy-inline-field">Іконка <input name="icon" maxlength="32" value="${escape(record.icon)}"></label>
-                <button type="submit" class="my-day-taxonomy-secondary">Зберегти</button>
-                <button type="button" data-my-day-taxonomy-toggle="${kind}" data-id="${record.id}" data-active="${record.isActive ? 'true' : 'false'}">${record.isActive ? 'Архівувати' : 'Відновити'}</button>
-            </form>
-        </li>`;
-        return `<section class="my-day-taxonomy-card" data-my-day-taxonomy-card="${kind}">
-            <h3>${title}</h3>
-            <form data-my-day-taxonomy-create="${kind}">
-                <label>Назва <input name="name" maxlength="100" required></label>
-                <label>Колір <input name="color" type="color" value="${kind === 'directions' ? '#6366f1' : '#0ea5e9'}"></label>
-                <label>Іконка <input name="icon" maxlength="32" value="•"></label>
-                <button type="submit" class="my-day-taxonomy-primary">Додати ${singular}</button>
-            </form>
+        const isCreating = currentSetupEditor() === `taxonomy:create:${kind}`;
+        return `<section class="my-day-taxonomy-card my-day-setup-card" data-my-day-taxonomy-card="${kind}">
+            <div class="my-day-section-head">
+                <div>
+                    <div class="my-day-section-titleline"><h3>${meta.title}</h3><span class="my-day-section-count">${active.length} активн.</span></div>
+                    <p class="my-day-section-description">${meta.description}</p>
+                </div>
+                <button type="button" class="my-day-setup-primary" data-my-day-taxonomy-open="${kind}" ${isCreating ? 'disabled' : ''}>${meta.add}</button>
+            </div>
+            ${isCreating ? renderCatalogEditor(kind) : ''}
             <p class="my-day-taxonomy-notice" data-my-day-taxonomy-status="${kind}" aria-live="polite"></p>
-            <ul class="my-day-taxonomy-list">${active.length ? active.map(row).join('') : '<li class="my-day-taxonomy-empty">Поки немає активних елементів.</li>'}</ul>
-            ${archived.length ? `<details><summary>Архів (${archived.length})</summary><ul class="my-day-taxonomy-list">${archived.map(row).join('')}</ul></details>` : ''}
+            <ul class="my-day-taxonomy-list">${active.length ? active.map(record => renderCatalogRow(kind, record)).join('') : '<li class="my-day-taxonomy-empty">Поки немає активних елементів.</li>'}</ul>
+            ${archived.length ? `<details class="my-day-setup-archive"><summary>Архів (${archived.length})</summary><ul class="my-day-taxonomy-list">${archived.map(record => renderCatalogRow(kind, record)).join('')}</ul></details>` : ''}
         </section>`;
     }
 
@@ -207,7 +293,6 @@
             </div>
         </section>`;
     }
-
     function bind(root, onChanged) {
         root?.querySelectorAll('[data-my-day-impacts]').forEach(select => {
             if (select.dataset.myDayImpactBound === 'true') return;
@@ -222,6 +307,33 @@
             });
         });
 
+        root?.querySelectorAll('[data-my-day-taxonomy-open]').forEach(button => {
+            if (button.dataset.myDayBound === 'true') return;
+            button.dataset.myDayBound = 'true';
+            button.addEventListener('click', async () => {
+                setSetupEditor('taxonomy:create:' + button.dataset.myDayTaxonomyOpen);
+                await onChanged?.();
+            });
+        });
+
+        root?.querySelectorAll('[data-my-day-taxonomy-edit]').forEach(button => {
+            if (button.dataset.myDayBound === 'true') return;
+            button.dataset.myDayBound = 'true';
+            button.addEventListener('click', async () => {
+                setSetupEditor('taxonomy:edit:' + button.dataset.myDayTaxonomyEdit + ':' + button.dataset.id);
+                await onChanged?.();
+            });
+        });
+
+        root?.querySelectorAll('[data-my-day-taxonomy-cancel]').forEach(button => {
+            if (button.dataset.myDayBound === 'true') return;
+            button.dataset.myDayBound = 'true';
+            button.addEventListener('click', async () => {
+                setSetupEditor('');
+                await onChanged?.();
+            });
+        });
+
         root?.querySelectorAll('[data-my-day-taxonomy-create]').forEach(form => {
             if (form.dataset.myDayBound === 'true') return;
             form.dataset.myDayBound = 'true';
@@ -229,11 +341,12 @@
                 event.preventDefault();
                 const kind = form.dataset.myDayTaxonomyCreate;
                 const status = root.querySelector('[data-my-day-taxonomy-status="' + kind + '"]');
-                const body = Object.fromEntries(new FormData(form).entries());
+                const body = taxonomyBody(form);
                 const button = form.querySelector('button[type="submit"]');
                 button.disabled = true;
                 try {
                     await request('/' + kind, { method: 'POST', body: JSON.stringify(body) });
+                    setSetupEditor('');
                     await load(true);
                     await onChanged?.();
                 } catch (error) {
@@ -270,7 +383,7 @@
             form.addEventListener('submit', async event => {
                 event.preventDefault();
                 const kind = form.dataset.myDayTaxonomyEditRow;
-                const body = Object.fromEntries(new FormData(form).entries());
+                const body = taxonomyBody(form);
                 const button = form.querySelector('button[type="submit"]');
                 button.disabled = true;
                 try {
@@ -278,6 +391,7 @@
                         method: 'PATCH',
                         body: JSON.stringify(body)
                     });
+                    setSetupEditor('');
                     await load(true);
                     await onChanged?.();
                 } catch (error) {
@@ -287,7 +401,6 @@
             });
         });
     }
-
     window.MyDayClassification = {
         bind,
         load,

@@ -790,3 +790,478 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-no
     border-color: rgba(248, 113, 113, 0.38);
     color: var(--my-day-life-danger);
 }
+
+/* My Day setup redesign */
+.my-day-setup-surface,
+.my-day-setup-surface * { box-sizing: border-box; }
+
+.my-day-setup-surface .profile-work-panel {
+    overflow: hidden;
+}
+
+.my-day-section-head {
+    align-items: flex-start;
+    display: flex;
+    gap: 16px;
+    justify-content: space-between;
+    margin-bottom: 14px;
+}
+
+.my-day-section-titleline {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+}
+
+.my-day-section-titleline h3,
+.my-day-habit-summary-title h3 {
+    margin: 0;
+}
+
+.my-day-section-count,
+.my-day-habit-summary-title span,
+.my-day-taxonomy-state {
+    align-items: center;
+    background: rgba(100, 116, 139, 0.12);
+    border-radius: 999px;
+    color: var(--text-muted, #64748b);
+    display: inline-flex;
+    font-size: 0.76rem;
+    font-weight: 800;
+    min-height: 24px;
+    padding: 0 9px;
+}
+
+.my-day-section-description,
+.my-day-field-help,
+.my-day-habit-summary-card p,
+.my-day-editor-title span {
+    color: var(--text-muted, #64748b);
+    margin: 4px 0 0;
+}
+
+.my-day-setup-primary,
+.my-day-setup-secondary,
+.my-day-setup-ghost,
+.my-day-taxonomy-primary,
+.my-day-taxonomy-secondary {
+    align-items: center;
+    border-radius: 12px;
+    cursor: pointer;
+    display: inline-flex;
+    font-weight: 800;
+    gap: 8px;
+    justify-content: center;
+    min-height: 40px;
+    padding: 0 14px;
+    text-decoration: none;
+    transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease;
+    white-space: nowrap;
+}
+
+.my-day-setup-primary,
+.my-day-taxonomy-primary {
+    background: linear-gradient(135deg, #14b8a6, #2563eb);
+    border: 1px solid rgba(37, 99, 235, 0.30);
+    color: #fff;
+}
+
+.my-day-setup-secondary,
+.my-day-taxonomy-secondary,
+.my-day-setup-ghost {
+    background: rgba(248, 250, 252, 0.86);
+    border: 1px solid rgba(148, 163, 184, 0.35);
+    color: var(--text-primary, #0f172a);
+}
+
+.my-day-setup-ghost {
+    background: transparent;
+    color: var(--text-secondary, #475569);
+}
+
+.my-day-setup-primary:hover:not(:disabled),
+.my-day-taxonomy-primary:hover:not(:disabled),
+.my-day-setup-secondary:hover:not(:disabled),
+.my-day-taxonomy-secondary:hover:not(:disabled),
+.my-day-setup-ghost:hover:not(:disabled) {
+    transform: translateY(-1px);
+}
+
+.my-day-setup-primary:disabled,
+.my-day-setup-secondary:disabled,
+.my-day-setup-ghost:disabled,
+.my-day-taxonomy-primary:disabled,
+.my-day-taxonomy-secondary:disabled {
+    cursor: not-allowed;
+    opacity: 0.58;
+    transform: none;
+}
+
+.my-day-setup-primary:focus-visible,
+.my-day-setup-secondary:focus-visible,
+.my-day-setup-ghost:focus-visible,
+.my-day-choice-chip:focus-within,
+.my-day-color-choice:focus-within,
+.my-day-icon-choice:focus-within,
+.my-day-setup-field input:focus-visible,
+.my-day-setup-field select:focus-visible {
+    outline: 2px solid rgba(37, 99, 235, 0.55);
+    outline-offset: 2px;
+}
+
+.my-day-taxonomy-grid {
+    align-items: start;
+    display: grid;
+    gap: 16px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.my-day-taxonomy-card.my-day-setup-card,
+.my-day-habit-editor,
+.my-day-habit-summary-card {
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.92));
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 18px;
+    box-shadow: 0 14px 34px rgba(15, 23, 42, 0.06);
+}
+
+.my-day-taxonomy-card.my-day-setup-card {
+    padding: 18px;
+}
+
+.my-day-taxonomy-card.my-day-setup-card form,
+.my-day-taxonomy-row form {
+    align-items: initial;
+    display: block;
+    grid-template-columns: none;
+}
+
+.my-day-catalog-editor,
+.my-day-habit-editor {
+    display: grid !important;
+    gap: 14px;
+    margin: 14px 0;
+    padding: 16px;
+}
+
+.my-day-catalog-editor {
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 16px;
+    background: rgba(20, 184, 166, 0.06);
+}
+
+.my-day-editor-title {
+    display: grid;
+    gap: 2px;
+}
+
+.my-day-editor-title strong {
+    color: var(--text-primary, #0f172a);
+    font-size: 1rem;
+}
+
+.my-day-setup-field,
+.my-day-choice-field {
+    border: 0;
+    color: var(--text-secondary, #475569);
+    display: grid;
+    font-size: 0.84rem;
+    font-weight: 800;
+    gap: 8px;
+    margin: 0;
+    min-width: 0;
+    padding: 0;
+}
+
+.my-day-choice-field legend {
+    color: var(--text-secondary, #475569);
+    font-size: 0.84rem;
+    font-weight: 800;
+    margin-bottom: 8px;
+    padding: 0;
+}
+
+.my-day-setup-field input,
+.my-day-setup-field select {
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(148, 163, 184, 0.42);
+    border-radius: 12px;
+    color: var(--text-primary, #0f172a);
+    min-height: 42px;
+    padding: 0 12px;
+    width: 100%;
+}
+
+.my-day-setup-field--full {
+    grid-column: 1 / -1;
+}
+
+.my-day-choice-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.my-day-color-choice,
+.my-day-icon-choice,
+.my-day-choice-chip {
+    align-items: center;
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 999px;
+    cursor: pointer;
+    display: inline-flex;
+    font-weight: 800;
+    justify-content: center;
+    min-height: 40px;
+    min-width: 40px;
+    position: relative;
+    user-select: none;
+}
+
+.my-day-color-choice input,
+.my-day-icon-choice input,
+.my-day-choice-chip input {
+    height: 1px;
+    opacity: 0;
+    pointer-events: none;
+    position: absolute;
+    width: 1px;
+}
+
+.my-day-color-swatch {
+    background: var(--my-day-swatch, #64748b);
+    border-radius: 999px;
+    box-shadow: inset 0 0 0 2px rgba(255, 255, 255, 0.55);
+    display: inline-block;
+    height: 28px;
+    width: 28px;
+}
+
+.my-day-icon-choice,
+.my-day-choice-chip {
+    background: rgba(255, 255, 255, 0.82);
+    color: var(--text-primary, #0f172a);
+    padding: 0 12px;
+}
+
+.my-day-color-choice.is-selected,
+.my-day-icon-choice.is-selected,
+.my-day-choice-chip.is-selected {
+    border-color: rgba(20, 184, 166, 0.82);
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+}
+
+.my-day-choice-chip.is-disabled {
+    cursor: not-allowed;
+    opacity: 0.52;
+}
+
+.my-day-editor-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    justify-content: flex-end;
+}
+
+.my-day-taxonomy-list {
+    display: grid;
+    gap: 10px;
+    list-style: none;
+    margin: 14px 0 0;
+    padding: 0;
+}
+
+.my-day-taxonomy-row-card,
+.my-day-habit-summary-card {
+    align-items: center;
+    display: grid;
+    gap: 12px;
+    grid-template-columns: auto minmax(0, 1fr) auto;
+    min-width: 0;
+    padding: 12px;
+}
+
+.my-day-taxonomy-row-card {
+    background: rgba(248, 250, 252, 0.76);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 14px;
+}
+
+.my-day-taxonomy-swatch {
+    border-radius: 14px;
+    font-weight: 900;
+    height: 38px;
+    width: 38px;
+}
+
+.my-day-taxonomy-summary,
+.my-day-habit-summary-title {
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+}
+
+.my-day-taxonomy-actions,
+.my-day-habit-settings-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.my-day-setup-archive {
+    margin-top: 12px;
+}
+
+.my-day-setup-archive > summary {
+    color: var(--text-secondary, #475569);
+    cursor: pointer;
+    font-weight: 800;
+    min-height: 40px;
+    padding: 8px 0;
+}
+
+.my-day-habit-editor-grid {
+    display: grid;
+    gap: 14px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.my-day-habit-editor [hidden] {
+    display: none !important;
+}
+
+.my-day-habit-settings-list {
+    display: grid;
+    gap: 12px;
+}
+
+.my-day-habit-settings-row {
+    background: transparent;
+    border: 0;
+    padding: 0;
+}
+
+.my-day-habit-summary-card {
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.my-day-habit-summary-title {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.my-day-impact-chip {
+    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 35%, rgba(148, 163, 184, 0.30));
+}
+
+@media (max-width: 760px) {
+    .my-day-section-head,
+    .my-day-setup-header,
+    .my-day-habit-summary-card {
+        align-items: stretch;
+        grid-template-columns: 1fr;
+    }
+
+    .my-day-section-head {
+        display: grid;
+    }
+
+    .my-day-taxonomy-grid,
+    .my-day-habit-editor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .my-day-taxonomy-row-card {
+        grid-template-columns: auto minmax(0, 1fr);
+    }
+
+    .my-day-taxonomy-actions,
+    .my-day-habit-settings-actions,
+    .my-day-editor-actions,
+    .my-day-setup-primary,
+    .my-day-setup-secondary,
+    .my-day-setup-ghost {
+        width: 100%;
+    }
+
+    .my-day-taxonomy-actions,
+    .my-day-habit-settings-actions,
+    .my-day-editor-actions {
+        justify-content: stretch;
+    }
+
+    .my-day-setup-surface {
+        overflow-x: hidden;
+    }
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-card.my-day-setup-card,
+body.dark-mode .profile-page.profile-work-mode .my-day-habit-editor,
+body.dark-mode .profile-page.profile-work-mode .my-day-habit-summary-card,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-card.my-day-setup-card,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-editor,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-summary-card {
+    background: linear-gradient(135deg, rgba(30, 41, 59, 0.92), rgba(15, 23, 42, 0.82));
+    border-color: rgba(148, 163, 184, 0.30);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 16px 36px rgba(0, 0, 0, 0.24);
+    color: var(--my-day-life-secondary, #cbd5e1);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-catalog-editor,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-catalog-editor {
+    background: rgba(20, 184, 166, 0.09);
+    border-color: rgba(45, 212, 191, 0.28);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-row-card,
+body.dark-mode .profile-page.profile-work-mode .my-day-icon-choice,
+body.dark-mode .profile-page.profile-work-mode .my-day-choice-chip,
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-field input,
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-field select,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-row-card,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-icon-choice,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-choice-chip,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-field input,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-field select {
+    background: rgba(15, 23, 42, 0.78);
+    border-color: rgba(148, 163, 184, 0.34);
+    color: var(--my-day-life-text, #f8fafc);
+    color-scheme: dark;
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-section-description,
+body.dark-mode .profile-page.profile-work-mode .my-day-field-help,
+body.dark-mode .profile-page.profile-work-mode .my-day-habit-summary-card p,
+body.dark-mode .profile-page.profile-work-mode .my-day-editor-title span,
+body.dark-mode .profile-page.profile-work-mode .my-day-choice-field legend,
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-field,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-section-description,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-field-help,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-summary-card p,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-editor-title span,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-choice-field legend,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-field {
+    color: var(--my-day-life-secondary, #cbd5e1);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-editor-title strong,
+body.dark-mode .profile-page.profile-work-mode .my-day-habit-summary-title h3,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-editor-title strong,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-summary-title h3 {
+    color: var(--my-day-life-text, #f8fafc);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-section-count,
+body.dark-mode .profile-page.profile-work-mode .my-day-habit-summary-title span,
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-state,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-section-count,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-summary-title span,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-state {
+    background: rgba(148, 163, 184, 0.16);
+    color: var(--my-day-life-secondary, #cbd5e1);
+}

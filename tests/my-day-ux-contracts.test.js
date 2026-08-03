@@ -60,17 +60,28 @@ test('My Day setup surface is internal and not a fourth tab', () => {
     assert.doesNotMatch(habitsUi, /data-my-day-life-mode="setup"/);
 });
 
-test('My Day setup catalog edit stays in-page without prompt modal', () => {
+test('My Day setup catalog editors are clean one-at-a-time inline surfaces', () => {
     const taxonomyUi = read('js/my-day-classification.js');
+    const habitsUi = read('js/my-day-habits.js');
     const css = read('css/pages-profile.css');
+    assert.match(habitsUi, /setupEditor: ''/);
+    assert.match(habitsUi, /function setSetupEditor\(editor = '', options = \{\}\)/);
+    assert.match(taxonomyUi, /data-my-day-taxonomy-open/);
     assert.match(taxonomyUi, /data-my-day-taxonomy-edit-row/);
-    assert.match(taxonomyUi, /my-day-taxonomy-inline-field/);
-    assert.match(taxonomyUi, /button type="submit" class="my-day-taxonomy-secondary">Зберегти/);
-    assert.doesNotMatch(taxonomyUi, /promptModal|data-my-day-taxonomy-edit="/);
-    assert.match(css, /\.my-day-taxonomy-row form/);
-    assert.match(css, /\.my-day-taxonomy-secondary/);
+    assert.match(taxonomyUi, /my-day-catalog-editor/);
+    assert.match(taxonomyUi, /my-day-color-choice/);
+    assert.match(taxonomyUi, /my-day-icon-choice/);
+    assert.doesNotMatch(taxonomyUi, /promptModal/);
+    const setupSliceStart = taxonomyUi.indexOf('function renderCatalog');
+    const setupSliceEnd = taxonomyUi.indexOf('function bind', setupSliceStart);
+    const setupSlice = taxonomyUi.slice(setupSliceStart, setupSliceEnd);
+    assert.doesNotMatch(setupSlice, /TaskUI\.openActionMenu/);
+    assert.doesNotMatch(setupSlice, /type="color"/);
+    assert.doesNotMatch(setupSlice, /my-day-taxonomy-inline-field/);
+    assert.match(css, /\.my-day-catalog-editor/);
+    assert.match(css, /\.my-day-taxonomy-row-card/);
+    assert.match(css, /\.my-day-setup-archive/);
 });
-
 test('Profile Settings no longer renders My Day management forms', () => {
     const profile = read('js/profile-page.js');
     const start = profile.indexOf('function renderProfileSettingsTab()');
@@ -103,6 +114,28 @@ test('setup Back restores the previous My Day mode without changing Day or Contr
     assert.match(profile, /MyDayContribution\?\.renderPanel/);
 });
 
+test('My Day habit setup uses a compact editor with conditional fields and checkbox impact chips', () => {
+    const habitsUi = read('js/my-day-habits.js');
+    const css = read('css/pages-profile.css');
+    const setupStart = habitsUi.indexOf('function impactCheckboxes');
+    const setupEnd = habitsUi.indexOf('async function mutate', setupStart);
+    const setupSlice = habitsUi.slice(setupStart, setupEnd);
+    assert.match(setupSlice, /my-day-habit-editor/);
+    assert.match(setupSlice, /data-my-day-habit-open-editor="habit:create"/);
+    assert.match(setupSlice, /input type="checkbox" name="impactIds"/);
+    assert.match(setupSlice, /data-my-day-habit-impact-chip/);
+    assert.doesNotMatch(setupSlice, /<select name="impactIds"/);
+    assert.doesNotMatch(setupSlice, /multiple/);
+    assert.match(setupSlice, /data-my-day-habit-conditional="target"/);
+    assert.match(setupSlice, /data-my-day-habit-conditional="weekdays"/);
+    assert.match(setupSlice, /data-my-day-habit-conditional="times"/);
+    assert.match(habitsUi, /refreshConditionals/);
+    assert.match(habitsUi, /refreshImpacts/);
+    assert.match(habitsUi, /selected\.length >= 3/);
+    assert.match(css, /\.my-day-habit-editor-grid/);
+    assert.match(css, /\.my-day-impact-chip/);
+    assert.match(css, /\.my-day-habit-editor \[hidden\]/);
+});
 test('empty Contribution keeps selected dates and renders zero total cards', () => {
     const contributionUi = read('js/my-day-contribution.js');
     assert.match(contributionUi, /function emptyContributionData/);
@@ -132,6 +165,22 @@ test('My Day life system has scoped dark theme surfaces and controls', () => {
     assert.match(css, /\.profile-empty-professional\.is-error[\s\S]*color:\s*var\(--my-day-life-danger\)/);
 });
 
+test('My Day setup redesign keeps mobile, dark mode, and archive UI contracts', () => {
+    const taxonomyUi = read('js/my-day-classification.js');
+    const habitsUi = read('js/my-day-habits.js');
+    const css = read('css/pages-profile.css');
+    assert.match(taxonomyUi, /data-my-day-taxonomy-toggle/);
+    assert.match(taxonomyUi, /Архів \(/);
+    assert.match(habitsUi, /data-my-day-habit-archive/);
+    assert.match(habitsUi, /Архів звичок/);
+    assert.match(css, /\/\* My Day setup redesign \*\//);
+    assert.match(css, /@media \(max-width: 760px\)/);
+    assert.match(css, /min-height:\s*40px/);
+    assert.match(css, /overflow-x:\s*hidden/);
+    assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-taxonomy-card\.my-day-setup-card/);
+    assert.match(css, /html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-habit-editor/);
+    assert.match(css, /\.my-day-setup-primary:focus-visible/);
+});
 test('read-only My Day smoke covers modes, text integrity, dark contrast, and overflow', () => {
     const smoke = read('scripts/live-my-day-smoke.js');
     const expectedLabels = "assert.deepEqual(labels, ['" + DAY_LABEL + "', '" + HABITS_LABEL + "', '" + CONTRIBUTION_LABEL + "']";

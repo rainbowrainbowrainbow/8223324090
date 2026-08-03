@@ -6,6 +6,7 @@
         surface: 'main',
         returnMode: 'day',
         pendingFocus: '',
+        setupEditor: '',
         date: kyivDate(),
         habits: [],
         settingsHabits: [],
@@ -57,6 +58,25 @@
 
     function activeImpacts() {
         return (window.MyDayClassification?.state?.impacts || []).filter(item => item.isActive !== false);
+    }
+
+    const WEEKDAY_LABELS = [
+        { value: 1, label: 'Пн' },
+        { value: 2, label: 'Вт' },
+        { value: 3, label: 'Ср' },
+        { value: 4, label: 'Чт' },
+        { value: 5, label: 'Пт' },
+        { value: 6, label: 'Сб' },
+        { value: 7, label: 'Нд' }
+    ];
+
+    function setSetupEditor(editor = '', options = {}) {
+        state.setupEditor = editor || '';
+        if (options.focusHabitName) state.pendingFocus = 'habit-create';
+    }
+
+    function isSetupEditor(key) {
+        return state.setupEditor === key;
     }
 
     function taxonomyOptions(records, selected, emptyLabel) {
@@ -172,52 +192,135 @@
     }
     function weekdayInputs(selected = []) {
         const selectedSet = new Set((selected || []).map(Number));
-        return [1, 2, 3, 4, 5, 6, 7].map(day => `<label><input type="checkbox" name="selectedWeekdays" value="${day}" ${selectedSet.has(day) ? 'checked' : ''}>${day}</label>`).join('');
+        return WEEKDAY_LABELS.map(day => `<label class="my-day-choice-chip my-day-weekday-chip ${selectedSet.has(day.value) ? 'is-selected' : ''}">
+            <input type="checkbox" name="selectedWeekdays" value="${day.value}" ${selectedSet.has(day.value) ? 'checked' : ''}>
+            <span>${day.label}</span>
+        </label>`).join('');
     }
 
-    function habitFormFields(habit = {}) {
+    function radioChips(name, items, selected) {
+        return `<div class="my-day-choice-grid my-day-radio-chip-grid" role="radiogroup">${items.map(item => `<label class="my-day-choice-chip ${item.value === selected ? 'is-selected' : ''}">
+            <input type="radio" name="${escape(name)}" value="${escape(item.value)}" ${item.value === selected ? 'checked' : ''}>
+            <span>${escape(item.label)}</span>
+        </label>`).join('')}</div>`;
+    }
+
+    function impactCheckboxes(selected = []) {
+        const selectedSet = new Set((selected || []).map(Number));
+        const impacts = activeImpacts();
+        if (!impacts.length) return '<p class="my-day-taxonomy-empty">Активних впливів ще немає.</p>';
+        const atLimit = selectedSet.size >= 3;
+        return `<div class="my-day-choice-grid my-day-impact-chip-grid" data-my-day-habit-impact-group>${impacts.map(impact => {
+            const isSelected = selectedSet.has(Number(impact.id));
+            return `<label class="my-day-choice-chip my-day-impact-chip ${isSelected ? 'is-selected' : ''} ${atLimit && !isSelected ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}">
+                <input type="checkbox" name="impactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${atLimit && !isSelected ? 'disabled' : ''} data-my-day-habit-impact-chip>
+                <span>${escape(impact.icon || '•')} ${escape(impact.name)}</span>
+            </label>`;
+        }).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? 'Обрано максимум три впливи.' : 'Можна обрати до трьох впливів.'}</p>`;
+    }
+
+    function habitEditorFields(habit = {}) {
+        const metric = habit.metric || 'boolean';
+        const cadence = habit.cadence || 'daily';
         const impacts = (habit.impacts || []).map(item => item.id);
-        return `<label>Назва <input name="name" maxlength="100" required value="${escape(habit.name || '')}"></label>
-            <label>Метрика <select name="metric"><option value="boolean" ${habit.metric === 'boolean' || !habit.metric ? 'selected' : ''}>Так/ні</option><option value="count" ${habit.metric === 'count' ? 'selected' : ''}>Кількість</option><option value="minutes" ${habit.metric === 'minutes' ? 'selected' : ''}>Хвилини</option></select></label>
-            <label>Ціль <input name="targetValue" type="number" min="1" max="100000" value="${escape(habit.targetValue || 1)}"></label>
-            <label>Ритм <select name="cadence"><option value="daily" ${habit.cadence === 'daily' || !habit.cadence ? 'selected' : ''}>Щодня</option><option value="selected_weekdays" ${habit.cadence === 'selected_weekdays' ? 'selected' : ''}>Дні тижня</option><option value="times_per_week" ${habit.cadence === 'times_per_week' ? 'selected' : ''}>Разів на тиждень</option></select></label>
-            <fieldset class="my-day-habit-weekdays"><legend>Дні 1-7</legend>${weekdayInputs(habit.selectedWeekdays)}</fieldset>
-            <label>Разів/тиждень <input name="timesPerWeek" type="number" min="1" max="7" value="${escape(habit.timesPerWeek || 1)}"></label>
-            <label>Напрям <select name="directionId">${taxonomyOptions(activeDirections(), habit.direction?.id || '', 'Без напряму')}</select></label>
-            <label>Впливи <select name="impactIds" multiple size="3">${taxonomyOptions(activeImpacts(), impacts)}</select></label>`;
+        return `<div class="my-day-habit-editor-grid">
+            <label class="my-day-setup-field my-day-setup-field--full">Назва
+                <input name="name" maxlength="100" required value="${escape(habit.name || '')}" autocomplete="off">
+            </label>
+            <fieldset class="my-day-choice-field my-day-setup-field--full"><legend>Метрика</legend>${radioChips('metric', [
+                { value: 'boolean', label: 'Так/ні' },
+                { value: 'count', label: 'Кількість' },
+                { value: 'minutes', label: 'Хвилини' }
+            ], metric)}</fieldset>
+            <label class="my-day-setup-field" data-my-day-habit-conditional="target" ${metric === 'boolean' ? 'hidden' : ''}>Ціль
+                <input name="targetValue" type="number" min="1" max="100000" value="${escape(habit.targetValue || 1)}">
+            </label>
+            <fieldset class="my-day-choice-field my-day-setup-field--full"><legend>Ритм</legend>${radioChips('cadence', [
+                { value: 'daily', label: 'Щодня' },
+                { value: 'selected_weekdays', label: 'Дні тижня' },
+                { value: 'times_per_week', label: 'Разів на тиждень' }
+            ], cadence)}</fieldset>
+            <fieldset class="my-day-choice-field my-day-setup-field--full" data-my-day-habit-conditional="weekdays" ${cadence === 'selected_weekdays' ? '' : 'hidden'}><legend>Дні тижня</legend>${weekdayInputs(habit.selectedWeekdays)}</fieldset>
+            <label class="my-day-setup-field" data-my-day-habit-conditional="times" ${cadence === 'times_per_week' ? '' : 'hidden'}>Разів на тиждень
+                <input name="timesPerWeek" type="number" min="1" max="7" value="${escape(habit.timesPerWeek || 1)}">
+            </label>
+            <label class="my-day-setup-field">Напрям
+                <select name="directionId">${taxonomyOptions(activeDirections(), habit.direction?.id || '', 'Без напряму')}</select>
+            </label>
+            <fieldset class="my-day-choice-field my-day-setup-field--full"><legend>Впливи</legend>${impactCheckboxes(impacts)}</fieldset>
+        </div>`;
+    }
+
+    function renderHabitEditor(habit = {}, mode = 'create') {
+        const isEdit = mode === 'edit';
+        const attr = isEdit
+            ? `data-my-day-habit-settings-row="${escape(habit.id)}"`
+            : 'data-my-day-habit-create';
+        return `<form class="my-day-habit-editor ${isEdit ? 'is-edit' : 'is-create'}" ${attr} aria-label="${isEdit ? 'Редагувати звичку' : 'Створити звичку'}">
+            <div class="my-day-editor-title">
+                <strong>${isEdit ? 'Редагувати звичку' : 'Створити звичку'}</strong>
+                <span>Звичка не створює задачі й не додає хвилини до task-time.</span>
+            </div>
+            ${habitEditorFields(isEdit ? habit : { metric: 'boolean', cadence: 'daily', targetValue: 1 })}
+            <div class="my-day-editor-actions">
+                <button type="button" class="my-day-setup-secondary" data-my-day-habit-cancel>Скасувати</button>
+                <button type="submit" class="my-day-setup-primary">${isEdit ? 'Зберегти' : 'Створити звичку'}</button>
+            </div>
+            <p class="my-day-taxonomy-notice" ${isEdit ? '' : 'data-my-day-habit-create-status'} aria-live="polite">${isEdit ? '' : escape(state.settingsError)}</p>
+        </form>`;
+    }
+
+    function metricSummary(habit) {
+        const metric = habit.metric === 'minutes' ? 'хвилини' : (habit.metric === 'count' ? 'кількість' : 'так/ні');
+        const target = habit.metric === 'boolean' ? '' : ` · ціль ${Number(habit.targetValue || 1)}`;
+        return `${metric}${target}`;
+    }
+
+    function cadenceSummary(habit) {
+        if (habit.cadence === 'selected_weekdays') {
+            const days = (habit.selectedWeekdays || []).map(day => WEEKDAY_LABELS.find(item => item.value === Number(day))?.label || day).join(', ');
+            return `дні: ${days || 'не вибрано'}`;
+        }
+        if (habit.cadence === 'times_per_week') return `${Number(habit.timesPerWeek || 1)} раз/тиждень`;
+        return 'щодня';
     }
 
     function renderSettingsRow(habit) {
-        return `<form class="my-day-habit-settings-row ${habit.isArchived ? 'is-archived' : ''}" data-my-day-habit-settings-row="${escape(habit.id)}">
-            <div class="my-day-habit-settings-fields">${habitFormFields(habit)}</div>
-            <div class="my-day-habit-settings-actions">
-                <span>${habit.isPaused ? 'Пауза' : 'Активна'}${habit.isArchived ? ' · архів' : ''}</span>
-                <button type="submit" class="my-day-taxonomy-primary">Зберегти</button>
-                <button type="button" data-my-day-habit-pause="${escape(habit.id)}" data-paused="${habit.isPaused ? 'true' : 'false'}">${habit.isPaused ? 'Відновити' : 'Пауза'}</button>
-                <button type="button" data-my-day-habit-archive="${escape(habit.id)}" data-archived="${habit.isArchived ? 'true' : 'false'}">${habit.isArchived ? 'Відновити' : 'Архів'}</button>
+        const isEditing = isSetupEditor('habit:edit:' + habit.id);
+        return `<article class="my-day-habit-settings-row ${habit.isArchived ? 'is-archived' : ''}" data-my-day-habit-settings-card="${escape(habit.id)}">
+            <div class="my-day-habit-summary-card">
+                <div>
+                    <div class="my-day-habit-summary-title"><h3>${escape(habit.name)}</h3><span>${habit.isPaused ? 'Пауза' : 'Активна'}${habit.isArchived ? ' · архів' : ''}</span></div>
+                    <p>${escape(metricSummary(habit))} · ${escape(cadenceSummary(habit))}</p>
+                    ${renderBadges(habit)}
+                </div>
+                <div class="my-day-habit-settings-actions">
+                    <button type="button" class="my-day-setup-ghost" data-my-day-habit-open-editor="habit:edit:${escape(habit.id)}">Редагувати</button>
+                    <button type="button" class="my-day-setup-secondary" data-my-day-habit-pause="${escape(habit.id)}" data-paused="${habit.isPaused ? 'true' : 'false'}">${habit.isPaused ? 'Продовжити' : 'Пауза'}</button>
+                    <button type="button" class="my-day-setup-secondary" data-my-day-habit-archive="${escape(habit.id)}" data-archived="${habit.isArchived ? 'true' : 'false'}">${habit.isArchived ? 'Відновити' : 'Архівувати'}</button>
+                </div>
             </div>
-            <p class="my-day-taxonomy-notice" aria-live="polite"></p>
-        </form>`;
+            ${isEditing ? renderHabitEditor(habit, 'edit') : ''}
+        </article>`;
     }
 
     function renderSettings() {
         const active = state.settingsHabits.filter(habit => !habit.isArchived);
         const archived = state.settingsHabits.filter(habit => habit.isArchived);
+        const isCreating = isSetupEditor('habit:create');
         return `<section class="profile-work-panel my-day-habits-settings" aria-labelledby="myDayHabitsSettingsTitle" aria-busy="${state.settingsLoading ? 'true' : 'false'}">
-            <div class="profile-panel-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayHabitsSettingsTitle">Звички</h2><p>Окремий персональний tracker. Він не створює задачі й не додає хвилини до task-time.</p></div></div>
-            <form class="my-day-habit-create" data-my-day-habit-create>
-                <div class="my-day-habit-settings-fields">${habitFormFields({ metric: 'boolean', cadence: 'daily', targetValue: 1 })}</div>
-                <button type="submit" class="my-day-taxonomy-primary">Додати звичку</button>
-                <p class="my-day-taxonomy-notice" data-my-day-habit-create-status aria-live="polite">${escape(state.settingsError)}</p>
-            </form>
+            <div class="profile-panel-head my-day-section-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayHabitsSettingsTitle">Звички</h2><p>Окремий персональний tracker. Він не створює задачі й не додає хвилини до task-time.</p></div>
+                <button type="button" class="my-day-setup-primary" data-my-day-habit-open-editor="habit:create" ${isCreating ? 'disabled' : ''}>Створити звичку</button>
+            </div>
+            ${isCreating ? renderHabitEditor({}, 'create') : ''}
             <div class="my-day-habit-settings-list">${active.length ? active.map(renderSettingsRow).join('') : '<div class="profile-empty-professional">Активних звичок ще немає.</div>'}</div>
-            ${archived.length ? `<details><summary>Архів звичок (${archived.length})</summary><div class="my-day-habit-settings-list">${archived.map(renderSettingsRow).join('')}</div></details>` : ''}
+            ${archived.length ? `<details class="my-day-setup-archive"><summary>Архів звичок (${archived.length})</summary><div class="my-day-habit-settings-list">${archived.map(renderSettingsRow).join('')}</div></details>` : ''}
         </section>`;
     }
 
     function formPayload(form) {
         const data = new FormData(form);
-        const impacts = selectedValues(form.querySelector('select[name="impactIds"]'));
+        const impacts = Array.from(form.querySelectorAll('input[name="impactIds"]:checked')).map(input => Number(input.value)).filter(Number.isInteger);
         if (impacts.length > 3) throw new Error('Можна обрати максимум три впливи.');
         return {
             name: data.get('name'),
@@ -230,7 +333,6 @@
             impactIds: impacts
         };
     }
-
     async function mutate(button, work, onChanged) {
         if (button) button.disabled = true;
         try {
@@ -355,17 +457,55 @@
             button.addEventListener('click', () => mutate(button, () => request('/' + encodeURIComponent(button.dataset.myDayHabitUndo) + '/check-ins/' + encodeURIComponent(state.date), { method: 'DELETE' }), onChanged));
         });
 
-        root?.querySelectorAll('select[name="impactIds"]').forEach(select => {
-            if (select.dataset.myDayHabitImpactBound === 'true') return;
-            select.dataset.myDayHabitImpactBound = 'true';
-            select.addEventListener('change', () => {
-                const values = selectedValues(select);
-                if (values.length <= 3) return;
-                Array.from(select.options).forEach(option => {
-                    if (option.selected && !values.slice(0, 3).includes(Number(option.value))) option.selected = false;
-                });
-                window.showNotification?.('Можна обрати максимум три впливи.', 'warning');
+        root?.querySelectorAll('[data-my-day-habit-open-editor]').forEach(button => {
+            if (button.dataset.myDayHabitOpenEditorBound === 'true') return;
+            button.dataset.myDayHabitOpenEditorBound = 'true';
+            button.addEventListener('click', async () => {
+                setSetupEditor(button.dataset.myDayHabitOpenEditor || 'habit:create', { focusHabitName: button.dataset.myDayHabitOpenEditor === 'habit:create' });
+                await onChanged?.();
             });
+        });
+
+        root?.querySelectorAll('[data-my-day-habit-cancel]').forEach(button => {
+            if (button.dataset.myDayHabitCancelBound === 'true') return;
+            button.dataset.myDayHabitCancelBound = 'true';
+            button.addEventListener('click', async () => {
+                setSetupEditor('');
+                await onChanged?.();
+            });
+        });
+
+        root?.querySelectorAll('.my-day-habit-editor').forEach(form => {
+            if (form.dataset.myDayHabitEditorBound === 'true') return;
+            form.dataset.myDayHabitEditorBound = 'true';
+            const refreshConditionals = () => {
+                const metric = form.querySelector('input[name="metric"]:checked')?.value || 'boolean';
+                const cadence = form.querySelector('input[name="cadence"]:checked')?.value || 'daily';
+                const target = form.querySelector('[data-my-day-habit-conditional="target"]');
+                const targetInput = target?.querySelector('input[name="targetValue"]');
+                if (target) target.hidden = metric === 'boolean';
+                if (metric === 'boolean' && targetInput) targetInput.value = '1';
+                const weekdays = form.querySelector('[data-my-day-habit-conditional="weekdays"]');
+                if (weekdays) weekdays.hidden = cadence !== 'selected_weekdays';
+                const times = form.querySelector('[data-my-day-habit-conditional="times"]');
+                if (times) times.hidden = cadence !== 'times_per_week';
+            };
+            const refreshImpacts = () => {
+                const selected = Array.from(form.querySelectorAll('input[name="impactIds"]:checked'));
+                const atLimit = selected.length >= 3;
+                form.querySelectorAll('[data-my-day-habit-impact-chip]').forEach(input => {
+                    const label = input.closest('.my-day-impact-chip');
+                    input.disabled = atLimit && !input.checked;
+                    label?.classList.toggle('is-selected', input.checked);
+                    label?.classList.toggle('is-disabled', input.disabled);
+                });
+                const help = form.querySelector('[data-my-day-habit-impact-help]');
+                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи.' : 'Можна обрати до трьох впливів.';
+            };
+            form.querySelectorAll('input[name="metric"], input[name="cadence"]').forEach(input => input.addEventListener('change', refreshConditionals));
+            form.querySelectorAll('[data-my-day-habit-impact-chip]').forEach(input => input.addEventListener('change', refreshImpacts));
+            refreshConditionals();
+            refreshImpacts();
         });
 
         root?.querySelectorAll('[data-my-day-habit-create]').forEach(form => {
@@ -374,7 +514,7 @@
             form.addEventListener('submit', event => {
                 event.preventDefault();
                 const button = form.querySelector('button[type="submit"]');
-                mutate(button, () => request('', { method: 'POST', body: JSON.stringify(formPayload(form)) }), onChanged);
+                mutate(button, async () => { await request('', { method: 'POST', body: JSON.stringify(formPayload(form)) }); setSetupEditor(''); }, onChanged);
             });
         });
 
@@ -384,7 +524,7 @@
             form.addEventListener('submit', event => {
                 event.preventDefault();
                 const button = form.querySelector('button[type="submit"]');
-                mutate(button, () => request('/' + encodeURIComponent(form.dataset.myDayHabitSettingsRow), { method: 'PATCH', body: JSON.stringify(formPayload(form)) }), onChanged);
+                mutate(button, async () => { await request('/' + encodeURIComponent(form.dataset.myDayHabitSettingsRow), { method: 'PATCH', body: JSON.stringify(formPayload(form)) }); setSetupEditor(''); }, onChanged);
             });
         });
 
@@ -419,6 +559,7 @@
         state.surface = 'main';
         state.mode = state.returnMode === 'habits' || state.returnMode === 'contribution' ? state.returnMode : 'day';
         state.pendingFocus = '';
+        state.setupEditor = '';
     }
 
     function renderSetupSurface() {
@@ -456,5 +597,5 @@
         state.pendingFocus = '';
         focusHabitCreateForm();
     }
-    window.MyDayHabits = { bind, closeSetup, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, openSetup, renderModeTabs, renderPanel, renderSettings, renderSetupSurface, state };
+    window.MyDayHabits = { bind, closeSetup, focusHabitCreateForm, kyivDate, load, loadSettings, openSettingsCreate, openSetup, renderModeTabs, renderPanel, renderSettings, renderSetupSurface, setSetupEditor, state };
 }());

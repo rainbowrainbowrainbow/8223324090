@@ -54,6 +54,7 @@ test('time ledger contract has one active timer, atomic switch, completion stop,
     assert.match(service, /existing\?\.taskId === taskId/);
     assert.match(service, /stopActiveTimerForUser\(queryable, userId\)/);
     assert.match(service, /MAX_MANUAL_DURATION_MINUTES/);
+    assert.match(service, new RegExp("::timestamp AT TIME ZONE 'Europe/Kyiv'"));
     assert.match(route, /router\.post\('\/timer\/start'/);
     assert.match(route, /router\.post\('\/timer\/stop'/);
     assert.match(route, /router\.get\('\/time-entries'/);

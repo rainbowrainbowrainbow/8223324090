@@ -194,8 +194,8 @@ async function listTimeEntries(queryable, userId, options = {}) {
          FROM my_day_time_entries e
          JOIN tasks t ON t.id = e.task_id
          WHERE e.user_id = $1
-           AND e.started_at < (($3::date + 1) AT TIME ZONE 'Europe/Kyiv')
-           AND COALESCE(e.ended_at, NOW()) >= ($2::date AT TIME ZONE 'Europe/Kyiv')
+           AND e.started_at < (($3::date + 1)::timestamp AT TIME ZONE 'Europe/Kyiv')
+           AND COALESCE(e.ended_at, NOW()) >= ($2::date::timestamp AT TIME ZONE 'Europe/Kyiv')
          ORDER BY e.started_at DESC, e.id DESC`,
         [positiveInteger(userId, 'користувач'), from, to]
     );

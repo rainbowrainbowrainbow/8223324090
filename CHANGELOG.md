@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.75 - Мій день: київські межі часу
+
+### Release / Versioning / (03.08.2026) [codex]
+- **Мій день: київські межі часу** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.74 - Мій день: облік часу у внеску
 
 ### Release / Versioning / (03.08.2026) [codex]

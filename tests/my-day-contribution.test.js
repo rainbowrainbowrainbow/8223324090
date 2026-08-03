@@ -106,6 +106,7 @@ test('contribution service queries current user, business scope, active timers, 
     assert.match(calls[0].sql, /m\.user_id = \$\d+/);
     assert.match(calls[1].sql, /generate_series/);
     assert.match(calls[1].sql, /COALESCE\(e\.ended_at, NOW\(\)\)/);
+    assert.match(calls[1].sql, new RegExp("::timestamp AT TIME ZONE 'Europe/Kyiv'"));
     assert.match(calls[1].sql, /my_day_time_entries/);
     assert.match(calls[1].sql, /WHERE e\.user_id = \$\d+/);
     assert.doesNotMatch(calls[1].sql, /owner_user_id IS NULL|owner_user_id =/);

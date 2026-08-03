@@ -298,8 +298,8 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
          SELECT e.task_id,
                 days.local_date::text AS local_date,
                 SUM(GREATEST(0, EXTRACT(EPOCH FROM (
-                    LEAST(COALESCE(e.ended_at, NOW()), ((days.local_date + 1) AT TIME ZONE '${KYIV_TIMEZONE}'))
-                    - GREATEST(e.started_at, (days.local_date AT TIME ZONE '${KYIV_TIMEZONE}'))
+                    LEAST(COALESCE(e.ended_at, NOW()), ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
+                    - GREATEST(e.started_at, (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
                 ))))::int AS seconds,
                 m.direction_id,
                 d.name AS direction_name,
@@ -315,16 +315,16 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
                 )) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS impacts
          FROM my_day_time_entries e
          JOIN tasks t ON t.id = e.task_id
-         JOIN days ON e.started_at < ((days.local_date + 1) AT TIME ZONE '${KYIV_TIMEZONE}')
-                  AND COALESCE(e.ended_at, NOW()) > (days.local_date AT TIME ZONE '${KYIV_TIMEZONE}')
+         JOIN days ON e.started_at < ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
+                  AND COALESCE(e.ended_at, NOW()) > (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
          LEFT JOIN my_day_task_metadata m ON m.user_id = $${userParam} AND m.task_id = t.id
          LEFT JOIN my_day_directions d ON d.id = m.direction_id
          LEFT JOIN my_day_task_impacts ti ON ti.user_id = $${userParam} AND ti.task_id = t.id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
          WHERE e.user_id = $${userParam}
            ${businessCondition}
-           AND e.started_at < (($${toParam}::date + 1) AT TIME ZONE '${KYIV_TIMEZONE}')
-           AND COALESCE(e.ended_at, NOW()) > ($${fromParam}::date AT TIME ZONE '${KYIV_TIMEZONE}')
+           AND e.started_at < (($${toParam}::date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
+           AND COALESCE(e.ended_at, NOW()) > ($${fromParam}::date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
          GROUP BY e.task_id, days.local_date, m.direction_id, d.name, d.color, d.icon, d.is_active`,
         params
     );

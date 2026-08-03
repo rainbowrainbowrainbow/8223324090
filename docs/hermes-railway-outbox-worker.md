@@ -17,6 +17,7 @@ The local cron remains the canonical live poller until a server worker target is
 ```bash
 npm run hermes:outbox:worker:read-only
 npm run hermes:outbox:worker:dry-run
+npm run hermes:outbox:worker:batch-read-only-loop
 npm run hermes:outbox:worker:live-once
 ```
 
@@ -27,8 +28,14 @@ Default mode is `read_only`.
 Values are secrets/config and must not be printed in logs or receipts.
 
 ```text
-HERMES_OUTBOX_WORKER_MODE=read_only|dry_run|live_once|live_loop
-HERMES_OUTBOX_HOURLY_BATCH_OWNER_USER_IDS=4,3,40,13,1
+HERMES_OUTBOX_WORKER_MODE=read_only|dry_run|read_only_loop|dry_run_loop|live_once|live_loop
+HERMES_OUTBOX_HOURLY_BATCH_OWNER_USER_IDS=4,3,40,13,1  # owner allowlist, not batching by itself
+HERMES_OUTBOX_BATCH_ENABLED=0|1
+HERMES_OUTBOX_BATCH_OWNER_USER_IDS=4,3,40,13,1
+HERMES_OUTBOX_BATCH_WINDOW_MINUTES=60
+HERMES_OUTBOX_BATCH_MAX_ITEMS=10
+HERMES_OUTBOX_BATCH_FORCE=0
+HERMES_OUTBOX_BATCH_STATE_DIR=.hermes/outbox-batch-state
 HERMES_OUTBOX_OWNER_TARGETS_JSON={...}
 HERMES_OUTBOX_WORKER_LIMIT=20
 HERMES_OUTBOX_WORKER_MAX_EVENTS=5
@@ -56,6 +63,22 @@ TELEGRAM_BOT_TOKEN is present
 all approved owners have Telegram targets configured
 HERMES_OUTBOX_SEND_BUTTONS=0
 ```
+
+## Batch policy
+
+When `HERMES_OUTBOX_BATCH_ENABLED=1`, normal/low `task_created` and `task_assigned` events for configured batch owners are grouped per owner into one hourly Telegram message. High/urgent reminders, overdue events, task updates, unsupported owners, missing targets, and owner16 stay outside the batch path.
+
+Safe rollout starts with:
+
+```text
+mode=read_only_loop
+batch_enabled=1
+batch_owner_ids=4
+send_attempted=false
+crm_mutation_attempted=false
+```
+
+Live batch send/ack still requires the same live gates as one-by-one mode plus separate owner approval for the live smoke.
 
 ## Owner16 policy
 

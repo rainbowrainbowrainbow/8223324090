@@ -1,5 +1,8 @@
 'use strict';
 
+const fs = require('node:fs');
+const path = require('node:path');
+
 const DEFAULT_APPROVED_OWNER_IDS = Object.freeze([4, 3, 40, 13, 1]);
 const OWNER16_BLOCK_CODE = 'OWNER16_IDENTITY_SENDER_AUDIT_REQUIRED';
 const DEFAULT_WORKER_ID = 'event-genix-railway-outbox-worker';
@@ -8,8 +11,16 @@ const DEFAULT_MAX_EVENTS = 5;
 const MAX_EVENTS_HARD_CAP = 10;
 const DEFAULT_LOCK_SECONDS = 120;
 const DEFAULT_LOOP_INTERVAL_SECONDS = 60;
-const VALID_MODES = new Set(['read_only', 'dry_run', 'live_once', 'live_loop']);
+const DEFAULT_BATCH_WINDOW_MINUTES = 60;
+const DEFAULT_BATCH_MAX_ITEMS = 10;
+const DEFAULT_BATCH_STATE_DIR = '.hermes/outbox-batch-state';
+const VALID_MODES = new Set(['read_only', 'dry_run', 'live_once', 'live_loop', 'read_only_loop', 'dry_run_loop']);
 const LIVE_MODES = new Set(['live_once', 'live_loop']);
+const LOOP_MODE_TO_ONCE_MODE = Object.freeze({
+    live_loop: 'live_once',
+    read_only_loop: 'read_only',
+    dry_run_loop: 'dry_run'
+});
 const SUPPORTED_EVENT_TYPES = new Set([
     'task_created',
     'task_assigned',
@@ -17,6 +28,8 @@ const SUPPORTED_EVENT_TYPES = new Set([
     'task_overdue',
     'task_updated'
 ]);
+const BATCHABLE_EVENT_TYPES = new Set(['task_created', 'task_assigned']);
+const BATCHABLE_PRIORITIES = new Set(['low', 'normal']);
 const TRUE_VALUES = new Set(['1', 'true', 'yes', 'on']);
 const FALSE_VALUES = new Set(['0', 'false', 'no', 'off']);
 
@@ -137,6 +150,11 @@ function buildConfig(env = process.env, cliArgs = {}) {
         cliArgs.ownerIds || env.HERMES_OUTBOX_HOURLY_BATCH_OWNER_USER_IDS,
         DEFAULT_APPROVED_OWNER_IDS
     );
+    const explicitBatchOwnerIds = parseOwnerIdList(
+        cliArgs.batchOwnerIds || env.HERMES_OUTBOX_BATCH_OWNER_USER_IDS,
+        []
+    );
+    const batchOwnerIds = explicitBatchOwnerIds.length ? explicitBatchOwnerIds : ownerAllowlist;
     const maxEvents = Math.min(
         positiveInteger(cliArgs.maxEvents || env.HERMES_OUTBOX_WORKER_MAX_EVENTS, DEFAULT_MAX_EVENTS),
         MAX_EVENTS_HARD_CAP
@@ -158,6 +176,18 @@ function buildConfig(env = process.env, cliArgs = {}) {
         confirmSend: boolEnv(cliArgs.confirmSend || env.HERMES_OUTBOX_CONFIRM_SEND),
         localCronPausedConfirmed: boolEnv(cliArgs.localCronPausedConfirmed || env.HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED),
         sendButtons: boolEnv(cliArgs.sendButtons || env.HERMES_OUTBOX_SEND_BUTTONS),
+        batchEnabled: boolEnv(cliArgs.batchEnabled || cliArgs.batchPlan || env.HERMES_OUTBOX_BATCH_ENABLED || env.HERMES_OUTBOX_BATCH_PLAN),
+        batchOwnerIds,
+        batchWindowMinutes: positiveInteger(
+            cliArgs.batchWindowMinutes || env.HERMES_OUTBOX_BATCH_WINDOW_MINUTES,
+            DEFAULT_BATCH_WINDOW_MINUTES
+        ),
+        batchMaxItems: Math.min(
+            positiveInteger(cliArgs.batchMaxItems || env.HERMES_OUTBOX_BATCH_MAX_ITEMS, DEFAULT_BATCH_MAX_ITEMS),
+            MAX_EVENTS_HARD_CAP
+        ),
+        batchForce: boolEnv(cliArgs.batchForce || env.HERMES_OUTBOX_BATCH_FORCE),
+        batchStateDir: textOrNull(cliArgs.batchStateDir || env.HERMES_OUTBOX_BATCH_STATE_DIR) || DEFAULT_BATCH_STATE_DIR,
         telegramBotTokenPresent: Boolean(textOrNull(env.TELEGRAM_BOT_TOKEN)),
         limit,
         maxEvents,
@@ -222,6 +252,217 @@ function formatTaskMessage(event = {}) {
     if (dueAt) lines.push(`До: ${escapeHtml(dueAt)}`);
     if (crmUrl) lines.push('', escapeHtml(crmUrl));
     return lines.join('\n');
+}
+
+function priorityOf(event = {}) {
+    const payload = eventPayload(event);
+    return compactTitle(payload.priority || event.priority || 'normal').toLowerCase();
+}
+
+function isBatchCandidate(event = {}, plan = {}, config = {}) {
+    if (!config.batchEnabled) return false;
+    if (!plan.ready) return false;
+    if (!config.batchOwnerIds.includes(Number(plan.ownerUserId))) return false;
+    if (!BATCHABLE_EVENT_TYPES.has(plan.eventType)) return false;
+    return BATCHABLE_PRIORITIES.has(priorityOf(event));
+}
+
+function batchStatePath(config = {}, ownerUserId) {
+    const safeOwner = String(ownerUserId || 'unknown').replace(/[^0-9A-Za-z_-]+/g, '_');
+    return path.join(config.batchStateDir || DEFAULT_BATCH_STATE_DIR, `owner-${safeOwner}.json`);
+}
+
+function readBatchState(config = {}, ownerUserId) {
+    try {
+        const filePath = batchStatePath(config, ownerUserId);
+        if (!fs.existsSync(filePath)) return {};
+        const parsed = JSON.parse(fs.readFileSync(filePath, 'utf8'));
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch (_) {
+        return { stateReadError: true };
+    }
+}
+
+function writeBatchState(config = {}, ownerUserId, patch = {}) {
+    const filePath = batchStatePath(config, ownerUserId);
+    fs.mkdirSync(path.dirname(filePath), { recursive: true });
+    const next = { ...readBatchState(config, ownerUserId), ...patch, ownerUserId, updatedAt: new Date().toISOString() };
+    const tmpPath = `${filePath}.tmp`;
+    fs.writeFileSync(tmpPath, `${JSON.stringify(next, null, 2)}\n`, 'utf8');
+    fs.renameSync(tmpPath, filePath);
+    return next;
+}
+
+function parseDateOrNull(value) {
+    const text = textOrNull(value);
+    if (!text) return null;
+    const parsed = new Date(text);
+    return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function batchDue(config = {}, ownerUserId, now = new Date()) {
+    if (config.batchForce) return { due: true, reason: 'force' };
+    const state = readBatchState(config, ownerUserId);
+    const lastSentAt = parseDateOrNull(state.lastSentAt);
+    if (!lastSentAt) return { due: true, reason: 'no_previous_batch', stateReadError: Boolean(state.stateReadError) };
+    const elapsedMinutes = Math.max(0, (now.getTime() - lastSentAt.getTime()) / 60000);
+    const windowMinutes = Math.max(1, config.batchWindowMinutes || DEFAULT_BATCH_WINDOW_MINUTES);
+    return {
+        due: elapsedMinutes >= windowMinutes,
+        reason: elapsedMinutes >= windowMinutes ? 'window_elapsed' : 'window_not_due',
+        elapsedMinutes: Math.round(elapsedMinutes * 10) / 10,
+        windowMinutes,
+        lastSentAt: state.lastSentAt
+    };
+}
+
+function groupBatchCandidates(batchCandidates = []) {
+    const buckets = new Map();
+    for (const item of batchCandidates) {
+        const ownerKey = String(item.plan.ownerUserId || 'unknown');
+        if (!buckets.has(ownerKey)) {
+            buckets.set(ownerKey, {
+                ownerUserId: item.plan.ownerUserId,
+                target: item.plan.target,
+                events: []
+            });
+        }
+        buckets.get(ownerKey).events.push(item);
+    }
+    return [...buckets.values()];
+}
+
+function renderBatchMessage(bucket = {}, config = {}) {
+    const ownerLabel = compactTitle(eventPayload(bucket.events?.[0]?.event || {}).ownerLabel || `owner ${bucket.ownerUserId || 'unknown'}`);
+    const lines = ['📋 <b>Нові задачі за годину</b>', '', `Для: ${escapeHtml(ownerLabel)}`, ''];
+    const selected = (bucket.events || []).slice(0, Math.max(1, config.batchMaxItems || DEFAULT_BATCH_MAX_ITEMS));
+    selected.forEach((item, index) => {
+        const payload = eventPayload(item.event);
+        const taskId = item.plan.taskId || payload.taskId || '—';
+        const title = compactTitle(payload.title || item.event.title);
+        const dueAt = textOrNull(payload.dueAt || payload.deadline || payload.date);
+        const priority = compactTitle(payload.priority || item.event.priority || 'normal');
+        lines.push(`${index + 1}) #${escapeHtml(taskId)} — ${escapeHtml(title)}`);
+        lines.push(`   ${dueAt ? `до: ${escapeHtml(dueAt)} · ` : ''}priority: ${escapeHtml(priority)}`);
+        lines.push('');
+    });
+    const remaining = (bucket.events || []).length - selected.length;
+    if (remaining > 0) {
+        lines.push(`…і ще ${remaining} задач(і). Відкрий “Мій день” для повного списку.`, '');
+    }
+    lines.push('📋 Відкрити “Мій день” у CRM.');
+    return lines.join('\n').trim();
+}
+
+function buildBatchPlan(batchCandidates = [], config = {}, options = {}) {
+    const buckets = groupBatchCandidates(batchCandidates);
+    return {
+        enabled: Boolean(config.batchEnabled),
+        ownerIds: config.batchOwnerIds || [],
+        candidate_count: batchCandidates.length,
+        batch_count: buckets.length,
+        window_minutes: config.batchWindowMinutes,
+        max_items: config.batchMaxItems,
+        buckets: buckets.map(bucket => {
+            const due = batchDue(config, bucket.ownerUserId, options.now || new Date());
+            const selected = bucket.events.slice(0, Math.max(1, config.batchMaxItems || DEFAULT_BATCH_MAX_ITEMS));
+            const result = {
+                ownerUserId: bucket.ownerUserId,
+                targetConfigured: Boolean(bucket.target),
+                count: bucket.events.length,
+                selected_count: selected.length,
+                eventIds: selected.map(item => item.plan.eventId),
+                taskIds: selected.map(item => item.plan.taskId),
+                due
+            };
+            if (options.includePreview) result.messagePreview = renderBatchMessage(bucket, config).slice(0, 1200);
+            return result;
+        })
+    };
+}
+
+async function processBatchBuckets(summary, batchCandidates = [], deps, config = {}) {
+    const buckets = groupBatchCandidates(batchCandidates);
+    summary.batch_processed = [];
+    for (const bucket of buckets) {
+        const due = batchDue(config, bucket.ownerUserId);
+        const selected = bucket.events.slice(0, Math.max(1, config.batchMaxItems || DEFAULT_BATCH_MAX_ITEMS));
+        const processed = {
+            ownerUserId: bucket.ownerUserId,
+            targetConfigured: Boolean(bucket.target),
+            selected_count: selected.length,
+            eventIds: selected.map(item => item.plan.eventId),
+            taskIds: selected.map(item => item.plan.taskId),
+            due,
+            status: 'pending'
+        };
+        if (!due.due) {
+            processed.status = 'held_until_batch_window';
+            summary.batch_processed.push(processed);
+            continue;
+        }
+        if (!bucket.target) {
+            processed.status = 'blocked_missing_target';
+            summary.batch_processed.push(processed);
+            continue;
+        }
+        const claimed = [];
+        try {
+            for (const item of selected) {
+                summary.crm_mutation_attempted = true;
+                await deps.claimNotificationOutboxEvent(item.plan.eventId, {
+                    workerId: config.workerId,
+                    lockSeconds: config.lockSeconds
+                });
+                claimed.push(item);
+            }
+            summary.send_attempted = true;
+            const sent = await deps.sendTelegramMessage(bucket.target.chatId, renderBatchMessage({ ...bucket, events: selected }, config), {
+                batch: true,
+                config
+            });
+            if (sent?.ok) {
+                const sentAt = new Date().toISOString();
+                for (const item of claimed) {
+                    await deps.ackNotificationOutboxEvent(item.plan.eventId, {
+                        workerId: config.workerId,
+                        channel: 'telegram',
+                        target: bucket.target.target,
+                        sentAt,
+                        batch: true
+                    });
+                }
+                writeBatchState(config, bucket.ownerUserId, {
+                    lastSentAt: sentAt,
+                    lastEventIds: claimed.map(item => item.plan.eventId),
+                    lastTaskIds: claimed.map(item => item.plan.taskId),
+                    lastMessageId: sent.messageId || null
+                });
+                processed.status = 'batch_sent_acked';
+                processed.messageId = sent.messageId || null;
+                summary.sent_count += claimed.length;
+            } else {
+                for (const item of claimed) {
+                    await deps.failNotificationOutboxEvent(item.plan.eventId, {
+                        workerId: config.workerId,
+                        errorCode: sent?.errorCode || 'TELEGRAM_BATCH_SEND_FAILED',
+                        errorMessage: sent?.description || 'Telegram batch send failed',
+                        retryable: true
+                    });
+                }
+                processed.status = 'batch_send_failed_marked_retryable';
+                processed.errorCode = sent?.errorCode || 'TELEGRAM_BATCH_SEND_FAILED';
+                summary.failed_count += claimed.length || selected.length;
+            }
+        } catch (err) {
+            processed.status = 'batch_worker_error';
+            processed.errorCode = err.code || err.reasonCode || 'BATCH_WORKER_ERROR';
+            processed.message = err.message || 'Batch worker error';
+            summary.failed_count += Math.max(1, selected.length);
+        }
+        summary.batch_processed.push(processed);
+        summary.processed_count += selected.length;
+    }
 }
 
 function classifyEvent(event = {}, config) {
@@ -347,9 +588,13 @@ async function runOnce(options = {}) {
         workerId: config.workerId,
         ownerAllowlist: config.ownerAllowlist,
         owner16HardBlocked: !config.ownerAllowlist.includes(16),
+        batchEnabled: Boolean(config.batchEnabled),
+        batchOwnerIds: config.batchOwnerIds,
         maxEvents: config.maxEvents,
         fetched: 0,
         ready_count: 0,
+        immediate_ready_count: 0,
+        batch_candidate_count: 0,
         blocked_count: 0,
         processed_count: 0,
         sent_count: 0,
@@ -358,6 +603,7 @@ async function runOnce(options = {}) {
         crm_mutation_attempted: false,
         stats: null,
         liveGateBlockers: liveGateBlockers(config),
+        batchPlan: null,
         ready: [],
         blocked: [],
         processed: []
@@ -384,12 +630,15 @@ async function runOnce(options = {}) {
     }
     summary.fetched = events.length;
     const classifications = events.map(event => ({ event, plan: classifyEvent(event, config) }));
-    summary.ready = classifications.filter(item => item.plan.ready).map(item => ({
+    const batchCandidates = classifications.filter(item => isBatchCandidate(item.event, item.plan, config));
+    const immediateClassifications = classifications.filter(item => item.plan.ready && !isBatchCandidate(item.event, item.plan, config));
+    summary.ready = immediateClassifications.map(item => ({
         eventId: item.plan.eventId,
         taskId: item.plan.taskId,
         ownerUserId: item.plan.ownerUserId,
         eventType: item.plan.eventType,
-        targetConfigured: Boolean(item.plan.target)
+        targetConfigured: Boolean(item.plan.target),
+        deliveryPolicy: 'immediate'
     }));
     summary.blocked = classifications.filter(item => !item.plan.ready).map(item => ({
         eventId: item.plan.eventId,
@@ -398,7 +647,10 @@ async function runOnce(options = {}) {
         eventType: item.plan.eventType,
         blockers: item.plan.blockers
     }));
-    summary.ready_count = summary.ready.length;
+    summary.immediate_ready_count = summary.ready.length;
+    summary.batch_candidate_count = batchCandidates.length;
+    summary.ready_count = summary.immediate_ready_count + summary.batch_candidate_count;
+    summary.batchPlan = buildBatchPlan(batchCandidates, config, { includePreview: options.includePreview });
     summary.blocked_count = summary.blocked.length;
 
     if (config.mode === 'read_only' || config.mode === 'dry_run') {
@@ -412,7 +664,11 @@ async function runOnce(options = {}) {
         return summary;
     }
 
-    for (const item of classifications.filter(candidate => candidate.plan.ready).slice(0, config.maxEvents)) {
+    if (batchCandidates.length) {
+        await processBatchBuckets(summary, batchCandidates, deps, config);
+    }
+
+    for (const item of immediateClassifications.slice(0, config.maxEvents)) {
         const { plan } = item;
         const processed = {
             eventId: plan.eventId,
@@ -467,7 +723,8 @@ async function runOnce(options = {}) {
 
 async function runLoop(options = {}) {
     const env = options.env || process.env;
-    const cliArgs = { ...(options.cliArgs || {}), mode: 'live_once' };
+    const requestedMode = textOrNull((options.cliArgs || {}).mode || env.HERMES_OUTBOX_WORKER_MODE) || 'live_loop';
+    const cliArgs = { ...(options.cliArgs || {}), mode: LOOP_MODE_TO_ONCE_MODE[requestedMode] || 'live_once' };
     const config = buildConfig(env, cliArgs);
     const deps = options.deps || defaultDependencies(env);
     const intervalMs = Math.max(1, config.loopIntervalSeconds) * 1000;
@@ -477,7 +734,7 @@ async function runLoop(options = {}) {
     process.once('SIGTERM', stop);
     process.once('SIGINT', stop);
     while (!stopping) {
-        const result = await runOnce({ env, cliArgs, config, deps, includeStats: options.includeStats });
+        const result = await runOnce({ env, cliArgs, config, deps, includeStats: options.includeStats, includePreview: options.includePreview });
         results.push(result);
         process.stdout.write(`${JSON.stringify(result)}\n`);
         if (options.once) break;
@@ -491,15 +748,22 @@ async function main(argv = process.argv.slice(2), env = process.env) {
     const mode = textOrNull(cliArgs.mode || env.HERMES_OUTBOX_WORKER_MODE) || 'read_only';
     const deps = defaultDependencies(env);
     try {
-        if (mode === 'live_loop') {
-            await runLoop({ env, cliArgs, deps, includeStats: boolEnv(cliArgs.includeStats || env.HERMES_OUTBOX_WORKER_INCLUDE_STATS) });
+        if (LOOP_MODE_TO_ONCE_MODE[mode]) {
+            await runLoop({
+                env,
+                cliArgs,
+                deps,
+                includeStats: boolEnv(cliArgs.includeStats || env.HERMES_OUTBOX_WORKER_INCLUDE_STATS),
+                includePreview: boolEnv(cliArgs.includePreview || env.HERMES_OUTBOX_INCLUDE_PREVIEW)
+            });
             return;
         }
         const result = await runOnce({
             env,
             cliArgs,
             deps,
-            includeStats: boolEnv(cliArgs.includeStats || env.HERMES_OUTBOX_WORKER_INCLUDE_STATS)
+            includeStats: boolEnv(cliArgs.includeStats || env.HERMES_OUTBOX_WORKER_INCLUDE_STATS),
+            includePreview: boolEnv(cliArgs.includePreview || env.HERMES_OUTBOX_INCLUDE_PREVIEW)
         });
         process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
         if (!result.ok) process.exitCode = 1;
@@ -521,8 +785,10 @@ module.exports = {
     MAX_EVENTS_HARD_CAP,
     OWNER16_BLOCK_CODE,
     buildConfig,
+    buildBatchPlan,
     classifyEvent,
     formatTaskMessage,
+    isBatchCandidate,
     liveGateBlockers,
     parseCliArgs,
     parseOwnerIdList,

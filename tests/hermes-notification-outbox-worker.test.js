@@ -2,6 +2,9 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const worker = require('../scripts/hermes-notification-outbox-worker');
 
@@ -232,4 +235,99 @@ test('live_once records a retryable fail when Telegram send fails', async () => 
 test('max events are hard-capped at 10 even if env requests more', () => {
     const config = worker.buildConfig(targetEnv({ HERMES_OUTBOX_WORKER_MAX_EVENTS: '999' }));
     assert.equal(config.maxEvents, 10);
+});
+
+test('batch config supports read-only loop without opening live gates', () => {
+    const config = worker.buildConfig(targetEnv({
+        HERMES_OUTBOX_WORKER_MODE: 'read_only_loop',
+        HERMES_OUTBOX_BATCH_ENABLED: '1',
+        HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4,3'
+    }));
+    assert.equal(config.ok, true);
+    assert.equal(config.mode, 'read_only_loop');
+    assert.equal(config.batchEnabled, true);
+    assert.deepEqual(config.batchOwnerIds, [4, 3]);
+    assert.deepEqual(worker.liveGateBlockers(config), []);
+});
+
+test('read_only batch mode groups normal task events without claim, send, ack, or fail', async () => {
+    const calls = [];
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_BATCH_ENABLED: '1',
+            HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4'
+        }),
+        deps: depsFor([event(4, 1), event(4, 2)], calls),
+        includePreview: true
+    });
+    assert.equal(result.status, 'READ_ONLY_PLAN');
+    assert.equal(result.ready_count, 2);
+    assert.equal(result.immediate_ready_count, 0);
+    assert.equal(result.batch_candidate_count, 2);
+    assert.equal(result.batchPlan.batch_count, 1);
+    assert.deepEqual(result.batchPlan.buckets[0].taskIds, [1, 2]);
+    assert.match(result.batchPlan.buckets[0].messagePreview, /Нові задачі за годину/);
+    assert.equal(result.send_attempted, false);
+    assert.equal(result.crm_mutation_attempted, false);
+    assert.deepEqual(calls.map(call => call[0]), ['list']);
+});
+
+test('high priority task stays on immediate path while normal tasks are batched', async () => {
+    const calls = [];
+    const urgent = event(4, 9);
+    urgent.payload_json.priority = 'high';
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_BATCH_ENABLED: '1',
+            HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4'
+        }),
+        deps: depsFor([event(4, 1), urgent], calls)
+    });
+    assert.equal(result.status, 'READ_ONLY_PLAN');
+    assert.equal(result.ready_count, 2);
+    assert.equal(result.immediate_ready_count, 1);
+    assert.equal(result.batch_candidate_count, 1);
+    assert.deepEqual(result.ready.map(item => item.taskId), [9]);
+    assert.deepEqual(result.batchPlan.buckets[0].taskIds, [1]);
+    assert.equal(result.send_attempted, false);
+    assert.equal(result.crm_mutation_attempted, false);
+    assert.deepEqual(calls.map(call => call[0]), ['list']);
+});
+
+test('live_once batch sends one grouped Telegram message and acks selected events when all live gates are approved', async () => {
+    const calls = [];
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eg-outbox-batch-test-'));
+    const deps = depsFor([event(4, 1), event(4, 2)], calls);
+    let sentText = '';
+    deps.sendTelegramMessage = async (chatId, text) => {
+        calls.push(['send', chatId, text]);
+        sentText = text;
+        return { ok: true, messageId: 777 };
+    };
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            HERMES_OUTBOX_BATCH_ENABLED: '1',
+            HERMES_OUTBOX_BATCH_FORCE: '1',
+            HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4',
+            HERMES_OUTBOX_BATCH_STATE_DIR: stateDir,
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.status, 'LIVE_RUN_COMPLETE');
+    assert.equal(result.sent_count, 2);
+    assert.equal(result.processed_count, 2);
+    assert.equal(result.send_attempted, true);
+    assert.equal(result.crm_mutation_attempted, true);
+    assert.match(sentText, /Нові задачі за годину/);
+    assert.match(sentText, /#1/);
+    assert.match(sentText, /#2/);
+    assert.deepEqual(calls.map(call => call[0]), ['list', 'claim', 'claim', 'send', 'ack', 'ack']);
+    assert.ok(fs.existsSync(path.join(stateDir, 'owner-4.json')));
 });

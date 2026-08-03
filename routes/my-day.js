@@ -7,6 +7,7 @@ const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../serv
 const { updateTaskStatus } = require('../services/taskExecution');
 const {
     appendTaskBusinessScopeSql,
+    ensureTaskBusinessScope,
     ensureWritableTaskBusinessScope
 } = require('../services/taskBusinessScope');
 const {
@@ -17,6 +18,7 @@ const {
     updateTaxonomy
 } = require('../services/myDayTaxonomy');
 const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
+const { buildMyDayContribution } = require('../services/myDayContribution');
 
 router.use(authenticateToken);
 router.param('taskId', (req, res, next, value) => {
@@ -80,6 +82,22 @@ function taxonomyRoutes(kind) {
 
 taxonomyRoutes('directions');
 taxonomyRoutes('impacts');
+
+router.get('/contribution', async (req, res) => {
+    try {
+        const businessScope = ensureTaskBusinessScope(req, res);
+        if (!businessScope) return;
+        const contribution = await buildMyDayContribution({
+            pool,
+            user: req.user,
+            businessScope,
+            query: req.query || {}
+        });
+        res.json(contribution);
+    } catch (error) {
+        sendMyDayError(res, error);
+    }
+});
 
 async function loadMyCabinetTask(client, user, businessScope, taskId) {
     const params = [];

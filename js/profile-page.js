@@ -6304,6 +6304,9 @@ function renderMyDayCommandCenterTab() {
     if (window.MyDayHabits?.state?.mode === 'habits') {
         return `<div class="my-day-life-shell">${window.MyDayHabits?.renderModeTabs?.() || ''}${window.MyDayHabits?.renderPanel?.() || ''}</div>`;
     }
+    if (window.MyDayHabits?.state?.mode === 'contribution') {
+        return `<div class="my-day-life-shell">${window.MyDayHabits?.renderModeTabs?.() || ''}${window.MyDayContribution?.renderPanel?.() || ''}</div>`;
+    }
     return `
         <div class="cabinet-shell cabinet-command-center" id="myDayDayPanel" role="tabpanel" aria-labelledby="myDayModeDay">
             ${window.MyDayHabits?.renderModeTabs?.() || ''}
@@ -8301,6 +8304,14 @@ function attachProfileListeners() {
             const habitsLoad = myDayHabits.load();
             if (myDayHabits.state.loading) rerenderMyDayHabitsSurface();
             habitsLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
+        }
+        if (activeTab === 'myday' && myDayHabits.state.mode === 'contribution' && window.MyDayContribution && !window.MyDayContribution.state.loaded && !window.MyDayContribution.state.loading) {
+            const contributionLoad = window.MyDayContribution.load();
+            if (window.MyDayContribution.state.loading) rerenderMyDayHabitsSurface();
+            contributionLoad.then(rerenderMyDayHabitsSurface).catch(rerenderMyDayHabitsSurface);
+        }
+        if (activeTab === 'myday' && window.MyDayContribution) {
+            window.MyDayContribution.bind(document, rerenderMyDayHabitsSurface);
         }
         if (activeTab === 'settings' && !myDayHabits.state.settingsLoaded && !myDayHabits.state.settingsLoading) {
             const settingsLoad = myDayHabits.loadSettings();

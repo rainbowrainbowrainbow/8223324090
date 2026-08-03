@@ -234,3 +234,103 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     .my-day-life-tabs, .my-day-habits-toolbar, .my-day-habit-main, .my-day-habit-meta, .my-day-habit-actions { width: 100%; }
     .my-day-time-entry-row { grid-template-columns: 1fr; }
 }
+
+.my-day-contribution-toolbar {
+    display: flex;
+    justify-content: space-between;
+    gap: 16px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 16px;
+}
+.my-day-contribution-toolbar h2 { margin: 0 0 4px; }
+.my-day-contribution-toolbar p { margin: 0; color: #64748b; }
+.my-day-contribution-range,
+.my-day-contribution-metrics {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-wrap: wrap;
+}
+.my-day-contribution-range label {
+    display: grid;
+    gap: 4px;
+    font-size: 0.82rem;
+    color: #475569;
+}
+.my-day-contribution-range input {
+    min-height: 36px;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 8px;
+    padding: 0 10px;
+}
+.my-day-contribution-range button {
+    min-height: 36px;
+    border: 0;
+    border-radius: 8px;
+    background: #111827;
+    color: #fff;
+    padding: 0 14px;
+    cursor: pointer;
+}
+.my-day-contribution-metrics {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    align-items: stretch;
+    margin-bottom: 16px;
+}
+.my-day-contribution-metric,
+.my-day-contribution-section {
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 10px;
+    background: #fff;
+}
+.my-day-contribution-metric {
+    display: grid;
+    gap: 4px;
+    padding: 12px;
+}
+.my-day-contribution-metric span,
+.my-day-contribution-metric small { color: #64748b; }
+.my-day-contribution-metric strong { font-size: 1.35rem; color: #111827; }
+.my-day-contribution-section { padding: 12px; margin-bottom: 12px; overflow: hidden; }
+.my-day-contribution-section .profile-panel-head { margin-bottom: 8px; }
+.my-day-contribution-section h3 { margin: 0 0 4px; }
+.my-day-contribution-section p { margin: 0; color: #64748b; }
+.my-day-contribution-table-wrap { overflow-x: auto; max-width: 100%; }
+.my-day-contribution-table {
+    width: 100%;
+    border-collapse: collapse;
+    min-width: 560px;
+}
+.my-day-contribution-table th,
+.my-day-contribution-table td {
+    padding: 10px 8px;
+    border-top: 1px solid rgba(148, 163, 184, 0.22);
+    text-align: left;
+    vertical-align: middle;
+}
+.my-day-contribution-table thead th {
+    color: #64748b;
+    font-size: 0.78rem;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+}
+.my-day-contribution-empty { color: #64748b; text-align: center; }
+.my-day-contribution-unclassified {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 0 9px;
+    border-radius: 999px;
+    background: rgba(100, 116, 139, 0.12);
+    color: #475569;
+}
+@media (max-width: 640px) {
+    .my-day-contribution-toolbar,
+    .my-day-contribution-range { width: 100%; }
+    .my-day-contribution-range { align-items: stretch; }
+    .my-day-contribution-range label,
+    .my-day-contribution-range button { flex: 1 1 100%; }
+    .my-day-contribution-table { min-width: 520px; }
+}

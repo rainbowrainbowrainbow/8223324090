@@ -139,11 +139,16 @@ overlap another entry of the same user. Entries longer than eight hours are
 highlighted but never truncated. Contribution calculations split a session at
 Kyiv midnight. \`tasks.effort_minutes\` remains planned effort only.
 
+`my_day_time_entries` is a personal ledger. If a task is later reassigned, the
+current user's recorded time remains in that user's contribution while the task
+must still belong to the current authorized business context. Contribution never
+exposes hidden task titles or other private task fields from this ledger.
+
 ### Habits
 
-\`my_day_habits\` contains \`id\`, \`user_id\`, \`name\`, \`color\`, \`icon\`,
-\`sort_order\`, \`is_active\`, \`archived_at\`, \`created_at\`, and
-\`updated_at\` with the same private archive rules as taxonomy, plus:
+`my_day_habits` contains private habit definitions with `id`, `user_id`, `name`,
+`color`, `icon`, optional `direction_id`, metric/cadence fields, `is_paused`,
+`is_archived`, `archived_at`, `sort_order`, `created_at`, and `updated_at`.
 
 | Column | Contract |
 | --- | --- |
@@ -157,10 +162,10 @@ Kyiv midnight. \`tasks.effort_minutes\` remains planned effort only.
 \`my_day_habit_impacts\` links one habit to zero through three impacts and has
 unique key \`(habit_id, impact_id)\`.
 
-\`my_day_habit_checkins\` has required \`habit_id\`, \`user_id\`,
-\`local_date\`, \`value\`, \`status\`, \`created_at\`, and \`updated_at\`.
-\`status\` is \`done\` or \`skipped\`; its unique key is
-\`(habit_id, user_id, local_date)\`. A check-in write replaces that one local
+`my_day_habit_checkins` has required `habit_id`, `user_id`,
+`local_date`, `value`, `state`, `created_at`, and `updated_at`.
+`state` is `done` or `skipped`; its unique key is
+`(habit_id, user_id, local_date)`. A check-in write replaces that one local
 date idempotently. Skipped is not done. Paused habits create no expected
 check-ins. Archived habits preserve history.
 
@@ -177,15 +182,12 @@ authentication, and return \`success: true\` on success. Failures return
 ### Directions and impacts
 
 | Endpoint | Contract |
-| --- | --- |
-| \`GET /api/my-day/directions\` | Return active directions in \`sort_order, id\` order. \`includeArchived=1\` includes archived rows. |
-| \`POST /api/my-day/directions\` | Create from \`name\`, \`color\`, \`icon\`, optional \`sortOrder\`. |
-| \`PATCH /api/my-day/directions/:id\` | Rename, recolor, re-icon, or reorder caller-owned direction. |
-| \`POST /api/my-day/directions/:id/archive\` | Archive caller-owned direction. |
-| \`GET /api/my-day/impacts\` | Same list contract for impacts. |
-| \`POST /api/my-day/impacts\` | Create an impact. |
-| \`PATCH /api/my-day/impacts/:id\` | Edit caller-owned impact. |
-| \`POST /api/my-day/impacts/:id/archive\` | Archive caller-owned impact. |
+| `GET /api/my-day/directions` | Return active directions in `sort_order, id` order. `includeArchived=1` includes archived rows. |
+| `POST /api/my-day/directions` | Create from `name`, `color`, `icon`, optional `sortOrder`. |
+| `PATCH /api/my-day/directions/:id` | Rename, recolor, re-icon, reorder, archive, or restore caller-owned direction. Archive/restore uses `isActive`. |
+| `GET /api/my-day/impacts` | Same list contract for impacts. |
+| `POST /api/my-day/impacts` | Create an impact. |
+| `PATCH /api/my-day/impacts/:id` | Edit, archive, or restore caller-owned impact. Archive/restore uses `isActive`. |
 
 Foreign catalog IDs return \`404 MY_DAY_TAXONOMY_NOT_FOUND\`. Malformed names,
 colors, icons, duplicate names, and sort values return
@@ -194,8 +196,8 @@ colors, icons, duplicate names, and sort values return
 
 ### Task classification
 
-\`GET /api/my-day/tasks/:taskId/classification\` returns the caller's
-\`direction\` object or \`null\`, plus an \`impacts\` array.
+There is no separate `GET /api/my-day/tasks/:taskId/classification` endpoint.
+Task classification is read through the My Cabinet projection.
 
 \`PUT /api/my-day/tasks/:taskId/classification\` accepts:
 
@@ -234,16 +236,19 @@ an explicit permitted completion action.
 
 | Endpoint | Contract |
 | --- | --- |
-| \`GET /api/my-day/timer\` | Return the caller's active timer or \`active: null\`. |
-| \`POST /api/my-day/timer/start\` | Start \`taskId\`; atomically stop a prior timer. |
-| \`POST /api/my-day/timer/stop\` | Stop active timer; no active timer succeeds idempotently. |
-| \`GET /api/my-day/time-entries\` | List caller entries for an inclusive validated Kyiv range. |
-| \`POST /api/my-day/time-entries\` | Create one validated, non-overlapping manual entry. |
-| \`PATCH /api/my-day/time-entries/:id\` | Edit the caller's manual entry with overlap validation. |
-| \`POST /api/my-day/time-entries/:id/archive\` | Archive a manual correction without deleting audit history. |
-| \`/api/my-day/habits\` | GET, POST; PATCH \`/:habitId\`; POST \`/:habitId/archive\`. |
-| \`PUT /api/my-day/habits/:habitId/check-ins/:localDate\` | Idempotently replace one caller check-in. |
-| \`GET /api/my-day/contribution?from=YYYY-MM-DD&to=YYYY-MM-DD\` | Return the personal matrix for inclusive range up to 92 days. |
+| `GET /api/my-day/timer` | Return the caller's active timer or `active: null`. |
+| `POST /api/my-day/timer/start` | Start `taskId`; atomically stop a prior timer. |
+| `POST /api/my-day/timer/stop` | Stop active timer; no active timer succeeds idempotently. |
+| `GET /api/my-day/time-entries` | List caller entries for an inclusive validated Kyiv range. |
+| `POST /api/my-day/time-entries` | Create one validated, non-overlapping manual entry. |
+| `PATCH /api/my-day/time-entries/:id` | Edit the caller's manual entry with overlap validation. |
+| `DELETE /api/my-day/time-entries/:id` | Delete the caller's own manual entry. There is no `archived_at` time-entry contract. |
+| `GET /api/my-day/habits?date=YYYY-MM-DD` | Return due active habits for the caller and date; `includeArchived=1` includes settings history. |
+| `POST /api/my-day/habits` | Create one private habit. |
+| `PATCH /api/my-day/habits/:id` | Edit, pause/resume, archive, or restore through `isPaused` and `isArchived`. |
+| `PUT /api/my-day/habits/:habitId/check-ins/:localDate` | Idempotently replace one caller check-in. |
+| `DELETE /api/my-day/habits/:habitId/check-ins/:localDate` | Undo one caller check-in. |
+| `GET /api/my-day/contribution?from=YYYY-MM-DD&to=YYYY-MM-DD` | Return the personal matrix for inclusive range up to 92 days. |
 
 ## My Day projection
 
@@ -308,8 +313,11 @@ Contribution is a transparent matrix, never a productivity score.
   once to its direction or **Без напряму**. Direction columns sum to task total.
 - Impact totals overlap: a task contributes once to each impact. Impact columns
   are never added into a global total.
-- Task minutes equal each time-entry intersection with the selected range,
-  split at Kyiv midnight. Unfinished-task time and active timer time count.
+- Task minutes equal each personal `my_day_time_entries` intersection with the
+  selected range, split at Kyiv midnight. Unfinished-task time and active timer
+  time count. The ledger remains personal after later task reassignment, but the
+  task must still be in the current authorized business context and hidden task
+  details are not returned.
 - Habit completion comes only from \`done\` check-ins and remains separate by
   metric. Habit minutes never add to task minutes.
 - The response labels task count, task minutes, habit count, and habit minutes

@@ -11,7 +11,7 @@ router.use(authenticateToken);
 
 function currentUserId(req) {
     const id = normalizeUserId(req.user);
-    if (!id) throw myDayError('Authentication required.', 401, 'MY_DAY_UNAUTHENTICATED');
+    if (!id) throw myDayError('Потрібна авторизація.', 401, 'MY_DAY_UNAUTHENTICATED');
     return id;
 }
 
@@ -20,7 +20,7 @@ function sendError(res, error) {
     res.status(status).json({
         success: false,
         code: error.code || 'MY_DAY_HABIT_ERROR',
-        error: status >= 500 ? 'Could not update My Day habits.' : error.message
+        error: status >= 500 ? 'Не вдалося оновити звички My Day.' : error.message
     });
 }
 

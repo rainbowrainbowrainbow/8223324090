@@ -169,9 +169,9 @@ router.post('/timer/start', async (req, res) => {
         const timer = await withMyDayTransaction(async client => {
             const userId = currentUserId(req);
             const task = await loadMyCabinetTask(client, req.user, businessScope, req.body?.taskId);
-            if (!task) throw myDayError('Р вЂ”Р В°Р Т‘Р В°РЎвЂЎРЎС“ Р Р…Р Вµ Р В·Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р С•.', 404, 'MY_DAY_TASK_NOT_FOUND');
-            if (!canMutateTask(req.user, task)) throw myDayError('Р СњР ВµР СР В°РЎвЂќ Р С—РЎР‚Р В°Р Р† Р В·Р В°Р С—РЎС“РЎРѓР С”Р В°РЎвЂљР С‘ РЎвЂљР В°Р в„–Р СР ВµРЎР‚ Р Т‘Р В»РЎРЏ РЎвЂ РЎвЂ“РЎвЂќРЎвЂ” Р В·Р В°Р Т‘Р В°РЎвЂЎРЎвЂ“.', 403, 'MY_DAY_TIMER_FORBIDDEN');
-            if (['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(String(task.status || '').toLowerCase())) throw myDayError('Р СњР Вµ Р СР С•Р В¶Р Р…Р В° Р В·Р В°Р С—РЎС“РЎРѓР С”Р В°РЎвЂљР С‘ РЎвЂљР В°Р в„–Р СР ВµРЎР‚ Р Т‘Р В»РЎРЏ Р В·Р В°Р Р†Р ВµРЎР‚РЎв‚¬Р ВµР Р…Р С•РЎвЂ” Р В·Р В°Р Т‘Р В°РЎвЂЎРЎвЂ“.', 409, 'MY_DAY_TIMER_TASK_CLOSED');
+            if (!task) throw myDayError('Задачу не знайдено.', 404, 'MY_DAY_TASK_NOT_FOUND');
+            if (!canMutateTask(req.user, task)) throw myDayError('Немає прав запускати таймер для цієї задачі.', 403, 'MY_DAY_TIMER_FORBIDDEN');
+            if (['done', 'completed', 'cancelled', 'canceled', 'archived'].includes(String(task.status || '').toLowerCase())) throw myDayError('Не можна запускати таймер для завершеної задачі.', 409, 'MY_DAY_TIMER_TASK_CLOSED');
             if (String(task.status || 'todo').toLowerCase() === 'todo') await updateTaskStatus(task.id, 'in_progress', req.user, { pool: client, businessScope, sourceSurface: 'profile_my_cabinet', route: 'my_day_timer_start' });
             return startTimer(client, { userId, taskId: task.id });
         });
@@ -195,7 +195,7 @@ router.post('/time-entries', async (req, res) => {
     try {
         const entry = await withMyDayTransaction(async client => {
             const task = await loadMyCabinetTask(client, req.user, businessScope, req.body?.taskId);
-            if (!task) throw myDayError('Р вЂ”Р В°Р Т‘Р В°РЎвЂЎРЎС“ Р Р…Р Вµ Р В·Р Р…Р В°Р в„–Р Т‘Р ВµР Р…Р С•.', 404, 'MY_DAY_TASK_NOT_FOUND');
+            if (!task) throw myDayError('Задачу не знайдено.', 404, 'MY_DAY_TASK_NOT_FOUND');
             return createManualEntry(client, { ...req.body, userId: currentUserId(req), taskId: task.id });
         });
         res.status(201).json({ success: true, entry });

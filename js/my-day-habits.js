@@ -100,7 +100,7 @@
         return `<div class="my-day-life-tabs" role="tablist" aria-label="Режими Мій день">
             <button type="button" role="tab" id="myDayModeDay" aria-selected="${state.mode === 'day'}" aria-controls="myDayDayPanel" data-my-day-life-mode="day" class="${state.mode === 'day' ? 'is-active' : ''}">День</button>
             <button type="button" role="tab" id="myDayModeHabits" aria-selected="${state.mode === 'habits'}" aria-controls="myDayHabitsPanel" data-my-day-life-mode="habits" class="${state.mode === 'habits' ? 'is-active' : ''}">Звички</button>
-            <button type="button" role="tab" id="myDayModeContribution" aria-selected="${state.mode === 'contribution'}" aria-controls="myDayContributionPanel" data-my-day-life-mode="contribution" class="${state.mode === 'contribution' ? 'is-active' : ''}">������</button>
+            <button type="button" role="tab" id="myDayModeContribution" aria-selected="${state.mode === 'contribution'}" aria-controls="myDayContributionPanel" data-my-day-life-mode="contribution" class="${state.mode === 'contribution' ? 'is-active' : ''}">Внесок</button>
         </div>`;
     }
 

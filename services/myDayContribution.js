@@ -10,13 +10,14 @@ const MS_PER_DAY = 24 * 60 * 60 * 1000;
 const UNCLASSIFIED_KEY = 'unclassified';
 
 function normalizeLocalDate(value, field = 'date') {
+    const label = field === 'from' ? 'початку' : (field === 'to' ? 'завершення' : 'дати');
     const date = String(value || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        throw myDayError(`${field} must be YYYY-MM-DD in ${KYIV_TIMEZONE}.`, 400, 'MY_DAY_CONTRIBUTION_VALIDATION');
+        throw myDayError(`Дата ${label} має бути у форматі YYYY-MM-DD для ${KYIV_TIMEZONE}.`, 400, 'MY_DAY_CONTRIBUTION_VALIDATION');
     }
     const parsed = new Date(`${date}T12:00:00Z`);
     if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-        throw myDayError(`Invalid ${field}.`, 400, 'MY_DAY_CONTRIBUTION_VALIDATION');
+        throw myDayError(`Некоректна дата ${label}.`, 400, 'MY_DAY_CONTRIBUTION_VALIDATION');
     }
     return date;
 }
@@ -47,8 +48,8 @@ function normalizeRange(query = {}, now = new Date()) {
     const to = normalizeLocalDate(query.to || fallbackTo, 'to');
     const from = normalizeLocalDate(query.from || addDays(to, -6), 'from');
     const count = dayCount(from, to);
-    if (count < 1) throw myDayError('from must be before or equal to to.', 400, 'MY_DAY_CONTRIBUTION_VALIDATION');
-    if (count > MAX_RANGE_DAYS) throw myDayError('Contribution range cannot exceed 92 days.', 400, 'MY_DAY_CONTRIBUTION_RANGE_TOO_LARGE');
+    if (count < 1) throw myDayError('Дата початку має бути не пізніше дати завершення.', 400, 'MY_DAY_CONTRIBUTION_VALIDATION');
+    if (count > MAX_RANGE_DAYS) throw myDayError('Період внеску не може перевищувати 92 дні.', 400, 'MY_DAY_CONTRIBUTION_RANGE_TOO_LARGE');
     return { from, to, dayCount: count, timezone: KYIV_TIMEZONE };
 }
 
@@ -142,7 +143,7 @@ function createMatrix(range, businessScope = null) {
         daysMap: new Map(),
         unclassified: {
             key: UNCLASSIFIED_KEY,
-            label: 'Р‘РµР· РЅР°РїСЂСЏРјСѓ',
+            label: 'Без напряму',
             taxonomy: null,
             ...emptyTotals()
         },
@@ -367,7 +368,7 @@ async function queryHabitRows(queryable, userId, range) {
 async function buildMyDayContribution({ pool, queryable, user, businessScope, query = {}, now } = {}) {
     const executor = queryable || pool;
     const userId = normalizeUserId(user);
-    if (!executor || !userId) throw myDayError('Authentication required.', 401, 'MY_DAY_CONTRIBUTION_AUTH_REQUIRED');
+    if (!executor || !userId) throw myDayError('Потрібна авторизація.', 401, 'MY_DAY_CONTRIBUTION_AUTH_REQUIRED');
     const range = normalizeRange(query, now);
     const [completedTasks, taskTimeRows, habitRows] = await Promise.all([
         queryCompletedTasks(executor, user, userId, businessScope, range),

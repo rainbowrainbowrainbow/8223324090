@@ -11,9 +11,15 @@ const HABIT_CADENCES = new Set(['daily', 'selected_weekdays', 'times_per_week'])
 const KYIV_TIMEZONE = 'Europe/Kyiv';
 
 function positiveInteger(value, field = 'identifier') {
+    const labels = {
+        identifier: 'ідентифікатор',
+        habit: 'ідентифікатор звички',
+        user: 'ідентифікатор користувача',
+        direction: 'ідентифікатор напряму'
+    };
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed <= 0) {
-        throw myDayError(`Invalid ${field}.`, 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError(`Некоректний ${labels[field] || field}.`, 400, 'MY_DAY_HABIT_VALIDATION');
     }
     return parsed;
 }
@@ -26,11 +32,11 @@ function optionalPositiveInteger(value, field = 'identifier') {
 function normalizeLocalDate(value) {
     const date = String(value || '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-        throw myDayError('Date must be YYYY-MM-DD in Europe/Kyiv.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Дата має бути у форматі YYYY-MM-DD для Europe/Kyiv.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
     const parsed = new Date(`${date}T12:00:00Z`);
     if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== date) {
-        throw myDayError('Invalid local date.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Некоректна локальна дата.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
     return date;
 }
@@ -69,7 +75,7 @@ function normalizeWeekdays(value) {
     const weekdays = source.map(Number).filter(Number.isInteger);
     const unique = [...new Set(weekdays)].sort((a, b) => a - b);
     if (unique.length !== weekdays.length || unique.some(day => day < 1 || day > 7)) {
-        throw myDayError('Weekdays must be unique ISO days 1-7.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Дні тижня мають бути унікальними ISO-значеннями 1-7.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
     return unique;
 }
@@ -85,27 +91,27 @@ function normalizeHabitPayload(input = {}, current = {}) {
     const name = has('name') ? normalizeName(input.name) : current.name;
     const metric = String(has('metric') ? input.metric : (current.metric || 'boolean'));
     const cadence = String(has('cadence') ? input.cadence : (current.cadence || 'daily'));
-    if (!HABIT_METRICS.has(metric)) throw myDayError('Unsupported habit metric.', 400, 'MY_DAY_HABIT_VALIDATION');
-    if (!HABIT_CADENCES.has(cadence)) throw myDayError('Unsupported habit cadence.', 400, 'MY_DAY_HABIT_VALIDATION');
+    if (!HABIT_METRICS.has(metric)) throw myDayError('Непідтримувана метрика звички.', 400, 'MY_DAY_HABIT_VALIDATION');
+    if (!HABIT_CADENCES.has(cadence)) throw myDayError('Непідтримуваний ритм звички.', 400, 'MY_DAY_HABIT_VALIDATION');
 
     const rawTarget = has('targetValue') ? input.targetValue : (has('target_value') ? input.target_value : (current.target_value ?? current.targetValue ?? 1));
     const targetValue = Number(rawTarget);
     if (!Number.isInteger(targetValue) || targetValue < 1 || (metric === 'boolean' && targetValue !== 1)) {
-        throw myDayError('Invalid habit target.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Некоректна ціль звички.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
 
     const rawWeekdays = has('selectedWeekdays') ? input.selectedWeekdays
         : (has('selected_weekdays') ? input.selected_weekdays : (current.selected_weekdays ?? current.selectedWeekdays ?? []));
     const selectedWeekdays = cadence === 'selected_weekdays' ? normalizeWeekdays(rawWeekdays) : [];
     if (cadence === 'selected_weekdays' && selectedWeekdays.length === 0) {
-        throw myDayError('Selected weekdays cadence requires at least one day.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Для ритму за днями тижня потрібен хоча б один день.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
 
     const rawTimesPerWeek = has('timesPerWeek') ? input.timesPerWeek
         : (has('times_per_week') ? input.times_per_week : (current.times_per_week ?? current.timesPerWeek ?? null));
     const timesPerWeek = cadence === 'times_per_week' ? Number(rawTimesPerWeek) : null;
     if (cadence === 'times_per_week' && (!Number.isInteger(timesPerWeek) || timesPerWeek < 1 || timesPerWeek > 7)) {
-        throw myDayError('Weekly habit target must be 1-7.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Тижнева ціль звички має бути від 1 до 7.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
 
     const directionId = has('directionId') ? optionalPositiveInteger(input.directionId, 'direction')
@@ -117,13 +123,13 @@ function normalizeHabitPayload(input = {}, current = {}) {
     const sortOrder = has('sortOrder') || has('sort_order') ? Number(input.sortOrder ?? input.sort_order)
         : Number(current.sort_order ?? current.sortOrder ?? 0);
     if (!Number.isInteger(sortOrder) || sortOrder < 0 || sortOrder > 1000000) {
-        throw myDayError('Invalid habit sort order.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Некоректний порядок звички.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
 
     const isPaused = has('isPaused') ? input.isPaused : (has('is_paused') ? input.is_paused : (current.is_paused ?? current.isPaused ?? false));
     const isArchived = has('isArchived') ? input.isArchived : (has('is_archived') ? input.is_archived : (current.is_archived ?? current.isArchived ?? false));
     if (typeof isPaused !== 'boolean' || typeof isArchived !== 'boolean') {
-        throw myDayError('Habit state flags must be boolean.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Стани звички мають бути boolean.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
 
     return {
@@ -148,8 +154,8 @@ async function ensureTaxonomyOwnership(queryable, userId, directionId, impactIds
             'SELECT id, is_active FROM my_day_directions WHERE id = $1 AND user_id = $2 LIMIT 1',
             [positiveInteger(directionId, 'direction'), ownerId]
         );
-        if (!direction.rows?.[0]) throw myDayError('Direction is not available.', 404, 'MY_DAY_HABIT_TAXONOMY_NOT_FOUND');
-        if (direction.rows[0].is_active === false) throw myDayError('Archived direction cannot be selected.', 409, 'MY_DAY_HABIT_TAXONOMY_ARCHIVED');
+        if (!direction.rows?.[0]) throw myDayError('Напрям недоступний.', 404, 'MY_DAY_HABIT_TAXONOMY_NOT_FOUND');
+        if (direction.rows[0].is_active === false) throw myDayError('Архівний напрям не можна вибрати.', 409, 'MY_DAY_HABIT_TAXONOMY_ARCHIVED');
     }
     const ids = normalizeImpactIds(impactIds || []);
     if (!ids.length) return;
@@ -157,8 +163,8 @@ async function ensureTaxonomyOwnership(queryable, userId, directionId, impactIds
         'SELECT id, is_active FROM my_day_impacts WHERE user_id = $1 AND id = ANY($2::bigint[])',
         [ownerId, ids]
     );
-    if ((impacts.rows || []).length !== ids.length) throw myDayError('Impact is not available.', 404, 'MY_DAY_HABIT_TAXONOMY_NOT_FOUND');
-    if (impacts.rows.some(row => row.is_active === false)) throw myDayError('Archived impact cannot be selected.', 409, 'MY_DAY_HABIT_TAXONOMY_ARCHIVED');
+    if ((impacts.rows || []).length !== ids.length) throw myDayError('Вплив недоступний.', 404, 'MY_DAY_HABIT_TAXONOMY_NOT_FOUND');
+    if (impacts.rows.some(row => row.is_active === false)) throw myDayError('Архівний вплив не можна вибрати.', 409, 'MY_DAY_HABIT_TAXONOMY_ARCHIVED');
 }
 
 function isHabitDue(row, localDate) {
@@ -304,7 +310,7 @@ async function getHabit(queryable, userId, habitId, options = {}) {
         [positiveInteger(habitId, 'habit'), positiveInteger(userId, 'user')]
     );
     const row = result.rows?.[0];
-    if (!row) throw myDayError('Habit not found.', 404, 'MY_DAY_HABIT_NOT_FOUND');
+    if (!row) throw myDayError('Звичку не знайдено.', 404, 'MY_DAY_HABIT_NOT_FOUND');
     row.impactIds = parsePgArray(row.impact_ids);
     return row;
 }
@@ -370,7 +376,7 @@ function normalizeCheckinPayload(habit, payload = {}) {
     const rawValue = payload.value ?? (state === 'skipped' ? 0 : (habit.metric === 'boolean' ? 1 : 0));
     const value = Number(rawValue);
     if (!Number.isInteger(value) || value < 0) {
-        throw myDayError('Invalid check-in value.', 400, 'MY_DAY_HABIT_VALIDATION');
+        throw myDayError('Некоректне значення чек-іну.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
     return { state, value: state === 'skipped' ? 0 : value };
 }
@@ -379,7 +385,7 @@ async function upsertCheckin(queryable, userId, habitId, localDate, payload = {}
     const ownerId = positiveInteger(userId, 'user');
     const date = normalizeLocalDate(localDate);
     const habit = await getHabit(queryable, ownerId, habitId, { includeArchived: false });
-    if (habit.is_paused) throw myDayError('Paused habit cannot be checked in.', 409, 'MY_DAY_HABIT_PAUSED');
+    if (habit.is_paused) throw myDayError('Звичка на паузі, чек-ін недоступний.', 409, 'MY_DAY_HABIT_PAUSED');
     const checkin = normalizeCheckinPayload(habit, payload);
     const result = await queryable.query(
         `INSERT INTO my_day_habit_checkins (habit_id, user_id, local_date, state, value)

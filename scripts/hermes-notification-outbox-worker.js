@@ -14,6 +14,8 @@ const DEFAULT_LOOP_INTERVAL_SECONDS = 60;
 const DEFAULT_BATCH_WINDOW_MINUTES = 60;
 const DEFAULT_BATCH_MAX_ITEMS = 10;
 const DEFAULT_BATCH_STATE_DIR = '.hermes/outbox-batch-state';
+const DEFAULT_BATCH_DUPLICATE_GUARD_MINUTES = 120;
+const MAX_BATCH_DUPLICATE_GUARD_MINUTES = 24 * 60;
 const VALID_MODES = new Set(['read_only', 'dry_run', 'live_once', 'live_loop', 'read_only_loop', 'dry_run_loop']);
 const LIVE_MODES = new Set(['live_once', 'live_loop']);
 const LOOP_MODE_TO_ONCE_MODE = Object.freeze({
@@ -72,6 +74,21 @@ function parseOwnerIdList(value, fallback = DEFAULT_APPROVED_OWNER_IDS) {
         if (parsed && !ids.includes(parsed)) ids.push(parsed);
     }
     return ids;
+}
+
+function parseTextList(value) {
+    const source = textOrNull(value);
+    if (!source) return [];
+    const items = [];
+    for (const item of source.split(/[\s,;]+/)) {
+        const text = textOrNull(item);
+        if (text && !items.includes(text)) items.push(text);
+    }
+    return items;
+}
+
+function parseEventIdList(value) {
+    return parseTextList(value).filter(item => item.length <= 240);
 }
 
 function sameNumberSet(left = [], right = []) {
@@ -150,6 +167,19 @@ function buildConfig(env = process.env, cliArgs = {}) {
         cliArgs.ownerIds || env.HERMES_OUTBOX_HOURLY_BATCH_OWNER_USER_IDS,
         DEFAULT_APPROVED_OWNER_IDS
     );
+    const activeOwnerSource = textOrNull(cliArgs.activeOwnerIds || env.HERMES_OUTBOX_ACTIVE_OWNER_USER_IDS);
+    const activeOwnerIds = parseOwnerIdList(
+        activeOwnerSource,
+        ownerAllowlist
+    );
+    if (activeOwnerSource && !activeOwnerIds.length) {
+        return {
+            ok: false,
+            mode,
+            reasonCode: 'INVALID_ACTIVE_OWNER_IDS',
+            message: 'HERMES_OUTBOX_ACTIVE_OWNER_USER_IDS/--active-owner-ids must contain at least one positive owner id'
+        };
+    }
     const explicitBatchOwnerIds = parseOwnerIdList(
         cliArgs.batchOwnerIds || env.HERMES_OUTBOX_BATCH_OWNER_USER_IDS,
         []
@@ -170,7 +200,12 @@ function buildConfig(env = process.env, cliArgs = {}) {
         workerId: textOrNull(cliArgs.workerId || env.HERMES_OUTBOX_WORKER_ID) || DEFAULT_WORKER_ID,
         ownerAllowlist,
         ownerAllowlistExact: sameNumberSet(ownerAllowlist, DEFAULT_APPROVED_OWNER_IDS),
+        activeOwnerIds,
         ownerTargets: parseOwnerTargets(env),
+        approvedEventIds: parseEventIdList(
+            cliArgs.approvedEventIds || cliArgs.eventIds || cliArgs.eventId || env.HERMES_OUTBOX_APPROVED_EVENT_IDS || env.HERMES_OUTBOX_EVENT_IDS
+        ),
+        requireApprovedEventIds: boolEnv(cliArgs.requireApprovedEventIds || env.HERMES_OUTBOX_REQUIRE_APPROVED_EVENT_IDS),
         allowSend: boolEnv(cliArgs.allowSend || env.HERMES_OUTBOX_ALLOW_SEND),
         allowCrmMutation: boolEnv(cliArgs.allowCrmMutation || env.HERMES_OUTBOX_ALLOW_CRM_MUTATION),
         confirmSend: boolEnv(cliArgs.confirmSend || env.HERMES_OUTBOX_CONFIRM_SEND),
@@ -188,6 +223,13 @@ function buildConfig(env = process.env, cliArgs = {}) {
         ),
         batchForce: boolEnv(cliArgs.batchForce || env.HERMES_OUTBOX_BATCH_FORCE),
         batchStateDir: textOrNull(cliArgs.batchStateDir || env.HERMES_OUTBOX_BATCH_STATE_DIR) || DEFAULT_BATCH_STATE_DIR,
+        batchDuplicateGuardMinutes: Math.min(
+            positiveInteger(
+                cliArgs.batchDuplicateGuardMinutes || env.HERMES_OUTBOX_BATCH_DUPLICATE_GUARD_MINUTES,
+                DEFAULT_BATCH_DUPLICATE_GUARD_MINUTES
+            ),
+            MAX_BATCH_DUPLICATE_GUARD_MINUTES
+        ),
         telegramBotTokenPresent: Boolean(textOrNull(env.TELEGRAM_BOT_TOKEN)),
         limit,
         maxEvents,
@@ -300,6 +342,41 @@ function parseDateOrNull(value) {
     return Number.isNaN(parsed.getTime()) ? null : parsed;
 }
 
+function roundMinutes(value) {
+    return Math.round(value * 10) / 10;
+}
+
+function recentBatchAttemptGuard(config = {}, ownerUserId, eventIds = [], now = new Date()) {
+    const state = readBatchState(config, ownerUserId);
+    const lastAttemptAt = parseDateOrNull(state.lastSendAttemptAt);
+    const lastAttemptEventIds = Array.isArray(state.lastSendAttemptEventIds)
+        ? state.lastSendAttemptEventIds.map(String)
+        : [];
+    const requestedIds = eventIds.map(String).filter(Boolean);
+    const heldEventIds = requestedIds.filter(eventId => lastAttemptEventIds.includes(eventId));
+    if (!lastAttemptAt || heldEventIds.length === 0) {
+        return { active: false };
+    }
+    const guardMinutes = Math.max(1, config.batchDuplicateGuardMinutes || DEFAULT_BATCH_DUPLICATE_GUARD_MINUTES);
+    const elapsedMinutes = Math.max(0, (now.getTime() - lastAttemptAt.getTime()) / 60000);
+    if (elapsedMinutes >= guardMinutes) {
+        return {
+            active: false,
+            previousAttemptAt: state.lastSendAttemptAt,
+            elapsedMinutes: roundMinutes(elapsedMinutes),
+            guardMinutes
+        };
+    }
+    return {
+        active: true,
+        reason: 'recent_send_attempt_duplicate_guard',
+        heldEventIds,
+        previousAttemptAt: state.lastSendAttemptAt,
+        elapsedMinutes: roundMinutes(elapsedMinutes),
+        guardMinutes
+    };
+}
+
 function batchDue(config = {}, ownerUserId, now = new Date()) {
     if (config.batchForce) return { due: true, reason: 'force' };
     const state = readBatchState(config, ownerUserId);
@@ -310,7 +387,7 @@ function batchDue(config = {}, ownerUserId, now = new Date()) {
     return {
         due: elapsedMinutes >= windowMinutes,
         reason: elapsedMinutes >= windowMinutes ? 'window_elapsed' : 'window_not_due',
-        elapsedMinutes: Math.round(elapsedMinutes * 10) / 10,
+        elapsedMinutes: roundMinutes(elapsedMinutes),
         windowMinutes,
         lastSentAt: state.lastSentAt
     };
@@ -366,6 +443,12 @@ function buildBatchPlan(batchCandidates = [], config = {}, options = {}) {
         buckets: buckets.map(bucket => {
             const due = batchDue(config, bucket.ownerUserId, options.now || new Date());
             const selected = bucket.events.slice(0, Math.max(1, config.batchMaxItems || DEFAULT_BATCH_MAX_ITEMS));
+            const duplicateGuard = recentBatchAttemptGuard(
+                config,
+                bucket.ownerUserId,
+                selected.map(item => item.plan.eventId),
+                options.now || new Date()
+            );
             const result = {
                 ownerUserId: bucket.ownerUserId,
                 targetConfigured: Boolean(bucket.target),
@@ -373,7 +456,8 @@ function buildBatchPlan(batchCandidates = [], config = {}, options = {}) {
                 selected_count: selected.length,
                 eventIds: selected.map(item => item.plan.eventId),
                 taskIds: selected.map(item => item.plan.taskId),
-                due
+                due,
+                duplicateGuard: duplicateGuard.active ? duplicateGuard : undefined
             };
             if (options.includePreview) result.messagePreview = renderBatchMessage(bucket, config).slice(0, 1200);
             return result;
@@ -385,8 +469,28 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
     const buckets = groupBatchCandidates(batchCandidates);
     summary.batch_processed = [];
     for (const bucket of buckets) {
+        const remainingBudget = Math.max(0, (config.maxEvents || DEFAULT_MAX_EVENTS) - summary.processed_count);
+        if (remainingBudget <= 0) {
+            summary.batch_processed.push({
+                ownerUserId: bucket.ownerUserId,
+                targetConfigured: Boolean(bucket.target),
+                selected_count: 0,
+                eventIds: [],
+                taskIds: [],
+                status: 'not_selected_max_events_reached'
+            });
+            continue;
+        }
         const due = batchDue(config, bucket.ownerUserId);
-        const selected = bucket.events.slice(0, Math.max(1, config.batchMaxItems || DEFAULT_BATCH_MAX_ITEMS));
+        let selected = bucket.events.slice(0, Math.min(
+            Math.max(1, config.batchMaxItems || DEFAULT_BATCH_MAX_ITEMS),
+            remainingBudget
+        ));
+        const duplicateGuard = recentBatchAttemptGuard(
+            config,
+            bucket.ownerUserId,
+            selected.map(item => item.plan.eventId)
+        );
         const processed = {
             ownerUserId: bucket.ownerUserId,
             targetConfigured: Boolean(bucket.target),
@@ -396,6 +500,20 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
             due,
             status: 'pending'
         };
+        if (duplicateGuard.active) {
+            const held = new Set(duplicateGuard.heldEventIds.map(String));
+            selected = selected.filter(item => !held.has(String(item.plan.eventId)));
+            processed.duplicateGuard = duplicateGuard;
+            processed.heldEventIds = duplicateGuard.heldEventIds;
+            processed.selected_count = selected.length;
+            processed.eventIds = selected.map(item => item.plan.eventId);
+            processed.taskIds = selected.map(item => item.plan.taskId);
+            if (!selected.length) {
+                processed.status = 'held_duplicate_guard';
+                summary.batch_processed.push(processed);
+                continue;
+            }
+        }
         if (!due.due) {
             processed.status = 'held_until_batch_window';
             summary.batch_processed.push(processed);
@@ -416,6 +534,11 @@ async function processBatchBuckets(summary, batchCandidates = [], deps, config =
                 });
                 claimed.push(item);
             }
+            writeBatchState(config, bucket.ownerUserId, {
+                lastSendAttemptAt: new Date().toISOString(),
+                lastSendAttemptEventIds: selected.map(item => item.plan.eventId),
+                lastSendAttemptTaskIds: selected.map(item => item.plan.taskId)
+            });
             summary.send_attempted = true;
             const sent = await deps.sendTelegramMessage(bucket.target.chatId, renderBatchMessage({ ...bucket, events: selected }, config), {
                 batch: true,
@@ -475,7 +598,13 @@ function classifyEvent(event = {}, config) {
     if (!ownerUserId) blockers.push('OWNER_USER_ID_MISSING');
     if (ownerUserId === 16) blockers.push(OWNER16_BLOCK_CODE);
     if (ownerUserId && !config.ownerAllowlist.includes(ownerUserId)) blockers.push('OWNER_NOT_IN_APPROVED_ALLOWLIST');
+    if (ownerUserId && Array.isArray(config.activeOwnerIds) && config.activeOwnerIds.length && !config.activeOwnerIds.includes(ownerUserId)) {
+        blockers.push('OWNER_NOT_IN_ACTIVE_SCOPE');
+    }
     if (!eventType || !SUPPORTED_EVENT_TYPES.has(eventType)) blockers.push('EVENT_TYPE_NOT_SUPPORTED');
+    if (eventId && Array.isArray(config.approvedEventIds) && config.approvedEventIds.length && LIVE_MODES.has(config.mode) && !config.approvedEventIds.includes(eventId)) {
+        blockers.push('EVENT_NOT_IN_APPROVED_LIVE_SELECTION');
+    }
 
     const target = ownerUserId ? config.ownerTargets.get(ownerUserId) || null : null;
     if (!target) blockers.push('TELEGRAM_TARGET_MISSING');
@@ -497,6 +626,23 @@ function liveGateBlockers(config) {
     if (!LIVE_MODES.has(config.mode)) return blockers;
     if (!config.ownerAllowlistExact) blockers.push('OWNER_ALLOWLIST_NOT_EXACTLY_APPROVED_SET');
     if (config.ownerAllowlist.includes(16)) blockers.push(OWNER16_BLOCK_CODE);
+    if (Array.isArray(config.activeOwnerIds)) {
+        for (const ownerId of config.activeOwnerIds) {
+            if (ownerId === 16) blockers.push(OWNER16_BLOCK_CODE);
+            if (!DEFAULT_APPROVED_OWNER_IDS.includes(ownerId)) blockers.push(`ACTIVE_OWNER_NOT_APPROVED_${ownerId}`);
+        }
+    }
+    if (config.batchEnabled && Array.isArray(config.batchOwnerIds)) {
+        for (const ownerId of config.batchOwnerIds) {
+            if (ownerId === 16) blockers.push(OWNER16_BLOCK_CODE);
+            if (!config.ownerAllowlist.includes(ownerId)) blockers.push(`BATCH_OWNER_NOT_IN_ALLOWLIST_${ownerId}`);
+            if (Array.isArray(config.activeOwnerIds) && config.activeOwnerIds.length && !config.activeOwnerIds.includes(ownerId)) {
+                blockers.push(`BATCH_OWNER_NOT_IN_ACTIVE_SCOPE_${ownerId}`);
+            }
+        }
+    }
+    if (config.requireApprovedEventIds && !config.approvedEventIds.length) blockers.push('APPROVED_EVENT_IDS_REQUIRED');
+    if (config.approvedEventIds.length && config.mode === 'live_loop') blockers.push('APPROVED_EVENT_IDS_NOT_SUPPORTED_FOR_LIVE_LOOP');
     if (!config.localCronPausedConfirmed) blockers.push('LOCAL_CRON_PAUSED_CONFIRMATION_MISSING');
     if (!config.allowSend) blockers.push('HERMES_OUTBOX_ALLOW_SEND_REQUIRED');
     if (!config.allowCrmMutation) blockers.push('HERMES_OUTBOX_ALLOW_CRM_MUTATION_REQUIRED');
@@ -587,9 +733,13 @@ async function runOnce(options = {}) {
         mode: config.mode,
         workerId: config.workerId,
         ownerAllowlist: config.ownerAllowlist,
-        owner16HardBlocked: !config.ownerAllowlist.includes(16),
+        activeOwnerIds: config.activeOwnerIds,
+        owner16HardBlocked: !config.ownerAllowlist.includes(16) && !config.activeOwnerIds.includes(16) && !config.batchOwnerIds.includes(16),
         batchEnabled: Boolean(config.batchEnabled),
         batchOwnerIds: config.batchOwnerIds,
+        batchDuplicateGuardMinutes: config.batchDuplicateGuardMinutes,
+        approvedEventIdsConfigured: Boolean(config.approvedEventIds.length),
+        approvedEventIdsCount: config.approvedEventIds.length,
         maxEvents: config.maxEvents,
         fetched: 0,
         ready_count: 0,
@@ -664,10 +814,7 @@ async function runOnce(options = {}) {
         return summary;
     }
 
-    if (batchCandidates.length) {
-        await processBatchBuckets(summary, batchCandidates, deps, config);
-    }
-
+    // Immediate path runs first so high/urgent/non-batch events cannot be starved by a batch backlog.
     for (const item of immediateClassifications.slice(0, config.maxEvents)) {
         const { plan } = item;
         const processed = {
@@ -714,6 +861,10 @@ async function runOnce(options = {}) {
         }
         summary.processed.push(processed);
         summary.processed_count += 1;
+    }
+
+    if (batchCandidates.length) {
+        await processBatchBuckets(summary, batchCandidates, deps, config);
     }
 
     summary.status = summary.failed_count ? 'LIVE_RUN_WITH_FAILURES' : 'LIVE_RUN_COMPLETE';
@@ -781,6 +932,7 @@ if (require.main === module) {
 
 module.exports = {
     DEFAULT_APPROVED_OWNER_IDS,
+    DEFAULT_BATCH_DUPLICATE_GUARD_MINUTES,
     DEFAULT_WORKER_ID,
     MAX_EVENTS_HARD_CAP,
     OWNER16_BLOCK_CODE,

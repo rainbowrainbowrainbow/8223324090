@@ -250,6 +250,12 @@ test('batch config supports read-only loop without opening live gates', () => {
     assert.deepEqual(worker.liveGateBlockers(config), []);
 });
 
+test('invalid explicit active owner scope blocks config instead of widening scope', () => {
+    const config = worker.buildConfig(targetEnv({ HERMES_OUTBOX_ACTIVE_OWNER_USER_IDS: 'not-a-user' }));
+    assert.equal(config.ok, false);
+    assert.equal(config.reasonCode, 'INVALID_ACTIVE_OWNER_IDS');
+});
+
 test('read_only batch mode groups normal task events without claim, send, ack, or fail', async () => {
     const calls = [];
     const result = await worker.runOnce({
@@ -294,6 +300,81 @@ test('high priority task stays on immediate path while normal tasks are batched'
     assert.deepEqual(calls.map(call => call[0]), ['list']);
 });
 
+test('live_once active owner scope blocks other approved owners during an owner-scoped pilot', async () => {
+    const calls = [];
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            HERMES_OUTBOX_ACTIVE_OWNER_USER_IDS: '4',
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps: depsFor([event(4, 1), event(3, 3)], calls)
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.activeOwnerIds.length, 1);
+    assert.equal(result.ready_count, 1);
+    assert.equal(result.blocked_count, 1);
+    assert.deepEqual(result.ready.map(item => item.ownerUserId), [4]);
+    assert.ok(result.blocked[0].blockers.includes('OWNER_NOT_IN_ACTIVE_SCOPE'));
+    assert.deepEqual(calls.map(call => call[0]), ['list', 'claim', 'send', 'ack']);
+});
+
+test('live_once approved event ids restrict processing to an exact selected set', async () => {
+    const calls = [];
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            HERMES_OUTBOX_APPROVED_EVENT_IDS: 'task_created:1:owner:4',
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps: depsFor([event(4, 1), event(4, 2)], calls)
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.approvedEventIdsConfigured, true);
+    assert.equal(result.approvedEventIdsCount, 1);
+    assert.equal(result.ready_count, 1);
+    assert.equal(result.blocked_count, 1);
+    assert.deepEqual(result.processed.map(item => item.eventId), ['task_created:1:owner:4']);
+    assert.ok(result.blocked[0].blockers.includes('EVENT_NOT_IN_APPROVED_LIVE_SELECTION'));
+    assert.deepEqual(calls.map(call => call[0]), ['list', 'claim', 'send', 'ack']);
+});
+
+test('live_once sends high priority immediate items before spending maxEvents on batch backlog', async () => {
+    const calls = [];
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eg-outbox-batch-priority-'));
+    const urgent = event(4, 9);
+    urgent.payload_json.priority = 'high';
+    const result = await worker.runOnce({
+        env: targetEnv({
+            HERMES_OUTBOX_WORKER_MODE: 'live_once',
+            HERMES_OUTBOX_ALLOW_SEND: '1',
+            HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+            HERMES_OUTBOX_CONFIRM_SEND: '1',
+            HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+            HERMES_OUTBOX_BATCH_ENABLED: '1',
+            HERMES_OUTBOX_BATCH_FORCE: '1',
+            HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4',
+            HERMES_OUTBOX_BATCH_STATE_DIR: stateDir,
+            HERMES_OUTBOX_WORKER_MAX_EVENTS: '1',
+            TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+        }),
+        deps: depsFor([event(4, 1), urgent], calls)
+    });
+    assert.equal(result.ok, true);
+    assert.equal(result.sent_count, 1);
+    assert.deepEqual(result.processed.map(item => item.taskId), [9]);
+    assert.equal(result.batch_processed[0].status, 'not_selected_max_events_reached');
+    assert.deepEqual(calls.map(call => call[0]), ['list', 'claim', 'send', 'ack']);
+});
+
 test('live_once batch sends one grouped Telegram message and acks selected events when all live gates are approved', async () => {
     const calls = [];
     const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eg-outbox-batch-test-'));
@@ -330,4 +411,41 @@ test('live_once batch sends one grouped Telegram message and acks selected event
     assert.match(sentText, /#2/);
     assert.deepEqual(calls.map(call => call[0]), ['list', 'claim', 'claim', 'send', 'ack', 'ack']);
     assert.ok(fs.existsSync(path.join(stateDir, 'owner-4.json')));
+});
+
+test('batch duplicate guard holds recently attempted event ids instead of resending them', async () => {
+    const stateDir = fs.mkdtempSync(path.join(os.tmpdir(), 'eg-outbox-batch-guard-'));
+    const env = targetEnv({
+        HERMES_OUTBOX_WORKER_MODE: 'live_once',
+        HERMES_OUTBOX_ALLOW_SEND: '1',
+        HERMES_OUTBOX_ALLOW_CRM_MUTATION: '1',
+        HERMES_OUTBOX_CONFIRM_SEND: '1',
+        HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED: '1',
+        HERMES_OUTBOX_BATCH_ENABLED: '1',
+        HERMES_OUTBOX_BATCH_FORCE: '1',
+        HERMES_OUTBOX_BATCH_OWNER_USER_IDS: '4',
+        HERMES_OUTBOX_BATCH_STATE_DIR: stateDir,
+        TELEGRAM_BOT_TOKEN: '[REDACTED_TEST_PLACEHOLDER]'
+    });
+    const firstCalls = [];
+    const first = await worker.runOnce({
+        env,
+        deps: depsFor([event(4, 1), event(4, 2)], firstCalls)
+    });
+    assert.equal(first.ok, true);
+    assert.equal(first.sent_count, 2);
+    assert.deepEqual(firstCalls.map(call => call[0]), ['list', 'claim', 'claim', 'send', 'ack', 'ack']);
+
+    const secondCalls = [];
+    const second = await worker.runOnce({
+        env,
+        deps: depsFor([event(4, 1), event(4, 2)], secondCalls)
+    });
+    assert.equal(second.ok, true);
+    assert.equal(second.sent_count, 0);
+    assert.equal(second.send_attempted, false);
+    assert.equal(second.crm_mutation_attempted, false);
+    assert.equal(second.batch_processed[0].status, 'held_duplicate_guard');
+    assert.deepEqual(second.batch_processed[0].heldEventIds, ['task_created:1:owner:4', 'task_created:2:owner:4']);
+    assert.deepEqual(secondCalls.map(call => call[0]), ['list']);
 });

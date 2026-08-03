@@ -30,12 +30,16 @@ Values are secrets/config and must not be printed in logs or receipts.
 ```text
 HERMES_OUTBOX_WORKER_MODE=read_only|dry_run|read_only_loop|dry_run_loop|live_once|live_loop
 HERMES_OUTBOX_HOURLY_BATCH_OWNER_USER_IDS=4,3,40,13,1  # owner allowlist, not batching by itself
+HERMES_OUTBOX_ACTIVE_OWNER_USER_IDS=4                  # active pilot scope; defaults to allowlist
 HERMES_OUTBOX_BATCH_ENABLED=0|1
 HERMES_OUTBOX_BATCH_OWNER_USER_IDS=4,3,40,13,1
 HERMES_OUTBOX_BATCH_WINDOW_MINUTES=60
 HERMES_OUTBOX_BATCH_MAX_ITEMS=10
 HERMES_OUTBOX_BATCH_FORCE=0
 HERMES_OUTBOX_BATCH_STATE_DIR=.hermes/outbox-batch-state
+HERMES_OUTBOX_BATCH_DUPLICATE_GUARD_MINUTES=120
+HERMES_OUTBOX_APPROVED_EVENT_IDS=task_created:123:owner:4  # optional exact live_once allowlist
+HERMES_OUTBOX_REQUIRE_APPROVED_EVENT_IDS=0|1
 HERMES_OUTBOX_OWNER_TARGETS_JSON={...}
 HERMES_OUTBOX_WORKER_LIMIT=20
 HERMES_OUTBOX_WORKER_MAX_EVENTS=5
@@ -54,7 +58,11 @@ The worker refuses live mutation/send unless all of these are true:
 ```text
 mode is live_once or live_loop
 owner allowlist is exactly 4,3,40,13,1
+active owner scope is a subset of the approved allowlist
+batch owner scope is a subset of the active owner scope
 owner16 is absent and always hard-blocked
+approved event ids are present when explicitly required
+approved event ids are not used with live_loop
 HERMES_OUTBOX_LOCAL_CRON_PAUSED_CONFIRMED=1
 HERMES_OUTBOX_ALLOW_SEND=1
 HERMES_OUTBOX_ALLOW_CRM_MUTATION=1
@@ -68,12 +76,25 @@ HERMES_OUTBOX_SEND_BUTTONS=0
 
 When `HERMES_OUTBOX_BATCH_ENABLED=1`, normal/low `task_created` and `task_assigned` events for configured batch owners are grouped per owner into one hourly Telegram message. High/urgent reminders, overdue events, task updates, unsupported owners, missing targets, and owner16 stay outside the batch path.
 
+Production hardening rules:
+
+```text
+high/urgent immediate path is processed before batch backlog
+maxEvents is a global live-run budget across immediate + batch events
+activeOwnerIds can narrow a pilot to owner4 even while the approved allowlist stays 4,3,40,13,1
+approvedEventIds can narrow live_once smokes to exact selected events
+batch duplicate guard holds recently attempted batch event ids for 120 minutes by default
+```
+
+The duplicate guard writes `lastSendAttemptAt` and selected event ids to the batch state before the Telegram send. If the process crashes after send but before ack, the next loop will not resend the same pending event ids during the guard window.
+
 Safe rollout starts with:
 
 ```text
 mode=read_only_loop
 batch_enabled=1
 batch_owner_ids=4
+active_owner_ids=4
 send_attempted=false
 crm_mutation_attempted=false
 ```

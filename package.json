@@ -128,7 +128,7 @@
     "hermes:outbox:worker": "node scripts/hermes-notification-outbox-worker.js",
     "hermes:outbox:worker:read-only": "node scripts/hermes-notification-outbox-worker.js --mode=read_only --include-stats=1",
     "hermes:outbox:worker:dry-run": "node scripts/hermes-notification-outbox-worker.js --mode=dry_run --include-stats=1",
-    "hermes:outbox:worker:batch-read-only-loop": "node scripts/hermes-notification-outbox-worker.js --mode=read_only_loop --include-stats=1 --batch-enabled=1",
+    "hermes:outbox:worker:batch-read-only-loop": "node scripts/hermes-notification-outbox-worker.js --mode=read_only_loop --include-stats=1 --batch-enabled=1 --active-owner-ids=4 --batch-owner-ids=4",
     "hermes:outbox:worker:live-once": "node scripts/hermes-notification-outbox-worker.js --mode=live_once --include-stats=1",
     "test:hermes-outbox-worker": "node --test tests/hermes-notification-outbox-worker.test.js"
   },

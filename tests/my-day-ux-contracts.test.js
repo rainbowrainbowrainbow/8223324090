@@ -8,11 +8,19 @@ const test = require('node:test');
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
+const DAY_LABEL = '\u0414\u0435\u043d\u044c';
+const HABITS_LABEL = '\u0417\u0432\u0438\u0447\u043a\u0438';
+const CONTRIBUTION_LABEL = '\u0412\u043d\u0435\u0441\u043e\u043a';
+const CREATE_HABIT_LABEL = '\u0421\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0437\u0432\u0438\u0447\u043a\u0443';
+const MARK_HABIT_DONE_LABEL = 'aria-label="\u041f\u043e\u0437\u043d\u0430\u0447\u0438\u0442\u0438 \u0437\u0432\u0438\u0447\u043a\u0443 ${escape(habit.name)} \u0432\u0438\u043a\u043e\u043d\u0430\u043d\u043e\u044e"';
+const RANGE_PREFIX = '\u0417\u0430';
+const DIRECTIONS_LABEL = '\u041d\u0430\u043f\u0440\u044f\u043c\u0438';
+
 test('My Day tabs use exact canonical labels and ARIA tab contract', () => {
     const habitsUi = read('js/my-day-habits.js');
     const tabMatches = Array.from(habitsUi.matchAll(/data-my-day-life-mode="([^"]+)"[^>]*>([^<]+)<\/button>/g));
     const labels = tabMatches.map(match => match[2]);
-    assert.deepEqual(labels, ['День', 'Звички', 'Внесок']);
+    assert.deepEqual(labels, [DAY_LABEL, HABITS_LABEL, CONTRIBUTION_LABEL]);
     assert.equal(habitsUi.includes('\uFFFD'), false);
     assert.match(habitsUi, /role="tablist"/);
     assert.match(habitsUi, /role="tab"/);
@@ -26,7 +34,7 @@ test('boolean habit uses native checkbox with idempotent PUT and DELETE undo', (
     const habitsUi = read('js/my-day-habits.js');
     const css = read('css/pages-profile.css');
     assert.match(habitsUi, /<input type="checkbox" class="my-day-habit-check"/);
-    assert.match(habitsUi, /aria-label="Позначити звичку \$\{escape\(habit\.name\)\} виконаною"/);
+    assert.ok(habitsUi.includes(MARK_HABIT_DONE_LABEL));
     assert.match(habitsUi, /button\.addEventListener\('change'/);
     assert.match(habitsUi, /const checked = button\.checked/);
     assert.match(habitsUi, /\? request\(path, \{ method: 'PUT', body: JSON\.stringify\(\{ state: 'done', value: 1 \}\) \}\)/);
@@ -38,7 +46,7 @@ test('boolean habit uses native checkbox with idempotent PUT and DELETE undo', (
 
 test('empty Habits state opens existing settings and focuses habit create form', () => {
     const habitsUi = read('js/my-day-habits.js');
-    assert.match(habitsUi, /data-my-day-habit-open-create>Створити звичку/);
+    assert.ok(habitsUi.includes('data-my-day-habit-open-create>' + CREATE_HABIT_LABEL));
     assert.match(habitsUi, /async function openSettingsCreate\(\)/);
     assert.match(habitsUi, /window\.switchTab\('settings'\)/);
     assert.match(habitsUi, /function focusHabitCreateForm\(\)/);
@@ -54,20 +62,38 @@ test('empty Contribution keeps selected dates and renders zero total cards', () 
     assert.match(contributionUi, /habitCompletions: normalizeNumber\(totals\.habitCompletions\)/);
     assert.match(contributionUi, /habitMinutes: normalizeNumber\(totals\.habitMinutes\)/);
     assert.match(contributionUi, /my-day-contribution-zero-state/);
-    assert.match(contributionUi, /За \$\{escape\(range\.from\)\} — \$\{escape\(range\.to\)\}/);
+    assert.ok(contributionUi.includes(RANGE_PREFIX + ' ${escape(range.from)} \u2014 ${escape(range.to)}'));
     assert.match(contributionUi, /renderTotals\(data\)/);
-    assert.match(contributionUi, /renderMatrix\('Напрями'/);
+    assert.ok(contributionUi.includes("renderMatrix('" + DIRECTIONS_LABEL + "'"));
     assert.match(contributionUi, /\$\{status\}\$\{body\}/);
     assert.doesNotMatch(contributionUi, /productivityScore|streak|penalt|gamification/i);
 });
 
-test('read-only My Day smoke covers modes, text integrity, and overflow', () => {
+test('My Day life system has scoped dark theme surfaces and controls', () => {
+    const css = read('css/pages-profile.css');
+    assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode,\s*html\[data-theme="dark"\] body \.profile-page\.profile-work-mode/);
+    assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-life-tabs,\s*html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-life-tabs/);
+    assert.match(css, /\.my-day-life-tabs button:focus-visible/);
+    assert.match(css, /\.my-day-life-tabs button\.is-active/);
+    assert.match(css, /\.my-day-contribution-range input[\s\S]*color-scheme:\s*dark/);
+    assert.match(css, /::-webkit-calendar-picker-indicator/);
+    assert.match(css, /\.my-day-habit-card[\s\S]*\.my-day-contribution-section[\s\S]*background-color:\s*rgba\(30, 41, 59, 0\.84\)/);
+    assert.match(css, /\.my-day-contribution-table th[\s\S]*border-top-color/);
+    assert.match(css, /--my-day-life-danger:\s*#FCA5A5/);
+    assert.match(css, /\.profile-empty-professional\.is-error[\s\S]*color:\s*var\(--my-day-life-danger\)/);
+});
+
+test('read-only My Day smoke covers modes, text integrity, dark contrast, and overflow', () => {
     const smoke = read('scripts/live-my-day-smoke.js');
+    const expectedLabels = "assert.deepEqual(labels, ['" + DAY_LABEL + "', '" + HABITS_LABEL + "', '" + CONTRIBUTION_LABEL + "']";
     assert.match(smoke, /function assertMyDayLifeModes/);
-    assert.match(smoke, /assert\.deepEqual\(labels, \['День', 'Звички', 'Внесок'\]/);
+    assert.ok(smoke.includes(expectedLabels));
     assert.match(smoke, /'\\uFFFD'/);
     assert.match(smoke, /data-my-day-life-mode="\$\{mode\.key\}"/);
     assert.match(smoke, /assertNoHorizontalOverflow\(page, `\$\{label\}: \$\{mode\.name\}`\)/);
+    assert.match(smoke, /function assertDarkMyDayLifeTabs/);
+    assert.match(smoke, /contrastRatio/);
+    assert.match(smoke, /active tab contrast/);
     assert.match(smoke, /#myDayHabitsPanel/);
     assert.match(smoke, /#myDayContributionPanel/);
 });

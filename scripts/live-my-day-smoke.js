@@ -233,6 +233,92 @@ async function assertNoReplacementCharacters(page, label) {
     assert.equal(hasReplacement, false, `${label}: page text has no replacement characters`);
 }
 
+function parseCssColor(value) {
+    const match = /rgba?\(([^)]+)\)/i.exec(String(value || ''));
+    if (!match) return null;
+    const parts = match[1]
+        .replace(/\//g, ' ')
+        .split(/[\s,]+/)
+        .filter(Boolean)
+        .map(part => Number(String(part).replace('%', '')));
+    if (parts.length < 3 || parts.slice(0, 3).some(part => !Number.isFinite(part))) return null;
+    return {
+        r: Math.max(0, Math.min(255, parts[0])),
+        g: Math.max(0, Math.min(255, parts[1])),
+        b: Math.max(0, Math.min(255, parts[2])),
+        a: Number.isFinite(parts[3]) ? Math.max(0, Math.min(1, parts[3])) : 1
+    };
+}
+
+function compositeColor(foreground, background = { r: 13, g: 13, b: 13, a: 1 }) {
+    if (!foreground) return null;
+    const alpha = Number.isFinite(foreground.a) ? foreground.a : 1;
+    if (alpha >= 1) return { r: foreground.r, g: foreground.g, b: foreground.b, a: 1 };
+    return {
+        r: foreground.r * alpha + background.r * (1 - alpha),
+        g: foreground.g * alpha + background.g * (1 - alpha),
+        b: foreground.b * alpha + background.b * (1 - alpha),
+        a: 1
+    };
+}
+
+function relativeLuminance(color) {
+    const channel = value => {
+        const normalized = value / 255;
+        return normalized <= 0.03928 ? normalized / 12.92 : ((normalized + 0.055) / 1.055) ** 2.4;
+    };
+    return 0.2126 * channel(color.r) + 0.7152 * channel(color.g) + 0.0722 * channel(color.b);
+}
+
+function contrastRatio(foreground, background) {
+    const base = { r: 13, g: 13, b: 13, a: 1 };
+    const bg = compositeColor(background, base) || base;
+    const fg = compositeColor(foreground, bg);
+    if (!fg) return 0;
+    const light = Math.max(relativeLuminance(fg), relativeLuminance(bg));
+    const dark = Math.min(relativeLuminance(fg), relativeLuminance(bg));
+    return (light + 0.05) / (dark + 0.05);
+}
+
+async function assertDarkMyDayLifeTabs(page, label) {
+    const metrics = await page.evaluate(() => {
+        const tabs = document.querySelector('.my-day-life-tabs');
+        const active = tabs?.querySelector('[role="tab"][aria-selected="true"]');
+        const inactive = tabs?.querySelector('[role="tab"][aria-selected="false"]');
+        const styleOf = element => {
+            const style = element ? getComputedStyle(element) : null;
+            return {
+                color: style?.color || '',
+                backgroundColor: style?.backgroundColor || '',
+                backgroundImage: style?.backgroundImage || '',
+                outlineColor: style?.outlineColor || ''
+            };
+        };
+        return {
+            rootTheme: document.documentElement.dataset.theme || '',
+            bodyDark: document.body.classList.contains('dark-mode'),
+            colorScheme: getComputedStyle(document.documentElement).colorScheme || getComputedStyle(document.body).colorScheme || '',
+            tabs: styleOf(tabs),
+            active: styleOf(active),
+            inactive: styleOf(inactive)
+        };
+    });
+    assert.equal(metrics.bodyDark || metrics.rootTheme === 'dark', true, `${label}: smoke runs in dark theme`);
+    assert.equal(metrics.colorScheme.includes('dark'), true, `${label}: browser controls use dark color-scheme`);
+
+    const tabsBackground = parseCssColor(metrics.tabs.backgroundColor);
+    assert.ok(tabsBackground, `${label}: tabs have a measurable background color`);
+    assert.ok(relativeLuminance(compositeColor(tabsBackground)) < 0.18, `${label}: tabs surface is dark, not light`);
+    assert.notEqual(metrics.tabs.backgroundColor, 'rgb(248, 250, 252)', `${label}: tabs do not use the old light surface`);
+
+    const activeBackground = parseCssColor(metrics.active.backgroundColor);
+    const activeColor = parseCssColor(metrics.active.color);
+    const inactiveColor = parseCssColor(metrics.inactive.color);
+    assert.ok(activeBackground, `${label}: active tab has a measurable background color`);
+    assert.notEqual(metrics.active.backgroundColor, metrics.tabs.backgroundColor, `${label}: active tab differs from tabs container`);
+    assert.ok(contrastRatio(activeColor, activeBackground) >= 4.5, `${label}: active tab contrast meets WCAG AA`);
+    assert.ok(contrastRatio(inactiveColor, tabsBackground) >= 4.5, `${label}: inactive tab contrast meets WCAG AA`);
+}
 async function assertMyDayLifeModes(page, label) {
     await page.waitForSelector('.my-day-life-tabs [role="tab"]');
     const labels = await page.$$eval('.my-day-life-tabs [role="tab"]', nodes => nodes.map(node => node.textContent.trim()));
@@ -269,6 +355,7 @@ async function assertMyDayLifeModes(page, label) {
                 await page.waitForSelector(`${mode.panel}[role="tabpanel"]`);
             }
             await assertNoReplacementCharacters(page, `${label}: ${mode.name}`);
+            await assertDarkMyDayLifeTabs(page, `${label}: ${mode.name}`);
             await assertNoHorizontalOverflow(page, `${label}: ${mode.name}`);
         }
         await page.locator('[data-my-day-life-mode="day"]').click();

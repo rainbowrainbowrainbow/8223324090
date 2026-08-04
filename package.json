@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.81",
+  "version": "0.80.82",
   "eventGenix": {
-    "releaseLabel": "Мій день: більше emoji для напрямів і впливів"
+    "releaseLabel": "Мій день: зрозумілі напрями та стартовий набір"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

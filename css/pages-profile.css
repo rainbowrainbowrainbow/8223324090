@@ -1271,6 +1271,59 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-no
     margin: 4px 0 0;
 }
 
+
+.my-day-setup-intro,
+.my-day-taxonomy-guide {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.10), rgba(37, 99, 235, 0.08));
+    border: 1px solid rgba(20, 184, 166, 0.18);
+    border-radius: 18px;
+    color: var(--text-secondary, #475569);
+    display: grid;
+    gap: 10px;
+    margin-top: 12px;
+    padding: 14px 16px;
+}
+
+.my-day-setup-intro p,
+.my-day-taxonomy-guide p {
+    margin: 0;
+}
+
+.my-day-setup-intro strong,
+.my-day-taxonomy-guide strong {
+    color: var(--text-primary, #0f172a);
+}
+
+.my-day-taxonomy-mental-model {
+    display: grid;
+    gap: 8px;
+}
+
+.my-day-taxonomy-examples {
+    border-top: 1px solid rgba(148, 163, 184, 0.20);
+    display: grid;
+    gap: 8px;
+    margin-top: 2px;
+    padding-top: 10px;
+}
+
+.my-day-taxonomy-examples-title {
+    color: var(--text-primary, #0f172a);
+    font-weight: 800;
+}
+
+.my-day-taxonomy-example-row {
+    align-items: flex-start;
+    display: grid;
+    gap: 6px;
+    grid-template-columns: minmax(180px, 1.1fr) minmax(170px, 0.9fr) minmax(220px, 1.1fr);
+}
+
+.my-day-taxonomy-example-task {
+    color: var(--text-primary, #0f172a);
+    font-weight: 700;
+}
+
 .my-day-setup-primary,
 .my-day-setup-secondary,
 .my-day-setup-ghost,
@@ -1729,6 +1782,27 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-no
     .my-day-setup-surface {
         overflow-x: hidden;
     }
+}
+
+
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-intro,
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-guide,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-intro,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-guide {
+    background: linear-gradient(135deg, rgba(20, 184, 166, 0.14), rgba(37, 99, 235, 0.12));
+    border-color: rgba(45, 212, 191, 0.24);
+    color: var(--my-day-life-secondary, #cbd5e1);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-setup-intro strong,
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-guide strong,
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-examples-title,
+body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-example-task,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-setup-intro strong,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-guide strong,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-examples-title,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-example-task {
+    color: #f8fafc;
 }
 
 body.dark-mode .profile-page.profile-work-mode .my-day-taxonomy-card.my-day-setup-card,

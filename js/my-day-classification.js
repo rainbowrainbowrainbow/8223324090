@@ -125,12 +125,13 @@
                         <option value="">Без напряму</option>
                         ${options(state.directions, null, false)}
                     </select>
+                    <small class="my-day-field-help">Проєкт або сфера задачі.</small>
                 </label>
                 <fieldset class="my-day-composer-impact-field my-day-choice-field">
                     <legend>Впливи <small>до 3</small></legend>
                     <div class="my-day-composer-impact-selected" data-my-day-composer-impact-selected aria-live="polite">${renderComposerSelectedImpacts([])}</div>
                     ${renderComposerImpactChips([])}
-                    <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>Можна обрати до трьох впливів.</p>
+                    <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До 3 результатів, які ця задача покращує.</p>
                 </fieldset>
                 ${status}
             </div>`;
@@ -325,9 +326,28 @@
         </section>`;
     }
 
+    function renderTaxonomyGuide() {
+        const examples = [
+            { task: 'Купити перехідник для монітора', direction: 'Побут / особисте', impacts: 'Побут і комфорт, Відновлення' },
+            { task: 'Зарядка', direction: 'Особисте життя', impacts: 'Здоровʼя, Фізична форма' },
+            { task: 'Доробити CRM-фічу', direction: 'EventGenix CRM', impacts: 'Системність, Якість сервісу' },
+            { task: 'Підготувати івент', direction: 'Дженікс / події', impacts: 'Якість сервісу, Дохід і клієнти' }
+        ];
+        return '<div class="my-day-taxonomy-guide" aria-label="Як працюють напрями та впливи">' +
+            '<div class="my-day-taxonomy-mental-model">' +
+                '<p><strong>Напрям</strong> — це проєкт або сфера, куди ти вкладаєш зусилля. Наприклад: EventGenix CRM, Парк Закревського, Особисте життя.</p>' +
+                '<p><strong>Вплив</strong> — це результат, який дає задача або звичка. Наприклад: Дохід і клієнти, Здоровʼя, Системність.</p>' +
+            '</div>' +
+            '<div class="my-day-taxonomy-examples">' +
+                '<strong class="my-day-taxonomy-examples-title">Приклади маркування</strong>' +
+                examples.map(example => '<div class="my-day-taxonomy-example-row"><span class="my-day-taxonomy-example-task">' + escape(example.task) + '</span><small>напрям: ' + escape(example.direction) + '</small><small>впливи: ' + escape(example.impacts) + '</small></div>').join('') +
+            '</div>' +
+        '</div>';
+    }
     function renderSettings() {
         return `<section class="profile-work-panel my-day-taxonomy-settings" aria-labelledby="myDayTaxonomyTitle">
             <div class="profile-panel-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayTaxonomyTitle">Напрями та впливи</h2><p>Особисті мітки задач. Вони не змінюють категорію чи доступ до задачі.</p></div></div>
+            ${renderTaxonomyGuide()}
             <div class="my-day-taxonomy-grid">
                 ${renderCatalog('directions', state.directions)}
                 ${renderCatalog('impacts', state.impacts)}
@@ -352,7 +372,7 @@
                     label?.setAttribute('title', input.disabled ? 'Спочатку зніміть один із трьох обраних впливів.' : (label?.dataset.myDayComposerImpactTitle || ''));
                 });
                 const help = container.querySelector('[data-my-day-composer-impact-help]');
-                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи. Щоб додати інший — зніміть один обраний.' : 'Можна обрати до трьох впливів.';
+                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи. Щоб додати інший — зніміть один обраний.' : 'До 3 результатів, які ця задача покращує.';
                 const selectedNode = container.querySelector('[data-my-day-composer-impact-selected]');
                 if (selectedNode) selectedNode.innerHTML = renderComposerSelectedImpacts(selectedIds);
             };

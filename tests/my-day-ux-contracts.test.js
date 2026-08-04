@@ -104,6 +104,32 @@ test('My Day setup offers expanded icon preset palettes for directions and impac
     assert.ok(impactIcons.includes('\u{1F9D8}'));
 });
 
+
+test('My Day explains directions as where and impacts as results', () => {
+    const taxonomyUi = read('js/my-day-classification.js');
+    const habitsUi = read('js/my-day-habits.js');
+    const css = read('css/pages-profile.css');
+    const spec = read('docs/MY_DAY_LIFE_SYSTEM_SPEC.md');
+
+    assert.match(habitsUi, /<strong>Напрям<\/strong> — це проєкт або сфера, куди ти вкладаєш зусилля./);
+    assert.match(habitsUi, /<strong>Вплив<\/strong> — це результат, який дає задача або звичка./);
+    assert.match(taxonomyUi, /Напрям<\/strong> — це проєкт або сфера, куди ти вкладаєш зусилля/);
+    assert.match(taxonomyUi, /Вплив<\/strong> — це результат, який дає задача або звичка/);
+    assert.match(taxonomyUi, /Купити перехідник для монітора/);
+    assert.match(taxonomyUi, /Доробити CRM-фічу/);
+    assert.match(taxonomyUi, /Підготувати івент/);
+    assert.match(taxonomyUi, /Побут \/ особисте/);
+    assert.match(taxonomyUi, /До 3 результатів, які ця задача покращує./);
+    assert.match(habitsUi, /Проєкт або сфера звички./);
+    assert.match(habitsUi, /До 3 результатів, які ця звичка покращує./);
+    assert.match(css, /\.my-day-taxonomy-guide/);
+    assert.match(css, /\.my-day-taxonomy-examples/);
+    assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-taxonomy-guide/);
+    assert.match(spec, /direction = where/);
+    assert.match(spec, /impact = result/);
+    assert.match(spec, /guidance only; they do\s+not add required validation/);
+});
+
 test('Profile Settings no longer renders My Day management forms', () => {
     const profile = read('js/profile-page.js');
     const start = profile.indexOf('function renderProfileSettingsTab()');

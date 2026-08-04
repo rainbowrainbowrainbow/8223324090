@@ -16,6 +16,25 @@ My Day extends the existing personal task projection
 \`GET /api/tasks/my-cabinet\`; it never replaces Tasks, task lifecycle,
 scheduling, checklist, overdue, or business-scope behavior.
 
+## User mental model
+
+Directions and impacts use a simple where/result model:
+
+- `direction = where`: the project, life area, or work stream where the
+  effort goes. Examples: EventGenix CRM, Парк Закревського, Особисте життя.
+- `impact = result`: the outcome improved by the task or habit. Examples:
+  Дохід і клієнти, Здоровʼя, Системність, Якість сервісу, Відновлення.
+
+UI helpers and examples explain this model, but they are guidance only; they do
+not add required validation. Classification remains optional.
+
+Practical examples:
+
+- Купити перехідник для монітора → direction Побут / особисте; impacts Побут і комфорт, Відновлення.
+- Зарядка → direction Особисте життя; impacts Здоровʼя, Фізична форма.
+- Доробити CRM-фічу → direction EventGenix CRM; impacts Системність, Якість сервісу.
+- Підготувати івент → direction Дженікс / події; impacts Якість сервісу, Дохід і клієнти.
+
 ## Scope and data ownership
 
 - Every direction, impact, habit, classification, check-in, and time entry is

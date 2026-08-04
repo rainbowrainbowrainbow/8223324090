@@ -235,7 +235,7 @@
                 <input type="checkbox" name="impactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${atLimit && !isSelected ? 'disabled' : ''} data-my-day-habit-impact-chip>
                 <span>${escape(impact.icon || '•')} ${escape(impact.name)}</span>
             </label>`;
-        }).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? 'Обрано максимум три впливи.' : 'Можна обрати до трьох впливів.'}</p>`;
+        }).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? 'Обрано максимум три впливи.' : 'До 3 результатів, які ця звичка покращує.'}</p>`;
     }
 
     function habitEditorFields(habit = {}) {
@@ -265,6 +265,7 @@
             </label>
             <label class="my-day-setup-field">Напрям
                 <select name="directionId">${taxonomyOptions(activeDirections(), habit.direction?.id || '', 'Без напряму')}</select>
+                <small class="my-day-field-help">Проєкт або сфера звички.</small>
             </label>
             <fieldset class="my-day-choice-field my-day-setup-field--full"><legend>Впливи</legend>${impactCheckboxes(impacts)}</fieldset>
         </div>`;
@@ -548,7 +549,7 @@
                     label?.classList.toggle('is-disabled', input.disabled);
                 });
                 const help = form.querySelector('[data-my-day-habit-impact-help]');
-                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи.' : 'Можна обрати до трьох впливів.';
+                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи.' : 'До 3 результатів, які ця звичка покращує.';
             };
             form.querySelectorAll('input[name="metric"], input[name="cadence"]').forEach(input => input.addEventListener('change', refreshConditionals));
             form.querySelectorAll('[data-my-day-habit-impact-chip]').forEach(input => input.addEventListener('change', refreshImpacts));
@@ -664,6 +665,10 @@
                 <div>
                     <span class="profile-kicker">Мій день</span>
                     <h2 id="myDaySetupTitle">Налаштувати Мій день</h2>
+                    <div class="my-day-setup-intro" aria-label="Як працюють напрями та впливи">
+                        <p><strong>Напрям</strong> — це проєкт або сфера, куди ти вкладаєш зусилля.</p>
+                        <p><strong>Вплив</strong> — це результат, який дає задача або звичка.</p>
+                    </div>
                 </div>
             </div>
             <div class="my-day-setup-sections">

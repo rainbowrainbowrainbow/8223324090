@@ -118,6 +118,7 @@ describe('API auth boundary middleware', () => {
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/webhook/meta' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/meta' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/webhook/binotel' }), true);
+        assert.equal(isPublicApiRequest({ method: 'POST', path: '/checkbox/webhook' }), true);
         assert.equal(isPublicApiRequest({ method: 'POST', path: '/music/library/generate-music/callback' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/hermes/capabilities' }), true);
         assert.equal(isPublicApiRequest({ method: 'GET', path: '/status/public' }), true);

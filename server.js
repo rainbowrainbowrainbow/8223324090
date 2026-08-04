@@ -39,6 +39,7 @@ const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
 const { apiAudit } = require('./middleware/apiAudit');
 const { guardScheduler } = require('./services/schedulerGuard');
+const { processPaymentOutboxJobs } = require('./services/payments/paymentOutboxWorker');
 const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 const {
@@ -143,6 +144,8 @@ app.use(cors({
     }
 }));
 app.use(compression());
+app.use('/api/checkbox/webhook', require('./routes/checkbox-webhook'));
+app.use('/api/v1/checkbox/webhook', require('./routes/checkbox-webhook'));
 app.use((req, res, next) => {
     if (!BACKUP_RECOVERY_MODE) return next();
     const method = req.method === 'HEAD' ? 'GET' : req.method;
@@ -880,6 +883,7 @@ initializeDatabaseWithSchemaFence().catch(err => {
 
         // v38.4.0: Outbox + refresh token cleanup (daily)
         const { cleanupRefreshTokens } = require('./middleware/auth');
+        schedulerIntervals.push(setInterval(guardScheduler('processPaymentOutboxJobs', processPaymentOutboxJobs, { dedup: null }), 30000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupOutbox', cleanupOutbox, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));
 

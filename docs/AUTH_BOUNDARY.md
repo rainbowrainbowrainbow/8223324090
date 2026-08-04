@@ -32,6 +32,7 @@ focused tests.
 | `GET /omni/webhook/meta` | omnichannel | Meta verification requires the configured provider verify token before returning a challenge. |
 | `POST /omni/webhook/meta` | omnichannel | Omni Meta webhook is guarded by a required provider HMAC signature before inbox processing. |
 | `POST /omni/webhook/binotel` | omnichannel | Omni Binotel webhook is guarded by a required provider secret before inbox processing. |
+| `POST /checkbox/webhook` | checkbox | Checkbox webhook is mounted before the global JSON parser and guarded by route-specific raw-body HMAC before provider audit or fiscal mutation. |
 | `POST /report-bot/webhook` | report-bot | Report-bot webhook is guarded by Telegram webhook secret validation instead of JWT. |
 | `POST /report-bot/submit` | report-bot | Report-bot submit is guarded by the bot API key instead of user JWT. |
 | `GET /report-bot/on-duty` | report-bot | Report bot read endpoint is guarded inside the route by bot API key policy. |
@@ -104,6 +105,7 @@ is not an integration credential.
 | `GET /omni/webhook/meta` | omnichannel | Meta verify token, required | Verification challenge only | Installed Meta channel | Challenge or 403 |
 | `POST /omni/webhook/meta` | omnichannel | Meta HMAC, required | Omni canonical inbound persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
 | `POST /omni/webhook/binotel` | omnichannel | Binotel secret, required | Omni lifecycle/inbound canonical persistence | Request-scoped installed channel | Generic acknowledgement or 403 |
+| `POST /checkbox/webhook` | checkbox | EventGenix HMAC over raw body, required | Provider event ID + payload hash dedupe; lookup job idempotency | Matched fiscal operation/profile only | Generic accepted/replay/auth error |
 | `POST /report-bot/webhook` | report-bot | Telegram webhook secret, required | Provider retries; submit mutations have their own key | Configured report bot | Empty acknowledgement or 403 |
 | `POST /report-bot/submit` | report-bot | Bot API key, required | Deterministic submit idempotency key | Configured report bot | Scoped acknowledgement or 403 |
 | `GET /report-bot/on-duty` | report-bot | Bot API key, required | Read-only | Configured report bot | Scoped bot payload or 403 |
@@ -136,11 +138,11 @@ machine business integrations.
 ### Guard and Test Ownership
 
 Route guards: `routes/telegram.js`, `routes/omnichannel.js`,
-`routes/report-bot.js`, `middleware/hermesAuth.js`, `routes/hermes.js`,
+`routes/checkbox-webhook.js`, `server.js`, `routes/report-bot.js`, `middleware/hermesAuth.js`, `routes/hermes.js`,
 `routes/personal-accounts.js`, `routes/kleshnya.js`, `routes/music.js`, and
 `routes/leads.js`.
 
 Focused coverage: `tests/auth-boundary.test.js`,
-`tests/omni-provider-lifecycle.test.js`, `tests/hermes-auth.test.js`,
+`tests/omni-provider-lifecycle.test.js`, `tests/checkbox-webhook-reconciliation.test.js`, `tests/hermes-auth.test.js`,
 `tests/personal-accounts-jwt-telegram.test.js`, `tests/kleshnya.test.js`, and
 `tests/route-smoke.test.js`.

@@ -1,6 +1,7 @@
 const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
     telegramWebhook: { owner: 'telegram', authentication: 'webhook secret header', guardFiles: [{ file: 'routes/telegram.js', needles: ["router.post('/webhook'", 'secretHeader !== WEBHOOK_SECRET'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
     omniWebhooks: { owner: 'omnichannel', authentication: 'provider secret or signature', guardFiles: [{ file: 'routes/omnichannel.js', needles: ['verifyViberSignature', 'verifyWebhookSecret', 'verifyMetaSignature'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/omni-provider-lifecycle.test.js'] },
+    checkboxWebhook: { owner: 'checkbox', authentication: 'route-specific raw-body HMAC signature', guardFiles: [{ file: 'routes/checkbox-webhook.js', needles: ["express.raw({ type: '*/*', limit: '256kb' })", 'verifyCheckboxWebhookSignature', 'CHECKBOX_WEBHOOK_SIGNATURE_HEADER'] }, { file: 'server.js', needles: ["app.use('/api/checkbox/webhook', require('./routes/checkbox-webhook'))"] }], testFiles: ['tests/auth-boundary.test.js', 'tests/checkbox-webhook-reconciliation.test.js'] },
     reportBotWebhook: { owner: 'report-bot', authentication: 'webhook secret header', guardFiles: [{ file: 'routes/report-bot.js', needles: ["router.post('/webhook'", 'secretHeader !== expectedSecret'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
     reportBotApi: { owner: 'report-bot', authentication: 'bot API key', guardFiles: [{ file: 'routes/report-bot.js', needles: ['async function requireBotApiKey', "router.post('/submit', requireBotApiKey"] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
     hermesApi: { owner: 'hermes', authentication: 'API key or bearer secret', guardFiles: [{ file: 'middleware/hermesAuth.js', needles: ['function createHermesAuthMiddleware', 'timingSafeSecretEqual'] }, { file: 'routes/hermes.js', needles: ['router.use(authMiddleware)'] }], testFiles: ['tests/hermes-auth.test.js', 'tests/auth-boundary.test.js'] },
@@ -90,6 +91,13 @@ const PUBLIC_API_ROUTES = [
         owner: 'omnichannel',
         integrationContract: 'omniWebhooks',
         reason: 'Omni Binotel webhook is guarded by a required provider secret before inbox processing.'
+    },
+    {
+        method: 'POST',
+        path: '/checkbox/webhook',
+        owner: 'checkbox',
+        integrationContract: 'checkboxWebhook',
+        reason: 'Checkbox webhook reaches a route-specific raw-body parser and HMAC verification before any provider audit or fiscal mutation.'
     },
     {
         method: 'POST',

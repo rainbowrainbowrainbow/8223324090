@@ -39,6 +39,8 @@ focused route tests in the same pack.
 | `/api/catalogs` | `routes/catalogs.js` | catalogs |
 | `/api/center` | `routes/center.js` | center |
 | `/api/certificates` | `routes/certificates.js` | certificates |
+| `/api/checkbox/webhook` | `routes/checkbox-webhook.js` | Checkbox provider webhook |
+| `/api/v1/checkbox/webhook` | `routes/checkbox-webhook.js` | Checkbox provider webhook v1 raw-body alias |
 | `/api/chat` | `routes/chat.js` | chat |
 | `/api/content` | `routes/content.js` | content |
 | `/api/contractors` | `routes/contractors.js` | contractors |

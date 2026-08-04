@@ -1,7 +1,10 @@
 (function () {
     'use strict';
 
+    const TIMER_TICK_MS = 1000;
+    const ACTIVE_TIMER_WARNING_SECONDS = 8 * 60 * 60;
     const state = { timer: null, loaded: false, loading: false };
+    let timerTickInterval = null;
     const escape = value => window.TaskUI?.escapeHtml?.(String(value ?? '')) || String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     const secondsLabel = value => {
         const seconds = Math.max(0, Number(value || 0));
@@ -20,6 +23,28 @@
         const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
         return `${values.hour}:${values.minute}`;
     };
+    const nowMs = () => Date.now();
+    function normalizeTimer(timer) {
+        if (!timer) return null;
+        return {
+            ...timer,
+            durationSeconds: Math.max(0, Number(timer.durationSeconds || timer.duration_seconds || 0)),
+            taskId: Number(timer.taskId || timer.task_id || timer.task?.id || 0),
+            clientSyncedAt: nowMs(),
+            isActive: timer.isActive !== false && !timer.endedAt && !timer.ended_at
+        };
+    }
+    function currentTimerDurationSeconds(timer = state.timer) {
+        if (!timer) return 0;
+        const base = Math.max(0, Number(timer.durationSeconds || 0));
+        if (timer.isActive === false || timer.endedAt || timer.ended_at) return base;
+        const syncedAt = Number(timer.clientSyncedAt || nowMs());
+        const clientDelta = Math.max(0, Math.floor((nowMs() - syncedAt) / 1000));
+        return base + clientDelta;
+    }
+    function activeTimerWarning(timer = state.timer) {
+        return currentTimerDurationSeconds(timer) >= ACTIVE_TIMER_WARNING_SECONDS;
+    }
     async function request(path, options = {}) {
         const response = await fetch('/api/my-day' + path, {
             ...options,
@@ -29,25 +54,63 @@
         if (!response.ok || body.success === false) throw new Error(body.error || 'Не вдалося оновити облік часу.');
         return body;
     }
+    function updateTimerDom() {
+        const timer = state.timer;
+        if (!timer) return;
+        const durationText = secondsLabel(currentTimerDurationSeconds(timer));
+        document?.querySelectorAll?.('[data-my-day-active-timer-elapsed]').forEach(node => {
+            node.textContent = durationText;
+        });
+        document?.querySelectorAll?.('[data-my-day-active-timer-warning]').forEach(node => {
+            node.hidden = !activeTimerWarning(timer);
+        });
+        document?.querySelectorAll?.('[data-my-day-time-task-actual]').forEach(node => {
+            if (Number(node.dataset.myDayTimeTaskActual) !== Number(timer.taskId)) return;
+            const base = Math.max(0, Number(node.dataset.myDayTimeActualBase || 0));
+            const syncedAt = Number(node.dataset.myDayTimeSyncedAt || nowMs());
+            const delta = Math.max(0, Math.floor((nowMs() - syncedAt) / 1000));
+            node.textContent = secondsLabel(base + delta);
+        });
+    }
+    function syncTicker(enabled = true) {
+        const shouldRun = Boolean(enabled && state.timer?.isActive !== false && state.timer && !state.timer.endedAt && !state.timer.ended_at);
+        if (!shouldRun) {
+            if (timerTickInterval) clearInterval(timerTickInterval);
+            timerTickInterval = null;
+            return false;
+        }
+        updateTimerDom();
+        if (!timerTickInterval) timerTickInterval = setInterval(updateTimerDom, TIMER_TICK_MS);
+        return true;
+    }
+    function bind(root = document) {
+        const hasTimerSurface = Boolean(root?.querySelector?.('[data-my-day-time-strip], [data-my-day-time-task]'));
+        syncTicker(hasTimerSurface);
+        if (hasTimerSurface) updateTimerDom();
+    }
     async function load() {
         if (state.loading) return state.timer;
         state.loading = true;
-        try { state.timer = (await request('/timer')).timer || null; state.loaded = true; return state.timer; }
+        try { state.timer = normalizeTimer((await request('/timer')).timer || null); state.loaded = true; return state.timer; }
         finally { state.loading = false; }
     }
     function renderActiveTimerStrip() {
         const timer = state.timer;
         if (!timer) return '<div class="my-day-time-strip" data-my-day-time-strip aria-live="polite">Таймер не запущено</div>';
-        const warning = timer.warning ? '<span class="my-day-time-warning">Понад 8 годин — перевірте таймер</span>' : '';
-        return `<div class="my-day-time-strip is-active" data-my-day-time-strip aria-live="polite"><span>Працює: ${escape(timer.task?.title || 'задача')} · ${secondsLabel(timer.durationSeconds)}</span>${warning}<button type="button" data-cabinet-task-action="timer-stop" data-task-id="${escape(timer.taskId)}">Зупинити</button></div>`;
+        const warning = `<span class="my-day-time-warning" data-my-day-active-timer-warning ${activeTimerWarning(timer) ? '' : 'hidden'}>Понад 8 годин — перевірте таймер</span>`;
+        return `<div class="my-day-time-strip is-active" data-my-day-time-strip aria-live="polite"><span>Працює: ${escape(timer.task?.title || 'задача')} · <span data-my-day-active-timer-elapsed>${secondsLabel(currentTimerDurationSeconds(timer))}</span></span>${warning}<button type="button" data-cabinet-task-action="timer-stop" data-task-id="${escape(timer.taskId)}">Зупинити</button></div>`;
     }
     function renderTaskControls(task = {}) {
         const taskId = Number(task.id || task.taskId || task.task_id || 0);
         if (!taskId) return '';
         const active = Number(state.timer?.taskId) === taskId;
         const planned = Number(task.effortMinutes || task.effort_minutes || 0);
-        const actual = Number(task.actualSeconds || task.actual_seconds || 0);
-        return `<span class="my-day-time-task" aria-label="Облік часу">${planned ? `<span>План: ${planned} хв</span>` : ''}<span>Факт: ${secondsLabel(actual)}</span><button type="button" data-cabinet-task-action="${active ? 'timer-stop' : 'timer-start'}" data-task-id="${taskId}">${active ? 'Стоп' : 'Старт'}</button><button type="button" data-cabinet-task-action="time-entry" data-task-id="${taskId}">+ час</button><button type="button" data-cabinet-task-action="time-entries" data-task-id="${taskId}">Записи</button></span>`;
+        const actual = Math.max(0, Number(task.actualSeconds || task.actual_seconds || 0));
+        const syncedAt = nowMs();
+        const actualLabel = active
+            ? `<span data-my-day-time-task-actual="${taskId}" data-my-day-time-actual-base="${actual}" data-my-day-time-synced-at="${syncedAt}">${secondsLabel(actual)}</span>`
+            : secondsLabel(actual);
+        return `<span class="my-day-time-task" data-my-day-time-task="${taskId}" aria-label="Облік часу">${planned ? `<span>План: ${planned} хв</span>` : ''}<span>Факт: ${actualLabel}</span><button type="button" data-cabinet-task-action="${active ? 'timer-stop' : 'timer-start'}" data-task-id="${taskId}">${active ? 'Стоп' : 'Старт'}</button><button type="button" data-cabinet-task-action="time-entry" data-task-id="${taskId}">+ час</button><button type="button" data-cabinet-task-action="time-entries" data-task-id="${taskId}">Записи</button></span>`;
     }
     async function addManualEntry(taskId) {
         const date = typeof window.promptModal === 'function' ? await window.promptModal('Дата (Europe/Kyiv)', { defaultValue: kyivDate() }) : null;
@@ -120,10 +183,12 @@
     async function handleAction(action, taskId, onChanged, button) {
         if (action === 'timer-start') {
             const result = await request('/timer/start', { method: 'POST', body: JSON.stringify({ taskId }) });
-            state.timer = result.timer || null;
+            state.timer = normalizeTimer(result.timer || null);
+            syncTicker();
         } else if (action === 'timer-stop') {
             await request('/timer/stop', { method: 'POST' });
             state.timer = null;
+            syncTicker(false);
         } else if (action === 'time-entry') {
             await addManualEntry(taskId);
         } else if (action === 'time-entries') {
@@ -133,5 +198,5 @@
         await onChanged?.();
         return true;
     }
-    window.MyDayTimeTracking = { state, load, renderActiveTimerStrip, renderTaskControls, handleAction, secondsLabel };
+    window.MyDayTimeTracking = { state, bind, currentTimerDurationSeconds, load, normalizeTimer, renderActiveTimerStrip, renderTaskControls, handleAction, secondsLabel, syncTicker, updateTimerDom };
 }());

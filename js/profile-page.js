@@ -8258,6 +8258,10 @@ function attachProfileListeners() {
     bindCabinetSubtasks();
 
     const myDayTimeTracking = window.MyDayTimeTracking;
+    if (myDayTimeTracking) {
+        if (activeTab === 'myday') myDayTimeTracking.bind?.(document);
+        else myDayTimeTracking.syncTicker?.(false);
+    }
     if (myDayTimeTracking && activeTab === 'myday' && !myDayTimeTracking.state.loaded && !myDayTimeTracking.state.loading) {
         myDayTimeTracking.load().then(() => {
             if (activeTab === 'myday') renderCabinetActiveTab();

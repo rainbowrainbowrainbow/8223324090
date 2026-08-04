@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const root = path.resolve(__dirname, '..');
 const time = require('../services/myDayTimeTracking');
@@ -69,12 +70,86 @@ test('My Day UI keeps plan and fact separate and restores active timer', () => {
     assert.match(profile, /renderActiveTimerStrip/);
     assert.match(profile, /renderTaskControls/);
     assert.match(profile, /myDayTimeTracking\.load\(\)/);
-    assert.match(ui, /План:/);
-    assert.match(ui, /Факт:/);
+    assert.match(profile, /myDayTimeTracking\.bind\?\.\(document\)/);
+    assert.match(ui, /effortMinutes/);
+    assert.match(ui, /actualSeconds/);
+    assert.match(ui, /data-my-day-active-timer-elapsed/);
+    assert.match(ui, /data-my-day-time-task-actual/);
     assert.match(ui, /timer-start/);
     assert.match(ui, /timer-stop/);
     assert.match(ui, /time-entries/);
     assert.match(ui, /data-my-day-time-edit/);
     assert.match(ui, /data-my-day-time-delete/);
     assert.match(ui, /aria-live/);
+});
+
+function loadTimeTrackingUi(overrides = {}) {
+    const uiCode = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
+    const intervals = [];
+    const cleared = [];
+    const context = {
+        console,
+        Date,
+        Intl,
+        fetch: overrides.fetch || (async () => ({ ok: true, status: 200, json: async () => ({ success: true }) })),
+        setInterval: callback => { intervals.push(callback); return intervals.length; },
+        clearInterval: id => { cleared.push(id); },
+        document: overrides.document || { querySelector: () => null, querySelectorAll: () => [] },
+        window: {
+            TaskUI: { escapeHtml: value => String(value) },
+            getAuthHeaders: () => ({ Authorization: 'Bearer test-token' }),
+            promptModal: async () => null,
+            showNotification: () => {}
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(uiCode, context);
+    return { api: context.window.MyDayTimeTracking, intervals, cleared, context };
+}
+
+test('My Day timer UI derives live elapsed seconds from client clock without duplicate intervals', () => {
+    const { api, intervals, cleared } = loadTimeTrackingUi();
+    const timer = api.normalizeTimer({ taskId: 41, durationSeconds: 30, isActive: true, task: { title: 'Live task' } });
+    timer.clientSyncedAt = Date.now() - 65_000;
+    api.state.timer = timer;
+
+    assert.ok(api.currentTimerDurationSeconds() >= 95);
+    assert.match(api.renderActiveTimerStrip(), /data-my-day-active-timer-elapsed/);
+    assert.match(api.renderTaskControls({ id: 41, actualSeconds: 120 }), /data-my-day-time-task-actual="41"/);
+
+    assert.equal(api.syncTicker(true), true);
+    assert.equal(api.syncTicker(true), true);
+    assert.equal(intervals.length, 1, 'ticker starts only one interval');
+    assert.equal(api.syncTicker(false), false);
+    assert.deepEqual(cleared, [1], 'ticker clears the active interval');
+});
+
+test('My Day timer UI hydrates active timer from API and clears ticker on stop action', async () => {
+    const fetchCalls = [];
+    const { api, intervals, cleared } = loadTimeTrackingUi({
+        fetch: async (url, options = {}) => {
+            fetchCalls.push({ url, method: options.method || 'GET' });
+            if (String(url).endsWith('/timer')) {
+                return { ok: true, status: 200, json: async () => ({ success: true, timer: { taskId: 77, durationSeconds: 12, isActive: true, task: { title: 'Hydrated' } } }) };
+            }
+            if (String(url).endsWith('/timer/stop')) {
+                return { ok: true, status: 200, json: async () => ({ success: true, timer: { taskId: 77, durationSeconds: 18, endedAt: '2026-08-04T10:00:00Z', isActive: false } }) };
+            }
+            return { ok: true, status: 200, json: async () => ({ success: true }) };
+        }
+    });
+
+    const timer = await api.load();
+    assert.equal(timer.taskId, 77);
+    assert.equal(api.state.loaded, true);
+    assert.equal(intervals.length, 0, 'load hydrates state without starting a detached ticker');
+    api.bind({ querySelector: () => ({}), querySelectorAll: () => [] });
+    assert.equal(intervals.length, 1, 'bind starts ticker when the My Day timer surface exists');
+
+    let changed = 0;
+    await api.handleAction('timer-stop', 77, async () => { changed += 1; });
+    assert.equal(api.state.timer, null);
+    assert.equal(changed, 1, 'stop requests a UI refresh callback');
+    assert.deepEqual(cleared, [1], 'stop clears live ticker');
+    assert.deepEqual(fetchCalls.map(call => `${call.method} ${call.url}`), ['GET /api/my-day/timer', 'POST /api/my-day/timer/stop']);
 });

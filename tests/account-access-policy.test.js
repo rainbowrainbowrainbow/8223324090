@@ -167,7 +167,7 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     });
 
     assert.equal(Object.keys(snapshot.pages).length, 42);
-    assert.equal(Object.keys(snapshot.actions).length, 29);
+    assert.equal(Object.keys(snapshot.actions).length, 41);
     assert.equal(snapshot.pages['/analytics'], undefined);
     assert.equal(snapshot.pages['/finance'], false);
     assert.equal(snapshot.actions.export_data, false);
@@ -176,6 +176,7 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     assert.equal(snapshot.decisions['action:export_data'].source, 'explicit_deny');
     assert.equal(snapshot.catalog.pageAliases['/analytics'], '/finance');
     assert.ok(snapshot.catalog.nonDelegableActions.includes('manage_accounts'));
+    assert.ok(snapshot.catalog.nonDelegableActions.includes('fiscal.configure'));
     assert.ok(snapshot.catalog.explicitAllowDisabledPages.includes('/finance'));
     assert.ok(snapshot.catalog.explicitAllowDisabledActions.includes('finance.manage'));
 });

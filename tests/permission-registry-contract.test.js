@@ -92,13 +92,13 @@ function assertEntryShape(entry, type) {
     });
 }
 
-test('registry describes exactly the current 42 canonical page and 29 action keys', () => {
+test('registry describes exactly the current 42 canonical page and 41 action keys', () => {
     const backend = loadBackendAuth();
     const pageKeys = registry.PAGE_PERMISSIONS.map(entry => entry.key);
     const actionKeys = registry.ACTION_PERMISSIONS.map(entry => entry.key);
 
     assert.equal(pageKeys.length, 42);
-    assert.equal(actionKeys.length, 29);
+    assert.equal(actionKeys.length, 41);
     assertUnique(pageKeys, 'page permission keys');
     assertUnique(actionKeys, 'action permission keys');
     assert.deepEqual(sorted(pageKeys), sorted(Object.keys(backend.PAGE_ACCESS)), 'unknown or missing page permission key');

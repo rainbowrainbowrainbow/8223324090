@@ -48,6 +48,9 @@ const HR_PAGE_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'admin', 'security'])
 const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor', 'instructor']);
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
+const PAYMENT_CASHIER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'reception']);
+const FISCAL_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin']);
+const FISCAL_APPROVER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager']);
 const PAYROLL_VIEW_ROLES = Object.freeze(['creator', 'director', 'vice_director', 'hr', 'accountant']);
 const PAYROLL_REVERSE_CLOSE_ROLES = Object.freeze(['creator', 'director', 'accountant']);
 const PAYROLL_RULE_ROLES = Object.freeze(['creator', 'director', 'hr', 'accountant']);
@@ -497,6 +500,67 @@ const ACTION_PERMISSIONS = Object.freeze([
         explicitAllow: false,
         frontendConsumers: [source('js/finance-page.js', "financeCanManageTransactions()", { enforces: true })],
         apiConsumers: [api('routes/finance.js', '/api/finance mutating endpoints', 'finance.manage', 'Applies to every POST, PUT, PATCH and DELETE request before payroll and account-specific guards.')]
+    }),
+    action({
+        key: 'payments.view', label: 'View payment orders', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Payment/fiscal read authorization service', null, 'Checked by authorizeFiscalActionContext before payment/fiscal reads are exposed.')]
+    }),
+    action({
+        key: 'payments.create', label: 'Create payment orders', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Payment order creation authorization service', null, 'Checked by authorizeFiscalActionContext before payment order creation.')]
+    }),
+    action({
+        key: 'payments.confirm_received', label: 'Confirm manual payment received', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Manual cash/card-terminal confirmation authorization service', null, 'Checked by authorizeFiscalActionContext before confirming money received.')]
+    }),
+    action({
+        key: 'fiscal.shift.open', label: 'Open fiscal shift', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal shift open authorization service', null, 'Checked by authorizeFiscalActionContext before shift open operations.')]
+    }),
+    action({
+        key: 'fiscal.shift.close', label: 'Close fiscal shift', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal shift close authorization service', null, 'Checked by authorizeFiscalActionContext before shift close operations.')]
+    }),
+    action({
+        key: 'fiscal.service_in', label: 'Fiscal service cash in', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal service-in authorization service', null, 'Checked by authorizeFiscalActionContext before service-in operations.')]
+    }),
+    action({
+        key: 'fiscal.service_out.request', label: 'Request fiscal service cash out', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal service-out request authorization service', null, 'Checked by authorizeFiscalActionContext before service-out requests.')]
+    }),
+    action({
+        key: 'fiscal.service_out.approve', label: 'Approve fiscal service cash out', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal service-out approval authorization service', null, 'Requires server-side action PIN approval tied to the fiscal operation.')]
+    }),
+    action({
+        key: 'fiscal.refund', label: 'Approve fiscal refund', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal refund authorization service', null, 'Requires server-side action PIN approval tied to the fiscal operation.')]
+    }),
+    action({
+        key: 'fiscal.reconcile', label: 'Reconcile fiscal cash', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal reconciliation authorization service', null, 'Requires server-side action PIN approval for reconciliation differences.')]
+    }),
+    action({
+        key: 'fiscal.audit.view', label: 'View fiscal audit trail', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal audit authorization service', null, 'Checked by authorizeFiscalActionContext before audit reads.')]
+    }),
+    action({
+        key: 'fiscal.configure', label: 'Configure fiscal profiles and registers', group: 'payments', defaultRoles: ['creator', 'director'], risk: 'critical',
+        delegable: false,
+        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
+        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal configuration authorization service', null, 'Non-delegable: explicit allowlist is ignored by the access policy.')]
     }),
     action({
         key: 'create_booking', label: 'Створювати бронювання', group: 'bookings',

@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
@@ -139,9 +139,13 @@ test('My Day timer UI derives live elapsed seconds from client clock without dup
     timer.clientSyncedAt = Date.now() - 65_000;
     api.state.timer = timer;
 
+    assert.equal(api.secondsLabel(30), '0:00', 'settled summaries keep minute precision');
+    assert.equal(api.liveSecondsLabel(30), '0:30', 'active timer shows seconds before the first minute');
+    assert.equal(api.liveSecondsLabel(95), '1:35', 'active timer keeps seconds after one minute');
     assert.ok(api.currentTimerDurationSeconds() >= 95);
-    assert.match(api.renderActiveTimerStrip(), /data-my-day-active-timer-elapsed/);
+    assert.match(api.renderActiveTimerStrip(), /data-my-day-active-timer-elapsed[^>]*>1:3\d</, 'active timer strip renders seconds-precision elapsed time');
     assert.match(api.renderTaskControls({ id: 41, actualSeconds: 120 }), /data-my-day-time-task-actual="41"/);
+    assert.match(api.renderTaskControls({ id: 41, actualSeconds: 30 }), />0:30<\/span>/, 'active task fact renders seconds while timer is running');
 
     assert.equal(api.syncTicker(true), true);
     assert.equal(api.syncTicker(true), true);

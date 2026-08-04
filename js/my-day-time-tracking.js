@@ -1,4 +1,4 @@
-(function () {
+﻿(function () {
     'use strict';
 
     const TIMER_TICK_MS = 1000;
@@ -11,6 +11,14 @@
         const hours = Math.floor(seconds / 3600);
         const minutes = Math.floor((seconds % 3600) / 60);
         return `${hours}:${String(minutes).padStart(2, '0')}`;
+    };
+    const liveSecondsLabel = value => {
+        const totalSeconds = Math.max(0, Math.floor(Number(value || 0)));
+        const hours = Math.floor(totalSeconds / 3600);
+        const minutes = Math.floor((totalSeconds % 3600) / 60);
+        const seconds = totalSeconds % 60;
+        if (hours) return `${hours}:${String(minutes).padStart(2, '0')}:${String(seconds).padStart(2, '0')}`;
+        return `${minutes}:${String(seconds).padStart(2, '0')}`;
     };
     const kyivDate = value => {
         const date = value ? new Date(value) : new Date();
@@ -57,7 +65,7 @@
     function updateTimerDom() {
         const timer = state.timer;
         if (!timer) return;
-        const durationText = secondsLabel(currentTimerDurationSeconds(timer));
+        const durationText = liveSecondsLabel(currentTimerDurationSeconds(timer));
         document?.querySelectorAll?.('[data-my-day-active-timer-elapsed]').forEach(node => {
             node.textContent = durationText;
         });
@@ -102,7 +110,7 @@
             <div class="my-day-active-timer-copy">
                 <span class="my-day-active-timer-label">Працює</span>
                 <strong class="my-day-active-timer-title">${escape(timer.task?.title || 'задача')}</strong>
-                <span class="my-day-active-timer-elapsed" data-my-day-active-timer-elapsed>${secondsLabel(currentTimerDurationSeconds(timer))}</span>
+                <span class="my-day-active-timer-elapsed" data-my-day-active-timer-elapsed>${liveSecondsLabel(currentTimerDurationSeconds(timer))}</span>
             </div>
             ${warning}
             <button type="button" class="my-day-time-button my-day-time-button--stop my-day-time-button--banner" data-cabinet-task-action="timer-stop" data-task-id="${escape(timer.taskId)}" aria-label="Зупинити активний таймер">Зупинити</button>
@@ -116,7 +124,7 @@
         const actual = Math.max(0, Number(task.actualSeconds || task.actual_seconds || 0));
         const syncedAt = nowMs();
         const actualLabel = active
-            ? `<span class="my-day-time-value" data-my-day-time-task-actual="${taskId}" data-my-day-time-actual-base="${actual}" data-my-day-time-synced-at="${syncedAt}">${secondsLabel(actual)}</span>`
+            ? `<span class="my-day-time-value" data-my-day-time-task-actual="${taskId}" data-my-day-time-actual-base="${actual}" data-my-day-time-synced-at="${syncedAt}">${liveSecondsLabel(actual)}</span>`
             : `<span class="my-day-time-value">${secondsLabel(actual)}</span>`;
         const timerAction = active ? 'timer-stop' : 'timer-start';
         const timerLabel = active ? 'Стоп' : 'Старт';
@@ -228,5 +236,5 @@
         await onChanged?.();
         return true;
     }
-    window.MyDayTimeTracking = { state, bind, currentTimerDurationSeconds, load, normalizeTimer, renderActiveTimerStrip, renderTaskControls, handleAction, secondsLabel, syncTicker, updateTimerDom };
+    window.MyDayTimeTracking = { state, bind, currentTimerDurationSeconds, load, normalizeTimer, renderActiveTimerStrip, renderTaskControls, handleAction, secondsLabel, liveSecondsLabel, syncTicker, updateTimerDom };
 }());

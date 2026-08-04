@@ -225,21 +225,30 @@ Contract:
 Canonical payload:
 
 - Directions: `EventGenix CRM`, `Парк Закревського`, `Дженікс / події`,
-  `Особисте життя`.
-- Impacts: `Дохід і клієнти`, `Якість сервісу`, `Системність`, `Здоров'я`,
-  `Фізична форма`, `Відновлення`, `Побут і комфорт`, `Навчання`.
+  `Особисте життя`, `Побут / комфорт`, `Здоровʼя і форма`, `Фінанси`,
+  `Навчання і розвиток`, `Контент / бренд`, `Адмінка і системність`.
+- Impacts: `Дохід і клієнти`, `Якість сервісу`, `Системність`,
+  `Швидкість роботи`, `Здоровʼя`, `Фізична форма`, `Відновлення`,
+  `Побут і комфорт`, `Навчання`, `Репутація / бренд`,
+  `Команда і делегування`, `Ризики і безпека`.
 - Habits:
   - `Ранкова зарядка`: `minutes`, target `10`, `daily`, direction
-    `Особисте життя`, impacts `Здоров'я` and `Фізична форма`.
+    `Здоровʼя і форма`, impacts `Здоровʼя` and `Фізична форма`.
   - `Планування дня`: `boolean`, target `1`, `daily`, direction
-    `Особисте життя`, impact `Системність`.
+    `Адмінка і системність`, impacts `Системність` and `Швидкість роботи`.
   - `Відновлення без екранів`: `minutes`, target `30`, `daily`, direction
-    `Особисте життя`, impact `Відновлення`.
+    `Особисте життя`, impacts `Відновлення` and `Здоровʼя`.
+  - `Навчання 20 хв`: `minutes`, target `20`, `selected_weekdays`,
+    weekdays Monday-Friday (`1,2,3,4,5`), direction `Навчання і розвиток`,
+    impacts `Навчання` and `Системність`.
+  - `Побутовий порядок`: `boolean`, target `1`, `times_per_week`, weekly
+    target `3`, direction `Побут / комфорт`, impacts `Побут і комфорт` and
+    `Відновлення`.
 
 UX:
 
 - If the user has no active direction, impact, or habit, setup shows an
-  onboarding card titled `Почати з базового набору` with an exact preview and
+  onboarding card titled `Почати з базового набору` with an exact preview of directions, impacts, and habit metric/cadence details and
   the action `Застосувати базовий набір`.
 - If the user already has personal My Day data, the same action is available
   only inside a collapsed `Додати базовий набір` block.

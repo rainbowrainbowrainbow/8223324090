@@ -4,56 +4,229 @@ const { myDayError } = require('./myDayTaxonomy');
 const { positiveInteger } = require('./myDayHabits');
 
 const STARTER_DIRECTIONS = Object.freeze([
-    { name: 'EventGenix CRM', color: '#2563EB', icon: '💼', sortOrder: 10 },
-    { name: 'Парк Закревського', color: '#10B981', icon: '🌳', sortOrder: 20 },
-    { name: 'Дженікс / події', color: '#F59E0B', icon: '🎉', sortOrder: 30 },
-    { name: 'Особисте життя', color: '#8B5CF6', icon: '🏠', sortOrder: 40 }
+    {
+        name: "EventGenix CRM",
+        color: "#2563EB",
+        icon: "💼",
+        sortOrder: 10
+    },
+    {
+        name: "Парк Закревського",
+        color: "#10B981",
+        icon: "🌳",
+        sortOrder: 20
+    },
+    {
+        name: "Дженікс / події",
+        color: "#F59E0B",
+        icon: "🎉",
+        sortOrder: 30
+    },
+    {
+        name: "Особисте життя",
+        color: "#8B5CF6",
+        icon: "🏠",
+        sortOrder: 40
+    },
+    {
+        name: "Побут / комфорт",
+        color: "#A855F7",
+        icon: "🛋️",
+        sortOrder: 50
+    },
+    {
+        name: "Здоровʼя і форма",
+        color: "#F97316",
+        icon: "💪",
+        sortOrder: 60
+    },
+    {
+        name: "Фінанси",
+        color: "#22C55E",
+        icon: "💰",
+        sortOrder: 70
+    },
+    {
+        name: "Навчання і розвиток",
+        color: "#3B82F6",
+        icon: "🧠",
+        sortOrder: 80
+    },
+    {
+        name: "Контент / бренд",
+        color: "#EC4899",
+        icon: "📣",
+        sortOrder: 90
+    },
+    {
+        name: "Адмінка і системність",
+        color: "#6366F1",
+        icon: "⚙️",
+        sortOrder: 100
+    }
 ]);
 
 const STARTER_IMPACTS = Object.freeze([
-    { name: 'Дохід і клієнти', color: '#22C55E', icon: '📈', sortOrder: 10 },
-    { name: 'Якість сервісу', color: '#0EA5E9', icon: '⭐', sortOrder: 20 },
-    { name: 'Системність', color: '#6366F1', icon: '⚙️', sortOrder: 30 },
-    { name: "Здоров'я", color: '#EF4444', icon: '❤️', sortOrder: 40 },
-    { name: 'Фізична форма', color: '#F97316', icon: '💪', sortOrder: 50 },
-    { name: 'Відновлення', color: '#14B8A6', icon: '🌿', sortOrder: 60 },
-    { name: 'Побут і комфорт', color: '#A855F7', icon: '🛋️', sortOrder: 70 },
-    { name: 'Навчання', color: '#3B82F6', icon: '🧠', sortOrder: 80 }
+    {
+        name: "Дохід і клієнти",
+        color: "#22C55E",
+        icon: "📈",
+        sortOrder: 10
+    },
+    {
+        name: "Якість сервісу",
+        color: "#0EA5E9",
+        icon: "⭐",
+        sortOrder: 20
+    },
+    {
+        name: "Системність",
+        color: "#6366F1",
+        icon: "⚙️",
+        sortOrder: 30
+    },
+    {
+        name: "Швидкість роботи",
+        color: "#F59E0B",
+        icon: "⚡",
+        sortOrder: 40
+    },
+    {
+        name: "Здоровʼя",
+        color: "#EF4444",
+        icon: "❤️",
+        sortOrder: 50
+    },
+    {
+        name: "Фізична форма",
+        color: "#F97316",
+        icon: "💪",
+        sortOrder: 60
+    },
+    {
+        name: "Відновлення",
+        color: "#14B8A6",
+        icon: "🌿",
+        sortOrder: 70
+    },
+    {
+        name: "Побут і комфорт",
+        color: "#A855F7",
+        icon: "🛋️",
+        sortOrder: 80
+    },
+    {
+        name: "Навчання",
+        color: "#3B82F6",
+        icon: "🧠",
+        sortOrder: 90
+    },
+    {
+        name: "Репутація / бренд",
+        color: "#EC4899",
+        icon: "📣",
+        sortOrder: 100
+    },
+    {
+        name: "Команда і делегування",
+        color: "#06B6D4",
+        icon: "🤝",
+        sortOrder: 110
+    },
+    {
+        name: "Ризики і безпека",
+        color: "#64748B",
+        icon: "🛡️",
+        sortOrder: 120
+    }
 ]);
 
 const STARTER_HABITS = Object.freeze([
     {
-        name: 'Ранкова зарядка',
-        color: '#F97316',
-        icon: '💪',
-        metric: 'minutes',
+        name: "Ранкова зарядка",
+        color: "#F97316",
+        icon: "💪",
+        metric: "minutes",
         targetValue: 10,
-        cadence: 'daily',
-        direction: 'Особисте життя',
-        impacts: ["Здоров'я", 'Фізична форма'],
+        cadence: "daily",
+        selectedWeekdays: [],
+        timesPerWeek: null,
+        direction: "Здоровʼя і форма",
+        impacts: [
+            "Здоровʼя",
+            "Фізична форма"
+        ],
         sortOrder: 10
     },
     {
-        name: 'Планування дня',
-        color: '#6366F1',
-        icon: '🗓️',
-        metric: 'boolean',
+        name: "Планування дня",
+        color: "#6366F1",
+        icon: "🗓️",
+        metric: "boolean",
         targetValue: 1,
-        cadence: 'daily',
-        direction: 'Особисте життя',
-        impacts: ['Системність'],
+        cadence: "daily",
+        selectedWeekdays: [],
+        timesPerWeek: null,
+        direction: "Адмінка і системність",
+        impacts: [
+            "Системність",
+            "Швидкість роботи"
+        ],
         sortOrder: 20
     },
     {
-        name: 'Відновлення без екранів',
-        color: '#14B8A6',
-        icon: '🌿',
-        metric: 'minutes',
+        name: "Відновлення без екранів",
+        color: "#14B8A6",
+        icon: "🌿",
+        metric: "minutes",
         targetValue: 30,
-        cadence: 'daily',
-        direction: 'Особисте життя',
-        impacts: ['Відновлення'],
+        cadence: "daily",
+        selectedWeekdays: [],
+        timesPerWeek: null,
+        direction: "Особисте життя",
+        impacts: [
+            "Відновлення",
+            "Здоровʼя"
+        ],
         sortOrder: 30
+    },
+    {
+        name: "Навчання 20 хв",
+        color: "#3B82F6",
+        icon: "🧠",
+        metric: "minutes",
+        targetValue: 20,
+        cadence: "selected_weekdays",
+        selectedWeekdays: [
+            1,
+            2,
+            3,
+            4,
+            5
+        ],
+        timesPerWeek: null,
+        direction: "Навчання і розвиток",
+        impacts: [
+            "Навчання",
+            "Системність"
+        ],
+        sortOrder: 40
+    },
+    {
+        name: "Побутовий порядок",
+        color: "#A855F7",
+        icon: "🛋️",
+        metric: "boolean",
+        targetValue: 1,
+        cadence: "times_per_week",
+        selectedWeekdays: [],
+        timesPerWeek: 3,
+        direction: "Побут / комфорт",
+        impacts: [
+            "Побут і комфорт",
+            "Відновлення"
+        ],
+        sortOrder: 50
     }
 ]);
 
@@ -69,7 +242,7 @@ const CATALOG_TABLES = Object.freeze({
 });
 
 function normalizeNameKey(value) {
-    return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
+    return String(value || '').trim().replace(/[\u02BC\u2019\u2018\u0060\u00B4]/g, "'").replace(/\s+/g, ' ').toLowerCase();
 }
 
 function summaryBucket() {
@@ -80,11 +253,13 @@ function publicStarterKit() {
     return {
         directions: STARTER_DIRECTIONS.map(({ name }) => name),
         impacts: STARTER_IMPACTS.map(({ name }) => name),
-        habits: STARTER_HABITS.map(({ name, metric, targetValue, cadence, direction, impacts }) => ({
+        habits: STARTER_HABITS.map(({ name, metric, targetValue, cadence, selectedWeekdays, timesPerWeek, direction, impacts }) => ({
             name,
             metric,
             targetValue,
             cadence,
+            selectedWeekdays: [...(selectedWeekdays || [])],
+            timesPerWeek: timesPerWeek ?? null,
             direction,
             impacts: [...impacts]
         }))
@@ -151,9 +326,9 @@ async function createOrFindHabit(queryable, userId, habit, directionIds, impactI
     const result = await queryable.query(
         `INSERT INTO my_day_habits
             (user_id, name, color, icon, direction_id, metric, target_value, cadence, selected_weekdays, times_per_week, is_paused, is_archived, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, '{}'::smallint[], NULL, FALSE, FALSE, $9)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::smallint[], $10, FALSE, FALSE, $11)
          RETURNING id, name`,
-        [userId, habit.name, habit.color, habit.icon, directionId, habit.metric, habit.targetValue, habit.cadence, habit.sortOrder]
+        [userId, habit.name, habit.color, habit.icon, directionId, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays || [], habit.timesPerWeek ?? null, habit.sortOrder]
     );
     const habitId = Number(result.rows[0].id);
     await queryable.query(

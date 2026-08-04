@@ -21,9 +21,15 @@
 
 
     const STARTER_KIT_PREVIEW = Object.freeze({
-        directions: ['EventGenix CRM', 'Парк Закревського', 'Дженікс / події', 'Особисте життя'],
-        impacts: ['Дохід і клієнти', 'Якість сервісу', 'Системність', "Здоров'я", 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання'],
-        habits: ['Ранкова зарядка', 'Планування дня', 'Відновлення без екранів']
+        directions: ['EventGenix CRM', 'Парк Закревського', 'Дженікс / події', 'Особисте життя', 'Побут / комфорт', 'Здоровʼя і форма', 'Фінанси', 'Навчання і розвиток', 'Контент / бренд', 'Адмінка і системність'],
+        impacts: ['Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Команда і делегування', 'Ризики і безпека'],
+        habits: [
+            { name: 'Ранкова зарядка', detail: '10 хв щодня · Здоровʼя і форма · Здоровʼя, Фізична форма' },
+            { name: 'Планування дня', detail: 'так/ні щодня · Адмінка і системність · Системність, Швидкість роботи' },
+            { name: 'Відновлення без екранів', detail: '30 хв щодня · Особисте життя · Відновлення, Здоровʼя' },
+            { name: 'Навчання 20 хв', detail: '20 хв Пн-Пт · Навчання і розвиток · Навчання, Системність' },
+            { name: 'Побутовий порядок', detail: '3 рази/тиждень · Побут / комфорт · Побут і комфорт, Відновлення' }
+        ]
     });
     function headers() {
         return typeof window.getAuthHeaders === 'function'
@@ -620,7 +626,10 @@
     }
 
     function renderStarterPreview(title, items) {
-        return `<div class="my-day-starter-preview-group"><strong>${escape(title)}</strong><div>${items.map(item => `<span>${escape(item)}</span>`).join('')}</div></div>`;
+        return `<div class="my-day-starter-preview-group"><strong>${escape(title)}</strong><div>${items.map(item => {
+            if (item && typeof item === 'object') return `<span class="my-day-starter-preview-item"><b>${escape(item.name)}</b><small>${escape(item.detail || '')}</small></span>`;
+            return `<span>${escape(item)}</span>`;
+        }).join('')}</div></div>`;
     }
 
     function renderStarterKitSummary() {
@@ -633,7 +642,7 @@
 
     function renderStarterKitContent() {
         return `<div class="my-day-starter-card-body">
-            <p>Це ручний персональний набір. Він створиться тільки після натискання і не створює задачі, таймери або check-ins.</p>
+            <p>Це ручний персональний starter kit. Він створиться тільки після твого натискання у власному профілі й не створює задачі, таймери або check-ins.</p>
             <div class="my-day-starter-preview">
                 ${renderStarterPreview('Напрями', STARTER_KIT_PREVIEW.directions)}
                 ${renderStarterPreview('Впливи', STARTER_KIT_PREVIEW.impacts)}

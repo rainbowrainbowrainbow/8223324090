@@ -339,6 +339,23 @@ const PAGE_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/finance.js', '/api/finance', null), api('routes/analytics.js', '/api/analytics', null), api('routes/payroll.js', '/api/payroll', null)]
     }),
     page({
+        key: '/cashier-payments', label: '\u041a\u0430\u0441\u0430 \u043f\u0430\u0440\u043a\u0443', group: 'sales', canonicalPath: '/cashier-payments',
+        defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical', sidebarLinks: ['/cashier-payments'],
+        frontendConsumers: [
+            source('cashier-payments.html', 'js/auth.js'),
+            source('js/cashier-payments-page.js', "canAccess('payments.view')", { enforces: true }),
+            source('js/cashier-payments-page.js', "canAccess('payments.create')", { enforces: true }),
+            source('js/cashier-payments-page.js', "canAccess('payments.confirm_received')", { enforces: true })
+        ],
+        backendConsumers: [source('server.js', "app.get('/cashier-payments'")],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/orders/:orderId', 'payments.view'),
+            api('routes/payments.js', '/api/payments/admission-ticket/orders', 'payments.create'),
+            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', 'payments.confirm_received')
+        ],
+        notes: 'Checkbox park pilot cashier UI is scoped to CRM profile event_genix and register alias middle; fiscal profile/register are resolved server-side.'
+    }),
+    page({
         key: '/accounting-deposits', label: 'Перевірка завдатків', group: 'sales', canonicalPath: '/accounting-deposits',
         defaultRoles: FINANCE_ANALYTICS_ACCESS, risk: 'critical', sidebarLinks: ['/accounting-deposits'],
         frontendConsumers: [source('accounting-deposits.html', 'js/auth.js')],
@@ -503,8 +520,15 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'payments.view', label: 'View payment orders', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
-        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
-        apiConsumers: [api('services/payments/fiscalAccess.js', 'Payment/fiscal read authorization service', null, 'Checked by authorizeFiscalActionContext before payment/fiscal reads are exposed.')]
+        backendConsumers: [
+            source('routes/payments.js', "requireAction('payments.view')", { enforces: true }),
+            source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
+        ],
+        frontendConsumers: [source('js/cashier-payments-page.js', "canAccess('payments.view')", { enforces: true })],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/orders/:orderId', 'payments.view'),
+            api('services/payments/fiscalAccess.js', 'Payment/fiscal read authorization service', null, 'Checked by authorizeFiscalActionContext before payment/fiscal reads are exposed.')
+        ]
     }),
     action({
         key: 'payments.create', label: 'Create payment orders', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',

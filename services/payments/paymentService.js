@@ -7,7 +7,7 @@ const {
     resolveAdmissionTicketQuote
 } = require('../admissionTickets');
 const { normalizeBusinessContext } = require('../businessContext');
-const { authorizeFiscalAction } = require('./fiscalAccess');
+const { authorizeFiscalAction, FiscalAccessError } = require('./fiscalAccess');
 const { toPostgresBigint } = require('./money');
 const {
     PaymentWorkflowError,
@@ -599,8 +599,162 @@ async function confirmPaymentOrder({
     });
 }
 
+
+function normalizePaymentOrderDetails(row = {}) {
+    const order = normalizePaymentOrder(row);
+    if (!order) return null;
+    return {
+        ...order,
+        crmProfileKey: row.crm_profile_key,
+        legalEntityKey: row.legal_entity_key,
+        legalEntityName: row.legal_entity_name,
+        fiscalLocationId: Number(row.fiscal_location_id),
+        registerAlias: row.register_alias,
+        registerDisplayName: row.register_display_name
+    };
+}
+
+function normalizePaymentOrderItem(row = {}) {
+    return {
+        id: Number(row.id),
+        lineNumber: Number(row.line_number),
+        itemType: row.item_type,
+        itemCode: row.item_code,
+        itemName: row.item_name,
+        unitPriceMinor: String(row.unit_price_minor),
+        quantityMillis: String(row.quantity_millis),
+        totalAmountMinor: String(row.total_amount_minor),
+        currency: row.currency,
+        taxReference: row.tax_reference || null,
+        taxCode: row.tax_code == null ? null : Number(row.tax_code),
+        taxRateBps: row.tax_rate_bps == null ? null : Number(row.tax_rate_bps),
+        providerTaxId: row.provider_tax_id || null,
+        itemSnapshot: row.item_snapshot || {}
+    };
+}
+
+function normalizeFiscalOperation(row = {}) {
+    if (!row) return null;
+    return {
+        id: Number(row.id),
+        fiscalRegisterId: row.fiscal_register_id == null ? null : Number(row.fiscal_register_id),
+        paymentOrderId: row.payment_order_id == null ? null : Number(row.payment_order_id),
+        operationType: row.operation_type,
+        status: row.status,
+        provider: row.provider,
+        providerOperationId: row.provider_operation_id || null,
+        providerStatus: row.provider_status || null,
+        amountMinor: row.amount_minor == null ? null : String(row.amount_minor),
+        currency: row.currency,
+        lastErrorCode: row.last_error_code || null,
+        lastErrorMessage: row.last_error_message || null,
+        sentAt: row.sent_at || null,
+        completedAt: row.completed_at || null,
+        nextStatusCheckAt: row.next_status_check_at || null
+    };
+}
+
+function normalizeFiscalReceipt(row = {}) {
+    if (!row) return null;
+    return {
+        id: Number(row.id),
+        fiscalOperationId: Number(row.fiscal_operation_id),
+        paymentOrderId: row.payment_order_id == null ? null : Number(row.payment_order_id),
+        receiptType: row.receipt_type,
+        status: row.status,
+        provider: row.provider,
+        providerReceiptId: row.provider_receipt_id,
+        providerFiscalCode: row.provider_fiscal_code || null,
+        providerSerial: row.provider_serial || null,
+        providerTaxUrl: row.provider_tax_url || null,
+        providerPdfUrl: row.provider_pdf_url || null,
+        providerQrUrl: row.provider_qr_url || null,
+        totalAmountMinor: String(row.total_amount_minor),
+        currency: row.currency,
+        fiscalizedAt: row.fiscalized_at || null,
+        providerSnapshot: row.provider_snapshot || {}
+    };
+}
+
+function receiptArtifacts(receipts = []) {
+    const fiscalized = receipts.find(receipt => receipt.status === 'fiscalized') || receipts[0] || null;
+    if (!fiscalized) {
+        return { qrUrl: null, taxUrl: null, pdfUrl: null };
+    }
+    return {
+        qrUrl: fiscalized.providerQrUrl || null,
+        taxUrl: fiscalized.providerTaxUrl || null,
+        pdfUrl: fiscalized.providerPdfUrl || null
+    };
+}
+
+async function getPaymentOrderDetails({
+    dbPool = pool,
+    user,
+    orderId,
+    authorizer = authorizeFiscalAction
+} = {}) {
+    const numericOrderId = Number(orderId);
+    if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
+        throw new PaymentServiceError('payment_order_id_invalid', 'Payment order id is invalid', { status: 422 });
+    }
+
+    return withTransaction(dbPool, async client => {
+        const order = await loadOrderSnapshot(client, numericOrderId);
+        if (!order) {
+            throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
+        }
+
+        await authorizer(client, {
+            user,
+            action: 'payments.view',
+            fiscalProfileId: order.fiscal_profile_id,
+            crmProfileKey: order.crm_profile_key,
+            fiscalLocationId: order.fiscal_location_id,
+            fiscalRegisterId: order.fiscal_register_id
+        });
+
+        const [itemsResult, operationsResult, receiptsResult] = await Promise.all([
+            client.query(
+                `SELECT *
+                   FROM payment_order_items
+                  WHERE fiscal_profile_id = $1
+                    AND payment_order_id = $2
+                  ORDER BY line_number ASC`,
+                [order.fiscal_profile_id, order.id]
+            ),
+            client.query(
+                `SELECT *
+                   FROM fiscal_operations
+                  WHERE fiscal_profile_id = $1
+                    AND payment_order_id = $2
+                  ORDER BY created_at DESC, id DESC
+                  LIMIT 1`,
+                [order.fiscal_profile_id, order.id]
+            ),
+            client.query(
+                `SELECT *
+                   FROM fiscal_receipts
+                  WHERE fiscal_profile_id = $1
+                    AND payment_order_id = $2
+                  ORDER BY created_at DESC, id DESC`,
+                [order.fiscal_profile_id, order.id]
+            )
+        ]);
+
+        const receipts = receiptsResult.rows.map(normalizeFiscalReceipt);
+        return {
+            order: normalizePaymentOrderDetails(order),
+            items: itemsResult.rows.map(normalizePaymentOrderItem),
+            fiscalOperation: normalizeFiscalOperation(operationsResult.rows[0]),
+            receipts,
+            artifacts: receiptArtifacts(receipts)
+        };
+    });
+}
+
 function paymentErrorResponse(error) {
-    if (error instanceof PaymentServiceError || error instanceof PaymentWorkflowError || error instanceof AdmissionTicketError) {
+    if (error instanceof PaymentServiceError || error instanceof PaymentWorkflowError || error instanceof AdmissionTicketError || error instanceof FiscalAccessError) {
         return {
             status: error.status || error.statusCode || 400,
             body: {
@@ -630,6 +784,7 @@ module.exports = {
     assertNoClientFiscalOverride,
     confirmPaymentOrder,
     createAdmissionTicketPaymentOrder,
+    getPaymentOrderDetails,
     fingerprint,
     paymentErrorResponse,
     requireIdempotencyKey,

@@ -87,6 +87,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-afisha.css` | shared-ui | `shared` | active | Afisha event workspace, material folder, event card, and dark-mode styles imported by `pages.css`. |
 | `css/pages-analytics-vacancy.css` | shared-ui | `shared` | active | Analytics chart readout, HR vacancy workspace, and salary period picker styles imported by `pages.css`. |
 | `css/pages-finance.css` | finance | `page-scoped` | active | Finance payroll transparency, role-hour breakdown, and simultaneous additional-pay styles. |
+| `css/cashier-payments.css` | payments | `page-scoped` | active | Checkbox park pilot cashier page layout, payment confirmation panels, receipt links, and accessibility states. |
 | `css/pages-art.css` | shared-ui | `shared` | active | Art standalone shell, tabs, boards, kanban, recent work, and responsive styles imported by `pages.css`. |
 | `css/pages-cabinet.css` | shared-ui | `shared-large` | active-large | Personal cabinet task composer, quick metrics, completion strips, task cards, subtasks, and dark-mode styles imported by `pages.css`. |
 | `css/pages-certificates.css` | shared-ui | `shared` | active | Certificate page list, create flow, preview, filters, dark-mode, and responsive styles imported by `pages.css`. |

@@ -5,6 +5,7 @@ const { authenticateToken, requireAction } = require('../middleware/auth');
 const {
     confirmPaymentOrder,
     createAdmissionTicketPaymentOrder,
+    getPaymentOrderDetails,
     paymentErrorResponse
 } = require('../services/payments/paymentService');
 
@@ -22,6 +23,19 @@ router.post('/admission-ticket/orders', requireAction('payments.create'), async 
             idempotencyKey: idempotencyKeyFromRequest(req)
         });
         return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/orders/:orderId', requireAction('payments.view'), async (req, res) => {
+    try {
+        const result = await getPaymentOrderDetails({
+            user: req.user,
+            orderId: req.params.orderId
+        });
+        return res.status(200).json({ success: true, ...result });
     } catch (error) {
         const response = paymentErrorResponse(error);
         return res.status(response.status).json(response.body);

@@ -152,6 +152,14 @@ const ROOT_HTML_SURFACE = [
         purpose: 'Finance operations page.'
     },
     {
+        file: 'cashier-payments.html',
+        canonicalPath: '/cashier-payments',
+        owner: 'payments',
+        status: 'canonical-page',
+        aliases: [],
+        purpose: 'Scoped Checkbox park pilot cashier UI for cash and manual card-terminal payment confirmation.'
+    },
+    {
         file: 'accounting-deposits.html',
         canonicalPath: '/accounting-deposits',
         owner: 'finance',

@@ -472,6 +472,13 @@ const CSS_SURFACE = [
         reason: 'Finance payroll transparency, role-hour breakdown, and simultaneous additional-pay styles.'
     },
     {
+        file: 'css/cashier-payments.css',
+        owner: 'payments',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Checkbox park pilot cashier page layout, payment confirmation panels, receipt links, and accessibility states.'
+    },
+    {
         file: 'css/pages-art.css',
         owner: 'shared-ui',
         category: 'shared',

@@ -39,6 +39,7 @@ and focused tests in the same pack.
 | `hermes-studio.html` | `/hermes-studio` | hermes-studio | canonical-page | Creative material job queue, brief intake, asset review, and human decisions. |
 | `certificates.html` | `/certificates` | certificates | canonical-page | Also serves `/certificates/new` and `/certificates/batch` for standalone creation flows. |
 | `finance.html` | `/finance` | finance | canonical-page | Finance operations page. |
+| `cashier-payments.html` | `/cashier-payments` | payments | canonical-page | Scoped Checkbox park pilot cashier UI for cash and manual card-terminal payment confirmation. |
 | `accounting-deposits.html` | `/accounting-deposits` | finance | canonical-page | Accounting review page for banquet booking deposits. |
 | `game.html` | `/game` | game | canonical-page | Gamification game page. |
 | `graduation.html` | `/graduation` | graduation | canonical-page | Also served at `/embed/graduation`. |

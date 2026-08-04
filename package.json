@@ -144,7 +144,8 @@
     "release:railway-up": "node scripts/railway-release-up.js",
     "release:railway-up:branch": "node scripts/railway-release-up.js --branch",
     "release:railway-up:dry-run:branch": "node scripts/railway-release-up.js --dry-run --branch",
-    "smoke:zrs:write": "node scripts/live-zrs-write-smoke.js"
+    "smoke:zrs:write": "node scripts/live-zrs-write-smoke.js",
+    "smoke:cashier-payments": "npx -y -p playwright node tests/browser/cashier-payments-browser-smoke.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

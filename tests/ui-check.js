@@ -7106,6 +7106,43 @@ check('Timeline product sales separates revenue viewing from data export while p
     && !authCode.includes("exportBtn.style.display = 'none'"));
 
 // ═══════════════════════════════════════════════════
+
+
+const cashierPaymentsHtml = fileText('cashier-payments.html');
+const cashierPaymentsJs = fileText('js/cashier-payments-page.js');
+const cashierPaymentsCss = fileText('css/cashier-payments.css');
+check('Cashier payments pilot UI is scoped to park middle register and shows immutable fiscal/payment snapshot',
+    cashierPaymentsHtml.includes('data-pilot-scope="event_genix:middle"')
+    && cashierPaymentsHtml.includes('id="cashierFiscalProfile"')
+    && cashierPaymentsHtml.includes('id="cashierRegister"')
+    && cashierPaymentsHtml.includes('id="cashierPaymentStatus"')
+    && cashierPaymentsHtml.includes('id="cashierFiscalStatus"')
+    && cashierPaymentsHtml.includes('id="paymentItemsBody"')
+    && cashierPaymentsHtml.includes('id="paymentTotalAmount"')
+    && cashierPaymentsHtml.includes('\u0413\u043e\u0442\u0456\u0432\u043a\u0443 \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e \u2014 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0447\u0435\u043a')
+    && cashierPaymentsHtml.includes('\u0422\u0435\u0440\u043c\u0456\u043d\u0430\u043b \u043f\u043e\u043a\u0430\u0437\u0430\u0432 \u0443\u0441\u043f\u0456\u0448\u043d\u0443 \u043e\u043f\u043b\u0430\u0442\u0443')
+    && cashierPaymentsHtml.includes('RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f'));
+check('Cashier payments frontend preserves idempotency and blocks repeat payment while fiscalization is pending',
+    cashierPaymentsJs.includes('getCreateIdempotencyKey')
+    && cashierPaymentsJs.includes('getConfirmIdempotencyKey')
+    && cashierPaymentsJs.includes("const FISCAL_BLOCKING_STATUSES")
+    && cashierPaymentsJs.includes('state.confirmSubmitted = true')
+    && cashierPaymentsJs.includes('payment_repeat_blocked')
+    && cashierPaymentsJs.includes('cashReceivedAmountMinor')
+    && cashierPaymentsJs.includes('terminalShowedSuccess: true'));
+check('Cashier payments page stays isolated from protected booking and timeline renderers',
+    !cashierPaymentsJs.includes('showBookingDetails')
+    && !cashierPaymentsJs.includes('bookingModal')
+    && !cashierPaymentsJs.includes('bookingDetails')
+    && !cashierPaymentsJs.includes('timeline.js')
+    && !cashierPaymentsHtml.includes('js/booking.js')
+    && !cashierPaymentsHtml.includes('js/timeline.js'));
+check('Cashier payments UI keeps keyboard focus and responsive layout coverage',
+    cashierPaymentsCss.includes(':focus-visible')
+    && cashierPaymentsCss.includes('@media (max-width: 960px)')
+    && cashierPaymentsHtml.includes('aria-live="polite"')
+    && cashierPaymentsHtml.includes('aria-label="Payment items"'));
+
 // RESULTS
 // ═══════════════════════════════════════════════════
 

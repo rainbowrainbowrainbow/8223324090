@@ -92,12 +92,12 @@ function assertEntryShape(entry, type) {
     });
 }
 
-test('registry describes exactly the current 42 canonical page and 41 action keys', () => {
+test('registry describes exactly the current 43 canonical page and 41 action keys', () => {
     const backend = loadBackendAuth();
     const pageKeys = registry.PAGE_PERMISSIONS.map(entry => entry.key);
     const actionKeys = registry.ACTION_PERMISSIONS.map(entry => entry.key);
 
-    assert.equal(pageKeys.length, 42);
+    assert.equal(pageKeys.length, 43);
     assert.equal(actionKeys.length, 41);
     assertUnique(pageKeys, 'page permission keys');
     assertUnique(actionKeys, 'action permission keys');
@@ -151,7 +151,7 @@ test('sidebar links are fully represented by page permission entries', () => {
     assert.ok(start >= 0 && end > start, 'unable to locate NAV_ITEMS block');
     const navBlock = source.slice(start, end);
     const navHrefs = Array.from(navBlock.matchAll(/href:\s*'([^']+)'/g), match => match[1]);
-    assert.equal(navHrefs.length, 49, 'sidebar link count drift');
+    assert.equal(navHrefs.length, 50, 'sidebar link count drift');
 
     for (const href of navHrefs) {
         if (href === '#settings') continue;

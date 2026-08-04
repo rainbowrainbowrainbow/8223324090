@@ -446,6 +446,9 @@ app.get('/customers', (req, res) => {
 app.get('/finance', (req, res) => {
     res.sendFile(path.join(__dirname, 'finance.html'));
 });
+app.get('/cashier-payments', (req, res) => {
+    res.sendFile(path.join(__dirname, 'cashier-payments.html'));
+});
 app.get('/accounting-deposits', (req, res) => {
     res.sendFile(path.join(__dirname, 'accounting-deposits.html'));
 });

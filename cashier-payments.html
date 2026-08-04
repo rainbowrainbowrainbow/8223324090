@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <script>(function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();</script>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Event Genix | Каса парку</title>
+    <meta name="description" content="Event Genix Checkbox park cashier pilot">
+    <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
+    <link rel="stylesheet" href="css/base.css?v=0.80.82">
+    <link rel="stylesheet" href="css/layout.css?v=0.80.82">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.82">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.82">
+    <link rel="stylesheet" href="css/cashier-payments.css?v=0.80.82">
+    <link rel="stylesheet" href="css/modals.css?v=0.80.82">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.82">
+    <link rel="stylesheet" href="css/responsive.css?v=0.80.82">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body data-page="cashier-payments" data-page-group="sales" data-pilot-scope="event_genix:middle">
+    <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();</script>
+    <a href="#main-content" class="skip-link">Skip to main content</a>
+    <div id="loginOverlay" class="page-login-overlay hidden"><a href="/">Login</a></div>
+    <div id="mainApp" class="main-app hidden">
+        <aside class="sidebar-nav" id="sidebarNav">
+            <div class="sidebar-header" id="sidebarHeader">
+                <div class="sidebar-brand"><img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small"><div class="em-logo"><span class="em-logo-title">Event Genix</span><span class="em-logo-sub">AI First CRM</span></div></div>
+                <div class="sidebar-user-card" id="sidebarUserCard"><div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div><div class="sidebar-user-info"><div class="sidebar-user-name" id="sidebarUserName"></div><div class="sidebar-user-role" id="sidebarUserRole"></div></div><div class="sidebar-user-status online" id="sidebarUserStatus">?</div></div>
+                <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
+            </div>
+            <nav class="sidebar-links" id="sidebarLinks"></nav>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Toggle menu"><span class="collapse-icon">?</span><span class="collapse-text">Collapse</span></button>
+        </aside>
+        <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
+        <header class="header"><div class="header-content"><button type="button" class="sidebar-toggle" id="sidebarToggle" title="Menu" aria-label="Open or close menu">?</button><div class="user-panel"><span id="currentUser" class="user-name"></span><button type="button" id="logoutBtn" class="btn-logout">Logout</button></div></div></header>
+        <main id="main-content" class="page-container cashier-payments-page">
+            <section class="cashier-hero" aria-labelledby="cashierPaymentsTitle">
+                <div><p class="cashier-kicker">Checkbox pilot ? park ? middle register</p><h1 id="cashierPaymentsTitle">Каса парку</h1><p class="cashier-muted">Separate cashier UI for cash/card terminal manual payment and fiscal receipt creation. Fiscal profile and register are server-side immutable mapping only.</p></div>
+                <div class="cashier-scope-card" aria-label="Pilot scope"><span>CRM profile</span><strong>park</strong><span>register alias</span><strong>middle</strong></div>
+            </section>
+            <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Access denied for payments.view/payments.create/payments.confirm_received.</div>
+            <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
+            <section class="cashier-grid">
+                <form id="paymentOrderForm" class="cashier-card cashier-form" aria-labelledby="paymentOrderFormTitle">
+                    <div class="cashier-card-head"><div><p class="cashier-kicker">Step 1</p><h2 id="paymentOrderFormTitle">Prepare payment order</h2></div><span class="cashier-pill">Feature flag: server mapping</span></div>
+                    <label class="cashier-field"><span>Test source/order reference</span><input id="paymentSourceId" name="sourceId" type="text" autocomplete="off" value="park-test-1234" required></label>
+                    <div class="cashier-two-cols"><label class="cashier-field"><span>Ticket date</span><input id="paymentDate" name="date" type="date" required></label><label class="cashier-field"><span>Kids</span><input id="paymentKidsCount" name="kids" type="number" min="1" step="1" value="1" required></label></div>
+                    <label class="cashier-field"><span>Adults</span><input id="paymentAdultsCount" name="adults" type="number" min="0" step="1" value="0"></label>
+                    <fieldset class="cashier-tender-group"><legend>Tender</legend><label><input type="radio" name="paymentTender" value="cash" checked> Готівка</label><label><input type="radio" name="paymentTender" value="card_terminal_manual"> Manual card terminal</label></fieldset>
+                    <button type="submit" id="createPaymentOrderBtn" class="btn btn-primary cashier-primary-action">Create payment order</button><p class="cashier-help">Client cannot pass price, FOP or register. Server creates immutable item snapshot.</p>
+                </form>
+                <section class="cashier-card cashier-order-card" aria-labelledby="paymentSnapshotTitle">
+                    <div class="cashier-card-head"><div><p class="cashier-kicker">Step 2</p><h2 id="paymentSnapshotTitle">Immutable payment snapshot</h2></div><span id="internalReceiptLabel" class="cashier-pill">RCP-* — внутрішня квитанція</span></div>
+                    <dl class="cashier-meta-grid"><div><dt>CRM profile / FOP</dt><dd id="cashierFiscalProfile">?</dd></div><div><dt>Location / register</dt><dd id="cashierRegister">?</dd></div><div><dt>Payment status</dt><dd id="cashierPaymentStatus" class="cashier-status">?</dd></div><div><dt>Fiscal status</dt><dd id="cashierFiscalStatus" class="cashier-status">?</dd></div></dl>
+                    <div class="cashier-table-wrap" tabindex="0" aria-label="Payment items"><table class="cashier-items-table"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody id="paymentItemsBody"><tr><td colspan="4" class="cashier-empty">Order is not created yet.</td></tr></tbody></table></div>
+                    <div class="cashier-total-row"><span>Total</span><strong id="paymentTotalAmount">0,00 ₴</strong></div>
+                    <div id="cashConfirmationPanel" class="cashier-confirm-panel"><h3>Готівка</h3><label class="cashier-field"><span>Received amount</span><input id="cashReceivedAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled></label><div class="cashier-change" aria-live="polite">Change: <strong id="cashChangeAmount">0,00 ₴</strong></div><button type="button" id="confirmCashBtn" class="btn btn-primary cashier-primary-action" disabled>Готівку отримано — створити чек</button></div>
+                    <div id="cardConfirmationPanel" class="cashier-confirm-panel hidden"><h3>Термінал</h3><p class="cashier-exact-amount">Exact amount: <strong id="cardExactAmount">0,00 ₴</strong></p><label class="cashier-checkbox-row"><input id="terminalSuccessCheckbox" type="checkbox" disabled><span>Термінал показав успішну оплату</span></label><label class="cashier-field"><span>Terminal/report reference (optional)</span><input id="terminalReference" type="text" maxlength="160" autocomplete="off" disabled></label><button type="button" id="confirmCardBtn" class="btn btn-primary cashier-primary-action" disabled>Confirm card terminal payment and create receipt</button></div>
+                </section>
+            </section>
+            <section id="fiscalResultPanel" class="cashier-card cashier-result-card" aria-labelledby="fiscalResultTitle"><div class="cashier-card-head"><div><p class="cashier-kicker">Step 3</p><h2 id="fiscalResultTitle">Fiscal receipt</h2></div><span id="fiscalReceiptBadge" class="cashier-pill">waiting</span></div><p id="fiscalPendingMessage" class="cashier-muted">After confirmed payment the server creates one durable fiscalization job. Checkbox unavailable means fiscal pending/unknown, not another payment.</p><div id="providerReceiptLinks" class="cashier-provider-links hidden" aria-live="polite"><a id="providerTaxUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Open Checkbox URL</a><a id="providerPdfUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Receipt PDF</a><a id="providerQrUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Receipt QR</a></div></section>
+        </main>
+    </div>
+    <div id="notification" class="notification hidden"><span id="notificationText"></span></div>
+    <script src="js/ui.js?v=0.80.82"></script><script src="js/config.js?v=0.80.82"></script><script src="js/notification.js?v=0.80.82"></script><script src="js/api.js?v=0.80.82"></script><script src="js/auth.js?v=0.80.82"></script><script src="js/components/sidebar.js?v=0.80.82"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.80.82"></script><script src="js/alerts.js?v=0.80.82"></script>
+</body>
+</html>

@@ -71,6 +71,32 @@ test('payment/fiscal cashier capabilities are narrow and do not grant finance ma
     assert.equal(canUseAction(deniedCashier, 'payments.create'), false);
 });
 
+test('creator and art director can access park cashier payment/fiscal pilot without broad finance grant', () => {
+    const { PAGE_ACCESS } = require('../middleware/auth');
+    const requiredActions = [
+        'payments.view',
+        'payments.create',
+        'payments.confirm_received',
+        'fiscal.shift.open',
+        'fiscal.shift.close',
+        'fiscal.service_in',
+        'fiscal.service_out.request',
+        'fiscal.service_out.approve',
+        'fiscal.refund',
+        'fiscal.reconcile',
+        'fiscal.audit.view'
+    ];
+
+    for (const role of ['creator', 'art_director']) {
+        assert.ok(PAGE_ACCESS['/cashier-payments'].includes(role), role + ' must see the cashier page in the menu');
+        for (const action of requiredActions) {
+            assert.equal(canUseAction(baseUser({ role }), action), true, role + ' must have ' + action);
+        }
+    }
+
+    assert.equal(canUseAction(baseUser({ role: 'art_director' }), 'finance.manage'), false, 'art director must not receive broad finance.manage');
+});
+
 test('fiscal.configure is non-delegable and explicit allowlist is ignored', () => {
     assert.equal(ACTION_PERMISSION_BY_KEY['fiscal.configure'].delegable, false);
     assert.equal(canUseAction(baseUser({ action_allowlist: ['fiscal.configure'] }), 'fiscal.configure'), false);

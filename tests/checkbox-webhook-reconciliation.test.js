@@ -383,10 +383,10 @@ class FakeWorkerClient {
         }
 
         if (normalized.startsWith('INSERT INTO fiscal_receipts')) {
-            const [profileId, operationId, orderId, receiptId] = params;
+            const [profileId, operationId, orderId, refundId, receiptType, receiptId] = params;
             let receipt = this.db.receipts.find(row => row.provider === 'checkbox' && row.provider_receipt_id === receiptId);
             if (!receipt) {
-                receipt = { fiscal_profile_id: profileId, fiscal_operation_id: operationId, payment_order_id: orderId, provider: 'checkbox', provider_receipt_id: receiptId, status: 'fiscalized' };
+                receipt = { fiscal_profile_id: profileId, fiscal_operation_id: operationId, payment_order_id: orderId, payment_refund_id: refundId, receipt_type: receiptType, provider: 'checkbox', provider_receipt_id: receiptId, status: 'fiscalized' };
                 this.db.receipts.push(receipt);
             }
             return { rows: [{ id: this.db.receipts.indexOf(receipt) + 1 }] };
@@ -395,6 +395,13 @@ class FakeWorkerClient {
         if (normalized.startsWith('UPDATE payment_orders') && normalized.includes("fiscal_status = 'fiscalized'")) {
             const order = this.db.orders.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
             order.fiscal_status = 'fiscalized';
+            return { rows: [] };
+        }
+
+
+        if (normalized.startsWith('UPDATE payment_orders') && normalized.includes('SET fiscal_status = $3')) {
+            const order = this.db.orders.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
+            order.fiscal_status = params[2];
             return { rows: [] };
         }
 

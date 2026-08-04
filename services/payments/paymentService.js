@@ -9,6 +9,7 @@ const {
 const { normalizeBusinessContext } = require('../businessContext');
 const { authorizeFiscalAction, FiscalAccessError } = require('./fiscalAccess');
 const { toPostgresBigint } = require('./money');
+const { ensureOpenShiftForSale } = require('./cashierOperationsService');
 const {
     PaymentWorkflowError,
     assertManualConfirmationBody,
@@ -518,19 +519,21 @@ async function confirmPaymentOrder({
         );
         const recordedOrder = recorded.rows[0];
 
+        const shift = await ensureOpenShiftForSale(client, { order, user });
         const providerRequestUuid = crypto.randomUUID();
         const fiscalOperation = await client.query(
             `INSERT INTO fiscal_operations (
-                 fiscal_profile_id, fiscal_register_id, payment_order_id, operation_type, status,
+                 fiscal_profile_id, fiscal_register_id, payment_order_id, fiscal_shift_id, operation_type, status,
                  idempotency_key, provider, provider_operation_id, amount_minor, currency,
                  request_fingerprint, request_snapshot, initiated_by_user_id
              )
-             VALUES ($1, $2, $3, 'sale', 'pending', $4, 'checkbox', $5, $6, 'UAH', $7, $8::jsonb, $9)
+             VALUES ($1, $2, $3, $4, 'sale', 'pending', $5, 'checkbox', $6, $7, 'UAH', $8, $9::jsonb, $10)
              RETURNING *`,
             [
                 order.fiscal_profile_id,
                 order.fiscal_register_id,
                 order.id,
+                shift.id,
                 `fiscal_operation:sale:${order.id}`,
                 providerRequestUuid,
                 toPostgresBigint(confirmation.amountMinor, { allowZero: false }),
@@ -538,6 +541,7 @@ async function confirmPaymentOrder({
                 JSON.stringify({
                     provider_request_uuid: providerRequestUuid,
                     payment_order_id: Number(order.id),
+                    fiscal_shift_id: Number(shift.id),
                     source_type: order.source_type,
                     source_id: order.source_id
                 }),
@@ -583,6 +587,7 @@ async function confirmPaymentOrder({
                     payment_status: recordedOrder.payment_status,
                     fiscal_status: recordedOrder.fiscal_status,
                     fiscal_operation_id: Number(fiscalOperation.rows[0].id),
+                    fiscal_shift_id: Number(shift.id),
                     outbox_job_id: Number(job.rows[0].id)
                 })
             ]

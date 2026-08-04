@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
+const { publishInTransaction } = require('../eventBus');
 
 const WORKER_NAME = 'payment-outbox-worker';
 const DEFAULT_BATCH_SIZE = 10;
@@ -37,6 +38,18 @@ function createUnavailableCheckboxProvider() {
             throw new PaymentOutboxWorkerError('checkbox_provider_unconfigured', 'Checkbox provider is not configured', { retryable: true });
         },
         async createSaleReceipt() {
+            throw new PaymentOutboxWorkerError('checkbox_provider_unconfigured', 'Checkbox provider is not configured', { retryable: true, unknown: true });
+        },
+        async createReturnReceipt() {
+            throw new PaymentOutboxWorkerError('checkbox_provider_unconfigured', 'Checkbox provider is not configured', { retryable: true, unknown: true });
+        },
+        async createServiceReceipt() {
+            throw new PaymentOutboxWorkerError('checkbox_provider_unconfigured', 'Checkbox provider is not configured', { retryable: true, unknown: true });
+        },
+        async openShift() {
+            throw new PaymentOutboxWorkerError('checkbox_provider_unconfigured', 'Checkbox provider is not configured', { retryable: true, unknown: true });
+        },
+        async closeShift() {
             throw new PaymentOutboxWorkerError('checkbox_provider_unconfigured', 'Checkbox provider is not configured', { retryable: true, unknown: true });
         }
     };
@@ -129,6 +142,9 @@ async function loadJobContext(client, job) {
              fo.operation_type,
              fo.provider_operation_id,
              fo.provider_status,
+             fo.payment_refund_id,
+             fo.fiscal_shift_id,
+             fo.amount_minor AS fiscal_operation_amount_minor,
              fo.request_snapshot AS fiscal_request_snapshot,
              po.status AS payment_order_status,
              po.payment_status,
@@ -199,14 +215,32 @@ function normalizeProviderReceipt(receipt = {}, fallback = {}) {
     };
 }
 
+
+async function safePublishFiscalEvent(client, eventType, payload, aggregateType, aggregateId, idempotencyKey) {
+    try {
+        await publishInTransaction(client, eventType, payload, aggregateType, aggregateId, idempotencyKey);
+    } catch (_) {
+        // EventBus/Hermes failures must not roll back payment/fiscal state.
+    }
+}
+
+function receiptTypeForOperation(operationType) {
+    if (operationType === 'return') return 'return';
+    if (operationType === 'service_in') return 'service_in';
+    if (operationType === 'service_out') return 'service_out';
+    return 'sale';
+}
+
 async function markFiscalized(client, context, receipt) {
     const normalized = normalizeProviderReceipt(receipt, {
         providerOperationId: context.job.provider_operation_id,
-        totalAmountMinor: context.job.total_amount_minor
+        totalAmountMinor: context.job.total_amount_minor || context.job.fiscal_operation_amount_minor
     });
     const operationId = context.job.fiscal_operation_id;
     const profileId = context.job.fiscal_profile_id;
     const orderId = context.job.payment_order_id;
+    const refundId = context.job.payment_refund_id;
+    const receiptType = receiptTypeForOperation(context.job.operation_type);
 
     await client.query(
         `UPDATE fiscal_operations
@@ -223,12 +257,12 @@ async function markFiscalized(client, context, receipt) {
 
     await client.query(
         `INSERT INTO fiscal_receipts (
-             fiscal_profile_id, fiscal_operation_id, payment_order_id, receipt_type, status,
+             fiscal_profile_id, fiscal_operation_id, payment_order_id, payment_refund_id, receipt_type, status,
              provider, provider_receipt_id, provider_fiscal_code, provider_serial,
              provider_tax_url, provider_pdf_url, provider_qr_url, total_amount_minor,
              currency, fiscalized_at, provider_snapshot
          )
-         VALUES ($1, $2, $3, 'sale', 'fiscalized', 'checkbox', $4, $5, $6, $7, $8, $9, $10, 'UAH', COALESCE($11::timestamptz, NOW()), $12::jsonb)
+         VALUES ($1, $2, $3, $4, $5, 'fiscalized', 'checkbox', $6, $7, $8, $9, $10, $11, $12, 'UAH', COALESCE($13::timestamptz, NOW()), $14::jsonb)
          ON CONFLICT (provider, provider_receipt_id) DO UPDATE
              SET status = 'fiscalized',
                  provider_fiscal_code = COALESCE(EXCLUDED.provider_fiscal_code, fiscal_receipts.provider_fiscal_code),
@@ -239,6 +273,8 @@ async function markFiscalized(client, context, receipt) {
             profileId,
             operationId,
             orderId,
+            refundId,
+            receiptType,
             normalized.providerReceiptId,
             normalized.fiscalCode,
             normalized.serial,
@@ -251,13 +287,44 @@ async function markFiscalized(client, context, receipt) {
         ]
     );
 
-    await client.query(
-        `UPDATE payment_orders
-            SET fiscal_status = 'fiscalized',
-                updated_at = NOW()
-          WHERE id = $1
-            AND fiscal_profile_id = $2`,
-        [orderId, profileId]
+    if (orderId && receiptType === 'sale') {
+        await client.query(
+            `UPDATE payment_orders
+                SET fiscal_status = 'fiscalized',
+                    updated_at = NOW()
+              WHERE id = $1
+                AND fiscal_profile_id = $2`,
+            [orderId, profileId]
+        );
+    }
+
+    if (refundId && receiptType === 'return') {
+        await client.query(
+            `UPDATE payment_refunds
+                SET fiscal_refund_status = 'returned',
+                    status = CASE WHEN money_refund_status = 'refunded' THEN 'fiscal_returned' ELSE status END,
+                    completed_at = CASE WHEN money_refund_status = 'refunded' THEN COALESCE(completed_at, NOW()) ELSE completed_at END
+              WHERE id = $1
+                AND fiscal_profile_id = $2`,
+            [refundId, profileId]
+        );
+        await safePublishFiscalEvent(
+            client,
+            'refund.completed',
+            { fiscalProfileId: Number(profileId), paymentOrderId: orderId ? Number(orderId) : null, refundId: Number(refundId), fiscalOperationId: Number(operationId) },
+            'payment_refund',
+            String(refundId),
+            `refund.completed:${refundId}`
+        );
+    }
+
+    await safePublishFiscalEvent(
+        client,
+        'fiscal.receipt_succeeded',
+        { fiscalProfileId: Number(profileId), paymentOrderId: orderId ? Number(orderId) : null, refundId: refundId ? Number(refundId) : null, fiscalOperationId: Number(operationId), providerReceiptId: normalized.providerReceiptId, receiptType },
+        'fiscal_operation',
+        String(operationId),
+        `fiscal.receipt_succeeded:${operationId}`
     );
 }
 
@@ -306,7 +373,105 @@ async function markJobFailed(client, context, errorInfo) {
                 AND status <> 'fiscalized'`,
             [context.job.fiscal_operation_id, context.job.fiscal_profile_id, nextStatus, errorInfo.code, errorInfo.message, nextRun]
         );
+        if (context.job.payment_order_id && context.job.operation_type === 'sale') {
+            await client.query(
+                `UPDATE payment_orders
+                    SET fiscal_status = $3,
+                        updated_at = NOW()
+                  WHERE id = $1
+                    AND fiscal_profile_id = $2
+                    AND fiscal_status <> 'fiscalized'`,
+                [context.job.payment_order_id, context.job.fiscal_profile_id, nextStatus]
+            );
+        }
+        if (context.job.payment_refund_id && context.job.operation_type === 'return') {
+            await client.query(
+                `UPDATE payment_refunds
+                    SET fiscal_refund_status = $3
+                  WHERE id = $1
+                    AND fiscal_profile_id = $2
+                    AND fiscal_refund_status <> 'returned'`,
+                [context.job.payment_refund_id, context.job.fiscal_profile_id, nextStatus === 'blocked' ? 'failed' : nextStatus]
+            );
+        }
+        await safePublishFiscalEvent(
+            client,
+            nextStatus === 'unknown' ? 'fiscal.unknown' : 'fiscal.receipt_failed',
+            { fiscalProfileId: Number(context.job.fiscal_profile_id), paymentOrderId: context.job.payment_order_id ? Number(context.job.payment_order_id) : null, refundId: context.job.payment_refund_id ? Number(context.job.payment_refund_id) : null, fiscalOperationId: Number(context.job.fiscal_operation_id), status: nextStatus, errorCode: errorInfo.code },
+            'fiscal_operation',
+            String(context.job.fiscal_operation_id),
+            `${nextStatus === 'unknown' ? 'fiscal.unknown' : 'fiscal.receipt_failed'}:${context.job.fiscal_operation_id}:${context.job.attempts}`
+        );
     }
+}
+
+
+async function runReceiptReturnJob(provider, context) {
+    if (context.job.fiscal_operation_status === 'unknown' || Number(context.job.attempts || 0) > 1) {
+        const lookup = await lookupProviderReceipt(provider, context);
+        if (lookup?.found || lookup?.receipt) return { receipt: lookup.receipt || lookup, source: 'lookup' };
+        if (context.job.fiscal_operation_status === 'unknown') {
+            throw new PaymentOutboxWorkerError('return_lookup_required_before_retry', 'Unknown return operation must be reconciled before another return attempt', { retryable: true, unknown: true });
+        }
+    }
+    if (!provider.createReturnReceipt) {
+        throw new PaymentOutboxWorkerError('checkbox_return_not_supported', 'Checkbox return receipt operation is not configured', { retryable: false });
+    }
+    return { receipt: await provider.createReturnReceipt({ fiscalOperation: context.job, paymentOrder: context.job }), source: 'return' };
+}
+
+async function runServiceReceiptJob(provider, context) {
+    if (!provider.createServiceReceipt) {
+        throw new PaymentOutboxWorkerError('checkbox_service_receipt_not_supported', 'Checkbox service receipt operation is not configured', { retryable: false });
+    }
+    return { receipt: await provider.createServiceReceipt({ fiscalOperation: context.job }), source: 'service' };
+}
+
+async function markShiftJobSucceeded(client, context, result) {
+    const payload = context.job.payload || {};
+    const shiftId = payload.fiscal_shift_id || context.job.fiscal_shift_id;
+    if (!shiftId && context.job.job_type === 'shift_close') {
+        throw new PaymentOutboxWorkerError('shift_id_missing', 'Shift close job requires fiscal_shift_id', { retryable: false });
+    }
+    if (context.job.fiscal_operation_id) {
+        await client.query(
+            `UPDATE fiscal_operations
+                SET status = 'fiscalized',
+                    response_snapshot = $3::jsonb,
+                    completed_at = COALESCE(completed_at, NOW()),
+                    last_error_code = NULL,
+                    last_error_message = NULL
+              WHERE id = $1
+                AND fiscal_profile_id = $2`,
+            [context.job.fiscal_operation_id, context.job.fiscal_profile_id, JSON.stringify(result.response || {})]
+        );
+    }
+    if (context.job.job_type === 'shift_open') {
+        await markJobSucceeded(client, context.job);
+        return { ok: true, jobId: Number(context.job.id), source: result.source };
+    }
+    await client.query(
+        `UPDATE fiscal_shifts
+            SET status = 'closed',
+                closed_at = COALESCE(closed_at, NOW()),
+                provider_closed_at = COALESCE(provider_closed_at, NOW()),
+                provider_snapshot = provider_snapshot || $3::jsonb,
+                updated_at = NOW()
+          WHERE id = $1
+            AND fiscal_profile_id = $2`,
+        [shiftId, context.job.fiscal_profile_id, JSON.stringify({ close_result: result.response || {} })]
+    );
+    await markJobSucceeded(client, context.job);
+    return { ok: true, jobId: Number(context.job.id), source: result.source };
+}
+
+async function runShiftJob(provider, context) {
+    const method = context.job.job_type === 'shift_open' ? provider.openShift : provider.closeShift;
+    if (!method) {
+        throw new PaymentOutboxWorkerError('checkbox_shift_operation_not_supported', 'Checkbox shift operation is not configured', { retryable: false });
+    }
+    const response = await method.call(provider, { fiscalOperation: context.job, payload: context.job.payload || {} });
+    return { response, source: context.job.job_type };
 }
 
 async function runReceiptSaleJob(provider, context) {
@@ -349,6 +514,22 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
                 await markFiscalized(client, context, result.receipt);
                 await markJobSucceeded(client, context.job);
                 return { ok: true, jobId: Number(context.job.id), source: result.source };
+            }
+            if (context.job.job_type === 'receipt_return') {
+                result = await runReceiptReturnJob(provider, context);
+                await markFiscalized(client, context, result.receipt);
+                await markJobSucceeded(client, context.job);
+                return { ok: true, jobId: Number(context.job.id), source: result.source };
+            }
+            if (context.job.job_type === 'service_receipt') {
+                result = await runServiceReceiptJob(provider, context);
+                await markFiscalized(client, context, result.receipt);
+                await markJobSucceeded(client, context.job);
+                return { ok: true, jobId: Number(context.job.id), source: result.source };
+            }
+            if (context.job.job_type === 'shift_open' || context.job.job_type === 'shift_close') {
+                result = await runShiftJob(provider, context);
+                return markShiftJobSucceeded(client, context, result);
             }
             throw new PaymentOutboxWorkerError('payment_outbox_job_type_not_supported', 'Payment outbox job type is not supported by this worker', { retryable: false });
         } catch (error) {

@@ -24,6 +24,7 @@ function baseUser(overrides = {}) {
         username: 'cashier',
         role: 'reception',
         business_contexts: ['event_genix'],
+        action_allowlist: ['fiscal.shift.open'],
         ...overrides
     };
 }
@@ -80,9 +81,10 @@ class FakePaymentDb {
         this.attempts = [];
         this.allocations = [];
         this.fiscalOperations = [];
+        this.fiscalShifts = [];
         this.outboxJobs = [];
         this.auditEvents = [];
-        this.next = { order: 1, item: 1, attempt: 1, allocation: 1, operation: 1, job: 1, audit: 1 };
+        this.next = { order: 1, item: 1, attempt: 1, allocation: 1, operation: 1, shift: 1, job: 1, audit: 1 };
         this.queries = [];
     }
 
@@ -125,6 +127,7 @@ class FakePaymentDb {
             attempts: clone(this.attempts),
             allocations: clone(this.allocations),
             fiscalOperations: clone(this.fiscalOperations),
+            fiscalShifts: clone(this.fiscalShifts),
             outboxJobs: clone(this.outboxJobs),
             auditEvents: clone(this.auditEvents),
             next: clone(this.next)
@@ -137,6 +140,7 @@ class FakePaymentDb {
         this.attempts = snapshot.attempts;
         this.allocations = snapshot.allocations;
         this.fiscalOperations = snapshot.fiscalOperations;
+        this.fiscalShifts = snapshot.fiscalShifts;
         this.outboxJobs = snapshot.outboxJobs;
         this.auditEvents = snapshot.auditEvents;
         this.next = snapshot.next;
@@ -191,6 +195,23 @@ class FakePaymentClient {
 
         if (normalized.includes('FROM fiscal_profiles fp') && normalized.includes('fr.register_alias = $2')) {
             return { rows: this.db.mappingRows.filter(row => row.crm_profile_key === params[0] && row.register_alias === params[1]) };
+        }
+
+
+        if (normalized.includes('FROM fiscal_cashier_bindings b') && normalized.includes('WHERE b.user_id = $1')) {
+            return {
+                rows: [{
+                    id: 500,
+                    user_id: Number(params[0]),
+                    fiscal_profile_id: Number(params[1]),
+                    fiscal_register_id: Number(params[2]),
+                    fiscal_location_id: 30,
+                    register_fiscal_location_id: 30,
+                    crm_profile_key: 'event_genix',
+                    status: 'active',
+                    action_pin_hash: '$2a$10$fakehashfornonpinpaths'
+                }]
+            };
         }
 
         if (normalized.startsWith('INSERT INTO payment_orders')) {
@@ -259,6 +280,41 @@ class FakePaymentClient {
             return { rows: this.db.orders.filter(order => Number(order.id) === Number(params[0])).slice(0, 1) };
         }
 
+        if (normalized.startsWith('SELECT pg_advisory_xact_lock')) {
+            return { rows: [] };
+        }
+
+        if (normalized.includes('FROM fiscal_shifts fs') && normalized.includes('fs.status = ANY')) {
+            const rows = this.db.fiscalShifts
+                .filter(shift => Number(shift.fiscal_profile_id) === Number(params[0]) && Number(shift.fiscal_register_id) === Number(params[1]) && ['opening', 'open'].includes(shift.status))
+                .map(shift => ({ ...shift, fiscal_location_id: 30, register_alias: 'middle', crm_profile_key: 'event_genix' }));
+            return { rows };
+        }
+
+        if (normalized.startsWith('INSERT INTO fiscal_shifts')) {
+            this.ensureSnapshot();
+            const row = {
+                id: this.db.next.shift++,
+                fiscal_profile_id: Number(params[0]),
+                fiscal_register_id: Number(params[1]),
+                provider: 'checkbox',
+                status: 'open',
+                opened_by_user_id: params[2],
+                opened_at: new Date().toISOString(),
+                provider_snapshot: JSON.parse(params[3]),
+                open_operation_id: null
+            };
+            this.db.fiscalShifts.push(row);
+            return { rows: [row] };
+        }
+
+        if (normalized.startsWith('UPDATE fiscal_shifts') && normalized.includes('SET open_operation_id = $2')) {
+            this.ensureSnapshot();
+            const shift = this.db.fiscalShifts.find(row => Number(row.id) === Number(params[0]));
+            shift.open_operation_id = Number(params[1]);
+            return { rows: [] };
+        }
+
         if (normalized.startsWith('INSERT INTO payment_attempts')) {
             this.ensureSnapshot();
             if (this.db.attempts.some(attempt => attempt.idempotency_key === params[3])) {
@@ -322,23 +378,38 @@ class FakePaymentClient {
         }
         if (normalized.startsWith('INSERT INTO fiscal_operations')) {
             this.ensureSnapshot();
-            if (this.db.fiscalOperations.some(operation => Number(operation.payment_order_id) === Number(params[2]) && operation.operation_type === 'sale')) {
+            const isShiftOpen = normalized.includes("'shift_open'");
+            const isSale = normalized.includes("'sale'");
+            if (isSale && this.db.fiscalOperations.some(operation => Number(operation.payment_order_id) === Number(params[2]) && operation.operation_type === 'sale')) {
                 throw new Error('duplicate sale fiscal operation');
             }
-            const row = {
+            const row = isShiftOpen ? {
                 id: this.db.next.operation++,
                 fiscal_profile_id: Number(params[0]),
                 fiscal_register_id: Number(params[1]),
-                payment_order_id: Number(params[2]),
-                operation_type: 'sale',
+                fiscal_shift_id: Number(params[2]),
+                operation_type: 'shift_open',
                 status: 'pending',
                 idempotency_key: params[3],
                 provider: 'checkbox',
                 provider_operation_id: params[4],
-                amount_minor: String(params[5]),
-                request_fingerprint: params[6],
-                request_snapshot: JSON.parse(params[7]),
-                initiated_by_user_id: params[8]
+                request_snapshot: JSON.parse(params[5]),
+                initiated_by_user_id: params[6]
+            } : {
+                id: this.db.next.operation++,
+                fiscal_profile_id: Number(params[0]),
+                fiscal_register_id: Number(params[1]),
+                payment_order_id: Number(params[2]),
+                fiscal_shift_id: Number(params[3]),
+                operation_type: 'sale',
+                status: 'pending',
+                idempotency_key: params[4],
+                provider: 'checkbox',
+                provider_operation_id: params[5],
+                amount_minor: String(params[6]),
+                request_fingerprint: params[7],
+                request_snapshot: JSON.parse(params[8]),
+                initiated_by_user_id: params[9]
             };
             this.db.fiscalOperations.push(row);
             return { rows: [row] };
@@ -346,14 +417,14 @@ class FakePaymentClient {
 
         if (normalized.startsWith('INSERT INTO payment_outbox_jobs')) {
             this.ensureSnapshot();
-            if (this.db.outboxJobs.some(job => Number(job.payment_order_id) === Number(params[2]) && job.job_type === params[3])) {
-                throw new Error('duplicate receipt_sell outbox job');
+            if (this.db.outboxJobs.some(job => job.idempotency_key === params[4])) {
+                return { rows: [] };
             }
             const row = {
                 id: this.db.next.job++,
                 fiscal_profile_id: Number(params[0]),
-                fiscal_operation_id: Number(params[1]),
-                payment_order_id: Number(params[2]),
+                fiscal_operation_id: params[1] === null ? null : Number(params[1]),
+                payment_order_id: params[2] === null ? null : Number(params[2]),
                 job_type: params[3],
                 status: 'queued',
                 idempotency_key: params[4],
@@ -469,10 +540,16 @@ test('cash confirmation atomically records payment and queues exactly one fiscal
         assert.equal(result.order.fiscalStatus, 'pending');
         assert.equal(db.attempts.length, 1);
         assert.equal(db.allocations.length, 1);
-        assert.equal(db.fiscalOperations.length, 1);
-        assert.equal(db.outboxJobs.length, 1);
-        assert.equal(db.outboxJobs[0].job_type, 'receipt_sell');
-        assert.match(db.fiscalOperations[0].provider_operation_id, /^[0-9a-f-]{36}$/i);
+        const saleOperations = db.fiscalOperations.filter(operation => operation.operation_type === 'sale');
+        const shiftOpenOperations = db.fiscalOperations.filter(operation => operation.operation_type === 'shift_open');
+        const receiptJobs = db.outboxJobs.filter(job => job.job_type === 'receipt_sell');
+        const shiftJobs = db.outboxJobs.filter(job => job.job_type === 'shift_open');
+        assert.equal(saleOperations.length, 1);
+        assert.equal(shiftOpenOperations.length, 1);
+        assert.equal(receiptJobs.length, 1);
+        assert.equal(shiftJobs.length, 1);
+        assert.equal(saleOperations[0].fiscal_shift_id, shiftOpenOperations[0].fiscal_shift_id);
+        assert.match(saleOperations[0].provider_operation_id, /^[0-9a-f-]{36}$/i);
         assert.equal(fetchCalls, 0, 'Checkbox HTTP must happen after commit by a worker, not inside confirmation');
     } finally {
         global.fetch = previousFetch;
@@ -564,8 +641,10 @@ test('duplicate click with same idempotency key replays and does not create anot
     assert.equal(first.replayed, false);
     assert.equal(second.replayed, true);
     assert.equal(db.attempts.length, 1);
-    assert.equal(db.fiscalOperations.length, 1);
-    assert.equal(db.outboxJobs.length, 1);
+    assert.equal(db.fiscalOperations.filter(operation => operation.operation_type === 'sale').length, 1);
+    assert.equal(db.fiscalOperations.filter(operation => operation.operation_type === 'shift_open').length, 1);
+    assert.equal(db.outboxJobs.filter(job => job.job_type === 'receipt_sell').length, 1);
+    assert.equal(db.outboxJobs.filter(job => job.job_type === 'shift_open').length, 1);
 });
 
 test('same idempotency key with conflicting confirmation body is rejected', async () => {
@@ -619,8 +698,10 @@ test('concurrent confirmation serializes on the payment order lock and leaves on
     assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
     assert.equal(results.filter(result => result.status === 'rejected').length, 1);
     assert.equal(results.find(result => result.status === 'rejected').reason.code, 'payment_order_not_confirmable');
-    assert.equal(db.outboxJobs.length, 1);
-    assert.equal(db.fiscalOperations.length, 1);
+    assert.equal(db.outboxJobs.filter(job => job.job_type === 'receipt_sell').length, 1);
+    assert.equal(db.outboxJobs.filter(job => job.job_type === 'shift_open').length, 1);
+    assert.equal(db.fiscalOperations.filter(operation => operation.operation_type === 'sale').length, 1);
+    assert.equal(db.fiscalOperations.filter(operation => operation.operation_type === 'shift_open').length, 1);
 });
 
 test('transaction rollback before commit leaves payment unpaid and no durable fiscal job', async () => {

@@ -643,6 +643,7 @@ function normalizeFiscalOperation(row = {}) {
     return {
         id: Number(row.id),
         fiscalRegisterId: row.fiscal_register_id == null ? null : Number(row.fiscal_register_id),
+        fiscalShiftId: row.fiscal_shift_id == null ? null : Number(row.fiscal_shift_id),
         paymentOrderId: row.payment_order_id == null ? null : Number(row.payment_order_id),
         operationType: row.operation_type,
         status: row.status,

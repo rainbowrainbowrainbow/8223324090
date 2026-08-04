@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.82",
+  "version": "0.80.83",
   "eventGenix": {
-    "releaseLabel": "Мій день: зрозумілі напрями та стартовий набір"
+    "releaseLabel": "Checkbox: пілот каси парку"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -145,7 +145,9 @@
     "release:railway-up:branch": "node scripts/railway-release-up.js --branch",
     "release:railway-up:dry-run:branch": "node scripts/railway-release-up.js --dry-run --branch",
     "smoke:zrs:write": "node scripts/live-zrs-write-smoke.js",
-    "smoke:cashier-payments": "npx -y -p playwright node tests/browser/cashier-payments-browser-smoke.js"
+    "smoke:cashier-payments": "npx -y -p playwright node tests/browser/cashier-payments-browser-smoke.js",
+    "test:integration:checkbox-park-cashier-smoke:isolated": "node scripts/run-isolated-postgres-tests.js cashier-smoke",
+    "smoke:checkbox:sandbox": "node scripts/checkbox-sandbox-smoke.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

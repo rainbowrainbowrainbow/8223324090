@@ -17,7 +17,8 @@ const {
     createReconciliationRevision,
     createServiceIn,
     createServiceOutRequest,
-    getOperationalReport
+    getOperationalReport,
+    loadPilotRegisterState
 } = require('../services/payments/cashierOperationsService');
 
 router.use(authenticateToken);
@@ -69,6 +70,19 @@ router.post('/orders/:orderId/confirm', requireAction('payments.confirm_received
 });
 
 
+router.get('/pilot-register-state', requireAction('payments.view'), async (req, res) => {
+    try {
+        const result = await loadPilotRegisterState({
+            user: req.user,
+            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = cashierOperationsErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
 router.post('/service-in', requireAction('fiscal.service_in'), async (req, res) => {
     try {
         const result = await createServiceIn({

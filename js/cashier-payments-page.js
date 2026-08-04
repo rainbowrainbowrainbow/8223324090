@@ -5,15 +5,23 @@
     const PILOT_SCOPE = Object.freeze({ crmProfileKey: 'event_genix', registerAlias: 'middle', defaultEnabled: false });
     const INTERNAL_RECEIPT_TEXT = '\u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f';
     const STORAGE_PREFIX = 'eventgenix:cashier-payments';
+    const SERVICE_IN_FINAL_CONFIRMATION = '\u0413\u043e\u0442\u0456\u0432\u043a\u0443 \u0432\u043d\u0435\u0441\u0435\u043d\u043e \u2014 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0441\u043b\u0443\u0436\u0431\u043e\u0432\u0435 \u0432\u043d\u0435\u0441\u0435\u043d\u043d\u044f';
     const FISCAL_BLOCKING_STATUSES = new Set(['pending', 'unknown', 'sending', 'validating', 'ready_to_send', 'failed_retryable']);
     const FISCAL_DONE_STATUSES = new Set(['fiscalized']);
+    const OPERATION_BUTTON_IDS = Object.freeze([
+        'serviceInBtn', 'serviceOutRequestBtn', 'serviceOutApproveBtn', 'refundBtn',
+        'reconcileShiftBtn', 'closeShiftBtn', 'loadOperationalReportBtn', 'refreshShiftStateBtn'
+    ]);
 
     const state = {
         user: null,
         orderDetails: null,
+        registerState: null,
         createInFlight: false,
         confirmInFlight: false,
         confirmSubmitted: false,
+        operationInFlight: new Set(),
+        lastServiceOutOperationId: null,
         tender: 'cash'
     };
 
@@ -46,7 +54,7 @@
     function formatStatus(value) {
         const status = normalizeStatus(value);
         const labels = {
-            draft: 'draft', unpaid: 'unpaid', pending: 'pending', unknown: 'unknown', confirmed: 'confirmed',
+            draft: 'draft', unpaid: 'unpaid', pending: 'pending', unknown: 'unknown', confirmed: 'confirmed', open: 'open', opening: 'opening', closing: 'closing', closed: 'closed',
             payment_recorded: 'payment recorded', fiscalized: 'fiscalized', failed: 'failed', cancelled: 'cancelled',
             validation_failed: 'validation failed', ready_to_send: 'ready to send', sending: 'sending', validating: 'validating'
         };
@@ -55,8 +63,8 @@
 
     function classifyStatus(value) {
         const status = normalizeStatus(value);
-        if (['confirmed', 'payment_recorded', 'fiscalized'].includes(status)) return 'is-ok';
-        if (['pending', 'unknown', 'ready_to_send', 'sending', 'validating'].includes(status)) return 'is-warn';
+        if (['confirmed', 'payment_recorded', 'fiscalized', 'open', 'closed'].includes(status)) return 'is-ok';
+        if (['pending', 'unknown', 'ready_to_send', 'sending', 'validating', 'opening', 'closing'].includes(status)) return 'is-warn';
         if (['failed', 'validation_failed', 'blocked', 'cancelled'].includes(status)) return 'is-danger';
         return '';
     }
@@ -110,6 +118,40 @@
     function storageSet(key, value) {
         try { window.localStorage.setItem(`${STORAGE_PREFIX}:${key}`, String(value)); }
         catch {}
+    }
+
+
+    function operationStorageKey(action, target) {
+        return `${action}:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.registerAlias}:${target || 'current'}`;
+    }
+
+    function getOperationIdempotencyKey(action, target = 'current') {
+        const key = operationStorageKey(action, target);
+        const existing = storageGet(key);
+        if (existing) return existing;
+        const generated = randomKey(`cashier-ui-${action}`);
+        storageSet(key, generated);
+        return generated;
+    }
+
+    function clearOperationIdempotencyKey(action, target = 'current') {
+        try { window.localStorage.removeItem(`${STORAGE_PREFIX}:${operationStorageKey(action, target)}`); }
+        catch {}
+    }
+
+    function parseAmountInput(id, code) {
+        try {
+            const amount = parseUahToMinor($(id)?.value || '0');
+            if (amount <= 0n) throw new Error(code);
+            return amount.toString();
+        } catch (error) {
+            if (error.message === 'cash_amount_invalid') throw error;
+            throw new Error(code);
+        }
+    }
+
+    function parseNullableAmountInput(id) {
+        return parseUahToMinor($(id)?.value || '0').toString();
     }
 
     function orderStorageScope() {
@@ -220,8 +262,30 @@
         state.tender = result.order?.sourceSnapshot?.tender || (result.order?.paymentMethod === 'card_terminal' ? 'card_terminal_manual' : 'cash');
         syncTenderControls();
         renderOrder(result);
+        await loadPilotRegisterState({ silent: true });
         if (!silent) notify('Payment order loaded.', 'success');
         return result;
+    }
+
+    async function loadPilotRegisterState({ silent = false } = {}) {
+        try {
+            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
+            const result = await apiRequest(`/api/payments/pilot-register-state?${params.toString()}`, {
+                method: 'GET',
+                headers: apiHeaders()
+            });
+            state.registerState = result;
+            renderRegisterState(result);
+            syncOperationalAvailability();
+            if (!silent) notify('Shift state refreshed.', 'success');
+            return result;
+        } catch (error) {
+            state.registerState = null;
+            renderRegisterState(null);
+            syncOperationalAvailability();
+            if (!silent) notify(paymentUiError(error), 'error');
+            return null;
+        }
     }
 
     function paymentUiError(error) {
@@ -236,7 +300,16 @@
             card_terminal_success_required: 'Before confirmation, check: terminal showed successful payment.',
             payment_repeat_blocked: 'Repeat payment is blocked: order is already paid or fiscalization is pending/unknown.',
             fiscal_mapping_ambiguous_or_missing: 'Pilot register park/middle is not enabled or mapping is ambiguous. Feature flag remains disabled-by-default.',
-            forbidden: 'No access to this register or CRM profile.'
+            forbidden: 'No access to this register or CRM profile.',
+            service_in_amount_required: 'Service-in amount must be positive.',
+            service_out_amount_required: 'Service-out amount must be positive.',
+            service_out_reason_required: 'Service-out reason is required.',
+            shift_not_open: 'Open shift is required for this operation.',
+            shift_close_blocked: 'Close is blocked while pending/unknown fiscal operations exist.',
+            close_actual_totals_required: 'Cash actual and terminal report total are required.',
+            refund_order_required: 'Set payment order ID for refund.',
+            refund_reason_required: 'Refund reason is required.',
+            idempotency_key_required: 'Idempotency-Key is required.'
         };
         return messages[code] || error?.message || 'Cashier action failed.';
     }
@@ -249,9 +322,11 @@
         setText('cashierRegister', `${order.sourceSnapshot?.location_alias || 'park'} / ${order.registerDisplayName || order.registerAlias || 'middle'}`);
         setStatus('cashierPaymentStatus', order.paymentStatus || order.status);
         setStatus('cashierFiscalStatus', order.fiscalStatus);
-        setText('internalReceiptLabel', `RCP-${order.id} — ${INTERNAL_RECEIPT_TEXT}`);
+        setText('internalReceiptLabel', `RCP-${order.id} вЂ” ${INTERNAL_RECEIPT_TEXT}`);
         setText('paymentTotalAmount', formatMoneyMinor(order.totalAmountMinor));
         setText('cardExactAmount', formatMoneyMinor(order.totalAmountMinor));
+        const refundOrder = $('refundOrderId');
+        if (refundOrder && !refundOrder.value) refundOrder.value = String(order.id);
         renderItems(items);
         renderFiscalResult(details);
         syncConfirmationAvailability();
@@ -304,6 +379,68 @@
         else el.removeAttribute('href');
     }
 
+    function renderRegisterState(result) {
+        if (!result) {
+            setText('opsFiscalProfile', '?');
+            setText('opsRegister', '?');
+            setStatus('activeShiftStatus', 'not_open');
+            setText('activeShiftId', '?');
+            setText('shiftExpectedCash', formatMoneyMinor(0));
+            setText('shiftExpectedTerminal', formatMoneyMinor(0));
+            renderBlockers([]);
+            renderReportBody(null);
+            return;
+        }
+        setText('opsFiscalProfile', `${result.crmProfileKey || '?'} / ${result.legalEntityName || result.legalEntityKey || 'FOP is not configured'}`);
+        setText('opsRegister', `${result.locationAlias || 'park'} / ${result.registerDisplayName || result.registerAlias || 'middle'}`);
+        setStatus('activeShiftStatus', result.shift?.status || 'not_open');
+        setText('activeShiftId', result.shift?.id || '?');
+        setText('shiftExpectedCash', formatMoneyMinor(result.checklist?.cashExpectedMinor || 0));
+        setText('shiftExpectedTerminal', formatMoneyMinor(result.checklist?.terminalExpectedMinor || 0));
+        const cashActual = $('cashActualAmount');
+        const terminalActual = $('terminalReportTotalAmount');
+        if (cashActual && !cashActual.value) cashActual.value = minorToNumber(result.checklist?.cashExpectedMinor || 0).toFixed(2);
+        if (terminalActual && !terminalActual.value) terminalActual.value = minorToNumber(result.checklist?.terminalExpectedMinor || 0).toFixed(2);
+        renderBlockers(result.checklist?.pendingUnknownOperations || []);
+    }
+
+    function renderBlockers(blockers) {
+        const panel = $('shiftBlockersPanel');
+        const list = $('shiftBlockersList');
+        const rows = Array.isArray(blockers) ? blockers : [];
+        if (panel) panel.classList.toggle('hidden', rows.length === 0);
+        if (list) {
+            list.innerHTML = rows.length
+                ? rows.map(item => `<li>Operation #${escapeHtml(item.id)} ? ${escapeHtml(item.type)} ? ${escapeHtml(item.status)}</li>`).join('')
+                : '';
+        }
+    }
+
+    function renderReportBody(report) {
+        const body = $('operationalReportBody');
+        if (!body) return;
+        if (!report) {
+            body.textContent = 'No report loaded.';
+            return;
+        }
+        const checklist = report.checklist || {};
+        body.innerHTML = `
+            <dl class="cashier-report-grid">
+                <div><dt>Internal report</dt><dd>${escapeHtml(report.internalReportLabel || 'Internal operational report')}</dd></div>
+                <div><dt>Official Z-report</dt><dd>${report.officialZReport ? 'yes' : 'no'}</dd></div>
+                <div><dt>Cash expected</dt><dd>${escapeHtml(formatMoneyMinor(checklist.cashExpectedMinor || 0))}</dd></div>
+                <div><dt>Terminal expected</dt><dd>${escapeHtml(formatMoneyMinor(checklist.terminalExpectedMinor || 0))}</dd></div>
+                <div><dt>Service in</dt><dd>${escapeHtml(formatMoneyMinor(checklist.serviceInMinor || 0))}</dd></div>
+                <div><dt>Service out</dt><dd>${escapeHtml(formatMoneyMinor(checklist.serviceOutMinor || 0))}</dd></div>
+            </dl>
+            ${report.checkboxZDocumentUrl ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${escapeAttribute(report.checkboxZDocumentUrl)}">Open Checkbox document</a>` : '<p class="cashier-muted">Checkbox Z/document URL is not available yet.</p>'}
+        `;
+    }
+
+    function escapeAttribute(value) {
+        return escapeHtml(value).replace(/`/g, '&#96;');
+    }
+
     function escapeHtml(value) {
         return String(value ?? '').replace(/[&<>'"]/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', "'": '&#39;', '"': '&quot;' }[char]));
     }
@@ -314,6 +451,70 @@
         const fiscalStatus = normalizeStatus(order.fiscalStatus);
         if (paymentStatus === 'confirmed' || normalizeStatus(order.status) === 'payment_recorded') return true;
         return FISCAL_BLOCKING_STATUSES.has(fiscalStatus) && paymentStatus !== 'unpaid';
+    }
+
+    function hasAction(action) {
+        return typeof canAccess === 'function' ? canAccess(action) : false;
+    }
+
+    function hasOpenShift() {
+        const status = normalizeStatus(state.registerState?.shift?.status);
+        return status === 'open' || status === 'opening';
+    }
+
+    function hasCloseBlockers() {
+        return Boolean(state.registerState?.checklist?.pendingUnknownOperations?.length);
+    }
+
+    function baseScopePayload() {
+        const mapping = state.registerState;
+        const order = state.orderDetails?.order || {};
+        const fiscalProfileId = mapping?.fiscalProfileId || order.fiscalProfileId;
+        const fiscalLocationId = mapping?.fiscalLocationId || order.fiscalLocationId;
+        const fiscalRegisterId = mapping?.fiscalRegisterId || order.fiscalRegisterId;
+        if (!fiscalProfileId || !fiscalLocationId || !fiscalRegisterId) throw new Error('fiscal_mapping_ambiguous_or_missing');
+        return {
+            crmProfileKey: mapping?.crmProfileKey || order.crmProfileKey || PILOT_SCOPE.crmProfileKey,
+            fiscalProfileId,
+            fiscalLocationId,
+            fiscalRegisterId
+        };
+    }
+
+    function setFormControlsEnabled(formId, enabled) {
+        const form = $(formId);
+        if (!form) return;
+        form.querySelectorAll('input, button, textarea, select').forEach(el => { el.disabled = !enabled; });
+    }
+
+    function syncOperationalAvailability() {
+        const openShift = hasOpenShift();
+        const hasMapping = Boolean(state.registerState?.fiscalProfileId && state.registerState?.fiscalRegisterId);
+        setFormControlsEnabled('serviceInForm', hasMapping && openShift && hasAction('fiscal.service_in'));
+        setFormControlsEnabled('serviceOutForm', hasMapping && openShift && hasAction('fiscal.service_out.request'));
+        setFormControlsEnabled('serviceOutApprovalPanel', Boolean(state.lastServiceOutOperationId) && hasAction('fiscal.service_out.approve'));
+        setFormControlsEnabled('refundForm', hasMapping && openShift && hasAction('fiscal.refund'));
+        setFormControlsEnabled('reconciliationForm', hasMapping && openShift && hasAction('fiscal.reconcile'));
+        if ($('closeShiftBtn')) $('closeShiftBtn').disabled = !(hasMapping && openShift && hasAction('fiscal.shift.close')) || hasCloseBlockers();
+        if ($('loadOperationalReportBtn')) $('loadOperationalReportBtn').disabled = !(hasMapping && state.registerState?.shift?.id && hasAction('fiscal.audit.view'));
+        if ($('refreshShiftStateBtn')) $('refreshShiftStateBtn').disabled = !hasAction('payments.view');
+        if (!openShift) {
+            setFormControlsEnabled('serviceInForm', false);
+            setFormControlsEnabled('serviceOutForm', false);
+            setFormControlsEnabled('refundForm', false);
+            setFormControlsEnabled('reconciliationForm', false);
+        }
+        syncOperationBusyState();
+    }
+
+    function syncOperationBusyState() {
+        OPERATION_BUTTON_IDS.forEach(id => {
+            const el = $(id);
+            if (!el) return;
+            const busy = state.operationInFlight.has(id);
+            el.setAttribute('aria-busy', busy ? 'true' : 'false');
+            if (busy) el.disabled = true;
+        });
     }
 
     function syncConfirmationAvailability() {
@@ -409,6 +610,175 @@
         }
     }
 
+    async function runOperation(buttonId, action, target, callback) {
+        if (state.operationInFlight.has(buttonId)) return;
+        state.operationInFlight.add(buttonId);
+        syncOperationalAvailability();
+        const idempotencyKey = getOperationIdempotencyKey(action, target);
+        try {
+            const result = await callback(idempotencyKey);
+            clearOperationIdempotencyKey(action, target);
+            await loadPilotRegisterState({ silent: true });
+            return result;
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+            return null;
+        } finally {
+            state.operationInFlight.delete(buttonId);
+            syncOperationalAvailability();
+        }
+    }
+
+    async function submitServiceIn(event) {
+        event?.preventDefault?.();
+        if (!$('serviceInFinalCheck')?.checked) {
+            notify('Confirm final service-in text before submitting.', 'error');
+            return;
+        }
+        await runOperation('serviceInBtn', 'service-in', 'current', async idempotencyKey => {
+            const result = await apiRequest('/api/payments/service-in', {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify({ ...baseScopePayload(), amountMinor: parseAmountInput('serviceInAmount', 'service_in_amount_required'), reason: $('serviceInReason')?.value?.trim() || null, finalConfirmation: SERVICE_IN_FINAL_CONFIRMATION })
+            });
+            notify(result.replayed ? 'Service-in replayed with the same key.' : 'Service-in queued for Checkbox.', 'success');
+            $('serviceInAmount').value = '';
+            $('serviceInReason').value = '';
+            $('serviceInFinalCheck').checked = false;
+            return result;
+        });
+    }
+
+    async function submitServiceOut(event) {
+        event?.preventDefault?.();
+        await runOperation('serviceOutRequestBtn', 'service-out-request', 'current', async idempotencyKey => {
+            const result = await apiRequest('/api/payments/service-out', {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify({ ...baseScopePayload(), amountMinor: parseAmountInput('serviceOutAmount', 'service_out_amount_required'), reason: $('serviceOutReason')?.value?.trim() })
+            });
+            if (result.operationId) {
+                state.lastServiceOutOperationId = result.operationId;
+                setText('serviceOutApprovalOperationId', result.operationId);
+            }
+            notify(result.replayed ? 'Service-out request replayed with the same key.' : 'Service-out request created. Use separate approval.', 'success');
+            syncOperationalAvailability();
+            return result;
+        });
+    }
+
+    async function approveServiceOutSubmit(event) {
+        event?.preventDefault?.();
+        const operationId = state.lastServiceOutOperationId || $('serviceOutApprovalOperationId')?.textContent?.trim();
+        if (!operationId || operationId === '?') {
+            notify('No service-out operation selected for approval.', 'error');
+            return;
+        }
+        await runOperation('serviceOutApproveBtn', 'service-out-approve', operationId, async idempotencyKey => {
+            const result = await apiRequest(`/api/payments/service-out/${encodeURIComponent(operationId)}/approve`, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify({ pin: $('serviceOutApprovalPin')?.value || '' })
+            });
+            $('serviceOutApprovalPin').value = '';
+            state.lastServiceOutOperationId = null;
+            setText('serviceOutApprovalOperationId', '?');
+            notify(result.replayed ? 'Service-out approval replayed with the same key.' : 'Service-out approved and queued.', 'success');
+            return result;
+        });
+    }
+
+    async function submitRefund(event) {
+        event?.preventDefault?.();
+        const orderId = $('refundOrderId')?.value?.trim();
+        if (!orderId) {
+            notify(paymentUiError(new Error('refund_order_required')), 'error');
+            return;
+        }
+        await runOperation('refundBtn', 'refund-full', orderId, async idempotencyKey => {
+            const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(orderId)}/refund`, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify({
+                    reason: $('refundReason')?.value?.trim(),
+                    pin: $('refundPin')?.value || '',
+                    terminalRefundConfirmed: Boolean($('terminalRefundConfirmed')?.checked),
+                    terminalRefundReference: $('terminalRefundReference')?.value?.trim() || undefined
+                })
+            });
+            $('refundPin').value = '';
+            notify(result.replayed ? 'Refund replayed with the same key.' : 'Full refund queued. Original receipt remains immutable.', 'success');
+            return result;
+        });
+    }
+
+    function reconciliationPayload() {
+        return {
+            cashActualMinor: parseNullableAmountInput('cashActualAmount'),
+            terminalReportTotalMinor: parseNullableAmountInput('terminalReportTotalAmount'),
+            reason: $('reconciliationReason')?.value?.trim() || null,
+            pin: $('reconciliationPin')?.value || undefined
+        };
+    }
+
+    async function submitReconciliation(event) {
+        event?.preventDefault?.();
+        const shiftId = state.registerState?.shift?.id;
+        if (!shiftId) {
+            notify('Open shift is required for reconciliation.', 'error');
+            return;
+        }
+        await runOperation('reconcileShiftBtn', 'reconcile-shift', shiftId, async idempotencyKey => {
+            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/reconcile`, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify(reconciliationPayload())
+            });
+            $('reconciliationPin').value = '';
+            notify(result.replayed ? 'Reconciliation replayed with the same key.' : 'Reconciliation revision saved.', 'success');
+            return result;
+        });
+    }
+
+    async function closeShift() {
+        const shiftId = state.registerState?.shift?.id;
+        if (!shiftId) {
+            notify('Open shift is required for close.', 'error');
+            return;
+        }
+        if (hasCloseBlockers()) {
+            notify(paymentUiError(new Error('shift_close_blocked')), 'error');
+            return;
+        }
+        await runOperation('closeShiftBtn', 'close-shift', shiftId, async idempotencyKey => {
+            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/close`, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify(reconciliationPayload())
+            });
+            $('reconciliationPin').value = '';
+            notify(result.replayed ? 'Shift close replayed with the same key.' : 'Shift close queued.', 'success');
+            return result;
+        });
+    }
+
+    async function loadOperationalReport() {
+        const shiftId = state.registerState?.shift?.id;
+        if (!shiftId) {
+            notify('Open or recent shift is required for operational report.', 'error');
+            return;
+        }
+        await runOperation('loadOperationalReportBtn', 'load-report', shiftId, async () => {
+            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/report`, {
+                method: 'GET',
+                headers: apiHeaders()
+            });
+            renderReportBody(result);
+            notify('Operational report loaded.', 'success');
+            return result;
+        });
+    }
+
     function bindEvents() {
         $('paymentOrderForm')?.addEventListener('submit', createPaymentOrder);
         document.querySelectorAll('input[name="paymentTender"]').forEach(input => {
@@ -422,6 +792,14 @@
         $('terminalSuccessCheckbox')?.addEventListener('change', syncConfirmationAvailability);
         $('confirmCashBtn')?.addEventListener('click', confirmPayment);
         $('confirmCardBtn')?.addEventListener('click', confirmPayment);
+        $('refreshShiftStateBtn')?.addEventListener('click', () => { void loadPilotRegisterState({ silent: false }); });
+        $('serviceInForm')?.addEventListener('submit', submitServiceIn);
+        $('serviceOutForm')?.addEventListener('submit', submitServiceOut);
+        $('serviceOutApprovalPanel')?.addEventListener('submit', approveServiceOutSubmit);
+        $('refundForm')?.addEventListener('submit', submitRefund);
+        $('reconciliationForm')?.addEventListener('submit', submitReconciliation);
+        $('closeShiftBtn')?.addEventListener('click', closeShift);
+        $('loadOperationalReportBtn')?.addEventListener('click', loadOperationalReport);
         const today = new Date().toISOString().slice(0, 10);
         if ($('paymentDate') && !$('paymentDate').value) $('paymentDate').value = today;
     }
@@ -441,6 +819,7 @@
     async function initCashierPaymentsPage() {
         bindEvents();
         syncTenderControls();
+        syncOperationalAvailability();
         if (typeof initDarkMode === 'function') initDarkMode();
         try {
             const user = await apiVerifyToken();
@@ -461,6 +840,7 @@
                 setDenied('No access to park cashier or required payment capabilities. Cashier does not need finance.manage.');
                 return;
             }
+            await loadPilotRegisterState({ silent: true });
             const params = new URLSearchParams(window.location.search);
             const orderId = params.get('orderId') || storageGet('lastOrderId');
             if (orderId) {
@@ -489,6 +869,8 @@
         parseUahToMinor,
         getCreateIdempotencyKey,
         getConfirmIdempotencyKey,
-        loadPaymentOrder
+        getOperationIdempotencyKey,
+        loadPaymentOrder,
+        loadPilotRegisterState
     };
 })();

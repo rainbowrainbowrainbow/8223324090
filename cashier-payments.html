@@ -4,17 +4,17 @@
     <meta charset="UTF-8">
     <script>(function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Genix | Каса парку</title>
+    <title>Event Genix | РљР°СЃР° РїР°СЂРєСѓ</title>
     <meta name="description" content="Event Genix Checkbox park cashier pilot">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.80.82">
-    <link rel="stylesheet" href="css/layout.css?v=0.80.82">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.82">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.82">
-    <link rel="stylesheet" href="css/cashier-payments.css?v=0.80.82">
-    <link rel="stylesheet" href="css/modals.css?v=0.80.82">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.82">
-    <link rel="stylesheet" href="css/responsive.css?v=0.80.82">
+    <link rel="stylesheet" href="css/base.css?v=0.80.83">
+    <link rel="stylesheet" href="css/layout.css?v=0.80.83">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.80.83">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.80.83">
+    <link rel="stylesheet" href="css/cashier-payments.css?v=0.80.83">
+    <link rel="stylesheet" href="css/modals.css?v=0.80.83">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.80.83">
+    <link rel="stylesheet" href="css/responsive.css?v=0.80.83">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -36,7 +36,7 @@
         <header class="header"><div class="header-content"><button type="button" class="sidebar-toggle" id="sidebarToggle" title="Menu" aria-label="Open or close menu">?</button><div class="user-panel"><span id="currentUser" class="user-name"></span><button type="button" id="logoutBtn" class="btn-logout">Logout</button></div></div></header>
         <main id="main-content" class="page-container cashier-payments-page">
             <section class="cashier-hero" aria-labelledby="cashierPaymentsTitle">
-                <div><p class="cashier-kicker">Checkbox pilot ? park ? middle register</p><h1 id="cashierPaymentsTitle">Каса парку</h1><p class="cashier-muted">Separate cashier UI for cash/card terminal manual payment and fiscal receipt creation. Fiscal profile and register are server-side immutable mapping only.</p></div>
+                <div><p class="cashier-kicker">Checkbox pilot ? park ? middle register</p><h1 id="cashierPaymentsTitle">РљР°СЃР° РїР°СЂРєСѓ</h1><p class="cashier-muted">Separate cashier UI for cash/card terminal manual payment and fiscal receipt creation. Fiscal profile and register are server-side immutable mapping only.</p></div>
                 <div class="cashier-scope-card" aria-label="Pilot scope"><span>CRM profile</span><strong>park</strong><span>register alias</span><strong>middle</strong></div>
             </section>
             <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Access denied for payments.view/payments.create/payments.confirm_received.</div>
@@ -54,15 +54,82 @@
                     <div class="cashier-card-head"><div><p class="cashier-kicker">Step 2</p><h2 id="paymentSnapshotTitle">Immutable payment snapshot</h2></div><span id="internalReceiptLabel" class="cashier-pill">RCP-* — внутрішня квитанція</span></div>
                     <dl class="cashier-meta-grid"><div><dt>CRM profile / FOP</dt><dd id="cashierFiscalProfile">?</dd></div><div><dt>Location / register</dt><dd id="cashierRegister">?</dd></div><div><dt>Payment status</dt><dd id="cashierPaymentStatus" class="cashier-status">?</dd></div><div><dt>Fiscal status</dt><dd id="cashierFiscalStatus" class="cashier-status">?</dd></div></dl>
                     <div class="cashier-table-wrap" tabindex="0" aria-label="Payment items"><table class="cashier-items-table"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody id="paymentItemsBody"><tr><td colspan="4" class="cashier-empty">Order is not created yet.</td></tr></tbody></table></div>
-                    <div class="cashier-total-row"><span>Total</span><strong id="paymentTotalAmount">0,00 ₴</strong></div>
-                    <div id="cashConfirmationPanel" class="cashier-confirm-panel"><h3>Готівка</h3><label class="cashier-field"><span>Received amount</span><input id="cashReceivedAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled></label><div class="cashier-change" aria-live="polite">Change: <strong id="cashChangeAmount">0,00 ₴</strong></div><button type="button" id="confirmCashBtn" class="btn btn-primary cashier-primary-action" disabled>Готівку отримано — створити чек</button></div>
-                    <div id="cardConfirmationPanel" class="cashier-confirm-panel hidden"><h3>Термінал</h3><p class="cashier-exact-amount">Exact amount: <strong id="cardExactAmount">0,00 ₴</strong></p><label class="cashier-checkbox-row"><input id="terminalSuccessCheckbox" type="checkbox" disabled><span>Термінал показав успішну оплату</span></label><label class="cashier-field"><span>Terminal/report reference (optional)</span><input id="terminalReference" type="text" maxlength="160" autocomplete="off" disabled></label><button type="button" id="confirmCardBtn" class="btn btn-primary cashier-primary-action" disabled>Confirm card terminal payment and create receipt</button></div>
+                    <div class="cashier-total-row"><span>Total</span><strong id="paymentTotalAmount">0,00 ₴/strong></div>
+                    <div id="cashConfirmationPanel" class="cashier-confirm-panel"><h3>Готівка</h3><label class="cashier-field"><span>Received amount</span><input id="cashReceivedAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled></label><div class="cashier-change" aria-live="polite">Change: <strong id="cashChangeAmount">0,00 ₴/strong></div><button type="button" id="confirmCashBtn" class="btn btn-primary cashier-primary-action" disabled>Готівку отримано — створити чек</button></div>
+                    <div id="cardConfirmationPanel" class="cashier-confirm-panel hidden"><h3>Термінал</h3><p class="cashier-exact-amount">Exact amount: <strong id="cardExactAmount">0,00 ₴/strong></p><label class="cashier-checkbox-row"><input id="terminalSuccessCheckbox" type="checkbox" disabled><span>Термінал показав успішну оплату</span></label><label class="cashier-field"><span>Terminal/report reference (optional)</span><input id="terminalReference" type="text" maxlength="160" autocomplete="off" disabled></label><button type="button" id="confirmCardBtn" class="btn btn-primary cashier-primary-action" disabled>Confirm card terminal payment and create receipt</button></div>
                 </section>
             </section>
             <section id="fiscalResultPanel" class="cashier-card cashier-result-card" aria-labelledby="fiscalResultTitle"><div class="cashier-card-head"><div><p class="cashier-kicker">Step 3</p><h2 id="fiscalResultTitle">Fiscal receipt</h2></div><span id="fiscalReceiptBadge" class="cashier-pill">waiting</span></div><p id="fiscalPendingMessage" class="cashier-muted">After confirmed payment the server creates one durable fiscalization job. Checkbox unavailable means fiscal pending/unknown, not another payment.</p><div id="providerReceiptLinks" class="cashier-provider-links hidden" aria-live="polite"><a id="providerTaxUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Open Checkbox URL</a><a id="providerPdfUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Receipt PDF</a><a id="providerQrUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Receipt QR</a></div></section>
+            <section id="operationalContourPanel" class="cashier-card cashier-ops-card" aria-labelledby="operationalContourTitle">
+                <div class="cashier-card-head">
+                    <div><p class="cashier-kicker">Operational contour</p><h2 id="operationalContourTitle">Shift, service operations, refunds and close</h2></div>
+                    <button type="button" id="refreshShiftStateBtn" class="btn btn-secondary">Refresh shift state</button>
+                </div>
+                <dl class="cashier-meta-grid cashier-shift-grid" aria-label="Active shift state">
+                    <div><dt>CRM profile / FOP</dt><dd id="opsFiscalProfile">?</dd></div>
+                    <div><dt>Location / register</dt><dd id="opsRegister">?</dd></div>
+                    <div><dt>Shift status</dt><dd id="activeShiftStatus" class="cashier-status">not open</dd></div>
+                    <div><dt>Shift ID</dt><dd id="activeShiftId">?</dd></div>
+                    <div><dt>Expected cash</dt><dd id="shiftExpectedCash">0,00 ₴d></div>
+                    <div><dt>Expected terminal</dt><dd id="shiftExpectedTerminal">0,00 ₴d></div>
+                </dl>
+                <div id="shiftBlockersPanel" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite">
+                    <strong>Close blocked by pending/unknown fiscal operations.</strong>
+                    <ul id="shiftBlockersList" class="cashier-blockers-list"></ul>
+                </div>
+                <div class="cashier-ops-grid">
+                    <form id="serviceInForm" class="cashier-op-box" aria-labelledby="serviceInTitle">
+                        <h3 id="serviceInTitle">Service in</h3>
+                        <p class="cashier-muted">Only for an open shift. Amount must be positive.</p>
+                        <label class="cashier-field"><span>Amount, UAH</span><input id="serviceInAmount" type="number" min="0.01" step="0.01" inputmode="decimal" disabled required></label>
+                        <label class="cashier-field"><span>Reason / note</span><input id="serviceInReason" type="text" maxlength="240" autocomplete="off" disabled></label>
+                        <label class="cashier-checkbox-row"><input id="serviceInFinalCheck" type="checkbox" disabled><span>Cash added — create service-in operation</span></label>
+                        <button type="submit" id="serviceInBtn" class="btn btn-primary cashier-primary-action" disabled>Register service in</button>
+                    </form>
+                    <form id="serviceOutForm" class="cashier-op-box" aria-labelledby="serviceOutTitle">
+                        <h3 id="serviceOutTitle">Service out request</h3>
+                        <p class="cashier-muted">Requires a separate admin/director approval. Initiator cannot approve own operation server-side.</p>
+                        <label class="cashier-field"><span>Amount, UAH</span><input id="serviceOutAmount" type="number" min="0.01" step="0.01" inputmode="decimal" disabled required></label>
+                        <label class="cashier-field"><span>Mandatory reason</span><input id="serviceOutReason" type="text" maxlength="240" autocomplete="off" disabled required></label>
+                        <button type="submit" id="serviceOutRequestBtn" class="btn btn-primary cashier-primary-action" disabled>Request service out</button>
+                    </form>
+                    <form id="serviceOutApprovalPanel" class="cashier-op-box" aria-labelledby="serviceOutApprovalTitle">
+                        <h3 id="serviceOutApprovalTitle">Service out approval</h3>
+                        <p class="cashier-muted">Approval is bound to operation <strong id="serviceOutApprovalOperationId">?</strong>, one-time and server-side.</p>
+                        <label class="cashier-field"><span>Approver PIN</span><input id="serviceOutApprovalPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label>
+                        <button type="submit" id="serviceOutApproveBtn" class="btn btn-secondary cashier-primary-action" disabled>Approve service out</button>
+                    </form>
+                    <form id="refundForm" class="cashier-op-box" aria-labelledby="refundTitle">
+                        <h3 id="refundTitle">Full refund</h3>
+                        <p class="cashier-muted">MVP supports full refund only, linked to the original fiscalized receipt. Original receipt remains immutable.</p>
+                        <label class="cashier-field"><span>Payment order ID</span><input id="refundOrderId" type="number" min="1" step="1" inputmode="numeric" disabled required></label>
+                        <label class="cashier-field"><span>Mandatory reason</span><input id="refundReason" type="text" maxlength="240" autocomplete="off" disabled required></label>
+                        <label class="cashier-field"><span>Supervisor PIN</span><input id="refundPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label>
+                        <label class="cashier-checkbox-row"><input id="terminalRefundConfirmed" type="checkbox" disabled><span>Card terminal refund was confirmed separately</span></label>
+                        <label class="cashier-field"><span>Terminal refund reference</span><input id="terminalRefundReference" type="text" maxlength="160" autocomplete="off" disabled></label>
+                        <button type="submit" id="refundBtn" class="btn btn-secondary cashier-primary-action" disabled>Create full refund</button>
+                    </form>
+                </div>
+                <div class="cashier-ops-grid cashier-ops-grid-wide">
+                    <form id="reconciliationForm" class="cashier-op-box" aria-labelledby="reconciliationTitle">
+                        <h3 id="reconciliationTitle">Reconciliation checklist</h3>
+                        <p class="cashier-muted">Non-zero difference requires reason and supervisor PIN. Pending/unknown fiscal operations still block close.</p>
+                        <div class="cashier-two-cols"><label class="cashier-field"><span>Cash actual, UAH</span><input id="cashActualAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled required></label><label class="cashier-field"><span>Terminal report total, UAH</span><input id="terminalReportTotalAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled required></label></div>
+                        <label class="cashier-field"><span>Reason when difference exists</span><input id="reconciliationReason" type="text" maxlength="500" autocomplete="off" disabled></label>
+                        <label class="cashier-field"><span>Supervisor PIN when difference exists</span><input id="reconciliationPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label>
+                        <div class="cashier-action-row"><button type="submit" id="reconcileShiftBtn" class="btn btn-secondary" disabled>Save reconciliation revision</button><button type="button" id="closeShiftBtn" class="btn btn-primary" disabled>Close shift</button></div>
+                    </form>
+                    <section class="cashier-op-box" aria-labelledby="operationalReportTitle">
+                        <h3 id="operationalReportTitle">Operational report</h3>
+                        <p class="cashier-muted">Internal Event Genix report. It is not an official Z-report; official Checkbox document is linked when provider returns it.</p>
+                        <button type="button" id="loadOperationalReportBtn" class="btn btn-secondary" disabled>Load operational report</button>
+                        <div id="operationalReportBody" class="cashier-report-body" aria-live="polite">No report loaded.</div>
+                    </section>
+                </div>
+            </section>
         </main>
     </div>
     <div id="notification" class="notification hidden"><span id="notificationText"></span></div>
-    <script src="js/ui.js?v=0.80.82"></script><script src="js/config.js?v=0.80.82"></script><script src="js/notification.js?v=0.80.82"></script><script src="js/api.js?v=0.80.82"></script><script src="js/auth.js?v=0.80.82"></script><script src="js/components/sidebar.js?v=0.80.82"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.80.82"></script><script src="js/alerts.js?v=0.80.82"></script>
+    <script src="js/ui.js?v=0.80.83"></script><script src="js/config.js?v=0.80.83"></script><script src="js/notification.js?v=0.80.83"></script><script src="js/api.js?v=0.80.83"></script><script src="js/auth.js?v=0.80.83"></script><script src="js/components/sidebar.js?v=0.80.83"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.80.83"></script><script src="js/alerts.js?v=0.80.83"></script>
 </body>
 </html>

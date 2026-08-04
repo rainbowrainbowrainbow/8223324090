@@ -236,6 +236,89 @@ async function ensureOpenShiftForSale(client, { order, user }) {
     return { ...shift.rows[0], fiscal_location_id: fiscalLocationId, crm_profile_key: order.crm_profile_key };
 }
 
+async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', registerAlias = 'middle' }) {
+    return withTransaction(async client => {
+        const mapping = await client.query(
+            `SELECT
+                 fp.id AS fiscal_profile_id,
+                 fp.crm_profile_key,
+                 fp.legal_entity_key,
+                 fp.legal_entity_name,
+                 fl.id AS fiscal_location_id,
+                 fl.location_alias,
+                 fr.id AS fiscal_register_id,
+                 fr.register_alias,
+                 fr.display_name AS register_display_name,
+                 fr.provider,
+                 fr.status AS fiscal_register_status,
+                 fr.feature_enabled
+               FROM fiscal_profiles fp
+               JOIN fiscal_locations fl
+                 ON fl.fiscal_profile_id = fp.id
+                AND fl.crm_profile_key = fp.crm_profile_key
+                AND fl.status = 'active'
+               JOIN fiscal_registers fr
+                 ON fr.fiscal_profile_id = fp.id
+                AND fr.fiscal_location_id = fl.id
+                AND fr.crm_profile_key = fp.crm_profile_key
+                AND fr.register_alias = $2
+                AND fr.status = 'active'
+                AND fr.feature_enabled = TRUE
+              WHERE fp.crm_profile_key = $1
+                AND fp.status = 'active'`,
+            [String(crmProfileKey || '').trim(), String(registerAlias || '').trim()]
+        );
+        if (mapping.rows.length !== 1) {
+            throw new CashierOperationsError('fiscal_mapping_ambiguous_or_missing', 'Fiscal profile/register mapping is missing or ambiguous', {
+                status: 409,
+                details: { crmProfileKey, registerAlias, matches: mapping.rows.length }
+            });
+        }
+        const row = mapping.rows[0];
+        await authorizeFiscalAction(client, {
+            user,
+            action: 'payments.view',
+            fiscalProfileId: row.fiscal_profile_id,
+            crmProfileKey: row.crm_profile_key,
+            fiscalLocationId: row.fiscal_location_id,
+            fiscalRegisterId: row.fiscal_register_id
+        });
+        const shiftResult = await client.query(
+            `SELECT *
+               FROM fiscal_shifts
+              WHERE fiscal_profile_id = $1
+                AND fiscal_register_id = $2
+                AND status IN ('opening', 'open', 'closing')
+              ORDER BY opened_at DESC NULLS LAST, id DESC
+              LIMIT 1`,
+            [row.fiscal_profile_id, row.fiscal_register_id]
+        );
+        const shift = shiftResult.rows[0] || null;
+        const checklist = shift ? await buildCloseChecklist(client, shift) : null;
+        return {
+            fiscalProfileId: Number(row.fiscal_profile_id),
+            crmProfileKey: row.crm_profile_key,
+            legalEntityKey: row.legal_entity_key,
+            legalEntityName: row.legal_entity_name,
+            fiscalLocationId: Number(row.fiscal_location_id),
+            locationAlias: row.location_alias,
+            fiscalRegisterId: Number(row.fiscal_register_id),
+            registerAlias: row.register_alias,
+            registerDisplayName: row.register_display_name,
+            provider: row.provider,
+            featureEnabled: Boolean(row.feature_enabled),
+            shift: shift ? {
+                id: Number(shift.id),
+                status: shift.status,
+                openedAt: shift.opened_at || null,
+                closedAt: shift.closed_at || null,
+                providerShiftId: shift.provider_shift_id || null,
+                providerSnapshot: shift.provider_snapshot || {}
+            } : null,
+            checklist
+        };
+    });
+}
 async function createServiceIn({ user, body = {}, idempotencyKey }) {
     const key = String(idempotencyKey || '').trim();
     if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
@@ -888,7 +971,7 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
                 moneyStatus,
                 fiscalStatus,
                 reason,
-                order.amount_minor,
+                order.total_amount_minor,
                 `payment_refund:full:${key}`,
                 user?.id || null,
                 body.terminalRefundReference || body.terminal_refund_reference || null,
@@ -918,7 +1001,7 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
                 shift.id,
                 `fiscal_operation:return:${refund.rows[0].id}`,
                 providerRequestUuid,
-                order.amount_minor,
+                order.total_amount_minor,
                 JSON.stringify({ reason, original_fiscal_receipt_id: Number(order.original_fiscal_receipt_id), provider_request_uuid: providerRequestUuid }),
                 user?.id || null
             ]
@@ -1011,6 +1094,7 @@ module.exports = {
     AUTO_CLOSE_FLAG,
     CashierOperationsError,
     ensureOpenShiftForSale,
+    loadPilotRegisterState,
     createServiceIn,
     createServiceOutRequest,
     approveServiceOut,

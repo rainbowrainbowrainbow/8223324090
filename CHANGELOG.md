@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.83 - Checkbox: пілот каси парку
+
+### Release / Versioning / (04.08.2026) [codex]
+- **Checkbox: пілот каси парку** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.82 - Мій день: зрозумілі напрями та стартовий набір
 
 ### Release / Versioning / (04.08.2026) [codex]

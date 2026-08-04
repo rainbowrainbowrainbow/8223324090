@@ -508,13 +508,25 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'payments.create', label: 'Create payment orders', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
-        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
-        apiConsumers: [api('services/payments/fiscalAccess.js', 'Payment order creation authorization service', null, 'Checked by authorizeFiscalActionContext before payment order creation.')]
+        backendConsumers: [
+            source('routes/payments.js', "requireAction('payments.create')", { enforces: true }),
+            source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/admission-ticket/orders', 'payments.create'),
+            api('services/payments/fiscalAccess.js', 'Payment order creation authorization service', null, 'Checked by authorizeFiscalActionContext before payment order creation.')
+        ]
     }),
     action({
         key: 'payments.confirm_received', label: 'Confirm manual payment received', group: 'payments', defaultRoles: PAYMENT_CASHIER_ACCESS, risk: 'critical',
-        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
-        apiConsumers: [api('services/payments/fiscalAccess.js', 'Manual cash/card-terminal confirmation authorization service', null, 'Checked by authorizeFiscalActionContext before confirming money received.')]
+        backendConsumers: [
+            source('routes/payments.js', "requireAction('payments.confirm_received')", { enforces: true }),
+            source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/orders/:orderId/confirm', 'payments.confirm_received'),
+            api('services/payments/fiscalAccess.js', 'Manual cash/card-terminal confirmation authorization service', null, 'Checked by authorizeFiscalActionContext before confirming money received.')
+        ]
     }),
     action({
         key: 'fiscal.shift.open', label: 'Open fiscal shift', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',

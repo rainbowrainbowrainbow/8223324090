@@ -275,6 +275,7 @@ app.use('/api/hr', require('./routes/hr'));
 app.use('/api/svitlana', require('./routes/svitlana'));
 app.use('/api/customers', require('./routes/customers'));
 app.use('/api/finance', require('./routes/finance'));
+app.use('/api/payments', require('./routes/payments'));
 app.use('/api/payroll', require('./routes/payroll'));
 app.use('/api/reports', require('./routes/reports'));
 app.use('/api/report-bot', require('./routes/report-bot'));

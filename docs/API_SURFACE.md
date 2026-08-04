@@ -75,6 +75,7 @@ focused route tests in the same pack.
 | `/api/packages` | `routes/packages.js` | packages |
 | `/api/page-statuses` | `routes/page-statuses.js` | page-statuses |
 | `/api/payroll` | `routes/payroll.js` | payroll |
+| `/api/payments` | `routes/payments.js` | payment/fiscal ledger checkout |
 | `/api/personal-accounts` | `routes/personal-accounts.js` | personal-accounts |
 | `/api/points` | `routes/points.js` | points |
 | `/api/print` | `routes/print.js` | print |

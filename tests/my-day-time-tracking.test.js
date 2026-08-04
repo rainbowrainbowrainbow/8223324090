@@ -81,8 +81,34 @@ test('My Day UI keeps plan and fact separate and restores active timer', () => {
     assert.match(ui, /data-my-day-time-edit/);
     assert.match(ui, /data-my-day-time-delete/);
     assert.match(ui, /aria-live/);
+    assert.doesNotMatch(ui, /Рџ|Рќ|Рў|Р¤|Р—|вЂ/);
 });
 
+test('My Day time controls use CRM classes instead of raw browser-default buttons', () => {
+    const ui = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
+    const css = fs.readFileSync(path.join(root, 'css', 'pages-profile.css'), 'utf8');
+    const taskUi = fs.readFileSync(path.join(root, 'js', 'task-ui.js'), 'utf8');
+
+    assert.match(ui, /my-day-active-timer/);
+    assert.match(ui, /my-day-time-summary/);
+    assert.match(ui, /my-day-time-actions/);
+    assert.match(ui, /my-day-time-button--primary/);
+    assert.match(ui, /my-day-time-button--stop/);
+    assert.match(ui, /my-day-time-popover/);
+    assert.match(ui, />Редагувати</);
+    assert.match(ui, />Видалити</);
+    assert.doesNotMatch(ui, />Ред\.</);
+    assert.match(css, /\.my-day-time-button\s*\{/);
+    assert.match(css, /min-height:\s*40px/);
+    assert.match(css, /\.my-day-time-actions\s*\{/);
+    assert.match(css, /flex-wrap:\s*wrap/);
+    assert.match(css, /\.my-day-time-popover\.is-popover \.task-ui-action-panel/);
+    assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-active-timer/);
+    assert.match(css, /html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-time-button--ghost/);
+    assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.my-day-time-actions/);
+    assert.match(taskUi, /event\.key === 'Escape'[\s\S]*closeActionMenu\(\)/);
+    assert.match(taskUi, /data-task-ui-close/);
+});
 function loadTimeTrackingUi(overrides = {}) {
     const uiCode = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
     const intervals = [];
@@ -96,7 +122,7 @@ function loadTimeTrackingUi(overrides = {}) {
         clearInterval: id => { cleared.push(id); },
         document: overrides.document || { querySelector: () => null, querySelectorAll: () => [] },
         window: {
-            TaskUI: { escapeHtml: value => String(value) },
+            TaskUI: { escapeHtml: value => String(value), ...(overrides.taskUi || {}) },
             getAuthHeaders: () => ({ Authorization: 'Bearer test-token' }),
             promptModal: async () => null,
             showNotification: () => {}
@@ -152,4 +178,44 @@ test('My Day timer UI hydrates active timer from API and clears ticker on stop a
     assert.equal(changed, 1, 'stop requests a UI refresh callback');
     assert.deepEqual(cleared, [1], 'stop clears live ticker');
     assert.deepEqual(fetchCalls.map(call => `${call.method} ${call.url}`), ['GET /api/my-day/timer', 'POST /api/my-day/timer/stop']);
+});
+test('My Day time entries popover uses CRM surface and accessible edit delete labels', async () => {
+    const opened = {};
+    const fakeRoot = { querySelectorAll: () => [] };
+    const { api } = loadTimeTrackingUi({
+        taskUi: {
+            openActionMenu: (button, html, options) => {
+                opened.button = button;
+                opened.html = html;
+                opened.options = options;
+                return fakeRoot;
+            },
+            closeActionMenu: () => {}
+        },
+        fetch: async (url) => {
+            assert.match(String(url), /\/api\/my-day\/time-entries\?/);
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    success: true,
+                    entries: [
+                        { id: 1, taskId: 9, startedAt: '2026-08-04T08:52:00.000Z', durationSeconds: 60, source: 'timer' },
+                        { id: 2, taskId: 9, startedAt: '2026-08-04T09:40:00.000Z', durationSeconds: 720, source: 'manual' }
+                    ]
+                })
+            };
+        }
+    });
+
+    await api.handleAction('time-entries', 9, async () => {}, { id: 'entries-button' });
+
+    assert.equal(opened.options.title, 'Записи часу');
+    assert.equal(opened.options.surfaceClassName, 'my-day-time-popover');
+    assert.match(opened.html, /my-day-time-entry-list/);
+    assert.match(opened.html, /class="my-day-time-button my-day-time-button--ghost my-day-time-entry-action"/);
+    assert.match(opened.html, /class="my-day-time-button my-day-time-button--danger my-day-time-entry-action"/);
+    assert.match(opened.html, />Редагувати</);
+    assert.match(opened.html, />Видалити</);
+    assert.doesNotMatch(opened.html, />Ред\.</);
 });

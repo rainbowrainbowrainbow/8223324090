@@ -246,6 +246,86 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     width: 100%;
 }
 
+.cabinet-task-composer-meta-advanced > .my-day-composer-classification {
+    grid-column: 1 / -1;
+}
+
+.my-day-composer-classification {
+    align-items: start;
+    background: rgba(248, 250, 252, 0.64);
+    border: 1px solid rgba(148, 163, 184, 0.20);
+    border-radius: 16px;
+    grid-template-columns: minmax(210px, 0.8fr) minmax(0, 1.6fr);
+    margin: 0 0 2px;
+    min-width: 0;
+    padding: 12px;
+}
+
+.my-day-composer-direction-field,
+.my-day-composer-impact-field {
+    min-width: 0;
+}
+
+.my-day-composer-direction-select {
+    appearance: none;
+    background: linear-gradient(135deg, rgba(255, 255, 255, 0.96), rgba(248, 250, 252, 0.88));
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 14px;
+    color: var(--text-primary, #0f172a);
+    font-weight: 850;
+    min-height: 44px;
+    padding: 0 36px 0 12px;
+}
+
+.my-day-composer-impact-field {
+    border: 0;
+    display: grid;
+    gap: 9px;
+    margin: 0;
+    padding: 0;
+}
+
+.my-day-composer-impact-field legend {
+    color: var(--text-secondary, #475569);
+    font-size: 12px;
+    font-weight: 800;
+    margin: 0;
+    padding: 0;
+}
+
+.my-day-composer-impact-selected {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-height: 28px;
+    min-width: 0;
+}
+
+.my-day-composer-impact-placeholder {
+    color: var(--text-muted, #64748b);
+    font-size: 0.78rem;
+    font-weight: 800;
+}
+
+.my-day-composer-impact-grid {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.my-day-composer-impact-chip {
+    max-width: 100%;
+}
+
+.my-day-composer-impact-chip span {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
 .my-day-classification-fields label,
 .my-day-editor-fields label,
 .my-day-taxonomy-card label {
@@ -1773,4 +1853,24 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-starter-res
     .my-day-starter-card.is-collapsed > summary {
         min-height: 48px;
     }
+}
+body.dark-mode .profile-page.profile-work-mode .my-day-composer-classification,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-classification {
+    background: rgba(15, 23, 42, 0.64);
+    border-color: rgba(148, 163, 184, 0.26);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-composer-direction-select,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-direction-select {
+    background: rgba(15, 23, 42, 0.86);
+    border-color: rgba(148, 163, 184, 0.34);
+    color: var(--my-day-life-text, #f8fafc);
+    color-scheme: dark;
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-composer-impact-placeholder,
+body.dark-mode .profile-page.profile-work-mode .my-day-composer-impact-field legend,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-impact-placeholder,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-composer-impact-field legend {
+    color: var(--my-day-life-secondary, #cbd5e1);
 }

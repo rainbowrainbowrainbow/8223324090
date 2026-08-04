@@ -82,6 +82,28 @@ test('My Day setup catalog editors are clean one-at-a-time inline surfaces', () 
     assert.match(css, /\.my-day-taxonomy-row-card/);
     assert.match(css, /\.my-day-setup-archive/);
 });
+test('My Day setup offers expanded icon preset palettes for directions and impacts', () => {
+    const taxonomyUi = read('js/my-day-classification.js');
+    const iconBlock = taxonomyUi.match(/const TAXONOMY_ICONS = \{([\s\S]*?)\n    \};/);
+    assert.ok(iconBlock);
+    const directionMatch = iconBlock[1].match(/directions:\s*\[([\s\S]*?)\]/);
+    const impactMatch = iconBlock[1].match(/impacts:\s*\[([\s\S]*?)\]/);
+    assert.ok(directionMatch);
+    assert.ok(impactMatch);
+    const directionIcons = Array.from(directionMatch[1].matchAll(/'([^']+)'/g)).map(match => match[1]);
+    const impactIcons = Array.from(impactMatch[1].matchAll(/'([^']+)'/g)).map(match => match[1]);
+    assert.ok(directionIcons.length >= 40);
+    assert.ok(impactIcons.length >= 40);
+    assert.equal(new Set(directionIcons).size, directionIcons.length);
+    assert.equal(new Set(impactIcons).size, impactIcons.length);
+    assert.ok(directionIcons.includes('\u{1F4BC}'));
+    assert.ok(directionIcons.includes('\u{1F3AA}'));
+    assert.ok(directionIcons.includes('\u{1F333}'));
+    assert.ok(impactIcons.includes('\u26A1'));
+    assert.ok(impactIcons.includes('\u{1F4B0}'));
+    assert.ok(impactIcons.includes('\u{1F9D8}'));
+});
+
 test('Profile Settings no longer renders My Day management forms', () => {
     const profile = read('js/profile-page.js');
     const start = profile.indexOf('function renderProfileSettingsTab()');

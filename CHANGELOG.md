@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.80 - Мій день: таймер і маркування задач
+
+### Release / Versioning / (04.08.2026) [codex]
+- **Live timer seconds** — активний таймер задачі тепер показує секунди (`0:03`, `1:35`), тому онлайн-рух видно одразу після старту, без очікування першої хвилини.
+- **Task fact while running** — `Факт` на active task card також оновлюється seconds-precision, а завершені summaries зберігають звичний хвилинний формат.
+- **Timer controls / records / composer** — у production включені CRM-style time controls, нормальний popover `Записи часу` і стабільний layout `Напрям` / `Впливи до 3` у composer.
+- **Live QA guard** — regression test тепер ловить сценарій, де timer state є, але label лишається `0:00` і виглядає статичним.
+
+---
+
 ## v0.80.79 - Мій день: таймер і маркування задач
 
 ### Release / Versioning / (04.08.2026) [codex]

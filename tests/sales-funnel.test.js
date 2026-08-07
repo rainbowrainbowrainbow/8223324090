@@ -13,6 +13,23 @@ const ROOT = path.resolve(__dirname, '..');
 const liveDescribe = TEST_USER && TEST_PASS ? describe : describe.skip;
 
 describe('Sales Funnel deposit_received local regression', () => {
+    it('sales funnel startup does not bounce valid users away on API 403', () => {
+        const leadsPage = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
+
+        assert.match(
+            leadsPage,
+            /const currentPath = window\.location\.pathname\.replace\(\/\\\/\$\/, ''\)\.replace\(\/\\\.html\$\/i, ''\) \|\| '\/';/
+        );
+        assert.match(
+            leadsPage,
+            /if \(res\.status === 401\) \{\s*window\.location\.href = '\/';\s*throw new Error\('Unauthorized'\);\s*\}/
+        );
+        assert.doesNotMatch(
+            leadsPage,
+            new RegExp("if \\(res\\.status === 401 \\|\\| res\\.status === 403\\) \\{\\s*window\\.location\\.href = '/'")
+        );
+    });
+
     it('deposit_received stage transition is wired to the accountant banquet deposit hook', () => {
         const leadsRoute = fs.readFileSync(path.join(ROOT, 'routes', 'leads.js'), 'utf8');
         assert.match(leadsRoute, /oldStage !== 'deposit_received'/);

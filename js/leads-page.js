@@ -754,7 +754,7 @@ async function apiFetch(url, opts = {}) {
             throw new Error(message);
         }
     }
-    if (res.status === 401 || res.status === 403) {
+    if (res.status === 401) {
         window.location.href = '/';
         throw new Error('Unauthorized');
     }
@@ -1293,7 +1293,7 @@ async function maybeOpenLeadCreateFromUrl() {
 
 function normalizeLeadCanonicalRoute() {
     if (!window.history || !window.location) return;
-    const currentPath = window.location.pathname.replace(/\/$/, '') || '/';
+    const currentPath = window.location.pathname.replace(/\/$/, '').replace(/\.html$/i, '') || '/';
     if (currentPath !== '/leads') return;
     const url = new URL(window.location.href);
     url.pathname = '/sales-funnel';

@@ -179,8 +179,16 @@ test('access editor owns its workspace and hr-page no longer uses formModal for 
     assert.match(css, /body\.account-access-editor-open \.toast-container/);
     assert.match(css, /@media \(max-width: 600px\)/);
     assert.match(packageJson, /test:browser:account-access/);
-    assert.match(workflow, /Run effective access editor browser smoke/);
-    assert.match(workflow, /test:browser:account-access/);
+    assert.match(workflow, /Run access editor lifecycle and focus browser smoke/);
+    assert.match(workflow, /test:browser:account-access:lifecycle/);
+    assert.match(workflow, /Run access editor dirty draft and failed-save browser smoke/);
+    assert.match(workflow, /test:browser:account-access:draft/);
+    assert.match(workflow, /Run access editor tri-state page browser smoke/);
+    assert.match(workflow, /test:browser:account-access:tri-state/);
+    assert.match(workflow, /Run access editor test-backend persistence browser smoke/);
+    assert.match(workflow, /test:browser:account-access:backend/);
+    assert.match(workflow, /Run access editor mobile browser smoke/);
+    assert.match(workflow, /test:browser:account-access:mobile/);
 });
 
 test('account access editor cannot draft explicit-allow-disabled Finance access', () => {

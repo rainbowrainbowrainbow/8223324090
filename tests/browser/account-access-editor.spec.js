@@ -91,8 +91,8 @@ test.beforeEach(async ({ page }) => {
     await page.addScriptTag({ path: path.join(ROOT, 'js', 'account-access-editor.js') });
 });
 
-test('blocks accidental dismissal, traps/restores focus, and preserves page deny after failed save', async ({ page }) => {
-    await openEditor(page, { failFirst: true });
+test('blocks accidental dismissal and traps/restores focus', async ({ page }) => {
+    await openEditor(page);
     await page.waitForFunction(() => document.activeElement?.dataset?.tab === 'overview');
     expect(await page.evaluate(() => document.activeElement?.dataset?.tab)).toBe('overview');
     await expect(page.locator('#background')).toHaveAttribute('aria-hidden', 'true');
@@ -100,6 +100,17 @@ test('blocks accidental dismissal, traps/restores focus, and preserves page deny
     await page.locator('.aae-backdrop').evaluate(element => element.click());
     await expect(page.locator('[role="dialog"]')).toHaveCount(1);
 
+    await page.keyboard.press('Shift+Tab');
+    await expect(page.locator('.aae-close')).toBeFocused();
+
+    await page.locator('.aae-close').click();
+    await expect(page.locator('#accountAccessEditorRoot')).toHaveCount(0);
+    expect(await page.evaluate(() => document.activeElement?.id)).toBe('open-editor');
+    await expect(page.locator('#background')).not.toHaveAttribute('aria-hidden', 'true');
+});
+
+test('keeps dirty draft and preserves page deny after failed save', async ({ page }) => {
+    await openEditor(page, { failFirst: true });
     await page.locator('[data-tab="modules"]').click();
     const reportsCard = page.locator('[data-capability="/reports"]');
     await reportsCard.locator('[data-mode="deny"]').click();
@@ -110,10 +121,6 @@ test('blocks accidental dismissal, traps/restores focus, and preserves page deny
     await expect(page.locator('[role="alertdialog"]')).toBeVisible();
     await page.locator('[data-action="continue-editing"]').click();
     await expect(page.locator('[data-capability="/reports"] [data-mode="deny"]')).toHaveAttribute('aria-pressed', 'true');
-
-    await page.locator('.aae-close').focus();
-    await page.keyboard.press('Shift+Tab');
-    expect(await page.evaluate(() => document.activeElement?.dataset?.action)).toBe('save');
 
     await page.locator('[data-action="save"]').click();
     await expect(page.getByText('Deterministic save failure')).toBeVisible();

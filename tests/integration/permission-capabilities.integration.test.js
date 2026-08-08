@@ -9,6 +9,15 @@ const crypto = require('node:crypto');
 const { describe, it, before, after } = require('node:test');
 const { Pool } = require('pg');
 const { getToken, request, testDate } = require('../helpers');
+const {
+    PAGE_PERMISSIONS,
+    ACTION_PERMISSIONS,
+    getPublicPagePermissionMetadata
+} = require('../../config/permissionRegistry');
+const {
+    PAGE_PERMISSION_TEST_CONTRACTS,
+    ACTION_PERMISSION_TEST_CONTRACTS
+} = require('../../config/permissionTestContracts');
 
 const enabled = process.env.RUN_PERMISSION_CAPABILITIES_INTEGRATION === 'true';
 const accounts = Object.create(null);
@@ -43,6 +52,28 @@ async function permissions(token) {
     return response.data;
 }
 
+async function updateAccess(account, patch, creatorToken) {
+    const response = await request('PATCH', `/api/users/${account.id}/access`, {
+        role: account.role,
+        extraRoles: account.extraRoles || [],
+        pageAllowlist: patch.pageAllowlist || [],
+        pageDenylist: patch.pageDenylist || [],
+        actionAllowlist: patch.actionAllowlist || [],
+        actionDenylist: patch.actionDenylist || [],
+        businessContexts: ['event_genix'],
+        defaultBusinessContext: 'event_genix'
+    }, creatorToken);
+    return response;
+}
+
+function activePageEntries() {
+    return PAGE_PERMISSIONS.filter(entry => entry.deprecated !== true);
+}
+
+function activeActionEntries() {
+    return ACTION_PERMISSIONS.filter(entry => entry.deprecated !== true);
+}
+
 describe('disposable token-backed permission capability contract', { skip: !enabled }, () => {
     before(async () => {
         requireDisposableTarget();
@@ -58,7 +89,8 @@ describe('disposable token-backed permission capability contract', { skip: !enab
                 actionDenylist: ['hr.schedule.manage', 'hr.reports.view', 'hr.reports.export']
             },
             { key: 'manager', role: 'manager', actionAllowlist: [], actionDenylist: [] },
-            { key: 'hr', role: 'hr', actionAllowlist: [], actionDenylist: [] }
+            { key: 'hr', role: 'hr', actionAllowlist: [], actionDenylist: [] },
+            { key: 'matrix', role: 'waiter', actionAllowlist: [], actionDenylist: [] }
         ];
 
         for (const definition of definitions) {
@@ -127,6 +159,111 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(hr.capabilities['action:hr.schedule.manage'].allowed, true);
         assert.equal(hr.capabilities['action:hr.payroll.view'].allowed, true);
         assert.equal(hr.pages['/hr'], true);
+    });
+
+    it('exposes only active configurable definitions in /api/users/roles', async () => {
+        const creatorToken = await getToken();
+        const response = await request('GET', '/api/users/roles', null, creatorToken);
+        assert.equal(response.status, 200, JSON.stringify(response.data));
+
+        const publicPages = getPublicPagePermissionMetadata();
+        assert.deepEqual(
+            [...response.data.pages.map(entry => entry.key)].sort(),
+            [...publicPages.map(entry => entry.key)].sort(),
+            'page definitions must come from public registry projection'
+        );
+        const apiActionKeys = response.data.actions.map(entry => entry.key);
+        assert.deepEqual(
+            [...apiActionKeys].sort(),
+            [...activeActionEntries().map(entry => entry.key)].sort(),
+            'action definitions must include exactly active actions'
+        );
+
+        for (const key of ['cancel_booking', 'view_own', 'manage_users', 'manage_staff']) {
+            assert.equal(apiActionKeys.includes(key), false, `${key}: deprecated/tombstone action leaked to public API`);
+        }
+        for (const key of ['/dashboard', '/profile', '/game', '/quiz', '/room', '/shop']) {
+            assert.equal(response.data.pages.some(entry => entry.key === key), false, `${key}: non-configurable page leaked to public API`);
+        }
+    });
+
+    it('checks every active page contract through access PATCH, relogin, and /api/auth/permissions', async () => {
+        const creatorToken = await getToken();
+        const account = accounts.matrix;
+
+        for (const entry of activePageEntries()) {
+            const contract = PAGE_PERMISSION_TEST_CONTRACTS[entry.key];
+            assert.ok(contract, `${entry.key}: missing executable page contract`);
+
+            if (entry.configurable === false) {
+                const rejected = await updateAccess(account, { pageAllowlist: [entry.key] }, creatorToken);
+                assert.equal(rejected.status, 400, `${entry.key}: non-configurable page allow must be rejected`);
+                assert.equal(rejected.data?.code, 'NON_CONFIGURABLE_CAPABILITY_KEYS');
+                continue;
+            }
+
+            if (entry.explicitAllow === false) {
+                const rejected = await updateAccess(account, { pageAllowlist: [entry.key] }, creatorToken);
+                assert.equal(rejected.status, 400, `${entry.key}: explicit allow disabled page must be rejected`);
+                assert.equal(rejected.data?.code, 'EXPLICIT_ALLOW_DISABLED_CAPABILITY');
+            } else {
+                const allow = await updateAccess(account, { pageAllowlist: [entry.aliases[0] || entry.key] }, creatorToken);
+                assert.equal(allow.status, 200, `${entry.key} allow: ${JSON.stringify(allow.data)}`);
+                assert.deepEqual(allow.data?.pageAllowlist, [entry.key], `${entry.key}: allowlist must canonicalize`);
+                account.token = await login(account.username, account.password);
+                const allowed = await permissions(account.token);
+                assert.equal(allowed.pages[entry.key], true, `${entry.key}: explicit page allow must allow`);
+                assert.equal(allowed.capabilities[`page:${entry.key}`]?.source, 'explicit_allow', `${entry.key}: page allow source`);
+            }
+
+            const deny = await updateAccess(account, { pageDenylist: [entry.aliases[0] || entry.key] }, creatorToken);
+            assert.equal(deny.status, 200, `${entry.key} deny: ${JSON.stringify(deny.data)}`);
+            assert.deepEqual(deny.data?.pageDenylist, [entry.key], `${entry.key}: denylist must canonicalize`);
+            account.token = await login(account.username, account.password);
+            const denied = await permissions(account.token);
+            assert.equal(denied.pages[entry.key], false, `${entry.key}: explicit page deny must deny`);
+            assert.equal(denied.capabilities[`page:${entry.key}`]?.source, 'explicit_deny', `${entry.key}: page deny source`);
+        }
+    });
+
+    it('checks every active action contract through access PATCH, relogin, and /api/auth/permissions', async () => {
+        const creatorToken = await getToken();
+        const account = accounts.matrix;
+
+        for (const entry of activeActionEntries()) {
+            const contract = ACTION_PERMISSION_TEST_CONTRACTS[entry.key];
+            assert.ok(contract, `${entry.key}: missing executable action contract`);
+
+            if (entry.delegable === false || entry.explicitAllow === false) {
+                const rejected = await updateAccess(account, { actionAllowlist: [entry.key] }, creatorToken);
+                assert.ok([200, 400].includes(rejected.status), `${entry.key}: explicit allow must be ignored or rejected safely`);
+                if (rejected.status === 400) {
+                    assert.ok(
+                        ['NON_DELEGABLE_CAPABILITY_KEYS', 'EXPLICIT_ALLOW_DISABLED_CAPABILITY'].includes(rejected.data?.code),
+                        `${entry.key}: unexpected rejection code ${JSON.stringify(rejected.data)}`
+                    );
+                }
+                account.token = await login(account.username, account.password);
+                const ignored = await permissions(account.token);
+                assert.equal(ignored.capabilities[`action:${entry.key}`]?.allowed, false, `${entry.key}: explicit allow must not grant non-delegable/disabled action`);
+            } else {
+                const allow = await updateAccess(account, { actionAllowlist: [entry.aliases[0] || entry.key] }, creatorToken);
+                assert.equal(allow.status, 200, `${entry.key} allow: ${JSON.stringify(allow.data)}`);
+                assert.deepEqual(allow.data?.actionAllowlist, [entry.key], `${entry.key}: action allowlist must canonicalize`);
+                account.token = await login(account.username, account.password);
+                const allowed = await permissions(account.token);
+                assert.equal(allowed.capabilities[`action:${entry.key}`]?.allowed, true, `${entry.key}: explicit action allow must allow`);
+                assert.equal(allowed.capabilities[`action:${entry.key}`]?.source, 'explicit_allow', `${entry.key}: action allow source`);
+            }
+
+            const deny = await updateAccess(account, { actionDenylist: [entry.key] }, creatorToken);
+            assert.equal(deny.status, 200, `${entry.key} deny: ${JSON.stringify(deny.data)}`);
+            assert.deepEqual(deny.data?.actionDenylist, [entry.key], `${entry.key}: denylist must store canonical key`);
+            account.token = await login(account.username, account.password);
+            const denied = await permissions(account.token);
+            assert.equal(denied.capabilities[`action:${entry.key}`]?.allowed, false, `${entry.key}: explicit action deny must deny`);
+            assert.equal(denied.capabilities[`action:${entry.key}`]?.source, 'explicit_deny', `${entry.key}: action deny source`);
+        }
     });
 
     it('allows Admin Today and Schedule while denying Reports, export, and schedule mutation', async () => {

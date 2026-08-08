@@ -95,14 +95,14 @@ test('My Day spec matches the canonical shipped endpoints and schema words', () 
     assert.doesNotMatch(spec, /`status` is `done` or `skipped`/);
 });
 
-test('My Day tags do not reuse watchdog labels storage', () => {
+test('My Day task tags are retired and watchdog labels remain untouched', () => {
     const taxonomy = read('services/myDayTaxonomy.js');
     const projection = read('services/taskCabinetProjection.js');
     const classificationUi = read('js/my-day-classification.js');
-    assert.match(taxonomy, /tags = normalizeTags/);
-    assert.match(taxonomy, /m\.tags/);
-    assert.match(projection, /tags: \[\]/);
-    assert.match(classificationUi, /data-my-day-task-tags/);
+    assert.match(taxonomy, /MY_DAY_TAGS_DEPRECATED/);
+    assert.doesNotMatch(taxonomy, /normalizeTags|m\.tags|DO UPDATE SET tags/);
+    assert.doesNotMatch(projection, /tags: \[\]/);
+    assert.doesNotMatch(classificationUi, /data-my-day-task-tags|my-day-task-tag|data-my-day-tag/);
     assert.doesNotMatch(taxonomy, /control_meta|controlMeta|watchdog/);
     assert.doesNotMatch(classificationUi, /control_meta|controlMeta|watchdog/);
 });

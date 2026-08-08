@@ -254,6 +254,8 @@ test('profile My Day overdue segment renders triage rows with existing task acti
         cabinetMyDaySegment = 'overdue';
         cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
+        MyDayClassification = { renderTaskBadges: myDay => myDay?.impacts?.length ? '<span class="my-day-task-impact-chips">CRM + Hermes</span>' : '' };
+        MyDayDependencies = { renderTaskBlocker: task => '<button type="button" class="cabinet-task-dependency-action" data-cabinet-task-action="dependencies" data-task-id="' + task.id + '">Потрібно спочатку</button>' };
         myCabinetData = {
             all: [
                 {
@@ -263,6 +265,7 @@ test('profile My Day overdue segment renders triage rows with existing task acti
                     priority: 'urgent',
                     subtask_count: 2,
                     subtask_done_count: 1,
+                    myDay: { impacts: [{ id: 1, name: 'CRM' }, { id: 2, name: 'Hermes' }] },
                     controlMeta: { canReschedule: true }
                 }
             ],
@@ -287,6 +290,11 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.match(html, /data-reschedule-option="custom"/);
     assert.match(html, /data-source-surface="profile_my_cabinet_overdue_triage"/);
     assert.match(html, /data-cabinet-task-action="done"/);
+    assert.match(html, /data-my-day-classification-badges="201"/);
+    assert.match(html, /my-day-task-impact-chips/);
+    assert.match(html, /data-cabinet-task-action="dependencies"/);
+    assert.match(html, /data-cabinet-task-action="ai-classification"/);
+    assert.match(html, /cabinet-task-action-ai/);
     assert.match(html, /data-cabinet-task-action="move-target"/);
     assert.match(html, /data-cabinet-move-target="no_date"/);
     assert.match(html, /data-cabinet-move-method="triage"/);

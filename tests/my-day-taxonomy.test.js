@@ -6,9 +6,10 @@ const path = require('node:path');
 const test = require('node:test');
 
 const {
+    classificationFingerprint,
+    classificationImpactIds,
     loadTaskClassifications,
     normalizeImpactIds,
-    normalizeTags,
     normalizeName,
     replaceTaskClassification,
     serializeClassification,
@@ -20,10 +21,15 @@ test('My Day taxonomy validates names, duplicate impacts, and the three-impact l
     assert.deepEqual(normalizeImpactIds([1, '2', 3]), [1, 2, 3]);
     assert.throws(() => normalizeImpactIds([1, 1]), { code: 'MY_DAY_VALIDATION_ERROR' });
     assert.throws(() => normalizeImpactIds([1, 2, 3, 4]), { code: 'MY_DAY_IMPACT_LIMIT_EXCEEDED' });
-    assert.deepEqual(normalizeTags(['  CRM  ', 'crm', 'Парк  зміна']), ['CRM', 'Парк зміна']);
-    assert.throws(() => normalizeTags(['']), { code: 'MY_DAY_VALIDATION_ERROR' });
-    assert.throws(() => normalizeTags(['a'.repeat(33)]), { code: 'MY_DAY_VALIDATION_ERROR' });
-    assert.throws(() => normalizeTags(['one', 'two', 'three', 'four', 'five', 'six']), { code: 'MY_DAY_TAG_LIMIT_EXCEEDED' });
+    assert.deepEqual(classificationImpactIds({ impacts: [{ id: 3 }, { id: '1' }, { id: 3 }] }), [1, 3]);
+    assert.equal(
+        classificationFingerprint({ impacts: [{ id: 3 }, { id: 1 }] }, 'task-v1'),
+        classificationFingerprint({ impacts: [{ id: 1 }, { id: 3 }] }, 'task-v1')
+    );
+    assert.notEqual(
+        classificationFingerprint({ impacts: [{ id: 1 }] }, 'task-v1'),
+        classificationFingerprint({ impacts: [{ id: 1 }] }, 'task-v2')
+    );
 });
 
 test('My Day taxonomy reads and writes only the current user catalogue', async () => {
@@ -48,33 +54,38 @@ test('My Day taxonomy reads and writes only the current user catalogue', async (
     assert.equal(calls[2].params[6], false);
 });
 
-test('classification replacement validates user-owned active impacts and preserves legacy direction', async () => {
+test('classification replacement writes impacts only and preserves legacy direction', async () => {
     const calls = [];
     const queryable = {
         async query(sql, params) {
             calls.push({ sql, params });
             if (sql.includes('FROM my_day_impacts') && sql.includes('FOR KEY SHARE')) return { rows: [{ id: 11, is_active: true }, { id: 12, is_active: true }] };
-            if (sql.includes('FROM my_day_task_metadata m')) {
-                return { rows: [{ direction_id: 7, direction_name: 'Project', direction_color: '#6366F1', direction_icon: 'P', direction_is_active: true, tags: ['CRM', 'Парк зміна'], impacts: [{ id: 11, name: 'Health', color: '#0EA5E9', icon: 'H', isActive: true }, { id: 12, name: 'Rest', color: '#0EA5E9', icon: 'R', isActive: true }] }] };
+            if (sql.includes('json_agg') && sql.includes('my_day_task_metadata')) {
+                return { rows: [{ direction_id: 7, direction_name: 'Project', direction_color: '#6366F1', direction_icon: 'P', direction_is_active: true, impacts: [{ id: 11, name: 'Health', color: '#0EA5E9', icon: 'H', isActive: true }, { id: 12, name: 'Rest', color: '#0EA5E9', icon: 'R', isActive: true }] }] };
             }
             return { rows: [] };
         }
     };
-    const result = await replaceTaskClassification(queryable, { userId: 42, taskId: 99, directionId: 7, impactIds: [11, 12], tags: [' CRM ', 'crm', 'Парк  зміна'] });
+    const result = await replaceTaskClassification(queryable, { userId: 42, taskId: 99, directionId: 7, impactIds: [11, 12], tags: [] });
     assert.equal(result.direction.name, 'Project');
     assert.equal(result.impacts.length, 2);
-    assert.deepEqual(result.tags, ['CRM', 'Парк зміна']);
+    assert.equal(Object.hasOwn(result, 'tags'), false);
     assert.equal(calls.length, 5);
     assert.equal(calls.some(call => /FROM my_day_directions/.test(call.sql)), false);
-    assert.match(calls[1].sql, /INSERT INTO my_day_task_metadata/);
-    assert.match(calls[1].sql, /tags/);
-    assert.doesNotMatch(calls[1].sql, /direction_id = EXCLUDED\.direction_id/);
-    assert.deepEqual(calls[1].params, [42, 99, ['CRM', 'Парк зміна']]);
+    assert.match(calls[1].sql, /INSERT INTO my_day_task_metadata \(user_id, task_id\)/);
+    assert.doesNotMatch(calls[1].sql, /tags|direction_id = EXCLUDED\.direction_id/);
+    assert.deepEqual(calls[1].params, [42, 99]);
     assert.match(calls[2].sql, /DELETE FROM my_day_task_impacts/);
     assert.match(calls[3].sql, /INSERT INTO my_day_task_impacts/);
     assert.deepEqual(calls[3].params, [42, 99, [11, 12]]);
 });
 
+test('non-empty legacy task tags fail instead of being silently ignored', async () => {
+    await assert.rejects(
+        () => replaceTaskClassification({ query: async () => ({ rows: [] }) }, { userId: 42, taskId: 99, impactIds: [], tags: ['CRM'] }),
+        { code: 'MY_DAY_TAGS_DEPRECATED' }
+    );
+});
 
 test('foreign or inactive taxonomy IDs fail before task links are mutated', async () => {
     const calls = [];
@@ -93,38 +104,62 @@ test('foreign or inactive taxonomy IDs fail before task links are mutated', asyn
     assert.equal(calls.some(call => /my_day_task_metadata|my_day_task_impacts/.test(call.sql)), false);
 });
 
+test('classification replacement can restore archived impacts only from a verified undo snapshot', async () => {
+    const calls = [];
+    const queryable = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            if (sql.includes('FROM my_day_impacts') && sql.includes('FOR KEY SHARE')) return { rows: [{ id: 88, is_active: false }] };
+            if (sql.includes('json_agg') && sql.includes('my_day_task_metadata')) {
+                return { rows: [{ direction_id: 7, impacts: [{ id: 88, name: 'Legacy', color: '#64748b', icon: 'L', isActive: false }] }] };
+            }
+            return { rows: [] };
+        }
+    };
+    await assert.rejects(
+        () => replaceTaskClassification(queryable, { userId: 42, taskId: 99, impactIds: [88] }),
+        { code: 'MY_DAY_TAXONOMY_ARCHIVED' }
+    );
+    const restored = await replaceTaskClassification(queryable, {
+        userId: 42,
+        taskId: 99,
+        impactIds: [88],
+        allowArchivedImpactIds: [88]
+    });
+    assert.deepEqual(restored.impacts.map(impact => impact.id), [88]);
+    assert.equal(restored.impacts[0].isActive, false);
+});
 
 test('archived links retain their label and unclassified tasks remain empty', async () => {
     const archived = serializeClassification({
-
         direction_id: 7,
         direction_name: 'Project',
         direction_color: '#6366F1',
         direction_icon: 'P',
         direction_is_active: false,
-        tags: ['ops'],
         impacts: [{ id: 11, name: 'Health', color: '#0EA5E9', icon: 'H', isActive: false }]
     });
     assert.equal(archived.direction.name, 'Project');
     assert.equal(archived.direction.isActive, false);
     assert.equal(archived.impacts[0].isActive, false);
-    assert.deepEqual(archived.tags, ['ops']);
-    assert.deepEqual(serializeClassification({}), { direction: null, impacts: [], tags: [] });
+    assert.equal(Object.hasOwn(archived, 'tags'), false);
+    assert.deepEqual(serializeClassification({}), { direction: null, impacts: [] });
 
     const classificationMap = await loadTaskClassifications({
         async query(_sql, params) {
             assert.deepEqual(params, [42, [99]]);
-            return { rows: [{ task_id: 99, direction_id: null, tags: ['reload'], impacts: [] }] };
+            return { rows: [{ task_id: 99, direction_id: null, impacts: [] }] };
         }
     }, 42, [99, 99]);
-    assert.deepEqual(classificationMap.get(99), { direction: null, impacts: [], tags: ['reload'] });
+    assert.deepEqual(classificationMap.get(99), { direction: null, impacts: [] });
 });
 
-test('route, projection, migration, and profile UI retain the canonical My Day contract', () => {
+test('route, projection, migration, and profile UI retain the impacts-only active contract', () => {
     const root = path.resolve(__dirname, '..');
     const route = fs.readFileSync(path.join(root, 'routes', 'my-day.js'), 'utf8');
     const projection = fs.readFileSync(path.join(root, 'services', 'taskCabinetProjection.js'), 'utf8');
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
+    const service = fs.readFileSync(path.join(root, 'services', 'myDayTaxonomy.js'), 'utf8');
     const migration = fs.readFileSync(path.join(root, 'db', 'migrations', '312_my_day_task_classification.sql'), 'utf8');
     const tagsMigration = fs.readFileSync(path.join(root, 'db', 'migrations', '320_my_day_task_metadata_tags.sql'), 'utf8');
     assert.match(route, /taxonomyRoutes\('directions'\)/);
@@ -133,13 +168,20 @@ test('route, projection, migration, and profile UI retain the canonical My Day c
     assert.match(route, /ensureWritableTaskBusinessScope/);
     assert.match(route, /BEGIN/);
     assert.match(route, /COMMIT/);
+    assert.match(route, /tags: req\.body\?\.tags/);
+    assert.match(service, /MY_DAY_TAGS_DEPRECATED/);
+    assert.match(service, /classificationFingerprint/);
+    assert.match(service, /allowArchivedImpactIds/);
+    assert.doesNotMatch(service, /INSERT INTO my_day_task_metadata \(user_id, task_id, tags\)|DO UPDATE SET tags/);
     assert.match(projection, /loadTaskClassifications/);
+    assert.doesNotMatch(projection, /tags: \[\]/);
     assert.match(profile, /data-cabinet-task-action': 'classification'/);
     assert.match(profile, /renderTaskBadges/);
+    assert.doesNotMatch(profile, /classification\.tags|myDayClassification\?\.tags/);
     for (const table of ['my_day_directions', 'my_day_impacts', 'my_day_task_metadata', 'my_day_task_impacts']) assert.match(migration, new RegExp(`CREATE TABLE IF NOT EXISTS ${table}`));
     assert.match(migration, /PRIMARY KEY \(user_id, task_id\)/);
     assert.match(tagsMigration, /ADD COLUMN IF NOT EXISTS tags TEXT\[\] NOT NULL DEFAULT '\{\}'/);
-    assert.match(tagsMigration, /cardinality\(values\) <= 5/);
-    assert.match(tagsMigration, /char_length\(tag\) > 32/);
-    assert.match(tagsMigration, /btrim\(tag\) = ''/);
+    assert.match(tagsMigration, /tag_values/);
+    assert.match(tagsMigration, /char_length\(value\) > 32/);
+    assert.match(tagsMigration, /btrim\(value\) = ''/);
 });

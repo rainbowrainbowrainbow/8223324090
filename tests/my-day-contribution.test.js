@@ -83,6 +83,26 @@ test('contribution summary keeps impacts overlapping and ignores legacy directio
     assert.equal(result.days.find(day => day.date === '2026-08-03').habitMinutes, 25);
 });
 
+test('contribution global task minutes count once while impact rows remain overlapping facets', () => {
+    const result = contribution.summarizeContribution({
+        range: { from: '2026-08-01', to: '2026-08-01', dayCount: 1, timezone: 'Europe/Kyiv' },
+        taskTimeRows: [{
+            task_id: 77,
+            local_date: '2026-08-01',
+            seconds: 3600,
+            impacts: [
+                { id: 20, name: 'Park', color: '#0EA5E9', icon: 'P', isActive: true },
+                { id: 21, name: 'CRM', color: '#22C55E', icon: 'C', isActive: true },
+                { id: 22, name: 'Hermes', color: '#F59E0B', icon: 'H', isActive: true }
+            ]
+        }]
+    });
+    assert.equal(result.totals.taskMinutes, 60);
+    assert.deepEqual(result.impacts.map(row => row.taskMinutes).sort((a, b) => a - b), [60, 60, 60]);
+    assert.equal(result.impacts.reduce((sum, row) => sum + row.taskMinutes, 0), 180);
+    assert.equal(result.days[0].taskMinutes, 60);
+});
+
 test('contribution service queries current user, business scope, active timers, and archived labels', async () => {
     const calls = [];
     const queryable = {
@@ -103,6 +123,9 @@ test('contribution service queries current user, business scope, active timers, 
     assert.doesNotMatch(calls[0].sql, /my_day_directions|direction_id|direction_name/);
     assert.doesNotMatch(calls[0].sql, /tags/);
     assert.match(calls[1].sql, /generate_series/);
+    assert.match(calls[1].sql, /task_day_time AS/);
+    assert.match(calls[1].sql, /GROUP BY e\.task_id, days\.local_date/);
+    assert.ok(calls[1].sql.indexOf('task_day_time AS') < calls[1].sql.indexOf('LEFT JOIN my_day_task_impacts'));
     assert.match(calls[1].sql, /COALESCE\(e\.ended_at, NOW\(\)\)/);
     assert.match(calls[1].sql, new RegExp("::timestamp AT TIME ZONE 'Europe/Kyiv'"));
     assert.match(calls[1].sql, /my_day_time_entries/);

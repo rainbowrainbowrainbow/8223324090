@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 
 const {
     addTaskDependency,
@@ -94,8 +96,11 @@ test('My Day dependency manager keeps backend flow while using the styled depend
     assert.match(ui, /data-dependency-quick-create disabled aria-disabled="true"/);
     assert.match(ui, /quickCreateButton\.disabled = disabled/);
     assert.match(ui, /class="my-day-dependency-result-row"/);
-    assert.match(ui, /role="listbox"/);
-    assert.match(ui, /role="option"/);
+    assert.doesNotMatch(ui, /role="listbox"/);
+    assert.doesNotMatch(ui, /role="option"/);
+    assert.match(ui, /let pending = false/);
+    assert.match(ui, /root\.setAttribute\('aria-busy', pending \? 'true' : 'false'\)/);
+    assert.match(ui, /if \(pending\) return/);
     assert.match(ui, /Введіть мінімум 2 символи/);
     assert.match(ui, /🔗/);
     assert.match(ui, /request\('\/' \+ taskId \+ '\/dependencies'/);
@@ -114,4 +119,95 @@ test('My Day dependency manager keeps backend flow while using the styled depend
     assert.match(taskUi, /if \(event\.key === 'Escape'\)[\s\S]*closeActionMenu\(\)/);
     assert.match(taskUi, /aria-label="\$\{escapeHtml\(title\)\}"/);
     assert.match(taskUi, /actionMenuFocusableElements\(root\)\[0\]\?\.focus/);
+    assert.match(taskUi, /stableActionAnchor/);
+});
+
+test('TaskUI reanchors submenu surfaces to stable task controls instead of detached menu buttons', async () => {
+    const root = path.resolve(__dirname, '..');
+    const dom = new JSDOM('<!doctype html><body><button id="stable">More</button></body>', {
+        pretendToBeVisual: true,
+        url: 'https://crm.test/profile.html'
+    });
+    const context = vm.createContext(dom.window);
+    context.console = console;
+    context.requestAnimationFrame = callback => {
+        callback();
+        return 1;
+    };
+    context.cancelAnimationFrame = () => {};
+    dom.window.innerWidth = 1024;
+    dom.window.innerHeight = 768;
+    const stable = dom.window.document.getElementById('stable');
+    stable.getBoundingClientRect = () => ({ top: 100, bottom: 124, left: 200, right: 240, width: 40, height: 24 });
+
+    vm.runInContext(fs.readFileSync(path.join(root, 'js', 'task-ui.js'), 'utf8'), context);
+    const firstRoot = context.window.TaskUI.openActionMenu(stable, '<button id="menuAction" type="button">Impacts</button>', { title: 'Menu' });
+    const detachedAction = firstRoot.querySelector('#menuAction');
+    context.window.TaskUI.openActionMenu(detachedAction, '<button type="button">Save</button>', { title: 'Impacts' });
+
+    const panel = dom.window.document.querySelector('.task-ui-action-panel');
+    assert.notEqual(panel.style.left, '50%');
+    assert.equal(stable.getAttribute('aria-controls'), 'taskUiActionSurface');
+    context.window.TaskUI.closeActionMenu();
+    assert.equal(dom.window.document.activeElement, stable);
+});
+
+test('dependency manager disables mutation buttons during an in-flight request', async () => {
+    const root = path.resolve(__dirname, '..');
+    const dom = new JSDOM('<!doctype html><body><button id="anchor" data-task-id="10">Deps</button></body>', {
+        pretendToBeVisual: true,
+        url: 'https://crm.test/profile.html'
+    });
+    let postResolve;
+    let postCalls = 0;
+    const context = vm.createContext({
+        console,
+        window: dom.window,
+        document: dom.window.document,
+        fetch: async (url, options = {}) => {
+            const method = String(options.method || 'GET').toUpperCase();
+            if (String(url).includes('/api/tasks?mine=1')) {
+                return { ok: true, json: async () => ({ tasks: [{ id: 20, title: 'Candidate task' }] }) };
+            }
+            if (String(url).includes('/api/tasks/10/dependencies') && method === 'GET') {
+                return { ok: true, json: async () => ({ dependencies: [] }) };
+            }
+            if (String(url).includes('/api/tasks/10/dependencies') && method === 'POST') {
+                postCalls += 1;
+                return new Promise(resolve => {
+                    postResolve = () => resolve({ ok: true, json: async () => ({ success: true }) });
+                });
+            }
+            throw new Error(`Unexpected fetch ${method} ${url}`);
+        }
+    });
+    context.window.TaskUI = {
+        escapeHtml: value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])),
+        openActionMenu: (anchor, html) => {
+            const rootNode = context.document.createElement('div');
+            rootNode.innerHTML = html;
+            context.document.body.appendChild(rootNode);
+            return rootNode;
+        }
+    };
+    context.window.getAuthHeaders = () => ({ 'Content-Type': 'application/json' });
+    context.window.showNotification = () => {};
+
+    vm.runInContext(fs.readFileSync(path.join(root, 'js', 'my-day-dependencies.js'), 'utf8'), context);
+    const rootNode = await context.window.MyDayDependencies.openManager(context.document.getElementById('anchor'), { id: 10 }, async () => {});
+    await new Promise(resolve => setImmediate(resolve));
+    const search = rootNode.querySelector('[data-dependency-search]');
+    search.value = 'Candidate';
+    search.dispatchEvent(new dom.window.Event('input', { bubbles: true }));
+    const link = rootNode.querySelector('[data-dependency-link]');
+    assert.ok(link, 'search should render a link button');
+
+    link.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    link.dispatchEvent(new dom.window.MouseEvent('click', { bubbles: true }));
+    assert.equal(postCalls, 1);
+    assert.equal(rootNode.getAttribute('aria-busy'), 'true');
+    assert.equal(link.disabled, true);
+    postResolve();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(rootNode.getAttribute('aria-busy'), 'false');
 });

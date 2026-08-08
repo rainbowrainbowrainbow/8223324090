@@ -47,6 +47,9 @@ const MODES = {
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
     ],
+    'my-day': [
+        'tests/integration/my-day-postgres.integration.test.js'
+    ],
     'cashier-smoke': [
         'tests/integration/checkbox-park-cashier-smoke.integration.test.js'
     ],
@@ -64,7 +67,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|cashier-smoke|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|cashier-smoke|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -273,6 +276,7 @@ async function runBrowserScript(testFile, env) {
 
 async function runSuite(testDb, testFile) {
     const port = await reservePort();
+    const myDayOpenAiMockPort = testFile.includes('my-day-postgres.integration') ? await reservePort() : null;
     const baseUrl = `http://127.0.0.1:${port}`;
     assertSafeIsolatedTestUrl(baseUrl);
     const credentials = {
@@ -290,6 +294,12 @@ async function runSuite(testDb, testFile) {
             serverEnv.NODE_OPTIONS || '',
             '--require=./tests/helpers/payroll-fullstack-test-clock.js'
         ].filter(Boolean).join(' ');
+    }
+    if (myDayOpenAiMockPort) {
+        serverEnv.OPENAI_API_KEY = 'isolated-my-day-openai-mock-key';
+        serverEnv.OPENAI_API_BASE_URL = `http://127.0.0.1:${myDayOpenAiMockPort}/v1`;
+        serverEnv.MY_DAY_OPENAI_MOCK_PORT = String(myDayOpenAiMockPort);
+        serverEnv.MY_DAY_CLASSIFICATION_TIMEOUT_MS = '250';
     }
     const testEnv = {
         ...serverEnv,
@@ -313,6 +323,7 @@ async function runSuite(testDb, testFile) {
         RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
         RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
+        RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION: testFile.includes('checkbox-park-cashier-smoke') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
@@ -391,10 +402,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'cashier-smoke', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'cashier-smoke', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['cashier-smoke'], ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['cashier-smoke'], ...MODES.onboarding, ...MODES.backfill]
         : MODES[mode];
 
     for (const testFile of files) {

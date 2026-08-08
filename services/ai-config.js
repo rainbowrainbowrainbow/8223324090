@@ -9,6 +9,7 @@
 const { pool } = require('../db');
 const { settingsCache } = require('./cache');
 const { createLogger } = require('../utils/logger');
+const { myDayClassificationDiagnostics } = require('./myDayClassificationAi');
 
 const log = createLogger('AIConfig');
 
@@ -309,7 +310,7 @@ async function getAIProviderDiagnostics() {
             crmAssistantRail: 'openai_direct',
             sharedTextRails: 'openrouter',
             mediaGeneration: 'kie',
-            note: 'Chat/Guardian/Copilot/summary token rails use OpenRouter. CRM assistant rail and menu AI review remain direct OpenAI by product decision.'
+            note: 'Chat/Guardian/Copilot/summary token rails use OpenRouter. CRM assistant, menu AI review, and My Day classification remain direct OpenAI by product decision.'
         },
         providers: {
             openrouter: secretState(['OPENROUTER_API_KEY', 'OPENROUTER_KEY'], openRouterConfigured, {
@@ -413,12 +414,7 @@ async function getAIProviderDiagnostics() {
                 keyEnv: 'OPENROUTER_API_KEY'
             },
             {
-                id: 'my_day_classification',
-                provider: 'openrouter',
-                status: openRouterConfigured ? 'ready' : 'missing_key',
-                model: process.env.MY_DAY_CLASSIFICATION_MODEL || 'openai/gpt-5.4-nano',
-                keyEnv: 'OPENROUTER_API_KEY',
-                boundary: 'shared_text_rail'
+                ...myDayClassificationDiagnostics()
             },
             {
                 id: 'program_icon_image',

@@ -5,6 +5,8 @@ const TAXONOMY = Object.freeze({
     impacts: { table: 'my_day_impacts', defaults: { color: '#0EA5E9', icon: '•' } }
 });
 const MAX_IMPACTS_PER_TASK = 3;
+const MAX_TAGS_PER_TASK = 5;
+const MAX_TAG_LENGTH = 32;
 
 function myDayError(message, statusCode, code) {
     const error = new Error(message);
@@ -62,6 +64,24 @@ function normalizeImpactIds(value) {
     return ids;
 }
 
+function normalizeTags(value = []) {
+    if (value === null || value === undefined || value === '') return [];
+    if (!Array.isArray(value)) throw myDayError('Теги мають бути масивом.', 400, 'MY_DAY_VALIDATION_ERROR');
+    const tags = [];
+    const seen = new Set();
+    for (const raw of value) {
+        const tag = String(raw ?? '').trim().replace(/\s+/g, ' ');
+        if (!tag) throw myDayError('Теги не можуть бути порожніми.', 400, 'MY_DAY_VALIDATION_ERROR');
+        if ([...tag].length > MAX_TAG_LENGTH) throw myDayError('Кожен тег має бути до 32 символів.', 400, 'MY_DAY_VALIDATION_ERROR');
+        const key = tag.toLocaleLowerCase('uk-UA');
+        if (seen.has(key)) continue;
+        seen.add(key);
+        tags.push(tag);
+    }
+    if (tags.length > MAX_TAGS_PER_TASK) throw myDayError('До задачі можна додати максимум пʼять тегів.', 409, 'MY_DAY_TAG_LIMIT_EXCEEDED');
+    return tags;
+}
+
 function serializeTaxonomy(row = {}) {
     return {
         id: Number(row.id),
@@ -87,6 +107,26 @@ function normalizeJsonArray(value) {
     }
 }
 
+function serializeTags(value = []) {
+    if (Array.isArray(value)) {
+        try {
+            return normalizeTags(value);
+        } catch {
+            return value
+                .map(tag => String(tag ?? '').trim().replace(/\s+/g, ' '))
+                .filter(tag => tag && [...tag].length <= MAX_TAG_LENGTH)
+                .slice(0, MAX_TAGS_PER_TASK);
+        }
+    }
+    if (!value) return [];
+    try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? serializeTags(parsed) : [];
+    } catch {
+        return [];
+    }
+}
+
 function serializeClassification(row = {}) {
     return {
         direction: row.direction_id ? {
@@ -102,7 +142,8 @@ function serializeClassification(row = {}) {
             color: impact.color,
             icon: impact.icon,
             isActive: impact.isActive !== false && impact.is_active !== false
-        }))
+        })),
+        tags: serializeTags(row.tags)
     };
 }
 
@@ -189,7 +230,7 @@ async function resolveActiveIds(queryable, userId, kind, ids) {
 
 async function readTaskClassification(queryable, userId, taskId) {
     const result = await queryable.query(
-        `SELECT m.direction_id, d.name AS direction_name, d.color AS direction_color,
+        `SELECT m.direction_id, m.tags, d.name AS direction_name, d.color AS direction_color,
                 d.icon AS direction_icon, d.is_active AS direction_is_active,
                 COALESCE(json_agg(json_build_object(
                     'id', i.id, 'name', i.name, 'color', i.color, 'icon', i.icon, 'isActive', i.is_active
@@ -199,7 +240,7 @@ async function readTaskClassification(queryable, userId, taskId) {
          LEFT JOIN my_day_task_impacts ti ON ti.user_id = m.user_id AND ti.task_id = m.task_id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
          WHERE m.user_id = $1 AND m.task_id = $2
-         GROUP BY m.direction_id, d.name, d.color, d.icon, d.is_active`,
+         GROUP BY m.direction_id, m.tags, d.name, d.color, d.icon, d.is_active`,
         [positiveInteger(userId), positiveInteger(taskId)]
     );
     return serializeClassification(result.rows?.[0] || {});
@@ -208,16 +249,15 @@ async function readTaskClassification(queryable, userId, taskId) {
 async function replaceTaskClassification(queryable, input = {}) {
     const userId = positiveInteger(input.userId);
     const taskId = positiveInteger(input.taskId);
-    const directionId = optionalId(input.directionId);
     const impactIds = normalizeImpactIds(input.impactIds ?? []);
-    if (directionId) await resolveActiveIds(queryable, userId, 'directions', [directionId]);
+    const tags = normalizeTags(input.tags ?? []);
     await resolveActiveIds(queryable, userId, 'impacts', impactIds);
     await queryable.query(
-        `INSERT INTO my_day_task_metadata (user_id, task_id, direction_id)
-         VALUES ($1, $2, $3)
+        `INSERT INTO my_day_task_metadata (user_id, task_id, tags)
+         VALUES ($1, $2, $3::text[])
          ON CONFLICT (user_id, task_id)
-         DO UPDATE SET direction_id = EXCLUDED.direction_id, updated_at = NOW()`,
-        [userId, taskId, directionId]
+         DO UPDATE SET tags = EXCLUDED.tags, updated_at = NOW()`,
+        [userId, taskId, tags]
     );
     await queryable.query('DELETE FROM my_day_task_impacts WHERE user_id = $1 AND task_id = $2', [userId, taskId]);
     if (impactIds.length) {
@@ -235,7 +275,7 @@ async function loadTaskClassifications(queryable, userId, taskIds = []) {
     const ids = [...new Set(taskIds.map(Number).filter(id => Number.isInteger(id) && id > 0))];
     if (!ids.length) return new Map();
     const result = await queryable.query(
-        `SELECT m.task_id, m.direction_id, d.name AS direction_name, d.color AS direction_color,
+        `SELECT m.task_id, m.direction_id, m.tags, d.name AS direction_name, d.color AS direction_color,
                 d.icon AS direction_icon, d.is_active AS direction_is_active,
                 COALESCE(json_agg(json_build_object(
                     'id', i.id, 'name', i.name, 'color', i.color, 'icon', i.icon, 'isActive', i.is_active
@@ -245,7 +285,7 @@ async function loadTaskClassifications(queryable, userId, taskIds = []) {
          LEFT JOIN my_day_task_impacts ti ON ti.user_id = m.user_id AND ti.task_id = m.task_id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
          WHERE m.user_id = $1 AND m.task_id = ANY($2::int[])
-         GROUP BY m.task_id, m.direction_id, d.name, d.color, d.icon, d.is_active`,
+         GROUP BY m.task_id, m.direction_id, m.tags, d.name, d.color, d.icon, d.is_active`,
         [positiveInteger(userId), ids]
     );
     return new Map((result.rows || []).map(row => [Number(row.task_id), serializeClassification(row)]));
@@ -253,11 +293,14 @@ async function loadTaskClassifications(queryable, userId, taskIds = []) {
 
 module.exports = {
     MAX_IMPACTS_PER_TASK,
+    MAX_TAG_LENGTH,
+    MAX_TAGS_PER_TASK,
     createTaxonomy,
     listTaxonomy,
     loadTaskClassifications,
     myDayError,
     normalizeImpactIds,
+    normalizeTags,
     normalizeName,
     readTaskClassification,
     replaceTaskClassification,

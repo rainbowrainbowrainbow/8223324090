@@ -166,7 +166,7 @@
 
     function badge(taxonomy) {
         if (!taxonomy) return '';
-        return `<span class="my-day-task-chip my-day-task-chip--direction" style="--my-day-chip-color:${escape(taxonomy.color || '#64748B')}">${escape(taxonomy.icon || '•')} <span>${escape(taxonomy.name)}</span></span>`;
+        return `<span class="my-day-task-chip my-day-task-chip--impact" style="--my-day-chip-color:${escape(taxonomy.color || '#64748B')}">${escape(taxonomy.icon || '•')} <span>${escape(taxonomy.name)}</span></span>`;
     }
 
     function renderRow(item, options = {}) {
@@ -246,16 +246,8 @@
                 habitCompletions: normalizeNumber(totals.habitCompletions),
                 habitMinutes: normalizeNumber(totals.habitMinutes)
             },
-            directions: Array.isArray(source.directions) ? source.directions : [],
             impacts: Array.isArray(source.impacts) ? source.impacts : [],
-            days: Array.isArray(source.days) ? source.days : [],
-            unclassified: source.unclassified || {
-                label: 'Без напряму',
-                taskCount: 0,
-                taskMinutes: 0,
-                habitCompletions: 0,
-                habitMinutes: 0
-            }
+            days: Array.isArray(source.days) ? source.days : []
         };
     }
 
@@ -278,7 +270,6 @@
             ? '<div class="profile-empty-professional" aria-live="polite">Завантаження матриці внеску...</div>'
             : `${renderTotals(data)}
                    ${hasData ? '' : `<div class="profile-empty-professional my-day-contribution-zero-state">За ${escape(range.from)} — ${escape(range.to)} ще немає завершених задач, time entries або виконаних звичок.</div>`}
-                   ${renderMatrix('Напрями', 'Кожна задача або звичка потрапляє в один напрям або в “Без напряму”.', [...data.directions, data.unclassified].filter(Boolean), 'Напрями ще не мають внеску.', { id: 'myDayContributionDirectionsTitle' })}
                    ${renderMatrix('Впливи', 'Впливи можуть перетинатися: один елемент може рахуватись у кілька впливів.', data.impacts, 'Впливи ще не мають внеску.', { id: 'myDayContributionImpactsTitle' })}
                    ${renderDays(data.days)}`;
         return `<div class="cabinet-shell cabinet-command-center" id="myDayContributionPanel" role="tabpanel" aria-labelledby="myDayModeContribution" aria-busy="${state.loading ? 'true' : 'false'}">

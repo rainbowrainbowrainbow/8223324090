@@ -2,7 +2,6 @@
     'use strict';
 
     const state = {
-        directions: [],
         impacts: [],
         loading: false,
         loaded: false,
@@ -10,15 +9,10 @@
     };
 
     const TAXONOMY_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316'];
+    const MAX_TAGS_PER_TASK = 5;
+    const MAX_TAG_LENGTH = 32;
 
     const TAXONOMY_ICONS = {
-        directions: [
-            '•', '💼', '🏠', '🎯', '⚙️', '🎉', '🧠', '💪',
-            '🚀', '📈', '🏢', '🏗️', '🛠️', '📋', '🗂️', '📌',
-            '🤝', '💬', '📞', '🧾', '💰', '🏦', '🎪', '🎭',
-            '🎟️', '🌳', '🏞️', '🏡', '🛒', '🧰', '📚', '🎓',
-            '❤️', '🧘', '🏃', '🥗', '😴', '✨', '🔧', '🧩'
-        ],
         impacts: [
             '•', '⚡', '❤️', '🛡️', '📈', '🌿', '🏃', '😊',
             '💰', '🤝', '🎯', '✅', '⏱️', '🚀', '🔥', '💎',
@@ -73,15 +67,11 @@
         state.loading = true;
         state.error = '';
         try {
-            const [directions, impacts] = await Promise.all([
-                request('/directions?includeArchived=1'),
-                request('/impacts?includeArchived=1')
-            ]);
-            state.directions = directions.directions || [];
+            const impacts = await request('/impacts?includeArchived=1');
             state.impacts = impacts.impacts || [];
             state.loaded = true;
         } catch (error) {
-            state.error = error.message || 'Не вдалося завантажити напрями та впливи.';
+            state.error = error.message || 'Не вдалося завантажити впливи.';
         } finally {
             state.loading = false;
         }
@@ -114,50 +104,91 @@
         return selected.map(impact => `<span class="my-day-task-chip my-day-task-chip--impact" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}">${escape(impact.icon || '•')} <span>${escape(impact.name)}</span></span>`).join('');
     }
 
+    function normalizeTags(value = []) {
+        const tags = [];
+        const seen = new Set();
+        (Array.isArray(value) ? value : []).forEach(raw => {
+            const tag = String(raw ?? '').trim().replace(/\s+/g, ' ');
+            if (!tag) return;
+            if ([...tag].length > MAX_TAG_LENGTH) throw new Error('Тег має бути до 32 символів.');
+            const key = tag.toLocaleLowerCase('uk-UA');
+            if (seen.has(key)) return;
+            seen.add(key);
+            tags.push(tag);
+        });
+        if (tags.length > MAX_TAGS_PER_TASK) throw new Error('До задачі можна додати максимум пʼять тегів.');
+        return tags;
+    }
+
+    function renderTagChips(tags = [], scope = 'composer') {
+        return normalizeTags(tags).map(tag => `<span class="my-day-tag-chip" data-my-day-tag-chip>
+            <span>${escape(tag)}</span>
+            <button type="button" aria-label="Видалити тег ${escape(tag)}" data-my-day-tag-remove>×</button>
+            <input type="hidden" name="${escape(scope)}Tags" value="${escape(tag)}" data-my-day-${escape(scope)}-tag-value data-my-day-tag-value>
+        </span>`).join('');
+    }
+
+    function renderTagInput(tags = [], scope = 'composer') {
+        const normalized = normalizeTags(tags);
+        return `<div class="my-day-tag-input" data-my-day-tag-input data-my-day-tag-scope="${escape(scope)}">
+            <div class="my-day-tag-chip-list" data-my-day-tag-list>${renderTagChips(normalized, scope)}</div>
+            <input type="text" data-my-day-tag-text maxlength="${MAX_TAG_LENGTH}" placeholder="Додати тег" autocomplete="off">
+            <small class="my-day-tag-limit" data-my-day-tag-limit>${normalized.length}/${MAX_TAGS_PER_TASK} тегів</small>
+        </div>`;
+    }
+
+    function readTagInputValues(root) {
+        if (!root) return [];
+        return normalizeTags(Array.from(root.querySelectorAll('[data-my-day-tag-value]')).map(input => input.value));
+    }
+
+    function splitTagText(value) {
+        return String(value || '').split(',').map(tag => tag.trim()).filter(Boolean);
+    }
+
     function renderComposerFields() {
         const status = state.error
             ? `<p class="my-day-taxonomy-notice is-error" role="status">${escape(state.error)}</p>`
-            : (state.loading ? '<p class="my-day-taxonomy-notice" aria-live="polite">Завантаження напрямів і впливів…</p>' : '');
+            : (state.loading ? '<p class="my-day-taxonomy-notice" aria-live="polite">Завантаження впливів…</p>' : '');
         return `
             <div class="my-day-classification-fields my-day-composer-classification" data-my-day-classification-fields data-my-day-composer-classification>
-                <label class="my-day-composer-direction-field" for="cabinetTaskDirection"><span>Напрям</span>
-                    <select id="cabinetTaskDirection" class="my-day-composer-direction-select" data-my-day-direction>
-                        <option value="">Без напряму</option>
-                        ${options(state.directions, null, false)}
-                    </select>
-                    <small class="my-day-field-help">Проєкт або сфера задачі.</small>
-                </label>
                 <fieldset class="my-day-composer-impact-field my-day-choice-field">
                     <legend>Впливи <small>до 3</small></legend>
                     <div class="my-day-composer-impact-selected" data-my-day-composer-impact-selected aria-live="polite">${renderComposerSelectedImpacts([])}</div>
                     ${renderComposerImpactChips([])}
                     <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До 3 результатів, які ця задача покращує.</p>
                 </fieldset>
+                <fieldset class="my-day-composer-tag-field my-day-choice-field">
+                    <legend>Теги <small>до 5</small></legend>
+                    ${renderTagInput([], 'composer')}
+                    <p class="my-day-field-help">Короткі персональні мітки для швидкого пошуку: Enter або кома додає тег.</p>
+                </fieldset>
                 ${status}
             </div>`;
     }
 
     function readComposerClassification() {
-        const directionValue = document.getElementById('cabinetTaskDirection')?.value || '';
         const composerImpacts = Array.from(document.querySelectorAll('[data-my-day-composer-impact-chip]:checked'))
             .map(input => Number(input.value))
             .filter(Number.isInteger);
         const legacyImpacts = selectedValues(document.getElementById('cabinetTaskImpacts'));
         const impacts = composerImpacts.length ? composerImpacts : legacyImpacts;
         if (impacts.length > 3) throw new Error('Оберіть не більше трьох впливів.');
+        const tags = normalizeTags(Array.from(document.querySelectorAll('[data-my-day-composer-tag-value]')).map(input => input.value));
         return {
-            directionId: directionValue ? Number(directionValue) : null,
-            impactIds: impacts
+            impactIds: impacts,
+            tags
         };
     }
     function renderTaskBadges(myDay = {}) {
-        const direction = myDay?.direction;
         const impacts = Array.isArray(myDay?.impacts) ? myDay.impacts : [];
+        const tags = normalizeTags(Array.isArray(myDay?.tags) ? myDay.tags : []);
         const chip = (record, kind) => `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${escape(record.icon || '•')} <span>${escape(record.name)}</span></span>`;
-        const directionChip = direction ? chip(direction, 'direction') : '';
         const impactChips = impacts.slice(0, 2).map(record => chip(record, 'impact')).join('');
         const more = impacts.length > 2 ? `<span class="my-day-task-chip my-day-task-chip--more">+${impacts.length - 2}</span>` : '';
-        return directionChip + impactChips + more;
+        const impactGroup = impactChips || more ? `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${impactChips}${more}</span>` : '';
+        const tagGroup = tags.length ? `<span class="my-day-task-tags" data-my-day-task-tags>${tags.map(tag => `<span class="my-day-task-tag" data-my-day-task-tag>#${escape(tag)}</span>`).join('')}</span>` : '';
+        return impactGroup + tagGroup;
     }
 
     async function saveTaskClassification(taskId, classification) {
@@ -167,21 +198,113 @@
         });
     }
 
+    function classificationPayload(classification = {}) {
+        const impacts = Array.isArray(classification.impacts) ? classification.impacts : [];
+        return {
+            impactIds: impacts.map(impact => Number(impact.id)).filter(Number.isInteger),
+            tags: normalizeTags(Array.isArray(classification.tags) ? classification.tags : [])
+        };
+    }
+
+    function renderAutoClassificationResult(result = {}) {
+        const classification = result.classification || {};
+        const impacts = Array.isArray(classification.impacts) ? classification.impacts : [];
+        const tags = normalizeTags(Array.isArray(classification.tags) ? classification.tags : []);
+        const impactText = impacts.length ? impacts.map(impact => impact.name).join(', ') : 'впливи не обрано';
+        const tagText = tags.length ? tags.map(tag => '#' + tag).join(' ') : 'теги не обрано';
+        const confidence = Number(result.ai?.confidence);
+        const confidenceText = Number.isFinite(confidence) ? Math.round(confidence * 100) + '%' : '—';
+        return `<div class="my-day-ai-result" data-my-day-ai-result>
+            <p class="my-day-ai-result-status">AI-розмітку застосовано.</p>
+            <div class="my-day-ai-result-row"><span>Впливи</span><strong>${escape(impactText)}</strong></div>
+            <div class="my-day-ai-result-row"><span>Теги</span><strong>${escape(tagText)}</strong></div>
+            <div class="my-day-ai-result-row"><span>Впевненість</span><strong>${escape(confidenceText)}</strong></div>
+            ${result.ai?.reason ? `<p class="my-day-ai-result-reason">${escape(result.ai.reason)}</p>` : ''}
+            <button type="button" class="my-day-ai-undo" data-my-day-ai-undo>Скасувати</button>
+        </div>`;
+    }
+
+    function renderAutoClassificationFailure(error = {}) {
+        const providerUnavailable = error.code === 'MY_DAY_AI_PROVIDER_UNAVAILABLE' || error.statusCode === 503;
+        const title = providerUnavailable ? 'AI-провайдер недоступний.' : 'AI не зміг безпечно розмітити задачу.';
+        const detail = error.message || (providerUnavailable ? 'Перевірте OpenRouter rail у provider diagnostics.' : 'Спробуйте повторити після уточнення назви задачі.');
+        return `<div class="my-day-ai-result is-error" data-my-day-ai-result>
+            <p class="my-day-ai-result-status">${escape(title)}</p>
+            <p class="my-day-ai-result-reason">${escape(detail)}</p>
+            <button type="button" class="my-day-ai-retry" data-my-day-ai-retry>Повторити</button>
+        </div>`;
+    }
+
+    function openAutoClassificationResult(button, result, callbacks = {}) {
+        const root = window.TaskUI?.openActionMenu?.(button, renderAutoClassificationResult(result), {
+            title: 'AI: розмітка',
+            surfaceClassName: 'task-ui-action-surface--ai-classification'
+        });
+        const undo = root?.querySelector?.('[data-my-day-ai-undo]');
+        undo?.addEventListener('click', async () => {
+            undo.disabled = true;
+            try {
+                const previous = result.previousClassification || { impacts: [], tags: [] };
+                await saveTaskClassification(result.taskId, classificationPayload(previous));
+                await callbacks.onApplied?.({ taskId: result.taskId, classification: previous, previousClassification: result.classification });
+                window.TaskUI?.closeActionMenu?.();
+                window.showNotification?.('AI-розмітку скасовано', 'success');
+            } catch (error) {
+                undo.disabled = false;
+                window.showNotification?.(error.message || 'Не вдалося скасувати AI-розмітку', 'error');
+            }
+        });
+    }
+
+    function openAutoClassificationFailure(button, error, retry) {
+        const root = window.TaskUI?.openActionMenu?.(button, renderAutoClassificationFailure(error), {
+            title: 'AI: розмітка',
+            surfaceClassName: 'task-ui-action-surface--ai-classification'
+        });
+        root?.querySelector?.('[data-my-day-ai-retry]')?.addEventListener('click', retry);
+    }
+
+    async function autoClassifyTask(button, task = {}, callbacks = {}) {
+        const taskId = task.id || task.taskId || task.task_id || button?.dataset?.taskId;
+        if (!taskId) throw new Error('Не вдалося визначити задачу.');
+        button.disabled = true;
+        button.classList.add('is-busy');
+        button.dataset.myDayAiState = 'loading';
+        try {
+            const result = await request('/tasks/' + encodeURIComponent(taskId) + '/classification/auto', {
+                method: 'POST',
+                body: JSON.stringify({})
+            });
+            button.dataset.myDayAiState = 'success';
+            await callbacks.onApplied?.(result);
+            openAutoClassificationResult(button, result, callbacks);
+            window.showNotification?.('AI-розмітку застосовано', 'success');
+            return result;
+        } catch (error) {
+            button.dataset.myDayAiState = error.code === 'MY_DAY_AI_PROVIDER_UNAVAILABLE' ? 'provider-unavailable' : 'retry';
+            openAutoClassificationFailure(button, error, () => autoClassifyTask(button, task, callbacks));
+            window.showNotification?.(error.message || 'AI-розмітка недоступна', 'warning');
+            return null;
+        } finally {
+            if (button.isConnected) {
+                button.disabled = false;
+                button.classList.remove('is-busy');
+            }
+        }
+    }
+
     function renderEditorFields(task = {}) {
         const myDay = task.myDay || {};
-        const directionId = myDay.direction?.id || null;
         const impactIds = (myDay.impacts || []).map(record => record.id);
+        const tags = Array.isArray(myDay.tags) ? myDay.tags : [];
         return `<div class="my-day-editor-fields" data-my-day-editor-fields>
-            <label>Напрям
-                <select data-my-day-direction>
-                    <option value="">Без напряму</option>
-                    ${options(state.directions, directionId, false)}
-                </select>
-            </label>
             <label>Впливи <small>до 3</small>
                 <select data-my-day-impacts multiple size="4">
                     ${options(state.impacts, impactIds, true)}
                 </select>
+            </label>
+            <label>Теги <small>до 5</small>
+                ${renderTagInput(tags, 'editor')}
             </label>
             <p class="my-day-taxonomy-notice" data-my-day-editor-status aria-live="polite"></p>
             <button type="button" class="my-day-taxonomy-primary" data-my-day-editor-save>Зберегти маркування</button>
@@ -190,13 +313,15 @@
 
     async function openTaskEditor(button, task, onSaved) {
         await load();
-        const root = window.TaskUI?.openActionMenu?.(button, renderEditorFields(task), { title: 'Напрям і впливи' });
+        const root = window.TaskUI?.openActionMenu?.(button, renderEditorFields(task), { title: 'Впливи' });
         if (!root) return;
+        bindTagInputs(root);
         const save = root.querySelector('[data-my-day-editor-save]');
         const fields = root.querySelector('[data-my-day-editor-fields]');
         const status = root.querySelector('[data-my-day-editor-status]');
         save?.addEventListener('click', async () => {
             const impacts = selectedValues(fields?.querySelector('[data-my-day-impacts]'));
+            const tags = readTagInputValues(fields?.querySelector('[data-my-day-tag-input]'));
             if (impacts.length > 3) {
                 status.textContent = 'Оберіть не більше трьох впливів.';
                 return;
@@ -204,8 +329,8 @@
             save.disabled = true;
             try {
                 await saveTaskClassification(task.id || task.taskId || task.task_id, {
-                    directionId: Number(fields?.querySelector('[data-my-day-direction]')?.value) || null,
-                    impactIds: impacts
+                    impactIds: impacts,
+                    tags
                 });
                 window.TaskUI?.closeActionMenu?.();
                 await onSaved?.();
@@ -229,9 +354,7 @@
     }
 
     function catalogMeta(kind) {
-        return kind === 'directions'
-            ? { title: 'Напрями', singular: 'напрям', add: 'Додати напрям', description: 'Один персональний напрям показує, до якого проєкту або сфери належить задача.', defaultColor: '#6366f1' }
-            : { title: 'Впливи', singular: 'вплив', add: 'Додати вплив', description: 'Впливи описують результат задачі: здоровʼя, відпочинок, гроші, якість роботи.', defaultColor: '#0ea5e9' };
+        return { title: 'Впливи', singular: 'вплив', add: 'Додати вплив', description: 'Впливи описують результат або робочу зону задачі: Парк, CRM, Hermes, здоровʼя, гроші, якість роботи.', defaultColor: '#0ea5e9' };
     }
 
     function renderColorChoices(name, selectedColor) {
@@ -244,7 +367,7 @@
     }
 
     function renderIconChoices(kind, selectedIcon) {
-        const icons = TAXONOMY_ICONS[kind] || TAXONOMY_ICONS.directions;
+        const icons = TAXONOMY_ICONS[kind] || TAXONOMY_ICONS.impacts;
         const selected = selectedIcon || icons[0];
         return `<div class="my-day-choice-grid my-day-icon-grid" role="radiogroup" aria-label="Іконка">${icons.map(icon => `<label class="my-day-icon-choice ${icon === selected ? 'is-selected' : ''}">
             <input type="radio" name="icon" value="${escape(icon)}" ${icon === selected ? 'checked' : ''}>
@@ -328,33 +451,84 @@
 
     function renderTaxonomyGuide() {
         const examples = [
-            { task: 'Купити перехідник для монітора', direction: 'Побут / особисте', impacts: 'Побут і комфорт, Відновлення' },
-            { task: 'Зарядка', direction: 'Особисте життя', impacts: 'Здоровʼя, Фізична форма' },
-            { task: 'Доробити CRM-фічу', direction: 'EventGenix CRM', impacts: 'Системність, Якість сервісу' },
-            { task: 'Підготувати івент', direction: 'Дженікс / події', impacts: 'Якість сервісу, Дохід і клієнти' }
+            { task: 'Доробити CRM-фічу', impacts: 'Робота: CRM, Системність, Якість сервісу' },
+            { task: 'Підготувати зміну в парку', impacts: 'Робота: Парк, Якість сервісу, Команда і делегування' },
+            { task: 'Налаштувати Hermes', impacts: 'Робота: Hermes, Швидкість роботи, Ризики і безпека' }
         ];
-        return '<div class="my-day-taxonomy-guide" aria-label="Як працюють напрями та впливи">' +
+        return '<div class="my-day-taxonomy-guide" aria-label="Як працюють впливи">' +
             '<div class="my-day-taxonomy-mental-model">' +
-                '<p><strong>Напрям</strong> — це проєкт або сфера, куди ти вкладаєш зусилля. Наприклад: EventGenix CRM, Парк Закревського, Особисте життя.</p>' +
-                '<p><strong>Вплив</strong> — це результат, який дає задача або звичка. Наприклад: Дохід і клієнти, Здоровʼя, Системність.</p>' +
+                '<p><strong>Вплив</strong> — це результат або робоча зона, яку покращує задача чи звичка. Можна обрати до трьох впливів.</p>' +
             '</div>' +
             '<div class="my-day-taxonomy-examples">' +
                 '<strong class="my-day-taxonomy-examples-title">Приклади маркування</strong>' +
-                examples.map(example => '<div class="my-day-taxonomy-example-row"><span class="my-day-taxonomy-example-task">' + escape(example.task) + '</span><small>напрям: ' + escape(example.direction) + '</small><small>впливи: ' + escape(example.impacts) + '</small></div>').join('') +
+                examples.map(example => '<div class="my-day-taxonomy-example-row"><span class="my-day-taxonomy-example-task">' + escape(example.task) + '</span><small>впливи: ' + escape(example.impacts) + '</small></div>').join('') +
             '</div>' +
         '</div>';
     }
     function renderSettings() {
         return `<section class="profile-work-panel my-day-taxonomy-settings" aria-labelledby="myDayTaxonomyTitle">
-            <div class="profile-panel-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayTaxonomyTitle">Напрями та впливи</h2><p>Особисті мітки задач. Вони не змінюють категорію чи доступ до задачі.</p></div></div>
+            <div class="profile-panel-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayTaxonomyTitle">Впливи</h2><p>Особисті мітки задач і звичок. Вони не змінюють категорію чи доступ до задачі.</p></div></div>
             ${renderTaxonomyGuide()}
             <div class="my-day-taxonomy-grid">
-                ${renderCatalog('directions', state.directions)}
                 ${renderCatalog('impacts', state.impacts)}
             </div>
         </section>`;
     }
+
+    function bindTagInputs(root) {
+        root?.querySelectorAll('[data-my-day-tag-input]').forEach(container => {
+            if (container.dataset.myDayTagInputBound === 'true') return;
+            container.dataset.myDayTagInputBound = 'true';
+            const scope = container.dataset.myDayTagScope || 'composer';
+            const input = container.querySelector('[data-my-day-tag-text]');
+            const list = container.querySelector('[data-my-day-tag-list]');
+            const limit = container.querySelector('[data-my-day-tag-limit]');
+            const refresh = tags => {
+                const normalized = normalizeTags(tags);
+                if (list) list.innerHTML = renderTagChips(normalized, scope);
+                if (limit) limit.textContent = `${normalized.length}/${MAX_TAGS_PER_TASK} тегів`;
+                if (input) input.placeholder = normalized.length >= MAX_TAGS_PER_TASK ? 'Ліміт тегів' : 'Додати тег';
+                return normalized;
+            };
+            const currentTags = () => readTagInputValues(container);
+            const addPendingTags = () => {
+                const pending = splitTagText(input?.value || '');
+                if (!pending.length) return;
+                try {
+                    refresh([...currentTags(), ...pending]);
+                    if (input) input.value = '';
+                } catch (error) {
+                    window.showNotification?.(error.message || 'Не вдалося додати тег.', 'warning');
+                }
+            };
+            input?.addEventListener('keydown', event => {
+                if (event.key === 'Enter' || event.key === ',') {
+                    event.preventDefault();
+                    addPendingTags();
+                    return;
+                }
+                if (event.key === 'Backspace' && !input.value) {
+                    event.preventDefault();
+                    refresh(currentTags().slice(0, -1));
+                }
+            });
+            input?.addEventListener('input', () => {
+                if (input.value.includes(',')) addPendingTags();
+            });
+            container.addEventListener('click', event => {
+                const remove = event.target.closest?.('[data-my-day-tag-remove]');
+                if (!remove) return;
+                const tagNode = remove.closest('[data-my-day-tag-chip]');
+                const tag = tagNode?.querySelector('[data-my-day-tag-value]')?.value;
+                refresh(currentTags().filter(value => value !== tag));
+                input?.focus();
+            });
+            refresh(currentTags());
+        });
+    }
+
     function bind(root, onChanged) {
+        bindTagInputs(root);
         root?.querySelectorAll('[data-my-day-composer-classification]').forEach(container => {
             if (container.dataset.myDayComposerClassificationBound === 'true') return;
             container.dataset.myDayComposerClassificationBound = 'true';
@@ -489,6 +663,7 @@
         });
     }
     window.MyDayClassification = {
+        autoClassifyTask,
         bind,
         load,
         openTaskEditor,

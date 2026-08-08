@@ -11,6 +11,7 @@ const MY_DAY_FILES = [
     'docs/MY_DAY_LIFE_SYSTEM_SPEC.md',
     'routes/my-day.js',
     'routes/my-day-habits.js',
+    'services/myDayClassificationAi.js',
     'services/myDayTaxonomy.js',
     'services/myDayTimeTracking.js',
     'services/myDayHabits.js',
@@ -50,7 +51,7 @@ test('My Day user-facing files do not contain replacement characters or mojibake
 test('My Day canonical Ukrainian labels are present in shipped code', () => {
     const contribution = read('services/myDayContribution.js');
     const habitsUi = read('js/my-day-habits.js');
-    assert.match(contribution, /label:\s*'Без напряму'/);
+    assert.doesNotMatch(contribution, /Без напряму/);
     assert.match(habitsUi, />Внесок<\/button>/);
 });
 
@@ -58,6 +59,7 @@ test('My Day backend errors are safe Ukrainian messages', () => {
     const backend = [
         read('routes/my-day.js'),
         read('routes/my-day-habits.js'),
+        read('services/myDayClassificationAi.js'),
         read('services/myDayHabits.js'),
         read('services/myDayContribution.js')
     ].join('\n');
@@ -78,7 +80,7 @@ test('My Day backend errors are safe Ukrainian messages', () => {
 
 test('My Day spec matches the canonical shipped endpoints and schema words', () => {
     const spec = read('docs/MY_DAY_LIFE_SYSTEM_SPEC.md');
-    assert.match(spec, /PATCH \/api\/my-day\/directions\/:id[^\n]+`isActive`/);
+    assert.match(spec, /Legacy direction endpoints remain for rollback/);
     assert.match(spec, /PATCH \/api\/my-day\/impacts\/:id[^\n]+`isActive`/);
     assert.match(spec, /There is no separate `GET \/api\/my-day\/tasks\/:taskId\/classification` endpoint\./);
     assert.match(spec, /Task classification is read through the My Cabinet projection\./);
@@ -91,4 +93,16 @@ test('My Day spec matches the canonical shipped endpoints and schema words', () 
     assert.doesNotMatch(spec, /POST \/api\/my-day\/time-entries\/:id\/archive/);
     assert.doesNotMatch(spec, /\/api\/my-day\/habits` \| GET, POST; PATCH `\/:habitId`; POST `\/:habitId\/archive`/);
     assert.doesNotMatch(spec, /`status` is `done` or `skipped`/);
+});
+
+test('My Day tags do not reuse watchdog labels storage', () => {
+    const taxonomy = read('services/myDayTaxonomy.js');
+    const projection = read('services/taskCabinetProjection.js');
+    const classificationUi = read('js/my-day-classification.js');
+    assert.match(taxonomy, /tags = normalizeTags/);
+    assert.match(taxonomy, /m\.tags/);
+    assert.match(projection, /tags: \[\]/);
+    assert.match(classificationUi, /data-my-day-task-tags/);
+    assert.doesNotMatch(taxonomy, /control_meta|controlMeta|watchdog/);
+    assert.doesNotMatch(classificationUi, /control_meta|controlMeta|watchdog/);
 });

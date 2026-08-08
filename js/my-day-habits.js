@@ -21,14 +21,13 @@
 
 
     const STARTER_KIT_PREVIEW = Object.freeze({
-        directions: ['EventGenix CRM', 'Парк Закревського', 'Дженікс / події', 'Особисте життя', 'Побут / комфорт', 'Здоровʼя і форма', 'Фінанси', 'Навчання і розвиток', 'Контент / бренд', 'Адмінка і системність'],
-        impacts: ['Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Команда і делегування', 'Ризики і безпека'],
+        impacts: ['Робота: Парк', 'Робота: CRM', 'Робота: Hermes', 'Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Команда і делегування', 'Ризики і безпека'],
         habits: [
-            { name: 'Ранкова зарядка', detail: '10 хв щодня · Здоровʼя і форма · Здоровʼя, Фізична форма' },
-            { name: 'Планування дня', detail: 'так/ні щодня · Адмінка і системність · Системність, Швидкість роботи' },
-            { name: 'Відновлення без екранів', detail: '30 хв щодня · Особисте життя · Відновлення, Здоровʼя' },
-            { name: 'Навчання 20 хв', detail: '20 хв Пн-Пт · Навчання і розвиток · Навчання, Системність' },
-            { name: 'Побутовий порядок', detail: '3 рази/тиждень · Побут / комфорт · Побут і комфорт, Відновлення' }
+            { name: 'Ранкова зарядка', detail: '10 хв щодня · Здоровʼя, Фізична форма' },
+            { name: 'Планування дня', detail: 'так/ні щодня · Системність, Швидкість роботи' },
+            { name: 'Відновлення без екранів', detail: '30 хв щодня · Відновлення, Здоровʼя' },
+            { name: 'Навчання 20 хв', detail: '20 хв Пн-Пт · Навчання, Системність' },
+            { name: 'Побутовий порядок', detail: '3 рази/тиждень · Побут і комфорт, Відновлення' }
         ]
     });
     function headers() {
@@ -75,10 +74,6 @@
 
     function selectedValues(select) {
         return Array.from(select?.selectedOptions || []).map(option => Number(option.value)).filter(Number.isInteger);
-    }
-
-    function activeDirections() {
-        return (window.MyDayClassification?.state?.directions || []).filter(item => item.isActive !== false);
     }
 
     function activeImpacts() {
@@ -161,7 +156,7 @@
 
     function renderBadges(habit) {
         const impacts = Array.isArray(habit.impacts) ? habit.impacts : [];
-        return `<div class="my-day-habit-badges">${chip(habit.direction, 'direction')}${impacts.slice(0, 2).map(item => chip(item, 'impact')).join('')}${impacts.length > 2 ? `<span class="my-day-task-chip my-day-task-chip--more">+${impacts.length - 2}</span>` : ''}</div>`;
+        return `<div class="my-day-habit-badges">${impacts.slice(0, 2).map(item => chip(item, 'impact')).join('')}${impacts.length > 2 ? `<span class="my-day-task-chip my-day-task-chip--more">+${impacts.length - 2}</span>` : ''}</div>`;
     }
 
     function progressText(habit) {
@@ -269,10 +264,6 @@
             <label class="my-day-setup-field" data-my-day-habit-conditional="times" ${cadence === 'times_per_week' ? '' : 'hidden'}>Разів на тиждень
                 <input name="timesPerWeek" type="number" min="1" max="7" value="${escape(habit.timesPerWeek || 1)}">
             </label>
-            <label class="my-day-setup-field">Напрям
-                <select name="directionId">${taxonomyOptions(activeDirections(), habit.direction?.id || '', 'Без напряму')}</select>
-                <small class="my-day-field-help">Проєкт або сфера звички.</small>
-            </label>
             <fieldset class="my-day-choice-field my-day-setup-field--full"><legend>Впливи</legend>${impactCheckboxes(impacts)}</fieldset>
         </div>`;
     }
@@ -355,7 +346,6 @@
             cadence: data.get('cadence'),
             selectedWeekdays: Array.from(form.querySelectorAll('input[name="selectedWeekdays"]:checked')).map(input => Number(input.value)),
             timesPerWeek: Number(data.get('timesPerWeek') || 1),
-            directionId: data.get('directionId') ? Number(data.get('directionId')) : null,
             impactIds: impacts
         };
     }
@@ -619,10 +609,9 @@
 
 
     function activeSetupCounts() {
-        const directions = (window.MyDayClassification?.state?.directions || []).filter(item => item.isActive !== false).length;
         const impacts = (window.MyDayClassification?.state?.impacts || []).filter(item => item.isActive !== false).length;
         const habits = state.settingsHabits.filter(habit => !habit.isArchived).length;
-        return { directions, impacts, habits, total: directions + impacts + habits };
+        return { impacts, habits, total: impacts + habits };
     }
 
     function renderStarterPreview(title, items) {
@@ -637,14 +626,13 @@
         if (!result) return '';
         const created = result.created || {};
         const skipped = result.skipped || {};
-        return `<p class="my-day-starter-result" role="status">Створено: ${Number(created.directions || 0)} напрямів, ${Number(created.impacts || 0)} впливів, ${Number(created.habits || 0)} звичок. Пропущено існуючих: ${Number(skipped.directions || 0) + Number(skipped.impacts || 0) + Number(skipped.habits || 0)}.</p>`;
+        return `<p class="my-day-starter-result" role="status">Створено: ${Number(created.impacts || 0)} впливів, ${Number(created.habits || 0)} звичок. Пропущено існуючих: ${Number(skipped.impacts || 0) + Number(skipped.habits || 0)}.</p>`;
     }
 
     function renderStarterKitContent() {
         return `<div class="my-day-starter-card-body">
             <p>Це ручний персональний starter kit. Він створиться тільки після твого натискання у власному профілі й не створює задачі, таймери або check-ins.</p>
             <div class="my-day-starter-preview">
-                ${renderStarterPreview('Напрями', STARTER_KIT_PREVIEW.directions)}
                 ${renderStarterPreview('Впливи', STARTER_KIT_PREVIEW.impacts)}
                 ${renderStarterPreview('Звички', STARTER_KIT_PREVIEW.habits)}
             </div>
@@ -658,7 +646,7 @@
         const counts = activeSetupCounts();
         if (counts.total === 0) {
             return `<section class="profile-work-panel my-day-starter-card is-empty" data-my-day-starter-card aria-labelledby="myDayStarterTitle">
-                <div class="my-day-section-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayStarterTitle">Почати з базового набору</h2><p>Швидкий старт для напрямів, впливів і перших звичок.</p></div></div>
+                <div class="my-day-section-head"><div><span class="profile-kicker">Мій день</span><h2 id="myDayStarterTitle">Почати з базового набору</h2><p>Швидкий старт для впливів і перших звичок.</p></div></div>
                 ${renderStarterKitContent()}
             </section>`;
         }
@@ -674,9 +662,8 @@
                 <div>
                     <span class="profile-kicker">Мій день</span>
                     <h2 id="myDaySetupTitle">Налаштувати Мій день</h2>
-                    <div class="my-day-setup-intro" aria-label="Як працюють напрями та впливи">
-                        <p><strong>Напрям</strong> — це проєкт або сфера, куди ти вкладаєш зусилля.</p>
-                        <p><strong>Вплив</strong> — це результат, який дає задача або звичка.</p>
+                    <div class="my-day-setup-intro" aria-label="Як працюють впливи">
+                        <p><strong>Вплив</strong> — це результат або робоча зона, яку покращує задача чи звичка. Можна обрати до трьох впливів.</p>
                     </div>
                 </div>
             </div>

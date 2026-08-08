@@ -17,7 +17,7 @@ test('contribution range is Kyiv inclusive and capped at 92 days', () => {
     assert.throws(() => contribution.normalizeRange({ from: '2026-01-01', to: '2026-04-03' }), { code: 'MY_DAY_CONTRIBUTION_RANGE_TOO_LARGE' });
 });
 
-test('contribution summary keeps directions mutually exclusive and impacts overlapping', () => {
+test('contribution summary keeps impacts overlapping and ignores legacy directions', () => {
     const result = contribution.summarizeContribution({
         range: { from: '2026-08-01', to: '2026-08-03', dayCount: 3, timezone: 'Europe/Kyiv' },
         completedTasks: [
@@ -74,11 +74,8 @@ test('contribution summary keeps directions mutually exclusive and impacts overl
         ]
     });
     assert.deepEqual(result.totals, { taskCount: 2, taskMinutes: 90, habitCompletions: 1, habitMinutes: 25 });
-    assert.equal(result.directions.find(row => row.taxonomy?.id === 10).taskCount, 1);
-    assert.equal(result.directions.find(row => row.taxonomy?.id === 10).habitMinutes, 25);
-    assert.equal(result.unclassified.taskCount, 1);
-    assert.equal(result.unclassified.taskMinutes, 30);
-    assert.equal(result.directions.reduce((sum, row) => sum + row.taskCount, result.unclassified.taskCount), result.totals.taskCount);
+    assert.equal(Object.hasOwn(result, 'directions'), false);
+    assert.equal(Object.hasOwn(result, 'unclassified'), false);
     assert.equal(result.impacts.find(row => row.taxonomy?.id === 20).taskCount, 2);
     assert.equal(result.impacts.find(row => row.taxonomy?.id === 21).taskCount, 1);
     assert.equal(result.impacts.find(row => row.taxonomy?.id === 21).habitCompletions, 1);
@@ -103,7 +100,8 @@ test('contribution service queries current user, business scope, active timers, 
     assert.equal(calls.length, 3);
     assert.match(calls[0].sql, /COALESCE\(t\.status, 'todo'\) = 'done'/);
     assert.match(calls[0].sql, /t\.completed_at AT TIME ZONE 'Europe\/Kyiv'/);
-    assert.match(calls[0].sql, /m\.user_id = \$\d+/);
+    assert.doesNotMatch(calls[0].sql, /my_day_directions|direction_id|direction_name/);
+    assert.doesNotMatch(calls[0].sql, /tags/);
     assert.match(calls[1].sql, /generate_series/);
     assert.match(calls[1].sql, /COALESCE\(e\.ended_at, NOW\(\)\)/);
     assert.match(calls[1].sql, new RegExp("::timestamp AT TIME ZONE 'Europe/Kyiv'"));
@@ -112,6 +110,8 @@ test('contribution service queries current user, business scope, active timers, 
     assert.doesNotMatch(calls[1].sql, /owner_user_id IS NULL|owner_user_id =/);
     assert.match(calls[2].sql, /my_day_habit_checkins/);
     assert.match(calls[2].sql, /my_day_habits/);
+    assert.doesNotMatch(calls[2].sql, /my_day_directions|direction_id|direction_name/);
+    assert.doesNotMatch(calls[2].sql, /tags/);
     assert.deepEqual(calls[2].params, [42, '2026-08-01', '2026-08-03']);
 });
 

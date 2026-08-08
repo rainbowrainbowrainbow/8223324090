@@ -413,6 +413,14 @@ async function getAIProviderDiagnostics() {
                 keyEnv: 'OPENROUTER_API_KEY'
             },
             {
+                id: 'my_day_classification',
+                provider: 'openrouter',
+                status: openRouterConfigured ? 'ready' : 'missing_key',
+                model: process.env.MY_DAY_CLASSIFICATION_MODEL || 'openai/gpt-5.4-nano',
+                keyEnv: 'OPENROUTER_API_KEY',
+                boundary: 'shared_text_rail'
+            },
+            {
                 id: 'program_icon_image',
                 provider: 'kie.ai',
                 status: kieConfigured ? 'ready' : 'missing_key',

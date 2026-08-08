@@ -15,7 +15,6 @@ function positiveInteger(value, field = 'identifier') {
         identifier: 'ідентифікатор',
         habit: 'ідентифікатор звички',
         user: 'ідентифікатор користувача',
-        direction: 'ідентифікатор напряму'
     };
     const parsed = Number(value);
     if (!Number.isInteger(parsed) || parsed <= 0) {
@@ -114,9 +113,6 @@ function normalizeHabitPayload(input = {}, current = {}) {
         throw myDayError('Тижнева ціль звички має бути від 1 до 7.', 400, 'MY_DAY_HABIT_VALIDATION');
     }
 
-    const directionId = has('directionId') ? optionalPositiveInteger(input.directionId, 'direction')
-        : (has('direction_id') ? optionalPositiveInteger(input.direction_id, 'direction')
-            : optionalPositiveInteger(current.direction_id ?? current.directionId ?? null, 'direction'));
     const impactIds = has('impactIds') ? normalizeImpactIds(input.impactIds)
         : (has('impact_ids') ? normalizeImpactIds(input.impact_ids) : normalizeImpactIds(current.impactIds || []));
 
@@ -139,7 +135,6 @@ function normalizeHabitPayload(input = {}, current = {}) {
         cadence,
         selectedWeekdays,
         timesPerWeek,
-        directionId,
         impactIds,
         sortOrder,
         isPaused,
@@ -147,16 +142,8 @@ function normalizeHabitPayload(input = {}, current = {}) {
     };
 }
 
-async function ensureTaxonomyOwnership(queryable, userId, directionId, impactIds) {
+async function ensureTaxonomyOwnership(queryable, userId, impactIds) {
     const ownerId = positiveInteger(userId, 'user');
-    if (directionId) {
-        const direction = await queryable.query(
-            'SELECT id, is_active FROM my_day_directions WHERE id = $1 AND user_id = $2 LIMIT 1',
-            [positiveInteger(directionId, 'direction'), ownerId]
-        );
-        if (!direction.rows?.[0]) throw myDayError('Напрям недоступний.', 404, 'MY_DAY_HABIT_TAXONOMY_NOT_FOUND');
-        if (direction.rows[0].is_active === false) throw myDayError('Архівний напрям не можна вибрати.', 409, 'MY_DAY_HABIT_TAXONOMY_ARCHIVED');
-    }
     const ids = normalizeImpactIds(impactIds || []);
     if (!ids.length) return;
     const impacts = await queryable.query(
@@ -318,13 +305,13 @@ async function getHabit(queryable, userId, habitId, options = {}) {
 async function createHabit(queryable, userId, payload = {}) {
     const ownerId = positiveInteger(userId, 'user');
     const habit = normalizeHabitPayload(payload);
-    await ensureTaxonomyOwnership(queryable, ownerId, habit.directionId, habit.impactIds);
+    await ensureTaxonomyOwnership(queryable, ownerId, habit.impactIds);
     const result = await queryable.query(
         `INSERT INTO my_day_habits
-            (user_id, name, direction_id, metric, target_value, cadence, selected_weekdays, times_per_week, is_paused, is_archived, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7::smallint[], $8, $9, $10, $11)
+            (user_id, name, metric, target_value, cadence, selected_weekdays, times_per_week, is_paused, is_archived, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6::smallint[], $7, $8, $9, $10)
          RETURNING *`,
-        [ownerId, habit.name, habit.directionId, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays, habit.timesPerWeek, habit.isPaused, habit.isArchived, habit.sortOrder]
+        [ownerId, habit.name, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays, habit.timesPerWeek, habit.isPaused, habit.isArchived, habit.sortOrder]
     );
     if (habit.impactIds.length) {
         await queryable.query(
@@ -340,24 +327,23 @@ async function updateHabit(queryable, userId, habitId, payload = {}) {
     const ownerId = positiveInteger(userId, 'user');
     const current = await getHabit(queryable, ownerId, habitId);
     const habit = normalizeHabitPayload(payload, current);
-    await ensureTaxonomyOwnership(queryable, ownerId, habit.directionId, habit.impactIds);
+    await ensureTaxonomyOwnership(queryable, ownerId, habit.impactIds);
     const result = await queryable.query(
         `UPDATE my_day_habits
          SET name = $3,
-             direction_id = $4,
-             metric = $5,
-             target_value = $6,
-             cadence = $7,
-             selected_weekdays = $8::smallint[],
-             times_per_week = $9,
-             is_paused = $10,
-             is_archived = $11,
-             archived_at = CASE WHEN $11 THEN COALESCE(archived_at, NOW()) ELSE NULL END,
-             sort_order = $12,
+             metric = $4,
+             target_value = $5,
+             cadence = $6,
+             selected_weekdays = $7::smallint[],
+             times_per_week = $8,
+             is_paused = $9,
+             is_archived = $10,
+             archived_at = CASE WHEN $10 THEN COALESCE(archived_at, NOW()) ELSE NULL END,
+             sort_order = $11,
              updated_at = NOW()
          WHERE id = $1 AND user_id = $2
          RETURNING *`,
-        [positiveInteger(habitId, 'habit'), ownerId, habit.name, habit.directionId, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays, habit.timesPerWeek, habit.isPaused, habit.isArchived, habit.sortOrder]
+        [positiveInteger(habitId, 'habit'), ownerId, habit.name, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays, habit.timesPerWeek, habit.isPaused, habit.isArchived, habit.sortOrder]
     );
     await queryable.query('DELETE FROM my_day_habit_impacts WHERE habit_id = $1 AND user_id = $2', [habitId, ownerId]);
     if (habit.impactIds.length) {

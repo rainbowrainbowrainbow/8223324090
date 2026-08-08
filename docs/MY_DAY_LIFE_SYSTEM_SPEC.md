@@ -2,11 +2,11 @@
 
 ## Purpose and location
 
-This document is the fixed implementation contract for personal directions,
-impacts, blockers, actual task time, habits, and the contribution matrix.
+This document is the fixed implementation contract for personal impacts,
+blockers, actual task time, habits, and the contribution matrix.
 
 The system lives in **Profile → My Day**. Its three modes are **Day**,
-**Habits**, and **Contribution**. Management of directions, impacts, and habits
+**Habits**, and **Contribution**. Management of impacts and habits
 lives in an internal **My Day setup surface** opened from
 **Profile → My Day → Налаштувати Мій день**. It is not a fourth My Day mode and
 not part of general **Profile → Settings**. There is no new top-level page,
@@ -18,26 +18,30 @@ scheduling, checklist, overdue, or business-scope behavior.
 
 ## User mental model
 
-Directions and impacts use a simple where/result model:
+My Day uses an impacts-only active UX:
 
-- `direction = where`: the project, life area, or work stream where the
-  effort goes. Examples: EventGenix CRM, Парк Закревського, Особисте життя.
-- `impact = result`: the outcome improved by the task or habit. Examples:
-  Дохід і клієнти, Здоровʼя, Системність, Якість сервісу, Відновлення.
+- Impacts are the only active classification control in task, habit, setup,
+  and contribution UX.
+- An impact can be an outcome or a work area. Examples: `Робота: Парк`,
+  `Робота: CRM`, `Робота: Hermes`, `Дохід і клієнти`, `Здоровʼя`,
+  `Системність`, `Якість сервісу`, `Відновлення`.
+- A task or habit may have zero through three impacts.
+- Legacy directions remain in the database and API for rollback/history, but
+  new active UX does not ask for a direction and new writes do not change
+  legacy `direction_id`.
 
 UI helpers and examples explain this model, but they are guidance only; they do
 not add required validation. Classification remains optional.
 
 Practical examples:
 
-- Купити перехідник для монітора → direction Побут / особисте; impacts Побут і комфорт, Відновлення.
-- Зарядка → direction Особисте життя; impacts Здоровʼя, Фізична форма.
-- Доробити CRM-фічу → direction EventGenix CRM; impacts Системність, Якість сервісу.
-- Підготувати івент → direction Дженікс / події; impacts Якість сервісу, Дохід і клієнти.
+- Доробити CRM-фічу → impacts Робота: CRM, Системність, Якість сервісу.
+- Підготувати зміну в парку → impacts Робота: Парк, Якість сервісу, Команда і делегування.
+- Налаштувати Hermes → impacts Робота: Hermes, Швидкість роботи, Ризики і безпека.
 
 ## Scope and data ownership
 
-- Every direction, impact, habit, classification, check-in, and time entry is
+- Every impact, habit, classification, check-in, and time entry is
   owned by one authenticated user.
 - A task classification belongs to the pair \`(user_id, task_id)\`. A task
   visible to several users may have a different private classification for each
@@ -71,7 +75,9 @@ historical-task backfill is allowed.
 
 ### Private taxonomy
 
-\`my_day_directions\` and \`my_day_impacts\` have the same columns:
+\`my_day_directions\` and \`my_day_impacts\` have the same durable columns.
+Directions are legacy taxonomy: they remain readable for rollback/history,
+but the active My Day UX uses only impacts.
 
 | Column | Contract |
 | --- | --- |
@@ -99,11 +105,16 @@ MVP intentionally has no name snapshot. Index each catalog by
 | --- | --- |
 | \`user_id\` | Required FK to \`users\`. |
 | \`task_id\` | Required FK to \`tasks\`. |
-| \`direction_id\` | Nullable FK to \`my_day_directions\`; archived directions remain linked. |
+| \`direction_id\` | Legacy nullable FK to \`my_day_directions\`; preserved for rollback/history and not changed by new active UX writes. |
+| \`tags\` | Required \`TEXT[]\`, default empty array. Personal My Day-only task tags; maximum 5 tags, no blank tags, each tag up to 32 characters. |
 | \`created_at\`, \`updated_at\` | Audit timestamps. |
 
-Its unique key is \`(user_id, task_id)\`. An absent row or null
-\`direction_id\` is valid and is represented as **Без напряму**.
+Its unique key is \`(user_id, task_id)\`. New active classification writes
+replace impacts and tags while preserving any existing legacy \`direction_id\`.
+Tags are trimmed, internal whitespace is collapsed, and case-insensitive
+duplicates are removed before writing. My Day tags do not change global task
+category, permissions, business context, contribution calculations, or watchdog
+labels.
 
 \`my_day_task_impacts\`:
 
@@ -134,7 +145,8 @@ the task taxonomy migration.
   \`tasks.status='blocked'\`.
 - A blocker is a top-level task, not a subtask and not a waiting state.
 - Quick-created prerequisites inherit the source task's owner, visibility,
-  task mode, business context, and direction. They inherit no impacts.
+  task mode, and business context. They inherit no impacts and do not require
+  a direction.
 
 ### Actual task time
 
@@ -168,8 +180,9 @@ exposes hidden task titles or other private task fields from this ledger.
 ### Habits
 
 `my_day_habits` contains private habit definitions with `id`, `user_id`, `name`,
-`color`, `icon`, optional `direction_id`, metric/cadence fields, `is_paused`,
-`is_archived`, `archived_at`, `sort_order`, `created_at`, and `updated_at`.
+`color`, `icon`, legacy optional `direction_id`, metric/cadence fields,
+`is_paused`, `is_archived`, `archived_at`, `sort_order`, `created_at`, and
+`updated_at`.
 
 | Column | Contract |
 | --- | --- |
@@ -178,7 +191,7 @@ exposes hidden task titles or other private task fields from this ledger.
 | \`cadence\` | Required \`daily\`, \`selected_weekdays\`, or \`times_per_week\`. |
 | \`weekdays\` | Required only for selected weekdays; unique ISO days 1–7. |
 | \`times_per_week\` | Required only for weekly cadence; positive integer. |
-| \`direction_id\` | Nullable FK to \`my_day_directions\`. |
+| \`direction_id\` | Legacy nullable FK to \`my_day_directions\`; preserved for rollback/history and not written by new active UX. |
 
 \`my_day_habit_impacts\` links one habit to zero through three impacts and has
 unique key \`(habit_id, impact_id)\`.
@@ -209,46 +222,45 @@ Contract:
 - The endpoint requires the existing authenticated caller and never accepts an
   arbitrary `userId`.
 - It creates rows only with `req.user.id` in the already existing
-  `my_day_directions`, `my_day_impacts`, `my_day_habits`, and
-  `my_day_habit_impacts` tables.
+  `my_day_impacts`, `my_day_habits`, and `my_day_habit_impacts` tables.
+  It does not create `my_day_directions`.
 - It runs in one transaction and uses caller-scoped idempotency by normalized
   name.
 - Repeating the action returns a created/skipped summary and creates no
   duplicate starter rows.
 - Existing caller-owned taxonomy or habits are never overwritten. Name matches
   keep the existing color, icon, archive state, order, metric, cadence, target,
-  direction, and impacts unchanged.
+  and impacts unchanged.
 - It does not create tasks, dependencies, overdue items, task time entries,
   active timers, or habit check-ins.
 - Failures return the normal safe Ukrainian My Day error response.
 
 Canonical payload:
 
-- Directions: `EventGenix CRM`, `Парк Закревського`, `Дженікс / події`,
-  `Особисте життя`, `Побут / комфорт`, `Здоровʼя і форма`, `Фінанси`,
-  `Навчання і розвиток`, `Контент / бренд`, `Адмінка і системність`.
-- Impacts: `Дохід і клієнти`, `Якість сервісу`, `Системність`,
+- impacts-only starter kit.
+- Impacts: `Робота: Парк`, `Робота: CRM`, `Робота: Hermes`,
+  `Дохід і клієнти`, `Якість сервісу`, `Системність`,
   `Швидкість роботи`, `Здоровʼя`, `Фізична форма`, `Відновлення`,
   `Побут і комфорт`, `Навчання`, `Репутація / бренд`,
   `Команда і делегування`, `Ризики і безпека`.
 - Habits:
-  - `Ранкова зарядка`: `minutes`, target `10`, `daily`, direction
-    `Здоровʼя і форма`, impacts `Здоровʼя` and `Фізична форма`.
-  - `Планування дня`: `boolean`, target `1`, `daily`, direction
-    `Адмінка і системність`, impacts `Системність` and `Швидкість роботи`.
-  - `Відновлення без екранів`: `minutes`, target `30`, `daily`, direction
-    `Особисте життя`, impacts `Відновлення` and `Здоровʼя`.
+  - `Ранкова зарядка`: `minutes`, target `10`, `daily`, impacts
+    `Здоровʼя` and `Фізична форма`.
+  - `Планування дня`: `boolean`, target `1`, `daily`, impacts
+    `Системність` and `Швидкість роботи`.
+  - `Відновлення без екранів`: `minutes`, target `30`, `daily`, impacts
+    `Відновлення` and `Здоровʼя`.
   - `Навчання 20 хв`: `minutes`, target `20`, `selected_weekdays`,
-    weekdays Monday-Friday (`1,2,3,4,5`), direction `Навчання і розвиток`,
-    impacts `Навчання` and `Системність`.
+    weekdays Monday-Friday (`1,2,3,4,5`), impacts `Навчання` and
+    `Системність`.
   - `Побутовий порядок`: `boolean`, target `1`, `times_per_week`, weekly
-    target `3`, direction `Побут / комфорт`, impacts `Побут і комфорт` and
-    `Відновлення`.
+    target `3`, impacts `Побут і комфорт` and `Відновлення`.
 
 UX:
 
-- If the user has no active direction, impact, or habit, setup shows an
-  onboarding card titled `Почати з базового набору` with an exact preview of directions, impacts, and habit metric/cadence details and
+- If the user has no active impact or habit, setup shows an onboarding card
+  titled `Почати з базового набору` with an exact preview of impacts and
+  habit metric/cadence details and
   the action `Застосувати базовий набір`.
 - If the user already has personal My Day data, the same action is available
   only inside a collapsed `Додати базовий набір` block.
@@ -260,15 +272,19 @@ All new personal routes use \`/api/my-day\`, require the existing
 authentication, and return \`success: true\` on success. Failures return
 \`success: false\`, a stable code, and a safe Ukrainian error message.
 
-### Directions and impacts
+### Legacy directions and active impacts
 
 | Endpoint | Contract |
+| --- | --- |
 | `GET /api/my-day/directions` | Return active directions in `sort_order, id` order. `includeArchived=1` includes archived rows. |
 | `POST /api/my-day/directions` | Create from `name`, `color`, `icon`, optional `sortOrder`. |
 | `PATCH /api/my-day/directions/:id` | Rename, recolor, re-icon, reorder, archive, or restore caller-owned direction. Archive/restore uses `isActive`. |
 | `GET /api/my-day/impacts` | Same list contract for impacts. |
 | `POST /api/my-day/impacts` | Create an impact. |
 | `PATCH /api/my-day/impacts/:id` | Edit, archive, or restore caller-owned impact. Archive/restore uses `isActive`. |
+
+Legacy direction endpoints remain for rollback/history, but active My Day
+setup and classification no longer render directions or require `directionId`.
 
 Foreign catalog IDs return \`404 MY_DAY_TAXONOMY_NOT_FOUND\`. Malformed names,
 colors, icons, duplicate names, and sort values return
@@ -283,14 +299,15 @@ Task classification is read through the My Cabinet projection.
 \`PUT /api/my-day/tasks/:taskId/classification\` accepts:
 
 \`\`\`json
-{ "directionId": 3, "impactIds": [7, 8] }
+{ "impactIds": [7, 8], "tags": ["CRM", "терміново"] }
 \`\`\`
 
-\`directionId: null\` and \`impactIds: []\` remove that part of the caller's
-classification. The request replaces the whole classification in one
-transaction. It validates current task read visibility, current writable
-business scope, active caller-owned taxonomy, numeric IDs, unique impact IDs,
-and the maximum of three impacts. It persists nothing on failure.
+\`impactIds: []\` clears active impacts; \`tags: []\` clears active My Day tags.
+Both operations preserve any existing legacy \`direction_id\`. The request
+replaces active impacts and tags in one transaction. It validates current task
+read visibility, current writable business scope, active caller-owned impacts,
+numeric IDs, unique impact IDs, maximum of three impacts, maximum of five tags,
+non-empty tags, and the 32-character tag limit. It persists nothing on failure.
 
 Error contract:
 
@@ -300,6 +317,25 @@ Error contract:
 | Viewable task denied by current mutation policy | \`403 MY_DAY_TASK_CLASSIFICATION_FORBIDDEN\` |
 | Malformed payload, duplicate impact, foreign taxonomy | \`400 MY_DAY_VALIDATION_ERROR\` |
 | More than three impacts | \`409 MY_DAY_IMPACT_LIMIT_EXCEEDED\` |
+| More than five tags | \`409 MY_DAY_TAG_LIMIT_EXCEEDED\` |
+
+\`POST /api/my-day/tasks/:taskId/classification/auto\` asks the shared
+OpenRouter text rail to suggest only existing active \`impactIds\` and personal
+My Day tags. The MVP default model is \`openai/gpt-5.4-nano\`; operators may
+override it with \`MY_DAY_CLASSIFICATION_MODEL\`. The endpoint uses the existing
+authenticated caller, writable business scope, \`canMutateTask\`, and task
+ownership guard. It does not classify directions, status, priority, deadline,
+owner, or dependencies.
+
+The AI call is made before opening a PostgreSQL transaction. Before writing,
+the task is loaded again with \`FOR UPDATE\`; if title/description/status/priority,
+deadline, owner, or \`updated_at\` changed, the endpoint returns
+\`409 MY_DAY_TASK_CHANGED_DURING_AI_CLASSIFICATION\` and writes nothing.
+Timeouts, missing provider key, invalid JSON, invented impact IDs, and low
+confidence also write nothing. Successful responses include
+\`classification\`, \`previousClassification\`, and a non-secret \`ai\` summary so
+the UI can update chips immediately and offer **Скасувати** through the normal
+manual classification endpoint.
 
 ### Blockers
 
@@ -340,8 +376,9 @@ task receives this optional field without changing existing fields:
 \`\`\`json
 {
   "myDay": {
-    "direction": { "id": 3, "name": "Здоров'я", "color": "#22C55E", "icon": "♥", "isActive": true },
+    "direction": null,
     "impacts": [],
+    "tags": ["CRM"],
     "isBlocked": false,
     "openDependencyCount": 0,
     "actualMinutes": 35,
@@ -350,10 +387,12 @@ task receives this optional field without changing existing fields:
 }
 \`\`\`
 
-Absent personal data is represented as \`direction: null\`, \`impacts: []\`,
-and \`actualMinutes: 0\`. Task classification, dependency, and time joins are
-batched with aggregate joins/subqueries in the projection; no query is executed
-per task. Completed history follows the same object contract.
+Absent active classification data is represented as \`impacts: []\`, \`tags: []\`, and
+\`actualMinutes: 0\`. The projection may still include legacy `direction` for
+old rows, but active My Day UX does not render or edit it. Task classification,
+dependency, and time joins are batched with aggregate joins/subqueries in the
+projection; no query is executed per task. Completed history follows the same
+object contract.
 
 ## UX contract
 
@@ -362,7 +401,7 @@ per task. Completed history follows the same object contract.
 My Day has one mode tablist with exactly **День**, **Звички**, and **Внесок**.
 The secondary action **Налаштувати Мій день** opens an internal setup surface
 with title **Налаштувати Мій день**, a **← Назад до Мого дня** action, and two
-sections: **Напрями та впливи** and **Звички**. Setup is not a tab, modal,
+sections: **Впливи** and **Звички**. Setup is not a tab, modal,
 action menu, sidebar page, or general Profile Settings section. Back restores
 the previous My Day mode. The empty Habits action **Створити звичку** opens this
 setup surface and focuses the habit name field. Create and edit forms in setup
@@ -373,14 +412,15 @@ are rendered in-page, not through modals or action menus.
 The existing composer, drag/drop, reschedule, checklist, completion, overdue
 triage, and task action menu remain canonical.
 
-- Composer has compact **+ Напрям** and **+ Вплив** controls. They use active
-  private taxonomy selectors and never block creation.
-- A card shows one direction chip, one impact chip, and \`+N\` for remaining
-  impacts. **Без напряму** is shown only where classification context is
-  requested, not as permanent noise on every card.
-- **Змінити маркування** in the card menu opens the same accessible selector.
-- A completed unclassified task exposes the non-blocking action **Додати
-  напрям**.
+- Composer has compact **+ Впливи** controls and a My Day-only tag chip-input.
+  Impact selectors and tags never block creation.
+- Tag chip-input adds tags with Enter or comma, removes the last tag with
+  Backspace when empty, shows the 5-tag limit, and lets existing chips be
+  removed before save.
+- A card shows impact chips and \`+N\` for remaining impacts. My Day tags render
+  separately from impact chips.
+- **Змінити маркування** in the card menu opens the same accessible impact
+  selector and tag chip-input.
 - A blocked card shows blocker state, count, and next prerequisite title.
 - Time uses one Start/Stop control. The active task shows elapsed local time;
   other tasks show accumulated actual minutes.
@@ -391,8 +431,8 @@ triage, and task action menu remain canonical.
 
 Habits mode lists active habits due today and provides the metric-appropriate
 check-in control. Settings contains habit create/edit/archive. A habit card
-uses the same optional direction and impact chips as a task. Paused and
-archived history appears in settings, not as due work.
+uses the same optional impact chips as a task. Paused and archived history
+appears in settings, not as due work.
 
 ## Contribution mathematics
 
@@ -402,10 +442,9 @@ Contribution is a transparent matrix, never a productivity score.
   \`status='done'\` and \`completed_at\` in the inclusive Kyiv range.
   Checklist items and subtasks never increase it.
 - A reopened task whose completion is cleared is not counted.
-- Direction totals are mutually exclusive: every completed task contributes
-  once to its direction or **Без напряму**. Direction columns sum to task total.
 - Impact totals overlap: a task contributes once to each impact. Impact columns
   are never added into a global total.
+- My Day tags are not contribution dimensions and are never counted as impacts.
 - Task minutes equal each personal `my_day_time_entries` intersection with the
   selected range, split at Kyiv midnight. Unfinished-task time and active timer
   time count. The ledger remains personal after later task reassignment, but the

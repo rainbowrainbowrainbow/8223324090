@@ -7,7 +7,6 @@ const { appendTaskBusinessScopeSql, taskBusinessScopeMeta } = require('./taskBus
 const KYIV_TIMEZONE = 'Europe/Kyiv';
 const MAX_RANGE_DAYS = 92;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
-const UNCLASSIFIED_KEY = 'unclassified';
 
 function normalizeLocalDate(value, field = 'date') {
     const label = field === 'from' ? 'початку' : (field === 'to' ? 'завершення' : 'дати');
@@ -69,17 +68,6 @@ function numberValue(value) {
     return Number.isFinite(number) ? number : 0;
 }
 
-function serializeDirection(row = {}) {
-    if (!row.direction_id) return null;
-    return {
-        id: Number(row.direction_id),
-        name: row.direction_name,
-        color: row.direction_color,
-        icon: row.direction_icon,
-        isActive: row.direction_is_active !== false
-    };
-}
-
 function serializeImpact(impact = {}) {
     return {
         id: Number(impact.id),
@@ -113,11 +101,6 @@ function bucket(map, key, label, taxonomy = null) {
     return map.get(key);
 }
 
-function directionBucket(matrix, direction) {
-    if (!direction) return matrix.unclassified;
-    return bucket(matrix.directionsMap, `direction:${direction.id}`, direction.name, direction);
-}
-
 function impactBuckets(matrix, impacts = []) {
     return impacts
         .filter(impact => impact && impact.id)
@@ -138,15 +121,8 @@ function createMatrix(range, businessScope = null) {
             dayCount: range.dayCount
         },
         totals: emptyTotals(),
-        directionsMap: new Map(),
         impactsMap: new Map(),
         daysMap: new Map(),
-        unclassified: {
-            key: UNCLASSIFIED_KEY,
-            label: 'Без напряму',
-            taxonomy: null,
-            ...emptyTotals()
-        },
         meta: {
             businessScope: taskBusinessScopeMeta(businessScope || {})
         }
@@ -155,11 +131,9 @@ function createMatrix(range, businessScope = null) {
 
 function addCompletedTask(matrix, row = {}) {
     const localDate = row.local_date || row.completed_local_date;
-    const direction = serializeDirection(row);
     const impacts = parseJsonArray(row.impacts).map(serializeImpact);
     const delta = { taskCount: 1 };
     increment(matrix.totals, delta);
-    increment(directionBucket(matrix, direction), delta);
     impactBuckets(matrix, impacts).forEach(item => increment(item, delta));
     if (localDate) increment(dayBucket(matrix, localDate), delta);
 }
@@ -167,11 +141,9 @@ function addCompletedTask(matrix, row = {}) {
 function addTaskTime(matrix, row = {}) {
     const minutes = Math.round(numberValue(row.seconds) / 60);
     if (minutes <= 0) return;
-    const direction = serializeDirection(row);
     const impacts = parseJsonArray(row.impacts).map(serializeImpact);
     const delta = { taskMinutes: minutes };
     increment(matrix.totals, delta);
-    increment(directionBucket(matrix, direction), delta);
     impactBuckets(matrix, impacts).forEach(item => increment(item, delta));
     if (row.local_date) increment(dayBucket(matrix, row.local_date), delta);
 }
@@ -184,14 +156,12 @@ function habitCompleted(row = {}) {
 
 function addHabitCompletion(matrix, row = {}) {
     if (!habitCompleted(row)) return;
-    const direction = serializeDirection(row);
     const impacts = parseJsonArray(row.impacts).map(serializeImpact);
     const delta = {
         habitCompletions: 1,
         habitMinutes: row.metric === 'minutes' ? numberValue(row.value) : 0
     };
     increment(matrix.totals, delta);
-    increment(directionBucket(matrix, direction), delta);
     impactBuckets(matrix, impacts).forEach(item => increment(item, delta));
     if (row.local_date) increment(dayBucket(matrix, row.local_date), delta);
 }
@@ -226,9 +196,7 @@ function finalizeMatrix(matrix) {
         success: true,
         range: matrix.range,
         totals: matrix.totals,
-        directions: [...matrix.directionsMap.values()].sort(sortBuckets).map(serializeBucket),
         impacts: [...matrix.impactsMap.values()].sort(sortBuckets).map(serializeBucket),
-        unclassified: serializeBucket(matrix.unclassified),
         days,
         meta: matrix.meta
     };
@@ -255,11 +223,6 @@ async function queryCompletedTasks(queryable, user, userId, businessScope, range
     const result = await queryable.query(
         `SELECT t.id AS task_id,
                 (t.completed_at AT TIME ZONE '${KYIV_TIMEZONE}')::date::text AS local_date,
-                m.direction_id,
-                d.name AS direction_name,
-                d.color AS direction_color,
-                d.icon AS direction_icon,
-                d.is_active AS direction_is_active,
                 COALESCE(json_agg(json_build_object(
                     'id', i.id,
                     'name', i.name,
@@ -268,8 +231,6 @@ async function queryCompletedTasks(queryable, user, userId, businessScope, range
                     'isActive', i.is_active
                 ) ORDER BY i.sort_order ASC, i.id ASC) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS impacts
          FROM tasks t
-         LEFT JOIN my_day_task_metadata m ON m.user_id = $${userParam} AND m.task_id = t.id
-         LEFT JOIN my_day_directions d ON d.id = m.direction_id
          LEFT JOIN my_day_task_impacts ti ON ti.user_id = $${userParam} AND ti.task_id = t.id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
          WHERE ${ownerMatch}
@@ -277,7 +238,7 @@ async function queryCompletedTasks(queryable, user, userId, businessScope, range
            AND COALESCE(t.status, 'todo') = 'done'
            AND t.completed_at IS NOT NULL
            AND (t.completed_at AT TIME ZONE '${KYIV_TIMEZONE}')::date BETWEEN $${fromParam}::date AND $${toParam}::date
-         GROUP BY t.id, t.completed_at, m.direction_id, d.name, d.color, d.icon, d.is_active`,
+         GROUP BY t.id, t.completed_at`,
         params
     );
     return result.rows || [];
@@ -302,11 +263,6 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
                     LEAST(COALESCE(e.ended_at, NOW()), ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
                     - GREATEST(e.started_at, (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
                 ))))::int AS seconds,
-                m.direction_id,
-                d.name AS direction_name,
-                d.color AS direction_color,
-                d.icon AS direction_icon,
-                d.is_active AS direction_is_active,
                 COALESCE(json_agg(DISTINCT jsonb_build_object(
                     'id', i.id,
                     'name', i.name,
@@ -318,15 +274,13 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
          JOIN tasks t ON t.id = e.task_id
          JOIN days ON e.started_at < ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
                   AND COALESCE(e.ended_at, NOW()) > (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
-         LEFT JOIN my_day_task_metadata m ON m.user_id = $${userParam} AND m.task_id = t.id
-         LEFT JOIN my_day_directions d ON d.id = m.direction_id
          LEFT JOIN my_day_task_impacts ti ON ti.user_id = $${userParam} AND ti.task_id = t.id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
          WHERE e.user_id = $${userParam}
            ${businessCondition}
            AND e.started_at < (($${toParam}::date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
            AND COALESCE(e.ended_at, NOW()) > ($${fromParam}::date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
-         GROUP BY e.task_id, days.local_date, m.direction_id, d.name, d.color, d.icon, d.is_active`,
+         GROUP BY e.task_id, days.local_date`,
         params
     );
     return result.rows || [];
@@ -340,11 +294,6 @@ async function queryHabitRows(queryable, userId, range) {
                 c.local_date::text AS local_date,
                 c.state,
                 c.value,
-                h.direction_id,
-                d.name AS direction_name,
-                d.color AS direction_color,
-                d.icon AS direction_icon,
-                d.is_active AS direction_is_active,
                 COALESCE(json_agg(DISTINCT jsonb_build_object(
                     'id', i.id,
                     'name', i.name,
@@ -354,12 +303,11 @@ async function queryHabitRows(queryable, userId, range) {
                 )) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS impacts
          FROM my_day_habit_checkins c
          JOIN my_day_habits h ON h.id = c.habit_id AND h.user_id = c.user_id
-         LEFT JOIN my_day_directions d ON d.id = h.direction_id
          LEFT JOIN my_day_habit_impacts hi ON hi.habit_id = h.id AND hi.user_id = h.user_id
          LEFT JOIN my_day_impacts i ON i.id = hi.impact_id
          WHERE c.user_id = $1
            AND c.local_date BETWEEN $2::date AND $3::date
-         GROUP BY h.id, h.metric, h.target_value, c.local_date, c.state, c.value, h.direction_id, d.name, d.color, d.icon, d.is_active`,
+         GROUP BY h.id, h.metric, h.target_value, c.local_date, c.state, c.value`,
         [userId, range.from, range.to]
     );
     return result.rows || [];

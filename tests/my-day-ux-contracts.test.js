@@ -14,7 +14,7 @@ const CONTRIBUTION_LABEL = '\u0412\u043d\u0435\u0441\u043e\u043a';
 const CREATE_HABIT_LABEL = '\u0421\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0437\u0432\u0438\u0447\u043a\u0443';
 const MARK_HABIT_DONE_LABEL = 'aria-label="\u041f\u043e\u0437\u043d\u0430\u0447\u0438\u0442\u0438 \u0437\u0432\u0438\u0447\u043a\u0443 ${escape(habit.name)} \u0432\u0438\u043a\u043e\u043d\u0430\u043d\u043e\u044e"';
 const RANGE_PREFIX = '\u0417\u0430';
-const DIRECTIONS_LABEL = '\u041d\u0430\u043f\u0440\u044f\u043c\u0438';
+const IMPACTS_LABEL = '\u0412\u043f\u043b\u0438\u0432\u0438';
 
 test('My Day tabs use exact canonical labels and ARIA tab contract', () => {
     const habitsUi = read('js/my-day-habits.js');
@@ -82,51 +82,42 @@ test('My Day setup catalog editors are clean one-at-a-time inline surfaces', () 
     assert.match(css, /\.my-day-taxonomy-row-card/);
     assert.match(css, /\.my-day-setup-archive/);
 });
-test('My Day setup offers expanded icon preset palettes for directions and impacts', () => {
+test('My Day setup offers expanded icon preset palette for impacts', () => {
     const taxonomyUi = read('js/my-day-classification.js');
     const iconBlock = taxonomyUi.match(/const TAXONOMY_ICONS = \{([\s\S]*?)\n    \};/);
     assert.ok(iconBlock);
-    const directionMatch = iconBlock[1].match(/directions:\s*\[([\s\S]*?)\]/);
     const impactMatch = iconBlock[1].match(/impacts:\s*\[([\s\S]*?)\]/);
-    assert.ok(directionMatch);
     assert.ok(impactMatch);
-    const directionIcons = Array.from(directionMatch[1].matchAll(/'([^']+)'/g)).map(match => match[1]);
     const impactIcons = Array.from(impactMatch[1].matchAll(/'([^']+)'/g)).map(match => match[1]);
-    assert.ok(directionIcons.length >= 40);
     assert.ok(impactIcons.length >= 40);
-    assert.equal(new Set(directionIcons).size, directionIcons.length);
     assert.equal(new Set(impactIcons).size, impactIcons.length);
-    assert.ok(directionIcons.includes('\u{1F4BC}'));
-    assert.ok(directionIcons.includes('\u{1F3AA}'));
-    assert.ok(directionIcons.includes('\u{1F333}'));
     assert.ok(impactIcons.includes('\u26A1'));
     assert.ok(impactIcons.includes('\u{1F4B0}'));
     assert.ok(impactIcons.includes('\u{1F9D8}'));
 });
 
 
-test('My Day explains directions as where and impacts as results', () => {
+test('My Day explains impacts as the only active classification model', () => {
     const taxonomyUi = read('js/my-day-classification.js');
     const habitsUi = read('js/my-day-habits.js');
     const css = read('css/pages-profile.css');
     const spec = read('docs/MY_DAY_LIFE_SYSTEM_SPEC.md');
 
-    assert.match(habitsUi, /<strong>Напрям<\/strong> — це проєкт або сфера, куди ти вкладаєш зусилля./);
-    assert.match(habitsUi, /<strong>Вплив<\/strong> — це результат, який дає задача або звичка./);
-    assert.match(taxonomyUi, /Напрям<\/strong> — це проєкт або сфера, куди ти вкладаєш зусилля/);
-    assert.match(taxonomyUi, /Вплив<\/strong> — це результат, який дає задача або звичка/);
-    assert.match(taxonomyUi, /Купити перехідник для монітора/);
+    assert.doesNotMatch(habitsUi, /<strong>Напрям<\/strong>/);
+    assert.match(habitsUi, /<strong>Вплив<\/strong> — це результат або робоча зона/);
+    assert.doesNotMatch(taxonomyUi, /<strong>Напрям<\/strong>/);
+    assert.match(taxonomyUi, /<strong>Вплив<\/strong> — це результат або робоча зона/);
     assert.match(taxonomyUi, /Доробити CRM-фічу/);
-    assert.match(taxonomyUi, /Підготувати івент/);
-    assert.match(taxonomyUi, /Побут \/ особисте/);
+    assert.match(taxonomyUi, /Підготувати зміну в парку/);
+    assert.match(taxonomyUi, /Налаштувати Hermes/);
     assert.match(taxonomyUi, /До 3 результатів, які ця задача покращує./);
-    assert.match(habitsUi, /Проєкт або сфера звички./);
+    assert.doesNotMatch(habitsUi, /Проєкт або сфера звички./);
     assert.match(habitsUi, /До 3 результатів, які ця звичка покращує./);
     assert.match(css, /\.my-day-taxonomy-guide/);
     assert.match(css, /\.my-day-taxonomy-examples/);
     assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-taxonomy-guide/);
-    assert.match(spec, /direction = where/);
-    assert.match(spec, /impact = result/);
+    assert.match(spec, /impacts-only active UX/);
+    assert.doesNotMatch(spec, /direction = where/);
     assert.match(spec, /guidance only; they do\s+not add required validation/);
 });
 
@@ -172,6 +163,7 @@ test('My Day habit setup uses a compact editor with conditional fields and check
     assert.match(setupSlice, /data-my-day-habit-open-editor="habit:create"/);
     assert.match(setupSlice, /input type="checkbox" name="impactIds"/);
     assert.match(setupSlice, /data-my-day-habit-impact-chip/);
+    assert.doesNotMatch(setupSlice, /name="directionId"/);
     assert.doesNotMatch(setupSlice, /<select name="impactIds"/);
     assert.doesNotMatch(setupSlice, /multiple/);
     assert.match(setupSlice, /data-my-day-habit-conditional="target"/);
@@ -194,7 +186,8 @@ test('empty Contribution keeps selected dates and renders zero total cards', () 
     assert.match(contributionUi, /my-day-contribution-zero-state/);
     assert.ok(contributionUi.includes(RANGE_PREFIX + ' ${escape(range.from)} \u2014 ${escape(range.to)}'));
     assert.match(contributionUi, /renderTotals\(data\)/);
-    assert.ok(contributionUi.includes("renderMatrix('" + DIRECTIONS_LABEL + "'"));
+    assert.ok(contributionUi.includes("renderMatrix('" + IMPACTS_LABEL + "'"));
+    assert.doesNotMatch(contributionUi, /myDayContributionDirectionsTitle/);
     assert.match(contributionUi, /\$\{status\}\$\{body\}/);
     assert.doesNotMatch(contributionUi, /productivityScore|streak|penalt|gamification/i);
 });

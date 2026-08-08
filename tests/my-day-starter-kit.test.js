@@ -15,13 +15,11 @@ const {
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-const STARTER_DIRECTIONS = ['EventGenix CRM', 'Парк Закревського', 'Дженікс / події', 'Особисте життя', 'Побут / комфорт', 'Здоровʼя і форма', 'Фінанси', 'Навчання і розвиток', 'Контент / бренд', 'Адмінка і системність'];
-const STARTER_IMPACTS = ['Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Команда і делегування', 'Ризики і безпека'];
+const STARTER_IMPACTS = ['Робота: Парк', 'Робота: CRM', 'Робота: Hermes', 'Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Команда і делегування', 'Ризики і безпека'];
 const STARTER_HABITS = ['Ранкова зарядка', 'Планування дня', 'Відновлення без екранів', 'Навчання 20 хв', 'Побутовий порядок'];
 
 function makeFakeDb(initial = {}) {
     const state = {
-        directions: (initial.directions || []).map(row => ({ ...row })),
         impacts: (initial.impacts || []).map(row => ({ ...row })),
         habits: (initial.habits || []).map(row => ({ ...row })),
         habitImpacts: (initial.habitImpacts || []).map(row => ({ ...row })),
@@ -42,11 +40,6 @@ function makeFakeDb(initial = {}) {
         async query(sql, params = []) {
             state.calls.push({ sql, params });
             if (/pg_advisory_xact_lock/.test(sql)) return { rows: [] };
-            if (/FROM my_day_directions/.test(sql)) return { rows: findByName(state.directions, params[0], params[1]) ? [findByName(state.directions, params[0], params[1])] : [] };
-            if (/INSERT INTO my_day_directions/.test(sql)) {
-                const row = insertCatalog(state.directions, params);
-                return { rows: [{ id: row.id, name: row.name, is_active: row.is_active }] };
-            }
             if (/FROM my_day_impacts/.test(sql)) return { rows: findByName(state.impacts, params[0], params[1]) ? [findByName(state.impacts, params[0], params[1])] : [] };
             if (/INSERT INTO my_day_impacts/.test(sql)) {
                 const row = insertCatalog(state.impacts, params);
@@ -54,14 +47,14 @@ function makeFakeDb(initial = {}) {
             }
             if (/FROM my_day_habits/.test(sql)) return { rows: findByName(state.habits, params[0], params[1]) ? [findByName(state.habits, params[0], params[1])] : [] };
             if (/INSERT INTO my_day_habits\s/.test(sql)) {
-                const [userId, name, color, icon, directionId, metric, targetValue, cadence, selectedWeekdays, timesPerWeek, sortOrder] = params;
+                const [userId, name, color, icon, metric, targetValue, cadence, selectedWeekdays, timesPerWeek, sortOrder] = params;
                 const row = {
                     id: state.nextId++,
                     user_id: userId,
                     name,
                     color,
                     icon,
-                    direction_id: directionId,
+                    direction_id: null,
                     metric,
                     target_value: targetValue,
                     cadence,
@@ -85,7 +78,7 @@ function makeFakeDb(initial = {}) {
 }
 
 test('starter kit exposes the exact canonical caller-owned payload', () => {
-    assert.deepEqual(publicStarterKit().directions, STARTER_DIRECTIONS);
+    assert.equal(Object.hasOwn(publicStarterKit(), 'directions'), false);
     assert.deepEqual(publicStarterKit().impacts, STARTER_IMPACTS);
     assert.deepEqual(publicStarterKit().habits.map(habit => habit.name), STARTER_HABITS);
     assert.equal(STARTER_KIT.habits[0].metric, 'minutes');
@@ -107,12 +100,12 @@ test('starter kit exposes the exact canonical caller-owned payload', () => {
 test('starter kit creates only caller-scoped taxonomy and habits once', async () => {
     const fake = makeFakeDb();
     const first = await applyMyDayStarterKit(fake, 42);
-    assert.deepEqual(first.created, { directions: 10, impacts: 12, habits: 5 });
-    assert.deepEqual(first.skipped, { directions: 0, impacts: 0, habits: 0 });
-    assert.equal(fake.state.directions.every(row => row.user_id === 42), true);
+    assert.deepEqual(first.created, { impacts: 15, habits: 5 });
+    assert.deepEqual(first.skipped, { impacts: 0, habits: 0 });
     assert.equal(fake.state.impacts.every(row => row.user_id === 42), true);
     assert.equal(fake.state.habits.every(row => row.user_id === 42), true);
     assert.equal(fake.state.habitImpacts.every(row => row.user_id === 42), true);
+    assert.equal(fake.state.habits.every(row => row.direction_id === null), true);
     const weekdayHabit = fake.state.habits.find(row => row.name === 'Навчання 20 хв');
     const weeklyHabit = fake.state.habits.find(row => row.name === 'Побутовий порядок');
     assert.deepEqual(weekdayHabit.selected_weekdays, [1, 2, 3, 4, 5]);
@@ -121,25 +114,18 @@ test('starter kit creates only caller-scoped taxonomy and habits once', async ()
     assert.equal(weeklyHabit.times_per_week, 3);
 
     const second = await applyMyDayStarterKit(fake, 42);
-    assert.deepEqual(second.created, { directions: 0, impacts: 0, habits: 0 });
-    assert.deepEqual(second.skipped, { directions: 10, impacts: 12, habits: 5 });
-    assert.equal(fake.state.directions.length, 10);
-    assert.equal(fake.state.impacts.length, 12);
+    assert.deepEqual(second.created, { impacts: 0, habits: 0 });
+    assert.deepEqual(second.skipped, { impacts: 15, habits: 5 });
+    assert.equal(fake.state.impacts.length, 15);
     assert.equal(fake.state.habits.length, 5);
 });
 
 test('starter kit does not overwrite existing caller values or archive state', async () => {
     const fake = makeFakeDb({
-        directions: [{ id: 7, user_id: 5, name: 'EventGenix CRM', color: '#000000', icon: 'X', sort_order: 777, is_active: true }],
         impacts: [{ id: 8, user_id: 5, name: 'Навчання', color: '#111111', icon: 'Y', sort_order: 888, is_active: false }]
     });
     await applyMyDayStarterKit(fake, 5);
-    const existingDirection = fake.state.directions.find(row => row.id === 7);
     const existingImpact = fake.state.impacts.find(row => row.id === 8);
-    assert.equal(existingDirection.color, '#000000');
-    assert.equal(existingDirection.icon, 'X');
-    assert.equal(existingDirection.sort_order, 777);
-    assert.equal(existingDirection.is_active, true);
     assert.equal(existingImpact.color, '#111111');
     assert.equal(existingImpact.icon, 'Y');
     assert.equal(existingImpact.sort_order, 888);
@@ -182,17 +168,14 @@ test('starter kit keeps existing caller habits unchanged', async () => {
 
 test('starter kit idempotency is isolated per user', async () => {
     const fake = makeFakeDb({
-        directions: [{ id: 77, user_id: 99, name: 'EventGenix CRM', color: '#000000', icon: 'X', sort_order: 1, is_active: true }],
         impacts: [{ id: 78, user_id: 99, name: 'Системність', color: '#000000', icon: 'Y', sort_order: 1, is_active: true }],
         habits: [{ id: 79, user_id: 99, name: 'Планування дня', color: '#000000', icon: 'Z', direction_id: 77, metric: 'boolean', target_value: 1, cadence: 'daily', selected_weekdays: [], times_per_week: null, is_paused: false, is_archived: false, sort_order: 1 }]
     });
     const result = await applyMyDayStarterKit(fake, 5);
-    assert.deepEqual(result.created, { directions: 10, impacts: 12, habits: 5 });
-    assert.equal(fake.state.directions.filter(row => row.user_id === 99).length, 1);
+    assert.deepEqual(result.created, { impacts: 15, habits: 5 });
     assert.equal(fake.state.impacts.filter(row => row.user_id === 99).length, 1);
     assert.equal(fake.state.habits.filter(row => row.user_id === 99).length, 1);
-    assert.equal(fake.state.directions.filter(row => row.user_id === 5).length, 10);
-    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 12);
+    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 15);
     assert.equal(fake.state.habits.filter(row => row.user_id === 5).length, 5);
 });
 
@@ -218,7 +201,7 @@ test('starter kit UI is explicit, reloads canonical state, and has empty/non-emp
     const css = read('css/pages-profile.css');
     const spec = read('docs/MY_DAY_LIFE_SYSTEM_SPEC.md');
     assert.match(habitsUi, /STARTER_KIT_PREVIEW/);
-    STARTER_DIRECTIONS.forEach(label => assert.ok(habitsUi.includes(label), 'missing direction preview: ' + label));
+    assert.doesNotMatch(habitsUi, /STARTER_KIT_PREVIEW[\s\S]{0,600}directions/);
     STARTER_IMPACTS.forEach(label => assert.ok(habitsUi.includes(label), 'missing impact preview: ' + label));
     STARTER_HABITS.forEach(label => assert.ok(habitsUi.includes(label), 'missing habit preview: ' + label));
     assert.ok(habitsUi.includes('20 хв Пн-Пт'));
@@ -240,7 +223,7 @@ test('starter kit UI is explicit, reloads canonical state, and has empty/non-emp
     assert.match(css, /\.my-day-starter-preview/);
     assert.ok(spec.includes('Manual starter kit'));
     assert.ok(spec.includes('POST /api/my-day/starter-kit'));
-    STARTER_DIRECTIONS.forEach(label => assert.ok(spec.includes(label), 'missing spec direction: ' + label));
+    assert.ok(spec.includes('impacts-only starter kit'));
     STARTER_IMPACTS.forEach(label => assert.ok(spec.includes(label), 'missing spec impact: ' + label));
     STARTER_HABITS.forEach(label => assert.ok(spec.includes(label), 'missing spec habit: ' + label));
     assert.ok(spec.includes('weekdays Monday-Friday'));

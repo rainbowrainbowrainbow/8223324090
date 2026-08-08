@@ -79,7 +79,7 @@
     "test:hr-shift-segments": "node --test tests/hr-shift-segments-migration.test.js tests/hr-shift-segments-service.test.js tests/hr-shift-segments-routes.test.js tests/hr-shift-reconciliation.test.js tests/hr-attendance-segments.test.js tests/payroll-profession-allocation.test.js tests/staff-schedule-segments-ui.test.js tests/staff-timeline-roster.test.js tests/schedule-query-budget.test.js",
     "test:schedule-query-budget": "node --test tests/schedule-query-budget.test.js",
     "test:staff-shift-preferences": "node --test tests/staff-shift-preferences-static.test.js tests/staff-timeline-roster.test.js",
-    "test:my-day": "node --test tests/profile-tasker-segments.test.js",
+    "test:my-day": "node --test tests/profile-tasker-segments.test.js tests/my-day-classification-ai.test.js",
     "test:ui": "node tests/ui-check.js",
     "test:browser:event-cards": "npx --yes --package @playwright/test playwright test tests/browser/event-cards-visual-smoke.spec.js --reporter=line",
     "test:browser:account-access": "npx --yes --package @playwright/test playwright test tests/browser/account-access-editor.spec.js --reporter=line --workers=1",

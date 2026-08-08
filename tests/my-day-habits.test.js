@@ -16,6 +16,7 @@ test('habit payload validates all metrics, all cadences, weekdays, and max impac
     assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', metric: 'boolean', targetValue: 2 }), { code: 'MY_DAY_HABIT_VALIDATION' });
     assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', cadence: 'selected_weekdays', selectedWeekdays: [1, 1] }), { code: 'MY_DAY_HABIT_VALIDATION' });
     assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', impactIds: [1, 2, 3, 4] }), { code: 'MY_DAY_IMPACT_LIMIT_EXCEEDED' });
+    assert.equal(Object.hasOwn(habits.normalizeHabitPayload({ name: 'Legacy', directionId: 99 }), 'directionId'), false);
 });
 
 test('habit cadence due logic uses ISO Monday-Sunday and pauses/archive are not expected work', () => {
@@ -72,6 +73,8 @@ test('habit service is private to taxonomy and does not create tasks, dependenci
     assert.match(service, /my_day_directions/);
     assert.match(service, /my_day_impacts/);
     assert.match(service, /normalizeImpactIds/);
+    assert.doesNotMatch(service, /INSERT INTO my_day_habits[\s\S]{0,220}direction_id/);
+    assert.doesNotMatch(service, /SET name = \$3,[\s\S]{0,220}direction_id =/);
     assert.doesNotMatch(service, /my_day_time_entries/);
     assert.doesNotMatch(service, /task_dependencies/);
     assert.doesNotMatch(service, /INSERT INTO tasks|UPDATE tasks|overdue|recurring/i);

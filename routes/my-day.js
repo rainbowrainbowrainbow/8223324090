@@ -1,6 +1,7 @@
 'use strict';
 
 const router = require('express').Router();
+const rateLimit = require('express-rate-limit');
 const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
@@ -15,13 +16,32 @@ const {
     listTaxonomy,
     myDayError,
     replaceTaskClassification,
+    readTaskClassification,
     updateTaxonomy
 } = require('../services/myDayTaxonomy');
+const {
+    classifyMyDayTask,
+    taskFingerprint
+} = require('../services/myDayClassificationAi');
 const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
 const { buildMyDayContribution } = require('../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../services/myDayStarterKit');
 
 router.use(authenticateToken);
+
+const myDayAiClassificationLimiter = rateLimit({
+    windowMs: 60 * 1000,
+    max: Number.parseInt(process.env.MY_DAY_CLASSIFICATION_RATE_LIMIT_MAX || '10', 10) || 10,
+    keyGenerator: req => String(req.user?.id || req.ip || 'anon'),
+    message: {
+        success: false,
+        code: 'MY_DAY_AI_RATE_LIMITED',
+        error: 'Забагато AI-розміток. Зачекайте хвилину і спробуйте ще раз.'
+    },
+    standardHeaders: false,
+    legacyHeaders: false,
+    validate: { ipv6SubnetOrKeyGenerator: false }
+});
 router.param('taskId', (req, res, next, value) => {
     if (!/^[1-9][0-9]*$/.test(String(value || ''))) {
         return res.status(400).json({ success: false, code: 'MY_DAY_VALIDATION_ERROR', error: 'Некоректний ідентифікатор задачі.' });
@@ -118,6 +138,24 @@ async function loadMyCabinetTask(client, user, businessScope, taskId) {
     return result.rows?.[0] || null;
 }
 
+async function loadMyCabinetTaskSnapshot(queryable, user, businessScope, taskId) {
+    const params = [];
+    const ownerMatch = buildTaskOwnerMatch(user, params, 't');
+    const businessCondition = appendTaskBusinessScopeSql(params, businessScope, 't');
+    params.push(Number(taskId));
+    const result = await queryable.query(
+        `SELECT t.id, t.title, t.description, t.status, t.priority, t.deadline, t.date,
+                t.scheduled_start_at, t.owner_user_id, t.assigned_to, t.updated_at
+         FROM tasks t
+         WHERE ${ownerMatch}
+           ${businessCondition}
+           AND t.id = $${params.length}
+         LIMIT 1`,
+        params
+    );
+    return result.rows?.[0] || null;
+}
+
 router.put('/tasks/:taskId/classification', async (req, res) => {
     const businessScope = ensureWritableTaskBusinessScope(req, res);
     if (!businessScope) return;
@@ -134,14 +172,86 @@ router.put('/tasks/:taskId/classification', async (req, res) => {
         const classification = await replaceTaskClassification(client, {
             userId,
             taskId: req.params.taskId,
-            directionId: req.body?.directionId,
-            impactIds: req.body?.impactIds
+            impactIds: req.body?.impactIds,
+            tags: req.body?.tags
         });
         await client.query('COMMIT');
         res.json({
             success: true,
             taskId: Number(req.params.taskId),
             classification
+        });
+    } catch (error) {
+        try { if (client) await client.query('ROLLBACK'); } catch {}
+        sendMyDayError(res, error);
+    } finally {
+        client?.release();
+    }
+});
+
+router.post('/tasks/:taskId/classification/auto', myDayAiClassificationLimiter, async (req, res) => {
+    const businessScope = ensureWritableTaskBusinessScope(req, res);
+    if (!businessScope) return;
+    let client;
+    try {
+        const userId = currentUserId(req);
+        const task = await loadMyCabinetTaskSnapshot(pool, req.user, businessScope, req.params.taskId);
+        if (!task) throw myDayError('Задачу не знайдено.', 404, 'MY_DAY_TASK_NOT_FOUND');
+        if (!canMutateTask(req.user, task)) {
+            throw myDayError('Немає прав для AI-розмітки цієї задачі.', 403, 'MY_DAY_TASK_CLASSIFICATION_FORBIDDEN');
+        }
+        const beforeFingerprint = taskFingerprint(task);
+        const [impacts, previousClassification] = await Promise.all([
+            listTaxonomy(pool, userId, 'impacts'),
+            readTaskClassification(pool, userId, req.params.taskId)
+        ]);
+
+        const aiResult = await classifyMyDayTask({ task, impacts });
+        if (!aiResult.ok) {
+            return res.status(aiResult.statusCode || 503).json({
+                success: false,
+                code: aiResult.code || 'MY_DAY_AI_PROVIDER_ERROR',
+                error: aiResult.code === 'MY_DAY_AI_PROVIDER_UNAVAILABLE'
+                    ? 'AI-провайдер недоступний або не налаштований.'
+                    : (aiResult.code === 'MY_DAY_AI_LOW_CONFIDENCE'
+                        ? 'AI не впевнений у розмітці. Нічого не змінено.'
+                        : 'AI не зміг безпечно розмітити задачу. Нічого не змінено.'),
+                reason: aiResult.reason,
+                confidence: aiResult.confidence,
+                aiReason: aiResult.aiReason,
+                provider: aiResult.provider,
+                model: aiResult.model
+            });
+        }
+
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const lockedTask = await loadMyCabinetTask(client, req.user, businessScope, req.params.taskId);
+        if (!lockedTask) throw myDayError('Задачу не знайдено.', 404, 'MY_DAY_TASK_NOT_FOUND');
+        if (!canMutateTask(req.user, lockedTask)) {
+            throw myDayError('Немає прав для AI-розмітки цієї задачі.', 403, 'MY_DAY_TASK_CLASSIFICATION_FORBIDDEN');
+        }
+        if (taskFingerprint(lockedTask) !== beforeFingerprint) {
+            throw myDayError('Задача змінилася під час AI-розмітки. Оновіть сторінку і повторіть дію.', 409, 'MY_DAY_TASK_CHANGED_DURING_AI_CLASSIFICATION');
+        }
+        const classification = await replaceTaskClassification(client, {
+            userId,
+            taskId: req.params.taskId,
+            impactIds: aiResult.classification.impactIds,
+            tags: aiResult.classification.tags
+        });
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            taskId: Number(req.params.taskId),
+            classification,
+            previousClassification,
+            ai: {
+                confidence: aiResult.confidence,
+                reason: aiResult.reason,
+                provider: aiResult.provider,
+                model: aiResult.model
+            }
         });
     } catch (error) {
         try { if (client) await client.query('ROLLBACK'); } catch {}

@@ -3,70 +3,25 @@
 const { myDayError } = require('./myDayTaxonomy');
 const { positiveInteger } = require('./myDayHabits');
 
-const STARTER_DIRECTIONS = Object.freeze([
+const STARTER_IMPACTS = Object.freeze([
     {
-        name: "EventGenix CRM",
-        color: "#2563EB",
-        icon: "💼",
-        sortOrder: 10
-    },
-    {
-        name: "Парк Закревського",
+        name: "Робота: Парк",
         color: "#10B981",
         icon: "🌳",
-        sortOrder: 20
+        sortOrder: 1
     },
     {
-        name: "Дженікс / події",
-        color: "#F59E0B",
-        icon: "🎉",
-        sortOrder: 30
+        name: "Робота: CRM",
+        color: "#2563EB",
+        icon: "💼",
+        sortOrder: 2
     },
     {
-        name: "Особисте життя",
+        name: "Робота: Hermes",
         color: "#8B5CF6",
-        icon: "🏠",
-        sortOrder: 40
+        icon: "⚡",
+        sortOrder: 3
     },
-    {
-        name: "Побут / комфорт",
-        color: "#A855F7",
-        icon: "🛋️",
-        sortOrder: 50
-    },
-    {
-        name: "Здоровʼя і форма",
-        color: "#F97316",
-        icon: "💪",
-        sortOrder: 60
-    },
-    {
-        name: "Фінанси",
-        color: "#22C55E",
-        icon: "💰",
-        sortOrder: 70
-    },
-    {
-        name: "Навчання і розвиток",
-        color: "#3B82F6",
-        icon: "🧠",
-        sortOrder: 80
-    },
-    {
-        name: "Контент / бренд",
-        color: "#EC4899",
-        icon: "📣",
-        sortOrder: 90
-    },
-    {
-        name: "Адмінка і системність",
-        color: "#6366F1",
-        icon: "⚙️",
-        sortOrder: 100
-    }
-]);
-
-const STARTER_IMPACTS = Object.freeze([
     {
         name: "Дохід і клієнти",
         color: "#22C55E",
@@ -151,7 +106,6 @@ const STARTER_HABITS = Object.freeze([
         cadence: "daily",
         selectedWeekdays: [],
         timesPerWeek: null,
-        direction: "Здоровʼя і форма",
         impacts: [
             "Здоровʼя",
             "Фізична форма"
@@ -167,7 +121,6 @@ const STARTER_HABITS = Object.freeze([
         cadence: "daily",
         selectedWeekdays: [],
         timesPerWeek: null,
-        direction: "Адмінка і системність",
         impacts: [
             "Системність",
             "Швидкість роботи"
@@ -183,7 +136,6 @@ const STARTER_HABITS = Object.freeze([
         cadence: "daily",
         selectedWeekdays: [],
         timesPerWeek: null,
-        direction: "Особисте життя",
         impacts: [
             "Відновлення",
             "Здоровʼя"
@@ -205,7 +157,6 @@ const STARTER_HABITS = Object.freeze([
             5
         ],
         timesPerWeek: null,
-        direction: "Навчання і розвиток",
         impacts: [
             "Навчання",
             "Системність"
@@ -221,7 +172,6 @@ const STARTER_HABITS = Object.freeze([
         cadence: "times_per_week",
         selectedWeekdays: [],
         timesPerWeek: 3,
-        direction: "Побут / комфорт",
         impacts: [
             "Побут і комфорт",
             "Відновлення"
@@ -231,13 +181,11 @@ const STARTER_HABITS = Object.freeze([
 ]);
 
 const STARTER_KIT = Object.freeze({
-    directions: STARTER_DIRECTIONS,
     impacts: STARTER_IMPACTS,
     habits: STARTER_HABITS
 });
 
 const CATALOG_TABLES = Object.freeze({
-    directions: 'my_day_directions',
     impacts: 'my_day_impacts'
 });
 
@@ -251,16 +199,14 @@ function summaryBucket() {
 
 function publicStarterKit() {
     return {
-        directions: STARTER_DIRECTIONS.map(({ name }) => name),
         impacts: STARTER_IMPACTS.map(({ name }) => name),
-        habits: STARTER_HABITS.map(({ name, metric, targetValue, cadence, selectedWeekdays, timesPerWeek, direction, impacts }) => ({
+        habits: STARTER_HABITS.map(({ name, metric, targetValue, cadence, selectedWeekdays, timesPerWeek, impacts }) => ({
             name,
             metric,
             targetValue,
             cadence,
             selectedWeekdays: [...(selectedWeekdays || [])],
             timesPerWeek: timesPerWeek ?? null,
-            direction,
             impacts: [...impacts]
         }))
     };
@@ -313,22 +259,21 @@ function indexActiveRecords(records) {
     return map;
 }
 
-async function createOrFindHabit(queryable, userId, habit, directionIds, impactIds) {
+async function createOrFindHabit(queryable, userId, habit, impactIds) {
     const existing = await findExistingHabit(queryable, userId, habit.name);
     if (existing) return { status: 'skipped', id: Number(existing.id), name: existing.name, reason: 'exists' };
 
-    const directionId = directionIds.get(normalizeNameKey(habit.direction));
     const linkedImpactIds = habit.impacts.map(name => impactIds.get(normalizeNameKey(name))).filter(Number.isInteger);
-    if (!directionId || linkedImpactIds.length !== habit.impacts.length) {
+    if (linkedImpactIds.length !== habit.impacts.length) {
         return { status: 'skipped', id: null, name: habit.name, reason: 'taxonomy_unavailable' };
     }
 
     const result = await queryable.query(
         `INSERT INTO my_day_habits
-            (user_id, name, color, icon, direction_id, metric, target_value, cadence, selected_weekdays, times_per_week, is_paused, is_archived, sort_order)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::smallint[], $10, FALSE, FALSE, $11)
+            (user_id, name, color, icon, metric, target_value, cadence, selected_weekdays, times_per_week, is_paused, is_archived, sort_order)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8::smallint[], $9, FALSE, FALSE, $10)
          RETURNING id, name`,
-        [userId, habit.name, habit.color, habit.icon, directionId, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays || [], habit.timesPerWeek ?? null, habit.sortOrder]
+        [userId, habit.name, habit.color, habit.icon, habit.metric, habit.targetValue, habit.cadence, habit.selectedWeekdays || [], habit.timesPerWeek ?? null, habit.sortOrder]
     );
     const habitId = Number(result.rows[0].id);
     await queryable.query(
@@ -348,7 +293,6 @@ function pushOutcome(bucket, outcome) {
 async function applyMyDayStarterKit(queryable, userId) {
     const ownerId = positiveInteger(userId, 'user');
     const summary = {
-        directions: summaryBucket(),
         impacts: summaryBucket(),
         habits: summaryBucket()
     };
@@ -356,17 +300,13 @@ async function applyMyDayStarterKit(queryable, userId) {
     try {
         await lockStarterKit(queryable, ownerId);
 
-        for (const item of STARTER_DIRECTIONS) {
-            pushOutcome(summary.directions, await createOrFindCatalog(queryable, ownerId, 'directions', item));
-        }
         for (const item of STARTER_IMPACTS) {
             pushOutcome(summary.impacts, await createOrFindCatalog(queryable, ownerId, 'impacts', item));
         }
 
-        const directionIds = indexActiveRecords(summary.directions.items);
         const impactIds = indexActiveRecords(summary.impacts.items);
         for (const habit of STARTER_HABITS) {
-            pushOutcome(summary.habits, await createOrFindHabit(queryable, ownerId, habit, directionIds, impactIds));
+            pushOutcome(summary.habits, await createOrFindHabit(queryable, ownerId, habit, impactIds));
         }
     } catch (error) {
         if (error?.statusCode) throw error;
@@ -379,12 +319,10 @@ async function applyMyDayStarterKit(queryable, userId) {
     return {
         payload: publicStarterKit(),
         created: {
-            directions: summary.directions.created,
             impacts: summary.impacts.created,
             habits: summary.habits.created
         },
         skipped: {
-            directions: summary.directions.skipped,
             impacts: summary.impacts.skipped,
             habits: summary.habits.skipped
         },

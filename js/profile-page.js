@@ -3032,6 +3032,25 @@ function forEachCabinetProjectionTaskList(callback) {
     });
 }
 
+function applyCabinetTaskMyDayClassification(taskId, classification = {}) {
+    const id = normalizeCabinetTaskId(taskId);
+    if (!id) return false;
+    let changed = false;
+    forEachCabinetProjectionTaskList((owner, key) => {
+        owner[key].forEach(task => {
+            if (cabinetProjectionTaskId(task) !== id) return;
+            task.myDay = {
+                ...(task.myDay || {}),
+                direction: classification.direction || null,
+                impacts: Array.isArray(classification.impacts) ? classification.impacts : [],
+                tags: Array.isArray(classification.tags) ? classification.tags : []
+            };
+            changed = true;
+        });
+    });
+    return changed;
+}
+
 function removeCabinetTaskFromProjection(taskId) {
     const id = normalizeCabinetTaskId(taskId);
     const removed = { task: null, buckets: [] };
@@ -4810,7 +4829,7 @@ function openCabinetTaskActionMenu(button) {
         ${window.TaskUI?.renderMenuItems([
             { label: 'Відкрити у повному списку', detail: 'деталі, історія, спостерігачі', attrs: { 'data-cabinet-task-action': 'open', 'data-task-id': taskId } }
             ,
-            { label: '\u041d\u0430\u043f\u0440\u044f\u043c \u0456 \u0432\u043f\u043b\u0438\u0432\u0438', detail: '\u043e\u0441\u043e\u0431\u0438\u0441\u0442\u0435 \u043c\u0430\u0440\u043a\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447\u0456', attrs: { 'data-cabinet-task-action': 'classification', 'data-task-id': taskId } },
+            { label: '\u0412\u043f\u043b\u0438\u0432\u0438', detail: '\u043e\u0441\u043e\u0431\u0438\u0441\u0442\u0435 \u043c\u0430\u0440\u043a\u0443\u0432\u0430\u043d\u043d\u044f \u0437\u0430\u0434\u0430\u0447\u0456', attrs: { 'data-cabinet-task-action': 'classification', 'data-task-id': taskId } },
             { label: '\u041f\u043e\u0442\u0440\u0456\u0431\u043d\u043e \u0441\u043f\u043e\u0447\u0430\u0442\u043a\u0443', detail: '\u0434\u043e\u0434\u0430\u0442\u0438 \u0430\u0431\u043e \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0437\u0430\u0434\u0430\u0447\u0443-\u043f\u0435\u0440\u0435\u0434\u0443\u043c\u043e\u0432\u0443', attrs: { 'data-cabinet-task-action': 'dependencies', 'data-task-id': taskId } },
             ...(task.isBlocked ? [{ label: '\u0417\u0430\u0432\u0435\u0440\u0448\u0438\u0442\u0438 \u043f\u043e\u043f\u0440\u0438 \u0431\u043b\u043e\u043a\u0435\u0440', detail: '\u0437\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u043d\u044f \u043d\u0435 \u0431\u043b\u043e\u043a\u0443\u0454\u0442\u044c\u0441\u044f \u0430\u0432\u0442\u043e\u043c\u0430\u0442\u0438\u0447\u043d\u043e', attrs: { 'data-cabinet-task-action': 'complete-despite-blocker', 'data-task-id': taskId } }] : []),
         ]) || ''}`;
@@ -5597,12 +5616,15 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     };
     const inlineActive = isMyDayCard && isDecomposed && isCabinetTaskInlineActive(taskId, inlineContext);
     const subtasksExpanded = isDecomposed && taskIdAttr ? isCabinetSubtasksExpanded(taskId, task) : false;
+    const myDayClassificationBadges = isMyDayCard
+        ? `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay) || ''}</span>`
+        : '';
     const visibleBadges = isMyDayCard ? cabinetTaskVisibleBadges(task, {
         taskIdAttr,
         dueState,
         relationLabel,
         scheduleStatus
-    }).join('') + (window.MyDayClassification?.renderTaskBadges?.(task.myDay) || '') + (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') + (window.MyDayTimeTracking?.renderTaskControls?.(task) || '') : '';
+    }).join('') + myDayClassificationBadges + (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') + (window.MyDayTimeTracking?.renderTaskControls?.(task) || '') : '';
     const metadataHtml = isMyDayCard ? visibleBadges : `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -5645,6 +5667,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
             </div>
             <div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                ${isMyDayCard ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>` : ''}
                 ${renderCabinetTaskMoreAction(taskIdAttr)}
             </div>
         </div>`;
@@ -6947,6 +6970,24 @@ async function handleCabinetTaskActionClick(event) {
         });
         return;
     }
+    if (action === 'ai-classification') {
+        await window.MyDayClassification?.autoClassifyTask?.(button, findCabinetTask(taskId) || {}, {
+            onApplied: async result => {
+                if (result?.classification && applyCabinetTaskMyDayClassification(taskId, result.classification)) {
+                    document.querySelectorAll(`[data-my-day-classification-badges="${taskId}"]`).forEach(node => {
+                        node.innerHTML = window.MyDayClassification?.renderTaskBadges?.(result.classification) || '';
+                    });
+                }
+                notifyTaskWidgetsChanged({ action: 'task_ai_classification', taskId });
+                try {
+                    await refreshMyCabinetTab({ silent: true, keepExistingOnError: true });
+                } catch (error) {
+                    console.warn('Profile cabinet AI classification refresh failed', error);
+                }
+            }
+        });
+        return;
+    }
     if (action === 'more') {
         openCabinetTaskActionMenu(button);
         return;
@@ -7417,7 +7458,7 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
-    if (myDayClassification && (myDayClassification.directionId || myDayClassification.impactIds.length)) {
+    if (myDayClassification?.impactIds?.length || myDayClassification?.tags?.length) {
         try {
             await window.MyDayClassification?.saveTaskClassification?.(verification.taskId, myDayClassification);
         } catch (error) {

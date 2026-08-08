@@ -89,11 +89,12 @@ test('My Day setup offers expanded icon preset palette for impacts', () => {
     const impactMatch = iconBlock[1].match(/impacts:\s*\[([\s\S]*?)\]/);
     assert.ok(impactMatch);
     const impactIcons = Array.from(impactMatch[1].matchAll(/'([^']+)'/g)).map(match => match[1]);
-    assert.ok(impactIcons.length >= 40);
+    assert.ok(impactIcons.length >= 80);
     assert.equal(new Set(impactIcons).size, impactIcons.length);
     assert.ok(impactIcons.includes('\u26A1'));
     assert.ok(impactIcons.includes('\u{1F4B0}'));
     assert.ok(impactIcons.includes('\u{1F9D8}'));
+    ['⚙️', '🤖', '📣', '📊', '👥'].forEach(icon => assert.ok(impactIcons.includes(icon)));
 });
 
 

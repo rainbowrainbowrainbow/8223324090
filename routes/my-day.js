@@ -273,7 +273,9 @@ router.post('/tasks/:taskId/classification/auto', myDayAiClassificationLimiter, 
                     ? 'AI-провайдер недоступний або не налаштований.'
                     : (aiResult.code === 'MY_DAY_AI_LOW_CONFIDENCE'
                         ? 'AI не впевнений у розмітці. Нічого не змінено.'
-                        : 'AI не зміг безпечно розмітити задачу. Нічого не змінено.'),
+                        : (aiResult.code === 'MY_DAY_AI_NO_MATCH'
+                            ? 'AI не знайшов відповідного впливу. Уточніть назву задачі або додайте потрібний вплив.'
+                            : 'AI не зміг безпечно розмітити задачу. Нічого не змінено.')),
                 reason: aiResult.reason,
                 confidence: aiResult.confidence,
                 aiReason: aiResult.aiReason,

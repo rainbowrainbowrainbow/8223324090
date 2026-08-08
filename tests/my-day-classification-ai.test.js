@@ -50,7 +50,7 @@ test('My Day AI classifier uses direct OpenAI Responses API with strict impacts-
     const body = requests[0].body;
     assert.equal(body.model, 'gpt-5.6-luna');
     assert.equal(body.store, false);
-    assert.equal(body.reasoning.effort, 'none');
+    assert.equal(body.reasoning.effort, 'low');
     assert.equal(body.max_output_tokens, service.MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS);
     assert.equal(body.text.format.type, 'json_schema');
     assert.equal(body.text.format.strict, true);
@@ -99,13 +99,13 @@ test('My Day AI classifier refuses invented impacts, incomplete JSON, extra tags
     assert.equal(invalid.ok, false);
     assert.equal(invalid.code, 'MY_DAY_AI_INVALID_JSON');
 
-    const noMatch = await service.classifyMyDayTask(base, {
+    const noMatch = await service.classifyMyDayTask({ ...base, task: { id: 99, title: '3321' } }, {
         aiClient: async () => ({ ok: true, provider: 'openai', text: '{"impactIds":[],"confidence":0.2,"reason":"unclear"}' })
     });
     assert.equal(noMatch.ok, false);
     assert.equal(noMatch.code, 'MY_DAY_AI_NO_MATCH');
 
-    const low = await service.classifyMyDayTask(base, {
+    const low = await service.classifyMyDayTask({ ...base, task: { id: 99, title: 'Improve this process' } }, {
         aiClient: async () => ({ ok: true, provider: 'openai', text: '{"impactIds":[12],"confidence":0.2,"reason":"unclear"}' })
     });
     assert.equal(low.ok, false);
@@ -120,6 +120,40 @@ test('My Day AI classifier refuses invented impacts, incomplete JSON, extra tags
     assert.equal(provider.ok, false);
     assert.equal(provider.code, 'MY_DAY_AI_PROVIDER_UNAVAILABLE');
     assert.equal(provider.provider, 'openai');
+});
+
+test('My Day AI preserves exact active impact names when Luna is uncertain', async () => {
+    assert.deepEqual(service.findExplicitImpactIds({ title: 'Зроби тест для CRM' }, impacts), [11]);
+    assert.deepEqual(service.findExplicitImpactIds({ title: 'Do routine work' }, impacts), []);
+    assert.deepEqual(service.findExplicitImpactIds({ title: 'Це не для CRM' }, impacts), []);
+
+    const exactCrm = await service.classifyMyDayTask({
+        task: { id: 100, title: 'Зроби тест для CRM' },
+        impacts
+    }, {
+        aiClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            text: '{"impactIds":[],"confidence":0.2,"reason":"too short"}'
+        })
+    });
+    assert.equal(exactCrm.ok, true);
+    assert.deepEqual(exactCrm.classification.impactIds, [11]);
+    assert.equal(exactCrm.confidence, 0.9);
+    assert.match(exactCrm.reason, /Явний збіг/);
+
+    const crmAndHermes = await service.classifyMyDayTask({
+        task: { id: 101, title: 'CRM + Hermes integration' },
+        impacts
+    }, {
+        aiClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            text: '{"impactIds":[12],"confidence":0.8,"reason":"Hermes integration"}'
+        })
+    });
+    assert.equal(crmAndHermes.ok, true);
+    assert.deepEqual(crmAndHermes.classification.impactIds, [11, 12]);
 });
 
 test('My Day AI model override is allowlisted and diagnostics does not expose secrets', async () => {
@@ -138,6 +172,7 @@ test('My Day AI model override is allowlisted and diagnostics does not expose se
     assert.equal(ready.status, 'ready');
     assert.equal(ready.model, 'gpt-5.6-luna');
     assert.equal(ready.keyEnv, 'OPENAI_API_KEY');
+    assert.equal(ready.reasoningEffort, 'low');
     assert.equal(ready.store, false);
     assert.equal(ready.OPENAI_API_KEY, undefined);
     assert.doesNotMatch(JSON.stringify(ready), /secret/);
@@ -196,7 +231,7 @@ test('My Day AI route keeps LLM calls outside transactions, detects classificati
     assert.match(serviceSource, /DEFAULT_MY_DAY_CLASSIFICATION_MODEL = 'gpt-5\.6-luna'/);
     assert.match(serviceSource, /OPENAI_API_KEY/);
     assert.match(serviceSource, /\/responses/);
-    assert.match(serviceSource, /reasoning: \{ effort: 'none' \}/);
+    assert.match(serviceSource, /reasoning: \{ effort: MY_DAY_CLASSIFICATION_REASONING_EFFORT \}/);
     assert.match(serviceSource, /store: false/);
     assert.doesNotMatch(serviceSource, /callUnifiedChatCompletion|OPENROUTER_API_KEY|scope: 'chat_ai'|openai\/gpt-5\.4-nano/);
 });

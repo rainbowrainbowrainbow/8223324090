@@ -15,7 +15,12 @@
             '💰', '🤝', '🎯', '✅', '⏱️', '🚀', '🔥', '💎',
             '🧠', '📚', '🧭', '🔁', '🧱', '🧩', '🛠️', '🔍',
             '📣', '⭐', '🏆', '🎁', '🌱', '💤', '🧘', '💪',
-            '🥗', '🫀', '🏡', '🧹', '🛋️', '🎨', '🌈', '🙌'
+            '🥗', '🫀', '🏡', '🧹', '🛋️', '🎨', '🌈', '🙌',
+            '⚙️', '🤖', '📊', '👥', '💻', '🧑‍💻', '📱', '🌐',
+            '🗂️', '📋', '📝', '✍️', '💡', '🔧', '🔨', '🔗',
+            '🔒', '🧪', '🎥', '🎙️', '📷', '📢', '💬', '📅',
+            '🗓️', '🧾', '📦', '🛒', '🏷️', '🏗️', '🧯', '💳',
+            '📞', '✉️', '🕵️', '🔔', '🧮', '📌', '🧰', '♻️'
         ]
     };
 
@@ -34,6 +39,10 @@
         if (!response.ok || payload.success === false) {
             const error = new Error(payload.error || 'Не вдалося виконати дію My Day.');
             error.code = payload.code || 'MY_DAY_REQUEST_FAILED';
+            error.statusCode = response.status;
+            error.reason = payload.reason || '';
+            error.aiReason = payload.aiReason || '';
+            error.confidence = payload.confidence;
             throw error;
         }
         return payload;
@@ -180,14 +189,33 @@
     function renderAutoClassificationFailure(error = {}) {
         const providerUnavailable = error.code === 'MY_DAY_AI_PROVIDER_UNAVAILABLE' || error.statusCode === 503;
         const conflict = error.code === 'MY_DAY_CLASSIFICATION_CHANGED_DURING_AI_CLASSIFICATION' || error.statusCode === 409;
-        const noMatch = error.code === 'MY_DAY_AI_NO_MATCH' || error.code === 'MY_DAY_AI_LOW_CONFIDENCE' || error.code === 'MY_DAY_AI_INVALID_RESPONSE';
+        const noMatch = error.code === 'MY_DAY_AI_NO_MATCH';
+        const lowConfidence = error.code === 'MY_DAY_AI_LOW_CONFIDENCE';
+        const invalidResponse = error.code === 'MY_DAY_AI_INVALID_RESPONSE' || error.code === 'MY_DAY_AI_INVALID_JSON';
         const title = providerUnavailable
             ? 'AI-провайдер недоступний.'
-            : (conflict ? 'Впливи змінилися під час AI-розмітки.' : (noMatch ? 'AI не знайшов надійних впливів.' : 'AI не зміг безпечно розмітити задачу.'));
-        const detail = error.message || (providerUnavailable ? 'Перевірте OpenAI My Day classification diagnostics і OPENAI_API_KEY на сервері.' : 'Спробуйте повторити після уточнення назви задачі.');
+            : (conflict
+                ? 'Впливи змінилися під час AI-розмітки.'
+                : (noMatch
+                    ? 'AI не знайшов відповідного впливу.'
+                    : (lowConfidence
+                        ? 'AI бачить варіант, але не впевнений.'
+                        : (invalidResponse ? 'AI повернув некоректну відповідь.' : 'AI не зміг безпечно розмітити задачу.'))));
+        const fallbackDetail = providerUnavailable
+            ? 'Перевірте OpenAI My Day classification diagnostics і OPENAI_API_KEY на сервері.'
+            : (noMatch
+                ? 'Додайте до назви конкретику: CRM, Hermes, Парк, AI, процес, контент або іншу робочу зону.'
+                : (lowConfidence ? 'Уточніть назву задачі або оберіть вплив вручну.' : 'Спробуйте повторити після уточнення назви задачі.'));
+        const detail = providerUnavailable || conflict || invalidResponse
+            ? (error.message || fallbackDetail)
+            : fallbackDetail;
+        const aiReason = error.aiReason && error.aiReason !== detail
+            ? `<p class="my-day-ai-result-reason"><small>Пояснення AI: ${escape(error.aiReason)}</small></p>`
+            : '';
         return `<div class="my-day-ai-result is-error" data-my-day-ai-result>
             <p class="my-day-ai-result-status">${escape(title)}</p>
             <p class="my-day-ai-result-reason">${escape(detail)}</p>
+            ${aiReason}
             <button type="button" class="my-day-ai-retry" data-my-day-ai-retry>Повторити</button>
         </div>`;
     }
@@ -430,7 +458,7 @@
     function renderTaxonomyGuide() {
         const examples = [
             { task: 'Доробити CRM-фічу', impacts: 'Робота: CRM, Системність, Якість сервісу' },
-            { task: 'Підготувати зміну в парку', impacts: 'Робота: Парк, Якість сервісу, Команда і делегування' },
+            { task: 'Підготувати зміну в парку', impacts: 'Робота: Парк, Якість сервісу, Команда / делегування' },
             { task: 'Налаштувати Hermes', impacts: 'Робота: Hermes, Швидкість роботи, Ризики і безпека' }
         ];
         return '<div class="my-day-taxonomy-guide" aria-label="Як працюють впливи">' +

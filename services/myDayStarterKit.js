@@ -23,6 +23,37 @@ const STARTER_IMPACTS = Object.freeze([
         sortOrder: 3
     },
     {
+        name: "Операційка / процеси",
+        color: "#64748B",
+        icon: "⚙️",
+        sortOrder: 4
+    },
+    {
+        name: "Автоматизація / AI",
+        color: "#8B5CF6",
+        icon: "🤖",
+        sortOrder: 5
+    },
+    {
+        name: "Контент / медіа",
+        color: "#EC4899",
+        icon: "📣",
+        sortOrder: 6
+    },
+    {
+        name: "Аналітика / рішення",
+        color: "#0EA5E9",
+        icon: "📊",
+        sortOrder: 7
+    },
+    {
+        name: "Команда / делегування",
+        legacyNames: ["Команда і делегування"],
+        color: "#06B6D4",
+        icon: "👥",
+        sortOrder: 8
+    },
+    {
         name: "Дохід і клієнти",
         color: "#22C55E",
         icon: "📈",
@@ -81,12 +112,6 @@ const STARTER_IMPACTS = Object.freeze([
         color: "#EC4899",
         icon: "📣",
         sortOrder: 100
-    },
-    {
-        name: "Команда і делегування",
-        color: "#06B6D4",
-        icon: "🤝",
-        sortOrder: 110
     },
     {
         name: "Ризики і безпека",
@@ -219,16 +244,39 @@ async function lockStarterKit(queryable, userId) {
 async function createOrFindCatalog(queryable, userId, kind, item) {
     const table = CATALOG_TABLES[kind];
     if (!table) throw new Error('Unsupported starter taxonomy kind: ' + kind);
+    const legacyNameKeys = (item.legacyNames || []).map(normalizeNameKey);
     const existing = await queryable.query(
         `SELECT id, name, color, icon, sort_order, is_active
          FROM ${table}
-         WHERE user_id = $1 AND LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+         WHERE user_id = $1
+           AND (LOWER(BTRIM(name)) = LOWER(BTRIM($2))
+                OR LOWER(BTRIM(name)) = ANY($3::text[]))
+         ORDER BY CASE WHEN LOWER(BTRIM(name)) = LOWER(BTRIM($2)) THEN 0 ELSE 1 END
          LIMIT 1
          FOR UPDATE`,
-        [userId, item.name]
+        [userId, item.name, legacyNameKeys]
     );
     const row = existing.rows?.[0];
-    if (row) return { status: 'skipped', id: Number(row.id), name: row.name, isActive: row.is_active !== false };
+    if (row) {
+        if (normalizeNameKey(row.name) !== normalizeNameKey(item.name)) {
+            const previousName = row.name;
+            const normalized = await queryable.query(
+                `UPDATE ${table}
+                 SET name = $3, updated_at = NOW()
+                 WHERE id = $1 AND user_id = $2
+                 RETURNING id, name, is_active`,
+                [row.id, userId, item.name]
+            );
+            return {
+                status: 'skipped',
+                id: Number(normalized.rows[0].id),
+                name: normalized.rows[0].name,
+                isActive: normalized.rows[0].is_active !== false,
+                normalizedFrom: previousName
+            };
+        }
+        return { status: 'skipped', id: Number(row.id), name: row.name, isActive: row.is_active !== false };
+    }
 
     const inserted = await queryable.query(
         `INSERT INTO ${table} (user_id, name, color, icon, sort_order)

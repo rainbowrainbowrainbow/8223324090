@@ -7,6 +7,7 @@ const { after, before, describe, it } = require('node:test');
 const { Pool } = require('pg');
 const { getToken, request } = require('../helpers');
 const { buildMyDayContribution } = require('../../services/myDayContribution');
+const { applyMyDayStarterKit } = require('../../services/myDayStarterKit');
 
 const enabled = process.env.RUN_MY_DAY_POSTGRES_INTEGRATION === 'true';
 let pool = null;
@@ -302,6 +303,63 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.deepEqual(result.impacts.map(row => row.taskMinutes).sort((a, b) => a - b), [60, 60, 60]);
     });
 
+    it('adds the expanded canonical impacts and safely normalizes the exact legacy team name', async () => {
+        const owner = await createUser('starter_alias');
+        const legacy = await query(
+            `INSERT INTO my_day_impacts (user_id, name, color, icon, sort_order, is_active)
+             VALUES ($1, 'Команда і делегування', '#123456', '🤝', 777, false)
+             RETURNING id`,
+            [owner.id]
+        );
+        const client = await pool.connect();
+        let first;
+        try {
+            await client.query('BEGIN');
+            first = await applyMyDayStarterKit(client, owner.id);
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            client.release();
+        }
+
+        assert.deepEqual(first.created, { impacts: 18, habits: 5 });
+        assert.deepEqual(first.skipped, { impacts: 1, habits: 0 });
+        const catalog = await query(
+            `SELECT id, name, color, icon, sort_order, is_active
+             FROM my_day_impacts
+             WHERE user_id = $1
+             ORDER BY sort_order, id`,
+            [owner.id]
+        );
+        assert.equal(catalog.rows.length, 19);
+        ['Операційка / процеси', 'Автоматизація / AI', 'Контент / медіа', 'Аналітика / рішення', 'Команда / делегування']
+            .forEach(name => assert.ok(catalog.rows.some(row => row.name === name), `missing starter impact: ${name}`));
+        assert.equal(catalog.rows.some(row => row.name === 'Команда і делегування'), false);
+        const normalized = catalog.rows.find(row => Number(row.id) === Number(legacy.rows[0].id));
+        assert.equal(normalized.name, 'Команда / делегування');
+        assert.equal(normalized.color, '#123456');
+        assert.equal(normalized.icon, '🤝');
+        assert.equal(Number(normalized.sort_order), 777);
+        assert.equal(normalized.is_active, false);
+
+        const secondClient = await pool.connect();
+        let second;
+        try {
+            await secondClient.query('BEGIN');
+            second = await applyMyDayStarterKit(secondClient, owner.id);
+            await secondClient.query('COMMIT');
+        } catch (error) {
+            await secondClient.query('ROLLBACK').catch(() => {});
+            throw error;
+        } finally {
+            secondClient.release();
+        }
+        assert.deepEqual(second.created, { impacts: 0, habits: 0 });
+        assert.deepEqual(second.skipped, { impacts: 19, habits: 5 });
+    });
+
     it('enforces auth, ownership, writable business scope, impacts-only writes, legacy direction, and tags preservation', async () => {
         const owner = await createUser('owner_contract');
         const outsider = await createUser('outsider_contract');
@@ -355,7 +413,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         const body = await received.promise;
         assert.equal(body.model, 'gpt-5.6-luna');
         assert.equal(body.store, false);
-        assert.deepEqual(body.reasoning, { effort: 'none' });
+        assert.deepEqual(body.reasoning, { effort: 'low' });
 
         const manual = await putClassification(owner.token, taskId, { impactIds: [manualImpact] });
         assert.equal(manual.status, 200, JSON.stringify(manual.data));

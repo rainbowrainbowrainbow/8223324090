@@ -15,7 +15,7 @@ const {
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-const STARTER_IMPACTS = ['Робота: Парк', 'Робота: CRM', 'Робота: Hermes', 'Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Команда і делегування', 'Ризики і безпека'];
+const STARTER_IMPACTS = ['Робота: Парк', 'Робота: CRM', 'Робота: Hermes', 'Операційка / процеси', 'Автоматизація / AI', 'Контент / медіа', 'Аналітика / рішення', 'Команда / делегування', 'Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Ризики і безпека'];
 const STARTER_HABITS = ['Ранкова зарядка', 'Планування дня', 'Відновлення без екранів', 'Навчання 20 хв', 'Побутовий порядок'];
 
 function makeFakeDb(initial = {}) {
@@ -40,7 +40,18 @@ function makeFakeDb(initial = {}) {
         async query(sql, params = []) {
             state.calls.push({ sql, params });
             if (/pg_advisory_xact_lock/.test(sql)) return { rows: [] };
-            if (/FROM my_day_impacts/.test(sql)) return { rows: findByName(state.impacts, params[0], params[1]) ? [findByName(state.impacts, params[0], params[1])] : [] };
+            if (/FROM my_day_impacts/.test(sql)) {
+                const canonical = findByName(state.impacts, params[0], params[1]);
+                const legacyKeys = new Set(params[2] || []);
+                const legacy = state.impacts.find(row => Number(row.user_id) === Number(params[0]) && legacyKeys.has(normalizeNameKey(row.name)));
+                return { rows: canonical ? [canonical] : (legacy ? [legacy] : []) };
+            }
+            if (/UPDATE my_day_impacts/.test(sql)) {
+                const row = state.impacts.find(item => Number(item.id) === Number(params[0]) && Number(item.user_id) === Number(params[1]));
+                if (!row) return { rows: [] };
+                row.name = params[2];
+                return { rows: [{ id: row.id, name: row.name, is_active: row.is_active }] };
+            }
             if (/INSERT INTO my_day_impacts/.test(sql)) {
                 const row = insertCatalog(state.impacts, params);
                 return { rows: [{ id: row.id, name: row.name, is_active: row.is_active }] };
@@ -100,7 +111,7 @@ test('starter kit exposes the exact canonical caller-owned payload', () => {
 test('starter kit creates only caller-scoped taxonomy and habits once', async () => {
     const fake = makeFakeDb();
     const first = await applyMyDayStarterKit(fake, 42);
-    assert.deepEqual(first.created, { impacts: 15, habits: 5 });
+    assert.deepEqual(first.created, { impacts: 19, habits: 5 });
     assert.deepEqual(first.skipped, { impacts: 0, habits: 0 });
     assert.equal(fake.state.impacts.every(row => row.user_id === 42), true);
     assert.equal(fake.state.habits.every(row => row.user_id === 42), true);
@@ -115,8 +126,8 @@ test('starter kit creates only caller-scoped taxonomy and habits once', async ()
 
     const second = await applyMyDayStarterKit(fake, 42);
     assert.deepEqual(second.created, { impacts: 0, habits: 0 });
-    assert.deepEqual(second.skipped, { impacts: 15, habits: 5 });
-    assert.equal(fake.state.impacts.length, 15);
+    assert.deepEqual(second.skipped, { impacts: 19, habits: 5 });
+    assert.equal(fake.state.impacts.length, 19);
     assert.equal(fake.state.habits.length, 5);
 });
 
@@ -130,6 +141,21 @@ test('starter kit does not overwrite existing caller values or archive state', a
     assert.equal(existingImpact.icon, 'Y');
     assert.equal(existingImpact.sort_order, 888);
     assert.equal(existingImpact.is_active, false);
+});
+
+test('starter kit safely normalizes the exact legacy team impact name without changing its values', async () => {
+    const fake = makeFakeDb({
+        impacts: [{ id: 9, user_id: 5, name: 'Команда і делегування', color: '#123456', icon: '🤝', sort_order: 777, is_active: false }]
+    });
+    const result = await applyMyDayStarterKit(fake, 5);
+    const normalized = fake.state.impacts.find(row => row.id === 9);
+    assert.equal(normalized.name, 'Команда / делегування');
+    assert.equal(normalized.color, '#123456');
+    assert.equal(normalized.icon, '🤝');
+    assert.equal(normalized.sort_order, 777);
+    assert.equal(normalized.is_active, false);
+    assert.equal(result.details.impacts.items.find(item => item.id === 9).normalizedFrom, 'Команда і делегування');
+    assert.equal(fake.state.impacts.some(row => row.name === 'Команда і делегування'), false);
 });
 
 
@@ -172,10 +198,10 @@ test('starter kit idempotency is isolated per user', async () => {
         habits: [{ id: 79, user_id: 99, name: 'Планування дня', color: '#000000', icon: 'Z', direction_id: 77, metric: 'boolean', target_value: 1, cadence: 'daily', selected_weekdays: [], times_per_week: null, is_paused: false, is_archived: false, sort_order: 1 }]
     });
     const result = await applyMyDayStarterKit(fake, 5);
-    assert.deepEqual(result.created, { impacts: 15, habits: 5 });
+    assert.deepEqual(result.created, { impacts: 19, habits: 5 });
     assert.equal(fake.state.impacts.filter(row => row.user_id === 99).length, 1);
     assert.equal(fake.state.habits.filter(row => row.user_id === 99).length, 1);
-    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 15);
+    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 19);
     assert.equal(fake.state.habits.filter(row => row.user_id === 5).length, 5);
 });
 

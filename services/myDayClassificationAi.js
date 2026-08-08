@@ -16,9 +16,15 @@ const MAX_TASK_DESCRIPTION_CHARS = 700;
 const MAX_IMPACT_NAME_CHARS = 80;
 const MAX_ACTIVE_IMPACTS_FOR_PROMPT = 80;
 const MAX_CLASSIFICATION_REASON_CHARS = 180;
-const MY_DAY_CLASSIFICATION_TIMEOUT_MS = 10_000;
-const MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS = 220;
+const MY_DAY_CLASSIFICATION_TIMEOUT_MS = 15_000;
+const MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS = 400;
 const OPENAI_RESPONSES_SCHEMA_NAME = 'my_day_task_classification';
+const MY_DAY_CLASSIFICATION_REASONING_EFFORT = 'low';
+const EXPLICIT_IMPACT_STOP_WORDS = new Set([
+    'і', 'й', 'та', 'або', 'для', 'на', 'у', 'в', 'до', 'з', 'із', 'по',
+    'робота', 'work', 'вплив', 'впливи', 'задача', 'задачі'
+]);
+const EXPLICIT_IMPACT_NEGATIONS = new Set(['не', 'без', 'not', 'without', 'exclude', 'виключити']);
 
 const MY_DAY_CLASSIFICATION_JSON_SCHEMA = Object.freeze({
     type: 'object',
@@ -100,6 +106,51 @@ function activeImpactPayload(impacts = []) {
         .slice(0, MAX_ACTIVE_IMPACTS_FOR_PROMPT);
 }
 
+function normalizeImpactMatchText(value) {
+    return String(value || '')
+        .normalize('NFKC')
+        .toLocaleLowerCase('uk-UA')
+        .replace(/[’‘`´ʼ]/g, "'")
+        .replace(/[^\p{L}\p{N}]+/gu, ' ')
+        .trim()
+        .replace(/\s+/g, ' ');
+}
+
+function impactMatchTokens(value) {
+    return normalizeImpactMatchText(value).split(' ').filter(Boolean);
+}
+
+function findExplicitImpactIds(task = {}, impacts = []) {
+    const activeImpacts = activeImpactPayload(impacts);
+    const taskTokens = impactMatchTokens(`${task?.title || ''} ${task?.description || ''}`);
+    if (!taskTokens.length) return [];
+
+    const hasUnnegatedTaskToken = token => taskTokens.some((taskToken, index) => {
+        if (taskToken !== token) return false;
+        return !taskTokens.slice(Math.max(0, index - 2), index).some(previous => EXPLICIT_IMPACT_NEGATIONS.has(previous));
+    });
+
+    const tokenFrequency = new Map();
+    const impactTokens = activeImpacts.map(impact => {
+        const tokens = [...new Set(impactMatchTokens(impact.name))];
+        tokens.forEach(token => tokenFrequency.set(token, (tokenFrequency.get(token) || 0) + 1));
+        return { impact, tokens };
+    });
+
+    return impactTokens
+        .filter(({ tokens }) => tokens.some(token => {
+            if (EXPLICIT_IMPACT_STOP_WORDS.has(token) || tokenFrequency.get(token) !== 1) return false;
+            const minimumLength = /^[a-z0-9]+$/i.test(token) ? 2 : 4;
+            return token.length >= minimumLength && hasUnnegatedTaskToken(token);
+        }))
+        .map(({ impact }) => impact.id)
+        .slice(0, MAX_IMPACTS_PER_TASK);
+}
+
+function mergeExplicitImpactIds(explicitImpactIds = [], aiImpactIds = []) {
+    return [...new Set([...explicitImpactIds, ...aiImpactIds])].slice(0, MAX_IMPACTS_PER_TASK);
+}
+
 function buildSystemPrompt() {
     return [
         'You classify one personal My Day task for Event Genix CRM.',
@@ -107,7 +158,10 @@ function buildSystemPrompt() {
         'Do not classify task directions, status, priority, deadline, owner, or dependencies.',
         `Choose 1-${MAX_IMPACTS_PER_TASK} impactIds only from the provided activeImpacts list.`,
         'Never create new impact IDs or rename impacts.',
-        'If the task is too unclear or no provided impact fits, return an empty impactIds array and confidence below 0.55.',
+        'Prefer the closest meaningful provided impacts for a clear actionable task, even when its wording is short.',
+        'If the task explicitly names an active impact or its distinctive acronym (for example CRM, Hermes, Park, or AI), include that impact unless the text clearly negates it.',
+        'Return an empty impactIds array only when the text is an opaque identifier, is genuinely unclear, or has no semantic connection to any provided impact.',
+        'When returning an empty impactIds array, set confidence below 0.55.',
         'The reason must be short and must not include private data beyond the task summary.'
     ].join('\n');
 }
@@ -231,7 +285,7 @@ async function callOpenAIResponsesForClassification(request = {}, options = {}) 
                         schema: MY_DAY_CLASSIFICATION_JSON_SCHEMA
                     }
                 },
-                reasoning: { effort: 'none' },
+                reasoning: { effort: MY_DAY_CLASSIFICATION_REASONING_EFFORT },
                 max_output_tokens: MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS,
                 store: false
             }),
@@ -321,6 +375,7 @@ function myDayClassificationDiagnostics(env = process.env) {
         keyEnv: 'OPENAI_API_KEY',
         boundary: 'my_day_direct_openai_responses',
         structuredOutputs: true,
+        reasoningEffort: MY_DAY_CLASSIFICATION_REASONING_EFFORT,
         store: false
     };
 }
@@ -343,6 +398,7 @@ async function classifyMyDayTask(input = {}, options = {}) {
 
     const task = input.task || {};
     const impacts = activeImpactPayload(input.impacts || []);
+    const explicitImpactIds = findExplicitImpactIds(task, impacts);
     const aiClient = options.openAIClient || options.aiClient || callOpenAIResponsesForClassification;
     const result = await aiClient({
         model,
@@ -381,7 +437,11 @@ async function classifyMyDayTask(input = {}, options = {}) {
         };
     }
 
-    if (!normalized.impactIds.length) {
+    const mergedImpactIds = mergeExplicitImpactIds(explicitImpactIds, normalized.impactIds);
+    const usedExplicitFallback = explicitImpactIds.length > 0
+        && (normalized.confidence < MIN_CLASSIFICATION_CONFIDENCE
+            || explicitImpactIds.some(id => !normalized.impactIds.includes(id)));
+    if (!mergedImpactIds.length) {
         return {
             ok: false,
             code: 'MY_DAY_AI_NO_MATCH',
@@ -394,7 +454,7 @@ async function classifyMyDayTask(input = {}, options = {}) {
         };
     }
 
-    if (normalized.confidence < MIN_CLASSIFICATION_CONFIDENCE) {
+    if (normalized.confidence < MIN_CLASSIFICATION_CONFIDENCE && !explicitImpactIds.length) {
         return {
             ok: false,
             code: 'MY_DAY_AI_LOW_CONFIDENCE',
@@ -410,10 +470,12 @@ async function classifyMyDayTask(input = {}, options = {}) {
     return {
         ok: true,
         classification: {
-            impactIds: normalized.impactIds
+            impactIds: mergedImpactIds
         },
-        confidence: normalized.confidence,
-        reason: normalized.reason,
+        confidence: usedExplicitFallback ? Math.max(normalized.confidence, 0.9) : normalized.confidence,
+        reason: usedExplicitFallback
+            ? (explicitImpactIds.length === 1 ? 'Явний збіг із назвою активного впливу.' : 'Явні збіги з назвами активних впливів.')
+            : normalized.reason,
         provider: 'openai',
         model: result.model || model,
         usage: result.usage || {}
@@ -424,6 +486,7 @@ module.exports = {
     ALLOWED_MY_DAY_CLASSIFICATION_MODELS,
     DEFAULT_MY_DAY_CLASSIFICATION_MODEL,
     MIN_CLASSIFICATION_CONFIDENCE,
+    MY_DAY_CLASSIFICATION_REASONING_EFFORT,
     MY_DAY_CLASSIFICATION_JSON_SCHEMA,
     MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS,
     MY_DAY_CLASSIFICATION_TIMEOUT_MS,
@@ -435,6 +498,8 @@ module.exports = {
     classifyMyDayTask,
     extractOpenAIResponseObject,
     extractOpenAIResponseText,
+    findExplicitImpactIds,
+    mergeExplicitImpactIds,
     myDayClassificationDiagnostics,
     normalizeAiClassification,
     parseAiJson,

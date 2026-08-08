@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.90 - My Day AI schema hotfix
+
+### My Day / (08.08.2026) [codex]
+- **AI-розмітка знову працює** — прибрано несумісне обмеження `uniqueItems` зі Structured Outputs schema для `gpt-5.6-luna`; унікальність і ліміт впливів як і раніше перевіряються на backend перед записом.
+
+---
+
 ## v0.80.89 - My Day impacts automation
 
 ### My Day / (08.08.2026) [codex]

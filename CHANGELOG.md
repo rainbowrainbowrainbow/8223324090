@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.93 - Checkbox thin MVP hardening
+
+### Checkbox / Payments / (08.08.2026) [codex]
+- **Thin MVP без бойової фіскалізації** — `/cashier-payments` лишається простим екраном “Оплата та чек”, показує disabled/readiness state і блокує підтвердження грошей, доки `CHECKBOX_INTEGRATION_ENABLED`, register mapping і runtime refs не готові.
+- **Безпечний outbox і provider bridge** — Checkbox worker працює через server-side kill switch, не витрачає attempts без config, звіряє ФОП/касу/касира/shift/amount/UUID і сходиться через lookup без дублювання sale.
+- **Repeatable park + middle setup** — додано dry-run-first config tooling, activation env template, scoped user/register bindings і fail-closed fiscal item/tax mapping без raw secrets у repo.
+- **Real-route QA в CI** — додано PostgreSQL + local HTTP Checkbox browser smoke, який проходить через реальні EventGenix routes, admission quote, fiscal mapping, worker і official receipt artifact rendering.
+
+---
+
 ## v0.80.92 - My Day normalized impact statistics
 
 ### My Day / (08.08.2026) [codex]

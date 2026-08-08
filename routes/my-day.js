@@ -2,6 +2,7 @@
 
 const router = require('express').Router();
 const rateLimit = require('express-rate-limit');
+const { ipKeyGenerator } = require('express-rate-limit');
 const { pool } = require('../db');
 const { authenticateToken } = require('../middleware/auth');
 const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
@@ -32,7 +33,7 @@ router.use(authenticateToken);
 const myDayAiClassificationLimiter = rateLimit({
     windowMs: 60 * 1000,
     max: Number.parseInt(process.env.MY_DAY_CLASSIFICATION_RATE_LIMIT_MAX || '10', 10) || 10,
-    keyGenerator: req => String(req.user?.id || req.ip || 'anon'),
+    keyGenerator: req => String(req.user?.id || ipKeyGenerator(req.ip) || 'anon'),
     message: {
         success: false,
         code: 'MY_DAY_AI_RATE_LIMITED',

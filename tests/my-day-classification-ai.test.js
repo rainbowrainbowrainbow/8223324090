@@ -77,7 +77,8 @@ test('My Day AI route keeps LLM calls outside transactions and rechecks task bef
     const routeBlock = route.slice(route.indexOf("router.post('/tasks/:taskId/classification/auto'"));
 
     assert.match(route, /const myDayAiClassificationLimiter = rateLimit/);
-    assert.match(route, /keyGenerator: req => String\(req\.user\?\.id/);
+    assert.match(route, /ipKeyGenerator/);
+    assert.match(route, /keyGenerator: req => String\(req\.user\?\.id \|\| ipKeyGenerator\(req\.ip\)/);
     assert.match(route, /loadMyCabinetTaskSnapshot\(pool, req\.user, businessScope, req\.params\.taskId\)/);
     assert.match(route, /readTaskClassification\(pool, userId, req\.params\.taskId\)/);
     assert.match(route, /const aiResult = await classifyMyDayTask\(\{ task, impacts \}\)/);

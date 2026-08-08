@@ -26,7 +26,7 @@ function createHarness({ editable = true, mobile = false } = {}) {
     window.console = console;
     window.__canManageStructure = editable;
     window.__hrOrgMobile = mobile;
-    window.canAccess = action => action === 'manage_staff' && window.__canManageStructure;
+    window.canAccess = action => action === 'hr.staff.manage' && window.__canManageStructure;
     window.showNotification = () => {};
     window.apiVerifyToken = async () => ({ id: 1, role: 'creator', name: 'Tester' });
     window.openProfessionWorkspace = options => {

@@ -207,26 +207,29 @@ function accountActionDenylist(account = {}) {
 }
 
 function normalizePageDenylistInput(value, options = {}) {
-    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, options).values;
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, { ...options, excludeNonConfigurable: true }).values;
 }
 
 function normalizeActionAllowlist(value, options = {}) {
     return normalizeCapabilityList(value, CAPABILITY_TYPES.ACTION, {
         ...options,
         excludeNonDelegable: true,
-        excludeExplicitAllowDisabled: true
+        excludeExplicitAllowDisabled: true,
+        excludeDeprecated: true
     }).values;
 }
 
 function normalizePageAllowlistInput(value, options = {}) {
     return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, {
         ...options,
-        excludeExplicitAllowDisabled: true
+        excludeExplicitAllowDisabled: true,
+        excludeDeprecated: true,
+        excludeNonConfigurable: true
     }).values;
 }
 
 function normalizePageAllowlistUpdateInput(value, options = {}) {
-    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, options).values;
+    return normalizeCapabilityList(value, CAPABILITY_TYPES.PAGE, { ...options, excludeNonConfigurable: true }).values;
 }
 
 function assertNoNewExplicitAllowDisabledPages(requestedAllowlist, currentAllowlist, fieldName = 'pageAllowlist') {
@@ -244,7 +247,7 @@ function assertNoNewExplicitAllowDisabledPages(requestedAllowlist, currentAllowl
 
 function assertSelfAccountAccessSafe(actor, prospectiveAccount) {
     if (!actor || !prospectiveAccount || Number(actor.id) !== Number(prospectiveAccount.id)) return;
-    if (!canUseAction(prospectiveAccount, 'manage_accounts') || !canUseAction(prospectiveAccount, 'manage_users')) {
+    if (!canUseAction(prospectiveAccount, 'manage_accounts')) {
         const err = new Error('Не можна забрати в себе доступ до керування акаунтами');
         err.statusCode = 400;
         throw err;
@@ -465,7 +468,7 @@ router.get('/link-conflicts', requireAction('manage_accounts'), async (req, res)
 });
 
 // GET /api/users/onboarding/options — aggregate data for the controlled account onboarding wizard
-router.get('/onboarding/options', requireAction('manage_accounts'), requireAction('manage_staff'), async (req, res) => {
+router.get('/onboarding/options', requireAction('manage_accounts'), requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const [staffResult, professionResult, structureResult, conditionResult] = await Promise.all([
             pool.query(
@@ -585,7 +588,7 @@ router.get('/onboarding/options', requireAction('manage_accounts'), requireActio
 });
 
 // POST /api/users/onboarding — atomically create/link account and HR working setup
-router.post('/onboarding', requireAction('manage_accounts'), requireAction('manage_staff'), async (req, res) => {
+router.post('/onboarding', requireAction('manage_accounts'), requireAction('hr.staff.manage'), async (req, res) => {
     try {
         const result = await createAccountOnboarding({
             payload: req.body || {},
@@ -872,7 +875,7 @@ async function updateAccountAccess(req, res) {
             ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : null;
         const normalizedActionDenylist = actionDenylistInput !== undefined
-            ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist' })
+            ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist', excludeDeprecated: true })
             : null;
 
         client = await pool.connect();
@@ -1268,7 +1271,7 @@ router.post('/', requireAction('manage_accounts'), async (req, res) => {
             ? normalizeActionAllowlist(actionAllowlistInput, { strict: true, fieldName: 'actionAllowlist' })
             : [];
         const normalizedActionDenylist = actionDenylistInput !== undefined
-            ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist' })
+            ? normalizeActionOverrideList(actionDenylistInput, { strict: true, fieldName: 'actionDenylist', excludeDeprecated: true })
             : [];
         assertNoCapabilityConflicts(normalizedPageAllowlist, normalizedPageDenylist, CAPABILITY_TYPES.PAGE);
         assertNoCapabilityConflicts(normalizedActionAllowlist, normalizedActionDenylist);

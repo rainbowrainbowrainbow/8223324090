@@ -557,6 +557,7 @@ function clearRuntimePermissionCatalog(user) {
     PAGE_CAPABILITY_ALIASES = Object.create(null);
     ACTION_CAPABILITY_ALIASES = Object.create(null);
     ACTION_LEGACY_KEYS = Object.create(null);
+    ACTION_LEGACY_DENY_KEYS = Object.create(null);
     EXPLICIT_ALLOW_DISABLED_PAGES = new Set();
     EXPLICIT_ALLOW_DISABLED_ACTIONS = new Set();
     NON_DELEGABLE_ACTIONS = new Set();
@@ -571,6 +572,7 @@ function applyActionPermissions(user, permissions) {
     PAGE_CAPABILITY_ALIASES = catalog.pageAliases || Object.create(null);
     ACTION_CAPABILITY_ALIASES = catalog.actionAliases || Object.create(null);
     ACTION_LEGACY_KEYS = catalog.actionLegacyKeys || Object.create(null);
+    ACTION_LEGACY_DENY_KEYS = catalog.actionLegacyDenyKeys || Object.create(null);
     EXPLICIT_ALLOW_DISABLED_PAGES = new Set(catalog.explicitAllowDisabledPages || []);
     EXPLICIT_ALLOW_DISABLED_ACTIONS = new Set(catalog.explicitAllowDisabledActions || []);
     NON_DELEGABLE_ACTIONS = new Set(catalog.nonDelegableActions || []);
@@ -966,6 +968,7 @@ let ACTION_PERMISSIONS = Object.create(null);
 let PAGE_CAPABILITY_ALIASES = Object.create(null);
 let ACTION_CAPABILITY_ALIASES = Object.create(null);
 let ACTION_LEGACY_KEYS = Object.create(null);
+let ACTION_LEGACY_DENY_KEYS = Object.create(null);
 let EXPLICIT_ALLOW_DISABLED_PAGES = new Set();
 let EXPLICIT_ALLOW_DISABLED_ACTIONS = new Set();
 let NON_DELEGABLE_ACTIONS = new Set();
@@ -1615,7 +1618,9 @@ function resolveCapability(user, capability, context = {}) {
         ? getUserPageDenylist(effectiveUser)
         : getCurrentUserActionList('actionDenylist', 'action_denylist', effectiveUser);
     const overrideKeys = requestedType === 'action' ? [key, ...(ACTION_LEGACY_KEYS[key] || [])] : [key];
-    if (overrideKeys.some(candidate => denylist.includes(candidate))) {
+    const legacyDenyKeys = typeof ACTION_LEGACY_DENY_KEYS === 'undefined' ? [] : (ACTION_LEGACY_DENY_KEYS[key] || []);
+    const denyOverrideKeys = requestedType === 'action' ? [...overrideKeys, ...legacyDenyKeys] : overrideKeys;
+    if (denyOverrideKeys.some(candidate => denylist.includes(candidate))) {
         return _frontendCapabilityDecision(normalized, false, 'explicit_deny', null, 'listed_in_explicit_deny');
     }
 

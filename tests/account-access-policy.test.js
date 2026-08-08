@@ -179,6 +179,53 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     assert.ok(snapshot.catalog.nonDelegableActions.includes('fiscal.configure'));
     assert.ok(snapshot.catalog.explicitAllowDisabledPages.includes('/finance'));
     assert.ok(snapshot.catalog.explicitAllowDisabledActions.includes('finance.manage'));
+    assert.equal(snapshot.catalog.actionLegacyKeys['training.manage'].includes('manage_staff'), true);
+    assert.equal(snapshot.catalog.actionLegacyDenyKeys.manage_accounts.includes('manage_users'), true);
+});
+
+test('legacy stored action states stay compatible without exposing dead toggles', () => {
+    assert.equal(resolveCapability({ role: 'manager', action_allowlist: ['cancel_booking'] }, 'cancel_booking').allowed, false);
+    assert.equal(resolveCapability({ role: 'manager', action_denylist: ['cancel_booking'] }, 'cancel_booking').allowed, false);
+    assert.equal(resolveCapability({ role: 'animator', action_allowlist: ['view_own'] }, 'view_own').allowed, false);
+    assert.equal(resolveCapability({ role: 'animator', action_allowlist: ['manage_users'] }, 'manage_accounts').allowed, false);
+    assert.equal(resolveCapability({ role: 'director', action_denylist: ['manage_users'] }, 'manage_accounts').allowed, false);
+
+    const legacyStaffAllow = { role: 'animator', action_allowlist: ['manage_staff'] };
+    assert.equal(resolveCapability(legacyStaffAllow, 'training.manage').allowed, true);
+    assert.equal(resolveCapability(legacyStaffAllow, 'hermes.staff.manage').allowed, true);
+    assert.equal(resolveCapability(legacyStaffAllow, 'manage_staff').allowed, false);
+
+    const legacyStaffDeny = { role: 'manager', action_denylist: ['manage_staff'] };
+    assert.equal(resolveCapability(legacyStaffDeny, 'training.manage').allowed, false);
+    assert.equal(resolveCapability(legacyStaffDeny, 'hermes.schedule.manage').allowed, false);
+});
+
+test('strict account writes reject deprecated actions and non-configurable page toggles', () => {
+    for (const key of ['cancel_booking', 'view_own', 'manage_users', 'manage_staff']) {
+        assert.throws(
+            () => normalizeCapabilityList([key], 'action', {
+                strict: true,
+                excludeDeprecated: true,
+                fieldName: 'actionAllowlist'
+            }),
+            error => error instanceof CapabilityValidationError
+                && error.code === 'DEPRECATED_CAPABILITY_KEYS'
+                && error.details.deprecatedKeys.includes(key)
+        );
+    }
+
+    for (const key of ['/dashboard', '/profile', '/game', '/quiz', '/room', '/shop']) {
+        assert.throws(
+            () => normalizeCapabilityList([key], 'page', {
+                strict: true,
+                excludeNonConfigurable: true,
+                fieldName: 'pageAllowlist'
+            }),
+            error => error instanceof CapabilityValidationError
+                && error.code === 'NON_CONFIGURABLE_CAPABILITY_KEYS'
+                && error.details.nonConfigurableKeys.includes(key)
+        );
+    }
 });
 
 test('Finance explicit grants are rejected by strict account-access writes', () => {

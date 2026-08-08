@@ -25,6 +25,7 @@ function loadFrontendResolver() {
         PAGE_CAPABILITY_ALIASES: catalog.pageAliases,
         ACTION_CAPABILITY_ALIASES: catalog.actionAliases,
         ACTION_LEGACY_KEYS: catalog.actionLegacyKeys,
+        ACTION_LEGACY_DENY_KEYS: catalog.actionLegacyDenyKeys,
         EXPLICIT_ALLOW_DISABLED_PAGES: new Set(catalog.explicitAllowDisabledPages),
         EXPLICIT_ALLOW_DISABLED_ACTIONS: new Set(catalog.explicitAllowDisabledActions),
         NON_DELEGABLE_ACTIONS: new Set(catalog.nonDelegableActions),
@@ -177,8 +178,8 @@ test('unknown keys fail closed in both runtimes', () => {
     assertParity({ role: 'creator' }, 'not_a_real_action', { type: 'action' });
 });
 
-test('Staff schedule, staff management, and Training onboarding honor canonical capability overrides', () => {
-    const capabilities = ['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'manage_staff'];
+test('Staff schedule, staff management, Hermes, and Training honor granular capability overrides', () => {
+    const capabilities = ['hr.schedule.view', 'hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'hermes.staff.manage', 'hermes.attendance.manage', 'hermes.schedule.manage', 'training.manage'];
 
     for (const role of ['manager', 'hr', 'admin']) {
         for (const capability of capabilities) {
@@ -187,11 +188,11 @@ test('Staff schedule, staff management, and Training onboarding honor canonical 
     }
 
     assert.equal(assertParity({ role: 'instructor' }, 'hr.schedule.view', { type: 'action' }).allowed, true, 'instructor can view the schedule');
-    for (const capability of ['hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'manage_staff']) {
+    for (const capability of ['hr.schedule.manage', 'hr.staff.view', 'hr.staff.manage', 'hermes.staff.manage', 'hermes.attendance.manage', 'hermes.schedule.manage', 'training.manage']) {
         assert.equal(assertParity({ role: 'instructor' }, capability, { type: 'action' }).allowed, false, `instructor must not receive ${capability} by default`);
     }
 
-    const allowed = { role: 'instructor', action_allowlist: ['hr.schedule.manage', 'hr.staff.manage', 'manage_staff'] };
+    const allowed = { role: 'instructor', action_allowlist: ['hr.schedule.manage', 'hr.staff.manage', 'hermes.staff.manage', 'hermes.attendance.manage', 'hermes.schedule.manage', 'training.manage'] };
     for (const capability of allowed.action_allowlist) {
         assert.equal(assertParity(allowed, capability, { type: 'action' }).allowed, true, `explicit allow must grant ${capability}`);
     }
@@ -200,6 +201,40 @@ test('Staff schedule, staff management, and Training onboarding honor canonical 
     for (const capability of capabilities) {
         assert.equal(assertParity(denied, capability, { type: 'action' }).allowed, false, `explicit deny must block ${capability}`);
     }
+});
+
+test('legacy manage_staff compatibility maps only to former granular consumers', () => {
+    const legacyAllowed = {
+        role: 'instructor',
+        action_allowlist: ['manage_staff']
+    };
+    for (const capability of ['hr.schedule.manage', 'hr.staff.manage', 'hermes.staff.manage', 'hermes.attendance.manage', 'hermes.schedule.manage', 'training.manage']) {
+        assert.equal(assertParity(legacyAllowed, capability, { type: 'action' }).allowed, true, `legacy manage_staff allow must preserve ${capability}`);
+    }
+    assert.equal(assertParity(legacyAllowed, 'manage_staff', { type: 'action' }).allowed, false, 'legacy manage_staff must remain a tombstone');
+
+    const legacyDenied = {
+        role: 'manager',
+        action_denylist: ['manage_staff']
+    };
+    for (const capability of ['hr.schedule.manage', 'hr.staff.manage', 'hermes.staff.manage', 'hermes.attendance.manage', 'hermes.schedule.manage', 'training.manage']) {
+        assert.equal(assertParity(legacyDenied, capability, { type: 'action' }).allowed, false, `legacy manage_staff deny must block ${capability}`);
+    }
+});
+
+test('legacy dead actions fail closed while manage_users deny revokes manage_accounts only as a deny alias', () => {
+    for (const key of ['cancel_booking', 'view_own']) {
+        const allowDecision = assertParity({ role: 'animator', action_allowlist: [key] }, key, { type: 'action' });
+        assert.deepEqual([allowDecision.allowed, allowDecision.reason], [false, 'unknown_capability']);
+        const denyDecision = assertParity({ role: 'creator', action_denylist: [key] }, key, { type: 'action' });
+        assert.deepEqual([denyDecision.allowed, denyDecision.reason], [false, 'unknown_capability']);
+    }
+
+    const legacyAllow = assertParity({ role: 'animator', action_allowlist: ['manage_users'] }, 'manage_accounts', { type: 'action' });
+    assert.deepEqual([legacyAllow.allowed, legacyAllow.reason], [false, 'no_matching_grant']);
+
+    const legacyDeny = assertParity({ role: 'director', action_denylist: ['manage_users'] }, 'manage_accounts', { type: 'action' });
+    assert.deepEqual([legacyDeny.allowed, legacyDeny.source, legacyDeny.reason], [false, 'explicit_deny', 'listed_in_explicit_deny']);
 });
 test('Finance management keeps creator, director and accountant parity with explicit overrides', () => {
     const capability = 'finance.manage';

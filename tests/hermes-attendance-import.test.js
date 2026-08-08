@@ -46,13 +46,13 @@ async function postJson(baseUrl, path, body, headers = {}) {
     return { status: response.status, data: await response.json() };
 }
 
-function routeActor(manageStaff = true) {
+function routeActor(manageAttendance = true) {
     return {
         id: 42,
         username: 'hermes.attendance',
         role: 'employee',
-        action_allowlist: manageStaff ? ['manage_staff'] : [],
-        action_denylist: manageStaff ? [] : ['manage_staff'],
+        action_allowlist: manageAttendance ? ['hermes.attendance.manage'] : [],
+        action_denylist: manageAttendance ? [] : ['hermes.attendance.manage'],
         business_contexts: ['event_genix'],
         default_business_context: 'event_genix'
     };
@@ -715,7 +715,7 @@ describe('Hermes arrival-sheet apply contract', () => {
 });
 
 describe('Hermes arrival-sheet route guards', () => {
-    it('allows manage_staff to preview without mutation confirmation and blocks actors without the permission', async () => {
+    it('allows hermes.attendance.manage to preview without mutation confirmation and blocks actors without the permission', async () => {
         let previewCalls = 0;
         const previewAttendanceImport = async (_db, body, options) => {
             previewCalls += 1;
@@ -757,7 +757,7 @@ describe('Hermes arrival-sheet route guards', () => {
                 previewPayload()
             );
             assert.equal(denied.status, 403);
-            assert.equal(denied.data.code, 'HERMES_MANAGE_STAFF_REQUIRED');
+            assert.equal(denied.data.code, 'HERMES_CAPABILITY_REQUIRED');
             assert.equal(previewCalls, 1);
         } finally {
             await close(deniedApp.server);

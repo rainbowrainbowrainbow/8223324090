@@ -47,7 +47,7 @@ function createHarness() {
         addListener() {},
         removeListener() {}
     });
-    window.canAccess = action => action === 'manage_staff' && window.__canManageStructure;
+    window.canAccess = action => action === 'hr.staff.manage' && window.__canManageStructure;
 
     const uiCode = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
     const hrCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');

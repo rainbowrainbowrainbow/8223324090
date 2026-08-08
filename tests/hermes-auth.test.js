@@ -424,7 +424,7 @@ describe('Hermes capabilities route auth', () => {
                 previewScheduleWrites: 0,
                 applyRequiresConfirmation: true,
                 applyRequiresIdempotencyKey: true,
-                applyRequiresManageStaff: true
+                applyRequiredCapability: 'hermes.schedule.manage'
             });
             assert.deepEqual(res.data.endpoints.attendance, {
                 preview: 'POST /api/hermes/attendance/preview',
@@ -432,13 +432,13 @@ describe('Hermes capabilities route auth', () => {
                 businessContext: 'event_genix',
                 maxPreviewRows: 100,
                 previewTtlMinutes: 30,
-                previewRequiresManageStaff: true,
+                previewRequiredCapability: 'hermes.attendance.manage',
                 previewAttendanceWrites: 0,
                 previewScheduleWrites: 0,
                 scheduleWrites: 0,
                 applyRequiresConfirmation: true,
                 applyRequiresIdempotencyKey: true,
-                applyRequiresManageStaff: true,
+                applyRequiredCapability: 'hermes.attendance.manage',
                 applyScheduleWrites: 0
             });
         });

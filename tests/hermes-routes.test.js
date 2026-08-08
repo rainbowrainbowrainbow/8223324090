@@ -1350,7 +1350,7 @@ describe('Hermes read-only task routes', () => {
         assert.equal(res.data.endpoints.staffSchedule.apply, 'POST /api/hermes/staff-schedule/apply');
         assert.equal(res.data.endpoints.staffSchedule.applyRequiresConfirmation, true);
         assert.equal(res.data.endpoints.staffSchedule.applyRequiresIdempotencyKey, true);
-        assert.equal(res.data.endpoints.staffSchedule.applyRequiresManageStaff, true);
+        assert.equal(res.data.endpoints.staffSchedule.applyRequiredCapability, 'hermes.schedule.manage');
         assert.equal(res.data.endpoints.attendance.preview, 'POST /api/hermes/attendance/preview');
         assert.equal(res.data.endpoints.attendance.apply, 'POST /api/hermes/attendance/apply');
         assert.equal(res.data.endpoints.attendance.previewAttendanceWrites, 0);

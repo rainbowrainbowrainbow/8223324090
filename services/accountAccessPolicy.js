@@ -18,11 +18,14 @@ const CAPABILITY_TYPES = Object.freeze({
 const PAGE_ACCESS = Object.freeze(Object.fromEntries(
     PAGE_PERMISSIONS.map(entry => [entry.key, entry.defaultRoles])
 ));
+const ACTIVE_ACTION_PERMISSION_ENTRIES = Object.freeze(
+    ACTION_PERMISSION_ENTRIES.filter(entry => entry.deprecated !== true)
+);
 const ACTION_PERMISSIONS = Object.freeze(Object.fromEntries(
-    ACTION_PERMISSION_ENTRIES.map(entry => [entry.key, entry.defaultRoles])
+    ACTIVE_ACTION_PERMISSION_ENTRIES.map(entry => [entry.key, entry.defaultRoles])
 ));
 const NON_DELEGABLE_ACTIONS = new Set(
-    ACTION_PERMISSION_ENTRIES.filter(entry => entry.delegable === false).map(entry => entry.key)
+    ACTIVE_ACTION_PERMISSION_ENTRIES.filter(entry => entry.delegable === false).map(entry => entry.key)
 );
 const ACTION_ALIAS_TO_CANONICAL = Object.freeze(ACTION_PERMISSION_ENTRIES.reduce((result, entry) => {
     entry.aliases.forEach(alias => { result[alias] = entry.key; });
@@ -114,11 +117,21 @@ function normalizeCapabilityList(value, type, options = {}) {
     const unknownKeys = [];
     const nonDelegableKeys = [];
     const explicitAllowDisabledKeys = [];
+    const deprecatedKeys = [];
+    const nonConfigurableKeys = [];
 
     for (const rawKey of normalizeRawList(value)) {
         const normalized = normalizeCapability(rawKey, { type });
         if (!normalized.known) {
             unknownKeys.push(rawKey);
+            continue;
+        }
+        if (options.excludeDeprecated === true && normalized.definition.deprecated === true) {
+            deprecatedKeys.push(normalized.key);
+            continue;
+        }
+        if (options.excludeNonConfigurable === true && normalized.definition.configurable === false) {
+            nonConfigurableKeys.push(normalized.key);
             continue;
         }
         if (options.excludeNonDelegable === true
@@ -152,7 +165,25 @@ function normalizeCapabilityList(value, type, options = {}) {
         );
     }
 
-    return { values: result, unknownKeys, nonDelegableKeys, explicitAllowDisabledKeys };
+    if (options.strict === true && deprecatedKeys.length) {
+        const fieldName = options.fieldName || `${type} capabilities`;
+        throw new CapabilityValidationError(
+            `${fieldName} contains deprecated permission keys: ${deprecatedKeys.join(', ')}`,
+            'DEPRECATED_CAPABILITY_KEYS',
+            { field: fieldName, deprecatedKeys }
+        );
+    }
+
+    if (options.strict === true && nonConfigurableKeys.length) {
+        const fieldName = options.fieldName || `${type} capabilities`;
+        throw new CapabilityValidationError(
+            `${fieldName} contains non-configurable permission keys: ${nonConfigurableKeys.join(', ')}`,
+            'NON_CONFIGURABLE_CAPABILITY_KEYS',
+            { field: fieldName, nonConfigurableKeys }
+        );
+    }
+
+    return { values: result, unknownKeys, nonDelegableKeys, explicitAllowDisabledKeys, deprecatedKeys, nonConfigurableKeys };
 }
 
 function normalizePageAllowlist(userOrValue) {
@@ -222,7 +253,7 @@ function resolveCapability(user, capability, context = {}) {
     if (!user) {
         return decision(normalized, false, 'default_deny', null, 'user_missing');
     }
-    if (!normalized.known) {
+    if (!normalized.known || (normalized.type === CAPABILITY_TYPES.ACTION && normalized.definition.deprecated === true)) {
         return decision(normalized, false, 'default_deny', null, 'unknown_capability');
     }
 
@@ -230,7 +261,10 @@ function resolveCapability(user, capability, context = {}) {
     const overrideKeys = normalized.type === CAPABILITY_TYPES.ACTION
         ? [normalized.key, ...(normalized.definition.legacyKeys || [])]
         : [normalized.key];
-    if (overrideKeys.some(key => lists.deny.includes(key))) {
+    const denyOverrideKeys = normalized.type === CAPABILITY_TYPES.ACTION
+        ? [...overrideKeys, ...(normalized.definition.legacyDenyKeys || [])]
+        : overrideKeys;
+    if (denyOverrideKeys.some(key => lists.deny.includes(key))) {
         return decision(normalized, false, 'explicit_deny', null, 'listed_in_explicit_deny');
     }
 
@@ -265,9 +299,10 @@ function buildCapabilityCatalog() {
         actionRoles: ACTION_PERMISSIONS,
         pageAliases: PAGE_ALIAS_TO_CANONICAL,
         actionAliases: ACTION_ALIAS_TO_CANONICAL,
-        actionLegacyKeys: Object.freeze(Object.fromEntries(ACTION_PERMISSION_ENTRIES.map(entry => [entry.key, entry.legacyKeys || []]))),
+        actionLegacyKeys: Object.freeze(Object.fromEntries(ACTIVE_ACTION_PERMISSION_ENTRIES.map(entry => [entry.key, entry.legacyKeys || []]))),
+        actionLegacyDenyKeys: Object.freeze(Object.fromEntries(ACTIVE_ACTION_PERMISSION_ENTRIES.map(entry => [entry.key, entry.legacyDenyKeys || []]))),
         explicitAllowDisabledPages: Object.freeze(PAGE_PERMISSIONS.filter(entry => entry.explicitAllow === false).map(entry => entry.key)),
-        explicitAllowDisabledActions: Object.freeze(ACTION_PERMISSION_ENTRIES.filter(entry => entry.explicitAllow === false).map(entry => entry.key)),
+        explicitAllowDisabledActions: Object.freeze(ACTIVE_ACTION_PERMISSION_ENTRIES.filter(entry => entry.explicitAllow === false).map(entry => entry.key)),
         nonDelegableActions: Object.freeze(Array.from(NON_DELEGABLE_ACTIONS))
     });
 }
@@ -282,7 +317,7 @@ function buildCapabilitySnapshot(user, context = {}) {
         pages[entry.key] = resolved.allowed;
         decisions[resolved.capability] = resolved;
     }
-    for (const entry of ACTION_PERMISSION_ENTRIES) {
+    for (const entry of ACTIVE_ACTION_PERMISSION_ENTRIES) {
         const resolved = resolveCapability(user, entry.key, { ...context, type: CAPABILITY_TYPES.ACTION });
         actions[entry.key] = resolved.allowed;
         decisions[resolved.capability] = resolved;

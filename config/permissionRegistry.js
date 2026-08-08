@@ -129,6 +129,7 @@ function page(definition) {
         apiAccessCoupling: 'independent',
         status: PAGE_STATUS.ACTIVE,
         deprecated: false,
+        configurable: true,
         explicitAllow: true,
         replacementKey: null,
         notes: null,
@@ -153,11 +154,13 @@ function action(definition) {
         type: 'action',
         aliases: [],
         legacyKeys: [],
+        legacyDenyKeys: [],
         frontendConsumers: GENERIC_ACTION_FRONTEND,
         backendConsumers: GENERIC_ACTION_BACKEND,
         apiConsumers: [],
         status: ACTION_STATUS.ACTIVE,
         deprecated: false,
+        configurable: true,
         explicitAllow: true,
         replacementKey: null,
         notes: null,
@@ -166,6 +169,7 @@ function action(definition) {
         defaultRoles: Object.freeze([...(definition.defaultRoles || [])]),
         aliases: Object.freeze([...(definition.aliases || [])]),
         legacyKeys: Object.freeze([...(definition.legacyKeys || [])]),
+        legacyDenyKeys: Object.freeze([...(definition.legacyDenyKeys || [])]),
         frontendConsumers: Object.freeze([
             ...GENERIC_ACTION_FRONTEND,
             ...(definition.frontendConsumers || [])
@@ -181,7 +185,7 @@ function action(definition) {
 const PAGE_PERMISSIONS = Object.freeze([
     page({
         key: '/dashboard', label: 'Дашборд', group: 'today', canonicalPath: '/dashboard',
-        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT,
+        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT, configurable: false,
         sidebarLinks: ['/dashboard'], frontendConsumers: [source('dashboard.html', 'js/auth.js')],
         apiConsumers: [api('routes/dashboard.js', '/api/dashboard', null)],
         notes: 'Manual page toggle is redundant because every authenticated role is in the default role set.'
@@ -435,31 +439,31 @@ const PAGE_PERMISSIONS = Object.freeze([
     }),
     page({
         key: '/game', label: 'Гра', group: 'personal', canonicalPath: '/game',
-        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT,
+        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT, configurable: false,
         sidebarLinks: ['/game'], frontendConsumers: [source('game.html', 'js/auth.js')],
         apiConsumers: [api('routes/minigame.js', '/api/minigame', null), api('routes/gamification.js', '/api/gamification', null)]
     }),
     page({
         key: '/profile', label: 'Профіль', group: 'personal', canonicalPath: '/profile',
-        defaultRoles: ROLE_HIERARCHY, risk: 'medium', status: PAGE_STATUS.REDUNDANT,
+        defaultRoles: ROLE_HIERARCHY, risk: 'medium', status: PAGE_STATUS.REDUNDANT, configurable: false,
         frontendConsumers: [source('profile.html', 'js/auth.js')],
         apiConsumers: [api('routes/personal-accounts.js', '/api/personal-accounts', null, 'Bot API key and verified account-owner checks remain independent from page access.'), api('routes/achievements.js', '/api/achievements', null)]
     }),
     page({
         key: '/quiz', label: 'Квіз', group: 'personal', canonicalPath: '/quiz',
-        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT,
+        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT, configurable: false,
         frontendConsumers: [source('quiz.html', 'js/auth.js')],
         apiConsumers: [api('routes/quiz.js', '/api/quiz', null)]
     }),
     page({
         key: '/room', label: 'Кімната', group: 'personal', canonicalPath: '/room',
-        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT,
+        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT, configurable: false,
         frontendConsumers: [source('room.html', 'js/auth.js')],
         apiConsumers: [api('routes/room.js', '/api/room', null)]
     }),
     page({
         key: '/shop', label: 'Магазин', group: 'personal', canonicalPath: '/shop',
-        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT,
+        defaultRoles: ROLE_HIERARCHY, risk: 'low', status: PAGE_STATUS.REDUNDANT, configurable: false,
         frontendConsumers: [source('shop.html', 'js/auth.js')],
         apiConsumers: [api('routes/shop.js', '/api/shop', null)]
     })
@@ -656,9 +660,8 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'cancel_booking', label: 'Скасовувати бронювання', group: 'bookings',
-        defaultRoles: MANAGER_UP, risk: 'high', status: ACTION_STATUS.DEAD, deprecated: true,
-        replacementKey: 'delete_booking',
-        notes: 'No endpoint or feature-specific frontend consumer enforces this action; cancellation uses other guards.'
+        defaultRoles: [], risk: 'high', status: ACTION_STATUS.DEAD, deprecated: true, configurable: false, explicitAllow: false,
+        notes: 'Compatibility tombstone. This legacy key is intentionally fail-closed and is not equivalent to delete_booking.'
     }),
     action({
         key: 'delete_booking', label: 'Видаляти бронювання', group: 'bookings',
@@ -668,7 +671,7 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'manage_accounts', label: 'Керувати акаунтами', group: 'accounts',
-        defaultRoles: ['creator', 'director'], risk: 'critical', delegable: false,
+        defaultRoles: ['creator', 'director'], risk: 'critical', delegable: false, legacyDenyKeys: ['manage_users'],
         frontendConsumers: [source('js/hr-page.js', "canAccess('manage_accounts')", { enforces: true })],
         apiConsumers: [
             api('routes/users.js', '/api/users account lifecycle', 'manage_accounts'),
@@ -684,15 +687,13 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'view_own', label: 'Бачити свої записи', group: 'record_scope',
-        defaultRoles: ['senior_instructor', 'instructor', 'animator', 'reception'], risk: 'high',
-        status: ACTION_STATUS.DEAD, deprecated: true,
-        notes: 'No feature-specific frontend or backend enforcement consumer was found.'
+        defaultRoles: [], risk: 'high', status: ACTION_STATUS.DEAD, deprecated: true, configurable: false, explicitAllow: false,
+        notes: 'Compatibility tombstone. Stored legacy values are ignored and cannot grant access.'
     }),
     action({
         key: 'manage_users', label: 'Керувати користувачами', group: 'accounts',
-        defaultRoles: ['creator', 'director'], risk: 'critical', delegable: false,
-        status: ACTION_STATUS.DEAD, deprecated: true, replacementKey: 'manage_accounts',
-        notes: 'Account endpoints use manage_accounts; this key remains in self-lockout invariants only.'
+        defaultRoles: [], risk: 'critical', delegable: false, status: ACTION_STATUS.DEAD, deprecated: true, configurable: false, explicitAllow: false,
+        notes: 'Compatibility tombstone. A stored deny remains a deny-alias for manage_accounts; a stored allow never grants it.'
     }),
     action({
         key: 'view_revenue', label: 'Бачити виручку', group: 'finance',
@@ -832,15 +833,33 @@ const ACTION_PERMISSIONS = Object.freeze([
     }),
     action({
         key: 'manage_staff', label: 'Керувати персоналом', group: 'hr',
-        defaultRoles: [...MANAGER_UP, 'hr', 'admin'], risk: 'critical',
-        frontendConsumers: [source('js/hr-page.js', "canAccess('manage_staff')", { enforces: true }), source('js/training-page.js', "canUseAction('manage_staff')", { enforces: true })],
-        backendConsumers: [source('routes/hermes-schedule.js', "canUseAction(req.user, 'manage_staff')", { enforces: true }), source('routes/training.js', "canUseAction(req.user, 'manage_staff')", { enforces: true })],
-        apiConsumers: [
-            api('routes/hr.js', '/api/hr management endpoints', null, 'Replaced by granular HR capabilities.'),
-            api('routes/staff.js', '/api/staff schedule and profile mutations', null, 'Schedule writes use hr.schedule.manage; profile writes use hr.staff.manage.'),
-            api('routes/hermes-schedule.js', '/api/hermes schedule mutations', null, 'Uses canUseAction instead of requireAction.'),
-            api('routes/training.js', '/api/training managed progress', null, 'Uses canUseAction instead of requireAction.')
+        defaultRoles: [], risk: 'critical', status: ACTION_STATUS.DEAD, deprecated: true, configurable: false, explicitAllow: false,
+        notes: 'Compatibility-only legacy key. Stored allow/deny values are interpreted by the granular capabilities that replaced its former consumers.'
+    }),
+    action({
+        key: 'hermes.staff.manage', label: 'Hermes: керування персоналом', group: 'hermes', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
+        backendConsumers: [
+            source('routes/users.js', "requireAction('hr.staff.manage')", { enforces: true }),
+            source('routes/hermes-schedule.js', "canUseAction(req.user, 'hermes.staff.manage')", { enforces: true }),
+            source('services/hermesStaffAccountOnboarding.js', "canUseAction(actor, 'hermes.staff.manage')", { enforces: true })
         ],
+        apiConsumers: [api('routes/users.js', '/api/users/onboarding', 'hr.staff.manage'), api('routes/hermes-schedule.js', 'POST /api/hermes/staff', null, 'Enforced by canUseAction granular capability'), api('routes/hermes.js', 'Hermes staff/account onboarding', null, 'Enforced by canUseAction granular capability')]
+    }),
+    action({
+        key: 'hermes.attendance.manage', label: 'Hermes: імпорт відвідуваності', group: 'hermes', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
+        backendConsumers: [source('routes/hermes-schedule.js', "canUseAction(req.user, 'hermes.attendance.manage')", { enforces: true })],
+        apiConsumers: [api('routes/hermes-schedule.js', '/api/hermes/attendance preview and apply', null, 'Enforced by canUseAction granular capability')]
+    }),
+    action({
+        key: 'hermes.schedule.manage', label: 'Hermes: керування графіком', group: 'hermes', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
+        backendConsumers: [source('routes/hermes-schedule.js', "canUseAction(req.user, 'hermes.schedule.manage')", { enforces: true })],
+        apiConsumers: [api('routes/hermes-schedule.js', '/api/hermes/staff-schedule preview and apply', null, 'Enforced by canUseAction granular capability')]
+    }),
+    action({
+        key: 'training.manage', label: 'Навчання: керування професійними чеклістами', group: 'training', defaultRoles: [...MANAGER_UP, 'hr', 'admin'], legacyKeys: ['manage_staff'], risk: 'critical',
+        backendConsumers: [source('routes/training.js', "canUseAction(req.user, 'training.manage')", { enforces: true })],
+        frontendConsumers: [source('js/training-page.js', "canUseAction('training.manage')", { enforces: true })],
+        apiConsumers: [api('routes/training.js', 'seeded profession checklist progress', null, 'Enforced by canUseAction granular capability')]
     }),
     action({
         key: 'view_payroll', label: 'Перегляд зарплати', group: 'payroll',
@@ -954,7 +973,7 @@ function canonicalizePageKey(value) {
  * those stay server-only.
  */
 function getPublicPagePermissionMetadata() {
-    return PAGE_PERMISSIONS.map(entry => ({
+    return PAGE_PERMISSIONS.filter(entry => entry.deprecated !== true && entry.configurable !== false).map(entry => ({
         key: entry.key,
         label: entry.label,
         group: entry.group,
@@ -965,6 +984,7 @@ function getPublicPagePermissionMetadata() {
         risk: entry.risk,
         status: entry.status,
         deprecated: entry.deprecated === true,
+        configurable: entry.configurable !== false,
         explicitAllow: entry.explicitAllow !== false
     }));
 }

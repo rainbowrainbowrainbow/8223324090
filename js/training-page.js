@@ -193,8 +193,8 @@
     }
 
     function canManageOnboarding() {
-        if (typeof canUseAction === 'function') return canUseAction('manage_staff');
-        return typeof canAccess === 'function' && canAccess('manage_staff');
+        if (typeof canUseAction === 'function') return canUseAction('training.manage');
+        return typeof canAccess === 'function' && canAccess('training.manage');
     }
 
     function updateOnboardingAccess() {

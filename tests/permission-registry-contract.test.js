@@ -92,12 +92,13 @@ function assertEntryShape(entry, type) {
     });
 }
 
-test('registry describes exactly the current 43 canonical page and 41 action keys', () => {
+test('registry describes the current page catalog and active action contract', () => {
     const backend = loadBackendAuth();
     const pageKeys = registry.PAGE_PERMISSIONS.map(entry => entry.key);
-    const actionKeys = registry.ACTION_PERMISSIONS.map(entry => entry.key);
+    const actionKeys = registry.ACTION_PERMISSIONS.filter(entry => entry.deprecated !== true).map(entry => entry.key);
 
     assert.equal(pageKeys.length, 43);
+    assert.equal(registry.ACTION_PERMISSIONS.length, 45);
     assert.equal(actionKeys.length, 41);
     assertUnique(pageKeys, 'page permission keys');
     assertUnique(actionKeys, 'action permission keys');
@@ -109,19 +110,23 @@ test('registry describes exactly the current 43 canonical page and 41 action key
         assert.equal(typeof entry.canonicalPath, 'string', `page ${entry.key}: canonicalPath must be a string`);
         assert.deepEqual(sorted(entry.defaultRoles), sorted(backend.PAGE_ACCESS[entry.key]), `page ${entry.key}: defaultRoles drift`);
     }
-    for (const entry of registry.ACTION_PERMISSIONS) {
+    for (const entry of registry.ACTION_PERMISSIONS.filter(item => item.deprecated !== true)) {
         assertEntryShape(entry, 'action');
         assert.deepEqual(sorted(entry.defaultRoles), sorted(backend.ACTION_PERMISSIONS[entry.key]), `action ${entry.key}: defaultRoles drift`);
     }
 
-    const nonDelegable = registry.ACTION_PERMISSIONS.filter(entry => entry.delegable === false).map(entry => entry.key);
+    const nonDelegable = registry.ACTION_PERMISSIONS.filter(entry => entry.deprecated !== true && entry.delegable === false).map(entry => entry.key);
     assert.deepEqual(sorted(nonDelegable), sorted(Array.from(backend.NON_DELEGABLE_ACTIONS)), 'non-delegable action drift');
 });
 
 test('public page metadata is a complete safe projection of the registry', () => {
     const publicPages = registry.getPublicPagePermissionMetadata();
-    assert.equal(publicPages.length, registry.PAGE_PERMISSIONS.length);
-    assert.deepEqual(sorted(publicPages.map(entry => entry.key)), sorted(registry.PAGE_PERMISSIONS.map(entry => entry.key)));
+    const configurablePages = registry.PAGE_PERMISSIONS.filter(entry => entry.deprecated !== true && entry.configurable !== false);
+    assert.equal(publicPages.length, configurablePages.length);
+    assert.deepEqual(sorted(publicPages.map(entry => entry.key)), sorted(configurablePages.map(entry => entry.key)));
+    for (const key of ['/dashboard', '/profile', '/game', '/quiz', '/room', '/shop']) {
+        assert.equal(publicPages.some(entry => entry.key === key), false, key + ' must not create a role toggle');
+    }
     assertUnique(publicPages.map(entry => entry.key), 'public page metadata keys');
 
     for (const entry of publicPages) {
@@ -197,7 +202,7 @@ test('aliases canonicalize to known permission keys', () => {
 });
 
 test('every active action has a server-side enforcement consumer or an explicit deprecated marker', () => {
-    for (const entry of registry.ACTION_PERMISSIONS) {
+    for (const entry of registry.ACTION_PERMISSIONS.filter(item => item.deprecated !== true)) {
         const hasSpecificBackendEnforcement = entry.backendConsumers.some(consumer => consumer.enforces === true);
         const hasActionApiConsumer = entry.apiConsumers.some(consumer => consumer.enforcement === 'action');
         const hasServerEnforcement = hasSpecificBackendEnforcement || hasActionApiConsumer;
@@ -217,7 +222,7 @@ test('every active capability is linked to both a frontend and backend consumer'
 });
 
 test('deprecated toggles are hidden and canonical pages have one key', () => {
-    const deprecatedKeys = ['cancel_booking', 'view_own', 'manage_users'];
+    const deprecatedKeys = ['cancel_booking', 'view_own', 'manage_users', 'manage_staff'];
     deprecatedKeys.forEach(key => assert.equal(registry.ACTION_PERMISSION_BY_KEY[key]?.deprecated, true, `${key} must remain compatibility-only`));
     ['view_revenue', 'manage_settings', 'export_data'].forEach(key => {
         const action = registry.ACTION_PERMISSION_BY_KEY[key];
@@ -230,6 +235,9 @@ test('deprecated toggles are hidden and canonical pages have one key', () => {
     const accountUi = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
     assert.match(userRoutes, /filter\(action => action\.deprecated !== true\)/);
     assert.match(accountUi, /filter\(item => item && item\.deprecated !== true\)/);
+    for (const key of deprecatedKeys) {
+        assert.equal(accountUi.includes(`key: '${key}'`), false, `${key} must not be hardcoded as an editor action toggle`);
+    }
 
     ['/kleshnya', '/leads', '/art-director', '/analytics', '/settings'].forEach(key => {
         assert.equal(registry.PAGE_PERMISSION_BY_KEY[key], undefined, `${key} must not be a standalone page toggle`);
@@ -238,6 +246,25 @@ test('deprecated toggles are hidden and canonical pages have one key', () => {
     assert.equal(registry.canonicalizePageKey('/leads'), '/sales-funnel');
     assert.equal(registry.canonicalizePageKey('/art-director'), '/art');
     assert.equal(registry.canonicalizePageKey('/analytics'), '/finance');
+});
+
+test('granular manage_staff replacements are active and legacy key is compatibility-only', () => {
+    const granular = ['hr.staff.manage', 'hr.schedule.manage', 'hermes.staff.manage', 'hermes.attendance.manage', 'hermes.schedule.manage', 'training.manage'];
+    for (const key of granular) {
+        const action = registry.ACTION_PERMISSION_BY_KEY[key];
+        assert.equal(action?.deprecated, false, `${key} must be active`);
+        assert.equal(action?.legacyKeys.includes('manage_staff'), true, `${key} must preserve stored manage_staff compatibility`);
+        assert.ok(action.backendConsumers.some(consumer => consumer.enforces === true), `${key} must have executable backend enforcement metadata`);
+    }
+    assert.equal(registry.ACTION_PERMISSION_BY_KEY.manage_staff.deprecated, true);
+    assert.equal(registry.ACTION_PERMISSION_BY_KEY.manage_staff.configurable, false);
+
+    const hermesSchedule = fs.readFileSync(path.join(ROOT, 'routes', 'hermes-schedule.js'), 'utf8');
+    const training = fs.readFileSync(path.join(ROOT, 'routes', 'training.js'), 'utf8');
+    const onboarding = fs.readFileSync(path.join(ROOT, 'services', 'hermesStaffAccountOnboarding.js'), 'utf8');
+    assert.doesNotMatch(hermesSchedule, /canUseAction\(req\.user, 'manage_staff'\)/);
+    assert.doesNotMatch(training, /canUseAction\(req\.user, 'manage_staff'\)/);
+    assert.doesNotMatch(onboarding, /canUseAction\(actor, 'manage_staff'\)/);
 });
 
 test('critical action API inventory matches literal route guards', () => {

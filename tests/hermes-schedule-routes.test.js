@@ -271,7 +271,7 @@ describe('Hermes staff and schedule read routes', () => {
         assert.equal(wrongContext.data.code, 'HERMES_SCHEDULE_BUSINESS_CONTEXT_UNAVAILABLE');
     });
 
-    it('advertises schedule read, preview, staff create, and gated apply capabilities without granting manage_staff', async () => {
+    it('advertises schedule read, preview, staff create, and granular capability requirements without granting manage_staff', async () => {
         const response = await request(baseUrl, '/api/hermes/capabilities', {
             'x-api-key': env.HERMES_API_KEY
         });
@@ -288,7 +288,7 @@ describe('Hermes staff and schedule read routes', () => {
         assert.equal(response.data.endpoints.staff.create, 'POST /api/hermes/staff');
         assert.equal(response.data.endpoints.staff.createRequiresConfirmation, true);
         assert.equal(response.data.endpoints.staff.createRequiresIdempotencyKey, true);
-        assert.equal(response.data.endpoints.staff.createRequiresManageStaff, true);
+        assert.equal(response.data.endpoints.staff.createRequiredCapability, 'hermes.staff.manage');
         assert.equal(response.data.endpoints.staff.createScheduleWrites, 0);
         assert.equal(response.data.endpoints.staffSchedule.maxDateRangeDays, 31);
         assert.equal(response.data.endpoints.staffSchedule.preview, 'POST /api/hermes/staff-schedule/preview');
@@ -296,22 +296,23 @@ describe('Hermes staff and schedule read routes', () => {
         assert.equal(response.data.endpoints.staffSchedule.apply, 'POST /api/hermes/staff-schedule/apply');
         assert.equal(response.data.endpoints.staffSchedule.applyRequiresConfirmation, true);
         assert.equal(response.data.endpoints.staffSchedule.applyRequiresIdempotencyKey, true);
-        assert.equal(response.data.endpoints.staffSchedule.applyRequiresManageStaff, true);
+        assert.equal(response.data.endpoints.staffSchedule.applyRequiredCapability, 'hermes.schedule.manage');
         assert.equal(response.data.endpoints.attendance.preview, 'POST /api/hermes/attendance/preview');
+        assert.equal(response.data.endpoints.attendance.previewRequiredCapability, 'hermes.attendance.manage');
         assert.equal(response.data.endpoints.attendance.previewAttendanceWrites, 0);
         assert.equal(response.data.endpoints.attendance.previewScheduleWrites, 0);
         assert.equal(response.data.endpoints.attendance.scheduleWrites, 0);
         assert.equal(response.data.endpoints.attendance.apply, 'POST /api/hermes/attendance/apply');
         assert.equal(response.data.endpoints.attendance.applyRequiresConfirmation, true);
         assert.equal(response.data.endpoints.attendance.applyRequiresIdempotencyKey, true);
-        assert.equal(response.data.endpoints.attendance.applyRequiresManageStaff, true);
+        assert.equal(response.data.endpoints.attendance.applyRequiredCapability, 'hermes.attendance.manage');
         assert.equal(response.data.endpoints.attendance.applyScheduleWrites, 0);
     });
 
     it('creates a staff member through Hermes with clear no-schedule side effects', async () => {
         const createPoolWithManageStaff = createPool({
             actor: actorRow({
-                action_allowlist: ['manage_staff'],
+                action_allowlist: ['hermes.staff.manage'],
                 action_denylist: []
             }),
             createdStaffRow: {
@@ -404,7 +405,7 @@ describe('Hermes staff and schedule read routes', () => {
 
     it('requires Hermes integration id, confirmation, idempotency, and API-key auth for staff create', async () => {
         const guardedPool = createPool({
-            actor: actorRow({ action_allowlist: ['manage_staff'], action_denylist: [] })
+            actor: actorRow({ action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
         });
         const { server: guardedServer, baseUrl: guardedBaseUrl } = await listenHermesTestApp(guardedPool, env);
         const body = {
@@ -453,7 +454,7 @@ describe('Hermes staff and schedule read routes', () => {
         }
     });
 
-    it('rejects a Hermes actor without manage_staff before staff queries', async () => {
+    it('rejects a Hermes actor without hermes.staff.manage before staff queries', async () => {
         const deniedPool = createPool();
         const { server: deniedServer, baseUrl: deniedBaseUrl } = await listenHermesTestApp(deniedPool, env);
         try {
@@ -472,7 +473,7 @@ describe('Hermes staff and schedule read routes', () => {
                 }
             });
             assert.equal(response.status, 403);
-            assert.equal(response.data.code, 'HERMES_MANAGE_STAFF_REQUIRED');
+            assert.equal(response.data.code, 'HERMES_CAPABILITY_REQUIRED');
             assert.equal(deniedPool.calls.some(call => /FROM staff|INSERT INTO staff/.test(call.sql)), false);
         } finally {
             await close(deniedServer);
@@ -481,7 +482,7 @@ describe('Hermes staff and schedule read routes', () => {
 
     it('rejects normalized duplicate staff names with a sanitized existing envelope', async () => {
         const duplicatePool = createPool({
-            actor: actorRow({ action_allowlist: ['manage_staff'], action_denylist: [] }),
+            actor: actorRow({ action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
             duplicateRows: [{
                 id: 321,
                 name: 'Плющкіт',
@@ -532,7 +533,7 @@ describe('Hermes staff and schedule read routes', () => {
 
     it('accepts snake_case profession aliases and strips @ from Telegram username', async () => {
         const aliasPool = createPool({
-            actor: actorRow({ action_allowlist: ['manage_staff'], action_denylist: [] }),
+            actor: actorRow({ action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
             createdStaffRow: {
                 id: 1000,
                 name: 'Плющкіт Alias',
@@ -576,7 +577,7 @@ describe('Hermes staff and schedule read routes', () => {
     it('keeps staff creation separate from schedule changes', async () => {
         const createPoolWithManageStaff = createPool({
             actor: actorRow({
-                action_allowlist: ['manage_staff'],
+                action_allowlist: ['hermes.staff.manage'],
                 action_denylist: []
             })
         });

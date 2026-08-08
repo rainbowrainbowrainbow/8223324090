@@ -665,10 +665,10 @@ test('impersonation honors manage_accounts denylist, blocks self, and preserves 
     });
 });
 
-test('account onboarding requires manage_staff in addition to manage_accounts before any transaction', async () => {
+test('account onboarding requires hr.staff.manage in addition to manage_accounts before any transaction', async () => {
     await withAuthApp(async ({ baseUrl, fakePool }) => {
         const creator = fakePool.state.users[0];
-        creator.action_denylist = ['manage_staff'];
+        creator.action_denylist = ['hr.staff.manage'];
 
         const options = await request(baseUrl, 'GET', '/api/users/onboarding/options', undefined, creatorToken());
         const create = await request(baseUrl, 'POST', '/api/users/onboarding', {}, creatorToken());
@@ -1116,7 +1116,7 @@ test('account action overrides drive final permissions and protect against self-
 
         const creatorRolesMatrix = await request(baseUrl, 'GET', '/api/users/roles', undefined, creatorToken());
         assert.equal(creatorRolesMatrix.status, 200);
-        assert.deepEqual(creatorRolesMatrix.data.nonDelegableActions.sort(), ['fiscal.configure', 'manage_accounts', 'manage_settings', 'manage_users'].sort());
+        assert.deepEqual(creatorRolesMatrix.data.nonDelegableActions.sort(), ['fiscal.configure', 'manage_accounts', 'manage_settings'].sort());
         assert.equal(creatorRolesMatrix.data.actions.find(action => action.key === 'manage_accounts').delegable, false);
 
         const createArtDirector = await request(baseUrl, 'POST', '/api/users', {
@@ -1198,10 +1198,10 @@ test('director account management is capped below director level', async () => {
             password: 'ManagerPass789!',
             name: 'Manager By Director',
             role: 'manager',
-            actionAllowlist: ['delete_booking', 'manage_staff', 'manage_accounts']
+            actionAllowlist: ['delete_booking', 'hr.staff.manage', 'manage_accounts']
         }, directorToken);
         assert.equal(createManager.status, 200, JSON.stringify(createManager.data));
-        assert.deepEqual(createManager.data.user.action_allowlist, ['delete_booking', 'manage_staff']);
+        assert.deepEqual(createManager.data.user.action_allowlist, ['delete_booking', 'hr.staff.manage']);
 
         const createPeerDirector = await request(baseUrl, 'POST', '/api/users', {
             username: 'peer.director',

@@ -488,12 +488,12 @@ function createHermesScheduleRouter(options = {}) {
         requireHermesScheduleAccess,
         applyMutationGuard,
         (req, res, next) => {
-            if (!canUseAction(req.user, 'manage_staff')) {
+            if (!canUseAction(req.user, 'hermes.staff.manage')) {
                 return sendHermesScheduleError(
                     res,
                     403,
-                    'HERMES_MANAGE_STAFF_REQUIRED',
-                    'Hermes actor does not have manage_staff permission'
+                    'HERMES_CAPABILITY_REQUIRED',
+                    'Hermes actor does not have the required granular capability'
                 );
             }
             return next();
@@ -704,12 +704,12 @@ function createHermesScheduleRouter(options = {}) {
         '/attendance/preview',
         requireHermesScheduleAccess,
         (req, res, next) => {
-            if (!canUseAction(req.user, 'manage_staff')) {
+            if (!canUseAction(req.user, 'hermes.attendance.manage')) {
                 return sendHermesScheduleError(
                     res,
                     403,
-                    'HERMES_MANAGE_STAFF_REQUIRED',
-                    'Hermes actor does not have manage_staff permission'
+                    'HERMES_CAPABILITY_REQUIRED',
+                    'Hermes actor does not have the required granular capability'
                 );
             }
             return next();
@@ -747,12 +747,12 @@ function createHermesScheduleRouter(options = {}) {
         requireHermesScheduleAccess,
         applyMutationGuard,
         (req, res, next) => {
-            if (!canUseAction(req.user, 'manage_staff')) {
+            if (!canUseAction(req.user, 'hermes.attendance.manage')) {
                 return sendHermesScheduleError(
                     res,
                     403,
-                    'HERMES_MANAGE_STAFF_REQUIRED',
-                    'Hermes actor does not have manage_staff permission'
+                    'HERMES_CAPABILITY_REQUIRED',
+                    'Hermes actor does not have the required granular capability'
                 );
             }
             return next();
@@ -813,7 +813,12 @@ function createHermesScheduleRouter(options = {}) {
         }
     );
 
-    router.post('/staff-schedule/preview', requireHermesScheduleAccess, async (req, res) => {
+    router.post('/staff-schedule/preview', requireHermesScheduleAccess, (req, res, next) => {
+        if (!canUseAction(req.user, 'hermes.schedule.manage')) {
+            return sendHermesScheduleError(res, 403, 'HERMES_CAPABILITY_REQUIRED', 'Hermes actor does not have the required granular capability');
+        }
+        return next();
+    }, async (req, res) => {
         try {
             const preview = await previewHermesScheduleImport(db, req.body || {}, {
                 actorUserId: req.integration?.actorUserId || req.user?.id,
@@ -839,12 +844,12 @@ function createHermesScheduleRouter(options = {}) {
         requireHermesScheduleAccess,
         applyMutationGuard,
         (req, res, next) => {
-            if (!canUseAction(req.user, 'manage_staff')) {
+            if (!canUseAction(req.user, 'hermes.schedule.manage')) {
                 return sendHermesScheduleError(
                     res,
                     403,
-                    'HERMES_MANAGE_STAFF_REQUIRED',
-                    'Hermes actor does not have manage_staff permission'
+                    'HERMES_CAPABILITY_REQUIRED',
+                    'Hermes actor does not have the required granular capability'
                 );
             }
             return next();

@@ -21,13 +21,20 @@
 
 
     const STARTER_KIT_PREVIEW = Object.freeze({
-        impacts: ['Робота: Парк', 'Робота: CRM', 'Робота: Hermes', 'Операційка / процеси', 'Автоматизація / AI', 'Контент / медіа', 'Аналітика / рішення', 'Команда / делегування', 'Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Ризики і безпека'],
+        impacts: [
+            'Робота: Парк', 'Робота: CRM', 'Робота: Hermes',
+            'Операційка / процеси', 'Автоматизація / AI', 'Продукт / розробка', 'Аналітика / рішення',
+            'Контент / медіа', 'Маркетинг / залучення', 'Команда / делегування', 'Стратегія / пріоритети',
+            'Продажі / клієнти', 'Фінанси / облік', 'Якість сервісу', 'Системність',
+            'Швидкість / ефективність', 'Бренд / репутація', 'Ризики / безпека',
+            'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут / комфорт', 'Навчання / розвиток', 'Близькі / стосунки'
+        ],
         habits: [
             { name: 'Ранкова зарядка', detail: '10 хв щодня · Здоровʼя, Фізична форма' },
-            { name: 'Планування дня', detail: 'так/ні щодня · Системність, Швидкість роботи' },
+            { name: 'Планування дня', detail: 'так/ні щодня · Системність, Швидкість / ефективність' },
             { name: 'Відновлення без екранів', detail: '30 хв щодня · Відновлення, Здоровʼя' },
-            { name: 'Навчання 20 хв', detail: '20 хв Пн-Пт · Навчання, Системність' },
-            { name: 'Побутовий порядок', detail: '3 рази/тиждень · Побут і комфорт, Відновлення' }
+            { name: 'Навчання 20 хв', detail: '20 хв Пн-Пт · Навчання / розвиток, Системність' },
+            { name: 'Побутовий порядок', detail: '3 рази/тиждень · Побут / комфорт, Відновлення' }
         ]
     });
     function headers() {
@@ -236,7 +243,7 @@
                 <input type="checkbox" name="impactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${atLimit && !isSelected ? 'disabled' : ''} data-my-day-habit-impact-chip>
                 <span>${escape(impact.icon || '•')} ${escape(impact.name)}</span>
             </label>`;
-        }).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? 'Обрано максимум три впливи.' : 'До 3 результатів, які ця звичка покращує.'}</p>`;
+        }).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? 'Обрано максимум три впливи.' : 'До 3 впливів: контекст, діяльність, результат або особиста сфера.'}</p>`;
     }
 
     function habitEditorFields(habit = {}) {
@@ -545,7 +552,7 @@
                     label?.classList.toggle('is-disabled', input.disabled);
                 });
                 const help = form.querySelector('[data-my-day-habit-impact-help]');
-                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи.' : 'До 3 результатів, які ця звичка покращує.';
+                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи.' : 'До 3 впливів: контекст, діяльність, результат або особиста сфера.';
             };
             form.querySelectorAll('input[name="metric"], input[name="cadence"]').forEach(input => input.addEventListener('change', refreshConditionals));
             form.querySelectorAll('[data-my-day-habit-impact-chip]').forEach(input => input.addEventListener('change', refreshImpacts));
@@ -663,7 +670,7 @@
                     <span class="profile-kicker">Мій день</span>
                     <h2 id="myDaySetupTitle">Налаштувати Мій день</h2>
                     <div class="my-day-setup-intro" aria-label="Як працюють впливи">
-                        <p><strong>Вплив</strong> — це результат або робоча зона, яку покращує задача чи звичка. Можна обрати до трьох впливів.</p>
+                        <p><strong>Вплив</strong> — це контекст, тип роботи або результат, який покращує задача чи звичка. Зазвичай достатньо двох, максимум — три.</p>
                     </div>
                 </div>
             </div>

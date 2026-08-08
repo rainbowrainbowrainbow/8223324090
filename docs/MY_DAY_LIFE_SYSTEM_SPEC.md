@@ -22,9 +22,13 @@ My Day uses an impacts-only active UX:
 
 - Impacts are the only active classification control in task, habit, setup,
   and contribution UX.
-- An impact can be an outcome or a work area. Examples: `Робота: Парк`,
-  `Робота: CRM`, `Робота: Hermes`, `Дохід і клієнти`, `Здоровʼя`,
-  `Системність`, `Якість сервісу`, `Відновлення`.
+- Impacts use one catalog with four statistical groups: `context` (where the
+  work belongs), `activity` (what kind of work is done), `outcome` (the
+  business result), and `personal` (the life area). The groups guide AI and
+  reporting; they are not a second classification control.
+- A representative work task normally uses `context + activity + outcome`.
+  The system never forces all groups, and cross-product work may use two
+  contexts.
 - A task or habit may have zero through three impacts.
 - Legacy directions remain in the database and API for rollback/history, but
   new active UX does not ask for a direction and new writes do not change
@@ -35,9 +39,9 @@ not add required validation. Classification remains optional.
 
 Practical examples:
 
-- Доробити CRM-фічу → impacts Робота: CRM, Системність, Якість сервісу.
+- Доробити CRM-фічу → impacts Робота: CRM, Продукт / розробка, Якість сервісу.
 - Підготувати зміну в парку → impacts Робота: Парк, Якість сервісу, Команда / делегування.
-- Налаштувати Hermes → impacts Робота: Hermes, Швидкість роботи, Ризики і безпека.
+- Налаштувати Hermes worker → impacts Робота: Hermes, Автоматизація / AI, Ризики / безпека.
 
 ## Scope and data ownership
 
@@ -106,15 +110,14 @@ MVP intentionally has no name snapshot. Index each catalog by
 | \`user_id\` | Required FK to \`users\`. |
 | \`task_id\` | Required FK to \`tasks\`. |
 | \`direction_id\` | Legacy nullable FK to \`my_day_directions\`; preserved for rollback/history and not changed by new active UX writes. |
-| \`tags\` | Required \`TEXT[]\`, default empty array. Personal My Day-only task tags; maximum 5 tags, no blank tags, each tag up to 32 characters. |
+| \`tags\` | Legacy \`TEXT[]\`, retained only for rollback compatibility. Active My Day code does not read, render, or write it. |
 | \`created_at\`, \`updated_at\` | Audit timestamps. |
 
 Its unique key is \`(user_id, task_id)\`. New active classification writes
-replace impacts and tags while preserving any existing legacy \`direction_id\`.
-Tags are trimmed, internal whitespace is collapsed, and case-insensitive
-duplicates are removed before writing. My Day tags do not change global task
-category, permissions, business context, contribution calculations, or watchdog
-labels.
+replace only impact links while preserving any existing legacy \`direction_id\`
+and \`tags\` data. Separate task tags are retired and must not be mapped to
+global task categories, watchdog labels, impacts, or any other storage without
+an explicitly approved data-fix.
 
 \`my_day_task_impacts\`:
 
@@ -228,9 +231,12 @@ Contract:
   name.
 - Repeating the action returns a created/skipped summary and creates no
   duplicate starter rows.
-- Existing caller-owned taxonomy or habits are never overwritten. Name matches
-  keep the existing color, icon, archive state, order, metric, cadence, target,
-  and impacts unchanged.
+- Canonical/legacy starter impact name matches are normalized to the canonical
+  name, color, icon, and order while preserving the selected row ID and archive
+  state. Exact declared aliases are merged transactionally: task and habit
+  links move to the most-used row, and duplicate rows are retained archived.
+- Existing habits remain unchanged. Their archive state, metric, cadence,
+  target, and current impacts are never overwritten.
 - It does not create tasks, dependencies, overdue items, task time entries,
   active timers, or habit check-ins.
 - Failures return the normal safe Ukrainian My Day error response.
@@ -238,25 +244,28 @@ Contract:
 Canonical payload:
 
 - impacts-only starter kit.
-- Impacts: `Робота: Парк`, `Робота: CRM`, `Робота: Hermes`,
-  `Операційка / процеси`, `Автоматизація / AI`, `Контент / медіа`,
-  `Аналітика / рішення`, `Команда / делегування`,
-  `Дохід і клієнти`, `Якість сервісу`, `Системність`,
-  `Швидкість роботи`, `Здоровʼя`, `Фізична форма`, `Відновлення`,
-  `Побут і комфорт`, `Навчання`, `Репутація / бренд`,
-  `Ризики і безпека`.
+- Context impacts: `Робота: Парк`, `Робота: CRM`, `Робота: Hermes`.
+- Activity impacts: `Операційка / процеси`, `Автоматизація / AI`,
+  `Продукт / розробка`, `Аналітика / рішення`, `Контент / медіа`,
+  `Маркетинг / залучення`, `Команда / делегування`,
+  `Стратегія / пріоритети`.
+- Outcome impacts: `Продажі / клієнти`, `Фінанси / облік`,
+  `Якість сервісу`, `Системність`, `Швидкість / ефективність`,
+  `Бренд / репутація`, `Ризики / безпека`.
+- Personal impacts: `Здоровʼя`, `Фізична форма`, `Відновлення`,
+  `Побут / комфорт`, `Навчання / розвиток`, `Близькі / стосунки`.
 - Habits:
   - `Ранкова зарядка`: `minutes`, target `10`, `daily`, impacts
     `Здоровʼя` and `Фізична форма`.
   - `Планування дня`: `boolean`, target `1`, `daily`, impacts
-    `Системність` and `Швидкість роботи`.
+    `Системність` and `Швидкість / ефективність`.
   - `Відновлення без екранів`: `minutes`, target `30`, `daily`, impacts
     `Відновлення` and `Здоровʼя`.
   - `Навчання 20 хв`: `minutes`, target `20`, `selected_weekdays`,
-    weekdays Monday-Friday (`1,2,3,4,5`), impacts `Навчання` and
+    weekdays Monday-Friday (`1,2,3,4,5`), impacts `Навчання / розвиток` and
     `Системність`.
   - `Побутовий порядок`: `boolean`, target `1`, `times_per_week`, weekly
-    target `3`, impacts `Побут і комфорт` and `Відновлення`.
+    target `3`, impacts `Побут / комфорт` and `Відновлення`.
 
 UX:
 
@@ -301,15 +310,16 @@ Task classification is read through the My Cabinet projection.
 \`PUT /api/my-day/tasks/:taskId/classification\` accepts:
 
 \`\`\`json
-{ "impactIds": [7, 8], "tags": ["CRM", "терміново"] }
+{ "impactIds": [7, 8] }
 \`\`\`
 
-\`impactIds: []\` clears active impacts; \`tags: []\` clears active My Day tags.
-Both operations preserve any existing legacy \`direction_id\`. The request
-replaces active impacts and tags in one transaction. It validates current task
-read visibility, current writable business scope, active caller-owned impacts,
-numeric IDs, unique impact IDs, maximum of three impacts, maximum of five tags,
-non-empty tags, and the 32-character tag limit. It persists nothing on failure.
+\`impactIds: []\` clears active impacts. Missing or empty deprecated \`tags\`
+is accepted for one-client rollout compatibility; non-empty \`tags\` returns
+\`409 MY_DAY_TAGS_DEPRECATED\`. The request preserves existing legacy
+\`direction_id\` and the historical database tags column. It validates current
+task read visibility, current writable business scope, active caller-owned
+impacts, numeric IDs, unique impact IDs, and the maximum of three impacts. It
+persists nothing on failure.
 
 Error contract:
 
@@ -319,15 +329,16 @@ Error contract:
 | Viewable task denied by current mutation policy | \`403 MY_DAY_TASK_CLASSIFICATION_FORBIDDEN\` |
 | Malformed payload, duplicate impact, foreign taxonomy | \`400 MY_DAY_VALIDATION_ERROR\` |
 | More than three impacts | \`409 MY_DAY_IMPACT_LIMIT_EXCEEDED\` |
-| More than five tags | \`409 MY_DAY_TAG_LIMIT_EXCEEDED\` |
+| Non-empty deprecated tags | \`409 MY_DAY_TAGS_DEPRECATED\` |
 
-\`POST /api/my-day/tasks/:taskId/classification/auto\` asks the shared
-OpenRouter text rail to suggest only existing active \`impactIds\` and personal
-My Day tags. The MVP default model is \`openai/gpt-5.4-nano\`; operators may
-override it with \`MY_DAY_CLASSIFICATION_MODEL\`. The endpoint uses the existing
-authenticated caller, writable business scope, \`canMutateTask\`, and task
-ownership guard. It does not classify directions, status, priority, deadline,
-owner, or dependencies.
+\`POST /api/my-day/tasks/:taskId/classification/auto\` calls the direct OpenAI
+Responses API with model \`gpt-5.6-luna\`, Structured Outputs, \`store: false\`,
+\`reasoning.effort: low\`, and the server-side \`OPENAI_API_KEY\`. It can suggest only existing active
+\`impactIds\`. Canonical impacts carry trusted server-side group and synonym
+guidance so AI can distinguish context, activity, outcome, and personal
+facets. The endpoint uses the existing authenticated caller, writable business
+scope, \`canMutateTask\`, and task ownership guard. It does not classify tags,
+directions, status, priority, deadline, owner, or dependencies.
 
 The AI call is made before opening a PostgreSQL transaction. Before writing,
 the task is loaded again with \`FOR UPDATE\`; if title/description/status/priority,
@@ -335,9 +346,9 @@ deadline, owner, or \`updated_at\` changed, the endpoint returns
 \`409 MY_DAY_TASK_CHANGED_DURING_AI_CLASSIFICATION\` and writes nothing.
 Timeouts, missing provider key, invalid JSON, invented impact IDs, and low
 confidence also write nothing. Successful responses include
-\`classification\`, \`previousClassification\`, and a non-secret \`ai\` summary so
-the UI can update chips immediately and offer **Скасувати** through the normal
-manual classification endpoint.
+\`classification\`, a server-signed short-lived \`undoToken\`, and a non-secret
+\`ai\` summary so the UI can update chips immediately and offer **Скасувати**
+through \`POST /api/my-day/tasks/:taskId/classification/undo\`.
 
 ### Blockers
 
@@ -368,7 +379,7 @@ an explicit permitted completion action.
 | `PUT /api/my-day/habits/:habitId/check-ins/:localDate` | Idempotently replace one caller check-in. |
 | `DELETE /api/my-day/habits/:habitId/check-ins/:localDate` | Undo one caller check-in. |
 | `POST /api/my-day/starter-kit` | Apply the manual caller-owned starter kit idempotently and return created/skipped summary. |
-| `GET /api/my-day/contribution?from=YYYY-MM-DD&to=YYYY-MM-DD` | Return the personal matrix for inclusive range up to 92 days. |
+| `GET /api/my-day/contribution?from=YYYY-MM-DD&to=YYYY-MM-DD` | Return the personal matrix for an inclusive range up to 92 days, with overlapping impact rows grouped as context, activity, outcome, personal, and custom. |
 
 ## My Day projection
 
@@ -380,7 +391,6 @@ task receives this optional field without changing existing fields:
   "myDay": {
     "direction": null,
     "impacts": [],
-    "tags": ["CRM"],
     "isBlocked": false,
     "openDependencyCount": 0,
     "actualMinutes": 35,
@@ -389,7 +399,7 @@ task receives this optional field without changing existing fields:
 }
 \`\`\`
 
-Absent active classification data is represented as \`impacts: []\`, \`tags: []\`, and
+Absent active classification data is represented as \`impacts: []\` and
 \`actualMinutes: 0\`. The projection may still include legacy `direction` for
 old rows, but active My Day UX does not render or edit it. Task classification,
 dependency, and time joins are batched with aggregate joins/subqueries in the
@@ -414,15 +424,12 @@ are rendered in-page, not through modals or action menus.
 The existing composer, drag/drop, reschedule, checklist, completion, overdue
 triage, and task action menu remain canonical.
 
-- Composer has compact **+ Впливи** controls and a My Day-only tag chip-input.
-  Impact selectors and tags never block creation.
-- Tag chip-input adds tags with Enter or comma, removes the last tag with
-  Backspace when empty, shows the 5-tag limit, and lets existing chips be
-  removed before save.
-- A card shows impact chips and \`+N\` for remaining impacts. My Day tags render
-  separately from impact chips.
+- Composer has compact optional **+ Впливи** controls. Classification never
+  blocks task creation.
+- A card shows impact chips and \`+N\` for remaining impacts. There is no
+  separate task-tag control or second chip type.
 - **Змінити маркування** in the card menu opens the same accessible impact
-  selector and tag chip-input.
+  selector.
 - A blocked card shows blocker state, count, and next prerequisite title.
 - Time uses one Start/Stop control. The active task shows elapsed local time;
   other tasks show accumulated actual minutes.
@@ -446,7 +453,11 @@ Contribution is a transparent matrix, never a productivity score.
 - A reopened task whose completion is cleared is not counted.
 - Impact totals overlap: a task contributes once to each impact. Impact columns
   are never added into a global total.
-- My Day tags are not contribution dimensions and are never counted as impacts.
+- Contribution groups impact rows into context, activity, outcome, personal,
+  and custom facets. These group sections remain overlapping views and are
+  never added into a global total.
+- The legacy My Day tags column is not a contribution dimension and is never
+  read as impacts.
 - Task minutes equal each personal `my_day_time_entries` intersection with the
   selected range, split at Kyiv midnight. Unfinished-task time and active timer
   time count. The ledger remains personal after later task reassignment, but the

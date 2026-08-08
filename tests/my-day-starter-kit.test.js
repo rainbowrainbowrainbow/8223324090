@@ -15,13 +15,21 @@ const {
 const root = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(root, file), 'utf8');
 
-const STARTER_IMPACTS = ['Робота: Парк', 'Робота: CRM', 'Робота: Hermes', 'Операційка / процеси', 'Автоматизація / AI', 'Контент / медіа', 'Аналітика / рішення', 'Команда / делегування', 'Дохід і клієнти', 'Якість сервісу', 'Системність', 'Швидкість роботи', 'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут і комфорт', 'Навчання', 'Репутація / бренд', 'Ризики і безпека'];
+const STARTER_IMPACTS = [
+    'Робота: Парк', 'Робота: CRM', 'Робота: Hermes',
+    'Операційка / процеси', 'Автоматизація / AI', 'Продукт / розробка', 'Аналітика / рішення',
+    'Контент / медіа', 'Маркетинг / залучення', 'Команда / делегування', 'Стратегія / пріоритети',
+    'Продажі / клієнти', 'Фінанси / облік', 'Якість сервісу', 'Системність',
+    'Швидкість / ефективність', 'Бренд / репутація', 'Ризики / безпека',
+    'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут / комфорт', 'Навчання / розвиток', 'Близькі / стосунки'
+];
 const STARTER_HABITS = ['Ранкова зарядка', 'Планування дня', 'Відновлення без екранів', 'Навчання 20 хв', 'Побутовий порядок'];
 
 function makeFakeDb(initial = {}) {
     const state = {
         impacts: (initial.impacts || []).map(row => ({ ...row })),
         habits: (initial.habits || []).map(row => ({ ...row })),
+        taskImpacts: (initial.taskImpacts || []).map(row => ({ ...row })),
         habitImpacts: (initial.habitImpacts || []).map(row => ({ ...row })),
         calls: [],
         nextId: 100
@@ -40,21 +48,56 @@ function makeFakeDb(initial = {}) {
         async query(sql, params = []) {
             state.calls.push({ sql, params });
             if (/pg_advisory_xact_lock/.test(sql)) return { rows: [] };
-            if (/FROM my_day_impacts/.test(sql)) {
-                const canonical = findByName(state.impacts, params[0], params[1]);
-                const legacyKeys = new Set(params[2] || []);
-                const legacy = state.impacts.find(row => Number(row.user_id) === Number(params[0]) && legacyKeys.has(normalizeNameKey(row.name)));
-                return { rows: canonical ? [canonical] : (legacy ? [legacy] : []) };
+            if (/FROM my_day_impacts i/.test(sql)) {
+                const matchNames = new Set((params[1] || []).map(normalizeNameKey));
+                const rows = state.impacts
+                    .filter(row => Number(row.user_id) === Number(params[0]) && matchNames.has(normalizeNameKey(row.name)))
+                    .map(row => ({
+                        ...row,
+                        reference_count: state.taskImpacts.filter(link => Number(link.user_id) === Number(row.user_id) && Number(link.impact_id) === Number(row.id)).length
+                            + state.habitImpacts.filter(link => Number(link.user_id) === Number(row.user_id) && Number(link.impact_id) === Number(row.id)).length
+                    }));
+                return { rows };
             }
             if (/UPDATE my_day_impacts/.test(sql)) {
                 const row = state.impacts.find(item => Number(item.id) === Number(params[0]) && Number(item.user_id) === Number(params[1]));
                 if (!row) return { rows: [] };
                 row.name = params[2];
-                return { rows: [{ id: row.id, name: row.name, is_active: row.is_active }] };
+                if (/color = \$4/.test(sql)) {
+                    row.color = params[3];
+                    row.icon = params[4];
+                    row.sort_order = params[5];
+                }
+                if (/is_active = FALSE/.test(sql)) row.is_active = false;
+                return { rows: [{ id: row.id, name: row.name, color: row.color, icon: row.icon, sort_order: row.sort_order, is_active: row.is_active }] };
             }
             if (/INSERT INTO my_day_impacts/.test(sql)) {
                 const row = insertCatalog(state.impacts, params);
                 return { rows: [{ id: row.id, name: row.name, is_active: row.is_active }] };
+            }
+            if (/INSERT INTO my_day_task_impacts/.test(sql) && /SELECT user_id, task_id/.test(sql)) {
+                const [userId, duplicateId, targetId] = params;
+                for (const link of state.taskImpacts.filter(item => Number(item.user_id) === Number(userId) && Number(item.impact_id) === Number(duplicateId))) {
+                    const exists = state.taskImpacts.some(item => Number(item.user_id) === Number(userId) && Number(item.task_id) === Number(link.task_id) && Number(item.impact_id) === Number(targetId));
+                    if (!exists) state.taskImpacts.push({ ...link, impact_id: targetId });
+                }
+                return { rows: [] };
+            }
+            if (/INSERT INTO my_day_habit_impacts/.test(sql) && /SELECT habit_id, user_id/.test(sql)) {
+                const [userId, duplicateId, targetId] = params;
+                for (const link of state.habitImpacts.filter(item => Number(item.user_id) === Number(userId) && Number(item.impact_id) === Number(duplicateId))) {
+                    const exists = state.habitImpacts.some(item => Number(item.habit_id) === Number(link.habit_id) && Number(item.impact_id) === Number(targetId));
+                    if (!exists) state.habitImpacts.push({ ...link, impact_id: targetId });
+                }
+                return { rows: [] };
+            }
+            if (/DELETE FROM my_day_task_impacts/.test(sql)) {
+                state.taskImpacts = state.taskImpacts.filter(item => Number(item.user_id) !== Number(params[0]) || Number(item.impact_id) !== Number(params[1]));
+                return { rows: [] };
+            }
+            if (/DELETE FROM my_day_habit_impacts/.test(sql)) {
+                state.habitImpacts = state.habitImpacts.filter(item => Number(item.user_id) !== Number(params[0]) || Number(item.impact_id) !== Number(params[1]));
+                return { rows: [] };
             }
             if (/FROM my_day_habits/.test(sql)) return { rows: findByName(state.habits, params[0], params[1]) ? [findByName(state.habits, params[0], params[1])] : [] };
             if (/INSERT INTO my_day_habits\s/.test(sql)) {
@@ -111,7 +154,7 @@ test('starter kit exposes the exact canonical caller-owned payload', () => {
 test('starter kit creates only caller-scoped taxonomy and habits once', async () => {
     const fake = makeFakeDb();
     const first = await applyMyDayStarterKit(fake, 42);
-    assert.deepEqual(first.created, { impacts: 19, habits: 5 });
+    assert.deepEqual(first.created, { impacts: 24, habits: 5 });
     assert.deepEqual(first.skipped, { impacts: 0, habits: 0 });
     assert.equal(fake.state.impacts.every(row => row.user_id === 42), true);
     assert.equal(fake.state.habits.every(row => row.user_id === 42), true);
@@ -126,36 +169,69 @@ test('starter kit creates only caller-scoped taxonomy and habits once', async ()
 
     const second = await applyMyDayStarterKit(fake, 42);
     assert.deepEqual(second.created, { impacts: 0, habits: 0 });
-    assert.deepEqual(second.skipped, { impacts: 19, habits: 5 });
-    assert.equal(fake.state.impacts.length, 19);
+    assert.deepEqual(second.skipped, { impacts: 24, habits: 5 });
+    assert.equal(fake.state.impacts.length, 24);
     assert.equal(fake.state.habits.length, 5);
 });
 
-test('starter kit does not overwrite existing caller values or archive state', async () => {
+test('starter kit normalizes canonical metadata but preserves existing archive state', async () => {
     const fake = makeFakeDb({
         impacts: [{ id: 8, user_id: 5, name: 'Навчання', color: '#111111', icon: 'Y', sort_order: 888, is_active: false }]
     });
     await applyMyDayStarterKit(fake, 5);
     const existingImpact = fake.state.impacts.find(row => row.id === 8);
-    assert.equal(existingImpact.color, '#111111');
-    assert.equal(existingImpact.icon, 'Y');
-    assert.equal(existingImpact.sort_order, 888);
+    assert.equal(existingImpact.color, '#3B82F6');
+    assert.equal(existingImpact.icon, '🧠');
+    assert.equal(existingImpact.sort_order, 350);
     assert.equal(existingImpact.is_active, false);
 });
 
-test('starter kit safely normalizes the exact legacy team impact name without changing its values', async () => {
+test('starter kit safely normalizes the exact legacy team impact name and canonical metadata', async () => {
     const fake = makeFakeDb({
         impacts: [{ id: 9, user_id: 5, name: 'Команда і делегування', color: '#123456', icon: '🤝', sort_order: 777, is_active: false }]
     });
     const result = await applyMyDayStarterKit(fake, 5);
     const normalized = fake.state.impacts.find(row => row.id === 9);
     assert.equal(normalized.name, 'Команда / делегування');
-    assert.equal(normalized.color, '#123456');
-    assert.equal(normalized.icon, '🤝');
-    assert.equal(normalized.sort_order, 777);
+    assert.equal(normalized.color, '#06B6D4');
+    assert.equal(normalized.icon, '👥');
+    assert.equal(normalized.sort_order, 170);
     assert.equal(normalized.is_active, false);
     assert.equal(result.details.impacts.items.find(item => item.id === 9).normalizedFrom, 'Команда і делегування');
     assert.equal(fake.state.impacts.some(row => row.name === 'Команда і делегування'), false);
+});
+
+test('starter kit merges apostrophe-normalized health duplicates and preserves all task and habit links', async () => {
+    const fake = makeFakeDb({
+        impacts: [
+            { id: 13, user_id: 5, name: "Здоров'я", color: '#111111', icon: 'H1', sort_order: 40, is_active: true },
+            { id: 26, user_id: 5, name: 'Здоровʼя', color: '#222222', icon: 'H2', sort_order: 50, is_active: true }
+        ],
+        taskImpacts: [
+            { user_id: 5, task_id: 101, impact_id: 13 },
+            { user_id: 5, task_id: 102, impact_id: 26 }
+        ],
+        habitImpacts: [
+            { user_id: 5, habit_id: 201, impact_id: 13 },
+            { user_id: 5, habit_id: 202, impact_id: 26 }
+        ]
+    });
+
+    const result = await applyMyDayStarterKit(fake, 5);
+    const canonical = fake.state.impacts.find(row => row.id === 13);
+    const duplicate = fake.state.impacts.find(row => row.id === 26);
+    assert.equal(canonical.name, 'Здоровʼя');
+    assert.equal(canonical.icon, '❤️');
+    assert.equal(canonical.sort_order, 310);
+    assert.equal(duplicate.is_active, false);
+    assert.match(duplicate.name, /merged #26/);
+    assert.deepEqual(fake.state.taskImpacts.map(link => [link.task_id, link.impact_id]).sort(), [[101, 13], [102, 13]]);
+    assert.deepEqual(fake.state.habitImpacts
+        .filter(link => [201, 202].includes(Number(link.habit_id)))
+        .map(link => [link.habit_id, link.impact_id])
+        .sort(), [[201, 13], [202, 13]]);
+    const healthOutcome = result.details.impacts.items.find(item => item.id === 13);
+    assert.deepEqual(healthOutcome.mergedIds, [26]);
 });
 
 
@@ -198,10 +274,10 @@ test('starter kit idempotency is isolated per user', async () => {
         habits: [{ id: 79, user_id: 99, name: 'Планування дня', color: '#000000', icon: 'Z', direction_id: 77, metric: 'boolean', target_value: 1, cadence: 'daily', selected_weekdays: [], times_per_week: null, is_paused: false, is_archived: false, sort_order: 1 }]
     });
     const result = await applyMyDayStarterKit(fake, 5);
-    assert.deepEqual(result.created, { impacts: 19, habits: 5 });
+    assert.deepEqual(result.created, { impacts: 24, habits: 5 });
     assert.equal(fake.state.impacts.filter(row => row.user_id === 99).length, 1);
     assert.equal(fake.state.habits.filter(row => row.user_id === 99).length, 1);
-    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 19);
+    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 24);
     assert.equal(fake.state.habits.filter(row => row.user_id === 5).length, 5);
 });
 

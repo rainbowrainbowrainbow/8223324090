@@ -15,7 +15,7 @@
             '💰', '🤝', '🎯', '✅', '⏱️', '🚀', '🔥', '💎',
             '🧠', '📚', '🧭', '🔁', '🧱', '🧩', '🛠️', '🔍',
             '📣', '⭐', '🏆', '🎁', '🌱', '💤', '🧘', '💪',
-            '🥗', '🫀', '🏡', '🧹', '🛋️', '🎨', '🌈', '🙌',
+            '🥗', '🫀', '🏡', '🏠', '🎡', '🧹', '🛋️', '🎨', '🌈', '🙌',
             '⚙️', '🤖', '📊', '👥', '💻', '🧑‍💻', '📱', '🌐',
             '🗂️', '📋', '📝', '✍️', '💡', '🔧', '🔨', '🔗',
             '🔒', '🧪', '🎥', '🎙️', '📷', '📢', '💬', '📅',
@@ -120,7 +120,7 @@
                     <legend>Впливи <small>до 3</small></legend>
                     <div class="my-day-composer-impact-selected" data-my-day-composer-impact-selected aria-live="polite">${renderComposerSelectedImpacts([])}</div>
                     ${renderComposerImpactChips([])}
-                    <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До 3 результатів, які ця задача покращує.</p>
+                    <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До 3 впливів: контекст, діяльність, результат або особиста сфера.</p>
                 </fieldset>
 
                 ${status}
@@ -457,13 +457,13 @@
 
     function renderTaxonomyGuide() {
         const examples = [
-            { task: 'Доробити CRM-фічу', impacts: 'Робота: CRM, Системність, Якість сервісу' },
+            { task: 'Доробити CRM-фічу', impacts: 'Робота: CRM, Продукт / розробка, Якість сервісу' },
             { task: 'Підготувати зміну в парку', impacts: 'Робота: Парк, Якість сервісу, Команда / делегування' },
-            { task: 'Налаштувати Hermes', impacts: 'Робота: Hermes, Швидкість роботи, Ризики і безпека' }
+            { task: 'Налаштувати Hermes', impacts: 'Робота: Hermes, Автоматизація / AI, Ризики / безпека' }
         ];
         return '<div class="my-day-taxonomy-guide" aria-label="Як працюють впливи">' +
             '<div class="my-day-taxonomy-mental-model">' +
-                '<p><strong>Вплив</strong> — це результат або робоча зона, яку покращує задача чи звичка. Можна обрати до трьох впливів.</p>' +
+                '<p><strong>Вплив</strong> — це контекст, тип роботи, результат або особиста сфера. Зазвичай достатньо двох, максимум — три.</p>' +
             '</div>' +
             '<div class="my-day-taxonomy-examples">' +
                 '<strong class="my-day-taxonomy-examples-title">Приклади маркування</strong>' +
@@ -499,7 +499,7 @@
                     label?.setAttribute('title', input.disabled ? 'Спочатку зніміть один із трьох обраних впливів.' : (label?.dataset.myDayComposerImpactTitle || ''));
                 });
                 const help = container.querySelector('[data-my-day-composer-impact-help]');
-                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи. Щоб додати інший — зніміть один обраний.' : 'До 3 результатів, які ця задача покращує.';
+                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи. Щоб додати інший — зніміть один обраний.' : 'До 3 впливів: контекст, діяльність, результат або особиста сфера.';
                 const selectedNode = container.querySelector('[data-my-day-composer-impact-selected]');
                 if (selectedNode) selectedNode.innerHTML = renderComposerSelectedImpacts(selectedIds);
             };

@@ -76,6 +76,8 @@ test('contribution summary keeps impacts overlapping and ignores legacy directio
     assert.deepEqual(result.totals, { taskCount: 2, taskMinutes: 90, habitCompletions: 1, habitMinutes: 25 });
     assert.equal(Object.hasOwn(result, 'directions'), false);
     assert.equal(Object.hasOwn(result, 'unclassified'), false);
+    assert.equal(result.meta.impactFacetContract, 'overlapping_facets_do_not_sum_to_global_total');
+    assert.deepEqual(result.groups.map(group => group.key), ['custom']);
     assert.equal(result.impacts.find(row => row.taxonomy?.id === 20).taskCount, 2);
     assert.equal(result.impacts.find(row => row.taxonomy?.id === 21).taskCount, 1);
     assert.equal(result.impacts.find(row => row.taxonomy?.id === 21).habitCompletions, 1);
@@ -91,15 +93,17 @@ test('contribution global task minutes count once while impact rows remain overl
             local_date: '2026-08-01',
             seconds: 3600,
             impacts: [
-                { id: 20, name: 'Park', color: '#0EA5E9', icon: 'P', isActive: true },
-                { id: 21, name: 'CRM', color: '#22C55E', icon: 'C', isActive: true },
-                { id: 22, name: 'Hermes', color: '#F59E0B', icon: 'H', isActive: true }
+                { id: 20, name: 'Робота: Парк', color: '#0EA5E9', icon: 'P', isActive: true },
+                { id: 21, name: 'Робота: CRM', color: '#22C55E', icon: 'C', isActive: true },
+                { id: 22, name: 'Робота: Hermes', color: '#F59E0B', icon: 'H', isActive: true }
             ]
         }]
     });
     assert.equal(result.totals.taskMinutes, 60);
     assert.deepEqual(result.impacts.map(row => row.taskMinutes).sort((a, b) => a - b), [60, 60, 60]);
     assert.equal(result.impacts.reduce((sum, row) => sum + row.taskMinutes, 0), 180);
+    assert.deepEqual(result.groups.map(group => group.key), ['context']);
+    assert.equal(result.groups[0].impacts.length, 3);
     assert.equal(result.days[0].taskMinutes, 60);
 });
 
@@ -155,6 +159,8 @@ test('contribution route and UI expose only the canonical read endpoint and no s
     assert.match(contributionUi, /\/api\/my-day\/contribution/);
     assert.match(contributionUi, /role="tabpanel"/);
     assert.match(contributionUi, /aria-busy/);
+    assert.match(contributionUi, /renderImpactGroups/);
+    assert.match(contributionUi, /перехресними зрізами/);
     assert.match(contributionUi, /92/);
     assert.match(html, /js\/my-day-contribution\.js/);
     assert.match(css, /my-day-contribution-table-wrap/);

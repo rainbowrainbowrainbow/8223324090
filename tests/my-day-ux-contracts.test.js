@@ -105,15 +105,15 @@ test('My Day explains impacts as the only active classification model', () => {
     const spec = read('docs/MY_DAY_LIFE_SYSTEM_SPEC.md');
 
     assert.doesNotMatch(habitsUi, /<strong>Напрям<\/strong>/);
-    assert.match(habitsUi, /<strong>Вплив<\/strong> — це результат або робоча зона/);
+    assert.match(habitsUi, /<strong>Вплив<\/strong> — це контекст, тип роботи або результат/);
     assert.doesNotMatch(taxonomyUi, /<strong>Напрям<\/strong>/);
-    assert.match(taxonomyUi, /<strong>Вплив<\/strong> — це результат або робоча зона/);
+    assert.match(taxonomyUi, /<strong>Вплив<\/strong> — це контекст, тип роботи, результат або особиста сфера/);
     assert.match(taxonomyUi, /Доробити CRM-фічу/);
     assert.match(taxonomyUi, /Підготувати зміну в парку/);
     assert.match(taxonomyUi, /Налаштувати Hermes/);
-    assert.match(taxonomyUi, /До 3 результатів, які ця задача покращує./);
+    assert.match(taxonomyUi, /До 3 впливів: контекст, діяльність, результат або особиста сфера./);
     assert.doesNotMatch(habitsUi, /Проєкт або сфера звички./);
-    assert.match(habitsUi, /До 3 результатів, які ця звичка покращує./);
+    assert.match(habitsUi, /До 3 впливів: контекст, діяльність, результат або особиста сфера./);
     assert.match(css, /\.my-day-taxonomy-guide/);
     assert.match(css, /\.my-day-taxonomy-examples/);
     assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-taxonomy-guide/);
@@ -187,7 +187,8 @@ test('empty Contribution keeps selected dates and renders zero total cards', () 
     assert.match(contributionUi, /my-day-contribution-zero-state/);
     assert.ok(contributionUi.includes(RANGE_PREFIX + ' ${escape(range.from)} \u2014 ${escape(range.to)}'));
     assert.match(contributionUi, /renderTotals\(data\)/);
-    assert.ok(contributionUi.includes("renderMatrix('" + IMPACTS_LABEL + "'"));
+    assert.match(contributionUi, /renderImpactGroups\(data\)/);
+    assert.ok(contributionUi.includes("'" + IMPACTS_LABEL + "'"));
     assert.doesNotMatch(contributionUi, /myDayContributionDirectionsTitle/);
     assert.match(contributionUi, /\$\{status\}\$\{body\}/);
     assert.doesNotMatch(contributionUi, /productivityScore|streak|penalt|gamification/i);

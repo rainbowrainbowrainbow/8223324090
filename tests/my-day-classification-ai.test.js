@@ -9,9 +9,9 @@ const root = path.resolve(__dirname, '..');
 const service = require('../services/myDayClassificationAi');
 
 const impacts = [
-    { id: 11, name: 'Work: CRM', icon: 'C', isActive: true },
-    { id: 12, name: 'Work: Hermes', icon: 'H', isActive: true },
-    { id: 13, name: 'Health', icon: 'Z', isActive: false }
+    { id: 11, name: 'Робота: CRM', icon: '🗂️', isActive: true },
+    { id: 12, name: 'Робота: Hermes', icon: '⚡', isActive: true },
+    { id: 13, name: 'Здоровʼя', icon: '❤️', isActive: false }
 ];
 
 test('My Day AI classifier uses direct OpenAI Responses API with strict impacts-only schema', async () => {
@@ -63,6 +63,8 @@ test('My Day AI classifier uses direct OpenAI Responses API with strict impacts-
     const serializedInput = JSON.stringify(body.input);
     assert.match(serializedInput, /activeImpacts/);
     assert.match(serializedInput, /Fix CRM booking form/);
+    assert.match(serializedInput, /context/);
+    assert.match(serializedInput, /клієнтська база/);
     assert.doesNotMatch(serializedInput, /tags|tagRules|OPENROUTER_API_KEY|OPENROUTER_KEY|chat_ai/i);
     assert.doesNotMatch(requests[0].options.body, /test-openai-key/);
 });
@@ -154,6 +156,25 @@ test('My Day AI preserves exact active impact names when Luna is uncertain', asy
     });
     assert.equal(crmAndHermes.ok, true);
     assert.deepEqual(crmAndHermes.classification.impactIds, [11, 12]);
+});
+
+test('My Day AI uses canonical group hints and Ukrainian inflection-safe explicit matches', () => {
+    const guided = [
+        ...impacts,
+        { id: 14, name: 'Автоматизація / AI', icon: '🤖', isActive: true },
+        { id: 15, name: 'Аналітика / рішення', icon: '📊', isActive: true },
+        { id: 16, name: 'Продукт / розробка', icon: '💻', isActive: true }
+    ];
+    const payload = service.activeImpactPayload(guided);
+    assert.equal(payload.find(item => item.id === 14).group, 'activity');
+    assert.ok(payload.find(item => item.id === 14).hints.includes('автоматизація'));
+    assert.deepEqual(
+        service.findExplicitImpactIds({ title: 'Підготувати аналітику CRM та автоматизацію звітності' }, guided),
+        [11, 14, 15]
+    );
+    assert.deepEqual(service.findExplicitImpactIds({ title: 'Зробити без автоматизації' }, guided), []);
+    assert.deepEqual(service.findExplicitImpactIds({ title: '3321' }, guided), []);
+    assert.match(service.buildSystemPrompt(), /context \+ activity \+ outcome/);
 });
 
 test('My Day AI model override is allowlisted and diagnostics does not expose secrets', async () => {

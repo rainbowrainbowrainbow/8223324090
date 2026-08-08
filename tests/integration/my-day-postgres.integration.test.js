@@ -303,13 +303,40 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.deepEqual(result.impacts.map(row => row.taskMinutes).sort((a, b) => a - b), [60, 60, 60]);
     });
 
-    it('adds the expanded canonical impacts and safely normalizes the exact legacy team name', async () => {
+    it('normalizes the 24-impact catalog and merges health aliases without losing task or habit links', async () => {
         const owner = await createUser('starter_alias');
         const legacy = await query(
             `INSERT INTO my_day_impacts (user_id, name, color, icon, sort_order, is_active)
-             VALUES ($1, 'Команда і делегування', '#123456', '🤝', 777, false)
+             VALUES ($1, 'Команда і делегування', '#123456', '🤝', 777, true)
              RETURNING id`,
             [owner.id]
+        );
+        const asciiHealth = await query(
+            `INSERT INTO my_day_impacts (user_id, name, color, icon, sort_order, is_active)
+             VALUES ($1, 'Здоров''я', '#111111', 'H1', 40, true)
+             RETURNING id`,
+            [owner.id]
+        );
+        const canonicalHealth = await query(
+            `INSERT INTO my_day_impacts (user_id, name, color, icon, sort_order, is_active)
+             VALUES ($1, 'Здоровʼя', '#222222', 'H2', 50, true)
+             RETURNING id`,
+            [owner.id]
+        );
+        const asciiTaskId = await createTask(owner, 'starter ASCII health task');
+        const canonicalTaskId = await createTask(owner, 'starter canonical health task');
+        await setTaskImpacts(owner.id, asciiTaskId, [Number(asciiHealth.rows[0].id)]);
+        await setTaskImpacts(owner.id, canonicalTaskId, [Number(canonicalHealth.rows[0].id)]);
+        const habit = await query(
+            `INSERT INTO my_day_habits (user_id, name, metric, target_value, cadence)
+             VALUES ($1, $2, 'boolean', 1, 'daily')
+             RETURNING id`,
+            [owner.id, `starter health habit ${suffix}`]
+        );
+        await query(
+            `INSERT INTO my_day_habit_impacts (habit_id, user_id, impact_id)
+             VALUES ($1, $2, $3)`,
+            [habit.rows[0].id, owner.id, asciiHealth.rows[0].id]
         );
         const client = await pool.connect();
         let first;
@@ -324,8 +351,8 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             client.release();
         }
 
-        assert.deepEqual(first.created, { impacts: 18, habits: 5 });
-        assert.deepEqual(first.skipped, { impacts: 1, habits: 0 });
+        assert.deepEqual(first.created, { impacts: 22, habits: 5 });
+        assert.deepEqual(first.skipped, { impacts: 2, habits: 0 });
         const catalog = await query(
             `SELECT id, name, color, icon, sort_order, is_active
              FROM my_day_impacts
@@ -333,16 +360,45 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
              ORDER BY sort_order, id`,
             [owner.id]
         );
-        assert.equal(catalog.rows.length, 19);
-        ['Операційка / процеси', 'Автоматизація / AI', 'Контент / медіа', 'Аналітика / рішення', 'Команда / делегування']
+        assert.equal(catalog.rows.length, 25);
+        assert.equal(catalog.rows.filter(row => row.is_active).length, 24);
+        ['Продукт / розробка', 'Маркетинг / залучення', 'Стратегія / пріоритети', 'Фінанси / облік', 'Близькі / стосунки']
             .forEach(name => assert.ok(catalog.rows.some(row => row.name === name), `missing starter impact: ${name}`));
         assert.equal(catalog.rows.some(row => row.name === 'Команда і делегування'), false);
         const normalized = catalog.rows.find(row => Number(row.id) === Number(legacy.rows[0].id));
         assert.equal(normalized.name, 'Команда / делегування');
-        assert.equal(normalized.color, '#123456');
-        assert.equal(normalized.icon, '🤝');
-        assert.equal(Number(normalized.sort_order), 777);
-        assert.equal(normalized.is_active, false);
+        assert.equal(normalized.color, '#06B6D4');
+        assert.equal(normalized.icon, '👥');
+        assert.equal(Number(normalized.sort_order), 170);
+        assert.equal(normalized.is_active, true);
+
+        const healthRows = catalog.rows.filter(row => row.name === 'Здоровʼя' || /merged #/.test(row.name));
+        assert.equal(healthRows.length, 2);
+        const healthTarget = healthRows.find(row => row.name === 'Здоровʼя');
+        const healthDuplicate = healthRows.find(row => /merged #/.test(row.name));
+        assert.equal(Number(healthTarget.id), Number(asciiHealth.rows[0].id));
+        assert.equal(healthTarget.icon, '❤️');
+        assert.equal(Number(healthTarget.sort_order), 310);
+        assert.equal(healthTarget.is_active, true);
+        assert.equal(healthDuplicate.is_active, false);
+        const taskLinks = await query(
+            `SELECT task_id::int, impact_id::int
+             FROM my_day_task_impacts
+             WHERE user_id = $1 AND task_id = ANY($2::int[])
+             ORDER BY task_id`,
+            [owner.id, [asciiTaskId, canonicalTaskId]]
+        );
+        assert.deepEqual(taskLinks.rows, [
+            { task_id: asciiTaskId, impact_id: Number(healthTarget.id) },
+            { task_id: canonicalTaskId, impact_id: Number(healthTarget.id) }
+        ]);
+        const habitLinks = await query(
+            `SELECT impact_id::int
+             FROM my_day_habit_impacts
+             WHERE habit_id = $1`,
+            [habit.rows[0].id]
+        );
+        assert.deepEqual(habitLinks.rows, [{ impact_id: Number(healthTarget.id) }]);
 
         const secondClient = await pool.connect();
         let second;
@@ -357,7 +413,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             secondClient.release();
         }
         assert.deepEqual(second.created, { impacts: 0, habits: 0 });
-        assert.deepEqual(second.skipped, { impacts: 19, habits: 5 });
+        assert.deepEqual(second.skipped, { impacts: 24, habits: 5 });
     });
 
     it('enforces auth, ownership, writable business scope, impacts-only writes, legacy direction, and tags preservation', async () => {

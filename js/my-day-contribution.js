@@ -211,6 +211,26 @@
         </section>`;
     }
 
+    function renderImpactGroups(data) {
+        const groups = Array.isArray(data.groups) ? data.groups.filter(group => Array.isArray(group.impacts) && group.impacts.length) : [];
+        if (!groups.length) {
+            return renderMatrix(
+                'Впливи',
+                'Впливи можуть перетинатися: один елемент може рахуватись у кілька впливів.',
+                data.impacts,
+                'Впливи ще не мають внеску.',
+                { id: 'myDayContributionImpactsTitle' }
+            );
+        }
+        return groups.map((group, index) => renderMatrix(
+            group.label || 'Впливи',
+            `${group.description || ''} Рядки є перехресними зрізами й не підсумовуються у глобальний результат.`.trim(),
+            group.impacts,
+            'У цій групі ще немає внеску.',
+            { id: `myDayContributionImpactGroup${index}` }
+        )).join('');
+    }
+
     function renderDays(days = []) {
         const body = days.length ? days.map(day => `<tr>
             <th scope="row">${escape(day.date)}</th>
@@ -247,6 +267,7 @@
                 habitMinutes: normalizeNumber(totals.habitMinutes)
             },
             impacts: Array.isArray(source.impacts) ? source.impacts : [],
+            groups: Array.isArray(source.groups) ? source.groups : [],
             days: Array.isArray(source.days) ? source.days : []
         };
     }
@@ -270,7 +291,7 @@
             ? '<div class="profile-empty-professional" aria-live="polite">Завантаження матриці внеску...</div>'
             : `${renderTotals(data)}
                    ${hasData ? '' : `<div class="profile-empty-professional my-day-contribution-zero-state">За ${escape(range.from)} — ${escape(range.to)} ще немає завершених задач, time entries або виконаних звичок.</div>`}
-                   ${renderMatrix('Впливи', 'Впливи можуть перетинатися: один елемент може рахуватись у кілька впливів.', data.impacts, 'Впливи ще не мають внеску.', { id: 'myDayContributionImpactsTitle' })}
+                   ${renderImpactGroups(data)}
                    ${renderDays(data.days)}`;
         return `<div class="cabinet-shell cabinet-command-center" id="myDayContributionPanel" role="tabpanel" aria-labelledby="myDayModeContribution" aria-busy="${state.loading ? 'true' : 'false'}">
             <div class="my-day-contribution-toolbar">

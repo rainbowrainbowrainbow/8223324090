@@ -1,12 +1,20 @@
 'use strict';
 
 const { myDayError } = require('./myDayTaxonomy');
+const { guidanceForImpactName } = require('./myDayImpactCatalog');
 const { normalizeUserId, buildTaskOwnerMatch } = require('./taskPolicy');
 const { appendTaskBusinessScopeSql, taskBusinessScopeMeta } = require('./taskBusinessScope');
 
 const KYIV_TIMEZONE = 'Europe/Kyiv';
 const MAX_RANGE_DAYS = 92;
 const MS_PER_DAY = 24 * 60 * 60 * 1000;
+const IMPACT_GROUPS = Object.freeze([
+    Object.freeze({ key: 'context', label: 'Контекст', description: 'Де відбувається робота.' }),
+    Object.freeze({ key: 'activity', label: 'Діяльність', description: 'Що саме ти робиш.' }),
+    Object.freeze({ key: 'outcome', label: 'Результат', description: 'Який результат це дає.' }),
+    Object.freeze({ key: 'personal', label: 'Особисте', description: 'Яку сферу життя це підтримує.' }),
+    Object.freeze({ key: 'custom', label: 'Інші впливи', description: 'Власні впливи поза канонічним каталогом.' })
+]);
 
 function normalizeLocalDate(value, field = 'date') {
     const label = field === 'from' ? 'початку' : (field === 'to' ? 'завершення' : 'дати');
@@ -69,12 +77,14 @@ function numberValue(value) {
 }
 
 function serializeImpact(impact = {}) {
+    const guidance = guidanceForImpactName(impact.name);
     return {
         id: Number(impact.id),
         name: impact.name,
         color: impact.color,
         icon: impact.icon,
-        isActive: impact.isActive !== false && impact.is_active !== false
+        isActive: impact.isActive !== false && impact.is_active !== false,
+        group: guidance?.group || 'custom'
     };
 }
 
@@ -192,13 +202,24 @@ function finalizeMatrix(matrix) {
             habitMinutes: item.habitMinutes
         });
     }
+    const impacts = [...matrix.impactsMap.values()].sort(sortBuckets).map(serializeBucket);
+    const groups = IMPACT_GROUPS
+        .map(group => ({
+            ...group,
+            impacts: impacts.filter(item => (item.taxonomy?.group || 'custom') === group.key)
+        }))
+        .filter(group => group.impacts.length > 0);
     return {
         success: true,
         range: matrix.range,
         totals: matrix.totals,
-        impacts: [...matrix.impactsMap.values()].sort(sortBuckets).map(serializeBucket),
+        impacts,
+        groups,
         days,
-        meta: matrix.meta
+        meta: {
+            ...matrix.meta,
+            impactFacetContract: 'overlapping_facets_do_not_sum_to_global_total'
+        }
     };
 }
 

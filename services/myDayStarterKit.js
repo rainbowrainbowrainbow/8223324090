@@ -2,124 +2,9 @@
 
 const { myDayError } = require('./myDayTaxonomy');
 const { positiveInteger } = require('./myDayHabits');
+const { CANONICAL_MY_DAY_IMPACTS, normalizeImpactCatalogName } = require('./myDayImpactCatalog');
 
-const STARTER_IMPACTS = Object.freeze([
-    {
-        name: "Робота: Парк",
-        color: "#10B981",
-        icon: "🌳",
-        sortOrder: 1
-    },
-    {
-        name: "Робота: CRM",
-        color: "#2563EB",
-        icon: "💼",
-        sortOrder: 2
-    },
-    {
-        name: "Робота: Hermes",
-        color: "#8B5CF6",
-        icon: "⚡",
-        sortOrder: 3
-    },
-    {
-        name: "Операційка / процеси",
-        color: "#64748B",
-        icon: "⚙️",
-        sortOrder: 4
-    },
-    {
-        name: "Автоматизація / AI",
-        color: "#8B5CF6",
-        icon: "🤖",
-        sortOrder: 5
-    },
-    {
-        name: "Контент / медіа",
-        color: "#EC4899",
-        icon: "📣",
-        sortOrder: 6
-    },
-    {
-        name: "Аналітика / рішення",
-        color: "#0EA5E9",
-        icon: "📊",
-        sortOrder: 7
-    },
-    {
-        name: "Команда / делегування",
-        legacyNames: ["Команда і делегування"],
-        color: "#06B6D4",
-        icon: "👥",
-        sortOrder: 8
-    },
-    {
-        name: "Дохід і клієнти",
-        color: "#22C55E",
-        icon: "📈",
-        sortOrder: 10
-    },
-    {
-        name: "Якість сервісу",
-        color: "#0EA5E9",
-        icon: "⭐",
-        sortOrder: 20
-    },
-    {
-        name: "Системність",
-        color: "#6366F1",
-        icon: "⚙️",
-        sortOrder: 30
-    },
-    {
-        name: "Швидкість роботи",
-        color: "#F59E0B",
-        icon: "⚡",
-        sortOrder: 40
-    },
-    {
-        name: "Здоровʼя",
-        color: "#EF4444",
-        icon: "❤️",
-        sortOrder: 50
-    },
-    {
-        name: "Фізична форма",
-        color: "#F97316",
-        icon: "💪",
-        sortOrder: 60
-    },
-    {
-        name: "Відновлення",
-        color: "#14B8A6",
-        icon: "🌿",
-        sortOrder: 70
-    },
-    {
-        name: "Побут і комфорт",
-        color: "#A855F7",
-        icon: "🛋️",
-        sortOrder: 80
-    },
-    {
-        name: "Навчання",
-        color: "#3B82F6",
-        icon: "🧠",
-        sortOrder: 90
-    },
-    {
-        name: "Репутація / бренд",
-        color: "#EC4899",
-        icon: "📣",
-        sortOrder: 100
-    },
-    {
-        name: "Ризики і безпека",
-        color: "#64748B",
-        icon: "🛡️",
-        sortOrder: 120
-    }
-]);
+const STARTER_IMPACTS = CANONICAL_MY_DAY_IMPACTS;
 
 const STARTER_HABITS = Object.freeze([
     {
@@ -148,7 +33,7 @@ const STARTER_HABITS = Object.freeze([
         timesPerWeek: null,
         impacts: [
             "Системність",
-            "Швидкість роботи"
+            "Швидкість / ефективність"
         ],
         sortOrder: 20
     },
@@ -183,7 +68,7 @@ const STARTER_HABITS = Object.freeze([
         ],
         timesPerWeek: null,
         impacts: [
-            "Навчання",
+            "Навчання / розвиток",
             "Системність"
         ],
         sortOrder: 40
@@ -191,14 +76,14 @@ const STARTER_HABITS = Object.freeze([
     {
         name: "Побутовий порядок",
         color: "#A855F7",
-        icon: "🛋️",
+        icon: "🏠",
         metric: "boolean",
         targetValue: 1,
         cadence: "times_per_week",
         selectedWeekdays: [],
         timesPerWeek: 3,
         impacts: [
-            "Побут і комфорт",
+            "Побут / комфорт",
             "Відновлення"
         ],
         sortOrder: 50
@@ -215,7 +100,7 @@ const CATALOG_TABLES = Object.freeze({
 });
 
 function normalizeNameKey(value) {
-    return String(value || '').trim().replace(/[\u02BC\u2019\u2018\u0060\u00B4]/g, "'").replace(/\s+/g, ' ').toLowerCase();
+    return normalizeImpactCatalogName(value);
 }
 
 function summaryBucket() {
@@ -241,41 +126,103 @@ async function lockStarterKit(queryable, userId) {
     await queryable.query('SELECT pg_advisory_xact_lock(hashtext($1))', [`my_day_starter_kit:${positiveInteger(userId, 'user')}`]);
 }
 
+function catalogMatchNames(item) {
+    return [...new Set([item.name, ...(item.legacyNames || [])]
+        .map(value => String(value || '').trim().toLocaleLowerCase('uk-UA'))
+        .filter(Boolean))];
+}
+
+function chooseCatalogTarget(rows, canonicalName) {
+    const canonicalKey = normalizeNameKey(canonicalName);
+    return [...rows].sort((left, right) => {
+        const referenceDiff = Number(right.reference_count || 0) - Number(left.reference_count || 0);
+        if (referenceDiff) return referenceDiff;
+        const activeDiff = Number(right.is_active !== false) - Number(left.is_active !== false);
+        if (activeDiff) return activeDiff;
+        const canonicalDiff = Number(normalizeNameKey(right.name) === canonicalKey) - Number(normalizeNameKey(left.name) === canonicalKey);
+        if (canonicalDiff) return canonicalDiff;
+        return Number(left.id) - Number(right.id);
+    })[0];
+}
+
+function archivedDuplicateName(item, duplicateId) {
+    const suffix = ` [merged #${duplicateId}]`;
+    return `${String(item.name || '').slice(0, Math.max(1, 100 - suffix.length))}${suffix}`;
+}
+
+async function mergeCatalogDuplicate(queryable, userId, targetId, duplicate, item) {
+    await queryable.query(
+        `INSERT INTO my_day_task_impacts (user_id, task_id, impact_id, created_at)
+         SELECT user_id, task_id, $3, created_at
+         FROM my_day_task_impacts
+         WHERE user_id = $1 AND impact_id = $2
+         ON CONFLICT (user_id, task_id, impact_id) DO NOTHING`,
+        [userId, duplicate.id, targetId]
+    );
+    await queryable.query(
+        `INSERT INTO my_day_habit_impacts (habit_id, user_id, impact_id, created_at)
+         SELECT habit_id, user_id, $3, created_at
+         FROM my_day_habit_impacts
+         WHERE user_id = $1 AND impact_id = $2
+         ON CONFLICT (habit_id, impact_id) DO NOTHING`,
+        [userId, duplicate.id, targetId]
+    );
+    await queryable.query('DELETE FROM my_day_task_impacts WHERE user_id = $1 AND impact_id = $2', [userId, duplicate.id]);
+    await queryable.query('DELETE FROM my_day_habit_impacts WHERE user_id = $1 AND impact_id = $2', [userId, duplicate.id]);
+    await queryable.query(
+        `UPDATE my_day_impacts
+         SET name = $3,
+             is_active = FALSE,
+             archived_at = COALESCE(archived_at, NOW()),
+             updated_at = NOW()
+         WHERE id = $1 AND user_id = $2`,
+        [duplicate.id, userId, archivedDuplicateName(item, duplicate.id)]
+    );
+}
+
 async function createOrFindCatalog(queryable, userId, kind, item) {
     const table = CATALOG_TABLES[kind];
     if (!table) throw new Error('Unsupported starter taxonomy kind: ' + kind);
-    const legacyNameKeys = (item.legacyNames || []).map(normalizeNameKey);
     const existing = await queryable.query(
-        `SELECT id, name, color, icon, sort_order, is_active
-         FROM ${table}
-         WHERE user_id = $1
-           AND (LOWER(BTRIM(name)) = LOWER(BTRIM($2))
-                OR LOWER(BTRIM(name)) = ANY($3::text[]))
-         ORDER BY CASE WHEN LOWER(BTRIM(name)) = LOWER(BTRIM($2)) THEN 0 ELSE 1 END
-         LIMIT 1
+        `SELECT i.id, i.name, i.color, i.icon, i.sort_order, i.is_active,
+                ((SELECT COUNT(*) FROM my_day_task_impacts ti WHERE ti.user_id = i.user_id AND ti.impact_id = i.id)
+                 + (SELECT COUNT(*) FROM my_day_habit_impacts hi WHERE hi.user_id = i.user_id AND hi.impact_id = i.id))::int AS reference_count
+         FROM ${table} i
+         WHERE i.user_id = $1 AND LOWER(BTRIM(i.name)) = ANY($2::text[])
+         ORDER BY i.id
          FOR UPDATE`,
-        [userId, item.name, legacyNameKeys]
+        [userId, catalogMatchNames(item)]
     );
-    const row = existing.rows?.[0];
-    if (row) {
-        if (normalizeNameKey(row.name) !== normalizeNameKey(item.name)) {
-            const previousName = row.name;
-            const normalized = await queryable.query(
-                `UPDATE ${table}
-                 SET name = $3, updated_at = NOW()
-                 WHERE id = $1 AND user_id = $2
-                 RETURNING id, name, is_active`,
-                [row.id, userId, item.name]
-            );
-            return {
-                status: 'skipped',
-                id: Number(normalized.rows[0].id),
-                name: normalized.rows[0].name,
-                isActive: normalized.rows[0].is_active !== false,
-                normalizedFrom: previousName
-            };
+    const rows = existing.rows || [];
+    if (rows.length) {
+        const target = chooseCatalogTarget(rows, item.name);
+        const duplicates = rows.filter(row => Number(row.id) !== Number(target.id));
+        for (const duplicate of duplicates) {
+            await mergeCatalogDuplicate(queryable, userId, target.id, duplicate, item);
         }
-        return { status: 'skipped', id: Number(row.id), name: row.name, isActive: row.is_active !== false };
+        const normalized = await queryable.query(
+            `UPDATE ${table}
+             SET name = $3,
+                 color = $4,
+                 icon = $5,
+                 sort_order = $6,
+                 updated_at = NOW()
+             WHERE id = $1 AND user_id = $2
+             RETURNING id, name, color, icon, sort_order, is_active`,
+            [target.id, userId, item.name, item.color, item.icon, item.sortOrder]
+        );
+        const row = normalized.rows[0];
+        return {
+            status: 'skipped',
+            id: Number(row.id),
+            name: row.name,
+            isActive: row.is_active !== false,
+            normalizedFrom: target.name !== row.name ? target.name : undefined,
+            mergedIds: duplicates.map(duplicate => Number(duplicate.id)),
+            metadataUpdated: target.color !== row.color
+                || target.icon !== row.icon
+                || Number(target.sort_order) !== Number(row.sort_order)
+        };
     }
 
     const inserted = await queryable.query(

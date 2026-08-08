@@ -5,6 +5,7 @@ const {
     normalizeImpactIds,
     myDayError
 } = require('./myDayTaxonomy');
+const { guidanceForImpactName } = require('./myDayImpactCatalog');
 
 const DEFAULT_MY_DAY_CLASSIFICATION_MODEL = 'gpt-5.6-luna';
 const ALLOWED_MY_DAY_CLASSIFICATION_MODELS = Object.freeze([
@@ -97,11 +98,16 @@ function taskFingerprint(task = {}) {
 function activeImpactPayload(impacts = []) {
     return (Array.isArray(impacts) ? impacts : [])
         .filter(impact => impact && impact.isActive !== false)
-        .map(impact => ({
-            id: Number(impact.id),
-            name: compactString(impact.name, MAX_IMPACT_NAME_CHARS),
-            icon: compactString(impact.icon, 16)
-        }))
+        .map(impact => {
+            const name = compactString(impact.name, MAX_IMPACT_NAME_CHARS);
+            const guidance = guidanceForImpactName(name);
+            return {
+                id: Number(impact.id),
+                name,
+                icon: compactString(impact.icon, 16),
+                ...(guidance ? { group: guidance.group, hints: [...guidance.hints] } : {})
+            };
+        })
         .filter(impact => Number.isInteger(impact.id) && impact.id > 0 && impact.name)
         .slice(0, MAX_ACTIVE_IMPACTS_FOR_PROMPT);
 }
@@ -120,19 +126,31 @@ function impactMatchTokens(value) {
     return normalizeImpactMatchText(value).split(' ').filter(Boolean);
 }
 
+function impactMatchTokenKey(value) {
+    const token = normalizeImpactMatchText(value);
+    if (/^\p{Script=Cyrillic}+$/u.test(token) && token.length >= 6 && /[аеєиіїоуюя]$/u.test(token)) {
+        return token.slice(0, -1);
+    }
+    return token;
+}
+
 function findExplicitImpactIds(task = {}, impacts = []) {
     const activeImpacts = activeImpactPayload(impacts);
     const taskTokens = impactMatchTokens(`${task?.title || ''} ${task?.description || ''}`);
     if (!taskTokens.length) return [];
+    const taskTokenKeys = taskTokens.map(impactMatchTokenKey);
 
-    const hasUnnegatedTaskToken = token => taskTokens.some((taskToken, index) => {
+    const hasUnnegatedTaskToken = token => taskTokenKeys.some((taskToken, index) => {
         if (taskToken !== token) return false;
         return !taskTokens.slice(Math.max(0, index - 2), index).some(previous => EXPLICIT_IMPACT_NEGATIONS.has(previous));
     });
 
     const tokenFrequency = new Map();
     const impactTokens = activeImpacts.map(impact => {
-        const tokens = [...new Set(impactMatchTokens(impact.name))];
+        const tokens = [...new Set([
+            ...impactMatchTokens(impact.name),
+            ...(impact.hints || []).flatMap(impactMatchTokens)
+        ].map(impactMatchTokenKey).filter(Boolean))];
         tokens.forEach(token => tokenFrequency.set(token, (tokenFrequency.get(token) || 0) + 1));
         return { impact, tokens };
     });
@@ -156,8 +174,12 @@ function buildSystemPrompt() {
         'You classify one personal My Day task for Event Genix CRM.',
         'Return exactly one JSON object that satisfies the provided schema.',
         'Do not classify task directions, status, priority, deadline, owner, or dependencies.',
-        `Choose 1-${MAX_IMPACTS_PER_TASK} impactIds only from the provided activeImpacts list.`,
+        `Choose no more than ${MAX_IMPACTS_PER_TASK} impactIds, only from the provided activeImpacts list. Return 1-${MAX_IMPACTS_PER_TASK} when there is a clear match.`,
         'Never create new impact IDs or rename impacts.',
+        'Known impacts may include a group and trusted semantic hints. Use the hints as meaning guidance, not as output values.',
+        'The statistical model is: context = where the work belongs; activity = what kind of work is done; outcome = the business result; personal = the life area.',
+        'For a clear task, prefer a compact representative set such as context + activity + outcome, but never force all groups and never fill slots without evidence.',
+        'Cross-product work may use two context impacts when both are explicit, leaving the last slot for the strongest activity or outcome.',
         'Prefer the closest meaningful provided impacts for a clear actionable task, even when its wording is short.',
         'If the task explicitly names an active impact or its distinctive acronym (for example CRM, Hermes, Park, or AI), include that impact unless the text clearly negates it.',
         'Return an empty impactIds array only when the text is an opaque identifier, is genuinely unclear, or has no semantic connection to any provided impact.',

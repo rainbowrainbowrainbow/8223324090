@@ -96,8 +96,6 @@ async function createUser(label, role = 'instructor') {
         password,
         name: `My Day PG ${label} ${suffix}`,
         role,
-        pageAllowlist: ['/profile'],
-        pageDenylist: [],
         actionAllowlist: [],
         actionDenylist: [],
         businessContexts: ['event_genix'],

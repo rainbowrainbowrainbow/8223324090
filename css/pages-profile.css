@@ -265,8 +265,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     min-width: 0;
 }
 
-.my-day-composer-impact-field,
-.my-day-composer-tag-field {
+.my-day-composer-impact-field {
     border: 0;
     display: grid;
     gap: 9px;
@@ -274,8 +273,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     padding: 0;
 }
 
-.my-day-composer-impact-field legend,
-.my-day-composer-tag-field legend {
+.my-day-composer-impact-field legend {
     color: var(--text-secondary, #475569);
     font-size: 12px;
     font-weight: 800;
@@ -316,81 +314,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     white-space: nowrap;
 }
 
-.my-day-tag-input {
-    align-items: center;
-    background: var(--surface-primary, #ffffff);
-    border: 1px solid var(--border-color, #e2e8f0);
-    border-radius: 14px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    min-height: 38px;
-    padding: 6px;
-}
-
-.my-day-tag-chip-list {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-}
-
-.my-day-tag-chip,
-.my-day-task-tag {
-    align-items: center;
-    background: rgba(15, 23, 42, 0.06);
-    border: 1px solid rgba(100, 116, 139, 0.24);
-    border-radius: 999px;
-    color: var(--text-primary, #1e293b);
-    display: inline-flex;
-    font-size: 11px;
-    font-weight: 800;
-    gap: 5px;
-    line-height: 1.15;
-    max-width: 150px;
-    padding: 3px 7px;
-}
-
-.my-day-tag-chip span,
-.my-day-task-tag {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.my-day-tag-chip button {
-    align-items: center;
-    background: transparent;
-    border: 0;
-    color: inherit;
-    cursor: pointer;
-    display: inline-flex;
-    font-size: 14px;
-    font-weight: 900;
-    height: 18px;
-    justify-content: center;
-    padding: 0;
-    width: 18px;
-}
-
-.my-day-tag-input input[data-my-day-tag-text] {
-    background: transparent;
-    border: 0;
-    flex: 1 1 120px;
-    min-height: 24px;
-    min-width: 90px;
-    outline: none;
-}
-
-.my-day-tag-limit {
-    color: var(--text-muted, #64748b);
-    font-size: 11px;
-    font-weight: 800;
-    margin-left: auto;
-}
-
-.my-day-task-impact-chips,
-.my-day-task-tags {
+.my-day-task-impact-chips {
     align-items: center;
     display: inline-flex;
     flex-wrap: wrap;
@@ -457,11 +381,15 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .my-day-editor-fields { display: grid; gap: 10px; min-width: min(320px, 80vw); }
 
 .profile-page.profile-work-mode .cabinet-task-action-ai {
+    align-items: center;
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.14), rgba(20, 184, 166, 0.13));
     border: 1px solid rgba(99, 102, 241, 0.28);
     color: #3730a3;
+    display: inline-flex;
     font-size: 11px;
     font-weight: 950;
+    gap: 4px;
+    justify-content: center;
     letter-spacing: 0.01em;
 }
 
@@ -476,6 +404,37 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="loading"] {
     cursor: wait;
     opacity: 0.72;
+}
+
+.profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="success"] {
+    border-color: rgba(16, 185, 129, 0.42);
+    color: #047857;
+}
+
+.profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="no-match"],
+.profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="conflict"],
+.profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="retry"] {
+    border-color: rgba(245, 158, 11, 0.46);
+    color: #92400e;
+}
+
+.profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="provider-unavailable"] {
+    border-color: rgba(239, 68, 68, 0.42);
+    color: #b91c1c;
+}
+
+.cabinet-task-action-spinner {
+    animation: my-day-ai-spin 0.8s linear infinite;
+    border: 2px solid currentColor;
+    border-right-color: transparent;
+    border-radius: 999px;
+    display: inline-block;
+    height: 12px;
+    width: 12px;
+}
+
+@keyframes my-day-ai-spin {
+    to { transform: rotate(360deg); }
 }
 
 .task-ui-action-surface--ai-classification.is-popover .task-ui-action-panel {
@@ -1569,15 +1528,9 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-habit-check
 }
 
 body.dark-mode .profile-page.profile-work-mode .my-day-task-chip,
-body.dark-mode .profile-page.profile-work-mode .my-day-tag-input,
-body.dark-mode .profile-page.profile-work-mode .my-day-tag-chip,
-body.dark-mode .profile-page.profile-work-mode .my-day-task-tag,
 body.dark-mode .profile-page.profile-work-mode .cabinet-task-dependency-action,
 body.dark-mode .profile-page.profile-work-mode .cabinet-task-blocker-badge,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-task-chip,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-tag-input,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-tag-chip,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-task-tag,
 html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-dependency-action,
 html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-blocker-badge {
     background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 28%, rgba(15, 23, 42, 0.72));
@@ -1592,16 +1545,33 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-block
     color: #fde68a;
 }
 
-body.dark-mode .profile-page.profile-work-mode .my-day-tag-input input[data-my-day-tag-text],
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-tag-input input[data-my-day-tag-text] {
-    color: var(--my-day-life-text);
-}
-
 body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-ai,
 html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-ai {
     background: linear-gradient(135deg, rgba(99, 102, 241, 0.22), rgba(20, 184, 166, 0.18));
     border-color: rgba(129, 140, 248, 0.34);
     color: #c7d2fe;
+}
+
+body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="success"],
+html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="success"] {
+    border-color: rgba(52, 211, 153, 0.42);
+    color: #a7f3d0;
+}
+
+body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="no-match"],
+body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="conflict"],
+body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="retry"],
+html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="no-match"],
+html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="conflict"],
+html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="retry"] {
+    border-color: rgba(251, 191, 36, 0.42);
+    color: #fde68a;
+}
+
+body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="provider-unavailable"],
+html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="provider-unavailable"] {
+    border-color: rgba(248, 113, 113, 0.42);
+    color: #fecaca;
 }
 
 body.dark-mode .task-ui-action-surface--ai-classification .my-day-ai-result,

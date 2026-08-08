@@ -52,7 +52,7 @@
                         <input type="search" data-dependency-search autocomplete="off" placeholder="Введіть мінімум 2 символи" aria-describedby="myDayDependencySearchHelp">
                     </label>
                     <p class="my-day-dependency-hint" id="myDayDependencySearchHelp">Почніть вводити назву задачі. Збіги зʼявляться після 2 символів.</p>
-                    <div class="my-day-dependency-results" data-dependency-results aria-live="polite" role="listbox" aria-label="Знайдені задачі"></div>
+                    <div class="my-day-dependency-results" data-dependency-results aria-live="polite" aria-label="Знайдені задачі"></div>
                 </section>
                 <section class="my-day-dependency-section" aria-labelledby="myDayDependencyCreateTitle">
                     <h3 id="myDayDependencyCreateTitle">Швидке створення</h3>
@@ -69,11 +69,21 @@
         const create = root.querySelector('[data-dependency-create]');
         const quickCreateButton = root.querySelector('[data-dependency-quick-create]');
         let candidates = [];
+        let pending = false;
+        const setPending = active => {
+            pending = Boolean(active);
+            root.setAttribute('aria-busy', pending ? 'true' : 'false');
+            root.querySelectorAll('[data-dependency-link], [data-dependency-remove], [data-dependency-quick-create]').forEach(button => {
+                const shouldDisable = pending || (button.matches('[data-dependency-quick-create]') && !String(create?.value || '').trim());
+                button.disabled = shouldDisable;
+                button.setAttribute('aria-disabled', shouldDisable ? 'true' : 'false');
+            });
+        };
         const renderCurrent = () => {
             const dependencies = state?.dependencies || [];
             current.innerHTML = dependencies.length ? dependencies.map(item => `<div class="my-day-dependency-row">
                 <span title="${escape(item.title)}">${escape(item.title)}</span>
-                <button type="button" data-dependency-remove="${escape(item.id)}" aria-label="Прибрати передумову ${escape(item.title)}">Прибрати</button>
+                <button type="button" data-dependency-remove="${escape(item.id)}" aria-label="Прибрати передумову ${escape(item.title)}" ${pending ? 'disabled aria-disabled="true"' : ''}>Прибрати</button>
             </div>`).join('') : '<p class="my-day-dependency-empty">Передумов ще немає.</p>';
         };
         const renderCandidates = () => {
@@ -83,13 +93,13 @@
                 return;
             }
             const list = candidateList(candidates, taskId, query);
-            results.innerHTML = list.length ? list.map(item => `<button type="button" class="my-day-dependency-result-row" data-dependency-link="${escape(item.id)}" role="option">
+            results.innerHTML = list.length ? list.map(item => `<button type="button" class="my-day-dependency-result-row" data-dependency-link="${escape(item.id)}" ${pending ? 'disabled aria-disabled="true"' : ''}>
                 <span title="${escape(item.title)}">${escape(item.title)}</span>
                 <small>Додати як передумову</small>
             </button>`).join('') : '<p class="my-day-dependency-empty">Збігів немає.</p>';
         };
         const syncCreateButton = () => {
-            const disabled = !String(create?.value || '').trim();
+            const disabled = pending || !String(create?.value || '').trim();
             if (quickCreateButton) {
                 quickCreateButton.disabled = disabled;
                 quickCreateButton.setAttribute('aria-disabled', disabled ? 'true' : 'false');
@@ -111,7 +121,9 @@
             const remove = event.target.closest('[data-dependency-remove]');
             const quickCreate = event.target.closest('[data-dependency-quick-create]');
             if (!link && !remove && !quickCreate) return;
+            if (pending) return;
             try {
+                setPending(true);
                 if (link) await request('/' + taskId + '/dependencies', { method: 'POST', body: JSON.stringify({ dependsOnTaskId: Number(link.dataset.dependencyLink) }) });
                 if (remove) await request('/' + taskId + '/dependencies/' + encodeURIComponent(remove.dataset.dependencyRemove), { method: 'DELETE' });
                 if (quickCreate) {
@@ -124,6 +136,12 @@
                 await refresh();
                 window.showNotification?.('Передумови оновлено', 'success');
             } catch (error) { window.showNotification?.(error.message, 'error'); }
+            finally {
+                setPending(false);
+                renderCurrent();
+                renderCandidates();
+                syncCreateButton();
+            }
         });
         return root;
     }

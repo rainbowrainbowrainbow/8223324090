@@ -1,10 +1,11 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const router = require('express').Router();
 const rateLimit = require('express-rate-limit');
 const { ipKeyGenerator } = require('express-rate-limit');
 const { pool } = require('../db');
-const { authenticateToken } = require('../middleware/auth');
+const { authenticateToken, JWT_SECRET } = require('../middleware/auth');
 const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
 const { updateTaskStatus } = require('../services/taskExecution');
 const {
@@ -14,6 +15,8 @@ const {
 } = require('../services/taskBusinessScope');
 const {
     createTaxonomy,
+    classificationFingerprint,
+    classificationImpactIds,
     listTaxonomy,
     myDayError,
     replaceTaskClassification,
@@ -29,6 +32,8 @@ const { buildMyDayContribution } = require('../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../services/myDayStarterKit');
 
 router.use(authenticateToken);
+
+const CLASSIFICATION_UNDO_TOKEN_TTL_MS = 10 * 60 * 1000;
 
 const myDayAiClassificationLimiter = rateLimit({
     windowMs: 60 * 1000,
@@ -69,6 +74,57 @@ function currentUserId(req) {
     const userId = normalizeUserId(req.user);
     if (!userId) throw myDayError('Потрібна авторизація.', 401, 'MY_DAY_UNAUTHENTICATED');
     return userId;
+}
+
+function signUndoPayload(encodedPayload) {
+    return crypto.createHmac('sha256', JWT_SECRET)
+        .update(encodedPayload)
+        .digest('base64url');
+}
+
+function createClassificationUndoToken({ userId, taskId, taskFingerprintValue, beforeClassification, appliedClassification, now = Date.now() } = {}) {
+    const payload = {
+        v: 1,
+        userId: Number(userId),
+        taskId: Number(taskId),
+        before: {
+            impactIds: classificationImpactIds(beforeClassification)
+        },
+        applied: {
+            impactIds: classificationImpactIds(appliedClassification)
+        },
+        beforeFingerprint: classificationFingerprint(beforeClassification, taskFingerprintValue),
+        appliedFingerprint: classificationFingerprint(appliedClassification, taskFingerprintValue),
+        expiresAt: now + CLASSIFICATION_UNDO_TOKEN_TTL_MS
+    };
+    const encodedPayload = Buffer.from(JSON.stringify(payload), 'utf8').toString('base64url');
+    return encodedPayload + '.' + signUndoPayload(encodedPayload);
+}
+
+function verifyClassificationUndoToken(token, now = Date.now()) {
+    const [encodedPayload, signature, extra] = String(token || '').split('.');
+    if (!encodedPayload || !signature || extra !== undefined) {
+        throw myDayError('Некоректний token скасування AI-розмітки.', 400, 'MY_DAY_CLASSIFICATION_UNDO_INVALID');
+    }
+    const expected = signUndoPayload(encodedPayload);
+    const providedBuffer = Buffer.from(signature);
+    const expectedBuffer = Buffer.from(expected);
+    if (providedBuffer.length !== expectedBuffer.length || !crypto.timingSafeEqual(providedBuffer, expectedBuffer)) {
+        throw myDayError('Некоректний token скасування AI-розмітки.', 400, 'MY_DAY_CLASSIFICATION_UNDO_INVALID');
+    }
+    let payload;
+    try {
+        payload = JSON.parse(Buffer.from(encodedPayload, 'base64url').toString('utf8'));
+    } catch {
+        throw myDayError('Некоректний token скасування AI-розмітки.', 400, 'MY_DAY_CLASSIFICATION_UNDO_INVALID');
+    }
+    if (payload?.v !== 1 || !Number.isInteger(Number(payload.userId)) || !Number.isInteger(Number(payload.taskId))) {
+        throw myDayError('Некоректний token скасування AI-розмітки.', 400, 'MY_DAY_CLASSIFICATION_UNDO_INVALID');
+    }
+    if (!Number.isFinite(Number(payload.expiresAt)) || Number(payload.expiresAt) < now) {
+        throw myDayError('Token скасування AI-розмітки застарів.', 409, 'MY_DAY_CLASSIFICATION_UNDO_EXPIRED');
+    }
+    return payload;
 }
 
 function taxonomyRoutes(kind) {
@@ -201,11 +257,12 @@ router.post('/tasks/:taskId/classification/auto', myDayAiClassificationLimiter, 
         if (!canMutateTask(req.user, task)) {
             throw myDayError('Немає прав для AI-розмітки цієї задачі.', 403, 'MY_DAY_TASK_CLASSIFICATION_FORBIDDEN');
         }
-        const beforeFingerprint = taskFingerprint(task);
+        const beforeTaskFingerprint = taskFingerprint(task);
         const [impacts, previousClassification] = await Promise.all([
             listTaxonomy(pool, userId, 'impacts'),
             readTaskClassification(pool, userId, req.params.taskId)
         ]);
+        const beforeClassificationFingerprint = classificationFingerprint(previousClassification, beforeTaskFingerprint);
 
         const aiResult = await classifyMyDayTask({ task, impacts });
         if (!aiResult.ok) {
@@ -232,27 +289,81 @@ router.post('/tasks/:taskId/classification/auto', myDayAiClassificationLimiter, 
         if (!canMutateTask(req.user, lockedTask)) {
             throw myDayError('Немає прав для AI-розмітки цієї задачі.', 403, 'MY_DAY_TASK_CLASSIFICATION_FORBIDDEN');
         }
-        if (taskFingerprint(lockedTask) !== beforeFingerprint) {
+        const lockedTaskFingerprint = taskFingerprint(lockedTask);
+        if (lockedTaskFingerprint !== beforeTaskFingerprint) {
             throw myDayError('Задача змінилася під час AI-розмітки. Оновіть сторінку і повторіть дію.', 409, 'MY_DAY_TASK_CHANGED_DURING_AI_CLASSIFICATION');
+        }
+        const currentClassification = await readTaskClassification(client, userId, req.params.taskId);
+        if (classificationFingerprint(currentClassification, lockedTaskFingerprint) !== beforeClassificationFingerprint) {
+            throw myDayError('Впливи задачі змінилися під час AI-розмітки. Оновіть сторінку і повторіть дію.', 409, 'MY_DAY_CLASSIFICATION_CHANGED_DURING_AI_CLASSIFICATION');
         }
         const classification = await replaceTaskClassification(client, {
             userId,
             taskId: req.params.taskId,
-            impactIds: aiResult.classification.impactIds,
-            tags: aiResult.classification.tags
+            impactIds: aiResult.classification.impactIds
+        });
+        const undoToken = createClassificationUndoToken({
+            userId,
+            taskId: req.params.taskId,
+            taskFingerprintValue: lockedTaskFingerprint,
+            beforeClassification: previousClassification,
+            appliedClassification: classification
         });
         await client.query('COMMIT');
         res.json({
             success: true,
             taskId: Number(req.params.taskId),
             classification,
-            previousClassification,
+            undoToken,
             ai: {
                 confidence: aiResult.confidence,
                 reason: aiResult.reason,
                 provider: aiResult.provider,
                 model: aiResult.model
             }
+        });
+    } catch (error) {
+        try { if (client) await client.query('ROLLBACK'); } catch {}
+        sendMyDayError(res, error);
+    } finally {
+        client?.release();
+    }
+});
+
+router.post('/tasks/:taskId/classification/undo', async (req, res) => {
+    const businessScope = ensureWritableTaskBusinessScope(req, res);
+    if (!businessScope) return;
+    let client;
+    try {
+        const userId = currentUserId(req);
+        const token = verifyClassificationUndoToken(req.body?.undoToken);
+        const taskId = Number(req.params.taskId);
+        if (Number(token.userId) !== userId || Number(token.taskId) !== taskId) {
+            throw myDayError('Token скасування не належить цій задачі.', 403, 'MY_DAY_CLASSIFICATION_UNDO_FORBIDDEN');
+        }
+        client = await pool.connect();
+        await client.query('BEGIN');
+        const task = await loadMyCabinetTask(client, req.user, businessScope, taskId);
+        if (!task) throw myDayError('Задачу не знайдено.', 404, 'MY_DAY_TASK_NOT_FOUND');
+        if (!canMutateTask(req.user, task)) {
+            throw myDayError('Немає прав для скасування AI-розмітки цієї задачі.', 403, 'MY_DAY_TASK_CLASSIFICATION_FORBIDDEN');
+        }
+        const currentClassification = await readTaskClassification(client, userId, taskId);
+        if (classificationFingerprint(currentClassification, taskFingerprint(task)) !== token.appliedFingerprint) {
+            throw myDayError('Розмітка вже змінилася. Скасування AI не застосовано.', 409, 'MY_DAY_CLASSIFICATION_UNDO_CONFLICT');
+        }
+        const beforeImpactIds = Array.isArray(token.before?.impactIds) ? token.before.impactIds : [];
+        const classification = await replaceTaskClassification(client, {
+            userId,
+            taskId,
+            impactIds: beforeImpactIds,
+            allowArchivedImpactIds: beforeImpactIds
+        });
+        await client.query('COMMIT');
+        res.json({
+            success: true,
+            taskId,
+            classification
         });
     } catch (error) {
         try { if (client) await client.query('ROLLBACK'); } catch {}

@@ -459,7 +459,7 @@ async function buildTaskCabinetProjection(options = {}) {
             blocked_by_titles: dependencyState?.blockedByTitles || null,
             dependencies: dependencyState?.dependencies || []
         }, { postponementEvent: postponementEventsByTaskId.get(taskId) || null, user });
-        return { ...task, actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0, myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [], tags: [] } };
+        return { ...task, actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0, myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] } };
     };
     const rows = activeSourceRows.map(normalizeProjectionRow);
     const planningRows = planningSourceRows.map(normalizeProjectionRow);

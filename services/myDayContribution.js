@@ -257,12 +257,26 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
         `WITH days AS (
              SELECT generate_series($${fromParam}::date, $${toParam}::date, interval '1 day')::date AS local_date
          )
-         SELECT e.task_id,
-                days.local_date::text AS local_date,
-                SUM(GREATEST(0, EXTRACT(EPOCH FROM (
-                    LEAST(COALESCE(e.ended_at, NOW()), ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
-                    - GREATEST(e.started_at, (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
-                ))))::int AS seconds,
+         task_day_time AS (
+             SELECT e.task_id,
+                    days.local_date,
+                    SUM(GREATEST(0, EXTRACT(EPOCH FROM (
+                        LEAST(COALESCE(e.ended_at, NOW()), ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
+                        - GREATEST(e.started_at, (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}'))
+                    ))))::int AS seconds
+             FROM my_day_time_entries e
+             JOIN tasks t ON t.id = e.task_id
+             JOIN days ON e.started_at < ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
+                      AND COALESCE(e.ended_at, NOW()) > (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
+             WHERE e.user_id = $${userParam}
+               ${businessCondition}
+               AND e.started_at < (($${toParam}::date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
+               AND COALESCE(e.ended_at, NOW()) > ($${fromParam}::date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
+             GROUP BY e.task_id, days.local_date
+         )
+         SELECT task_day_time.task_id,
+                task_day_time.local_date::text AS local_date,
+                task_day_time.seconds,
                 COALESCE(json_agg(DISTINCT jsonb_build_object(
                     'id', i.id,
                     'name', i.name,
@@ -270,17 +284,10 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
                     'icon', i.icon,
                     'isActive', i.is_active
                 )) FILTER (WHERE i.id IS NOT NULL), '[]'::json) AS impacts
-         FROM my_day_time_entries e
-         JOIN tasks t ON t.id = e.task_id
-         JOIN days ON e.started_at < ((days.local_date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
-                  AND COALESCE(e.ended_at, NOW()) > (days.local_date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
-         LEFT JOIN my_day_task_impacts ti ON ti.user_id = $${userParam} AND ti.task_id = t.id
+         FROM task_day_time
+         LEFT JOIN my_day_task_impacts ti ON ti.user_id = $${userParam} AND ti.task_id = task_day_time.task_id
          LEFT JOIN my_day_impacts i ON i.id = ti.impact_id
-         WHERE e.user_id = $${userParam}
-           ${businessCondition}
-           AND e.started_at < (($${toParam}::date + 1)::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
-           AND COALESCE(e.ended_at, NOW()) > ($${fromParam}::date::timestamp AT TIME ZONE '${KYIV_TIMEZONE}')
-         GROUP BY e.task_id, days.local_date`,
+         GROUP BY task_day_time.task_id, task_day_time.local_date, task_day_time.seconds`,
         params
     );
     return result.rows || [];

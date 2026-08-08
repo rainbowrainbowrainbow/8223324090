@@ -77,9 +77,23 @@
         menuLastFocus = null;
     }
 
+    function stableActionAnchor(anchor) {
+        if (anchor?.isConnected) return anchor;
+        const active = document.activeElement;
+        return active?.isConnected && active !== document.body ? active : null;
+    }
+
     function positionPopover(root, anchor) {
         const panel = root.querySelector('.task-ui-action-panel');
-        if (!panel || !anchor) return;
+        if (!panel) return;
+        if (!anchor?.isConnected) {
+            panel.style.left = '50%';
+            panel.style.top = '50%';
+            panel.style.transform = 'translate(-50%, -50%)';
+            panel.style.width = `${Math.min(360, window.innerWidth - 24)}px`;
+            return;
+        }
+        panel.style.transform = '';
         const rect = anchor.getBoundingClientRect();
         const padding = 12;
         const panelRect = panel.getBoundingClientRect();
@@ -128,7 +142,7 @@
 
     function openActionMenu(anchor, html, options = {}) {
         closeActionMenu();
-        menuLastFocus = anchor || document.activeElement;
+        menuLastFocus = stableActionAnchor(anchor);
         const mobile = options.mobile ?? isSmallScreen();
         const root = document.createElement('div');
         const surfaceClassName = String(options.surfaceClassName || '').trim().replace(/[^a-zA-Z0-9 _-]/g, '');
@@ -159,7 +173,7 @@
         document.body.appendChild(root);
         if (mobile) lockBodyScroll(true);
         requestAnimationFrame(() => {
-            if (!mobile) positionPopover(root, anchor);
+            if (!mobile) positionPopover(root, menuLastFocus);
             actionMenuFocusableElements(root)[0]?.focus({ preventScroll: true });
         });
         return root;

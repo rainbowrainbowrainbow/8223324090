@@ -3042,8 +3042,7 @@ function applyCabinetTaskMyDayClassification(taskId, classification = {}) {
             task.myDay = {
                 ...(task.myDay || {}),
                 direction: classification.direction || null,
-                impacts: Array.isArray(classification.impacts) ? classification.impacts : [],
-                tags: Array.isArray(classification.tags) ? classification.tags : []
+                impacts: Array.isArray(classification.impacts) ? classification.impacts : []
             };
             changed = true;
         });
@@ -4839,6 +4838,21 @@ function openCabinetTaskActionMenu(button) {
     });
 }
 
+function stableCabinetTaskSurfaceAnchor(button, taskId, preferredAction = 'more') {
+    if (button?.isConnected && !button.closest?.('#taskUiActionSurface')) return button;
+    const safeTaskId = String(normalizeCabinetTaskId(taskId) || '').replace(/"/g, '');
+    if (!safeTaskId) return button || null;
+    const selectors = [
+        `.cabinet-task-card[data-task-id="${safeTaskId}"] [data-cabinet-task-action="${preferredAction}"]`,
+        `.cabinet-overdue-triage-row[data-task-id="${safeTaskId}"] [data-cabinet-task-action="${preferredAction}"]`,
+        `.cabinet-task-card[data-task-id="${safeTaskId}"] [data-cabinet-task-action="more"]`,
+        `.cabinet-overdue-triage-row[data-task-id="${safeTaskId}"] [data-cabinet-task-action="more"]`,
+        `.cabinet-task-card[data-task-id="${safeTaskId}"]`,
+        `.cabinet-overdue-triage-row[data-task-id="${safeTaskId}"]`
+    ];
+    return document.querySelector(selectors.join(',')) || button || null;
+}
+
 function cabinetTaskReportBadge(task = {}) {
     const gate = window.TaskReportGate;
     const required = gate?.taskRequiresReport ? gate.taskRequiresReport(task) : Boolean(task.reportRequired || task.requiresReport);
@@ -6196,6 +6210,8 @@ function renderCabinetOverdueTriageRow(task = {}) {
     const doneBlocked = cabinetTaskCompletionBlockedBySubtasks(task);
     const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : 'Виконати задачу';
     const attentionClass = attentionLevel ? 'attention-level-' + attentionLevel : '';
+    const myDayClassificationBadges = `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay) || ''}</span>`;
+    const myDayDependencyBadge = window.MyDayDependencies?.renderTaskBlocker?.(task) || '';
     return `<div class="cabinet-overdue-triage-row ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}">
         <div class="cabinet-overdue-triage-main">
             <a class="cabinet-overdue-triage-title" href="/tasks?view=my&open=${encodeURIComponent(taskIdAttr)}">${escapeHtml(task.title || 'Без назви')}</a>
@@ -6204,12 +6220,15 @@ function renderCabinetOverdueTriageRow(task = {}) {
                 ${renderCabinetPostponementBadge(task)}
                 ${renderCabinetOverdueTriageProgress(task)}
                 ${cabinetTaskReportBadge(task)}
+                ${myDayClassificationBadges}
+                ${myDayDependencyBadge}
             </div>
         </div>
         <div class="cabinet-overdue-triage-actions">
             <button type="button" class="cabinet-overdue-triage-action is-primary" data-cabinet-task-action="move-to-today" data-task-id="${taskIdAttr}" ${moveState.canMove ? '' : 'disabled'} title="${escapeHtml(moveState.canMove ? 'Перенести на сьогодні' : moveState.reason || 'Перенесення недоступне')}">На сьогодні</button>
             <button type="button" class="cabinet-overdue-triage-action" data-cabinet-task-action="reschedule-overdue" data-reschedule-option="custom" data-source-surface="profile_my_cabinet_overdue_triage" data-task-id="${taskIdAttr}" ${canReschedule ? '' : 'disabled'}>Відкласти</button>
             <button type="button" class="cabinet-overdue-triage-action" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" title="${escapeHtml(doneTitle)}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>Закрити</button>
+            <button type="button" class="cabinet-overdue-triage-action cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>
             <button type="button" class="cabinet-overdue-triage-action" data-cabinet-task-action="move-target" data-cabinet-move-target="no_date" data-cabinet-move-method="triage" data-task-id="${taskIdAttr}" ${noDateTarget.enabled === false || !taskIdAttr ? 'disabled' : ''}>Без дати</button>
             ${renderCabinetTaskMoreAction(taskIdAttr)}
         </div>
@@ -6947,7 +6966,8 @@ async function handleCabinetTaskActionClick(event) {
     }
 
     if (action === 'dependencies') {
-        await window.MyDayDependencies?.openManager?.(button, findCabinetTask(taskId) || {}, async () => {
+        const anchor = stableCabinetTaskSurfaceAnchor(button, taskId, 'dependencies');
+        await window.MyDayDependencies?.openManager?.(anchor, findCabinetTask(taskId) || {}, async () => {
             await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
         });
         return;
@@ -6965,13 +6985,15 @@ async function handleCabinetTaskActionClick(event) {
     }
 
     if (action === 'classification') {
-        await window.MyDayClassification?.openTaskEditor?.(button, findCabinetTask(taskId) || {}, async () => {
+        const anchor = stableCabinetTaskSurfaceAnchor(button, taskId, 'more');
+        await window.MyDayClassification?.openTaskEditor?.(anchor, findCabinetTask(taskId) || {}, async () => {
             await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });
         });
         return;
     }
     if (action === 'ai-classification') {
-        await window.MyDayClassification?.autoClassifyTask?.(button, findCabinetTask(taskId) || {}, {
+        const anchor = stableCabinetTaskSurfaceAnchor(button, taskId, 'ai-classification');
+        await window.MyDayClassification?.autoClassifyTask?.(anchor, findCabinetTask(taskId) || {}, {
             onApplied: async result => {
                 if (result?.classification && applyCabinetTaskMyDayClassification(taskId, result.classification)) {
                     document.querySelectorAll(`[data-my-day-classification-badges="${taskId}"]`).forEach(node => {
@@ -7458,7 +7480,7 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
-    if (myDayClassification?.impactIds?.length || myDayClassification?.tags?.length) {
+    if (myDayClassification?.impactIds?.length) {
         try {
             await window.MyDayClassification?.saveTaskClassification?.(verification.taskId, myDayClassification);
         } catch (error) {

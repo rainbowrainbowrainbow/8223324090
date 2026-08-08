@@ -54,6 +54,8 @@ test('authenticated live QA is a manual gate with a role restoration contract', 
     assert.match(runnerSource, /QA_CREATOR_LEASE_SECONDS/);
     assert.match(runnerSource, /window\.__eventGenixLiveQaReadOnly = true/);
     assert.match(authSource, /window\.__eventGenixLiveQaReadOnly === true/);
+    assert.match(runnerSource, /window\.canUseAction\('training\.manage'\)/);
+    assert.doesNotMatch(runnerSource, /window\.canUseAction\('manage_staff'\)/);
     assert.doesNotMatch(runnerSource, /KNOWN_AUTOMATIC_BLOCKED_PATHS/);
     assert.doesNotMatch(runnerSource, /wallet\/daily-login/);
     assert.match(runnerSource, /browserMutations\.length === 0/);

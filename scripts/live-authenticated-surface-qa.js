@@ -313,9 +313,9 @@ async function runBrowserChecks(base, config, report) {
         await expectVisible(page, 'button.training-tab[data-tab="onboarding"]', 'qa_training_onboarding_tab_missing');
         await page.locator('button.training-tab[data-tab="onboarding"]').click();
         await expectVisible(page, '#trainingOnboardingList', 'qa_training_onboarding_missing');
-        await waitFor(page, () => typeof window.canUseAction === 'function' && window.canUseAction('manage_staff'), 'qa_training_capability_mismatch');
+        await waitFor(page, () => typeof window.canUseAction === 'function' && window.canUseAction('training.manage'), 'qa_training_capability_mismatch');
         await expectVisible(page, '#trainingStartOnboarding:not(.hidden)', 'qa_training_management_control_missing');
-        report.routes.training = { ok: true, manageStaff: true };
+        report.routes.training = { ok: true, trainingManage: true };
 
         await goto(page, base, '/finance', 'qa_finance_open_failed');
         await expectVisible(page, '#addTransactionBtn', 'qa_finance_management_control_missing');

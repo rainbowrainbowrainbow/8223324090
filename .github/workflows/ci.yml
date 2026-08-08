@@ -73,6 +73,9 @@ jobs:
       - name: Run My Day draft regression browser smoke
         run: npm run test:browser:my-day-draft
 
+      - name: Run My Day interactions browser smoke
+        run: npm run test:browser:my-day-interactions
+
 
       - name: Run access editor lifecycle and focus browser smoke
         run: npm run test:browser:account-access:lifecycle
@@ -181,6 +184,12 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:admission-tickets:isolated
+
+      - name: Run My Day PostgreSQL classification integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:my-day:isolated
 
       - name: Run banquet production recovery integration
         env:

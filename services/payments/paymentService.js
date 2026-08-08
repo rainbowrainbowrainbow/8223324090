@@ -69,7 +69,9 @@ function assertNoClientFiscalOverride(body = {}) {
         'price',
         'amount',
         'totalAmountMinor',
-        'total_amount_minor'
+        'total_amount_minor',
+        'sourceId',
+        'source_id'
     ]) {
         if (Object.prototype.hasOwnProperty.call(body, field)) {
             throw new PaymentServiceError('client_payment_field_forbidden', 'Client cannot override price, fiscal profile, FOP, or register mapping', {
@@ -123,7 +125,8 @@ function normalizePaymentOrder(row = {}) {
 
 function sanitizeCardReference(value) {
     const text = String(value || '').trim();
-    return text ? text.slice(0, 160) : null;
+    if (!text) return null;
+    return text.replace(/[^\p{L}\p{N}\s._:\/#-]/gu, '').replace(/\s+/g, ' ').slice(0, 160) || null;
 }
 
 async function withTransaction(dbPool, run) {
@@ -190,6 +193,90 @@ async function findOrderByIdempotency(client, idempotencyKey) {
         [idempotencyKey]
     );
     return result.rows[0] || null;
+}
+
+async function findOrderByOrderKey(client, fiscalProfileId, orderKey) {
+    const result = await client.query(
+        `SELECT *
+           FROM payment_orders
+          WHERE fiscal_profile_id = $1
+            AND order_key = $2
+          LIMIT 1`,
+        [fiscalProfileId, orderKey]
+    );
+    return result.rows[0] || null;
+}
+
+async function loadFiscalItemMappings(client, { fiscalProfileId, fiscalRegisterId, crmProfileKey, lines }) {
+    const codes = [...new Set((lines || []).map(line => String(line.ticketTypeCode || '').trim()).filter(Boolean))];
+    if (!codes.length) {
+        throw new PaymentServiceError('fiscal_item_mapping_missing', 'Admission ticket fiscal item mapping is missing', { status: 409 });
+    }
+    const result = await client.query(
+        `SELECT *
+           FROM fiscal_item_mappings
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND crm_profile_key = $3
+            AND source_type = $4
+            AND item_type = 'admission_ticket'
+            AND item_code = ANY($5::text[])
+            AND provider = 'checkbox'
+            AND status = 'active'`,
+        [fiscalProfileId, fiscalRegisterId, crmProfileKey, ORDER_SOURCE_TYPE, codes]
+    );
+    const byCode = new Map();
+    for (const row of result.rows) {
+        const code = String(row.item_code || '').trim();
+        if (byCode.has(code)) {
+            throw new PaymentServiceError('fiscal_item_mapping_ambiguous', 'Admission ticket fiscal item mapping is ambiguous', {
+                status: 409,
+                details: { itemCode: code }
+            });
+        }
+        const fiscalItemName = String(row.fiscal_item_name || '').trim();
+        const providerTaxId = String(row.provider_tax_id || '').trim();
+        if (!fiscalItemName || !providerTaxId || /^admission_tariff:/i.test(providerTaxId)) {
+            throw new PaymentServiceError('fiscal_item_tax_mapping_missing', 'Admission ticket fiscal tax mapping is incomplete', {
+                status: 409,
+                details: { itemCode: code }
+            });
+        }
+        byCode.set(code, row);
+    }
+    const missing = codes.filter(code => !byCode.has(code));
+    if (missing.length) {
+        throw new PaymentServiceError('fiscal_item_mapping_missing', 'Admission ticket fiscal item mapping is missing', {
+            status: 409,
+            details: { itemCodes: missing }
+        });
+    }
+    return byCode;
+}
+
+async function assertOrderItemsFiscalReady(client, { fiscalProfileId, paymentOrderId }) {
+    const result = await client.query(
+        `SELECT line_number, item_code, item_name, tax_reference, provider_tax_id
+           FROM payment_order_items
+          WHERE fiscal_profile_id = $1
+            AND payment_order_id = $2
+          ORDER BY line_number ASC`,
+        [fiscalProfileId, paymentOrderId]
+    );
+    if (!result.rows.length) {
+        throw new PaymentServiceError('payment_order_items_missing', 'Payment order has no immutable items', { status: 409 });
+    }
+    const invalid = result.rows.filter(row => {
+        const providerTaxId = String(row.provider_tax_id || '').trim();
+        return !providerTaxId || /^admission_tariff:/i.test(providerTaxId);
+    });
+    if (invalid.length) {
+        throw new PaymentServiceError('payment_order_fiscal_item_not_ready', 'Payment order fiscal item/tax mapping is incomplete', {
+            status: 409,
+            details: { lines: invalid.map(row => Number(row.line_number)) }
+        });
+    }
+    return result.rows;
 }
 
 async function loadOrderSnapshot(client, orderId) {
@@ -298,11 +385,22 @@ async function createAdmissionTicketPaymentOrder({
             throw new PaymentServiceError('admission_snapshot_empty', 'Admission ticket payment amount must be greater than zero', { status: 422 });
         }
 
-        const sourceId = String(body.sourceId || body.source_id || quote.quoteFingerprint || key).trim();
-        const orderKey = `${ORDER_SOURCE_TYPE}:${sourceId}:${key}`;
+        const mappingByItemCode = await loadFiscalItemMappings(client, {
+            fiscalProfileId: mapping.fiscal_profile_id,
+            fiscalRegisterId: mapping.fiscal_register_id,
+            crmProfileKey: mapping.crm_profile_key,
+            lines: quote.ticketLines
+        });
+        const sourceId = String(quote.quoteFingerprint || fingerprint({ crmProfileKey, tender, quote })).trim();
+        const orderKey = `${ORDER_SOURCE_TYPE}:${mapping.crm_profile_key}:${PILOT_REGISTER_ALIAS}:${paymentMethod}:${sourceId}`;
+        const existingLogicalOrder = await findOrderByOrderKey(client, mapping.fiscal_profile_id, orderKey);
+        if (existingLogicalOrder) {
+            return { replayed: true, order: normalizePaymentOrder(existingLogicalOrder), logicalReplay: true };
+        }
         const sourceSnapshot = {
             source: ORDER_SOURCE_TYPE,
             request_fingerprint: requestFingerprint,
+            logical_source_key: orderKey,
             quote,
             crm_profile_key: mapping.crm_profile_key,
             register_alias: mapping.register_alias,
@@ -339,6 +437,7 @@ async function createAdmissionTicketPaymentOrder({
         let lineNumber = 0;
         for (const line of quote.ticketLines) {
             lineNumber += 1;
+            const itemMapping = mappingByItemCode.get(String(line.ticketTypeCode || '').trim());
             const unitPriceMinor = uahWholeToMinor(line.unitPriceUah, `ticketLines[${lineNumber}].unitPriceUah`);
             const totalLineMinor = uahWholeToMinor(line.subtotalUah, `ticketLines[${lineNumber}].subtotalUah`);
             const quantityMillis = quantityToMillis(line.quantity, `ticketLines[${lineNumber}].quantity`);
@@ -346,20 +445,23 @@ async function createAdmissionTicketPaymentOrder({
                 `INSERT INTO payment_order_items (
                      fiscal_profile_id, payment_order_id, line_number, item_type, item_code, item_name,
                      unit_price_minor, quantity_millis, total_amount_minor, currency, tax_reference,
-                     item_snapshot
+                     tax_code, tax_rate_bps, provider_tax_id, item_snapshot
                  )
-                 VALUES ($1, $2, $3, 'admission_ticket', $4, $5, $6, $7, $8, 'UAH', $9, $10::jsonb)`,
+                 VALUES ($1, $2, $3, 'admission_ticket', $4, $5, $6, $7, $8, 'UAH', $9, $10, $11, $12, $13::jsonb)`,
                 [
                     order.fiscal_profile_id,
                     order.id,
                     lineNumber,
                     line.ticketTypeCode,
-                    line.ticketTypeName,
+                    itemMapping.fiscal_item_name,
                     toPostgresBigint(unitPriceMinor),
                     toPostgresBigint(quantityMillis),
                     toPostgresBigint(totalLineMinor),
                     line.tariffVersionId ? `admission_tariff:${line.tariffVersionId}` : null,
-                    JSON.stringify(line)
+                    itemMapping.tax_code == null ? null : Number(itemMapping.tax_code),
+                    itemMapping.tax_rate_bps == null ? null : Number(itemMapping.tax_rate_bps),
+                    itemMapping.provider_tax_id,
+                    JSON.stringify({ ...line, fiscal_item_mapping_id: Number(itemMapping.id), original_ticket_type_name: line.ticketTypeName })
                 ]
             );
         }
@@ -450,10 +552,13 @@ async function confirmPaymentOrder({
         });
 
         const confirmation = assertManualConfirmationBody({ order, body });
+        await assertOrderItemsFiscalReady(client, { fiscalProfileId: order.fiscal_profile_id, paymentOrderId: order.id });
         const terminalReference = sanitizeCardReference(body.terminalReference ?? body.terminal_reference);
         const confirmationSnapshot = {
             tender: confirmation.tender,
             amount_minor: confirmation.amountMinor.toString(),
+            received_amount_minor: confirmation.receivedAmountMinor.toString(),
+            change_amount_minor: confirmation.changeAmountMinor.toString(),
             terminal_reference: terminalReference,
             terminal_showed_success: confirmation.tender === 'card_terminal_manual' ? true : undefined,
             confirmed_by_user_id: user?.id || null
@@ -476,7 +581,11 @@ async function confirmPaymentOrder({
                 terminalReference,
                 toPostgresBigint(confirmation.amountMinor, { allowZero: false }),
                 JSON.stringify({ fingerprint: requestFingerprint, tender: confirmation.tender }),
-                JSON.stringify({ confirmed: true })
+                JSON.stringify({
+                    confirmed: true,
+                    received_amount_minor: confirmation.receivedAmountMinor.toString(),
+                    change_amount_minor: confirmation.changeAmountMinor.toString()
+                })
             ]
         );
 
@@ -491,7 +600,12 @@ async function confirmPaymentOrder({
                 order.id,
                 order.payment_method,
                 toPostgresBigint(confirmation.amountMinor, { allowZero: false }),
-                JSON.stringify({ attempt_id: Number(attempt.rows[0].id), tender: confirmation.tender }),
+                JSON.stringify({
+                    attempt_id: Number(attempt.rows[0].id),
+                    tender: confirmation.tender,
+                    received_amount_minor: confirmation.receivedAmountMinor.toString(),
+                    change_amount_minor: confirmation.changeAmountMinor.toString()
+                }),
                 user?.id || null
             ]
         );

@@ -51,6 +51,19 @@ function valueFrom(row, camelKey, snakeKey = camelKey) {
     return row?.[camelKey] ?? row?.[snakeKey];
 }
 
+function normalizeCapabilityScope(value) {
+    if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+    if (typeof value === 'string') {
+        const trimmed = value.trim();
+        if (!trimmed) return [];
+        if (trimmed.startsWith('{') && trimmed.endsWith('}')) {
+            return trimmed.slice(1, -1).split(',').map(item => item.trim().replace(/^"|"$/g, '')).filter(Boolean);
+        }
+        return [trimmed];
+    }
+    return [];
+}
+
 function assertKnownFiscalAction(action) {
     if (!PAYMENT_FISCAL_CAPABILITIES.includes(action)) {
         throw new FiscalAccessError('unknown_fiscal_action', 'Unknown payment/fiscal capability', { action });
@@ -123,6 +136,10 @@ function authorizeFiscalActionContext({
     }
 
     assertFiscalBindingScope({ user, binding, fiscalProfileId, crmProfileKey, fiscalLocationId, fiscalRegisterId });
+    const scope = normalizeCapabilityScope(valueFrom(binding, 'capabilityScope', 'capability_scope'));
+    if (!scope.includes(action)) {
+        throw new FiscalAccessError('fiscal_binding_capability_denied', 'Fiscal cashier binding does not allow the requested capability', { action });
+    }
 
     if (APPROVAL_REQUIRED_ACTIONS.has(action)) {
         assertApprovalUsable(approval, {
@@ -201,6 +218,7 @@ module.exports = {
     assertFiscalBindingScope,
     authorizeFiscalActionContext,
     loadFiscalCashierBinding,
+    normalizeCapabilityScope,
     authorizeFiscalAction,
     normalizePositiveId,
     normalizeProfileKey

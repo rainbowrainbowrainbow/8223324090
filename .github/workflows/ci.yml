@@ -196,3 +196,54 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:browser:hr-onboarding:fullstack:isolated
+
+  checkbox-park-postgres:
+    name: Checkbox park PostgreSQL mock integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventgenix_checkbox_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventgenix_checkbox_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run migration governance check
+        run: npm run check:migrations
+
+      - name: Run Checkbox park fresh PostgreSQL and local HTTP mock smoke
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_checkbox_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:checkbox-park-cashier-smoke:isolated
+
+      - name: Install Chromium for cashier payment UI smoke
+        run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
+
+      - name: Run cashier payment UI smoke
+        run: npm run smoke:cashier-payments

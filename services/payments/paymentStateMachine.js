@@ -63,17 +63,29 @@ function assertManualConfirmationBody({ order, body = {} }) {
             status: 422
         });
     }
-    if (confirmed !== expected) {
-        throw new PaymentWorkflowError('payment_amount_mismatch', 'Confirmed amount does not match the immutable order amount', {
-            status: 409,
-            details: { expected: expected.toString(), received: confirmed.toString() }
-        });
-    }
-
-    if (tender === 'card_terminal_manual' && body.terminalShowedSuccess !== true && body.terminal_showed_success !== true) {
-        throw new PaymentWorkflowError('card_terminal_success_confirmation_required', 'Card terminal success confirmation is required', {
-            status: 422
-        });
+    let received = expected;
+    let change = 0n;
+    if (tender === 'cash') {
+        received = confirmed;
+        if (received < expected) {
+            throw new PaymentWorkflowError('cash_received_amount_insufficient', 'Cash received amount must be greater than or equal to the immutable order amount', {
+                status: 409,
+                details: { expected: expected.toString(), received: received.toString() }
+            });
+        }
+        change = received - expected;
+    } else {
+        if (confirmed !== expected) {
+            throw new PaymentWorkflowError('payment_amount_mismatch', 'Confirmed amount does not match the immutable order amount', {
+                status: 409,
+                details: { expected: expected.toString(), received: confirmed.toString() }
+            });
+        }
+        if (body.terminalShowedSuccess !== true && body.terminal_showed_success !== true) {
+            throw new PaymentWorkflowError('card_terminal_success_confirmation_required', 'Card terminal success confirmation is required', {
+                status: 422
+            });
+        }
     }
 
     for (const forbidden of ['cardNumber', 'card_number', 'cardMask', 'card_mask', 'pan', 'authCode', 'auth_code', 'rrn']) {
@@ -85,7 +97,7 @@ function assertManualConfirmationBody({ order, body = {} }) {
         }
     }
 
-    return { tender, paymentMethod, amountMinor: expected };
+    return { tender, paymentMethod, amountMinor: expected, receivedAmountMinor: received, changeAmountMinor: change };
 }
 
 module.exports = {

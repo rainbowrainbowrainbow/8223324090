@@ -4,8 +4,8 @@
     <meta charset="UTF-8">
     <script>(function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>Event Genix | РљР°СЃР° РїР°СЂРєСѓ</title>
-    <meta name="description" content="Event Genix Checkbox park cashier pilot">
+    <title>Event Genix | Оплата та фіскальний чек</title>
+    <meta name="description" content="Оплата квитка парку з фіскалізацією Checkbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
     <link rel="stylesheet" href="css/base.css?v=0.80.87">
     <link rel="stylesheet" href="css/layout.css?v=0.80.87">
@@ -20,111 +20,124 @@
 </head>
 <body data-page="cashier-payments" data-page-group="sales" data-pilot-scope="event_genix:middle">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();</script>
-    <a href="#main-content" class="skip-link">Skip to main content</a>
-    <div id="loginOverlay" class="page-login-overlay hidden"><a href="/">Login</a></div>
+    <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
+    <div id="loginOverlay" class="page-login-overlay hidden"><a href="/">Увійти</a></div>
     <div id="mainApp" class="main-app hidden">
         <aside class="sidebar-nav" id="sidebarNav">
             <div class="sidebar-header" id="sidebarHeader">
                 <div class="sidebar-brand"><img loading="lazy" src="images/gear-logo.svg" alt="Event Genix" class="logo-img-small"><div class="em-logo"><span class="em-logo-title">Event Genix</span><span class="em-logo-sub">AI First CRM</span></div></div>
-                <div class="sidebar-user-card" id="sidebarUserCard"><div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div><div class="sidebar-user-info"><div class="sidebar-user-name" id="sidebarUserName"></div><div class="sidebar-user-role" id="sidebarUserRole"></div></div><div class="sidebar-user-status online" id="sidebarUserStatus">?</div></div>
+                <div class="sidebar-user-card" id="sidebarUserCard"><div class="sidebar-user-avatar" id="sidebarUserAvatar">?</div><div class="sidebar-user-info"><div class="sidebar-user-name" id="sidebarUserName"></div><div class="sidebar-user-role" id="sidebarUserRole"></div></div><div class="sidebar-user-status online" id="sidebarUserStatus">●</div></div>
                 <div class="sidebar-day-context" id="sidebarDayContext" style="display:none"></div>
             </div>
             <nav class="sidebar-links" id="sidebarLinks"></nav>
-            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Toggle menu"><span class="collapse-icon">?</span><span class="collapse-text">Collapse</span></button>
+            <button type="button" id="sidebarCollapseBtn" class="sidebar-collapse-btn" title="Згорнути меню"><span class="collapse-icon">‹</span><span class="collapse-text">Згорнути</span></button>
         </aside>
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
-        <header class="header"><div class="header-content"><button type="button" class="sidebar-toggle" id="sidebarToggle" title="Menu" aria-label="Open or close menu">?</button><div class="user-panel"><span id="currentUser" class="user-name"></span><button type="button" id="logoutBtn" class="btn-logout">Logout</button></div></div></header>
+        <header class="header"><div class="header-content"><button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити або закрити меню">☰</button><div class="user-panel"><span id="currentUser" class="user-name"></span><button type="button" id="logoutBtn" class="btn-logout">Вийти</button></div></div></header>
         <main id="main-content" class="page-container cashier-payments-page">
             <section class="cashier-hero" aria-labelledby="cashierPaymentsTitle">
-                <div><p class="cashier-kicker">Checkbox pilot ? park ? middle register</p><h1 id="cashierPaymentsTitle">РљР°СЃР° РїР°СЂРєСѓ</h1><p class="cashier-muted">Separate cashier UI for cash/card terminal manual payment and fiscal receipt creation. Fiscal profile and register are server-side immutable mapping only.</p></div>
-                <div class="cashier-scope-card" aria-label="Pilot scope"><span>CRM profile</span><strong>park</strong><span>register alias</span><strong>middle</strong></div>
+                <div>
+                    <p class="cashier-kicker">Checkbox · парк · середня каса</p>
+                    <h1 id="cashierPaymentsTitle">Оплата та фіскальний чек</h1>
+                    <p class="cashier-muted">Простий екран для оплати квитка парку готівкою або через термінал і створення офіційного чека Checkbox.</p>
+                </div>
+                <div class="cashier-scope-card" aria-label="Пілотний профіль">
+                    <span>CRM профіль</span><strong>парк</strong>
+                    <span>Каса</span><strong>middle</strong>
+                </div>
             </section>
-            <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Access denied for payments.view/payments.create/payments.confirm_received.</div>
+            <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Немає доступу до оплати або фіскалізації.</div>
             <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
+            <div id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite"></div>
+
             <section class="cashier-grid">
                 <form id="paymentOrderForm" class="cashier-card cashier-form" aria-labelledby="paymentOrderFormTitle">
-                    <div class="cashier-card-head"><div><p class="cashier-kicker">Step 1</p><h2 id="paymentOrderFormTitle">Prepare payment order</h2></div><span class="cashier-pill">Feature flag: server mapping</span></div>
-                    <label class="cashier-field"><span>Test source/order reference</span><input id="paymentSourceId" name="sourceId" type="text" autocomplete="off" value="park-test-1234" required></label>
-                    <div class="cashier-two-cols"><label class="cashier-field"><span>Ticket date</span><input id="paymentDate" name="date" type="date" required></label><label class="cashier-field"><span>Kids</span><input id="paymentKidsCount" name="kids" type="number" min="1" step="1" value="1" required></label></div>
-                    <label class="cashier-field"><span>Adults</span><input id="paymentAdultsCount" name="adults" type="number" min="0" step="1" value="0"></label>
-                    <fieldset class="cashier-tender-group"><legend>Tender</legend><label><input type="radio" name="paymentTender" value="cash" checked> Готівка</label><label><input type="radio" name="paymentTender" value="card_terminal_manual"> Manual card terminal</label></fieldset>
-                    <button type="submit" id="createPaymentOrderBtn" class="btn btn-primary cashier-primary-action">Create payment order</button><p class="cashier-help">Client cannot pass price, FOP or register. Server creates immutable item snapshot.</p>
+                    <div class="cashier-card-head">
+                        <div><p class="cashier-kicker">Крок 1</p><h2 id="paymentOrderFormTitle">Створити оплату</h2></div>
+                        <span class="cashier-pill">ціна і ФОП визначаються сервером</span>
+                    </div>
+                    <div class="cashier-two-cols">
+                        <label class="cashier-field"><span>Дата квитка</span><input id="paymentDate" name="date" type="date" required></label>
+                        <label class="cashier-field"><span>Діти</span><input id="paymentKidsCount" name="kids" type="number" min="1" step="1" value="1" required></label>
+                    </div>
+                    <label class="cashier-field"><span>Дорослі</span><input id="paymentAdultsCount" name="adults" type="number" min="0" step="1" value="0"></label>
+                    <fieldset class="cashier-tender-group">
+                        <legend>Спосіб оплати</legend>
+                        <label><input type="radio" name="paymentTender" value="cash" checked> Готівка</label>
+                        <label><input type="radio" name="paymentTender" value="card_terminal_manual"> Термінал</label>
+                    </fieldset>
+                    <button type="submit" id="createPaymentOrderBtn" class="btn btn-primary cashier-primary-action">Створити оплату</button>
+                    <button type="button" id="startNextOrderBtn" class="btn btn-secondary cashier-primary-action hidden">Нова оплата</button>
+                    <p class="cashier-help">Касир не може змінити ціну, ФОП, профіль або касу. Позиції фіксуються під час створення оплати.</p>
                 </form>
+
                 <section class="cashier-card cashier-order-card" aria-labelledby="paymentSnapshotTitle">
-                    <div class="cashier-card-head"><div><p class="cashier-kicker">Step 2</p><h2 id="paymentSnapshotTitle">Immutable payment snapshot</h2></div><span id="internalReceiptLabel" class="cashier-pill">RCP-* — внутрішня квитанція</span></div>
-                    <dl class="cashier-meta-grid"><div><dt>CRM profile / FOP</dt><dd id="cashierFiscalProfile">?</dd></div><div><dt>Location / register</dt><dd id="cashierRegister">?</dd></div><div><dt>Payment status</dt><dd id="cashierPaymentStatus" class="cashier-status">?</dd></div><div><dt>Fiscal status</dt><dd id="cashierFiscalStatus" class="cashier-status">?</dd></div></dl>
-                    <div class="cashier-table-wrap" tabindex="0" aria-label="Payment items"><table class="cashier-items-table"><thead><tr><th>Item</th><th>Qty</th><th>Price</th><th>Total</th></tr></thead><tbody id="paymentItemsBody"><tr><td colspan="4" class="cashier-empty">Order is not created yet.</td></tr></tbody></table></div>
-                    <div class="cashier-total-row"><span>Total</span><strong id="paymentTotalAmount">0,00 ₴/strong></div>
-                    <div id="cashConfirmationPanel" class="cashier-confirm-panel"><h3>Готівка</h3><label class="cashier-field"><span>Received amount</span><input id="cashReceivedAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled></label><div class="cashier-change" aria-live="polite">Change: <strong id="cashChangeAmount">0,00 ₴/strong></div><button type="button" id="confirmCashBtn" class="btn btn-primary cashier-primary-action" disabled>Готівку отримано — створити чек</button></div>
-                    <div id="cardConfirmationPanel" class="cashier-confirm-panel hidden"><h3>Термінал</h3><p class="cashier-exact-amount">Exact amount: <strong id="cardExactAmount">0,00 ₴/strong></p><label class="cashier-checkbox-row"><input id="terminalSuccessCheckbox" type="checkbox" disabled><span>Термінал показав успішну оплату</span></label><label class="cashier-field"><span>Terminal/report reference (optional)</span><input id="terminalReference" type="text" maxlength="160" autocomplete="off" disabled></label><button type="button" id="confirmCardBtn" class="btn btn-primary cashier-primary-action" disabled>Confirm card terminal payment and create receipt</button></div>
+                    <div class="cashier-card-head">
+                        <div><p class="cashier-kicker">Крок 2</p><h2 id="paymentSnapshotTitle">Підтвердити оплату</h2></div>
+                        <span id="internalReceiptLabel" class="cashier-pill">RCP-* — внутрішня квитанція</span>
+                    </div>
+                    <dl class="cashier-meta-grid">
+                        <div><dt>CRM профіль / ФОП</dt><dd id="cashierFiscalProfile">—</dd></div>
+                        <div><dt>Локація / каса</dt><dd id="cashierRegister">—</dd></div>
+                        <div><dt>Статус оплати</dt><dd id="cashierPaymentStatus" class="cashier-status">—</dd></div>
+                        <div><dt>Статус фіскалізації</dt><dd id="cashierFiscalStatus" class="cashier-status">—</dd></div>
+                    </dl>
+                    <div class="cashier-table-wrap" tabindex="0" aria-label="Позиції оплати">
+                        <table class="cashier-items-table">
+                            <thead><tr><th>Позиція</th><th>К-сть</th><th>Ціна</th><th>Сума</th></tr></thead>
+                            <tbody id="paymentItemsBody"><tr><td colspan="4" class="cashier-empty">Оплату ще не створено.</td></tr></tbody>
+                        </table>
+                    </div>
+                    <div class="cashier-total-row"><span>До сплати</span><strong id="paymentTotalAmount">0,00 ₴</strong></div>
+                    <div id="cashConfirmationPanel" class="cashier-confirm-panel">
+                        <h3>Готівка</h3>
+                        <label class="cashier-field"><span>Отримано від клієнта</span><input id="cashReceivedAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled></label>
+                        <div class="cashier-change" aria-live="polite">Решта: <strong id="cashChangeAmount">0,00 ₴</strong></div>
+                        <button type="button" id="confirmCashBtn" class="btn btn-primary cashier-primary-action" disabled>Готівку отримано — створити чек</button>
+                    </div>
+                    <div id="cardConfirmationPanel" class="cashier-confirm-panel hidden">
+                        <h3>Термінал</h3>
+                        <p class="cashier-exact-amount">Сума на терміналі: <strong id="cardExactAmount">0,00 ₴</strong></p>
+                        <label class="cashier-checkbox-row"><input id="terminalSuccessCheckbox" type="checkbox" disabled><span>Термінал показав успішну оплату</span></label>
+                        <label class="cashier-field"><span>Номер транзакції / звіту (необовʼязково)</span><input id="terminalReference" type="text" maxlength="160" autocomplete="off" disabled></label>
+                        <button type="button" id="confirmCardBtn" class="btn btn-primary cashier-primary-action" disabled>Підтвердити оплату терміналом і створити чек</button>
+                    </div>
                 </section>
             </section>
-            <section id="fiscalResultPanel" class="cashier-card cashier-result-card" aria-labelledby="fiscalResultTitle"><div class="cashier-card-head"><div><p class="cashier-kicker">Step 3</p><h2 id="fiscalResultTitle">Fiscal receipt</h2></div><span id="fiscalReceiptBadge" class="cashier-pill">waiting</span></div><p id="fiscalPendingMessage" class="cashier-muted">After confirmed payment the server creates one durable fiscalization job. Checkbox unavailable means fiscal pending/unknown, not another payment.</p><div id="providerReceiptLinks" class="cashier-provider-links hidden" aria-live="polite"><a id="providerTaxUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Open Checkbox URL</a><a id="providerPdfUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Receipt PDF</a><a id="providerQrUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Receipt QR</a></div></section>
-            <section id="operationalContourPanel" class="cashier-card cashier-ops-card" aria-labelledby="operationalContourTitle">
+
+            <section id="fiscalResultPanel" class="cashier-card cashier-result-card" aria-labelledby="fiscalResultTitle">
+                <div class="cashier-card-head"><div><p class="cashier-kicker">Крок 3</p><h2 id="fiscalResultTitle">Фіскальний чек</h2></div><span id="fiscalReceiptBadge" class="cashier-pill">очікує</span></div>
+                <p id="fiscalPendingMessage" class="cashier-muted">Після підтвердження оплати сервер створить одну надійну задачу фіскалізації. Якщо Checkbox тимчасово недоступний, оплата лишається підтвердженою, а чек — у статусі очікування.</p>
+                <div id="providerReceiptLinks" class="cashier-provider-links hidden" aria-live="polite">
+                    <a id="providerTaxUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Відкрити чек Checkbox</a>
+                    <a id="providerPdfUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">PDF чека</a>
+                    <a id="providerQrUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">QR чека</a>
+                </div>
+            </section>
+
+            <section id="operationalContourPanel" class="cashier-card cashier-ops-card hidden" aria-labelledby="operationalContourTitle" aria-hidden="true">
                 <div class="cashier-card-head">
-                    <div><p class="cashier-kicker">Operational contour</p><h2 id="operationalContourTitle">Shift, service operations, refunds and close</h2></div>
-                    <button type="button" id="refreshShiftStateBtn" class="btn btn-secondary">Refresh shift state</button>
+                    <div><p class="cashier-kicker">Cashier PRO</p><h2 id="operationalContourTitle">Службові операції каси</h2></div>
+                    <button type="button" id="refreshShiftStateBtn" class="btn btn-secondary">Оновити стан зміни</button>
                 </div>
-                <dl class="cashier-meta-grid cashier-shift-grid" aria-label="Active shift state">
-                    <div><dt>CRM profile / FOP</dt><dd id="opsFiscalProfile">?</dd></div>
-                    <div><dt>Location / register</dt><dd id="opsRegister">?</dd></div>
-                    <div><dt>Shift status</dt><dd id="activeShiftStatus" class="cashier-status">not open</dd></div>
-                    <div><dt>Shift ID</dt><dd id="activeShiftId">?</dd></div>
-                    <div><dt>Expected cash</dt><dd id="shiftExpectedCash">0,00 ₴d></div>
-                    <div><dt>Expected terminal</dt><dd id="shiftExpectedTerminal">0,00 ₴d></div>
+                <dl class="cashier-meta-grid cashier-shift-grid" aria-label="Стан зміни">
+                    <div><dt>CRM профіль / ФОП</dt><dd id="opsFiscalProfile">—</dd></div>
+                    <div><dt>Локація / каса</dt><dd id="opsRegister">—</dd></div>
+                    <div><dt>Статус зміни</dt><dd id="activeShiftStatus" class="cashier-status">не відкрита</dd></div>
+                    <div><dt>ID зміни</dt><dd id="activeShiftId">—</dd></div>
+                    <div><dt>Очікувана готівка</dt><dd id="shiftExpectedCash">0,00 ₴</dd></div>
+                    <div><dt>Очікуваний термінал</dt><dd id="shiftExpectedTerminal">0,00 ₴</dd></div>
                 </dl>
-                <div id="shiftBlockersPanel" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite">
-                    <strong>Close blocked by pending/unknown fiscal operations.</strong>
-                    <ul id="shiftBlockersList" class="cashier-blockers-list"></ul>
-                </div>
+                <div id="shiftBlockersPanel" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite"><strong>Закриття заблоковане pending/unknown фіскальними операціями.</strong><ul id="shiftBlockersList" class="cashier-blockers-list"></ul></div>
                 <div class="cashier-ops-grid">
-                    <form id="serviceInForm" class="cashier-op-box" aria-labelledby="serviceInTitle">
-                        <h3 id="serviceInTitle">Service in</h3>
-                        <p class="cashier-muted">Only for an open shift. Amount must be positive.</p>
-                        <label class="cashier-field"><span>Amount, UAH</span><input id="serviceInAmount" type="number" min="0.01" step="0.01" inputmode="decimal" disabled required></label>
-                        <label class="cashier-field"><span>Reason / note</span><input id="serviceInReason" type="text" maxlength="240" autocomplete="off" disabled></label>
-                        <label class="cashier-checkbox-row"><input id="serviceInFinalCheck" type="checkbox" disabled><span>Cash added — create service-in operation</span></label>
-                        <button type="submit" id="serviceInBtn" class="btn btn-primary cashier-primary-action" disabled>Register service in</button>
-                    </form>
-                    <form id="serviceOutForm" class="cashier-op-box" aria-labelledby="serviceOutTitle">
-                        <h3 id="serviceOutTitle">Service out request</h3>
-                        <p class="cashier-muted">Requires a separate admin/director approval. Initiator cannot approve own operation server-side.</p>
-                        <label class="cashier-field"><span>Amount, UAH</span><input id="serviceOutAmount" type="number" min="0.01" step="0.01" inputmode="decimal" disabled required></label>
-                        <label class="cashier-field"><span>Mandatory reason</span><input id="serviceOutReason" type="text" maxlength="240" autocomplete="off" disabled required></label>
-                        <button type="submit" id="serviceOutRequestBtn" class="btn btn-primary cashier-primary-action" disabled>Request service out</button>
-                    </form>
-                    <form id="serviceOutApprovalPanel" class="cashier-op-box" aria-labelledby="serviceOutApprovalTitle">
-                        <h3 id="serviceOutApprovalTitle">Service out approval</h3>
-                        <p class="cashier-muted">Approval is bound to operation <strong id="serviceOutApprovalOperationId">?</strong>, one-time and server-side.</p>
-                        <label class="cashier-field"><span>Approver PIN</span><input id="serviceOutApprovalPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label>
-                        <button type="submit" id="serviceOutApproveBtn" class="btn btn-secondary cashier-primary-action" disabled>Approve service out</button>
-                    </form>
-                    <form id="refundForm" class="cashier-op-box" aria-labelledby="refundTitle">
-                        <h3 id="refundTitle">Full refund</h3>
-                        <p class="cashier-muted">MVP supports full refund only, linked to the original fiscalized receipt. Original receipt remains immutable.</p>
-                        <label class="cashier-field"><span>Payment order ID</span><input id="refundOrderId" type="number" min="1" step="1" inputmode="numeric" disabled required></label>
-                        <label class="cashier-field"><span>Mandatory reason</span><input id="refundReason" type="text" maxlength="240" autocomplete="off" disabled required></label>
-                        <label class="cashier-field"><span>Supervisor PIN</span><input id="refundPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label>
-                        <label class="cashier-checkbox-row"><input id="terminalRefundConfirmed" type="checkbox" disabled><span>Card terminal refund was confirmed separately</span></label>
-                        <label class="cashier-field"><span>Terminal refund reference</span><input id="terminalRefundReference" type="text" maxlength="160" autocomplete="off" disabled></label>
-                        <button type="submit" id="refundBtn" class="btn btn-secondary cashier-primary-action" disabled>Create full refund</button>
-                    </form>
+                    <form id="serviceInForm" class="cashier-op-box" aria-labelledby="serviceInTitle"><h3 id="serviceInTitle">Службове внесення</h3><label class="cashier-field"><span>Сума, грн</span><input id="serviceInAmount" type="number" min="0.01" step="0.01" inputmode="decimal" disabled required></label><label class="cashier-field"><span>Примітка</span><input id="serviceInReason" type="text" maxlength="240" autocomplete="off" disabled></label><label class="cashier-checkbox-row"><input id="serviceInFinalCheck" type="checkbox" disabled><span>Готівку внесено — створити службове внесення</span></label><button type="submit" id="serviceInBtn" class="btn btn-primary cashier-primary-action" disabled>Зареєструвати внесення</button></form>
+                    <form id="serviceOutForm" class="cashier-op-box" aria-labelledby="serviceOutTitle"><h3 id="serviceOutTitle">Службова видача</h3><label class="cashier-field"><span>Сума, грн</span><input id="serviceOutAmount" type="number" min="0.01" step="0.01" inputmode="decimal" disabled required></label><label class="cashier-field"><span>Причина</span><input id="serviceOutReason" type="text" maxlength="240" autocomplete="off" disabled required></label><button type="submit" id="serviceOutRequestBtn" class="btn btn-primary cashier-primary-action" disabled>Запросити видачу</button></form>
+                    <form id="serviceOutApprovalPanel" class="cashier-op-box" aria-labelledby="serviceOutApprovalTitle"><h3 id="serviceOutApprovalTitle">Підтвердження видачі</h3><p class="cashier-muted">Операція <strong id="serviceOutApprovalOperationId">—</strong></p><label class="cashier-field"><span>PIN підтвердження</span><input id="serviceOutApprovalPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label><button type="submit" id="serviceOutApproveBtn" class="btn btn-secondary cashier-primary-action" disabled>Підтвердити видачу</button></form>
+                    <form id="refundForm" class="cashier-op-box" aria-labelledby="refundTitle"><h3 id="refundTitle">Повне повернення</h3><label class="cashier-field"><span>ID оплати</span><input id="refundOrderId" type="number" min="1" step="1" inputmode="numeric" disabled required></label><label class="cashier-field"><span>Причина</span><input id="refundReason" type="text" maxlength="240" autocomplete="off" disabled required></label><label class="cashier-field"><span>PIN керівника</span><input id="refundPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label><label class="cashier-checkbox-row"><input id="terminalRefundConfirmed" type="checkbox" disabled><span>Повернення на терміналі підтверджено окремо</span></label><label class="cashier-field"><span>Референс повернення</span><input id="terminalRefundReference" type="text" maxlength="160" autocomplete="off" disabled></label><button type="submit" id="refundBtn" class="btn btn-secondary cashier-primary-action" disabled>Створити повернення</button></form>
                 </div>
                 <div class="cashier-ops-grid cashier-ops-grid-wide">
-                    <form id="reconciliationForm" class="cashier-op-box" aria-labelledby="reconciliationTitle">
-                        <h3 id="reconciliationTitle">Reconciliation checklist</h3>
-                        <p class="cashier-muted">Non-zero difference requires reason and supervisor PIN. Pending/unknown fiscal operations still block close.</p>
-                        <div class="cashier-two-cols"><label class="cashier-field"><span>Cash actual, UAH</span><input id="cashActualAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled required></label><label class="cashier-field"><span>Terminal report total, UAH</span><input id="terminalReportTotalAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled required></label></div>
-                        <label class="cashier-field"><span>Reason when difference exists</span><input id="reconciliationReason" type="text" maxlength="500" autocomplete="off" disabled></label>
-                        <label class="cashier-field"><span>Supervisor PIN when difference exists</span><input id="reconciliationPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label>
-                        <div class="cashier-action-row"><button type="submit" id="reconcileShiftBtn" class="btn btn-secondary" disabled>Save reconciliation revision</button><button type="button" id="closeShiftBtn" class="btn btn-primary" disabled>Close shift</button></div>
-                    </form>
-                    <section class="cashier-op-box" aria-labelledby="operationalReportTitle">
-                        <h3 id="operationalReportTitle">Operational report</h3>
-                        <p class="cashier-muted">Internal Event Genix report. It is not an official Z-report; official Checkbox document is linked when provider returns it.</p>
-                        <button type="button" id="loadOperationalReportBtn" class="btn btn-secondary" disabled>Load operational report</button>
-                        <div id="operationalReportBody" class="cashier-report-body" aria-live="polite">No report loaded.</div>
-                    </section>
+                    <form id="reconciliationForm" class="cashier-op-box" aria-labelledby="reconciliationTitle"><h3 id="reconciliationTitle">Звірка</h3><div class="cashier-two-cols"><label class="cashier-field"><span>Фактична готівка, грн</span><input id="cashActualAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled required></label><label class="cashier-field"><span>Звіт термінала, грн</span><input id="terminalReportTotalAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled required></label></div><label class="cashier-field"><span>Причина розбіжності</span><input id="reconciliationReason" type="text" maxlength="500" autocomplete="off" disabled></label><label class="cashier-field"><span>PIN керівника</span><input id="reconciliationPin" type="password" inputmode="numeric" autocomplete="one-time-code" disabled></label><div class="cashier-action-row"><button type="submit" id="reconcileShiftBtn" class="btn btn-secondary" disabled>Зберегти звірку</button><button type="button" id="closeShiftBtn" class="btn btn-primary" disabled>Закрити зміну</button></div></form>
+                    <section class="cashier-op-box" aria-labelledby="operationalReportTitle"><h3 id="operationalReportTitle">Операційний звіт</h3><p class="cashier-muted">Внутрішній звіт Event Genix. Це не офіційний Z-звіт.</p><button type="button" id="loadOperationalReportBtn" class="btn btn-secondary" disabled>Завантажити звіт</button><div id="operationalReportBody" class="cashier-report-body" aria-live="polite">Звіт не завантажено.</div></section>
                 </div>
             </section>
         </main>

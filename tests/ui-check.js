@@ -7166,7 +7166,7 @@ check('Cashier payments UI keeps keyboard focus and responsive layout coverage',
     cashierPaymentsCss.includes(':focus-visible')
     && cashierPaymentsCss.includes('@media (max-width: 960px)')
     && cashierPaymentsHtml.includes('aria-live="polite"')
-    && cashierPaymentsHtml.includes('aria-label="Payment items"'));
+    && cashierPaymentsHtml.includes('aria-label="Позиції оплати"'));
 
 // RESULTS
 // ═══════════════════════════════════════════════════

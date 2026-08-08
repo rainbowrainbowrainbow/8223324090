@@ -28,7 +28,7 @@ function mapReceiptGood(item = {}) {
         throw new CheckboxClientError('checkbox_good_quantity_invalid', 'Checkbox quantity must be positive integer millis', { status: 400 });
     }
     const good = { code, name, price };
-    const tax = item.tax || item.taxReference || item.taxCode;
+    const tax = item.tax || item.providerTaxId || item.taxCode;
     if (tax) good.tax = Array.isArray(tax) ? tax : [tax];
     return {
         good,
@@ -40,9 +40,9 @@ function mapReceiptGood(item = {}) {
 function mapPayment({ tender, amountMinor }) {
     const value = asPositiveMinor(amountMinor, 'checkbox_payment_amount_required');
     if (tender === 'card_terminal_manual' || tender === 'card_terminal' || tender === 'cashless') {
-        return { type: 'CASHLESS', value, label: '??????' };
+        return { type: 'CASHLESS', value, label: 'Картка' };
     }
-    return { type: 'CASH', value, label: '???????' };
+    return { type: 'CASH', value, label: 'Готівка' };
 }
 
 function mapSaleReceipt({ providerRequestUuid, items = [], tender = 'cash', amountMinor, callbackUrl = null, context = {} }) {
@@ -89,7 +89,7 @@ function mapServiceReceipt({ providerRequestUuid, operationType, amountMinor, co
         payment: {
             type: 'CASH',
             value,
-            label: '???????',
+            label: 'Готівка',
             operation_type: operation
         },
         context: { eventgenix: true, operation_type: type || 'service_in', ...context }

@@ -32,14 +32,14 @@ function close(server) {
 
 async function postRaw(baseUrl, body, signature = null) {
     const headers = { 'Content-Type': 'application/json' };
-    if (signature) headers['X-EventGenix-Signature'] = signature;
+    if (signature) headers['X-Request-Signature'] = signature;
     const response = await fetch(`${baseUrl}/webhook`, { method: 'POST', headers, body });
     const text = await response.text();
     return { status: response.status, body: text ? JSON.parse(text) : null };
 }
 
 function signed(body, secret = 'unit-secret') {
-    return `sha256=${signCheckboxWebhookBody(Buffer.from(body), secret)}`;
+    return signCheckboxWebhookBody(Buffer.from(body), secret);
 }
 
 describe('Checkbox webhook route auth boundary', () => {
@@ -48,6 +48,7 @@ describe('Checkbox webhook route auth boundary', () => {
         const app = express();
         app.use('/webhook', express.raw({ type: '*/*', limit: '256kb' }), createCheckboxWebhookRouter({
             signingSecret: 'unit-secret',
+            enabled: true,
             webhookHandler: async input => {
                 calls.push(input);
                 return { replayed: false, queued: true, eventId: 1 };

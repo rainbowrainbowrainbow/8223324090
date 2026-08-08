@@ -97,7 +97,7 @@ function orderDetails(order) {
             registerAlias: 'middle',
             registerDisplayName: 'Middle cash desk'
         },
-        items: [{ id: 1, lineNumber: 1, itemType: 'admission_ticket', itemCode: 'regular_child', itemName: 'Park admission', unitPriceMinor: '50000', quantityMillis: '1000', totalAmountMinor: '50000', currency: 'UAH', taxReference: 'admission_tariff:smoke' }],
+        items: [{ id: 1, lineNumber: 1, itemType: 'admission_ticket', itemCode: 'regular_child', itemName: 'Вхідний квиток парку', unitPriceMinor: '50000', quantityMillis: '1000', totalAmountMinor: '50000', currency: 'UAH', taxReference: 'admission_tariff:smoke' }],
         fiscalOperation: order.paymentStatus === 'confirmed' ? { id: 8, fiscalShiftId: state.shift?.id || null, status: order.fiscalStatus, provider: 'checkbox', providerOperationId: 'provider-smoke', providerStatus: order.fiscalStatus } : null,
         receipts: order.fiscalStatus === 'fiscalized' ? [{ id: 9, fiscalOperationId: 8, paymentOrderId: order.id, receiptType: 'sale', status: 'fiscalized', provider: 'checkbox', providerReceiptId: 'chk-smoke', providerTaxUrl: 'https://example.test/check', providerPdfUrl: 'https://example.test/check.pdf', providerQrUrl: 'https://example.test/qr', totalAmountMinor: '50000', currency: 'UAH', fiscalizedAt: '2026-08-04T10:00:01.000Z' }] : [],
         artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://example.test/check', pdfUrl: 'https://example.test/check.pdf', qrUrl: 'https://example.test/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null }
@@ -140,6 +140,8 @@ function registerStatePayload() {
         registerAlias: 'middle',
         registerDisplayName: 'Middle cash desk',
         featureEnabled: true,
+        checkboxIntegrationEnabled: true,
+        cashierProEnabled: false,
         shift: state.shift,
         checklist: state.shift ? activeChecklist() : null
     };
@@ -155,7 +157,8 @@ async function handleApi(req, res, url) {
         state.createKeys.push(key);
         const replay = [...state.orders.values()].find(order => order.createKey === key);
         if (replay) return json(res, 200, { success: true, replayed: true, order: orderDetails(replay).order });
-        const order = { id: ++state.nextOrderId, sourceId: body.sourceId || `source-${state.nextOrderId}`, tender: body.tender || 'cash', status: 'draft', paymentStatus: 'unpaid', fiscalStatus: 'pending', createKey: key, confirmKey: null };
+        const sourceId = `server-source:${body?.admissionTicket?.date || 'no-date'}:${body?.admissionTicket?.banquetGuests || 0}:${body?.admissionTicket?.banquetAdults || 0}:${body.tender || 'cash'}`;
+        const order = { id: ++state.nextOrderId, sourceId, tender: body.tender || 'cash', status: 'draft', paymentStatus: 'unpaid', fiscalStatus: 'pending', createKey: key, confirmKey: null };
         state.orders.set(order.id, order);
         return json(res, 201, { success: true, replayed: false, order: orderDetails(order).order });
     }
@@ -259,13 +262,13 @@ async function run() {
         let page = await context.newPage();
         await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
-        await page.fill('#paymentSourceId', 'park-cash-smoke');
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.fill('#paymentKidsCount', '1');
         await page.click('#createPaymentOrderBtn');
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
         await page.fill('#cashReceivedAmount', '600');
         await page.click('#confirmCashBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierPaymentStatus')?.textContent.includes('confirmed'));
+        await page.waitForFunction(() => document.querySelector('#cashierPaymentStatus')?.textContent.includes('оплачено'));
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'cash repeat submit is blocked after fiscal pending');
         assert.equal(state.confirmKeys.length, 1, 'cash confirmation should submit once after double-click guard');
         await context.close();
@@ -275,22 +278,21 @@ async function run() {
         page = await context.newPage();
         await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
-        await page.fill('#paymentSourceId', 'park-card-smoke');
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.check('input[name="paymentTender"][value="card_terminal_manual"]');
         await page.click('#createPaymentOrderBtn');
         await page.waitForSelector('#terminalSuccessCheckbox:not([disabled])');
         await page.check('#terminalSuccessCheckbox');
         await page.fill('#terminalReference', 'term-ref-1');
         await Promise.all([page.click('#confirmCardBtn'), page.click('#confirmCardBtn').catch(() => {})]);
-        await page.waitForFunction(() => document.querySelector('#cashierFiscalStatus')?.textContent.includes('pending'));
+        await page.waitForFunction(() => document.querySelector('#cashierFiscalStatus')?.textContent.includes('очікує'));
         assert.equal(new Set(state.confirmKeys).size, state.confirmKeys.length, 'duplicate UI clicks must not create a second idempotency key');
 
         const currentOrderId = state.nextOrderId;
         await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => document.querySelector('#fiscalPendingMessage')?.textContent.includes('Repeat payment is blocked'));
+        await page.waitForFunction(() => document.querySelector('#fiscalPendingMessage')?.textContent.includes('Повторна оплата заблокована'));
         assert.equal(await page.isDisabled('#confirmCardBtn'), true, 'reload keeps pending payment blocked');
-        await page.waitForSelector('#shiftBlockersPanel:not(.hidden)');
-        assert.equal(await page.isDisabled('#closeShiftBtn'), true, 'pending fiscal operation blocks shift close');
+        assert.equal(await page.locator('#operationalContourPanel').isVisible(), false, 'Cashier PRO panel stays hidden when flag is false');
 
         for (const order of state.orders.values()) order.fiscalStatus = 'fiscalized';
         const current = state.orders.get(currentOrderId);
@@ -299,41 +301,24 @@ async function run() {
         assert.match(await page.getAttribute('#providerTaxUrl', 'href'), /example\.test\/check/);
         assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /example\.test\/check\.pdf/);
         assert.match(await page.getAttribute('#providerQrUrl', 'href'), /example\.test\/qr/);
-        await page.waitForSelector('#serviceInBtn:not([disabled])');
-        await page.fill('#serviceInAmount', '100');
-        await page.check('#serviceInFinalCheck');
-        await page.click('#serviceInBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Service-in queued'));
-        await page.fill('#serviceOutAmount', '50');
-        await page.fill('#serviceOutReason', 'safe smoke payout');
-        await page.click('#serviceOutRequestBtn');
-        await page.waitForFunction(() => document.querySelector('#serviceOutApprovalOperationId')?.textContent !== '?');
-        await page.fill('#serviceOutApprovalPin', '1234');
-        await page.click('#serviceOutApproveBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Service-out approved'));
-        await page.fill('#refundReason', 'smoke full refund');
-        await page.fill('#refundPin', '1234');
-        await page.click('#refundBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Full refund queued'));
-        await page.click('#loadOperationalReportBtn');
-        await page.waitForFunction(() => document.querySelector('#operationalReportBody')?.textContent.includes('Internal operational report'));
-        await page.click('#reconcileShiftBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Reconciliation revision saved'));
-        await page.click('#closeShiftBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Shift close queued'));
-        assert.ok(state.operationCalls.some(call => call.type === 'service_in'), 'service_in was called');
-        assert.ok(state.operationCalls.some(call => call.type === 'service_out_approve'), 'service_out approval was called');
-        assert.ok(state.operationCalls.some(call => call.type === 'refund'), 'refund was called');
-        assert.equal(state.reportLoaded, true, 'operational report was loaded');
+        await page.waitForSelector('#startNextOrderBtn:not(.hidden)');
+        await page.click('#startNextOrderBtn');
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        await page.fill('#paymentKidsCount', '2');
+        await page.click('#createPaymentOrderBtn');
+        await page.waitForFunction(() => document.querySelector('#paymentTotalAmount')?.textContent.includes('500'));
+        assert.equal(state.nextOrderId, currentOrderId + 1, 'new payment can start after fiscalized receipt');
 
         const deniedContext = await browser.newContext();
         await deniedContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         await deniedContext.route('**/api/auth/permissions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(permissionPayload(false)) }));
         const deniedPage = await deniedContext.newPage();
         await deniedPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
-        await deniedPage.waitForFunction(() => { const el = document.getElementById('cashierAccessDenied'); return el && !el.classList.contains('hidden') && el.offsetParent !== null; });
-        const deniedButtonDisabled = await deniedPage.evaluate(() => document.getElementById('createPaymentOrderBtn')?.disabled ?? true);
-        assert.equal(deniedButtonDisabled, true, 'denied cashier cannot create payment order');
+        await deniedPage.waitForFunction(() => {
+            const denied = document.getElementById('cashierAccessDenied');
+            const button = document.getElementById('createPaymentOrderBtn');
+            return denied && !denied.classList.contains('hidden') && denied.offsetParent !== null && button && button.disabled === true;
+        });
         await deniedContext.close();
         await context.close().catch(() => {});
     } finally {

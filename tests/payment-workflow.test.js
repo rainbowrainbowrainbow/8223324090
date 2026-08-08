@@ -13,6 +13,7 @@ const {
     assertManualConfirmationBody,
     normalizeTender
 } = require('../services/payments/paymentStateMachine');
+const { authorizeFiscalActionContext } = require('../services/payments/fiscalAccess');
 
 function clone(value) {
     return JSON.parse(JSON.stringify(value));
@@ -67,9 +68,28 @@ function defaultMapping() {
     };
 }
 
+function defaultFiscalItemMapping(overrides = {}) {
+    return {
+        fiscal_profile_id: 20,
+        fiscal_register_id: 40,
+        id: 700,
+        provider: 'checkbox',
+        source_type: 'admission_ticket',
+        item_type: 'admission_ticket',
+        item_code: 'regular_child',
+        fiscal_item_name: 'Park child admission',
+        provider_tax_id: '7',
+        tax_code: 1,
+        tax_rate_bps: 2000,
+        status: 'active',
+        ...overrides
+    };
+}
+
 class FakePaymentDb {
     constructor(options = {}) {
         this.mappingRows = options.mappingRows || [defaultMapping()];
+        this.itemMappingRows = Object.hasOwn(options, 'itemMappingRows') ? options.itemMappingRows : [defaultFiscalItemMapping()];
         this.failOn = options.failOn || null;
         this.locks = new Map();
         this.reset();
@@ -116,6 +136,24 @@ class FakePaymentDb {
             ...overrides
         };
         this.orders.push(row);
+        if (!overrides.skipDefaultItem) {
+            this.items.push({
+                id: this.next.item++,
+                fiscal_profile_id: row.fiscal_profile_id,
+                payment_order_id: row.id,
+                line_number: 1,
+                item_code: 'regular_child',
+                item_name: 'Park child admission',
+                unit_price_minor: '25000',
+                quantity_millis: '2000',
+                total_amount_minor: row.total_amount_minor,
+                tax_reference: 'admission_tariff:11',
+                provider_tax_id: '7',
+                tax_code: 1,
+                tax_rate_bps: 2000,
+                item_snapshot: {}
+            });
+        }
         if (row.id >= this.next.order) this.next.order = row.id + 1;
         return row;
     }
@@ -193,8 +231,26 @@ class FakePaymentClient {
             return { rows: this.db.orders.filter(order => order.idempotency_key === params[0]).slice(0, 1) };
         }
 
+        if (normalized.includes('FROM payment_orders') && normalized.includes('order_key = $2')) {
+            return { rows: this.db.orders.filter(order => Number(order.fiscal_profile_id) === Number(params[0]) && order.order_key === params[1]).slice(0, 1) };
+        }
+
         if (normalized.includes('FROM fiscal_profiles fp') && normalized.includes('fr.register_alias = $2')) {
             return { rows: this.db.mappingRows.filter(row => row.crm_profile_key === params[0] && row.register_alias === params[1]) };
+        }
+
+        if (normalized.includes('FROM fiscal_item_mappings')) {
+            const codes = Array.isArray(params[4]) ? params[4] : [];
+            return {
+                rows: this.db.itemMappingRows.filter(row => (
+                    Number(row.fiscal_profile_id) === Number(params[0])
+                    && Number(row.fiscal_register_id) === Number(params[1])
+                    && row.source_type === params[3]
+                    && codes.includes(row.item_code)
+                    && row.provider === 'checkbox'
+                    && row.status === 'active'
+                ))
+            };
         }
 
 
@@ -209,7 +265,8 @@ class FakePaymentClient {
                     register_fiscal_location_id: 30,
                     crm_profile_key: 'event_genix',
                     status: 'active',
-                    action_pin_hash: '$2a$10$fakehashfornonpinpaths'
+                    action_pin_hash: '$2a$10$fakehashfornonpinpaths',
+                    capability_scope: this.db.mappingRows[0]?.capability_scope || ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open']
                 }]
             };
         }
@@ -253,9 +310,22 @@ class FakePaymentClient {
                 quantity_millis: String(params[6]),
                 total_amount_minor: String(params[7]),
                 tax_reference: params[8],
-                item_snapshot: JSON.parse(params[9])
+                provider_tax_id: params[9],
+                tax_code: params[10],
+                tax_rate_bps: params[11],
+                item_snapshot: JSON.parse(params[12])
             });
             return { rows: [] };
+        }
+
+        if (normalized.includes('FROM payment_order_items') && normalized.includes('provider_tax_id')) {
+            return { rows: this.db.items.filter(item => Number(item.fiscal_profile_id) === Number(params[0]) && Number(item.payment_order_id) === Number(params[1])).map(item => ({
+                line_number: item.line_number,
+                item_code: item.item_code,
+                item_name: item.item_name,
+                tax_reference: item.tax_reference,
+                provider_tax_id: item.provider_tax_id
+            })) };
         }
 
         if (normalized.includes('FROM payment_attempts') && normalized.includes('WHERE idempotency_key = $1')) {
@@ -331,7 +401,9 @@ class FakePaymentClient {
                 provider_payment_reference: params[5],
                 amount_minor: String(params[6]),
                 request_snapshot: JSON.parse(params[7]),
-                result_snapshot: JSON.parse(params[8])
+                result_snapshot: JSON.parse(params[8]),
+                received_amount_minor: JSON.parse(params[8]).receivedAmountMinor || JSON.parse(params[8]).received_amount_minor,
+                change_amount_minor: JSON.parse(params[8]).changeAmountMinor || JSON.parse(params[8]).change_amount_minor
             };
             this.db.attempts.push(row);
             return { rows: [row] };
@@ -349,6 +421,8 @@ class FakePaymentClient {
                 payment_method: params[2],
                 amount_minor: String(params[3]),
                 allocation_snapshot: JSON.parse(params[4]),
+                received_amount_minor: JSON.parse(params[4]).receivedAmountMinor || JSON.parse(params[4]).received_amount_minor,
+                change_amount_minor: JSON.parse(params[4]).changeAmountMinor || JSON.parse(params[4]).change_amount_minor,
                 recorded_by_user_id: params[5]
             });
             return { rows: [] };
@@ -491,6 +565,65 @@ test('cash payment order uses server admission snapshot and ignores client prici
     );
 });
 
+test('server source identity makes admission order replay logical across reloads', async () => {
+    const db = new FakePaymentDb();
+    const body = { tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } };
+
+    const first = await createAdmissionTicketPaymentOrder({
+        dbPool: db,
+        user: baseUser(),
+        body,
+        idempotencyKey: 'create-logical-1',
+        quoteResolver,
+        authorizer: allowAuthorizer
+    });
+    const second = await createAdmissionTicketPaymentOrder({
+        dbPool: db,
+        user: baseUser(),
+        body,
+        idempotencyKey: 'create-logical-2',
+        quoteResolver,
+        authorizer: allowAuthorizer
+    });
+
+    assert.equal(first.replayed, false);
+    assert.equal(second.replayed, true);
+    assert.equal(second.logicalReplay, true);
+    assert.equal(db.orders.length, 1);
+});
+
+test('client-controlled sourceId is rejected before order creation', async () => {
+    const db = new FakePaymentDb();
+    await assert.rejects(
+        () => createAdmissionTicketPaymentOrder({
+            dbPool: db,
+            user: baseUser(),
+            body: { tender: 'cash', sourceId: 'client-source', admissionTicket: { date: '2099-01-15' } },
+            idempotencyKey: 'forbidden-source',
+            quoteResolver,
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'client_payment_field_forbidden'
+    );
+    assert.equal(db.orders.length, 0);
+});
+
+test('missing Checkbox tax mapping blocks order before taking money', async () => {
+    const db = new FakePaymentDb({ itemMappingRows: [defaultFiscalItemMapping({ provider_tax_id: '' })] });
+    await assert.rejects(
+        () => createAdmissionTicketPaymentOrder({
+            dbPool: db,
+            user: baseUser(),
+            body: { tender: 'cash', admissionTicket: { date: '2099-01-15' } },
+            idempotencyKey: 'missing-tax',
+            quoteResolver,
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'fiscal_item_tax_mapping_missing'
+    );
+    assert.equal(db.orders.length, 0);
+});
+
 test('wrong CRM profile/FOP mapping fails closed before creating an order', async () => {
     await assert.rejects(
         () => createAdmissionTicketPaymentOrder({
@@ -530,7 +663,7 @@ test('cash confirmation atomically records payment and queues exactly one fiscal
             dbPool: db,
             user: baseUser(),
             orderId: order.id,
-            body: { tender: 'cash', confirmedAmountMinor: '50000' },
+            body: { tender: 'cash', confirmedAmountMinor: '60000' },
             idempotencyKey: 'confirm-cash-1',
             authorizer: allowAuthorizer
         });
@@ -554,6 +687,26 @@ test('cash confirmation atomically records payment and queues exactly one fiscal
     } finally {
         global.fetch = previousFetch;
     }
+});
+
+test('cash confirmation stores immutable received amount and calculated change', async () => {
+    const db = new FakePaymentDb();
+    const order = db.seedOrder({ payment_method: 'cash', total_amount_minor: '50000' });
+    await confirmPaymentOrder({
+        dbPool: db,
+        user: baseUser(),
+        orderId: order.id,
+        body: { tender: 'cash', confirmedAmountMinor: '60000' },
+        idempotencyKey: 'confirm-cash-change',
+        authorizer: allowAuthorizer
+    });
+
+    assert.equal(db.attempts[0].amount_minor, '50000');
+    assert.equal(db.attempts[0].received_amount_minor, '60000');
+    assert.equal(db.attempts[0].change_amount_minor, '10000');
+    assert.equal(db.allocations[0].amount_minor, '50000');
+    assert.equal(db.allocations[0].received_amount_minor, '60000');
+    assert.equal(db.allocations[0].change_amount_minor, '10000');
 });
 
 test('manual card terminal confirmation stores only operator reference and no card data', async () => {
@@ -609,7 +762,7 @@ test('wrong amount and partial/split attempts fail without outbox jobs', async (
             idempotencyKey: 'wrong-amount',
             authorizer: allowAuthorizer
         }),
-        error => error.code === 'payment_amount_mismatch'
+        error => error.code === 'cash_received_amount_insufficient'
     );
 
     assert.equal(db.attempts.length, 0);
@@ -728,6 +881,49 @@ test('transaction rollback before commit leaves payment unpaid and no durable fi
     assert.equal(db.outboxJobs.length, 0);
 });
 
+test('confirmation fails closed when existing order item has no provider tax mapping', async () => {
+    const db = new FakePaymentDb();
+    const order = db.seedOrder({ payment_method: 'cash', total_amount_minor: '50000' });
+    db.items[0].provider_tax_id = '';
+
+    await assert.rejects(
+        () => confirmPaymentOrder({
+            dbPool: db,
+            user: baseUser(),
+            orderId: order.id,
+            body: { tender: 'cash', confirmedAmountMinor: '50000' },
+            idempotencyKey: 'confirm-missing-tax',
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'payment_order_fiscal_item_not_ready'
+    );
+    assert.equal(db.attempts.length, 0);
+});
+
+test('fiscal cashier binding capability scope is enforced server-side', () => {
+    assert.throws(
+        () => authorizeFiscalActionContext({
+            user: baseUser({ action_allowlist: ['payments.confirm_received'] }),
+            action: 'payments.confirm_received',
+            binding: {
+                user_id: 50,
+                fiscal_profile_id: 20,
+                fiscal_register_id: 40,
+                fiscal_location_id: 30,
+                register_fiscal_location_id: 30,
+                crm_profile_key: 'event_genix',
+                status: 'active',
+                capability_scope: ['payments.view']
+            },
+            fiscalProfileId: 20,
+            crmProfileKey: 'event_genix',
+            fiscalLocationId: 30,
+            fiscalRegisterId: 40
+        }),
+        error => error.code === 'fiscal_binding_capability_denied'
+    );
+});
+
 test('confirmation body validation fails closed for non-confirmable order', () => {
     assert.throws(
         () => assertManualConfirmationBody({
@@ -830,6 +1026,26 @@ test('payments API smoke passes Idempotency-Key and user context into order crea
         assert.equal(calls.create[0].idempotencyKey, 'api-create-1');
         assert.equal(calls.create[0].user.id, 50);
     });
+});
+
+test('Cashier PRO routes fail closed while EVENTGENIX_CASHIER_PRO_ENABLED is false', async () => {
+    const previous = process.env.EVENTGENIX_CASHIER_PRO_ENABLED;
+    process.env.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
+    try {
+        await withPaymentRouteApp(async ({ request }) => {
+            const res = await request(
+                'POST',
+                '/api/payments/service-in',
+                { amountMinor: '1000' },
+                { 'Idempotency-Key': 'api-service-in-disabled' }
+            );
+            assert.equal(res.status, 403);
+            assert.equal(res.data.code, 'cashier_pro_disabled');
+        });
+    } finally {
+        if (previous === undefined) delete process.env.EVENTGENIX_CASHIER_PRO_ENABLED;
+        else process.env.EVENTGENIX_CASHIER_PRO_ENABLED = previous;
+    }
 });
 
 test('payments API smoke confirms manual card without calling Checkbox HTTP in route layer', async () => {

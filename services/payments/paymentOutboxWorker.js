@@ -3,6 +3,8 @@
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
 const { publishInTransaction } = require('../eventBus');
+const { CheckboxClientError } = require('../checkbox/errors');
+const { createCheckboxProviderFactory } = require('../checkbox/provider');
 
 const WORKER_NAME = 'payment-outbox-worker';
 const DEFAULT_BATCH_SIZE = 10;
@@ -68,6 +70,9 @@ function classifyWorkerError(error) {
     if (error instanceof PaymentOutboxWorkerError) {
         return { retryable: error.retryable !== false, unknown: error.unknown === true, ...sanitizeError(error) };
     }
+    if (error instanceof CheckboxClientError) {
+        return { retryable: error.retryable === true, unknown: error.unknown === true, ...sanitizeError(error) };
+    }
     const code = String(error?.code || '').toLowerCase();
     const message = String(error?.message || '').toLowerCase();
     const unknown = /timeout|aborted|network|econn|socket|fetch/.test(`${code} ${message}`);
@@ -102,16 +107,33 @@ async function withTransaction(dbPool, run) {
 async function claimPaymentOutboxJobs(client, {
     batchSize = DEFAULT_BATCH_SIZE,
     lockedBy = workerId(),
-    lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS
+    lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS,
+    eligibleFiscalProfileIds = null
 } = {}) {
     const limit = Math.max(1, Math.min(Number(batchSize) || DEFAULT_BATCH_SIZE, 50));
     const lockExpirySeconds = Math.max(30, Math.floor(Number(lockExpiryMs || DEFAULT_LOCK_EXPIRY_MS) / 1000));
+    if (Array.isArray(eligibleFiscalProfileIds) && eligibleFiscalProfileIds.length === 0) {
+        return [];
+    }
     const result = await client.query(
         `WITH candidate_jobs AS (
              SELECT id
                FROM payment_outbox_jobs
               WHERE job_type = ANY($1::text[])
+                AND ($5::bigint[] IS NULL OR fiscal_profile_id = ANY($5::bigint[]))
                 AND attempts < max_attempts
+                AND EXISTS (
+                    SELECT 1
+                      FROM payment_orders po
+                      JOIN fiscal_registers fr
+                        ON fr.id = po.fiscal_register_id
+                       AND fr.fiscal_profile_id = po.fiscal_profile_id
+                       AND fr.provider = 'checkbox'
+                       AND fr.status = 'active'
+                       AND fr.feature_enabled = TRUE
+                     WHERE po.id = payment_outbox_jobs.payment_order_id
+                       AND po.fiscal_profile_id = payment_outbox_jobs.fiscal_profile_id
+                )
                 AND (
                     (status IN ('queued', 'failed') AND next_run_at <= NOW())
                     OR (status IN ('claimed', 'running') AND locked_at < NOW() - ($4::int * INTERVAL '1 second'))
@@ -129,7 +151,13 @@ async function claimPaymentOutboxJobs(client, {
            FROM candidate_jobs
           WHERE job.id = candidate_jobs.id
           RETURNING job.*`,
-        [RETRYABLE_JOB_TYPES, limit, lockedBy, lockExpirySeconds]
+        [
+            RETRYABLE_JOB_TYPES,
+            limit,
+            lockedBy,
+            lockExpirySeconds,
+            Array.isArray(eligibleFiscalProfileIds) ? eligibleFiscalProfileIds.map(id => Number(id)) : null
+        ]
     );
     return result.rows;
 }
@@ -149,10 +177,18 @@ async function loadJobContext(client, job) {
              po.status AS payment_order_status,
              po.payment_status,
              po.fiscal_status AS payment_order_fiscal_status,
+             po.fiscal_register_id,
+             po.cashier_user_id,
              po.total_amount_minor,
              po.payment_method,
              po.source_snapshot,
-             po.confirmation_snapshot
+             po.confirmation_snapshot,
+             fr.register_alias,
+             fr.provider_register_id,
+             fr.provider_license_ref,
+             fr.feature_enabled AS register_feature_enabled,
+             fcb.provider_cashier_id,
+             fcb.provider_cashier_login_ref
            FROM payment_outbox_jobs job
            LEFT JOIN fiscal_operations fo
              ON fo.id = job.fiscal_operation_id
@@ -160,6 +196,14 @@ async function loadJobContext(client, job) {
            LEFT JOIN payment_orders po
              ON po.id = job.payment_order_id
             AND po.fiscal_profile_id = job.fiscal_profile_id
+           LEFT JOIN fiscal_registers fr
+             ON fr.id = po.fiscal_register_id
+            AND fr.fiscal_profile_id = po.fiscal_profile_id
+           LEFT JOIN fiscal_cashier_bindings fcb
+             ON fcb.fiscal_profile_id = po.fiscal_profile_id
+            AND fcb.fiscal_register_id = po.fiscal_register_id
+            AND fcb.user_id = po.cashier_user_id
+            AND fcb.status = 'active'
           WHERE job.id = $1
           LIMIT 1`,
         [job.id]
@@ -200,6 +244,17 @@ function normalizeProviderReceipt(receipt = {}, fallback = {}) {
     const providerReceiptId = String(receipt.id || receipt.receiptId || receipt.providerReceiptId || fallback.providerOperationId || '').trim();
     if (!providerReceiptId) {
         throw new PaymentOutboxWorkerError('provider_receipt_id_missing', 'Provider receipt response did not include a receipt id', { retryable: true, unknown: true });
+    }
+    const status = String(receipt.status || '').trim();
+    const upperStatus = status.toUpperCase();
+    if (upperStatus === 'CREATED') {
+        throw new PaymentOutboxWorkerError('provider_receipt_pending', 'Provider receipt is not fiscalized yet', { retryable: true, unknown: true });
+    }
+    if (['ERROR', 'CANCELLATION', 'CANCELLED'].includes(upperStatus)) {
+        throw new PaymentOutboxWorkerError('provider_receipt_failed', 'Provider receipt reached a terminal failure status', { retryable: false });
+    }
+    if (status && !['DONE', 'FISCALIZED', 'SUCCESS', 'SUCCEEDED'].includes(upperStatus)) {
+        throw new PaymentOutboxWorkerError('provider_receipt_status_unknown', 'Provider receipt response has unsupported status', { retryable: true, unknown: true });
     }
     return {
         providerReceiptId,
@@ -348,10 +403,10 @@ async function markJobFailed(client, context, errorInfo) {
     const nextRun = new Date(Date.now() + computeBackoffMs(context.job.attempts)).toISOString();
     await client.query(
         `UPDATE payment_outbox_jobs
-            SET status = $3,
+            SET status = $3::text,
                 locked_at = NULL,
                 locked_by = NULL,
-                next_run_at = CASE WHEN $3 = 'dead' THEN next_run_at ELSE $4::timestamptz END,
+                next_run_at = CASE WHEN $3::text = 'dead' THEN next_run_at ELSE $4::timestamptz END,
                 last_error_code = $5,
                 last_error_message = $6,
                 updated_at = NOW()
@@ -364,10 +419,10 @@ async function markJobFailed(client, context, errorInfo) {
         const nextStatus = errorInfo.unknown ? 'unknown' : (errorInfo.retryable === false ? 'blocked' : 'failed');
         await client.query(
             `UPDATE fiscal_operations
-                SET status = $3,
+                SET status = $3::text,
                     last_error_code = $4,
                     last_error_message = $5,
-                    next_status_check_at = CASE WHEN $3 IN ('unknown', 'failed') THEN $6::timestamptz ELSE next_status_check_at END
+                    next_status_check_at = CASE WHEN $3::text IN ('unknown', 'failed') THEN $6::timestamptz ELSE next_status_check_at END
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND status <> 'fiscalized'`,
@@ -376,7 +431,7 @@ async function markJobFailed(client, context, errorInfo) {
         if (context.job.payment_order_id && context.job.operation_type === 'sale') {
             await client.query(
                 `UPDATE payment_orders
-                    SET fiscal_status = $3,
+                    SET fiscal_status = $3::text,
                         updated_at = NOW()
                   WHERE id = $1
                     AND fiscal_profile_id = $2
@@ -387,7 +442,7 @@ async function markJobFailed(client, context, errorInfo) {
         if (context.job.payment_refund_id && context.job.operation_type === 'return') {
             await client.query(
                 `UPDATE payment_refunds
-                    SET fiscal_refund_status = $3
+                    SET fiscal_refund_status = $3::text
                   WHERE id = $1
                     AND fiscal_profile_id = $2
                     AND fiscal_refund_status <> 'returned'`,
@@ -491,12 +546,14 @@ async function runReceiptSaleJob(provider, context) {
 
     await provider.validateSale({
         providerOperationId: context.job.provider_operation_id,
+        providerRequestUuid: context.job.provider_operation_id,
         fiscalOperation: context.job,
         paymentOrder: context.job,
         items: context.items
     });
     const receipt = await provider.createSaleReceipt({
         providerOperationId: context.job.provider_operation_id,
+        providerRequestUuid: context.job.provider_operation_id,
         fiscalOperation: context.job,
         paymentOrder: context.job,
         items: context.items
@@ -507,28 +564,29 @@ async function runReceiptSaleJob(provider, context) {
 async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
     return withTransaction(dbPool, async client => {
         const context = await loadJobContext(client, job);
+        const effectiveProvider = provider?.createForContext ? provider.createForContext(context) : provider;
         try {
             let result;
             if (context.job.job_type === 'receipt_sell' || context.job.job_type === 'receipt_status_lookup') {
-                result = await runReceiptSaleJob(provider, context);
+                result = await runReceiptSaleJob(effectiveProvider, context);
                 await markFiscalized(client, context, result.receipt);
                 await markJobSucceeded(client, context.job);
                 return { ok: true, jobId: Number(context.job.id), source: result.source };
             }
             if (context.job.job_type === 'receipt_return') {
-                result = await runReceiptReturnJob(provider, context);
+                result = await runReceiptReturnJob(effectiveProvider, context);
                 await markFiscalized(client, context, result.receipt);
                 await markJobSucceeded(client, context.job);
                 return { ok: true, jobId: Number(context.job.id), source: result.source };
             }
             if (context.job.job_type === 'service_receipt') {
-                result = await runServiceReceiptJob(provider, context);
+                result = await runServiceReceiptJob(effectiveProvider, context);
                 await markFiscalized(client, context, result.receipt);
                 await markJobSucceeded(client, context.job);
                 return { ok: true, jobId: Number(context.job.id), source: result.source };
             }
             if (context.job.job_type === 'shift_open' || context.job.job_type === 'shift_close') {
-                result = await runShiftJob(provider, context);
+                result = await runShiftJob(effectiveProvider, context);
                 return markShiftJobSucceeded(client, context, result);
             }
             throw new PaymentOutboxWorkerError('payment_outbox_job_type_not_supported', 'Payment outbox job type is not supported by this worker', { retryable: false });
@@ -542,15 +600,32 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
 
 async function processPaymentOutboxJobs({
     dbPool = pool,
-    provider = createUnavailableCheckboxProvider(),
+    provider = null,
     batchSize = DEFAULT_BATCH_SIZE,
     lockedBy = workerId(),
     lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS
 } = {}) {
-    const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize, lockedBy, lockExpiryMs }));
+    const effectiveProvider = provider || createCheckboxProviderFactory();
+    let eligibleFiscalProfileIds = null;
+    if (!provider && effectiveProvider?.getEligibleFiscalProfileIds) {
+        eligibleFiscalProfileIds = await effectiveProvider.getEligibleFiscalProfileIds(dbPool);
+        if (!eligibleFiscalProfileIds.length) {
+            return {
+                claimed: 0,
+                succeeded: 0,
+                failed: 0,
+                skipped: true,
+                reason: effectiveProvider.isEnabled && !effectiveProvider.isEnabled()
+                    ? 'checkbox_integration_disabled'
+                    : 'checkbox_runtime_config_unavailable',
+                results: []
+            };
+        }
+    }
+    const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize, lockedBy, lockExpiryMs, eligibleFiscalProfileIds }));
     const results = [];
     for (const job of claimed) {
-        results.push(await processOnePaymentOutboxJob({ dbPool, provider, job }));
+        results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job }));
     }
     return {
         claimed: claimed.length,

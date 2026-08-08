@@ -31,7 +31,7 @@ test('mapper produces official Checkbox receipt/service payload shapes without f
     providerRequestUuid: crypto.randomUUID(),
     tender: 'card_terminal_manual',
     amountMinor: '12345',
-    items: [{ code: 'park-ticket', name: 'Park ticket', priceMinor: '12345', quantityMillis: 1000, taxReference: '7' }]
+    items: [{ code: 'park-ticket', name: 'Park ticket', priceMinor: '12345', quantityMillis: 1000, taxCode: '7' }]
   });
   assert.equal(sale.goods[0].good.price, 12345);
   assert.deepEqual(sale.goods[0].good.tax, ['7']);
@@ -82,7 +82,7 @@ test('client maps exact official endpoints, headers and timeout/lookup recovery 
 test('webhook signature and replay helper accepts first event, flags replay and rejects conflict', () => {
   const secret = 'sandbox-webhook-secret';
   const rawBody = Buffer.from(JSON.stringify({ id: crypto.randomUUID(), status: 'DONE' }));
-  const signature = `sha256=${signCheckboxWebhookBody(rawBody, secret)}`;
+  const signature = signCheckboxWebhookBody(rawBody, secret);
   assert.equal(verifyCheckboxWebhookSignature({ rawBody, signatureHeader: signature, signingSecret: secret }), true);
   const guard = new WebhookReplayGuard();
   const eventId = crypto.randomUUID();

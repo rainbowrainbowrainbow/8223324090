@@ -20,11 +20,23 @@ const {
     getOperationalReport,
     loadPilotRegisterState
 } = require('../services/payments/cashierOperationsService');
+const { isCashierProEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
 
 router.use(authenticateToken);
 
 function idempotencyKeyFromRequest(req) {
     return req.get('Idempotency-Key') || req.get('idempotency-key') || '';
+}
+
+function requireCashierProEnabled(req, res, next) {
+    if (!isCashierProEnabled(process.env)) {
+        return res.status(403).json({
+            success: false,
+            code: 'cashier_pro_disabled',
+            error: 'Cashier PRO operations are disabled'
+        });
+    }
+    return next();
 }
 
 router.post('/admission-ticket/orders', requireAction('payments.create'), async (req, res) => {
@@ -47,7 +59,12 @@ router.get('/orders/:orderId', requireAction('payments.view'), async (req, res) 
             user: req.user,
             orderId: req.params.orderId
         });
-        return res.status(200).json({ success: true, ...result });
+        return res.status(200).json({
+            success: true,
+            ...result,
+            checkboxIntegrationEnabled: isCheckboxIntegrationEnabled(process.env),
+            cashierProEnabled: isCashierProEnabled(process.env)
+        });
     } catch (error) {
         const response = paymentErrorResponse(error);
         return res.status(response.status).json(response.body);
@@ -83,7 +100,7 @@ router.get('/pilot-register-state', requireAction('payments.view'), async (req, 
         return res.status(response.status).json(response.body);
     }
 });
-router.post('/service-in', requireAction('fiscal.service_in'), async (req, res) => {
+router.post('/service-in', requireCashierProEnabled, requireAction('fiscal.service_in'), async (req, res) => {
     try {
         const result = await createServiceIn({
             user: req.user,
@@ -97,7 +114,7 @@ router.post('/service-in', requireAction('fiscal.service_in'), async (req, res) 
     }
 });
 
-router.post('/service-out', requireAction('fiscal.service_out.request'), async (req, res) => {
+router.post('/service-out', requireCashierProEnabled, requireAction('fiscal.service_out.request'), async (req, res) => {
     try {
         const result = await createServiceOutRequest({
             user: req.user,
@@ -111,7 +128,7 @@ router.post('/service-out', requireAction('fiscal.service_out.request'), async (
     }
 });
 
-router.post('/service-out/:operationId/approve', requireAction('fiscal.service_out.approve'), async (req, res) => {
+router.post('/service-out/:operationId/approve', requireCashierProEnabled, requireAction('fiscal.service_out.approve'), async (req, res) => {
     try {
         const result = await approveServiceOut({
             user: req.user,
@@ -126,7 +143,7 @@ router.post('/service-out/:operationId/approve', requireAction('fiscal.service_o
     }
 });
 
-router.post('/orders/:orderId/refund', requireAction('fiscal.refund'), async (req, res) => {
+router.post('/orders/:orderId/refund', requireCashierProEnabled, requireAction('fiscal.refund'), async (req, res) => {
     try {
         const result = await createFullRefund({
             user: req.user,
@@ -141,7 +158,7 @@ router.post('/orders/:orderId/refund', requireAction('fiscal.refund'), async (re
     }
 });
 
-router.post('/shifts/:shiftId/reconcile', requireAction('fiscal.reconcile'), async (req, res) => {
+router.post('/shifts/:shiftId/reconcile', requireCashierProEnabled, requireAction('fiscal.reconcile'), async (req, res) => {
     try {
         const result = await createReconciliationRevision({
             user: req.user,
@@ -156,7 +173,7 @@ router.post('/shifts/:shiftId/reconcile', requireAction('fiscal.reconcile'), asy
     }
 });
 
-router.post('/shifts/:shiftId/close', requireAction('fiscal.shift.close'), async (req, res) => {
+router.post('/shifts/:shiftId/close', requireCashierProEnabled, requireAction('fiscal.shift.close'), async (req, res) => {
     try {
         const result = await closeShift({
             user: req.user,
@@ -171,7 +188,7 @@ router.post('/shifts/:shiftId/close', requireAction('fiscal.shift.close'), async
     }
 });
 
-router.post('/shifts/:shiftId/auto-close', requireAction('fiscal.shift.close'), async (req, res) => {
+router.post('/shifts/:shiftId/auto-close', requireCashierProEnabled, requireAction('fiscal.shift.close'), async (req, res) => {
     try {
         const result = await autoCloseShift({
             user: req.user,
@@ -186,7 +203,7 @@ router.post('/shifts/:shiftId/auto-close', requireAction('fiscal.shift.close'), 
     }
 });
 
-router.get('/shifts/:shiftId/report', requireAction('fiscal.audit.view'), async (req, res) => {
+router.get('/shifts/:shiftId/report', requireCashierProEnabled, requireAction('fiscal.audit.view'), async (req, res) => {
     try {
         const result = await getOperationalReport({
             user: req.user,

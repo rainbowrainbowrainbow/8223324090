@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const CHECKBOX_WEBHOOK_SIGNATURE_HEADER = 'x-eventgenix-signature';
+const CHECKBOX_WEBHOOK_SIGNATURE_HEADER = 'x-request-signature';
 const CHECKBOX_WEBHOOK_SIGNATURE_ALGORITHM = 'sha256';
 
 class CheckboxWebhookAuthError extends Error {
@@ -15,17 +15,9 @@ class CheckboxWebhookAuthError extends Error {
     }
 }
 
-function normalizeSignatureHeader(value) {
-    const text = String(value || '').trim();
-    if (!text) return '';
-    return text.startsWith(`${CHECKBOX_WEBHOOK_SIGNATURE_ALGORITHM}=`)
-        ? text.slice(`${CHECKBOX_WEBHOOK_SIGNATURE_ALGORITHM}=`.length)
-        : text;
-}
-
-function timingSafeHexEqual(left, right) {
-    const a = Buffer.from(String(left || ''), 'hex');
-    const b = Buffer.from(String(right || ''), 'hex');
+function timingSafeBase64Equal(left, right) {
+    const a = Buffer.from(String(left || ''), 'base64');
+    const b = Buffer.from(String(right || ''), 'base64');
     if (a.length === 0 || b.length === 0 || a.length !== b.length) return false;
     return crypto.timingSafeEqual(a, b);
 }
@@ -41,19 +33,19 @@ function signCheckboxWebhookBody(rawBody, signingSecret) {
     return crypto
         .createHmac(CHECKBOX_WEBHOOK_SIGNATURE_ALGORITHM, secret)
         .update(rawBody)
-        .digest('hex');
+        .digest('base64');
 }
 
 function verifyCheckboxWebhookSignature({ rawBody, signatureHeader, signingSecret }) {
     if (!Buffer.isBuffer(rawBody)) {
         throw new CheckboxWebhookAuthError('checkbox_webhook_raw_body_missing', 'Raw webhook body is required', { status: 400 });
     }
-    const provided = normalizeSignatureHeader(signatureHeader);
+    const provided = String(signatureHeader || '').trim();
     if (!provided) {
         throw new CheckboxWebhookAuthError('checkbox_webhook_signature_missing', 'Checkbox webhook signature is required', { status: 401 });
     }
     const expected = signCheckboxWebhookBody(rawBody, signingSecret);
-    if (!timingSafeHexEqual(provided, expected)) {
+    if (!timingSafeBase64Equal(provided, expected)) {
         throw new CheckboxWebhookAuthError('checkbox_webhook_signature_invalid', 'Checkbox webhook signature is invalid', { status: 401 });
     }
     return true;
@@ -63,7 +55,7 @@ module.exports = {
     CHECKBOX_WEBHOOK_SIGNATURE_ALGORITHM,
     CHECKBOX_WEBHOOK_SIGNATURE_HEADER,
     CheckboxWebhookAuthError,
-    normalizeSignatureHeader,
     signCheckboxWebhookBody,
+    timingSafeBase64Equal,
     verifyCheckboxWebhookSignature
 };

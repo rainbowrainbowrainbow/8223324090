@@ -35,6 +35,7 @@ function baseBinding(overrides = {}) {
         register_fiscal_location_id: 30,
         user_id: 50,
         status: 'active',
+        capability_scope: PAYMENT_FISCAL_CAPABILITIES,
         ...overrides
     };
 }

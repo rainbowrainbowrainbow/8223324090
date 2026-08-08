@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.86 - Доступи: завершений permission contract
+
+### Release / Versioning / (08.08.2026) [codex]
+- **Permission contract завершено** - усі активні page/action permissions мають машинозчитуваний executable test contract, який валить CI при unknown, uncovered або deprecated-in-UI ключах.
+- **CI перевіряє фактичний enforcement** - fast contract/unit, PostgreSQL integration і browser jobs підтверджують frontend/backend parity, `/api/auth/permissions`, allow/deny/relogin matrix, HR scenario та access editor behavior.
+- **Production safety зафіксована тестами** - mutation matrix запускається тільки в isolated PostgreSQL, production Railway hostname і production-like database targets fail-closed; реальні production users/data не переписуються.
+
+---
+
 ## v0.80.85 - Ліди: стабільний вхід у воронку
 
 ### Release / Versioning / (07.08.2026) [codex]

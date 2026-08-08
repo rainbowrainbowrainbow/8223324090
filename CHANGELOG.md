@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.88 - Checkbox thin MVP integration
+
+### Release / Versioning / (08.08.2026) [codex]
+- **Checkbox thin MVP integration** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.87 - My Day: впливи, теги й AI-розмітка
 
 ### My Day / (08.08.2026) [codex]

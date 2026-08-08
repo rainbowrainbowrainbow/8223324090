@@ -57,7 +57,7 @@ test('My Day AI classifier uses direct OpenAI Responses API with strict impacts-
     assert.equal(body.text.format.schema.additionalProperties, false);
     assert.deepEqual(body.text.format.schema.required, ['impactIds', 'confidence', 'reason']);
     assert.equal(body.text.format.schema.properties.impactIds.maxItems, 3);
-    assert.equal(body.text.format.schema.properties.impactIds.uniqueItems, true);
+    assert.equal(Object.hasOwn(body.text.format.schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(body.text.format.schema.properties.reason.maxLength, 180);
 
     const serializedInput = JSON.stringify(body.input);
@@ -86,6 +86,12 @@ test('My Day AI classifier refuses invented impacts, incomplete JSON, extra tags
     });
     assert.equal(withTags.ok, false);
     assert.equal(withTags.code, 'MY_DAY_AI_INVALID_RESPONSE');
+
+    const duplicateImpacts = await service.classifyMyDayTask(base, {
+        aiClient: async () => ({ ok: true, provider: 'openai', text: '{"impactIds":[12,12],"confidence":0.8,"reason":"duplicate"}' })
+    });
+    assert.equal(duplicateImpacts.ok, false);
+    assert.equal(duplicateImpacts.code, 'MY_DAY_VALIDATION_ERROR');
 
     const invalid = await service.classifyMyDayTask(base, {
         aiClient: async () => ({ ok: true, provider: 'openai', text: 'not json' })

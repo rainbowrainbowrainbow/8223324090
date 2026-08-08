@@ -28,7 +28,6 @@ const MY_DAY_CLASSIFICATION_JSON_SCHEMA = Object.freeze({
         impactIds: {
             type: 'array',
             maxItems: MAX_IMPACTS_PER_TASK,
-            uniqueItems: true,
             items: { type: 'integer' }
         },
         confidence: {

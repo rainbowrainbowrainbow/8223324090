@@ -37,23 +37,29 @@ function mapReceiptGood(item = {}) {
     };
 }
 
-function mapPayment({ tender, amountMinor }) {
-    const value = asPositiveMinor(amountMinor, 'checkbox_payment_amount_required');
+function mapPayment({ tender, amountMinor, receivedAmountMinor = null }) {
+    const value = asPositiveMinor(
+        tender === 'cash' && receivedAmountMinor != null ? receivedAmountMinor : amountMinor,
+        'checkbox_payment_amount_required'
+    );
     if (tender === 'card_terminal_manual' || tender === 'card_terminal' || tender === 'cashless') {
         return { type: 'CASHLESS', value, label: 'Картка' };
     }
     return { type: 'CASH', value, label: 'Готівка' };
 }
 
-function mapSaleReceipt({ providerRequestUuid, items = [], tender = 'cash', amountMinor, callbackUrl = null, context = {} }) {
+function mapSaleReceipt({ providerRequestUuid, items = [], tender = 'cash', amountMinor, receivedAmountMinor = null, callbackUrl = null, context = {} }) {
     const id = requiredText(providerRequestUuid, 'checkbox_provider_request_uuid_required');
     const goods = items.map(mapReceiptGood);
     if (!goods.length) throw new CheckboxClientError('checkbox_goods_required', 'Checkbox sale requires at least one immutable item', { status: 400 });
     const total = amountMinor || goods.reduce((sum, item) => sum + BigInt(item.good.price) * BigInt(item.quantity) / 1000n, 0n).toString();
+    if (tender === 'cash' && receivedAmountMinor != null && BigInt(String(receivedAmountMinor)) < BigInt(String(total))) {
+        throw new CheckboxClientError('checkbox_cash_received_less_than_total', 'Cash payment received amount must be at least the order total', { status: 422, retryable: false });
+    }
     const payload = {
         id,
         goods,
-        payments: [mapPayment({ tender, amountMinor: total })],
+        payments: [mapPayment({ tender, amountMinor: total, receivedAmountMinor })],
         context: { eventgenix: true, ...context }
     };
     if (callbackUrl) payload.callback_url = callbackUrl;

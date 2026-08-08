@@ -565,7 +565,7 @@ test('cash payment order uses server admission snapshot and ignores client prici
     );
 });
 
-test('server source identity makes admission order replay logical across reloads', async () => {
+test('server source identity creates separate standalone walk-in sales for identical quotes', async () => {
     const db = new FakePaymentDb();
     const body = { tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } };
 
@@ -587,9 +587,10 @@ test('server source identity makes admission order replay logical across reloads
     });
 
     assert.equal(first.replayed, false);
-    assert.equal(second.replayed, true);
-    assert.equal(second.logicalReplay, true);
-    assert.equal(db.orders.length, 1);
+    assert.equal(second.replayed, false);
+    assert.notEqual(first.order.sourceId, second.order.sourceId);
+    assert.match(first.order.sourceId, /^walkin_sale_[0-9a-f-]{36}$/);
+    assert.equal(db.orders.length, 2);
 });
 
 test('client-controlled sourceId is rejected before order creation', async () => {
@@ -727,7 +728,8 @@ test('manual card terminal confirmation stores only operator reference and no ca
     });
 
     assert.equal(result.order.status, 'payment_recorded');
-    assert.equal(db.attempts[0].provider_payment_reference, 'terminal-ref-123');
+    assert.equal(db.attempts[0].provider_payment_reference, null);
+    assert.equal(db.attempts[0].request_snapshot.terminal_reference, 'terminal-ref-123');
     assert.equal(JSON.stringify(db.attempts).includes('cardMask'), false);
 
     const badOrder = db.seedOrder({ id: 99, payment_method: 'card_terminal', total_amount_minor: '50000' });

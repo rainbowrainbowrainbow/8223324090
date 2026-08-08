@@ -32,8 +32,8 @@ function createCheckboxWebhookRouter({
                 signatureHeader: req.get(CHECKBOX_WEBHOOK_SIGNATURE_HEADER),
                 signingSecret
             });
-            const result = await webhookHandler({ rawBody, headers: req.headers });
-            return res.status(result.replayed ? 200 : 202).json({ success: true, ...result });
+            await webhookHandler({ rawBody, headers: req.headers });
+            return res.status(200).json({ ok: true });
         } catch (error) {
             if (error instanceof CheckboxWebhookAuthError) {
                 return res.status(error.status).json({ success: false, code: error.code, error: error.message });

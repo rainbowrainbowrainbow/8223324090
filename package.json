@@ -155,8 +155,11 @@
     "smoke:zrs:write": "node scripts/live-zrs-write-smoke.js",
     "smoke:cashier-payments": "npx -y -p playwright node tests/browser/cashier-payments-browser-smoke.js",
     "test:integration:checkbox-park-cashier-smoke:isolated": "node scripts/run-isolated-postgres-tests.js cashier-smoke",
+    "test:integration:checkbox-park-config:isolated": "node scripts/run-isolated-postgres-tests.js checkbox-config",
+    "test:integration:checkbox-ui-real:isolated": "npx --yes --package playwright node scripts/run-isolated-postgres-tests.js checkbox-ui-real",
     "smoke:checkbox:sandbox": "node scripts/checkbox-sandbox-smoke.js",
-    "configure:checkbox:park": "node scripts/configure-checkbox-park-pilot.js"
+    "configure:checkbox:park": "node scripts/configure-checkbox-park-pilot.js",
+    "checkbox:outbox-recovery": "node scripts/checkbox-outbox-recovery.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

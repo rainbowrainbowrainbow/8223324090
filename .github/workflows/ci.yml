@@ -256,3 +256,9 @@ jobs:
 
       - name: Run cashier payment UI smoke
         run: npm run smoke:cashier-payments
+
+      - name: Run cashier payment real routes PostgreSQL browser smoke
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_checkbox_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:checkbox-ui-real:isolated

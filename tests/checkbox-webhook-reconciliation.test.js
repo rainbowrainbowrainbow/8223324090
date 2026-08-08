@@ -84,8 +84,8 @@ describe('Checkbox webhook route auth boundary', () => {
         await withWebhookApp(async ({ baseUrl, calls }) => {
             const body = JSON.stringify({ event_id: 'evt-1', provider_operation_id: 'op-1' });
             const result = await postRaw(baseUrl, body, signed(body));
-            assert.equal(result.status, 202);
-            assert.equal(result.body.success, true);
+            assert.equal(result.status, 200);
+            assert.equal(result.body.ok, true);
             assert.equal(calls.length, 1);
             assert.equal(Buffer.isBuffer(calls[0].rawBody), true);
             assert.equal(calls[0].rawBody.toString('utf8'), body);
@@ -203,6 +203,26 @@ class FakeWebhookClient {
 }
 
 describe('Checkbox webhook event handling', () => {
+    it('extracts official nested receipt payload identity and queues canonical polling', async () => {
+        const dbPool = new FakeWebhookDb();
+        const body = Buffer.from(JSON.stringify({
+            event_id: 'evt-nested',
+            event_type: 'receipt.done',
+            receipt: {
+                id: 'op-1',
+                status: 'DONE',
+                type: 'SELL',
+                context: { fiscal_profile_id: 7 },
+                shift: { id: 'shift-1' }
+            }
+        }));
+        const result = await handleCheckboxWebhook({ dbPool, rawBody: body, headers: {} });
+        assert.equal(result.replayed, false);
+        assert.equal(result.queued, true);
+        assert.equal(dbPool.events[0].related_provider_operation_id, 'op-1');
+        assert.equal(dbPool.jobs[0].job_type, 'receipt_status_lookup');
+    });
+
     it('deduplicates repeated events by provider event id and payload hash', async () => {
         const dbPool = new FakeWebhookDb();
         const body = Buffer.from(JSON.stringify({ event_id: 'evt-1', provider_operation_id: 'op-1', status: 'done' }));
@@ -265,7 +285,7 @@ class FakeWorkerDb {
         this.clients = [];
     }
 
-    static oneJob({ id = 1, status = 'queued', attempts = 0, maxAttempts = 3, operationStatus = 'pending', operationId = 'op-1' } = {}) {
+    static oneJob({ id = 1, status = 'queued', attempts = 0, maxAttempts = 3, operationStatus = 'pending', operationId = 'op-1', externalStage = null, shiftStatus = 'open', providerShiftId = 'shift-1' } = {}) {
         return new FakeWorkerDb({
             jobs: [{
                 id,
@@ -279,7 +299,8 @@ class FakeWorkerDb {
                 priority: 10,
                 next_run_at: new Date(Date.now() - 1000).toISOString(),
                 locked_at: status === 'claimed' ? new Date(Date.now() - 10 * 60 * 1000).toISOString() : null,
-                locked_by: status === 'claimed' ? 'stale-worker' : null
+                locked_by: status === 'claimed' ? 'stale-worker' : null,
+                payload: externalStage ? { external_stage: externalStage } : {}
             }],
             operations: [{
                 id: 501 + id,
@@ -289,7 +310,9 @@ class FakeWorkerDb {
                 operation_type: 'sale',
                 provider_operation_id: operationId,
                 provider_status: null,
-                request_snapshot: {}
+                fiscal_shift_status: shiftStatus,
+                provider_shift_id: providerShiftId,
+                request_snapshot: externalStage ? { external_stage: externalStage } : {}
             }],
             orders: [{
                 id: 301 + id,
@@ -325,12 +348,20 @@ class FakeWorkerClient {
     constructor(db) {
         this.db = db;
         this.queries = [];
+        this.inTransaction = false;
     }
 
     async query(sql, params = []) {
         this.queries.push({ sql, params });
         const normalized = sql.replace(/\s+/g, ' ').trim();
-        if (normalized === 'BEGIN' || normalized === 'COMMIT' || normalized === 'ROLLBACK') return { rows: [] };
+        if (normalized === 'BEGIN') {
+            this.inTransaction = true;
+            return { rows: [] };
+        }
+        if (normalized === 'COMMIT' || normalized === 'ROLLBACK') {
+            this.inTransaction = false;
+            return { rows: [] };
+        }
 
         if (normalized.startsWith('WITH candidate_jobs AS')) {
             const limit = params[1];
@@ -359,6 +390,11 @@ class FakeWorkerClient {
                     operation_type: operation?.operation_type,
                     provider_operation_id: operation?.provider_operation_id,
                     provider_status: operation?.provider_status,
+                    provider_register_id: 'register-1',
+                    provider_cashier_id: 'cashier-1',
+                    provider_organization_id: 'org-1',
+                    fiscal_shift_status: operation?.fiscal_shift_status || 'open',
+                    provider_shift_id: operation?.provider_shift_id || 'shift-1',
                     fiscal_request_snapshot: operation?.request_snapshot,
                     payment_order_status: order?.status,
                     payment_status: order?.payment_status,
@@ -380,6 +416,39 @@ class FakeWorkerClient {
             operation.status = 'fiscalized';
             operation.provider_status = params[2];
             operation.response_snapshot = JSON.parse(params[3]);
+            return { rows: [] };
+        }
+
+        if (normalized.startsWith('UPDATE payment_outbox_jobs') && normalized.includes("SET status = 'running'")) {
+            const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1] && row.locked_by === params[2] && row.attempts === params[3]);
+            if (job && ['claimed', 'running'].includes(job.status)) {
+                job.status = 'running';
+                return { rows: [{ id: job.id }] };
+            }
+            return { rows: [] };
+        }
+
+        if (normalized.startsWith('SELECT id FROM payment_outbox_jobs') && normalized.includes('FOR UPDATE')) {
+            const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1] && row.locked_by === params[2] && row.attempts === params[3] && ['claimed', 'running'].includes(row.status));
+            return { rows: job ? [{ id: job.id }] : [] };
+        }
+
+        if (normalized.startsWith('UPDATE payment_outbox_jobs') && normalized.includes('payload = payload || $3::jsonb')) {
+            const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
+            if (job) {
+                job.payload = { ...(job.payload || {}), ...JSON.parse(params[2]) };
+                if (normalized.includes("status = CASE WHEN status = 'claimed'")) {
+                    if (job.status === 'claimed') job.status = 'running';
+                }
+            }
+            return { rows: [] };
+        }
+
+        if (normalized.startsWith('UPDATE fiscal_operations') && normalized.includes('request_snapshot = request_snapshot || $3::jsonb')) {
+            const operation = this.db.operations.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
+            if (operation) {
+                operation.request_snapshot = { ...(operation.request_snapshot || {}), ...JSON.parse(params[2]) };
+            }
             return { rows: [] };
         }
 
@@ -413,6 +482,10 @@ class FakeWorkerClient {
             job.locked_by = null;
             job.last_error_code = null;
             job.last_error_message = null;
+            return { rows: [] };
+        }
+
+        if (normalized.startsWith('INSERT INTO fiscal_audit_events')) {
             return { rows: [] };
         }
 
@@ -457,7 +530,14 @@ function createProvider({ lookupReceipts = new Map(), failValidate = null, timeo
         },
         async createSaleReceipt({ providerOperationId, paymentOrder }) {
             calls.create.push(providerOperationId);
-            const receipt = { id: `receipt-${providerOperationId}`, status: 'fiscalized', totalAmountMinor: paymentOrder.total_amount_minor };
+            const receipt = {
+                id: providerOperationId,
+                status: 'DONE',
+                receiptType: 'SELL',
+                totalAmountMinor: paymentOrder.total_amount_minor,
+                providerRegisterId: 'register-1',
+                providerCashierId: 'cashier-1'
+            };
             lookupReceipts.set(providerOperationId, receipt);
             if (timeoutAfterSuccess) {
                 const error = new Error('fetch timeout token=should-not-leak');
@@ -479,7 +559,7 @@ describe('payment outbox worker reconciliation', () => {
             }
         };
         await claimPaymentOutboxJobs(client, { batchSize: 3, lockedBy: 'worker-a', lockExpiryMs: 60000 });
-        assert.match(queries[0].sql, /FOR UPDATE SKIP LOCKED/);
+        assert.match(queries[0].sql, /FOR UPDATE(?: OF job)? SKIP LOCKED/);
         assert.match(queries[0].sql, /LIMIT \$2/);
         assert.equal(queries[0].params[1], 3);
         assert.equal(queries[0].params[2], 'worker-a');
@@ -514,6 +594,37 @@ describe('payment outbox worker reconciliation', () => {
         assert.equal(provider.calls.create[0], 'op-lock');
     });
 
+    it('does not send sale while local provider shift is not OPENED', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-wait-shift', shiftStatus: 'opening', providerShiftId: null });
+        const provider = createProvider();
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-shift-wait' });
+        assert.equal(result.failed, 1);
+        assert.equal(result.results[0].error.code, 'shift_not_provider_opened');
+        assert.equal(provider.calls.validate.length, 0);
+        assert.equal(provider.calls.create.length, 0);
+        assert.equal(dbPool.operations[0].status, 'failed');
+    });
+
+    it('does not hold DB transaction while provider HTTP work is running', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-no-db-tx' });
+        const provider = createProvider();
+        const assertNoTransaction = () => {
+            assert.equal(dbPool.clients.some(client => client.inTransaction), false);
+        };
+        const originalValidate = provider.validateSale;
+        const originalCreate = provider.createSaleReceipt;
+        provider.validateSale = async input => {
+            assertNoTransaction();
+            return originalValidate(input);
+        };
+        provider.createSaleReceipt = async input => {
+            assertNoTransaction();
+            return originalCreate(input);
+        };
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-no-db-tx' });
+        assert.equal(result.succeeded, 1);
+    });
+
     it('backs off retryable failures and dead-letters exhausted jobs with sanitized errors', async () => {
         const dbPool = FakeWorkerDb.oneJob({ id: 1, maxAttempts: 1, operationId: 'op-dead' });
         const provider = createProvider({ failValidate: new PaymentOutboxWorkerError('provider_500', 'provider failed api_key=plain-secret', { retryable: true }) });
@@ -526,7 +637,7 @@ describe('payment outbox worker reconciliation', () => {
     });
 
     it('does not repeat sale when an unknown operation has no provider receipt yet', async () => {
-        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationStatus: 'unknown', operationId: 'op-unknown' });
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationStatus: 'unknown', operationId: 'op-unknown', externalStage: 'sale_submit' });
         const provider = createProvider();
         const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-unknown' });
         assert.equal(result.failed, 1);
@@ -550,7 +661,7 @@ describe('payment outbox worker reconciliation', () => {
         assert.equal(secondProvider.calls.lookup.length, 1);
         assert.equal(secondProvider.calls.create.length, 0);
         assert.equal(dbPool.receipts.length, 1);
-        assert.equal(dbPool.receipts[0].provider_receipt_id, 'receipt-op-timeout');
+        assert.equal(dbPool.receipts[0].provider_receipt_id, 'op-timeout');
         assert.equal(dbPool.operations[0].status, 'fiscalized');
     });
 });

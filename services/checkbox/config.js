@@ -44,18 +44,56 @@ function readRefEnv(env, ref, suffix) {
     return String(env[`${prefix}_${suffix}`] || '').trim();
 }
 
+function assertNoCredentialRefCollisions(refs = []) {
+    const byPrefix = new Map();
+    for (const ref of refs.map(normalizeCredentialRef).filter(Boolean)) {
+        const prefix = credentialEnvPrefix(ref);
+        if (!prefix) continue;
+        const existing = byPrefix.get(prefix);
+        if (existing && existing !== ref) {
+            throw new CheckboxClientError('checkbox_credential_ref_collision', 'Checkbox credential references resolve to the same environment prefix', {
+                status: 503,
+                retryable: false,
+                details: { refs: [existing, ref], prefix }
+            });
+        }
+        byPrefix.set(prefix, ref);
+    }
+}
+
+function assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost = false } = {}) {
+    let parsed;
+    try { parsed = new URL(baseUrl); }
+    catch {
+        throw new CheckboxClientError('checkbox_runtime_base_url_invalid', 'Checkbox runtime base URL must be a valid URL', { status: 503, retryable: false });
+    }
+    const host = parsed.hostname.toLowerCase();
+    const isLocalHttp = allowLocalMockHost === true && parsed.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(host);
+    const isOfficialHttps = parsed.protocol === 'https:' && (host === 'api.checkbox.in.ua' || host === 'api.checkbox.ua' || host.endsWith('.checkbox.in.ua') || host.endsWith('.checkbox.ua'));
+    if (!isLocalHttp && !isOfficialHttps) {
+        throw new CheckboxClientError('checkbox_runtime_base_url_not_allowed', 'Checkbox runtime base URL must be an official HTTPS Checkbox host; local HTTP is allowed only through explicit test injection', {
+            status: 503,
+            retryable: false,
+            details: { host, protocol: parsed.protocol }
+        });
+    }
+    return parsed.origin;
+}
+
 function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRef = credentialRef, deviceRef = credentialRef } = {}) {
     const cashierRef = normalizeCredentialRef(credentialRef);
     const registerRef = normalizeCredentialRef(licenseRef);
+    const deviceRuntimeRef = normalizeCredentialRef(deviceRef);
     if (!cashierRef && !registerRef) {
         throw new CheckboxClientError('checkbox_credential_ref_missing', 'Checkbox credential reference is required', { status: 503, retryable: false });
     }
-    const baseUrl = readRefEnv(env, registerRef || cashierRef, 'BASE_URL') || String(env.CHECKBOX_BASE_URL || '').trim();
-    const login = readRefEnv(env, cashierRef || registerRef, 'LOGIN') || String(env.CHECKBOX_LOGIN || '').trim();
-    const password = readRefEnv(env, cashierRef || registerRef, 'PASSWORD') || String(env.CHECKBOX_PASSWORD || '').trim();
-    const licenseKey = readRefEnv(env, registerRef || cashierRef, 'LICENSE_KEY') || String(env.CHECKBOX_LICENSE_KEY || '').trim();
-    const accessKey = readRefEnv(env, registerRef || cashierRef, 'ACCESS_KEY') || String(env.CHECKBOX_ACCESS_KEY || '').trim() || null;
-    const deviceId = readRefEnv(env, deviceRef || registerRef || cashierRef, 'DEVICE_ID') || String(env.CHECKBOX_DEVICE_ID || '').trim() || null;
+    assertNoCredentialRefCollisions([cashierRef, registerRef, deviceRuntimeRef]);
+    const baseUrl = readRefEnv(env, registerRef || cashierRef, 'BASE_URL');
+    const login = readRefEnv(env, cashierRef || registerRef, 'LOGIN');
+    const password = readRefEnv(env, cashierRef || registerRef, 'PASSWORD');
+    const licenseKey = readRefEnv(env, registerRef || cashierRef, 'LICENSE_KEY');
+    const accessKey = readRefEnv(env, registerRef || cashierRef, 'ACCESS_KEY') || null;
+    const deviceId = readRefEnv(env, deviceRuntimeRef || registerRef || cashierRef, 'DEVICE_ID') || null;
     const missing = [];
     if (!baseUrl) missing.push('BASE_URL');
     if (!login) missing.push('LOGIN');
@@ -68,8 +106,9 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
             details: { credentialRef: cashierRef || null, licenseRef: registerRef || null, missing }
         });
     }
+    const expectedIsTestRaw = String(env.CHECKBOX_EXPECT_IS_TEST || '').trim();
     return {
-        baseUrl: String(baseUrl).replace(/\/+$/, ''),
+        baseUrl: assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost: boolEnv(env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST) }).replace(/\/+$/, ''),
         login,
         password,
         licenseKey,
@@ -79,7 +118,8 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
         clientVersion: String(env.CHECKBOX_CLIENT_VERSION || DEFAULT_RUNTIME_CLIENT_VERSION).trim(),
         timeoutMs: Math.max(1000, Math.min(Number(env.CHECKBOX_TIMEOUT_MS || 15000), 60000)),
         credentialRef: cashierRef || null,
-        licenseRef: registerRef || null
+        licenseRef: registerRef || null,
+        expectedIsTest: expectedIsTestRaw ? boolEnv(expectedIsTestRaw) : null
     };
 }
 
@@ -153,6 +193,8 @@ module.exports = {
     DEFAULT_RUNTIME_CLIENT_NAME,
     DEFAULT_RUNTIME_CLIENT_VERSION,
     credentialEnvPrefix,
+    assertNoCredentialRefCollisions,
+    assertRuntimeBaseUrl,
     isCashierProEnabled,
     isCheckboxIntegrationEnabled,
     isCheckboxWebhookEnabled,
@@ -160,5 +202,6 @@ module.exports = {
     loadCheckboxRuntimeConfig,
     normalizeCredentialRef,
     publicConfigSummary,
-    assertSandboxBaseUrl
+    assertSandboxBaseUrl,
+    assertRuntimeBaseUrl
 };

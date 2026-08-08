@@ -7,12 +7,13 @@ Last reviewed: 2026-08-08.
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live version: `0.80.87`.
-- Live release label: `My Day: впливи, теги й AI-розмітка`.
-- Confirmed deploy source branch: `codex/my-day-impacts-only-v08086`.
-- Confirmed live commit: `7ea78f8ce3d3175c85538893ec92660b3951c622`.
-- Local worktree for this release: `.codex-temp/checkbox-thin-mvp-release`.
-- Local release branch: `codex/checkbox-thin-mvp-release`.
+- Live version before this Checkbox release pass: `0.80.91`.
+- Live release label before this Checkbox release pass: `My Day impact catalog hotfix`.
+- Confirmed deploy source branch: `codex/my-day-impacts-canonical-v08088`.
+- Confirmed live commit before this Checkbox release pass: `c01224030196bca80a27ca78dd5dfb83e29eabb0`.
+- Confirmed deploy source HEAD used for this worktree: `97515fe58015802d6e38164939b717e7f1e5501c` (`0.80.92`).
+- Local worktree for this hardening pass: `.codex-temp/checkbox-thin-mvp-current-v08092`.
+- Local hardening branch: `codex/checkbox-thin-mvp-current-v08092`.
 
 All follow-up implementation tasks must start from this confirmed deploy source or from a newer live source confirmed by the release staleness guard.
 
@@ -58,6 +59,10 @@ Cashier PRO is Phase 2 and must stay disabled separately. Phase 2 includes servi
 - No production Checkbox credentials, register IDs, webhook secrets, or provider PIN values may be committed, documented, logged, or stored as raw database values.
 - Real provider IDs are resolved through server-side configuration/mapping, not hardcoded code or fixtures.
 - A missing, inactive, ambiguous, or wrong mapping blocks checkout before money confirmation.
+- Park + middle pilot configuration is applied by `npm run configure:checkbox:park` in dry-run mode by default.
+- The operator CLI stores only logical credential refs and provider identifiers; raw login/password/license/access key values stay in environment variables outside the repository.
+- Register enablement is a separate `enable-register` mode and is allowed only after successful preflight.
+- Runtime credentials must use exact ref-specific `CHECKBOX_<REF>_*` environment variables. Global fallback credentials are intentionally unsupported.
 - Feature flags must fail closed in production-like environments.
 
 Required logical gates for follow-up tasks:
@@ -70,7 +75,7 @@ Required logical gates for follow-up tasks:
 
 ## Implemented / Incomplete / Phase 2
 
-| Area | Implemented in the Checkbox release worktree based on `7ea78f8...` | Incomplete before thin MVP activation | Phase 2 / Cashier PRO |
+| Area | Implemented in the Checkbox release worktree based on `97515fe...` | Incomplete before thin MVP activation | Phase 2 / Cashier PRO |
 | --- | --- | --- | --- |
 | Ledger schema | Additive fiscal/payment tables, BIGINT money, immutable item snapshots, idempotency constraints, explicit fiscal item mapping table | Production pilot mapping data still requires separate activation | Additional operational reporting and reconciliation revisions |
 | Payment workflow | Server-side order preview, cash/card manual confirmation, received/change snapshot, one local fiscal operation and outbox job | Real admission source activation and accountant-approved mapping data | Split/partial/prepayment not in scope |
@@ -99,16 +104,25 @@ Rules:
 
 ## Phase 1 Payment Flow
 
-1. Server creates an immutable admission order snapshot for `event_genix + middle`.
-2. Server resolves fiscal profile, FOP, register, item names, prices, and tax mapping.
-3. Cashier sees immutable items, total, CRM profile/FOP, register alias, and payment method.
-4. Cash path requires received amount and change preview.
-5. Card terminal path requires explicit confirmation that the physical terminal showed success and may store an optional terminal/report reference.
-6. In one database transaction, EventGenix locks the payment order, confirms the local payment, creates exactly one fiscal operation, creates exactly one outbox job, and commits.
-7. Checkbox HTTP calls happen only after commit.
-8. If Checkbox is unavailable or ambiguous, payment remains paid and fiscal status becomes pending/unknown. The system must lookup the provider status before any retry.
+1. Server creates an immutable standalone walk-in admission order snapshot for `event_genix + middle`.
+2. Each new customer sale receives a server-generated `walkin_sale_<uuid>` source identity. The admission quote fingerprint is kept only as a snapshot/integrity fingerprint and must not be used as the concrete payment order identity.
+3. Server resolves fiscal profile, FOP, register, item names, prices, and tax mapping.
+4. Cashier sees immutable items, total, CRM profile/FOP, register alias, and payment method.
+5. Cash path requires received amount and change preview.
+6. Card terminal path requires explicit confirmation that the physical terminal showed success and may store an optional terminal/report reference as metadata only.
+7. In one database transaction, EventGenix locks the payment order, confirms the local payment, creates exactly one fiscal operation, creates exactly one outbox job, and commits.
+8. Checkbox HTTP calls happen only after commit.
+9. If Checkbox is unavailable or ambiguous, payment remains paid and fiscal status becomes pending/unknown. The system must lookup the provider status before any retry.
 
 No split payments, partial payments, prepayments, subscriptions, deposits, online acquiring automation, or preschool payments are allowed in Phase 1.
+
+Idempotency rules:
+
+- Same `Idempotency-Key` plus the same request body returns the same order after server-side authorization.
+- Same `Idempotency-Key` plus a different body fails with conflict.
+- A new `Idempotency-Key` for a different walk-in customer creates a new sale even when ticket positions, tariff versions, amounts, and quote fingerprint are identical.
+- Idempotency replay is scoped by user, CRM profile, fiscal profile, location, register, and capability; it must not return another user's or another profile's order.
+- Unpaid draft orders may be explicitly cancelled with audit. Paid, pending, unknown, or fiscalized orders cannot be cancelled by the draft cancellation path.
 
 ## State Machines
 

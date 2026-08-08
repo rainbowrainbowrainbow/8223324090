@@ -99,8 +99,8 @@ function orderDetails(order) {
         },
         items: [{ id: 1, lineNumber: 1, itemType: 'admission_ticket', itemCode: 'regular_child', itemName: 'Вхідний квиток парку', unitPriceMinor: '50000', quantityMillis: '1000', totalAmountMinor: '50000', currency: 'UAH', taxReference: 'admission_tariff:smoke' }],
         fiscalOperation: order.paymentStatus === 'confirmed' ? { id: 8, fiscalShiftId: state.shift?.id || null, status: order.fiscalStatus, provider: 'checkbox', providerOperationId: 'provider-smoke', providerStatus: order.fiscalStatus } : null,
-        receipts: order.fiscalStatus === 'fiscalized' ? [{ id: 9, fiscalOperationId: 8, paymentOrderId: order.id, receiptType: 'sale', status: 'fiscalized', provider: 'checkbox', providerReceiptId: 'chk-smoke', providerTaxUrl: 'https://example.test/check', providerPdfUrl: 'https://example.test/check.pdf', providerQrUrl: 'https://example.test/qr', totalAmountMinor: '50000', currency: 'UAH', fiscalizedAt: '2026-08-04T10:00:01.000Z' }] : [],
-        artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://example.test/check', pdfUrl: 'https://example.test/check.pdf', qrUrl: 'https://example.test/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null }
+        receipts: order.fiscalStatus === 'fiscalized' ? [{ id: 9, fiscalOperationId: 8, paymentOrderId: order.id, receiptType: 'sale', status: 'fiscalized', provider: 'checkbox', providerReceiptId: 'chk-smoke', providerTaxUrl: 'https://api.checkbox.ua/check', providerPdfUrl: 'https://api.checkbox.ua/check.pdf', providerQrUrl: 'https://api.checkbox.ua/qr', totalAmountMinor: '50000', currency: 'UAH', fiscalizedAt: '2026-08-04T10:00:01.000Z' }] : [],
+        artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://api.checkbox.ua/check', pdfUrl: 'https://api.checkbox.ua/check.pdf', qrUrl: 'https://api.checkbox.ua/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null }
     };
 }
 
@@ -142,6 +142,10 @@ function registerStatePayload() {
         featureEnabled: true,
         checkboxIntegrationEnabled: true,
         cashierProEnabled: false,
+        mappingExists: true,
+        registerFeatureEnabled: true,
+        runtimeConfigResolvable: true,
+        readinessCode: 'ready',
         shift: state.shift,
         checklist: state.shift ? activeChecklist() : null
     };
@@ -298,9 +302,9 @@ async function run() {
         const current = state.orders.get(currentOrderId);
         await page.goto(`${base}/cashier-payments?orderId=${currentOrderId}`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#providerReceiptLinks:not(.hidden)');
-        assert.match(await page.getAttribute('#providerTaxUrl', 'href'), /example\.test\/check/);
-        assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /example\.test\/check\.pdf/);
-        assert.match(await page.getAttribute('#providerQrUrl', 'href'), /example\.test\/qr/);
+        assert.match(await page.getAttribute('#providerTaxUrl', 'href'), /api\.checkbox\.ua\/check/);
+        assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /api\.checkbox\.ua\/check\.pdf/);
+        assert.match(await page.getAttribute('#providerQrUrl', 'href'), /api\.checkbox\.ua\/qr/);
         await page.waitForSelector('#startNextOrderBtn:not(.hidden)');
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');

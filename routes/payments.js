@@ -3,6 +3,7 @@
 const router = require('express').Router();
 const { authenticateToken, requireAction } = require('../middleware/auth');
 const {
+    cancelDraftPaymentOrder,
     confirmPaymentOrder,
     createAdmissionTicketPaymentOrder,
     getPaymentOrderDetails,
@@ -44,7 +45,8 @@ router.post('/admission-ticket/orders', requireAction('payments.create'), async 
         const result = await createAdmissionTicketPaymentOrder({
             user: req.user,
             body: req.body || {},
-            idempotencyKey: idempotencyKeyFromRequest(req)
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            requireCheckboxIntegrationReady: true
         });
         return res.status(result.replayed ? 200 : 201).json({ success: true, ...result });
     } catch (error) {
@@ -77,6 +79,21 @@ router.post('/orders/:orderId/confirm', requireAction('payments.confirm_received
             user: req.user,
             orderId: req.params.orderId,
             body: req.body || {},
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            requireCheckboxIntegrationReady: true
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/orders/:orderId/cancel', requireAction('payments.create'), async (req, res) => {
+    try {
+        const result = await cancelDraftPaymentOrder({
+            user: req.user,
+            orderId: req.params.orderId,
             idempotencyKey: idempotencyKeyFromRequest(req)
         });
         return res.status(200).json({ success: true, ...result });

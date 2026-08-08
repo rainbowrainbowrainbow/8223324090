@@ -64,7 +64,7 @@ const Sidebar = (() => {
         ['/omni#accounts', 'Чати'],
         ['/reports', 'Звіти'],
         ['/finance', 'Фін'],
-        ['/cashier-payments', '\u041a\u0430\u0441\u0430'],
+        ['/cashier-payments', '\u041e\u043f\u043b\u0430\u0442\u0430 \u0442\u0430 \u0447\u0435\u043a'],
         ['/copilot', 'AI'],
         ['/staff', 'Графік'],
         ['/hr', 'Пульс'],
@@ -174,7 +174,7 @@ const Sidebar = (() => {
         { href: '/omni#accounts', icon: '🔌', label: 'Підключення чатів', access: 'omni', group: 'sales', businessModule: 'omni' },
         { href: '/reports',      icon: '📋', label: 'Звіти',         access: 'reports',        group: 'sales' },
         { href: '/finance',      icon: '📊', label: 'Фінанси та аналітика', access: 'finance', group: 'sales' },
-        { href: '/cashier-payments', icon: 'finance', label: '\u041a\u0430\u0441\u0430 \u043f\u0430\u0440\u043a\u0443', access: '/cashier-payments', group: 'sales', businessModule: 'center' },
+        { href: '/cashier-payments', icon: 'finance', label: '\u041e\u043f\u043b\u0430\u0442\u0430 \u0442\u0430 \u0447\u0435\u043a', access: '/cashier-payments', group: 'sales', businessModule: 'center' },
         { href: '/accounting-deposits', icon: 'finance', label: 'Перевірка завдатків', access: 'accounting_deposits', group: 'sales' },
         { href: '/copilot',      icon: '🤖', label: 'AI менеджер',   access: 'copilot',        group: 'sales' },
 

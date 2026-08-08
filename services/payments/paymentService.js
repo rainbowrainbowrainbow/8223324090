@@ -15,11 +15,16 @@ const {
     assertManualConfirmationBody,
     normalizeTender
 } = require('./paymentStateMachine');
+const {
+    isCheckboxIntegrationEnabled,
+    loadCheckboxRuntimeConfig
+} = require('../checkbox/config');
 
 const PILOT_CRM_PROFILE_KEY = 'event_genix';
 const PILOT_REGISTER_ALIAS = 'middle';
 const ORDER_SOURCE_TYPE = 'admission_ticket';
 const OUTBOX_JOB_TYPE = 'receipt_sell';
+const WALK_IN_SOURCE_PREFIX = 'walkin_sale';
 
 class PaymentServiceError extends Error {
     constructor(code, message, { status = 400, details = null } = {}) {
@@ -157,6 +162,9 @@ async function loadPilotFiscalMapping(client, { crmProfileKey = PILOT_CRM_PROFIL
              fr.id AS fiscal_register_id,
              fr.register_alias,
              fr.display_name AS register_display_name,
+             fr.provider,
+             fr.provider_register_id,
+             fr.provider_license_ref,
              fr.feature_enabled,
              fr.status AS fiscal_register_status
            FROM fiscal_profiles fp
@@ -195,16 +203,89 @@ async function findOrderByIdempotency(client, idempotencyKey) {
     return result.rows[0] || null;
 }
 
-async function findOrderByOrderKey(client, fiscalProfileId, orderKey) {
-    const result = await client.query(
-        `SELECT *
-           FROM payment_orders
+async function assertCheckboxIntegrationReady(client, {
+    env = process.env,
+    user,
+    fiscalProfileId,
+    fiscalRegisterId,
+    registerStatus,
+    registerFeatureEnabled,
+    provider,
+    providerLicenseRef
+} = {}) {
+    if (!isCheckboxIntegrationEnabled(env)) {
+        throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
+    }
+    if (String(provider || '').trim() !== 'checkbox') {
+        throw new PaymentServiceError('checkbox_provider_not_supported', 'Fiscal register is not configured for Checkbox', { status: 409 });
+    }
+    if (String(registerStatus || '').trim() !== 'active' || registerFeatureEnabled !== true) {
+        throw new PaymentServiceError('checkbox_register_disabled', 'Checkbox register is not enabled for payment confirmation', { status: 409 });
+    }
+    const binding = await client.query(
+        `SELECT provider_cashier_login_ref
+           FROM fiscal_cashier_bindings
           WHERE fiscal_profile_id = $1
-            AND order_key = $2
-          LIMIT 1`,
-        [fiscalProfileId, orderKey]
+            AND fiscal_register_id = $2
+            AND user_id = $3
+            AND status = 'active'
+          LIMIT 2`,
+        [fiscalProfileId, fiscalRegisterId, user?.id || null]
     );
-    return result.rows[0] || null;
+    if (binding.rows.length !== 1) {
+        throw new PaymentServiceError('fiscal_binding_ambiguous_or_missing', 'Exact fiscal cashier binding is required before Checkbox payment', {
+            status: 403,
+            details: { matches: binding.rows.length }
+        });
+    }
+    try {
+        loadCheckboxRuntimeConfig({
+            env,
+            credentialRef: binding.rows[0].provider_cashier_login_ref || providerLicenseRef,
+            licenseRef: providerLicenseRef
+        });
+    } catch (error) {
+        throw new PaymentServiceError(error.code || 'checkbox_runtime_config_unavailable', 'Checkbox runtime configuration is not resolvable', {
+            status: 503,
+            details: error.details || undefined
+        });
+    }
+    return true;
+}
+
+async function authorizeOrderReplay(client, {
+    user,
+    order,
+    action,
+    authorizer,
+    expectedFiscalProfileId = null,
+    expectedFiscalRegisterId = null,
+    requestFingerprint = null
+} = {}) {
+    if (!order) {
+        throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
+    }
+    await authorizer(client, {
+        user,
+        action,
+        fiscalProfileId: order.fiscal_profile_id,
+        crmProfileKey: order.crm_profile_key,
+        fiscalLocationId: order.fiscal_location_id,
+        fiscalRegisterId: order.fiscal_register_id
+    });
+    if (Number(order.cashier_user_id || 0) !== Number(user?.id || 0)) {
+        throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another payment scope', { status: 409 });
+    }
+    if (expectedFiscalProfileId && Number(order.fiscal_profile_id) !== Number(expectedFiscalProfileId)) {
+        throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another fiscal profile', { status: 409 });
+    }
+    if (expectedFiscalRegisterId && Number(order.fiscal_register_id) !== Number(expectedFiscalRegisterId)) {
+        throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another fiscal register', { status: 409 });
+    }
+    if (requestFingerprint && order.source_snapshot?.request_fingerprint !== requestFingerprint) {
+        throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different payment order body', { status: 409 });
+    }
+    return true;
 }
 
 async function loadFiscalItemMappings(client, { fiscalProfileId, fiscalRegisterId, crmProfileKey, lines }) {
@@ -287,7 +368,12 @@ async function loadOrderSnapshot(client, orderId) {
                 fp.legal_entity_name,
                 fl.id AS fiscal_location_id,
                 fr.register_alias,
-                fr.display_name AS register_display_name
+                fr.display_name AS register_display_name,
+                fr.provider,
+                fr.status AS fiscal_register_status,
+                fr.feature_enabled,
+                fr.provider_license_ref,
+                fr.provider_register_id
            FROM payment_orders po
            JOIN fiscal_profiles fp ON fp.id = po.fiscal_profile_id
            JOIN fiscal_registers fr
@@ -321,10 +407,14 @@ async function createAdmissionTicketPaymentOrder({
     idempotencyKey,
     quoteResolver = resolveAdmissionTicketQuote,
     authorizer = authorizeFiscalAction,
+    requireCheckboxIntegrationReady = false,
     now = new Date()
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
     assertNoClientFiscalOverride(body);
+    if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(process.env)) {
+        throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
+    }
 
     const rawCrmProfileKey = body.crmProfileKey || body.crm_profile_key || PILOT_CRM_PROFILE_KEY;
     const rawCrmProfileText = String(rawCrmProfileKey || '').trim().toLowerCase();
@@ -351,14 +441,6 @@ async function createAdmissionTicketPaymentOrder({
     });
 
     return withTransaction(dbPool, async client => {
-        const existing = await findOrderByIdempotency(client, key);
-        if (existing) {
-            if (existing.source_snapshot?.request_fingerprint !== requestFingerprint) {
-                throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different payment order body', { status: 409 });
-            }
-            return { replayed: true, order: normalizePaymentOrder(existing) };
-        }
-
         const mapping = await loadPilotFiscalMapping(client, { crmProfileKey });
         await authorizer(client, {
             user,
@@ -368,6 +450,32 @@ async function createAdmissionTicketPaymentOrder({
             fiscalLocationId: mapping.fiscal_location_id,
             fiscalRegisterId: mapping.fiscal_register_id
         });
+        if (requireCheckboxIntegrationReady) {
+            await assertCheckboxIntegrationReady(client, {
+                user,
+                fiscalProfileId: mapping.fiscal_profile_id,
+                fiscalRegisterId: mapping.fiscal_register_id,
+                registerStatus: mapping.fiscal_register_status,
+                registerFeatureEnabled: Boolean(mapping.feature_enabled),
+                provider: mapping.provider,
+                providerLicenseRef: mapping.provider_license_ref
+            });
+        }
+
+        const existing = await findOrderByIdempotency(client, key);
+        if (existing) {
+            const existingOrder = await loadOrderSnapshot(client, existing.id);
+            await authorizeOrderReplay(client, {
+                user,
+                order: existingOrder,
+                action: 'payments.create',
+                authorizer,
+                expectedFiscalProfileId: mapping.fiscal_profile_id,
+                expectedFiscalRegisterId: mapping.fiscal_register_id,
+                requestFingerprint
+            });
+            return { replayed: true, order: normalizePaymentOrder(existingOrder) };
+        }
 
         const quote = await quoteResolver({
             queryable: client,
@@ -391,15 +499,16 @@ async function createAdmissionTicketPaymentOrder({
             crmProfileKey: mapping.crm_profile_key,
             lines: quote.ticketLines
         });
-        const sourceId = String(quote.quoteFingerprint || fingerprint({ crmProfileKey, tender, quote })).trim();
-        const orderKey = `${ORDER_SOURCE_TYPE}:${mapping.crm_profile_key}:${PILOT_REGISTER_ALIAS}:${paymentMethod}:${sourceId}`;
-        const existingLogicalOrder = await findOrderByOrderKey(client, mapping.fiscal_profile_id, orderKey);
-        if (existingLogicalOrder) {
-            return { replayed: true, order: normalizePaymentOrder(existingLogicalOrder), logicalReplay: true };
-        }
+        const saleUuid = crypto.randomUUID();
+        const sourceId = `${WALK_IN_SOURCE_PREFIX}_${saleUuid}`;
+        const quoteFingerprint = String(quote.quoteFingerprint || fingerprint({ crmProfileKey, quote })).trim();
+        const orderKey = `${ORDER_SOURCE_TYPE}:${mapping.crm_profile_key}:${PILOT_REGISTER_ALIAS}:${sourceId}`;
         const sourceSnapshot = {
             source: ORDER_SOURCE_TYPE,
+            source_mode: 'standalone_walk_in',
+            sale_uuid: saleUuid,
             request_fingerprint: requestFingerprint,
+            quote_fingerprint: quoteFingerprint,
             logical_source_key: orderKey,
             quote,
             crm_profile_key: mapping.crm_profile_key,
@@ -485,10 +594,14 @@ async function confirmPaymentOrder({
     orderId,
     body = {},
     idempotencyKey,
-    authorizer = authorizeFiscalAction
+    authorizer = authorizeFiscalAction,
+    requireCheckboxIntegrationReady = false
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
     assertNoClientFiscalOverride(body);
+    if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(process.env)) {
+        throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
+    }
 
     const numericOrderId = Number(orderId);
     if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
@@ -506,10 +619,27 @@ async function confirmPaymentOrder({
     return withTransaction(dbPool, async client => {
         const existingAttempt = await findAttemptByIdempotency(client, key);
         if (existingAttempt) {
+            const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
+            await authorizeOrderReplay(client, {
+                user,
+                order: existingOrder,
+                action: 'payments.confirm_received',
+                authorizer
+            });
             if (existingAttempt.request_snapshot?.fingerprint !== requestFingerprint) {
                 throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different confirmation body', { status: 409 });
             }
-            const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
+            if (requireCheckboxIntegrationReady) {
+                await assertCheckboxIntegrationReady(client, {
+                    user,
+                    fiscalProfileId: existingOrder.fiscal_profile_id,
+                    fiscalRegisterId: existingOrder.fiscal_register_id,
+                    registerStatus: existingOrder.fiscal_register_status,
+                    registerFeatureEnabled: Boolean(existingOrder.feature_enabled),
+                    provider: existingOrder.provider,
+                    providerLicenseRef: existingOrder.provider_license_ref
+                });
+            }
             return {
                 replayed: true,
                 order: normalizePaymentOrder(existingOrder),
@@ -524,7 +654,12 @@ async function confirmPaymentOrder({
                     fp.legal_entity_name,
                     fl.id AS fiscal_location_id,
                     fr.register_alias,
-                    fr.display_name AS register_display_name
+                    fr.display_name AS register_display_name,
+                    fr.provider,
+                    fr.status AS fiscal_register_status,
+                    fr.feature_enabled,
+                    fr.provider_license_ref,
+                    fr.provider_register_id
                FROM payment_orders po
                JOIN fiscal_profiles fp ON fp.id = po.fiscal_profile_id
                JOIN fiscal_registers fr
@@ -550,6 +685,17 @@ async function confirmPaymentOrder({
             fiscalLocationId: order.fiscal_location_id,
             fiscalRegisterId: order.fiscal_register_id
         });
+        if (requireCheckboxIntegrationReady) {
+            await assertCheckboxIntegrationReady(client, {
+                user,
+                fiscalProfileId: order.fiscal_profile_id,
+                fiscalRegisterId: order.fiscal_register_id,
+                registerStatus: order.fiscal_register_status,
+                registerFeatureEnabled: Boolean(order.feature_enabled),
+                provider: order.provider,
+                providerLicenseRef: order.provider_license_ref
+            });
+        }
 
         const confirmation = assertManualConfirmationBody({ order, body });
         await assertOrderItemsFiscalReady(client, { fiscalProfileId: order.fiscal_profile_id, paymentOrderId: order.id });
@@ -578,13 +724,14 @@ async function confirmPaymentOrder({
                 confirmation.tender === 'cash' ? 'cash_confirmation' : 'card_terminal_confirmation',
                 key,
                 confirmation.tender === 'cash' ? 'manual' : 'terminal',
-                terminalReference,
+                null,
                 toPostgresBigint(confirmation.amountMinor, { allowZero: false }),
-                JSON.stringify({ fingerprint: requestFingerprint, tender: confirmation.tender }),
+                JSON.stringify({ fingerprint: requestFingerprint, tender: confirmation.tender, terminal_reference: terminalReference }),
                 JSON.stringify({
                     confirmed: true,
                     received_amount_minor: confirmation.receivedAmountMinor.toString(),
-                    change_amount_minor: confirmation.changeAmountMinor.toString()
+                    change_amount_minor: confirmation.changeAmountMinor.toString(),
+                    terminal_reference: terminalReference
                 })
             ]
         );
@@ -679,6 +826,7 @@ async function confirmPaymentOrder({
                 JSON.stringify({
                     provider: 'checkbox',
                     provider_request_uuid: providerRequestUuid,
+                    external_stage: 'auth_readiness',
                     action: 'lookup_before_retry_on_unknown'
                 })
             ]
@@ -715,6 +863,103 @@ async function confirmPaymentOrder({
             outboxJobId: Number(job.rows[0].id),
             providerRequestUuid
         };
+    });
+}
+
+async function cancelDraftPaymentOrder({
+    dbPool = pool,
+    user,
+    orderId,
+    idempotencyKey,
+    authorizer = authorizeFiscalAction
+} = {}) {
+    const key = requireIdempotencyKey(idempotencyKey);
+    const numericOrderId = Number(orderId);
+    if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
+        throw new PaymentServiceError('payment_order_id_invalid', 'Payment order id is invalid', { status: 422 });
+    }
+
+    return withTransaction(dbPool, async client => {
+        const lockResult = await client.query(
+            `SELECT po.*,
+                    fp.crm_profile_key,
+                    fp.legal_entity_key,
+                    fp.legal_entity_name,
+                    fl.id AS fiscal_location_id,
+                    fr.register_alias,
+                    fr.display_name AS register_display_name,
+                    fr.provider,
+                    fr.status AS fiscal_register_status,
+                    fr.feature_enabled,
+                    fr.provider_license_ref,
+                    fr.provider_register_id
+               FROM payment_orders po
+               JOIN fiscal_profiles fp ON fp.id = po.fiscal_profile_id
+               JOIN fiscal_registers fr
+                 ON fr.id = po.fiscal_register_id
+                AND fr.fiscal_profile_id = po.fiscal_profile_id
+               JOIN fiscal_locations fl
+                 ON fl.id = fr.fiscal_location_id
+                AND fl.fiscal_profile_id = po.fiscal_profile_id
+              WHERE po.id = $1
+              FOR UPDATE`,
+            [numericOrderId]
+        );
+        if (!lockResult.rows.length) {
+            throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
+        }
+        const order = lockResult.rows[0];
+        await authorizeOrderReplay(client, {
+            user,
+            order,
+            action: 'payments.create',
+            authorizer
+        });
+
+        if (order.status === 'cancelled' && order.payment_status === 'unpaid') {
+            return { replayed: true, order: normalizePaymentOrder(order) };
+        }
+        if (order.status !== 'draft' || order.payment_status !== 'unpaid') {
+            throw new PaymentServiceError('payment_order_cancel_denied', 'Only unpaid draft payment orders can be cancelled', {
+                status: 409,
+                details: {
+                    status: order.status || null,
+                    paymentStatus: order.payment_status || null,
+                    fiscalStatus: order.fiscal_status || null
+                }
+            });
+        }
+
+        const updated = await client.query(
+            `UPDATE payment_orders
+                SET status = 'cancelled',
+                    payment_status = 'unpaid',
+                    fiscal_status = 'not_required',
+                    cancelled_at = NOW(),
+                    updated_at = NOW()
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+              RETURNING *`,
+            [order.id, order.fiscal_profile_id]
+        );
+
+        await client.query(
+            `INSERT INTO fiscal_audit_events (
+                 fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+                 idempotency_key, before_snapshot, after_snapshot
+             )
+             VALUES ($1, $2, 'payment_order_cancelled', 'payment_orders', $3, $4, $5::jsonb, $6::jsonb)`,
+            [
+                order.fiscal_profile_id,
+                user?.id || null,
+                order.id,
+                key,
+                JSON.stringify({ status: order.status, payment_status: order.payment_status, fiscal_status: order.fiscal_status }),
+                JSON.stringify({ status: 'cancelled', payment_status: 'unpaid', fiscal_status: 'not_required' })
+            ]
+        );
+
+        return { replayed: false, order: normalizePaymentOrder(updated.rows[0]) };
     });
 }
 
@@ -902,6 +1147,8 @@ module.exports = {
     PILOT_REGISTER_ALIAS,
     PaymentServiceError,
     assertNoClientFiscalOverride,
+    assertCheckboxIntegrationReady,
+    cancelDraftPaymentOrder,
     confirmPaymentOrder,
     createAdmissionTicketPaymentOrder,
     getPaymentOrderDetails,

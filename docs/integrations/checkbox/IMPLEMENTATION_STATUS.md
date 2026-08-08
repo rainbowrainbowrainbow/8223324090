@@ -2,14 +2,15 @@
 
 Last updated: 2026-08-08.
 
-Production base:
+Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Version: `0.80.87`.
-- Commit: `7ea78f8ce3d3175c85538893ec92660b3951c622`.
-- Source branch: `codex/my-day-impacts-only-v08086`.
-- Release worktree: `.codex-temp/checkbox-thin-mvp-release`.
-- Release branch: `codex/checkbox-thin-mvp-release`.
+- Live version before this Checkbox release pass: `0.80.91`.
+- Live commit before this Checkbox release pass: `c01224030196bca80a27ca78dd5dfb83e29eabb0`.
+- Deploy source HEAD used for this worktree: `0.80.92` / `97515fe58015802d6e38164939b717e7f1e5501c`.
+- Source branch: `codex/my-day-impacts-canonical-v08088`.
+- Release worktree: `.codex-temp/checkbox-thin-mvp-current-v08092`.
+- Release branch: `codex/checkbox-thin-mvp-current-v08092`.
 
 ## Current Position
 

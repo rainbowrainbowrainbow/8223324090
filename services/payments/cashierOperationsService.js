@@ -14,6 +14,11 @@ const {
     approveFiscalAction
 } = require('./fiscalApprovals');
 const { toPostgresBigint } = require('./money');
+const {
+    isCashierProEnabled,
+    isCheckboxIntegrationEnabled,
+    loadCheckboxRuntimeConfig
+} = require('../checkbox/config');
 
 const OPEN_SHIFT_STATUSES = Object.freeze(['opening', 'open']);
 const CLOSE_BLOCKER_STATUSES = Object.freeze(['pending', 'unknown', 'validating', 'ready_to_send', 'sending', 'failed', 'blocked']);
@@ -143,17 +148,18 @@ async function insertOutboxJob(client, {
     paymentOrderId = null,
     jobType,
     idempotencyKey,
+    priority = 100,
     payload = {}
 }) {
     const result = await client.query(
         `INSERT INTO payment_outbox_jobs (
              fiscal_profile_id, fiscal_operation_id, payment_order_id, job_type,
-             status, idempotency_key, payload
+             status, idempotency_key, priority, payload
          )
-         VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb)
+         VALUES ($1, $2, $3, $4, 'queued', $5, $6, $7::jsonb)
          ON CONFLICT (idempotency_key) DO NOTHING
          RETURNING *`,
-        [fiscalProfileId, fiscalOperationId, paymentOrderId, jobType, idempotencyKey, JSON.stringify(payload || {})]
+        [fiscalProfileId, fiscalOperationId, paymentOrderId, jobType, idempotencyKey, priority, JSON.stringify(payload || {})]
     );
     return result.rows[0] || null;
 }
@@ -180,15 +186,15 @@ async function ensureOpenShiftForSale(client, { order, user }) {
     const shift = await client.query(
         `INSERT INTO fiscal_shifts (
              fiscal_profile_id, fiscal_register_id, provider, status,
-             opened_by_user_id, opened_at, provider_snapshot
+             opened_by_user_id, provider_snapshot
          )
-         VALUES ($1, $2, 'checkbox', 'open', $3, NOW(), $4::jsonb)
+         VALUES ($1, $2, 'checkbox', 'opening', $3, $4::jsonb)
          RETURNING *`,
         [
             fiscalProfileId,
             fiscalRegisterId,
             user?.id || null,
-            JSON.stringify({ auto_opened_before_sale: true, fiscal_location_id: fiscalLocationId })
+            JSON.stringify({ auto_opened_before_sale: true, fiscal_location_id: fiscalLocationId, lifecycle_stage: 'CREATED' })
         ]
     );
     const openOperation = await client.query(
@@ -204,7 +210,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
             shift.rows[0].id,
             `fiscal_operation:shift_open:${shift.rows[0].id}`,
             providerRequestUuid,
-            JSON.stringify({ provider_request_uuid: providerRequestUuid, auto_opened_before_sale: true }),
+            JSON.stringify({ provider_request_uuid: providerRequestUuid, auto_opened_before_sale: true, external_stage: 'shift_request' }),
             user?.id || null
         ]
     );
@@ -221,7 +227,8 @@ async function ensureOpenShiftForSale(client, { order, user }) {
         fiscalOperationId: openOperation.rows[0].id,
         jobType: 'shift_open',
         idempotencyKey: `payment_outbox:shift_open:${shift.rows[0].id}`,
-        payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.rows[0].id), fiscal_register_id: fiscalRegisterId }
+        priority: 10,
+        payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.rows[0].id), fiscal_register_id: fiscalRegisterId, external_stage: 'shift_request' }
     });
     await insertAudit(client, {
         fiscalProfileId,
@@ -238,6 +245,8 @@ async function ensureOpenShiftForSale(client, { order, user }) {
 
 async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', registerAlias = 'middle' }) {
     return withTransaction(async client => {
+        const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(process.env);
+        const cashierProEnabled = isCashierProEnabled(process.env);
         const mapping = await client.query(
             `SELECT
                  fp.id AS fiscal_profile_id,
@@ -250,6 +259,7 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
                  fr.register_alias,
                  fr.display_name AS register_display_name,
                  fr.provider,
+                 fr.provider_license_ref,
                  fr.status AS fiscal_register_status,
                  fr.feature_enabled
                FROM fiscal_profiles fp
@@ -258,21 +268,25 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
                 AND fl.crm_profile_key = fp.crm_profile_key
                 AND fl.status = 'active'
                JOIN fiscal_registers fr
-                 ON fr.fiscal_profile_id = fp.id
+                ON fr.fiscal_profile_id = fp.id
                 AND fr.fiscal_location_id = fl.id
                 AND fr.crm_profile_key = fp.crm_profile_key
                 AND fr.register_alias = $2
                 AND fr.status = 'active'
-                AND fr.feature_enabled = TRUE
               WHERE fp.crm_profile_key = $1
                 AND fp.status = 'active'`,
             [String(crmProfileKey || '').trim(), String(registerAlias || '').trim()]
         );
         if (mapping.rows.length !== 1) {
-            throw new CashierOperationsError('fiscal_mapping_ambiguous_or_missing', 'Fiscal profile/register mapping is missing or ambiguous', {
-                status: 409,
-                details: { crmProfileKey, registerAlias, matches: mapping.rows.length }
-            });
+            return {
+                checkboxIntegrationEnabled,
+                cashierProEnabled,
+                mappingExists: false,
+                registerFeatureEnabled: false,
+                runtimeConfigResolvable: false,
+                readinessCode: mapping.rows.length > 1 ? 'mapping_ambiguous' : 'mapping_missing',
+                checklist: null
+            };
         }
         const row = mapping.rows[0];
         await authorizeFiscalAction(client, {
@@ -283,6 +297,29 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
             fiscalLocationId: row.fiscal_location_id,
             fiscalRegisterId: row.fiscal_register_id
         });
+        const binding = await loadFiscalCashierBinding(client, {
+            userId: user?.id,
+            fiscalProfileId: row.fiscal_profile_id,
+            fiscalRegisterId: row.fiscal_register_id
+        });
+        let runtimeConfigResolvable = false;
+        let runtimeConfigErrorCode = null;
+        if (checkboxIntegrationEnabled && row.feature_enabled) {
+            try {
+                loadCheckboxRuntimeConfig({
+                    env: process.env,
+                    credentialRef: binding.provider_cashier_login_ref || row.provider_license_ref,
+                    licenseRef: row.provider_license_ref
+                });
+                runtimeConfigResolvable = true;
+            } catch (error) {
+                runtimeConfigErrorCode = error.code || 'checkbox_runtime_config_unavailable';
+            }
+        }
+        let readinessCode = 'ready';
+        if (!checkboxIntegrationEnabled) readinessCode = 'global_integration_disabled';
+        else if (!row.feature_enabled) readinessCode = 'register_disabled';
+        else if (!runtimeConfigResolvable) readinessCode = runtimeConfigErrorCode || 'credentials_missing';
         const shiftResult = await client.query(
             `SELECT *
                FROM fiscal_shifts
@@ -294,8 +331,14 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
             [row.fiscal_profile_id, row.fiscal_register_id]
         );
         const shift = shiftResult.rows[0] || null;
-        const checklist = shift ? await buildCloseChecklist(client, shift) : null;
+        const checklist = cashierProEnabled && shift ? await buildCloseChecklist(client, shift) : null;
         return {
+            checkboxIntegrationEnabled,
+            cashierProEnabled,
+            mappingExists: true,
+            registerFeatureEnabled: Boolean(row.feature_enabled),
+            runtimeConfigResolvable,
+            readinessCode,
             fiscalProfileId: Number(row.fiscal_profile_id),
             crmProfileKey: row.crm_profile_key,
             legalEntityKey: row.legal_entity_key,

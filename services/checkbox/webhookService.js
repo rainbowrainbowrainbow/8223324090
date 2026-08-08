@@ -53,6 +53,8 @@ function parseJsonRawBody(rawBody) {
 }
 
 function extractWebhookIdentity(payload = {}, headers = {}) {
+    const nestedReceipt = payload.receipt || payload.service_receipt || payload.data?.receipt || payload.data?.service_receipt || null;
+    const nestedShift = payload.shift || payload.data?.shift || nestedReceipt?.shift || null;
     const providerEventId = safeText(
         payload.event_id
         || payload.eventId
@@ -70,6 +72,7 @@ function extractWebhookIdentity(payload = {}, headers = {}) {
         payload.event_type
         || payload.eventType
         || payload.type
+        || payload.event
         || 'receipt_status'
     );
     const providerOperationId = safeText(
@@ -77,6 +80,8 @@ function extractWebhookIdentity(payload = {}, headers = {}) {
         || payload.providerOperationId
         || payload.receipt_id
         || payload.receiptId
+        || nestedReceipt?.id
+        || nestedReceipt?.receipt_id
         || payload.data?.id
         || payload.data?.receipt_id
     );
@@ -85,10 +90,12 @@ function extractWebhookIdentity(payload = {}, headers = {}) {
         || payload.providerReceiptId
         || payload.receipt_id
         || payload.receiptId
+        || nestedReceipt?.id
+        || nestedReceipt?.receipt_id
         || payload.data?.receipt_id
         || payload.data?.id
     );
-    const claimedFiscalProfileId = payload.fiscal_profile_id ?? payload.fiscalProfileId ?? payload.data?.fiscal_profile_id;
+    const claimedFiscalProfileId = payload.fiscal_profile_id ?? payload.fiscalProfileId ?? payload.data?.fiscal_profile_id ?? nestedReceipt?.context?.fiscal_profile_id;
 
     if (!providerOperationId && !providerReceiptId) {
         throw new CheckboxWebhookError('checkbox_webhook_operation_missing', 'Webhook must reference a known provider operation or receipt', { status: 422 });
@@ -99,7 +106,10 @@ function extractWebhookIdentity(payload = {}, headers = {}) {
         eventType,
         providerOperationId: providerOperationId || null,
         providerReceiptId: providerReceiptId || null,
-        claimedFiscalProfileId: claimedFiscalProfileId === undefined || claimedFiscalProfileId === null ? null : Number(claimedFiscalProfileId)
+        claimedFiscalProfileId: claimedFiscalProfileId === undefined || claimedFiscalProfileId === null ? null : Number(claimedFiscalProfileId),
+        receiptStatus: nestedReceipt?.status || null,
+        receiptType: nestedReceipt?.type || null,
+        shiftId: nestedShift?.id || nestedReceipt?.shift_id || null
     };
 }
 
@@ -186,25 +196,57 @@ async function insertWebhookAudit(client, { identity, operation, hash, sanitized
         return { replayed: true, eventId: Number(existingByPayload.rows[0].id) };
     }
 
-    const inserted = await client.query(
-        `INSERT INTO provider_webhook_events (
-             fiscal_profile_id, provider, provider_event_id, delivery_id, event_type,
-             related_provider_operation_id, related_provider_receipt_id, webhook_signature_valid,
-             payload_sha256, sanitized_payload, status
-         )
-         VALUES ($1, 'checkbox', $2, $3, $4, $5, $6, TRUE, $7, $8::jsonb, 'received')
-         RETURNING id`,
-        [
-            operation.fiscal_profile_id,
-            identity.providerEventId,
-            identity.deliveryId,
-            identity.eventType,
-            identity.providerOperationId,
-            identity.providerReceiptId,
-            hash,
-            JSON.stringify(sanitizedPayload)
-        ]
-    );
+    let inserted;
+    try {
+        inserted = await client.query(
+            `INSERT INTO provider_webhook_events (
+                 fiscal_profile_id, provider, provider_event_id, delivery_id, event_type,
+                 related_provider_operation_id, related_provider_receipt_id, webhook_signature_valid,
+                 payload_sha256, sanitized_payload, status
+             )
+             VALUES ($1, 'checkbox', $2, $3, $4, $5, $6, TRUE, $7, $8::jsonb, 'received')
+             ON CONFLICT (provider, payload_sha256) DO NOTHING
+             RETURNING id`,
+            [
+                operation.fiscal_profile_id,
+                identity.providerEventId,
+                identity.deliveryId,
+                identity.eventType,
+                identity.providerOperationId,
+                identity.providerReceiptId,
+                hash,
+                JSON.stringify(sanitizedPayload)
+            ]
+        );
+    } catch (error) {
+        if (error?.code !== '23505' || !identity.providerEventId) throw error;
+        const conflicting = await client.query(
+            `SELECT id, payload_sha256, status
+               FROM provider_webhook_events
+              WHERE provider = 'checkbox'
+                AND provider_event_id = $1
+              LIMIT 1`,
+            [identity.providerEventId]
+        );
+        if (conflicting.rows.length && conflicting.rows[0].payload_sha256 !== hash) {
+            throw new CheckboxWebhookError('checkbox_webhook_event_payload_conflict', 'Same provider event id was replayed with different payload', { status: 409 });
+        }
+        if (conflicting.rows.length) return { replayed: true, eventId: Number(conflicting.rows[0].id) };
+        throw error;
+    }
+
+    if (!inserted.rows.length) {
+        const replay = await client.query(
+            `SELECT id, status
+               FROM provider_webhook_events
+              WHERE provider = 'checkbox'
+                AND payload_sha256 = $1
+              LIMIT 1`,
+            [hash]
+        );
+        if (replay.rows.length) return { replayed: true, eventId: Number(replay.rows[0].id) };
+        throw new CheckboxWebhookError('checkbox_webhook_replay_lookup_failed', 'Webhook replay could not be resolved after conflict-safe insert', { status: 409 });
+    }
 
     await client.query(
         `INSERT INTO fiscal_audit_events (

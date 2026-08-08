@@ -53,6 +53,12 @@ const MODES = {
     'cashier-smoke': [
         'tests/integration/checkbox-park-cashier-smoke.integration.test.js'
     ],
+    'checkbox-config': [
+        'tests/integration/checkbox-park-config.integration.test.js'
+    ],
+    'checkbox-ui-real': [
+        'tests/browser/checkbox-cashier-real-routes-browser-smoke.js'
+    ],
     onboarding: [
         'tests/integration/fresh-db-startup.integration.test.js',
         'tests/integration/hr-onboarding-hire.integration.test.js',
@@ -67,7 +73,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|cashier-smoke|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|cashier-smoke|checkbox-config|checkbox-ui-real|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -276,6 +282,7 @@ async function runBrowserScript(testFile, env) {
 
 async function runSuite(testDb, testFile) {
     const port = await reservePort();
+    const checkboxBrowserMockPort = testFile.includes('checkbox-cashier-real-routes-browser-smoke') ? await reservePort() : null;
     const myDayOpenAiMockPort = testFile.includes('my-day-postgres.integration') ? await reservePort() : null;
     const baseUrl = `http://127.0.0.1:${port}`;
     assertSafeIsolatedTestUrl(baseUrl);
@@ -301,6 +308,19 @@ async function runSuite(testDb, testFile) {
         serverEnv.MY_DAY_OPENAI_MOCK_PORT = String(myDayOpenAiMockPort);
         serverEnv.MY_DAY_CLASSIFICATION_TIMEOUT_MS = '250';
     }
+    if (checkboxBrowserMockPort) {
+        const ref = 'PARK_MIDDLE_BROWSER';
+        serverEnv.CHECKBOX_INTEGRATION_ENABLED = 'true';
+        serverEnv.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
+        serverEnv.CHECKBOX_ALLOW_LOCAL_MOCK_HOST = 'true';
+        serverEnv.CHECKBOX_BROWSER_MOCK_PORT = String(checkboxBrowserMockPort);
+        serverEnv[`CHECKBOX_${ref}_BASE_URL`] = `http://127.0.0.1:${checkboxBrowserMockPort}`;
+        serverEnv[`CHECKBOX_${ref}_LOGIN`] = 'mock-login';
+        serverEnv[`CHECKBOX_${ref}_PASSWORD`] = 'mock-password';
+        serverEnv[`CHECKBOX_${ref}_LICENSE_KEY`] = 'mock-license';
+        serverEnv[`CHECKBOX_${ref}_ACCESS_KEY`] = 'mock-access';
+        serverEnv[`CHECKBOX_${ref}_DEVICE_ID`] = 'eventgenix-browser-smoke-device';
+    }
     const testEnv = {
         ...serverEnv,
         TEST_URL: baseUrl,
@@ -325,6 +345,7 @@ async function runSuite(testDb, testFile) {
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION: testFile.includes('checkbox-park-cashier-smoke') ? 'true' : 'false',
+        RUN_CHECKBOX_PARK_CONFIG_INTEGRATION: testFile.includes('checkbox-park-config') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
@@ -402,10 +423,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'cashier-smoke', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['cashier-smoke'], ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill]
         : MODES[mode];
 
     for (const testFile of files) {

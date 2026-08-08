@@ -91,6 +91,7 @@ describe('isolated PostgreSQL test flow safety', () => {
     it('allows isolated HTTP tests to target only an explicit local port', () => {
         assert.equal(assertSafeIsolatedTestUrl('http://127.0.0.1:32123').port, '32123');
         assert.throws(() => assertSafeIsolatedTestUrl('https://crm.example.com'), /only a local HTTP server/);
+        assert.throws(() => assertSafeIsolatedTestUrl('https://8223324090-production.up.railway.app'), /only a local HTTP server/);
         assert.throws(() => assertSafeIsolatedTestUrl('http://localhost'), /must include the isolated server port/);
     });
 

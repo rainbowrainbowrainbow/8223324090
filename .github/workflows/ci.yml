@@ -74,8 +74,20 @@ jobs:
         run: npm run test:browser:my-day-draft
 
 
-      - name: Run effective access editor browser smoke
-        run: npm run test:browser:account-access
+      - name: Run access editor lifecycle and focus browser smoke
+        run: npm run test:browser:account-access:lifecycle
+
+      - name: Run access editor dirty draft and failed-save browser smoke
+        run: npm run test:browser:account-access:draft
+
+      - name: Run access editor tri-state page browser smoke
+        run: npm run test:browser:account-access:tri-state
+
+      - name: Run access editor test-backend persistence browser smoke
+        run: npm run test:browser:account-access:backend
+
+      - name: Run access editor mobile browser smoke
+        run: npm run test:browser:account-access:mobile
 
       - name: Run deterministic sidebar timeline browser smoke
         run: npm run test:browser:sidebar-timeline

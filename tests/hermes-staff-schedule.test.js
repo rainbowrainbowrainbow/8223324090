@@ -43,7 +43,7 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
         defaultIncludeFreelance: false,
         createRequiresConfirmation: true,
         createRequiresIdempotencyKey: true,
-        createRequiresManageStaff: true,
+        createRequiredCapability: 'hermes.staff.manage',
         createScheduleWrites: 0
     });
     assert.deepEqual(capabilities.endpoints.staffSchedule, {
@@ -58,7 +58,7 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
         previewScheduleWrites: 0,
         applyRequiresConfirmation: true,
         applyRequiresIdempotencyKey: true,
-        applyRequiresManageStaff: true
+        applyRequiredCapability: 'hermes.schedule.manage'
     });
     assert.deepEqual(capabilities.endpoints.attendance, {
         preview: 'POST /api/hermes/attendance/preview',
@@ -66,13 +66,13 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
         businessContext: 'event_genix',
         maxPreviewRows: 100,
         previewTtlMinutes: 30,
-        previewRequiresManageStaff: true,
+        previewRequiredCapability: 'hermes.attendance.manage',
         previewAttendanceWrites: 0,
         previewScheduleWrites: 0,
         scheduleWrites: 0,
         applyRequiresConfirmation: true,
         applyRequiresIdempotencyKey: true,
-        applyRequiresManageStaff: true,
+        applyRequiredCapability: 'hermes.attendance.manage',
         applyScheduleWrites: 0
     });
 });

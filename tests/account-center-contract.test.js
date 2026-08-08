@@ -93,8 +93,8 @@ test('account creation uses the seven-step atomic onboarding workspace', () => {
     assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding\/options'\)/);
     assert.match(HR_PAGE_CODE, /crmApiFetch\('\/api\/users\/onboarding'/);
     assert.match(HR_PAGE_CODE, /rateMode !== 'keep'/);
-    assert.match(USERS_ROUTE, /router\.post\('\/onboarding', requireAction\('manage_accounts'\), requireAction\('manage_staff'\)/);
-    assert.match(USERS_ROUTE, /router\.get\('\/onboarding\/options', requireAction\('manage_accounts'\), requireAction\('manage_staff'\)/);
+    assert.match(USERS_ROUTE, /router\.post\('\/onboarding', requireAction\('manage_accounts'\), requireAction\('hr\.staff\.manage'\)/);
+    assert.match(USERS_ROUTE, /router\.get\('\/onboarding\/options', requireAction\('manage_accounts'\), requireAction\('hr\.staff\.manage'\)/);
     assert.match(HR_PAGE_CODE, /function canRunAccountOnboarding/);
     assert.match(HR_HTML, /option value="unchanged"/);
     assert.match(HR_PAGE_CODE, /expectedRequestSeq !== accountOnboardingRequestSeq/);

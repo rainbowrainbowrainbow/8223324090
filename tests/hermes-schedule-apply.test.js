@@ -483,7 +483,7 @@ describe('Hermes schedule apply route safety', () => {
         }
     });
 
-    it('does not grant manage_staff to the Hermes actor automatically', async () => {
+    it('does not grant hermes.schedule.manage to the Hermes actor automatically', async () => {
         const fixture = await listenApplyApp({
             actor: {
                 id: 42,
@@ -501,7 +501,7 @@ describe('Hermes schedule apply route safety', () => {
                 validApplyHeaders('permission-1')
             );
             assert.equal(response.status, 403);
-            assert.equal(response.data.code, 'HERMES_MANAGE_STAFF_REQUIRED');
+            assert.equal(response.data.code, 'HERMES_CAPABILITY_REQUIRED');
             assert.equal(fixture.state.applyCalls, 0);
         } finally {
             await new Promise(resolve => fixture.server.close(resolve));

@@ -95,9 +95,9 @@ function normalizeBusinessContext(value) {
 }
 
 function requireStaffAccountOnboardingActor(actor = {}) {
-    if (!canUseAction(actor, 'manage_staff') || !canUseAction(actor, 'manage_accounts')) {
+    if (!canUseAction(actor, 'hermes.staff.manage') || !canUseAction(actor, 'manage_accounts')) {
         throw onboardingFlowError(
-            'Hermes actor needs manage_staff and manage_accounts for staff/account onboarding',
+            'Hermes actor needs hermes.staff.manage and manage_accounts for staff/account onboarding',
             403,
             'HERMES_STAFF_ACCOUNT_ONBOARDING_ACTION_FORBIDDEN'
         );

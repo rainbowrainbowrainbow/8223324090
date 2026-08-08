@@ -86,7 +86,7 @@ async function withTrainingApp(options, run) {
             next();
         },
         requireMinRole: () => (_req, _res, next) => next(),
-        canUseAction: (_user, action) => action === 'manage_staff' && options.canManageStaff !== false
+        canUseAction: (_user, action) => action === 'training.manage' && options.canManageStaff !== false
     });
     installMock('../utils/logger', {
         createLogger: () => ({ error: () => {}, warn: () => {}, info: () => {} })
@@ -361,7 +361,7 @@ test('repeated seed completion preserves original completion actor and notes', a
     });
 });
 
-test('seed completion is read-only without manage_staff capability', async () => {
+test('seed completion is read-only without training.manage capability', async () => {
     await withTrainingApp({
         canManageStaff: false,
         clientQuery: async sql => {

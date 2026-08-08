@@ -897,7 +897,7 @@ router.get('/courses', async (req, res) => {
             )
         ]);
         const metricsByCourse = new Map(metricResult.rows.map(row => [Number(row.course_id), row]));
-        const canManageSeedProgress = canUseAction(req.user, 'manage_staff');
+        const canManageSeedProgress = canUseAction(req.user, 'training.manage');
         const courses = courseResult.rows.map(row => {
             const metrics = metricsByCourse.get(Number(row.id)) || {};
             if (isProfessionSeedCourse(row)) {
@@ -981,7 +981,7 @@ router.get('/courses/:id', async (req, res) => {
                     progress_mode: 'canonical_checklist',
                     canonical_staff_id: linkedProfile.staffId,
                     canonical_staff_link_status: linkedProfile.status,
-                    can_complete: canUseAction(req.user, 'manage_staff')
+                    can_complete: canUseAction(req.user, 'training.manage')
                         && linkedProfile.status === 'linked'
                         && linkedProfile.staff?.isActive !== false
                 },
@@ -1145,7 +1145,7 @@ router.post('/courses/:courseId/lectures/:lectureId/complete', async (req, res) 
             throw trainingCourseRequestError('Курс неактивний', 409, 'TRAINING_COURSE_INACTIVE');
         }
         const seededCourse = isProfessionSeedCourse(course);
-        if (seededCourse && !canUseAction(req.user, 'manage_staff')) {
+        if (seededCourse && !canUseAction(req.user, 'training.manage')) {
             throw trainingCourseRequestError(
                 'Професійний чекліст доступний лише для перегляду',
                 403,

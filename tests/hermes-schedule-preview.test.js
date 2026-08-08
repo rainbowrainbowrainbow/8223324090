@@ -354,7 +354,7 @@ describe('Hermes schedule OCR preview', () => {
                 authMode: 'x-api-key',
                 actorUserId: 42
             };
-            req.user = { id: 42, businessContexts: ['event_genix'] };
+            req.user = { id: 42, action_allowlist: ['hermes.schedule.manage'], businessContexts: ['event_genix'] };
             next();
         });
         app.use('/api/hermes', createHermesScheduleRouter({ pool: db }));

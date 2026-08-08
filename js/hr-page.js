@@ -4322,7 +4322,7 @@ function normalizeProfessionTextList(value) {
 }
 
 function canEditProfessionCatalog() {
-    return typeof canAccess === 'function' && canAccess('manage_staff') === true;
+    return typeof canAccess === 'function' && canAccess('hr.staff.manage') === true;
 }
 
 function syncProfessionCatalogCapabilityUi() {
@@ -4863,7 +4863,7 @@ function professionWorkspaceStructureOptions(selected = '') {
 function canManageProfessionConditions(data = professionWorkspaceState.data) {
     const profession = data?.profession || {};
     if (profession.isReadonly === true || profession.is_readonly === true || profession.source === 'system') return false;
-    return typeof canAccess === 'function' && canAccess('manage_staff') === true;
+    return typeof canAccess === 'function' && canAccess('hr.staff.manage') === true;
 }
 
 function professionConditionSaveKey(professionKey, staffId) {
@@ -5063,7 +5063,7 @@ function renderProfessionWorkspacePeople(people = []) {
                 <fieldset><legend>Будні</legend><div class="hr-profession-condition-times"><label><span>Початок</span><input type="time" data-condition-weekday-start value="${escapeHtml(draft.weekdayStart)}"${timeDisabled}></label><label><span>Кінець</span><input type="time" data-condition-weekday-end value="${escapeHtml(draft.weekdayEnd)}"${timeDisabled}></label></div><small>${(draft.weekdaySource || weekdayPreference.source) === 'staff_shift_preferences' ? 'Збережено у staff_shift_preferences' : 'Системний fallback; буде записаний лише після явної зміни часу'}</small></fieldset>
                 <fieldset><legend>Вихідні</legend><div class="hr-profession-condition-times"><label><span>Початок</span><input type="time" data-condition-weekend-start value="${escapeHtml(draft.weekendStart)}"${timeDisabled}></label><label><span>Кінець</span><input type="time" data-condition-weekend-end value="${escapeHtml(draft.weekendEnd)}"${timeDisabled}></label></div><small>${(draft.weekendSource || weekendPreference.source) === 'staff_shift_preferences' ? 'Збережено у staff_shift_preferences' : 'Системний fallback; буде записаний лише після явної зміни часу'}</small></fieldset>
             </div>
-            <footer><span data-condition-feedback role="status">${escapeHtml(feedback || (!editable ? 'Лише перегляд: потрібна capability manage_staff' : ''))}</span>${editable ? `<button type="button" class="btn-add" data-condition-save${['changed', 'error'].includes(rowState.status) && !saving ? '' : ' disabled'}>Зберегти рядок</button>` : ''}</footer>
+            <footer><span data-condition-feedback role="status">${escapeHtml(feedback || (!editable ? 'Лише перегляд: потрібна capability hr.staff.manage' : ''))}</span>${editable ? `<button type="button" class="btn-add" data-condition-save${['changed', 'error'].includes(rowState.status) && !saving ? '' : ' disabled'}>Зберегти рядок</button>` : ''}</footer>
         </article>`;
     }).join('');
 }
@@ -5714,7 +5714,7 @@ let accountOnboardingState = {
 const ACCOUNT_SECURITY_ROLES = ['creator', 'director'];
 const ACCOUNT_PROFILE_ROLES = ['creator', 'director'];
 const ACCOUNT_NON_DELEGABLE_ACTIONS = new Set(['manage_accounts', 'manage_settings']);
-const ACCOUNT_DEPRECATED_ACTIONS = new Set(['cancel_booking', 'view_own', 'manage_users']);
+const ACCOUNT_DEPRECATED_ACTIONS = new Set(['cancel_booking', 'view_own', 'manage_users', 'manage_staff']);
 const ACCOUNT_BUSINESS_SWITCH_ROLES = new Set(['creator', 'director']);
 const ACCOUNT_ROLE_PRESET_LABELS = {
     executive: 'Керівництво',
@@ -5763,7 +5763,7 @@ function canManageAccountSecurity() {
 }
 
 function canRunAccountOnboarding() {
-    const canManageStaff = typeof canAccess === 'function' ? canAccess('manage_staff') : false;
+    const canManageStaff = typeof canAccess === 'function' ? canAccess('hr.staff.manage') : false;
     return canManageAccountSecurity() && canManageStaff;
 }
 
@@ -7404,7 +7404,7 @@ async function loadAccountCenter(options = {}) {
     if (createBtn) createBtn.classList.toggle('hidden', !canOnboard);
     if (adminNote) {
         adminNote.textContent = canManageSecurity
-            ? 'Створення акаунта разом із HR-профілем потребує capability manage_accounts і manage_staff.'
+            ? 'Створення акаунта разом із HR-профілем потребує capability manage_accounts і hr.staff.manage.'
             : 'Для керування акаунтами потрібна capability manage_accounts.';
         adminNote.classList.toggle('hidden', canOnboard);
     }
@@ -8685,7 +8685,7 @@ function bindAccountOnboardingControls() {
 
 async function openAccountOnboardingWizard(button, context = {}) {
     if (!canRunAccountOnboarding()) {
-        showNotification('Для контрольованого onboarding потрібні capability manage_accounts і manage_staff', 'error');
+        showNotification('Для контрольованого onboarding потрібні capability manage_accounts і hr.staff.manage', 'error');
         return false;
     }
     const overlay = accountOnboardingEl('accountOnboardingOverlay');
@@ -13495,7 +13495,7 @@ const COMPANY_ORG_ARCHIVE_FILTERS = new Set(['active', 'archived', 'all']);
 
 function canEditCompanyStructure() {
     if (companyStructurePermissionDenied) return false;
-    return typeof canAccess === 'function' && canAccess('manage_staff') === true;
+    return typeof canAccess === 'function' && canAccess('hr.staff.manage') === true;
 }
 
 function companyStructureHasUnsavedChanges() {
@@ -13620,7 +13620,7 @@ function renderCompanyStructureEditorState() {
     } else if (companyStructureLoadState === 'empty' && !companyStructureHasSavedData) {
         recoveryText = editable
             ? 'Сервер підтвердив, що збереженої структури немає. Базовий шаблон буде застосовано лише після вашого підтвердження.'
-            : 'Збереженої структури ще немає. Створити її може користувач із правом manage_staff.';
+            : 'Збереженої структури ще немає. Створити її може користувач із правом hr.staff.manage.';
         if (editable) templateButton?.classList.remove('hidden');
     } else if (companyStructureSaveState === 'conflict') {
         const current = companyStructureConflictCurrent || {};
@@ -15147,7 +15147,7 @@ function updateCompanyOrgLinkStatus() {
     const status = document.getElementById('hrOrgLinkStatus');
     if (status) {
         if (!canEditCompanyStructure()) {
-            status.textContent = 'Режим лише для перегляду. Змінювати підпорядкування може користувач із manage_staff.';
+            status.textContent = 'Режим лише для перегляду. Змінювати підпорядкування може користувач із hr.staff.manage.';
             status.classList.remove('is-active');
         } else if (companyStructureLoadState !== 'ready') {
             status.textContent = 'Редагування стане доступним після завантаження актуальної структури.';

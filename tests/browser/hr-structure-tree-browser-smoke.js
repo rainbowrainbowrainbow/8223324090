@@ -82,7 +82,7 @@ async function installHarness(page, width = 1280, theme = 'light') {
     await page.setContent(`<!doctype html><html lang="uk"><head><meta charset="utf-8"><style>${CSS_BUNDLE}</style></head><body data-page-group="hr" class="${theme === 'dark' ? 'dark-mode' : ''}"></body></html>`);
     await page.evaluate(() => {
         window.AppState = { currentUser: { id: 1, role: 'creator', name: 'QA Creator' } };
-        window.canAccess = action => action === 'manage_staff';
+        window.canAccess = action => action === 'hr.staff.manage';
         window.apiVerifyToken = async () => ({ id: 1, role: 'creator', name: 'QA Creator' });
         window.showNotification = () => {};
         window.openProfessionWorkspace = options => {

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.89 - My Day impacts automation
+
+### My Day / (08.08.2026) [codex]
+- **Єдина класифікація «Впливи»** - окремі task tags прибрані з активного UX/API, напрями не повертаються, а `Парк`, `CRM` і `Hermes` доступні як впливи.
+- **Стабільна AI-розмітка через OpenAI** - My Day classifier використовує прямий OpenAI Responses API з `gpt-5.6-luna`, Structured Outputs, conflict detection і server-side undo без OpenRouter.
+- **Contribution без подвійного часу** - глобальний підсумок більше не множить хвилини задачі на кількість впливів; впливи лишаються overlapping facets.
+- **Dependency manager оформлено** - модалка, badge, keyboard/focus states і mobile/dark контракти перевірені interaction тестами.
+- **My Day gates посилені** - `npm test` включає реальні My Day contracts, додані browser interaction smoke та isolated PostgreSQL coverage без реальних OpenAI викликів.
+
+---
+
 ## v0.80.88 - Checkbox thin MVP integration
 
 ### Release / Versioning / (08.08.2026) [codex]

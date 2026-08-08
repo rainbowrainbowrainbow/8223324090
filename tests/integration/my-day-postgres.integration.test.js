@@ -89,7 +89,8 @@ function createOpenAIMockServer(port) {
 }
 
 async function createUser(label, role = 'instructor') {
-    const username = `my_day_pg_${label}_${suffix}`;
+    const safeLabel = String(label || 'user').replace(/[^a-z0-9._-]/gi, '_').slice(0, 16);
+    const username = `md_${safeLabel}_${crypto.randomBytes(4).toString('hex')}`;
     const password = `Safe-${crypto.randomBytes(16).toString('base64url')}`;
     const response = await request('POST', '/api/users', {
         username,

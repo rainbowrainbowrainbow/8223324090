@@ -256,7 +256,7 @@ async function queryTaskTimeRows(queryable, user, userId, businessScope, range) 
     const result = await queryable.query(
         `WITH days AS (
              SELECT generate_series($${fromParam}::date, $${toParam}::date, interval '1 day')::date AS local_date
-         )
+         ),
          task_day_time AS (
              SELECT e.task_id,
                     days.local_date,

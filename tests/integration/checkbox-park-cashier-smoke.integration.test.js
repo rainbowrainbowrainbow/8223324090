@@ -176,7 +176,9 @@ async function seedFiscalScope({ cashier }) {
         fiscalProfileId: Number(profile.rows[0].id),
         fiscalLocationId: Number(location.rows[0].id),
         fiscalRegisterId: Number(register.rows[0].id),
-        dummyFiscalProfileId: Number(dummyProfile.rows[0].id)
+        dummyFiscalProfileId: Number(dummyProfile.rows[0].id),
+        providerOrganizationId: profile.rows[0].provider_organization_id,
+        providerRegisterId: register.rows[0].provider_register_id
     };
 }
 
@@ -223,6 +225,10 @@ function makeQuote({ fingerprint, totalUah, code, name }) {
 async function listenMockCheckbox() {
     const state = {
         shiftOpened: false,
+        cashierId: null,
+        organizationId: null,
+        registerId: null,
+        shiftId: 'mock-shift-1',
         calls: [],
         receipts: new Map(),
         modes: new Map(),
@@ -255,15 +261,30 @@ async function listenMockCheckbox() {
                     state.tokensIssued += 1;
                     return send(200, { access_token: `mock-token-${state.tokensIssued}`, token_type: 'bearer' });
                 }
+                if (req.url === '/api/v1/cashier/me' && req.method === 'GET') {
+                    return send(200, {
+                        id: state.cashierId,
+                        blocked: false,
+                        organization: { id: state.organizationId }
+                    });
+                }
                 if (req.url === '/api/v1/cashier/shift' && req.method === 'GET') {
                     return send(200, {
-                        id: state.shiftOpened ? 'mock-shift-1' : 'mock-shift-closed',
-                        status: state.shiftOpened ? 'OPENED' : 'CLOSED'
+                        id: state.shiftOpened ? state.shiftId : 'mock-shift-closed',
+                        status: state.shiftOpened ? 'OPENED' : 'CLOSED',
+                        cash_register_id: state.registerId,
+                        cashier_id: state.cashierId
                     });
                 }
                 if (req.url === '/api/v1/shifts' && req.method === 'POST') {
                     state.shiftOpened = true;
-                    return send(201, { id: body?.id || crypto.randomUUID(), status: 'OPENED' });
+                    state.shiftId = body?.id || state.shiftId || crypto.randomUUID();
+                    return send(201, {
+                        id: state.shiftId,
+                        status: 'OPENED',
+                        cash_register_id: state.registerId,
+                        cashier_id: state.cashierId
+                    });
                 }
                 if (req.url === '/api/v1/receipts/validate' && req.method === 'POST') {
                     if (state.modes.get(body?.id) === 'validation_422') {
@@ -277,10 +298,18 @@ async function listenMockCheckbox() {
                     const receipt = {
                         id,
                         status: mode === 'pending' ? 'CREATED' : 'DONE',
+                        type: 'SELL',
                         fiscal_code: `FC-${id}`.slice(0, 80),
                         serial: state.calls.filter(item => item.path === '/api/v1/receipts/sell').length,
+                        total_sum: body?.goods?.reduce((sum, item) => sum + Number(item.good?.price || 0) * Number(item.quantity || 1000) / 1000, 0) || 0,
                         total_payment: body?.payments?.[0]?.value || 0,
-                        tax_url: `https://mock.checkbox.local/receipts/${id}`
+                        total_rest: Math.max(0, Number(body?.payments?.[0]?.value || 0) - (body?.goods?.reduce((sum, item) => sum + Number(item.good?.price || 0) * Number(item.quantity || 1000) / 1000, 0) || 0)),
+                        payments: body?.payments || [],
+                        cash_register_id: state.registerId,
+                        cashier_id: state.cashierId,
+                        shift_id: state.shiftId,
+                        context: body?.context || {},
+                        tax_url: `https://api.checkbox.in.ua/api/v1/receipts/${id}`
                     };
                     if (mode === 'malformed') return send(200, { status: 'DONE' });
                     state.receipts.set(id, { ...receipt, status: 'DONE' });
@@ -334,7 +363,7 @@ async function runWorkerUntilIdle(provider = null, maxRounds = 12) {
     for (let i = 0; i < maxRounds; i += 1) {
         const options = {
             dbPool: pool,
-            batchSize: 10,
+            batchSize: 1,
             lockedBy: `checkbox-park-http-smoke-${process.pid}`,
             lockExpiryMs: 30_000
         };
@@ -446,6 +475,9 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         });
         await bindUserToFiscalScope({ user: secondCashier, scope });
         mock = await listenMockCheckbox();
+        mock.state.cashierId = `mock-cashier-${cashier.id}`;
+        mock.state.organizationId = scope.providerOrganizationId;
+        mock.state.registerId = scope.providerRegisterId;
         process.env.CHECKBOX_INTEGRATION_ENABLED = 'true';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL = mock.baseUrl;
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN = 'mock-login';
@@ -652,7 +684,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         assert.equal(confirmation.rows[0].confirmation_snapshot.change_amount_minor, '3000');
 
         const shiftOpenCallsBeforeCash = mock.state.calls.filter(call => call.path === '/api/v1/shifts').length;
-        await runWorkerUntilIdle();
+        await runWorkerUntilIdle(createHttpProvider(mock));
         assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/shifts').length, shiftOpenCallsBeforeCash + 1, 'provider shift is opened exactly once for the first sale in this flow');
         assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === cashProviderRequestUuid).length, 1);
 

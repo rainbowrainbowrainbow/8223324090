@@ -752,7 +752,12 @@ async function runShiftJob(provider, context) {
         throw new PaymentOutboxWorkerError('checkbox_shift_operation_not_supported', 'Checkbox shift operation is not configured', { retryable: false });
     }
     await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request' : 'shift_close_request');
-    const response = await method.call(provider, { fiscalOperation: context.job, payload: context.job.payload || {} });
+    const response = await method.call(provider, {
+        providerOperationId: context.job.provider_operation_id,
+        providerRequestUuid: context.job.provider_operation_id,
+        fiscalOperation: context.job,
+        payload: context.job.payload || {}
+    });
     return { response, source: context.job.job_type };
 }
 

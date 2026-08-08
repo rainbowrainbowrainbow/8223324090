@@ -280,6 +280,11 @@ async function runBrowserScript(testFile, env) {
     return runNodeProcess(testFile, [testFile], env);
 }
 
+function runsAgainstDatabaseOnly(testFile) {
+    return testFile.includes('checkbox-park-cashier-smoke.integration')
+        || testFile.includes('checkbox-park-config.integration');
+}
+
 async function runSuite(testDb, testFile) {
     const port = await reservePort();
     const checkboxBrowserMockPort = testFile.includes('checkbox-cashier-real-routes-browser-smoke') ? await reservePort() : null;
@@ -400,6 +405,12 @@ async function runSuite(testDb, testFile) {
             if (JSON.stringify(secondLedger) !== JSON.stringify(firstLedger)) {
                 throw new Error('Migration ledger changed during idempotent initialized-DB restart');
             }
+        }
+        if (runsAgainstDatabaseOnly(testFile)) {
+            await stopServer(server);
+            server = null;
+            output.text = '';
+            output.dbErrors = [];
         }
         if (testFile.startsWith('tests/browser/')) await runBrowserScript(testFile, testEnv);
         else await runNodeTest(testFile, testEnv);

@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.96 - Luna Production Hotfix
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Luna працює у Railway production** - AI composer більше не сприймає явне production-середовище як test runtime, тому direct OpenAI preview доступний дозволеним тестовим користувачам.
+- **CI-запобіжник збережено** - реальні OpenAI-виклики як і раніше блокуються в test/CI, якщо немає інжектованого mock transport або loopback mock API.
+
+---
+
 ## v0.80.95 - AI Task Bundles
 
 ### My Day / Tasks AI / (09.08.2026) [codex]

@@ -365,7 +365,7 @@ test('park config preflight rejects wrong user, missing mapping, and second FOP 
 
     await run(['apply', ...args], { env, dbPool: pool });
     await assert.rejects(
-        () => run(['apply', ...argsFor({ userId, legalEntityKey: unique('park_fop_other'), ticketCodes })], { env, dbPool: pool }),
+        () => run(['preflight', ...argsFor({ userId, legalEntityKey: unique('park_fop_other'), ticketCodes })], { env, dbPool: pool }),
         error => error.code === 'pilot_config_other_fop_register_conflict'
     );
 });

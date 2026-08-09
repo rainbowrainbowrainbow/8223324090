@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.101 - Checkbox Fiscal Readiness
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Checkbox інтеграція підготовлена до безпечного запуску** - додано provider readiness, immutable fiscal context, status lookup/recovery, server-side kill switch і fail-closed перевірки перед оплатою.
+- **Екран "Оплата та чек" не губить незавершені фіскальні операції** - pending/unknown/dead receipts залишаються видимими, а Cashier PRO і preschool лишаються вимкненими.
+- **CI блокує regressions thin MVP** - додано PostgreSQL + local HTTP Checkbox smoke, config constraints, provider contract, sandbox harness і UI real-routes checks.
+- **Описано activation/runbook без secrets** - production Checkbox fiscalization, webhook і перший реальний чек залишаються окремою activation task.
+
+---
+
 ## v0.80.100 - Luna Composer Quality Gate
 
 ### Luna prompt / Canonical impacts / Controlled eval / (09.08.2026) [codex]

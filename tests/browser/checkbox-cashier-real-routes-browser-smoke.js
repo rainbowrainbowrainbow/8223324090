@@ -213,7 +213,8 @@ async function startMockCheckbox(scope) {
             cash_register_id: scope.providerRegisterId,
             cashier_id: scope.providerCashierId
         },
-        receipts: new Map()
+        receipts: new Map(),
+        providerUnavailable: false
     };
     const server = http.createServer((req, res) => {
         const chunks = [];
@@ -241,14 +242,18 @@ async function startMockCheckbox(scope) {
                 });
             }
             if (req.url === '/api/v1/cash-registers/info' && req.method === 'GET') {
+                if (state.providerUnavailable) {
+                    return send(503, { error: 'provider_unavailable' });
+                }
                 return send(200, {
                     id: scope.providerRegisterId,
+                    organization_id: scope.providerOrganizationId,
                     fiscal_number: '4000000000',
-                    active: true,
+                    is_test: true,
                     created_at: '2026-01-01T00:00:00.000Z',
                     offline_mode: false,
                     stay_offline: false,
-                    has_shift: Boolean(state.shift)
+                    documents_state: { last_receipt_code: null, last_report_code: null }
                 });
             }
             if (req.url === '/api/v1/cashier/check-signature' && req.method === 'GET') {
@@ -406,10 +411,42 @@ async function run() {
         const registerState = await page.evaluate(() => window.CashierPaymentsPage.state.registerState);
         assert.equal(registerState.readinessCode, 'ready', JSON.stringify(registerState));
         assert.equal(registerState.integrationReady, true, JSON.stringify(registerState));
+        mock.state.providerUnavailable = true;
+        const providerUnavailableProbe = await page.evaluate(async () => {
+            const token = localStorage.getItem('pzp_token');
+            const response = await fetch('/api/payments/readiness/probe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ crmProfileKey: 'event_genix', registerAlias: 'middle', force: true })
+            });
+            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
+        });
+        assert.equal(providerUnavailableProbe.ok, true, JSON.stringify(providerUnavailableProbe));
+        assert.equal(providerUnavailableProbe.body.readinessCode, 'provider_unavailable', JSON.stringify(providerUnavailableProbe));
+        mock.state.providerUnavailable = false;
+        const recoveredProbe = await page.evaluate(async () => {
+            const token = localStorage.getItem('pzp_token');
+            const response = await fetch('/api/payments/readiness/probe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ crmProfileKey: 'event_genix', registerAlias: 'middle', force: true })
+            });
+            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
+        });
+        assert.equal(recoveredProbe.ok, true, JSON.stringify(recoveredProbe));
+        assert.equal(recoveredProbe.body.readinessCode, 'ready', JSON.stringify(recoveredProbe));
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.fill('#paymentKidsCount', '1');
         await page.fill('#paymentAdultsCount', '0');
-        await page.click('#createPaymentOrderBtn');
+        await page.keyboard.press('Tab');
+        await page.focus('#createPaymentOrderBtn');
+        await page.keyboard.press('Enter');
         await page.waitForFunction(() => {
             const cancel = document.querySelector('#cancelDraftOrderBtn');
             const status = document.querySelector('#cashierGlobalStatus');
@@ -426,6 +463,24 @@ async function run() {
         await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         const pendingOrderId = await page.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id);
+        const unresolvedApi = await page.evaluate(async () => {
+            const token = localStorage.getItem('pzp_token');
+            const response = await fetch('/api/payments/unresolved-orders?crmProfileKey=event_genix&registerAlias=middle', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
+        });
+        assert.equal(unresolvedApi.ok, true, JSON.stringify(unresolvedApi));
+        assert.ok((unresolvedApi.body.orders || []).some(order => order.id === pendingOrderId), 'unresolved endpoint must expose the paid pending receipt');
+        const reportApi = await page.evaluate(async () => {
+            const token = localStorage.getItem('pzp_token');
+            const response = await fetch('/api/payments/checkbox-sales-report?crmProfileKey=event_genix&registerAlias=middle&page=1&pageSize=1', {
+                headers: { Authorization: `Bearer ${token}` }
+            });
+            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
+        });
+        assert.equal(reportApi.ok, true, JSON.stringify(reportApi));
+        assert.ok(Number(reportApi.body.totalCount || 0) >= 1, 'sales report route must return PostgreSQL totals');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true);
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');

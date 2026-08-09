@@ -167,7 +167,7 @@ test('capability snapshot preserves compatibility maps and structured decisions'
     });
 
     assert.equal(Object.keys(snapshot.pages).length, 43);
-    assert.equal(Object.keys(snapshot.actions).length, 41);
+    assert.equal(Object.keys(snapshot.actions).length, 42);
     assert.equal(snapshot.pages['/analytics'], undefined);
     assert.equal(snapshot.pages['/finance'], false);
     assert.equal(snapshot.actions.export_data, false);

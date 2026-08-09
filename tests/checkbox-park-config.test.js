@@ -153,6 +153,14 @@ class FakePilotConfigClient {
             };
         }
         if (normalized.startsWith('SELECT fp.legal_entity_key')) return { rows: [] };
+        if (normalized.startsWith('SELECT provider_license_ref AS credential_ref')) {
+            return {
+                rows: [
+                    ...[...this.db.registers.values()].map(register => ({ credential_ref: register.provider_license_ref })),
+                    ...[...this.db.bindings.values()].map(binding => ({ credential_ref: binding.provider_cashier_login_ref }))
+                ].filter(row => row.credential_ref)
+            };
+        }
         if (normalized.startsWith('SELECT id, username, name, role') && normalized.includes('WHERE id = $1')) {
             return {
                 rows: [{

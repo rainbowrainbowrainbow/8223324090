@@ -102,12 +102,13 @@ function openedShift(overrides = {}) {
 function cashRegisterInfo(overrides = {}) {
     return {
         id: PROVIDER_REGISTER_ID,
+        organization_id: PROVIDER_ORGANIZATION_ID,
         fiscal_number: '4000000000',
-        active: true,
+        is_test: false,
         created_at: new Date().toISOString(),
         offline_mode: false,
         stay_offline: false,
-        has_shift: true,
+        documents_state: { last_receipt_code: null, last_report_code: null },
         ...overrides
     };
 }
@@ -294,8 +295,76 @@ test('runtime provider readiness fails closed on missing signature, permissions,
     await expectReadinessError({ cashier: { is_test: true } }, 'checkbox_cashier_test_mode_mismatch');
     await expectReadinessError({ cashier: { permissions: { sales: true, cash_payment: true, card_payment: false } } }, 'checkbox_cashier_permissions_missing');
     await expectReadinessError({ signature: { online: false } }, 'checkbox_signature_offline');
-    await expectReadinessError({ register: { active: false } }, 'checkbox_register_not_active');
+    await expectReadinessError({ register: { is_test: true } }, 'checkbox_register_test_mode_mismatch');
+    await expectReadinessError({ register: { offline_mode: true } }, 'checkbox_register_offline');
+    await expectReadinessError({ register: { organization_id: 'wrong-org' } }, 'checkbox_register_organization_mismatch');
     await expectReadinessError({ taxes: cashierTaxes({ id: '9', code: 9 }) }, 'checkbox_provider_tax_ids_unavailable');
+});
+
+test('runtime provider readiness supports fully untaxed admission mappings without provider tax ids', async () => {
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+        if (call.path === '/api/v1/cashier/tax') return { body: [] };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const readiness = await provider.verifyReadiness({
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: false
+        }, { expectedTaxIds: [] });
+        assert.deepEqual(readiness.taxes.expected, []);
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider validation fails closed on nested false validation result', async () => {
+    const receiptId = crypto.randomUUID();
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
+        if (call.path === '/api/v1/receipts/validate') {
+            return { body: { valid: true, goods: [{ valid: true }, { valid: false }] } };
+        }
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        await assert.rejects(
+            () => provider.validateSale({
+                providerOperationId: receiptId,
+                fiscalOperation: {
+                    id: 501,
+                    fiscal_profile_id: 7,
+                    operation_type: 'sale',
+                    provider_operation_id: receiptId,
+                    provider_register_id: PROVIDER_REGISTER_ID,
+                    provider_cashier_id: PROVIDER_CASHIER_ID,
+                    provider_organization_id: PROVIDER_ORGANIZATION_ID,
+                    provider_shift_id: PROVIDER_SHIFT_ID
+                },
+                paymentOrder: {
+                    id: 301,
+                    fiscal_profile_id: 7,
+                    total_amount_minor: 10000,
+                    payment_method: 'cash',
+                    confirmation_snapshot: { received_amount_minor: 10000 }
+                },
+                items: [{ item_name: 'Ticket', item_code: 'ticket', unit_price_minor: 10000, quantity_milli: 1000, provider_tax_id: '7', tax_mode: 'taxed' }]
+            }),
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_receipt_validation_failed'
+        );
+    } finally {
+        await close(server);
+    }
 });
 
 test('runtime provider maps official service in/out receipts and verifies service receipt type', async () => {

@@ -84,7 +84,8 @@ function createFakePool() {
                 state.errorWrites.push({ text, params });
                 const existing = state.rows.get(params[0]) || {};
                 const consecutiveFailures = (existing.consecutive_failures || 0) + 1;
-                const isPaused = consecutiveFailures >= 10 || existing.is_paused === true;
+                const autoPause = params[3] !== false;
+                const isPaused = (autoPause && consecutiveFailures >= 10) || existing.is_paused === true;
                 state.rows.set(params[0], {
                     ...existing,
                     scheduler_name: params[0],

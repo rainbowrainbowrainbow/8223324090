@@ -32,6 +32,8 @@
     "check:storage-surface": "node scripts/check-storage-surface.js",
     "check:service-worker-policy": "node scripts/check-service-worker-policy.js",
     "check:scheduler-surface": "node scripts/check-scheduler-surface.js",
+    "check:checkbox-openapi": "node scripts/check-checkbox-openapi-compatibility.js",
+    "check:checkbox-safety": "node scripts/check-checkbox-source-safety.js",
     "check:db-startup-surface": "node scripts/check-db-startup-surface.js",
     "check:timeline-protected-surface": "node scripts/check-timeline-protected-surface.js",
     "check:migrations": "node scripts/check-migrations.js",

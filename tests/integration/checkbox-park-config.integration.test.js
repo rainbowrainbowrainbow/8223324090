@@ -3,6 +3,10 @@ const assert = require('node:assert/strict');
 
 const { pool } = require('../../db');
 const { run } = require('../../scripts/configure-checkbox-park-pilot');
+const {
+    loadReadinessState,
+    updateOperationalIncidentStatus
+} = require('../../services/payments/paymentReadinessService');
 
 const SHOULD_RUN = process.env.RUN_CHECKBOX_PARK_CONFIG_INTEGRATION === 'true';
 
@@ -20,6 +24,21 @@ async function seedUser() {
     return Number(result.rows[0].id);
 }
 
+function fiscalConfigUser(userId, actions = ['payments.view', 'fiscal.configure'], role = 'creator') {
+    return {
+        id: Number(userId),
+        username: `checkbox_config_actor_${userId}`,
+        name: 'Checkbox config integration actor',
+        role,
+        action_allowlist: actions,
+        actionAllowlist: actions,
+        business_contexts: ['event_genix'],
+        businessContexts: ['event_genix'],
+        default_business_context: 'event_genix',
+        defaultBusinessContext: 'event_genix'
+    };
+}
+
 async function activeTicketCodes() {
     const result = await pool.query(
         `SELECT code
@@ -30,6 +49,11 @@ async function activeTicketCodes() {
     );
     assert.ok(result.rows.length > 0, 'fresh DB must have active EventGenix admission ticket codes');
     return result.rows.map(row => row.code);
+}
+
+async function countRows(sql, params = []) {
+    const result = await pool.query(sql, params);
+    return Number(result.rows[0].count);
 }
 
 function argsFor({ userId, legalEntityKey, ticketCodes, overrides = {} }) {
@@ -128,6 +152,65 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         error => error.code === '55000'
     );
 
+    const taxedReadiness = await loadReadinessState({
+        dbPool: pool,
+        user: fiscalConfigUser(userId),
+        crmProfileKey: 'event_genix',
+        registerAlias: 'middle',
+        checkboxIntegrationEnabled: false
+    });
+    assert.equal(taxedReadiness.taxMappingReady, true);
+    assert.equal(taxedReadiness.missingTaxItemCodes.length, 0);
+
+    await pool.query(
+        `UPDATE fiscal_item_mappings
+            SET tax_mode = 'untaxed',
+                provider_tax_id = NULL,
+                tax_code = NULL,
+                tax_rate_bps = NULL
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId]
+    );
+    const untaxedReadiness = await loadReadinessState({
+        dbPool: pool,
+        user: fiscalConfigUser(userId),
+        crmProfileKey: 'event_genix',
+        registerAlias: 'middle',
+        checkboxIntegrationEnabled: false
+    });
+    assert.equal(untaxedReadiness.taxMappingReady, true, 'untaxed active admission items must not require a fabricated provider tax id');
+    assert.equal(untaxedReadiness.missingTaxItemCodes.length, 0);
+
+    await pool.query(
+        `UPDATE fiscal_item_mappings
+            SET provider_tax_id = '7'
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND item_code = $3`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId, ticketCodes[0]]
+    );
+    const invalidUntaxedReadiness = await loadReadinessState({
+        dbPool: pool,
+        user: fiscalConfigUser(userId),
+        crmProfileKey: 'event_genix',
+        registerAlias: 'middle',
+        checkboxIntegrationEnabled: false
+    });
+    assert.equal(invalidUntaxedReadiness.taxMappingReady, false);
+    assert.ok(invalidUntaxedReadiness.missingTaxItemCodes.includes(ticketCodes[0]));
+
+    await pool.query(
+        `UPDATE fiscal_item_mappings
+            SET tax_mode = 'taxed',
+                provider_tax_id = '7',
+                tax_code = 7,
+                tax_rate_bps = 0
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId]
+    );
+
     const operation = await pool.query(
         `INSERT INTO fiscal_operations (
              fiscal_profile_id, fiscal_register_id, fiscal_location_id, operation_type, status,
@@ -185,6 +268,68 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     await assert.rejects(
         () => pool.query('DELETE FROM fiscal_receipts WHERE id = $1', [receiptId]),
         error => error.code === '55000'
+    );
+
+    const incident = await pool.query(
+        `INSERT INTO fiscal_operational_incidents (
+             fiscal_profile_id, fiscal_register_id, fiscal_operation_id,
+             severity, incident_type, status, idempotency_key, details
+         )
+         VALUES ($1, $2, $3, 'warning', 'checkbox.integration_regression', 'open', $4, '{"source":"integration"}'::jsonb)
+         RETURNING id`,
+        [
+            applied.fiscalProfileId,
+            applied.fiscalRegisterId,
+            operationId,
+            `incident:${legalEntityKey}`
+        ]
+    );
+    const incidentId = Number(incident.rows[0].id);
+    await assert.rejects(
+        () => updateOperationalIncidentStatus({
+            dbPool: pool,
+            user: fiscalConfigUser(userId, ['fiscal.audit.view'], 'reception'),
+            incidentId,
+            status: 'acknowledged',
+            reason: 'read-only user must not mutate incident'
+        }),
+        error => error.code === 'fiscal_action_denied'
+    );
+    await assert.rejects(
+        () => updateOperationalIncidentStatus({
+            dbPool: pool,
+            user: fiscalConfigUser(userId, ['fiscal.incident.manage']),
+            incidentId,
+            status: 'acknowledged',
+            reason: 'manager without exact ownership must not mutate incident'
+        }),
+        error => error.code === 'fiscal_incident_owner_denied'
+    );
+    await pool.query(
+        `UPDATE fiscal_registers
+            SET metadata = metadata || jsonb_build_object('integration_owner', $2::text)
+          WHERE id = $1`,
+        [applied.fiscalRegisterId, String(userId)]
+    );
+    const acknowledged = await updateOperationalIncidentStatus({
+        dbPool: pool,
+        user: fiscalConfigUser(userId, ['fiscal.incident.manage']),
+        incidentId,
+        status: 'acknowledged',
+        reason: 'integration test acknowledge'
+    });
+    assert.equal(acknowledged.incident.status, 'acknowledged');
+    assert.equal(
+        await countRows(
+            `SELECT COUNT(*)::integer AS count
+               FROM fiscal_audit_events
+              WHERE fiscal_profile_id = $1
+                AND entity_table = 'fiscal_operational_incidents'
+                AND entity_id = $2
+                AND event_type = 'fiscal_incident_acknowledged'`,
+            [applied.fiscalProfileId, incidentId]
+        ),
+        1
     );
 
     const enabled = await run(['enable-register', ...args], { env, dbPool: pool });

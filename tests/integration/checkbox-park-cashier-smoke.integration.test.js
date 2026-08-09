@@ -21,6 +21,10 @@ const { createProviderFromConfig } = require('../../services/checkbox/provider')
 const { processPaymentOutboxJobs } = require('../../services/payments/paymentOutboxWorker');
 const { verifyCheckboxWebhookSignature } = require('../../services/checkbox/webhookAuth');
 const { createActionPinHash } = require('../../services/payments/fiscalApprovals');
+const {
+    listUnresolvedPaymentOrders,
+    loadCheckboxSalesReport
+} = require('../../services/payments/paymentReadinessService');
 
 const enabled = process.env.RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION === 'true';
 const CRM_PROFILE_KEY = 'event_genix';
@@ -274,12 +278,13 @@ async function listenMockCheckbox() {
                 if (req.url === '/api/v1/cash-registers/info' && req.method === 'GET') {
                     return send(200, {
                         id: state.registerId,
+                        organization_id: state.organizationId,
                         fiscal_number: '4000000000',
-                        active: true,
+                        is_test: true,
                         created_at: '2026-01-01T00:00:00.000Z',
                         offline_mode: false,
                         stay_offline: false,
-                        has_shift: state.shiftOpened
+                        documents_state: { last_receipt_code: null, last_report_code: null }
                     });
                 }
                 if (req.url === '/api/v1/cashier/check-signature' && req.method === 'GET') {
@@ -848,6 +853,98 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             1
         );
         await runWorkerUntilIdle(createHttpProvider(mock));
+    });
+
+    test('unresolved queue is register-wide, latest-job deduped, and sales report totals run on PostgreSQL', async () => {
+        const first = await createOrder({
+            user: cashier,
+            key: 'report-cashier-a',
+            tender: 'cash',
+            totalUah: 40,
+            itemCode: 'park_child_day_cash'
+        });
+        const firstConfirmed = await confirmOrder({
+            user: cashier,
+            order: first,
+            key: 'report-cashier-a',
+            tender: 'cash',
+            amountMinor: '4000'
+        });
+        const second = await createOrder({
+            user: secondCashier,
+            key: 'report-cashier-b',
+            tender: 'cash',
+            totalUah: 50,
+            itemCode: 'park_child_day_cash'
+        });
+        await confirmOrder({
+            user: secondCashier,
+            order: second,
+            key: 'report-cashier-b',
+            tender: 'cash',
+            amountMinor: '5000'
+        });
+
+        const latestJobBefore = await pool.query(
+            `SELECT fiscal_profile_id, fiscal_operation_id, payment_order_id
+               FROM payment_outbox_jobs
+              WHERE fiscal_operation_id = $1
+              ORDER BY id DESC
+              LIMIT 1`,
+            [firstConfirmed.fiscalOperationId]
+        );
+        await pool.query(
+            `INSERT INTO payment_outbox_jobs (
+                 fiscal_profile_id, fiscal_operation_id, payment_order_id, job_type,
+                 status, idempotency_key, attempts, max_attempts, next_run_at, payload
+             )
+             VALUES ($1, $2, $3, 'receipt_status_lookup', 'failed', $4, 1, 10, NOW(), '{"source":"dedupe-regression"}'::jsonb)`,
+            [
+                latestJobBefore.rows[0].fiscal_profile_id,
+                latestJobBefore.rows[0].fiscal_operation_id,
+                latestJobBefore.rows[0].payment_order_id,
+                `dedupe-regression:${process.pid}:${first.order.id}`
+            ]
+        );
+
+        const unresolvedForSecondCashier = await listUnresolvedPaymentOrders({
+            dbPool: pool,
+            user: secondCashier,
+            crmProfileKey: CRM_PROFILE_KEY,
+            registerAlias: REGISTER_ALIAS
+        });
+        const unresolvedIds = unresolvedForSecondCashier.orders.map(order => order.id);
+        assert.equal(new Set(unresolvedIds).size, unresolvedIds.length, 'latest-job CTE must not duplicate unresolved orders');
+        assert.ok(unresolvedIds.includes(first.order.id), 'second cashier must see unresolved order from the same register');
+        assert.ok(unresolvedIds.includes(second.order.id), 'second cashier must see own unresolved order');
+        assert.equal(unresolvedForSecondCashier.orders.find(order => order.id === first.order.id).isMine, false);
+        assert.equal(unresolvedForSecondCashier.orders.find(order => order.id === second.order.id).isMine, true);
+        assert.ok(unresolvedForSecondCashier.registerCount >= 2);
+        assert.ok(unresolvedForSecondCashier.myCount >= 1);
+
+        const report = await loadCheckboxSalesReport({
+            dbPool: pool,
+            user: secondCashier,
+            crmProfileKey: CRM_PROFILE_KEY,
+            registerAlias: REGISTER_ALIAS,
+            page: 1,
+            pageSize: 1
+        });
+        assert.equal(report.orders.length, 1, 'report rows respect pagination');
+        assert.ok(report.totalCount >= 2, 'report totals count the full filter scope, not only current page');
+        assert.ok(BigInt(report.totals.paymentTotalMinor) >= 9000n);
+
+        const mineReport = await loadCheckboxSalesReport({
+            dbPool: pool,
+            user: secondCashier,
+            crmProfileKey: CRM_PROFILE_KEY,
+            registerAlias: REGISTER_ALIAS,
+            cashierUserId: 'mine',
+            page: 1,
+            pageSize: 10
+        });
+        assert.ok(mineReport.orders.every(order => order.id !== first.order.id), 'mine filter must not leak another cashier order');
+        assert.ok(mineReport.orders.some(order => order.id === second.order.id));
     });
 
     test('4xx, pending, malformed, timeout-after-success, webhook replay, cross-profile isolation, and redaction fail safely', async () => {

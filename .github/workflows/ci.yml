@@ -251,6 +251,12 @@ jobs:
       - name: Run migration governance check
         run: npm run check:migrations
 
+      - name: Run Checkbox OpenAPI compatibility gate
+        run: npm run check:checkbox-openapi
+
+      - name: Run Checkbox source safety scan
+        run: npm run check:checkbox-safety
+
       - name: Run Checkbox thin unit contracts
         run: node --test tests/checkbox-provider-bridge.test.js tests/checkbox-sandbox-harness.test.js tests/checkbox-park-config.test.js tests/payment-fiscal-ledger-foundation.test.js tests/payment-readiness.test.js
 

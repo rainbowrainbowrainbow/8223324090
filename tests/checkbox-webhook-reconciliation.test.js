@@ -465,6 +465,14 @@ class FakeWorkerClient {
             return { rows: [] };
         }
 
+        if (normalized.startsWith("SELECT * FROM fiscal_receipts WHERE provider = 'checkbox' AND provider_receipt_id = $1")) {
+            return {
+                rows: this.db.receipts
+                    .filter(row => row.provider === 'checkbox' && row.provider_receipt_id === params[0])
+                    .slice(0, 1)
+            };
+        }
+
         if (normalized.startsWith('INSERT INTO fiscal_receipts')) {
             const [profileId, operationId, orderId, refundId, receiptType, receiptId] = params;
             let receipt = this.db.receipts.find(row => row.provider === 'checkbox' && row.provider_receipt_id === receiptId);

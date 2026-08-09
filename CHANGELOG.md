@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.98 - Luna Bundle Decision Hotfix
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Bundle і checklist більше не змішуються** - Luna отримала чіткий критерій: незалежно планована, призначувана й завершувана робота є окремою задачею bundle; внутрішні кроки одного результату лишаються checklist.
+- **Live-регресія покрита eval** - додано точний CRM + Hermes + AI сценарій із трьома незалежними задачами та фіксованою очікуваною кількістю.
+
+---
+
 ## v0.80.97 - Luna Structured Output Hotfix
 
 ### Release / Versioning / (09.08.2026) [codex]

@@ -244,6 +244,8 @@ test('AI draft commit creates task, subtasks, impacts, and AI history in one tra
     assert.equal(fakePool.state.committed, true);
     assert.equal(fakePool.state.rolledBack, false);
     assert.equal(fakePool.state.tasks.length, 1);
+    assert.ok(String(fakePool.state.tasks[0].source_id || '').length <= 50);
+    assert.ok(String(fakePool.state.tasks[0].assigned_to || '').length <= 50);
     assert.equal(fakePool.state.impacts.length, 2);
     assert.equal(fakePool.state.history.length, 1);
     assert.ok(fakePool.state.calls.some(call => /pg_advisory_xact_lock/i.test(call.text)));
@@ -263,6 +265,12 @@ test('AI draft commit creates task, subtasks, impacts, and AI history in one tra
     assert.deepEqual(telemetryEvents[0].data.acceptedFieldMask, ['title', 'description', 'mode', 'impactIds', 'subtasks']);
     assert.deepEqual(telemetryEvents[0].data.changedFields, ['title', 'description', 'mode', 'impactIds', 'subtasks']);
     assert.equal(JSON.stringify(telemetryEvents[0].data).includes('Fix CRM booking form'), false);
+});
+
+test('AI draft commit compacts legacy task text references to database-safe length', () => {
+    const longValue = 'x'.repeat(120);
+    assert.equal(commit.legacyTaskTextRef(longValue).length, 50);
+    assert.equal(commit.legacyTaskTextRef('', 'ai-draft'), 'ai-draft');
 });
 
 test('AI draft commit rolls back completely when impact write fails', async () => {

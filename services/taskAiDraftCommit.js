@@ -32,6 +32,11 @@ function commitError(message, statusCode, code) {
     return error;
 }
 
+function legacyTaskTextRef(value, fallback = null) {
+    const compacted = compactString(value, 50);
+    return compacted || fallback;
+}
+
 function safeRecordCommitTelemetry(event = {}, options = {}) {
     try {
         return recordTaskAiDraftTelemetry(event, options);
@@ -243,7 +248,9 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             }
 
         const createTaskImpl = options.createTaskImpl || require('./kleshnya').createTask;
-        const actorLabel = input.user?.username || input.user?.name || 'ai-draft';
+        const actorLabel = legacyTaskTextRef(input.user?.username || input.user?.name, 'ai-draft');
+        const ownerLabel = legacyTaskTextRef(input.user?.username || input.user?.name, null);
+        const sourceId = legacyTaskTextRef(tokenPayload.proposalId || tokenPayload.proposalHash, null);
         const task = await createTaskImpl({
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || undefined,
             title: finalDraft.title,
@@ -251,13 +258,13 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             date: finalDraft.date,
             deadline: finalDraft.deadline,
             priority: 'normal',
-            assigned_to: input.user?.name || input.user?.username || null,
+            assigned_to: ownerLabel,
             owner_user_id: userId,
-            owner: input.user?.name || input.user?.username || null,
+            owner: ownerLabel,
             task_type: 'human',
             dependency_ids: [],
             source_type: AI_DRAFT_COMMIT_SOURCE_TYPE,
-            source_id: tokenPayload.proposalId || tokenPayload.proposalHash,
+            source_id: sourceId,
             category: finalDraft.category,
             subcategory: finalDraft.subcategory,
             created_by: actorLabel,
@@ -373,6 +380,7 @@ module.exports = {
     AI_DRAFT_COMMIT_SOURCE_TYPE,
     commitTaskAiDraft,
     hashCommitRequest,
+    legacyTaskTextRef,
     normalizeAcceptedFieldMask,
     normalizeFinalDraft,
     normalizeIdempotencyKey

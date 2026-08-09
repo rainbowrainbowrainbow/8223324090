@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.103 - Checkbox Fiscal Hardening
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Checkbox readiness став fail-closed** - оплата не підтверджується, якщо EventGenix не бачить свіжу готовність Checkbox, касира, касу, підпис/сертифікат, tax mapping або unresolved receipts.
+- **Фіскальний ledger захищено на рівні PostgreSQL** - provider UUID, ФОП/каса/касир, сума, receipt identity та config audit не можуть непомітно змінитись після створення операції.
+- **Shift/recovery контур стабілізовано** - worker не мутує immutable snapshot, не робить повторний sale після unknown/timeout і сходиться через той самий shift/receipt UUID.
+- **UI "Оплата та чек" не ховає проблемні чеки** - unavailable queue відрізняється від empty, pending/unknown/dead залишаються видимими, а Cashier PRO і production fiscalization залишаються вимкненими.
+- **CI/local gates посилено** - додано PostgreSQL + local HTTP Checkbox smoke, provider readiness tests, config constraints, sandbox harness і real-routes browser перевірки.
+
+---
+
 ## v0.80.102 - Compact My Day Cards
 
 ### Release / Versioning / (09.08.2026) [codex]

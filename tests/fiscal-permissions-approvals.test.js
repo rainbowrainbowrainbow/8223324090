@@ -18,6 +18,7 @@ const {
     evaluatePinChallenge,
     approveFiscalAction,
     consumeFiscalApproval,
+    consumeFiscalApprovalInTransaction,
     assertTestPinModeSafe
 } = require('../services/payments/fiscalApprovals');
 
@@ -237,6 +238,50 @@ test('operation-bound approvals are one-time and replay attempts fail closed', (
         }),
         error => error.code === 'approval_already_consumed'
     );
+});
+
+test('database approval consumption is atomic and scoped to operation/profile/register/action', async () => {
+    const approval = {
+        id: 90,
+        fiscal_profile_id: 20,
+        fiscal_register_id: 40,
+        fiscal_operation_id: 70,
+        action_type: 'refund',
+        status: 'approved',
+        approved_by_user_id: 60,
+        expires_at: new Date('2026-01-01T10:05:00.000Z'),
+        consumed_at: null
+    };
+    const calls = [];
+    const client = {
+        async query(sql, params) {
+            calls.push({ sql, params });
+            assert.match(sql, /status = 'approved'/);
+            assert.match(sql, /consumed_at IS NULL/);
+            assert.match(sql, /expires_at > \$6/);
+            assert.match(sql, /fiscal_register_id = \$3/);
+            assert.equal(params[0], 90);
+            assert.equal(params[1], 20);
+            assert.equal(params[2], 40);
+            assert.equal(params[3], 70);
+            assert.equal(params[4], 'refund');
+            return { rows: [{ ...approval, status: 'consumed', consumed_at: params[5], consumed_by_operation_id: 70 }] };
+        }
+    };
+
+    const consumed = await consumeFiscalApprovalInTransaction(client, {
+        ...approval,
+        id: 90
+    }, {
+        operationId: 70,
+        actionType: 'fiscal.refund',
+        actorUserId: 60,
+        now: new Date('2026-01-01T10:01:00.000Z')
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(consumed.status, 'consumed');
+    assert.equal(consumed.consumed_by_operation_id, 70);
 });
 
 test('configured test PIN mode fails closed in production-like environments', () => {

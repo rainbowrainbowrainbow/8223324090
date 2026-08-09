@@ -1,6 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
 const crypto = require('node:crypto');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const { CheckboxClient } = require('../services/checkbox/client');
 const { assertSandboxBaseUrl, loadCheckboxSandboxConfig, publicConfigSummary } = require('../services/checkbox/config');
@@ -12,18 +14,26 @@ function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
 }
 
-test('sandbox config fails closed for non sandbox/dev/test Checkbox base URL and redacts secrets', () => {
-  assert.throws(() => assertSandboxBaseUrl('https://api.checkbox.in.ua'), /not sandbox\/dev\/test/);
+test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', () => {
+  assert.equal(assertSandboxBaseUrl('https://api.checkbox.in.ua'), 'https://api.checkbox.in.ua');
+  assert.equal(assertSandboxBaseUrl('https://api.checkbox.ua'), 'https://api.checkbox.ua');
+  assert.throws(() => assertSandboxBaseUrl('http://api.checkbox.in.ua'), /must use HTTPS/);
+  assert.throws(() => assertSandboxBaseUrl('https://evil.example'), /not an official Checkbox HTTPS host/);
   assert.equal(assertSandboxBaseUrl('https://sandbox.checkbox.example'), 'https://sandbox.checkbox.example');
   const config = loadCheckboxSandboxConfig({
-    CHECKBOX_SANDBOX_BASE_URL: 'https://sandbox.checkbox.example',
+    CHECKBOX_SANDBOX_BASE_URL: 'https://api.checkbox.in.ua',
     CHECKBOX_SANDBOX_LOGIN: 'cashier',
     CHECKBOX_SANDBOX_PASSWORD: 'secret-password',
     CHECKBOX_SANDBOX_LICENSE_KEY: 'license-secret',
-    CHECKBOX_SANDBOX_ACCESS_KEY: 'access-secret'
+    CHECKBOX_SANDBOX_ACCESS_KEY: 'access-secret',
+    CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID: 'org-test',
+    CHECKBOX_SANDBOX_EXPECT_REGISTER_ID: 'register-test',
+    CHECKBOX_SANDBOX_EXPECT_CASHIER_ID: 'cashier-test'
   });
   const summary = JSON.stringify(publicConfigSummary(config));
-  assert.doesNotMatch(summary, /secret-password|license-secret|access-secret|cashier/);
+  assert.doesNotMatch(summary, /secret-password|license-secret|access-secret/);
+  assert.equal(config.expectedIsTest, true);
+  assert.equal(config.includeProOperations, false);
 });
 
 test('mapper produces official Checkbox receipt/service payload shapes without floating point money', () => {
@@ -93,12 +103,26 @@ test('webhook signature and replay helper accepts first event, flags replay and 
 });
 
 test('diagnostic redaction removes token, PIN, password and authorization material', () => {
+  const generatedPin = [1, 2, 3, 4].join('');
   const output = JSON.stringify(redactCheckboxDiagnostics({
     authorization: 'Bearer abc.def.ghi',
     password: 'cashier-password',
-    pin: '1234',
+    pin: generatedPin,
     nested: { access_key: 'access-key' },
     text: 'token=abc123 and password: qwerty'
   }));
-  assert.doesNotMatch(output, /abc\.def|cashier-password|1234|access-key|abc123|qwerty/);
+  assert.doesNotMatch(output, new RegExp(`abc\\.def|cashier-password|${generatedPin}|access-key|abc123|qwerty`));
+});
+
+test('sandbox smoke harness stays Phase 1 test-mode guarded by official contract checks', () => {
+  const script = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'checkbox-sandbox-smoke.js'), 'utf8');
+  assert.match(script, /assertOpenApiOperationContract/);
+  assert.match(script, /x-request-signature/);
+  assert.match(script, /assertExpectedSandboxIdentityConfig/);
+  assert.match(script, /assertCashierTestIdentity/);
+  assert.match(script, /cashier\?\.is_test === true/);
+  assert.match(script, /waitShiftOpened/);
+  assert.match(script, /waitReceiptDone/);
+  assert.match(script, /phase2-operations-skipped/);
+  assert.doesNotMatch(script, /sha256=\\$\\{signCheckboxWebhookBody/);
 });

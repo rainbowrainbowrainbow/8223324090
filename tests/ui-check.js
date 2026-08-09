@@ -7122,31 +7122,30 @@ check('Cashier payments pilot UI is scoped to park middle register and shows imm
     && cashierPaymentsHtml.includes('\u0413\u043e\u0442\u0456\u0432\u043a\u0443 \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e \u2014 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u0438 \u0447\u0435\u043a')
     && cashierPaymentsHtml.includes('\u0422\u0435\u0440\u043c\u0456\u043d\u0430\u043b \u043f\u043e\u043a\u0430\u0437\u0430\u0432 \u0443\u0441\u043f\u0456\u0448\u043d\u0443 \u043e\u043f\u043b\u0430\u0442\u0443')
     && cashierPaymentsHtml.includes('RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f'));
-check('Cashier operational contour exposes shift service refund reconciliation and report controls',
-    cashierPaymentsHtml.includes('id="operationalContourPanel"')
-    && cashierPaymentsHtml.includes('id="activeShiftStatus"')
-    && cashierPaymentsHtml.includes('id="serviceInForm"')
-    && cashierPaymentsHtml.includes('id="serviceOutForm"')
-    && cashierPaymentsHtml.includes('id="serviceOutApprovalPanel"')
-    && cashierPaymentsHtml.includes('id="refundForm"')
-    && cashierPaymentsHtml.includes('id="reconciliationForm"')
-    && cashierPaymentsHtml.includes('id="closeShiftBtn"')
-    && cashierPaymentsHtml.includes('id="operationalReportBody"')
-    && cashierPaymentsHtml.includes('type="password"')
-    && cashierPaymentsHtml.includes('aria-live="polite"'));
-check('Cashier operational frontend uses scoped mapping and durable idempotency for fiscal actions',
+check('Cashier thin UI exposes server-backed unresolved queue and read-only Checkbox sales report',
+    cashierPaymentsHtml.includes('id="unresolvedOrdersPanel"')
+    && cashierPaymentsHtml.includes('id="unresolvedOrdersBody"')
+    && cashierPaymentsHtml.includes('id="refreshUnresolvedOrdersBtn"')
+    && cashierPaymentsHtml.includes('id="checkboxSalesReportPanel"')
+    && cashierPaymentsHtml.includes('id="checkboxSalesReportBody"')
+    && cashierPaymentsHtml.includes('id="loadCheckboxSalesReportBtn"')
+    && cashierPaymentsHtml.includes('aria-live="polite"')
+    && !cashierPaymentsHtml.includes('id="operationalContourPanel"')
+    && !cashierPaymentsHtml.includes('id="serviceInForm"')
+    && !cashierPaymentsHtml.includes('id="refundForm"')
+    && !cashierPaymentsHtml.includes('id="reconciliationForm"')
+    && !cashierPaymentsHtml.includes('type="password"'));
+check('Cashier frontend uses provider-aware readiness and server-backed recovery APIs',
     cashierPaymentsJs.includes('loadPilotRegisterState')
     && cashierPaymentsJs.includes('/api/payments/pilot-register-state')
-    && cashierPaymentsJs.includes('getOperationIdempotencyKey')
-    && cashierPaymentsJs.includes('baseScopePayload')
-    && cashierPaymentsJs.includes('hasCloseBlockers')
-    && cashierPaymentsJs.includes('shift_close_blocked')
-    && cashierPaymentsJs.includes('/api/payments/service-in')
-    && cashierPaymentsJs.includes('/api/payments/service-out')
-    && cashierPaymentsJs.includes('/refund')
-    && cashierPaymentsJs.includes('/reconcile')
-    && cashierPaymentsJs.includes('/close')
-    && cashierPaymentsJs.includes('/report'));
+    && cashierPaymentsJs.includes('/api/payments/unresolved-orders')
+    && cashierPaymentsJs.includes('/api/payments/checkbox-sales-report')
+    && cashierPaymentsJs.includes('loadUnresolvedOrders')
+    && cashierPaymentsJs.includes('renderUnresolvedOrders')
+    && cashierPaymentsJs.includes('failed_retryable')
+    && cashierPaymentsJs.includes('failed_terminal')
+    && cashierPaymentsJs.includes('dead')
+    && cashierPaymentsJs.includes('POLLING_TIMEOUT_MS'));
 check('Cashier payments frontend preserves idempotency and blocks repeat payment while fiscalization is pending',
     cashierPaymentsJs.includes('getCreateIdempotencyKey')
     && cashierPaymentsJs.includes('getConfirmIdempotencyKey')

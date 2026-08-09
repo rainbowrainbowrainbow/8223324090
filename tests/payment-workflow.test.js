@@ -79,6 +79,7 @@ function defaultFiscalItemMapping(overrides = {}) {
         item_code: 'regular_child',
         fiscal_item_name: 'Park child admission',
         provider_tax_id: '7',
+        tax_mode: 'taxed',
         tax_code: 1,
         tax_rate_bps: 2000,
         status: 'active',
@@ -149,6 +150,7 @@ class FakePaymentDb {
                 total_amount_minor: row.total_amount_minor,
                 tax_reference: 'admission_tariff:11',
                 provider_tax_id: '7',
+                tax_mode: 'taxed',
                 tax_code: 1,
                 tax_rate_bps: 2000,
                 item_snapshot: {}
@@ -311,9 +313,10 @@ class FakePaymentClient {
                 total_amount_minor: String(params[7]),
                 tax_reference: params[8],
                 provider_tax_id: params[9],
-                tax_code: params[10],
-                tax_rate_bps: params[11],
-                item_snapshot: JSON.parse(params[12])
+                tax_mode: params[10],
+                tax_code: params[11],
+                tax_rate_bps: params[12],
+                item_snapshot: JSON.parse(params[13])
             });
             return { rows: [] };
         }
@@ -324,7 +327,8 @@ class FakePaymentClient {
                 item_code: item.item_code,
                 item_name: item.item_name,
                 tax_reference: item.tax_reference,
-                provider_tax_id: item.provider_tax_id
+                provider_tax_id: item.provider_tax_id,
+                tax_mode: item.tax_mode || 'taxed'
             })) };
         }
 

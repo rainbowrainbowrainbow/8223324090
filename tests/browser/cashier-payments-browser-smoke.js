@@ -84,6 +84,7 @@ function orderDetails(order) {
             status: order.status,
             paymentStatus: order.paymentStatus,
             fiscalStatus: order.fiscalStatus,
+            fiscalQueueStatus: order.fiscalStatus === 'failed' ? 'failed_retryable' : order.fiscalStatus,
             paymentMethod: order.tender === 'card_terminal_manual' ? 'card_terminal' : 'cash',
             totalAmountMinor: '50000',
             currency: 'UAH',
@@ -99,6 +100,7 @@ function orderDetails(order) {
         },
         items: [{ id: 1, lineNumber: 1, itemType: 'admission_ticket', itemCode: 'regular_child', itemName: 'Вхідний квиток парку', unitPriceMinor: '50000', quantityMillis: '1000', totalAmountMinor: '50000', currency: 'UAH', taxReference: 'admission_tariff:smoke' }],
         fiscalOperation: order.paymentStatus === 'confirmed' ? { id: 8, fiscalShiftId: state.shift?.id || null, status: order.fiscalStatus, provider: 'checkbox', providerOperationId: 'provider-smoke', providerStatus: order.fiscalStatus } : null,
+        outboxJob: order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized' ? { id: 77, jobType: 'receipt_sell', status: 'queued', externalStage: 'receipt_lookup', attempts: 0, maxAttempts: 10, nextRunAt: '2026-08-04T10:01:00.000Z', lastErrorCode: null } : null,
         receipts: order.fiscalStatus === 'fiscalized' ? [{ id: 9, fiscalOperationId: 8, paymentOrderId: order.id, receiptType: 'sale', status: 'fiscalized', provider: 'checkbox', providerReceiptId: 'chk-smoke', providerTaxUrl: 'https://api.checkbox.ua/check', providerPdfUrl: 'https://api.checkbox.ua/check.pdf', providerQrUrl: 'https://api.checkbox.ua/qr', totalAmountMinor: '50000', currency: 'UAH', fiscalizedAt: '2026-08-04T10:00:01.000Z' }] : [],
         artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://api.checkbox.ua/check', pdfUrl: 'https://api.checkbox.ua/check.pdf', qrUrl: 'https://api.checkbox.ua/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null }
     };
@@ -155,6 +157,39 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') return json(res, 200, { user: { id: 50, name: 'Smoke Cashier', role: 'administrator', roles: ['reception', 'administrator'], businessProfile: 'event_genix' } });
     if (url.pathname === '/api/auth/permissions') return json(res, 200, permissionPayload(url.searchParams.get('deny') !== '1' && req.headers['x-smoke-deny'] !== '1'));
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') return json(res, 200, registerStatePayload());
+    if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
+        const orders = [...state.orders.values()]
+            .filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized')
+            .map(order => ({
+                id: order.id,
+                orderKey: `admission_ticket:${order.sourceId}`,
+                paymentStatus: order.paymentStatus,
+                fiscalStatus: order.fiscalStatus === 'failed' ? 'failed_retryable' : order.fiscalStatus,
+                rawFiscalStatus: order.fiscalStatus,
+                totalAmountMinor: '50000',
+                currency: 'UAH',
+                confirmedAt: '2026-08-04T10:00:00.000Z',
+                outboxStatus: 'queued',
+                nextRunAt: '2026-08-04T10:01:00.000Z',
+                incidentReason: null
+            }));
+        return json(res, 200, { success: true, fiscalProfileId: 1, fiscalRegisterId: 10, orders });
+    }
+    if (url.pathname === '/api/payments/checkbox-sales-report' && req.method === 'GET') {
+        const orders = [...state.orders.values()]
+            .filter(order => order.paymentStatus === 'confirmed')
+            .map(order => ({
+                id: order.id,
+                paymentStatus: order.paymentStatus,
+                fiscalStatus: order.fiscalStatus,
+                paymentMethod: order.tender === 'card_terminal_manual' ? 'card_terminal' : 'cash',
+                totalAmountMinor: '50000',
+                currency: 'UAH',
+                confirmedAt: '2026-08-04T10:00:00.000Z',
+                providerTaxUrl: order.fiscalStatus === 'fiscalized' ? 'https://api.checkbox.ua/check' : null
+            }));
+        return json(res, 200, { success: true, internalReport: true, officialZReport: false, totals: { paymentTotalMinor: String(orders.length * 50000), cashTotalMinor: '50000', cardTerminalTotalMinor: '50000', statusCounts: { pending: orders.filter(order => order.fiscalStatus === 'pending').length, fiscalized: orders.filter(order => order.fiscalStatus === 'fiscalized').length } }, orders });
+    }
     if (url.pathname === '/api/payments/admission-ticket/orders' && req.method === 'POST') {
         const body = await readBody(req);
         const key = req.headers['idempotency-key'];
@@ -272,7 +307,7 @@ async function run() {
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
         await page.fill('#cashReceivedAmount', '600');
         await page.click('#confirmCashBtn');
-        await page.waitForFunction(() => document.querySelector('#cashierPaymentStatus')?.textContent.includes('оплачено'));
+        await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'cash repeat submit is blocked after fiscal pending');
         assert.equal(state.confirmKeys.length, 1, 'cash confirmation should submit once after double-click guard');
         await context.close();
@@ -289,14 +324,17 @@ async function run() {
         await page.check('#terminalSuccessCheckbox');
         await page.fill('#terminalReference', 'term-ref-1');
         await Promise.all([page.click('#confirmCardBtn'), page.click('#confirmCardBtn').catch(() => {})]);
-        await page.waitForFunction(() => document.querySelector('#cashierFiscalStatus')?.textContent.includes('очікує'));
+        await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(new Set(state.confirmKeys).size, state.confirmKeys.length, 'duplicate UI clicks must not create a second idempotency key');
 
         const currentOrderId = state.nextOrderId;
         await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForFunction(() => document.querySelector('#fiscalPendingMessage')?.textContent.includes('Повторна оплата заблокована'));
+        await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(await page.isDisabled('#confirmCardBtn'), true, 'reload keeps pending payment blocked');
         assert.equal(await page.locator('#operationalContourPanel').isVisible(), false, 'Cashier PRO panel stays hidden when flag is false');
+        await page.click('#startNextOrderBtn');
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'next customer keeps unresolved previous receipt visible');
 
         for (const order of state.orders.values()) order.fiscalStatus = 'fiscalized';
         const current = state.orders.get(currentOrderId);

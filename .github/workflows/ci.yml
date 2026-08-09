@@ -248,6 +248,15 @@ jobs:
       - name: Run migration governance check
         run: npm run check:migrations
 
+      - name: Run Checkbox thin unit contracts
+        run: node --test tests/checkbox-provider-bridge.test.js tests/checkbox-sandbox-harness.test.js tests/checkbox-park-config.test.js tests/payment-fiscal-ledger-foundation.test.js tests/payment-readiness.test.js
+
+      - name: Run Checkbox park configuration PostgreSQL test
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_checkbox_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:checkbox-park-config:isolated
+
       - name: Run Checkbox park fresh PostgreSQL and local HTTP mock smoke
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_checkbox_ci_test

@@ -22,8 +22,22 @@ const baseArgs = [
     '--provider-cashier-id', 'cashier-50',
     '--cashier-login-ref', 'park-middle',
     '--integration-owner', 'eventgenix-checkbox',
-    '--item', 'regular_child|Park child admission|7|1|0'
+    '--expected-is-test', 'true',
+    '--item', 'regular_child|Park child admission|taxed|7|1|0'
 ];
+const mutationArgs = [...baseArgs, '--reason', 'test pilot config change'];
+
+function withoutItemArgs(args) {
+    const output = [];
+    for (let index = 0; index < args.length; index += 1) {
+        if (args[index] === '--item') {
+            index += 1;
+            continue;
+        }
+        output.push(args[index]);
+    }
+    return output;
+}
 
 test('park pilot config CLI is dry-run by default and never enables register feature flag', () => {
     const plan = parseArgs(baseArgs);
@@ -36,6 +50,8 @@ test('park pilot config CLI is dry-run by default and never enables register fea
     assert.equal(output.actionPinRequired, false);
     assert.equal(output.providerCashierId, 'cashier-50');
     assert.equal(output.integrationOwner, 'eventgenix-checkbox');
+    assert.equal(output.expectedIsTest, true);
+    assert.equal(output.itemMappings[0].taxMode, 'taxed');
 });
 
 test('park pilot config rejects raw secret-like CLI arguments', () => {
@@ -61,6 +77,24 @@ test('park pilot config supports explicit preflight/status/enable/disable modes'
     assert.equal(parseArgs(['--enable-register', ...baseArgs]).mode, 'enable-register');
     assert.equal(parseArgs(['--disable-register', '--legal-entity-key', 'park_fop']).mode, 'disable-register');
     assert.equal(parseArgs(['status', '--legal-entity-key', 'park_fop']).mode, 'status');
+    assert.equal(parseArgs(['diff', ...baseArgs]).mode, 'diff');
+    assert.equal(parseArgs(['--replace-tax-mapping', ...baseArgs]).mode, 'replace-tax-mapping');
+    assert.equal(parseArgs(['--rotate-binding', ...baseArgs]).mode, 'rotate-binding');
+    assert.equal(parseArgs(['--change-owner', ...baseArgs]).mode, 'change-owner');
+});
+
+test('park pilot config enforces explicit taxed/untaxed item mapping rules', () => {
+    const untaxed = parseArgs([...baseArgs.slice(0, -2), '--item', 'regular_child|Park child admission|untaxed|||0']).items[0];
+    assert.equal(untaxed.taxMode, 'untaxed');
+    assert.equal(untaxed.providerTaxId, null);
+    assert.throws(
+        () => parseArgs([...baseArgs.slice(0, -2), '--item', 'regular_child|Park child admission|untaxed|7|1|0']),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_item_tax_forbidden'
+    );
+    assert.throws(
+        () => parseArgs([...baseArgs.slice(0, -2), '--item', 'regular_child|Park child admission|taxed|admission_tariff:1|1|0']),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_item_tax_invalid'
+    );
 });
 
 class FakePilotConfigDb {
@@ -70,6 +104,7 @@ class FakePilotConfigDb {
         this.registers = new Map();
         this.bindings = new Map();
         this.items = new Map();
+        this.audits = [];
         this.next = 1;
         this.queries = [];
     }
@@ -134,11 +169,34 @@ class FakePilotConfigClient {
         if (normalized.startsWith('SELECT code FROM admission_ticket_types')) {
             return { rows: [{ code: 'regular_child' }] };
         }
+        if (normalized.startsWith('SELECT user_id, provider_cashier_id')) {
+            return {
+                rows: [...this.db.bindings.values()]
+                    .filter(binding => binding.fiscal_profile_id === params[0] && binding.fiscal_register_id === params[1] && binding.status === 'active')
+                    .sort((a, b) => Number(a.user_id) - Number(b.user_id))
+                    .map(binding => ({
+                        user_id: binding.user_id,
+                        provider_cashier_id: binding.provider_cashier_id,
+                        provider_cashier_login_ref: binding.provider_cashier_login_ref,
+                        capability_scope: binding.capability_scope,
+                        status: binding.status,
+                        has_action_pin: Boolean(binding.action_pin_hash)
+                    }))
+            };
+        }
         if (normalized.startsWith('SELECT fim.item_code')) {
             return {
                 rows: [...this.db.items.values()]
                     .filter(item => item.status === 'active')
-                    .map(item => ({ item_code: item.item_code, count: 1 }))
+                    .map(item => ({
+                        item_code: item.item_code,
+                        fiscal_item_name: item.fiscal_item_name,
+                        tax_mode: item.tax_mode || 'taxed',
+                        provider_tax_id: item.provider_tax_id,
+                        tax_code: item.tax_code,
+                        tax_rate_bps: item.tax_rate_bps,
+                        count: 1
+                    }))
             };
         }
         if (normalized.startsWith('INSERT INTO fiscal_profiles')) {
@@ -176,7 +234,7 @@ class FakePilotConfigClient {
                 provider_register_id: params[6],
                 provider_license_ref: params[7],
                 status: 'active',
-                feature_enabled: false,
+                feature_enabled: row.feature_enabled === true ? true : false,
                 metadata: JSON.parse(params[8])
             });
             this.db.registers.set(key, row);
@@ -210,7 +268,55 @@ class FakePilotConfigClient {
                 provider_tax_id: params[8],
                 tax_code: params[9],
                 tax_rate_bps: params[10],
+                tax_mode: params[11],
                 status: 'active'
+            });
+            return { rows: [] };
+        }
+        if (normalized.startsWith('UPDATE fiscal_item_mappings SET status =')) {
+            const keep = new Set(params[5]);
+            for (const item of this.db.items.values()) {
+                if (item.fiscal_profile_id === params[0] && item.fiscal_register_id === params[1] && item.source_type === params[2] && item.item_type === params[3] && item.provider === params[4] && !keep.has(item.item_code)) {
+                    item.status = 'archived';
+                }
+            }
+            return { rows: [] };
+        }
+        if (normalized.startsWith('UPDATE fiscal_cashier_bindings SET status =')) {
+            for (const binding of this.db.bindings.values()) {
+                if (binding.fiscal_profile_id === params[0] && binding.fiscal_register_id === params[1] && binding.status === 'active') binding.status = 'suspended';
+            }
+            return { rows: [] };
+        }
+        if (normalized.startsWith('UPDATE fiscal_registers SET metadata =')) {
+            for (const register of this.db.registers.values()) {
+                if (register.id === params[1] && register.fiscal_profile_id === params[2] && register.register_alias === params[3]) {
+                    register.metadata = { ...(register.metadata || {}), integration_owner: params[0] };
+                }
+            }
+            return { rows: [] };
+        }
+        if (normalized.startsWith('UPDATE fiscal_registers SET feature_enabled =')) {
+            for (const register of this.db.registers.values()) {
+                if (register.id === params[1] && register.fiscal_profile_id === params[2] && register.register_alias === params[3]) {
+                    register.feature_enabled = params[0] === true;
+                    return { rows: [{ id: register.id, feature_enabled: register.feature_enabled }] };
+                }
+            }
+            return { rows: [] };
+        }
+        if (normalized.startsWith('INSERT INTO fiscal_configuration_audit')) {
+            this.db.audits.push({
+                fiscal_profile_id: params[0],
+                fiscal_register_id: params[1],
+                actor_user_id: params[2],
+                actor_label: params[3],
+                command: params[4],
+                reason: params[5],
+                before_hash: params[6],
+                after_hash: params[7],
+                before_snapshot: JSON.parse(params[8]),
+                after_snapshot: JSON.parse(params[9])
             });
             return { rows: [] };
         }
@@ -222,16 +328,17 @@ class FakePilotConfigClient {
 
 test('park pilot config apply is explicit and idempotent', async () => {
     await assert.rejects(
-        () => run(['--apply', ...baseArgs], { env: {}, dbPool: new FakePilotConfigDb() }),
+        () => run(['--apply', ...mutationArgs], { env: {}, dbPool: new FakePilotConfigDb() }),
         error => error.code === 'pilot_config_apply_not_allowed'
     );
 
     const db = new FakePilotConfigDb();
     const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
-    const first = await run(['--apply', ...baseArgs], { env, dbPool: db });
-    const second = await run(['--apply', ...baseArgs], { env, dbPool: db });
+    const first = await run(['--apply', ...mutationArgs], { env, dbPool: db });
+    const second = await run(['--apply', ...mutationArgs], { env, dbPool: db });
     assert.equal(first.applied, true);
     assert.equal(second.applied, true);
+    assert.equal(second.noChange, true);
     assert.equal(db.profiles.size, 1);
     assert.equal(db.locations.size, 1);
     assert.equal(db.registers.size, 1);
@@ -241,4 +348,36 @@ test('park pilot config apply is explicit and idempotent', async () => {
     assert.equal([...db.bindings.values()][0].crm_profile_key, 'event_genix');
     assert.equal([...db.bindings.values()][0].fiscal_location_id, 2);
     assert.equal([...db.bindings.values()][0].provider_cashier_id, 'cashier-50');
+    assert.equal([...db.items.values()][0].tax_mode, 'taxed');
+    assert.equal(db.audits.length, 1);
+});
+
+test('park pilot config generic apply fails closed on drift and diff explains changes', async () => {
+    const db = new FakePilotConfigDb();
+    const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
+    await run(['--apply', ...mutationArgs], { env, dbPool: db });
+    const changed = mutationArgs.flatMap((arg, index, list) => {
+        if (arg === '--provider-register-id') return ['--provider-register-id', 'register-2'];
+        return index > 0 && list[index - 1] === '--provider-register-id' ? [] : [arg];
+    });
+    const diff = await run(['diff', ...changed], { dbPool: db });
+    assert.equal(diff.diff.found, true);
+    assert.ok(diff.diff.changes.some(change => change.field === 'providerRegisterId'));
+    await assert.rejects(
+        () => run(['--apply', ...changed], { env, dbPool: db }),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_drift_requires_explicit_command'
+    );
+});
+
+test('park pilot config explicit commands mutate with audit and keep register state intentional', async () => {
+    const db = new FakePilotConfigDb();
+    const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
+    await run(['--apply', ...mutationArgs], { env, dbPool: db });
+    await run(['--enable-register', ...mutationArgs, '--reason', 'test enable after preflight'], { env, dbPool: db });
+    assert.equal([...db.registers.values()][0].feature_enabled, true);
+    await run(['--replace-tax-mapping', ...withoutItemArgs(mutationArgs), '--item', 'regular_child|Park child admission|taxed|8|1|0', '--reason', 'test tax mapping rotation'], { env, dbPool: db });
+    assert.equal([...db.items.values()].find(item => item.item_code === 'regular_child').provider_tax_id, '8');
+    await run(['--change-owner', ...mutationArgs, '--integration-owner', 'new-owner', '--reason', 'test owner change'], { env, dbPool: db });
+    assert.equal([...db.registers.values()][0].metadata.integration_owner, 'new-owner');
+    assert.ok(db.audits.length >= 4);
 });

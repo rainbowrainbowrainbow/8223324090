@@ -282,6 +282,7 @@ class FakeWorkerDb {
         this.orders = orders;
         this.items = items;
         this.receipts = [];
+        this.incidents = [];
         this.clients = [];
     }
 
@@ -486,6 +487,29 @@ class FakeWorkerClient {
         }
 
         if (normalized.startsWith('INSERT INTO fiscal_audit_events')) {
+            return { rows: [] };
+        }
+
+        if (normalized.startsWith('INSERT INTO fiscal_operational_incidents')) {
+            const [fiscalProfileId, fiscalRegisterId, fiscalOperationId, paymentOrderId, severity, incidentType, idempotencyKey, details] = params;
+            const existing = this.db.incidents.find(row => row.idempotency_key === idempotencyKey);
+            const parsedDetails = typeof details === 'string' ? JSON.parse(details) : details;
+            if (existing) {
+                existing.details = parsedDetails;
+                if (existing.status !== 'resolved') existing.status = 'open';
+            } else {
+                this.db.incidents.push({
+                    fiscal_profile_id: fiscalProfileId,
+                    fiscal_register_id: fiscalRegisterId,
+                    fiscal_operation_id: fiscalOperationId,
+                    payment_order_id: paymentOrderId,
+                    severity,
+                    incident_type: incidentType,
+                    status: 'open',
+                    idempotency_key: idempotencyKey,
+                    details: parsedDetails
+                });
+            }
             return { rows: [] };
         }
 

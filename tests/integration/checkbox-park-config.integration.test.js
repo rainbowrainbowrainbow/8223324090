@@ -46,10 +46,12 @@ function argsFor({ userId, legalEntityKey, ticketCodes, overrides = {} }) {
         '--cashier-user-id', String(userId),
         '--provider-cashier-id', `${legalEntityKey}_cashier`,
         '--cashier-login-ref', `${legalEntityKey}_cashier_ref`,
-        '--integration-owner', `${legalEntityKey}_owner`
+        '--integration-owner', `${legalEntityKey}_owner`,
+        '--expected-is-test', 'true',
+        '--reason', 'integration test config change'
     ];
     for (const code of ticketCodes) {
-        args.push('--item', `${code}|Fiscal ${code}|7|1|0`);
+        args.push('--item', `${code}|Fiscal ${code}|taxed|7|1|0`);
     }
     for (const [key, value] of Object.entries(overrides)) {
         args.push(key, value);
@@ -101,11 +103,24 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     assert.equal(status.status.found, true);
     assert.equal(status.status.featureEnabled, false);
     assert.equal(status.status.activeItemMappings.length, ticketCodes.length);
+    const auditAfterApply = await pool.query(
+        `SELECT command, before_hash, after_hash, reason
+           FROM fiscal_configuration_audit
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+          ORDER BY id`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId]
+    );
+    assert.equal(auditAfterApply.rowCount, 1);
+    assert.equal(auditAfterApply.rows[0].command, 'apply');
+    assert.ok(auditAfterApply.rows[0].before_hash);
+    assert.ok(auditAfterApply.rows[0].after_hash);
+    assert.equal(auditAfterApply.rows[0].reason, 'integration test config change');
 
     const enabled = await run(['enable-register', ...args], { env, dbPool: pool });
     assert.equal(enabled.enabled, true);
     assert.equal(enabled.featureEnabled, true);
-    const disabled = await run(['disable-register', '--legal-entity-key', legalEntityKey], { env, dbPool: pool });
+    const disabled = await run(['disable-register', '--legal-entity-key', legalEntityKey, '--reason', 'integration test disable'], { env, dbPool: pool });
     assert.equal(disabled.enabled, false);
     assert.equal(disabled.featureEnabled, false);
 

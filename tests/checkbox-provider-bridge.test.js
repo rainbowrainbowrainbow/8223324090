@@ -194,6 +194,104 @@ test('runtime provider maps worker DTO to official auth, shift, validate, sell a
     }
 });
 
+test('runtime provider maps official service in/out receipts and verifies service receipt type', async () => {
+    const serviceInId = crypto.randomUUID();
+    const serviceOutId = crypto.randomUUID();
+    const serviceReceipt = (id, type) => checkboxReceipt(id, {
+        type,
+        total_sum: 5000,
+        total_payment: 5000,
+        payments: [],
+        context: { eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: type === 'SERVICE_IN' ? 701 : 702 }
+    });
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === '/api/v1/receipts/service') {
+            return { status: 201, body: serviceReceipt(call.body.id, call.body.payment.operation_type === 'COLLECTION' ? 'SERVICE_OUT' : 'SERVICE_IN') };
+        }
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        await provider.createServiceReceipt({
+            providerOperationId: serviceInId,
+            fiscalOperation: {
+                id: 701,
+                fiscal_operation_id: 701,
+                fiscal_profile_id: 7,
+                operation_type: 'service_in',
+                amount_minor: '5000',
+                provider_organization_id: PROVIDER_ORGANIZATION_ID,
+                provider_register_id: PROVIDER_REGISTER_ID,
+                provider_cashier_id: PROVIDER_CASHIER_ID
+            }
+        });
+        await provider.createServiceReceipt({
+            providerOperationId: serviceOutId,
+            fiscalOperation: {
+                id: 702,
+                fiscal_operation_id: 702,
+                fiscal_profile_id: 7,
+                operation_type: 'service_out',
+                amount_minor: '5000',
+                provider_organization_id: PROVIDER_ORGANIZATION_ID,
+                provider_register_id: PROVIDER_REGISTER_ID,
+                provider_cashier_id: PROVIDER_CASHIER_ID
+            }
+        });
+        const serviceCalls = calls.filter(call => call.path === '/api/v1/receipts/service');
+        assert.equal(serviceCalls.length, 2);
+        assert.equal(serviceCalls[0].body.payment.operation_type, 'REINFORCEMENT');
+        assert.equal(serviceCalls[1].body.payment.operation_type, 'COLLECTION');
+        assert.equal(serviceCalls[0].body.payment.label, 'Готівка');
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider maps a full return to the original sale receipt and verifies RETURN type', async () => {
+    const returnId = crypto.randomUUID();
+    const originalReceiptId = crypto.randomUUID();
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === '/api/v1/receipts/sell') {
+            return { status: 201, body: checkboxReceipt(returnId, {
+                type: 'RETURN',
+                context: { eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: 801, payment_order_id: 301 }
+            }) };
+        }
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const input = saleInput(returnId, {
+            fiscalOperation: {
+                id: 801,
+                fiscal_operation_id: 801,
+                fiscal_profile_id: 7,
+                operation_type: 'return',
+                amount_minor: '12345',
+                provider_organization_id: PROVIDER_ORGANIZATION_ID,
+                provider_register_id: PROVIDER_REGISTER_ID,
+                provider_cashier_id: PROVIDER_CASHIER_ID,
+                request_snapshot: { original_provider_receipt_id: originalReceiptId }
+            }
+        });
+        const receipt = await provider.createReturnReceipt(input);
+        assert.equal(receipt.receiptType, 'RETURN');
+        const sell = calls.find(call => call.path === '/api/v1/receipts/sell');
+        assert.equal(sell.body.related_receipt_id, originalReceiptId);
+        assert.equal(sell.body.goods[0].is_return, true);
+        assert.equal(sell.body.payments[0].label, 'Картка');
+    } finally {
+        await close(server);
+    }
+});
+
 test('runtime provider re-authenticates once on 401 and does not leak secrets in diagnostics', async () => {
     const receiptId = crypto.randomUUID();
     const { server, calls, baseUrl } = await listenMock((call, allCalls) => {
@@ -282,6 +380,7 @@ test('runtime provider blocks HTTP 200 validation responses with false result', 
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/validate') return { body: { valid: false, errors: [{ code: 'bad_tax' }] } };
         return { status: 500, body: { error: 'sell must not run' } };
     });

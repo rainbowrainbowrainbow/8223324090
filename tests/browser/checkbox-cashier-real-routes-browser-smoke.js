@@ -11,6 +11,7 @@ const { pool } = require('../../db');
 const { assertSafeTestDatabaseUrl, assertSafeIsolatedTestUrl } = require('../../scripts/test-db-safety');
 const { createProviderFromConfig } = require('../../services/checkbox/provider');
 const { processPaymentOutboxJobs } = require('../../services/payments/paymentOutboxWorker');
+const { buildFiscalConfigurationSnapshot } = require('../../services/payments/paymentReadinessService');
 
 const ROOT = path.join(__dirname, '..', '..');
 const BASE_URL = process.env.TEST_URL || '';
@@ -105,9 +106,9 @@ async function seedFiscalScope(cashier) {
     await pool.query(
         `INSERT INTO fiscal_shifts (
              fiscal_profile_id, fiscal_register_id, provider, provider_shift_id, status,
-             opened_by_user_id, opened_at, provider_opened_at, provider_snapshot
+             lifecycle_stage, opened_by_user_id, opened_at, provider_opened_at, provider_snapshot
          )
-         VALUES ($1, $2, 'checkbox', $3, 'open', $4, NOW(), NOW(), $5::jsonb)`,
+         VALUES ($1, $2, 'checkbox', $3, 'open', 'OPENED', $4, NOW(), NOW(), $5::jsonb)`,
         [
             profile.rows[0].id,
             register.rows[0].id,
@@ -145,6 +146,52 @@ async function seedFiscalScope(cashier) {
            WHERE type.business_context = $4::varchar
              AND type.is_active = true`,
         [profile.rows[0].id, register.rows[0].id, CRM_PROFILE_KEY, CRM_PROFILE_KEY]
+    );
+    const readinessConfig = buildFiscalConfigurationSnapshot({
+        mapping: {
+            fiscal_profile_id: profile.rows[0].id,
+            fiscal_location_id: location.rows[0].id,
+            fiscal_register_id: register.rows[0].id,
+            crm_profile_key: CRM_PROFILE_KEY,
+            legal_entity_key: `fop_checkbox_ui_${suffix}`,
+            provider_organization_id: `mock-org-${suffix}`,
+            provider_outlet_id: `mock-outlet-${suffix}`,
+            provider_register_id: `mock-register-${suffix}`,
+            provider_license_ref: CREDENTIAL_REF,
+            register_alias: REGISTER_ALIAS
+        },
+        binding: {
+            provider_cashier_id: `mock-cashier-${cashier.id}`,
+            provider_cashier_login_ref: CREDENTIAL_REF
+        },
+        runtimeConfig: { expectedIsTest: true }
+    });
+    await pool.query(
+        `INSERT INTO checkbox_readiness_snapshots (
+             fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
+             register_credential_ref, cashier_credential_ref, fiscal_configuration_hash,
+             readiness_code, integration_ready, local_mapping_ready, runtime_secrets_resolvable,
+             provider_identity_verified, register_active, cashier_ready, signature_certificate_ready,
+             tax_mapping_ready, provider_unavailable, stale_readiness, shift_state,
+             provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+             provider_shift_id, expected_is_test, checked_at, expires_at, latency_ms, result_snapshot
+         )
+         VALUES ($1, $2, $3, $4, $5, $5, $6, 'ready', true, true, true, true, true, true, true, true, false, false,
+                 'open', $7, $8, $9, $10, $11, true, NOW(), NOW() + INTERVAL '5 minutes', 1, $12::jsonb)`,
+        [
+            profile.rows[0].id,
+            register.rows[0].id,
+            location.rows[0].id,
+            CRM_PROFILE_KEY,
+            CREDENTIAL_REF,
+            readinessConfig.hash,
+            `mock-org-${suffix}`,
+            `mock-outlet-${suffix}`,
+            `mock-register-${suffix}`,
+            `mock-cashier-${cashier.id}`,
+            providerShiftId,
+            JSON.stringify({ seeded_ready_snapshot_for_ui_smoke: true })
+        ]
     );
     return {
         fiscalProfileId: Number(profile.rows[0].id),
@@ -302,6 +349,25 @@ async function run() {
         await loginViaApi(page, cashier);
         await page.goto(`${BASE_URL}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
+        const readinessProbe = await page.evaluate(async () => {
+            const token = localStorage.getItem('pzp_token');
+            const response = await fetch('/api/payments/readiness/probe', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${token}`
+                },
+                body: JSON.stringify({ crmProfileKey: 'event_genix', registerAlias: 'middle' })
+            });
+            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
+        });
+        assert.equal(readinessProbe.ok, true, JSON.stringify(readinessProbe));
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#paymentOrderForm');
+        await page.waitForFunction(() => window.CashierPaymentsPage?.state?.registerState);
+        const registerState = await page.evaluate(() => window.CashierPaymentsPage.state.registerState);
+        assert.equal(registerState.readinessCode, 'ready', JSON.stringify(registerState));
+        assert.equal(registerState.integrationReady, true, JSON.stringify(registerState));
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.fill('#paymentKidsCount', '1');
         await page.fill('#paymentAdultsCount', '0');
@@ -320,7 +386,14 @@ async function run() {
         await page.fill('#cashReceivedAmount', '5000');
         await page.click('#confirmCashBtn');
         await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');
+        await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
+        const pendingOrderId = await page.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id);
         assert.equal(await page.isDisabled('#confirmCashBtn'), true);
+        await page.click('#startNextOrderBtn');
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${pendingOrderId}`), 'unresolved receipt remains visible after next customer');
+        await page.goto(`${BASE_URL}/cashier-payments?orderId=${pendingOrderId}`, { waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');
 
         await processOutboxWithMock(mock);
         try {

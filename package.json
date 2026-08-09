@@ -161,7 +161,8 @@
     "test:integration:checkbox-ui-real:isolated": "npx --yes --package playwright node scripts/run-isolated-postgres-tests.js checkbox-ui-real",
     "smoke:checkbox:sandbox": "node scripts/checkbox-sandbox-smoke.js",
     "configure:checkbox:park": "node scripts/configure-checkbox-park-pilot.js",
-    "checkbox:outbox-recovery": "node scripts/checkbox-outbox-recovery.js"
+    "checkbox:outbox-recovery": "node scripts/checkbox-outbox-recovery.js",
+    "checkbox:readiness-status": "node scripts/checkbox-readiness-status.js"
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.75.0",

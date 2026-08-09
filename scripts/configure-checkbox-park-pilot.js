@@ -19,10 +19,15 @@ const ACTION_PIN_ENV = 'CHECKBOX_PILOT_ACTION_PIN';
 const MODES = Object.freeze([
     'dry-run',
     'preflight',
+    'create',
     'apply',
     'status',
+    'diff',
     'enable-register',
-    'disable-register'
+    'disable-register',
+    'rotate-binding',
+    'replace-tax-mapping',
+    'change-owner'
 ]);
 
 const DEFAULT_CAPABILITIES = Object.freeze([
@@ -57,7 +62,8 @@ function parseArgs(argv = process.argv.slice(2)) {
         registerAlias: REGISTER_ALIAS,
         cashierUserIds: [],
         items: [],
-        capabilities: [...DEFAULT_CAPABILITIES]
+        capabilities: [...DEFAULT_CAPABILITIES],
+        actorLabel: 'codex-checkbox-config-cli'
     };
     const forbidden = /password|secret|pin|token|access[-_]?key|license[-_]?key/i;
     for (let i = 0; i < argv.length; i += 1) {
@@ -68,6 +74,10 @@ function parseArgs(argv = process.argv.slice(2)) {
         }
         if (arg === '--apply') {
             options.mode = 'apply';
+            continue;
+        }
+        if (arg === '--create') {
+            options.mode = 'create';
             continue;
         }
         if (arg === '--dry-run') {
@@ -90,6 +100,22 @@ function parseArgs(argv = process.argv.slice(2)) {
             options.mode = 'disable-register';
             continue;
         }
+        if (arg === '--diff') {
+            options.mode = 'diff';
+            continue;
+        }
+        if (arg === '--rotate-binding') {
+            options.mode = 'rotate-binding';
+            continue;
+        }
+        if (arg === '--replace-tax-mapping') {
+            options.mode = 'replace-tax-mapping';
+            continue;
+        }
+        if (arg === '--change-owner') {
+            options.mode = 'change-owner';
+            continue;
+        }
         if (!arg.startsWith('--')) {
             throw new PilotConfigError('pilot_config_arg_invalid', `Unexpected argument: ${arg}`);
         }
@@ -105,6 +131,15 @@ function parseArgs(argv = process.argv.slice(2)) {
         switch (name) {
             case 'mode':
                 options.mode = value;
+                break;
+            case 'actor-user-id':
+                options.actorUserId = Number(value);
+                break;
+            case 'actor-label':
+                options.actorLabel = value;
+                break;
+            case 'reason':
+                options.reason = value;
                 break;
             case 'crm-profile':
                 options.crmProfileKey = value;
@@ -150,6 +185,9 @@ function parseArgs(argv = process.argv.slice(2)) {
             case 'integration-owner':
                 options.integrationOwner = value;
                 break;
+            case 'expected-is-test':
+                options.expectedIsTest = value;
+                break;
             case 'capabilities':
                 options.capabilities = value.split(',').map(item => item.trim()).filter(Boolean);
                 break;
@@ -164,9 +202,33 @@ function parseArgs(argv = process.argv.slice(2)) {
 }
 
 function parseItem(value) {
-    const [itemCode, fiscalItemName, providerTaxId, taxCode = '', taxRateBps = ''] = String(value || '').split('|').map(item => item.trim());
-    if (!itemCode || !fiscalItemName || !providerTaxId) {
-        throw new PilotConfigError('pilot_config_item_invalid', 'Item mapping must be itemCode|fiscalItemName|providerTaxId|taxCode|taxRateBps');
+    const parts = String(value || '').split('|').map(item => item.trim());
+    const [itemCode, fiscalItemName] = parts;
+    let taxMode = 'taxed';
+    let providerTaxId;
+    let taxCode = '';
+    let taxRateBps = '';
+    if (['taxed', 'untaxed'].includes(String(parts[2] || '').toLowerCase())) {
+        taxMode = String(parts[2]).toLowerCase();
+        providerTaxId = parts[3] || '';
+        taxCode = parts[4] || '';
+        taxRateBps = parts[5] || '';
+    } else {
+        providerTaxId = parts[2] || '';
+        taxCode = parts[3] || '';
+        taxRateBps = parts[4] || '';
+    }
+    if (!itemCode || !fiscalItemName) {
+        throw new PilotConfigError('pilot_config_item_invalid', 'Item mapping must be itemCode|fiscalItemName|taxMode|providerTaxId|taxCode|taxRateBps');
+    }
+    if (taxMode === 'taxed' && !providerTaxId) {
+        throw new PilotConfigError('pilot_config_item_tax_required', 'Taxed item mapping requires providerTaxId');
+    }
+    if (taxMode === 'untaxed' && providerTaxId) {
+        throw new PilotConfigError('pilot_config_item_tax_forbidden', 'Untaxed item mapping must not include providerTaxId');
+    }
+    if (/^admission_tariff:/i.test(providerTaxId)) {
+        throw new PilotConfigError('pilot_config_item_tax_invalid', 'Internal admission_tariff reference must never be used as Checkbox provider tax id');
     }
     const numericTaxCode = taxCode === '' ? null : Number(taxCode);
     const numericTaxRateBps = taxRateBps === '' ? null : Number(taxRateBps);
@@ -179,10 +241,18 @@ function parseItem(value) {
     return {
         itemCode,
         fiscalItemName,
-        providerTaxId,
+        taxMode,
+        providerTaxId: providerTaxId || null,
         taxCode: numericTaxCode,
         taxRateBps: numericTaxRateBps
     };
+}
+
+function parseExpectedIsTest(value) {
+    const text = String(value ?? '').trim().toLowerCase();
+    if (['true', '1', 'yes', 'on'].includes(text)) return true;
+    if (['false', '0', 'no', 'off'].includes(text)) return false;
+    throw new PilotConfigError('pilot_config_expected_is_test_required', 'expected-is-test must be true or false');
 }
 
 function requireText(value, code) {
@@ -197,7 +267,7 @@ function optionalText(value) {
 }
 
 function needsFullPlan(mode) {
-    return ['dry-run', 'preflight', 'apply', 'enable-register'].includes(mode);
+    return ['dry-run', 'preflight', 'create', 'apply', 'diff', 'enable-register', 'rotate-binding', 'replace-tax-mapping', 'change-owner'].includes(mode);
 }
 
 function normalizeRef(value, code) {
@@ -233,14 +303,20 @@ function normalizePlan(options) {
     const full = needsFullPlan(options.mode);
     const plan = {
         mode: options.mode,
-        apply: options.mode === 'apply',
+        apply: options.mode === 'apply' || options.mode === 'create',
         crmProfileKey: CRM_PROFILE_KEY,
         legalEntityKey: requireText(options.legalEntityKey, 'legal_entity_key'),
         locationAlias: LOCATION_ALIAS,
         registerAlias: REGISTER_ALIAS,
         cashierUserIds,
-        capabilities
+        capabilities,
+        actorUserId: options.actorUserId == null ? null : Number(options.actorUserId),
+        actorLabel: optionalText(options.actorLabel),
+        reason: optionalText(options.reason)
     };
+    if (plan.actorUserId != null && (!Number.isSafeInteger(plan.actorUserId) || plan.actorUserId <= 0)) {
+        throw new PilotConfigError('pilot_config_actor_user_invalid', 'actor-user-id must be a positive integer when provided');
+    }
     if (!full) return plan;
     if (!cashierUserIds.length) {
         throw new PilotConfigError('pilot_config_cashier_users_required', 'At least one exact cashier-user-id is required');
@@ -261,6 +337,7 @@ function normalizePlan(options) {
         providerCashierId: requireText(options.providerCashierId, 'provider_cashier_id'),
         cashierLoginRef: normalizeRef(options.cashierLoginRef, 'cashier_login_ref'),
         integrationOwner: requireText(options.integrationOwner, 'integration_owner'),
+        expectedIsTest: parseExpectedIsTest(options.expectedIsTest),
         items: options.items
     };
 }
@@ -297,6 +374,7 @@ function publicPlan(plan) {
         cashierUserIds: plan.cashierUserIds,
         cashierLoginRef: plan.cashierLoginRef || null,
         integrationOwner: plan.integrationOwner || null,
+        expectedIsTest: plan.expectedIsTest,
         capabilities: plan.capabilities,
         actionPinRequired: requiresActionPin(plan.capabilities),
         itemMappings: (plan.items || []).map(item => ({
@@ -304,12 +382,80 @@ function publicPlan(plan) {
             itemType: ITEM_TYPE,
             itemCode: item.itemCode,
             fiscalItemName: item.fiscalItemName,
+            taxMode: item.taxMode,
             providerTaxId: item.providerTaxId,
             taxCode: item.taxCode,
             taxRateBps: item.taxRateBps
         })),
         featureEnabled: false
     };
+}
+
+function stableJson(value) {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function configHash(snapshot) {
+    return crypto.createHash('sha256').update(stableJson(snapshot || {})).digest('hex');
+}
+
+function desiredSnapshot(plan) {
+    return {
+        crmProfileKey: plan.crmProfileKey,
+        legalEntityKey: plan.legalEntityKey,
+        legalEntityName: plan.legalEntityName || null,
+        taxIdentifier: plan.taxIdentifier || null,
+        providerOrganizationId: plan.providerOrganizationId || null,
+        locationAlias: plan.locationAlias,
+        locationName: plan.locationName || null,
+        providerOutletId: plan.providerOutletId || null,
+        registerAlias: plan.registerAlias,
+        registerName: plan.registerName || null,
+        providerRegisterId: plan.providerRegisterId || null,
+        providerLicenseRef: plan.providerLicenseRef || null,
+        integrationOwner: plan.integrationOwner || null,
+        expectedIsTest: plan.expectedIsTest,
+        bindings: [...(plan.cashierUserIds || [])].sort((a, b) => a - b).map(userId => ({
+            userId,
+            providerCashierId: plan.providerCashierId || null,
+            cashierLoginRef: plan.cashierLoginRef || null,
+            capabilityScope: [...(plan.capabilities || [])].sort()
+        })),
+        itemMappings: [...(plan.items || [])]
+            .sort((a, b) => a.itemCode.localeCompare(b.itemCode))
+            .map(item => ({
+                itemCode: item.itemCode,
+                fiscalItemName: item.fiscalItemName,
+                taxMode: item.taxMode || 'taxed',
+                providerTaxId: item.providerTaxId || null,
+                taxCode: item.taxCode,
+                taxRateBps: item.taxRateBps
+            }))
+    };
+}
+
+function diffSnapshots(before = {}, after = {}, prefix = '') {
+    const changes = [];
+    const keys = [...new Set([...Object.keys(before || {}), ...Object.keys(after || {})])].sort();
+    for (const key of keys) {
+        const path = prefix ? `${prefix}.${key}` : key;
+        const left = before?.[key];
+        const right = after?.[key];
+        if (Array.isArray(left) || Array.isArray(right)) {
+            if (stableJson(left || []) !== stableJson(right || [])) changes.push({ field: path, before: left || [], after: right || [] });
+            continue;
+        }
+        if (left && typeof left === 'object' && right && typeof right === 'object') {
+            changes.push(...diffSnapshots(left, right, path));
+            continue;
+        }
+        if (String(left ?? '') !== String(right ?? '')) changes.push({ field: path, before: left ?? null, after: right ?? null });
+    }
+    return changes;
 }
 
 function collectCheck(checks, code, ok, message, details = null) {
@@ -407,7 +553,13 @@ async function activeAdmissionTicketCodes(client, crmProfileKey) {
 
 async function existingActiveMappingCodes(client, plan) {
     const result = await client.query(
-        `SELECT fim.item_code, COUNT(*)::integer AS count
+        `SELECT fim.item_code,
+                MIN(fim.fiscal_item_name) AS fiscal_item_name,
+                MIN(COALESCE(fim.tax_mode, 'taxed')) AS tax_mode,
+                MIN(fim.provider_tax_id) AS provider_tax_id,
+                MIN(fim.tax_code)::integer AS tax_code,
+                MIN(fim.tax_rate_bps)::integer AS tax_rate_bps,
+                COUNT(*)::integer AS count
            FROM fiscal_profiles fp
            JOIN fiscal_registers fr
              ON fr.fiscal_profile_id = fp.id
@@ -433,6 +585,7 @@ async function preflightPlan(client, plan, { useStoredMappings = false } = {}) {
     collectCheck(checks, 'crm_profile_known', Boolean(BUSINESS_CONTEXTS[CRM_PROFILE_KEY]), 'CRM profile event_genix exists in canonical business context registry');
     collectCheck(checks, 'preschool_not_in_scope', plan.crmProfileKey === CRM_PROFILE_KEY, 'Preschool/day-care profile is not created or activated');
     collectCheck(checks, 'register_alias_middle', plan.registerAlias === REGISTER_ALIAS, 'Register alias is exactly middle');
+    collectCheck(checks, 'expected_test_identity_declared', typeof plan.expectedIsTest === 'boolean', 'Checkbox expected is_test identity is explicitly declared');
 
     await assertNoExistingConflicts(client, plan);
 
@@ -466,15 +619,47 @@ async function preflightPlan(client, plan, { useStoredMappings = false } = {}) {
     const duplicateInputMappings = (plan.items || [])
         .map(item => item.itemCode)
         .filter((code, index, list) => list.indexOf(code) !== index);
+    const invalidTaxMappings = (useStoredMappings ? storedMappings.map(row => ({
+        itemCode: row.item_code,
+        taxMode: row.tax_mode || 'taxed',
+        providerTaxId: row.provider_tax_id || null
+    })) : (plan.items || []).map(item => ({
+        itemCode: item.itemCode,
+        taxMode: item.taxMode || 'taxed',
+        providerTaxId: item.providerTaxId || null
+    }))).filter(item => item.taxMode === 'taxed' ? !item.providerTaxId : Boolean(item.providerTaxId));
     collectCheck(checks, 'admission_ticket_codes_present', activeCodes.length > 0, 'Active EventGenix admission ticket codes exist');
     collectCheck(checks, 'item_mappings_complete', missingMappings.length === 0, 'All active admission ticket codes have explicit fiscal item mapping', missingMappings.length ? { missingMappings } : null);
     collectCheck(checks, 'item_mappings_unambiguous', duplicateInputMappings.length === 0 && duplicateStoredMappings.length === 0, 'Fiscal item mappings are unambiguous', (duplicateInputMappings.length || duplicateStoredMappings.length) ? { duplicateInputMappings, duplicateStoredMappings } : null);
+    collectCheck(checks, 'item_tax_mode_valid', invalidTaxMappings.length === 0, 'Taxed mappings have provider tax id and untaxed mappings do not', invalidTaxMappings.length ? { invalidTaxMappings } : null);
 
     return { ok: failedChecks(checks).length === 0, checks };
 }
 
 async function applyPlan(client, plan, env = process.env) {
+    const existingStatus = await statusPlan(client, plan);
+    const desired = desiredSnapshot(plan);
+    if (existingStatus.found) {
+        const changes = diffSnapshots(existingStatus.configSnapshot, desired);
+        if (!changes.length) {
+            return {
+                fiscalProfileId: existingStatus.fiscalProfileId,
+                fiscalLocationId: existingStatus.fiscalLocationId,
+                fiscalRegisterId: existingStatus.fiscalRegisterId,
+                featureEnabled: existingStatus.featureEnabled,
+                noChange: true
+            };
+        }
+        throw new PilotConfigError('pilot_config_drift_requires_explicit_command', 'Existing pilot configuration differs from requested plan; use diff and an explicit change command', {
+            details: {
+                beforeHash: existingStatus.configHash,
+                afterHash: configHash(desired),
+                changes
+            }
+        });
+    }
     await assertNoExistingConflicts(client, plan);
+    const beforeSnapshot = {};
     const pinHash = actionPinHash(env, plan.capabilities);
     const profile = await client.query(
         `INSERT INTO fiscal_profiles (
@@ -520,7 +705,6 @@ async function applyPlan(client, plan, env = process.env) {
                  provider_register_id = EXCLUDED.provider_register_id,
                  provider_license_ref = EXCLUDED.provider_license_ref,
                  status = 'active',
-                 feature_enabled = FALSE,
                  metadata = EXCLUDED.metadata,
                  updated_at = NOW()
          RETURNING *`,
@@ -533,7 +717,7 @@ async function applyPlan(client, plan, env = process.env) {
             PROVIDER,
             plan.providerRegisterId,
             plan.providerLicenseRef,
-            JSON.stringify({ integration_owner: plan.integrationOwner })
+            JSON.stringify({ integration_owner: plan.integrationOwner, expected_is_test: plan.expectedIsTest })
         ]
     );
     const fiscalRegisterId = register.rows[0].id;
@@ -577,19 +761,29 @@ async function applyPlan(client, plan, env = process.env) {
         await client.query(
             `INSERT INTO fiscal_item_mappings (
                  fiscal_profile_id, fiscal_register_id, crm_profile_key, source_type, item_type,
-                 item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps, status
+                 item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps, tax_mode, status
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, 'active')
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
              ON CONFLICT (fiscal_profile_id, fiscal_register_id, source_type, item_type, item_code, provider) DO UPDATE
                  SET fiscal_item_name = EXCLUDED.fiscal_item_name,
                      provider_tax_id = EXCLUDED.provider_tax_id,
                      tax_code = EXCLUDED.tax_code,
                      tax_rate_bps = EXCLUDED.tax_rate_bps,
+                     tax_mode = EXCLUDED.tax_mode,
                      status = 'active',
                      updated_at = NOW()`,
-            [fiscalProfileId, fiscalRegisterId, plan.crmProfileKey, SOURCE_TYPE, ITEM_TYPE, item.itemCode, item.fiscalItemName, PROVIDER, item.providerTaxId, item.taxCode, item.taxRateBps]
+            [fiscalProfileId, fiscalRegisterId, plan.crmProfileKey, SOURCE_TYPE, ITEM_TYPE, item.itemCode, item.fiscalItemName, PROVIDER, item.providerTaxId, item.taxCode, item.taxRateBps, item.taxMode || 'taxed']
         );
     }
+
+    const afterStatus = await statusPlan(client, plan);
+    await writeConfigAudit(client, plan, {
+        command: plan.mode,
+        fiscalProfileId,
+        fiscalRegisterId,
+        beforeSnapshot,
+        afterSnapshot: afterStatus.configSnapshot
+    });
 
     return { fiscalProfileId: Number(fiscalProfileId), fiscalLocationId: Number(fiscalLocationId), fiscalRegisterId: Number(fiscalRegisterId), featureEnabled: false };
 }
@@ -603,10 +797,47 @@ async function statusPlan(client, plan) {
            FROM fiscal_cashier_bindings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
+            AND status = 'active'
           ORDER BY user_id`,
         [target.fiscal_profile_id, target.fiscal_register_id]
     );
     const mappings = await existingActiveMappingCodes(client, plan);
+    const activeItemMappings = mappings.map(row => ({
+        itemCode: row.item_code,
+        fiscalItemName: row.fiscal_item_name || null,
+        taxMode: row.tax_mode || 'taxed',
+        providerTaxId: row.provider_tax_id || null,
+        taxCode: row.tax_code == null ? null : Number(row.tax_code),
+        taxRateBps: row.tax_rate_bps == null ? null : Number(row.tax_rate_bps),
+        count: Number(row.count)
+    }));
+    const bindingsSnapshot = bindings.rows.map(row => ({
+        userId: Number(row.user_id),
+        providerCashierId: row.provider_cashier_id || null,
+        cashierLoginRef: row.provider_cashier_login_ref || null,
+        capabilityScope: [...(row.capability_scope || [])].sort()
+    }));
+    const metadata = target.metadata || {};
+    const configSnapshot = {
+        crmProfileKey: target.crm_profile_key,
+        legalEntityKey: target.legal_entity_key,
+        legalEntityName: target.legal_entity_name || null,
+        taxIdentifier: target.tax_identifier || null,
+        providerOrganizationId: target.provider_organization_id || null,
+        locationAlias: target.location_alias || plan.locationAlias,
+        locationName: target.location_name || null,
+        providerOutletId: target.provider_outlet_id || null,
+        registerAlias: target.register_alias || plan.registerAlias,
+        registerName: target.register_name || null,
+        providerRegisterId: target.provider_register_id || null,
+        providerLicenseRef: target.provider_license_ref || null,
+        integrationOwner: metadata.integration_owner || null,
+        expectedIsTest: typeof metadata.expected_is_test === 'boolean' ? metadata.expected_is_test : null,
+        bindings: bindingsSnapshot,
+        itemMappings: activeItemMappings
+            .map(({ count, ...item }) => item)
+            .sort((a, b) => a.itemCode.localeCompare(b.itemCode))
+    };
     return {
         found: true,
         crmProfileKey: target.crm_profile_key,
@@ -617,7 +848,8 @@ async function statusPlan(client, plan) {
         registerAlias: target.register_alias,
         registerStatus: target.register_status,
         featureEnabled: target.feature_enabled === true,
-        integrationOwner: target.metadata?.integration_owner || null,
+        integrationOwner: metadata.integration_owner || null,
+        expectedIsTest: typeof metadata.expected_is_test === 'boolean' ? metadata.expected_is_test : null,
         bindings: bindings.rows.map(row => ({
             userId: Number(row.user_id),
             providerCashierId: row.provider_cashier_id || null,
@@ -626,11 +858,198 @@ async function statusPlan(client, plan) {
             status: row.status,
             hasActionPin: row.has_action_pin === true
         })),
-        activeItemMappings: mappings.map(row => ({ itemCode: row.item_code, count: Number(row.count) }))
+        activeItemMappings,
+        configSnapshot,
+        configHash: configHash(configSnapshot)
     };
 }
 
+async function writeConfigAudit(client, plan, { command, fiscalProfileId = null, fiscalRegisterId = null, beforeSnapshot = {}, afterSnapshot = {} }) {
+    const reason = optionalText(plan.reason);
+    if (!reason) {
+        throw new PilotConfigError('pilot_config_reason_required', 'A non-empty --reason is required for configuration mutations');
+    }
+    await client.query(
+        `INSERT INTO fiscal_configuration_audit (
+             fiscal_profile_id, fiscal_register_id, actor_user_id, actor_label,
+             command, reason, before_hash, after_hash, before_snapshot, after_snapshot
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10::jsonb)`,
+        [
+            fiscalProfileId,
+            fiscalRegisterId,
+            plan.actorUserId,
+            plan.actorLabel,
+            command,
+            reason,
+            configHash(beforeSnapshot),
+            configHash(afterSnapshot),
+            JSON.stringify(beforeSnapshot),
+            JSON.stringify(afterSnapshot)
+        ]
+    );
+}
+
+async function diffPlan(client, plan) {
+    const status = await statusPlan(client, plan);
+    const desired = desiredSnapshot(plan);
+    const before = status.found ? status.configSnapshot : {};
+    return {
+        found: status.found,
+        beforeHash: status.found ? status.configHash : configHash({}),
+        afterHash: configHash(desired),
+        changes: diffSnapshots(before, desired)
+    };
+}
+
+async function replaceTaxMappings(client, plan) {
+    const beforeStatus = await statusPlan(client, plan);
+    if (!beforeStatus.found || !beforeStatus.fiscalRegisterId) {
+        throw new PilotConfigError('pilot_config_register_missing', 'Configured park middle register does not exist');
+    }
+    for (const item of plan.items) {
+        await client.query(
+            `INSERT INTO fiscal_item_mappings (
+                 fiscal_profile_id, fiscal_register_id, crm_profile_key, source_type, item_type,
+                 item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps, tax_mode, status
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, 'active')
+             ON CONFLICT (fiscal_profile_id, fiscal_register_id, source_type, item_type, item_code, provider) DO UPDATE
+                 SET fiscal_item_name = EXCLUDED.fiscal_item_name,
+                     provider_tax_id = EXCLUDED.provider_tax_id,
+                     tax_code = EXCLUDED.tax_code,
+                     tax_rate_bps = EXCLUDED.tax_rate_bps,
+                     tax_mode = EXCLUDED.tax_mode,
+                     status = 'active',
+                     updated_at = NOW()`,
+            [
+                beforeStatus.fiscalProfileId,
+                beforeStatus.fiscalRegisterId,
+                plan.crmProfileKey,
+                SOURCE_TYPE,
+                ITEM_TYPE,
+                item.itemCode,
+                item.fiscalItemName,
+                PROVIDER,
+                item.providerTaxId,
+                item.taxCode,
+                item.taxRateBps,
+                item.taxMode || 'taxed'
+            ]
+        );
+    }
+    const requestedCodes = plan.items.map(item => item.itemCode);
+    await client.query(
+        `UPDATE fiscal_item_mappings
+            SET status = 'archived',
+                updated_at = NOW()
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND source_type = $3
+            AND item_type = $4
+            AND provider = $5
+            AND status = 'active'
+            AND NOT (item_code = ANY($6::text[]))`,
+        [beforeStatus.fiscalProfileId, beforeStatus.fiscalRegisterId, SOURCE_TYPE, ITEM_TYPE, PROVIDER, requestedCodes]
+    );
+    const afterStatus = await statusPlan(client, plan);
+    await writeConfigAudit(client, plan, {
+        command: plan.mode,
+        fiscalProfileId: beforeStatus.fiscalProfileId,
+        fiscalRegisterId: beforeStatus.fiscalRegisterId,
+        beforeSnapshot: beforeStatus.configSnapshot,
+        afterSnapshot: afterStatus.configSnapshot
+    });
+    return { mode: plan.mode, fiscalProfileId: beforeStatus.fiscalProfileId, fiscalRegisterId: beforeStatus.fiscalRegisterId, diff: diffSnapshots(beforeStatus.configSnapshot, afterStatus.configSnapshot) };
+}
+
+async function rotateBinding(client, plan, env = process.env) {
+    const beforeStatus = await statusPlan(client, plan);
+    if (!beforeStatus.found || !beforeStatus.fiscalRegisterId || !beforeStatus.fiscalLocationId) {
+        throw new PilotConfigError('pilot_config_register_missing', 'Configured park middle register does not exist');
+    }
+    const pinHash = actionPinHash(env, plan.capabilities);
+    await client.query(
+        `UPDATE fiscal_cashier_bindings
+            SET status = 'suspended',
+                updated_at = NOW()
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND status = 'active'`,
+        [beforeStatus.fiscalProfileId, beforeStatus.fiscalRegisterId]
+    );
+    for (const userId of plan.cashierUserIds) {
+        await client.query(
+            `INSERT INTO fiscal_cashier_bindings (
+                 fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
+                 user_id, provider, provider_cashier_id, provider_cashier_login_ref,
+                 capability_scope, action_pin_hash, action_pin_set_at, action_pin_updated_by_user_id, status
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::text[], $10::varchar(255), CASE WHEN $10::varchar(255) IS NULL THEN NULL ELSE NOW() END, $11::integer, 'active')
+             ON CONFLICT (fiscal_profile_id, fiscal_register_id, user_id) DO UPDATE
+                 SET fiscal_location_id = EXCLUDED.fiscal_location_id,
+                     crm_profile_key = EXCLUDED.crm_profile_key,
+                     provider_cashier_id = EXCLUDED.provider_cashier_id,
+                     provider_cashier_login_ref = EXCLUDED.provider_cashier_login_ref,
+                     capability_scope = EXCLUDED.capability_scope,
+                     action_pin_hash = COALESCE(EXCLUDED.action_pin_hash, fiscal_cashier_bindings.action_pin_hash),
+                     action_pin_set_at = CASE WHEN EXCLUDED.action_pin_hash IS NULL THEN fiscal_cashier_bindings.action_pin_set_at ELSE EXCLUDED.action_pin_set_at END,
+                     action_pin_updated_by_user_id = CASE WHEN EXCLUDED.action_pin_hash IS NULL THEN fiscal_cashier_bindings.action_pin_updated_by_user_id ELSE EXCLUDED.action_pin_updated_by_user_id END,
+                     status = 'active',
+                     updated_at = NOW()`,
+            [
+                beforeStatus.fiscalProfileId,
+                beforeStatus.fiscalRegisterId,
+                beforeStatus.fiscalLocationId,
+                plan.crmProfileKey,
+                userId,
+                PROVIDER,
+                plan.providerCashierId,
+                plan.cashierLoginRef,
+                plan.capabilities,
+                pinHash,
+                pinHash ? userId : null
+            ]
+        );
+    }
+    const afterStatus = await statusPlan(client, plan);
+    await writeConfigAudit(client, plan, {
+        command: plan.mode,
+        fiscalProfileId: beforeStatus.fiscalProfileId,
+        fiscalRegisterId: beforeStatus.fiscalRegisterId,
+        beforeSnapshot: beforeStatus.configSnapshot,
+        afterSnapshot: afterStatus.configSnapshot
+    });
+    return { mode: plan.mode, fiscalProfileId: beforeStatus.fiscalProfileId, fiscalRegisterId: beforeStatus.fiscalRegisterId, diff: diffSnapshots(beforeStatus.configSnapshot, afterStatus.configSnapshot) };
+}
+
+async function changeOwner(client, plan) {
+    const beforeStatus = await statusPlan(client, plan);
+    if (!beforeStatus.found || !beforeStatus.fiscalRegisterId) {
+        throw new PilotConfigError('pilot_config_register_missing', 'Configured park middle register does not exist');
+    }
+    await client.query(
+        `UPDATE fiscal_registers
+            SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{integration_owner}', to_jsonb($1::text), true),
+                updated_at = NOW()
+          WHERE id = $2
+            AND fiscal_profile_id = $3
+            AND register_alias = $4`,
+        [plan.integrationOwner, beforeStatus.fiscalRegisterId, beforeStatus.fiscalProfileId, plan.registerAlias]
+    );
+    const afterStatus = await statusPlan(client, plan);
+    await writeConfigAudit(client, plan, {
+        command: plan.mode,
+        fiscalProfileId: beforeStatus.fiscalProfileId,
+        fiscalRegisterId: beforeStatus.fiscalRegisterId,
+        beforeSnapshot: beforeStatus.configSnapshot,
+        afterSnapshot: afterStatus.configSnapshot
+    });
+    return { mode: plan.mode, fiscalProfileId: beforeStatus.fiscalProfileId, fiscalRegisterId: beforeStatus.fiscalRegisterId, diff: diffSnapshots(beforeStatus.configSnapshot, afterStatus.configSnapshot) };
+}
+
 async function setRegisterEnabled(client, plan, enabled) {
+    const beforeStatus = await statusPlan(client, plan);
     const target = await loadExistingTarget(client, plan);
     if (!target?.fiscal_register_id) {
         throw new PilotConfigError('pilot_config_register_missing', 'Configured park middle register does not exist');
@@ -645,6 +1064,14 @@ async function setRegisterEnabled(client, plan, enabled) {
           RETURNING id, feature_enabled`,
         [enabled, target.fiscal_register_id, target.fiscal_profile_id, plan.registerAlias]
     );
+    const afterStatus = await statusPlan(client, plan);
+    await writeConfigAudit(client, plan, {
+        command: plan.mode,
+        fiscalProfileId: beforeStatus.fiscalProfileId,
+        fiscalRegisterId: beforeStatus.fiscalRegisterId,
+        beforeSnapshot: beforeStatus.configSnapshot || {},
+        afterSnapshot: afterStatus.configSnapshot || {}
+    });
     return { fiscalRegisterId: Number(result.rows[0].id), featureEnabled: result.rows[0].feature_enabled === true };
 }
 
@@ -662,16 +1089,23 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
         if (plan.mode === 'status') {
             return { mode: plan.mode, status: await statusPlan(client, plan) };
         }
+        if (plan.mode === 'diff') {
+            return { mode: plan.mode, diff: await diffPlan(client, plan), plan: publicPlan(plan) };
+        }
         if (plan.mode === 'preflight') {
             const preflight = await preflightPlan(client, plan);
             return { mode: plan.mode, ok: preflight.ok, preflight, plan: publicPlan(plan) };
         }
         assertMutationAllowed(env);
         await client.query('BEGIN');
-        if (plan.mode === 'apply') {
-            const preflightBefore = await preflightPlan(client, plan);
-            if (!preflightBefore.ok) {
-                throw new PilotConfigError('pilot_config_preflight_failed', 'Preflight failed; refusing apply', { details: preflightBefore });
+        if (plan.mode === 'apply' || plan.mode === 'create') {
+            const statusBefore = await statusPlan(client, plan);
+            let preflightBefore = null;
+            if (!statusBefore.found) {
+                preflightBefore = await preflightPlan(client, plan);
+                if (!preflightBefore.ok) {
+                    throw new PilotConfigError('pilot_config_preflight_failed', `Preflight failed; refusing ${plan.mode}`, { details: preflightBefore });
+                }
             }
             const result = await applyPlan(client, plan, env);
             const preflightAfter = await preflightPlan(client, plan, { useStoredMappings: true });
@@ -680,6 +1114,29 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
             }
             await client.query('COMMIT');
             return { applied: true, ...result, preflight: preflightAfter, plan: publicPlan(plan) };
+        }
+        if (plan.mode === 'replace-tax-mapping') {
+            const result = await replaceTaxMappings(client, plan);
+            const preflightAfter = await preflightPlan(client, plan, { useStoredMappings: true });
+            if (!preflightAfter.ok) {
+                throw new PilotConfigError('pilot_config_post_tax_mapping_preflight_failed', 'Post-replace preflight failed; rolling back', { details: preflightAfter });
+            }
+            await client.query('COMMIT');
+            return { mode: plan.mode, applied: true, ...result, preflight: preflightAfter };
+        }
+        if (plan.mode === 'rotate-binding') {
+            const preflightBefore = await preflightPlan(client, plan, { useStoredMappings: true });
+            if (!preflightBefore.ok) {
+                throw new PilotConfigError('pilot_config_preflight_failed', 'Preflight failed; refusing rotate-binding', { details: preflightBefore });
+            }
+            const result = await rotateBinding(client, plan, env);
+            await client.query('COMMIT');
+            return { mode: plan.mode, applied: true, ...result };
+        }
+        if (plan.mode === 'change-owner') {
+            const result = await changeOwner(client, plan);
+            await client.query('COMMIT');
+            return { mode: plan.mode, applied: true, ...result };
         }
         if (plan.mode === 'enable-register') {
             const preflight = await preflightPlan(client, plan, { useStoredMappings: true });
@@ -730,12 +1187,18 @@ module.exports = {
     PilotConfigError,
     activeAdmissionTicketCodes,
     applyPlan,
+    configHash,
+    desiredSnapshot,
+    diffPlan,
+    diffSnapshots,
     normalizePlan,
     parseArgs,
     parseItem,
     preflightPlan,
     publicPlan,
+    replaceTaxMappings,
     requiresActionPin,
     run,
+    setRegisterEnabled,
     statusPlan
 };

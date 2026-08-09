@@ -89,8 +89,17 @@ function blockedValue(value) {
 }
 
 function dbItemToCheckboxItem(item = {}) {
+    const taxMode = String(item.tax_mode || item.taxMode || item.item_snapshot?.fiscal_tax_mode || 'taxed').trim().toLowerCase();
     const providerTaxId = String(item.provider_tax_id || '').trim();
-    if (!providerTaxId) {
+    if (taxMode === 'untaxed') {
+        if (providerTaxId) {
+            throw new CheckboxClientError('checkbox_untaxed_provider_tax_forbidden', 'Untaxed fiscal item must not include provider tax id', {
+                status: 422,
+                retryable: false,
+                details: { lineNumber: item.line_number || null }
+            });
+        }
+    } else if (!providerTaxId) {
         throw new CheckboxClientError('checkbox_provider_tax_id_missing', 'Provider tax id is required before Checkbox sale', {
             status: 422,
             retryable: false,
@@ -102,7 +111,7 @@ function dbItemToCheckboxItem(item = {}) {
         code: item.item_code || item.sku || item.item_name,
         priceMinor: item.unit_price_minor,
         quantityMillis: item.quantity_milli || item.quantity_millis || 1000,
-        tax: [providerTaxId]
+        tax: taxMode === 'untaxed' ? undefined : [providerTaxId]
     };
 }
 
@@ -204,7 +213,7 @@ function extractShiftIdentity(shift = {}) {
     };
 }
 
-function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = false } = {}) {
+function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = false, requireCashier = true } = {}) {
     const identity = extractShiftIdentity(shift);
     if (!identity.id || !identity.status) {
         throw new CheckboxClientError('checkbox_shift_response_malformed', 'Checkbox shift response is missing id or status', {
@@ -222,7 +231,9 @@ function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = fal
         });
     }
     assertSameText(identity.registerId, expected.expectedRegisterId, 'checkbox_shift_register_mismatch', 'shift.cash_register_id');
-    assertSameText(identity.cashierId, expected.expectedCashierId, 'checkbox_shift_cashier_mismatch', 'shift.cashier_id');
+    if (requireCashier) {
+        assertSameText(identity.cashierId, expected.expectedCashierId, 'checkbox_shift_cashier_mismatch', 'shift.cashier_id');
+    }
     return { ...identity, raw: redactCheckboxDiagnostics(shift) };
 }
 
@@ -287,7 +298,17 @@ function expectedPaymentType(tender) {
     return tender === 'card_terminal_manual' || tender === 'card_terminal' || tender === 'cashless' ? 'CASHLESS' : 'CASH';
 }
 
+function expectedReceiptTypeFromInput(input = {}) {
+    const fiscalOperation = safeJsonObject(input.fiscalOperation);
+    const operationType = String(fiscalOperation.operation_type || input.operationType || '').trim();
+    if (operationType === 'return') return 'RETURN';
+    if (operationType === 'service_in') return 'SERVICE_IN';
+    if (operationType === 'service_out') return 'SERVICE_OUT';
+    return 'SELL';
+}
+
 function validateReceiptPayment(identity, expected) {
+    if (String(expected.expectedReceiptType || 'SELL').startsWith('SERVICE_')) return;
     const expectedType = expectedPaymentType(expected.tender);
     const payment = identity.payments.find(item => upperStatus(item?.type) === expectedType)
         || (identity.payments.length === 1 ? identity.payments[0] : null);
@@ -336,7 +357,7 @@ function validateReceiptIdentity(receipt = {}, expected = {}) {
             details: { receiptId: id, providerStatus: identity.status || null }
         });
     }
-    assertSameText(identity.type, 'SELL', 'checkbox_receipt_type_mismatch', 'receipt.type');
+    assertSameText(identity.type, expected.expectedReceiptType || 'SELL', 'checkbox_receipt_type_mismatch', 'receipt.type');
     assertSameText(minorString(identity.totalSumMinor, 'checkbox_receipt_total_sum_invalid'), expected.amountMinor, 'checkbox_receipt_total_sum_mismatch', 'receipt.total_sum');
     assertSameText(identity.registerId, expected.expectedRegisterId, 'checkbox_receipt_register_mismatch', 'receipt.cash_register_id');
     assertSameText(identity.cashierId, expected.expectedCashierId, 'checkbox_receipt_cashier_mismatch', 'receipt.cashier_id');
@@ -387,7 +408,16 @@ function validateSaleResponse(response) {
             unknown: true
         });
     }
-    const explicitFalse = response.valid === false || response.is_valid === false || response.ok === false || response.success === false;
+    const booleans = Object.values(response).filter(value => typeof value === 'boolean');
+    if (!booleans.length) {
+        throw new CheckboxClientError('checkbox_receipt_validation_malformed', 'Checkbox receipt validation response does not contain boolean validation results', {
+            status: 502,
+            retryable: true,
+            unknown: true,
+            details: redactCheckboxDiagnostics(response)
+        });
+    }
+    const explicitFalse = booleans.some(value => value === false);
     const hasErrors = Array.isArray(response.errors) && response.errors.length > 0;
     if (explicitFalse || hasErrors) {
         throw new CheckboxClientError('checkbox_receipt_validation_failed', 'Checkbox receipt validation failed', {
@@ -448,6 +478,20 @@ class CheckboxRuntimeProvider {
         this.readyChecked = true;
     }
 
+    async loadDetailedShift(current, expected) {
+        if (!this.client.getShiftById) {
+            return normalizeShiftResponse(current.raw || current, expected, { requireOpened: true, requireCashier: true });
+        }
+        try {
+            return normalizeShiftResponse(await this.client.getShiftById({ shiftId: current.id }), expected, { requireOpened: true, requireCashier: true });
+        } catch (error) {
+            if (error instanceof CheckboxClientError && (error.status === 404 || error.code === 'checkbox_shift_response_malformed')) {
+                return normalizeShiftResponse(current.raw || current, expected, { requireOpened: true, requireCashier: true });
+            }
+            throw error;
+        }
+    }
+
     async withAuth(expected, run) {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             if (!this.authenticated) await this.authenticate();
@@ -471,12 +515,12 @@ class CheckboxRuntimeProvider {
         return this.withAuth(expected, async () => {
             let current = null;
             try {
-                current = normalizeShiftResponse(await this.client.getCurrentShift(), expected);
+                current = normalizeShiftResponse(await this.client.getCurrentShift(), expected, { requireCashier: false });
             } catch (error) {
                 if (error instanceof CheckboxClientError && (error.status === 401 || error.status === 409 || error.status >= 500 || error.retryable === false)) throw error;
             }
             if (current?.status === OPEN_SHIFT_STATUS) {
-                return normalizeShiftResponse(current.raw, expected, { requireOpened: true });
+                return this.loadDetailedShift(current, expected);
             }
             if (!allowOpenRequest) {
                 throw new CheckboxClientError('checkbox_shift_not_opened', 'Checkbox shift is not OPENED yet', {
@@ -488,15 +532,16 @@ class CheckboxRuntimeProvider {
             }
             const opened = normalizeShiftResponse(await this.client.openShift({ providerRequestUuid: crypto.randomUUID() }), expected);
             if (opened.status !== OPEN_SHIFT_STATUS) {
-                const refreshed = normalizeShiftResponse(await this.client.getCurrentShift(), expected, { requireOpened: true });
-                return refreshed;
+                const refreshed = normalizeShiftResponse(await this.client.getCurrentShift(), expected, { requireOpened: true, requireCashier: false });
+                return this.loadDetailedShift(refreshed, expected);
             }
-            return normalizeShiftResponse(opened.raw, expected, { requireOpened: true });
+            return this.loadDetailedShift(opened, expected);
         });
     }
 
     async lookupReceipt(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        expected.expectedReceiptType = expectedReceiptTypeFromInput(input);
         return this.withAuth(expected, async () => {
             try {
                 const receipt = await this.client.lookupReceipt({ receiptId: expected.providerOperationId });
@@ -519,6 +564,7 @@ class CheckboxRuntimeProvider {
 
     async createSaleReceipt(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
+        expected.expectedReceiptType = 'SELL';
         return this.withAuth(expected, async () => {
             const shift = await this.ensureShiftOpened(input);
             const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
@@ -528,9 +574,32 @@ class CheckboxRuntimeProvider {
 
     async submitSaleReceipt(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
+        expected.expectedReceiptType = 'SELL';
         return this.withAuth(expected, async () => {
             const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: expected.expectedShiftId }));
             return normalizeReceiptArtifacts(receipt, this.client, expected);
+        });
+    }
+
+    async createReturnReceipt(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
+        expected.expectedReceiptType = 'RETURN';
+        return this.withAuth(expected, async () => {
+            const shift = await this.ensureShiftOpened(input);
+            const payload = this.toReturnPayload(input, { providerShiftId: shift.id });
+            const receipt = await this.client.createReturnReceipt(payload);
+            return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
+        });
+    }
+
+    async createServiceReceipt(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        expected.expectedReceiptType = expectedReceiptTypeFromInput(input);
+        return this.withAuth(expected, async () => {
+            const shift = await this.ensureShiftOpened(input);
+            const payload = this.toServicePayload(input, { providerShiftId: shift.id });
+            const receipt = await this.client.createServiceReceipt(payload);
+            return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
         });
     }
 
@@ -546,13 +615,29 @@ class CheckboxRuntimeProvider {
         });
     }
 
+    async getCurrentShiftStatus(input = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        return this.withAuth(expected, async () => {
+            try {
+                const current = normalizeShiftResponse(await this.client.getCurrentShift(), expected, { requireCashier: false });
+                if (current.status === OPEN_SHIFT_STATUS) return this.loadDetailedShift(current, expected);
+                return current;
+            } catch (error) {
+                if (error instanceof CheckboxClientError && error.status === 404) {
+                    return { id: null, status: 'CLOSED', registerId: expected.expectedRegisterId || null, cashierId: expected.expectedCashierId || null, raw: {} };
+                }
+                throw error;
+            }
+        });
+    }
+
     async closeShift(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
         return this.withAuth(expected, async () => {
             const response = await this.client.closeShift({
                 providerRequestUuid: input.providerOperationId || input.providerRequestUuid || input.fiscalOperation?.provider_operation_id || null
             });
-            return normalizeShiftResponse(response, expected);
+            return normalizeShiftResponse(response, expected, { requireCashier: false });
         });
     }
 
@@ -574,6 +659,58 @@ class CheckboxRuntimeProvider {
             receivedAmountMinor: expected.receivedAmountMinor,
             items: (input.items || []).map(dbItemToCheckboxItem),
             context
+        };
+    }
+
+    toReturnPayload(input = {}, overrides = {}) {
+        const fiscalOperation = safeJsonObject(input.fiscalOperation);
+        const paymentOrder = safeJsonObject(input.paymentOrder);
+        const snapshot = safeJsonObject(fiscalOperation.fiscal_request_snapshot || fiscalOperation.request_snapshot);
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
+        const originalReceiptId = snapshot.original_provider_receipt_id
+            || snapshot.original_receipt_id
+            || snapshot.originalProviderReceiptId
+            || input.originalReceiptId
+            || input.original_receipt_id;
+        const context = {
+            eventgenix: true,
+            fiscal_profile_id: Number(fiscalOperation.fiscal_profile_id || paymentOrder.fiscal_profile_id || 0),
+            fiscal_operation_id: Number(fiscalOperation.fiscal_operation_id || fiscalOperation.id || 0),
+            payment_order_id: Number(paymentOrder.payment_order_id || paymentOrder.id || 0),
+            payment_refund_id: Number(fiscalOperation.payment_refund_id || paymentOrder.payment_refund_id || 0),
+            checkbox_shift_id: overrides.providerShiftId || expected.expectedShiftId || null
+        };
+        const goods = (input.items || []).map(dbItemToCheckboxItem);
+        return {
+            providerRequestUuid: expected.providerOperationId,
+            originalReceiptId,
+            originalSalePayload: {
+                goods,
+                payments: [{
+                    type: expectedPaymentType(expected.tender),
+                    value: expected.amountMinor,
+                    label: expectedPaymentType(expected.tender) === 'CASH' ? 'Готівка' : 'Картка'
+                }]
+            },
+            context
+        };
+    }
+
+    toServicePayload(input = {}, overrides = {}) {
+        const fiscalOperation = safeJsonObject(input.fiscalOperation);
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        const operationType = String(fiscalOperation.operation_type || input.operationType || 'service_in').trim();
+        return {
+            providerRequestUuid: expected.providerOperationId,
+            operationType,
+            amountMinor: positiveMinorString(fiscalOperation.fiscal_operation_amount_minor || fiscalOperation.amount_minor, 'checkbox_service_amount_required'),
+            context: {
+                eventgenix: true,
+                fiscal_profile_id: Number(fiscalOperation.fiscal_profile_id || 0),
+                fiscal_operation_id: Number(fiscalOperation.fiscal_operation_id || fiscalOperation.id || 0),
+                operation_type: operationType,
+                checkbox_shift_id: overrides.providerShiftId || expected.expectedShiftId || null
+            }
         };
     }
 }
@@ -602,8 +739,8 @@ function createProviderFromConfig(config = {}, { fetchImpl, tokenCache } = {}) {
 
 function refsFromContext(context = {}) {
     const job = context.job || context;
-    const licenseRef = normalizeCredentialRef(job.provider_license_ref || job.checkbox_license_ref || job.register_credential_ref);
-    const credentialRef = normalizeCredentialRef(job.provider_cashier_login_ref || job.checkbox_cashier_ref || licenseRef);
+    const licenseRef = normalizeCredentialRef(job.register_credential_ref || job.provider_license_ref || job.checkbox_license_ref);
+    const credentialRef = normalizeCredentialRef(job.cashier_credential_ref || job.provider_cashier_login_ref || job.current_provider_cashier_login_ref || job.checkbox_cashier_ref || licenseRef);
     return { credentialRef, licenseRef };
 }
 

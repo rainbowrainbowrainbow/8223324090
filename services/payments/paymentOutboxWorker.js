@@ -5,9 +5,10 @@ const { pool } = require('../../db');
 const { publishInTransaction } = require('../eventBus');
 const { CheckboxClientError } = require('../checkbox/errors');
 const { createCheckboxProviderFactory, runtimeContextKey } = require('../checkbox/provider');
+const { isCashierProEnabled } = require('../checkbox/config');
 
 const WORKER_NAME = 'payment-outbox-worker';
-const DEFAULT_BATCH_SIZE = 10;
+const DEFAULT_BATCH_SIZE = 1;
 const DEFAULT_LOCK_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_BACKOFF_MS = 60 * 60 * 1000;
 const RETRYABLE_JOB_TYPES = Object.freeze([
@@ -19,8 +20,9 @@ const RETRYABLE_JOB_TYPES = Object.freeze([
     'shift_open',
     'shift_close'
 ]);
-const PRE_SELL_STAGES = new Set(['auth_readiness', 'shift_lookup', 'validation']);
+const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_lookup', 'receipt_validation']);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
+const CASHIER_PRO_JOB_TYPES = new Set(['receipt_return', 'service_receipt']);
 
 class PaymentOutboxWorkerError extends Error {
     constructor(code, message, { retryable = true, unknown = false, details = null } = {}) {
@@ -110,6 +112,10 @@ function workerId() {
     return `${WORKER_NAME}-${process.pid}-${crypto.randomUUID()}`;
 }
 
+function lockToken() {
+    return crypto.randomUUID();
+}
+
 async function withTransaction(dbPool, run) {
     const client = await dbPool.connect();
     try {
@@ -130,7 +136,8 @@ async function claimPaymentOutboxJobs(client, {
     lockedBy = workerId(),
     lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS,
     eligibleFiscalProfileIds = null,
-    eligibleRuntimeContexts = null
+    eligibleRuntimeContexts = null,
+    cashierProEnabled = isCashierProEnabled(process.env)
 } = {}) {
     const limit = Math.max(1, Math.min(Number(batchSize) || DEFAULT_BATCH_SIZE, 50));
     const lockExpirySeconds = Math.max(30, Math.floor(Number(lockExpiryMs || DEFAULT_LOCK_EXPIRY_MS) / 1000));
@@ -143,6 +150,10 @@ async function claimPaymentOutboxJobs(client, {
     if (Array.isArray(runtimeKeys) && runtimeKeys.length === 0) {
         return [];
     }
+    const token = lockToken();
+    const claimableJobTypes = cashierProEnabled
+        ? RETRYABLE_JOB_TYPES
+        : RETRYABLE_JOB_TYPES.filter(type => !CASHIER_PRO_JOB_TYPES.has(type));
     const result = await client.query(
         `WITH candidate_jobs AS (
              SELECT job.id
@@ -154,6 +165,9 @@ async function claimPaymentOutboxJobs(client, {
                LEFT JOIN payment_orders po
                  ON po.id = job.payment_order_id
                 AND po.fiscal_profile_id = job.fiscal_profile_id
+               LEFT JOIN fiscal_shifts fs
+                 ON fs.id = fo.fiscal_shift_id
+                AND fs.fiscal_profile_id = job.fiscal_profile_id
                JOIN fiscal_registers fr
                  ON fr.id = COALESCE(po.fiscal_register_id, fo.fiscal_register_id)
                 AND fr.fiscal_profile_id = job.fiscal_profile_id
@@ -161,9 +175,14 @@ async function claimPaymentOutboxJobs(client, {
                 AND fr.status = 'active'
                 AND fr.feature_enabled = TRUE
               WHERE job.job_type = ANY($1::text[])
+                AND ($8::boolean = TRUE OR job.job_type <> 'shift_close' OR job.payload->>'phase' = 'thin_mvp_shift_close')
                 AND ($5::bigint[] IS NULL OR job.fiscal_profile_id = ANY($5::bigint[]))
                 AND ($6::text[] IS NULL OR (job.fiscal_profile_id::text || ':' || COALESCE(po.fiscal_register_id, fo.fiscal_register_id)::text) = ANY($6::text[]))
                 AND COALESCE(job.payload->>'provider', fo.provider, fr.provider) = 'checkbox'
+                AND (
+                    job.job_type <> 'receipt_sell'
+                    OR (fs.status = 'open' AND fs.provider_shift_id IS NOT NULL AND fs.lifecycle_stage = 'OPENED')
+                )
                 AND job.attempts < job.max_attempts
                 AND (
                     (job.status IN ('queued', 'failed') AND job.next_run_at <= NOW())
@@ -177,18 +196,23 @@ async function claimPaymentOutboxJobs(client, {
             SET status = 'claimed',
                 locked_at = NOW(),
                 locked_by = $3,
+                lock_token = $7::uuid,
+                lock_version = lock_version + 1,
+                heartbeat_at = NOW(),
                 attempts = job.attempts + 1,
                 updated_at = NOW()
            FROM candidate_jobs
           WHERE job.id = candidate_jobs.id
           RETURNING job.*`,
         [
-            RETRYABLE_JOB_TYPES,
+            claimableJobTypes,
             limit,
             lockedBy,
             lockExpirySeconds,
             Array.isArray(eligibleFiscalProfileIds) ? eligibleFiscalProfileIds.map(id => Number(id)) : null,
-            runtimeKeys
+            runtimeKeys,
+            token,
+            cashierProEnabled === true
         ]
     );
     return result.rows;
@@ -202,6 +226,16 @@ async function loadJobContext(client, job) {
              fo.operation_type,
              fo.provider_operation_id,
              fo.provider_status,
+             fo.provider_organization_id,
+             fo.provider_outlet_id,
+             fo.provider_register_id,
+             fo.provider_cashier_id,
+             fo.register_credential_ref,
+             fo.cashier_credential_ref,
+             fo.expected_is_test,
+             fo.fiscal_configuration_hash,
+             fo.fiscal_location_id AS operation_fiscal_location_id,
+             fo.external_stage AS fiscal_operation_external_stage,
              fo.payment_refund_id,
              fo.fiscal_shift_id,
              fo.amount_minor AS fiscal_operation_amount_minor,
@@ -217,17 +251,18 @@ async function loadJobContext(client, job) {
              po.source_snapshot,
              po.confirmation_snapshot,
              fr.register_alias,
-             fr.provider_register_id,
+             fr.provider_register_id AS current_provider_register_id,
              fr.provider AS register_provider,
              fr.status AS register_status,
              fr.provider_license_ref,
              fr.feature_enabled AS register_feature_enabled,
-             fp.provider_organization_id,
-             fl.provider_outlet_id,
+             fp.provider_organization_id AS current_provider_organization_id,
+             fl.provider_outlet_id AS current_provider_outlet_id,
              fs.status AS fiscal_shift_status,
+             fs.lifecycle_stage AS fiscal_shift_lifecycle_stage,
              fs.provider_shift_id,
-             fcb.provider_cashier_id,
-             fcb.provider_cashier_login_ref
+             fcb.provider_cashier_id AS current_provider_cashier_id,
+             fcb.provider_cashier_login_ref AS current_provider_cashier_login_ref
            FROM payment_outbox_jobs job
            LEFT JOIN fiscal_operations fo
              ON fo.id = job.fiscal_operation_id
@@ -279,7 +314,7 @@ function shouldLookupBeforeSale(contextJob) {
 function externalStage(contextJob = {}) {
     const payload = safeJsonObject(contextJob.payload);
     const request = safeJsonObject(contextJob.fiscal_request_snapshot);
-    return String(payload.external_stage || request.external_stage || 'auth_readiness').trim() || 'auth_readiness';
+    return String(contextJob.external_stage || payload.external_stage || contextJob.fiscal_operation_external_stage || request.external_stage || 'auth').trim() || 'auth';
 }
 
 function saleStageRequiresLookup(stage) {
@@ -291,21 +326,27 @@ async function recordExternalStage(dbPool, context, stage) {
     if (!safeStage) return;
     context.job.payload = { ...safeJsonObject(context.job.payload), external_stage: safeStage };
     context.job.fiscal_request_snapshot = { ...safeJsonObject(context.job.fiscal_request_snapshot), external_stage: safeStage };
+    context.job.external_stage = safeStage;
     await withTransaction(dbPool, async client => {
         await client.query(
             `UPDATE payment_outbox_jobs
                 SET payload = payload || $3::jsonb,
+                    external_stage = $5,
                     status = CASE WHEN status = 'claimed' THEN 'running' ELSE status END,
+                    heartbeat_at = NOW(),
                     updated_at = NOW()
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND locked_by = $4
+                AND lock_token = $6::uuid
                 AND status IN ('claimed', 'running')`,
             [
                 context.job.id,
                 context.job.fiscal_profile_id,
                 JSON.stringify({ external_stage: safeStage }),
-                context.job.locked_by
+                context.job.locked_by,
+                safeStage,
+                context.job.lock_token
             ]
         );
         if (context.job.fiscal_operation_id) {
@@ -313,11 +354,12 @@ async function recordExternalStage(dbPool, context, stage) {
                 `UPDATE fiscal_operations
                     SET request_snapshot = request_snapshot || $3::jsonb,
                         status = CASE
-                            WHEN $3::jsonb->>'external_stage' = 'validation' THEN 'validating'
+                            WHEN $3::jsonb->>'external_stage' = 'receipt_validation' THEN 'validating'
                             WHEN $3::jsonb->>'external_stage' = 'sale_submit' THEN 'sending'
                             WHEN status IN ('pending', 'failed') THEN 'pending'
                             ELSE status
                         END,
+                        external_stage = $3::jsonb->>'external_stage',
                         sent_at = CASE WHEN $3::jsonb->>'external_stage' = 'sale_submit' THEN COALESCE(sent_at, NOW()) ELSE sent_at END
                   WHERE id = $1
                     AND fiscal_profile_id = $2
@@ -326,6 +368,22 @@ async function recordExternalStage(dbPool, context, stage) {
                     context.job.fiscal_operation_id,
                     context.job.fiscal_profile_id,
                     JSON.stringify({ external_stage: safeStage })
+                ]
+            );
+        }
+        if (safeStage === 'shift_request' && context.job.fiscal_shift_id) {
+            await client.query(
+                `UPDATE fiscal_shifts
+                    SET lifecycle_stage = 'OPENING',
+                        provider_snapshot = provider_snapshot || $3::jsonb,
+                        updated_at = NOW()
+                  WHERE id = $1
+                    AND fiscal_profile_id = $2
+                    AND lifecycle_stage IN ('CREATED', 'OPENING')`,
+                [
+                    context.job.fiscal_shift_id,
+                    context.job.fiscal_profile_id,
+                    JSON.stringify({ lifecycle_stage: 'OPENING', external_stage: safeStage })
                 ]
             );
         }
@@ -338,6 +396,7 @@ async function recordExternalStageInTransaction(client, context, stage) {
     await client.query(
         `UPDATE payment_outbox_jobs
             SET payload = payload || $3::jsonb,
+                external_stage = $3::jsonb->>'external_stage',
                 updated_at = NOW()
           WHERE id = $1
             AND fiscal_profile_id = $2`,
@@ -346,12 +405,46 @@ async function recordExternalStageInTransaction(client, context, stage) {
     if (context.job.fiscal_operation_id) {
         await client.query(
             `UPDATE fiscal_operations
-                SET request_snapshot = request_snapshot || $3::jsonb
+                SET request_snapshot = request_snapshot || $3::jsonb,
+                    external_stage = $3::jsonb->>'external_stage'
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND status <> 'fiscalized'`,
             [context.job.fiscal_operation_id, context.job.fiscal_profile_id, JSON.stringify({ external_stage: safeStage })]
         );
+    }
+}
+
+function assertImmutableProviderContext(context = {}) {
+    const job = context.job || {};
+    const hasSnapshot = Boolean(job.fiscal_configuration_hash);
+    if (!hasSnapshot) return;
+    const pairs = [
+        ['provider_organization_id', job.provider_organization_id, job.current_provider_organization_id],
+        ['provider_outlet_id', job.provider_outlet_id, job.current_provider_outlet_id],
+        ['provider_register_id', job.provider_register_id, job.current_provider_register_id],
+        ['provider_cashier_id', job.provider_cashier_id, job.current_provider_cashier_id],
+        ['register_credential_ref', job.register_credential_ref, job.provider_license_ref],
+        ['cashier_credential_ref', job.cashier_credential_ref, job.current_provider_cashier_login_ref]
+    ];
+    for (const [field, expected, current] of pairs) {
+        const expectedText = String(expected ?? '').trim();
+        const currentText = String(current ?? '').trim();
+        if (expectedText && currentText && expectedText !== currentText) {
+            throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal mapping differs from immutable fiscal operation snapshot', {
+                retryable: false,
+                details: { field, expected: expectedText || null, current: currentText || null }
+            });
+        }
+    }
+    const request = safeJsonObject(job.fiscal_request_snapshot);
+    const requestHash = String(request.fiscal_configuration_hash || '').trim();
+    const operationHash = String(job.fiscal_configuration_hash || '').trim();
+    if (!operationHash || (requestHash && requestHash !== operationHash)) {
+        throw new PaymentOutboxWorkerError('fiscal_configuration_hash_mismatch', 'Fiscal configuration hash is missing or inconsistent', {
+            retryable: false,
+            details: { hasOperationHash: Boolean(operationHash), hasRequestHash: Boolean(requestHash) }
+        });
     }
 }
 
@@ -549,6 +642,8 @@ async function markJobSucceeded(client, job) {
             SET status = 'succeeded',
                 locked_at = NULL,
                 locked_by = NULL,
+                lock_token = NULL,
+                heartbeat_at = NULL,
                 last_error_code = NULL,
                 last_error_message = NULL,
                 updated_at = NOW()
@@ -566,6 +661,8 @@ async function markJobFailed(client, context, errorInfo) {
             SET status = $3::text,
                 locked_at = NULL,
                 locked_by = NULL,
+                lock_token = NULL,
+                heartbeat_at = NULL,
                 next_run_at = CASE WHEN $3::text = 'dead' THEN next_run_at ELSE $4::timestamptz END,
                 last_error_code = $5,
                 last_error_message = $6,
@@ -640,6 +737,34 @@ async function markJobFailed(client, context, errorInfo) {
                 JSON.stringify({ provider: 'checkbox', retryable: errorInfo.retryable, unknown: errorInfo.unknown, hermes_status_ignored: true })
             ]
         );
+        await client.query(
+            `INSERT INTO fiscal_operational_incidents (
+                 fiscal_profile_id, fiscal_register_id, fiscal_operation_id, payment_order_id,
+                 severity, incident_type, status, idempotency_key, details
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8::jsonb)
+             ON CONFLICT (idempotency_key) DO UPDATE
+                 SET status = CASE WHEN fiscal_operational_incidents.status = 'resolved' THEN fiscal_operational_incidents.status ELSE 'open' END,
+                     details = EXCLUDED.details`,
+            [
+                context.job.fiscal_profile_id,
+                context.job.fiscal_register_id || null,
+                context.job.fiscal_operation_id || null,
+                context.job.payment_order_id || null,
+                dead ? 'critical' : 'warning',
+                nextStatus === 'unknown' ? 'fiscal.unknown' : (dead ? 'payment_outbox.dead' : 'payment_outbox.failed'),
+                `payment_outbox_incident:${context.job.id}:${dead ? 'dead' : errorInfo.code}`,
+                JSON.stringify({
+                    job_id: Number(context.job.id),
+                    fiscal_operation_id: context.job.fiscal_operation_id ? Number(context.job.fiscal_operation_id) : null,
+                    payment_order_id: context.job.payment_order_id ? Number(context.job.payment_order_id) : null,
+                    error_code: errorInfo.code,
+                    retryable: errorInfo.retryable,
+                    unknown: errorInfo.unknown,
+                    external_stage: externalStage(context.job)
+                })
+            ]
+        );
         await safePublishFiscalEvent(
             client,
             nextStatus === 'unknown' ? 'fiscal.unknown' : 'fiscal.receipt_failed',
@@ -657,6 +782,8 @@ async function markJobConfigUnavailable(client, context, errorInfo) {
             SET status = 'queued',
                 locked_at = NULL,
                 locked_by = NULL,
+                lock_token = NULL,
+                heartbeat_at = NULL,
                 attempts = GREATEST(attempts - 1, 0),
                 next_run_at = NOW() + INTERVAL '5 minutes',
                 last_error_code = $3,
@@ -679,7 +806,7 @@ async function runReceiptReturnJob(provider, context) {
     if (!provider.createReturnReceipt) {
         throw new PaymentOutboxWorkerError('checkbox_return_not_supported', 'Checkbox return receipt operation is not configured', { retryable: false });
     }
-    return { receipt: await provider.createReturnReceipt({ fiscalOperation: context.job, paymentOrder: context.job }), source: 'return' };
+    return { receipt: await provider.createReturnReceipt({ fiscalOperation: context.job, paymentOrder: context.job, items: context.items }), source: 'return' };
 }
 
 async function runServiceReceiptJob(provider, context) {
@@ -713,12 +840,13 @@ async function markShiftJobSucceeded(client, context, result) {
         await client.query(
             `UPDATE fiscal_shifts
                 SET status = 'open',
+                    lifecycle_stage = 'OPENED',
                     provider_shift_id = COALESCE(provider_shift_id, $3),
                     opened_at = COALESCE(opened_at, NOW()),
                     provider_opened_at = COALESCE(provider_opened_at, NOW()),
                     provider_snapshot = provider_snapshot || $4::jsonb,
                     updated_at = NOW()
-              WHERE id = $1
+                  WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND status = 'opening'`,
             [
@@ -731,9 +859,20 @@ async function markShiftJobSucceeded(client, context, result) {
         await markJobSucceeded(client, context.job);
         return { ok: true, jobId: Number(context.job.id), source: result.source };
     }
+    if (context.job.job_type === 'shift_close') {
+        const providerStatus = String(result.response?.status || '').trim().toUpperCase();
+        if (providerStatus && providerStatus !== 'CLOSED') {
+            throw new PaymentOutboxWorkerError('checkbox_shift_close_not_completed', 'Checkbox shift close has not reached CLOSED status', {
+                retryable: true,
+                unknown: true,
+                details: { providerStatus }
+            });
+        }
+    }
     await client.query(
         `UPDATE fiscal_shifts
             SET status = 'closed',
+                lifecycle_stage = 'CLOSED',
                 closed_at = COALESCE(closed_at, NOW()),
                 provider_closed_at = COALESCE(provider_closed_at, NOW()),
                 provider_snapshot = provider_snapshot || $3::jsonb,
@@ -751,6 +890,35 @@ async function runShiftJob(provider, context) {
     if (!method) {
         throw new PaymentOutboxWorkerError('checkbox_shift_operation_not_supported', 'Checkbox shift operation is not configured', { retryable: false });
     }
+    if (context.job.job_type === 'shift_open' && Number(context.job.attempts || 0) > 1 && provider.ensureShiftOpened) {
+        await context.recordStage?.('shift_lookup');
+        const response = await provider.ensureShiftOpened({
+            providerOperationId: context.job.provider_operation_id,
+            providerRequestUuid: context.job.provider_operation_id,
+            fiscalOperation: context.job,
+            payload: context.job.payload || {}
+        }, { allowOpenRequest: false });
+        return { response, source: 'shift_lookup' };
+    }
+    if (context.job.job_type === 'shift_close' && Number(context.job.attempts || 0) > 1 && provider.getCurrentShiftStatus) {
+        await context.recordStage?.('shift_close_lookup');
+        const response = await provider.getCurrentShiftStatus({
+            providerOperationId: context.job.provider_operation_id,
+            providerRequestUuid: context.job.provider_operation_id,
+            fiscalOperation: context.job,
+            payload: context.job.payload || {}
+        });
+        const expectedShiftId = String(context.job.provider_shift_id || context.job.payload?.provider_shift_id || '').trim();
+        const actualShiftId = String(response?.id || '').trim();
+        if (!actualShiftId || (expectedShiftId && actualShiftId !== expectedShiftId) || String(response?.status || '').toUpperCase() === 'CLOSED') {
+            return { response: { ...response, status: 'CLOSED', id: expectedShiftId || actualShiftId || null }, source: 'shift_close_lookup' };
+        }
+        throw new PaymentOutboxWorkerError('checkbox_shift_close_pending', 'Checkbox shift close is still pending', {
+            retryable: true,
+            unknown: true,
+            details: { providerStatus: response?.status || null }
+        });
+    }
     await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request' : 'shift_close_request');
     const response = await method.call(provider, {
         providerOperationId: context.job.provider_operation_id,
@@ -764,7 +932,11 @@ async function runShiftJob(provider, context) {
 async function runReceiptSaleJob(provider, context) {
     const stage = externalStage(context.job);
     const mustLookupOnly = saleStageRequiresLookup(stage);
-    if (context.job.fiscal_shift_status !== 'open' || !context.job.provider_shift_id) {
+    if (
+        context.job.fiscal_shift_status !== 'open'
+        || (context.job.fiscal_shift_lifecycle_stage && context.job.fiscal_shift_lifecycle_stage !== 'OPENED')
+        || !context.job.provider_shift_id
+    ) {
         throw new PaymentOutboxWorkerError('shift_not_provider_opened', 'Sale cannot be sent until the provider shift is OPENED', {
             retryable: true,
             unknown: false,
@@ -785,7 +957,7 @@ async function runReceiptSaleJob(provider, context) {
         throw new PaymentOutboxWorkerError('receipt_not_found_for_status_lookup', 'Provider receipt was not found during status lookup', { retryable: true, unknown: true });
     }
 
-    await context.recordStage?.('validation');
+    await context.recordStage?.('receipt_validation');
     await provider.validateSale({
         providerOperationId: context.job.provider_operation_id,
         providerRequestUuid: context.job.provider_operation_id,
@@ -811,19 +983,22 @@ async function loadProcessingContext(dbPool, job) {
         const owner = await client.query(
             `UPDATE payment_outbox_jobs
                 SET status = 'running',
+                    heartbeat_at = NOW(),
                     updated_at = NOW()
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND locked_by = $3
                 AND attempts = $4
+                AND lock_token = $5::uuid
                 AND status IN ('claimed', 'running')
               RETURNING id`,
-            [context.job.id, context.job.fiscal_profile_id, job.locked_by, job.attempts]
+            [context.job.id, context.job.fiscal_profile_id, job.locked_by, job.attempts, job.lock_token]
         );
         if (!owner.rows.length) {
             throw new PaymentOutboxWorkerError('payment_outbox_job_ownership_lost', 'Claimed payment outbox job ownership was lost before processing', { retryable: true });
         }
         context.job.locked_by = job.locked_by;
+        context.job.lock_token = job.lock_token;
         context.job.status = 'running';
         return context;
     });
@@ -837,9 +1012,10 @@ async function assertFinalizeOwnership(client, context) {
             AND fiscal_profile_id = $2
             AND locked_by = $3
             AND attempts = $4
+            AND lock_token = $5::uuid
             AND status IN ('claimed', 'running')
           FOR UPDATE`,
-        [context.job.id, context.job.fiscal_profile_id, context.job.locked_by, context.job.attempts]
+        [context.job.id, context.job.fiscal_profile_id, context.job.locked_by, context.job.attempts, context.job.lock_token]
     );
     if (!result.rows.length) {
         throw new PaymentOutboxWorkerError('payment_outbox_job_ownership_lost', 'Payment outbox job ownership was lost before finalize', { retryable: true });
@@ -862,6 +1038,7 @@ async function finalizeJobSuccess(dbPool, context, result) {
     return withTransaction(dbPool, async client => {
         const finalizeContext = await loadJobContext(client, context.job);
         finalizeContext.job.locked_by = context.job.locked_by;
+        finalizeContext.job.lock_token = context.job.lock_token;
         finalizeContext.job.attempts = context.job.attempts;
         await assertFinalizeOwnership(client, finalizeContext);
         if (finalizeContext.job.job_type === 'receipt_sell' || finalizeContext.job.job_type === 'receipt_status_lookup') {
@@ -893,8 +1070,9 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
         context = await loadProcessingContext(dbPool, job);
         context.recordStage = stage => recordExternalStage(dbPool, context, stage);
         try {
+            assertImmutableProviderContext(context);
             if (!saleStageRequiresLookup(externalStage(context.job))) {
-                await context.recordStage('auth_readiness');
+                await context.recordStage('auth');
             }
             const effectiveProvider = provider?.createForContext ? provider.createForContext(context) : provider;
             let result;
@@ -930,7 +1108,8 @@ async function processPaymentOutboxJobs({
     provider = null,
     batchSize = DEFAULT_BATCH_SIZE,
     lockedBy = workerId(),
-    lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS
+    lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS,
+    throwOnDegraded = false
 } = {}) {
     const effectiveProvider = provider || createCheckboxProviderFactory();
     let eligibleFiscalProfileIds = null;
@@ -963,17 +1142,27 @@ async function processPaymentOutboxJobs({
             };
         }
     }
-    const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize, lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
+    const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize: Math.min(Number(batchSize) || DEFAULT_BATCH_SIZE, 1), lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
     const results = [];
     for (const job of claimed) {
         results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job }));
     }
-    return {
+    const summary = {
         claimed: claimed.length,
         succeeded: results.filter(result => result.ok).length,
         failed: results.filter(result => !result.ok).length,
         results
     };
+    if (throwOnDegraded && summary.failed > 0) {
+        const error = new PaymentOutboxWorkerError('payment_outbox_degraded', 'Payment outbox worker completed with failed jobs', {
+            retryable: true,
+            unknown: false,
+            details: { claimed: summary.claimed, failed: summary.failed }
+        });
+        error.summary = summary;
+        throw error;
+    }
+    return summary;
 }
 
 module.exports = {

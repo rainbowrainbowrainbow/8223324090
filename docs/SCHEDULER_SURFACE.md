@@ -71,6 +71,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
 | `flushGuardianLearn` | `server.js:inline` | guardian | `5 * 60 * 1000` | none |
 | `syncAgentActivities` | `server.js:inline` | agent-tracker | `30 * 60 * 1000` | `hourly` |
+| `runCheckboxReadinessProbeScheduler` | `services/payments/paymentReadinessService.js` | payments | `60000` | none |
 | `processPaymentOutboxJobs` | `services/payments/paymentOutboxWorker.js` | payments | `30000` | none |
 | `cleanupOutbox` | `services/eventBus.js` | event-bus | `60000` | `daily` |
 | `cleanupRefreshTokens` | `middleware/auth.js` | auth | `60000` | `daily` |
@@ -89,6 +90,8 @@ Supported `guardScheduler` dedup modes:
   minute-level `YYYY-MM-DDTHH:MM` tracking key for observability.
 
 Unsupported dedup values are rejected before the scheduler function can run.
+
+`runCheckboxReadinessProbeScheduler` runs every minute without guard-level dedup because readiness freshness is scoped by `checkbox_readiness_snapshots.expires_at`. It records sanitized Checkbox readiness only; raw secrets, PINs, and tokens are not stored. Direct coverage lives in `tests/payment-readiness.test.js`.
 
 `processPaymentOutboxJobs` runs every 30 seconds without guard-level dedup because durable locking is owned by `payment_outbox_jobs`. It claims bounded batches with `FOR UPDATE SKIP LOCKED`, recovers expired locks, applies exponential backoff, moves exhausted jobs to dead-letter status, and performs receipt status lookup before retrying any sale after unknown provider responses. Direct coverage lives in `tests/checkbox-webhook-reconciliation.test.js`.
 

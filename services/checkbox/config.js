@@ -141,8 +141,10 @@ function assertSandboxBaseUrl(baseUrl) {
         throw new CheckboxClientError('checkbox_sandbox_base_url_not_https', 'CHECKBOX_SANDBOX_BASE_URL must use HTTPS', { status: 2 });
     }
     const host = parsed.hostname.toLowerCase();
-    if (!/(sandbox|dev|test)/.test(host)) {
-        throw new CheckboxClientError('checkbox_sandbox_base_url_not_sandbox', 'Refusing Checkbox QA because base URL host is not sandbox/dev/test', {
+    const isOfficial = host === 'api.checkbox.in.ua' || host === 'api.checkbox.ua' || host.endsWith('.checkbox.in.ua') || host.endsWith('.checkbox.ua');
+    const isExplicitTestHost = /(sandbox|dev|test)/.test(host);
+    if (!isOfficial && !isExplicitTestHost) {
+        throw new CheckboxClientError('checkbox_sandbox_base_url_not_allowed', 'Refusing Checkbox QA because base URL host is not an official Checkbox HTTPS host or explicit test host', {
             status: 2,
             details: { host }
         });
@@ -168,7 +170,13 @@ function loadCheckboxSandboxConfig(env = process.env) {
         webhookSecret: String(env.CHECKBOX_SANDBOX_WEBHOOK_SECRET || '').trim() || null,
         taxCode: String(env.CHECKBOX_SANDBOX_TAX_CODE || '').trim() || null,
         amountMinor: String(env.CHECKBOX_SANDBOX_AMOUNT_MINOR || '1000').trim(),
-        returnAmountMinor: String(env.CHECKBOX_SANDBOX_RETURN_AMOUNT_MINOR || env.CHECKBOX_SANDBOX_AMOUNT_MINOR || '1000').trim()
+        returnAmountMinor: String(env.CHECKBOX_SANDBOX_RETURN_AMOUNT_MINOR || env.CHECKBOX_SANDBOX_AMOUNT_MINOR || '1000').trim(),
+        expectedOrganizationId: String(env.CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID || '').trim() || null,
+        expectedOutletId: String(env.CHECKBOX_SANDBOX_EXPECT_OUTLET_ID || '').trim() || null,
+        expectedRegisterId: String(env.CHECKBOX_SANDBOX_EXPECT_REGISTER_ID || '').trim() || null,
+        expectedCashierId: String(env.CHECKBOX_SANDBOX_EXPECT_CASHIER_ID || '').trim() || null,
+        expectedIsTest: env.CHECKBOX_SANDBOX_EXPECT_IS_TEST == null ? true : boolEnv(env.CHECKBOX_SANDBOX_EXPECT_IS_TEST),
+        includeProOperations: boolEnv(env.CHECKBOX_SANDBOX_INCLUDE_PRO)
     };
     return config;
 }
@@ -183,6 +191,12 @@ function publicConfigSummary(config = {}) {
         timeoutMs: config.timeoutMs,
         confirmMutations: config.confirmMutations,
         closeShift: config.closeShift,
+        expectedOrganizationId: config.expectedOrganizationId,
+        expectedOutletId: config.expectedOutletId,
+        expectedRegisterId: config.expectedRegisterId,
+        expectedCashierId: config.expectedCashierId,
+        expectedIsTest: config.expectedIsTest,
+        includeProOperations: config.includeProOperations,
         hasWebhookSecret: Boolean(config.webhookSecret),
         hasTaxCode: Boolean(config.taxCode)
     });

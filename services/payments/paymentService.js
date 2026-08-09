@@ -15,6 +15,7 @@ const {
     assertManualConfirmationBody,
     normalizeTender
 } = require('./paymentStateMachine');
+const { PaymentReadinessError, assertPaymentReadiness } = require('./paymentReadinessService');
 const {
     isCheckboxIntegrationEnabled,
     loadCheckboxRuntimeConfig
@@ -47,6 +48,40 @@ function stableJson(value) {
 
 function fingerprint(value) {
     return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function paymentAdvisoryScope(key) {
+    return `eventgenix:payments:${String(key || '').trim()}`;
+}
+
+async function lockPaymentIdempotency(client, key) {
+    await client.query(
+        'SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))',
+        ['payment_idempotency', paymentAdvisoryScope(key)]
+    );
+}
+
+function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeConfig = {} } = {}) {
+    const snapshot = {
+        provider: 'checkbox',
+        provider_organization_id: mapping.provider_organization_id || null,
+        provider_outlet_id: mapping.provider_outlet_id || null,
+        provider_register_id: mapping.provider_register_id || null,
+        provider_cashier_id: binding.provider_cashier_id || null,
+        register_credential_ref: mapping.provider_license_ref || null,
+        cashier_credential_ref: binding.provider_cashier_login_ref || mapping.provider_license_ref || null,
+        expected_is_test: runtimeConfig.expectedIsTest,
+        fiscal_profile_id: mapping.fiscal_profile_id == null ? null : Number(mapping.fiscal_profile_id),
+        fiscal_location_id: mapping.fiscal_location_id == null ? null : Number(mapping.fiscal_location_id),
+        fiscal_register_id: mapping.fiscal_register_id == null ? null : Number(mapping.fiscal_register_id),
+        crm_profile_key: mapping.crm_profile_key || null,
+        legal_entity_key: mapping.legal_entity_key || null,
+        register_alias: mapping.register_alias || null
+    };
+    return {
+        snapshot,
+        hash: fingerprint(snapshot)
+    };
 }
 
 function requireIdempotencyKey(value) {
@@ -159,6 +194,7 @@ async function loadPilotFiscalMapping(client, { crmProfileKey = PILOT_CRM_PROFIL
              fp.status AS fiscal_profile_status,
              fl.id AS fiscal_location_id,
              fl.location_alias,
+             fl.provider_outlet_id,
              fr.id AS fiscal_register_id,
              fr.register_alias,
              fr.display_name AS register_display_name,
@@ -223,7 +259,7 @@ async function assertCheckboxIntegrationReady(client, {
         throw new PaymentServiceError('checkbox_register_disabled', 'Checkbox register is not enabled for payment confirmation', { status: 409 });
     }
     const binding = await client.query(
-        `SELECT provider_cashier_login_ref
+        `SELECT provider_cashier_id, provider_cashier_login_ref
            FROM fiscal_cashier_bindings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
@@ -239,18 +275,47 @@ async function assertCheckboxIntegrationReady(client, {
         });
     }
     try {
-        loadCheckboxRuntimeConfig({
+        const runtimeConfig = loadCheckboxRuntimeConfig({
             env,
             credentialRef: binding.rows[0].provider_cashier_login_ref || providerLicenseRef,
             licenseRef: providerLicenseRef
         });
+        return {
+            binding: binding.rows[0],
+            runtimeConfig
+        };
     } catch (error) {
         throw new PaymentServiceError(error.code || 'checkbox_runtime_config_unavailable', 'Checkbox runtime configuration is not resolvable', {
             status: 503,
             details: error.details || undefined
         });
     }
-    return true;
+}
+
+function publicFiscalQueueStatus(row = {}) {
+    const fiscalStatus = String(row.fiscal_status || row.fiscalStatus || '').trim().toLowerCase();
+    const outboxStatus = String(row.outbox_status || row.outboxStatus || '').trim().toLowerCase();
+    const attempts = Number(row.attempts == null ? 0 : row.attempts);
+    const maxAttempts = Number(row.max_attempts == null ? row.maxAttempts == null ? 0 : row.maxAttempts : row.max_attempts);
+    if (outboxStatus === 'dead') return 'dead';
+    if (outboxStatus === 'failed') return maxAttempts > 0 && attempts >= maxAttempts ? 'failed_terminal' : 'failed_retryable';
+    if (outboxStatus === 'queued' && fiscalStatus === 'failed') return 'failed_retryable';
+    if (['blocked', 'validation_failed'].includes(fiscalStatus)) return 'failed_terminal';
+    return fiscalStatus || 'unknown';
+}
+
+function normalizePaymentOutboxJob(row = {}) {
+    if (!row) return null;
+    return {
+        id: Number(row.id),
+        jobType: row.job_type,
+        status: row.status,
+        externalStage: row.external_stage || null,
+        attempts: row.attempts == null ? null : Number(row.attempts),
+        maxAttempts: row.max_attempts == null ? null : Number(row.max_attempts),
+        nextRunAt: row.next_run_at || null,
+        lastErrorCode: row.last_error_code || null
+    };
 }
 
 async function authorizeOrderReplay(client, {
@@ -317,7 +382,11 @@ async function loadFiscalItemMappings(client, { fiscalProfileId, fiscalRegisterI
         }
         const fiscalItemName = String(row.fiscal_item_name || '').trim();
         const providerTaxId = String(row.provider_tax_id || '').trim();
-        if (!fiscalItemName || !providerTaxId || /^admission_tariff:/i.test(providerTaxId)) {
+        const taxMode = String(row.tax_mode || 'taxed').trim();
+        const invalidTax = taxMode === 'taxed'
+            ? (!providerTaxId || /^admission_tariff:/i.test(providerTaxId))
+            : Boolean(providerTaxId);
+        if (!fiscalItemName || !['taxed', 'untaxed'].includes(taxMode) || invalidTax) {
             throw new PaymentServiceError('fiscal_item_tax_mapping_missing', 'Admission ticket fiscal tax mapping is incomplete', {
                 status: 409,
                 details: { itemCode: code }
@@ -337,7 +406,7 @@ async function loadFiscalItemMappings(client, { fiscalProfileId, fiscalRegisterI
 
 async function assertOrderItemsFiscalReady(client, { fiscalProfileId, paymentOrderId }) {
     const result = await client.query(
-        `SELECT line_number, item_code, item_name, tax_reference, provider_tax_id
+        `SELECT line_number, item_code, item_name, tax_reference, provider_tax_id, COALESCE(tax_mode, 'taxed') AS tax_mode
            FROM payment_order_items
           WHERE fiscal_profile_id = $1
             AND payment_order_id = $2
@@ -349,7 +418,10 @@ async function assertOrderItemsFiscalReady(client, { fiscalProfileId, paymentOrd
     }
     const invalid = result.rows.filter(row => {
         const providerTaxId = String(row.provider_tax_id || '').trim();
-        return !providerTaxId || /^admission_tariff:/i.test(providerTaxId);
+        const taxMode = String(row.tax_mode || 'taxed').trim();
+        return taxMode === 'taxed'
+            ? (!providerTaxId || /^admission_tariff:/i.test(providerTaxId))
+            : Boolean(providerTaxId);
     });
     if (invalid.length) {
         throw new PaymentServiceError('payment_order_fiscal_item_not_ready', 'Payment order fiscal item/tax mapping is incomplete', {
@@ -366,7 +438,9 @@ async function loadOrderSnapshot(client, orderId) {
                 fp.crm_profile_key,
                 fp.legal_entity_key,
                 fp.legal_entity_name,
+                fp.provider_organization_id,
                 fl.id AS fiscal_location_id,
+                fl.provider_outlet_id,
                 fr.register_alias,
                 fr.display_name AS register_display_name,
                 fr.provider,
@@ -441,6 +515,7 @@ async function createAdmissionTicketPaymentOrder({
     });
 
     return withTransaction(dbPool, async client => {
+        await lockPaymentIdempotency(client, key);
         const mapping = await loadPilotFiscalMapping(client, { crmProfileKey });
         await authorizer(client, {
             user,
@@ -459,6 +534,14 @@ async function createAdmissionTicketPaymentOrder({
                 registerFeatureEnabled: Boolean(mapping.feature_enabled),
                 provider: mapping.provider,
                 providerLicenseRef: mapping.provider_license_ref
+            });
+            await assertPaymentReadiness({
+                client,
+                user,
+                fiscalProfileId: mapping.fiscal_profile_id,
+                fiscalRegisterId: mapping.fiscal_register_id,
+                crmProfileKey: mapping.crm_profile_key,
+                action: 'payments.create'
             });
         }
 
@@ -526,6 +609,7 @@ async function createAdmissionTicketPaymentOrder({
                  payment_method, total_amount_minor, currency, source_snapshot, created_by_user_id
              )
              VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'unpaid', 'pending', $8, $9, 'UAH', $10::jsonb, $11)
+             ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
                 mapping.fiscal_profile_id,
@@ -541,6 +625,20 @@ async function createAdmissionTicketPaymentOrder({
                 user?.id || null
             ]
         );
+        if (!inserted.rows.length) {
+            const conflict = await findOrderByIdempotency(client, key);
+            const existingOrder = conflict ? await loadOrderSnapshot(client, conflict.id) : null;
+            await authorizeOrderReplay(client, {
+                user,
+                order: existingOrder,
+                action: 'payments.create',
+                authorizer,
+                expectedFiscalProfileId: mapping.fiscal_profile_id,
+                expectedFiscalRegisterId: mapping.fiscal_register_id,
+                requestFingerprint
+            });
+            return { replayed: true, order: normalizePaymentOrder(existingOrder) };
+        }
         const order = inserted.rows[0];
 
         let lineNumber = 0;
@@ -554,9 +652,9 @@ async function createAdmissionTicketPaymentOrder({
                 `INSERT INTO payment_order_items (
                      fiscal_profile_id, payment_order_id, line_number, item_type, item_code, item_name,
                      unit_price_minor, quantity_millis, total_amount_minor, currency, tax_reference,
-                     tax_code, tax_rate_bps, provider_tax_id, item_snapshot
+                     tax_code, tax_rate_bps, provider_tax_id, tax_mode, item_snapshot
                  )
-                 VALUES ($1, $2, $3, 'admission_ticket', $4, $5, $6, $7, $8, 'UAH', $9, $10, $11, $12, $13::jsonb)`,
+                 VALUES ($1, $2, $3, 'admission_ticket', $4, $5, $6, $7, $8, 'UAH', $9, $10, $11, $12, $13, $14::jsonb)`,
                 [
                     order.fiscal_profile_id,
                     order.id,
@@ -569,8 +667,9 @@ async function createAdmissionTicketPaymentOrder({
                     line.tariffVersionId ? `admission_tariff:${line.tariffVersionId}` : null,
                     itemMapping.tax_code == null ? null : Number(itemMapping.tax_code),
                     itemMapping.tax_rate_bps == null ? null : Number(itemMapping.tax_rate_bps),
-                    itemMapping.provider_tax_id,
-                    JSON.stringify({ ...line, fiscal_item_mapping_id: Number(itemMapping.id), original_ticket_type_name: line.ticketTypeName })
+                    itemMapping.provider_tax_id || null,
+                    itemMapping.tax_mode || 'taxed',
+                    JSON.stringify({ ...line, fiscal_item_mapping_id: Number(itemMapping.id), fiscal_tax_mode: itemMapping.tax_mode || 'taxed', original_ticket_type_name: line.ticketTypeName })
                 ]
             );
         }
@@ -639,6 +738,14 @@ async function confirmPaymentOrder({
                     provider: existingOrder.provider,
                     providerLicenseRef: existingOrder.provider_license_ref
                 });
+                await assertPaymentReadiness({
+                    client,
+                    user,
+                    fiscalProfileId: existingOrder.fiscal_profile_id,
+                    fiscalRegisterId: existingOrder.fiscal_register_id,
+                    crmProfileKey: existingOrder.crm_profile_key,
+                    action: 'payments.confirm_received'
+                });
             }
             return {
                 replayed: true,
@@ -652,7 +759,9 @@ async function confirmPaymentOrder({
                     fp.crm_profile_key,
                     fp.legal_entity_key,
                     fp.legal_entity_name,
+                    fp.provider_organization_id,
                     fl.id AS fiscal_location_id,
+                    fl.provider_outlet_id,
                     fr.register_alias,
                     fr.display_name AS register_display_name,
                     fr.provider,
@@ -695,11 +804,46 @@ async function confirmPaymentOrder({
                 provider: order.provider,
                 providerLicenseRef: order.provider_license_ref
             });
+            await assertPaymentReadiness({
+                client,
+                user,
+                fiscalProfileId: order.fiscal_profile_id,
+                fiscalRegisterId: order.fiscal_register_id,
+                crmProfileKey: order.crm_profile_key,
+                action: 'payments.confirm_received'
+            });
         }
 
         const confirmation = assertManualConfirmationBody({ order, body });
         await assertOrderItemsFiscalReady(client, { fiscalProfileId: order.fiscal_profile_id, paymentOrderId: order.id });
         const terminalReference = sanitizeCardReference(body.terminalReference ?? body.terminal_reference);
+        const readiness = requireCheckboxIntegrationReady
+            ? await assertCheckboxIntegrationReady(client, {
+                user,
+                fiscalProfileId: order.fiscal_profile_id,
+                fiscalRegisterId: order.fiscal_register_id,
+                registerStatus: order.fiscal_register_status,
+                registerFeatureEnabled: Boolean(order.feature_enabled),
+                provider: order.provider,
+                providerLicenseRef: order.provider_license_ref
+            })
+            : { binding: {}, runtimeConfig: {} };
+        const fiscalConfig = buildFiscalConfigurationSnapshot({
+            mapping: {
+                fiscal_profile_id: order.fiscal_profile_id,
+                fiscal_location_id: order.fiscal_location_id,
+                fiscal_register_id: order.fiscal_register_id,
+                crm_profile_key: order.crm_profile_key,
+                legal_entity_key: order.legal_entity_key,
+                provider_organization_id: order.provider_organization_id,
+                provider_outlet_id: order.provider_outlet_id,
+                provider_register_id: order.provider_register_id,
+                provider_license_ref: order.provider_license_ref,
+                register_alias: order.register_alias
+            },
+            binding: readiness.binding,
+            runtimeConfig: readiness.runtimeConfig
+        });
         const confirmationSnapshot = {
             tender: confirmation.tender,
             amount_minor: confirmation.amountMinor.toString(),
@@ -707,7 +851,9 @@ async function confirmPaymentOrder({
             change_amount_minor: confirmation.changeAmountMinor.toString(),
             terminal_reference: terminalReference,
             terminal_showed_success: confirmation.tender === 'card_terminal_manual' ? true : undefined,
-            confirmed_by_user_id: user?.id || null
+            confirmed_by_user_id: user?.id || null,
+            fiscal_configuration_hash: fiscalConfig.hash,
+            provider_context: fiscalConfig.snapshot
         };
 
         const attempt = await client.query(
@@ -762,10 +908,22 @@ async function confirmPaymentOrder({
                 SET status = 'confirmed',
                     payment_status = 'confirmed',
                     confirmation_snapshot = $2::jsonb,
+                    sealed_at = COALESCE(sealed_at, NOW()),
+                    seal_fingerprint = $3,
+                    received_amount_minor = $4,
+                    change_amount_minor = $5,
+                    terminal_reference = $6,
                     confirmed_at = NOW(),
                     updated_at = NOW()
               WHERE id = $1`,
-            [order.id, JSON.stringify(confirmationSnapshot)]
+            [
+                order.id,
+                JSON.stringify(confirmationSnapshot),
+                fiscalConfig.hash,
+                toPostgresBigint(confirmation.receivedAmountMinor, { allowZero: false }),
+                toPostgresBigint(confirmation.changeAmountMinor, { allowZero: true }),
+                terminalReference
+            ]
         );
 
         const recorded = await client.query(
@@ -786,9 +944,14 @@ async function confirmPaymentOrder({
             `INSERT INTO fiscal_operations (
                  fiscal_profile_id, fiscal_register_id, payment_order_id, fiscal_shift_id, operation_type, status,
                  idempotency_key, provider, provider_operation_id, amount_minor, currency,
-                 request_fingerprint, request_snapshot, initiated_by_user_id
+                 request_fingerprint, request_snapshot, initiated_by_user_id,
+                 provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+                 register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash,
+                 fiscal_location_id, external_stage
              )
-             VALUES ($1, $2, $3, $4, 'sale', 'pending', $5, 'checkbox', $6, $7, 'UAH', $8, $9::jsonb, $10)
+             VALUES ($1, $2, $3, $4, 'sale', 'pending', $5, 'checkbox', $6, $7, 'UAH', $8, $9::jsonb, $10,
+                     $11, $12, $13, $14, $15, $16, $17, $18, $19, 'auth')
+             ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
                 order.fiscal_profile_id,
@@ -804,18 +967,36 @@ async function confirmPaymentOrder({
                     payment_order_id: Number(order.id),
                     fiscal_shift_id: Number(shift.id),
                     source_type: order.source_type,
-                    source_id: order.source_id
+                    source_id: order.source_id,
+                    fiscal_configuration_hash: fiscalConfig.hash,
+                    provider_context: fiscalConfig.snapshot,
+                    external_stage: 'auth'
                 }),
-                user?.id || null
+                user?.id || null,
+                fiscalConfig.snapshot.provider_organization_id,
+                fiscalConfig.snapshot.provider_outlet_id,
+                fiscalConfig.snapshot.provider_register_id,
+                fiscalConfig.snapshot.provider_cashier_id,
+                fiscalConfig.snapshot.register_credential_ref,
+                fiscalConfig.snapshot.cashier_credential_ref,
+                fiscalConfig.snapshot.expected_is_test,
+                fiscalConfig.hash,
+                fiscalConfig.snapshot.fiscal_location_id
             ]
         );
+        if (!fiscalOperation.rows.length) {
+            throw new PaymentServiceError('sale_fiscal_operation_already_exists', 'Payment order already has a durable sale fiscal operation', { status: 409 });
+        }
 
         const job = await client.query(
             `INSERT INTO payment_outbox_jobs (
                  fiscal_profile_id, fiscal_operation_id, payment_order_id, job_type,
-                 status, idempotency_key, payload
+                 status, idempotency_key, payload, external_stage
              )
-             VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb)
+             VALUES ($1, $2, $3, $4, 'queued', $5, $6::jsonb, 'auth')
+             ON CONFLICT (idempotency_key) DO UPDATE
+                 SET next_run_at = LEAST(payment_outbox_jobs.next_run_at, NOW()),
+                     updated_at = NOW()
              RETURNING *`,
             [
                 order.fiscal_profile_id,
@@ -826,7 +1007,7 @@ async function confirmPaymentOrder({
                 JSON.stringify({
                     provider: 'checkbox',
                     provider_request_uuid: providerRequestUuid,
-                    external_stage: 'auth_readiness',
+                    external_stage: 'auth',
                     action: 'lookup_before_retry_on_unknown'
                 })
             ]
@@ -1079,7 +1260,7 @@ async function getPaymentOrderDetails({
             fiscalRegisterId: order.fiscal_register_id
         });
 
-        const [itemsResult, operationsResult, receiptsResult] = await Promise.all([
+        const [itemsResult, operationsResult, receiptsResult, outboxResult] = await Promise.all([
             client.query(
                 `SELECT *
                    FROM payment_order_items
@@ -1104,14 +1285,34 @@ async function getPaymentOrderDetails({
                     AND payment_order_id = $2
                   ORDER BY created_at DESC, id DESC`,
                 [order.fiscal_profile_id, order.id]
+            ),
+            client.query(
+                `SELECT id, job_type, status, external_stage, attempts, max_attempts, next_run_at, last_error_code
+                   FROM payment_outbox_jobs
+                  WHERE fiscal_profile_id = $1
+                    AND payment_order_id = $2
+                    AND job_type IN ('receipt_sell', 'receipt_status_lookup')
+                  ORDER BY created_at DESC, id DESC
+                  LIMIT 1`,
+                [order.fiscal_profile_id, order.id]
             )
         ]);
 
         const receipts = receiptsResult.rows.map(normalizeFiscalReceipt);
+        const outboxJob = normalizePaymentOutboxJob(outboxResult.rows[0]);
+        const publicOrder = normalizePaymentOrderDetails(order);
+        publicOrder.rawFiscalStatus = publicOrder.fiscalStatus;
+        publicOrder.fiscalQueueStatus = publicFiscalQueueStatus({
+            fiscalStatus: publicOrder.fiscalStatus,
+            outboxStatus: outboxJob?.status,
+            attempts: outboxJob?.attempts,
+            maxAttempts: outboxJob?.maxAttempts
+        });
         return {
-            order: normalizePaymentOrderDetails(order),
+            order: publicOrder,
             items: itemsResult.rows.map(normalizePaymentOrderItem),
             fiscalOperation: normalizeFiscalOperation(operationsResult.rows[0]),
+            outboxJob,
             receipts,
             artifacts: receiptArtifacts(receipts)
         };
@@ -1119,7 +1320,7 @@ async function getPaymentOrderDetails({
 }
 
 function paymentErrorResponse(error) {
-    if (error instanceof PaymentServiceError || error instanceof PaymentWorkflowError || error instanceof AdmissionTicketError || error instanceof FiscalAccessError) {
+    if (error instanceof PaymentServiceError || error instanceof PaymentWorkflowError || error instanceof AdmissionTicketError || error instanceof FiscalAccessError || error instanceof PaymentReadinessError) {
         return {
             status: error.status || error.statusCode || 400,
             body: {

@@ -134,6 +134,10 @@ class CheckboxClient {
         return this.request(`/api/v1/shifts${params.toString() ? `?${params}` : ''}`);
     }
 
+    async getShiftById({ shiftId }) {
+        return this.request(`/api/v1/shifts/${encodePathSegment(shiftId)}`);
+    }
+
     async openShift({ providerRequestUuid, autoCloseAt = null } = {}) {
         const body = { id: providerRequestUuid };
         if (autoCloseAt) body.auto_close_at = autoCloseAt;

@@ -29,6 +29,9 @@ function mapReceiptGood(item = {}) {
     }
     const good = { code, name, price };
     const tax = item.tax || item.providerTaxId || item.taxCode;
+    if (String(tax || '').match(/^admission_tariff:/i)) {
+        throw new CheckboxClientError('checkbox_internal_tax_reference_forbidden', 'Internal admission tariff reference must not be sent as Checkbox tax', { status: 422, retryable: false });
+    }
     if (tax) good.tax = Array.isArray(tax) ? tax : [tax];
     return {
         good,

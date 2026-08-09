@@ -18,9 +18,20 @@ const {
     createReconciliationRevision,
     createServiceIn,
     createServiceOutRequest,
+    enrollFiscalActionPin,
     getOperationalReport,
     loadPilotRegisterState
 } = require('../services/payments/cashierOperationsService');
+const {
+    loadCheckboxSalesReport,
+    listUnresolvedPaymentOrders,
+    loadOperationalHealth,
+    loadReadinessState,
+    listOperationalIncidents,
+    probeCheckboxReadiness,
+    readinessErrorResponse,
+    requestPhase1ShiftClose
+} = require('../services/payments/paymentReadinessService');
 const { isCashierProEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
 
 router.use(authenticateToken);
@@ -106,10 +117,118 @@ router.post('/orders/:orderId/cancel', requireAction('payments.create'), async (
 
 router.get('/pilot-register-state', requireAction('payments.view'), async (req, res) => {
     try {
-        const result = await loadPilotRegisterState({
+        const crmProfileKey = req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix';
+        const registerAlias = req.query.registerAlias || req.query.register_alias || 'middle';
+        const [localState, readiness] = await Promise.all([
+            loadPilotRegisterState({
+                user: req.user,
+                crmProfileKey,
+                registerAlias
+            }),
+            loadReadinessState({
+                user: req.user,
+                crmProfileKey,
+                registerAlias
+            })
+        ]);
+        return res.status(200).json({ success: true, ...localState, readiness, readinessCode: readiness.readinessCode, integrationReady: readiness.integrationReady });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/readiness/probe', requireAction('payments.view'), async (req, res) => {
+    try {
+        const result = await probeCheckboxReadiness({
+            user: req.user,
+            crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/unresolved-orders', requireAction('payments.view'), async (req, res) => {
+    try {
+        const result = await listUnresolvedPaymentOrders({
             user: req.user,
             crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
             registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/checkbox-sales-report', requireAction('payments.view'), async (req, res) => {
+    try {
+        const result = await loadCheckboxSalesReport({
+            user: req.user,
+            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/operational-health', requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await loadOperationalHealth({
+            user: req.user,
+            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await listOperationalIncidents({
+            user: req.user,
+            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
+            status: req.query.status || 'open'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/shifts/:shiftId/phase1-close', requireAction('fiscal.shift.close'), async (req, res) => {
+    try {
+        const result = await requestPhase1ShiftClose({
+            user: req.user,
+            shiftId: req.params.shiftId,
+            idempotencyKey: idempotencyKeyFromRequest(req)
+        });
+        return res.status(202).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/fiscal-bindings/:bindingId/action-pin', requireAction('fiscal.configure'), async (req, res) => {
+    try {
+        const result = await enrollFiscalActionPin({
+            user: req.user,
+            bindingId: req.params.bindingId,
+            body: req.body || {}
         });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -117,6 +236,7 @@ router.get('/pilot-register-state', requireAction('payments.view'), async (req, 
         return res.status(response.status).json(response.body);
     }
 });
+
 router.post('/service-in', requireCashierProEnabled, requireAction('fiscal.service_in'), async (req, res) => {
     try {
         const result = await createServiceIn({

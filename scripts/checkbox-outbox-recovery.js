@@ -123,7 +123,7 @@ async function loadScopedRows(client, args, options = {}) {
             fo.provider_operation_id,
             fo.request_snapshot,
             fo.last_error_code AS operation_last_error_code,
-            fr.alias AS register_alias,
+            fr.register_alias AS register_alias,
             fr.feature_enabled AS register_feature_enabled,
             fs.id AS shift_id,
             fs.status AS shift_status,
@@ -165,6 +165,12 @@ function assertSingleJob(rows, mode) {
 
 function buildMutationPlan(row, mode) {
     const stage = externalStage(row);
+    if (row.locked_at && row.locked_by) {
+        const lockedAt = Date.parse(row.locked_at);
+        if (Number.isFinite(lockedAt) && Date.now() - lockedAt < 5 * 60 * 1000) {
+            throw new Error('Cannot recover an active non-expired outbox lease');
+        }
+    }
     if (mode === 'requeue-pre-sell') {
         if (!PRE_SELL_STAGES.has(stage)) {
             throw new Error(`requeue-pre-sell is allowed only before sale submit; current stage is ${stage || 'unknown'}`);
@@ -199,7 +205,7 @@ function buildMutationPlan(row, mode) {
     throw new Error(`Mode ${mode} is not mutating`);
 }
 
-async function applyMutation(client, row, plan, reason) {
+async function applyMutation(client, row, plan, reason, actorUserId = null) {
     const metadata = {
         recovery_action: plan.action,
         external_stage: plan.targetStage,
@@ -244,17 +250,19 @@ async function applyMutation(client, row, plan, reason) {
     await client.query(
         `INSERT INTO fiscal_audit_events (
             fiscal_profile_id,
+            actor_user_id,
             event_type,
             entity_table,
             entity_id,
             idempotency_key,
             metadata
-        ) VALUES ($1, 'checkbox_outbox_operator_recovery', 'payment_outbox_jobs', $2, $3, $4::jsonb)`,
+        ) VALUES ($1, $5, 'checkbox_outbox_operator_recovery', 'payment_outbox_jobs', $2, $3, $4::jsonb)`,
         [
             row.fiscal_profile_id,
             row.job_id,
             `checkbox-outbox-recovery:${row.job_id}:${Date.now()}`,
-            JSON.stringify(metadata)
+            JSON.stringify(metadata),
+            actorUserId
         ]
     );
 }
@@ -275,6 +283,10 @@ async function main() {
         }
 
         const row = assertSingleJob(rows, args.mode);
+        const actorUserId = args.actorUserId == null ? null : toPositiveInt(args.actorUserId, '--actor-user-id');
+        if (args.apply && !actorUserId) {
+            throw new Error('--actor-user-id is required for mutating recovery');
+        }
         const plan = buildMutationPlan(row, args.mode);
         const output = {
             mode: args.mode,
@@ -292,7 +304,7 @@ async function main() {
         const lockedRows = await loadScopedRows(client, args, { forUpdate: true });
         const lockedRow = assertSingleJob(lockedRows, args.mode);
         const lockedPlan = buildMutationPlan(lockedRow, args.mode);
-        await applyMutation(client, lockedRow, lockedPlan, args.reason);
+        await applyMutation(client, lockedRow, lockedPlan, args.reason, actorUserId);
         await client.query('COMMIT');
 
         console.log(JSON.stringify({ ...output, applied: true }, null, 2));

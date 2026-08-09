@@ -39,7 +39,12 @@ const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
 const { apiAudit } = require('./middleware/apiAudit');
 const { guardScheduler } = require('./services/schedulerGuard');
-const { processPaymentOutboxJobs } = require('./services/payments/paymentOutboxWorker');
+const { processPaymentOutboxJobs: processPaymentOutboxJobsBase } = require('./services/payments/paymentOutboxWorker');
+const { runCheckboxReadinessProbeScheduler } = require('./services/payments/paymentReadinessService');
+
+async function processPaymentOutboxJobs() {
+    return processPaymentOutboxJobsBase({ throwOnDegraded: true });
+}
 const swaggerUi = require('swagger-ui-express');
 const { swaggerSpec } = require('./swagger');
 const {
@@ -886,6 +891,7 @@ initializeDatabaseWithSchemaFence().catch(err => {
 
         // v38.4.0: Outbox + refresh token cleanup (daily)
         const { cleanupRefreshTokens } = require('./middleware/auth');
+        schedulerIntervals.push(setInterval(guardScheduler('runCheckboxReadinessProbeScheduler', runCheckboxReadinessProbeScheduler, { dedup: null }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('processPaymentOutboxJobs', processPaymentOutboxJobs, { dedup: null }), 30000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupOutbox', cleanupOutbox, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));

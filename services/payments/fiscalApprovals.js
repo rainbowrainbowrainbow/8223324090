@@ -309,6 +309,47 @@ function consumeFiscalApproval(approval, { operationId, actionType, now = new Da
     };
 }
 
+async function consumeFiscalApprovalInTransaction(client, approval, { operationId, actionType, actorUserId = null, now = new Date() }) {
+    if (!client?.query) {
+        throw new FiscalApprovalError('approval_db_required', 'Fiscal approval consumption requires a database transaction');
+    }
+    assertApprovalUsable(approval, {
+        fiscalProfileId: approval?.fiscal_profile_id ?? approval?.fiscalProfileId,
+        fiscalRegisterId: approval?.fiscal_register_id ?? approval?.fiscalRegisterId,
+        operationId,
+        actionType,
+        actorUserId,
+        now
+    });
+    const result = await client.query(
+        `UPDATE fiscal_action_approvals
+            SET status = 'consumed',
+                consumed_at = $6,
+                consumed_by_operation_id = $4
+          WHERE id = $1
+            AND fiscal_profile_id = $2
+            AND fiscal_register_id = $3
+            AND fiscal_operation_id = $4
+            AND action_type = $5
+            AND status = 'approved'
+            AND consumed_at IS NULL
+            AND expires_at > $6
+          RETURNING *`,
+        [
+            approval.id,
+            approval.fiscal_profile_id ?? approval.fiscalProfileId,
+            approval.fiscal_register_id ?? approval.fiscalRegisterId,
+            operationId,
+            canonicalApprovalActionType(actionType),
+            nowDate(now)
+        ]
+    );
+    if (!result.rows.length) {
+        throw new FiscalApprovalError('approval_replay_denied', 'Fiscal approval was already consumed, expired, or does not match the operation');
+    }
+    return result.rows[0];
+}
+
 module.exports = {
     PIN_SECRET_ENV_KEYS,
     PIN_MAX_ATTEMPTS,
@@ -330,6 +371,7 @@ module.exports = {
     approveFiscalAction,
     assertApprovalUsable,
     consumeFiscalApproval,
+    consumeFiscalApprovalInTransaction,
     canonicalApprovalActionType
 };
 

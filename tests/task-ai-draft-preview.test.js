@@ -113,10 +113,11 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
         'no_change'
     ]);
     assert.equal(request.schema.properties.impactIds.maxItems, 3);
-    assert.equal(request.schema.properties.impactIds.uniqueItems, true);
+    assert.equal(Object.hasOwn(request.schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.schema.properties.tasks.maxItems, 6);
     assert.equal(request.schema.properties.tasks.items.additionalProperties, false);
     assert.equal(request.schema.properties.tasks.items.properties.impactIds.maxItems, 3);
+    assert.equal(Object.hasOwn(request.schema.properties.tasks.items.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.reasoningEffort, 'low');
     assert.equal(request.maxOutputTokens, preview.TASK_AI_DRAFT_MAX_OUTPUT_TOKENS);
     assert.equal(request.safetyIdentifier, 'safe-user-hash');

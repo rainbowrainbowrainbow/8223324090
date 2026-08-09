@@ -61,7 +61,6 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
         impactIds: {
             type: 'array',
             maxItems: MAX_IMPACTS_PER_TASK,
-            uniqueItems: true,
             items: { type: 'integer' }
         },
         subtasks: {
@@ -90,7 +89,6 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
                     impactIds: {
                         type: 'array',
                         maxItems: MAX_IMPACTS_PER_TASK,
-                        uniqueItems: true,
                         items: { type: 'integer' }
                     },
                     priority: { type: ['string', 'null'], enum: PREVIEW_PRIORITIES },

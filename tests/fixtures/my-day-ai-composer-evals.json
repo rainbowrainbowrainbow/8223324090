@@ -130,7 +130,6 @@
       "impactIds": {
         "type": "array",
         "maxItems": 3,
-        "uniqueItems": true,
         "items": {
           "type": "integer"
         }
@@ -191,7 +190,6 @@
             "impactIds": {
               "type": "array",
               "maxItems": 3,
-              "uniqueItems": true,
               "items": {
                 "type": "integer"
               }

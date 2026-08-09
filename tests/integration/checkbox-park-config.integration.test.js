@@ -336,6 +336,12 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         ),
         1
     );
+    await pool.query(
+        `UPDATE fiscal_registers
+            SET metadata = metadata || jsonb_build_object('integration_owner', $2::text)
+          WHERE id = $1`,
+        [applied.fiscalRegisterId, `${legalEntityKey}_owner`]
+    );
 
     const enabled = await run(['enable-register', ...args], { env, dbPool: pool });
     assert.equal(enabled.enabled, true);

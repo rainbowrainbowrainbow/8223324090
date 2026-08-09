@@ -19,6 +19,11 @@ function setIncludesAll(actual = [], expected = []) {
     return (expected || []).every(id => actualSet.has(Number(id)));
 }
 
+function expectedCoreImpactIds(item = {}) {
+    if (Array.isArray(item.expected?.coreImpactIds)) return item.expected.coreImpactIds;
+    return (item.expected?.impactIds || []).slice(0, 1);
+}
+
 function canonicalDecision(output = {}) {
     if (output.decision) return output.decision;
     if (output.action === 'apply' && output.mode === 'checklist') return 'checklist';
@@ -49,7 +54,7 @@ function scoreEffort(effort) {
         if (!ALLOWED_DECISIONS.has(decision)) continue;
 
         coreImpactTotal += 1;
-        if (setIncludesAll(output.impactIds, item.expected?.impactIds || [])) coreImpactPass += 1;
+        if (setIncludesAll(output.impactIds, expectedCoreImpactIds(item))) coreImpactPass += 1;
 
         if (SIMPLE_CHECKLIST_CATEGORIES.has(item.category)) {
             decisionTotal += 1;
@@ -73,6 +78,15 @@ test('AI composer quality eval fixture covers 50-60 anonymized cases and target 
     assert.equal(fixture.provider, 'openai_responses');
     assert.ok(fixture.evalCases.length >= 50, `expected at least 50 cases, got ${fixture.evalCases.length}`);
     assert.ok(fixture.evalCases.length <= 60, `expected at most 60 cases, got ${fixture.evalCases.length}`);
+    assert.deepEqual(
+        fixture.activeImpacts.slice(0, 3).map(impact => impact.name),
+        ['Робота: CRM', 'Робота: Hermes', 'Робота: Парк'],
+        'eval catalog must use the same canonical names and semantic hints as production'
+    );
+
+    const noChange = fixture.evalCases.find(item => item.id === 'decision_001_simple_no_change');
+    assert.equal(noChange.input.mode, 'simple');
+    assert.deepEqual(noChange.input.impactIds, [101], 'no_change requires a genuinely complete current draft');
 
     const domains = new Set(fixture.evalCases.map(item => item.domain));
     for (const domain of ['CRM', 'Hermes', 'Park', 'AI', 'Content', 'Analytics', 'Team', 'Mixed']) {

@@ -123,13 +123,40 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.equal(request.safetyIdentifier, 'safe-user-hash');
 
     const serializedInput = JSON.stringify(request.input);
+    const userMessage = JSON.parse(request.input[1].content[0].text);
     assert.match(serializedInput, /currentDraft/);
     assert.match(serializedInput, /activeImpacts/);
+    assert.match(serializedInput, /serverExplicitImpactIds/);
+    assert.deepEqual(userMessage.serverExplicitImpactIds, [101]);
     assert.match(serializedInput, /server will compute the diff|server/i);
     assert.match(serializedInput, /Do not output tags, directions/);
     assert.match(serializedInput, /scheduled, assigned, and completed independently/);
     assert.match(serializedInput, /explicitly asks for multiple separate, independent, or full tasks/);
+    assert.match(serializedInput, /untrusted task data/);
+    assert.match(serializedInput, /context \+ activity \+ outcome/);
+    assert.match(serializedInput, /Do not return only the context/);
+    assert.match(serializedInput, /do not clarify merely because more than three impacts/i);
+    assert.match(serializedInput, /ownerSuggestion\.userId to null/);
     assert.doesNotMatch(serializedInput, /OPENAI_API_KEY|OPENROUTER_API_KEY|chat_ai/i);
+});
+
+test('task AI preview deterministically preserves explicit active impacts for single/checklist proposals', () => {
+    const merged = preview.mergeServerExplicitImpacts({
+        ...validProposal(),
+        impactIds: [102]
+    }, {
+        title: 'CRM and Hermes integration',
+        description: ''
+    }, impacts);
+    assert.deepEqual(merged.impactIds, [101, 102]);
+
+    const clarification = preview.mergeServerExplicitImpacts({
+        ...validProposal(),
+        decision: 'needs_clarification',
+        mode: null,
+        impactIds: []
+    }, { title: 'CRM 3321' }, impacts);
+    assert.deepEqual(clarification.impactIds, [], 'clarification must not silently apply deterministic classification');
 });
 
 test('task AI preview telemetry records only metadata and strips task text/provider payloads', async () => {

@@ -33,6 +33,8 @@ test('quality fixture contains readable Ukrainian instead of mojibake', () => {
         .join('\n');
     assert.match(serializedInputs, /Виправити форму бронювання в CRM/);
     assert.doesNotMatch(serializedInputs, /Р[’СЂ]/);
+    assert.equal(fixture.activeImpacts[0].name, 'Робота: CRM');
+    assert.ok(fixture.evalCases.some(item => item.expected?.coreImpactIds?.length > 1), 'mixed work must declare every required core context');
 });
 
 test('controlled eval scores low and none with injected transport and no real OpenAI call', async () => {

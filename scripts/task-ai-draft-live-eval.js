@@ -35,6 +35,12 @@ function expectedDecision(item = {}) {
     return expected.action || null;
 }
 
+function expectedCoreImpactIds(item = {}) {
+    const expected = item.expected || {};
+    if (Array.isArray(expected.coreImpactIds)) return normalizeIds(expected.coreImpactIds);
+    return normalizeIds(expected.impactIds).slice(0, 1);
+}
+
 function proposalImpactIds(proposal = {}) {
     const ids = normalizeIds(proposal.impactIds);
     for (const task of Array.isArray(proposal.tasks) ? proposal.tasks : []) {
@@ -65,7 +71,9 @@ function scoreResult(item, preview, context = {}) {
             category: item.category,
             effort: context.effort,
             status: preview?.reason || preview?.code || 'provider_error',
+            code: preview?.code || null,
             decision: null,
+            selectedImpactIds: [],
             impactMappingPass: false,
             decisionPass: false,
             unknownImpactIds: 0,
@@ -78,7 +86,7 @@ function scoreResult(item, preview, context = {}) {
 
     const proposal = preview.proposal || {};
     const actualImpactIds = proposalImpactIds(proposal);
-    const expectedImpactIds = normalizeIds(item.expected?.impactIds);
+    const expectedImpactIds = expectedCoreImpactIds(item);
     const unknownImpactIds = actualImpactIds.filter(id => !activeIds.has(id)).length;
     const decision = proposal.decision || null;
     const expected = expectedDecision(item);
@@ -91,7 +99,9 @@ function scoreResult(item, preview, context = {}) {
         category: item.category,
         effort: context.effort,
         status: 'success',
+        code: null,
         decision,
+        selectedImpactIds: actualImpactIds,
         impactMappingPass: expectedImpactIds.every(id => actualImpactIds.includes(id)),
         decisionPass,
         unknownImpactIds,

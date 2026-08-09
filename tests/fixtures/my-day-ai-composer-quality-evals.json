@@ -12,43 +12,99 @@
     "activeImpacts":  [
                           {
                               "id":  101,
-                              "name":  "Work: CRM"
+                              "name":  "Робота: CRM"
                           },
                           {
                               "id":  102,
-                              "name":  "Work: Hermes"
+                              "name":  "Робота: Hermes"
                           },
                           {
                               "id":  103,
-                              "name":  "Work: Park"
+                              "name":  "Робота: Парк"
                           },
                           {
                               "id":  104,
-                              "name":  "Automation / AI"
+                              "name":  "Автоматизація / AI"
                           },
                           {
                               "id":  105,
-                              "name":  "Content / Media"
+                              "name":  "Контент / медіа"
                           },
                           {
                               "id":  106,
-                              "name":  "Analytics / Decisions"
+                              "name":  "Аналітика / рішення"
                           },
                           {
                               "id":  107,
-                              "name":  "Team / Delegation"
+                              "name":  "Команда / делегування"
                           },
                           {
                               "id":  108,
-                              "name":  "Operations / Processes"
+                              "name":  "Операційка / процеси"
                           },
                           {
                               "id":  109,
-                              "name":  "Revenue"
+                              "name":  "Продажі / клієнти"
                           },
                           {
                               "id":  110,
-                              "name":  "Quality"
+                              "name":  "Якість сервісу"
+                          },
+                          {
+                              "id":  111,
+                              "name":  "Продукт / розробка"
+                          },
+                          {
+                              "id":  112,
+                              "name":  "Маркетинг / залучення"
+                          },
+                          {
+                              "id":  113,
+                              "name":  "Стратегія / пріоритети"
+                          },
+                          {
+                              "id":  114,
+                              "name":  "Фінанси / облік"
+                          },
+                          {
+                              "id":  115,
+                              "name":  "Системність"
+                          },
+                          {
+                              "id":  116,
+                              "name":  "Швидкість / ефективність"
+                          },
+                          {
+                              "id":  117,
+                              "name":  "Бренд / репутація"
+                          },
+                          {
+                              "id":  118,
+                              "name":  "Ризики / безпека"
+                          },
+                          {
+                              "id":  119,
+                              "name":  "Здоровʼя"
+                          },
+                          {
+                              "id":  120,
+                              "name":  "Фізична форма"
+                          },
+                          {
+                              "id":  121,
+                              "name":  "Відновлення"
+                          },
+                          {
+                              "id":  122,
+                              "name":  "Побут / комфорт"
+                          },
+                          {
+                              "id":  123,
+                              "name":  "Навчання / розвиток"
+                          },
+                          {
+                              "id":  124,
+                              "name":  "Близькі / стосунки"
                           }
                       ],
     "evalCases":  [
@@ -225,7 +281,7 @@
                           "domain":  "CRM",
                           "category":  "checklist",
                           "input":  {
-                                        "title":  "Протестувати бронювання з мобільного",
+                                        "title":  "Протестувати CRM-бронювання з мобільного",
                                         "description":  "Після правок у формі заявки."
                                     },
                           "expected":  {
@@ -539,14 +595,14 @@
                       {
                           "id":  "park_003_shift_brief",
                           "domain":  "Park",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Провести короткий бриф зміни парку",
                                         "description":  "Роздати ролі перед відкриттям."
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              103,
                                                              107
@@ -555,7 +611,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      103,
                                                                      107
@@ -575,7 +631,7 @@
                           "domain":  "Park",
                           "category":  "checklist",
                           "input":  {
-                                        "title":  "Перевірити обладнання перед відкриттям",
+                                        "title":  "Перевірити обладнання парку перед відкриттям",
                                         "description":  "Світло, звук, каса, реквізит."
                                     },
                           "expected":  {
@@ -610,14 +666,14 @@
                       {
                           "id":  "park_005_guest_complaint",
                           "domain":  "Park",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Розібрати скаргу гостя парку",
                                         "description":  "Знайти причину й відповідального."
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              103,
                                                              110
@@ -626,7 +682,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      103,
                                                                      110
@@ -752,14 +808,14 @@
                       {
                           "id":  "ai_003_rate_limit",
                           "domain":  "AI",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Перевірити rate limit AI composer",
                                         "description":  "Не давати швидко спалити кредити."
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              104,
                                                              108
@@ -768,7 +824,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      104,
                                                                      108
@@ -856,14 +912,14 @@
                       {
                           "id":  "ai_006_telemetry",
                           "domain":  "AI",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Перевірити telemetry без тексту задач",
                                         "description":  "Писати latency tokens masks model schema."
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              104,
                                                              106
@@ -872,7 +928,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      104,
                                                                      106
@@ -1164,14 +1220,14 @@
                       {
                           "id":  "analytics_003_abandoned_leads",
                           "domain":  "Analytics",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Порахувати втрачені ліди за місяць",
                                         "description":  ""
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              106,
                                                              101,
@@ -1181,7 +1237,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      106,
                                                                      101,
@@ -1281,8 +1337,7 @@
                                            "action":  "apply",
                                            "mode":  "simple",
                                            "impactIds":  [
-                                                             106,
-                                                             109
+                                                             114
                                                          ],
                                            "forbiddenFields":  [
                                                                    "deadline",
@@ -1294,15 +1349,14 @@
                                                    "action":  "apply",
                                                    "mode":  "simple",
                                                    "impactIds":  [
-                                                                     106,
-                                                                     109
+                                                                     114
                                                                  ]
                                                },
                                        "none":  {
                                                     "action":  "apply",
                                                     "mode":  "simple",
                                                     "impactIds":  [
-                                                                      106
+                                                                      114
                                                                   ],
                                                     "forbiddenFields":  [
                                                                             "deadline"
@@ -1426,17 +1480,13 @@
                           "expected":  {
                                            "action":  "needs_clarification",
                                            "mode":  null,
-                                           "impactIds":  [
-                                                             107
-                                                         ]
+                                           "impactIds":  []
                                        },
                           "mock":  {
                                        "low":  {
                                                    "action":  "needs_clarification",
                                                    "mode":  null,
-                                                   "impactIds":  [
-                                                                     107
-                                                                 ]
+                                                   "impactIds":  []
                                                },
                                        "none":  {
                                                     "action":  "apply",
@@ -1453,14 +1503,14 @@
                       {
                           "id":  "team_005_meeting_summary",
                           "domain":  "Team",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Підсумувати зустріч з командою",
                                         "description":  "Виписати рішення і наступні кроки."
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              107,
                                                              106
@@ -1469,7 +1519,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      107,
                                                                      106
@@ -1487,14 +1537,14 @@
                       {
                           "id":  "team_006_conflict",
                           "domain":  "Team",
-                          "category":  "simple",
+                          "category":  "checklist",
                           "input":  {
                                         "title":  "Розібрати конфлікт по зміні",
                                         "description":  "Знайти факти і домовитись."
                                     },
                           "expected":  {
                                            "action":  "apply",
-                                           "mode":  "simple",
+                                           "mode":  "checklist",
                                            "impactIds":  [
                                                              107,
                                                              110
@@ -1503,7 +1553,7 @@
                           "mock":  {
                                        "low":  {
                                                    "action":  "apply",
-                                                   "mode":  "simple",
+                                                   "mode":  "checklist",
                                                    "impactIds":  [
                                                                      107,
                                                                      110
@@ -1604,6 +1654,10 @@
                                                              101,
                                                              102,
                                                              110
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 101,
+                                                                 102
                                                          ]
                                        },
                           "mock":  {
@@ -1640,6 +1694,10 @@
                                            "impactIds":  [
                                                              103,
                                                              105
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 103,
+                                                                 105
                                                          ]
                                        },
                           "mock":  {
@@ -1675,6 +1733,10 @@
                                                              104,
                                                              101,
                                                              110
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 104,
+                                                                 101
                                                          ]
                                        },
                           "mock":  {
@@ -1711,6 +1773,10 @@
                                            "impactIds":  [
                                                              106,
                                                              107
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 106,
+                                                                 107
                                                          ]
                                        },
                           "mock":  {
@@ -1746,6 +1812,10 @@
                                                              105,
                                                              103,
                                                              109
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 105,
+                                                                 103
                                                          ]
                                        },
                           "mock":  {
@@ -1782,6 +1852,10 @@
                                            "impactIds":  [
                                                              104,
                                                              108
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 104,
+                                                                 108
                                                          ]
                                        },
                           "mock":  {
@@ -1807,8 +1881,12 @@
                           "domain":  "Decision",
                           "category":  "no_change",
                           "input":  {
-                                        "title":  "Подзвонити клієнту і записати результат",
-                                        "description":  "Вже є CRM impact."
+                                        "title":  "Оновити картку CRM",
+                                        "description":  "Чернетка вже повністю підготовлена.",
+                                        "mode":  "simple",
+                                        "impactIds":  [
+                                                          101
+                                                      ]
                                     },
                           "expected":  {
                                            "action":  "no_change",
@@ -2049,7 +2127,7 @@
                           "domain":  "Decision",
                           "category":  "rollback",
                           "input":  {
-                                        "title":  "Перевірити rollback commit",
+                                        "title":  "Перевірити rollback AI commit",
                                         "description":  "Помилка subtasks не має лишити task."
                                     },
                           "expected":  {
@@ -2093,6 +2171,11 @@
                                                              101,
                                                              102,
                                                              103
+                                                         ],
+                                           "coreImpactIds":  [
+                                                                 101,
+                                                                 102,
+                                                                 103
                                                          ]
                                        },
                           "mock":  {

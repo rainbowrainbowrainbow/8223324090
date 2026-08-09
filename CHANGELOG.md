@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.106 - Checkbox Final Software Hardening
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Checkbox readiness став provider-aware** - confirmation блокується без точного збігу ФОП, каси, касира, test/production identity, підпису/сертифіката та tax mapping.
+- **Shift/receipt recovery посилено** - worker сходиться до одного shift UUID і одного receipt UUID після 202/timeout/restart, не дублюючи fiscal mutation.
+- **Unresolved receipts не губляться між касирами** - касир бачить register-wide pending/unknown/dead queue, а read-only Checkbox sales report рахує totals окремо від pagination.
+- **Ledger/config hardening додано на рівні PostgreSQL** - receipt/shift/provider identity, trusted artifacts, config audit та incident lifecycle не можна непомітно переписати.
+- **Production fiscalization залишається вимкненою** - release додає програмні guardrails і CI gates, але не вмикає Checkbox integration, acceptance gate, Cashier PRO або preschool.
+
+---
+
 ## v0.80.105 - Task Center Dark Controls
 
 ### Release / Versioning / (09.08.2026) [codex]

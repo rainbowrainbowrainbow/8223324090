@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.107",
+  "version": "0.80.108",
   "eventGenix": {
-    "releaseLabel": "Task Center Dark Theme Audit"
+    "releaseLabel": "Checkbox Fiscal Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

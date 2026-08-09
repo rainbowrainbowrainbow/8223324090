@@ -322,6 +322,32 @@ test('shared My Day task OpenAI client blocks real network calls in test or CI w
     assert.equal(blocked.statusCode, 503);
 });
 
+test('shared My Day task OpenAI client allows loopback OpenAI mock in test runtime', async () => {
+    const requests = [];
+    const response = await openAIClient.callMyDayTaskOpenAIResponses({
+        model: 'gpt-5.6-luna',
+        env: {
+            NODE_ENV: 'test',
+            OPENAI_API_KEY: 'isolated-my-day-openai-mock-key',
+            OPENAI_API_BASE_URL: 'http://127.0.0.1:43123/v1'
+        },
+        input: [],
+        schemaName: 'smoke',
+        schema: { type: 'object', additionalProperties: false, required: [], properties: {} },
+        maxOutputTokens: 10
+    }, {
+        fetchImpl: async (url, options) => {
+            requests.push({ url, body: JSON.parse(options.body) });
+            return { ok: true, status: 200, json: async () => ({ output_text: '{}' }) };
+        }
+    });
+
+    assert.equal(response.ok, true);
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].url, 'http://127.0.0.1:43123/v1/responses');
+    assert.equal(requests[0].body.store, false);
+});
+
 test('tasks route exposes ai-draft preview and keeps decompose-draft as non-OpenRouter compatibility wrapper for AI mode', () => {
     const route = fs.readFileSync(path.join(root, 'routes', 'tasks.js'), 'utf8');
     const decomposeBlock = route.slice(route.indexOf("router.post('/decompose-draft'"), route.indexOf("router.get('/decomposition-saved-templates'"));

@@ -144,9 +144,21 @@ function isTestRuntime(env = process.env) {
         || String(env.CI || '').toLowerCase() === 'true';
 }
 
+function isLoopbackOpenAIBase(apiBase) {
+    try {
+        const parsed = new URL(apiBase || '');
+        return parsed.hostname === '127.0.0.1'
+            || parsed.hostname === 'localhost'
+            || parsed.hostname === '::1';
+    } catch {
+        return false;
+    }
+}
+
 function shouldBlockRealOpenAIInTests(env = process.env, options = {}) {
     if (!isTestRuntime(env)) return false;
     if (String(env.ALLOW_REAL_OPENAI_TESTS || '').toLowerCase() === 'true') return false;
+    if (isLoopbackOpenAIBase(options.apiBase)) return false;
     return typeof options.fetchImpl !== 'function' && typeof options.transport !== 'function';
 }
 
@@ -175,7 +187,7 @@ async function callMyDayTaskOpenAIResponses(request = {}, options = {}) {
 
     const fetchImpl = options.fetchImpl || request.fetchImpl || globalThis.fetch;
     if (typeof fetchImpl !== 'function') return providerFailure('fetch_unavailable', 503, model);
-    if (shouldBlockRealOpenAIInTests(env, { ...options, fetchImpl: options.fetchImpl || request.fetchImpl })) {
+    if (shouldBlockRealOpenAIInTests(env, { ...options, fetchImpl: options.fetchImpl || request.fetchImpl, apiBase })) {
         return providerFailure('real_openai_blocked_in_tests', 503, model);
     }
 
@@ -248,6 +260,7 @@ module.exports = {
     extractOpenAIResponseText,
     getOpenAIKey,
     hmacSafetyIdentifier,
+    isLoopbackOpenAIBase,
     isTestRuntime,
     parseAiJson,
     resolveMyDayTaskAiModel,

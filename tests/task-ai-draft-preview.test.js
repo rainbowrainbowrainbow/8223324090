@@ -564,6 +564,20 @@ test('shared My Day task OpenAI client blocks real network calls in test or CI w
     assert.equal(blocked.statusCode, 503);
 });
 
+test('shared My Day task OpenAI client does not classify an explicit Railway production runtime as test', () => {
+    const env = {
+        NODE_ENV: 'test',
+        CI: 'true',
+        RAILWAY_ENVIRONMENT: 'production',
+        RAILWAY_ENVIRONMENT_NAME: 'production'
+    };
+
+    assert.equal(openAIClient.isTestRuntime(env), false);
+    assert.equal(openAIClient.shouldBlockRealOpenAIInTests(env, {
+        apiBase: 'https://api.openai.com/v1'
+    }), false);
+});
+
 test('shared My Day task OpenAI client allows loopback OpenAI mock in test runtime', async () => {
     const requests = [];
     const response = await openAIClient.callMyDayTaskOpenAIResponses({

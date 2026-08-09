@@ -140,6 +140,10 @@ function providerFailure(reason, statusCode, model) {
 }
 
 function isTestRuntime(env = process.env) {
+    // Railway may expose test-like runner markers to the application process.
+    // An explicit production environment must always win so the live AI rail is
+    // not disabled by CI safeguards that are intended only for test execution.
+    if (isProductionEnv(env)) return false;
     return String(env.NODE_ENV || '').toLowerCase() === 'test'
         || String(env.CI || '').toLowerCase() === 'true';
 }

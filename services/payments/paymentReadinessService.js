@@ -1432,12 +1432,12 @@ async function updateOperationalIncidentStatus({
         assertIntegrationOwner(scope.mapping, user);
         const result = await client.query(
             `UPDATE fiscal_operational_incidents
-                SET status = $4,
-                    resolved_at = CASE WHEN $4 = 'resolved' THEN COALESCE(resolved_at, NOW()) ELSE resolved_at END,
+                SET status = $4::text,
+                    resolved_at = CASE WHEN $4::text = 'resolved' THEN COALESCE(resolved_at, NOW()) ELSE resolved_at END,
                     details = details || jsonb_build_object(
-                        $4 || '_by_user_id', to_jsonb($5::bigint),
-                        $4 || '_at', to_jsonb(NOW()),
-                        $4 || '_reason', to_jsonb($6::text)
+                        $4::text || '_by_user_id', to_jsonb($5::bigint),
+                        $4::text || '_at', to_jsonb(NOW()),
+                        $4::text || '_reason', to_jsonb($6::text)
                     )
               WHERE id = $1
                 AND fiscal_profile_id = $2

@@ -2228,6 +2228,49 @@ body.dark-mode .task-planning-unscheduled select {
     background: var(--input-bg, #fff);
 }
 
+body.dark-mode .task-center-query-row input,
+html[data-theme="dark"] .task-center-query-row input,
+body.dark-mode .task-center-query-row select,
+html[data-theme="dark"] .task-center-query-row select,
+body.dark-mode .task-center-saved-views-row select,
+html[data-theme="dark"] .task-center-saved-views-row select {
+    color-scheme: dark;
+    background: rgba(15, 23, 42, .88);
+    color: #E2E8F0;
+    border-color: rgba(45, 212, 191, .28);
+}
+
+body.dark-mode .task-center-query-row input::placeholder,
+html[data-theme="dark"] .task-center-query-row input::placeholder {
+    color: #94A3B8;
+    opacity: 1;
+}
+
+body.dark-mode .task-center-query-row input:focus,
+html[data-theme="dark"] .task-center-query-row input:focus,
+body.dark-mode .task-center-query-row select:focus,
+html[data-theme="dark"] .task-center-query-row select:focus,
+body.dark-mode .task-center-saved-views-row select:focus,
+html[data-theme="dark"] .task-center-saved-views-row select:focus {
+    border-color: #2DD4BF;
+    outline: 2px solid rgba(45, 212, 191, .32);
+    outline-offset: 2px;
+    box-shadow: 0 0 0 4px rgba(45, 212, 191, .12);
+}
+
+body.dark-mode .task-center-query-row input:disabled,
+html[data-theme="dark"] .task-center-query-row input:disabled,
+body.dark-mode .task-center-query-row select:disabled,
+html[data-theme="dark"] .task-center-query-row select:disabled,
+body.dark-mode .task-center-saved-views-row select:disabled,
+html[data-theme="dark"] .task-center-saved-views-row select:disabled {
+    background: rgba(15, 23, 42, .58);
+    color: #64748B;
+    border-color: rgba(148, 163, 184, .22);
+    cursor: not-allowed;
+    opacity: .72;
+}
+
 @media (max-width: 720px) {
     .task-center-query-row label,
     .task-center-query-row label:first-child,

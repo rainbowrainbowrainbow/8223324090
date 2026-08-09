@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.104",
+  "version": "0.80.105",
   "eventGenix": {
-    "releaseLabel": "Task Lifecycle Fail-Closed"
+    "releaseLabel": "Task Center Dark Controls"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -91,6 +91,7 @@
     "test:browser:account-access:mobile": "npx --yes --package @playwright/test playwright test tests/browser/account-access-editor.spec.js --grep \"fullscreen workspace on mobile\" --reporter=line --workers=1",
     "test:browser:booking-summary": "npx --yes --package playwright node tests/browser/booking-summary-browser-smoke.js",
     "test:browser:booking-theme": "npx --yes --package playwright node tests/browser/booking-theme-browser-smoke.js",
+    "test:browser:task-center": "npx --yes --package playwright node tests/browser/task-center-parity-browser-smoke.js",
     "test:browser:my-day-draft": "npx --yes --package playwright node tests/browser/my-day-draft-browser-smoke.js",
     "test:browser:my-day-ai-composer": "npx --yes --package playwright node tests/browser/my-day-ai-composer-browser-smoke.js",
     "test:browser:my-day-interactions": "npx --yes --package playwright node tests/browser/my-day-interactions-browser-smoke.js",

@@ -365,6 +365,126 @@ async function assertNoHorizontalOverflow(page, label) {
     assert.ok(result.bodyWidth <= result.viewport + 1, `${label}: body has no horizontal overflow (${JSON.stringify(result)})`);
 }
 
+function parseCssRgb(value) {
+    const match = String(value || '').match(/rgba?\(([^)]+)\)/i);
+    if (!match) return null;
+    const [r, g, b] = match[1].split(',').slice(0, 3).map(item => Number.parseFloat(item.trim()));
+    return [r, g, b].every(Number.isFinite) ? { r, g, b } : null;
+}
+
+function srgbChannel(value) {
+    const channel = value / 255;
+    return channel <= 0.03928 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+}
+
+function relativeLuminance(color) {
+    return (0.2126 * srgbChannel(color.r)) + (0.7152 * srgbChannel(color.g)) + (0.0722 * srgbChannel(color.b));
+}
+
+function contrastRatio(foreground, background) {
+    const light = Math.max(relativeLuminance(foreground), relativeLuminance(background));
+    const dark = Math.min(relativeLuminance(foreground), relativeLuminance(background));
+    return (light + 0.05) / (dark + 0.05);
+}
+
+async function collectTaskCenterQueryControlStyles(page) {
+    return page.evaluate(() => {
+        const controlSelector = '.task-center-query-row input, .task-center-query-row select, .task-center-saved-views-row select';
+        return [...document.querySelectorAll(controlSelector)].map((el, index) => {
+            const style = getComputedStyle(el);
+            const placeholder = el.matches('input')
+                ? getComputedStyle(el, '::placeholder')
+                : null;
+            return {
+                index,
+                tag: el.tagName.toLowerCase(),
+                type: el.getAttribute('type') || '',
+                queryKey: el.getAttribute('data-task-center-query') || '',
+                savedView: el.hasAttribute('data-task-saved-view'),
+                backgroundColor: style.backgroundColor,
+                color: style.color,
+                borderColor: style.borderColor,
+                placeholderColor: placeholder?.color || null,
+                colorScheme: style.colorScheme
+            };
+        });
+    });
+}
+
+function assertDarkTaskCenterControls(styles, label) {
+    const nonDateControls = styles.filter(item => item.type !== 'date');
+    const dateControls = styles.filter(item => item.type === 'date');
+    assert.equal(nonDateControls.length, 7, `${label}: seven non-date query/saved-view controls are present`);
+    assert.equal(dateControls.length, 2, `${label}: date controls remain present`);
+
+    for (const item of styles) {
+        const background = parseCssRgb(item.backgroundColor);
+        const foreground = parseCssRgb(item.color);
+        assert.ok(background, `${label}: ${item.queryKey || item.type || 'saved-view'} background is parseable (${item.backgroundColor})`);
+        assert.ok(foreground, `${label}: ${item.queryKey || item.type || 'saved-view'} text color is parseable (${item.color})`);
+        assert.ok(Math.max(background.r, background.g, background.b) < 80, `${label}: ${item.queryKey || item.type || 'saved-view'} is dark, not white (${item.backgroundColor})`);
+        assert.ok(contrastRatio(foreground, background) >= 4.5, `${label}: ${item.queryKey || item.type || 'saved-view'} text contrast is readable`);
+        assert.match(item.colorScheme, /dark/, `${label}: ${item.queryKey || item.type || 'saved-view'} advertises dark color-scheme`);
+        if (item.placeholderColor) {
+            const placeholder = parseCssRgb(item.placeholderColor);
+            assert.ok(placeholder, `${label}: placeholder color is parseable (${item.placeholderColor})`);
+            assert.ok(contrastRatio(placeholder, background) >= 4.5, `${label}: search placeholder contrast is readable`);
+        }
+    }
+}
+
+async function assertTaskCenterQueryThemeContract(page, label) {
+    const styles = await collectTaskCenterQueryControlStyles(page);
+    assertDarkTaskCenterControls(styles, label);
+
+    const focusStyle = await page.locator('[data-task-center-query="search"]').evaluate(el => {
+        el.focus();
+        const style = getComputedStyle(el);
+        return {
+            outlineStyle: style.outlineStyle,
+            outlineWidth: style.outlineWidth,
+            borderColor: style.borderColor,
+            boxShadow: style.boxShadow
+        };
+    });
+    assert.notEqual(focusStyle.outlineStyle, 'none', `${label}: search focus outline is visible`);
+    assert.notEqual(focusStyle.outlineWidth, '0px', `${label}: search focus outline has width`);
+    assert.notEqual(focusStyle.boxShadow, 'none', `${label}: search focus ring uses box-shadow`);
+
+    const disabledStyle = await page.locator('[data-task-saved-view]').evaluate(async el => {
+        el.disabled = true;
+        await new Promise(resolve => requestAnimationFrame(resolve));
+        const style = getComputedStyle(el);
+        const result = {
+            backgroundColor: style.backgroundColor,
+            color: style.color,
+            borderColor: style.borderColor,
+            cursor: style.cursor,
+            matchesDisabled: el.matches(':disabled')
+        };
+        el.disabled = false;
+        return result;
+    });
+    const disabledBackground = parseCssRgb(disabledStyle.backgroundColor);
+    const disabledText = parseCssRgb(disabledStyle.color);
+    const disabledBorder = parseCssRgb(disabledStyle.borderColor);
+    assert.equal(disabledStyle.matchesDisabled, true, `${label}: saved view test control enters disabled state`);
+    assert.ok(disabledBackground && Math.max(disabledBackground.r, disabledBackground.g, disabledBackground.b) < 90, `${label}: disabled saved view remains dark`);
+    assert.ok(disabledText && contrastRatio(disabledText, disabledBackground) >= 3, `${label}: disabled saved view remains legible`);
+    assert.ok(disabledBorder && Math.max(disabledBorder.r, disabledBorder.g, disabledBorder.b) < 245, `${label}: disabled saved view border is not a white fallback`);
+    assert.equal(disabledStyle.cursor, 'not-allowed', `${label}: disabled saved view communicates non-interactive state`);
+}
+
+async function assertTaskCenterLightThemeUnchanged(page) {
+    const styles = await collectTaskCenterQueryControlStyles(page);
+    assert.equal(styles.filter(item => item.type !== 'date').length, 7, 'light theme still renders seven non-date query/saved-view controls');
+    for (const item of styles.filter(entry => entry.type !== 'date')) {
+        const background = parseCssRgb(item.backgroundColor);
+        assert.ok(background, `light theme ${item.queryKey || 'saved-view'} background is parseable (${item.backgroundColor})`);
+        assert.ok(Math.min(background.r, background.g, background.b) >= 245, `light theme ${item.queryKey || 'saved-view'} keeps the existing white control background`);
+    }
+}
+
 async function verifyModesAndUrl(page, baseUrl) {
     await openPage(page, baseUrl, '?mode=overview&queue=inbox&owner=901&from=2026-07-01&to=2026-07-31&status=todo&priority=urgent&category=admin&source=lead&search=fixture');
     await waitForMode(page, 'overview');
@@ -463,6 +583,16 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     await openPage(page, baseUrl, '?mode=overview');
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion preference reaches page');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), true, 'dark mode is applied');
+    await assertTaskCenterQueryThemeContract(page, 'body.dark-mode');
+    await page.evaluate(() => {
+        document.body.classList.remove('dark-mode');
+        document.documentElement.setAttribute('data-theme', 'dark');
+    });
+    await assertTaskCenterQueryThemeContract(page, 'html[data-theme="dark"]');
+    await page.evaluate(() => {
+        document.documentElement.removeAttribute('data-theme');
+        document.body.classList.add('dark-mode');
+    });
 
     const viewports = [
         { width: 320, height: 700 },
@@ -481,6 +611,7 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.task-overview');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), false, 'light mode is applied');
+    await assertTaskCenterLightThemeUnchanged(page);
     await page.locator('.task-center-mode-tab').first().focus();
     const focusStyle = await page.locator('.task-center-mode-tab').first().evaluate(el => {
         const style = getComputedStyle(el);

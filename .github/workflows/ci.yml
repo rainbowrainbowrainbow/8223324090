@@ -101,6 +101,9 @@ jobs:
       - name: Run booking light and dark theme browser smoke
         run: npm run test:browser:booking-theme
 
+      - name: Run Task Center theme browser smoke
+        run: npm run test:browser:task-center
+
       - name: Run HR Team browser smoke
         run: npm run test:browser:hr-team
 

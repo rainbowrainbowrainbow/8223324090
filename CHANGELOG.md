@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.105 - Task Center Dark Controls
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Task Center query controls use scoped dark styling** - search, owner/status/priority/category/source dropdowns and saved views no longer fall back to white `var(--input-bg, #fff)` in dark mode.
+- **Light theme remains unchanged** - the fix is scoped to `body.dark-mode` and `html[data-theme="dark"]` and does not define `--input-bg` globally.
+- **Computed-style regression coverage added** - Task Center browser smoke now checks background/text/placeholder contrast, focus ring, disabled state, date-control preservation and light/dark parity.
+- **Chromium CI gate extended** - the Task Center theme smoke is wired into the existing browser CI job.
+
+---
+
 ## v0.80.104 - Task Lifecycle Fail-Closed
 
 ### Release / Versioning / (09.08.2026) [codex]

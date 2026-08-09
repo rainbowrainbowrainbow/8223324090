@@ -6,6 +6,9 @@ const log = createLogger('PaymentOutboxWakeup');
 let scheduled = false;
 
 function requestPaymentOutboxWakeup({ batchSize = 5, reason = 'post_commit' } = {}) {
+    if (String(process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED || '').trim().toLowerCase() === 'true') {
+        return false;
+    }
     if (scheduled) return false;
     scheduled = true;
     setImmediate(async () => {

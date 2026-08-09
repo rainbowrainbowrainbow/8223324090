@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.103 - My Day Time Disclosure Hotfix
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Time controls no longer stretch My Day cards** - compact mode keeps only fact time, Start/Stop, and a small disclosure control visible.
+- **Time details open in a floating surface** - plan, manual time entry, records, and active timer details moved into a bounded popover/bottom-sheet instead of growing the card.
+- **Dark/mobile polish for the time UI** - disclosure, popover, focus, disabled, and pending states now use the My Day card color hierarchy without extra glow.
+- **Interaction gate expanded** - browser smoke now covers normal and overdue cards, repeated open/close, Escape, click outside, focus return, mobile sheet behavior, and active timer state.
+- **AI composer rollout unchanged** - this hotfix does not raise the existing 20% AI composer rollout.
+
+---
+
 ## v0.80.102 - Compact My Day Cards
 
 ### Release / Versioning / (09.08.2026) [codex]

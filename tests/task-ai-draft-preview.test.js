@@ -127,6 +127,8 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.match(serializedInput, /activeImpacts/);
     assert.match(serializedInput, /server will compute the diff|server/i);
     assert.match(serializedInput, /Do not output tags, directions/);
+    assert.match(serializedInput, /scheduled, assigned, and completed independently/);
+    assert.match(serializedInput, /explicitly asks for multiple separate, independent, or full tasks/);
     assert.doesNotMatch(serializedInput, /OPENAI_API_KEY|OPENROUTER_API_KEY|chat_ai/i);
 });
 

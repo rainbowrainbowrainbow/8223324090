@@ -300,6 +300,12 @@
       "domain": "NoChange",
       "input": { "title": "Print weekend park cashier checklist", "description": "Print the existing checklist and put it at the cashier desk." },
       "expected": { "decision": "no_change", "taskCountMin": 0, "taskCountMax": 0, "impactIdsMustInclude": [103, 108] }
+    },
+    {
+      "id": "explicit_independent_crm_hermes_ai_tasks",
+      "domain": "CRM_Hermes",
+      "input": { "title": "Launch CRM, Hermes and AI automation", "description": "Create exactly three independent full tasks, not checklist items: verify CRM form, verify Hermes worker, and verify AI automation." },
+      "expected": { "decision": "task_bundle", "taskCountMin": 3, "taskCountMax": 3, "impactIdsMustInclude": [101, 102, 104] }
     }
   ]
 }

@@ -18,7 +18,7 @@ const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
 
 const TASK_AI_DRAFT_CONTRACT_VERSION = 'my_day_ai_composer_proposal_v2';
 const TASK_AI_DRAFT_SCHEMA_NAME = 'my_day_task_draft_preview';
-const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-09.2';
+const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-09.3';
 const TASK_AI_DRAFT_TIMEOUT_MS = 15_000;
 const TASK_AI_DRAFT_MAX_OUTPUT_TOKENS = 1_600;
 const TASK_AI_DRAFT_REASONING_EFFORT = 'low';
@@ -214,8 +214,11 @@ function buildSystemPrompt() {
         'One response must decide both My Day impactIds and task structure.',
         'Allowed decisions are single_task, checklist, task_bundle, needs_clarification, and no_change.',
         'Use single_task when the draft is one clear task.',
-        'Use checklist when the draft is one task with concrete internal checklist items.',
-        `Use task_bundle only when the input clearly needs ${MIN_BUNDLE_TASKS}-${MAX_BUNDLE_TASKS} full tasks; do not model those tasks as dependencies or checklist items.`,
+        'Use checklist only when every item is an internal step of one result and the items would not be scheduled, assigned, or completed independently.',
+        `Use task_bundle when the input clearly needs ${MIN_BUNDLE_TASKS}-${MAX_BUNDLE_TASKS} full tasks. A full task can be scheduled, assigned, and completed independently.`,
+        'If the user explicitly asks for multiple separate, independent, or full tasks, choose task_bundle and preserve the requested task count within server limits.',
+        'Do not collapse independent CRM, Hermes, Park, AI, content, analytics, or team deliverables into one checklist.',
+        'Never model bundle grouping as dependencies or checklist items.',
         'Use needs_clarification when the title or scope is too unclear; do not invent subtasks.',
         'Use no_change when the existing draft is already clear and complete.',
         'Allowed modes are simple, checklist, or null. Use checklist only for the checklist decision.',

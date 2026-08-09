@@ -316,6 +316,7 @@ async function runSuite(testDb, testFile) {
     if (checkboxBrowserMockPort) {
         const ref = 'PARK_MIDDLE_BROWSER';
         serverEnv.CHECKBOX_INTEGRATION_ENABLED = 'true';
+        serverEnv.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'true';
         serverEnv.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
         serverEnv.CHECKBOX_ALLOW_LOCAL_MOCK_HOST = 'true';
         serverEnv.CHECKBOX_EXPECT_IS_TEST = 'true';

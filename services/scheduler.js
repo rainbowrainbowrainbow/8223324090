@@ -1560,7 +1560,7 @@ async function checkScheduledAnnouncements() {
     }
 }
 
-// v19.2: Task overdue event — fires event for tasks past their due date
+// Task overdue event — derived from canonical due date. Does not persist overdue status.
 async function checkTaskOverdue() {
     try {
         const todayStr = getKyivDateStr();
@@ -1573,17 +1573,28 @@ async function checkTaskOverdue() {
             if (!e.message?.includes('does not exist')) log.error('processMissedSlots error', e);
         }
 
-        // 1. Mark overdue tasks
+        // 1. Publish overdue events for active tasks. Overdue is derived, not a persisted status.
         const result = await pool.query(
-            `WITH updated AS (
-                UPDATE tasks
-                   SET status = 'overdue'
-                 WHERE date < $1 AND status NOT IN ('done', 'overdue', 'cancelled')
-                 RETURNING id, title, date, priority, assigned_to, owner_user_id, business_context
-             )
-             SELECT updated.*, u.username AS owner_username
-             FROM updated
-             LEFT JOIN users u ON u.id = updated.owner_user_id`,
+            `SELECT t.id, t.title, t.date, t.priority, t.assigned_to, t.owner_user_id, t.business_context,
+                    u.username AS owner_username
+             FROM tasks t
+             LEFT JOIN users u ON u.id = t.owner_user_id
+             WHERE t.archived_at IS NULL
+               AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+               AND (t.snoozed_until IS NULL OR t.snoozed_until <= NOW())
+               AND COALESCE(
+                    (t.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
+                    (t.snoozed_until AT TIME ZONE 'Europe/Kyiv')::date,
+                    CASE
+                        WHEN LEFT(COALESCE(t.date::text, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$'
+                        THEN LEFT(t.date::text, 10)::date
+                        ELSE NULL
+                    END,
+                    (t.deadline AT TIME ZONE 'Europe/Kyiv')::date,
+                    (t.remind_at AT TIME ZONE 'Europe/Kyiv')::date
+               ) < $1::date
+             ORDER BY t.id
+             LIMIT 500`,
             [todayStr]
         );
 
@@ -1603,38 +1614,8 @@ async function checkTaskOverdue() {
                 }
             } catch (e) { /* eventBus may not exist */ }
 
-            // v33.10.0: Gamification penalty for overdue tasks
-            try {
-                const { spendCoins } = require('./gamification');
-                for (const task of result.rows) {
-                    const canonicalOwner = task.owner_username || (!task.owner_user_id ? task.assigned_to : null);
-                    if (canonicalOwner) {
-                        const penalty = task.priority === 'high' ? 10 : task.priority === 'normal' ? 5 : 2;
-                        await spendCoins(canonicalOwner, penalty,
-                            `Протерміноване завдання: ${(task.title || '').slice(0, 50)}`,
-                            'penalty', task.id
-                        ).catch(() => {});
-                    }
-                }
-            } catch (e) { /* gamification not ready */ }
-
-            log.info(`Task overdue: ${result.rows.length} task(s) marked overdue`);
+            log.info(`Task overdue: ${result.rows.length} derived overdue task event(s) published`);
         }
-
-        // 2. v33.10.0: Auto-close tasks linked to past events (deadline passed 3+ days ago)
-        try {
-            const closed = await pool.query(
-                `UPDATE tasks SET status = 'cancelled', updated_at = NOW()
-                 WHERE status = 'overdue'
-                   AND deadline IS NOT NULL
-                   AND deadline::date < ($1::date - INTERVAL '3 days')
-                 RETURNING id, title, assigned_to`,
-                [todayStr]
-            );
-            if (closed.rowCount > 0) {
-                log.info(`Task auto-closed: ${closed.rowCount} overdue task(s) cancelled after 3 days`);
-            }
-        } catch (e) { /* deadline column may not exist in older schemas */ }
 
     } catch (err) {
         if (!err.message?.includes('does not exist')) {

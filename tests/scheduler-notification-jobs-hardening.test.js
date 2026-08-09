@@ -559,6 +559,58 @@ describe('scheduler notification jobs hardening', () => {
         });
     });
 
+    describe('checkTaskOverdue', () => {
+        it('publishes derived overdue events without persisting overdue status or auto-closing tasks', async () => {
+            onQuery('derived overdue rows', queryIncludes(
+                'FROM tasks t',
+                "t.archived_at IS NULL",
+                "COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')",
+                't.snoozed_until IS NULL OR t.snoozed_until <= NOW()',
+                "AT TIME ZONE 'Europe/Kyiv'",
+                '< $1::date'
+            ), () => rows([{
+                id: 71,
+                title: 'Derived overdue',
+                date: '2026-06-28',
+                priority: 'normal',
+                assigned_to: 'owner',
+                owner_user_id: null,
+                business_context: 'event_genix',
+                owner_username: null
+            }]));
+            const scheduler = loadScheduler();
+
+            await scheduler.checkTaskOverdue();
+
+            assert.equal(state.publishedEvents.length, 1);
+            assert.equal(state.publishedEvents[0].eventName, 'task.overdue');
+            assert.equal(state.publishedEvents[0].idempotencyKey, 'task_overdue_71_2026-06-29');
+            assert.equal(state.queries.some(query => /^UPDATE tasks\b/i.test(query.text)), false);
+            assert.equal(state.logs.some(entry => String(entry.args[0]).includes('marked overdue')), false);
+        });
+
+        it('does not apply non-idempotent gamification penalties from derived overdue scans', () => {
+            const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'services', 'scheduler.js'), 'utf8');
+            const start = source.indexOf('async function checkTaskOverdue');
+            const end = source.indexOf('async function checkCustomerRetention', start);
+            assert.ok(start >= 0 && end > start, 'checkTaskOverdue source block exists');
+            assert.doesNotMatch(source.slice(start, end), /spendCoins|gamification/);
+        });
+
+        it('contains derived overdue query failures without terminal cleanup attempts', async () => {
+            onQuery('derived overdue failure', queryIncludes('FROM tasks t', '< $1::date'), () => {
+                throw new Error('planned derived overdue failure');
+            });
+            const scheduler = loadScheduler();
+
+            await scheduler.checkTaskOverdue();
+
+            assert.equal(state.publishedEvents.length, 0);
+            assert.equal(state.queries.some(query => /^UPDATE tasks\b/i.test(query.text)), false);
+            assert.equal(state.logs.some(entry => entry.level === 'error' && entry.args[0] === 'checkTaskOverdue error'), true);
+        });
+    });
+
     describe('checkUpcomingBookings', () => {
         it('does not send when no upcoming bookings are eligible', async () => {
             resetState({ time: '11:00' });

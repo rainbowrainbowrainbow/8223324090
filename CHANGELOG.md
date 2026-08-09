@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.104 - Task Lifecycle Fail-Closed
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Task lifecycle став fail-closed** - автоматичне архівування за віком переведено у report-only режим, а ручні, приватні, AI-assisted, Hermes/integration, human-touched і unknown provenance задачі явно захищені.
+- **Overdue більше не пишеться в `tasks.status`** - scheduler публікує derived overdue events за Kyiv date semantics, не реактивує archived задачі, не auto-cancel-ить старі overdue записи і не застосовує повторювані gamification penalties.
+- **Reminder path закрито для terminal tasks** - Kleshnya більше не бере archived/done/completed/cancelled задачі у reminder/overdue queries і не показує Telegram action buttons для terminal статусів.
+- **Regression coverage додано** - focused tests фіксують report-only lifecycle, no-op health score updates, protected provenance, terminal reminders і browser/server overdue parity.
+
+---
+
 ## v0.80.103 - Checkbox Fiscal Hardening
 
 ### Release / Versioning / (09.08.2026) [codex]

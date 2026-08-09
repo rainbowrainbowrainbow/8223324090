@@ -2,6 +2,8 @@
 
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const MODULES_TO_CLEAR = [
     '../db',
@@ -77,6 +79,21 @@ test('reschedule button is opt-in only and callback data remains short', () => {
     assert.ok(reschedule, 'expected opt-in reschedule button');
     assert.equal(reschedule.callback_data, 'task_reschedule:123456:in_progress');
     assert.ok(Buffer.byteLength(reschedule.callback_data, 'utf8') <= 64);
+});
+
+test('terminal tasks do not expose Telegram action buttons', () => {
+    const { getTaskInlineButtons } = loadKleshnya();
+
+    for (const status of ['done', 'completed', 'cancelled', 'archived']) {
+        assert.equal(getTaskInlineButtons({ id: 42, status, task_type: 'human' }), null);
+    }
+});
+
+test('Kleshnya reminder queries exclude archived and terminal tasks', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'kleshnya.js'), 'utf8');
+
+    assert.match(source, /WHERE archived_at IS NULL\s+AND COALESCE\(status, 'todo'\) NOT IN \('done', 'completed', 'cancelled', 'archived'\)\s+AND task_type = 'human'/);
+    assert.match(source, /WHERE archived_at IS NULL\s+AND COALESCE\(status, 'todo'\) NOT IN \('done', 'completed', 'cancelled', 'archived'\)\s+AND deadline IS NOT NULL/);
 });
 
 test('telegram task actor guard keeps CRM owner id separate from Telegram ids', () => {

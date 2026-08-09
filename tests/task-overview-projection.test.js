@@ -170,3 +170,29 @@ test('tasks page uses the server overview contract and renders explainable excep
     assert.match(source, /Рекомендована дія/);
     assert.match(source, /taskOverviewModeActive\(\)/);
 });
+
+test('tasks page overdue helper matches canonical date-only semantics', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
+    const start = source.indexOf('function isOverdueTask');
+    const end = source.indexOf('function applyAssistantTaskFilter', start);
+    assert.ok(start >= 0 && end > start, 'isOverdueTask exists as an isolated function');
+
+    const context = {
+        window: {},
+        Date,
+        taskDueDate: task => task.dueDate || '',
+        getTodayStr: () => '2026-08-09',
+        isActiveTask: task => !['done', 'completed', 'cancelled', 'archived'].includes(task.status),
+        isDeferredTask: task => Boolean(task.snoozed_until && task.snoozed_until > '2026-08-09T20:00:00.000+03:00')
+    };
+    vm.createContext(context);
+    vm.runInContext(`
+        ${source.slice(start, end)}
+        this.isOverdueTask = isOverdueTask;
+    `, context, { filename: 'js/tasks-page.js' });
+
+    assert.equal(context.isOverdueTask({ status: 'todo', dueDate: '2026-08-08' }), true);
+    assert.equal(context.isOverdueTask({ status: 'todo', dueDate: '2026-08-09', deadline: '2026-08-09T08:00:00.000+03:00' }), false);
+    assert.equal(context.isOverdueTask({ status: 'todo', dueDate: '2026-08-08', snoozed_until: '2026-08-10T09:00:00.000+03:00' }), false);
+    assert.equal(context.isOverdueTask({ status: 'archived', dueDate: '2026-08-08' }), false);
+});

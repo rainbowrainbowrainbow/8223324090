@@ -2501,14 +2501,11 @@ function normalizeAssistantTaskFilter(value) {
 
 function isOverdueTask(task = {}) {
     if (!isActiveTask(task)) return false;
-    const raw = taskScheduleEnd(task) || taskScheduleStart(task) || task.deadline || task.remindAt || task.remind_at || task.date || '';
-    if (!raw) return false;
+    if (isDeferredTask(task)) return false;
     const dueDate = taskDueDate(task);
     const today = getTodayStr();
     if (dueDate && dueDate < today) return true;
-    if (dueDate && dueDate > today) return false;
-    const parsed = new Date(raw);
-    return !Number.isNaN(parsed.getTime()) && parsed.getTime() < Date.now();
+    return false;
 }
 
 function applyAssistantTaskFilter(tasks = []) {

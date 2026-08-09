@@ -25,6 +25,7 @@ const { emitTaskAssignedToOwner } = require('./taskNotifications');
 const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 
 const log = createLogger('Kleshnya');
+const TERMINAL_TASK_STATUSES = ['done', 'completed', 'cancelled', 'archived'];
 
 // --- Escalation messages (4 levels) ---
 const ESCALATION_MESSAGES = [
@@ -595,7 +596,7 @@ function getTaskInlineButtons(task) {
     if (!task || !task.id) return null;
     // Only show buttons for open human tasks
     if (task.task_type === 'bot') return null;
-    if (task.status === 'done' || task.status === 'cancelled') return null;
+    if (TERMINAL_TASK_STATUSES.includes(String(task.status || '').toLowerCase())) return null;
 
     const buttons = [];
     if (task.status === 'todo') {
@@ -786,7 +787,8 @@ async function getTasksNeedingReminders() {
     try {
         const result = await pool.query(`
             SELECT * FROM tasks
-            WHERE status != 'done'
+            WHERE archived_at IS NULL
+              AND COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
               AND task_type = 'human'
               AND deadline IS NOT NULL
               AND (
@@ -810,7 +812,8 @@ async function getOverdueTasks() {
     try {
         const result = await pool.query(`
             SELECT * FROM tasks
-            WHERE status != 'done'
+            WHERE archived_at IS NULL
+              AND COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
               AND deadline IS NOT NULL
               AND deadline < NOW()
             ORDER BY deadline ASC

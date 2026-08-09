@@ -2,18 +2,18 @@
 
 Status: implementation contract for a disabled production MVP. Production Checkbox activation is out of scope.
 
-Last reviewed: 2026-08-08.
+Last reviewed: 2026-08-09.
 
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live version before this Checkbox release pass: `0.80.91`.
-- Live release label before this Checkbox release pass: `My Day impact catalog hotfix`.
-- Confirmed deploy source branch: `codex/my-day-impacts-canonical-v08088`.
-- Confirmed live commit before this Checkbox release pass: `c01224030196bca80a27ca78dd5dfb83e29eabb0`.
-- Confirmed deploy source HEAD used for this worktree: `97515fe58015802d6e38164939b717e7f1e5501c` (`0.80.92`).
-- Local worktree for this hardening pass: `.codex-temp/checkbox-thin-mvp-current-v08092`.
-- Local hardening branch: `codex/checkbox-thin-mvp-current-v08092`.
+- Live version before this Checkbox release pass: `0.80.100`.
+- Live release label before this Checkbox release pass: `Luna Composer Quality Gate`.
+- Confirmed deploy source branch: `codex/my-day-ai-composer-v08094`.
+- Confirmed live commit before this Checkbox release pass: `a467fa4343e03a63344e2f9e03c1318c97cfbd90`.
+- Confirmed deploy source HEAD used for this worktree: `a467fa4343e03a63344e2f9e03c1318c97cfbd90` (`0.80.100`).
+- Local worktree for this release pass: `.codex-temp/checkbox-fiscal-readiness-release-v080101`.
+- Local release branch: `codex/checkbox-fiscal-readiness-release-v080101`.
 
 All follow-up implementation tasks must start from this confirmed deploy source or from a newer live source confirmed by the release staleness guard.
 
@@ -75,7 +75,7 @@ Required logical gates for follow-up tasks:
 
 ## Implemented / Incomplete / Phase 2
 
-| Area | Implemented in the Checkbox release worktree based on `97515fe...` | Incomplete before thin MVP activation | Phase 2 / Cashier PRO |
+| Area | Implemented in the Checkbox release worktree based on `a467fa...` | Incomplete before thin MVP activation | Phase 2 / Cashier PRO |
 | --- | --- | --- | --- |
 | Ledger schema | Additive fiscal/payment tables, BIGINT money, immutable item snapshots, idempotency constraints, explicit fiscal item mapping table | Production pilot mapping data still requires separate activation | Additional operational reporting and reconciliation revisions |
 | Payment workflow | Server-side order preview, cash/card manual confirmation, received/change snapshot, one local fiscal operation and outbox job | Real admission source activation and accountant-approved mapping data | Split/partial/prepayment not in scope |

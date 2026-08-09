@@ -1,16 +1,15 @@
 # Checkbox Implementation Status
 
-Last updated: 2026-08-08.
+Last updated: 2026-08-09.
 
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live version before this Checkbox release pass: `0.80.91`.
-- Live commit before this Checkbox release pass: `c01224030196bca80a27ca78dd5dfb83e29eabb0`.
-- Deploy source HEAD used for this worktree: `0.80.92` / `97515fe58015802d6e38164939b717e7f1e5501c`.
-- Source branch: `codex/my-day-impacts-canonical-v08088`.
-- Release worktree: `.codex-temp/checkbox-thin-mvp-current-v08092`.
-- Release branch: `codex/checkbox-thin-mvp-current-v08092`.
+- Live version before this release pass: `0.80.100`.
+- Live commit before this release pass: `a467fa4343e03a63344e2f9e03c1318c97cfbd90`.
+- Source branch: `codex/my-day-ai-composer-v08094`.
+- Local release worktree: `.codex-temp/checkbox-fiscal-readiness-release-v080101`.
+- Local release branch: `codex/checkbox-fiscal-readiness-release-v080101`.
 
 ## Current Position
 
@@ -36,6 +35,10 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - `EVENTGENIX_CASHIER_PRO_ENABLED=false` keeps Phase 2 operations hidden/fail-closed.
 - `fiscal_item_mappings` separates internal EventGenix tariff references from Checkbox fiscal names and tax IDs.
 - `scripts/configure-checkbox-park-pilot.js` provides repeatable dry-run-first pilot mapping setup without raw secrets.
+- Pilot configuration is version-aware: exact repeated apply is a no-op, generic apply refuses drift, and explicit mutation commands write append-only `fiscal_configuration_audit` rows.
+- Fiscal item mapping supports explicit `taxed` / `untaxed` modes. `admission_tariff:*` is blocked from Checkbox tax fields.
+- `docs/integrations/checkbox/checkbox-test-mode.env.example` documents ref-specific test-mode env names without values.
+- Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
 
 ## Not Ready
@@ -45,6 +48,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Real Checkbox credentials and register IDs are not configured, and must not be added to source.
 - Accountant-approved fiscal item/tax values are still missing for production activation.
 - Sandbox QA has not been proven against real Checkbox test credentials.
+- End-of-day production policy still needs a final product decision before real activation: manual Checkbox portal close/runbook or narrow Phase-1 close flow.
 
 ## Next Tasks
 

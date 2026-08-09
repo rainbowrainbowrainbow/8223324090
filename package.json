@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.94",
+  "version": "0.80.95",
   "eventGenix": {
-    "releaseLabel": "Unified AI Composer"
+    "releaseLabel": "AI Task Bundles"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

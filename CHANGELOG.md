@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.95 - AI Task Bundles
+
+### My Day / Tasks AI / (09.08.2026) [codex]
+- **AI Task Bundles** - composer can review and create 2-6 separate AI-proposed tasks from one draft, with explicit per-task edit/reject controls before anything is saved.
+- **Atomic bundle commit** - bundle task rows, impacts, idempotency marker and AI-assisted audit history are written in one transaction; partial bundles and duplicate double-click commits are rejected.
+- **Bundle QA gate** - added bundle-specific eval fixtures, strict schema tests, browser interaction smoke and isolated PostgreSQL rollback/idempotency coverage without real OpenAI calls in CI.
+
+---
+
 ## v0.80.94 - Unified AI Composer
 
 ### My Day / Tasks AI / (09.08.2026) [codex]

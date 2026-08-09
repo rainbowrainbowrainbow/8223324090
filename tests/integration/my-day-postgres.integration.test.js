@@ -238,7 +238,7 @@ function openAiDraftOutput(proposal) {
 
 function validDraftProposal(impactIds, overrides = {}) {
     return {
-        action: 'apply',
+        decision: 'checklist',
         mode: 'checklist',
         title: `AI draft commit task ${suffix}`,
         description: 'AI prepared checklist draft.',
@@ -256,6 +256,8 @@ function validDraftProposal(impactIds, overrides = {}) {
             subtasks: 0.86,
             mode: 0.84
         },
+        bundleTitle: null,
+        tasks: [],
         reason: 'Clear AI draft commit fixture.',
         ...overrides
     };
@@ -996,8 +998,13 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         const crmImpact = await createImpact(owner.id, 'Fail CRM');
         const hermesImpact = await createImpact(owner.id, 'Fail Hermes');
         const aiImpact = await createImpact(owner.id, 'Fail Automation');
+        const baseTasks = validBundleProposal([crmImpact, hermesImpact, aiImpact]).tasks;
         const proposal = validBundleProposal([crmImpact, hermesImpact, aiImpact], {
-            bundleTitle: `AI impact rollback ${suffix}`
+            bundleTitle: `AI impact rollback ${suffix}`,
+            tasks: baseTasks.map((task, index) => ({
+                ...task,
+                title: `AI impact rollback task ${index + 1} ${suffix}`
+            }))
         });
         openAiMock.enqueue(() => openAiDraftOutput(proposal));
         const preview = await postAiDraftPreview(owner.token, {

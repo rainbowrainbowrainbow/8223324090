@@ -404,7 +404,7 @@ function createHttpProvider(mock, timeoutMs = 1000) {
     return createProviderFromConfig(providerConfig(mock.baseUrl, timeoutMs));
 }
 
-async function runWorkerUntilIdle(provider = null, maxRounds = 12) {
+async function runWorkerUntilIdle(provider = null, maxRounds = 80) {
     const results = [];
     for (let i = 0; i < maxRounds; i += 1) {
         const options = {

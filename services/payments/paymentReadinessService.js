@@ -1185,7 +1185,7 @@ async function loadCheckboxSalesReport({
                     AND ($4::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date <= $4::date)
                     AND ($5::bigint IS NULL OR fo.fiscal_shift_id = $5::bigint)
                     AND ($6::bigint IS NULL OR po.cashier_user_id = $6::bigint)
-             )
+             ),
              status_counts AS (
                  SELECT jsonb_object_agg(public_status, status_count) AS status_counts
                    FROM (

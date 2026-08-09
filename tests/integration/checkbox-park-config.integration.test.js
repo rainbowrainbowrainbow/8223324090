@@ -182,23 +182,17 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     assert.equal(untaxedReadiness.taxMappingReady, true, 'untaxed active admission items must not require a fabricated provider tax id');
     assert.equal(untaxedReadiness.missingTaxItemCodes.length, 0);
 
-    await pool.query(
-        `UPDATE fiscal_item_mappings
-            SET provider_tax_id = '7'
-          WHERE fiscal_profile_id = $1
-            AND fiscal_register_id = $2
-            AND item_code = $3`,
-        [applied.fiscalProfileId, applied.fiscalRegisterId, ticketCodes[0]]
+    await assert.rejects(
+        () => pool.query(
+            `UPDATE fiscal_item_mappings
+                SET provider_tax_id = '7'
+              WHERE fiscal_profile_id = $1
+                AND fiscal_register_id = $2
+                AND item_code = $3`,
+            [applied.fiscalProfileId, applied.fiscalRegisterId, ticketCodes[0]]
+        ),
+        error => error.code === '23514'
     );
-    const invalidUntaxedReadiness = await loadReadinessState({
-        dbPool: pool,
-        user: fiscalConfigUser(userId),
-        crmProfileKey: 'event_genix',
-        registerAlias: 'middle',
-        checkboxIntegrationEnabled: false
-    });
-    assert.equal(invalidUntaxedReadiness.taxMappingReady, false);
-    assert.ok(invalidUntaxedReadiness.missingTaxItemCodes.includes(ticketCodes[0]));
 
     await pool.query(
         `UPDATE fiscal_item_mappings

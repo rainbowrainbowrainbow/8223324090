@@ -405,6 +405,43 @@
     font-weight: 900;
 }
 
+.cashier-unresolved-list {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.cashier-unresolved-item {
+    display: grid;
+    grid-template-columns: minmax(150px, 1.4fr) repeat(3, minmax(110px, .8fr)) minmax(150px, 1.2fr) minmax(120px, 1fr);
+    gap: 10px;
+    align-items: center;
+    width: 100%;
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 14px;
+    background: var(--white);
+    color: var(--gray-800);
+    text-align: left;
+}
+
+button.cashier-unresolved-item {
+    cursor: pointer;
+}
+
+button.cashier-unresolved-item:hover,
+button.cashier-unresolved-item:focus-visible {
+    border-color: rgba(99,102,241,.45);
+    box-shadow: 0 0 0 3px rgba(99,102,241,.14);
+    outline: none;
+}
+
+.cashier-unresolved-item small {
+    display: block;
+    margin-top: 2px;
+    color: var(--gray-500);
+}
+
 .cashier-op-box input:disabled,
 .cashier-op-box button:disabled {
     cursor: not-allowed;
@@ -427,6 +464,7 @@ body.dark-mode .cashier-checkbox-row {
 body.dark-mode .cashier-meta-grid div,
 body.dark-mode .cashier-op-box,
 body.dark-mode .cashier-report-grid div,
+body.dark-mode .cashier-unresolved-item,
 body.dark-mode .cashier-pill,
 body.dark-mode .cashier-status {
     background: rgba(30,41,59,.74);
@@ -473,7 +511,8 @@ body.dark-mode .cashier-confirm-panel {
     .cashier-two-cols,
     .cashier-ops-grid,
     .cashier-ops-grid-wide,
-    .cashier-report-grid {
+    .cashier-report-grid,
+    .cashier-unresolved-item {
         grid-template-columns: 1fr;
     }
 

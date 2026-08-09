@@ -287,7 +287,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
             status: 'acknowledged',
             reason: 'read-only user must not mutate incident'
         }),
-        error => error.code === 'fiscal_action_denied'
+        error => error.code === 'fiscal_capability_denied'
     );
     await assert.rejects(
         () => updateOperationalIncidentStatus({

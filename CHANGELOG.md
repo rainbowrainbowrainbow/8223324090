@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.94 - Unified AI Composer
+
+### My Day / Tasks AI / (09.08.2026) [codex]
+- **Unified AI Composer** - composer can prepare a reviewed AI proposal for title, details, checklist structure and canonical My Day impacts before the task is created.
+- **Direct GPT-5.6 Luna rail** - task composer and My Day card classification share the hardened direct OpenAI Responses client with strict structured output, official production host, `store:false`, timeout, retry and no OpenRouter dependency for this rail.
+- **Atomic commit** - accepted AI fields, parent task, subtasks, impacts and AI-assisted history are written in one transaction with signed proposal tokens and idempotency protection.
+- **Visible human review** - UI shows before/after AI changes, supports accept/reject/edit per field, stale-response protection, mobile/dark/light coverage and accessible AI-created markers.
+- **Safe rollout and CI gate** - production composer AI is gated by test-user/percentage rollout env controls, provider diagnostics exposes status without secrets, My Day CI includes quality evals, PostgreSQL integration and browser interaction smoke.
+
+---
+
 ## v0.80.93 - Checkbox thin MVP hardening
 
 ### Checkbox / Payments / (08.08.2026) [codex]

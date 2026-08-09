@@ -292,7 +292,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     await assert.rejects(
         () => updateOperationalIncidentStatus({
             dbPool: pool,
-            user: fiscalConfigUser(userId, ['fiscal.incident.manage']),
+            user: fiscalConfigUser(userId, ['payments.view', 'fiscal.incident.manage']),
             incidentId,
             status: 'acknowledged',
             reason: 'manager without exact ownership must not mutate incident'
@@ -307,7 +307,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     );
     const acknowledged = await updateOperationalIncidentStatus({
         dbPool: pool,
-        user: fiscalConfigUser(userId, ['fiscal.incident.manage']),
+        user: fiscalConfigUser(userId, ['payments.view', 'fiscal.incident.manage']),
         incidentId,
         status: 'acknowledged',
         reason: 'integration test acknowledge'

@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.102 - Compact My Day Cards
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Компактні картки My Day** - картки розділено на стабільні зони header, facts, classification і commands, щоб прибрати хаотичне змішування badges та великих кнопок.
+- **Режими "Стисло" / "Детально"** - додано локальну view preference для користувача й бізнес-контексту, з безпечним compact default.
+- **Вплив можна прибрати одним кліком** - chips впливів стали доступними кнопками з pending/error state, keyboard support, mobile-safe `×` і reduced-motion fallback.
+- **Час став компактнішим** - `Факт`, `Старт/Стоп` лишилися видимими, а план, ручне додавання часу й записи перенесено в компактне меню `⏱`.
+- **My Day interaction gate розширено** - додано перевірки compact/detailed mode, hidden `+1`, remove impact, time menu, overdue rows, mobile/dark і reduced-motion contracts.
+
+---
+
 ## v0.80.101 - Checkbox Fiscal Readiness
 
 ### Release / Versioning / (09.08.2026) [codex]

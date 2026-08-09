@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.101",
+  "version": "0.80.102",
   "eventGenix": {
-    "releaseLabel": "Checkbox Fiscal Readiness"
+    "releaseLabel": "Compact My Day Cards"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

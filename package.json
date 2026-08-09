@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.96",
+  "version": "0.80.97",
   "eventGenix": {
-    "releaseLabel": "Luna Production Hotfix"
+    "releaseLabel": "Luna Structured Output Hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

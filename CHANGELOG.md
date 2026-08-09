@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.97 - Luna Structured Output Hotfix
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Сумісний Structured Output schema** - прибрано непідтримуваний OpenAI keyword `uniqueItems`; max 3 впливи та deduplication як і раніше перевіряються сервером.
+- **Live preview розблоковано** - GPT-5.6 Luna тепер може прийняти strict schema замість HTTP 400, без послаблення backend validation.
+
+---
+
 ## v0.80.96 - Luna Production Hotfix
 
 ### Release / Versioning / (09.08.2026) [codex]

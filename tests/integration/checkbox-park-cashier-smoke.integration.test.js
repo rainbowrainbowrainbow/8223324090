@@ -709,6 +709,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
     });
 
     test('cash and manual terminal sales fiscalize once through real CheckboxClient over local HTTP', async () => {
+        await runWorkerUntilIdle(createHttpProvider(mock));
+
         const cashOrder = await createOrder({
             user: cashier,
             key: 'cash',
@@ -952,6 +954,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
     });
 
     test('4xx, pending, malformed, timeout-after-success, webhook replay, cross-profile isolation, and redaction fail safely', async () => {
+        await runWorkerUntilIdle(createHttpProvider(mock));
+
         const validationOrder = await createOrder({
             user: cashier,
             key: '422',

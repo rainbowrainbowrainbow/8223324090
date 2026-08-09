@@ -3,7 +3,7 @@
 
 const { pool } = require('../db');
 
-const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_lookup', 'receipt_validation']);
+const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation']);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
 const MUTATING_MODES = new Set(['requeue-pre-sell', 'lookup-only']);
 const MODES = new Set(['status', 'dead-letter', ...MUTATING_MODES]);
@@ -59,7 +59,7 @@ function jsonObject(value) {
 function externalStage(row) {
     const requestSnapshot = jsonObject(row.request_snapshot);
     const payload = jsonObject(row.payload);
-    const stage = requestSnapshot.external_stage || payload.external_stage || null;
+    const stage = row.operation_external_stage || payload.external_stage || requestSnapshot.external_stage || null;
     return typeof stage === 'string' ? stage : null;
 }
 
@@ -122,6 +122,7 @@ async function loadScopedRows(client, args, options = {}) {
             fo.operation_type,
             fo.status AS operation_status,
             fo.provider_operation_id,
+            fo.external_stage AS operation_external_stage,
             fo.request_snapshot,
             fo.last_error_code AS operation_last_error_code,
             fr.register_alias AS register_alias,
@@ -218,8 +219,7 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
     await client.query(
         `UPDATE fiscal_operations
             SET status = $2,
-                request_snapshot = COALESCE(request_snapshot, '{}'::jsonb)
-                    || jsonb_build_object('external_stage', $3, 'operator_recovery_at', to_jsonb(NOW()))
+                external_stage = $3
           WHERE id = $1
             AND fiscal_profile_id = $4
             AND fiscal_register_id = $5`,
@@ -239,6 +239,8 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
                 locked_by = NULL,
                 lock_token = NULL,
                 heartbeat_at = NULL,
+                attempts = CASE WHEN status = 'dead' THEN LEAST(attempts, max_attempts) ELSE attempts END,
+                max_attempts = CASE WHEN status = 'dead' THEN max_attempts + 1 ELSE max_attempts END,
                 next_run_at = NOW(),
                 last_error_code = NULL,
                 last_error_message = NULL,
@@ -249,6 +251,22 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
             AND fiscal_profile_id = $3`,
         [row.job_id, plan.targetStage, row.fiscal_profile_id]
     );
+
+    if (row.operation_type === 'shift_open' && row.shift_id) {
+        await client.query(
+            `UPDATE fiscal_shifts
+                SET status = CASE WHEN $3 = 'receipt_lookup' THEN status ELSE 'opening' END,
+                    lifecycle_stage = CASE
+                        WHEN $3 IN ('shift_request_maybe_submitted', 'shift_lookup') THEN 'OPENING'
+                        ELSE lifecycle_stage
+                    END,
+                    updated_at = NOW()
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+                AND status IN ('opening', 'failed', 'blocked')`,
+            [row.shift_id, row.fiscal_profile_id, plan.targetStage]
+        );
+    }
 
     await client.query(
         `INSERT INTO fiscal_audit_events (

@@ -144,7 +144,8 @@ router.post('/readiness/probe', requireAction('payments.view'), async (req, res)
         const result = await probeCheckboxReadiness({
             user: req.user,
             crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle'
+            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle',
+            force: req.body?.force === true || req.body?.force === 'true' || req.query.force === 'true'
         });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -176,6 +177,7 @@ router.get('/checkbox-sales-report', requireAction('payments.view'), async (req,
             dateFrom: req.query.dateFrom || req.query.date_from || null,
             dateTo: req.query.dateTo || req.query.date_to || null,
             shiftId: req.query.shiftId || req.query.shift_id || null,
+            cashierUserId: req.query.cashierUserId || req.query.cashier_user_id || null,
             page: req.query.page || 1,
             pageSize: req.query.pageSize || req.query.page_size || 50
         });
@@ -215,7 +217,7 @@ router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) =>
     }
 });
 
-router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.audit.view'), async (req, res) => {
+router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.incident.manage'), async (req, res) => {
     try {
         const result = await updateOperationalIncidentStatus({
             user: req.user,
@@ -232,7 +234,7 @@ router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.audit.vi
     }
 });
 
-router.post('/incidents/:incidentId/resolve', requireAction('fiscal.audit.view'), async (req, res) => {
+router.post('/incidents/:incidentId/resolve', requireAction('fiscal.incident.manage'), async (req, res) => {
     try {
         const result = await updateOperationalIncidentStatus({
             user: req.user,

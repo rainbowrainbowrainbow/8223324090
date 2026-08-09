@@ -267,13 +267,39 @@ function validateCashRegisterInfo(info = {}, expected = {}) {
     if (!info || typeof info !== 'object' || Array.isArray(info)) {
         throw new CheckboxClientError('checkbox_cash_register_info_malformed', 'Checkbox cash register info response is malformed', { status: 502, retryable: true, unknown: true });
     }
-    const registerId = textOrNull(info.id || info.cash_register_id || info.cash_register?.id);
+    const registerId = textOrNull(info.id);
+    const organizationId = textOrNull(info.organization_id);
+    const documentsState = info.documents_state && typeof info.documents_state === 'object' && !Array.isArray(info.documents_state)
+        ? info.documents_state
+        : null;
+    if (!registerId || !organizationId || typeof info.is_test !== 'boolean' || typeof info.offline_mode !== 'boolean' || typeof info.stay_offline !== 'boolean' || !documentsState) {
+        throw new CheckboxClientError('checkbox_cash_register_info_malformed', 'Checkbox cash register info response does not match official CashRegisterDeviceModel', {
+            status: 502,
+            retryable: true,
+            unknown: true,
+            details: redactCheckboxDiagnostics({
+                hasId: Boolean(registerId),
+                hasOrganizationId: Boolean(organizationId),
+                isTestType: typeof info.is_test,
+                offlineModeType: typeof info.offline_mode,
+                stayOfflineType: typeof info.stay_offline,
+                hasDocumentsState: Boolean(documentsState)
+            })
+        });
+    }
     assertSameText(registerId, expected.expectedRegisterId, 'checkbox_register_identity_mismatch', 'cash_register.id');
-    if (info.active !== true) {
-        throw new CheckboxClientError('checkbox_register_not_active', 'Checkbox cash register is not active', {
+    assertSameText(organizationId, expected.expectedOrganizationId, 'checkbox_register_organization_mismatch', 'cash_register.organization_id');
+    if (expected.expectedIsTest == null) {
+        throw new CheckboxClientError('checkbox_expected_is_test_required', 'Checkbox expected test mode must be explicit before provider readiness', {
+            status: 503,
+            retryable: false
+        });
+    }
+    if (info.is_test !== Boolean(expected.expectedIsTest)) {
+        throw new CheckboxClientError('checkbox_register_test_mode_mismatch', 'Checkbox cash register test mode does not match expected runtime mode', {
             status: 409,
             retryable: false,
-            details: { active: info.active ?? null }
+            details: { expected: Boolean(expected.expectedIsTest), actual: info.is_test }
         });
     }
     if (info.offline_mode === true || info.stay_offline === true) {
@@ -285,10 +311,12 @@ function validateCashRegisterInfo(info = {}, expected = {}) {
     }
     return {
         registerId,
-        active: true,
+        organizationId,
+        isTest: info.is_test,
         fiscalNumber: textOrNull(info.fiscal_number),
         offlineMode: info.offline_mode === true,
-        hasShift: info.has_shift === true
+        stayOffline: info.stay_offline === true,
+        documentsState: redactCheckboxDiagnostics(documentsState)
     };
 }
 
@@ -298,7 +326,7 @@ function validateProviderTaxes(taxes = [], expectedTaxIds = []) {
     }
     const expected = [...new Set((expectedTaxIds || []).map(textOrNull).filter(Boolean))];
     if (!expected.length) {
-        throw new CheckboxClientError('checkbox_provider_tax_ids_missing', 'EventGenix fiscal item mapping has no provider tax IDs for readiness', { status: 409, retryable: false });
+        return { expected: [], availableCount: taxes.length };
     }
     const available = new Set();
     for (const tax of taxes) {
@@ -523,7 +551,21 @@ function validateSaleResponse(response) {
             unknown: true
         });
     }
-    const booleans = Object.values(response).filter(value => typeof value === 'boolean');
+    const booleans = [];
+    const collectBooleans = value => {
+        if (typeof value === 'boolean') {
+            booleans.push(value);
+            return;
+        }
+        if (Array.isArray(value)) {
+            value.forEach(collectBooleans);
+            return;
+        }
+        if (value && typeof value === 'object') {
+            Object.values(value).forEach(collectBooleans);
+        }
+    };
+    collectBooleans(response);
     if (!booleans.length) {
         throw new CheckboxClientError('checkbox_receipt_validation_malformed', 'Checkbox receipt validation response does not contain boolean validation results', {
             status: 502,
@@ -634,6 +676,11 @@ class CheckboxRuntimeProvider {
         throw new CheckboxClientError('checkbox_auth_retry_exhausted', 'Checkbox readiness authentication retry was exhausted', { status: 401, retryable: true, unknown: true });
     }
 
+    async prepareMutation(input = {}, { expectedTaxIds = [] } = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        return this.verifyReadiness(expected, { expectedTaxIds });
+    }
+
     async loadDetailedShift(current, expected) {
         if (!this.client.getShiftById) {
             return normalizeShiftResponse(current.raw || current, expected, { requireOpened: true, requireCashier: true });
@@ -703,6 +750,24 @@ class CheckboxRuntimeProvider {
                 return opened;
             }
             return this.loadDetailedShift(opened, expected);
+        });
+    }
+
+    async lookupShift(input = {}, { requireOpened = false } = {}) {
+        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        const fiscalOperation = safeJsonObject(input.fiscalOperation);
+        const shiftId = expected.expectedShiftId || fiscalOperation.provider_shift_id || expected.providerOperationId;
+        if (!shiftId) {
+            throw new CheckboxClientError('checkbox_shift_id_required', 'Checkbox shift lookup requires a durable provider shift UUID', {
+                status: 422,
+                retryable: false
+            });
+        }
+        expected.expectedShiftId = shiftId;
+        return this.withAuth(expected, async () => {
+            const shift = normalizeShiftResponse(await this.client.getShiftById({ shiftId }), expected, { requireOpened, requireCashier: false });
+            if (shift.status === OPEN_SHIFT_STATUS) return this.loadDetailedShift(shift, expected);
+            return shift;
         });
     }
 

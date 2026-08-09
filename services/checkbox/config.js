@@ -33,6 +33,10 @@ function isCheckboxIntegrationEnabled(env = process.env) {
     return boolEnv(env.CHECKBOX_INTEGRATION_ENABLED);
 }
 
+function isCheckboxPaymentAcceptanceEnabled(env = process.env) {
+    return boolEnv(env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED);
+}
+
 function isCheckboxWebhookEnabled(env = process.env) {
     return boolEnv(env.CHECKBOX_WEBHOOK_ENABLED);
 }
@@ -227,6 +231,7 @@ module.exports = {
     assertRuntimeBaseUrl,
     isCashierProEnabled,
     isCheckboxIntegrationEnabled,
+    isCheckboxPaymentAcceptanceEnabled,
     isCheckboxWebhookEnabled,
     loadCheckboxSandboxConfig,
     loadCheckboxRuntimeConfig,

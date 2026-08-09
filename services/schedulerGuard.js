@@ -85,6 +85,7 @@ function schedulerTrackingKey(dedup, now = new Date()) {
  */
 function guardScheduler(name, fn, opts = {}) {
     const dedup = normalizeDedup(opts);
+    const autoPause = opts.autoPause !== false;
 
     return async function guardedScheduler() {
         const startMs = Date.now();
@@ -137,9 +138,9 @@ function guardScheduler(name, fn, opts = {}) {
                          last_run_at = NOW(), result = 'error',
                          consecutive_failures = scheduler_executions.consecutive_failures + 1,
                          error_message = $2, duration_ms = $3,
-                         is_paused = CASE WHEN scheduler_executions.consecutive_failures + 1 >= ${MAX_CONSECUTIVE_FAILURES} THEN true ELSE scheduler_executions.is_paused END
+                         is_paused = CASE WHEN $4::boolean = true AND scheduler_executions.consecutive_failures + 1 >= ${MAX_CONSECUTIVE_FAILURES} THEN true ELSE scheduler_executions.is_paused END
                      RETURNING consecutive_failures, is_paused`,
-                    [name, err.message.slice(0, 500), durationMs]
+                    [name, err.message.slice(0, 500), durationMs, autoPause]
                 );
 
                 if (result.rows[0]?.is_paused) {

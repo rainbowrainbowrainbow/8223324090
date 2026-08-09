@@ -20,7 +20,7 @@ const RETRYABLE_JOB_TYPES = Object.freeze([
     'shift_open',
     'shift_close'
 ]);
-const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_lookup', 'receipt_validation']);
+const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation']);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
 const CASHIER_PRO_JOB_TYPES = new Set(['receipt_return', 'service_receipt']);
 
@@ -182,6 +182,21 @@ async function claimPaymentOutboxJobs(client, {
                 AND (
                     job.job_type <> 'receipt_sell'
                     OR (fs.status = 'open' AND fs.provider_shift_id IS NOT NULL AND fs.lifecycle_stage = 'OPENED')
+                )
+                AND NOT EXISTS (
+                    SELECT 1
+                      FROM payment_outbox_jobs active_job
+                      LEFT JOIN fiscal_operations active_fo
+                        ON active_fo.id = active_job.fiscal_operation_id
+                       AND active_fo.fiscal_profile_id = active_job.fiscal_profile_id
+                      LEFT JOIN payment_orders active_po
+                        ON active_po.id = active_job.payment_order_id
+                       AND active_po.fiscal_profile_id = active_job.fiscal_profile_id
+                     WHERE active_job.id <> job.id
+                       AND active_job.fiscal_profile_id = job.fiscal_profile_id
+                       AND COALESCE(active_po.fiscal_register_id, active_fo.fiscal_register_id) = COALESCE(po.fiscal_register_id, fo.fiscal_register_id)
+                       AND active_job.status IN ('claimed', 'running')
+                       AND COALESCE(active_job.heartbeat_at, active_job.locked_at) >= NOW() - ($4::int * INTERVAL '1 second')
                 )
                 AND job.attempts < job.max_attempts
                 AND (
@@ -375,7 +390,7 @@ async function recordExternalStage(dbPool, context, stage) {
                 ]
             );
         }
-        if (safeStage === 'shift_request' && context.job.fiscal_shift_id) {
+        if ((safeStage === 'shift_request' || safeStage === 'shift_request_maybe_submitted') && context.job.fiscal_shift_id) {
             await client.query(
                 `UPDATE fiscal_shifts
                     SET lifecycle_stage = 'OPENING',
@@ -542,6 +557,130 @@ function providerReceiptTypeForOperation(operationType) {
     return 'SELL';
 }
 
+function valuesMismatch(existing, observed) {
+    if (existing == null || observed == null) return false;
+    return String(existing) !== String(observed);
+}
+
+function numberValuesMismatch(existing, observed) {
+    if (existing == null || observed == null) return false;
+    return Number(existing) !== Number(observed);
+}
+
+function collectReceiptMismatches(existing = {}, observed = {}, context = {}) {
+    const mismatches = [];
+    const expected = {
+        fiscal_profile_id: context.job.fiscal_profile_id,
+        fiscal_operation_id: context.job.fiscal_operation_id,
+        payment_order_id: context.job.payment_order_id || null,
+        payment_refund_id: context.job.payment_refund_id || null,
+        receipt_type: receiptTypeForOperation(context.job.operation_type),
+        provider: 'checkbox',
+        provider_receipt_id: observed.providerReceiptId,
+        provider_fiscal_code: observed.fiscalCode,
+        provider_serial: observed.serial,
+        provider_tax_url: observed.taxUrl,
+        provider_pdf_url: observed.pdfUrl,
+        provider_qr_url: observed.qrUrl,
+        total_amount_minor: observed.totalAmountMinor,
+        currency: 'UAH'
+    };
+    for (const field of [
+        'fiscal_profile_id',
+        'fiscal_operation_id',
+        'payment_order_id',
+        'payment_refund_id',
+        'receipt_type',
+        'provider',
+        'provider_receipt_id',
+        'currency'
+    ]) {
+        if (valuesMismatch(existing[field], expected[field])) {
+            mismatches.push(field);
+        }
+    }
+    if (numberValuesMismatch(existing.total_amount_minor, expected.total_amount_minor)) {
+        mismatches.push('total_amount_minor');
+    }
+    for (const field of [
+        'provider_fiscal_code',
+        'provider_serial',
+        'provider_tax_url',
+        'provider_pdf_url',
+        'provider_qr_url'
+    ]) {
+        if (valuesMismatch(existing[field], expected[field])) {
+            mismatches.push(field);
+        }
+    }
+    return mismatches;
+}
+
+async function recordReceiptObservation(client, context, normalized, { mismatches = [] } = {}) {
+    await client.query(
+        `INSERT INTO fiscal_audit_events (
+             fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+             idempotency_key, after_snapshot, metadata
+         )
+         VALUES ($1, NULL, $2, 'fiscal_operations', $3, $4, $5::jsonb, $6::jsonb)`,
+        [
+            context.job.fiscal_profile_id,
+            mismatches.length ? 'fiscal_receipt_mismatch_observed' : 'fiscal_provider_receipt_observed',
+            context.job.fiscal_operation_id,
+            `fiscal_receipt_observed:${context.job.fiscal_operation_id}:${normalized.providerReceiptId}:${mismatches.length ? 'mismatch' : 'ok'}:${Date.now()}`,
+            JSON.stringify({
+                provider_receipt_id: normalized.providerReceiptId,
+                provider_status: normalized.status,
+                provider_fiscal_code_present: Boolean(normalized.fiscalCode),
+                provider_serial_present: Boolean(normalized.serial),
+                total_amount_minor: normalized.totalAmountMinor == null ? null : String(normalized.totalAmountMinor)
+            }),
+            JSON.stringify({
+                provider: 'checkbox',
+                external_stage: externalStage(context.job),
+                mismatches
+            })
+        ]
+    );
+}
+
+async function recordReceiptMismatchIncident(client, context, normalized, mismatches = []) {
+    await client.query(
+        `INSERT INTO fiscal_operational_incidents (
+             fiscal_profile_id, fiscal_register_id, fiscal_operation_id, payment_order_id,
+             severity, incident_type, status, idempotency_key, details
+         )
+         VALUES ($1, $2, $3, $4, 'critical', 'fiscal.receipt_mismatch', 'open', $5, $6::jsonb)
+         ON CONFLICT (idempotency_key) DO UPDATE
+             SET status = 'open',
+                 severity = EXCLUDED.severity,
+                 details = fiscal_operational_incidents.details || EXCLUDED.details,
+                 recurrence_count = CASE
+                     WHEN fiscal_operational_incidents.status = 'resolved'
+                     THEN fiscal_operational_incidents.recurrence_count + 1
+                     ELSE fiscal_operational_incidents.recurrence_count
+                 END,
+                 last_seen_at = NOW(),
+                 resolved_at = CASE
+                     WHEN fiscal_operational_incidents.status = 'resolved' THEN NULL
+                     ELSE fiscal_operational_incidents.resolved_at
+                 END`,
+        [
+            context.job.fiscal_profile_id,
+            context.job.fiscal_register_id || null,
+            context.job.fiscal_operation_id,
+            context.job.payment_order_id || null,
+            `fiscal_receipt_mismatch:${context.job.fiscal_operation_id}:${normalized.providerReceiptId}`,
+            JSON.stringify({
+                provider_receipt_id: normalized.providerReceiptId,
+                fiscal_operation_id: Number(context.job.fiscal_operation_id),
+                payment_order_id: context.job.payment_order_id ? Number(context.job.payment_order_id) : null,
+                mismatches
+            })
+        ]
+    );
+}
+
 async function markFiscalized(client, context, receipt) {
     const normalized = normalizeProviderReceipt(receipt, {
         providerOperationId: context.job.provider_operation_id,
@@ -552,6 +691,28 @@ async function markFiscalized(client, context, receipt) {
     const orderId = context.job.payment_order_id;
     const refundId = context.job.payment_refund_id;
     const receiptType = receiptTypeForOperation(context.job.operation_type);
+
+    const existingReceipt = await client.query(
+        `SELECT *
+           FROM fiscal_receipts
+          WHERE provider = 'checkbox'
+            AND provider_receipt_id = $1
+          LIMIT 1`,
+        [normalized.providerReceiptId]
+    );
+    if (existingReceipt.rows.length) {
+        const mismatches = collectReceiptMismatches(existingReceipt.rows[0], normalized, context);
+        await recordReceiptObservation(client, context, normalized, { mismatches });
+        if (mismatches.length) {
+            await recordReceiptMismatchIncident(client, context, normalized, mismatches);
+            throw new PaymentOutboxWorkerError('fiscal_receipt_identity_mismatch', 'Provider receipt observation conflicts with immutable local fiscal receipt', {
+                retryable: false,
+                details: { mismatches }
+            });
+        }
+    } else {
+        await recordReceiptObservation(client, context, normalized);
+    }
 
     await client.query(
         `UPDATE fiscal_operations
@@ -577,7 +738,14 @@ async function markFiscalized(client, context, receipt) {
          ON CONFLICT (provider, provider_receipt_id) DO UPDATE
              SET status = 'fiscalized',
                  provider_fiscal_code = COALESCE(EXCLUDED.provider_fiscal_code, fiscal_receipts.provider_fiscal_code),
-                 provider_snapshot = EXCLUDED.provider_snapshot,
+                 provider_serial = COALESCE(fiscal_receipts.provider_serial, EXCLUDED.provider_serial),
+                 provider_tax_url = COALESCE(fiscal_receipts.provider_tax_url, EXCLUDED.provider_tax_url),
+                 provider_pdf_url = COALESCE(fiscal_receipts.provider_pdf_url, EXCLUDED.provider_pdf_url),
+                 provider_qr_url = COALESCE(fiscal_receipts.provider_qr_url, EXCLUDED.provider_qr_url),
+                 provider_snapshot = CASE
+                     WHEN fiscal_receipts.provider_snapshot = '{}'::jsonb THEN EXCLUDED.provider_snapshot
+                     ELSE fiscal_receipts.provider_snapshot
+                 END,
                  updated_at = NOW()
          RETURNING id`,
         [
@@ -747,8 +915,19 @@ async function markJobFailed(client, context, errorInfo) {
              )
              VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8::jsonb)
              ON CONFLICT (idempotency_key) DO UPDATE
-                 SET status = CASE WHEN fiscal_operational_incidents.status = 'resolved' THEN fiscal_operational_incidents.status ELSE 'open' END,
-                     details = EXCLUDED.details`,
+                 SET status = 'open',
+                     severity = EXCLUDED.severity,
+                     details = EXCLUDED.details,
+                     recurrence_count = CASE
+                         WHEN fiscal_operational_incidents.status = 'resolved'
+                         THEN fiscal_operational_incidents.recurrence_count + 1
+                         ELSE fiscal_operational_incidents.recurrence_count
+                     END,
+                     last_seen_at = NOW(),
+                     resolved_at = CASE
+                         WHEN fiscal_operational_incidents.status = 'resolved' THEN NULL
+                         ELSE fiscal_operational_incidents.resolved_at
+                     END`,
             [
                 context.job.fiscal_profile_id,
                 context.job.fiscal_register_id || null,
@@ -840,6 +1019,14 @@ async function markShiftJobSucceeded(client, context, result) {
         );
     }
     if (context.job.job_type === 'shift_open') {
+        const providerStatus = String(result.response?.status || '').trim().toUpperCase();
+        if (providerStatus !== 'OPENED') {
+            throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Checkbox shift open has not reached OPENED status', {
+                retryable: true,
+                unknown: true,
+                details: { providerStatus: providerStatus || null }
+            });
+        }
         await client.query(
             `UPDATE fiscal_shifts
                 SET status = 'open',
@@ -893,14 +1080,18 @@ async function runShiftJob(provider, context) {
     if (!method) {
         throw new PaymentOutboxWorkerError('checkbox_shift_operation_not_supported', 'Checkbox shift operation is not configured', { retryable: false });
     }
-    if (context.job.job_type === 'shift_open' && Number(context.job.attempts || 0) > 1 && provider.ensureShiftOpened) {
+    const stage = externalStage(context.job);
+    if (context.job.job_type === 'shift_open' && (Number(context.job.attempts || 0) > 1 || stage === 'shift_request_maybe_submitted' || stage === 'shift_lookup') && (provider.lookupShift || provider.ensureShiftOpened)) {
         await context.recordStage?.('shift_lookup');
-        const response = await provider.ensureShiftOpened({
+        const lookupInput = {
             providerOperationId: context.job.provider_operation_id,
             providerRequestUuid: context.job.provider_operation_id,
             fiscalOperation: context.job,
             payload: context.job.payload || {}
-        }, { allowOpenRequest: false });
+        };
+        const response = provider.lookupShift
+            ? await provider.lookupShift(lookupInput)
+            : await provider.ensureShiftOpened(lookupInput, { allowOpenRequest: false });
         return { response, source: 'shift_lookup' };
     }
     if (context.job.job_type === 'shift_close' && Number(context.job.attempts || 0) > 1 && provider.getCurrentShiftStatus) {
@@ -922,7 +1113,16 @@ async function runShiftJob(provider, context) {
             details: { providerStatus: response?.status || null }
         });
     }
-    await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request' : 'shift_close_request');
+    await context.recordStage?.('readiness');
+    if (provider.prepareMutation) {
+        await provider.prepareMutation({
+            providerOperationId: context.job.provider_operation_id,
+            providerRequestUuid: context.job.provider_operation_id,
+            fiscalOperation: context.job,
+            payload: context.job.payload || {}
+        });
+    }
+    await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request_maybe_submitted' : 'shift_close_request');
     const response = await method.call(provider, {
         providerOperationId: context.job.provider_operation_id,
         providerRequestUuid: context.job.provider_operation_id,
@@ -1163,13 +1363,16 @@ async function processPaymentOutboxJobs({
             };
         }
     }
-    const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize: Math.min(Number(batchSize) || DEFAULT_BATCH_SIZE, 1), lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
+    const maxJobs = Math.max(1, Math.min(Number(batchSize) || DEFAULT_BATCH_SIZE, 25));
     const results = [];
-    for (const job of claimed) {
+    while (results.length < maxJobs) {
+        const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize: 1, lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
+        const job = claimed[0];
+        if (!job) break;
         results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job }));
     }
     const summary = {
-        claimed: claimed.length,
+        claimed: results.length,
         succeeded: results.filter(result => result.ok).length,
         failed: results.filter(result => !result.ok).length,
         results

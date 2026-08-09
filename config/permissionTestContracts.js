@@ -174,6 +174,12 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
     'fiscal.refund': actionContract('fiscal.refund', { backendScenario: 'fiscal refund', mutation: true, sensitive: true, testFiles: ['tests/fiscal-cashier-operations.test.js'] }),
     'fiscal.reconcile': actionContract('fiscal.reconcile', { backendScenario: 'fiscal reconciliation', mutation: true, sensitive: true, testFiles: ['tests/checkbox-webhook-reconciliation.test.js'] }),
     'fiscal.audit.view': actionContract('fiscal.audit.view', { backendScenario: 'fiscal audit reads', sensitive: true, testFiles: ['tests/fiscal-permissions-approvals.test.js'] }),
+    'fiscal.incident.manage': actionContract('fiscal.incident.manage', {
+        backendScenario: 'fiscal incident lifecycle',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/payment-readiness.test.js']
+    }),
     'fiscal.configure': actionContract('fiscal.configure', {
         backendScenario: 'fiscal configuration approvals',
         mutation: true,

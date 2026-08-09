@@ -353,12 +353,13 @@
 
     function scheduleReadinessRefresh() {
         clearReadinessRefreshTimer();
-        state.readinessTimer = window.setTimeout(() => {
-            void refreshReadiness({ silent: true });
+        state.readinessTimer = window.setTimeout(async () => {
+            await loadPilotRegisterState({ silent: true });
+            scheduleReadinessRefresh();
         }, state.readinessBackoffMs);
     }
 
-    async function refreshReadiness({ silent = false } = {}) {
+    async function refreshReadiness({ silent = false, force = true } = {}) {
         if (state.readinessInFlight) return state.registerState;
         state.readinessInFlight = true;
         const button = $('refreshReadinessBtn');
@@ -367,7 +368,7 @@
             await apiRequest('/api/payments/readiness/probe', {
                 method: 'POST',
                 headers: apiHeaders(),
-                body: JSON.stringify({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias }),
+                body: JSON.stringify({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias, force }),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
             const result = await loadPilotRegisterState({ silent: true });
@@ -462,6 +463,24 @@
 
     function paymentUiError(error) {
         const code = error?.code || error?.message;
+        const readableMessages = {
+            cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
+            cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
+            payment_date_required: 'Вкажіть дату квитка.',
+            checkbox_integration_not_ready: 'Інтеграція Checkbox або mapping каси не готові. Підтвердження грошей заблоковано.',
+            kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
+            adults_count_invalid: 'Кількість дорослих не може бути від’ємною.',
+            card_terminal_success_required: 'Перед підтвердженням поставте позначку: термінал показав успішну оплату.',
+            payment_repeat_blocked: 'Повторна оплата заблокована: оплата вже підтверджена або чек очікує фіскалізації.',
+            payment_order_cancel_denied: 'Скасувати можна тільки неоплачену чернетку.',
+            fiscal_mapping_ambiguous_or_missing: 'Пілотна каса park / middle не налаштована або mapping неоднозначний.',
+            forbidden: 'Немає доступу до цієї каси або CRM профілю.',
+            idempotency_key_required: 'Idempotency-Key обов’язковий для безпечного повтору запиту.',
+            queue_unavailable: 'Черга незавершених чеків недоступна. Підтвердження грошей заблоковано.',
+            provider_unavailable: 'Checkbox тимчасово недоступний. Нові оплати заблоковано.',
+            payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Recovery вже оплачених чеків дозволений.'
+        };
+        if (readableMessages[code]) return readableMessages[code];
         const messages = {
             cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
             cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
@@ -601,6 +620,7 @@
                 ${lastKnown.length ? `<div class="cashier-unresolved-list">${lastKnown.map(order => `
                     <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="Відкрити RCP-${escapeAttribute(order.id)}">
                         <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.orderKey || '')}</small></span>
+                        <span>${order.isMine === true ? 'Мій чек' : escapeHtml(order.cashierIdentity || 'Інший касир')}</span>
                         <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
                         <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
                         <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
@@ -618,7 +638,13 @@
             renderPendingOrdersNotice();
             return;
         }
+        const myCount = orders.filter(order => order.isMine === true).length;
+        const registerCount = orders.length;
         body.innerHTML = `
+            <div class="cashier-report-grid" aria-label="Підсумок незавершених чеків">
+                <div><dt>Мої чеки</dt><dd>${myCount}</dd></div>
+                <div><dt>Вся каса</dt><dd>${registerCount}</dd></div>
+            </div>
             <div class="cashier-unresolved-list">
                 ${orders.map(order => `
                     <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="Відкрити RCP-${escapeAttribute(order.id)}">
@@ -717,10 +743,12 @@
             const dateFrom = $('checkboxReportDateFrom')?.value || '';
             const dateTo = $('checkboxReportDateTo')?.value || '';
             const shiftId = $('checkboxReportShiftId')?.value || '';
+            const cashierUserId = $('checkboxReportCashierUserId')?.value || '';
             const page = $('checkboxReportPage')?.value || '1';
             if (dateFrom) params.set('dateFrom', dateFrom);
             if (dateTo) params.set('dateTo', dateTo);
             if (shiftId) params.set('shiftId', shiftId);
+            if (cashierUserId) params.set('cashierUserId', cashierUserId);
             if (page) params.set('page', page);
             params.set('pageSize', '50');
             const result = await apiRequest(`/api/payments/checkbox-sales-report?${params.toString()}`, {
@@ -858,14 +886,9 @@
     }
 
     function integrationReady() {
-        const readinessCode = state.registerState?.readinessCode || null;
         return Boolean(
-            readinessCode === 'ready'
+            state.registerState?.integrationReady === true
             && state.unresolvedQueueState === 'available'
-            && (state.registerState?.featureEnabled || state.registerState?.registerFeatureEnabled)
-            && state.registerState?.checkboxIntegrationEnabled
-            && state.registerState?.mappingExists !== false
-            && state.registerState?.runtimeConfigResolvable !== false
             && state.registerState?.fiscalProfileId
             && state.registerState?.fiscalRegisterId
         );
@@ -896,6 +919,29 @@
             messages.push('Не вдалося прочитати стан пілотної каси.');
         } else {
             const code = state.registerState.readinessCode || 'unknown';
+            const readableLabels = {
+                mapping_missing: 'Налаштування park / middle відсутнє.',
+                mapping_ambiguous: 'Налаштування park / middle неоднозначне.',
+                binding_missing: 'Користувач не прив’язаний до цієї каси.',
+                fiscal_context_incomplete: 'Фіскальний контекст неповний: бракує ФОП, каси, касира або credential refs.',
+                register_disabled: 'Пілотний register вимкнений.',
+                global_integration_disabled: 'Інтеграція Checkbox вимкнена через CHECKBOX_INTEGRATION_ENABLED=false.',
+                payment_acceptance_disabled: 'Приймання нових оплат вимкнене через CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false.',
+                credentials_missing: 'Runtime-доступи для Checkbox не налаштовані.',
+                runtime_config_missing: 'Runtime config Checkbox відсутній.',
+                runtime_config_invalid: 'Runtime config Checkbox невалідний.',
+                provider_unavailable: 'Provider Checkbox тимчасово недоступний.',
+                identity_mismatch: 'Checkbox повернув іншу організацію, касира або касу.',
+                checkbox_cashier_test_mode_mismatch: 'Касир Checkbox не підтверджений як test-mode для пілоту.',
+                checkbox_expected_is_test_mismatch: 'Очікуваний test/prod mode не збігається між DB mapping, env і provider.',
+                shift_opening: 'Зміна відкривається у Checkbox.',
+                shift_closing: 'Зміна закривається у Checkbox.',
+                readiness_stale: 'Готовність застаріла, потрібна свіжа перевірка.',
+                readiness_missing: 'Готовність ще не перевірена.',
+                tax_mapping_missing: 'Фіскальні назви/податки для квитків не налаштовані.',
+                ready: '',
+                unknown: 'Стан готовності каси невідомий.'
+            };
             const labels = {
                 mapping_missing: 'Налаштування park / middle відсутнє.',
                 mapping_ambiguous: 'Налаштування park / middle неоднозначне.',
@@ -916,7 +962,8 @@
                 ready: '',
                 unknown: 'Стан готовності каси невідомий.'
             };
-            if (labels[code]) messages.push(labels[code]);
+            if (readableLabels[code]) messages.push(readableLabels[code]);
+            else if (labels[code]) messages.push(labels[code]);
             if (state.registerState.shift && normalizeStatus(state.registerState.shift.status) === 'opening') {
                 messages.push('Зміна відкривається у Checkbox; підтвердження грошей буде доступне після готовності provider.');
             }
@@ -1427,7 +1474,7 @@
             setText('currentUser', user.name || user.username || '');
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             if (!canAccessPage('/cashier-payments') || !canAccess('payments.view') || !canAccess('payments.create') || !canAccess('payments.confirm_received')) {
-                setDenied('No access to park cashier or required payment capabilities. Cashier does not need finance.manage.');
+                setDenied('Немає доступу до park cashier або потрібних payment capabilities. Касиру не потрібен finance.manage.');
                 return;
             }
             await loadPilotRegisterState({ silent: true });
@@ -1447,7 +1494,7 @@
             if (typeof handleStandaloneInitError === 'function') {
                 handleStandaloneInitError('cashier-payments', error);
             } else {
-                setDenied('Failed to initialize cashier page.');
+                setDenied('Не вдалося ініціалізувати сторінку оплати та чека.');
             }
         }
     }

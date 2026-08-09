@@ -66,18 +66,20 @@ function readRequired(relativePath) {
 function parseGuardedJobs(server) {
     const jobs = [];
     const lines = server.split(/\r?\n/);
-    const guardRe = /guardScheduler\('([^']+)'\s*,\s*([A-Za-z0-9_]+)\s*(?:,\s*\{\s*dedup:\s*(null|'[^']+')\s*\})?\)/;
+    const guardRe = /guardScheduler\('([^']+)'\s*,\s*([A-Za-z0-9_]+)\s*(?:,\s*\{([^}]*)\})?\)/;
 
     for (const line of lines) {
         const guardMatch = line.match(guardRe);
         if (!guardMatch) continue;
 
         const intervalMatch = line.match(/\),\s*([^)]*?)\)\);/);
+        const options = guardMatch[3] || '';
+        const dedupMatch = options.match(/\bdedup:\s*(null|'[^']+')/);
         let dedup = 'daily-default';
-        if (guardMatch[3] === 'null') {
+        if (dedupMatch?.[1] === 'null') {
             dedup = null;
-        } else if (guardMatch[3]) {
-            dedup = guardMatch[3].replace(/^'|'$/g, '');
+        } else if (dedupMatch?.[1]) {
+            dedup = dedupMatch[1].replace(/^'|'$/g, '');
         }
 
         jobs.push({

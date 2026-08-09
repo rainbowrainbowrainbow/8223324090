@@ -16,6 +16,7 @@ const PAYMENT_FISCAL_CAPABILITIES = Object.freeze([
     'fiscal.refund',
     'fiscal.reconcile',
     'fiscal.audit.view',
+    'fiscal.incident.manage',
     'fiscal.configure'
 ]);
 

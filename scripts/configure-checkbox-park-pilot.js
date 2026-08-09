@@ -304,6 +304,22 @@ function assertNoCredentialRefCollisions(refs = []) {
     }
 }
 
+async function assertNoStoredCredentialRefCollisions(client, plan) {
+    const suppliedRefs = [plan.providerLicenseRef, plan.cashierLoginRef].filter(Boolean);
+    if (!suppliedRefs.length) return;
+    const existing = await client.query(
+        `SELECT provider_license_ref AS credential_ref
+           FROM fiscal_registers
+          WHERE provider_license_ref IS NOT NULL
+         UNION ALL
+         SELECT provider_cashier_login_ref AS credential_ref
+           FROM fiscal_cashier_bindings
+          WHERE provider_cashier_login_ref IS NOT NULL`
+    );
+    const refs = [...suppliedRefs, ...existing.rows.map(row => row.credential_ref).filter(Boolean)];
+    assertNoCredentialRefCollisions(refs);
+}
+
 function normalizePlan(options) {
     if (!MODES.includes(options.mode)) {
         throw new PilotConfigError('pilot_config_mode_invalid', `Mode must be one of: ${MODES.join(', ')}`);
@@ -538,6 +554,7 @@ async function loadExistingTarget(client, plan) {
 }
 
 async function assertNoExistingConflicts(client, plan) {
+    await assertNoStoredCredentialRefCollisions(client, plan);
     const existing = await loadExistingTarget(client, plan);
     if (existing?.fiscal_register_id) {
         const comparisons = [
@@ -1126,7 +1143,8 @@ async function assertMutationActorAuthorized(client, plan) {
         `SELECT id, username, name, role, extra_roles, action_allowlist, action_denylist, is_active
            FROM users
           WHERE id = $1
-          LIMIT 1`,
+          LIMIT 1
+          FOR UPDATE`,
         [plan.actorUserId]
     );
     const actor = result.rows[0] || null;
@@ -1161,8 +1179,8 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
             return { mode: plan.mode, ok: preflight.ok, preflight, plan: publicPlan(plan) };
         }
         assertMutationAllowed(env);
-        await assertMutationActorAuthorized(client, plan);
         await client.query('BEGIN');
+        await assertMutationActorAuthorized(client, plan);
         if (plan.mode === 'apply' || plan.mode === 'create') {
             const statusBefore = await statusPlan(client, plan);
             let preflightBefore = null;

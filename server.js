@@ -891,8 +891,8 @@ initializeDatabaseWithSchemaFence().catch(err => {
 
         // v38.4.0: Outbox + refresh token cleanup (daily)
         const { cleanupRefreshTokens } = require('./middleware/auth');
-        schedulerIntervals.push(setInterval(guardScheduler('runCheckboxReadinessProbeScheduler', runCheckboxReadinessProbeScheduler, { dedup: null }), 60000));
-        schedulerIntervals.push(setInterval(guardScheduler('processPaymentOutboxJobs', processPaymentOutboxJobs, { dedup: null }), 30000));
+        schedulerIntervals.push(setInterval(guardScheduler('runCheckboxReadinessProbeScheduler', runCheckboxReadinessProbeScheduler, { dedup: null, autoPause: false }), 60000));
+        schedulerIntervals.push(setInterval(guardScheduler('processPaymentOutboxJobs', processPaymentOutboxJobs, { dedup: null, autoPause: false }), 30000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupOutbox', cleanupOutbox, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));
 

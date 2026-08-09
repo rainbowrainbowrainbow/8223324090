@@ -15,9 +15,11 @@ const {
     assertManualConfirmationBody,
     normalizeTender
 } = require('./paymentStateMachine');
+const { requestPaymentOutboxWakeup } = require('./paymentOutboxWakeup');
 const { PaymentReadinessError, assertPaymentReadiness } = require('./paymentReadinessService');
 const {
     isCheckboxIntegrationEnabled,
+    isCheckboxPaymentAcceptanceEnabled,
     loadCheckboxRuntimeConfig
 } = require('../checkbox/config');
 
@@ -489,6 +491,9 @@ async function createAdmissionTicketPaymentOrder({
     if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(process.env)) {
         throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
     }
+    if (requireCheckboxIntegrationReady && !isCheckboxPaymentAcceptanceEnabled(process.env)) {
+        throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
+    }
 
     const rawCrmProfileKey = body.crmProfileKey || body.crm_profile_key || PILOT_CRM_PROFILE_KEY;
     const rawCrmProfileText = String(rawCrmProfileKey || '').trim().toLowerCase();
@@ -698,9 +703,6 @@ async function confirmPaymentOrder({
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
     assertNoClientFiscalOverride(body);
-    if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(process.env)) {
-        throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
-    }
 
     const numericOrderId = Number(orderId);
     if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
@@ -715,7 +717,7 @@ async function confirmPaymentOrder({
         terminalReference: sanitizeCardReference(body.terminalReference ?? body.terminal_reference)
     });
 
-    return withTransaction(dbPool, async client => {
+    const result = await withTransaction(dbPool, async client => {
         const existingAttempt = await findAttemptByIdempotency(client, key);
         if (existingAttempt) {
             const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
@@ -728,30 +730,18 @@ async function confirmPaymentOrder({
             if (existingAttempt.request_snapshot?.fingerprint !== requestFingerprint) {
                 throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different confirmation body', { status: 409 });
             }
-            if (requireCheckboxIntegrationReady) {
-                await assertCheckboxIntegrationReady(client, {
-                    user,
-                    fiscalProfileId: existingOrder.fiscal_profile_id,
-                    fiscalRegisterId: existingOrder.fiscal_register_id,
-                    registerStatus: existingOrder.fiscal_register_status,
-                    registerFeatureEnabled: Boolean(existingOrder.feature_enabled),
-                    provider: existingOrder.provider,
-                    providerLicenseRef: existingOrder.provider_license_ref
-                });
-                await assertPaymentReadiness({
-                    client,
-                    user,
-                    fiscalProfileId: existingOrder.fiscal_profile_id,
-                    fiscalRegisterId: existingOrder.fiscal_register_id,
-                    crmProfileKey: existingOrder.crm_profile_key,
-                    action: 'payments.confirm_received'
-                });
-            }
             return {
                 replayed: true,
                 order: normalizePaymentOrder(existingOrder),
                 attemptId: Number(existingAttempt.id)
             };
+        }
+
+        if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(process.env)) {
+            throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
+        }
+        if (requireCheckboxIntegrationReady && !isCheckboxPaymentAcceptanceEnabled(process.env)) {
+            throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
         }
 
         const lockResult = await client.query(
@@ -1045,6 +1035,10 @@ async function confirmPaymentOrder({
             providerRequestUuid
         };
     });
+    if (!result.replayed && result.outboxJobId) {
+        requestPaymentOutboxWakeup({ reason: 'payment_confirmed' });
+    }
+    return result;
 }
 
 async function cancelDraftPaymentOrder({

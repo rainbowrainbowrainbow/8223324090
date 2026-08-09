@@ -247,7 +247,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
              register_credential_ref, cashier_credential_ref, fiscal_configuration_hash, fiscal_location_id, external_stage
          )
          VALUES ($1, $2, $3, 'shift_open', 'pending', $4, 'checkbox', $5, 'UAH', $6::jsonb, $7,
-                 $8, $9, $10, $11, $12, $13, $14, $15, 'shift_request')
+                 $8, $9, $10, $11, $12, $13, $14, $15, 'auth')
          RETURNING *`,
         [
             fiscalProfileId,
@@ -258,7 +258,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
             JSON.stringify({
                 provider_request_uuid: providerRequestUuid,
                 auto_opened_before_sale: true,
-                external_stage: 'shift_request',
+                external_stage: 'auth',
                 fiscal_configuration_hash: configurationHash,
                 provider_context: providerContext
             }),
@@ -287,7 +287,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
         jobType: 'shift_open',
         idempotencyKey: `payment_outbox:shift_open:${shift.rows[0].id}`,
         priority: 10,
-        payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.rows[0].id), fiscal_register_id: fiscalRegisterId, external_stage: 'shift_request' }
+        payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.rows[0].id), fiscal_register_id: fiscalRegisterId, external_stage: 'auth' }
     });
     await insertAudit(client, {
         fiscalProfileId,

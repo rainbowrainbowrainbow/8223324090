@@ -126,7 +126,7 @@
                     <div><p class="cashier-kicker">Контроль</p><h2 id="unresolvedOrdersTitle">Незавершені чеки</h2></div>
                     <button type="button" id="refreshUnresolvedOrdersBtn" class="btn btn-secondary">Оновити</button>
                 </div>
-                <p class="cashier-muted">Оплачені orders зі статусом pending / unknown / retryable / dead залишаються тут, навіть якщо касир почав наступного клієнта.</p>
+                <p class="cashier-muted">Оплачені orders зі статусом pending / unknown / retryable / dead залишаються тут, навіть якщо наступний касир працює з цією касою.</p>
                 <div id="unresolvedOrdersBody" class="cashier-report-body" aria-live="polite">Незавершених чеків не завантажено.</div>
             </section>
 
@@ -140,6 +140,7 @@
                     <label class="cashier-field"><span>Дата від</span><input id="checkboxReportDateFrom" type="date"></label>
                     <label class="cashier-field"><span>Дата до</span><input id="checkboxReportDateTo" type="date"></label>
                     <label class="cashier-field"><span>ID зміни</span><input id="checkboxReportShiftId" type="number" min="1" step="1" inputmode="numeric"></label>
+                    <label class="cashier-field"><span>Касир</span><input id="checkboxReportCashierUserId" type="text" inputmode="numeric" placeholder="mine або ID"></label>
                     <label class="cashier-field"><span>Сторінка</span><input id="checkboxReportPage" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
                 </div>
                 <div id="checkboxSalesReportBody" class="cashier-report-body" aria-live="polite">Звіт не завантажено.</div>

@@ -26,6 +26,7 @@ const MIGRATION_PATH = path.join(
     '316_payment_fiscal_ledger_foundation.sql'
 );
 const migration = fs.readFileSync(MIGRATION_PATH, 'utf8');
+const migration329 = fs.readFileSync(path.join(ROOT, 'db', 'migrations', '329_checkbox_immutability_and_config_actor_guards.sql'), 'utf8');
 const migrationSql = migration
     .replace(/\/\*[\s\S]*?\*\//g, ' ')
     .replace(/^\s*--.*$/gm, ' ');
@@ -137,6 +138,49 @@ test('migration 316 stores provider identifiers and idempotency without raw secr
     assert.match(migration, /webhook_signature_valid BOOLEAN NOT NULL DEFAULT FALSE/);
     assert.match(migration, /payload_sha256 VARCHAR\(128\) NOT NULL/);
     assert.match(migration, /sanitized_payload JSONB NOT NULL DEFAULT '\{\}'::jsonb/);
+});
+
+test('migration 329 adds DB-level immutability and append-only configuration guards', () => {
+    assert.match(migration329, /-- MIGRATION_KIND:\s*schema/i);
+    assert.match(migration329, /prevent_fiscal_operation_identity_drift_v329/);
+    assert.match(migration329, /trg_fiscal_operation_identity_drift_v329/);
+    assert.match(migration329, /trg_fiscal_operation_delete_v329/);
+    assert.match(migration329, /ON fiscal_operations[\s\S]*FOR EACH ROW[\s\S]*EXECUTE FUNCTION prevent_fiscal_operation_delete_v329/);
+    assert.match(migration329, /provider_operation_id IS NOT NULL[\s\S]*NEW\.provider_operation_id IS DISTINCT FROM OLD\.provider_operation_id/);
+    for (const protectedColumn of [
+        'provider_organization_id',
+        'provider_outlet_id',
+        'provider_register_id',
+        'provider_cashier_id',
+        'register_credential_ref',
+        'cashier_credential_ref',
+        'expected_is_test',
+        'fiscal_configuration_hash',
+        'amount_minor',
+        'fiscal_register_id',
+        'fiscal_location_id'
+    ]) {
+        assert.match(migration329, new RegExp(`NEW\\.${protectedColumn} IS DISTINCT FROM OLD\\.${protectedColumn}`), `${protectedColumn} must be immutable`);
+    }
+    assert.match(migration329, /prevent_fiscal_receipt_identity_drift_v329/);
+    assert.match(migration329, /trg_fiscal_receipt_delete_v329/);
+    assert.match(migration329, /ON fiscal_receipts[\s\S]*FOR EACH ROW[\s\S]*EXECUTE FUNCTION prevent_fiscal_receipt_delete_v329/);
+    for (const receiptColumn of [
+        'fiscal_operation_id',
+        'payment_order_id',
+        'payment_refund_id',
+        'receipt_type',
+        'provider_receipt_id',
+        'total_amount_minor',
+        'currency'
+    ]) {
+        assert.match(migration329, new RegExp(`NEW\\.${receiptColumn} IS DISTINCT FROM OLD\\.${receiptColumn}`), `${receiptColumn} must be immutable`);
+    }
+    assert.match(migration329, /prevent_fiscal_configuration_audit_mutation_v329/);
+    assert.match(migration329, /BEFORE UPDATE OR DELETE[\s\S]*ON fiscal_configuration_audit/);
+    assert.match(migration329, /chk_fiscal_configuration_audit_actor_user_v329/);
+    assert.match(migration329, /CHECK \(actor_user_id IS NOT NULL\)/);
+    assert.doesNotMatch(migration329, /\b(password|secret|token|pin|access_key|license_key)\b/i);
 });
 
 test('money conversion rejects floating point inputs and round-trips UAH minor units', () => {

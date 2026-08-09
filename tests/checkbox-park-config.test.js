@@ -26,6 +26,7 @@ const baseArgs = [
     '--item', 'regular_child|Park child admission|taxed|7|1|0'
 ];
 const mutationArgs = [...baseArgs, '--reason', 'test pilot config change'];
+const authorizedMutationArgs = [...mutationArgs, '--actor-user-id', '50'];
 
 function withoutItemArgs(args) {
     const output = [];
@@ -74,13 +75,13 @@ test('park pilot config rejects preschool or non-middle activation', () => {
 
 test('park pilot config supports explicit preflight/status/enable/disable modes', () => {
     assert.equal(parseArgs(['preflight', ...baseArgs]).mode, 'preflight');
-    assert.equal(parseArgs(['--enable-register', ...baseArgs]).mode, 'enable-register');
-    assert.equal(parseArgs(['--disable-register', '--legal-entity-key', 'park_fop']).mode, 'disable-register');
+    assert.equal(parseArgs(['--enable-register', ...mutationArgs, '--actor-user-id', '50']).mode, 'enable-register');
+    assert.equal(parseArgs(['--disable-register', '--legal-entity-key', 'park_fop', '--reason', 'test disable', '--actor-user-id', '50']).mode, 'disable-register');
     assert.equal(parseArgs(['status', '--legal-entity-key', 'park_fop']).mode, 'status');
     assert.equal(parseArgs(['diff', ...baseArgs]).mode, 'diff');
-    assert.equal(parseArgs(['--replace-tax-mapping', ...baseArgs]).mode, 'replace-tax-mapping');
-    assert.equal(parseArgs(['--rotate-binding', ...baseArgs]).mode, 'rotate-binding');
-    assert.equal(parseArgs(['--change-owner', ...baseArgs]).mode, 'change-owner');
+    assert.equal(parseArgs(['--replace-tax-mapping', ...mutationArgs, '--actor-user-id', '50']).mode, 'replace-tax-mapping');
+    assert.equal(parseArgs(['--rotate-binding', ...mutationArgs, '--actor-user-id', '50']).mode, 'rotate-binding');
+    assert.equal(parseArgs(['--change-owner', ...mutationArgs, '--actor-user-id', '50']).mode, 'change-owner');
 });
 
 test('park pilot config enforces explicit taxed/untaxed item mapping rules', () => {
@@ -152,13 +153,27 @@ class FakePilotConfigClient {
             };
         }
         if (normalized.startsWith('SELECT fp.legal_entity_key')) return { rows: [] };
+        if (normalized.startsWith('SELECT id, username, name, role') && normalized.includes('WHERE id = $1')) {
+            return {
+                rows: [{
+                    id: params[0],
+                    username: `actor-${params[0]}`,
+                    name: `Actor ${params[0]}`,
+                    role: 'creator',
+                    extra_roles: [],
+                    action_allowlist: [],
+                    action_denylist: [],
+                    is_active: true
+                }]
+            };
+        }
         if (normalized.startsWith('SELECT id, username, name, role')) {
             return {
                 rows: params[0].map(id => ({
                     id,
                     username: `user-${id}`,
                     name: `User ${id}`,
-                    role: 'admin',
+                    role: 'creator',
                     extra_roles: [],
                     action_allowlist: [],
                     action_denylist: [],
@@ -328,14 +343,14 @@ class FakePilotConfigClient {
 
 test('park pilot config apply is explicit and idempotent', async () => {
     await assert.rejects(
-        () => run(['--apply', ...mutationArgs], { env: {}, dbPool: new FakePilotConfigDb() }),
+        () => run(['--apply', ...authorizedMutationArgs], { env: {}, dbPool: new FakePilotConfigDb() }),
         error => error.code === 'pilot_config_apply_not_allowed'
     );
 
     const db = new FakePilotConfigDb();
     const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
-    const first = await run(['--apply', ...mutationArgs], { env, dbPool: db });
-    const second = await run(['--apply', ...mutationArgs], { env, dbPool: db });
+    const first = await run(['--apply', ...authorizedMutationArgs], { env, dbPool: db });
+    const second = await run(['--apply', ...authorizedMutationArgs], { env, dbPool: db });
     assert.equal(first.applied, true);
     assert.equal(second.applied, true);
     assert.equal(second.noChange, true);
@@ -355,8 +370,8 @@ test('park pilot config apply is explicit and idempotent', async () => {
 test('park pilot config generic apply fails closed on drift and diff explains changes', async () => {
     const db = new FakePilotConfigDb();
     const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
-    await run(['--apply', ...mutationArgs], { env, dbPool: db });
-    const changed = mutationArgs.flatMap((arg, index, list) => {
+    await run(['--apply', ...authorizedMutationArgs], { env, dbPool: db });
+    const changed = authorizedMutationArgs.flatMap((arg, index, list) => {
         if (arg === '--provider-register-id') return ['--provider-register-id', 'register-2'];
         return index > 0 && list[index - 1] === '--provider-register-id' ? [] : [arg];
     });
@@ -372,12 +387,50 @@ test('park pilot config generic apply fails closed on drift and diff explains ch
 test('park pilot config explicit commands mutate with audit and keep register state intentional', async () => {
     const db = new FakePilotConfigDb();
     const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
-    await run(['--apply', ...mutationArgs], { env, dbPool: db });
-    await run(['--enable-register', ...mutationArgs, '--reason', 'test enable after preflight'], { env, dbPool: db });
+    await run(['--apply', ...authorizedMutationArgs], { env, dbPool: db });
+    await run(['--enable-register', ...authorizedMutationArgs, '--reason', 'test enable after preflight'], { env, dbPool: db });
     assert.equal([...db.registers.values()][0].feature_enabled, true);
-    await run(['--replace-tax-mapping', ...withoutItemArgs(mutationArgs), '--item', 'regular_child|Park child admission|taxed|8|1|0', '--reason', 'test tax mapping rotation'], { env, dbPool: db });
+    await run(['--replace-tax-mapping', ...withoutItemArgs(authorizedMutationArgs), '--item', 'regular_child|Park child admission|taxed|8|1|0', '--reason', 'test tax mapping rotation'], { env, dbPool: db });
     assert.equal([...db.items.values()].find(item => item.item_code === 'regular_child').provider_tax_id, '8');
-    await run(['--change-owner', ...mutationArgs, '--integration-owner', 'new-owner', '--reason', 'test owner change'], { env, dbPool: db });
+    await run(['--change-owner', ...authorizedMutationArgs, '--integration-owner', 'new-owner', '--reason', 'test owner change'], { env, dbPool: db });
     assert.equal([...db.registers.values()][0].metadata.integration_owner, 'new-owner');
     assert.ok(db.audits.length >= 4);
+});
+
+test('park pilot config rejects mutating commands without authenticated fiscal.configure actor and reason', async () => {
+    assert.throws(
+        () => parseArgs(['--apply', ...mutationArgs]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_actor_user_required'
+    );
+    assert.throws(
+        () => parseArgs(['--apply', ...baseArgs, '--actor-user-id', '50']),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_reason_required'
+    );
+    class InactiveActorDb extends FakePilotConfigDb {}
+    class InactiveActorClient extends FakePilotConfigClient {
+        async query(sql, params = []) {
+            const normalized = sql.replace(/\s+/g, ' ').trim();
+            if (normalized.startsWith('SELECT id, username, name, role') && normalized.includes('WHERE id = $1')) {
+                return { rows: [{ id: params[0], username: 'inactive', role: 'creator', extra_roles: [], action_allowlist: [], action_denylist: [], is_active: false }] };
+            }
+            return super.query(sql, params);
+        }
+    }
+    InactiveActorDb.prototype.connect = async function connect() { return new InactiveActorClient(this); };
+    await assert.rejects(
+        () => run(['--apply', ...authorizedMutationArgs], { env: { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' }, dbPool: new InactiveActorDb() }),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_actor_user_inactive'
+    );
+});
+
+test('park pilot config rejects credential refs that collide to the same env prefix', () => {
+    assert.throws(
+        () => parseArgs([
+            ...baseArgs.flatMap((arg, index, list) => {
+                if (arg === '--cashier-login-ref') return ['--cashier-login-ref', 'park_middle'];
+                return index > 0 && list[index - 1] === '--cashier-login-ref' ? [] : [arg];
+            })
+        ]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_credential_ref_collision'
+    );
 });

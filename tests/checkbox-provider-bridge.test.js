@@ -61,7 +61,8 @@ function providerConfig(baseUrl) {
         deviceId: 'eventgenix-test-device',
         clientName: 'EventGenix Test',
         clientVersion: 'test',
-        timeoutMs: 1000
+        timeoutMs: 1000,
+        expectedIsTest: false
     };
 }
 
@@ -79,6 +80,7 @@ function cashierProfile(overrides = {}) {
         created_at: new Date().toISOString(),
         blocked: null,
         is_test: false,
+        permissions: { sales: true, cash_payment: true, card_payment: true },
         certificate_end: new Date(Date.now() + 86400000).toISOString(),
         organization: { id: PROVIDER_ORGANIZATION_ID, title: 'Test FOP', edrpou: '00000000', tax_number: '00000000' },
         ...overrides
@@ -95,6 +97,43 @@ function openedShift(overrides = {}) {
         cashier: { id: PROVIDER_CASHIER_ID, full_name: 'Sandbox Cashier' },
         ...overrides
     };
+}
+
+function cashRegisterInfo(overrides = {}) {
+    return {
+        id: PROVIDER_REGISTER_ID,
+        fiscal_number: '4000000000',
+        active: true,
+        created_at: new Date().toISOString(),
+        offline_mode: false,
+        stay_offline: false,
+        has_shift: true,
+        ...overrides
+    };
+}
+
+function signatureStatus(overrides = {}) {
+    return {
+        online: true,
+        type: 'CLOUD_SIGNATURE_3',
+        shift_open_possibility: true,
+        ...overrides
+    };
+}
+
+function cashierTaxes(overrides = {}) {
+    return [
+        {
+            id: '7',
+            code: 7,
+            label: 'VAT 20',
+            symbol: 'А',
+            rate: 20,
+            included: true,
+            created_at: new Date().toISOString(),
+            ...overrides
+        }
+    ];
 }
 
 function checkboxReceipt(receiptId, overrides = {}) {
@@ -126,7 +165,8 @@ function saleInput(receiptId = crypto.randomUUID(), overrides = {}) {
             fiscal_profile_id: 7,
             provider_organization_id: PROVIDER_ORGANIZATION_ID,
             provider_register_id: PROVIDER_REGISTER_ID,
-            provider_cashier_id: PROVIDER_CASHIER_ID
+            provider_cashier_id: PROVIDER_CASHIER_ID,
+            provider_shift_id: PROVIDER_SHIFT_ID
         },
         paymentOrder: {
             id: 301,
@@ -137,6 +177,7 @@ function saleInput(receiptId = crypto.randomUUID(), overrides = {}) {
             provider_organization_id: PROVIDER_ORGANIZATION_ID,
             provider_register_id: PROVIDER_REGISTER_ID,
             provider_cashier_id: PROVIDER_CASHIER_ID,
+            provider_shift_id: PROVIDER_SHIFT_ID,
             confirmation_snapshot: {}
         },
         items: [{
@@ -194,6 +235,69 @@ test('runtime provider maps worker DTO to official auth, shift, validate, sell a
     }
 });
 
+test('runtime provider readiness verifies official cashier, register, signature, permissions, tax and test identity', async () => {
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+        if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const readiness = await provider.verifyReadiness({
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: false
+        }, { expectedTaxIds: ['7'] });
+
+        assert.equal(readiness.cashier.cashierId, PROVIDER_CASHIER_ID);
+        assert.equal(readiness.register.registerId, PROVIDER_REGISTER_ID);
+        assert.equal(readiness.signature.online, true);
+        assert.equal(readiness.permissions.cashPayment, true);
+        assert.deepEqual(readiness.taxes.expected, ['7']);
+        assert.equal(calls.find(call => call.path === '/api/v1/cash-registers/info').headers['x-license-key'], 'license-secret');
+        assert.equal(calls.every(call => call.path !== '/api/v1/receipts/sell' && call.path !== '/api/v1/shifts'), true);
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider readiness fails closed on missing signature, permissions, tax or test identity mismatch', async () => {
+    async function expectReadinessError(overrides, expectedCode) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile(overrides.cashier || {}) };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo(overrides.register || {}) };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus(overrides.signature || {}) };
+            if (call.path === '/api/v1/cashier/tax') return { body: overrides.taxes || cashierTaxes() };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig(providerConfig(baseUrl));
+            await assert.rejects(
+                () => provider.verifyReadiness({
+                    expectedCashierId: PROVIDER_CASHIER_ID,
+                    expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                    expectedRegisterId: PROVIDER_REGISTER_ID,
+                    expectedIsTest: false
+                }, { expectedTaxIds: ['7'] }),
+                error => error instanceof CheckboxClientError && error.code === expectedCode
+            );
+        } finally {
+            await close(server);
+        }
+    }
+
+    await expectReadinessError({ cashier: { is_test: true } }, 'checkbox_cashier_test_mode_mismatch');
+    await expectReadinessError({ cashier: { permissions: { sales: true, cash_payment: true, card_payment: false } } }, 'checkbox_cashier_permissions_missing');
+    await expectReadinessError({ signature: { online: false } }, 'checkbox_signature_offline');
+    await expectReadinessError({ register: { active: false } }, 'checkbox_register_not_active');
+    await expectReadinessError({ taxes: cashierTaxes({ id: '9', code: 9 }) }, 'checkbox_provider_tax_ids_unavailable');
+});
+
 test('runtime provider maps official service in/out receipts and verifies service receipt type', async () => {
     const serviceInId = crypto.randomUUID();
     const serviceOutId = crypto.randomUUID();
@@ -225,7 +329,8 @@ test('runtime provider maps official service in/out receipts and verifies servic
                 amount_minor: '5000',
                 provider_organization_id: PROVIDER_ORGANIZATION_ID,
                 provider_register_id: PROVIDER_REGISTER_ID,
-                provider_cashier_id: PROVIDER_CASHIER_ID
+                provider_cashier_id: PROVIDER_CASHIER_ID,
+                provider_shift_id: PROVIDER_SHIFT_ID
             }
         });
         await provider.createServiceReceipt({
@@ -238,7 +343,8 @@ test('runtime provider maps official service in/out receipts and verifies servic
                 amount_minor: '5000',
                 provider_organization_id: PROVIDER_ORGANIZATION_ID,
                 provider_register_id: PROVIDER_REGISTER_ID,
-                provider_cashier_id: PROVIDER_CASHIER_ID
+                provider_cashier_id: PROVIDER_CASHIER_ID,
+                provider_shift_id: PROVIDER_SHIFT_ID
             }
         });
         const serviceCalls = calls.filter(call => call.path === '/api/v1/receipts/service');
@@ -440,12 +546,12 @@ test('runtime provider maps and verifies cash received amount and official chang
     }
 });
 
-test('runtime provider treats official 202 shift OPENING as retryable until current shift is OPENED', async () => {
+test('runtime provider keeps official 202 shift OPENING recoverable without forcing immediate OPENED', async () => {
     const receiptId = crypto.randomUUID();
     const { server, calls, baseUrl } = await listenMock((call, allCalls) => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
-        if (call.path === '/api/v1/shifts') return { status: 202, body: openedShift({ status: 'OPENING' }) };
+        if (call.path === '/api/v1/shifts') return { status: 202, body: openedShift({ id: receiptId, status: 'OPENING' }) };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ status: 'OPENED' }) };
         return { body: { valid: true } };
     });
@@ -460,8 +566,39 @@ test('runtime provider treats official 202 shift OPENING as retryable until curr
                 provider_organization_id: PROVIDER_ORGANIZATION_ID
             }
         });
-        assert.equal(response.status, 'OPENED');
+        assert.equal(response.id, receiptId);
+        assert.equal(response.status, 'OPENING');
         assert.equal(calls.filter(call => call.path === '/api/v1/shifts').length, 1);
+        assert.equal(calls.some(call => call.path === '/api/v1/cashier/shift'), false);
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider closes shift with provider generated report payload and waits for CLOSED externally', async () => {
+    const operationId = crypto.randomUUID();
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/shifts/close') return { status: 202, body: openedShift({ id: PROVIDER_SHIFT_ID, status: 'CLOSING' }) };
+        return { body: {} };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const response = await provider.closeShift({
+            providerOperationId: operationId,
+            fiscalOperation: {
+                operation_type: 'shift_close',
+                provider_operation_id: operationId,
+                provider_shift_id: PROVIDER_SHIFT_ID,
+                provider_register_id: PROVIDER_REGISTER_ID,
+                provider_cashier_id: PROVIDER_CASHIER_ID,
+                provider_organization_id: PROVIDER_ORGANIZATION_ID
+            }
+        });
+        const closeCall = calls.find(call => call.path === '/api/v1/shifts/close');
+        assert.deepEqual(closeCall.body, {});
+        assert.equal(response.status, 'CLOSING');
     } finally {
         await close(server);
     }
@@ -556,6 +693,7 @@ test('provider factory resolves only logical refs through environment values', (
     const factory = createCheckboxProviderFactory({
         env: {
             CHECKBOX_INTEGRATION_ENABLED: 'true',
+            CHECKBOX_EXPECT_IS_TEST: 'false',
             CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://api.checkbox.in.ua',
             CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
             CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
@@ -598,6 +736,7 @@ test('provider factory eligibility is scoped by fiscal profile and register with
     const factory = createCheckboxProviderFactory({
         env: {
             CHECKBOX_INTEGRATION_ENABLED: 'true',
+            CHECKBOX_EXPECT_IS_TEST: 'false',
             CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://api.checkbox.in.ua',
             CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
             CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
@@ -614,6 +753,7 @@ test('runtime config does not fall back to global Checkbox secrets for logical r
     const factory = createCheckboxProviderFactory({
         env: {
             CHECKBOX_INTEGRATION_ENABLED: 'true',
+            CHECKBOX_EXPECT_IS_TEST: 'false',
             CHECKBOX_BASE_URL: 'https://api.checkbox.in.ua',
             CHECKBOX_LOGIN: 'global-cashier',
             CHECKBOX_PASSWORD: 'global-password',
@@ -623,12 +763,32 @@ test('runtime config does not fall back to global Checkbox secrets for logical r
     assert.equal(factory.canResolveRefs({ credentialRef: 'park-middle', licenseRef: 'park-middle' }), false);
 });
 
+test('runtime config requires explicit CHECKBOX_EXPECT_IS_TEST before enabling provider calls', () => {
+    const env = {
+        CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://api.checkbox.in.ua',
+        CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
+        CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
+        CHECKBOX_PARK_MIDDLE_LICENSE_KEY: 'license-secret'
+    };
+    assert.throws(
+        () => loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env }),
+        error => error instanceof CheckboxClientError && error.code === 'checkbox_expected_is_test_required'
+    );
+    assert.throws(
+        () => loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'sandbox' } }),
+        error => error instanceof CheckboxClientError && error.code === 'checkbox_expected_is_test_invalid'
+    );
+    assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'true' } }).expectedIsTest, true);
+    assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'false' } }).expectedIsTest, false);
+});
+
 test('runtime config fails closed for credential ref collisions and non-allowlisted URLs', () => {
     assert.throws(
         () => loadCheckboxRuntimeConfig({
             credentialRef: 'park-middle',
             licenseRef: 'park_middle',
             env: {
+                CHECKBOX_EXPECT_IS_TEST: 'false',
                 CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://api.checkbox.in.ua',
                 CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
                 CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
@@ -643,6 +803,7 @@ test('runtime config fails closed for credential ref collisions and non-allowlis
             credentialRef: 'park-middle',
             licenseRef: 'park-middle',
             env: {
+                CHECKBOX_EXPECT_IS_TEST: 'false',
                 CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://evil.example',
                 CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
                 CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
@@ -657,6 +818,7 @@ test('runtime config fails closed for credential ref collisions and non-allowlis
             credentialRef: 'park-middle',
             licenseRef: 'park-middle',
             env: {
+                CHECKBOX_EXPECT_IS_TEST: 'false',
                 CHECKBOX_PARK_MIDDLE_BASE_URL: 'http://127.0.0.1:18080',
                 CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
                 CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
@@ -671,6 +833,7 @@ test('runtime config fails closed for credential ref collisions and non-allowlis
         licenseRef: 'park-middle',
         env: {
             CHECKBOX_ALLOW_LOCAL_MOCK_HOST: 'true',
+            CHECKBOX_EXPECT_IS_TEST: 'false',
             CHECKBOX_PARK_MIDDLE_BASE_URL: 'http://127.0.0.1:18080',
             CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
             CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',

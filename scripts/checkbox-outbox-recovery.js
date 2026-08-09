@@ -3,7 +3,7 @@
 
 const { pool } = require('../db');
 
-const PRE_SELL_STAGES = new Set(['auth_readiness', 'shift_lookup', 'validation']);
+const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_lookup', 'receipt_validation']);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
 const MUTATING_MODES = new Set(['requeue-pre-sell', 'lookup-only']);
 const MODES = new Set(['status', 'dead-letter', ...MUTATING_MODES]);
@@ -70,7 +70,7 @@ function sanitizeRow(row) {
         jobStatus: row.job_status,
         attempts: row.attempts,
         maxAttempts: row.max_attempts,
-        locked: Boolean(row.locked_by || row.locked_at),
+        locked: Boolean(row.locked_by || row.heartbeat_at || row.locked_at),
         lastErrorCode: row.job_last_error_code || null,
         operationId: row.operation_id,
         operationType: row.operation_type,
@@ -114,6 +114,7 @@ async function loadScopedRows(client, args, options = {}) {
             poj.max_attempts,
             poj.locked_at,
             poj.locked_by,
+            poj.heartbeat_at,
             poj.last_error_code AS job_last_error_code,
             poj.payload,
             fo.id AS operation_id,
@@ -165,9 +166,9 @@ function assertSingleJob(rows, mode) {
 
 function buildMutationPlan(row, mode) {
     const stage = externalStage(row);
-    if (row.locked_at && row.locked_by) {
-        const lockedAt = Date.parse(row.locked_at);
-        if (Number.isFinite(lockedAt) && Date.now() - lockedAt < 5 * 60 * 1000) {
+    if (row.locked_by && (row.heartbeat_at || row.locked_at)) {
+        const leaseAt = Date.parse(row.heartbeat_at || row.locked_at);
+        if (Number.isFinite(leaseAt) && Date.now() - leaseAt < 5 * 60 * 1000) {
             throw new Error('Cannot recover an active non-expired outbox lease');
         }
     }
@@ -179,7 +180,7 @@ function buildMutationPlan(row, mode) {
             throw new Error('Cannot requeue a fiscalized operation');
         }
         return {
-            targetStage: stage || 'auth_readiness',
+            targetStage: stage || 'auth',
             operationStatus: row.operation_status === 'unknown' ? 'pending' : row.operation_status,
             action: 'requeue_pre_sell'
         };
@@ -236,6 +237,8 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
             SET status = 'queued',
                 locked_at = NULL,
                 locked_by = NULL,
+                lock_token = NULL,
+                heartbeat_at = NULL,
                 next_run_at = NOW(),
                 last_error_code = NULL,
                 last_error_message = NULL,

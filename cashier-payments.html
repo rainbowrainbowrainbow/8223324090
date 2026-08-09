@@ -49,6 +49,9 @@
             <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Немає доступу до оплати або фіскалізації.</div>
             <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
             <div id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite"></div>
+            <div class="cashier-toolbar-row" aria-label="Керування готовністю Checkbox">
+                <button type="button" id="refreshReadinessBtn" class="btn btn-secondary" aria-describedby="cashierReadinessStatus">Оновити готовність Checkbox</button>
+            </div>
 
             <section class="cashier-grid">
                 <form id="paymentOrderForm" class="cashier-card cashier-form" aria-labelledby="paymentOrderFormTitle" aria-describedby="createPaymentDisabledReason">
@@ -133,6 +136,12 @@
                     <button type="button" id="loadCheckboxSalesReportBtn" class="btn btn-secondary">Завантажити</button>
                 </div>
                 <p class="cashier-muted">Внутрішній read-only звіт Event Genix. Це не офіційний Z-звіт і не створює finance_transaction.</p>
+                <div class="cashier-report-filters" aria-label="Фільтри продажів Checkbox">
+                    <label class="cashier-field"><span>Дата від</span><input id="checkboxReportDateFrom" type="date"></label>
+                    <label class="cashier-field"><span>Дата до</span><input id="checkboxReportDateTo" type="date"></label>
+                    <label class="cashier-field"><span>ID зміни</span><input id="checkboxReportShiftId" type="number" min="1" step="1" inputmode="numeric"></label>
+                    <label class="cashier-field"><span>Сторінка</span><input id="checkboxReportPage" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+                </div>
                 <div id="checkboxSalesReportBody" class="cashier-report-body" aria-live="polite">Звіт не завантажено.</div>
             </section>
         </main>

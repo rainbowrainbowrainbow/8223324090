@@ -157,6 +157,7 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') return json(res, 200, { user: { id: 50, name: 'Smoke Cashier', role: 'administrator', roles: ['reception', 'administrator'], businessProfile: 'event_genix' } });
     if (url.pathname === '/api/auth/permissions') return json(res, 200, permissionPayload(url.searchParams.get('deny') !== '1' && req.headers['x-smoke-deny'] !== '1'));
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') return json(res, 200, registerStatePayload());
+    if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
         const orders = [...state.orders.values()]
             .filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized')
@@ -188,7 +189,7 @@ async function handleApi(req, res, url) {
                 confirmedAt: '2026-08-04T10:00:00.000Z',
                 providerTaxUrl: order.fiscalStatus === 'fiscalized' ? 'https://api.checkbox.ua/check' : null
             }));
-        return json(res, 200, { success: true, internalReport: true, officialZReport: false, totals: { paymentTotalMinor: String(orders.length * 50000), cashTotalMinor: '50000', cardTerminalTotalMinor: '50000', statusCounts: { pending: orders.filter(order => order.fiscalStatus === 'pending').length, fiscalized: orders.filter(order => order.fiscalStatus === 'fiscalized').length } }, orders });
+        return json(res, 200, { success: true, internalReport: true, officialZReport: false, page: 1, pageSize: 50, totalCount: orders.length, filters: {}, totals: { paymentTotalMinor: String(orders.length * 50000), cashTotalMinor: '50000', cardTerminalTotalMinor: '50000', statusCounts: { pending: orders.filter(order => order.fiscalStatus === 'pending').length, fiscalized: orders.filter(order => order.fiscalStatus === 'fiscalized').length } }, orders });
     }
     if (url.pathname === '/api/payments/admission-ticket/orders' && req.method === 'POST') {
         const body = await readBody(req);

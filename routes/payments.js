@@ -30,7 +30,8 @@ const {
     listOperationalIncidents,
     probeCheckboxReadiness,
     readinessErrorResponse,
-    requestPhase1ShiftClose
+    requestPhase1ShiftClose,
+    updateOperationalIncidentStatus
 } = require('../services/payments/paymentReadinessService');
 const { isCashierProEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
 
@@ -171,7 +172,12 @@ router.get('/checkbox-sales-report', requireAction('payments.view'), async (req,
         const result = await loadCheckboxSalesReport({
             user: req.user,
             crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
+            dateFrom: req.query.dateFrom || req.query.date_from || null,
+            dateTo: req.query.dateTo || req.query.date_to || null,
+            shiftId: req.query.shiftId || req.query.shift_id || null,
+            page: req.query.page || 1,
+            pageSize: req.query.pageSize || req.query.page_size || 50
         });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -201,6 +207,40 @@ router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) =>
             crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
             registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
             status: req.query.status || 'open'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await updateOperationalIncidentStatus({
+            user: req.user,
+            incidentId: req.params.incidentId,
+            status: 'acknowledged',
+            reason: req.body?.reason || null,
+            crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle'
+        });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/incidents/:incidentId/resolve', requireAction('fiscal.audit.view'), async (req, res) => {
+    try {
+        const result = await updateOperationalIncidentStatus({
+            user: req.user,
+            incidentId: req.params.incidentId,
+            status: 'resolved',
+            reason: req.body?.reason || null,
+            crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
+            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle'
         });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {

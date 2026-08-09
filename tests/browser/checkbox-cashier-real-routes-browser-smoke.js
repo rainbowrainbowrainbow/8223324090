@@ -99,7 +99,7 @@ async function seedFiscalScope(cashier) {
             REGISTER_ALIAS,
             `mock-register-${suffix}`,
             CREDENTIAL_REF,
-            JSON.stringify({ integration_owner: 'checkbox-ui-real-route-smoke' })
+            JSON.stringify({ integration_owner: 'checkbox-ui-real-route-smoke', expected_is_test: true })
         ]
     );
     const providerShiftId = `mock-shift-${suffix}`;
@@ -236,12 +236,50 @@ async function startMockCheckbox(scope) {
                     organization: { id: scope.providerOrganizationId },
                     blocked: false,
                     is_test: true,
-                    certificate_end: '2099-01-01T00:00:00.000Z'
+                    certificate_end: '2099-01-01T00:00:00.000Z',
+                    permissions: { sales: true, cash_payment: true, card_payment: true }
                 });
+            }
+            if (req.url === '/api/v1/cash-registers/info' && req.method === 'GET') {
+                return send(200, {
+                    id: scope.providerRegisterId,
+                    fiscal_number: '4000000000',
+                    active: true,
+                    created_at: '2026-01-01T00:00:00.000Z',
+                    offline_mode: false,
+                    stay_offline: false,
+                    has_shift: Boolean(state.shift)
+                });
+            }
+            if (req.url === '/api/v1/cashier/check-signature' && req.method === 'GET') {
+                return send(200, {
+                    online: true,
+                    type: 'CLOUD_SIGNATURE_3',
+                    shift_open_possibility: true
+                });
+            }
+            if (req.url === '/api/v1/cashier/tax' && req.method === 'GET') {
+                return send(200, [{
+                    id: '7',
+                    code: 7,
+                    label: 'VAT 20',
+                    symbol: 'А',
+                    rate: 20,
+                    included: true,
+                    created_at: '2026-01-01T00:00:00.000Z'
+                }]);
             }
             if (req.url === '/api/v1/cashier/shift' && req.method === 'GET') {
                 if (!state.shift) return send(404, { error: 'shift_not_open' });
                 return send(200, state.shift);
+            }
+            if (req.url.startsWith('/api/v1/shifts/') && req.method === 'GET') {
+                if (!state.shift) return send(404, { error: 'shift_not_open' });
+                return send(200, {
+                    ...state.shift,
+                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000', active: true },
+                    cashier: { id: scope.providerCashierId }
+                });
             }
             if (req.url === '/api/v1/shifts' && req.method === 'POST') {
                 state.shift = {

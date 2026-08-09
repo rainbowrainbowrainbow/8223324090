@@ -12,6 +12,23 @@ function boolEnv(value) {
     return /^(1|true|yes|on|sandbox)$/i.test(String(value || '').trim());
 }
 
+function parseRequiredBooleanEnv(env, name) {
+    const raw = String(env[name] || '').trim().toLowerCase();
+    if (!raw) {
+        throw new CheckboxClientError('checkbox_expected_is_test_required', `${name} must be explicitly true or false when Checkbox integration is enabled`, {
+            status: 503,
+            retryable: false
+        });
+    }
+    if (['true', '1', 'yes', 'on'].includes(raw)) return true;
+    if (['false', '0', 'no', 'off'].includes(raw)) return false;
+    throw new CheckboxClientError('checkbox_expected_is_test_invalid', `${name} must be true or false`, {
+        status: 503,
+        retryable: false,
+        details: { name }
+    });
+}
+
 function isCheckboxIntegrationEnabled(env = process.env) {
     return boolEnv(env.CHECKBOX_INTEGRATION_ENABLED);
 }
@@ -106,7 +123,6 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
             details: { credentialRef: cashierRef || null, licenseRef: registerRef || null, missing }
         });
     }
-    const expectedIsTestRaw = String(env.CHECKBOX_EXPECT_IS_TEST || '').trim();
     return {
         baseUrl: assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost: boolEnv(env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST) }).replace(/\/+$/, ''),
         login,
@@ -119,7 +135,7 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
         timeoutMs: Math.max(1000, Math.min(Number(env.CHECKBOX_TIMEOUT_MS || 15000), 60000)),
         credentialRef: cashierRef || null,
         licenseRef: registerRef || null,
-        expectedIsTest: expectedIsTestRaw ? boolEnv(expectedIsTestRaw) : null
+        expectedIsTest: parseRequiredBooleanEnv(env, 'CHECKBOX_EXPECT_IS_TEST')
     };
 }
 

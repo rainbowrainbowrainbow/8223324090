@@ -94,6 +94,26 @@
     gap: 18px;
 }
 
+.cashier-toolbar-row,
+.cashier-report-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    align-items: flex-end;
+}
+
+.cashier-toolbar-row {
+    justify-content: flex-end;
+}
+
+.cashier-report-filters {
+    margin: 0 0 14px;
+}
+
+.cashier-report-filters .cashier-field {
+    flex: 1 1 150px;
+}
+
 .cashier-card {
     padding: 20px;
 }

@@ -270,12 +270,38 @@ function needsFullPlan(mode) {
     return ['dry-run', 'preflight', 'create', 'apply', 'diff', 'enable-register', 'rotate-binding', 'replace-tax-mapping', 'change-owner'].includes(mode);
 }
 
+function isMutationMode(mode) {
+    return ['create', 'apply', 'enable-register', 'disable-register', 'rotate-binding', 'replace-tax-mapping', 'change-owner'].includes(mode);
+}
+
 function normalizeRef(value, code) {
     const ref = requireText(value, code);
     if (!/^[A-Za-z0-9_:-]+$/.test(ref)) {
         throw new PilotConfigError('pilot_config_credential_ref_invalid', `${code} must contain only letters, digits, underscore, colon or dash`);
     }
     return ref;
+}
+
+function credentialEnvPrefix(ref) {
+    const safe = normalizeRef(ref, 'credential_ref')
+        .replace(/[^A-Za-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '')
+        .toUpperCase();
+    return safe ? `CHECKBOX_${safe}` : '';
+}
+
+function assertNoCredentialRefCollisions(refs = []) {
+    const byPrefix = new Map();
+    for (const ref of refs.filter(Boolean)) {
+        const prefix = credentialEnvPrefix(ref);
+        const existing = byPrefix.get(prefix);
+        if (existing && existing !== ref) {
+            throw new PilotConfigError('pilot_config_credential_ref_collision', 'Credential refs resolve to the same CHECKBOX_<REF> environment prefix', {
+                details: { refs: [existing, ref], prefix }
+            });
+        }
+        byPrefix.set(prefix, ref);
+    }
 }
 
 function normalizePlan(options) {
@@ -317,6 +343,14 @@ function normalizePlan(options) {
     if (plan.actorUserId != null && (!Number.isSafeInteger(plan.actorUserId) || plan.actorUserId <= 0)) {
         throw new PilotConfigError('pilot_config_actor_user_invalid', 'actor-user-id must be a positive integer when provided');
     }
+    if (isMutationMode(plan.mode)) {
+        if (!plan.actorUserId) {
+            throw new PilotConfigError('pilot_config_actor_user_required', 'Mutating configuration commands require exact --actor-user-id');
+        }
+        if (!plan.reason) {
+            throw new PilotConfigError('pilot_config_reason_required', 'Mutating configuration commands require non-empty --reason');
+        }
+    }
     if (!full) return plan;
     if (!cashierUserIds.length) {
         throw new PilotConfigError('pilot_config_cashier_users_required', 'At least one exact cashier-user-id is required');
@@ -324,7 +358,7 @@ function normalizePlan(options) {
     if (!options.items.length) {
         throw new PilotConfigError('pilot_config_items_required', 'At least one fiscal item mapping is required');
     }
-    return {
+    const fullPlan = {
         ...plan,
         legalEntityName: requireText(options.legalEntityName, 'legal_entity_name'),
         taxIdentifier: requireText(options.taxIdentifier, 'tax_identifier'),
@@ -340,6 +374,8 @@ function normalizePlan(options) {
         expectedIsTest: parseExpectedIsTest(options.expectedIsTest),
         items: options.items
     };
+    assertNoCredentialRefCollisions([fullPlan.providerLicenseRef, fullPlan.cashierLoginRef]);
+    return fullPlan;
 }
 
 function requiresActionPin(capabilities = []) {
@@ -1081,6 +1117,34 @@ function assertMutationAllowed(env) {
     }
 }
 
+async function assertMutationActorAuthorized(client, plan) {
+    if (!isMutationMode(plan.mode)) return null;
+    if (!plan.actorUserId) {
+        throw new PilotConfigError('pilot_config_actor_user_required', 'Mutating configuration commands require exact --actor-user-id');
+    }
+    const result = await client.query(
+        `SELECT id, username, name, role, extra_roles, action_allowlist, action_denylist, is_active
+           FROM users
+          WHERE id = $1
+          LIMIT 1`,
+        [plan.actorUserId]
+    );
+    const actor = result.rows[0] || null;
+    if (!actor) {
+        throw new PilotConfigError('pilot_config_actor_user_not_found', 'Configuration actor user was not found');
+    }
+    if (actor.is_active !== true) {
+        throw new PilotConfigError('pilot_config_actor_user_inactive', 'Configuration actor user is not active');
+    }
+    const decision = resolveCapability(actor, 'fiscal.configure');
+    if (!decision.allowed) {
+        throw new PilotConfigError('pilot_config_actor_forbidden', 'Configuration actor lacks non-delegable fiscal.configure capability', {
+            details: { reason: decision.reason || null }
+        });
+    }
+    return actor;
+}
+
 async function run(argv = process.argv.slice(2), { env = process.env, dbPool = pool } = {}) {
     const plan = parseArgs(argv);
     if (plan.mode === 'dry-run') return { applied: false, plan: publicPlan(plan) };
@@ -1097,6 +1161,7 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
             return { mode: plan.mode, ok: preflight.ok, preflight, plan: publicPlan(plan) };
         }
         assertMutationAllowed(env);
+        await assertMutationActorAuthorized(client, plan);
         await client.query('BEGIN');
         if (plan.mode === 'apply' || plan.mode === 'create') {
             const statusBefore = await statusPlan(client, plan);

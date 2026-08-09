@@ -124,6 +124,21 @@ class CheckboxClient {
         return this.request('/api/v1/cashier/shift');
     }
 
+    async checkSignature() {
+        return this.request('/api/v1/cashier/check-signature');
+    }
+
+    async getCashierTaxes() {
+        return this.request('/api/v1/cashier/tax');
+    }
+
+    async getCashRegisterInfo() {
+        return this.request('/api/v1/cash-registers/info', {
+            auth: false,
+            license: true
+        });
+    }
+
     async listShifts(query = {}) {
         const params = new URLSearchParams();
         for (const [key, value] of Object.entries(query || {})) {
@@ -149,13 +164,12 @@ class CheckboxClient {
         });
     }
 
-    async closeShift({ providerRequestUuid = null } = {}) {
-        const body = providerRequestUuid ? { report: { id: providerRequestUuid } } : {};
+    async closeShift() {
         return this.request('/api/v1/shifts/close', {
             method: 'POST',
             accessKey: true,
             device: true,
-            body
+            body: {}
         });
     }
 

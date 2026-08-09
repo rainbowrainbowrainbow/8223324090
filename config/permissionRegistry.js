@@ -354,6 +354,10 @@ const PAGE_PERMISSIONS = Object.freeze([
         backendConsumers: [source('server.js', "app.get('/cashier-payments'")],
         apiConsumers: [
             api('routes/payments.js', '/api/payments/orders/:orderId', 'payments.view'),
+            api('routes/payments.js', '/api/payments/pilot-register-state', 'payments.view'),
+            api('routes/payments.js', '/api/payments/readiness/probe', 'payments.view'),
+            api('routes/payments.js', '/api/payments/unresolved-orders', 'payments.view'),
+            api('routes/payments.js', '/api/payments/checkbox-sales-report', 'payments.view'),
             api('routes/payments.js', '/api/payments/admission-ticket/orders', 'payments.create'),
             api('routes/payments.js', '/api/payments/orders/:orderId/confirm', 'payments.confirm_received')
         ],
@@ -531,6 +535,10 @@ const ACTION_PERMISSIONS = Object.freeze([
         frontendConsumers: [source('js/cashier-payments-page.js', "canAccess('payments.view')", { enforces: true })],
         apiConsumers: [
             api('routes/payments.js', '/api/payments/orders/:orderId', 'payments.view'),
+            api('routes/payments.js', '/api/payments/pilot-register-state', 'payments.view'),
+            api('routes/payments.js', '/api/payments/readiness/probe', 'payments.view', 'Read-only provider readiness probe; blocks payment confirmation when unavailable.'),
+            api('routes/payments.js', '/api/payments/unresolved-orders', 'payments.view', 'Server-backed unresolved fiscal queue; UI must fail closed when unavailable.'),
+            api('routes/payments.js', '/api/payments/checkbox-sales-report', 'payments.view', 'Internal read-only sales report; not an official Z-report.'),
             api('services/payments/fiscalAccess.js', 'Payment/fiscal read authorization service', null, 'Checked by authorizeFiscalActionContext before payment/fiscal reads are exposed.')
         ]
     }),
@@ -575,6 +583,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         ],
         apiConsumers: [
             api('routes/payments.js', '/api/payments/shifts/:shiftId/close', 'fiscal.shift.close'),
+            api('routes/payments.js', '/api/payments/shifts/:shiftId/phase1-close', 'fiscal.shift.close', 'Narrow Phase-1 async close; Cashier PRO disabled by default.'),
             api('routes/payments.js', '/api/payments/shifts/:shiftId/auto-close', 'fiscal.shift.close', 'Feature-flag disabled by default; still guarded by shift close capability.')
         ]
     }),
@@ -630,7 +639,13 @@ const ACTION_PERMISSIONS = Object.freeze([
             source('services/payments/cashierOperationsService.js', 'getOperationalReport', { enforces: true }),
             source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
         ],
-        apiConsumers: [api('routes/payments.js', '/api/payments/shifts/:shiftId/report', 'fiscal.audit.view', 'Internal operational report; not an official Z-report.')]
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/shifts/:shiftId/report', 'fiscal.audit.view', 'Internal operational report; not an official Z-report.'),
+            api('routes/payments.js', '/api/payments/operational-health', 'fiscal.audit.view', 'Read-only operational health for queue/readiness incidents.'),
+            api('routes/payments.js', '/api/payments/incidents', 'fiscal.audit.view', 'Scoped fiscal operational incidents.'),
+            api('routes/payments.js', '/api/payments/incidents/:incidentId/acknowledge', 'fiscal.audit.view', 'Scoped incident lifecycle update.'),
+            api('routes/payments.js', '/api/payments/incidents/:incidentId/resolve', 'fiscal.audit.view', 'Scoped incident lifecycle update.')
+        ]
     }),
     action({
         key: 'fiscal.configure', label: 'Configure fiscal profiles and registers', group: 'payments', defaultRoles: ['creator', 'director'], risk: 'critical',

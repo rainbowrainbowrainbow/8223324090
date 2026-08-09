@@ -121,7 +121,7 @@ async function seedFiscalScope({ cashier }) {
             REGISTER_ALIAS,
             `mock-register-${process.pid}`,
             'park-middle-smoke',
-            JSON.stringify({ integration_owner: 'checkbox-park-smoke' })
+            JSON.stringify({ integration_owner: 'checkbox-park-smoke', expected_is_test: true })
         ]
     );
     await pool.query(
@@ -265,8 +265,40 @@ async function listenMockCheckbox() {
                     return send(200, {
                         id: state.cashierId,
                         blocked: false,
-                        organization: { id: state.organizationId }
+                        organization: { id: state.organizationId },
+                        is_test: true,
+                        certificate_end: '2099-01-01T00:00:00.000Z',
+                        permissions: { sales: true, cash_payment: true, card_payment: true }
                     });
+                }
+                if (req.url === '/api/v1/cash-registers/info' && req.method === 'GET') {
+                    return send(200, {
+                        id: state.registerId,
+                        fiscal_number: '4000000000',
+                        active: true,
+                        created_at: '2026-01-01T00:00:00.000Z',
+                        offline_mode: false,
+                        stay_offline: false,
+                        has_shift: state.shiftOpened
+                    });
+                }
+                if (req.url === '/api/v1/cashier/check-signature' && req.method === 'GET') {
+                    return send(200, {
+                        online: true,
+                        type: 'CLOUD_SIGNATURE_3',
+                        shift_open_possibility: true
+                    });
+                }
+                if (req.url === '/api/v1/cashier/tax' && req.method === 'GET') {
+                    return send(200, [{
+                        id: '7',
+                        code: 7,
+                        label: 'VAT 20',
+                        symbol: 'А',
+                        rate: 20,
+                        included: true,
+                        created_at: '2026-01-01T00:00:00.000Z'
+                    }]);
                 }
                 if (req.url === '/api/v1/cashier/shift' && req.method === 'GET') {
                     return send(200, {
@@ -274,6 +306,14 @@ async function listenMockCheckbox() {
                         status: state.shiftOpened ? 'OPENED' : 'CLOSED',
                         cash_register_id: state.registerId,
                         cashier_id: state.cashierId
+                    });
+                }
+                if (req.url.startsWith('/api/v1/shifts/') && req.method === 'GET') {
+                    return send(200, {
+                        id: state.shiftId,
+                        status: state.shiftOpened ? 'OPENED' : 'CLOSED',
+                        cash_register: { id: state.registerId, fiscal_number: '4000000000', active: true },
+                        cashier: { id: state.cashierId }
                     });
                 }
                 if (req.url === '/api/v1/shifts' && req.method === 'POST') {
@@ -348,6 +388,7 @@ function providerConfig(baseUrl, timeoutMs = 1000) {
         licenseKey: 'mock-license',
         accessKey: 'mock-access',
         deviceId: 'eventgenix-smoke-device',
+        expectedIsTest: true,
         clientName: 'EventGenix Smoke',
         clientVersion: 'test',
         timeoutMs
@@ -460,7 +501,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY,
             CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY,
             CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID,
-            CHECKBOX_ALLOW_LOCAL_MOCK_HOST: process.env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST
+            CHECKBOX_ALLOW_LOCAL_MOCK_HOST: process.env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST,
+            CHECKBOX_EXPECT_IS_TEST: process.env.CHECKBOX_EXPECT_IS_TEST
         };
         cashier = await seedUser({
             username: `cashier_http_smoke_${process.pid}`,
@@ -486,6 +528,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY = 'mock-access';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID = 'eventgenix-smoke-device';
         process.env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST = 'true';
+        process.env.CHECKBOX_EXPECT_IS_TEST = 'true';
     });
 
     after(async () => {

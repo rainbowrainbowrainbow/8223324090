@@ -186,7 +186,7 @@ async function claimPaymentOutboxJobs(client, {
                 AND job.attempts < job.max_attempts
                 AND (
                     (job.status IN ('queued', 'failed') AND job.next_run_at <= NOW())
-                    OR (job.status IN ('claimed', 'running') AND job.locked_at < NOW() - ($4::int * INTERVAL '1 second'))
+                    OR (job.status IN ('claimed', 'running') AND COALESCE(job.heartbeat_at, job.locked_at) < NOW() - ($4::int * INTERVAL '1 second'))
                 )
               ORDER BY job.priority ASC, job.next_run_at ASC, job.id ASC
               FOR UPDATE OF job SKIP LOCKED
@@ -328,18 +328,20 @@ async function recordExternalStage(dbPool, context, stage) {
     context.job.fiscal_request_snapshot = { ...safeJsonObject(context.job.fiscal_request_snapshot), external_stage: safeStage };
     context.job.external_stage = safeStage;
     await withTransaction(dbPool, async client => {
-        await client.query(
+        const owner = await client.query(
             `UPDATE payment_outbox_jobs
                 SET payload = payload || $3::jsonb,
                     external_stage = $5,
                     status = CASE WHEN status = 'claimed' THEN 'running' ELSE status END,
+                    locked_at = NOW(),
                     heartbeat_at = NOW(),
                     updated_at = NOW()
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND locked_by = $4
                 AND lock_token = $6::uuid
-                AND status IN ('claimed', 'running')`,
+                AND status IN ('claimed', 'running')
+              RETURNING id`,
             [
                 context.job.id,
                 context.job.fiscal_profile_id,
@@ -349,11 +351,13 @@ async function recordExternalStage(dbPool, context, stage) {
                 context.job.lock_token
             ]
         );
+        if (!owner.rows.length) {
+            throw new PaymentOutboxWorkerError('payment_outbox_job_ownership_lost', 'Payment outbox job ownership was lost before external stage change', { retryable: true });
+        }
         if (context.job.fiscal_operation_id) {
             await client.query(
                 `UPDATE fiscal_operations
-                    SET request_snapshot = request_snapshot || $3::jsonb,
-                        status = CASE
+                    SET status = CASE
                             WHEN $3::jsonb->>'external_stage' = 'receipt_validation' THEN 'validating'
                             WHEN $3::jsonb->>'external_stage' = 'sale_submit' THEN 'sending'
                             WHEN status IN ('pending', 'failed') THEN 'pending'
@@ -405,8 +409,7 @@ async function recordExternalStageInTransaction(client, context, stage) {
     if (context.job.fiscal_operation_id) {
         await client.query(
             `UPDATE fiscal_operations
-                SET request_snapshot = request_snapshot || $3::jsonb,
-                    external_stage = $3::jsonb->>'external_stage'
+                SET external_stage = $3::jsonb->>'external_stage'
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND status <> 'fiscalized'`,
@@ -926,6 +929,23 @@ async function runShiftJob(provider, context) {
         fiscalOperation: context.job,
         payload: context.job.payload || {}
     });
+    const providerStatus = String(response?.status || '').trim().toUpperCase();
+    if (context.job.job_type === 'shift_open' && providerStatus !== 'OPENED') {
+        await context.recordStage?.('shift_lookup');
+        throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Checkbox shift open has not reached OPENED status', {
+            retryable: true,
+            unknown: true,
+            details: { providerStatus: providerStatus || null }
+        });
+    }
+    if (context.job.job_type === 'shift_close' && providerStatus !== 'CLOSED') {
+        await context.recordStage?.('shift_close_lookup');
+        throw new PaymentOutboxWorkerError('checkbox_shift_close_pending', 'Checkbox shift close has not reached CLOSED status', {
+            retryable: true,
+            unknown: true,
+            details: { providerStatus: providerStatus || null }
+        });
+    }
     return { response, source: context.job.job_type };
 }
 
@@ -983,6 +1003,7 @@ async function loadProcessingContext(dbPool, job) {
         const owner = await client.query(
             `UPDATE payment_outbox_jobs
                 SET status = 'running',
+                    locked_at = NOW(),
                     heartbeat_at = NOW(),
                     updated_at = NOW()
               WHERE id = $1

@@ -5,11 +5,11 @@ Last updated: 2026-08-09.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live version before this release pass: `0.80.100`.
-- Live commit before this release pass: `a467fa4343e03a63344e2f9e03c1318c97cfbd90`.
-- Source branch: `codex/my-day-ai-composer-v08094`.
-- Local release worktree: `.codex-temp/checkbox-fiscal-readiness-release-v080101`.
-- Local release branch: `codex/checkbox-fiscal-readiness-release-v080101`.
+- Live version after the last completed release: `0.80.102`.
+- Live commit after the last completed release: `432c0656cabd271e070633ede88eaa43d95ca901`.
+- Source branch: `codex/my-day-compact-cards-v080101`.
+- Current hardening worktree: `.codex-temp/checkbox-activation-readiness`.
+- Current hardening branch: `codex/checkbox-activation-readiness`.
 
 ## Current Position
 
@@ -19,7 +19,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 
 ## Done
 
-- Additive payment/fiscal schema exists in migrations `316` through `319`.
+- Additive payment/fiscal schema exists in migrations `316` through `329`.
 - Payment orders, items, attempts, allocations, fiscal operations, receipts, shifts, webhooks, approvals, reconciliations, refunds, outbox jobs, and audit events exist.
 - New ledger avoids using `finance_transactions`, `bookings.paid_amount`, legacy `receipts`, or `cash_register_shifts` as the fiscal source of truth.
 - `routes/payments.js` and `services/payments/paymentService.js` implement a local cash/card manual confirmation path with received/change snapshots.
@@ -40,6 +40,8 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - `docs/integrations/checkbox/checkbox-test-mode.env.example` documents ref-specific test-mode env names without values.
 - Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
+- Release `0.80.101` has already been deployed with production Checkbox fiscalization and Cashier PRO disabled.
+- Current hardening work adds provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization.
 
 ## Not Ready
 
@@ -49,13 +51,14 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Accountant-approved fiscal item/tax values are still missing for production activation.
 - Sandbox QA has not been proven against real Checkbox test credentials.
 - End-of-day production policy still needs a final product decision before real activation: manual Checkbox portal close/runbook or narrow Phase-1 close flow.
+- `npm run test:integration:checkbox-ui-real:isolated` needs a disposable local `TEST_DATABASE_URL`; production `DATABASE_URL` must not be used as a fallback.
 
 ## Next Tasks
 
-1. Commit and push the accumulated release diff.
-2. Bump the patch release version and deploy with `CHECKBOX_INTEGRATION_ENABLED=false` and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
-3. Perform live read-only QA: page/access/disabled-state only, with no payment confirmation.
-4. Run real Checkbox sandbox QA only when local `CHECKBOX_SANDBOX_*` secrets exist and the provider reports test cashier/register state.
+1. Finish local hardening checks for migrations `329` and configuration actor authorization.
+2. Run disposable PostgreSQL tests with `TEST_DATABASE_URL` and `TEST_DATABASE_RESET_CONFIRM=RESET_DISPOSABLE_TEST_DATABASE`.
+3. Commit/push/deploy the hardening diff only after CI passes, keeping `CHECKBOX_INTEGRATION_ENABLED=false` and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
+4. Run real Checkbox sandbox QA only when local `CHECKBOX_SANDBOX_*` secrets exist and the provider reports exact test cashier/register state.
 5. Create a separate production activation task for real mapping/secrets/webhook/first fiscal receipt.
 
 ## Activation Blockers
@@ -63,3 +66,5 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Accountant-approved FOP data, fiscal item names, tax groups, VAT policy, and register/cashier mapping are missing.
 - Production Checkbox credentials and webhook setup require a separate activation task.
 - First real fiscal receipt requires explicit approval and controlled live QA.
+- Production mapping must be applied only by an authenticated active EventGenix user with non-delegable `fiscal.configure`, a mandatory reason, and no raw secrets in CLI args, DB, logs, docs, or tests.
+- Production register must remain disabled until successful preflight, sandbox/test-mode proof, and explicit activation approval.

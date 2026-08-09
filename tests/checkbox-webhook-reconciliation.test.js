@@ -375,6 +375,8 @@ class FakeWorkerClient {
                 job.status = 'claimed';
                 job.locked_by = params[2];
                 job.locked_at = new Date().toISOString();
+                job.heartbeat_at = new Date().toISOString();
+                job.lock_token = params[6];
                 job.attempts += 1;
             }
             return { rows: claimable.map(job => ({ ...job })) };
@@ -424,6 +426,8 @@ class FakeWorkerClient {
             const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1] && row.locked_by === params[2] && row.attempts === params[3]);
             if (job && ['claimed', 'running'].includes(job.status)) {
                 job.status = 'running';
+                job.locked_at = new Date().toISOString();
+                job.heartbeat_at = new Date().toISOString();
                 return { rows: [{ id: job.id }] };
             }
             return { rows: [] };
@@ -441,14 +445,22 @@ class FakeWorkerClient {
                 if (normalized.includes("status = CASE WHEN status = 'claimed'")) {
                     if (job.status === 'claimed') job.status = 'running';
                 }
+                job.locked_at = new Date().toISOString();
+                job.heartbeat_at = new Date().toISOString();
             }
-            return { rows: [] };
+            return { rows: job ? [{ id: job.id }] : [] };
         }
 
-        if (normalized.startsWith('UPDATE fiscal_operations') && normalized.includes('request_snapshot = request_snapshot || $3::jsonb')) {
+        if (normalized.startsWith('UPDATE fiscal_operations') && normalized.includes('external_stage = $3::jsonb->>\'external_stage\'')) {
             const operation = this.db.operations.find(row => row.id === params[0] && row.fiscal_profile_id === params[1]);
             if (operation) {
-                operation.request_snapshot = { ...(operation.request_snapshot || {}), ...JSON.parse(params[2]) };
+                const payload = JSON.parse(params[2]);
+                operation.external_stage = payload.external_stage;
+                if (normalized.includes('receipt_validation')) {
+                    if (payload.external_stage === 'receipt_validation') operation.status = 'validating';
+                    else if (payload.external_stage === 'sale_submit') operation.status = 'sending';
+                    else if (['pending', 'failed'].includes(operation.status)) operation.status = 'pending';
+                }
             }
             return { rows: [] };
         }
@@ -481,6 +493,8 @@ class FakeWorkerClient {
             job.status = 'succeeded';
             job.locked_at = null;
             job.locked_by = null;
+            job.lock_token = null;
+            job.heartbeat_at = null;
             job.last_error_code = null;
             job.last_error_message = null;
             return { rows: [] };
@@ -521,6 +535,8 @@ class FakeWorkerClient {
             job.last_error_message = params[5];
             job.locked_at = null;
             job.locked_by = null;
+            job.lock_token = null;
+            job.heartbeat_at = null;
             return { rows: [] };
         }
 
@@ -584,6 +600,7 @@ describe('payment outbox worker reconciliation', () => {
         };
         await claimPaymentOutboxJobs(client, { batchSize: 3, lockedBy: 'worker-a', lockExpiryMs: 60000 });
         assert.match(queries[0].sql, /FOR UPDATE(?: OF job)? SKIP LOCKED/);
+        assert.match(queries[0].sql, /COALESCE\(job\.heartbeat_at,\s*job\.locked_at\)/);
         assert.match(queries[0].sql, /LIMIT \$2/);
         assert.equal(queries[0].params[1], 3);
         assert.equal(queries[0].params[2], 'worker-a');

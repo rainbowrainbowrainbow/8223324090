@@ -14,9 +14,7 @@ const {
 const {
     OPEN_SHIFT_STATUS,
     createProviderFromConfig,
-    extractCashierReadiness,
-    normalizeShiftResponse,
-    validateCashierReadiness
+    normalizeShiftResponse
 } = require('../checkbox/provider');
 
 const PILOT_CRM_PROFILE_KEY = 'event_genix';
@@ -153,6 +151,7 @@ async function loadPilotMapping(client, { crmProfileKey = PILOT_CRM_PROFILE_KEY,
              fr.provider,
              fr.provider_register_id,
              fr.provider_license_ref,
+             fr.metadata->>'expected_is_test' AS register_expected_is_test,
              fr.status AS fiscal_register_status,
              fr.feature_enabled
            FROM fiscal_profiles fp
@@ -189,7 +188,7 @@ async function loadTaxMappingReadiness(client, mapping) {
     const activeCodes = active.rows.map(row => String(row.code || '').trim()).filter(Boolean);
     if (!activeCodes.length) return { ready: false, activeCodes, mappedCodes: [], missingCodes: [] };
     const mapped = await client.query(
-        `SELECT item_code
+        `SELECT item_code, provider_tax_id
            FROM fiscal_item_mappings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
@@ -205,8 +204,9 @@ async function loadTaxMappingReadiness(client, mapping) {
         [mapping.fiscal_profile_id, mapping.fiscal_register_id, mapping.crm_profile_key, activeCodes]
     );
     const mappedCodes = [...new Set(mapped.rows.map(row => String(row.item_code || '').trim()).filter(Boolean))];
+    const providerTaxIds = [...new Set(mapped.rows.map(row => String(row.provider_tax_id || '').trim()).filter(Boolean))];
     const missingCodes = activeCodes.filter(code => !mappedCodes.includes(code));
-    return { ready: missingCodes.length === 0, activeCodes, mappedCodes, missingCodes };
+    return { ready: missingCodes.length === 0, activeCodes, mappedCodes, missingCodes, providerTaxIds };
 }
 
 async function loadLatestLocalShift(client, mapping) {
@@ -318,6 +318,19 @@ function baseReadiness({
     };
 }
 
+function assertRuntimeConfigMatchesMapping(mapping = {}, runtimeConfig = {}) {
+    const mappingExpected = normalizeBoolean(mapping.register_expected_is_test);
+    if (mappingExpected != null && mappingExpected !== runtimeConfig.expectedIsTest) {
+        throw new PaymentReadinessError('checkbox_expected_is_test_mismatch', 'Checkbox expected is_test does not match register mapping metadata', {
+            status: 503,
+            details: { expectedFromMapping: mappingExpected, expectedFromRuntime: runtimeConfig.expectedIsTest }
+        });
+    }
+    if (runtimeConfig.expectedIsTest == null) {
+        throw new PaymentReadinessError('checkbox_expected_is_test_required', 'Checkbox expected is_test must be explicitly configured', { status: 503 });
+    }
+}
+
 function deriveIntegrationReady(state = {}) {
     return Boolean(
         state.checkboxIntegrationEnabled
@@ -354,6 +367,7 @@ function serializeReadinessSnapshot(row = {}) {
         expiresAt: row.expires_at || null,
         latencyMs: row.latency_ms == null ? null : Number(row.latency_ms),
         providerShiftId: row.provider_shift_id || null,
+        expectedIsTest: typeof row.expected_is_test === 'boolean' ? row.expected_is_test : null,
         result: row.result_snapshot || {}
     };
 }
@@ -455,6 +469,7 @@ async function prepareReadinessScope({
                     credentialRef: scope.binding.provider_cashier_login_ref || scope.mapping.provider_license_ref,
                     licenseRef: scope.mapping.provider_license_ref
                 });
+                assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
                 runtimeConfigError = publicError(error);
             }
@@ -513,9 +528,7 @@ async function probeProvider(scope, { fetchImpl, now = new Date(), timeoutMs = P
         { fetchImpl }
     );
     const startedAt = new Date(now).getTime();
-    await provider.authenticate();
-    const cashierProfile = await provider.client.getCashierProfile();
-    const cashier = validateCashierReadiness(cashierProfile, expected);
+    const providerReadiness = await provider.verifyReadiness(expected, { expectedTaxIds: scope.tax?.providerTaxIds || [] });
     let shiftState = 'closed';
     let providerShiftId = null;
     let shift = null;
@@ -544,9 +557,6 @@ async function probeProvider(scope, { fetchImpl, now = new Date(), timeoutMs = P
             throw error;
         }
     }
-    const signatureCertificateReady = cashier.certificateEnd
-        ? Date.parse(cashier.certificateEnd) > Date.now()
-        : true;
     const latencyMs = millisBetween(startedAt, Date.now());
     const state = {
         checkboxIntegrationEnabled: true,
@@ -555,7 +565,7 @@ async function probeProvider(scope, { fetchImpl, now = new Date(), timeoutMs = P
         providerIdentityVerified: true,
         registerActive: true,
         cashierReady: true,
-        signatureCertificateReady,
+        signatureCertificateReady: true,
         taxMappingReady: scope.tax?.ready === true,
         providerUnavailable: false,
         staleReadiness: false,
@@ -570,7 +580,11 @@ async function probeProvider(scope, { fetchImpl, now = new Date(), timeoutMs = P
     return {
         state,
         details: {
-            cashier: extractCashierReadiness(cashierProfile),
+            cashier: providerReadiness.cashier,
+            register: providerReadiness.register,
+            permissions: providerReadiness.permissions,
+            signature: providerReadiness.signature,
+            taxes: providerReadiness.taxes,
             shift: shift ? { id: shift.id, status: shift.status, registerId: shift.registerId, cashierId: shift.cashierId } : { state: shiftState },
             expected
         }
@@ -597,6 +611,7 @@ async function loadReadinessState({
                     credentialRef: scope.binding.provider_cashier_login_ref || scope.mapping.provider_license_ref,
                     licenseRef: scope.mapping.provider_license_ref
                 });
+                assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
                 runtimeConfigError = publicError(error);
             }
@@ -627,6 +642,7 @@ async function loadReadinessState({
             return { ...local, readinessCode: 'readiness_missing', readinessSnapshot: null };
         }
         const staleReadiness = serialized.staleReadiness === true;
+        const testModeMismatch = serialized.expectedIsTest !== runtimeConfig.expectedIsTest;
         const merged = {
             ...local,
             ...serialized,
@@ -636,13 +652,13 @@ async function loadReadinessState({
             registerActive: local.registerActive,
             taxMappingReady: local.taxMappingReady,
             staleReadiness,
-            readinessCode: staleReadiness ? 'readiness_stale' : serialized.readinessCode,
+            readinessCode: testModeMismatch ? 'checkbox_expected_is_test_mismatch' : staleReadiness ? 'readiness_stale' : serialized.readinessCode,
             integrationReady: false,
             fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
             fiscalRegisterId: Number(scope.mapping.fiscal_register_id),
             readinessSnapshot: serialized
         };
-        merged.integrationReady = deriveIntegrationReady(merged);
+        merged.integrationReady = testModeMismatch ? false : deriveIntegrationReady(merged);
         return merged;
     });
 }
@@ -693,6 +709,23 @@ async function probeCheckboxReadiness({
     return withTransaction(dbPool, async client => {
         await syncPortalClosedShift(client, scope, result.state.shiftState);
         const inserted = await insertReadinessSnapshot(client, scope, result.state, result.details);
+        if (result.state.integrationReady === true) {
+            await resolveOperationalIncidents(client, {
+                fiscalProfileId: scope.mapping?.fiscal_profile_id,
+                fiscalRegisterId: scope.mapping?.fiscal_register_id,
+                incidentTypes: ['checkbox.readiness_probe_failed', 'checkbox.provider_unavailable'],
+                reason: 'readiness_probe_recovered'
+            });
+        } else if (result.state.providerUnavailable === true || result.state.readinessCode === 'provider_unavailable') {
+            await upsertOperationalIncident(client, {
+                fiscalProfileId: scope.mapping?.fiscal_profile_id,
+                fiscalRegisterId: scope.mapping?.fiscal_register_id,
+                severity: 'warning',
+                incidentType: 'checkbox.provider_unavailable',
+                idempotencyKey: `checkbox.provider_unavailable:${scope.mapping?.fiscal_profile_id}:${scope.mapping?.fiscal_register_id}`,
+                details: { readiness_code: result.state.readinessCode, sanitized: true }
+            });
+        }
         return { ...result.state, readinessSnapshot: serializeReadinessSnapshot(inserted) };
     });
 }
@@ -719,6 +752,7 @@ async function assertPaymentReadiness({
                     credentialRef: scope.binding.provider_cashier_login_ref || scope.mapping.provider_license_ref,
                     licenseRef: scope.mapping.provider_license_ref
                 });
+                assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
                 runtimeConfigError = publicError(error);
             }
@@ -750,21 +784,32 @@ async function assertPaymentReadiness({
                 state = { ...local, readinessCode: 'readiness_missing', integrationReady: false };
             } else {
                 const staleReadiness = serialized.staleReadiness === true;
-                state = {
-                    ...local,
-                    ...serialized,
-                    checkboxIntegrationEnabled,
-                    localMappingReady: local.localMappingReady,
-                    runtimeSecretsResolvable: local.runtimeSecretsResolvable,
-                    registerActive: local.registerActive,
-                    taxMappingReady: local.taxMappingReady,
-                    staleReadiness,
-                    readinessCode: staleReadiness ? 'readiness_stale' : serialized.readinessCode,
-                    integrationReady: false,
-                    fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
-                    fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
-                };
-                state.integrationReady = deriveIntegrationReady(state);
+                if (serialized.expectedIsTest !== runtimeConfig.expectedIsTest) {
+                    state = {
+                        ...local,
+                        readinessCode: 'checkbox_expected_is_test_mismatch',
+                        integrationReady: false,
+                        staleReadiness,
+                        fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
+                        fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
+                    };
+                } else {
+                    state = {
+                        ...local,
+                        ...serialized,
+                        checkboxIntegrationEnabled,
+                        localMappingReady: local.localMappingReady,
+                        runtimeSecretsResolvable: local.runtimeSecretsResolvable,
+                        registerActive: local.registerActive,
+                        taxMappingReady: local.taxMappingReady,
+                        staleReadiness,
+                        readinessCode: staleReadiness ? 'readiness_stale' : serialized.readinessCode,
+                        integrationReady: false,
+                        fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
+                        fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
+                    };
+                    state.integrationReady = deriveIntegrationReady(state);
+                }
             }
         }
         if (fiscalProfileId && Number(state.fiscalProfileId || 0) !== Number(fiscalProfileId)) {
@@ -775,7 +820,7 @@ async function assertPaymentReadiness({
         }
         if (!state.integrationReady) {
             throw new PaymentReadinessError(state.readinessCode || 'checkbox_not_ready', 'Checkbox is not ready for payment confirmation', {
-                status: ['global_integration_disabled', 'credentials_missing', 'provider_unavailable', 'readiness_stale', 'readiness_missing'].includes(state.readinessCode) ? 503 : 409,
+                status: ['global_integration_disabled', 'credentials_missing', 'provider_unavailable', 'readiness_stale', 'readiness_missing', 'checkbox_expected_is_test_mismatch'].includes(state.readinessCode) ? 503 : 409,
                 details: {
                     readinessCode: state.readinessCode,
                     shiftState: state.shiftState,
@@ -873,14 +918,38 @@ async function loadCheckboxSalesReport({
     dbPool = pool,
     user,
     crmProfileKey = PILOT_CRM_PROFILE_KEY,
-    registerAlias = PILOT_REGISTER_ALIAS
+    registerAlias = PILOT_REGISTER_ALIAS,
+    dateFrom = null,
+    dateTo = null,
+    shiftId = null,
+    page = 1,
+    pageSize = 50
 } = {}) {
+    const normalizedPage = Math.max(1, Math.min(Number(page) || 1, 10000));
+    const normalizedPageSize = Math.max(1, Math.min(Number(pageSize) || 50, 100));
+    const offset = (normalizedPage - 1) * normalizedPageSize;
+    const normalizedDateFrom = /^\d{4}-\d{2}-\d{2}$/.test(String(dateFrom || '')) ? String(dateFrom) : null;
+    const normalizedDateTo = /^\d{4}-\d{2}-\d{2}$/.test(String(dateTo || '')) ? String(dateTo) : null;
+    const normalizedShiftId = shiftId == null || shiftId === ''
+        ? null
+        : Number(shiftId);
+    if (normalizedShiftId != null && (!Number.isSafeInteger(normalizedShiftId) || normalizedShiftId <= 0)) {
+        throw new PaymentReadinessError('shift_id_invalid', 'Fiscal shift id is invalid', { status: 422 });
+    }
     return withTransaction(dbPool, async client => {
         const scope = await loadScope(client, { user, crmProfileKey, registerAlias, action: 'payments.view', requireUserAuthorization: true });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
-        const result = await client.query(
+        const params = [
+            scope.mapping.fiscal_profile_id,
+            scope.mapping.fiscal_register_id,
+            user?.id || null,
+            normalizedDateFrom,
+            normalizedDateTo,
+            normalizedShiftId
+        ];
+        const rowsResult = await client.query(
             `WITH latest_job AS (
                  SELECT DISTINCT ON (payment_order_id)
                         payment_order_id,
@@ -932,15 +1001,22 @@ async function loadCheckboxSalesReport({
                FROM payment_orders po
                LEFT JOIN latest_job job ON job.payment_order_id = po.id
                LEFT JOIN latest_receipt receipt ON receipt.payment_order_id = po.id
+               LEFT JOIN fiscal_operations fo
+                 ON fo.payment_order_id = po.id
+                AND fo.fiscal_profile_id = po.fiscal_profile_id
+                AND fo.operation_type = 'sale'
               WHERE po.fiscal_profile_id = $1
                 AND po.fiscal_register_id = $2
                 AND po.cashier_user_id = $3
                 AND po.payment_status = 'confirmed'
+                AND ($4::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date >= $4::date)
+                AND ($5::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date <= $5::date)
+                AND ($6::bigint IS NULL OR fo.fiscal_shift_id = $6::bigint)
               ORDER BY po.confirmed_at DESC NULLS LAST, po.id DESC
-              LIMIT 100`,
-            [scope.mapping.fiscal_profile_id, scope.mapping.fiscal_register_id, user?.id || null]
+              LIMIT $7 OFFSET $8`,
+            [...params, normalizedPageSize, offset]
         );
-        const rows = result.rows.map(row => ({
+        const rows = rowsResult.rows.map(row => ({
             id: Number(row.id),
             orderKey: row.order_key,
             paymentStatus: row.payment_status,
@@ -961,29 +1037,85 @@ async function loadCheckboxSalesReport({
             providerQrUrl: row.provider_qr_url || null,
             fiscalizedAt: row.fiscalized_at || null
         }));
-        const totals = rows.reduce((acc, row) => {
-            const amount = BigInt(row.totalAmountMinor || '0');
-            acc.paymentTotalMinor += amount;
-            if (row.paymentMethod === 'cash') acc.cashTotalMinor += amount;
-            if (row.paymentMethod === 'card_terminal') acc.cardTerminalTotalMinor += amount;
-            acc.statusCounts[row.fiscalStatus] = (acc.statusCounts[row.fiscalStatus] || 0) + 1;
-            return acc;
-        }, {
-            paymentTotalMinor: 0n,
-            cashTotalMinor: 0n,
-            cardTerminalTotalMinor: 0n,
-            statusCounts: {}
-        });
+        const totalsResult = await client.query(
+            `WITH latest_job AS (
+                 SELECT DISTINCT ON (payment_order_id)
+                        payment_order_id,
+                        status AS outbox_status
+                   FROM payment_outbox_jobs
+                  WHERE fiscal_profile_id = $1
+                    AND payment_order_id IS NOT NULL
+                    AND job_type IN ('receipt_sell', 'receipt_status_lookup')
+                  ORDER BY payment_order_id, created_at DESC, id DESC
+             ),
+             filtered AS (
+                 SELECT po.id,
+                        po.fiscal_status,
+                        po.payment_method,
+                        po.total_amount_minor,
+                        job.outbox_status
+                   FROM payment_orders po
+                   LEFT JOIN latest_job job ON job.payment_order_id = po.id
+                   LEFT JOIN fiscal_operations fo
+                     ON fo.payment_order_id = po.id
+                    AND fo.fiscal_profile_id = po.fiscal_profile_id
+                    AND fo.operation_type = 'sale'
+                  WHERE po.fiscal_profile_id = $1
+                    AND po.fiscal_register_id = $2
+                    AND po.cashier_user_id = $3
+                    AND po.payment_status = 'confirmed'
+                    AND ($4::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date >= $4::date)
+                    AND ($5::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date <= $5::date)
+                    AND ($6::bigint IS NULL OR fo.fiscal_shift_id = $6::bigint)
+             )
+             SELECT
+                 COUNT(*) AS total_count,
+                 COALESCE(SUM(total_amount_minor), 0)::text AS payment_total_minor,
+                 COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'cash'), 0)::text AS cash_total_minor,
+                 COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'card_terminal'), 0)::text AS card_terminal_total_minor,
+                 jsonb_object_agg(status_key, status_count) FILTER (WHERE status_key IS NOT NULL) AS status_counts
+               FROM (
+                 SELECT public_status AS status_key, COUNT(*) AS status_count
+                   FROM (
+                     SELECT CASE
+                         WHEN outbox_status = 'dead' THEN 'dead'
+                         WHEN fiscal_status = 'failed' OR outbox_status IN ('failed', 'claimed', 'running') THEN 'failed_retryable'
+                         ELSE fiscal_status
+                     END AS public_status
+                     FROM filtered
+                   ) statuses
+                  GROUP BY public_status
+               ) grouped
+               RIGHT JOIN (
+                 SELECT
+                     COUNT(*) AS total_count,
+                     COALESCE(SUM(total_amount_minor), 0)::text AS payment_total_minor,
+                     COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'cash'), 0)::text AS cash_total_minor,
+                     COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'card_terminal'), 0)::text AS card_terminal_total_minor
+                   FROM filtered
+               ) totals ON TRUE
+              GROUP BY totals.total_count, totals.payment_total_minor, totals.cash_total_minor, totals.card_terminal_total_minor`,
+            params
+        );
+        const totalsRow = totalsResult.rows[0] || {};
         return {
             fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
             fiscalRegisterId: Number(scope.mapping.fiscal_register_id),
             internalReport: true,
             officialZReport: false,
+            page: normalizedPage,
+            pageSize: normalizedPageSize,
+            totalCount: Number(totalsRow.total_count || 0),
+            filters: {
+                dateFrom: normalizedDateFrom,
+                dateTo: normalizedDateTo,
+                shiftId: normalizedShiftId
+            },
             totals: {
-                paymentTotalMinor: totals.paymentTotalMinor.toString(),
-                cashTotalMinor: totals.cashTotalMinor.toString(),
-                cardTerminalTotalMinor: totals.cardTerminalTotalMinor.toString(),
-                statusCounts: totals.statusCounts
+                paymentTotalMinor: String(totalsRow.payment_total_minor || '0'),
+                cashTotalMinor: String(totalsRow.cash_total_minor || '0'),
+                cardTerminalTotalMinor: String(totalsRow.card_terminal_total_minor || '0'),
+                statusCounts: totalsRow.status_counts || {}
             },
             orders: rows
         };
@@ -1077,6 +1209,130 @@ async function listOperationalIncidents({
                 createdAt: row.created_at || null,
                 resolvedAt: row.resolved_at || null
             }))
+        };
+    });
+}
+
+async function upsertOperationalIncident(client, {
+    fiscalProfileId,
+    fiscalRegisterId = null,
+    fiscalOperationId = null,
+    paymentOrderId = null,
+    severity = 'warning',
+    incidentType,
+    idempotencyKey,
+    details = {}
+} = {}) {
+    if (!fiscalProfileId || !incidentType || !idempotencyKey) return null;
+    const result = await client.query(
+        `INSERT INTO fiscal_operational_incidents (
+             fiscal_profile_id, fiscal_register_id, fiscal_operation_id, payment_order_id,
+             severity, incident_type, status, idempotency_key, details
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, 'open', $7, $8::jsonb)
+         ON CONFLICT (idempotency_key) DO UPDATE
+             SET status = CASE
+                     WHEN fiscal_operational_incidents.status = 'resolved' THEN 'open'
+                     ELSE fiscal_operational_incidents.status
+                 END,
+                 severity = EXCLUDED.severity,
+                 details = fiscal_operational_incidents.details || EXCLUDED.details,
+                 resolved_at = CASE
+                     WHEN fiscal_operational_incidents.status = 'resolved' THEN NULL
+                     ELSE fiscal_operational_incidents.resolved_at
+                 END
+         RETURNING id, status`,
+        [
+            fiscalProfileId,
+            fiscalRegisterId,
+            fiscalOperationId,
+            paymentOrderId,
+            severity,
+            incidentType,
+            idempotencyKey,
+            JSON.stringify(details)
+        ]
+    );
+    return result.rows[0] || null;
+}
+
+async function resolveOperationalIncidents(client, {
+    fiscalProfileId,
+    fiscalRegisterId,
+    incidentTypes = [],
+    reason = 'auto_resolved'
+} = {}) {
+    const types = (incidentTypes || []).map(type => String(type || '').trim()).filter(Boolean);
+    if (!fiscalProfileId || !fiscalRegisterId || !types.length) return 0;
+    const result = await client.query(
+        `UPDATE fiscal_operational_incidents
+            SET status = 'resolved',
+                resolved_at = COALESCE(resolved_at, NOW()),
+                details = details || jsonb_build_object('auto_resolved_at', to_jsonb(NOW()), 'auto_resolved_reason', $4::text)
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND incident_type = ANY($3::text[])
+            AND status <> 'resolved'`,
+        [fiscalProfileId, fiscalRegisterId, types, reason]
+    );
+    return result.rowCount || 0;
+}
+
+async function updateOperationalIncidentStatus({
+    dbPool = pool,
+    user,
+    incidentId,
+    status,
+    reason = null,
+    crmProfileKey = PILOT_CRM_PROFILE_KEY,
+    registerAlias = PILOT_REGISTER_ALIAS
+} = {}) {
+    const id = Number(incidentId);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        throw new PaymentReadinessError('incident_id_invalid', 'Operational incident id is invalid', { status: 422 });
+    }
+    const nextStatus = String(status || '').trim().toLowerCase();
+    if (!['acknowledged', 'resolved'].includes(nextStatus)) {
+        throw new PaymentReadinessError('incident_status_invalid', 'Operational incident status is invalid', { status: 422 });
+    }
+    return withTransaction(dbPool, async client => {
+        const scope = await loadScope(client, { user, crmProfileKey, registerAlias, action: 'fiscal.audit.view', requireUserAuthorization: true });
+        if (!scope.mapping) {
+            throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
+        }
+        const result = await client.query(
+            `UPDATE fiscal_operational_incidents
+                SET status = $4,
+                    resolved_at = CASE WHEN $4 = 'resolved' THEN COALESCE(resolved_at, NOW()) ELSE resolved_at END,
+                    details = details || jsonb_build_object(
+                        $4 || '_by_user_id', to_jsonb($5::bigint),
+                        $4 || '_at', to_jsonb(NOW()),
+                        $4 || '_reason', to_jsonb($6::text)
+                    )
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+                AND fiscal_register_id = $3
+                AND status <> 'resolved'
+              RETURNING id, status, resolved_at, details`,
+            [
+                id,
+                scope.mapping.fiscal_profile_id,
+                scope.mapping.fiscal_register_id,
+                nextStatus,
+                user?.id || null,
+                reason ? String(reason).slice(0, 500) : null
+            ]
+        );
+        if (!result.rows.length) {
+            throw new PaymentReadinessError('incident_not_found_or_closed', 'Operational incident is not open in this fiscal scope', { status: 404 });
+        }
+        return {
+            incident: {
+                id: Number(result.rows[0].id),
+                status: result.rows[0].status,
+                resolvedAt: result.rows[0].resolved_at || null,
+                details: result.rows[0].details || {}
+            }
         };
     });
 }
@@ -1308,6 +1564,7 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
                         credentialRef: row.provider_cashier_login_ref || scope.mapping.provider_license_ref,
                         licenseRef: scope.mapping.provider_license_ref
                     });
+                    assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
                     scope.runtimeConfig = runtimeConfig;
                     scope.configHash = buildFiscalConfigurationSnapshot({ mapping: scope.mapping, binding: scope.binding, runtimeConfig }).hash;
                     const local = baseReadiness({
@@ -1331,13 +1588,43 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
                 await withTransaction(dbPool, async tx => {
                     await syncPortalClosedShift(tx, prepared.scope, resultState.state.shiftState);
                     await insertReadinessSnapshot(tx, prepared.scope, resultState.state, resultState.details);
+                    if (resultState.state.integrationReady === true) {
+                        await resolveOperationalIncidents(tx, {
+                            fiscalProfileId: prepared.scope.mapping?.fiscal_profile_id,
+                            fiscalRegisterId: prepared.scope.mapping?.fiscal_register_id,
+                            incidentTypes: ['checkbox.readiness_probe_failed', 'checkbox.provider_unavailable'],
+                            reason: 'scheduler_probe_recovered'
+                        });
+                    }
                 });
                 probed += 1;
-            } catch (_) {
+            } catch (error) {
                 failed += 1;
+                await withTransaction(dbPool, async tx => {
+                    await upsertOperationalIncident(tx, {
+                        fiscalProfileId: row.fiscal_profile_id,
+                        fiscalRegisterId: row.fiscal_register_id,
+                        severity: 'warning',
+                        incidentType: 'checkbox.readiness_probe_failed',
+                        idempotencyKey: `checkbox.readiness_probe_failed:${row.fiscal_profile_id}:${row.fiscal_register_id}`,
+                        details: {
+                            code: publicError(error).code,
+                            message: publicError(error).message,
+                            crm_profile_key: row.crm_profile_key,
+                            register_alias: row.register_alias,
+                            sanitized: true
+                        }
+                    });
+                });
             }
         }
-        return { ok: failed === 0, probed, failed };
+        if (failed > 0) {
+            throw new PaymentReadinessError('checkbox_readiness_probe_degraded', 'Checkbox readiness scheduler completed with failed probes', {
+                status: 503,
+                details: { probed, failed }
+            });
+        }
+        return { ok: true, probed, failed };
     } finally {
         client.release();
     }
@@ -1377,5 +1664,6 @@ module.exports = {
     probeCheckboxReadiness,
     readinessErrorResponse,
     requestPhase1ShiftClose,
-    runCheckboxReadinessProbeScheduler
+    runCheckboxReadinessProbeScheduler,
+    updateOperationalIncidentStatus
 };

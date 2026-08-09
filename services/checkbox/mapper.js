@@ -19,6 +19,12 @@ function requiredText(value, code) {
     return text;
 }
 
+function normalizePaymentLabel(payment = {}) {
+    if (payment.type === 'CASHLESS') return { ...payment, label: 'Картка' };
+    if (payment.type === 'CASH') return { ...payment, label: 'Готівка' };
+    return payment;
+}
+
 function mapReceiptGood(item = {}) {
     const name = requiredText(item.name || item.itemName, 'checkbox_good_name_required');
     const code = requiredText(item.code || item.itemCode || name, 'checkbox_good_code_required');
@@ -62,7 +68,7 @@ function mapSaleReceipt({ providerRequestUuid, items = [], tender = 'cash', amou
     const payload = {
         id,
         goods,
-        payments: [mapPayment({ tender, amountMinor: total, receivedAmountMinor })],
+        payments: [normalizePaymentLabel(mapPayment({ tender, amountMinor: total, receivedAmountMinor }))],
         context: { eventgenix: true, ...context }
     };
     if (callbackUrl) payload.callback_url = callbackUrl;
@@ -76,12 +82,12 @@ function mapFullReturnReceipt({ providerRequestUuid, originalReceiptId, original
     const goods = (sale.goods || []).map(item => ({ ...item, is_return: true }));
     if (!goods.length) throw new CheckboxClientError('checkbox_return_goods_required', 'Checkbox full return requires original sale goods snapshot', { status: 400 });
     const total = goods.reduce((sum, item) => sum + BigInt(item.good?.price || 0) * BigInt(item.quantity || 1000) / 1000n, 0n).toString();
-    const payment = sale.payments?.[0] || mapPayment({ tender: 'cash', amountMinor: total });
+    const payment = normalizePaymentLabel(sale.payments?.[0] || mapPayment({ tender: 'cash', amountMinor: total }));
     const payload = {
         id,
         related_receipt_id: related,
         goods,
-        payments: [{ ...payment, value: asPositiveMinor(payment.value || total, 'checkbox_return_payment_amount_required') }],
+        payments: [normalizePaymentLabel({ ...payment, value: asPositiveMinor(payment.value || total, 'checkbox_return_payment_amount_required') })],
         context: { eventgenix: true, return_type: 'full', ...context }
     };
     if (callbackUrl) payload.callback_url = callbackUrl;
@@ -95,12 +101,12 @@ function mapServiceReceipt({ providerRequestUuid, operationType, amountMinor, co
     const operation = type === 'service_out' ? 'COLLECTION' : 'REINFORCEMENT';
     return {
         id,
-        payment: {
+        payment: normalizePaymentLabel({
             type: 'CASH',
             value,
             label: 'Готівка',
             operation_type: operation
-        },
+        }),
         context: { eventgenix: true, operation_type: type || 'service_in', ...context }
     };
 }

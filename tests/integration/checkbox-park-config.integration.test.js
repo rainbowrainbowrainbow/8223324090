@@ -13,7 +13,7 @@ function unique(prefix) {
 async function seedUser() {
     const result = await pool.query(
         `INSERT INTO users (username, password_hash, name, role, is_active)
-         VALUES ($1, 'integration-test-hash', 'Checkbox config test cashier', 'admin', TRUE)
+         VALUES ($1, 'integration-test-hash', 'Checkbox config test cashier', 'creator', TRUE)
          RETURNING id`,
         [unique('checkbox_config_cashier')]
     );
@@ -48,6 +48,7 @@ function argsFor({ userId, legalEntityKey, ticketCodes, overrides = {} }) {
         '--cashier-login-ref', `${legalEntityKey}_cashier_ref`,
         '--integration-owner', `${legalEntityKey}_owner`,
         '--expected-is-test', 'true',
+        '--actor-user-id', String(userId),
         '--reason', 'integration test config change'
     ];
     for (const code of ticketCodes) {
@@ -104,7 +105,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     assert.equal(status.status.featureEnabled, false);
     assert.equal(status.status.activeItemMappings.length, ticketCodes.length);
     const auditAfterApply = await pool.query(
-        `SELECT command, before_hash, after_hash, reason
+        `SELECT command, before_hash, after_hash, reason, actor_user_id
            FROM fiscal_configuration_audit
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
@@ -116,11 +117,80 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     assert.ok(auditAfterApply.rows[0].before_hash);
     assert.ok(auditAfterApply.rows[0].after_hash);
     assert.equal(auditAfterApply.rows[0].reason, 'integration test config change');
+    assert.equal(auditAfterApply.rows[0].actor_user_id == null ? false : true, true);
+
+    await assert.rejects(
+        () => pool.query('UPDATE fiscal_configuration_audit SET reason = $1 WHERE fiscal_profile_id = $2', ['mutated', applied.fiscalProfileId]),
+        error => error.code === '55000'
+    );
+    await assert.rejects(
+        () => pool.query('DELETE FROM fiscal_configuration_audit WHERE fiscal_profile_id = $1', [applied.fiscalProfileId]),
+        error => error.code === '55000'
+    );
+
+    const operation = await pool.query(
+        `INSERT INTO fiscal_operations (
+             fiscal_profile_id, fiscal_register_id, fiscal_location_id, operation_type, status,
+             idempotency_key, provider, provider_operation_id, amount_minor, currency,
+             request_fingerprint, request_snapshot,
+             provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+             register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash
+         )
+         VALUES ($1, $2, $3, 'sale', 'pending', $4, 'checkbox', $5, 50000, 'UAH',
+                 'fingerprint-test', '{"source":"integration"}'::jsonb,
+                 $6, $7, $8, $9, $10, $11, TRUE, 'config-hash-test')
+         RETURNING id`,
+        [
+            applied.fiscalProfileId,
+            applied.fiscalRegisterId,
+            applied.fiscalLocationId,
+            `integration-operation:${legalEntityKey}`,
+            `provider-operation:${legalEntityKey}`,
+            `${legalEntityKey}_org`,
+            `${legalEntityKey}_outlet`,
+            `${legalEntityKey}_register`,
+            `${legalEntityKey}_cashier`,
+            `${legalEntityKey}_register_ref`,
+            `${legalEntityKey}_cashier_ref`
+        ]
+    );
+    const operationId = Number(operation.rows[0].id);
+    await assert.rejects(
+        () => pool.query('UPDATE fiscal_operations SET provider_operation_id = $1 WHERE id = $2', [`provider-operation-mutated:${legalEntityKey}`, operationId]),
+        error => error.code === '55000'
+    );
+    await assert.rejects(
+        () => pool.query('UPDATE fiscal_operations SET provider_register_id = $1 WHERE id = $2', [`register-mutated:${legalEntityKey}`, operationId]),
+        error => error.code === '55000'
+    );
+    await assert.rejects(
+        () => pool.query('DELETE FROM fiscal_operations WHERE id = $1', [operationId]),
+        error => error.code === '55000'
+    );
+
+    const receipt = await pool.query(
+        `INSERT INTO fiscal_receipts (
+             fiscal_profile_id, fiscal_operation_id, receipt_type, status, provider,
+             provider_receipt_id, total_amount_minor, currency, provider_snapshot
+         )
+         VALUES ($1, $2, 'sale', 'pending', 'checkbox', $3, 50000, 'UAH', '{"source":"integration"}'::jsonb)
+         RETURNING id`,
+        [applied.fiscalProfileId, operationId, `receipt:${legalEntityKey}`]
+    );
+    const receiptId = Number(receipt.rows[0].id);
+    await assert.rejects(
+        () => pool.query('UPDATE fiscal_receipts SET total_amount_minor = 40000 WHERE id = $1', [receiptId]),
+        error => error.code === '55000'
+    );
+    await assert.rejects(
+        () => pool.query('DELETE FROM fiscal_receipts WHERE id = $1', [receiptId]),
+        error => error.code === '55000'
+    );
 
     const enabled = await run(['enable-register', ...args], { env, dbPool: pool });
     assert.equal(enabled.enabled, true);
     assert.equal(enabled.featureEnabled, true);
-    const disabled = await run(['disable-register', '--legal-entity-key', legalEntityKey, '--reason', 'integration test disable'], { env, dbPool: pool });
+    const disabled = await run(['disable-register', '--legal-entity-key', legalEntityKey, '--actor-user-id', String(userId), '--reason', 'integration test disable'], { env, dbPool: pool });
     assert.equal(disabled.enabled, false);
     assert.equal(disabled.featureEnabled, false);
 

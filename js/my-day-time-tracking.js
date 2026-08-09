@@ -116,11 +116,11 @@
             <button type="button" class="my-day-time-button my-day-time-button--stop my-day-time-button--banner" data-cabinet-task-action="timer-stop" data-task-id="${escape(timer.taskId)}" aria-label="Зупинити активний таймер">Зупинити</button>
         </div>`;
     }
-    function renderTaskControls(task = {}) {
+    function renderTaskControls(task = {}, options = {}) {
         const taskId = Number(task.id || task.taskId || task.task_id || 0);
         if (!taskId) return '';
         const active = Number(state.timer?.taskId) === taskId;
-        const planned = Number(task.effortMinutes || task.effort_minutes || 0);
+        const detailed = options.detailed === true;
         const actual = Math.max(0, Number(task.actualSeconds || task.actual_seconds || 0));
         const syncedAt = nowMs();
         const actualLabel = active
@@ -129,15 +129,27 @@
         const timerAction = active ? 'timer-stop' : 'timer-start';
         const timerLabel = active ? 'Стоп' : 'Старт';
         const timerClass = active ? 'my-day-time-button--stop' : 'my-day-time-button--primary';
-        return `<span class="my-day-time-task" data-my-day-time-task="${taskId}" aria-label="Облік часу">
-            <span class="my-day-time-summary" aria-label="План і факт часу">
-                ${planned ? `<span class="my-day-time-summary-item"><span class="my-day-time-summary-label">План</span><strong>${planned} хв</strong></span>` : ''}
+        if (detailed) {
+            const planned = Number(task.effortMinutes || task.effort_minutes || 0);
+            return `<span class="my-day-time-task my-day-time-task--detailed" data-my-day-time-task="${taskId}" aria-label="Облік часу">
+                <span class="my-day-time-summary" aria-label="План і факт часу">
+                    <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">План</span><strong>${planned ? `${planned} хв` : '—'}</strong></span>
+                    <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">Факт</span><strong>${actualLabel}</strong></span>
+                </span>
+                <span class="my-day-time-actions">
+                    <button type="button" class="my-day-time-button ${timerClass}" data-cabinet-task-action="${timerAction}" data-task-id="${taskId}" aria-label="${timerLabel} таймер задачі">${timerLabel}</button>
+                    <button type="button" class="my-day-time-button my-day-time-button--ghost" data-cabinet-task-action="time-entry" data-task-id="${taskId}" aria-label="Додати ручний запис часу">Додати час</button>
+                    <button type="button" class="my-day-time-button my-day-time-button--ghost" data-cabinet-task-action="time-entries" data-task-id="${taskId}" aria-label="Відкрити записи часу">Записи</button>
+                </span>
+            </span>`;
+        }
+        return `<span class="my-day-time-task my-day-time-task--compact" data-my-day-time-task="${taskId}" aria-label="Облік часу">
+            <span class="my-day-time-summary my-day-time-summary--compact" aria-label="Факт часу">
                 <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">Факт</span><strong>${actualLabel}</strong></span>
             </span>
             <span class="my-day-time-actions">
                 <button type="button" class="my-day-time-button ${timerClass}" data-cabinet-task-action="${timerAction}" data-task-id="${taskId}" aria-label="${timerLabel} таймер задачі">${timerLabel}</button>
-                <button type="button" class="my-day-time-button my-day-time-button--ghost" data-cabinet-task-action="time-entry" data-task-id="${taskId}" aria-label="Додати ручний запис часу">Додати час</button>
-                <button type="button" class="my-day-time-button my-day-time-button--ghost" data-cabinet-task-action="time-entries" data-task-id="${taskId}" aria-label="Відкрити записи часу">Записи</button>
+                <button type="button" class="my-day-time-button my-day-time-button--ghost my-day-time-button--icon" data-cabinet-task-action="time-menu" data-task-id="${taskId}" aria-label="Відкрити меню часу" title="Час">⏱</button>
             </span>
         </span>`;
     }
@@ -218,7 +230,51 @@
             });
         });
     }
-    async function handleAction(action, taskId, onChanged, button) {
+    function renderTaskTimeMenu(taskId, task = {}) {
+        const planned = Number(task.effortMinutes || task.effort_minutes || 0);
+        const actual = Math.max(0, Number(task.actualSeconds || task.actual_seconds || 0));
+        const active = Number(state.timer?.taskId) === Number(taskId);
+        const actualLabel = active ? liveSecondsLabel(currentTimerDurationSeconds()) : secondsLabel(actual);
+        return `<div class="my-day-time-popover-content my-day-time-menu" data-my-day-time-menu>
+            <div class="my-day-time-menu-summary" aria-label="Деталі часу">
+                <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">План</span><strong>${planned ? `${planned} хв` : '—'}</strong></span>
+                <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">Факт</span><strong>${actualLabel}</strong></span>
+            </div>
+            <div class="my-day-time-menu-actions">
+                <button type="button" class="my-day-time-button my-day-time-button--ghost" data-my-day-time-menu-action="time-entry" data-task-id="${taskId}" aria-label="Додати ручний запис часу">Додати час</button>
+                <button type="button" class="my-day-time-button my-day-time-button--ghost" data-my-day-time-menu-action="time-entries" data-task-id="${taskId}" aria-label="Відкрити записи часу">Записи</button>
+            </div>
+        </div>`;
+    }
+    function bindTaskTimeMenu(root, anchorButton, taskId, onChanged) {
+        root?.querySelectorAll?.('[data-my-day-time-menu-action]').forEach(menuButton => {
+            menuButton.addEventListener('click', async event => {
+                event.preventDefault();
+                event.stopPropagation();
+                const action = menuButton.dataset.myDayTimeMenuAction;
+                menuButton.disabled = true;
+                try {
+                    if (action === 'time-entry') {
+                        await addManualEntry(taskId);
+                        window.TaskUI?.closeActionMenu?.();
+                        await onChanged?.();
+                    } else if (action === 'time-entries') {
+                        await openEntryManager(anchorButton || menuButton, taskId, onChanged);
+                    }
+                } catch (error) {
+                    window.showNotification?.(error.message || 'Не вдалося оновити час задачі.', 'error');
+                    if (menuButton.isConnected) menuButton.disabled = false;
+                }
+            });
+        });
+    }
+    async function openTaskTimeMenu(button, taskId, task = {}, onChanged) {
+        const html = renderTaskTimeMenu(taskId, task);
+        const root = window.TaskUI?.openActionMenu?.(button, html, { title: 'Час задачі', surfaceClassName: 'my-day-time-popover my-day-time-menu-popover' });
+        if (!root) return;
+        bindTaskTimeMenu(root, button, taskId, onChanged);
+    }
+    async function handleAction(action, taskId, onChanged, button, task = {}) {
         if (action === 'timer-start') {
             const result = await request('/timer/start', { method: 'POST', body: JSON.stringify({ taskId }) });
             state.timer = normalizeTimer(result.timer || null);
@@ -227,6 +283,9 @@
             await request('/timer/stop', { method: 'POST' });
             state.timer = null;
             syncTicker(false);
+        } else if (action === 'time-menu') {
+            await openTaskTimeMenu(button, taskId, task, onChanged);
+            return true;
         } else if (action === 'time-entry') {
             await addManualEntry(taskId);
         } else if (action === 'time-entries') {

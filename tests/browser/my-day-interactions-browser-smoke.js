@@ -35,13 +35,17 @@ function harnessHtml() {
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <link rel="stylesheet" href="/css/pages-profile.css">
+  <link rel="stylesheet" href="/css/pages-cabinet.css">
+  <link rel="stylesheet" href="/css/pages-tasks.css">
   <style>
     body { margin: 0; padding: 24px; background: #f8fafc; color: #0f172a; font-family: system-ui, sans-serif; }
     body.dark-mode { background: #020617; color: #e2e8f0; }
     .harness-grid { display: grid; gap: 16px; max-width: 980px; }
     .harness-card { border: 1px solid rgba(148, 163, 184, .35); border-radius: 18px; padding: 16px; background: rgba(255,255,255,.9); }
+    .harness-card.cabinet-task-card, .harness-card.cabinet-overdue-triage-row { display: grid; grid-template-columns: 1fr; gap: 10px; margin-inline: 0; }
     body.dark-mode .harness-card { background: rgba(15,23,42,.94); }
     .harness-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .task-ui-action-panel { z-index: 1; }
   </style>
 </head>
 <body>
@@ -49,6 +53,7 @@ function harnessHtml() {
     <section class="harness-card cabinet-task-card" data-task-id="101" id="normal-card">
       <h1>Normal My Day task</h1>
       <div data-my-day-classification-badges="101"></div>
+      <div data-my-day-time-fixture="101"></div>
       <div class="harness-actions">
         <button id="manual-normal" type="button">Manual impacts</button>
         <button id="ai-normal" type="button" class="cabinet-task-action-ai" data-task-id="101">AI</button>
@@ -64,6 +69,7 @@ function harnessHtml() {
   <script src="/js/task-ui.js"></script>
   <script src="/js/my-day-classification.js"></script>
   <script src="/js/my-day-dependencies.js"></script>
+  <script src="/js/my-day-time-tracking.js"></script>
   <script>
   (() => {
     const impacts = [
@@ -84,9 +90,14 @@ function harnessHtml() {
         { id: 303, title: 'Hermes worker deploy', status: 'todo' }
       ],
       tasks: {
-        101: { id: 101, title: 'Fix CRM booking form', description: 'validation', myDay: { impacts: [] } },
-        202: { id: 202, title: 'Overdue Hermes worker', description: 'worker', myDay: { impacts: [] } }
+        101: { id: 101, title: 'Fix CRM booking form', description: 'validation', effortMinutes: 30, actualSeconds: 0, myDay: { impacts: [] } },
+        202: { id: 202, title: 'Overdue Hermes worker', description: 'worker', effortMinutes: 30, actualSeconds: 0, myDay: { impacts: [] } }
       },
+      classificationDelay: 0,
+      classificationError: false,
+      timeMenuOpened: 0,
+      timeMenuError: '',
+      removeInFlight: new Set(),
       previous: {}
     };
     const clone = value => JSON.parse(JSON.stringify(value));
@@ -94,16 +105,61 @@ function harnessHtml() {
     const applyClassification = (taskId, classification) => {
       state.tasks[taskId].myDay = clone(classification);
       document.querySelectorAll('[data-my-day-classification-badges="' + taskId + '"]').forEach(node => {
-        node.innerHTML = window.MyDayClassification.renderTaskBadges(classification);
+        node.innerHTML = window.MyDayClassification.renderTaskBadges(classification, { taskId });
       });
     };
     const json = (payload, status = 200) => Promise.resolve(new Response(JSON.stringify(payload), {
       status,
       headers: { 'content-type': 'application/json' }
     }));
+    document.querySelector('[data-my-day-time-fixture="101"]').innerHTML = window.MyDayTimeTracking.renderTaskControls(state.tasks[101]);
     window.getAuthHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer local-browser-fixture' });
     window.showNotification = (message, type) => state.notifications.push({ message, type });
     window.__MY_DAY_INTERACTIONS__ = { state, applyClassification };
+    document.addEventListener('click', async event => {
+      const actionButton = event.target.closest('[data-cabinet-task-action]');
+      if (!actionButton) return;
+      const action = actionButton.dataset.cabinetTaskAction;
+      if (action === 'reveal-impact') {
+        event.preventDefault();
+        const group = actionButton.closest('[data-my-day-task-impact-chips]');
+        group.querySelectorAll('.my-day-task-chip--removable[hidden]').forEach(chip => { chip.hidden = false; });
+        actionButton.hidden = true;
+        return;
+      }
+      if (action === 'time-menu') {
+        event.preventDefault();
+        const taskId = Number(actionButton.dataset.taskId);
+        try {
+          await window.MyDayTimeTracking.handleAction(action, taskId, async () => {}, actionButton, state.tasks[taskId]);
+          state.timeMenuOpened += 1;
+        } catch (error) {
+          state.timeMenuError = error.message || String(error);
+        }
+        return;
+      }
+      if (action !== 'remove-impact') return;
+      event.preventDefault();
+      const taskId = Number(actionButton.dataset.taskId);
+      const impactId = Number(actionButton.dataset.myDayImpactId);
+      const key = taskId + ':' + impactId;
+      if (state.removeInFlight.has(key)) return;
+      const current = state.tasks[taskId].myDay.impacts || [];
+      const impactIds = current.map(impact => Number(impact.id)).filter(id => id !== impactId);
+      state.removeInFlight.add(key);
+      actionButton.disabled = true;
+      actionButton.classList.add('is-pending');
+      try {
+        const result = await window.MyDayClassification.saveTaskClassification(taskId, { impactIds });
+        applyClassification(taskId, result.classification);
+      } catch (error) {
+        actionButton.disabled = false;
+        actionButton.classList.remove('is-pending');
+        window.showNotification(error.message, 'error');
+      } finally {
+        state.removeInFlight.delete(key);
+      }
+    });
     window.fetch = async (input, options = {}) => {
       const url = new URL(String(input), location.origin);
       const method = String(options.method || 'GET').toUpperCase();
@@ -114,6 +170,8 @@ function harnessHtml() {
       }
       const classificationMatch = url.pathname.match(/^\\/api\\/my-day\\/tasks\\/(\\d+)\\/classification$/);
       if (classificationMatch && method === 'PUT') {
+        if (state.classificationDelay) await new Promise(resolve => setTimeout(resolve, state.classificationDelay));
+        if (state.classificationError) return json({ success: false, code: 'MY_DAY_FIXTURE_ERROR', error: 'classification failed' }, 500);
         const taskId = Number(classificationMatch[1]);
         const classification = classificationFromIds(body.impactIds || []);
         applyClassification(taskId, classification);
@@ -226,8 +284,27 @@ function createStaticServer() {
 }
 
 async function assertNoOverflow(page) {
-    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
-    assert.ok(overflow <= 1, `page has horizontal overflow: ${overflow}px`);
+    const { overflow, offenders } = await page.evaluate(() => {
+        const viewport = document.documentElement.clientWidth;
+        const offenders = Array.from(document.querySelectorAll('body *'))
+            .map(node => {
+                const rect = node.getBoundingClientRect();
+                return {
+                    tag: node.tagName,
+                    id: node.id || '',
+                    className: String(node.className || ''),
+                    text: String(node.textContent || '').trim().slice(0, 80),
+                    left: Math.round(rect.left),
+                    right: Math.round(rect.right),
+                    width: Math.round(rect.width)
+                };
+            })
+            .filter(item => item.right > viewport + 1 || item.left < -1)
+            .sort((a, b) => Math.max(Math.abs(b.right - viewport), Math.abs(b.left)) - Math.max(Math.abs(a.right - viewport), Math.abs(a.left)))
+            .slice(0, 5);
+        return { overflow: document.documentElement.scrollWidth - viewport, offenders };
+    });
+    assert.ok(overflow <= 1, `page has horizontal overflow: ${overflow}px offenders=${JSON.stringify(offenders)}`);
 }
 
 async function runScenario(browser, fixture, { dark, viewport }) {
@@ -242,9 +319,42 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.waitForSelector('#manual-normal');
 
         await page.locator('#manual-normal').click();
-        await page.locator('[data-my-day-impacts]').selectOption(['1', '3']);
+        await page.locator('[data-my-day-impacts]').selectOption(['1', '2', '3']);
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
+        await page.locator('[data-cabinet-task-action="reveal-impact"][data-task-id="101"]').click();
+        await page.waitForSelector('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="3"]:not([hidden])');
+        const putCountBeforeRemove = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length);
+        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
+        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length), putCountBeforeRemove + 1);
+        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Hermes/);
+        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /РљРѕРјР°РЅРґР°|Команда/);
+        await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 100; });
+        const putCountBeforeRapid = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length);
+        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="2"]').dblclick();
+        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Hermes'));
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length), putCountBeforeRapid + 1);
+        await page.evaluate(() => {
+          window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 0;
+          window.__MY_DAY_INTERACTIONS__.state.classificationError = true;
+          window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Р РѕР±РѕС‚Р°: CRM', color: '#0EA5E9', icon: 'C', isActive: true }] });
+        });
+        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
+        await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.notifications.some(item => item.type === 'error'));
+        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /CRM/);
+        await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationError = false; });
+        await page.locator('[data-cabinet-task-action="time-menu"][data-task-id="101"]').click();
+        await page.waitForFunction(() => document.querySelector('[data-my-day-time-menu]') || window.__MY_DAY_INTERACTIONS__.state.timeMenuError);
+        const timeMenuError = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.timeMenuError);
+        assert.equal(timeMenuError, '');
+        const timeMenuText = await page.locator('[data-my-day-time-menu]').textContent();
+        assert.match(timeMenuText, /План/);
+        assert.match(timeMenuText, /Факт/);
+        assert.match(timeMenuText, /Додати час/);
+        assert.match(timeMenuText, /Записи/);
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
         await assertNoOverflow(page);
 
         await page.locator('#ai-overdue').click();

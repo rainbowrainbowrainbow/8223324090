@@ -113,11 +113,108 @@ test('My Day task impact chips expose hidden third impact with tooltip and acces
             { id: 2, name: 'Hermes', icon: 'H', color: '#0f766e' },
             { id: 3, name: 'Парк', icon: 'P', color: '#f59e0b' }
         ]
-    });
+    }, { taskId: 101 });
 
     assert.match(html, /CRM/);
     assert.match(html, /Hermes/);
     assert.match(html, /my-day-task-chip--more/);
     assert.match(html, /title="Парк"/);
     assert.match(html, /aria-label="Ще впливи: Парк"/);
+});
+
+test('My Day task impact chips are removable buttons with task and impact ids', () => {
+    const context = loadClassificationUi();
+    const api = context.window.MyDayClassification;
+    const html = api.renderTaskBadges({
+        impacts: [
+            { id: 1, name: 'CRM', icon: 'C', color: '#2563eb' },
+            { id: 2, name: 'Hermes', icon: 'H', color: '#0f766e' },
+            { id: 3, name: 'Park', icon: 'P', color: '#f59e0b' }
+        ]
+    }, { taskId: 101 });
+
+    assert.match(html, /<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--removable/);
+    assert.match(html, /data-cabinet-task-action="remove-impact"/);
+    assert.match(html, /data-cabinet-task-action="reveal-impact"/);
+    assert.match(html, /data-task-id="101"/);
+    assert.match(html, /data-my-day-impact-id="1"/);
+    assert.match(html, /data-my-day-impact-name="CRM"/);
+    assert.match(html, /aria-label="Прибрати вплив CRM"/);
+    assert.match(html, /data-my-day-impact-id="3"[\s\S]*hidden/);
+});
+
+test('My Day removable impact chips have motion, touch, and reduced-motion CSS states', () => {
+    const css = read('css/pages-profile.css');
+    const cabinetCss = read('css/pages-cabinet.css');
+
+    assert.match(css, /\.my-day-task-chip:is\(button\)/);
+    assert.match(css, /transform:\s*translateY\(-1px\)/);
+    assert.match(css, /\.my-day-task-chip-remove\s*\{[\s\S]*opacity:\s*0/);
+    assert.match(css, /@media \(hover:\s*none\), \(pointer:\s*coarse\)/);
+    assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
+    assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--removable/);
+});
+
+test('Profile My Day shared task handler removes one impact through existing classification PUT', () => {
+    const profile = read('js/profile-page.js');
+
+    assert.match(profile, /action === 'remove-impact'/);
+    assert.match(profile, /async function removeCabinetTaskImpact/);
+    assert.match(profile, /saveTaskClassification\?\.\(taskId,\s*\{[\s\S]*impactIds:\s*remainingImpactIds/);
+    assert.match(profile, /cabinetImpactRemovalInFlight/);
+    assert.match(profile, /refreshCabinetTaskClassificationBadges\(taskId,\s*classification\)/);
+    assert.match(profile, /renderTaskBadges\?\.\(task\.myDay,\s*\{ taskId \}\)/);
+    assert.match(profile, /function bindCabinetTaskActions/);
+});
+
+test('Profile My Day compact cards use stable zones instead of one mixed meta row', () => {
+    const profile = read('js/profile-page.js');
+    const css = read('css/pages-cabinet.css');
+    const timeUi = read('js/my-day-time-tracking.js');
+
+    assert.match(profile, /cabinet-task-zone--header/);
+    assert.match(profile, /cabinet-task-zone--facts/);
+    assert.match(profile, /cabinet-task-zone--classification/);
+    assert.match(profile, /cabinet-task-zone--commands/);
+    assert.match(profile, /cabinet-task-main--my-day/);
+    assert.match(profile, /renderTaskControls\?\.\(task,\s*\{ detailed:\s*showMyDayDetails \}\)/);
+    assert.match(profile, /renderCabinetOverdueTriageProgress\(task\)/);
+    assert.match(profile, /time-menu/);
+    assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
+    assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
+    assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
+    const compactTimeControls = timeUi.slice(
+        timeUi.indexOf('my-day-time-task--compact'),
+        timeUi.indexOf('async function addManualEntry')
+    );
+    assert.match(compactTimeControls, /data-cabinet-task-action="time-menu"/);
+    assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entry"/);
+    assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entries"/);
+    assert.match(css, /\.cabinet-task-zone--header/);
+    assert.match(css, /-webkit-line-clamp:\s*2/);
+    assert.match(css, /\.cabinet-task-card\.is-my-day-compact-card\[data-task-priority\][\s\S]*background:\s*transparent/);
+    assert.match(css, /\.cabinet-overdue-triage-row[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.58\)/);
+});
+
+test('Profile My Day card view mode is localStorage-scoped and has per-card expansion', () => {
+    const profile = read('js/profile-page.js');
+    const css = read('css/pages-cabinet.css');
+    const timeUi = read('js/my-day-time-tracking.js');
+
+    assert.match(profile, /let cabinetMyDayViewMode = 'compact'/);
+    assert.match(profile, /CABINET_MY_DAY_VIEW_MODE_OPTIONS/);
+    assert.match(profile, /data-cabinet-my-day-view-mode/);
+    assert.match(profile, /localStorage\?\.getItem\?\.\(cabinetMyDayViewPreferenceKey\(\)\)/);
+    assert.match(profile, /localStorage\?\.setItem\?\.\(cabinetMyDayViewPreferenceKey\(\), cabinetMyDayViewMode\)/);
+    assert.match(profile, /TimelineBusinessContext\?\.storageKey/);
+    assert.match(profile, /data-cabinet-task-action="toggle-my-day-details"/);
+    assert.match(profile, /aria-expanded="\$\{cardDetailsExpanded \? 'true' : 'false'\}"/);
+    assert.match(profile, /showMyDayDetails \? myDaySubtaskSummary : ''/);
+    assert.match(timeUi, /options\.detailed === true/);
+    assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
+    assert.match(timeUi, /data-cabinet-task-action="time-entry"/);
+    assert.match(timeUi, /data-cabinet-task-action="time-entries"/);
+    assert.match(css, /\.cabinet-day-list-toolbar/);
+    assert.match(css, /\.cabinet-view-mode-toggle/);
+    assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
 });

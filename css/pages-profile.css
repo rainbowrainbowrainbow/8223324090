@@ -362,8 +362,77 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     padding: 3px 7px;
 }
 
+.my-day-task-chip:is(button) {
+    appearance: none;
+    cursor: pointer;
+    font: inherit;
+    min-height: 24px;
+    transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
+}
+
+.my-day-task-chip:is(button):hover,
+.my-day-task-chip:is(button):focus-visible {
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 22%, transparent);
+    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 62%, transparent);
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--my-day-chip-color, #64748b) 16%, transparent);
+    transform: translateY(-1px);
+}
+
+.my-day-task-chip:is(button):focus-visible {
+    outline: 2px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 42%, transparent);
+    outline-offset: 2px;
+}
+
+.my-day-task-chip:is(button):disabled {
+    cursor: not-allowed;
+    opacity: 0.68;
+    transform: none;
+}
+
+.my-day-task-chip--removable.is-pending {
+    pointer-events: none;
+}
+
+.my-day-task-chip-remove {
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 13px;
+    font-weight: 900;
+    line-height: 1;
+    opacity: 0;
+    transform: scale(0.72);
+    transition: opacity 160ms ease, transform 160ms ease;
+}
+
+.my-day-task-chip--removable:hover .my-day-task-chip-remove,
+.my-day-task-chip--removable:focus-visible .my-day-task-chip-remove,
+.my-day-task-chip--removable.is-pending .my-day-task-chip-remove {
+    opacity: 1;
+    transform: scale(1);
+}
+
 .my-day-task-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.my-day-task-chip .my-day-task-chip-remove { overflow: visible; }
 .my-day-task-chip--more { background: var(--surface-muted, #f1f5f9); border-color: transparent; }
+
+@media (hover: none), (pointer: coarse) {
+    .my-day-task-chip-remove {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .my-day-task-chip:is(button),
+    .my-day-task-chip-remove {
+        transition: none;
+    }
+
+    .my-day-task-chip:is(button):hover,
+    .my-day-task-chip:is(button):focus-visible {
+        transform: none;
+    }
+}
 .my-day-taxonomy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
 .my-day-taxonomy-card { border: 1px solid var(--border-color, #e2e8f0); border-radius: 8px; padding: 14px; }
 .my-day-taxonomy-card h3 { margin: 0 0 10px; }
@@ -421,6 +490,27 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .profile-page.profile-work-mode .cabinet-task-action-ai[data-my-day-ai-state="provider-unavailable"] {
     border-color: rgba(239, 68, 68, 0.42);
     color: #b91c1c;
+}
+
+.profile-page.profile-work-mode .cabinet-task-action-details {
+    background: rgba(148, 163, 184, 0.10);
+    border-color: rgba(148, 163, 184, 0.24);
+    color: #475569;
+    font-size: 15px;
+    font-weight: 950;
+}
+
+.profile-page.profile-work-mode .cabinet-task-action-details:hover,
+.profile-page.profile-work-mode .cabinet-task-action-details:focus-visible {
+    background: rgba(20, 184, 166, 0.12);
+    border-color: rgba(20, 184, 166, 0.34);
+    color: #0f766e;
+}
+
+.profile-page.profile-work-mode .cabinet-task-action-details[aria-expanded="true"] {
+    background: rgba(20, 184, 166, 0.14);
+    border-color: rgba(20, 184, 166, 0.38);
+    color: #0f766e;
 }
 
 .cabinet-task-action-spinner {
@@ -895,6 +985,12 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     min-width: 0;
 }
 
+.my-day-time-task--compact {
+    flex-wrap: nowrap;
+    gap: 6px;
+    margin-top: 0;
+}
+
 .my-day-time-summary,
 .my-day-time-actions {
     align-items: center;
@@ -903,6 +999,10 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     gap: 6px;
     max-width: 100%;
     min-width: 0;
+}
+
+.my-day-time-summary--compact {
+    flex: 0 1 auto;
 }
 
 .my-day-time-summary-item {
@@ -914,7 +1014,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     display: inline-flex;
     gap: 5px;
     max-width: 100%;
-    min-height: 30px;
+    min-height: 28px;
     padding: 0 9px;
 }
 
@@ -938,11 +1038,16 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     font-weight: 900;
     justify-content: center;
     line-height: 1.15;
-    min-height: 40px;
+    min-height: 36px;
     padding: 0 12px;
     text-decoration: none;
     transition: background-color 0.18s ease, border-color 0.18s ease, color 0.18s ease, transform 0.18s ease, box-shadow 0.18s ease;
     white-space: nowrap;
+}
+
+.my-day-time-button--icon {
+    min-width: 38px;
+    padding-inline: 9px;
 }
 
 .my-day-time-button--primary {
@@ -998,6 +1103,19 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     display: grid;
     gap: 10px;
     min-width: 0;
+}
+
+.my-day-time-menu-summary,
+.my-day-time-menu-actions {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    min-width: 0;
+}
+
+.my-day-time-menu-actions .my-day-time-button {
+    flex: 1 1 130px;
 }
 
 .my-day-time-entry-list {
@@ -1065,6 +1183,18 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     .my-day-time-button { width: 100%; }
     .my-day-time-actions { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); }
     .my-day-time-actions .my-day-time-button:last-child { grid-column: 1 / -1; }
+    .my-day-time-task--compact,
+    .my-day-time-task--compact .my-day-time-summary,
+    .my-day-time-task--compact .my-day-time-actions,
+    .my-day-time-task--compact .my-day-time-button {
+        width: auto;
+    }
+    .my-day-time-task--compact .my-day-time-actions {
+        display: inline-flex;
+    }
+    .my-day-time-task--compact .my-day-time-button {
+        min-width: 38px;
+    }
     .my-day-time-entry-row { grid-template-columns: 1fr; }
     .my-day-time-entry-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
 }

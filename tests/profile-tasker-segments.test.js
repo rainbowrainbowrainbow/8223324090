@@ -232,7 +232,7 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.match(html, /Today segment task/);
     assert.match(html, /Overdue segment task/);
     assert.doesNotMatch(html, /Waiting segment task/);
-    assert.doesNotMatch(html, /cabinet-list-mode-toggle/);
+    assert.match(html, /cabinet-view-mode-toggle/);
 
     ctx.setCabinetMyDaySegment('completed');
     html = ctx.renderMyDayTab();
@@ -302,7 +302,7 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.match(cabinetCss, /\.cabinet-overdue-triage\s*\{[\s\S]*container-type:\s*inline-size;/);
     assert.match(cabinetCss, /@container \(max-width: 640px\)\s*\{[\s\S]*\.cabinet-overdue-triage-row\s*\{[\s\S]*grid-template-columns:\s*minmax\(0, 1fr\);/);
     assert.match(cabinetCss, /\.cabinet-overdue-triage-actions\s*\{[\s\S]*flex-wrap:\s*wrap;/);
-    assert.match(cabinetCss, /\.cabinet-overdue-triage-title\s*\{[\s\S]*overflow-wrap:\s*break-word;/);
+    assert.match(cabinetCss, /\.cabinet-overdue-triage-title\s*\{[\s\S]*overflow-wrap:\s*anywhere;/);
     assert.match(taskCss, /\.cabinet-command-center\s*\{[\s\S]*container-type:\s*inline-size;/);
     assert.match(taskCss, /@container \(max-width: 1120px\)\s*\{[\s\S]*\.cabinet-day-workspace--two-column\s*\{[\s\S]*grid-template-columns:\s*1fr;/);
 });
@@ -1486,7 +1486,7 @@ test('profile task cards expose move-to-today drag for typed planned tasks', () 
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
 });
 
-test('profile My Day compact cards keep critical badges and progress in a bounded shell', () => {
+test('profile My Day compact cards keep critical badges and move details behind the view toggle', () => {
     const ctx = loadProfileTaskerContext();
     const task = {
         id: 44,
@@ -1516,12 +1516,19 @@ test('profile My Day compact cards keep critical badges and progress in a bounde
     assert.ok(visibleBadgeCount <= 5, `expected max 5 visible badges, got ${visibleBadgeCount}`);
     assert.match(html, /data-cabinet-visible-badge="due"/);
     assert.match(html, /data-cabinet-visible-badge="priority"/);
-    assert.match(html, /data-cabinet-visible-badge="report"/);
+    assert.doesNotMatch(html, /data-cabinet-visible-badge="report"/);
     assert.match(html, /data-task-priority="high"/);
     assert.match(html, /data-task-due-state="overdue"/);
-    assert.match(html, /cabinet-subtask-progress/);
+    assert.doesNotMatch(html, /cabinet-subtask-progress/);
     assert.match(html, /data-cabinet-task-action="done"/);
+    assert.match(html, /data-cabinet-task-action="ai-classification"/);
+    assert.match(html, /data-cabinet-task-action="toggle-my-day-details"/);
     assert.match(html, /data-cabinet-task-action="more"/);
+
+    vm.runInContext(`cabinetMyDayViewMode = 'detailed';`, ctx);
+    const detailedHtml = ctx.renderCabinetTaskCard(task, false, { surface: 'myday', activeInlineTaskId: 44 });
+    assert.match(detailedHtml, /data-cabinet-visible-badge="report"/);
+    assert.match(detailedHtml, /cabinet-subtask-progress/);
 });
 
 test('profile My Day shows one active checklist slice and keeps the full checklist behind the toggle', () => {
@@ -1574,6 +1581,12 @@ test('profile My Day shows one active checklist slice and keeps the full checkli
     `, ctx);
 
     let html = ctx.renderMyDayTab();
+    assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 0);
+    assert.equal((html.match(/data-cabinet-subtask-summary=/g) || []).length, 0);
+    assert.match(html, /data-cabinet-task-action="toggle-my-day-details"/);
+
+    vm.runInContext(`cabinetMyDayViewMode = 'detailed';`, ctx);
+    html = ctx.renderMyDayTab();
     assert.equal((html.match(/data-cabinet-active-subtask-slice=/g) || []).length, 1);
     assert.match(html, /data-cabinet-active-subtask-slice="44"/);
     assert.doesNotMatch(html, /data-cabinet-active-subtask-slice="45"/);

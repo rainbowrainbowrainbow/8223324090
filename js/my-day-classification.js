@@ -138,8 +138,24 @@
             impactIds: impacts
         };
     }
-    function renderTaskBadges(myDay = {}) {
+    function renderTaskBadges(myDay = {}, options = {}) {
         const impacts = Array.isArray(myDay?.impacts) ? myDay.impacts : [];
+        const taskId = options.taskId ?? options.taskID ?? myDay.taskId ?? myDay.task_id ?? '';
+        const taskIdAttr = String(taskId || '').trim();
+        const renderImpactButton = (record, hidden = false) => {
+            const impactId = String(record?.id || '').trim();
+            const name = String(record?.name || '').trim();
+            const disabled = !taskIdAttr || !impactId;
+            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--removable${hidden ? ' is-hidden-impact' : ''}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-cabinet-task-action="remove-impact" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" ${hidden ? 'hidden' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''}>${escape(record.icon || '•')} <span>${escape(name)}</span><span class="my-day-task-chip-remove" aria-hidden="true">×</span></button>`;
+        };
+        const visibleImpactButtons = impacts.slice(0, 2).map(record => renderImpactButton(record)).join('');
+        const hiddenImpactRecords = impacts.slice(2);
+        const hiddenImpactButtons = hiddenImpactRecords.map(record => renderImpactButton(record, true)).join('');
+        const hiddenImpactLabel = hiddenImpactRecords.map(record => record?.name).filter(Boolean).join(', ');
+        const revealButton = hiddenImpactRecords.length ? `<button type="button" class="my-day-task-chip my-day-task-chip--more" title="${escape(hiddenImpactLabel)}" aria-label="${escape('Ще впливи: ' + hiddenImpactLabel)}" data-cabinet-task-action="reveal-impact" data-task-id="${escape(taskIdAttr)}" ${taskIdAttr ? '' : 'disabled aria-disabled="true"'}>+${hiddenImpactRecords.length}</button>` : '';
+        if (visibleImpactButtons || revealButton || hiddenImpactButtons) {
+            return `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${visibleImpactButtons}${revealButton}${hiddenImpactButtons}</span>`;
+        }
         const chip = (record, kind) => `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${escape(record.icon || '•')} <span>${escape(record.name)}</span></span>`;
         const impactChips = impacts.slice(0, 2).map(record => chip(record, 'impact')).join('');
         const hiddenImpacts = impacts.slice(2);

@@ -92,7 +92,8 @@ test('profile UI exposes Day and Habits modes, settings, ARIA, skip undo, and co
     assert.match(habitsUi, /data-my-day-habit-undo/);
     assert.match(habitsUi, /aria-busy/);
     assert.match(habitsUi, /loadSettings/);
-    assert.match(timeUi, /data-cabinet-task-action="time-entries"/);
+    assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
+    assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
     assert.match(timeUi, /data-my-day-time-edit/);
     assert.match(timeUi, /data-my-day-time-delete/);
     assert.match(html, /js\/my-day-habits\.js/);

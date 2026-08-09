@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.107 - Task Center Dark Theme Audit
+
+### Release / Versioning / (09.08.2026) [codex]
+- **Task Center overview surfaces are dark-safe** - exception count chips, reason chips and recommended-action pills no longer keep pale light-theme fills in dark mode.
+- **Team control contrast was hardened** - secondary owner/capacity text and normal/danger metric pills now use scoped dark backgrounds and readable semantic colors.
+- **Planning table and task buttons were themed** - table cells, overload state, effort text, scheduled task buttons, hover/focus and disabled button states avoid accidental white/pale surfaces.
+- **Regression coverage now checks the remaining surfaces** - Task Center Chromium smoke asserts computed contrast and white-surface detection for Overview, Team and Planning, including an overload fixture.
+
+---
+
 ## v0.80.106 - Checkbox Final Software Hardening
 
 ### Release / Versioning / (09.08.2026) [codex]

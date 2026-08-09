@@ -1854,6 +1854,31 @@ body.dark-mode .task-overview-action {
     color: #cbd5e1;
 }
 
+body.dark-mode .task-overview-count,
+html[data-theme="dark"] .task-overview-count,
+body.dark-mode .task-overview-reason,
+html[data-theme="dark"] .task-overview-reason {
+    border-color: rgba(251, 146, 60, 0.36);
+    color: #fed7aa;
+    background: rgba(124, 45, 18, 0.52);
+}
+
+body.dark-mode .task-overview-count[data-exception="blocked"],
+html[data-theme="dark"] .task-overview-count[data-exception="blocked"],
+body.dark-mode .task-overview-reason[data-exception="blocked"],
+html[data-theme="dark"] .task-overview-reason[data-exception="blocked"] {
+    border-color: rgba(248, 113, 113, 0.38);
+    color: #fecaca;
+    background: rgba(127, 29, 29, 0.54);
+}
+
+body.dark-mode .task-overview-action,
+html[data-theme="dark"] .task-overview-action {
+    border: 1px solid rgba(148, 163, 184, 0.26);
+    color: #e2e8f0;
+    background: rgba(30, 41, 59, 0.72);
+}
+
 body.dark-mode .task-overview-item {
     border-color: rgba(148, 163, 184, 0.24);
     background: rgba(15, 23, 42, 0.54);
@@ -2161,6 +2186,104 @@ body.dark-mode .task-planning-unscheduled select {
     border-color: rgba(148, 163, 184, 0.42);
     color: #e2e8f0;
     background: #0f172a;
+}
+
+body.dark-mode .task-team-owner-card p,
+html[data-theme="dark"] .task-team-owner-card p,
+body.dark-mode .task-team-capacity,
+html[data-theme="dark"] .task-team-capacity,
+body.dark-mode .task-team-context,
+html[data-theme="dark"] .task-team-context,
+body.dark-mode .task-planning-table small,
+html[data-theme="dark"] .task-planning-table small,
+body.dark-mode .task-planning-unscheduled small,
+html[data-theme="dark"] .task-planning-unscheduled small {
+    color: #cbd5e1;
+}
+
+body.dark-mode .task-team-metric,
+html[data-theme="dark"] .task-team-metric {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    color: #cbd5e1;
+    background: rgba(30, 41, 59, 0.72);
+}
+
+body.dark-mode .task-team-metric strong,
+html[data-theme="dark"] .task-team-metric strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .task-team-metric.is-danger,
+html[data-theme="dark"] .task-team-metric.is-danger {
+    border-color: rgba(248, 113, 113, 0.34);
+    color: #fecaca;
+    background: rgba(127, 29, 29, 0.54);
+}
+
+body.dark-mode .task-team-metric.is-danger strong,
+html[data-theme="dark"] .task-team-metric.is-danger strong {
+    color: #fee2e2;
+}
+
+body.dark-mode .task-planning-table-wrap,
+html[data-theme="dark"] .task-planning-table-wrap {
+    border-color: rgba(45, 212, 191, 0.22);
+}
+
+body.dark-mode .task-planning-table td,
+html[data-theme="dark"] .task-planning-table td {
+    border-color: rgba(148, 163, 184, 0.20);
+    color: #cbd5e1;
+    background: rgba(15, 23, 42, 0.46);
+}
+
+body.dark-mode .task-planning-table td > strong,
+html[data-theme="dark"] .task-planning-table td > strong {
+    color: #e2e8f0;
+}
+
+body.dark-mode .task-planning-table td.is-overload,
+html[data-theme="dark"] .task-planning-table td.is-overload {
+    background: rgba(127, 29, 29, 0.45);
+}
+
+body.dark-mode .task-planning-table td.is-overload b,
+html[data-theme="dark"] .task-planning-table td.is-overload b {
+    color: #fecaca;
+}
+
+body.dark-mode .task-planning-day-tasks button,
+html[data-theme="dark"] .task-planning-day-tasks button {
+    border: 1px solid rgba(45, 212, 191, 0.30);
+    color: #ccfbf1;
+    background: #134e4a;
+}
+
+body.dark-mode .task-planning-day-tasks button:hover,
+html[data-theme="dark"] .task-planning-day-tasks button:hover,
+body.dark-mode .task-planning-day-tasks button:focus,
+html[data-theme="dark"] .task-planning-day-tasks button:focus,
+body.dark-mode .task-planning-day-tasks button:focus-visible,
+html[data-theme="dark"] .task-planning-day-tasks button:focus-visible {
+    border-color: rgba(94, 234, 212, 0.55);
+    color: #ccfbf1;
+    background: #115e59;
+}
+
+body.dark-mode .task-planning-day-tasks button:focus,
+html[data-theme="dark"] .task-planning-day-tasks button:focus,
+body.dark-mode .task-planning-day-tasks button:focus-visible,
+html[data-theme="dark"] .task-planning-day-tasks button:focus-visible {
+    outline: 2px solid rgba(94, 234, 212, 0.55);
+    outline-offset: 2px;
+}
+
+body.dark-mode .task-planning-day-tasks button:disabled,
+html[data-theme="dark"] .task-planning-day-tasks button:disabled {
+    border-color: rgba(71, 85, 105, 0.46);
+    color: #94a3b8;
+    background: rgba(30, 41, 59, 0.56);
+    cursor: not-allowed;
 }
 
 @media (max-width: 720px) {

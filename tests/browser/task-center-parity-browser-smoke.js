@@ -196,7 +196,7 @@ function teamPayload() {
         date,
         capacity: { status: 'unavailable', minutes: null },
         scheduledEffortMinutes: scheduledTasks.length ? 60 : 0,
-        overloadMinutes: 0,
+        overloadMinutes: scheduledTasks.length ? 30 : 0,
         scheduledTasks
     });
     const metrics = {
@@ -475,6 +475,97 @@ async function assertTaskCenterQueryThemeContract(page, label) {
     assert.equal(disabledStyle.cursor, 'not-allowed', `${label}: disabled saved view communicates non-interactive state`);
 }
 
+async function collectDarkTaskCenterSurfaceStyles(page, specs) {
+    return page.evaluate(input => {
+        function visible(el) {
+            const rect = el.getBoundingClientRect();
+            return rect.width > 0 && rect.height > 0;
+        }
+        return input.flatMap(spec => {
+            const nodes = [...document.querySelectorAll(spec.selector)].filter(visible);
+            return nodes.map((el, index) => {
+                const style = getComputedStyle(el);
+                const bgEl = spec.background === 'parent'
+                    ? el.parentElement
+                    : (spec.background ? el.closest(spec.background) : el);
+                const bgStyle = getComputedStyle(bgEl || el);
+                return {
+                    label: spec.label,
+                    index,
+                    text: (el.innerText || el.textContent || '').trim().slice(0, 80),
+                    backgroundColor: bgStyle.backgroundColor,
+                    color: style.color,
+                    borderColor: style.borderColor,
+                    outlineStyle: style.outlineStyle,
+                    outlineWidth: style.outlineWidth,
+                    boxShadow: style.boxShadow
+                };
+            });
+        });
+    }, specs);
+}
+
+function assertDarkTaskCenterSurfaceStyles(styles, label) {
+    assert.ok(styles.length > 0, `${label}: collected dark operational surfaces`);
+    for (const item of styles) {
+        const background = parseCssRgb(item.backgroundColor);
+        const foreground = parseCssRgb(item.color);
+        assert.ok(background, `${label}: ${item.label} background is parseable (${item.backgroundColor})`);
+        assert.ok(foreground, `${label}: ${item.label} text color is parseable (${item.color})`);
+        assert.ok(Math.min(background.r, background.g, background.b) < 235, `${label}: ${item.label} is not a white surface (${item.backgroundColor})`);
+        assert.ok(contrastRatio(foreground, background) >= 4.5, `${label}: ${item.label} text contrast is readable (${item.backgroundColor} / ${item.color})`);
+    }
+}
+
+async function assertTaskCenterOperationalDarkSurfaces(page, baseUrl) {
+    await openPage(page, baseUrl, '?mode=overview');
+    await waitForMode(page, 'overview');
+    await page.waitForSelector('.task-overview-queue');
+    assertDarkTaskCenterSurfaceStyles(await collectDarkTaskCenterSurfaceStyles(page, [
+        { label: 'overview count chip', selector: '.task-overview-count' },
+        { label: 'overview reason chip', selector: '.task-overview-reason' },
+        { label: 'overview action pill', selector: '.task-overview-action' }
+    ]), 'overview');
+
+    await page.locator('.task-center-mode-tab[data-task-mode="team"]').click();
+    await waitForMode(page, 'team');
+    await page.waitForSelector('.task-team-owner-card');
+    assertDarkTaskCenterSurfaceStyles(await collectDarkTaskCenterSurfaceStyles(page, [
+        { label: 'team owner secondary text', selector: '.task-team-owner-card p', background: '.task-team-owner-card' },
+        { label: 'team capacity text', selector: '.task-team-capacity', background: '.task-team-owner-card' },
+        { label: 'team metric pill', selector: '.task-team-metric' },
+        { label: 'team metric value', selector: '.task-team-metric strong', background: '.task-team-metric' }
+    ]), 'team');
+
+    await page.locator('.task-center-mode-tab[data-task-mode="planning"]').click();
+    await waitForMode(page, 'planning');
+    await page.waitForSelector('.task-planning-table');
+    assertDarkTaskCenterSurfaceStyles(await collectDarkTaskCenterSurfaceStyles(page, [
+        { label: 'planning table cell', selector: '.task-planning-table td' },
+        { label: 'planning table small text', selector: '.task-planning-table td > small', background: 'td' },
+        { label: 'planning table effort text', selector: '.task-planning-table td > strong', background: 'td' },
+        { label: 'planning overload cell', selector: '.task-planning-table td.is-overload' },
+        { label: 'planning overload text', selector: '.task-planning-table td.is-overload b', background: 'td.is-overload' },
+        { label: 'planning task button', selector: '.task-planning-day-tasks button' },
+        { label: 'planning unscheduled secondary text', selector: '.task-planning-unscheduled small', background: '.task-planning-unscheduled' }
+    ]), 'planning');
+
+    const planningButtonFocus = await page.locator('.task-planning-day-tasks button').first().evaluate(el => {
+        el.focus();
+        const style = getComputedStyle(el);
+        return {
+            outlineStyle: style.outlineStyle,
+            outlineWidth: style.outlineWidth,
+            boxShadow: style.boxShadow
+        };
+    });
+    assert.notEqual(planningButtonFocus.outlineStyle, 'none', `planning: task button focus outline is visible (${JSON.stringify(planningButtonFocus)})`);
+    assert.notEqual(planningButtonFocus.outlineWidth, '0px', `planning: task button focus outline has width (${JSON.stringify(planningButtonFocus)})`);
+
+    await openPage(page, baseUrl, '?mode=overview');
+    await waitForMode(page, 'overview');
+}
+
 async function assertTaskCenterLightThemeUnchanged(page) {
     const styles = await collectTaskCenterQueryControlStyles(page);
     assert.equal(styles.filter(item => item.type !== 'date').length, 7, 'light theme still renders seven non-date query/saved-view controls');
@@ -584,6 +675,7 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion preference reaches page');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), true, 'dark mode is applied');
     await assertTaskCenterQueryThemeContract(page, 'body.dark-mode');
+    await assertTaskCenterOperationalDarkSurfaces(page, baseUrl);
     await page.evaluate(() => {
         document.body.classList.remove('dark-mode');
         document.documentElement.setAttribute('data-theme', 'dark');

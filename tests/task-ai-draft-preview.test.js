@@ -464,6 +464,50 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
     });
     assert.equal(invalidDueDate.ok, false);
     assert.equal(invalidDueDate.code, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+
+    const inventedOwner = await preview.generateTaskAiDraftPreview({
+        draft: { title: 'Split CRM plan' },
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify(validProposal({
+                decision: 'task_bundle',
+                mode: null,
+                title: null,
+                description: null,
+                impactIds: [],
+                subtasks: [],
+                bundleTitle: 'CRM plan',
+                tasks: [
+                    {
+                        title: 'Task one',
+                        description: null,
+                        impactIds: [101],
+                        priority: 'normal',
+                        dueDate: null,
+                        ownerSuggestion: { userId: 999, name: 'Invented owner', reason: 'Unsafe.' },
+                        confidence: validProposal().confidence
+                    },
+                    {
+                        title: 'Task two',
+                        description: null,
+                        impactIds: [102],
+                        priority: 'normal',
+                        dueDate: null,
+                        ownerSuggestion: { userId: null, name: null, reason: null },
+                        confidence: validProposal().confidence
+                    }
+                ]
+            }))
+        })
+    });
+    assert.equal(inventedOwner.ok, false);
+    assert.equal(inventedOwner.code, 'TASK_AI_DRAFT_INVALID_RESPONSE');
 });
 
 test('task AI draft preview rejects unknown or archived impacts and extra fields', async () => {
@@ -614,6 +658,9 @@ test('tasks route exposes ai-draft preview and keeps decompose-draft as non-Open
     assert.match(route, /router\.post\('\/ai-draft\/preview'/);
     assert.match(route, /generateTaskAiDraftPreview/);
     assert.match(route, /listTaxonomy\(pool, userId, 'impacts'\)/);
+    assert.match(route, /listTaskOwnerCandidates\(\{ actor: req\.user \}\)/);
+    assert.match(route, /ownerCatalog: ownerCatalog\.map/);
+    assert.match(route, /currentUserId: userId/);
     assert.match(route, /hmacSafetyIdentifier\(`task_ai_draft:\$\{userId\}`/);
     assert.match(decomposeBlock, /legacyDecompositionResponseFromPreview/);
     assert.match(decomposeBlock, /deprecatedEndpoint: '\/api\/tasks\/ai-draft\/preview'/);

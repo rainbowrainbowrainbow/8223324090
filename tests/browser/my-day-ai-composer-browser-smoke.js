@@ -347,9 +347,13 @@ async function runBundleScenario(browser, fixture, { dark, viewport }) {
         await page.locator('[data-task-ai-bundle-reject]').nth(3).click();
         assert.match(await page.locator('[data-task-ai-draft-bundle-create]').textContent(), /3/);
         await page.click('[data-task-ai-bundle-accept-all]');
+        assert.equal(await page.locator('[data-task-ai-draft-bundle-create]').isDisabled(), true);
+        await page.locator('[data-task-ai-bundle-accept]').first().click();
         assert.equal(await page.locator('[data-task-ai-draft-bundle-create]').isDisabled(), false);
         const payloadBeforeCreate = await page.evaluate(() => window.TaskAiDraft.bundlePayloadFor(document.querySelector('[data-task-ai-draft-panel]')));
         assert.equal(payloadBeforeCreate.tasks.length, 3);
+        assert.deepEqual(payloadBeforeCreate.acceptedTaskMask, [0, 1, 2]);
+        assert.deepEqual(payloadBeforeCreate.rejectedTaskMask, [3]);
         assert.equal(payloadBeforeCreate.tasks[0].title, 'Edited CRM booking funnel');
         assert.equal(payloadBeforeCreate.tasks.some(task => /Publish content update/.test(task.title)), false);
         await page.click('[data-task-ai-draft-bundle-create]');

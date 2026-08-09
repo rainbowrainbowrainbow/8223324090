@@ -6,6 +6,7 @@ const { pool } = require('../db');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 const { replaceTaskClassification, normalizeImpactIds } = require('./myDayTaxonomy');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
+const { getAssignableTaskOwner } = require('./taskExecution');
 const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
@@ -56,7 +57,8 @@ function normalizePriority(value) {
 function normalizeDueDate(value) {
     const text = String(value || '').trim();
     if (!text) return null;
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(text)) {
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00.000Z`) : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
         throw bundleCommitError('Bundle task due date is invalid.', 400, 'TASK_AI_BUNDLE_DUE_DATE_INVALID');
     }
     return text;
@@ -139,16 +141,26 @@ function activeImpactIdSet(impacts = []) {
         .filter(id => Number.isInteger(id) && id > 0));
 }
 
-function validateBundleTasksAgainstRuntime({ tasks, activeImpacts, userId }) {
+function validateBundleTasksAgainstRuntime({ tasks, activeImpacts }) {
     const allowedImpactIds = activeImpactIdSet(activeImpacts);
     for (const [index, task] of tasks.entries()) {
         const unknownImpactIds = task.impactIds.filter(id => !allowedImpactIds.has(Number(id)));
         if (unknownImpactIds.length) {
             throw bundleCommitError(`Bundle task ${index + 1} contains unavailable impact IDs.`, 422, 'TASK_AI_BUNDLE_UNKNOWN_IMPACT');
         }
-        if (task.ownerSuggestion?.userId && Number(task.ownerSuggestion.userId) !== Number(userId)) {
-            throw bundleCommitError('Bundle task owner suggestion must be confirmed with an allowed user picker.', 400, 'TASK_AI_BUNDLE_OWNER_INVALID');
-        }
+    }
+}
+
+function validateTaskMasks({ acceptedTaskMask, rejectedTaskMask, taskCount, proposalTaskCount }) {
+    if (acceptedTaskMask.length !== taskCount) {
+        throw bundleCommitError('Accepted task mask does not match the committed task list.', 400, 'TASK_AI_BUNDLE_MASK_INVALID');
+    }
+    const accepted = new Set(acceptedTaskMask);
+    if (rejectedTaskMask.some(index => accepted.has(index))) {
+        throw bundleCommitError('Accepted and rejected task masks overlap.', 400, 'TASK_AI_BUNDLE_MASK_INVALID');
+    }
+    if (proposalTaskCount && acceptedTaskMask.length + rejectedTaskMask.length !== proposalTaskCount) {
+        throw bundleCommitError('Task masks must account for every proposed bundle task.', 400, 'TASK_AI_BUNDLE_MASK_INVALID');
     }
 }
 
@@ -193,69 +205,124 @@ function ensureTokenMatchesBundleRequest({ tokenPayload, userId, businessScope, 
 }
 
 async function findBundleReplay(client, { userId, idempotencyKey, businessScope }) {
-    const params = [
-        TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED,
-        Number(userId),
-        idempotencyKey
-    ];
-    let businessSql = '';
-    const businessContext = businessScope?.businessContext || businessScope?.business_context || null;
-    if (businessContext) {
-        params.push(businessContext);
-        businessSql = ` AND COALESCE(t.business_context, 'event_genix') = $${params.length}`;
-    }
+    const businessContext = businessScope?.businessContext || businessScope?.business_context || 'event_genix';
     const result = await client.query(
-        `SELECT h.*, t.id AS anchor_task_id, t.business_context
-         FROM task_action_history h
-         JOIN tasks t ON t.id = h.task_id
-         WHERE h.action_type = $1
-           AND h.actor_user_id = $2
-           AND h.meta_json->>'idempotencyKey' = $3
-           ${businessSql}
-         ORDER BY h.created_at DESC, h.id DESC
+        `SELECT b.*
+         FROM task_bundles b
+         WHERE b.created_by_user_id = $1
+           AND b.business_context = $2
+           AND b.idempotency_key = $3
+         ORDER BY b.created_at DESC
          LIMIT 1`,
-        params
+        [Number(userId), businessContext, idempotencyKey]
     );
     return result.rows?.[0] || null;
 }
 
-async function fetchReplayTasks(client, taskIds = []) {
-    const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [])
-        .map(id => Number(id))
-        .filter(id => Number.isInteger(id) && id > 0))];
-    if (!ids.length) return [];
+async function fetchBundleTasks(client, bundleId) {
     const result = await client.query(
-        `SELECT *
-         FROM tasks
-         WHERE id = ANY($1::int[])
-         ORDER BY array_position($1::int[], id)`,
-        [ids]
+        `SELECT t.*, bt.task_index AS bundle_task_index, bt.user_edited AS bundle_user_edited
+         FROM task_bundle_tasks bt
+         JOIN tasks t ON t.id = bt.task_id
+         WHERE bt.bundle_id = $1
+         ORDER BY bt.task_index ASC`,
+        [bundleId]
     );
     return result.rows || [];
 }
 
 async function replayBundleResponse(client, row = {}) {
-    const meta = row.meta_json || {};
-    const newValue = row.new_value_json || {};
-    const taskIds = Array.isArray(meta.taskIds) ? meta.taskIds : (Array.isArray(newValue.taskIds) ? newValue.taskIds : []);
-    const tasks = await fetchReplayTasks(client, taskIds);
+    const tasks = await fetchBundleTasks(client, row.id);
+    const taskIds = tasks.map(task => Number(task.id));
     return {
         ok: true,
         replayed: true,
         bundle: {
-            id: meta.bundleId || newValue.bundleId || null,
-            title: meta.bundleTitle || null,
+            id: row.id,
+            title: row.title,
+            status: row.status,
             taskIds,
-            taskCount: taskIds.length
+            taskCount: Number(row.task_count || taskIds.length),
+            createdAt: row.created_at || null
         },
         tasks,
-        historyEvent: {
-            id: row.id,
-            taskId: row.task_id,
-            actionType: row.action_type,
-            meta,
-            createdAt: row.created_at || null
-        }
+        historyEvent: null
+    };
+}
+
+async function insertTaskBundle(client, bundle = {}) {
+    const result = await client.query(
+        `INSERT INTO task_bundles (
+            id, business_context, title, status, created_by_user_id,
+            proposal_id, proposal_hash, draft_fingerprint, catalog_version,
+            idempotency_key, request_hash, task_count,
+            accepted_task_mask, rejected_task_mask,
+            provider, model, contract_version, prompt_version
+         ) VALUES (
+            $1, $2, $3, 'committed', $4,
+            $5, $6, $7, $8,
+            $9, $10, $11,
+            $12::integer[], $13::integer[],
+            'openai', $14, $15, $16
+         )
+         RETURNING *`,
+        [
+            bundle.id,
+            bundle.businessContext,
+            bundle.title,
+            bundle.userId,
+            bundle.proposalId,
+            bundle.proposalHash,
+            bundle.draftFingerprint,
+            bundle.catalogVersion,
+            bundle.idempotencyKey,
+            bundle.requestHash,
+            bundle.taskCount,
+            bundle.acceptedTaskMask,
+            bundle.rejectedTaskMask,
+            MY_DAY_TASK_AI_MODEL,
+            TASK_AI_DRAFT_CONTRACT_VERSION,
+            TASK_AI_DRAFT_PROMPT_VERSION
+        ]
+    );
+    return result.rows?.[0] || null;
+}
+
+async function insertTaskBundleMembership(client, { bundleId, taskId, taskIndex, userEdited }) {
+    await client.query(
+        `INSERT INTO task_bundle_tasks (bundle_id, task_id, task_index, user_edited)
+         VALUES ($1, $2, $3, $4)`,
+        [bundleId, Number(taskId), Number(taskIndex), userEdited === true]
+    );
+}
+
+async function readTaskBundleForUser(input = {}, options = {}) {
+    const db = options.pool || pool;
+    const bundleId = String(input.bundleId || input.bundle_id || '').trim();
+    const userId = Number(input.userId || input.user?.id || 0);
+    const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix';
+    if (!bundleId || !Number.isInteger(userId) || userId <= 0) return null;
+    const result = await db.query(
+        `SELECT b.*
+         FROM task_bundles b
+         WHERE b.id = $1
+           AND b.created_by_user_id = $2
+           AND b.business_context = $3
+         LIMIT 1`,
+        [bundleId, userId, businessContext]
+    );
+    const bundle = result.rows?.[0];
+    if (!bundle) return null;
+    const tasks = await fetchBundleTasks(db, bundle.id);
+    const taskIds = tasks.map(task => Number(task.id));
+    return {
+        id: bundle.id,
+        title: bundle.title,
+        status: bundle.status,
+        taskIds,
+        taskCount: Number(bundle.task_count || taskIds.length),
+        createdAt: bundle.created_at || null,
+        tasks
     };
 }
 
@@ -275,16 +342,17 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
     const startedAt = Date.now();
     const db = options.pool || pool;
     const tasks = normalizeBundleTasks(input.tasks || input.finalTasks || input.final_tasks || []);
-    const acceptedTaskMask = normalizeAcceptedTaskMask(input.acceptedTaskMask || input.accepted_task_mask || input.acceptedTasks || input.accepted_tasks, tasks.length);
-    const rejectedTaskMask = normalizeRejectedTaskMask(input.rejectedTaskMask || input.rejected_task_mask || input.rejectedTasks || input.rejected_tasks, tasks.length);
+    const proposalTaskCount = Array.isArray(input.proposal?.tasks) ? input.proposal.tasks.length : tasks.length;
+    const acceptedTaskMask = normalizeAcceptedTaskMask(input.acceptedTaskMask || input.accepted_task_mask || input.acceptedTasks || input.accepted_tasks, proposalTaskCount);
+    const rejectedTaskMask = normalizeRejectedTaskMask(input.rejectedTaskMask || input.rejected_task_mask || input.rejectedTasks || input.rejected_tasks, proposalTaskCount);
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw bundleCommitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
     validateBundleTasksAgainstRuntime({
         tasks,
         activeImpacts: input.activeImpacts || input.impacts || [],
-        userId
     });
+    validateTaskMasks({ acceptedTaskMask, rejectedTaskMask, taskCount: tasks.length, proposalTaskCount });
 
     const tokenPayload = verifyProposalToken(input.proposalToken || input.proposal_token, {
         secret: options.proposalSecret || options.safetySecret,
@@ -321,11 +389,13 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
             `task_ai_draft_bundle_commit:${tokenPayload.proposalId || tokenPayload.proposalHash}`
         ]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+            `task_ai_draft_bundle_idempotency:${userId}:${input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix'}:${idempotencyKey}`
+        ]);
 
         const existing = await findBundleReplay(client, { userId, idempotencyKey, businessScope: input.businessScope });
         if (existing) {
-            const meta = existing.meta_json || {};
-            if (meta.requestHash && meta.requestHash !== requestHash) {
+            if (existing.request_hash && existing.request_hash !== requestHash) {
                 throw bundleCommitError('Idempotency key was already used with a different bundle request.', 409, 'TASK_AI_DRAFT_IDEMPOTENCY_CONFLICT');
             }
             const replayed = await replayBundleResponse(client, existing);
@@ -344,25 +414,49 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             return replayed;
         }
 
+        const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix';
+        const canonicalBundle = await insertTaskBundle(client, {
+            id: bundleId,
+            businessContext,
+            title: bundleTitle,
+            userId,
+            proposalId: tokenPayload.proposalId || null,
+            proposalHash: submittedProposalHash,
+            draftFingerprint: tokenPayload.draftFingerprint,
+            catalogVersion,
+            idempotencyKey,
+            requestHash,
+            taskCount: tasks.length,
+            acceptedTaskMask,
+            rejectedTaskMask
+        });
+
         const createTaskImpl = options.createTaskImpl || require('./kleshnya').createTask;
         const actorLabel = legacyTaskTextRef(input.user?.username || input.user?.name, 'ai-draft');
         const ownerLabel = legacyTaskTextRef(input.user?.username || input.user?.name, null);
         const sourceId = legacyTaskTextRef(bundleId, null);
-        const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || undefined;
         const createdTasks = [];
         const classifications = [];
+        const resolveOwner = options.getAssignableTaskOwnerImpl || getAssignableTaskOwner;
 
         for (let index = 0; index < tasks.length; index += 1) {
             const finalTask = tasks[index];
+            const requestedOwnerId = Number(finalTask.ownerSuggestion?.userId || userId);
+            const ownerRecord = requestedOwnerId === userId
+                ? {
+                    id: userId,
+                    label: ownerLabel || actorLabel
+                }
+                : await resolveOwner(requestedOwnerId, { pool: client, actor: input.user });
             const task = await createTaskImpl({
                 businessContext,
                 title: finalTask.title,
                 description: finalTask.description,
                 date: finalTask.dueDate,
                 priority: finalTask.priority,
-                assigned_to: ownerLabel,
-                owner_user_id: userId,
-                owner: ownerLabel,
+                assigned_to: ownerRecord.label,
+                owner_user_id: ownerRecord.id,
+                owner: ownerRecord.label,
                 task_type: 'human',
                 dependency_ids: [],
                 source_type: AI_DRAFT_BUNDLE_SOURCE_TYPE,
@@ -395,6 +489,12 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 impactIds: finalTask.impactIds
             });
             classifications.push(classification);
+            await insertTaskBundleMembership(client, {
+                bundleId,
+                taskId: task.id,
+                taskIndex: index,
+                userEdited: finalTask.userEdited
+            });
             createdTasks.push({
                 ...task,
                 classification,
@@ -490,10 +590,12 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             ok: true,
             replayed: false,
             bundle: {
-                id: bundleId,
-                title: bundleTitle,
+                id: canonicalBundle?.id || bundleId,
+                title: canonicalBundle?.title || bundleTitle,
+                status: canonicalBundle?.status || 'committed',
                 taskIds,
-                taskCount: taskIds.length
+                taskCount: taskIds.length,
+                createdAt: canonicalBundle?.created_at || null
             },
             tasks: createdTasks,
             classifications,
@@ -525,6 +627,7 @@ module.exports = {
     MAX_BUNDLE_COMMIT_TASKS,
     MIN_BUNDLE_COMMIT_TASKS,
     commitTaskAiDraftBundle,
+    readTaskBundleForUser,
     normalizeBundleTask,
     normalizeBundleTasks
 };

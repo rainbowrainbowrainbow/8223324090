@@ -132,9 +132,25 @@
         return `<ol class="task-ai-draft-subtasks">${rows.map(item => `<li>${escapeHtml(compactText(item?.title || item?.name || '', 120))}</li>`).join('')}</ol>`;
     }
 
-    function normalizeBundleTask(task = {}, index = 0) {
+    function bundleOwnerCatalog(preview = {}) {
+        return (Array.isArray(preview.ownerCatalog) ? preview.ownerCatalog : [])
+            .map(owner => ({
+                id: Number(owner?.id),
+                label: String(owner?.label || owner?.name || owner?.username || '').trim(),
+                role: String(owner?.role || '').trim()
+            }))
+            .filter(owner => Number.isInteger(owner.id) && owner.id > 0 && owner.label);
+    }
+
+    function normalizeBundleTask(task = {}, index = 0, preview = {}) {
         const rawOwner = task.ownerSuggestion && typeof task.ownerSuggestion === 'object' ? task.ownerSuggestion : {};
+        const owners = bundleOwnerCatalog(preview);
+        const requestedOwnerId = Number(rawOwner.userId || preview.currentUserId || 0);
+        const selectedOwner = owners.find(owner => owner.id === requestedOwnerId)
+            || owners.find(owner => owner.id === Number(preview.currentUserId || 0))
+            || null;
         return {
+            proposalIndex: index,
             clientId: task.clientId || `bundle_${index}_${randomId('task')}`,
             title: String(task.title || '').trim(),
             description: String(task.description || '').trim(),
@@ -142,19 +158,20 @@
             priority: ['urgent', 'high', 'normal', 'low'].includes(String(task.priority || '')) ? String(task.priority) : 'normal',
             dueDate: /^\d{4}-\d{2}-\d{2}$/.test(String(task.dueDate || '')) ? String(task.dueDate) : '',
             ownerSuggestion: {
-                userId: Number.isInteger(Number(rawOwner.userId)) && Number(rawOwner.userId) > 0 ? Number(rawOwner.userId) : null,
-                name: String(rawOwner.name || '').trim(),
+                userId: selectedOwner?.id || null,
+                name: selectedOwner?.label || String(rawOwner.name || '').trim(),
                 reason: String(rawOwner.reason || '').trim()
             },
             accepted: task.accepted === true,
             rejected: task.rejected === true,
-            userEdited: task.userEdited === true
+            userEdited: task.userEdited === true,
+            userEditedFields: new Set(Array.isArray(task.userEditedFields) ? task.userEditedFields : [])
         };
     }
 
     function initializeBundleState(state) {
         const tasks = Array.isArray(state.preview?.proposal?.tasks) ? state.preview.proposal.tasks : [];
-        state.bundleTasks = tasks.map(normalizeBundleTask);
+        state.bundleTasks = tasks.map((task, index) => normalizeBundleTask(task, index, state.preview));
     }
 
     function activeBundleTasks(state) {
@@ -163,6 +180,15 @@
 
     function acceptedBundleTasks(state) {
         return activeBundleTasks(state).filter(task => task.accepted);
+    }
+
+    function bundleTaskNeedsIndividualReview(task = {}, preview = {}) {
+        const editedFields = task.userEditedFields instanceof Set ? task.userEditedFields : new Set();
+        const currentUserId = Number(preview.currentUserId || 0);
+        const selectedOwnerId = Number(task.ownerSuggestion?.userId || currentUserId || 0);
+        return (Boolean(task.dueDate) && !editedFields.has('dueDate'))
+            || (task.priority !== 'normal' && !editedFields.has('priority'))
+            || (currentUserId > 0 && selectedOwnerId !== currentUserId && !editedFields.has('ownerUserId'));
     }
 
     function bundleCountLabel(count) {
@@ -199,6 +225,10 @@
 
     function renderBundleTaskCard(task = {}, index = 0, preview = {}) {
         const number = index + 1;
+        const owners = bundleOwnerCatalog(preview);
+        const ownerOptions = owners.length
+            ? owners.map(owner => `<option value="${owner.id}" ${owner.id === Number(task.ownerSuggestion?.userId || 0) ? 'selected' : ''}>${escapeHtml(owner.label)}${owner.role ? ` (${escapeHtml(owner.role)})` : ''}</option>`).join('')
+            : '<option value="">Собі</option>';
         return `<article class="task-ai-bundle-card ${task.accepted ? 'is-accepted' : ''} ${task.rejected ? 'is-rejected' : ''} ${task.userEdited ? 'is-user-edited' : ''}" data-task-ai-bundle-card="${escapeHtml(task.clientId)}">
             <header class="task-ai-bundle-card-head">
                 <div>
@@ -222,7 +252,7 @@
                 </label>
                 <label>
                     <span>Виконавець</span>
-                    <input type="text" data-task-ai-bundle-field="ownerName" value="${escapeHtml(task.ownerSuggestion.name)}" placeholder="Підтвердити вручну" ${task.rejected ? 'disabled' : ''}>
+                    <select data-task-ai-bundle-field="ownerUserId" ${task.rejected ? 'disabled' : ''}>${ownerOptions}</select>
                 </label>
                 <label>
                     <span>Дата</span>
@@ -250,7 +280,7 @@
         const tasks = state.bundleTasks || [];
         const activeCount = activeBundleTasks(state).length;
         const acceptedCount = acceptedBundleTasks(state).length;
-        const canCreate = activeCount > 0 && acceptedCount === activeCount;
+        const canCreate = activeCount >= 2 && acceptedCount === activeCount;
         host.hidden = false;
         host.innerHTML = `
             <section class="task-ai-draft-review task-ai-bundle-review" aria-label="AI пропонує створити кілька задач">
@@ -261,7 +291,7 @@
                     </div>
                     <span class="task-ai-bundle-counter">${acceptedCount}/${activeCount} підтверджено</span>
                 </div>
-                ${activeCount === 1 ? '<p class="task-ai-bundle-warning">Залишилась 1 задача. Можна перейти до single-task створення або підтвердити створення як bundle після backend commit.</p>' : ''}
+                ${activeCount === 1 ? '<p class="task-ai-bundle-warning">Залишилась 1 задача. Скасуйте bundle і створіть її через звичайну single-task форму — bundle потребує щонайменше дві окремі задачі.</p>' : ''}
                 <div class="task-ai-bundle-list">
                     ${tasks.map((task, index) => renderBundleTaskCard(task, index, preview)).join('')}
                 </div>
@@ -449,8 +479,11 @@
                 .map(input => Number(input.value))
                 .filter(Number.isInteger)
                 .slice(0, 3);
-        } else if (field === 'ownerName') {
-            task.ownerSuggestion.name = String(control.value || '').trim();
+        } else if (field === 'ownerUserId') {
+            const ownerId = Number(control.value || 0);
+            const owner = bundleOwnerCatalog(state.preview).find(item => item.id === ownerId);
+            task.ownerSuggestion.userId = owner?.id || null;
+            task.ownerSuggestion.name = owner?.label || '';
         } else if (field === 'dueDate') {
             task.dueDate = String(control.value || '').trim();
         } else if (field === 'priority') {
@@ -462,6 +495,7 @@
         }
         task.accepted = false;
         task.userEdited = true;
+        task.userEditedFields.add(field);
         renderBundleReview(root, state);
         focusBundleField(root, task.clientId, field);
     }
@@ -495,7 +529,9 @@
 
     function acceptAllBundleTasks(root) {
         const state = rootState(root);
-        activeBundleTasks(state).forEach(task => { task.accepted = true; });
+        activeBundleTasks(state).forEach(task => {
+            if (!bundleTaskNeedsIndividualReview(task, state.preview)) task.accepted = true;
+        });
         renderBundleReview(root, state);
     }
 
@@ -504,7 +540,9 @@
         const state = rootState(root);
         if (state.preview?.proposal?.decision !== 'task_bundle' || !state.preview.proposalToken) return null;
         const activeTasks = activeBundleTasks(state);
-        const tasks = acceptedBundleTasks(state).map(task => ({
+        if (activeTasks.length < 2) return null;
+        const acceptedTasks = acceptedBundleTasks(state);
+        const tasks = acceptedTasks.map(task => ({
             title: task.title,
             description: task.description || null,
             impactIds: task.impactIds || [],
@@ -526,6 +564,8 @@
             catalogVersion: state.preview.catalogVersion,
             bundleTitle: state.preview.proposal.bundleTitle || '',
             tasks,
+            acceptedTaskMask: acceptedTasks.map(task => task.proposalIndex),
+            rejectedTaskMask: (state.bundleTasks || []).filter(task => task.rejected).map(task => task.proposalIndex),
             idempotencyKey: state.idempotencyKey || randomId('bundle_commit'),
             sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft'
         };
@@ -551,7 +591,7 @@
         const taskIds = (Array.isArray(result.tasks) ? result.tasks : [])
             .map(task => Number(task?.id || task?.taskId || task?.task_id || 0))
             .filter(id => Number.isInteger(id) && id > 0);
-        taskIds.forEach(id => committedTaskIds.add(id));
+        taskIds.forEach(id => lastCommittedAiTaskIds.add(id));
         try {
             window.dispatchEvent(new CustomEvent('task-ai-draft-bundle-committed', {
                 detail: { result, taskIds }

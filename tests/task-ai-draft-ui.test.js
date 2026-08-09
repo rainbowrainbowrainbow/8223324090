@@ -54,7 +54,7 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-bundle-field="title"/);
     assert.match(aiCode, /data-task-ai-bundle-field="description"/);
     assert.match(aiCode, /data-task-ai-bundle-field="impactIds"/);
-    assert.match(aiCode, /data-task-ai-bundle-field="ownerName"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="ownerUserId"/);
     assert.match(aiCode, /data-task-ai-bundle-field="dueDate"/);
     assert.match(aiCode, /data-task-ai-bundle-field="priority"/);
     assert.match(aiCode, /data-task-ai-bundle-accept=/);
@@ -63,6 +63,9 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-bundle-accept-all/);
     assert.match(aiCode, /data-task-ai-draft-bundle-create/);
     assert.match(aiCode, /bundlePayloadFor/);
+    assert.match(aiCode, /activeTasks\.length < 2/);
+    assert.match(aiCode, /taskIds\.forEach\(id => lastCommittedAiTaskIds\.add\(id\)\)/);
+    assert.doesNotMatch(aiCode, /\bcommittedTaskIds\b/);
     assert.match(aiCode, /state\.preview\?\.proposal\?\.decision === 'task_bundle'\) return null/);
     assert.match(aiCode, /atomic bundle commit endpoint/);
     assert.match(aiCode, /sourceType: 'ai_draft'/);
@@ -121,6 +124,11 @@ test('AI draft composer renders interactive task bundle review without single-ta
             draftFingerprint: 'draft-hash',
             proposalHash: 'proposal-hash',
             catalogVersion: 'catalog-hash',
+            currentUserId: 7,
+            ownerCatalog: [
+                { id: 7, label: 'Tester', role: 'user' },
+                { id: 9, label: 'CRM owner', role: 'user' }
+            ],
             proposal: {
                 decision: 'task_bundle',
                 action: 'needs_project',
@@ -166,12 +174,18 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(root.querySelectorAll('[data-task-ai-bundle-card]').length, 2);
     assert.match(root.textContent, /AI .*2/);
     assert.match(root.textContent, /dependencies/);
+    assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '7');
     assert.ok(root.querySelector('[data-task-ai-draft-bundle-create]').disabled);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root), null);
 
     root.querySelector('[data-task-ai-bundle-accept-all]').click();
+    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, true);
+    assert.match(root.textContent, /1\/2/);
+    root.querySelector('[data-task-ai-bundle-accept]').click();
     assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, false);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 2);
+    assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).acceptedTaskMask, [0, 1]);
+    assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).rejectedTaskMask, []);
 
     const firstTitle = root.querySelector('[data-task-ai-bundle-card] [data-task-ai-bundle-field="title"]');
     firstTitle.value = 'Fix CRM intake after review';
@@ -183,8 +197,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
     const secondReject = root.querySelectorAll('[data-task-ai-bundle-reject]')[1];
     secondReject.click();
     assert.match(root.querySelector('[data-task-ai-draft-bundle-create]').textContent, /1/);
-    assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 1);
-
-    root.querySelector('[data-task-ai-draft-bundle-create]').click();
-    assert.match(root.querySelector('[data-task-ai-draft-status]').textContent, /atomic bundle commit endpoint/);
+    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, true);
+    assert.equal(window.TaskAiDraft.bundlePayloadFor(root), null);
+    assert.match(root.textContent, /single-task/);
 });

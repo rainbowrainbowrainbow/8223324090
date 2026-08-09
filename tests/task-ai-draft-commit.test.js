@@ -62,11 +62,15 @@ function createFakePool(options = {}) {
         history: [],
         subtasks: [],
         impacts: [],
+        bundles: [],
+        bundleTasks: [],
         pending: {
             tasks: [],
             history: [],
             subtasks: [],
-            impacts: []
+            impacts: [],
+            bundles: [],
+            bundleTasks: []
         },
         rolledBack: false,
         committed: false,
@@ -78,7 +82,7 @@ function createFakePool(options = {}) {
             const sql = String(text).replace(/\s+/g, ' ').trim();
             state.calls.push({ text: sql, params });
             if (sql === 'BEGIN') {
-                state.pending = { tasks: [], history: [], subtasks: [], impacts: [] };
+                state.pending = { tasks: [], history: [], subtasks: [], impacts: [], bundles: [], bundleTasks: [] };
                 return { rows: [] };
             }
             if (sql === 'COMMIT') {
@@ -87,15 +91,69 @@ function createFakePool(options = {}) {
                 state.history.push(...state.pending.history);
                 state.subtasks.push(...state.pending.subtasks);
                 state.impacts.push(...state.pending.impacts);
-                state.pending = { tasks: [], history: [], subtasks: [], impacts: [] };
+                state.bundles.push(...state.pending.bundles);
+                state.bundleTasks.push(...state.pending.bundleTasks);
+                state.pending = { tasks: [], history: [], subtasks: [], impacts: [], bundles: [], bundleTasks: [] };
                 return { rows: [] };
             }
             if (sql === 'ROLLBACK') {
                 state.rolledBack = true;
-                state.pending = { tasks: [], history: [], subtasks: [], impacts: [] };
+                state.pending = { tasks: [], history: [], subtasks: [], impacts: [], bundles: [], bundleTasks: [] };
                 return { rows: [] };
             }
             if (/pg_advisory_xact_lock\(hashtext\(\$1\)::bigint\)/i.test(sql)) return { rows: [] };
+            if (/SELECT b\.\* FROM task_bundles b/i.test(sql)) {
+                const existing = /b\.id = \$1/i.test(sql)
+                    ? state.bundles.find(item => item.id === params[0]
+                        && Number(item.created_by_user_id) === Number(params[1])
+                        && item.business_context === params[2])
+                    : state.bundles.find(item => Number(item.created_by_user_id) === Number(params[0])
+                        && item.business_context === params[1]
+                        && item.idempotency_key === params[2]);
+                return { rows: existing ? [existing] : [] };
+            }
+            if (/INSERT INTO task_bundles/i.test(sql)) {
+                const row = {
+                    id: params[0],
+                    business_context: params[1],
+                    title: params[2],
+                    status: 'committed',
+                    created_by_user_id: params[3],
+                    proposal_id: params[4],
+                    proposal_hash: params[5],
+                    draft_fingerprint: params[6],
+                    catalog_version: params[7],
+                    idempotency_key: params[8],
+                    request_hash: params[9],
+                    task_count: params[10],
+                    accepted_task_mask: params[11],
+                    rejected_task_mask: params[12],
+                    created_at: '2026-08-09T12:00:00.000Z'
+                };
+                state.pending.bundles.push(row);
+                return { rows: [row] };
+            }
+            if (/INSERT INTO task_bundle_tasks/i.test(sql)) {
+                state.pending.bundleTasks.push({
+                    bundle_id: params[0],
+                    task_id: params[1],
+                    task_index: params[2],
+                    user_edited: params[3]
+                });
+                return { rows: [] };
+            }
+            if (/FROM task_bundle_tasks bt JOIN tasks t/i.test(sql)) {
+                const memberships = state.bundleTasks
+                    .filter(item => item.bundle_id === params[0])
+                    .sort((a, b) => a.task_index - b.task_index);
+                return {
+                    rows: memberships.map(item => ({
+                        ...state.tasks.find(task => Number(task.id) === Number(item.task_id)),
+                        bundle_task_index: item.task_index,
+                        bundle_user_edited: item.user_edited
+                    }))
+                };
+            }
             if (/FROM task_action_history h JOIN tasks t/i.test(sql)) {
                 const existing = state.history.find(item => item.action_type === params[0] && item.meta_json?.idempotencyKey === params[2]);
                 return { rows: existing ? [{ ...state.tasks.find(task => task.id === existing.task_id), ...existing }] : [] };
@@ -175,6 +233,9 @@ function createFakePool(options = {}) {
     };
     return {
         state,
+        async query(text, params) {
+            return client.query(text, params);
+        },
         async connect() {
             return client;
         }
@@ -443,31 +504,33 @@ const bundleProposal = {
     reason: 'Needs two real tasks.'
 };
 
-function makeBundleToken(secret = 'proposal-secret') {
+function makeBundleToken(secret = 'proposal-secret', proposalValue = bundleProposal) {
     const draft = { title: 'crm automation plan', description: 'split safely' };
     return {
         token: preview.createProposalToken({
             userId: 7,
             businessScope: { businessContext: 'event_genix' },
             fingerprint: preview.draftFingerprint(draft),
-            proposal: bundleProposal,
+            proposal: proposalValue,
             catalogVersion: preview.activeImpactCatalogVersion(impacts),
             now: 1_000,
             secret
         }),
         draftFingerprint: preview.draftFingerprint(draft),
-        proposalHash: preview.proposalHash(bundleProposal)
+        proposalHash: preview.proposalHash(proposalValue),
+        proposal: proposalValue
     };
 }
 
 function bundleCommitInput(tokenParts, overrides = {}) {
+    const proposalValue = tokenParts.proposal || bundleProposal;
     return {
         proposalToken: tokenParts.token,
         proposalHash: tokenParts.proposalHash,
         draftFingerprint: tokenParts.draftFingerprint,
-        proposal: bundleProposal,
-        bundleTitle: bundleProposal.bundleTitle,
-        tasks: bundleProposal.tasks.map(task => ({
+        proposal: proposalValue,
+        bundleTitle: proposalValue.bundleTitle,
+        tasks: proposalValue.tasks.map(task => ({
             title: task.title,
             description: task.description,
             impactIds: task.impactIds,
@@ -475,7 +538,7 @@ function bundleCommitInput(tokenParts, overrides = {}) {
             dueDate: task.dueDate,
             ownerSuggestion: task.ownerSuggestion
         })),
-        acceptedTaskMask: [0, 1],
+        acceptedTaskMask: proposalValue.tasks.map((_, index) => index),
         rejectedTaskMask: [],
         idempotencyKey: 'ai-bundle-key-1',
         activeImpacts: impacts,
@@ -505,6 +568,10 @@ test('AI draft bundle commit creates all tasks, impacts, and bundle audit in one
     assert.equal(fakePool.state.tasks.length, 2);
     assert.equal(fakePool.state.impacts.length, 2);
     assert.equal(fakePool.state.history.length, 3);
+    assert.equal(fakePool.state.bundles.length, 1);
+    assert.equal(fakePool.state.bundleTasks.length, 2);
+    assert.equal(fakePool.state.bundles[0].id, result.bundle.id);
+    assert.deepEqual(fakePool.state.bundleTasks.map(item => item.task_id), [501, 502]);
     assert.ok(fakePool.state.calls.some(call => /pg_advisory_xact_lock/i.test(call.text)));
     assert.equal(fakePool.state.tasks[0].source_type, 'ai_draft_bundle');
     assert.deepEqual(fakePool.state.tasks[0].dependency_ids, []);
@@ -536,6 +603,8 @@ test('AI draft bundle commit rolls back every task when any write fails', async 
     assert.equal(fakePool.state.tasks.length, 0);
     assert.equal(fakePool.state.impacts.length, 0);
     assert.equal(fakePool.state.history.length, 0);
+    assert.equal(fakePool.state.bundles.length, 0);
+    assert.equal(fakePool.state.bundleTasks.length, 0);
 });
 
 test('AI draft bundle commit is idempotent and rejects conflicting replay body', async () => {
@@ -558,7 +627,17 @@ test('AI draft bundle commit is idempotent and rejects conflicting replay body',
     assert.equal(first.replayed, false);
     assert.equal(replay.replayed, true);
     assert.equal(fakePool.state.tasks.length, 2);
+    assert.equal(fakePool.state.bundles.length, 1);
     assert.deepEqual(replay.bundle.taskIds, [501, 502]);
+
+    const canonical = await bundleCommit.readTaskBundleForUser({
+        bundleId: first.bundle.id,
+        userId: 7,
+        businessScope: { businessContext: 'event_genix' }
+    }, { pool: fakePool });
+    assert.equal(canonical.id, first.bundle.id);
+    assert.equal(canonical.status, 'committed');
+    assert.deepEqual(canonical.taskIds, [501, 502]);
 
     await assert.rejects(
         () => bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(tokenParts, {
@@ -611,7 +690,7 @@ test('AI draft bundle commit rejects unknown and archived impacts before opening
     );
 });
 
-test('AI draft bundle commit rejects invalid task count, owner, date, and priority before writes', async () => {
+test('AI draft bundle commit rejects invalid task count, date, priority, and unavailable reviewed owner', async () => {
     const tokenParts = makeBundleToken();
     const fakePool = createFakePool();
     const base = bundleCommitInput(tokenParts);
@@ -657,11 +736,88 @@ test('AI draft bundle commit rejects invalid task count, owner, date, and priori
             pool: fakePool,
             proposalSecret: 'proposal-secret',
             now: 2_000,
-            createTaskImpl: fakeCreateTaskImpl(fakePool)
+            createTaskImpl: fakeCreateTaskImpl(fakePool),
+            getAssignableTaskOwnerImpl: async () => {
+                const error = new Error('Task owner is not active or assignable');
+                error.code = 'TASK_OWNER_NOT_ASSIGNABLE';
+                error.statusCode = 400;
+                throw error;
+            }
         }),
-        error => error.code === 'TASK_AI_BUNDLE_OWNER_INVALID'
+        error => error.code === 'TASK_OWNER_NOT_ASSIGNABLE'
     );
     assert.equal(fakePool.state.tasks.length, 0);
+    assert.equal(fakePool.state.bundles.length, 0);
+    assert.equal(fakePool.state.rolledBack, true);
+});
+
+test('AI draft bundle commit uses reviewed assignable owners and preserves original accept/reject masks', async () => {
+    const proposalValue = {
+        ...bundleProposal,
+        tasks: [
+            bundleProposal.tasks[0],
+            {
+                ...bundleProposal.tasks[1],
+                title: 'Rejected middle task'
+            },
+            {
+                ...bundleProposal.tasks[1],
+                title: 'Publish verified automation result'
+            }
+        ]
+    };
+    const tokenParts = makeBundleToken('proposal-secret', proposalValue);
+    const fakePool = createFakePool();
+    const input = bundleCommitInput(tokenParts, {
+        tasks: [
+            {
+                ...proposalValue.tasks[0],
+                ownerSuggestion: { userId: 9, name: 'Assignable owner', reason: 'Selected by user.' }
+            },
+            proposalValue.tasks[2]
+        ],
+        acceptedTaskMask: [0, 2],
+        rejectedTaskMask: [1]
+    });
+    const result = await bundleCommit.commitTaskAiDraftBundle(input, {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool),
+        getAssignableTaskOwnerImpl: async ownerUserId => ({ id: ownerUserId, label: 'Assignable owner' })
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.tasks.length, 2);
+    assert.equal(fakePool.state.tasks[0].owner_user_id, 9);
+    assert.equal(fakePool.state.tasks[0].assigned_to, 'Assignable owner');
+    assert.deepEqual(fakePool.state.bundles[0].accepted_task_mask, [0, 2]);
+    assert.deepEqual(fakePool.state.bundles[0].rejected_task_mask, [1]);
+});
+
+test('AI draft bundle commit rejects incomplete or overlapping task masks before writes', async () => {
+    const tokenParts = makeBundleToken();
+    const base = bundleCommitInput(tokenParts);
+    const fakePool = createFakePool();
+
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({ ...base, acceptedTaskMask: [0], rejectedTaskMask: [] }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_MASK_INVALID'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({ ...base, acceptedTaskMask: [0, 1], rejectedTaskMask: [1] }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_MASK_INVALID'
+    );
     assert.equal(fakePool.state.calls.length, 0);
 });
 
@@ -706,6 +862,9 @@ test('task AI draft bundle route uses atomic endpoint and side effects after com
     assert.match(service, /COMMIT/);
     assert.match(service, /ROLLBACK/);
     assert.match(service, /findBundleReplay/);
+    assert.match(service, /INSERT INTO task_bundles/);
+    assert.match(service, /INSERT INTO task_bundle_tasks/);
+    assert.match(routeBlock, /router\.get\('\/ai-draft\/bundles\/:bundleId'/);
     assert.match(service, /skipNotifications: true/);
     assert.match(service, /skipHermesOutbox: true/);
     assert.match(service, /replaceTaskClassification\(client/);

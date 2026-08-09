@@ -306,7 +306,8 @@ function normalizeDecisionMode(decision, value) {
 function normalizeDueDate(value) {
     if (value === null || value === undefined || value === '') return null;
     const dueDate = compactString(value, 32);
-    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? new Date(`${dueDate}T00:00:00.000Z`) : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dueDate) {
         throw createPreviewError('AI draft proposal has invalid dueDate.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
     return dueDate;
@@ -372,13 +373,17 @@ function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
         if (!PREVIEW_PRIORITIES.includes(priority)) {
             throw createPreviewError('AI task bundle item has invalid priority.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
         }
+        const ownerSuggestion = normalizeOwnerSuggestion(payload.ownerSuggestion);
+        if (ownerSuggestion.userId !== null) {
+            throw createPreviewError('AI may not select a task owner without the server owner catalog and human review.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+        }
         return {
             title,
             description: payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS),
             impactIds,
             priority,
             dueDate: normalizeDueDate(payload.dueDate),
-            ownerSuggestion: normalizeOwnerSuggestion(payload.ownerSuggestion),
+            ownerSuggestion,
             confidence: normalizeConfidence(payload.confidence)
         };
     });

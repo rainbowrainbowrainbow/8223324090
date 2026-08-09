@@ -82,7 +82,7 @@ const {
     legacyDecompositionResponseFromPreview
 } = require('../services/taskAiDraftPreview');
 const { commitTaskAiDraft } = require('../services/taskAiDraftCommit');
-const { commitTaskAiDraftBundle } = require('../services/taskAiDraftBundleCommit');
+const { commitTaskAiDraftBundle, readTaskBundleForUser } = require('../services/taskAiDraftBundleCommit');
 const {
     assertTaskAiDraftFeatureEnabled,
     publicTaskAiDraftFeatureStatus
@@ -904,7 +904,7 @@ async function buildTaskAiDraftPreview(req, res) {
     assertTaskAiDraftFeatureEnabled(req.user);
     const userId = normalizeUserId(req.user);
     const businessContext = businessScope.businessContext || businessScope.business_context || activeTaskBusinessContext(businessScope);
-    const rateLimit = checkTaskAiDraftRateLimit({ userId, businessContext, action: 'preview' });
+    const rateLimit = await checkTaskAiDraftRateLimit({ userId, businessContext, action: 'preview' });
     if (!rateLimit.allowed) {
         res.set('Retry-After', String(rateLimit.retryAfterSeconds));
         recordTaskAiDraftTelemetry({
@@ -927,7 +927,7 @@ async function buildTaskAiDraftPreview(req, res) {
         };
     }
     const impacts = await listTaxonomy(pool, userId, 'impacts');
-    return generateTaskAiDraftPreview({
+    const result = await generateTaskAiDraftPreview({
         draft: taskAiDraftPayloadFromBody(req.body || {}),
         impacts,
         userId,
@@ -938,6 +938,17 @@ async function buildTaskAiDraftPreview(req, res) {
         safetySecret: JWT_SECRET,
         safetyIdentifier: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET)
     });
+    if (!result?.ok || result.proposal?.decision !== 'task_bundle') return result;
+    const ownerCatalog = await listTaskOwnerCandidates({ actor: req.user });
+    return {
+        ...result,
+        currentUserId: userId,
+        ownerCatalog: ownerCatalog.map(owner => ({
+            id: Number(owner.id),
+            label: owner.label || owner.name || owner.username || `User #${owner.id}`,
+            role: owner.role || null
+        }))
+    };
 }
 
 async function buildTaskAiDraftCommit(req, res) {
@@ -1898,6 +1909,40 @@ router.post('/ai-draft/bundle/commit', requireRole('admin', 'user'), async (req,
             success: false,
             code: err.code || 'TASK_AI_BUNDLE_COMMIT_FAILED',
             error: status >= 500 ? 'Task AI draft bundle commit failed. Nothing was saved.' : err.message
+        });
+    }
+});
+
+// GET /api/tasks/ai-draft/bundles/:bundleId - canonical bundle read for its creator.
+router.get('/ai-draft/bundles/:bundleId', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+        const bundle = await readTaskBundleForUser({
+            bundleId: req.params.bundleId,
+            userId: normalizeUserId(req.user),
+            businessScope
+        });
+        if (!bundle) {
+            return res.status(404).json({
+                success: false,
+                code: 'TASK_AI_BUNDLE_NOT_FOUND',
+                error: 'Task bundle not found.'
+            });
+        }
+        return res.json({
+            success: true,
+            bundle: {
+                ...bundle,
+                tasks: (bundle.tasks || []).map(normalizeTaskPayload)
+            }
+        });
+    } catch (err) {
+        log.error('Task AI bundle read error', err);
+        return res.status(500).json({
+            success: false,
+            code: 'TASK_AI_BUNDLE_READ_FAILED',
+            error: 'Task bundle could not be loaded.'
         });
     }
 });

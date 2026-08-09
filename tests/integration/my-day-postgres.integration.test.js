@@ -223,6 +223,10 @@ async function postAiDraftBundleCommit(token, body) {
     return request('POST', '/api/tasks/ai-draft/bundle/commit', body, token);
 }
 
+async function getAiDraftBundle(token, bundleId) {
+    return request('GET', `/api/tasks/ai-draft/bundles/${encodeURIComponent(bundleId)}`, undefined, token);
+}
+
 function openAiOutput(impactIds, confidence = 0.9, reason = 'matched') {
     return jsonResponse({
         output_text: JSON.stringify({ impactIds, confidence, reason })
@@ -693,6 +697,39 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(statuses.at(-1), 429, `expected last call to be rate limited: ${statuses.join(',')}`);
     });
 
+    it('persists task AI preview rate limits in PostgreSQL across requests', async () => {
+        const owner = await createUser('draft_rate_owner');
+        const impactId = await createImpact(owner.id, 'Draft Rate CRM');
+        const proposal = validDraftProposal([impactId]);
+        const callsBefore = openAiMock.calls.length;
+        for (let index = 0; index < 12; index += 1) {
+            openAiMock.enqueue(() => openAiDraftOutput(proposal));
+        }
+        const statuses = [];
+        for (let index = 0; index < 13; index += 1) {
+            const response = await postAiDraftPreview(owner.token, {
+                currentDraft: {
+                    title: `Durable limiter preview ${index} ${suffix}`,
+                    description: 'No production task write.',
+                    impactIds: []
+                }
+            });
+            statuses.push(response.status);
+        }
+        assert.deepEqual(statuses.slice(0, 12), Array(12).fill(200));
+        assert.equal(statuses[12], 429, `expected durable rate limit: ${statuses.join(',')}`);
+        assert.equal(openAiMock.calls.length - callsBefore, 12);
+        const bucket = await query(
+            `SELECT request_count::int AS request_count, reset_at > window_started_at AS valid_window
+             FROM task_ai_rate_limit_buckets
+             WHERE user_id = $1 AND business_context = 'event_genix' AND action = 'preview'`,
+            [owner.id]
+        );
+        assert.equal(bucket.rows.length, 1);
+        assert.equal(bucket.rows[0].request_count, 12);
+        assert.equal(bucket.rows[0].valid_window, true);
+    });
+
     it('commits AI draft task, subtasks, impacts, and audit history atomically with idempotent replay', async () => {
         const taskAiDraftPreview = require('../../services/taskAiDraftPreview');
         const owner = await createUser('ai_draft_commit');
@@ -844,6 +881,46 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(committed.data?.tasks?.length, 3);
         const taskIds = committed.data.tasks.map(task => Number(task.id));
         assert.equal(new Set(taskIds).size, 3);
+        const bundleId = committed.data?.bundle?.id;
+        assert.ok(bundleId);
+
+        const canonicalBundle = await query(
+            `SELECT id, status, created_by_user_id, business_context, idempotency_key, task_count,
+                    proposal_hash, draft_fingerprint, request_hash,
+                    accepted_task_mask, rejected_task_mask
+             FROM task_bundles
+             WHERE id = $1`,
+            [bundleId]
+        );
+        assert.equal(canonicalBundle.rows.length, 1);
+        assert.equal(canonicalBundle.rows[0].status, 'committed');
+        assert.equal(Number(canonicalBundle.rows[0].created_by_user_id), owner.id);
+        assert.equal(canonicalBundle.rows[0].business_context, 'event_genix');
+        assert.equal(canonicalBundle.rows[0].idempotency_key, commitBody.idempotencyKey);
+        assert.equal(Number(canonicalBundle.rows[0].task_count), 3);
+        assert.deepEqual(canonicalBundle.rows[0].accepted_task_mask, [0, 1, 2]);
+        assert.deepEqual(canonicalBundle.rows[0].rejected_task_mask, []);
+        assert.ok(canonicalBundle.rows[0].proposal_hash);
+        assert.ok(canonicalBundle.rows[0].draft_fingerprint);
+        assert.ok(canonicalBundle.rows[0].request_hash);
+
+        const memberships = await query(
+            `SELECT task_id::int AS task_id, task_index::int AS task_index
+             FROM task_bundle_tasks
+             WHERE bundle_id = $1
+             ORDER BY task_index`,
+            [bundleId]
+        );
+        assert.deepEqual(memberships.rows.map(row => row.task_id), taskIds);
+        assert.deepEqual(memberships.rows.map(row => row.task_index), [0, 1, 2]);
+
+        const bundleRead = await getAiDraftBundle(owner.token, bundleId);
+        assert.equal(bundleRead.status, 200, JSON.stringify(bundleRead.data));
+        assert.equal(bundleRead.data?.bundle?.id, bundleId);
+        assert.deepEqual(bundleRead.data?.bundle?.taskIds?.map(Number), taskIds);
+        const outsider = await createUser('ai_bundle_read_outsider');
+        const hiddenBundle = await getAiDraftBundle(outsider.token, bundleId);
+        assert.equal(hiddenBundle.status, 404, JSON.stringify(hiddenBundle.data));
 
         for (let index = 0; index < taskIds.length; index += 1) {
             assert.deepEqual(await readImpactIds(owner.id, taskIds[index]), proposal.tasks[index].impactIds);
@@ -882,6 +959,11 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(replay.status, 200, JSON.stringify(replay.data));
         assert.equal(replay.data?.replayed, true);
         assert.deepEqual(replay.data?.bundle?.taskIds?.map(Number), taskIds);
+        const canonicalCount = await query(
+            'SELECT COUNT(*)::int AS count FROM task_bundles WHERE id = $1',
+            [bundleId]
+        );
+        assert.equal(canonicalCount.rows[0].count, 1);
 
         const duplicateCheck = await query(
             `SELECT COUNT(*)::int AS count
@@ -948,6 +1030,11 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             [commitBody.idempotencyKey]
         );
         assert.equal(historyCount.rows[0].count, 1);
+        const bundleCount = await query(
+            'SELECT COUNT(*)::int AS count FROM task_bundles WHERE idempotency_key = $1',
+            [commitBody.idempotencyKey]
+        );
+        assert.equal(bundleCount.rows[0].count, 1);
     });
 
     it('rolls back AI bundle when a middle task duplicates inside the transaction', async () => {
@@ -991,6 +1078,11 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             [`ai-bundle-dup-${suffix}`]
         );
         assert.equal(history.rows[0].count, 0);
+        const bundleRows = await query(
+            'SELECT COUNT(*)::int AS count FROM task_bundles WHERE idempotency_key = $1',
+            [`ai-bundle-dup-${suffix}`]
+        );
+        assert.equal(bundleRows.rows[0].count, 0);
     });
 
     it('rolls back AI bundle when PostgreSQL impact insert fails and does not enqueue notifications', async () => {
@@ -1053,6 +1145,11 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             [proposal.tasks.map(task => task.title)]
         );
         assert.equal(leaked.rows[0].count, 0);
+        const bundleRows = await query(
+            'SELECT COUNT(*)::int AS count FROM task_bundles WHERE idempotency_key = $1',
+            [`ai-bundle-impact-fail-${suffix}`]
+        );
+        assert.equal(bundleRows.rows[0].count, 0);
         const outboxAfter = await query('SELECT COUNT(*)::int AS count FROM notification_outbox');
         assert.equal(outboxAfter.rows[0].count, outboxBefore.rows[0].count);
     });

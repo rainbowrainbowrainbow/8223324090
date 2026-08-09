@@ -289,6 +289,17 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         }),
         error => error.code === 'fiscal_capability_denied'
     );
+    await pool.query(
+        `UPDATE fiscal_cashier_bindings
+            SET capability_scope = ARRAY(
+                    SELECT DISTINCT value
+                      FROM unnest(capability_scope || ARRAY['fiscal.incident.manage']::text[]) AS value
+                )
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND user_id = $3`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId, userId]
+    );
     await assert.rejects(
         () => updateOperationalIncidentStatus({
             dbPool: pool,

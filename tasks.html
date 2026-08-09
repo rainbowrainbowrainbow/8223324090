@@ -18,6 +18,7 @@
     <link rel="stylesheet" href="css/pages-shell.css?v=0.80.93">
     <link rel="stylesheet" href="css/pages-tasks.css?v=0.80.93">
     <link rel="stylesheet" href="css/pages-task-taxonomy.css?v=0.80.93">
+    <link rel="stylesheet" href="css/task-ai-draft.css?v=0.80.93">
     <link rel="stylesheet" href="css/modals.css?v=0.80.93">
     <link rel="stylesheet" href="css/dark-mode.css?v=0.80.93">
     <link rel="stylesheet" href="css/responsive.css?v=0.80.93">
@@ -1831,7 +1832,7 @@
                 <div class="task-composer-primary">
                     <label class="task-composer-title-wrap" for="taskTitle">
                         <span class="task-composer-kicker">Швидко додати задачу</span>
-                        <input type="text" id="taskTitle" aria-label="Що треба зробити?" placeholder="Що треба зробити?">
+                        <input type="text" id="taskTitle" aria-label="Що треба зробити?" placeholder="Що треба зробити?" data-task-ai-source-field="title">
                     </label>
                     <select id="taskCategory" class="task-composer-select" aria-label="Категорія">
                         <option value="admin">Адмін</option>
@@ -1866,6 +1867,17 @@
                     </div>
                     <button type="button" id="taskDetailsToggle" class="task-composer-secondary" aria-expanded="false" aria-controls="taskComposerDetails">Ще</button>
                     <button type="button" id="addTaskBtn" class="task-add-submit">Створити задачу</button>
+                </div>
+                <div class="task-ai-draft-panel" data-task-ai-draft-panel>
+                    <div class="task-ai-draft-row">
+                        <label class="task-ai-draft-details" for="taskDescription">
+                            <span>Опиши результат або деталі</span>
+                            <textarea id="taskDescription" data-task-ai-source-field="description" rows="3" placeholder="Контекст, очікуваний результат, критерій готовності"></textarea>
+                        </label>
+                        <button type="button" class="task-ai-draft-trigger" data-task-ai-draft-preview aria-busy="false">✨ Підготувати з AI</button>
+                    </div>
+                    <p class="task-ai-draft-status" data-task-ai-draft-status aria-live="polite"></p>
+                    <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
                 </div>
                 <div class="task-composer-details" id="taskComposerDetails" hidden>
                     <div class="task-composer-group">
@@ -2058,6 +2070,7 @@
     <script src="js/task-ui-shared.js?v=0.80.93"></script>
     <script src="js/task-detail-drawer.js?v=0.80.93"></script>
     <script src="js/task-create.js?v=0.80.93"></script>
+    <script src="js/task-ai-draft.js?v=0.80.93"></script>
     <script src="js/task-ui.js?v=0.80.93"></script>
     <script src="js/tasks-page.js?v=0.80.93"></script>
     <script src="js/alerts.js?v=0.80.93"></script>

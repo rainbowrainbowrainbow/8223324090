@@ -200,6 +200,46 @@
         }
     }
 
+    async function requestAiDraftPreview(context = {}) {
+        try {
+            const payload = await taskApiRequest('/tasks/ai-draft/preview', {
+                method: 'POST',
+                body: JSON.stringify(context)
+            });
+            if (!payload?.success) return payload || { success: false, error: 'AI preview failed' };
+            return payload;
+        } catch (error) {
+            console.error('[TaskCreate] requestAiDraftPreview failed', error);
+            return { success: false, error: error?.message || 'AI preview failed' };
+        }
+    }
+
+    async function requestAiDraftStatus() {
+        try {
+            const payload = await taskApiRequest('/tasks/ai-draft/status', { method: 'GET' });
+            return payload?.success ? payload : { success: false, feature: { enabled: true, reason: 'status_unavailable' } };
+        } catch (error) {
+            console.error('[TaskCreate] requestAiDraftStatus failed', error);
+            return { success: false, feature: { enabled: true, reason: 'status_error' } };
+        }
+    }
+
+    async function commitAiDraft(data = {}) {
+        const idempotencyKey = String(data.idempotencyKey || data.idempotency_key || '').trim();
+        try {
+            const payload = await taskApiRequest('/tasks/ai-draft/commit', {
+                method: 'POST',
+                headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+                body: JSON.stringify(data)
+            });
+            if (!payload?.success) return payload || { success: false, error: 'AI commit failed' };
+            return payload;
+        } catch (error) {
+            console.error('[TaskCreate] commitAiDraft failed', error);
+            return { success: false, error: error?.message || 'AI commit failed' };
+        }
+    }
+
     async function requestSavedDecompositionTemplates(filters = {}) {
         try {
             const query = new URLSearchParams();
@@ -303,6 +343,7 @@
 
         const data = {
             title: String(draft.title || '').trim(),
+            description: String(draft.description || '').trim() || null,
             priority: draft.priority || 'normal',
             category,
             task_type: draft.taskType || draft.task_type || 'human',
@@ -533,6 +574,9 @@
         normalizeDecompositionItems,
         subtaskProgress,
         requestDecompositionDraft,
+        requestAiDraftStatus,
+        requestAiDraftPreview,
+        commitAiDraft,
         requestSavedDecompositionTemplates,
         saveDecompositionTemplate,
         updateDecompositionTemplate,

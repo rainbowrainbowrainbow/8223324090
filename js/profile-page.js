@@ -3981,6 +3981,103 @@ function readCabinetSubtasks() {
         .filter(item => String(item.title || '').trim());
 }
 
+function readCabinetComposerImpactIds() {
+    try {
+        return window.MyDayClassification?.readComposerClassification?.().impactIds || [];
+    } catch {
+        return [];
+    }
+}
+
+function setCabinetComposerImpactIds(impactIds = []) {
+    const selected = new Set((Array.isArray(impactIds) ? impactIds : []).map(Number).filter(Number.isInteger));
+    document.querySelectorAll('[data-my-day-composer-impact-chip]').forEach(input => {
+        input.disabled = false;
+        input.checked = selected.has(Number(input.value));
+        input.dispatchEvent(new Event('change', { bubbles: true }));
+    });
+}
+
+function readCabinetAiDraft() {
+    const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
+    const selectedMode = document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
+    const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
+    return {
+        title: document.getElementById('cabinetTaskTitle')?.value.trim() || '',
+        description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
+        category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
+        priority: readCabinetCreatePriority(),
+        taskType: 'human',
+        mode: selectedMode,
+        taskMode: selectedMode,
+        kind,
+        taskKind: kind,
+        visibility: document.getElementById('cabinetTaskVisibility')?.value || (selectedMode === 'private' ? 'private' : (selectedMode === 'personal' ? 'me_only' : 'team')),
+        workflowState: kind === 'waiting' ? 'waiting' : 'inbox',
+        duePreset: cabinetCreateDuePreset,
+        scheduleDate: selectedDate,
+        durationMinutes: 30,
+        scheduleSlot: 'morning',
+        sourceType: 'manual',
+        sourceModule: 'profile_my_cabinet',
+        sourceSurface: 'profile_my_cabinet',
+        impactIds: readCabinetComposerImpactIds(),
+        subtasks: readCabinetSubtasks(),
+        scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
+        reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
+        allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
+        captureIntent: { waiting: kind === 'waiting' }
+    };
+}
+
+function applyCabinetAiDraftField(field, value, meta = {}) {
+    if (field === 'title') {
+        const input = document.getElementById('cabinetTaskTitle');
+        if (input) input.value = String(value || '');
+        return;
+    }
+    if (field === 'description') {
+        const textarea = document.getElementById('cabinetTaskDetails');
+        if (textarea) textarea.value = String(value || '');
+        return;
+    }
+    if (field === 'mode') {
+        const mode = value === 'checklist' ? 'work' : String(value || '');
+        const select = document.getElementById('cabinetTaskMode');
+        if (select && ['work', 'personal', 'private'].includes(mode)) {
+            select.value = mode;
+            syncCabinetTaskCreateMode();
+        }
+        if (value === 'checklist') {
+            const kind = document.getElementById('cabinetTaskKind');
+            if (kind) kind.value = 'action';
+        }
+        return;
+    }
+    if (field === 'impactIds') {
+        setCabinetComposerImpactIds(value);
+        return;
+    }
+    if (field === 'subtasks') {
+        replaceCabinetSubtasks(Array.isArray(value) ? value : [], { sourceType: meta.source === 'manual' ? 'manual' : 'ai' });
+        setCabinetDecompositionMode(Array.isArray(value) && value.length ? 'ai' : 'none', { keepRows: true, keepStatus: true });
+    }
+}
+
+function focusCabinetAiDraftField(field) {
+    const map = {
+        title: 'cabinetTaskTitle',
+        description: 'cabinetTaskDetails',
+        mode: 'cabinetTaskMode',
+        subtasks: 'cabinetSubtaskList'
+    };
+    if (field === 'impactIds') {
+        document.querySelector('[data-my-day-composer-impact-chip]')?.focus();
+        return;
+    }
+    document.getElementById(map[field])?.focus();
+}
+
 function setCabinetSubtaskDraftStatus(message = '', type = '') {
     const node = document.getElementById('cabinetSubtaskDraftStatus');
     if (!node) return;
@@ -5665,10 +5762,14 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const myDaySubtaskSummary = isMyDayCard && isDecomposed
         ? renderCabinetMyDaySubtaskSummary(task, taskIdAttr, subtasksExpanded, { inlineActive })
         : '';
+    const isAiCreated = window.TaskAiDraft?.isAiTask?.(task) === true;
+    const aiCreatedMarker = isAiCreated
+        ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>'
+        : '';
     return `
-        <div class="${cardClass}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${dragAttrs}>
+        <div class="${cardClass}${isAiCreated ? ' is-ai-created' : ''}" data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-cabinet-task-decomposed="${isDecomposed ? 'true' : 'false'}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${dragAttrs}>
             <div class="cabinet-task-main">
-                <div class="cabinet-task-title">${escapeHtml(task.title || 'Без назви')}</div>
+                <div class="cabinet-task-title">${aiCreatedMarker}${escapeHtml(task.title || 'Без назви')}</div>
                 <div class="cabinet-task-meta">
                     ${metadataHtml}
                     ${isMyDayCard ? '' : renderCabinetSubtaskToggle(task, taskIdAttr, subtasksExpanded)}
@@ -5800,7 +5901,7 @@ function renderCabinetTaskComposer(options = {}) {
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
                     <span>Назва</span>
-                    <input id="cabinetTaskTitle" autocomplete="off" placeholder="${escapeHtml(defaults.placeholder)}">
+                    <input id="cabinetTaskTitle" autocomplete="off" placeholder="${escapeHtml(defaults.placeholder)}" data-task-ai-source-field="title">
                 </label>
                 <div class="cabinet-task-composer-main-advanced" id="cabinetTaskComposerAdvanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
                     <label for="cabinetTaskCategory">
@@ -5825,6 +5926,17 @@ function renderCabinetTaskComposer(options = {}) {
                         </select>
                     </label>
                 </div>
+            </div>
+            <div class="task-ai-draft-panel" data-task-ai-draft-panel>
+                <div class="task-ai-draft-row">
+                    <label class="task-ai-draft-details" for="cabinetTaskDetails">
+                        <span>Опиши результат або деталі</span>
+                        <textarea id="cabinetTaskDetails" data-task-ai-source-field="description" rows="3" placeholder="Наприклад: що має вийти, контекст CRM / Hermes / Парк, критерій готовності"></textarea>
+                    </label>
+                    <button type="button" class="task-ai-draft-trigger" data-task-ai-draft-preview aria-busy="false">✨ Підготувати з AI</button>
+                </div>
+                <p class="task-ai-draft-status" data-task-ai-draft-status aria-live="polite"></p>
+                <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
             </div>
             <div class="cabinet-task-composer-meta">
                 <div class="cabinet-task-composer-essential">
@@ -7400,6 +7512,7 @@ async function createCabinetTask(event, mode) {
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
     const draft = {
         title,
+        description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
         ownerUserId: current.id || current.user_id,
         category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
         priority: readCabinetCreatePriority(),
@@ -7415,11 +7528,15 @@ async function createCabinetTask(event, mode) {
         sourceType: 'manual',
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
+        impactIds: myDayClassification?.impactIds || [],
         subtasks: readCabinetSubtasks(),
+        scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
         reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
+    const composer = document.getElementById('cabinetTaskComposer');
+    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
     let payload;
     if (window.TaskCreate?.buildPayload) {
         payload = window.TaskCreate.buildPayload(draft, {
@@ -7457,13 +7574,25 @@ async function createCabinetTask(event, mode) {
             payload.effort_minutes = 30;
         }
     }
-    const result = window.TaskCreate?.createTask
+    const result = aiCommitPayload && window.TaskCreate?.commitAiDraft
+        ? await window.TaskCreate.commitAiDraft({
+            ...aiCommitPayload,
+            finalDraft: {
+                ...draft,
+                ...(aiCommitPayload.finalDraft || {}),
+                ownerUserId: draft.ownerUserId,
+                sourceType: 'ai_draft',
+                sourceModule: 'profile_my_cabinet',
+                sourceSurface: 'profile_my_cabinet'
+            }
+        })
+        : (window.TaskCreate?.createTask
         ? await window.TaskCreate.createTask(payload, {
             onDuplicate: err => {
                 if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
             }
         })
-        : await apiPost('/tasks', payload);
+        : await apiPost('/tasks', payload));
     if (!result?.success) {
         if (!result?.duplicate && typeof showNotification === 'function') {
             showNotification(result?.error || 'Не вдалося створити задачу', 'error');
@@ -7480,7 +7609,10 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
-    if (myDayClassification?.impactIds?.length) {
+    if (aiCommitPayload) {
+        window.TaskAiDraft?.markCommittedTaskId?.(verification.taskId);
+    }
+    if (!aiCommitPayload && myDayClassification?.impactIds?.length) {
         try {
             await window.MyDayClassification?.saveTaskClassification?.(verification.taskId, myDayClassification);
         } catch (error) {
@@ -7490,6 +7622,9 @@ async function createCabinetTask(event, mode) {
 
     notifyTaskWidgetsChanged({ action: 'create', taskId: verification.taskId });
     if (input) input.value = '';
+    const details = document.getElementById('cabinetTaskDetails');
+    if (details) details.value = '';
+    window.TaskAiDraft?.clear?.(composer);
     setCabinetCreatePriority('normal');
     const subtaskList = document.getElementById('cabinetSubtaskList');
     if (subtaskList) subtaskList.innerHTML = '';
@@ -8344,6 +8479,17 @@ function attachProfileListeners() {
                 rerenderMyDayClassificationSurface();
             });
         }
+    }
+
+    if (window.TaskAiDraft && activeTab === 'myday') {
+        const composer = document.getElementById('cabinetTaskComposer');
+        window.TaskAiDraft.bindComposer(composer, {
+            sourceModule: 'profile_my_cabinet',
+            sourceSurface: 'profile_my_cabinet',
+            readDraft: readCabinetAiDraft,
+            applyField: applyCabinetAiDraftField,
+            focusField: focusCabinetAiDraftField
+        });
     }
 
     const myDayHabits = window.MyDayHabits;

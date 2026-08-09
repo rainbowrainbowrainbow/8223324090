@@ -10,6 +10,8 @@ const { pool } = require('../db');
 const { settingsCache } = require('./cache');
 const { createLogger } = require('../utils/logger');
 const { myDayClassificationDiagnostics } = require('./myDayClassificationAi');
+const { MY_DAY_TASK_AI_MODEL } = require('./myDayTaskOpenAIClient');
+const { publicTaskAiDraftFeatureStatus } = require('./taskAiDraftFeatureGate');
 
 const log = createLogger('AIConfig');
 
@@ -301,6 +303,7 @@ async function getAIProviderDiagnostics() {
     ]);
     const openRouterConfigured = Boolean(getProviderKey('openrouter'));
     const openAIConfigured = Boolean(process.env.OPENAI_API_KEY);
+    const taskAiDraftFeature = publicTaskAiDraftFeatureStatus(null);
     const kieConfigured = Boolean(process.env.KIE_API_KEY);
     const kieSunoCallbackConfigured = hasKieSunoCallback();
 
@@ -415,6 +418,22 @@ async function getAIProviderDiagnostics() {
             },
             {
                 ...myDayClassificationDiagnostics()
+            },
+            {
+                id: 'task_ai_draft_composer',
+                provider: 'openai',
+                status: openAIConfigured
+                    ? (taskAiDraftFeature.enabled ? 'ready' : 'feature_disabled')
+                    : 'missing_key',
+                configured: openAIConfigured,
+                featureEnabled: taskAiDraftFeature.enabled,
+                featureReason: taskAiDraftFeature.reason,
+                rolloutPercent: taskAiDraftFeature.rolloutPercent,
+                model: MY_DAY_TASK_AI_MODEL,
+                keyEnv: 'OPENAI_API_KEY',
+                boundary: 'task_ai_draft_direct_openai_responses',
+                structuredOutputs: true,
+                store: false
             },
             {
                 id: 'program_icon_image',

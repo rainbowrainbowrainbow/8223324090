@@ -223,6 +223,7 @@ test('My Day AI route keeps LLM calls outside transactions, detects classificati
     const route = fs.readFileSync(path.join(root, 'routes', 'my-day.js'), 'utf8');
     const aiConfig = fs.readFileSync(path.join(root, 'services', 'ai-config.js'), 'utf8');
     const serviceSource = fs.readFileSync(path.join(root, 'services', 'myDayClassificationAi.js'), 'utf8');
+    const sharedOpenAIClient = fs.readFileSync(path.join(root, 'services', 'myDayTaskOpenAIClient.js'), 'utf8');
     const routeBlock = route.slice(route.indexOf("router.post('/tasks/:taskId/classification/auto'"));
     const undoBlock = route.slice(route.indexOf("router.post('/tasks/:taskId/classification/undo'"));
 
@@ -249,11 +250,16 @@ test('My Day AI route keeps LLM calls outside transactions, detects classificati
     assert.match(undoBlock, /classificationFingerprint\(currentClassification, taskFingerprint\(task\)\) !== token\.appliedFingerprint/);
     assert.match(undoBlock, /allowArchivedImpactIds: beforeImpactIds/);
     assert.match(aiConfig, /myDayClassificationDiagnostics/);
-    assert.match(serviceSource, /DEFAULT_MY_DAY_CLASSIFICATION_MODEL = 'gpt-5\.6-luna'/);
-    assert.match(serviceSource, /OPENAI_API_KEY/);
-    assert.match(serviceSource, /\/responses/);
-    assert.match(serviceSource, /reasoning: \{ effort: MY_DAY_CLASSIFICATION_REASONING_EFFORT \}/);
-    assert.match(serviceSource, /store: false/);
+    assert.match(serviceSource, /DEFAULT_MY_DAY_CLASSIFICATION_MODEL = MY_DAY_TASK_AI_MODEL/);
+    assert.match(serviceSource, /callMyDayTaskOpenAIResponses/);
+    assert.match(serviceSource, /MY_DAY_CLASSIFICATION_REASONING_EFFORT/);
+    assert.match(sharedOpenAIClient, /MY_DAY_TASK_AI_MODEL = 'gpt-5\.6-luna'/);
+    assert.match(sharedOpenAIClient, /OPENAI_API_KEY/);
+    assert.match(sharedOpenAIClient, /\/responses/);
+    assert.match(sharedOpenAIClient, /reasoning: \{ effort: request\.reasoningEffort/);
+    assert.match(sharedOpenAIClient, /store: false/);
+    assert.match(sharedOpenAIClient, /safety_identifier/);
+    assert.match(sharedOpenAIClient, /OPENAI_OFFICIAL_ORIGIN = 'https:\/\/api\.openai\.com'/);
     assert.doesNotMatch(serviceSource, /callUnifiedChatCompletion|OPENROUTER_API_KEY|scope: 'chat_ai'|openai\/gpt-5\.4-nano/);
 });
 

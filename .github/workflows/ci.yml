@@ -73,6 +73,9 @@ jobs:
       - name: Run My Day draft regression browser smoke
         run: npm run test:browser:my-day-draft
 
+      - name: Run My Day AI composer browser smoke
+        run: npm run test:browser:my-day-ai-composer
+
       - name: Run My Day interactions browser smoke
         run: npm run test:browser:my-day-interactions
 

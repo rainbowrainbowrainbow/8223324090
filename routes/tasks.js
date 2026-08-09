@@ -4,7 +4,7 @@
 const router = require('express').Router();
 const crypto = require('crypto');
 const { pool } = require('../db');
-const { requireRole, authenticateToken, canUseAction } = require('../middleware/auth');
+const { requireRole, authenticateToken, canUseAction, JWT_SECRET } = require('../middleware/auth');
 const {
     installRevenueResponseShaper,
     parseOptionalRevenueAmount
@@ -74,8 +74,20 @@ const {
 } = require('../services/taskSubtasks');
 const {
     generateTaskDecompositionDraft,
-    getTaskDecompositionTemplates
+    getTaskDecompositionTemplates,
+    normalizeDecompositionMode
 } = require('../services/taskDecomposition');
+const {
+    generateTaskAiDraftPreview,
+    legacyDecompositionResponseFromPreview
+} = require('../services/taskAiDraftPreview');
+const { commitTaskAiDraft } = require('../services/taskAiDraftCommit');
+const {
+    assertTaskAiDraftFeatureEnabled,
+    publicTaskAiDraftFeatureStatus
+} = require('../services/taskAiDraftFeatureGate');
+const { checkTaskAiDraftRateLimit } = require('../services/taskAiDraftLimiter');
+const { recordTaskAiDraftTelemetry } = require('../services/taskAiDraftTelemetry');
 const {
     applySavedDecompositionTemplate,
     createSavedDecompositionTemplate,
@@ -117,6 +129,8 @@ const {
     ensureTaskPreferences,
     normalizeTaskCabinetFocusDate
 } = require('../services/taskCabinetProjection');
+const { listTaxonomy } = require('../services/myDayTaxonomy');
+const { hmacSafetyIdentifier } = require('../services/myDayTaskOpenAIClient');
 
 const {
     addTaskDependency,
@@ -854,6 +868,102 @@ function requireTaskReadScope(req, res) {
 
 function requireTaskWriteScope(req, res) {
     return ensureWritableTaskBusinessScope(req, res);
+}
+
+function taskAiDraftPayloadFromBody(body = {}) {
+    const source = body.currentDraft || body.draft || body;
+    return {
+        title: source.title ?? body.title,
+        description: source.description ?? body.description,
+        mode: source.mode ?? body.mode,
+        taskMode: source.taskMode ?? source.task_mode ?? body.taskMode ?? body.task_mode,
+        taskKind: source.taskKind ?? source.task_kind ?? body.taskKind ?? body.task_kind,
+        category: source.category ?? body.category,
+        subcategory: source.subcategory ?? body.subcategory,
+        sourceType: source.sourceType ?? source.source_type ?? body.sourceType ?? body.source_type,
+        sourceModule: source.sourceModule ?? source.source_module ?? body.sourceModule ?? body.source_module,
+        impactIds: source.impactIds ?? source.impact_ids ?? body.impactIds ?? body.impact_ids ?? []
+    };
+}
+
+function taskAiPreviewFailureStatus(result = {}) {
+    if (result.statusCode) return result.statusCode;
+    if (result.code === 'TASK_AI_PROVIDER_UNAVAILABLE') return 503;
+    if (result.code === 'TASK_AI_DRAFT_TIMEOUT') return 504;
+    return 422;
+}
+
+function idempotencyKeyFromRequest(req) {
+    return String(req.get('Idempotency-Key') || req.get('idempotency-key') || req.body?.idempotencyKey || req.body?.idempotency_key || '').trim();
+}
+
+async function buildTaskAiDraftPreview(req, res) {
+    const businessScope = requireTaskWriteScope(req, res);
+    if (!businessScope) return null;
+    assertTaskAiDraftFeatureEnabled(req.user);
+    const userId = normalizeUserId(req.user);
+    const businessContext = businessScope.businessContext || businessScope.business_context || activeTaskBusinessContext(businessScope);
+    const rateLimit = checkTaskAiDraftRateLimit({ userId, businessContext, action: 'preview' });
+    if (!rateLimit.allowed) {
+        res.set('Retry-After', String(rateLimit.retryAfterSeconds));
+        recordTaskAiDraftTelemetry({
+            type: 'preview',
+            status: 'rate_limited',
+            latencyMs: 0,
+            model: 'gpt-5.6-luna',
+            provider: 'openai',
+            reasonCode: 'TASK_AI_DRAFT_RATE_LIMITED',
+            userHash: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET),
+            businessContext
+        });
+        return {
+            ok: false,
+            code: 'TASK_AI_DRAFT_RATE_LIMITED',
+            statusCode: 429,
+            reason: 'rate_limited',
+            provider: 'openai',
+            model: 'gpt-5.6-luna'
+        };
+    }
+    const impacts = await listTaxonomy(pool, userId, 'impacts');
+    return generateTaskAiDraftPreview({
+        draft: taskAiDraftPayloadFromBody(req.body || {}),
+        impacts,
+        userId,
+        user: req.user,
+        businessScope
+    }, {
+        proposalSecret: JWT_SECRET,
+        safetySecret: JWT_SECRET,
+        safetyIdentifier: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET)
+    });
+}
+
+async function buildTaskAiDraftCommit(req, res) {
+    const businessScope = requireTaskWriteScope(req, res);
+    if (!businessScope) return null;
+    assertTaskAiDraftFeatureEnabled(req.user);
+    const userId = normalizeUserId(req.user);
+    const impacts = await listTaxonomy(pool, userId, 'impacts');
+    const body = req.body || {};
+    return commitTaskAiDraft({
+        proposalToken: body.proposalToken || body.proposal_token,
+        finalDraft: body.finalDraft || body.final_draft || body.draft || body.currentDraft || body,
+        acceptedFieldMask: body.acceptedFieldMask || body.accepted_field_mask || body.acceptedFields || body.accepted_fields || [],
+        idempotencyKey: idempotencyKeyFromRequest(req),
+        proposalHash: body.proposalHash || body.proposal_hash,
+        proposal: body.proposal,
+        draftFingerprint: body.draftFingerprint || body.draft_fingerprint,
+        baseDraftFingerprint: body.baseDraftFingerprint || body.base_draft_fingerprint,
+        activeImpacts: impacts,
+        userId,
+        user: req.user,
+        businessScope,
+        sourceSurface: sourceSurface(body, 'task_ai_draft_commit')
+    }, {
+        proposalSecret: JWT_SECRET,
+        safetySecret: JWT_SECRET
+    });
 }
 
 // GET /api/tasks — list with optional filters + pagination (v19.10)
@@ -1639,10 +1749,119 @@ router.get('/decomposition-templates', requireRole('admin', 'user'), async (req,
     });
 });
 
+// GET /api/tasks/ai-draft/status - public rollout status for the authenticated user; no secrets.
+router.get('/ai-draft/status', requireRole('admin', 'user'), async (req, res) => {
+    res.json({
+        success: true,
+        feature: publicTaskAiDraftFeatureStatus(req.user),
+        provider: 'openai',
+        model: 'gpt-5.6-luna'
+    });
+});
+
+// POST /api/tasks/ai-draft/preview - direct OpenAI/Luna draft proposal; no database writes.
+router.post('/ai-draft/preview', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const result = await buildTaskAiDraftPreview(req, res);
+        if (!result) return;
+        if (!result.ok) {
+            return res.status(taskAiPreviewFailureStatus(result)).json({
+                success: false,
+                code: result.code,
+                error: result.reason || 'task_ai_draft_preview_failed',
+                provider: result.provider,
+                model: result.model
+            });
+        }
+        res.json({ success: true, ...result });
+    } catch (err) {
+        const status = err.statusCode || 500;
+        if (status >= 500) log.error('Task AI draft preview error', err);
+        res.status(status).json({
+            success: false,
+            code: err.code || 'TASK_AI_DRAFT_PREVIEW_FAILED',
+            error: status >= 500 ? 'Task AI draft preview failed. Nothing was saved.' : err.message,
+            meta: err.meta || undefined
+        });
+    }
+});
+
+// POST /api/tasks/ai-draft/commit - atomic AI-assisted task creation from a signed preview.
+router.post('/ai-draft/commit', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const result = await buildTaskAiDraftCommit(req, res);
+        if (!result) return;
+        if (!result.replayed) {
+            try {
+                emitTaskAssignedToOwner(result.task, req.user, {
+                    assignmentEvent: 'created',
+                    source: 'routes/tasks.ai_draft_commit'
+                });
+            } catch (err) {
+                log.error(`Task AI draft assignment event error: ${err.message}`);
+            }
+            notifyTaskAssignment(result.task, req.user?.username || req.user?.name || 'ai-draft')
+                .catch(err => log.error(`Task AI draft notification error: ${err.message}`));
+            _alertPush();
+        }
+        res.json({
+            success: true,
+            replayed: result.replayed === true,
+            task: normalizeTaskPayload(result.task),
+            subtasks: result.subtasks || [],
+            classification: result.classification || null,
+            historyEvent: result.historyEvent || null,
+            meta: {
+                atomic: true,
+                notificationTiming: 'after_commit',
+                source: 'task_ai_draft_commit'
+            }
+        });
+    } catch (err) {
+        const status = err.statusCode || (err instanceof TaskDuplicateError || err.code === 'TASK_DUPLICATE_ACTIVE' ? 409 : 500);
+        if (status >= 500) log.error('Task AI draft commit error', err);
+        res.status(status).json({
+            success: false,
+            code: err.code || 'TASK_AI_DRAFT_COMMIT_FAILED',
+            error: status >= 500 ? 'Task AI draft commit failed. Nothing was saved.' : err.message
+        });
+    }
+});
+
 // POST /api/tasks/decompose-draft - draft-only AI/template subtask suggestions.
 router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) => {
     try {
         const b = req.body || {};
+        const mode = normalizeDecompositionMode(b.mode || b.decompositionMode || b.decomposition_mode, 'ai');
+        if (mode === 'ai' || mode === 'template_ai') {
+            const preview = await buildTaskAiDraftPreview(req, res);
+            if (!preview) return;
+            if (!preview.ok) {
+                return res.status(taskAiPreviewFailureStatus(preview)).json({
+                    success: false,
+                    deprecated: true,
+                    deprecatedEndpoint: '/api/tasks/ai-draft/preview',
+                    code: preview.code,
+                    error: preview.reason || 'task_ai_draft_preview_failed',
+                    provider: preview.provider,
+                    model: preview.model
+                });
+            }
+            if (preview.proposal?.action !== 'apply') {
+                return res.status(422).json({
+                    success: false,
+                    deprecated: true,
+                    deprecatedEndpoint: '/api/tasks/ai-draft/preview',
+                    code: `TASK_AI_DRAFT_${String(preview.proposal?.action || 'NO_CHANGE').toUpperCase()}`,
+                    decision: preview.proposal?.action,
+                    error: preview.proposal?.reason || 'AI draft proposal is not directly applicable.',
+                    proposal: preview.proposal,
+                    diff: preview.diff,
+                    proposalToken: preview.proposalToken
+                });
+            }
+            return res.json(legacyDecompositionResponseFromPreview(preview, mode));
+        }
         const result = await generateTaskDecompositionDraft({
             title: b.title,
             description: b.description,
@@ -1653,7 +1872,7 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
             taskType: b.taskType || b.task_type,
             sourceType: b.sourceType || b.source_type,
             sourceModule: b.sourceModule || b.source_module,
-            mode: b.mode || b.decompositionMode || b.decomposition_mode,
+            mode,
             templateKey: b.templateKey || b.template_key
         });
         if (!result.success) {

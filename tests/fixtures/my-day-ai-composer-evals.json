@@ -1,0 +1,368 @@
+{
+  "contractVersion": "my_day_ai_composer_proposal_v1",
+  "model": "gpt-5.6-luna",
+  "provider": "openai_responses",
+  "allowedActions": [
+    "apply",
+    "needs_clarification",
+    "needs_project",
+    "no_change"
+  ],
+  "limits": {
+    "maxImpacts": 3,
+    "maxSubtasks": 7,
+    "maxTitleChars": 180,
+    "maxDescriptionChars": 700,
+    "maxReasonChars": 180
+  },
+  "activeImpacts": [
+    {
+      "id": 101,
+      "name": "Work: CRM",
+      "group": "context"
+    },
+    {
+      "id": 102,
+      "name": "Work: Hermes",
+      "group": "context"
+    },
+    {
+      "id": 103,
+      "name": "Work: Park",
+      "group": "context"
+    },
+    {
+      "id": 104,
+      "name": "Automation / AI",
+      "group": "activity"
+    },
+    {
+      "id": 105,
+      "name": "Content / Media",
+      "group": "activity"
+    },
+    {
+      "id": 106,
+      "name": "Analytics / Decisions",
+      "group": "activity"
+    },
+    {
+      "id": 107,
+      "name": "Team / Delegation",
+      "group": "activity"
+    },
+    {
+      "id": 108,
+      "name": "Operations / Processes",
+      "group": "activity"
+    },
+    {
+      "id": 109,
+      "name": "Revenue",
+      "group": "outcome"
+    },
+    {
+      "id": 110,
+      "name": "Quality",
+      "group": "outcome"
+    }
+  ],
+  "schema": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": [
+      "action",
+      "mode",
+      "title",
+      "description",
+      "impactIds",
+      "subtasks",
+      "confidence",
+      "reason"
+    ],
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "apply",
+          "needs_clarification",
+          "needs_project",
+          "no_change"
+        ]
+      },
+      "mode": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "enum": [
+          "simple",
+          "checklist",
+          null
+        ]
+      },
+      "title": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 180
+      },
+      "description": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 700
+      },
+      "impactIds": {
+        "type": "array",
+        "maxItems": 3,
+        "uniqueItems": true,
+        "items": {
+          "type": "integer"
+        }
+      },
+      "subtasks": {
+        "type": "array",
+        "maxItems": 7,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 160
+            }
+          }
+        }
+      },
+      "confidence": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "overall",
+          "title",
+          "description",
+          "impacts",
+          "subtasks",
+          "mode"
+        ],
+        "properties": {
+          "overall": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "title": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "description": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "impacts": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "subtasks": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          },
+          "mode": {
+            "type": "number",
+            "minimum": 0,
+            "maximum": 1
+          }
+        }
+      },
+      "reason": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 180
+      }
+    }
+  },
+  "evalCases": [
+    {
+      "id": "crm_booking_form",
+      "domain": "CRM",
+      "input": {
+        "title": "Fix CRM booking form validation",
+        "description": "Customers can submit incomplete booking details."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          101,
+          110
+        ],
+        "subtasksMin": 3
+      }
+    },
+    {
+      "id": "hermes_worker",
+      "domain": "Hermes",
+      "input": {
+        "title": "Configure Hermes outbox worker retry handling",
+        "description": "Make failed staff notifications retry safely."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          102,
+          108
+        ],
+        "subtasksMin": 3
+      }
+    },
+    {
+      "id": "park_cashier_reconciliation",
+      "domain": "Park",
+      "input": {
+        "title": "Check park cashier payments for Saturday",
+        "description": "Compare Checkbox receipts and CRM payments."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          103,
+          106,
+          109
+        ],
+        "subtasksMin": 3
+      }
+    },
+    {
+      "id": "ai_auto_classification",
+      "domain": "AI",
+      "input": {
+        "title": "Improve AI task classification for unclear My Day tasks",
+        "description": "Reduce no-match errors and keep manual impacts safe."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          104,
+          110
+        ],
+        "subtasksMin": 3
+      }
+    },
+    {
+      "id": "content_video_brand",
+      "domain": "Content",
+      "input": {
+        "title": "Prepare personal brand video post",
+        "description": "Turn the recorded video into a publishable media post."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          105
+        ],
+        "subtasksMin": 3
+      }
+    },
+    {
+      "id": "analytics_dashboard_decision",
+      "domain": "Analytics",
+      "input": {
+        "title": "Decide which overdue task metric to show in My Day",
+        "description": "Review current data and pick one metric for the dashboard."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          106
+        ],
+        "subtasksMin": 2
+      }
+    },
+    {
+      "id": "team_delegation_shift",
+      "domain": "Team",
+      "input": {
+        "title": "Delegate Saturday shift checklist to the team",
+        "description": "Split preparation duties and confirm owners."
+      },
+      "expected": {
+        "action": "apply",
+        "mode": "checklist",
+        "impactIdsMustInclude": [
+          107,
+          108
+        ],
+        "subtasksMin": 3
+      }
+    },
+    {
+      "id": "ambiguous_identifier",
+      "domain": "Clarification",
+      "input": {
+        "title": "3321",
+        "description": ""
+      },
+      "expected": {
+        "action": "needs_clarification",
+        "mode": null,
+        "impactIdsMustInclude": [],
+        "subtasksMin": 0
+      }
+    },
+    {
+      "id": "project_sized_redesign",
+      "domain": "Project",
+      "input": {
+        "title": "Redesign the whole My Day AI system",
+        "description": "Composer, classification, undo, analytics, tests, live QA, rollout and rollback."
+      },
+      "expected": {
+        "action": "needs_project",
+        "mode": null,
+        "impactIdsMustInclude": [
+          104,
+          106
+        ],
+        "subtasksMin": 0
+      }
+    },
+    {
+      "id": "already_clear_task",
+      "domain": "No change",
+      "input": {
+        "title": "Call CRM lead and write result",
+        "description": "Impact already selected by user; no decomposition needed.",
+        "currentDraft": {
+          "mode": "simple",
+          "impactIds": [
+            101
+          ]
+        }
+      },
+      "expected": {
+        "action": "no_change",
+        "mode": "simple",
+        "impactIdsMustInclude": [
+          101
+        ],
+        "subtasksMin": 0
+      }
+    }
+  ]
+}

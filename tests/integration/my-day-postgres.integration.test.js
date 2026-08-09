@@ -211,10 +211,50 @@ async function postUndo(token, taskId, undoToken) {
     return request('POST', `/api/my-day/tasks/${taskId}/classification/undo`, { undoToken }, token);
 }
 
+async function postAiDraftPreview(token, body) {
+    return request('POST', '/api/tasks/ai-draft/preview', body, token);
+}
+
+async function postAiDraftCommit(token, body) {
+    return request('POST', '/api/tasks/ai-draft/commit', body, token);
+}
+
 function openAiOutput(impactIds, confidence = 0.9, reason = 'matched') {
     return jsonResponse({
         output_text: JSON.stringify({ impactIds, confidence, reason })
     });
+}
+
+function openAiDraftOutput(proposal) {
+    return jsonResponse({
+        output_text: JSON.stringify(proposal),
+        usage: { input_tokens: 80, output_tokens: 120, total_tokens: 200 }
+    });
+}
+
+function validDraftProposal(impactIds, overrides = {}) {
+    return {
+        action: 'apply',
+        mode: 'checklist',
+        title: `AI draft commit task ${suffix}`,
+        description: 'AI prepared checklist draft.',
+        impactIds,
+        subtasks: [
+            { title: 'Review CRM draft' },
+            { title: 'Check Hermes notification' },
+            { title: 'Verify AI composer create' }
+        ],
+        confidence: {
+            overall: 0.91,
+            title: 0.9,
+            description: 0.88,
+            impacts: 0.92,
+            subtasks: 0.86,
+            mode: 0.84
+        },
+        reason: 'Clear AI draft commit fixture.',
+        ...overrides
+    };
 }
 
 describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, () => {
@@ -572,5 +612,113 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             statuses.push(response.status);
         }
         assert.equal(statuses.at(-1), 429, `expected last call to be rate limited: ${statuses.join(',')}`);
+    });
+
+    it('commits AI draft task, subtasks, impacts, and audit history atomically with idempotent replay', async () => {
+        const taskAiDraftPreview = require('../../services/taskAiDraftPreview');
+        const owner = await createUser('ai_draft_commit');
+        const crmImpact = await createImpact(owner.id, 'AI Draft CRM');
+        const hermesImpact = await createImpact(owner.id, 'AI Draft Hermes');
+        const aiImpact = await createImpact(owner.id, 'AI Draft Automation');
+        const impactIds = [crmImpact, hermesImpact, aiImpact];
+        const proposal = validDraftProposal(impactIds);
+        openAiMock.enqueue(body => {
+            assert.equal(body.model, 'gpt-5.6-luna');
+            assert.equal(body.store, false);
+            assert.deepEqual(body.reasoning, { effort: 'low' });
+            return openAiDraftOutput(proposal);
+        });
+
+        const preview = await postAiDraftPreview(owner.token, {
+            currentDraft: {
+                title: `crm hermes ai composer ${suffix}`,
+                description: 'Need a safe checklist',
+                mode: 'simple',
+                impactIds: []
+            }
+        });
+        assert.equal(preview.status, 200, JSON.stringify(preview.data));
+        assert.equal(preview.data?.success, true);
+        assert.ok(preview.data?.proposalToken);
+        assert.deepEqual(preview.data?.proposal?.impactIds, impactIds);
+
+        const commitBody = {
+            proposalToken: preview.data.proposalToken,
+            proposalHash: preview.data.proposalHash,
+            draftFingerprint: preview.data.draftFingerprint,
+            proposal: preview.data.proposal,
+            acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks'],
+            finalDraft: {
+                title: proposal.title,
+                description: proposal.description,
+                mode: proposal.mode,
+                taskMode: 'work',
+                impactIds,
+                subtasks: proposal.subtasks
+            },
+            idempotencyKey: `ai-draft-commit-${suffix}`
+        };
+        const committed = await postAiDraftCommit(owner.token, commitBody);
+        assert.equal(committed.status, 200, JSON.stringify(committed.data));
+        assert.equal(committed.data?.success, true);
+        assert.equal(committed.data?.replayed, false);
+        const taskId = Number(committed.data?.task?.id);
+        assert.ok(taskId > 0);
+        assert.equal(committed.data?.subtasks?.length, 3);
+        assert.deepEqual(committed.data?.classification?.impacts?.map(impact => Number(impact.id)), impactIds);
+        assert.deepEqual(await readImpactIds(owner.id, taskId), impactIds);
+
+        const history = await query(
+            `SELECT action_type, meta_json, new_value_json
+             FROM task_action_history
+             WHERE task_id = $1 AND action_type = 'task_ai_draft_committed'
+             ORDER BY id DESC
+             LIMIT 1`,
+            [taskId]
+        );
+        assert.equal(history.rows.length, 1);
+        assert.equal(history.rows[0].meta_json.provider, 'openai');
+        assert.equal(history.rows[0].meta_json.model, 'gpt-5.6-luna');
+        assert.equal(history.rows[0].meta_json.rawPromptStored, false);
+        assert.equal(history.rows[0].meta_json.rawProviderResponseStored, false);
+        assert.equal(JSON.stringify(history.rows[0]).includes(proposal.title), false);
+
+        const replay = await postAiDraftCommit(owner.token, commitBody);
+        assert.equal(replay.status, 200, JSON.stringify(replay.data));
+        assert.equal(replay.data?.replayed, true);
+        assert.equal(Number(replay.data?.task?.id), taskId);
+
+        const archivedImpact = await createImpact(owner.id, 'AI Draft Archived', { isActive: false });
+        const rollbackDraft = { title: `rollback ${suffix}`, description: '' };
+        const rollbackProposal = validDraftProposal([crmImpact], { title: `AI rollback task ${suffix}` });
+        const rollbackToken = taskAiDraftPreview.createProposalToken({
+            userId: owner.id,
+            businessScope: { businessContext: 'event_genix' },
+            fingerprint: taskAiDraftPreview.draftFingerprint(rollbackDraft),
+            proposal: rollbackProposal,
+            catalogVersion: taskAiDraftPreview.activeImpactCatalogVersion([
+                { id: crmImpact, name: 'AI Draft CRM', isActive: true },
+                { id: hermesImpact, name: 'AI Draft Hermes', isActive: true },
+                { id: aiImpact, name: 'AI Draft Automation', isActive: true }
+            ]),
+            secret: process.env.JWT_SECRET
+        });
+        const failed = await postAiDraftCommit(owner.token, {
+            proposalToken: rollbackToken,
+            proposalHash: taskAiDraftPreview.proposalHash(rollbackProposal),
+            draftFingerprint: taskAiDraftPreview.draftFingerprint(rollbackDraft),
+            proposal: rollbackProposal,
+            acceptedFieldMask: ['title', 'impactIds'],
+            finalDraft: {
+                title: rollbackProposal.title,
+                mode: 'simple',
+                impactIds: [archivedImpact],
+                subtasks: []
+            },
+            idempotencyKey: `ai-draft-rollback-${suffix}`
+        });
+        assert.notEqual(failed.status, 200, JSON.stringify(failed.data));
+        const leaked = await query('SELECT COUNT(*)::int AS count FROM tasks WHERE title = $1', [rollbackProposal.title]);
+        assert.equal(leaked.rows[0].count, 0);
     });
 });

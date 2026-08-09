@@ -481,6 +481,7 @@ let taskSavedDecompositionTemplates = [];
 let taskDecompositionSuggestions = [];
 let taskSuggestionTimer = null;
 let lastTaskSuggestionKey = '';
+let taskComposerAiImpactIds = [];
 let taskSoundPreferences = { enabled: true, volume: 0.4, theme: 'subtle' };
 const expandedTaskSubtaskIds = new Set();
 const collapsedTaskSubtaskIds = new Set();
@@ -3782,16 +3783,18 @@ function renderTaskCard(task) {
     const deferredHtml = renderTaskDeferredBadge(t);
     const isKanbanCard = currentView === 'board' && KANBAN_STATUSES.includes(t.status);
     const isKanbanSaving = kanbanSavingTaskIds.has(Number(t.id));
+    const isAiCreated = window.TaskAiDraft?.isAiTask?.(t) === true;
+    const aiCreatedMarker = isAiCreated ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>' : '';
     const kanbanAttrs = isKanbanCard
         ? ` draggable="true" data-kanban-card="true" data-status="${escapeHtml(t.status)}" aria-grabbed="false"`
         : ` data-status="${escapeHtml(t.status || '')}"`;
 
     return `
-    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${selfPersonalAttrs}${kanbanAttrs}>
+    <div class="task-card ${isKanbanCard ? '' : 'task-work-row'} cat-${cat} priority-${t.priority} ${t.status === 'done' ? 'status-done' : ''} ${blockedCount ? 'is-blocked' : ''} ${selfPersonal ? 'is-self-personal' : ''} ${isKanbanSaving ? 'is-kanban-saving' : ''} ${isAiCreated ? 'is-ai-created' : ''}" data-task-open="true" role="button" tabindex="0" data-task-id="${t.id}" data-priority="${escapeHtml(t.priority || 'normal')}" data-subcategory="${escapeHtml(t.subcategory || '')}" data-pack-id="${escapeHtml(t.packId || t.pack_id || '')}"${isAiCreated ? ' data-ai-created="true" aria-label="Задача створена з допомогою AI"' : ''}${selfPersonalAttrs}${kanbanAttrs}>
         <label class="task-checkbox-wrap">
             <input type="checkbox" class="task-bulk-cb" data-id="${t.id}" aria-label="Вибрати задачу">
         </label>
-        <div class="task-card-title">${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}${getHealthBadge(t.health_score)}</div>
+        <div class="task-card-title">${aiCreatedMarker}${escHtml}${priorityIcon ? priorityIcon + ' ' : ''}${escapeHtml(t.title)}${getHealthBadge(t.health_score)}</div>
         <div class="task-card-meta">
             ${typeBadge}
             ${taskModeBadge(t)}
@@ -4383,6 +4386,7 @@ function readTaskComposerDraft() {
     const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
     return {
         title: document.getElementById('taskTitle')?.value.trim() || '',
+        description: document.getElementById('taskDescription')?.value.trim() || '',
         category,
         subcategory: selectedSubcategoryFor(category, 'taskSubcategory'),
         priority: document.getElementById('taskPriority')?.value || 'normal',
@@ -4398,10 +4402,53 @@ function readTaskComposerDraft() {
         dueDate: dateForDuePresetValue(taskDuePreset, scheduleDate),
         durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
         scheduleSlot: quickScheduleSlot,
+        impactIds: [...taskComposerAiImpactIds],
         subtasks: readTaskComposerSubtasks(),
+        scheduleConfirmed: taskDuePreset !== 'no_date',
         allowReschedule: document.getElementById('taskAllowReschedule')?.checked !== false,
         captureIntent: { ...captureIntent }
     };
+}
+
+function applyTaskAiDraftField(field, value, meta = {}) {
+    if (field === 'title') {
+        const input = document.getElementById('taskTitle');
+        if (input) input.value = String(value || '');
+        return;
+    }
+    if (field === 'description') {
+        const textarea = document.getElementById('taskDescription');
+        if (textarea) textarea.value = String(value || '');
+        return;
+    }
+    if (field === 'mode') {
+        const mode = value === 'checklist' ? 'work' : String(value || '');
+        const select = document.getElementById('taskMode');
+        if (select && ['work', 'personal', 'private'].includes(mode)) select.value = mode;
+        if (value === 'checklist') {
+            const kind = document.getElementById('taskKind');
+            if (kind) kind.value = 'checklist';
+        }
+        return;
+    }
+    if (field === 'impactIds') {
+        taskComposerAiImpactIds = (Array.isArray(value) ? value : []).map(Number).filter(Number.isInteger).slice(0, 3);
+        return;
+    }
+    if (field === 'subtasks') {
+        replaceTaskComposerSubtasks(Array.isArray(value) ? value : [], { sourceType: meta.source === 'manual' ? 'manual' : 'ai' });
+        setTaskDecompositionMode(Array.isArray(value) && value.length ? 'ai' : 'none', { keepRows: true, keepStatus: true });
+    }
+}
+
+function focusTaskAiDraftField(field) {
+    const map = {
+        title: 'taskTitle',
+        description: 'taskDescription',
+        mode: 'taskMode',
+        subtasks: 'taskSubtasksList'
+    };
+    document.getElementById(map[field])?.focus();
 }
 
 function cloneTaskBatchSettings(source = {}) {
@@ -4610,6 +4657,10 @@ function focusInvalidTaskDraft(index, itemId) {
 function resetTaskComposerAfterCreate() {
     const title = document.getElementById('taskTitle');
     if (title) title.value = '';
+    const description = document.getElementById('taskDescription');
+    if (description) description.value = '';
+    taskComposerAiImpactIds = [];
+    window.TaskAiDraft?.clear?.(document.getElementById('quickAdd'));
     if (document.getElementById('taskDeadlineTime')) document.getElementById('taskDeadlineTime').value = '';
     if (document.getElementById('taskScheduleDuration')) document.getElementById('taskScheduleDuration').value = '30';
     if (document.getElementById('taskScheduleDate')) document.getElementById('taskScheduleDate').value = getTodayStr();
@@ -4680,6 +4731,15 @@ function setupTaskComposer() {
     bindTaskBatchListEvents();
     renderQuickTaskBatchItems();
     document.getElementById('taskDetailsToggle')?.addEventListener('click', () => toggleTaskComposerDetails());
+    if (window.TaskAiDraft) {
+        window.TaskAiDraft.bindComposer(document.getElementById('quickAdd'), {
+            sourceModule: 'tasks',
+            sourceSurface: 'tasks_quick_composer',
+            readDraft: readTaskComposerDraft,
+            applyField: applyTaskAiDraftField,
+            focusField: focusTaskAiDraftField
+        });
+    }
 }
 
 function getTaskScopeLabel(scope = currentScopeFilter) {
@@ -4786,9 +4846,21 @@ async function addTask() {
 
     const createdTasks = [];
     let postCreateWarningCount = 0;
+    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(document.getElementById('quickAdd'));
     for (let i = 0; i < drafts.length; i += 1) {
         const data = buildTaskCreatePayload(drafts[i]);
-        const result = await apiCreateTask(data);
+        const result = i === 0 && aiCommitPayload && window.TaskCreate?.commitAiDraft
+            ? await window.TaskCreate.commitAiDraft({
+                ...aiCommitPayload,
+                finalDraft: {
+                    ...drafts[i],
+                    ...(aiCommitPayload.finalDraft || {}),
+                    sourceType: 'ai_draft',
+                    sourceModule: 'tasks',
+                    sourceSurface: 'tasks_quick_composer'
+                }
+            })
+            : await apiCreateTask(data);
         if (!result || !result.success) {
             if (!createdTasks.length && result?.duplicate) return;
             if (createdTasks.length) {
@@ -4801,6 +4873,7 @@ async function addTask() {
         }
         if (Array.isArray(result.postCreateWarnings)) postCreateWarningCount += result.postCreateWarnings.length;
         createdTasks.push(result.task);
+        if (i === 0 && aiCommitPayload) window.TaskAiDraft?.markCommittedTaskId?.(result.task?.id || result.task?.taskId || result.task?.task_id);
         lastCreatedTaskId = result.task?.id || lastCreatedTaskId;
         keepNewTaskVisible(result.task, data);
     }

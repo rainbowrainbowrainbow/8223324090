@@ -6,8 +6,14 @@ const {
     myDayError
 } = require('./myDayTaxonomy');
 const { guidanceForImpactName } = require('./myDayImpactCatalog');
+const {
+    MY_DAY_TASK_AI_MODEL,
+    callMyDayTaskOpenAIResponses,
+    getOpenAIKey: getSharedOpenAIKey,
+    resolveTimeoutMs: resolveSharedTimeoutMs
+} = require('./myDayTaskOpenAIClient');
 
-const DEFAULT_MY_DAY_CLASSIFICATION_MODEL = 'gpt-5.6-luna';
+const DEFAULT_MY_DAY_CLASSIFICATION_MODEL = MY_DAY_TASK_AI_MODEL;
 const ALLOWED_MY_DAY_CLASSIFICATION_MODELS = Object.freeze([
     DEFAULT_MY_DAY_CLASSIFICATION_MODEL
 ]);
@@ -63,18 +69,12 @@ function resolveMyDayClassificationModel(env = process.env) {
     return model;
 }
 
-function getOpenAIApiBase(env = process.env) {
-    return String(env.OPENAI_API_BASE || env.OPENAI_API_BASE_URL || 'https://api.openai.com/v1').replace(/\/+$/, '');
-}
-
 function getOpenAIKey(env = process.env) {
-    return String(env.OPENAI_API_KEY || '').trim();
+    return getSharedOpenAIKey(env);
 }
 
 function resolveMyDayClassificationTimeoutMs(env = process.env) {
-    const parsed = Number.parseInt(env.MY_DAY_CLASSIFICATION_TIMEOUT_MS || '', 10);
-    if (!Number.isFinite(parsed) || parsed <= 0) return MY_DAY_CLASSIFICATION_TIMEOUT_MS;
-    return Math.max(100, Math.min(30_000, parsed));
+    return resolveSharedTimeoutMs(env.MY_DAY_CLASSIFICATION_TIMEOUT_MS, MY_DAY_CLASSIFICATION_TIMEOUT_MS);
 }
 
 function taskSnapshot(task = {}) {
@@ -263,85 +263,18 @@ function extractOpenAIResponseObject(payload = {}) {
 
 async function callOpenAIResponsesForClassification(request = {}, options = {}) {
     const env = request.env || options.env || process.env;
-    const apiKey = getOpenAIKey(env);
     const model = request.model || resolveMyDayClassificationModel(env);
-    if (!apiKey) {
-        return {
-            ok: false,
-            provider: 'openai',
-            model,
-            reason: 'missing_key',
-            statusCode: 503
-        };
-    }
-
-    const fetchImpl = options.fetchImpl || request.fetchImpl || globalThis.fetch;
-    if (typeof fetchImpl !== 'function') {
-        return {
-            ok: false,
-            provider: 'openai',
-            model,
-            reason: 'fetch_unavailable',
-            statusCode: 503
-        };
-    }
-
-    const controller = new AbortController();
-    const timeoutMs = Number(request.timeoutMs || options.timeoutMs || resolveMyDayClassificationTimeoutMs(env));
-    const timeout = setTimeout(() => controller.abort(), Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : MY_DAY_CLASSIFICATION_TIMEOUT_MS);
-    try {
-        const response = await fetchImpl(`${getOpenAIApiBase(env)}/responses`, {
-            method: 'POST',
-            headers: {
-                Authorization: `Bearer ${apiKey}`,
-                'Content-Type': 'application/json'
-            },
-            body: JSON.stringify({
-                model,
-                input: request.input,
-                text: {
-                    format: {
-                        type: 'json_schema',
-                        name: OPENAI_RESPONSES_SCHEMA_NAME,
-                        strict: true,
-                        schema: MY_DAY_CLASSIFICATION_JSON_SCHEMA
-                    }
-                },
-                reasoning: { effort: MY_DAY_CLASSIFICATION_REASONING_EFFORT },
-                max_output_tokens: MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS,
-                store: false
-            }),
-            signal: controller.signal
-        });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok) {
-            return {
-                ok: false,
-                provider: 'openai',
-                model,
-                reason: response.status === 401 || response.status === 403 ? 'auth_failed' : 'provider_error',
-                statusCode: response.status >= 500 ? 503 : response.status
-            };
-        }
-        return {
-            ok: true,
-            provider: 'openai',
-            model,
-            payload,
-            text: extractOpenAIResponseText(payload),
-            usage: payload.usage || {}
-        };
-    } catch (error) {
-        return {
-            ok: false,
-            provider: 'openai',
-            model,
-            reason: error?.name === 'AbortError' ? 'timeout' : 'network_error',
-            statusCode: error?.name === 'AbortError' ? 504 : 503
-        };
-    } finally {
-        clearTimeout(timeout);
-    }
+    return callMyDayTaskOpenAIResponses({
+        model,
+        input: request.input,
+        env,
+        timeoutMs: request.timeoutMs || options.timeoutMs || resolveMyDayClassificationTimeoutMs(env),
+        schemaName: OPENAI_RESPONSES_SCHEMA_NAME,
+        schema: MY_DAY_CLASSIFICATION_JSON_SCHEMA,
+        reasoningEffort: MY_DAY_CLASSIFICATION_REASONING_EFFORT,
+        maxOutputTokens: MY_DAY_CLASSIFICATION_MAX_OUTPUT_TOKENS,
+        safetyIdentifier: request.safetyIdentifier || options.safetyIdentifier || null
+    }, options);
 }
 
 function assertStrictClassificationKeys(payload = {}) {
@@ -426,7 +359,8 @@ async function classifyMyDayTask(input = {}, options = {}) {
         model,
         input: buildOpenAIResponsesInput({ task, impacts }),
         env,
-        timeoutMs: options.timeoutMs || resolveMyDayClassificationTimeoutMs(env)
+        timeoutMs: options.timeoutMs || resolveMyDayClassificationTimeoutMs(env),
+        safetyIdentifier: options.safetyIdentifier || input.safetyIdentifier || null
     }, options);
 
     if (!result?.ok) {

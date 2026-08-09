@@ -18,6 +18,7 @@ const TASK_ACTION_TYPES = Object.freeze({
     SCHEDULE_PROPOSAL_CREATED: 'task_schedule_proposal_created',
     SLOT_MISSED: 'task_slot_missed',
     DISCIPLINE_PENALTY_APPLIED: 'task_discipline_penalty_applied',
+    AI_DRAFT_COMMITTED: 'task_ai_draft_committed',
     COMMENTED: 'task_commented'
 });
 
@@ -67,6 +68,8 @@ function summaryForAction(actionType) {
             return 'Task slot missed';
         case TASK_ACTION_TYPES.DISCIPLINE_PENALTY_APPLIED:
             return 'Task discipline penalty applied';
+        case TASK_ACTION_TYPES.AI_DRAFT_COMMITTED:
+            return 'AI-assisted task draft committed';
         case TASK_ACTION_TYPES.COMMENTED:
             return 'Task comment added';
         default:

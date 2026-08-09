@@ -542,6 +542,13 @@ const CSS_SURFACE = [
         reason: 'Profile avatar crop controls and compact soon-tab menu styles imported by pages.css.'
     },
     {
+        file: 'css/task-ai-draft.css',
+        owner: 'tasks-my-day-ai',
+        category: 'feature-shared',
+        status: 'active',
+        reason: 'Shared AI draft composer preview, review, field-mask, mobile, and dark-mode styles used by Profile My Day and Tasks composer.'
+    },
+    {
         file: 'css/pages-reports.css',
         owner: 'reports',
         category: 'page-scoped',

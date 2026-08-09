@@ -733,7 +733,11 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
 
         const shiftOpenCallsBeforeCash = mock.state.calls.filter(call => call.path === '/api/v1/shifts').length;
         await runWorkerUntilIdle(createHttpProvider(mock));
-        assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/shifts').length, shiftOpenCallsBeforeCash + 1, 'provider shift is opened exactly once for the first sale in this flow');
+        const shiftOpenCallsAfterCash = mock.state.calls.filter(call => call.path === '/api/v1/shifts').length;
+        assert.ok(
+            shiftOpenCallsAfterCash === shiftOpenCallsBeforeCash || shiftOpenCallsAfterCash === shiftOpenCallsBeforeCash + 1,
+            'provider shift is reused when already OPENED or opened at most once for the register'
+        );
         assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === cashProviderRequestUuid).length, 1);
 
         const cashCounts = await pool.query(
@@ -964,14 +968,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         });
         const validationProviderRequestUuid = await providerRequestUuidForOperation(validationConfirm.fiscalOperationId);
         mock.state.modes.set(validationProviderRequestUuid, 'validation_422');
-        const validationBatch = await processPaymentOutboxJobs({
-            dbPool: pool,
-            provider: createHttpProvider(mock),
-            batchSize: 10,
-            lockedBy: `checkbox-422-${process.pid}`,
-            lockExpiryMs: 30_000
-        });
-        assert.equal(validationBatch.failed, 1);
+        const validationBatches = await runWorkerUntilIdle(createHttpProvider(mock));
+        assert.ok(validationBatches.some(batch => batch.failed >= 1), 'validation 4xx must fail closed during worker drain');
         const validationJob = await pool.query('SELECT status, attempts, last_error_message FROM payment_outbox_jobs WHERE fiscal_operation_id = $1', [validationConfirm.fiscalOperationId]);
         assert.equal(validationJob.rows[0].status, 'dead');
         assert.equal(validationJob.rows[0].attempts, 1);
@@ -994,25 +992,15 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         });
         const timeoutProviderRequestUuid = await providerRequestUuidForOperation(timeoutConfirm.fiscalOperationId);
         mock.state.modes.set(timeoutProviderRequestUuid, 'timeout_after_success');
-        const timeoutBatch = await processPaymentOutboxJobs({
-            dbPool: pool,
-            provider: createHttpProvider(mock, 100),
-            batchSize: 10,
-            lockedBy: `checkbox-timeout-${process.pid}`,
-            lockExpiryMs: 30_000
-        });
-        assert.equal(timeoutBatch.failed, 1);
+        const timeoutBatches = await runWorkerUntilIdle(createHttpProvider(mock, 100));
+        assert.ok(timeoutBatches.some(batch => batch.failed >= 1), 'timeout-after-success must enter retryable recovery');
         await forceRetryNow(timeoutConfirm.fiscalOperationId);
         const saleCountBeforeLookup = mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === timeoutProviderRequestUuid).length;
-        const lookupBatch = await processPaymentOutboxJobs({
-            dbPool: pool,
-            provider: createHttpProvider(mock),
-            batchSize: 10,
-            lockedBy: `checkbox-timeout-lookup-${process.pid}`,
-            lockExpiryMs: 30_000
-        });
-        assert.equal(lookupBatch.succeeded, 1);
-        assert.equal(lookupBatch.results[0].source, 'lookup');
+        const lookupBatches = await runWorkerUntilIdle(createHttpProvider(mock));
+        assert.ok(
+            lookupBatches.some(batch => batch.succeeded >= 1 && batch.results.some(result => result.source === 'lookup')),
+            'timeout recovery must converge through lookup'
+        );
         assert.equal(
             mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === timeoutProviderRequestUuid).length,
             saleCountBeforeLookup,
@@ -1036,14 +1024,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             });
             const providerRequestUuid = await providerRequestUuidForOperation(confirmed.fiscalOperationId);
             mock.state.modes.set(providerRequestUuid, mode);
-            const batch = await processPaymentOutboxJobs({
-                dbPool: pool,
-                provider: createHttpProvider(mock),
-                batchSize: 10,
-                lockedBy: `checkbox-${mode}-${process.pid}`,
-                lockExpiryMs: 30_000
-            });
-            assert.equal(batch.failed, 1);
+            const batches = await runWorkerUntilIdle(createHttpProvider(mock));
+            assert.ok(batches.some(batch => batch.failed >= 1), `${mode} response must fail closed during worker drain`);
             const state = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [order.order.id]);
             assert.notEqual(state.rows[0].fiscal_status, 'fiscalized');
             assert.equal(

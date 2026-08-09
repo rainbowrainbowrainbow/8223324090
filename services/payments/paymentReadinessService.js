@@ -1186,33 +1186,34 @@ async function loadCheckboxSalesReport({
                     AND ($5::bigint IS NULL OR fo.fiscal_shift_id = $5::bigint)
                     AND ($6::bigint IS NULL OR po.cashier_user_id = $6::bigint)
              )
-             SELECT
-                 COUNT(*) AS total_count,
-                 COALESCE(SUM(total_amount_minor), 0)::text AS payment_total_minor,
-                 COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'cash'), 0)::text AS cash_total_minor,
-                 COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'card_terminal'), 0)::text AS card_terminal_total_minor,
-                 jsonb_object_agg(status_key, status_count) FILTER (WHERE status_key IS NOT NULL) AS status_counts
-               FROM (
-                 SELECT public_status AS status_key, COUNT(*) AS status_count
+             status_counts AS (
+                 SELECT jsonb_object_agg(public_status, status_count) AS status_counts
                    FROM (
                      SELECT CASE
-                         WHEN outbox_status = 'dead' THEN 'dead'
-                         WHEN fiscal_status = 'failed' OR outbox_status IN ('failed', 'claimed', 'running') THEN 'failed_retryable'
-                         ELSE fiscal_status
-                     END AS public_status
-                     FROM filtered
-                   ) statuses
-                  GROUP BY public_status
-               ) grouped
-               RIGHT JOIN (
+                               WHEN outbox_status = 'dead' THEN 'dead'
+                               WHEN fiscal_status = 'failed' OR outbox_status IN ('failed', 'claimed', 'running') THEN 'failed_retryable'
+                               ELSE fiscal_status
+                            END AS public_status,
+                            COUNT(*) AS status_count
+                       FROM filtered
+                      GROUP BY public_status
+                   ) grouped
+             ),
+             totals AS (
                  SELECT
                      COUNT(*) AS total_count,
                      COALESCE(SUM(total_amount_minor), 0)::text AS payment_total_minor,
                      COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'cash'), 0)::text AS cash_total_minor,
                      COALESCE(SUM(total_amount_minor) FILTER (WHERE payment_method = 'card_terminal'), 0)::text AS card_terminal_total_minor
                    FROM filtered
-               ) totals ON TRUE
-              GROUP BY totals.total_count, totals.payment_total_minor, totals.cash_total_minor, totals.card_terminal_total_minor`,
+             )
+             SELECT totals.total_count,
+                    totals.payment_total_minor,
+                    totals.cash_total_minor,
+                    totals.card_terminal_total_minor,
+                    COALESCE(status_counts.status_counts, '{}'::jsonb) AS status_counts
+               FROM totals
+               CROSS JOIN status_counts`,
             params
         );
         const totalsRow = totalsResult.rows[0] || {};

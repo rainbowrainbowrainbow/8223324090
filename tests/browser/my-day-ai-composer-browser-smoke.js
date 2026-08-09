@@ -62,6 +62,8 @@ function harnessHtml() {
     <div class="actions">
       <button type="button" id="create">Create</button>
       <button type="button" id="clarify">Clarification mode</button>
+      <button type="button" id="bundle">Bundle mode</button>
+      <button type="button" id="providerUnavailable">Provider unavailable</button>
     </div>
     <section id="created"></section>
   </main>
@@ -71,13 +73,15 @@ function harnessHtml() {
     const impacts = [
       { id: 101, name: 'CRM', icon: 'C', color: '#0ea5e9' },
       { id: 102, name: 'Hermes', icon: 'H', color: '#8b5cf6' },
-      { id: 104, name: 'AI', icon: 'A', color: '#f59e0b' }
+      { id: 104, name: 'AI', icon: 'A', color: '#f59e0b' },
+      { id: 105, name: 'Content', icon: 'M', color: '#ec4899' }
     ];
     const state = {
       mode: 'apply',
       calls: [],
       draft: { title: 'crm hermes ai task', description: 'prepare safer workflow', mode: 'simple', impactIds: [], subtasks: [] },
-      created: JSON.parse(localStorage.getItem('ai-composer-created') || 'null')
+      created: JSON.parse(localStorage.getItem('ai-composer-created') || 'null'),
+      bundleCreated: JSON.parse(localStorage.getItem('ai-composer-bundle-created') || 'null')
     };
     const title = document.getElementById('title');
     const description = document.getElementById('description');
@@ -92,8 +96,13 @@ function harnessHtml() {
       subtasksHost.innerHTML = state.draft.subtasks.map((item, index) => '<input data-task-subtask-row data-index="' + index + '" data-subtask-source="' + (item.sourceType || 'manual') + '" value="' + item.title + '">').join('');
     }
     function renderCreated() {
-      if (!state.created) return;
-      created.innerHTML = '<article class="created-card" data-ai-created="true"><strong>' + state.created.title + '</strong><span class="ai-marker">AI assisted</span><div>' + state.created.impactIds.join(',') + '</div><ol>' + state.created.subtasks.map(item => '<li>' + item.title + '</li>').join('') + '</ol></article>';
+      const singleHtml = state.created
+        ? '<article class="created-card" data-ai-created="true"><strong>' + state.created.title + '</strong><span class="ai-marker">AI assisted</span><div>' + state.created.impactIds.join(',') + '</div><ol>' + state.created.subtasks.map(item => '<li>' + item.title + '</li>').join('') + '</ol></article>'
+        : '';
+      const bundleHtml = state.bundleCreated
+        ? '<section data-ai-bundle-created="true">' + state.bundleCreated.tasks.map(task => '<article class="created-card" data-ai-bundle-task><strong>' + task.title + '</strong><span class="ai-marker">AI bundle</span><div>' + (task.impactIds || []).join(',') + '</div></article>').join('') + '</section>'
+        : '';
+      created.innerHTML = singleHtml + bundleHtml;
     }
     function syncDraftFromInputs() {
       state.draft.title = title.value;
@@ -109,6 +118,9 @@ function harnessHtml() {
       requestAiDraftPreview: async payload => {
         state.calls.push({ type: 'preview', payload });
         await new Promise(resolve => setTimeout(resolve, 40));
+        if (state.mode === 'provider_unavailable') {
+          return { success: false, code: 'TASK_AI_PROVIDER_UNAVAILABLE', error: 'AI provider unavailable' };
+        }
         if (state.mode === 'clarification') {
           return {
             success: true,
@@ -119,6 +131,35 @@ function harnessHtml() {
             impactCatalog: impacts,
             proposal: { action: 'needs_clarification', mode: null, title: null, description: null, impactIds: [], subtasks: [], reason: 'Need clearer scope.' },
             diff: { changedFields: [], fields: {} }
+          };
+        }
+        if (state.mode === 'bundle') {
+          const tasks = [
+            { title: 'Audit CRM booking funnel', description: 'Check CRM booking issues.', impactIds: [101], priority: 'high', dueDate: '2099-02-01', ownerSuggestion: { userId: null, name: null, reason: null }, confidence: { overall: 0.9, title: 0.9, description: 0.8, impacts: 0.9, subtasks: 0.8, mode: 0.8 } },
+            { title: 'Prepare Hermes worker', description: 'Prepare Hermes worker changes.', impactIds: [102], priority: 'normal', dueDate: null, ownerSuggestion: { userId: null, name: null, reason: null }, confidence: { overall: 0.9, title: 0.9, description: 0.8, impacts: 0.9, subtasks: 0.8, mode: 0.8 } },
+            { title: 'Verify AI automation', description: 'Verify automation behavior.', impactIds: [104], priority: 'normal', dueDate: null, ownerSuggestion: { userId: null, name: null, reason: null }, confidence: { overall: 0.9, title: 0.9, description: 0.8, impacts: 0.9, subtasks: 0.8, mode: 0.8 } },
+            { title: 'Publish content update', description: 'Prepare content update.', impactIds: [105], priority: 'low', dueDate: null, ownerSuggestion: { userId: null, name: null, reason: null }, confidence: { overall: 0.9, title: 0.9, description: 0.8, impacts: 0.9, subtasks: 0.8, mode: 0.8 } }
+          ];
+          return {
+            success: true,
+            proposalToken: 'token-bundle',
+            proposalHash: 'hash-bundle',
+            draftFingerprint: 'fingerprint-bundle',
+            catalogVersion: 'catalog',
+            impactCatalog: impacts,
+            proposal: {
+              decision: 'task_bundle',
+              mode: null,
+              title: null,
+              description: null,
+              impactIds: [],
+              subtasks: [],
+              bundleTitle: 'CRM Hermes AI content bundle',
+              tasks,
+              confidence: { overall: 0.9, title: 0.9, description: 0.8, impacts: 0.9, subtasks: 0.8, mode: 0.8 },
+              reason: 'Several independent tasks.'
+            },
+            diff: { changedFields: ['title', 'description'], fields: {} }
           };
         }
         return {
@@ -163,6 +204,16 @@ function harnessHtml() {
         localStorage.setItem('ai-composer-created', JSON.stringify(state.created));
         renderCreated();
         return { success: true, task: { id: 777, ...state.created, sourceType: 'ai_draft' } };
+      },
+      commitAiDraftBundle: async payload => {
+        state.calls.push({ type: 'bundle_commit', payload });
+        state.bundleCreated = {
+          bundle: { id: 'bundle-browser-smoke', taskIds: payload.tasks.map((_, index) => 900 + index) },
+          tasks: payload.tasks.map((task, index) => ({ id: 900 + index, ...task, sourceType: 'ai_draft_bundle' }))
+        };
+        localStorage.setItem('ai-composer-bundle-created', JSON.stringify(state.bundleCreated));
+        renderCreated();
+        return { success: true, bundle: state.bundleCreated.bundle, tasks: state.bundleCreated.tasks };
       }
     };
     window.TaskAiDraft.bindComposer(document.querySelector('[data-task-ai-draft-panel]'), {
@@ -177,7 +228,8 @@ function harnessHtml() {
       focusField(field) {
         if (field === 'title') title.focus();
         if (field === 'description') description.focus();
-      }
+      },
+      commitBundle: window.TaskCreate.commitAiDraftBundle
     });
     document.getElementById('create').addEventListener('click', async () => {
       const payload = window.TaskAiDraft.commitPayloadFor(document.querySelector('[data-task-ai-draft-panel]'));
@@ -185,6 +237,8 @@ function harnessHtml() {
       await window.TaskCreate.commitAiDraft(payload);
     });
     document.getElementById('clarify').addEventListener('click', () => { state.mode = 'clarification'; });
+    document.getElementById('bundle').addEventListener('click', () => { state.mode = 'bundle'; });
+    document.getElementById('providerUnavailable').addEventListener('click', () => { state.mode = 'provider_unavailable'; });
     impactsHost.addEventListener('click', event => {
       const button = event.target.closest('[data-impact]');
       if (!button) return;
@@ -274,6 +328,48 @@ async function runScenario(browser, fixture, { dark, viewport }) {
     }
 }
 
+async function runBundleScenario(browser, fixture, { dark, viewport }) {
+    const context = await browser.newContext({ serviceWorkers: 'block', viewport });
+    const page = await context.newPage();
+    const pageErrors = [];
+    page.on('pageerror', error => pageErrors.push(error.message));
+    page.setDefaultTimeout(20_000);
+    try {
+        await page.goto(`${fixture.baseUrl}/ai-composer-harness.html`, { waitUntil: 'domcontentloaded' });
+        await page.evaluate(() => localStorage.removeItem('ai-composer-bundle-created'));
+        if (dark) await page.evaluate(() => document.documentElement.dataset.theme = 'dark');
+        await page.click('#bundle');
+        await page.click('[data-task-ai-draft-preview]');
+        await page.waitForSelector('.task-ai-bundle-review');
+        assert.equal(await page.locator('[data-task-ai-bundle-card]').count(), 4);
+        await page.locator('[data-task-ai-bundle-card]').first().locator('[data-task-ai-bundle-field="title"]').fill('Edited CRM booking funnel');
+        assert.equal(await page.locator('[data-task-ai-draft-bundle-create]').isDisabled(), true);
+        await page.locator('[data-task-ai-bundle-reject]').nth(3).click();
+        assert.match(await page.locator('[data-task-ai-draft-bundle-create]').textContent(), /3/);
+        await page.click('[data-task-ai-bundle-accept-all]');
+        assert.equal(await page.locator('[data-task-ai-draft-bundle-create]').isDisabled(), false);
+        const payloadBeforeCreate = await page.evaluate(() => window.TaskAiDraft.bundlePayloadFor(document.querySelector('[data-task-ai-draft-panel]')));
+        assert.equal(payloadBeforeCreate.tasks.length, 3);
+        assert.equal(payloadBeforeCreate.tasks[0].title, 'Edited CRM booking funnel');
+        assert.equal(payloadBeforeCreate.tasks.some(task => /Publish content update/.test(task.title)), false);
+        await page.click('[data-task-ai-draft-bundle-create]');
+        await page.waitForSelector('[data-ai-bundle-created="true"]');
+        assert.equal(await page.locator('[data-ai-bundle-task]').count(), 3);
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.waitForSelector('[data-ai-bundle-created="true"]');
+        assert.equal(await page.locator('[data-ai-bundle-task]').count(), 3);
+
+        await page.click('#providerUnavailable');
+        await page.click('[data-task-ai-draft-preview]');
+        await page.waitForFunction(() => document.querySelector('[data-task-ai-draft-status]')?.textContent?.includes('AI provider unavailable'));
+        const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+        assert.ok(overflow <= 1, `AI bundle composer has horizontal overflow: ${overflow}px`);
+        assert.deepEqual(pageErrors, []);
+    } finally {
+        await context.close();
+    }
+}
+
 (async () => {
     const playwright = requirePlaywright();
     const fixture = await createStaticServer();
@@ -283,6 +379,8 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await runScenario(browser, fixture, { dark: true, viewport: { width: 1440, height: 900 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 390, height: 844 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
+        await runBundleScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
+        await runBundleScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         console.log('My Day AI composer browser smoke passed');
     } finally {
         await browser.close().catch(() => {});

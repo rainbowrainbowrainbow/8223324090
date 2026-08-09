@@ -219,6 +219,10 @@ async function postAiDraftCommit(token, body) {
     return request('POST', '/api/tasks/ai-draft/commit', body, token);
 }
 
+async function postAiDraftBundleCommit(token, body) {
+    return request('POST', '/api/tasks/ai-draft/bundle/commit', body, token);
+}
+
 function openAiOutput(impactIds, confidence = 0.9, reason = 'matched') {
     return jsonResponse({
         output_text: JSON.stringify({ impactIds, confidence, reason })
@@ -253,6 +257,79 @@ function validDraftProposal(impactIds, overrides = {}) {
             mode: 0.84
         },
         reason: 'Clear AI draft commit fixture.',
+        ...overrides
+    };
+}
+
+function validBundleProposal(impactIds, overrides = {}) {
+    const [firstImpact, secondImpact, thirdImpact] = impactIds;
+    return {
+        decision: 'task_bundle',
+        mode: null,
+        title: null,
+        description: null,
+        impactIds: [],
+        subtasks: [],
+        bundleTitle: `AI bundle commit plan ${suffix}`,
+        tasks: [
+            {
+                title: `AI bundle CRM audit ${suffix}`,
+                description: 'Audit CRM flow without creating dependencies.',
+                impactIds: [firstImpact],
+                priority: 'high',
+                dueDate: '2099-02-01',
+                ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
+                confidence: {
+                    overall: 0.91,
+                    title: 0.9,
+                    description: 0.88,
+                    impacts: 0.9,
+                    subtasks: 0.8,
+                    mode: 0.84
+                }
+            },
+            {
+                title: `AI bundle Hermes worker ${suffix}`,
+                description: 'Prepare Hermes worker safely.',
+                impactIds: [secondImpact],
+                priority: 'normal',
+                dueDate: null,
+                ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
+                confidence: {
+                    overall: 0.89,
+                    title: 0.9,
+                    description: 0.86,
+                    impacts: 0.88,
+                    subtasks: 0.8,
+                    mode: 0.82
+                }
+            },
+            {
+                title: `AI bundle automation QA ${suffix}`,
+                description: 'Verify automation and AI outcome.',
+                impactIds: [thirdImpact],
+                priority: 'normal',
+                dueDate: null,
+                ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
+                confidence: {
+                    overall: 0.9,
+                    title: 0.9,
+                    description: 0.87,
+                    impacts: 0.89,
+                    subtasks: 0.8,
+                    mode: 0.83
+                }
+            }
+        ],
+        confidence: {
+            overall: 0.9,
+            title: 0.88,
+            description: 0.85,
+            impacts: 0.9,
+            subtasks: 0.8,
+            mode: 0.8
+        },
+        reason: 'Clear multi-task bundle.',
         ...overrides
     };
 }
@@ -720,5 +797,256 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.notEqual(failed.status, 200, JSON.stringify(failed.data));
         const leaked = await query('SELECT COUNT(*)::int AS count FROM tasks WHERE title = $1', [rollbackProposal.title]);
         assert.equal(leaked.rows[0].count, 0);
+    });
+
+    it('commits AI draft bundle atomically with idempotent replay and no dependencies or outbox rows', async () => {
+        const owner = await createUser('ai_bundle_commit');
+        const crmImpact = await createImpact(owner.id, 'Bundle CRM');
+        const hermesImpact = await createImpact(owner.id, 'Bundle Hermes');
+        const aiImpact = await createImpact(owner.id, 'Bundle Automation');
+        const impactIds = [crmImpact, hermesImpact, aiImpact];
+        const proposal = validBundleProposal(impactIds);
+        openAiMock.enqueue(body => {
+            assert.equal(body.model, 'gpt-5.6-luna');
+            assert.equal(body.store, false);
+            return openAiDraftOutput(proposal);
+        });
+
+        const outboxBefore = await query('SELECT COUNT(*)::int AS count FROM notification_outbox');
+        const preview = await postAiDraftPreview(owner.token, {
+            currentDraft: {
+                title: `bundle crm hermes automation ${suffix}`,
+                description: 'Create several real tasks',
+                mode: 'simple',
+                impactIds: []
+            }
+        });
+        assert.equal(preview.status, 200, JSON.stringify(preview.data));
+        assert.equal(preview.data?.proposal?.decision, 'task_bundle');
+
+        const commitBody = {
+            proposalToken: preview.data.proposalToken,
+            proposalHash: preview.data.proposalHash,
+            draftFingerprint: preview.data.draftFingerprint,
+            proposal: preview.data.proposal,
+            bundleTitle: preview.data.proposal.bundleTitle,
+            tasks: preview.data.proposal.tasks,
+            acceptedTaskMask: [0, 1, 2],
+            rejectedTaskMask: [],
+            idempotencyKey: `ai-bundle-commit-${suffix}`
+        };
+        const committed = await postAiDraftBundleCommit(owner.token, commitBody);
+        assert.equal(committed.status, 200, JSON.stringify(committed.data));
+        assert.equal(committed.data?.success, true);
+        assert.equal(committed.data?.replayed, false);
+        assert.equal(committed.data?.tasks?.length, 3);
+        const taskIds = committed.data.tasks.map(task => Number(task.id));
+        assert.equal(new Set(taskIds).size, 3);
+
+        for (let index = 0; index < taskIds.length; index += 1) {
+            assert.deepEqual(await readImpactIds(owner.id, taskIds[index]), proposal.tasks[index].impactIds);
+        }
+        const rows = await query(
+            `SELECT id, source_type, dependency_ids, control_meta
+             FROM tasks
+             WHERE id = ANY($1::int[])
+             ORDER BY id`,
+            [taskIds]
+        );
+        assert.equal(rows.rows.length, 3);
+        rows.rows.forEach(row => {
+            assert.equal(row.source_type, 'ai_draft_bundle');
+            assert.deepEqual(row.dependency_ids || [], []);
+            assert.ok(row.control_meta?.aiDraftBundle?.bundleId);
+            assert.equal(JSON.stringify(row.control_meta).includes(proposal.bundleTitle), false);
+        });
+
+        const history = await query(
+            `SELECT action_type, meta_json, new_value_json
+             FROM task_action_history
+             WHERE action_type = 'task_ai_draft_bundle_committed'
+               AND meta_json->>'idempotencyKey' = $1
+             ORDER BY id DESC
+             LIMIT 1`,
+            [commitBody.idempotencyKey]
+        );
+        assert.equal(history.rows.length, 1);
+        assert.deepEqual(history.rows[0].meta_json.taskIds.map(Number), taskIds);
+        assert.equal(history.rows[0].meta_json.rawPromptStored, false);
+        assert.equal(history.rows[0].meta_json.rawProviderResponseStored, false);
+        assert.equal(JSON.stringify(history.rows[0]).includes(proposal.tasks[0].title), false);
+
+        const replay = await postAiDraftBundleCommit(owner.token, commitBody);
+        assert.equal(replay.status, 200, JSON.stringify(replay.data));
+        assert.equal(replay.data?.replayed, true);
+        assert.deepEqual(replay.data?.bundle?.taskIds?.map(Number), taskIds);
+
+        const duplicateCheck = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM tasks
+             WHERE source_type = 'ai_draft_bundle'
+               AND source_id = $1`,
+            [rows.rows[0].control_meta.aiDraftBundle.bundleId.slice(0, 50)]
+        );
+        assert.equal(duplicateCheck.rows[0].count, 3);
+        const outboxAfter = await query('SELECT COUNT(*)::int AS count FROM notification_outbox');
+        assert.equal(outboxAfter.rows[0].count, outboxBefore.rows[0].count);
+    });
+
+    it('serializes concurrent AI bundle double-click commits into one bundle', async () => {
+        const owner = await createUser('ai_bundle_double');
+        const crmImpact = await createImpact(owner.id, 'Double CRM');
+        const hermesImpact = await createImpact(owner.id, 'Double Hermes');
+        const aiImpact = await createImpact(owner.id, 'Double Automation');
+        const proposal = validBundleProposal([crmImpact, hermesImpact, aiImpact], {
+            bundleTitle: `AI bundle double click ${suffix}`
+        });
+        openAiMock.enqueue(() => openAiDraftOutput(proposal));
+        const preview = await postAiDraftPreview(owner.token, {
+            currentDraft: {
+                title: `double click bundle ${suffix}`,
+                description: 'Two rapid commits should create one bundle',
+                mode: 'simple',
+                impactIds: []
+            }
+        });
+        assert.equal(preview.status, 200, JSON.stringify(preview.data));
+        const commitBody = {
+            proposalToken: preview.data.proposalToken,
+            proposalHash: preview.data.proposalHash,
+            draftFingerprint: preview.data.draftFingerprint,
+            proposal: preview.data.proposal,
+            bundleTitle: preview.data.proposal.bundleTitle,
+            tasks: preview.data.proposal.tasks,
+            acceptedTaskMask: [0, 1, 2],
+            rejectedTaskMask: [],
+            idempotencyKey: `ai-bundle-double-${suffix}`
+        };
+
+        const [first, second] = await Promise.all([
+            postAiDraftBundleCommit(owner.token, commitBody),
+            postAiDraftBundleCommit(owner.token, commitBody)
+        ]);
+        assert.equal(first.status, 200, JSON.stringify(first.data));
+        assert.equal(second.status, 200, JSON.stringify(second.data));
+        assert.deepEqual([first.data.replayed, second.data.replayed].sort(), [false, true]);
+        const createdTaskIds = (first.data.replayed ? second : first).data.bundle.taskIds.map(Number);
+        const count = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM tasks
+             WHERE id = ANY($1::int[])`,
+            [createdTaskIds]
+        );
+        assert.equal(count.rows[0].count, 3);
+        const historyCount = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM task_action_history
+             WHERE action_type = 'task_ai_draft_bundle_committed'
+               AND meta_json->>'idempotencyKey' = $1`,
+            [commitBody.idempotencyKey]
+        );
+        assert.equal(historyCount.rows[0].count, 1);
+    });
+
+    it('rolls back AI bundle when a middle task duplicates inside the transaction', async () => {
+        const owner = await createUser('ai_bundle_dup');
+        const crmImpact = await createImpact(owner.id, 'Duplicate CRM');
+        const hermesImpact = await createImpact(owner.id, 'Duplicate Hermes');
+        const aiImpact = await createImpact(owner.id, 'Duplicate Automation');
+        const duplicateTitle = `AI bundle duplicate middle ${suffix}`;
+        const proposal = validBundleProposal([crmImpact, hermesImpact, aiImpact], {
+            bundleTitle: `AI duplicate rollback ${suffix}`,
+            tasks: validBundleProposal([crmImpact, hermesImpact, aiImpact]).tasks.map((task, index) => ({
+                ...task,
+                title: index < 2 ? duplicateTitle : task.title,
+                dueDate: index < 2 ? '2099-03-01' : task.dueDate,
+                impactIds: [crmImpact]
+            }))
+        });
+        openAiMock.enqueue(() => openAiDraftOutput(proposal));
+        const preview = await postAiDraftPreview(owner.token, {
+            currentDraft: { title: duplicateTitle, description: 'must rollback middle duplicate', mode: 'simple', impactIds: [] }
+        });
+        assert.equal(preview.status, 200, JSON.stringify(preview.data));
+        const response = await postAiDraftBundleCommit(owner.token, {
+            proposalToken: preview.data.proposalToken,
+            proposalHash: preview.data.proposalHash,
+            draftFingerprint: preview.data.draftFingerprint,
+            proposal: preview.data.proposal,
+            bundleTitle: preview.data.proposal.bundleTitle,
+            tasks: preview.data.proposal.tasks,
+            acceptedTaskMask: [0, 1, 2],
+            rejectedTaskMask: [],
+            idempotencyKey: `ai-bundle-dup-${suffix}`
+        });
+        assert.equal(response.status, 409, JSON.stringify(response.data));
+        const leaked = await query('SELECT COUNT(*)::int AS count FROM tasks WHERE title = $1', [duplicateTitle]);
+        assert.equal(leaked.rows[0].count, 0);
+        const history = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM task_action_history
+             WHERE meta_json->>'idempotencyKey' = $1`,
+            [`ai-bundle-dup-${suffix}`]
+        );
+        assert.equal(history.rows[0].count, 0);
+    });
+
+    it('rolls back AI bundle when PostgreSQL impact insert fails and does not enqueue notifications', async () => {
+        const owner = await createUser('ai_bundle_impact_fail');
+        const crmImpact = await createImpact(owner.id, 'Fail CRM');
+        const hermesImpact = await createImpact(owner.id, 'Fail Hermes');
+        const aiImpact = await createImpact(owner.id, 'Fail Automation');
+        const proposal = validBundleProposal([crmImpact, hermesImpact, aiImpact], {
+            bundleTitle: `AI impact rollback ${suffix}`
+        });
+        openAiMock.enqueue(() => openAiDraftOutput(proposal));
+        const preview = await postAiDraftPreview(owner.token, {
+            currentDraft: { title: `impact fail bundle ${suffix}`, description: 'trigger should rollback', mode: 'simple', impactIds: [] }
+        });
+        assert.equal(preview.status, 200, JSON.stringify(preview.data));
+        const outboxBefore = await query('SELECT COUNT(*)::int AS count FROM notification_outbox');
+        await query(`
+            CREATE OR REPLACE FUNCTION my_day_bundle_fail_impact_insert()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.impact_id = ${aiImpact} THEN
+                    RAISE EXCEPTION 'forced bundle impact failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            DROP TRIGGER IF EXISTS trg_my_day_bundle_fail_impact_insert ON my_day_task_impacts;
+            CREATE TRIGGER trg_my_day_bundle_fail_impact_insert
+            BEFORE INSERT ON my_day_task_impacts
+            FOR EACH ROW
+            EXECUTE FUNCTION my_day_bundle_fail_impact_insert();
+        `);
+        try {
+            const response = await postAiDraftBundleCommit(owner.token, {
+                proposalToken: preview.data.proposalToken,
+                proposalHash: preview.data.proposalHash,
+                draftFingerprint: preview.data.draftFingerprint,
+                proposal: preview.data.proposal,
+                bundleTitle: preview.data.proposal.bundleTitle,
+                tasks: preview.data.proposal.tasks,
+                acceptedTaskMask: [0, 1, 2],
+                rejectedTaskMask: [],
+                idempotencyKey: `ai-bundle-impact-fail-${suffix}`
+            });
+            assert.equal(response.status, 500, JSON.stringify(response.data));
+        } finally {
+            await query('DROP TRIGGER IF EXISTS trg_my_day_bundle_fail_impact_insert ON my_day_task_impacts');
+            await query('DROP FUNCTION IF EXISTS my_day_bundle_fail_impact_insert()');
+        }
+        const leaked = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM tasks
+             WHERE source_type = 'ai_draft_bundle'
+               AND title = ANY($1::text[])`,
+            [proposal.tasks.map(task => task.title)]
+        );
+        assert.equal(leaked.rows[0].count, 0);
+        const outboxAfter = await query('SELECT COUNT(*)::int AS count FROM notification_outbox');
+        assert.equal(outboxAfter.rows[0].count, outboxBefore.rows[0].count);
     });
 });

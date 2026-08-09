@@ -2,9 +2,14 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
+
+function tick() {
+    return new Promise(resolve => setTimeout(resolve, 0));
+}
 
 test('AI draft composer is visible, shared, reviewable, and not hidden in advanced options', () => {
     const profileHtml = read('profile.html');
@@ -44,6 +49,22 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-draft-accept-all/);
     assert.match(aiCode, /data-task-ai-draft-cancel/);
     assert.match(aiCode, /acceptedFieldMask/);
+    assert.match(aiCode, /decision === 'task_bundle'/);
+    assert.match(aiCode, /data-task-ai-bundle-card/);
+    assert.match(aiCode, /data-task-ai-bundle-field="title"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="description"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="impactIds"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="ownerName"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="dueDate"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="priority"/);
+    assert.match(aiCode, /data-task-ai-bundle-accept=/);
+    assert.match(aiCode, /data-task-ai-bundle-reject=/);
+    assert.match(aiCode, /data-task-ai-bundle-edit=/);
+    assert.match(aiCode, /data-task-ai-bundle-accept-all/);
+    assert.match(aiCode, /data-task-ai-draft-bundle-create/);
+    assert.match(aiCode, /bundlePayloadFor/);
+    assert.match(aiCode, /state\.preview\?\.proposal\?\.decision === 'task_bundle'\) return null/);
+    assert.match(aiCode, /atomic bundle commit endpoint/);
     assert.match(aiCode, /sourceType: 'ai_draft'/);
     assert.match(aiCode, /dataset\.subtaskSource = 'manual'/);
     assert.match(aiCode, /markUserEdited\(root, 'subtasks'\)/);
@@ -63,4 +84,107 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(css, /html\[data-theme="dark"\]/);
     assert.match(css, /@media \(max-width: 720px\)/);
     assert.match(css, /task-ai-created-marker/);
+    assert.match(css, /task-ai-bundle-review/);
+    assert.match(css, /task-ai-bundle-card/);
+    assert.match(css, /task-ai-bundle-fields/);
+    assert.match(css, /task-ai-bundle-impact-grid/);
+    assert.match(css, /task-ai-bundle-counter/);
+});
+
+test('AI draft composer renders interactive task bundle review without single-task commit fallback', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="composer" data-source-surface="test">
+            <button type="button" data-task-ai-draft-preview>AI</button>
+            <div data-task-ai-draft-status></div>
+            <div data-task-ai-draft-review hidden></div>
+        </div>
+    </body>`, {
+        runScripts: 'outside-only',
+        url: 'https://crm.test/tasks'
+    });
+
+    const { window } = dom;
+    window.MyDayClassification = {
+        state: {
+            impacts: [
+                { id: 101, name: 'CRM', icon: '🌿', color: '#6366f1' },
+                { id: 102, name: 'Hermes', icon: '⚡', color: '#14b8a6' },
+                { id: 103, name: 'AI', icon: '🤖', color: '#8b5cf6' }
+            ]
+        }
+    };
+    window.TaskCreate = {
+        requestAiDraftStatus: async () => ({ success: true, feature: { enabled: true } }),
+        requestAiDraftPreview: async () => ({
+            success: true,
+            proposalToken: 'payload.signature',
+            draftFingerprint: 'draft-hash',
+            proposalHash: 'proposal-hash',
+            catalogVersion: 'catalog-hash',
+            proposal: {
+                decision: 'task_bundle',
+                action: 'needs_project',
+                bundleTitle: 'CRM + Hermes bundle',
+                tasks: [
+                    {
+                        title: 'Fix CRM intake',
+                        description: 'Make the form safe.',
+                        impactIds: [101],
+                        priority: 'high',
+                        dueDate: '2026-08-20',
+                        ownerSuggestion: { userId: null, name: 'CRM owner', reason: 'Review owner.' }
+                    },
+                    {
+                        title: 'Connect Hermes worker',
+                        description: 'Wire the event.',
+                        impactIds: [102, 103],
+                        priority: 'normal',
+                        dueDate: null,
+                        ownerSuggestion: { userId: null, name: '', reason: '' }
+                    }
+                ]
+            },
+            diff: { changedFields: ['tasks'], fields: {} },
+            impactCatalog: window.MyDayClassification.state.impacts
+        })
+    };
+    window.eval(read('js/task-ai-draft.js'));
+
+    const root = window.document.getElementById('composer');
+    window.TaskAiDraft.bindComposer(root, {
+        readDraft: () => ({ title: 'CRM + Hermes rollout', description: 'split it', impactIds: [] }),
+        applyField: () => {
+            throw new Error('bundle preview must not apply fields into the single-task composer');
+        }
+    });
+    await tick();
+
+    root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+
+    assert.equal(root.querySelectorAll('[data-task-ai-bundle-card]').length, 2);
+    assert.match(root.textContent, /AI .*2/);
+    assert.match(root.textContent, /dependencies/);
+    assert.ok(root.querySelector('[data-task-ai-draft-bundle-create]').disabled);
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root), null);
+
+    root.querySelector('[data-task-ai-bundle-accept-all]').click();
+    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, false);
+    assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 2);
+
+    const firstTitle = root.querySelector('[data-task-ai-bundle-card] [data-task-ai-bundle-field="title"]');
+    firstTitle.value = 'Fix CRM intake after review';
+    firstTitle.dispatchEvent(new window.Event('input', { bubbles: true }));
+    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, true);
+    assert.equal(window.TaskAiDraft.bundlePayloadFor(root), null);
+
+    root.querySelector('[data-task-ai-bundle-accept]').click();
+    const secondReject = root.querySelectorAll('[data-task-ai-bundle-reject]')[1];
+    secondReject.click();
+    assert.match(root.querySelector('[data-task-ai-draft-bundle-create]').textContent, /1/);
+    assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 1);
+
+    root.querySelector('[data-task-ai-draft-bundle-create]').click();
+    assert.match(root.querySelector('[data-task-ai-draft-status]').textContent, /atomic bundle commit endpoint/);
 });

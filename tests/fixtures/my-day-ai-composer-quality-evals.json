@@ -1,5 +1,5 @@
 {
-    "contractVersion":  "my_day_ai_composer_proposal_v1",
+    "contractVersion":  "my_day_ai_composer_proposal_v2",
     "model":  "gpt-5.6-luna",
     "provider":  "openai_responses",
     "qualityGates":  {

@@ -1,7 +1,14 @@
 {
-  "contractVersion": "my_day_ai_composer_proposal_v1",
+  "contractVersion": "my_day_ai_composer_proposal_v2",
   "model": "gpt-5.6-luna",
   "provider": "openai_responses",
+  "allowedDecisions": [
+    "single_task",
+    "checklist",
+    "task_bundle",
+    "needs_clarification",
+    "no_change"
+  ],
   "allowedActions": [
     "apply",
     "needs_clarification",
@@ -11,6 +18,8 @@
   "limits": {
     "maxImpacts": 3,
     "maxSubtasks": 7,
+    "minBundleTasks": 2,
+    "maxBundleTasks": 6,
     "maxTitleChars": 180,
     "maxDescriptionChars": 700,
     "maxReasonChars": 180
@@ -71,22 +80,25 @@
     "type": "object",
     "additionalProperties": false,
     "required": [
-      "action",
+      "decision",
       "mode",
       "title",
       "description",
       "impactIds",
       "subtasks",
+      "bundleTitle",
+      "tasks",
       "confidence",
       "reason"
     ],
     "properties": {
-      "action": {
+      "decision": {
         "type": "string",
         "enum": [
-          "apply",
+          "single_task",
+          "checklist",
+          "task_bundle",
           "needs_clarification",
-          "needs_project",
           "no_change"
         ]
       },
@@ -137,6 +149,147 @@
               "type": "string",
               "minLength": 3,
               "maxLength": 160
+            }
+          }
+        }
+      },
+      "bundleTitle": {
+        "type": [
+          "string",
+          "null"
+        ],
+        "maxLength": 180
+      },
+      "tasks": {
+        "type": "array",
+        "maxItems": 6,
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "title",
+            "description",
+            "impactIds",
+            "priority",
+            "dueDate",
+            "ownerSuggestion",
+            "confidence"
+          ],
+          "properties": {
+            "title": {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 180
+            },
+            "description": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 700
+            },
+            "impactIds": {
+              "type": "array",
+              "maxItems": 3,
+              "uniqueItems": true,
+              "items": {
+                "type": "integer"
+              }
+            },
+            "priority": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "enum": [
+                "urgent",
+                "high",
+                "normal",
+                "low",
+                null
+              ]
+            },
+            "dueDate": {
+              "type": [
+                "string",
+                "null"
+              ],
+              "maxLength": 32
+            },
+            "ownerSuggestion": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "userId",
+                "name",
+                "reason"
+              ],
+              "properties": {
+                "userId": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
+                },
+                "name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 120
+                },
+                "reason": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "maxLength": 160
+                }
+              }
+            },
+            "confidence": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "overall",
+                "title",
+                "description",
+                "impacts",
+                "subtasks",
+                "mode"
+              ],
+              "properties": {
+                "overall": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "title": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "description": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "impacts": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "subtasks": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                },
+                "mode": {
+                  "type": "number",
+                  "minimum": 0,
+                  "maximum": 1
+                }
+              }
             }
           }
         }
@@ -193,6 +346,22 @@
     }
   },
   "evalCases": [
+    {
+      "id": "crm_single_status_note",
+      "domain": "CRM",
+      "input": {
+        "title": "Update CRM booking status note",
+        "description": "Clarify the status label on one existing booking."
+      },
+      "expected": {
+        "decision": "single_task",
+        "mode": "simple",
+        "impactIdsMustInclude": [
+          101
+        ],
+        "subtasksMin": 0
+      }
+    },
     {
       "id": "crm_booking_form",
       "domain": "CRM",

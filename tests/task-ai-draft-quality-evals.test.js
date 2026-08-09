@@ -11,12 +11,20 @@ const fixture = JSON.parse(fs.readFileSync(
     'utf8'
 ));
 
-const ALLOWED_ACTIONS = new Set(['apply', 'needs_clarification', 'needs_project', 'no_change']);
+const ALLOWED_DECISIONS = new Set(['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
 const SIMPLE_CHECKLIST_CATEGORIES = new Set(['simple', 'checklist']);
 
 function setIncludesAll(actual = [], expected = []) {
     const actualSet = new Set((actual || []).map(Number));
     return (expected || []).every(id => actualSet.has(Number(id)));
+}
+
+function canonicalDecision(output = {}) {
+    if (output.decision) return output.decision;
+    if (output.action === 'apply' && output.mode === 'checklist') return 'checklist';
+    if (output.action === 'apply') return 'single_task';
+    if (output.action === 'needs_project') return 'task_bundle';
+    return output.action;
 }
 
 function scoreEffort(effort) {
@@ -37,14 +45,16 @@ function scoreEffort(effort) {
         }
         forbiddenFieldChanges += Array.isArray(output.forbiddenFields) ? output.forbiddenFields.length : 0;
         partialWrites += output.partialWrite === true ? 1 : 0;
-        if (!ALLOWED_ACTIONS.has(output.action)) continue;
+        const decision = canonicalDecision(output);
+        if (!ALLOWED_DECISIONS.has(decision)) continue;
 
         coreImpactTotal += 1;
         if (setIncludesAll(output.impactIds, item.expected?.impactIds || [])) coreImpactPass += 1;
 
         if (SIMPLE_CHECKLIST_CATEGORIES.has(item.category)) {
             decisionTotal += 1;
-            if (output.action === item.expected.action && output.mode === item.expected.mode) decisionPass += 1;
+            const expectedDecision = canonicalDecision(item.expected);
+            if (decision === expectedDecision && output.mode === item.expected.mode) decisionPass += 1;
         }
     }
 
@@ -58,7 +68,7 @@ function scoreEffort(effort) {
 }
 
 test('AI composer quality eval fixture covers 50-60 anonymized cases and target domains', () => {
-    assert.equal(fixture.contractVersion, 'my_day_ai_composer_proposal_v1');
+    assert.equal(fixture.contractVersion, 'my_day_ai_composer_proposal_v2');
     assert.equal(fixture.model, 'gpt-5.6-luna');
     assert.equal(fixture.provider, 'openai_responses');
     assert.ok(fixture.evalCases.length >= 50, `expected at least 50 cases, got ${fixture.evalCases.length}`);

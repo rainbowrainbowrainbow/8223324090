@@ -147,6 +147,7 @@ function registerStatePayload() {
         mappingExists: true,
         registerFeatureEnabled: true,
         runtimeConfigResolvable: true,
+        integrationReady: true,
         readinessCode: 'ready',
         shift: state.shift,
         checklist: state.shift ? activeChecklist() : null

@@ -69,11 +69,24 @@ Refunds are not active in thin MVP production mode. Until Cashier PRO is explici
 
 ## Rollback
 
-1. Keep `CHECKBOX_INTEGRATION_ENABLED=false` and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
-2. If the page or routes regress, deploy the previous verified Railway release commit.
-3. Run `npm run version:smoke -- https://8223324090-production.up.railway.app`.
-4. Confirm `/cashier-payments` is either unavailable or shows disabled state.
-5. Do not delete fiscal ledger data in rollback; this release is additive.
+There are two different stops:
+
+- Stop new payments: set the payment acceptance gate off or disable the specific register mapping so cashiers cannot confirm new money.
+- Full emergency stop: set `CHECKBOX_INTEGRATION_ENABLED=false` to stop new provider HTTP mutations.
+
+Rollback procedure:
+
+1. Stop new payments first. Existing paid orders must stay visible in unresolved operations.
+2. Drain already-paid queue where safe:
+   - before external mutation, requeue only the safe pre-sale stage;
+   - at or after `sale_submit`, use lookup-only recovery with the same provider receipt UUID;
+   - never create a second sale UUID for the same payment order.
+3. If provider or code behavior is unsafe, use the full emergency kill switch: `CHECKBOX_INTEGRATION_ENABLED=false`.
+4. Keep `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
+5. If the page or routes regress, deploy the previous verified Railway release commit.
+6. Run `npm run version:smoke -- https://8223324090-production.up.railway.app`.
+7. Confirm `/cashier-payments` is either unavailable or shows disabled state.
+8. Do not delete fiscal ledger data in rollback; this release is additive.
 
 ## Production activation data checklist
 

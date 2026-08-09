@@ -7,15 +7,12 @@ Last reviewed: 2026-08-09.
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live version before this Checkbox release pass: `0.80.100`.
-- Live release label before this Checkbox release pass: `Luna Composer Quality Gate`.
-- Confirmed deploy source branch: `codex/my-day-ai-composer-v08094`.
-- Confirmed live commit before this Checkbox release pass: `a467fa4343e03a63344e2f9e03c1318c97cfbd90`.
-- Confirmed deploy source HEAD used for this worktree: `a467fa4343e03a63344e2f9e03c1318c97cfbd90` (`0.80.100`).
-- Local worktree for this release pass: `.codex-temp/checkbox-fiscal-readiness-release-v080101`.
-- Local release branch: `codex/checkbox-fiscal-readiness-release-v080101`.
+- Latest local Checkbox hardening package baseline in this worktree: `0.80.103` (`Checkbox Fiscal Hardening`).
+- Current accumulated hardening worktree: `.codex-temp/checkbox-final-software-hardening`.
+- Current accumulated hardening branch: `codex/checkbox-final-software-hardening`.
+- This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 
-All follow-up implementation tasks must start from this confirmed deploy source or from a newer live source confirmed by the release staleness guard.
+All follow-up implementation or release tasks must start from the newest live source confirmed by the release staleness guard, not from stale chat history, stale docs, or a dirty `.codex-temp` branch.
 
 ## Official Checkbox Sources
 
@@ -75,7 +72,7 @@ Required logical gates for follow-up tasks:
 
 ## Implemented / Incomplete / Phase 2
 
-| Area | Implemented in the Checkbox release worktree based on `a467fa...` | Incomplete before thin MVP activation | Phase 2 / Cashier PRO |
+| Area | Implemented in the current Checkbox hardening diff | Incomplete before thin MVP activation | Phase 2 / Cashier PRO |
 | --- | --- | --- | --- |
 | Ledger schema | Additive fiscal/payment tables, BIGINT money, immutable item snapshots, idempotency constraints, explicit fiscal item mapping table | Production pilot mapping data still requires separate activation | Additional operational reporting and reconciliation revisions |
 | Payment workflow | Server-side order preview, cash/card manual confirmation, received/change snapshot, one local fiscal operation and outbox job | Real admission source activation and accountant-approved mapping data | Split/partial/prepayment not in scope |

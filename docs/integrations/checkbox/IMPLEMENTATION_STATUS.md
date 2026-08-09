@@ -5,11 +5,11 @@ Last updated: 2026-08-09.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live version after the last completed release: `0.80.102`.
-- Live commit after the last completed release: `432c0656cabd271e070633ede88eaa43d95ca901`.
-- Source branch: `codex/my-day-compact-cards-v080101`.
-- Current hardening worktree: `.codex-temp/checkbox-activation-readiness`.
-- Current hardening branch: `codex/checkbox-activation-readiness`.
+- Last local package baseline for the Checkbox hardening pass: `0.80.103` (`Checkbox Fiscal Hardening`).
+- Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
+- Current accumulated hardening worktree: `.codex-temp/checkbox-final-software-hardening`.
+- Current accumulated hardening branch: `codex/checkbox-final-software-hardening`.
+- Current accumulated migrations: `316` through `331`; migrations `330` and `331` are part of the pending hardening diff until a later explicitly approved release.
 
 ## Current Position
 
@@ -19,7 +19,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 
 ## Done
 
-- Additive payment/fiscal schema exists in migrations `316` through `329`.
+- Additive payment/fiscal schema exists in migrations `316` through `331` in the current hardening diff.
 - Payment orders, items, attempts, allocations, fiscal operations, receipts, shifts, webhooks, approvals, reconciliations, refunds, outbox jobs, and audit events exist.
 - New ledger avoids using `finance_transactions`, `bookings.paid_amount`, legacy `receipts`, or `cash_register_shifts` as the fiscal source of truth.
 - `routes/payments.js` and `services/payments/paymentService.js` implement a local cash/card manual confirmation path with received/change snapshots.
@@ -40,7 +40,8 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - `docs/integrations/checkbox/checkbox-test-mode.env.example` documents ref-specific test-mode env names without values.
 - Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
-- Release `0.80.101` has already been deployed with production Checkbox fiscalization and Cashier PRO disabled.
+- CI hardening gates now include value-free Checkbox OpenAPI compatibility checks, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
+- Release `0.80.103` is the latest local Checkbox hardening package baseline known to this worktree. Reconfirm live version/commit before any delivery action.
 - Current hardening work adds provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization.
 
 ## Not Ready
@@ -55,9 +56,9 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 
 ## Next Tasks
 
-1. Finish local hardening checks for migrations `329` and configuration actor authorization.
+1. Finish local hardening checks for migrations `330` and `331`, configuration actor authorization, and CI regression gates.
 2. Run disposable PostgreSQL tests with `TEST_DATABASE_URL` and `TEST_DATABASE_RESET_CONFIRM=RESET_DISPOSABLE_TEST_DATABASE`.
-3. Commit/push/deploy the hardening diff only after CI passes, keeping `CHECKBOX_INTEGRATION_ENABLED=false` and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
+3. Commit/push/deploy the hardening diff only in a separate approved release task after CI passes, keeping `CHECKBOX_INTEGRATION_ENABLED=false` and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
 4. Run real Checkbox sandbox QA only when local `CHECKBOX_SANDBOX_*` secrets exist and the provider reports exact test cashier/register state.
 5. Create a separate production activation task for real mapping/secrets/webhook/first fiscal receipt.
 

@@ -10,6 +10,7 @@ Do not commit real values, passwords, license keys, access keys, PINs, tokens, p
 CHECKBOX_INTEGRATION_ENABLED=false
 EVENTGENIX_CASHIER_PRO_ENABLED=false
 CHECKBOX_WEBHOOK_ENABLED=false
+CHECKBOX_WEBHOOK_SIGNING_SECRET=
 ```
 
 ## Runtime credential refs
@@ -31,5 +32,6 @@ Rules:
 - Local HTTP mock hosts require explicit test-only injection and must not be used for production activation.
 - Global fallback variables such as `CHECKBOX_LOGIN`, `CHECKBOX_PASSWORD`, or `CHECKBOX_LICENSE_KEY` are intentionally unsupported.
 - The database stores only logical refs, never raw credentials.
+- `CHECKBOX_WEBHOOK_SIGNING_SECRET` stays empty until a separate webhook activation task configures the official Checkbox callback. Do not commit or paste the real value into docs, CLI args, tests, logs, or chat.
 - Production register enablement requires a successful operator preflight and a separate activation task.
 

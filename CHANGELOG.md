@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.99 - Canonical AI Task Bundles
+
+### AI composer / Task bundles / Atomic commit / Durable limits / (09.08.2026) [codex]
+- **AI може запропонувати кілька повноцінних задач** - bundle preview показує кожну задачу окремо та дозволяє відредагувати або відхилити її до створення.
+- **Bundle створюється атомарно** - задачі, впливи, membership та audit записуються в одній PostgreSQL transaction; повторний commit повертає той самий результат.
+- **Безпечний owner review** - виконавця можна обрати лише з серверного allowlist, а AI не може самостійно вигадати користувача, дату чи підвищений пріоритет.
+- **Durable AI rate limit** - обмеження preview працює узгоджено між кількома replicas через additive PostgreSQL storage.
+- **Додано доказові тести й операторський eval** - CI перевіряє browser interactions та PostgreSQL rollback/idempotency без реальних OpenAI-викликів; окрема контрольована команда оцінює Luna без збереження текстів задач.
+
+---
+
 ## v0.80.98 - Luna Bundle Decision Hotfix
 
 ### Release / Versioning / (09.08.2026) [codex]

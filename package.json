@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.99",
+  "version": "0.80.100",
   "eventGenix": {
-    "releaseLabel": "Canonical AI Task Bundles"
+    "releaseLabel": "Luna Composer Quality Gate"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

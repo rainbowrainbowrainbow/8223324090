@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.100 - Luna Composer Quality Gate
+
+### Luna prompt / Canonical impacts / Controlled eval / (09.08.2026) [codex]
+- **Явні впливи більше не губляться** - server-side matcher зберігає названі CRM, Hermes, Парк, AI та інші активні impacts перед додаванням secondary facets від Luna.
+- **Складні задачі краще розкладаються** - prompt розрізняє direct action, внутрішній checklist і незалежний task bundle, не перетворюючи grouping на dependencies.
+- **Eval відповідає production catalog** - 60 анонімізованих кейсів використовують усі 24 канонічні impacts і окремо міряють обов'язкові core matches.
+- **Quality gate пройдено на real Luna** - low effort дав 96.7% core impact mapping та 91.5% simple/checklist decisions при нульових unknown IDs, forbidden fields і writes.
+
+---
+
 ## v0.80.99 - Canonical AI Task Bundles
 
 ### AI composer / Task bundles / Atomic commit / Durable limits / (09.08.2026) [codex]

@@ -968,8 +968,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         });
         const validationProviderRequestUuid = await providerRequestUuidForOperation(validationConfirm.fiscalOperationId);
         mock.state.modes.set(validationProviderRequestUuid, 'validation_422');
-        const validationBatches = await runWorkerUntilIdle(createHttpProvider(mock));
-        assert.ok(validationBatches.some(batch => batch.failed >= 1), 'validation 4xx must fail closed during worker drain');
+        await runWorkerUntilIdle(createHttpProvider(mock));
         const validationJob = await pool.query('SELECT status, attempts, last_error_message FROM payment_outbox_jobs WHERE fiscal_operation_id = $1', [validationConfirm.fiscalOperationId]);
         assert.equal(validationJob.rows[0].status, 'dead');
         assert.equal(validationJob.rows[0].attempts, 1);

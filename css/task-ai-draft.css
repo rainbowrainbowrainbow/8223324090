@@ -193,6 +193,188 @@
     padding-left: 18px;
 }
 
+.task-ai-bundle-review {
+    border: 1px solid rgba(99, 102, 241, 0.24);
+    border-radius: 18px;
+    padding: 12px;
+    background: rgba(255, 255, 255, 0.42);
+}
+
+.task-ai-bundle-review-head {
+    align-items: flex-start;
+}
+
+.task-ai-bundle-counter {
+    display: inline-flex;
+    align-items: center;
+    border: 1px solid rgba(20, 184, 166, 0.28);
+    border-radius: 999px;
+    padding: 5px 9px;
+    background: rgba(20, 184, 166, 0.10);
+    color: #0f766e;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.task-ai-bundle-warning {
+    margin: 0;
+    border: 1px solid rgba(245, 158, 11, 0.32);
+    border-radius: 14px;
+    padding: 9px 11px;
+    background: rgba(245, 158, 11, 0.10);
+    color: #92400e;
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.task-ai-bundle-list {
+    display: grid;
+    gap: 12px;
+}
+
+.task-ai-bundle-card {
+    border: 1px solid rgba(148, 163, 184, 0.34);
+    border-radius: 18px;
+    padding: 13px;
+    background: rgba(255, 255, 255, 0.80);
+    box-shadow: 0 12px 24px rgba(15, 23, 42, 0.06);
+}
+
+.task-ai-bundle-card.is-accepted {
+    border-color: rgba(20, 184, 166, 0.58);
+}
+
+.task-ai-bundle-card.is-rejected {
+    opacity: 0.62;
+    background: rgba(241, 245, 249, 0.76);
+}
+
+.task-ai-bundle-card.is-user-edited {
+    border-style: dashed;
+}
+
+.task-ai-bundle-card-head {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    margin-bottom: 12px;
+}
+
+.task-ai-bundle-card-head strong {
+    display: block;
+    color: #0f172a;
+    font-size: 14px;
+}
+
+.task-ai-bundle-card-head span,
+.task-ai-bundle-field-label,
+.task-ai-bundle-review-note {
+    color: #64748b;
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.task-ai-bundle-card-actions {
+    display: flex;
+    gap: 7px;
+    flex-wrap: wrap;
+}
+
+.task-ai-bundle-card-actions button {
+    border: 1px solid rgba(148, 163, 184, 0.36);
+    border-radius: 999px;
+    padding: 7px 10px;
+    background: #fff;
+    color: #334155;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.task-ai-bundle-fields {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 10px;
+}
+
+.task-ai-bundle-fields label,
+.task-ai-bundle-field-wide {
+    display: grid;
+    gap: 5px;
+    min-width: 0;
+}
+
+.task-ai-bundle-field-wide {
+    grid-column: 1 / -1;
+}
+
+.task-ai-bundle-fields label span {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.task-ai-bundle-fields input,
+.task-ai-bundle-fields textarea,
+.task-ai-bundle-fields select {
+    width: 100%;
+    min-width: 0;
+    border: 1px solid rgba(148, 163, 184, 0.45);
+    border-radius: 12px;
+    padding: 9px 10px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    font: inherit;
+}
+
+.task-ai-bundle-fields textarea {
+    resize: vertical;
+}
+
+.task-ai-bundle-impact-grid {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+}
+
+.task-ai-bundle-impact-chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    max-width: 100%;
+    border: 1px solid rgba(148, 163, 184, 0.40);
+    border-radius: 999px;
+    padding: 6px 9px;
+    background: rgba(248, 250, 252, 0.88);
+    color: #334155;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.task-ai-bundle-impact-chip.is-selected {
+    border-color: rgba(99, 102, 241, 0.55);
+    background: rgba(99, 102, 241, 0.14);
+    color: #3730a3;
+}
+
+.task-ai-bundle-impact-chip input {
+    width: auto;
+    min-width: 0;
+    margin: 0;
+}
+
+.task-ai-bundle-review-note {
+    margin: 10px 0 0;
+}
+
+.task-ai-draft-actions button:disabled,
+.task-ai-bundle-card-actions button:disabled {
+    cursor: not-allowed;
+    opacity: 0.56;
+}
+
 .task-ai-created-marker {
     display: inline-flex;
     align-items: center;
@@ -243,6 +425,18 @@ html[data-theme="dark"] .task-ai-draft-details textarea,
 body.dark-mode .task-ai-draft-details textarea,
 html[data-theme="dark"] .task-ai-draft-field,
 body.dark-mode .task-ai-draft-field,
+html[data-theme="dark"] .task-ai-bundle-review,
+body.dark-mode .task-ai-bundle-review,
+html[data-theme="dark"] .task-ai-bundle-card,
+body.dark-mode .task-ai-bundle-card,
+html[data-theme="dark"] .task-ai-bundle-fields input,
+body.dark-mode .task-ai-bundle-fields input,
+html[data-theme="dark"] .task-ai-bundle-fields textarea,
+body.dark-mode .task-ai-bundle-fields textarea,
+html[data-theme="dark"] .task-ai-bundle-fields select,
+body.dark-mode .task-ai-bundle-fields select,
+html[data-theme="dark"] .task-ai-bundle-card-actions button,
+body.dark-mode .task-ai-bundle-card-actions button,
 html[data-theme="dark"] .task-ai-draft-row-actions button,
 body.dark-mode .task-ai-draft-row-actions button,
 html[data-theme="dark"] .task-ai-draft-actions button,
@@ -265,6 +459,27 @@ body.dark-mode .task-ai-created-marker {
     color: #c7d2fe;
 }
 
+html[data-theme="dark"] .task-ai-bundle-card-head strong,
+body.dark-mode .task-ai-bundle-card-head strong,
+html[data-theme="dark"] .task-ai-bundle-fields label span,
+body.dark-mode .task-ai-bundle-fields label span {
+    color: #e2e8f0;
+}
+
+html[data-theme="dark"] .task-ai-bundle-impact-chip,
+body.dark-mode .task-ai-bundle-impact-chip {
+    border-color: rgba(148, 163, 184, 0.28);
+    background: rgba(15, 23, 42, 0.78);
+    color: #e2e8f0;
+}
+
+html[data-theme="dark"] .task-ai-bundle-impact-chip.is-selected,
+body.dark-mode .task-ai-bundle-impact-chip.is-selected {
+    border-color: rgba(129, 140, 248, 0.52);
+    background: rgba(99, 102, 241, 0.24);
+    color: #c7d2fe;
+}
+
 @media (max-width: 720px) {
     .task-ai-draft-panel {
         padding: 12px;
@@ -276,5 +491,19 @@ body.dark-mode .task-ai-created-marker {
 
     .task-ai-draft-compare {
         grid-template-columns: 1fr;
+    }
+
+    .task-ai-bundle-fields {
+        grid-template-columns: 1fr;
+    }
+
+    .task-ai-bundle-card-actions,
+    .task-ai-bundle-actions {
+        width: 100%;
+    }
+
+    .task-ai-bundle-card-actions button,
+    .task-ai-bundle-actions button {
+        flex: 1 1 160px;
     }
 }

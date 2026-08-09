@@ -240,6 +240,22 @@
         }
     }
 
+    async function commitAiDraftBundle(data = {}) {
+        const idempotencyKey = String(data.idempotencyKey || data.idempotency_key || '').trim();
+        try {
+            const payload = await taskApiRequest('/tasks/ai-draft/bundle/commit', {
+                method: 'POST',
+                headers: idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {},
+                body: JSON.stringify(data)
+            });
+            if (!payload?.success) return payload || { success: false, error: 'AI bundle commit failed' };
+            return payload;
+        } catch (error) {
+            console.error('[TaskCreate] commitAiDraftBundle failed', error);
+            return { success: false, error: error?.message || 'AI bundle commit failed' };
+        }
+    }
+
     async function requestSavedDecompositionTemplates(filters = {}) {
         try {
             const query = new URLSearchParams();
@@ -577,6 +593,7 @@
         requestAiDraftStatus,
         requestAiDraftPreview,
         commitAiDraft,
+        commitAiDraftBundle,
         requestSavedDecompositionTemplates,
         saveDecompositionTemplate,
         updateDecompositionTemplate,

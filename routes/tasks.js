@@ -82,6 +82,7 @@ const {
     legacyDecompositionResponseFromPreview
 } = require('../services/taskAiDraftPreview');
 const { commitTaskAiDraft } = require('../services/taskAiDraftCommit');
+const { commitTaskAiDraftBundle } = require('../services/taskAiDraftBundleCommit');
 const {
     assertTaskAiDraftFeatureEnabled,
     publicTaskAiDraftFeatureStatus
@@ -967,6 +968,35 @@ async function buildTaskAiDraftCommit(req, res) {
 }
 
 // GET /api/tasks — list with optional filters + pagination (v19.10)
+async function buildTaskAiDraftBundleCommit(req, res) {
+    const businessScope = requireTaskWriteScope(req, res);
+    if (!businessScope) return null;
+    assertTaskAiDraftFeatureEnabled(req.user);
+    const userId = normalizeUserId(req.user);
+    const impacts = await listTaxonomy(pool, userId, 'impacts');
+    const body = req.body || {};
+    return commitTaskAiDraftBundle({
+        proposalToken: body.proposalToken || body.proposal_token,
+        proposalHash: body.proposalHash || body.proposal_hash,
+        proposal: body.proposal,
+        draftFingerprint: body.draftFingerprint || body.draft_fingerprint,
+        baseDraftFingerprint: body.baseDraftFingerprint || body.base_draft_fingerprint,
+        bundleTitle: body.bundleTitle || body.bundle_title,
+        tasks: body.tasks || body.finalTasks || body.final_tasks || [],
+        acceptedTaskMask: body.acceptedTaskMask || body.accepted_task_mask || body.acceptedTasks || body.accepted_tasks || [],
+        rejectedTaskMask: body.rejectedTaskMask || body.rejected_task_mask || body.rejectedTasks || body.rejected_tasks || [],
+        idempotencyKey: idempotencyKeyFromRequest(req),
+        activeImpacts: impacts,
+        userId,
+        user: req.user,
+        businessScope,
+        sourceSurface: sourceSurface(body, 'task_ai_draft_bundle_commit')
+    }, {
+        proposalSecret: JWT_SECRET,
+        safetySecret: JWT_SECRET
+    });
+}
+
 router.get('/', async (req, res) => {
     try {
         const businessScope = requireTaskReadScope(req, res);
@@ -1824,6 +1854,50 @@ router.post('/ai-draft/commit', requireRole('admin', 'user'), async (req, res) =
             success: false,
             code: err.code || 'TASK_AI_DRAFT_COMMIT_FAILED',
             error: status >= 500 ? 'Task AI draft commit failed. Nothing was saved.' : err.message
+        });
+    }
+});
+
+// POST /api/tasks/ai-draft/bundle/commit - atomic AI-assisted multi-task creation from a signed preview.
+router.post('/ai-draft/bundle/commit', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const result = await buildTaskAiDraftBundleCommit(req, res);
+        if (!result) return;
+        if (!result.replayed) {
+            for (const task of result.tasks || []) {
+                try {
+                    emitTaskAssignedToOwner(task, req.user, {
+                        assignmentEvent: 'created',
+                        source: 'routes/tasks.ai_draft_bundle_commit'
+                    });
+                } catch (err) {
+                    log.error(`Task AI draft bundle assignment event error: ${err.message}`);
+                }
+                notifyTaskAssignment(task, req.user?.username || req.user?.name || 'ai-draft-bundle')
+                    .catch(err => log.error(`Task AI draft bundle notification error: ${err.message}`));
+            }
+            _alertPush();
+        }
+        res.json({
+            success: true,
+            replayed: result.replayed === true,
+            bundle: result.bundle || null,
+            tasks: (result.tasks || []).map(normalizeTaskPayload),
+            classifications: result.classifications || [],
+            historyEvent: result.historyEvent || null,
+            meta: {
+                atomic: true,
+                notificationTiming: 'after_commit',
+                source: 'task_ai_draft_bundle_commit'
+            }
+        });
+    } catch (err) {
+        const status = err.statusCode || (err instanceof TaskDuplicateError || err.code === 'TASK_DUPLICATE_ACTIVE' ? 409 : 500);
+        if (status >= 500) log.error('Task AI draft bundle commit error', err);
+        res.status(status).json({
+            success: false,
+            code: err.code || 'TASK_AI_BUNDLE_COMMIT_FAILED',
+            error: status >= 500 ? 'Task AI draft bundle commit failed. Nothing was saved.' : err.message
         });
     }
 });

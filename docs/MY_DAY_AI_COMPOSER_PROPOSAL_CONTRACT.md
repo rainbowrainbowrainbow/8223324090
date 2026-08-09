@@ -39,23 +39,36 @@ POST /api/tasks/ai-draft/commit
 
 The preview response returns a server-normalized proposal and a short-lived signed proposal token. The frontend displays the diff and lets the user accept/reject fields before commit.
 
-## Canonical Actions
+## Canonical Decisions
 
-`apply`
+`single_task`
 
-Use when the task can be safely prepared as a normal task draft or checklist draft.
+Use when the input is one clear task.
+
+`checklist`
+
+Use when the input is one task with concrete internal checklist items.
+
+`task_bundle`
+
+Use when the input clearly describes 2-6 full tasks. This is a preview-only decision in this release: no tasks are created until a later explicit bundle commit flow. Bundle tasks must not be represented as dependencies or checklist items.
 
 `needs_clarification`
 
 Use when the input is not enough to safely choose title, scope, or impacts. No task is created.
 
-`needs_project`
-
-Use when the input describes a multi-task/project-sized plan. MVP must not auto-create a project. It may propose a checklist task or ask the user to confirm a future bundle flow.
-
 `no_change`
 
 Use when the draft is already clear and AI would not materially improve it.
+
+For backward compatibility only, the server may expose a derived legacy `action`:
+
+- `single_task` / `checklist` → `apply`;
+- `task_bundle` → `needs_project`;
+- `needs_clarification` → `needs_clarification`;
+- `no_change` → `no_change`.
+
+New frontend/backend code must use `decision`.
 
 ## Strict Output Schema
 
@@ -63,18 +76,30 @@ The model output must be a single JSON object with no extra fields.
 
 Required top-level fields:
 
-- `action`: one of `apply`, `needs_clarification`, `needs_project`, `no_change`.
+- `decision`: one of `single_task`, `checklist`, `task_bundle`, `needs_clarification`, `no_change`.
 - `mode`: one of `simple`, `checklist`, or `null`.
 - `title`: string or null.
 - `description`: string or null.
 - `impactIds`: array of existing active impact IDs, max 3.
 - `subtasks`: array of checklist items, max 7.
+- `bundleTitle`: string or null.
+- `tasks`: array of proposed full tasks, max 6.
 - `confidence`: object with per-field confidence.
 - `reason`: short non-sensitive explanation.
 
-The model may only choose impact IDs supplied in the request. It must not create impacts, directions, dependencies, owners, permissions, statuses, priorities, deadlines, or business scope.
+For `tasks[]`, every item must include:
 
-Priority and date may be suggested only later as human-review hints if explicitly present in the source text. They are excluded from this MVP contract.
+- `title`;
+- `description`;
+- `impactIds`, max 3 existing active impacts;
+- `priority`, one of `urgent`, `high`, `normal`, `low`, or `null`;
+- `dueDate`, `YYYY-MM-DD` or `null`;
+- `ownerSuggestion` with `userId`, `name`, and `reason`;
+- `confidence`.
+
+The model may only choose impact IDs supplied in the request. It must not create impacts, directions, dependencies, permissions, statuses, or business scope.
+
+Priority, due date, and owner suggestions are review-only hints. They are not applied without explicit human review/confirmation.
 
 ## Request Context
 
@@ -85,6 +110,7 @@ Send bounded input only:
 - current draft fields already set by the user;
 - active impacts with IDs, names, icons, and trusted guidance;
 - business-safe task taxonomy hints;
+- allowed decisions, modes, priorities, and bundle size limits;
 - maximum limits.
 
 Do not send secrets, full user profile, unrelated task history, or production logs.
@@ -94,6 +120,7 @@ Do not send secrets, full user profile, unrelated task history, or production lo
 - Commit accepts only the signed proposal token plus accepted field mask.
 - Server recomputes/validates the final payload.
 - All accepted task fields, subtasks, and My Day impacts are written in one transaction.
+- `task_bundle` commit is intentionally out of scope for the current preview task and must be implemented separately as atomic batch create.
 - Action history stores field masks, model, contract version, and prompt version, but not the raw prompt, full description, API key, or full provider response.
 - AI-changed fields are marked for frontend highlighting after commit.
 
@@ -104,7 +131,7 @@ Do not send secrets, full user profile, unrelated task history, or production lo
 - Highlight fields changed by AI for 5-8 seconds after apply/commit.
 - User edits after preview convert that field provenance to `user_edited`.
 - For `needs_clarification`, show one concise question instead of a generic error.
-- For `needs_project`, show that this is bigger than one task and offer a checklist MVP path first.
+- For `task_bundle`, show each proposed task as an editable card and require an explicit action such as `Create 4 tasks` in the later bundle commit UI.
 
 ## Quality And Safety Gates
 

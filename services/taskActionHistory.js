@@ -19,6 +19,7 @@ const TASK_ACTION_TYPES = Object.freeze({
     SLOT_MISSED: 'task_slot_missed',
     DISCIPLINE_PENALTY_APPLIED: 'task_discipline_penalty_applied',
     AI_DRAFT_COMMITTED: 'task_ai_draft_committed',
+    AI_DRAFT_BUNDLE_COMMITTED: 'task_ai_draft_bundle_committed',
     COMMENTED: 'task_commented'
 });
 
@@ -70,6 +71,8 @@ function summaryForAction(actionType) {
             return 'Task discipline penalty applied';
         case TASK_ACTION_TYPES.AI_DRAFT_COMMITTED:
             return 'AI-assisted task draft committed';
+        case TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED:
+            return 'AI-assisted task bundle committed';
         case TASK_ACTION_TYPES.COMMENTED:
             return 'Task comment added';
         default:

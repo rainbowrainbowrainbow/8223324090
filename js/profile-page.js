@@ -8488,7 +8488,8 @@ function attachProfileListeners() {
             sourceSurface: 'profile_my_cabinet',
             readDraft: readCabinetAiDraft,
             applyField: applyCabinetAiDraftField,
-            focusField: focusCabinetAiDraftField
+            focusField: focusCabinetAiDraftField,
+            commitBundle: window.TaskCreate?.commitAiDraftBundle
         });
     }
 
@@ -9209,6 +9210,14 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
                 console.warn('Profile task projection refresh failed', error);
             });
         }, 300);
+    });
+    window.addEventListener('task-ai-draft-bundle-committed', (event) => {
+        if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;
+        const taskIds = Array.isArray(event?.detail?.taskIds) ? event.detail.taskIds : [];
+        taskIds.forEach(taskId => notifyTaskWidgetsChanged({ action: 'create', taskId }));
+        refreshMyCabinetTab({ silent: false }).catch(error => {
+            console.warn('Profile AI bundle refresh failed', error);
+        });
     });
     if (!window.__profileSoonMenuBound) {
         window.__profileSoonMenuBound = true;

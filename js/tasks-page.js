@@ -4737,7 +4737,8 @@ function setupTaskComposer() {
             sourceSurface: 'tasks_quick_composer',
             readDraft: readTaskComposerDraft,
             applyField: applyTaskAiDraftField,
-            focusField: focusTaskAiDraftField
+            focusField: focusTaskAiDraftField,
+            commitBundle: window.TaskCreate?.commitAiDraftBundle
         });
     }
 }
@@ -6704,6 +6705,13 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
                 console.warn('Tasks page external refresh failed', error);
             });
         }, 300);
+    });
+    window.addEventListener('task-ai-draft-bundle-committed', (event) => {
+        const taskIds = Array.isArray(event?.detail?.taskIds) ? event.detail.taskIds : [];
+        taskIds.forEach(taskId => notifyTaskWidgetsChanged({ action: 'create', taskId }));
+        loadAllTasks({ fatal: false }).catch(error => {
+            console.warn('Tasks page AI bundle refresh failed', error);
+        });
     });
 }
 

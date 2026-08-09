@@ -16,27 +16,45 @@ const {
 } = require('./myDayTaskOpenAIClient');
 const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
 
-const TASK_AI_DRAFT_CONTRACT_VERSION = 'my_day_ai_composer_proposal_v1';
+const TASK_AI_DRAFT_CONTRACT_VERSION = 'my_day_ai_composer_proposal_v2';
 const TASK_AI_DRAFT_SCHEMA_NAME = 'my_day_task_draft_preview';
-const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-09.1';
+const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-09.2';
 const TASK_AI_DRAFT_TIMEOUT_MS = 15_000;
-const TASK_AI_DRAFT_MAX_OUTPUT_TOKENS = 900;
+const TASK_AI_DRAFT_MAX_OUTPUT_TOKENS = 1_600;
 const TASK_AI_DRAFT_REASONING_EFFORT = 'low';
 const TASK_AI_DRAFT_TOKEN_TTL_MS = 10 * 60 * 1000;
 const MAX_TITLE_CHARS = 180;
 const MAX_DESCRIPTION_CHARS = 700;
 const MAX_REASON_CHARS = 180;
 const MAX_SUBTASKS = 7;
+const MIN_BUNDLE_TASKS = 2;
+const MAX_BUNDLE_TASKS = 6;
 const MAX_ACTIVE_IMPACTS_FOR_PROMPT = 80;
+const PREVIEW_DECISIONS = Object.freeze(['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
 const PREVIEW_ACTIONS = Object.freeze(['apply', 'needs_clarification', 'needs_project', 'no_change']);
 const PREVIEW_MODES = Object.freeze(['simple', 'checklist', null]);
+const PREVIEW_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low', null]);
+
+const CONFIDENCE_SCHEMA = Object.freeze({
+    type: 'object',
+    additionalProperties: false,
+    required: ['overall', 'title', 'description', 'impacts', 'subtasks', 'mode'],
+    properties: {
+        overall: { type: 'number', minimum: 0, maximum: 1 },
+        title: { type: 'number', minimum: 0, maximum: 1 },
+        description: { type: 'number', minimum: 0, maximum: 1 },
+        impacts: { type: 'number', minimum: 0, maximum: 1 },
+        subtasks: { type: 'number', minimum: 0, maximum: 1 },
+        mode: { type: 'number', minimum: 0, maximum: 1 }
+    }
+});
 
 const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
     type: 'object',
     additionalProperties: false,
-    required: ['action', 'mode', 'title', 'description', 'impactIds', 'subtasks', 'confidence', 'reason'],
+    required: ['decision', 'mode', 'title', 'description', 'impactIds', 'subtasks', 'bundleTitle', 'tasks', 'confidence', 'reason'],
     properties: {
-        action: { type: 'string', enum: PREVIEW_ACTIONS },
+        decision: { type: 'string', enum: PREVIEW_DECISIONS },
         mode: { type: ['string', 'null'], enum: PREVIEW_MODES },
         title: { type: ['string', 'null'], maxLength: MAX_TITLE_CHARS },
         description: { type: ['string', 'null'], maxLength: MAX_DESCRIPTION_CHARS },
@@ -58,19 +76,40 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
                 }
             }
         },
-        confidence: {
-            type: 'object',
-            additionalProperties: false,
-            required: ['overall', 'title', 'description', 'impacts', 'subtasks', 'mode'],
-            properties: {
-                overall: { type: 'number', minimum: 0, maximum: 1 },
-                title: { type: 'number', minimum: 0, maximum: 1 },
-                description: { type: 'number', minimum: 0, maximum: 1 },
-                impacts: { type: 'number', minimum: 0, maximum: 1 },
-                subtasks: { type: 'number', minimum: 0, maximum: 1 },
-                mode: { type: 'number', minimum: 0, maximum: 1 }
+        bundleTitle: { type: ['string', 'null'], maxLength: MAX_TITLE_CHARS },
+        tasks: {
+            type: 'array',
+            maxItems: MAX_BUNDLE_TASKS,
+            items: {
+                type: 'object',
+                additionalProperties: false,
+                required: ['title', 'description', 'impactIds', 'priority', 'dueDate', 'ownerSuggestion', 'confidence'],
+                properties: {
+                    title: { type: 'string', minLength: 3, maxLength: MAX_TITLE_CHARS },
+                    description: { type: ['string', 'null'], maxLength: MAX_DESCRIPTION_CHARS },
+                    impactIds: {
+                        type: 'array',
+                        maxItems: MAX_IMPACTS_PER_TASK,
+                        uniqueItems: true,
+                        items: { type: 'integer' }
+                    },
+                    priority: { type: ['string', 'null'], enum: PREVIEW_PRIORITIES },
+                    dueDate: { type: ['string', 'null'], maxLength: 32 },
+                    ownerSuggestion: {
+                        type: 'object',
+                        additionalProperties: false,
+                        required: ['userId', 'name', 'reason'],
+                        properties: {
+                            userId: { type: ['integer', 'null'] },
+                            name: { type: ['string', 'null'], maxLength: 120 },
+                            reason: { type: ['string', 'null'], maxLength: 160 }
+                        }
+                    },
+                    confidence: CONFIDENCE_SCHEMA
+                }
             }
         },
+        confidence: CONFIDENCE_SCHEMA,
         reason: { type: 'string', minLength: 1, maxLength: MAX_REASON_CHARS }
     }
 });
@@ -175,15 +214,17 @@ function buildSystemPrompt() {
         'You prepare a preview proposal for one Event Genix task composer draft.',
         'Return exactly one JSON object that satisfies the provided schema.',
         'One response must decide both My Day impactIds and task structure.',
-        'Allowed actions are apply, needs_clarification, needs_project, and no_change.',
-        'Use apply only when the draft can be safely improved without inventing facts.',
+        'Allowed decisions are single_task, checklist, task_bundle, needs_clarification, and no_change.',
+        'Use single_task when the draft is one clear task.',
+        'Use checklist when the draft is one task with concrete internal checklist items.',
+        `Use task_bundle only when the input clearly needs ${MIN_BUNDLE_TASKS}-${MAX_BUNDLE_TASKS} full tasks; do not model those tasks as dependencies or checklist items.`,
         'Use needs_clarification when the title or scope is too unclear; do not invent subtasks.',
-        'Use needs_project when the input is bigger than one task; do not create projects.',
         'Use no_change when the existing draft is already clear and complete.',
-        'Allowed modes are simple, checklist, or null. Use checklist only when useful subtasks are concrete.',
-        `Choose at most ${MAX_IMPACTS_PER_TASK} impactIds and only from activeImpacts.`,
+        'Allowed modes are simple, checklist, or null. Use checklist only for the checklist decision.',
+        `Choose at most ${MAX_IMPACTS_PER_TASK} impactIds per task and only from activeImpacts.`,
         'Never create, rename, or output archived/unknown impact IDs.',
-        'Do not output tags, directions, dependencies, owners, status, priority, deadline, permissions, or business scope.',
+        'Do not output tags, directions, dependencies, status, permissions, or business scope.',
+        'Priority, dueDate, and ownerSuggestion are review-only suggestions; the server will not auto-apply them without explicit human confirmation.',
         'The server will compute the diff and validate all IDs; do not include diff fields.',
         'Keep reason short and non-sensitive.'
     ].join('\n');
@@ -196,10 +237,13 @@ function buildUserMessage({ draft, impacts }) {
         currentDraft: normalizeDraftSnapshot(draft),
         activeImpacts: activeImpactPayload(impacts),
         allowlists: {
-            actions: PREVIEW_ACTIONS,
+            decisions: PREVIEW_DECISIONS,
             modes: PREVIEW_MODES,
+            priorities: PREVIEW_PRIORITIES,
             maxImpacts: MAX_IMPACTS_PER_TASK,
             maxSubtasks: MAX_SUBTASKS,
+            minBundleTasks: MIN_BUNDLE_TASKS,
+            maxBundleTasks: MAX_BUNDLE_TASKS,
             maxTitleChars: MAX_TITLE_CHARS,
             maxDescriptionChars: MAX_DESCRIPTION_CHARS
         }
@@ -244,25 +288,117 @@ function normalizeConfidence(value = {}) {
     return result;
 }
 
-function normalizeProposal(raw = {}, activeImpacts = []) {
-    const payload = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
-    assertStrictProposalKeys(payload);
-    const action = String(payload.action || '').trim();
-    if (!PREVIEW_ACTIONS.includes(action)) {
-        throw createPreviewError('AI draft proposal has invalid action.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
-    }
+function decisionToLegacyAction(decision) {
+    if (decision === 'single_task' || decision === 'checklist') return 'apply';
+    if (decision === 'task_bundle') return 'needs_project';
+    if (decision === 'needs_clarification') return 'needs_clarification';
+    return 'no_change';
+}
 
-    const mode = payload.mode === null ? null : normalizeMode(payload.mode);
-    if (!PREVIEW_MODES.includes(mode)) {
-        throw createPreviewError('AI draft proposal has invalid mode.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
-    }
+function normalizeDecisionMode(decision, value) {
+    if (decision === 'checklist') return 'checklist';
+    if (decision === 'single_task') return 'simple';
+    const mode = value === null ? null : normalizeMode(value);
+    return PREVIEW_MODES.includes(mode) ? mode : null;
+}
 
-    const impactIds = normalizeImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : null);
+function normalizeDueDate(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const dueDate = compactString(value, 32);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(dueDate)) {
+        throw createPreviewError('AI draft proposal has invalid dueDate.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    return dueDate;
+}
+
+function normalizeOwnerSuggestion(value = {}) {
+    const suggestion = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const allowed = new Set(['userId', 'name', 'reason']);
+    const extra = Object.keys(suggestion).filter(key => !allowed.has(key));
+    if (extra.length) {
+        throw createPreviewError('AI draft ownerSuggestion contains unsupported fields.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    const userId = suggestion.userId === null || suggestion.userId === undefined
+        ? null
+        : Number(suggestion.userId);
+    if (userId !== null && (!Number.isInteger(userId) || userId <= 0)) {
+        throw createPreviewError('AI draft ownerSuggestion has invalid userId.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    return {
+        userId,
+        name: suggestion.name === null || suggestion.name === undefined ? null : compactString(suggestion.name, 120),
+        reason: suggestion.reason === null || suggestion.reason === undefined ? null : compactString(suggestion.reason, 160)
+    };
+}
+
+function assertAllowedImpactIds(impactIds = [], activeImpacts = []) {
     const allowedImpactIds = new Set(activeImpactPayload(activeImpacts).map(impact => impact.id));
     const unknownIds = impactIds.filter(id => !allowedImpactIds.has(id));
     if (unknownIds.length) {
         throw createPreviewError('AI proposed an unavailable impact.', 422, 'TASK_AI_DRAFT_UNKNOWN_IMPACT');
     }
+}
+
+function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
+    const tasks = Array.isArray(rawTasks) ? rawTasks : [];
+    if (decision !== 'task_bundle') {
+        if (tasks.length) {
+            throw createPreviewError('Only task_bundle proposals may include tasks.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+        }
+        return [];
+    }
+    if (tasks.length < MIN_BUNDLE_TASKS || tasks.length > MAX_BUNDLE_TASKS) {
+        throw createPreviewError('Task bundle proposal has invalid task count.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    return tasks.map(task => {
+        const payload = task && typeof task === 'object' && !Array.isArray(task) ? task : {};
+        const allowed = new Set(TASK_AI_DRAFT_PREVIEW_SCHEMA.properties.tasks.items.required);
+        const missing = TASK_AI_DRAFT_PREVIEW_SCHEMA.properties.tasks.items.required.filter(key => !Object.hasOwn(payload, key));
+        if (missing.length) {
+            throw createPreviewError('AI task bundle item is missing required fields.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+        }
+        const extra = Object.keys(payload).filter(key => !allowed.has(key));
+        if (extra.length) {
+            throw createPreviewError('AI task bundle item contains unsupported fields.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+        }
+        const title = compactString(payload.title, MAX_TITLE_CHARS);
+        if (!title) {
+            throw createPreviewError('AI task bundle item is missing title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+        }
+        const impactIds = normalizeImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : null);
+        assertAllowedImpactIds(impactIds, activeImpacts);
+        const priority = payload.priority === null ? null : compactString(payload.priority, 24);
+        if (!PREVIEW_PRIORITIES.includes(priority)) {
+            throw createPreviewError('AI task bundle item has invalid priority.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+        }
+        return {
+            title,
+            description: payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS),
+            impactIds,
+            priority,
+            dueDate: normalizeDueDate(payload.dueDate),
+            ownerSuggestion: normalizeOwnerSuggestion(payload.ownerSuggestion),
+            confidence: normalizeConfidence(payload.confidence)
+        };
+    });
+}
+
+function normalizeProposal(raw = {}, activeImpacts = []) {
+    const payload = raw && typeof raw === 'object' && !Array.isArray(raw) ? raw : {};
+    assertStrictProposalKeys(payload);
+    const decision = String(payload.decision || '').trim();
+    if (!PREVIEW_DECISIONS.includes(decision)) {
+        throw createPreviewError('AI draft proposal has invalid decision.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+
+    const action = decisionToLegacyAction(decision);
+    const mode = normalizeDecisionMode(decision, payload.mode);
+    if (!PREVIEW_MODES.includes(mode)) {
+        throw createPreviewError('AI draft proposal has invalid mode.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+
+    const impactIds = normalizeImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : null);
+    assertAllowedImpactIds(impactIds, activeImpacts);
 
     const title = payload.title === null ? null : compactString(payload.title, MAX_TITLE_CHARS);
     const description = payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS);
@@ -270,28 +406,39 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
         sourceType: 'ai',
         maxItems: MAX_SUBTASKS
     }).map(item => ({ title: item.title }));
+    const bundleTitle = payload.bundleTitle === null ? null : compactString(payload.bundleTitle, MAX_TITLE_CHARS);
+    const tasks = normalizeBundleTasks(payload.tasks, activeImpacts, decision);
     const confidence = normalizeConfidence(payload.confidence);
     const reason = compactString(payload.reason, MAX_REASON_CHARS);
     if (!reason) {
         throw createPreviewError('AI draft proposal is missing reason.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
-    if (action === 'needs_clarification' && subtasks.length) {
-        throw createPreviewError('Clarification proposal must not include subtasks.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    if ((decision === 'needs_clarification' || decision === 'no_change') && subtasks.length) {
+        throw createPreviewError('Clarification/no_change proposal must not include subtasks.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
-    if (action === 'apply' && !title) {
-        throw createPreviewError('Apply proposal must include a title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    if ((decision === 'single_task' || decision === 'checklist') && !title) {
+        throw createPreviewError('Single task/checklist proposal must include a title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
-    if (mode === 'checklist' && action === 'apply' && subtasks.length < 2) {
+    if (decision === 'checklist' && subtasks.length < 2) {
         throw createPreviewError('Checklist proposal requires concrete subtasks.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    if (decision !== 'checklist' && subtasks.length) {
+        throw createPreviewError('Only checklist proposals may include subtasks.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    if (decision === 'task_bundle' && !bundleTitle) {
+        throw createPreviewError('Task bundle proposal must include bundleTitle.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
 
     return {
+        decision,
         action,
         mode,
         title,
         description,
         impactIds,
         subtasks,
+        bundleTitle,
+        tasks,
         confidence,
         reason
     };
@@ -304,7 +451,9 @@ function buildDraftDiff(currentDraft = {}, proposal = {}) {
         description: proposal.description,
         mode: proposal.mode,
         impactIds: proposal.impactIds || [],
-        subtasks: proposal.subtasks || []
+        subtasks: proposal.subtasks || [],
+        bundleTitle: proposal.bundleTitle || null,
+        tasks: proposal.tasks || []
     };
     const fields = {};
     for (const field of Object.keys(after)) {
@@ -531,7 +680,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
         contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
         promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
         schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
-        reasonCode: proposal.action,
+            reasonCode: proposal.decision || proposal.action,
         userHash: safetyIdentifier,
         businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
         changedFields: diff.changedFields,
@@ -590,8 +739,12 @@ function legacyDecompositionResponseFromPreview(preview = {}, fallbackMode = 'ai
 
 module.exports = {
     MAX_SUBTASKS,
+    MAX_BUNDLE_TASKS,
+    MIN_BUNDLE_TASKS,
     PREVIEW_ACTIONS,
+    PREVIEW_DECISIONS,
     PREVIEW_MODES,
+    PREVIEW_PRIORITIES,
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_MAX_OUTPUT_TOKENS,
     TASK_AI_DRAFT_PREVIEW_SCHEMA,

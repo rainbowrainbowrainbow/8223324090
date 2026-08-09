@@ -5,6 +5,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { JSDOM } = require('jsdom');
 
 const ROOT = path.resolve(__dirname, '..');
 
@@ -217,4 +218,57 @@ test('shared task action surface closes on outside backdrop click and restores f
     assert.equal(harness.getRoot(), null);
     assert.equal(harness.anchor.getAttribute('aria-expanded'), 'false');
     assert.equal(harness.document.activeElement, harness.anchor);
+});
+
+test('shared task action surface toggles closed for the same stable trigger without duplicating DOM', () => {
+    const harness = loadTaskUiHarness({ mobile: false });
+    const firstRoot = harness.TaskUI.openActionMenu(harness.anchor, '<button>Action</button>', {
+        title: 'Task actions'
+    });
+
+    assert.equal(harness.getRoot(), firstRoot);
+    assert.equal(harness.anchor.getAttribute('aria-expanded'), 'true');
+
+    const secondRoot = harness.TaskUI.openActionMenu(harness.anchor, '<button>Action</button>', {
+        title: 'Task actions'
+    });
+
+    assert.equal(secondRoot, null);
+    assert.equal(harness.getRoot(), null);
+    assert.equal(harness.anchor.getAttribute('aria-expanded'), 'false');
+    assert.equal(harness.document.activeElement, harness.anchor);
+});
+
+test('shared task action surface closes without focus restore when the trigger is rerendered away', async () => {
+    const dom = new JSDOM('<!doctype html><body><button id="time-trigger">Time</button></body>', {
+        pretendToBeVisual: true,
+        url: 'https://crm.test/profile.html'
+    });
+    const context = vm.createContext(dom.window);
+    context.console = console;
+    context.requestAnimationFrame = callback => {
+        callback();
+        return 1;
+    };
+    context.cancelAnimationFrame = () => {};
+    dom.window.innerWidth = 1024;
+    dom.window.innerHeight = 768;
+    const trigger = dom.window.document.getElementById('time-trigger');
+    trigger.getBoundingClientRect = () => ({ top: 120, bottom: 152, left: 320, right: 356, width: 36, height: 32 });
+
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'task-ui.js'), 'utf8'), context);
+    const root = context.window.TaskUI.openActionMenu(trigger, '<button type="button">Add time</button>', {
+        title: 'Time',
+        surfaceClassName: 'my-day-time-menu-popover'
+    });
+
+    assert.ok(root);
+    assert.ok(dom.window.document.getElementById('taskUiActionSurface'));
+    assert.equal(trigger.getAttribute('aria-expanded'), 'true');
+
+    trigger.remove();
+    await new Promise(resolve => dom.window.setTimeout(resolve, 0));
+
+    assert.equal(dom.window.document.getElementById('taskUiActionSurface'), null);
+    assert.equal(trigger.getAttribute('aria-expanded'), 'false');
 });

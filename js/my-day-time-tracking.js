@@ -149,7 +149,7 @@
             </span>
             <span class="my-day-time-actions">
                 <button type="button" class="my-day-time-button ${timerClass}" data-cabinet-task-action="${timerAction}" data-task-id="${taskId}" aria-label="${timerLabel} таймер задачі">${timerLabel}</button>
-                <button type="button" class="my-day-time-button my-day-time-button--ghost my-day-time-button--icon" data-cabinet-task-action="time-menu" data-task-id="${taskId}" aria-label="Відкрити меню часу" title="Час">⏱</button>
+                <button type="button" class="my-day-time-disclosure" data-cabinet-task-action="time-menu" data-task-id="${taskId}" aria-label="Деталі часу" title="Деталі часу" aria-haspopup="dialog" aria-expanded="false"><span aria-hidden="true">⌄</span></button>
             </span>
         </span>`;
     }
@@ -235,11 +235,13 @@
         const actual = Math.max(0, Number(task.actualSeconds || task.actual_seconds || 0));
         const active = Number(state.timer?.taskId) === Number(taskId);
         const actualLabel = active ? liveSecondsLabel(currentTimerDurationSeconds()) : secondsLabel(actual);
+        const activeState = active ? `<p class="my-day-time-menu-active" data-my-day-time-menu-active>Таймер працює · <strong>${actualLabel}</strong></p>` : '';
         return `<div class="my-day-time-popover-content my-day-time-menu" data-my-day-time-menu>
             <div class="my-day-time-menu-summary" aria-label="Деталі часу">
                 <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">План</span><strong>${planned ? `${planned} хв` : '—'}</strong></span>
                 <span class="my-day-time-summary-item"><span class="my-day-time-summary-label">Факт</span><strong>${actualLabel}</strong></span>
             </div>
+            ${activeState}
             <div class="my-day-time-menu-actions">
                 <button type="button" class="my-day-time-button my-day-time-button--ghost" data-my-day-time-menu-action="time-entry" data-task-id="${taskId}" aria-label="Додати ручний запис часу">Додати час</button>
                 <button type="button" class="my-day-time-button my-day-time-button--ghost" data-my-day-time-menu-action="time-entries" data-task-id="${taskId}" aria-label="Відкрити записи часу">Записи</button>
@@ -270,7 +272,7 @@
     }
     async function openTaskTimeMenu(button, taskId, task = {}, onChanged) {
         const html = renderTaskTimeMenu(taskId, task);
-        const root = window.TaskUI?.openActionMenu?.(button, html, { title: 'Час задачі', surfaceClassName: 'my-day-time-popover my-day-time-menu-popover' });
+        const root = window.TaskUI?.openActionMenu?.(button, html, { title: 'Деталі часу', surfaceClassName: 'my-day-time-popover my-day-time-menu-popover' });
         if (!root) return;
         bindTaskTimeMenu(root, button, taskId, onChanged);
     }

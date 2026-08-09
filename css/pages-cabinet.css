@@ -2338,6 +2338,14 @@ body.dark-mode .profile-task-priority--low {
     margin-top: 0;
 }
 
+.cabinet-task-zone--commands .my-day-time-task--compact {
+    flex: 0 1 auto;
+}
+
+.cabinet-task-zone--commands .my-day-time-disclosure {
+    align-self: center;
+}
+
 .cabinet-task-card .my-day-task-impact-chips,
 .cabinet-overdue-triage-row .my-day-task-impact-chips {
     max-width: 100%;

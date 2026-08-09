@@ -63,6 +63,7 @@ function harnessHtml() {
     <section class="harness-card cabinet-overdue-triage-row" data-task-id="202" id="overdue-card">
       <h2>Overdue My Day task</h2>
       <div data-my-day-classification-badges="202"></div>
+      <div data-my-day-time-fixture="202"></div>
       <button id="ai-overdue" type="button" class="cabinet-task-action-ai" data-task-id="202">AI</button>
     </section>
   </main>
@@ -113,6 +114,7 @@ function harnessHtml() {
       headers: { 'content-type': 'application/json' }
     }));
     document.querySelector('[data-my-day-time-fixture="101"]').innerHTML = window.MyDayTimeTracking.renderTaskControls(state.tasks[101]);
+    document.querySelector('[data-my-day-time-fixture="202"]').innerHTML = window.MyDayTimeTracking.renderTaskControls(state.tasks[202]);
     window.getAuthHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer local-browser-fixture' });
     window.showNotification = (message, type) => state.notifications.push({ message, type });
     window.__MY_DAY_INTERACTIONS__ = { state, applyClassification };
@@ -307,6 +309,13 @@ async function assertNoOverflow(page) {
     assert.ok(overflow <= 1, `page has horizontal overflow: ${overflow}px offenders=${JSON.stringify(offenders)}`);
 }
 
+async function assertActionSurfaceMode(page, viewport) {
+    const className = await page.locator('#taskUiActionSurface').getAttribute('class');
+    assert.match(className || '', /my-day-time-menu-popover/);
+    if (viewport.width <= 768) assert.match(className || '', /is-sheet/);
+    else assert.match(className || '', /is-popover/);
+}
+
 async function runScenario(browser, fixture, { dark, viewport }) {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport });
     const page = await context.newPage();
@@ -344,10 +353,23 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.notifications.some(item => item.type === 'error'));
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /CRM/);
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationError = false; });
-        await page.locator('[data-cabinet-task-action="time-menu"][data-task-id="101"]').click();
+        const timeDisclosure = page.locator('[data-cabinet-task-action="time-menu"][data-task-id="101"]');
+        assert.match(await timeDisclosure.getAttribute('class'), /my-day-time-disclosure/);
+        assert.equal(await timeDisclosure.getAttribute('aria-label'), 'Деталі часу');
+        const disclosureBox = await timeDisclosure.boundingBox();
+        assert.ok(disclosureBox && disclosureBox.width <= 38 && disclosureBox.height <= 38, 'compact time disclosure stays small');
+        assert.equal(await page.locator('[data-my-day-time-fixture="101"] [data-my-day-time-menu-action="time-entry"]').count(), 0);
+        assert.equal(await page.locator('[data-my-day-time-fixture="101"] [data-my-day-time-menu-action="time-entries"]').count(), 0);
+        assert.equal(await page.locator('[data-my-day-time-fixture="101"] .my-day-time-button--icon').count(), 0);
+        const detailedMarkup = await page.evaluate(() => window.MyDayTimeTracking.renderTaskControls(window.__MY_DAY_INTERACTIONS__.state.tasks[101], { detailed: true }));
+        assert.match(detailedMarkup, /data-cabinet-task-action="time-entry"/);
+        assert.match(detailedMarkup, /data-cabinet-task-action="time-entries"/);
+        assert.doesNotMatch(detailedMarkup, /my-day-time-disclosure/);
+        await timeDisclosure.click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-time-menu]') || window.__MY_DAY_INTERACTIONS__.state.timeMenuError);
         const timeMenuError = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.timeMenuError);
         assert.equal(timeMenuError, '');
+        await assertActionSurfaceMode(page, viewport);
         const timeMenuText = await page.locator('[data-my-day-time-menu]').textContent();
         assert.match(timeMenuText, /План/);
         assert.match(timeMenuText, /Факт/);
@@ -355,7 +377,35 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         assert.match(timeMenuText, /Записи/);
         await page.keyboard.press('Escape');
         await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
+        assert.equal(await timeDisclosure.getAttribute('aria-expanded'), 'false');
+        assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-cabinet-task-action')), 'time-menu');
+        await timeDisclosure.click();
+        await page.waitForSelector('[data-my-day-time-menu]');
+        assert.equal(await page.locator('#taskUiActionSurface').count(), 1);
+        assert.equal(await timeDisclosure.getAttribute('aria-expanded'), 'true');
+        await page.locator('.task-ui-action-backdrop').click({ position: { x: 1, y: 1 } });
+        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
+        assert.equal(await timeDisclosure.getAttribute('aria-expanded'), 'false');
         await assertNoOverflow(page);
+
+        await page.evaluate(() => {
+          const api = window.MyDayTimeTracking;
+          const state = window.__MY_DAY_INTERACTIONS__.state;
+          api.state.timer = api.normalizeTimer({ taskId: 202, durationSeconds: 75, isActive: true, task: state.tasks[202] });
+          state.tasks[202].actualSeconds = 75;
+          document.querySelector('[data-my-day-time-fixture="202"]').innerHTML = api.renderTaskControls(state.tasks[202]);
+        });
+        const overdueTimeDisclosure = page.locator('[data-my-day-time-fixture="202"] [data-cabinet-task-action="time-menu"][data-task-id="202"]');
+        await page.waitForSelector('[data-my-day-time-fixture="202"] [data-cabinet-task-action="timer-stop"][data-task-id="202"]');
+        assert.equal(await overdueTimeDisclosure.getAttribute('aria-label'), 'Деталі часу');
+        await overdueTimeDisclosure.click();
+        await page.waitForSelector('[data-my-day-time-menu]');
+        await assertActionSurfaceMode(page, viewport);
+        const overdueTimeMenuText = await page.locator('[data-my-day-time-menu]').textContent();
+        assert.match(overdueTimeMenuText, /Таймер працює/);
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
+        assert.equal(await page.evaluate(() => document.activeElement?.getAttribute('data-task-id')), '202');
 
         await page.locator('#ai-overdue').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="202"]')?.textContent?.includes('Hermes'));

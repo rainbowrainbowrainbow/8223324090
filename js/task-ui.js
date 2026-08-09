@@ -7,6 +7,7 @@
     const DOCK_ROOT_ID = 'taskUiDropDock';
     const ACTION_MENU_FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     let menuLastFocus = null;
+    let menuAnchorObserver = null;
     let dockController = null;
 
     const LABELS = {
@@ -64,20 +65,31 @@
         document.body?.classList.toggle('task-ui-scroll-lock', Boolean(lock));
     }
 
-    function closeActionMenu() {
+    function disconnectActionMenuObserver() {
+        if (menuAnchorObserver) {
+            try { menuAnchorObserver.disconnect(); } catch {}
+            menuAnchorObserver = null;
+        }
+    }
+
+    function closeActionMenu(options = {}) {
+        disconnectActionMenuObserver();
         if (typeof menuLastFocus?.setAttribute === 'function') {
             menuLastFocus.setAttribute('aria-expanded', 'false');
         }
         const root = document.getElementById(MENU_ROOT_ID);
         if (root) root.remove();
         lockBodyScroll(false);
-        if (menuLastFocus?.isConnected) {
+        if (options.restoreFocus !== false && menuLastFocus?.isConnected) {
             try { menuLastFocus.focus({ preventScroll: true }); } catch {}
         }
         menuLastFocus = null;
     }
 
-    function stableActionAnchor(anchor) {
+    function stableActionAnchor(anchor, currentRoot = null) {
+        if (anchor && typeof currentRoot?.contains === 'function' && currentRoot.contains(anchor) && menuLastFocus?.isConnected) {
+            return menuLastFocus;
+        }
         if (anchor?.isConnected) return anchor;
         const active = document.activeElement;
         return active?.isConnected && active !== document.body ? active : null;
@@ -115,6 +127,22 @@
             .filter(element => !element.disabled && element.getAttribute?.('aria-hidden') !== 'true');
     }
 
+    function watchActionMenuAnchor(root, anchor) {
+        if (!root || !anchor || typeof MutationObserver !== 'function') return;
+        const observedRoot = document.body || document.documentElement;
+        if (!observedRoot) return;
+        menuAnchorObserver = new MutationObserver(() => {
+            if (!root.isConnected || !anchor.isConnected) {
+                closeActionMenu({ restoreFocus: false });
+            }
+        });
+        try {
+            menuAnchorObserver.observe(observedRoot, { childList: true, subtree: true });
+        } catch {
+            disconnectActionMenuObserver();
+        }
+    }
+
     function handleActionMenuKeydown(event) {
         if (event.key === 'Escape') {
             event.preventDefault();
@@ -141,8 +169,15 @@
     }
 
     function openActionMenu(anchor, html, options = {}) {
-        closeActionMenu();
-        menuLastFocus = stableActionAnchor(anchor);
+        const existingRoot = document.getElementById(MENU_ROOT_ID);
+        const nextAnchor = stableActionAnchor(anchor, existingRoot);
+        const anchorInsideExistingRoot = Boolean(anchor && existingRoot && typeof existingRoot.contains === 'function' && existingRoot.contains(anchor));
+        if (existingRoot && !anchorInsideExistingRoot && nextAnchor && nextAnchor === menuLastFocus && options.toggle !== false) {
+            closeActionMenu();
+            return null;
+        }
+        closeActionMenu({ restoreFocus: false });
+        menuLastFocus = nextAnchor;
         const mobile = options.mobile ?? isSmallScreen();
         const root = document.createElement('div');
         const surfaceClassName = String(options.surfaceClassName || '').trim().replace(/[^a-zA-Z0-9 _-]/g, '');
@@ -171,6 +206,7 @@
             }
         });
         document.body.appendChild(root);
+        watchActionMenuAnchor(root, menuLastFocus);
         if (mobile) lockBodyScroll(true);
         requestAnimationFrame(() => {
             if (!mobile) positionPopover(root, menuLastFocus);

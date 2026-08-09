@@ -5785,6 +5785,47 @@ function cabinetTaskVisibleBadges(task = {}, context = {}) {
     return [...required, ...optional.slice(0, Math.max(0, 5 - required.length))];
 }
 
+function renderCabinetMyDayClassificationRow(task = {}, taskId = 0, taskIdAttr = '') {
+    const classificationBadges = `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay, { taskId }) || ''}</span>`;
+    const dependencyBadge = window.MyDayDependencies?.renderTaskBlocker?.(task) || '';
+    return [classificationBadges, dependencyBadge].filter(Boolean).join('');
+}
+
+function renderCabinetMyDayTimeControls(task = {}, showMyDayDetails = false) {
+    return window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showMyDayDetails }) || '';
+}
+
+function renderCabinetMyDayDetailToggle(taskIdAttr = '', expanded = false, globalViewMode = getCabinetMyDayViewMode(), className = 'cabinet-task-action-btn cabinet-task-action-details') {
+    if (globalViewMode !== 'compact') return '';
+    const label = expanded ? 'Сховати деталі задачі' : 'Показати деталі задачі';
+    return `<button type="button" class="${className}" title="${label}" aria-label="${label}" aria-expanded="${expanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>${expanded ? '−' : '+'}</button>`;
+}
+
+function renderCabinetMyDayHeaderActions(options = {}) {
+    const {
+        taskIdAttr = '',
+        doneTitle = 'Виконати задачу',
+        doneActionLabel = 'Виконати задачу',
+        doneBlocked = false,
+        detailToggleHtml = '',
+        variant = 'card'
+    } = options;
+    if (variant === 'overdue') {
+        return `<div class="cabinet-overdue-triage-actions cabinet-overdue-triage-actions--header">
+                    <button type="button" class="cabinet-overdue-triage-action is-done" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" title="${escapeHtml(doneTitle)}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                    <button type="button" class="cabinet-overdue-triage-action cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>
+                    ${detailToggleHtml}
+                    ${renderCabinetTaskMoreAction(taskIdAttr)}
+                </div>`;
+    }
+    return `<div class="cabinet-task-actions">
+                <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                <button type="button" class="cabinet-task-action-btn cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>
+                ${detailToggleHtml}
+                ${renderCabinetTaskMoreAction(taskIdAttr)}
+            </div>`;
+}
+
 function renderCabinetTaskCard(task, compact = false, options = {}) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
@@ -5818,10 +5859,6 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = isMyDayCard && (globalViewMode === 'detailed' || cardDetailsExpanded);
-    const myDayClassificationBadges = isMyDayCard
-        ? `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay, { taskId }) || ''}</span>`
-        : '';
-    const myDayDependencyBadge = isMyDayCard ? (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') : '';
     const myDayFactsHtml = isMyDayCard ? [
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
@@ -5836,11 +5873,8 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         cabinetTaskVisibleBadge('kind', `<span>${escapeHtml(taskKindLabel(task))}</span>`),
         cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
     ].filter(Boolean).join('') : '';
-    const myDayClassificationHtml = isMyDayCard ? [
-        myDayClassificationBadges,
-        myDayDependencyBadge
-    ].filter(Boolean).join('') : '';
-    const myDayCommandsHtml = isMyDayCard ? (window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showMyDayDetails }) || '') : '';
+    const myDayClassificationHtml = isMyDayCard ? renderCabinetMyDayClassificationRow(task, taskId, taskIdAttr) : '';
+    const myDayCommandsHtml = isMyDayCard ? renderCabinetMyDayTimeControls(task, showMyDayDetails) : '';
     const metadataHtml = !isMyDayCard ? `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -5872,11 +5906,11 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>'
         : '';
     const taskTitleHtml = `<div class="cabinet-task-title" title="${escapeHtml(task.title || 'Без назви')}">${aiCreatedMarker}${escapeHtml(task.title || 'Без назви')}</div>`;
-    const detailToggleHtml = isMyDayCard && globalViewMode === 'compact' ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-details" title="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-label="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-expanded="${cardDetailsExpanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>${cardDetailsExpanded ? '−' : '+'}</button>` : '';
-    const taskActionsHtml = `<div class="cabinet-task-actions">
+    const detailToggleHtml = isMyDayCard ? renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded, globalViewMode) : '';
+    const taskActionsHtml = isMyDayCard
+        ? renderCabinetMyDayHeaderActions({ taskIdAttr, doneTitle, doneActionLabel, doneBlocked, detailToggleHtml })
+        : `<div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
-                ${isMyDayCard ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>` : ''}
-                ${detailToggleHtml}
                 ${renderCabinetTaskMoreAction(taskIdAttr)}
             </div>`;
     if (isMyDayCard) {
@@ -6451,8 +6485,6 @@ function renderCabinetOverdueTriageRow(task = {}) {
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = globalViewMode === 'detailed' || cardDetailsExpanded;
-    const myDayClassificationBadges = `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay, { taskId }) || ''}</span>`;
-    const myDayDependencyBadge = window.MyDayDependencies?.renderTaskBlocker?.(task) || '';
     const factsHtml = [
         `<span class="cabinet-task-due-badge cabinet-task-due-badge--overdue">${escapeHtml(`${dueState.label || 'Прострочено'}${dueState.detail ? ` · ${dueState.detail}` : ''}`)}</span>`,
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
@@ -6464,19 +6496,21 @@ function renderCabinetOverdueTriageRow(task = {}) {
         renderCabinetOverdueTriageProgress(task),
         cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
     ].filter(Boolean).join('') : '';
-    const classificationHtml = [myDayClassificationBadges, myDayDependencyBadge].filter(Boolean).join('');
-    const timeControlsHtml = window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showMyDayDetails }) || '';
-    const detailToggleHtml = globalViewMode === 'compact' ? `<button type="button" class="cabinet-overdue-triage-action cabinet-task-action-details" title="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-label="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-expanded="${cardDetailsExpanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>${cardDetailsExpanded ? '−' : '+'}</button>` : '';
+    const classificationHtml = renderCabinetMyDayClassificationRow(task, taskId, taskIdAttr);
+    const timeControlsHtml = renderCabinetMyDayTimeControls(task, showMyDayDetails);
+    const detailToggleHtml = renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded, globalViewMode, 'cabinet-overdue-triage-action cabinet-task-action-details');
+    const headerActionsHtml = renderCabinetMyDayHeaderActions({
+        taskIdAttr,
+        doneTitle,
+        doneBlocked,
+        detailToggleHtml,
+        variant: 'overdue'
+    });
     return `<div class="cabinet-overdue-triage-row ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}">
         <div class="cabinet-overdue-triage-main">
             <div class="cabinet-task-zone cabinet-task-zone--header">
                 <a class="cabinet-overdue-triage-title" href="/tasks?view=my&open=${encodeURIComponent(taskIdAttr)}" title="${escapeHtml(task.title || 'Без назви')}">${escapeHtml(task.title || 'Без назви')}</a>
-                <div class="cabinet-overdue-triage-actions cabinet-overdue-triage-actions--header">
-                    <button type="button" class="cabinet-overdue-triage-action is-done" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" title="${escapeHtml(doneTitle)}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
-                    <button type="button" class="cabinet-overdue-triage-action cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>
-                    ${detailToggleHtml}
-                    ${renderCabinetTaskMoreAction(taskIdAttr)}
-                </div>
+                ${headerActionsHtml}
             </div>
             ${factsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--facts cabinet-overdue-triage-meta">${factsHtml}</div>` : ''}
             ${classificationHtml ? `<div class="cabinet-task-zone cabinet-task-zone--classification">${classificationHtml}</div>` : ''}

@@ -177,10 +177,15 @@ test('Profile My Day compact cards use stable zones instead of one mixed meta ro
     assert.match(profile, /cabinet-task-zone--classification/);
     assert.match(profile, /cabinet-task-zone--commands/);
     assert.match(profile, /cabinet-task-main--my-day/);
+    assert.match(profile, /function renderCabinetMyDayClassificationRow/);
+    assert.match(profile, /function renderCabinetMyDayTimeControls/);
+    assert.match(profile, /function renderCabinetMyDayHeaderActions/);
     assert.match(profile, /renderTaskControls\?\.\(task,\s*\{ detailed:\s*showMyDayDetails \}\)/);
     assert.match(profile, /renderCabinetOverdueTriageProgress\(task\)/);
     assert.match(profile, /time-menu/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
+    assert.match(timeUi, /class="my-day-time-disclosure"/);
+    assert.match(timeUi, /aria-label="Деталі часу"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
     const compactTimeControls = timeUi.slice(
@@ -188,6 +193,7 @@ test('Profile My Day compact cards use stable zones instead of one mixed meta ro
         timeUi.indexOf('async function addManualEntry')
     );
     assert.match(compactTimeControls, /data-cabinet-task-action="time-menu"/);
+    assert.match(compactTimeControls, /my-day-time-disclosure/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entry"/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entries"/);
     assert.match(css, /\.cabinet-task-zone--header/);
@@ -208,12 +214,14 @@ test('Profile My Day card view mode is localStorage-scoped and has per-card expa
     assert.match(profile, /localStorage\?\.setItem\?\.\(cabinetMyDayViewPreferenceKey\(\), cabinetMyDayViewMode\)/);
     assert.match(profile, /TimelineBusinessContext\?\.storageKey/);
     assert.match(profile, /data-cabinet-task-action="toggle-my-day-details"/);
-    assert.match(profile, /aria-expanded="\$\{cardDetailsExpanded \? 'true' : 'false'\}"/);
+    assert.match(profile, /function renderCabinetMyDayDetailToggle/);
+    assert.match(profile, /aria-expanded="\$\{expanded \? 'true' : 'false'\}"/);
     assert.match(profile, /showMyDayDetails \? myDaySubtaskSummary : ''/);
     assert.match(timeUi, /options\.detailed === true/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
     assert.match(timeUi, /data-cabinet-task-action="time-entry"/);
     assert.match(timeUi, /data-cabinet-task-action="time-entries"/);
+    assert.match(css, /\.my-day-time-disclosure/);
     assert.match(css, /\.cabinet-day-list-toolbar/);
     assert.match(css, /\.cabinet-view-mode-toggle/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);

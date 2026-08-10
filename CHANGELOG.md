@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.116 - Task Archive Hygiene View
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Архів Task Center більше не змішує робочі задачі із системним cleanup** - `view=archive` за замовчуванням ховає machine-generated archived backlog без human-touch ознак, але не видаляє записи.
+- **Системний архів доступний окремо** - у Task Center додано режими "Робочий архів", "Системний архів" і "Увесь архів", щоб можна було перевірити cleanup history без засмічення звичайного архіву.
+- **Regression guard додано в canonical verify** - новий тест фіксує fail-closed archive filter, explicit `archive_system` modes і відсутність data mutation path у цьому UI/API fix.
+
+---
+
 ## v0.80.115 - Checkbox Park Readiness Hardening
 
 ### Checkbox / Payments / (10.08.2026) [codex]

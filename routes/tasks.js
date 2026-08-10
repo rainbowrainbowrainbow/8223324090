@@ -978,6 +978,49 @@ async function buildTaskAiDraftCommit(req, res) {
     });
 }
 
+function normalizeArchiveSystemMode(value) {
+    const mode = String(value || '').trim().toLowerCase();
+    if (['include', 'all', '1', 'true', 'yes'].includes(mode)) return 'include';
+    if (['only', 'system'].includes(mode)) return 'only';
+    return 'hide';
+}
+
+function taskSystemArchiveSql(alias = 't') {
+    const task = alias || 't';
+    const machineSignalSql = `(
+        LOWER(COALESCE(${task}.created_by, '')) IN ('system','scheduler','kleshnya','rule_engine','task_lifecycle','attendance-review-scheduler')
+        OR LOWER(COALESCE(${task}.source_type, '')) IN ('booking','recurring','attendance','hermes','integration','automation','trigger')
+        OR LOWER(COALESCE(${task}.type, '')) IN ('auto','auto_complete','recurring')
+        OR LOWER(COALESCE(${task}.source_module, '')) IN ('booking','recurring','attendance','hermes','integration','automation','trigger')
+        OR LOWER(COALESCE(${task}.related_entity_type, '')) IN ('booking','recurring','attendance','hermes','integration')
+    )`;
+    const humanProtectionSql = `(
+        COALESCE(${task}.created_by_user_id, 0) > 0
+        OR LOWER(COALESCE(${task}.visibility, 'team')) IN ('private','me_only')
+        OR LOWER(COALESCE(${task}.task_mode, 'work')) IN ('private','me_only','personal')
+        OR EXISTS (
+            SELECT 1 FROM task_logs system_archive_tl
+            WHERE system_archive_tl.task_id = ${task}.id
+              AND LOWER(COALESCE(system_archive_tl.actor, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
+        )
+        OR EXISTS (
+            SELECT 1 FROM task_action_history system_archive_tah
+            WHERE system_archive_tah.task_id = ${task}.id
+              AND (
+                  system_archive_tah.actor_user_id IS NOT NULL
+                  OR LOWER(COALESCE(system_archive_tah.actor_name_snapshot, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
+              )
+        )
+        OR EXISTS (SELECT 1 FROM task_subtasks system_archive_st WHERE system_archive_st.task_id = ${task}.id)
+        OR EXISTS (
+            SELECT 1 FROM task_dependencies system_archive_td
+            WHERE system_archive_td.task_id = ${task}.id OR system_archive_td.depends_on_task_id = ${task}.id
+        )
+        OR EXISTS (SELECT 1 FROM task_observers system_archive_tob WHERE system_archive_tob.task_id = ${task}.id)
+    )`;
+    return `(${task}.archived_at IS NOT NULL AND ${machineSignalSql} AND NOT (${humanProtectionSql}))`;
+}
+
 // GET /api/tasks — list with optional filters + pagination (v19.10)
 async function buildTaskAiDraftBundleCommit(req, res) {
     const businessScope = requireTaskWriteScope(req, res);
@@ -1018,7 +1061,8 @@ router.get('/', async (req, res) => {
             date_from, date_to, page, limit: lim, mine, private: privateOnly, focus,
             related_entity_type, relatedEntityType, related_entity_id, relatedEntityId, source_module, sourceModule,
             source_entity_type, sourceEntityType, source_entity_id, sourceEntityId, pack_id, packId, pack_status, packStatus,
-            view, include_duplicates, includeDuplicates, pagination, paginated, priority, source, search, q
+            view, include_duplicates, includeDuplicates, pagination, paginated, priority, source, search, q,
+            archive_system, archiveSystem, system_archive, systemArchive
         } = req.query;
         const conditions = [];
         const params = [];
@@ -1222,6 +1266,7 @@ router.get('/', async (req, res) => {
         // response intact for integrations that call /api/tasks without it.
         const paginatedResponse = isTruthy(pagination || paginated);
         const taskView = String(view || '').trim();
+        const archiveSystemMode = normalizeArchiveSystemMode(archive_system || archiveSystem || system_archive || systemArchive);
         const activeTaskSql = `COALESCE(t.status, 'todo') NOT IN ('done','cancelled','archived')`;
         const notDeferredSql = `(t.snoozed_until IS NULL OR t.snoozed_until <= NOW())`;
         const workloadDateSql = taskWorkloadDateSql('t');
@@ -1269,6 +1314,11 @@ router.get('/', async (req, res) => {
                 break;
             case 'archive':
                 conditions.push(`t.status = 'archived'`);
+                if (archiveSystemMode === 'only') {
+                    conditions.push(taskSystemArchiveSql('t'));
+                } else if (archiveSystemMode === 'hide') {
+                    conditions.push(`NOT (${taskSystemArchiveSql('t')})`);
+                }
                 break;
             default:
                 break;
@@ -1366,11 +1416,18 @@ router.get('/', async (req, res) => {
         );
         const tasks = result.rows.map(normalizeTaskPayload);
         if (!paginatedResponse) return res.json(tasks);
-        return res.json({
+        const responsePayload = {
             success: true,
             tasks,
             pagination: buildTaskPaginationMetadata({ total, page: currentPage, limit, returned: tasks.length })
-        });
+        };
+        if (taskView === 'archive') {
+            responsePayload.meta = {
+                archiveSystemMode,
+                systemArchiveModes: ['hide', 'include', 'only']
+            };
+        }
+        return res.json(responsePayload);
     } catch (err) {
         log.error('Get error', err);
         res.status(500).json({ error: 'Internal server error' });

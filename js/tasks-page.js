@@ -307,6 +307,7 @@ let assistantTaskFilter = '';
 let allTasks = [];
 let taskLoadSeq = 0;
 let taskPagination = { page: 0, limit: 100, total: 0, hasMore: false, loadingMore: false, view: 'inbox' };
+let taskArchiveSystemMode = 'hide';
 let taskOverviewProjection = null;
 let taskOverviewLoading = false;
 let taskOverviewError = null;
@@ -1994,6 +1995,7 @@ async function apiGetTasksPage({ view = currentView, page = 1, limit = 100, sign
     if (state.category) params.set('category', state.category);
     if (state.source) params.set('source', state.source);
     if (state.search) params.set('search', state.search);
+    if (String(view || '') === 'archive') params.set('archive_system', taskArchiveSystemMode);
     const response = await taskApiFetch(`${API_BASE}/tasks?${params}`, { headers: getAuthHeaders(false), signal });
     if (handleAuthError(response)) throw new Error('Unauthorized');
     if (!response?.ok) throw new Error(`Tasks API error: ${response?.status || 'offline'}`);
@@ -3425,11 +3427,29 @@ function renderKanbanView(container) {
 function renderArchiveView(container) {
     const baseArchived = allTasks.filter(t => t.status === 'archived');
     const archived = filterByCategory(baseArchived);
+    const total = Number(taskPagination?.total || archived.length || 0);
+    const modeLabels = {
+        hide: 'Робочий архів',
+        only: 'Системний архів',
+        include: 'Увесь архів'
+    };
+    const archiveControls = `
+        <div class="task-archive-controls" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;color:var(--gray-500);font-size:13px">
+            <span>📦 ${escapeHtml(modeLabels[taskArchiveSystemMode] || modeLabels.hide)}: ${total}</span>
+            ${['hide','only','include'].map(mode => `
+                <button type="button"
+                        class="btn-secondary"
+                        data-task-archive-system-mode="${mode}"
+                        ${taskArchiveSystemMode === mode ? 'disabled aria-disabled="true"' : ''}>
+                    ${escapeHtml(modeLabels[mode])}
+                </button>
+            `).join('')}
+        </div>`;
     if (!archived.length) {
-        container.innerHTML = taskEmptyState('archive', baseArchived.length);
+        container.innerHTML = archiveControls + taskEmptyState('archive', total);
         return;
     }
-    container.innerHTML = `<div style="margin-bottom:12px;color:var(--gray-500);font-size:13px">📦 Архівованих задач: ${archived.length}</div>` +
+    container.innerHTML = archiveControls +
         archived.slice(0, 50).map(t => {
             const reason = t.archive_reason === 'auto_expired' ? 'Прострочена' : ['auto_duplicate', 'auto_duplicate_v2'].includes(t.archive_reason) ? 'Дублікат' : t.archive_reason || 'Архів';
             return `<div class="task-card status-done" style="opacity:0.7" data-task-id="${t.id}">
@@ -5261,6 +5281,14 @@ function setupTaskActionDelegation() {
         if (loadMoreButton && board.contains(loadMoreButton)) {
             event.preventDefault();
             if (!taskPagination.loadingMore && taskPagination.hasMore) await loadAllTasks({ append: true });
+            return;
+        }
+        const archiveSystemButton = event.target.closest('[data-task-archive-system-mode]');
+        if (archiveSystemButton && board.contains(archiveSystemButton)) {
+            event.preventDefault();
+            const nextMode = String(archiveSystemButton.dataset.taskArchiveSystemMode || 'hide');
+            taskArchiveSystemMode = ['hide', 'only', 'include'].includes(nextMode) ? nextMode : 'hide';
+            await loadAllTasks();
             return;
         }
         const actionButton = event.target.closest('[data-task-action]');

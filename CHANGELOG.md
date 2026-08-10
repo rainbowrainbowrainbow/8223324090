@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.115 - Checkbox Park Readiness Hardening
+
+### Checkbox / Payments / (10.08.2026) [codex]
+- **Checkbox park thin MVP readiness** - додано mutation-free readiness checklist, password/PIN auth checks, test-mode safety gates, config-file mapping для park/middle та acceptance на disposable PostgreSQL + local HTTP Checkbox без production фіскалізації.
+
+---
+
 ## v0.80.114 - Task KPI Automation Fairness
 
 ### Release / Versioning / (10.08.2026) [codex]

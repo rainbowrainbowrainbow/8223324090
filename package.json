@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.114",
+  "version": "0.80.115",
   "eventGenix": {
-    "releaseLabel": "Task KPI Automation Fairness"
+    "releaseLabel": "Checkbox Park Readiness Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

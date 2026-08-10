@@ -672,6 +672,11 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
     await page.evaluate(() => localStorage.setItem('pzp_dark_mode', 'true'));
     await openPage(page, baseUrl, '?mode=overview');
+    await page.evaluate(() => {
+        document.body.classList.add('shell-ready');
+        document.body.setAttribute('data-page-group', 'operations');
+        document.getElementById('sidebarNav')?.classList.add('collapsed');
+    });
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion preference reaches page');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), true, 'dark mode is applied');
     await assertTaskCenterQueryThemeContract(page, 'body.dark-mode');

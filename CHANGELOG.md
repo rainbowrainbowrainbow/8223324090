@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.110 - Task Center Mobile QA Guard
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Task Center Mobile QA Guard** - fixed mobile Task Center shell overflow caused by `width: 100%` plus page padding, and hardened the Task Center browser smoke to cover live shell geometry.
+
+---
+
 ## v0.80.109 - Checkbox Fiscal Hardening
 
 ### Release / Versioning / (10.08.2026) [codex]

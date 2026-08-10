@@ -71,7 +71,7 @@ function createQuery(options = {}) {
         const text = compact(sql);
         state.queries.push({ text, params });
 
-        if (/^SELECT t\.id, t\.title, t\.date, t\.status, t\.priority, t\.updated_at, t\.created_at/i.test(text)) {
+        if (/^SELECT t\.id, t\.date, t\.status, t\.priority, t\.updated_at, t\.created_at/i.test(text)) {
             if (state.failSelect) throw new Error('planned lifecycle failure');
             if (options.blockSelectOnce && !options._blocked) {
                 options._blocked = true;
@@ -221,6 +221,7 @@ describe('task lifecycle raw scheduler hardening', () => {
         assert.equal(second.updated, 0);
         assert.equal(state.archives.length, 0);
         assert.equal(state.updates.length, 0);
+        assert.equal(state.queries.some(queryRecord => /^UPDATE tasks SET health_score/i.test(queryRecord.text)), false);
         assert.ok(state.queries.every(queryRecord => !/^INSERT\b/i.test(queryRecord.text)));
     });
 
@@ -308,6 +309,8 @@ describe('task lifecycle raw scheduler hardening', () => {
 
         assert.doesNotMatch(source, /sendTelegramMessage|telegramRequest|broadcastToChannel|push|webhook/i);
         assert.match(source, /UPDATE tasks SET health_score/);
+        assert.match(source, /task_action_history tah/);
+        assert.match(source, /healthScoreMatches\(task\.health_score, score\)/);
         assert.doesNotMatch(source, /UPDATE tasks SET[\s\S]*status = 'archived'/);
     });
 });

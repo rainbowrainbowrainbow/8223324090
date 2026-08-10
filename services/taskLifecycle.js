@@ -51,6 +51,13 @@ function taskLifecycleProtectionReason(task = {}) {
     return null;
 }
 
+function healthScoreMatches(existingScore, calculatedScore) {
+    if (existingScore === null || existingScore === undefined || existingScore === '') return false;
+    const current = Number(existingScore);
+    const next = Number(calculatedScore);
+    return Number.isFinite(current) && Number.isFinite(next) && current === next;
+}
+
 function calculateHealthScore(task, now = new Date()) {
     let score = 100;
 
@@ -90,7 +97,7 @@ async function runTaskLifecycle(deps = {}) {
         const query = deps.query || pool.query.bind(pool);
         const now = deps.now || new Date();
         const tasks = await query(`
-            SELECT t.id, t.title, t.date, t.status, t.priority, t.updated_at, t.created_at,
+            SELECT t.id, t.date, t.status, t.priority, t.updated_at, t.created_at,
                    t.last_activity_at, t.business_context, t.health_score, t.source_type,
                    t.type, t.created_by, t.created_by_user_id, t.task_type, t.task_mode,
                    t.visibility, t.archived_at,
@@ -99,6 +106,15 @@ async function runTaskLifecycle(deps = {}) {
                        FROM task_logs tl
                        WHERE tl.task_id = t.id
                          AND LOWER(COALESCE(tl.actor, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
+                       LIMIT 1
+                   ) OR EXISTS (
+                       SELECT 1
+                       FROM task_action_history tah
+                       WHERE tah.task_id = t.id
+                         AND (
+                             tah.actor_user_id IS NOT NULL
+                             OR LOWER(COALESCE(tah.actor_name_snapshot, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
+                         )
                        LIMIT 1
                    ) AS human_touched
             FROM tasks t
@@ -125,6 +141,10 @@ async function runTaskLifecycle(deps = {}) {
                 archiveCandidates++;
             }
 
+            if (healthScoreMatches(task.health_score, score)) {
+                continue;
+            }
+
             const result = await query(
                 "UPDATE tasks SET health_score = $1 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND health_score IS DISTINCT FROM $1",
                 [score, task.id, businessContext]
@@ -146,5 +166,6 @@ module.exports = {
     runTaskLifecycle,
     calculateHealthScore,
     hasExplicitMachineProvenance,
-    taskLifecycleProtectionReason
+    taskLifecycleProtectionReason,
+    healthScoreMatches
 };

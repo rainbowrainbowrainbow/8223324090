@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.118 - Task Stale Machine Report
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Застарілі system-generated задачі тепер видно до cleanup** - додано report-only класифікатор, який групує strict booking/rule_engine, recurring/template-generated, attendance, Hermes/integration та unknown cohorts без production mutation.
+- **Fail-closed protection залишилась основним правилом** - manual/private/My Day, AI-assisted, integration, unknown, human-touched, current/future, archived і terminal задачі не потрапляють у cleanup candidates.
+- **Lifecycle менше шумить у БД** - `health_score` більше не відправляє UPDATE-запит, якщо обчислене значення вже збігається, і human-touch перевірка враховує `task_action_history`.
+- **CI покриває новий report-only guard** - canonical verify запускає тест, який перевіряє read-only transaction, відсутність PII у stdout, deterministic checksums і заборону apply/archive/delete flags.
+
+---
+
 ## v0.80.117 - Task Cleanup Operator Toolkit
 
 ### Release / Versioning / (10.08.2026) [codex]

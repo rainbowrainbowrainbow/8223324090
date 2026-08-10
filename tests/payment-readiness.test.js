@@ -174,7 +174,7 @@ test('Checkbox operations docs contain activation, rollback, and source-of-truth
     const contract = read('docs/integrations/checkbox/PILOT_CONTRACT.md');
     const envTemplate = read('docs/integrations/checkbox/ACTIVATION_ENV_TEMPLATE.md');
     const runbook = read('docs/integrations/checkbox/OPERATIONS_RUNBOOK.md');
-    assert.match(status, /0\.80\.103/);
+    assert.match(status, /0\.80\.108/);
     assert.match(status, /not any long-lived `\.codex-temp` worktree/i);
     assert.match(status, /migrations `316` through `331`/);
     assert.match(contract, /not from stale chat history, stale docs, or a dirty `\.codex-temp` branch/);

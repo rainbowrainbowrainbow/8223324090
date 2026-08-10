@@ -151,6 +151,18 @@ const TASK = {
     }
 };
 
+const ARCHIVED_TASK = {
+    ...TASK,
+    id: 77,
+    status: 'archived',
+    workflowState: 'archived',
+    title: 'QA archived fixture task',
+    archive_reason: 'auto_expired',
+    archived_at: '2026-08-10T10:00:00.000Z',
+    sourceType: 'booking',
+    sourceId: 'BOOKING-QA-77'
+};
+
 function dateRange() {
     const from = new Date();
     const key = date => date.toISOString().slice(0, 10);
@@ -347,11 +359,23 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/tasks/42') return json(route, { success: true, task: TASK });
         if (url.pathname === '/api/task-templates') return json(route, []);
         if (url.pathname === '/api/dashboard/alerts') return json(route, { alerts: [] });
-        if (url.pathname === '/api/tasks') return json(route, {
-            success: true,
-            tasks: [TASK],
-            pagination: { page: 1, limit: 100, total: 1, hasMore: false, nextPage: null }
-        });
+        if (url.pathname === '/api/tasks') {
+            if (url.searchParams.get('view') === 'archive') {
+                const archiveMode = url.searchParams.get('archive_system') || 'hide';
+                const totals = { hide: 27, only: 1530, include: 1557 };
+                return json(route, {
+                    success: true,
+                    tasks: [ARCHIVED_TASK],
+                    pagination: { page: 1, limit: 100, total: totals[archiveMode] || totals.hide, hasMore: false, nextPage: null },
+                    meta: { archiveSystemMode: archiveMode, systemArchiveModes: ['hide', 'include', 'only'] }
+                });
+            }
+            return json(route, {
+                success: true,
+                tasks: [TASK],
+                pagination: { page: 1, limit: 100, total: 1, hasMore: false, nextPage: null }
+            });
+        }
         return json(route, { success: true });
     });
 }
@@ -719,6 +743,35 @@ async function verifyLegacyLinks(page, baseUrl) {
     }
 }
 
+async function verifyArchiveExplanation(page, baseUrl) {
+    await openPage(page, baseUrl, '?view=archive');
+    await waitForMode(page, 'library');
+    await page.waitForSelector('.task-archive-controls');
+    assert.equal(await page.locator('.task-archive-summary strong').textContent(), 'Робочий архів: 27');
+    assert.match(await page.locator('.task-archive-mode-help').textContent(), /Робочий архів[\s\S]*Системний архів[\s\S]*Увесь архів/);
+    assert.match(await page.locator('.task-archive-summary').textContent(), /Системний cleanup-backlog тут прихований/);
+    assert.equal(await page.locator('[data-task-archive-system-mode="hide"]').getAttribute('aria-pressed'), 'true');
+
+    await page.locator('[data-task-archive-system-mode="only"]').click();
+    await page.waitForFunction(() => document.querySelector('.task-archive-summary strong')?.textContent?.includes('1530'));
+    assert.equal(await page.locator('.task-archive-summary strong').textContent(), 'Системний архів: 1530');
+    assert.match(await page.locator('.task-archive-summary').textContent(), /Автоматично створені або cleanup-archived tasks/);
+    assert.match(await page.locator('[data-task-archive-system-mode="only"]').textContent(), /1530 · поточний системний архів/);
+    assert.equal(await page.locator('[data-task-archive-system-mode="only"]').getAttribute('aria-pressed'), 'true');
+
+    await page.locator('[data-task-archive-system-mode="include"]').click();
+    await page.waitForFunction(() => document.querySelector('.task-archive-summary strong')?.textContent?.includes('1557'));
+    assert.equal(await page.locator('.task-archive-summary strong').textContent(), 'Увесь архів: 1557');
+
+    await page.locator('[data-task-archive-system-mode="hide"]').focus();
+    const focusStyle = await page.locator('[data-task-archive-system-mode="hide"]').evaluate(el => {
+        const style = getComputedStyle(el);
+        return { outlineStyle: style.outlineStyle, outlineWidth: style.outlineWidth };
+    });
+    assert.notEqual(focusStyle.outlineStyle, 'none', `archive mode button focus outline is visible (${JSON.stringify(focusStyle)})`);
+    assert.notEqual(focusStyle.outlineWidth, '0px', `archive mode button focus outline has width (${JSON.stringify(focusStyle)})`);
+}
+
 async function verifyDrawer(page, baseUrl) {
     await openPage(page, baseUrl, '?mode=overview&open=42');
     await page.waitForSelector('#taskDetailOverlay');
@@ -852,6 +905,7 @@ async function run() {
     try {
         await verifyModesAndUrl(page, fixture.baseUrl);
         await verifyLegacyLinks(page, fixture.baseUrl);
+        await verifyArchiveExplanation(page, fixture.baseUrl);
         await verifyDrawer(page, fixture.baseUrl);
         await verifyStates(page, fixture.baseUrl, state);
         await verifyResponsiveThemesAndMotion(page, fixture.baseUrl, state);

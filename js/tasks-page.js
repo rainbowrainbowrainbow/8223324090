@@ -3433,17 +3433,45 @@ function renderArchiveView(container) {
         only: 'Системний архів',
         include: 'Увесь архів'
     };
+    const modeDescriptions = {
+        hide: 'Ручні або людські archived tasks. Системний cleanup-backlog тут прихований, щоб не засмічувати робочий список.',
+        only: 'Автоматично створені або cleanup-archived tasks. Вони збережені для аудиту, але не змішуються з робочим архівом.',
+        include: 'Об’єднаний перегляд робочого та системного архіву для повної перевірки історії.'
+    };
+    const modeCountLabels = {
+        hide: 'поточний робочий архів',
+        only: 'поточний системний архів',
+        include: 'поточний увесь архів'
+    };
     const archiveControls = `
-        <div class="task-archive-controls" style="display:flex;flex-wrap:wrap;align-items:center;gap:8px;margin-bottom:12px;color:var(--gray-500);font-size:13px">
-            <span>📦 ${escapeHtml(modeLabels[taskArchiveSystemMode] || modeLabels.hide)}: ${total}</span>
-            ${['hide','only','include'].map(mode => `
-                <button type="button"
-                        class="btn-secondary"
-                        data-task-archive-system-mode="${mode}"
-                        ${taskArchiveSystemMode === mode ? 'disabled aria-disabled="true"' : ''}>
-                    ${escapeHtml(modeLabels[mode])}
-                </button>
-            `).join('')}
+        <div class="task-archive-controls" aria-label="Режими архіву задач">
+            <div class="task-archive-summary">
+                <span class="task-archive-summary-icon" aria-hidden="true">📦</span>
+                <div>
+                    <strong>${escapeHtml(modeLabels[taskArchiveSystemMode] || modeLabels.hide)}: ${total}</strong>
+                    <p>${escapeHtml(modeDescriptions[taskArchiveSystemMode] || modeDescriptions.hide)}</p>
+                </div>
+            </div>
+            <div class="task-archive-mode-help" role="note">
+                <span><b>Робочий архів</b> — ручні/людські archived tasks.</span>
+                <span><b>Системний архів</b> — автоматично створені або cleanup archived tasks.</span>
+                <span><b>Увесь архів</b> — обидва разом.</span>
+            </div>
+            <div class="task-archive-mode-buttons" role="group" aria-label="Перемкнути режим архіву">
+                ${['hide','only','include'].map(mode => {
+                    const isActive = taskArchiveSystemMode === mode;
+                    return `
+                    <button type="button"
+                            class="btn-secondary task-archive-mode-button"
+                            data-task-archive-system-mode="${mode}"
+                            aria-pressed="${isActive ? 'true' : 'false'}"
+                            ${isActive ? 'disabled aria-disabled="true"' : ''}>
+                        <span>${escapeHtml(modeLabels[mode])}</span>
+                        ${isActive ? `<small>${total} · ${escapeHtml(modeCountLabels[mode])}</small>` : ''}
+                    </button>
+                `;
+                }).join('')}
+            </div>
         </div>`;
     if (!archived.length) {
         container.innerHTML = archiveControls + taskEmptyState('archive', total);

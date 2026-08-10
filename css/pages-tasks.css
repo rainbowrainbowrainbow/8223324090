@@ -2309,6 +2309,121 @@ html[data-theme="dark"] .task-planning-day-tasks button:disabled {
         width: 100%;
     }
 }
+
+.task-archive-controls {
+    display: grid;
+    gap: 10px;
+    margin-bottom: 12px;
+    color: var(--text-secondary, var(--gray-500, #64748b));
+    font-size: 13px;
+}
+
+.task-archive-summary {
+    display: flex;
+    gap: 10px;
+    align-items: flex-start;
+    padding: 12px;
+    border: 1px solid var(--border-color, rgba(148, 163, 184, .35));
+    border-radius: 14px;
+    background: var(--card-bg, rgba(255, 255, 255, .78));
+}
+
+.task-archive-summary-icon {
+    display: inline-grid;
+    width: 32px;
+    height: 32px;
+    place-items: center;
+    border-radius: 999px;
+    background: rgba(20, 184, 166, .12);
+}
+
+.task-archive-summary strong {
+    display: block;
+    color: var(--gray-800, #1f2937);
+    font-size: 14px;
+}
+
+.task-archive-summary p,
+.task-archive-mode-help {
+    margin: 4px 0 0;
+    line-height: 1.45;
+}
+
+.task-archive-mode-help {
+    display: grid;
+    gap: 4px;
+    padding: 10px 12px;
+    border: 1px dashed rgba(20, 184, 166, .28);
+    border-radius: 12px;
+    background: rgba(20, 184, 166, .07);
+}
+
+.task-archive-mode-help b {
+    color: var(--gray-700, #334155);
+}
+
+.task-archive-mode-buttons {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.task-archive-mode-button {
+    display: inline-grid;
+    gap: 2px;
+    min-height: 42px;
+    text-align: left;
+}
+
+.task-archive-mode-button small {
+    color: inherit;
+    font-size: 11px;
+    font-weight: 700;
+    opacity: .78;
+}
+
+.task-archive-mode-button:focus,
+.task-archive-mode-button:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, .42);
+    outline-offset: 2px;
+}
+
+body.dark-mode .task-archive-summary,
+html[data-theme="dark"] .task-archive-summary {
+    background: rgba(15, 23, 42, .82);
+    border-color: rgba(45, 212, 191, .2);
+}
+
+body.dark-mode .task-archive-summary strong,
+html[data-theme="dark"] .task-archive-summary strong,
+body.dark-mode .task-archive-mode-help b,
+html[data-theme="dark"] .task-archive-mode-help b {
+    color: #e2e8f0;
+}
+
+body.dark-mode .task-archive-mode-help,
+html[data-theme="dark"] .task-archive-mode-help {
+    color: #cbd5e1;
+    background: rgba(20, 184, 166, .1);
+    border-color: rgba(45, 212, 191, .24);
+}
+
+body.dark-mode .task-archive-summary-icon,
+html[data-theme="dark"] .task-archive-summary-icon {
+    background: rgba(45, 212, 191, .14);
+}
+
+@media (max-width: 720px) {
+    .task-archive-summary {
+        align-items: stretch;
+    }
+
+    .task-archive-mode-buttons,
+    .task-archive-mode-button {
+        width: 100%;
+    }
+}
 .task-center-query-controls {
     display: grid;
     gap: 10px;

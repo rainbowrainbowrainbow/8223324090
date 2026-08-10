@@ -5,8 +5,8 @@ Last updated: 2026-08-10.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live production package baseline prepared for this handoff: `0.80.118` (`Task Stale Machine Report`).
-- Release commit prepared for this handoff: the pushed `0.80.118` release commit plus any fast-forward CI-only follow-up required by this release.
+- Live production package baseline prepared for this handoff: `0.80.119` (`Task Archive UX`).
+- Release commit prepared for this handoff: the pushed `0.80.119` release commit plus any fast-forward CI-only follow-up required by this release.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
 - Current released Checkbox migrations: `316` through `331`.
@@ -43,7 +43,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
 - CI hardening gates now include value-free Checkbox OpenAPI compatibility checks, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
-- Release `0.80.118` is the package baseline prepared in this handoff. Reconfirm live version/commit before any future delivery or activation action.
+- Release `0.80.119` is the package baseline prepared in this handoff. Reconfirm live version/commit before any future delivery or activation action.
 - Provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization are part of the released baseline.
 
 ## Not Ready

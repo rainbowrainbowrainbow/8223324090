@@ -19,9 +19,15 @@ test('Task archive view hides system cleanup archive by default and supports exp
     assert.match(tasksPage, /let taskArchiveSystemMode = 'hide'/);
     assert.match(tasksPage, /params\.set\('archive_system', taskArchiveSystemMode\)/);
     assert.match(tasksPage, /data-task-archive-system-mode/);
+    assert.match(tasksPage, /task-archive-summary/);
+    assert.match(tasksPage, /task-archive-mode-help/);
+    assert.match(tasksPage, /task-archive-mode-buttons/);
     assert.match(tasksPage, /Робочий архів/);
     assert.match(tasksPage, /Системний архів/);
     assert.match(tasksPage, /Увесь архів/);
+    assert.match(tasksPage, /Ручні або людські archived tasks/);
+    assert.match(tasksPage, /cleanup-archived tasks/);
+    assert.match(tasksPage, /aria-pressed/);
     assert.match(tasksPage, /taskArchiveSystemMode = \['hide', 'only', 'include'\]\.includes\(nextMode\) \? nextMode : 'hide'/);
 });
 
@@ -34,4 +40,15 @@ test('Task archive system filter is source-only and does not add data mutation p
     assert.ok(helperBlock.includes('SELECT 1 FROM task_action_history'));
     assert.ok(!/UPDATE\s+tasks/i.test(helperBlock));
     assert.ok(!/DELETE\s+FROM\s+tasks/i.test(helperBlock));
+});
+
+test('Task archive explanation is styled as a scoped Task Center surface', () => {
+    const css = fs.readFileSync(path.join(root, 'css', 'pages-tasks.css'), 'utf8');
+    assert.match(css, /\.task-archive-controls/);
+    assert.match(css, /\.task-archive-summary/);
+    assert.match(css, /\.task-archive-mode-help/);
+    assert.match(css, /\.task-archive-mode-button:focus,/);
+    assert.match(css, /\.task-archive-mode-button:focus-visible/);
+    assert.match(css, /body\.dark-mode \.task-archive-summary/);
+    assert.doesNotMatch(css, /body\s*\{\s*overflow-x\s*:\s*hidden/i);
 });

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.118",
+  "version": "0.80.119",
   "eventGenix": {
-    "releaseLabel": "Task Stale Machine Report"
+    "releaseLabel": "Task Archive UX"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.119 - Task Archive UX
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Архів Task Center тепер пояснює системний backlog** - у Library/Archive додано короткий опис різниці між робочим архівом, системним архівом і повним архівом.
+- **Активний режим архіву має зрозумілий count** - кнопка поточного режиму показує count із уже завантаженого `pagination.total`, без додаткових важких API-запитів.
+- **UI-only guard без cleanup logic changes** - regression tests перевіряють labels, modes, focus, no mutation requests і збереження backend archive filter contract.
+
+---
+
 ## v0.80.118 - Task Stale Machine Report
 
 ### Release / Versioning / (10.08.2026) [codex]

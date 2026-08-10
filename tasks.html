@@ -1598,8 +1598,29 @@
             .kanban-col { padding: 10px; }
             .quick-add:not(.task-composer) { flex-wrap: wrap; }
             .quick-add:not(.task-composer) input { flex: 1 1 100%; }
+            .quick-add.task-composer,
             .task-composer-primary,
-            .task-composer-details { grid-template-columns: 1fr; }
+            .task-composer-details,
+            .task-composer-primary > *,
+            .task-composer-details > * {
+                box-sizing: border-box;
+                min-width: 0;
+                max-width: 100%;
+            }
+            .task-composer-primary,
+            .task-composer-details {
+                width: 100%;
+                grid-template-columns: minmax(0, 1fr);
+            }
+            .quick-add.task-composer input,
+            .quick-add.task-composer select,
+            .quick-add.task-composer button,
+            .task-owner-toggle,
+            .task-due-presets {
+                box-sizing: border-box;
+                min-width: 0;
+                max-width: 100%;
+            }
             .task-decomposition-controls,
             .task-saved-template-controls {
                 grid-template-columns: 1fr;
@@ -1644,6 +1665,15 @@
             }
             .board-tab { padding: 6px 10px; font-size: 12px; }
             .cat-chip { padding: 5px 10px; font-size: 11px; }
+        }
+        @media (max-width: 480px) {
+            .task-due-presets {
+                grid-template-columns: repeat(2, minmax(0, 1fr));
+            }
+            .task-due-chip {
+                min-width: 0;
+                max-width: 100%;
+            }
         }
 
         /* Empty state */

@@ -306,7 +306,22 @@ async function installFixtureRoutes(context, baseUrl, state) {
         if (url.pathname === '/api/auth/permissions') return json(route, AUTH_PERMISSIONS);
         if (url.pathname === '/api/business/profile') return json(route, { businessProfile: BUSINESS_PROFILE });
         if (url.pathname === '/api/tasks/owners') return json(route, { success: true, users: [{ id: USER.id, name: USER.name, label: USER.name, role: USER.role }] });
-        if (url.pathname === '/api/tasks/permissions') return json(route, TASK_PERMISSIONS);
+        if (url.pathname === '/api/tasks/permissions') {
+            const canCreateTasks = state.canCreateTasks === true;
+            return json(route, {
+                ...TASK_PERMISSIONS,
+                permissions: {
+                    ...TASK_PERMISSIONS.permissions,
+                    canCreateTasks
+                },
+                capabilities: {
+                    ...TASK_PERMISSIONS.capabilities,
+                    create: canCreateTasks
+                        ? { allowed: true, reasonCode: null }
+                        : TASK_PERMISSIONS.capabilities.create
+                }
+            });
+        }
         if (url.pathname === '/api/tasks/preferences') return json(route, {
             success: true,
             preferences: {
@@ -385,6 +400,56 @@ async function assertNoHorizontalOverflow(page, label) {
     assert.ok(result.scrollWidth <= result.clientWidth + 1, `${label}: document has no horizontal overflow (${JSON.stringify(result)})`);
     assert.ok(result.bodyWidth <= result.viewport + 1, `${label}: body has no horizontal overflow (${JSON.stringify(result)})`);
     assert.deepEqual(result.protruding, [], `${label}: no non-scroll-container element protrudes outside viewport`);
+}
+
+async function assertComposerFitsViewport(page, label) {
+    const result = await page.evaluate(() => {
+        const composer = document.getElementById('quickAdd');
+        const composerRect = composer?.getBoundingClientRect();
+        const selectors = [
+            '.task-composer-primary',
+            '.task-composer-details',
+            '.task-composer-group',
+            '.task-composer-title-wrap',
+            '.task-owner-toggle',
+            '.task-due-presets',
+            '#quickAdd input',
+            '#quickAdd select',
+            '#quickAdd button'
+        ];
+        const controls = [...new Set(selectors.flatMap(selector => [...document.querySelectorAll(selector)]))].map(el => {
+            const rect = el.getBoundingClientRect();
+            const style = getComputedStyle(el);
+            return {
+                selector: el.id ? `#${el.id}` : `.${String(el.className || '').trim().split(/\s+/).join('.')}`,
+                visible: rect.width > 0 && rect.height > 0,
+                left: rect.left,
+                right: rect.right,
+                width: rect.width,
+                boxSizing: style.boxSizing,
+                minWidth: style.minWidth,
+                maxWidth: style.maxWidth
+            };
+        }).filter(item => item.visible);
+        return {
+            viewport: window.innerWidth,
+            composer: composerRect ? {
+                visible: composerRect.width > 0 && composerRect.height > 0,
+                left: composerRect.left,
+                right: composerRect.right,
+                width: composerRect.width
+            } : null,
+            controls
+        };
+    });
+    assert.equal(result.composer?.visible, true, `${label}: quick-add composer is visible`);
+    assert.ok(result.composer.right <= result.viewport + 1, `${label}: composer fits viewport (${JSON.stringify(result)})`);
+    assert.ok(result.controls.length >= 8, `${label}: composer controls are rendered (${JSON.stringify(result)})`);
+    for (const control of result.controls) {
+        assert.ok(control.left >= result.composer.left - 1, `${label}: ${control.selector} stays inside composer left edge (${JSON.stringify(result)})`);
+        assert.ok(control.right <= result.composer.right + 1, `${label}: ${control.selector} stays inside composer right edge (${JSON.stringify(result)})`);
+        assert.ok(control.right <= result.viewport + 1, `${label}: ${control.selector} fits viewport (${JSON.stringify(result)})`);
+    }
 }
 
 function parseCssRgb(value) {
@@ -690,9 +755,11 @@ async function verifyStates(page, baseUrl, state) {
     state.overview = 'normal';
 }
 
-async function verifyResponsiveThemesAndMotion(page, baseUrl) {
+async function verifyResponsiveThemesAndMotion(page, baseUrl, state) {
+    state.canCreateTasks = true;
     await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'dark' });
     await page.evaluate(() => localStorage.setItem('pzp_dark_mode', 'true'));
+    await page.setViewportSize({ width: 320, height: 700 });
     await openPage(page, baseUrl, '?mode=overview');
     await page.evaluate(() => {
         document.body.classList.add('shell-ready');
@@ -701,6 +768,13 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     });
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion preference reaches page');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), true, 'dark mode is applied');
+    await assertComposerFitsViewport(page, '320x700 dark reduced-motion fresh load');
+    await assertNoHorizontalOverflow(page, '320x700 dark reduced-motion fresh load');
+    await page.locator('#taskDetailsToggle').click();
+    await page.waitForSelector('#taskComposerDetails:not([hidden])');
+    await assertComposerFitsViewport(page, '320x700 dark reduced-motion expanded composer');
+    await assertNoHorizontalOverflow(page, '320x700 dark reduced-motion expanded composer');
+    await page.locator('#taskDetailsToggle').click();
     await assertTaskCenterQueryThemeContract(page, 'body.dark-mode');
     await assertTaskCenterOperationalDarkSurfaces(page, baseUrl);
     await page.evaluate(() => {
@@ -714,6 +788,16 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     });
 
     await page.emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'dark' });
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await openPage(page, baseUrl, '?mode=overview');
+    await assertComposerFitsViewport(page, '1440x900 dark normal-motion resize start');
+    await page.setViewportSize({ width: 320, height: 700 });
+    await page.waitForTimeout(75);
+    await assertComposerFitsViewport(page, '320x700 dark normal-motion resized');
+    await assertNoHorizontalOverflow(page, '320x700 dark normal-motion resized');
+    await page.setViewportSize({ width: 1440, height: 900 });
+    await page.waitForTimeout(75);
+    await assertComposerFitsViewport(page, '1440x900 dark normal-motion resize end');
     const viewports = [
         { width: 320, height: 700 },
         { width: 360, height: 760 },
@@ -723,15 +807,23 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     ];
     for (const viewport of viewports) {
         await page.setViewportSize(viewport);
-        await page.waitForTimeout(75);
+        await page.waitForTimeout(350);
+        await assertComposerFitsViewport(page, `${viewport.width}x${viewport.height} dark`);
         await assertNoHorizontalOverflow(page, `${viewport.width}x${viewport.height}`);
     }
 
     await page.evaluate(() => localStorage.setItem('pzp_dark_mode', 'false'));
+    await page.setViewportSize({ width: 320, height: 700 });
     await page.reload({ waitUntil: 'domcontentloaded' });
     await page.waitForSelector('.task-overview');
     assert.equal(await page.locator('body').evaluate(body => body.classList.contains('dark-mode')), false, 'light mode is applied');
     await assertTaskCenterLightThemeUnchanged(page);
+    for (const viewport of viewports) {
+        await page.setViewportSize(viewport);
+        await page.waitForTimeout(350);
+        await assertComposerFitsViewport(page, `${viewport.width}x${viewport.height} light`);
+        await assertNoHorizontalOverflow(page, `${viewport.width}x${viewport.height} light`);
+    }
     await page.locator('.task-center-mode-tab').first().focus();
     const focusStyle = await page.locator('.task-center-mode-tab').first().evaluate(el => {
         const style = getComputedStyle(el);
@@ -745,7 +837,7 @@ async function run() {
     const fixture = await createStaticServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     const context = await browser.newContext({ serviceWorkers: 'block', viewport: { width: 1440, height: 900 } });
-    const state = { overview: 'normal', requests: [], mutations: [], rootNavigations: [] };
+    const state = { overview: 'normal', canCreateTasks: false, requests: [], mutations: [], rootNavigations: [] };
     const pageErrors = [];
     await context.addInitScript(user => {
         localStorage.setItem('pzp_token', 'task-center-read-only-fixture');
@@ -762,7 +854,7 @@ async function run() {
         await verifyLegacyLinks(page, fixture.baseUrl);
         await verifyDrawer(page, fixture.baseUrl);
         await verifyStates(page, fixture.baseUrl, state);
-        await verifyResponsiveThemesAndMotion(page, fixture.baseUrl);
+        await verifyResponsiveThemesAndMotion(page, fixture.baseUrl, state);
         assert.ok(state.requests.some(item => item.includes('/api/tasks/overview')), 'overview uses mocked API');
         assert.ok(state.requests.some(item => item.includes('/api/tasks/team-control')), 'team/planning use mocked API');
         assert.deepEqual(state.mutations, [], 'browser issued no task or preference mutations');

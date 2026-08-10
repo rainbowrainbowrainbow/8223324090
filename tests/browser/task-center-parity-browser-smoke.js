@@ -359,10 +359,32 @@ async function assertNoHorizontalOverflow(page, label) {
         clientWidth: document.documentElement.clientWidth,
         scrollWidth: document.documentElement.scrollWidth,
         bodyWidth: document.body.scrollWidth,
-        viewport: window.innerWidth
+        viewport: window.innerWidth,
+        protruding: [...document.body.querySelectorAll('*')].map(el => {
+            const rect = el.getBoundingClientRect();
+            const parent = el.parentElement ? getComputedStyle(el.parentElement) : null;
+            return {
+                tag: el.tagName.toLowerCase(),
+                id: el.id || '',
+                classes: String(el.className || '').slice(0, 120),
+                left: Math.round(rect.left),
+                right: Math.round(rect.right),
+                width: Math.round(rect.width),
+                parentOverflowX: parent?.overflowX || '',
+                insideSidebar: Boolean(el.closest('#sidebarNav'))
+            };
+        }).filter(item => (
+            item.width > window.innerWidth
+            || item.right > window.innerWidth + 1
+            || item.left < -1
+        ) && !['auto', 'scroll'].includes(item.parentOverflowX)
+            && !(item.insideSidebar && item.left < -1 && item.right <= window.innerWidth + 1))
+            .sort((a, b) => (b.right - window.innerWidth) - (a.right - window.innerWidth))
+            .slice(0, 8)
     }));
     assert.ok(result.scrollWidth <= result.clientWidth + 1, `${label}: document has no horizontal overflow (${JSON.stringify(result)})`);
     assert.ok(result.bodyWidth <= result.viewport + 1, `${label}: body has no horizontal overflow (${JSON.stringify(result)})`);
+    assert.deepEqual(result.protruding, [], `${label}: no non-scroll-container element protrudes outside viewport`);
 }
 
 function parseCssRgb(value) {
@@ -674,7 +696,7 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
     await openPage(page, baseUrl, '?mode=overview');
     await page.evaluate(() => {
         document.body.classList.add('shell-ready');
-        document.body.setAttribute('data-page-group', 'operations');
+        document.body.setAttribute('data-page-group', 'crm');
         document.getElementById('sidebarNav')?.classList.add('collapsed');
     });
     assert.equal(await page.evaluate(() => matchMedia('(prefers-reduced-motion: reduce)').matches), true, 'reduced motion preference reaches page');

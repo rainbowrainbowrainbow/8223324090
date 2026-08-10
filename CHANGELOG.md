@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.111 - Task Center Mobile Shell Guard
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Task Center Mobile Shell Guard** - constrained the mobile `tasks.html` page container to the viewport and hardened the Task Center Chromium smoke with a protruding-element overflow detector that matches the live shell.
+
+---
+
 ## v0.80.110 - Task Center Mobile QA Guard
 
 ### Release / Versioning / (10.08.2026) [codex]

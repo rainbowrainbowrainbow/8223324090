@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.112 - Task Center Mobile Transition Guard
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Task Center Mobile Transition Guard** - disabled mobile Task Center page-container transition/animation during viewport changes and extended the Chromium smoke to verify the live CRM shell under normal-motion resize.
+
+---
+
 ## v0.80.111 - Task Center Mobile Shell Guard
 
 ### Release / Versioning / (10.08.2026) [codex]

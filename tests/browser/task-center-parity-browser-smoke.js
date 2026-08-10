@@ -713,6 +713,7 @@ async function verifyResponsiveThemesAndMotion(page, baseUrl) {
         document.body.classList.add('dark-mode');
     });
 
+    await page.emulateMedia({ reducedMotion: 'no-preference', colorScheme: 'dark' });
     const viewports = [
         { width: 320, height: 700 },
         { width: 360, height: 760 },

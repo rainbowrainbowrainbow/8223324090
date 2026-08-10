@@ -5,8 +5,8 @@ Last updated: 2026-08-10.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live production package baseline prepared for this handoff: `0.80.116` (`Task Archive Hygiene View`).
-- Release commit prepared for this handoff: `9013b3cd` plus any fast-forward CI-only follow-up required by this release.
+- Live production package baseline prepared for this handoff: `0.80.117` (`Task Cleanup Operator Toolkit`).
+- Release commit prepared for this handoff: the pushed `0.80.117` release commit plus any fast-forward CI-only follow-up required by this release.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
 - Current released Checkbox migrations: `316` through `331`.

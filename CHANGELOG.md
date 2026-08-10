@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.117 - Task Cleanup Operator Toolkit
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Cleanup waves стали відтворюваними** - додано tracked operator toolkit для dry-run manifests і guarded apply без тимчасових `.codex-temp` scripts.
+- **Fail-closed apply guardrails** - production archive вимагає exact classifier, count, membership checksum, deterministic archive reason і rollback manifest; `DELETE` та `status=done` не підтримуються.
+- **CI захищає safety contract** - canonical verify запускає тести на read-only transaction guard, no-PII stdout, repeated UPDATE predicates і drift cancellation.
+
+---
+
 ## v0.80.116 - Task Archive Hygiene View
 
 ### Release / Versioning / (10.08.2026) [codex]

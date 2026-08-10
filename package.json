@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.112",
+  "version": "0.80.113",
   "eventGenix": {
-    "releaseLabel": "Task Center Mobile Transition Guard"
+    "releaseLabel": "Task Center 320px Composer Guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

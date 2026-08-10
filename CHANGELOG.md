@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.113 - Task Center 320px Composer Guard
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Quick-add composer більше не обрізається на 320 px** - мобільна сітка тепер стискається в межах контейнера, а пресети дати переходять у компактне компонування на вузьких екранах.
+- **Chromium regression покриває видимий composer** - dark/light, 320/360/390/768/1440 px, expanded state, normal/reduced motion і desktop-mobile-desktop resize перевіряються без task mutations.
+
+---
+
 ## v0.80.112 - Task Center Mobile Transition Guard
 
 ### Release / Versioning / (10.08.2026) [codex]

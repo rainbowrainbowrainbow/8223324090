@@ -318,7 +318,6 @@ async function runSuite(testDb, testFile) {
         serverEnv.CHECKBOX_INTEGRATION_ENABLED = 'true';
         serverEnv.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'true';
         serverEnv.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
-        serverEnv.CHECKBOX_ALLOW_LOCAL_MOCK_HOST = 'true';
         serverEnv.CHECKBOX_EXPECT_IS_TEST = 'true';
         serverEnv.CHECKBOX_BROWSER_MOCK_PORT = String(checkboxBrowserMockPort);
         serverEnv.PAYMENT_OUTBOX_WAKEUP_DISABLED = 'true';

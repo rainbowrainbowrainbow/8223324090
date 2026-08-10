@@ -897,11 +897,41 @@ test('runtime config fails closed for credential ref collisions and non-allowlis
         error => error instanceof CheckboxClientError && error.code === 'checkbox_runtime_base_url_not_allowed'
     );
 
+    assert.throws(
+        () => loadCheckboxRuntimeConfig({
+            credentialRef: 'park-middle',
+            licenseRef: 'park-middle',
+            env: {
+                CHECKBOX_EXPECT_IS_TEST: 'false',
+                CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://dev.checkbox.ua',
+                CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
+                CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
+                CHECKBOX_PARK_MIDDLE_LICENSE_KEY: 'license-secret'
+            }
+        }),
+        error => error instanceof CheckboxClientError && error.code === 'checkbox_runtime_base_url_not_allowed'
+    );
+
+    assert.throws(
+        () => loadCheckboxRuntimeConfig({
+            credentialRef: 'park-middle',
+            licenseRef: 'park-middle',
+            env: {
+                CHECKBOX_EXPECT_IS_TEST: 'false',
+                CHECKBOX_PARK_MIDDLE_BASE_URL: 'http://127.0.0.1:18080',
+                CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
+                CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
+                CHECKBOX_PARK_MIDDLE_LICENSE_KEY: 'license-secret'
+            }
+        }),
+        error => error instanceof CheckboxClientError && error.code === 'checkbox_runtime_base_url_not_allowed'
+    );
+
     const config = loadCheckboxRuntimeConfig({
         credentialRef: 'park-middle',
         licenseRef: 'park-middle',
+        allowLocalMockHost: true,
         env: {
-            CHECKBOX_ALLOW_LOCAL_MOCK_HOST: 'true',
             CHECKBOX_EXPECT_IS_TEST: 'false',
             CHECKBOX_PARK_MIDDLE_BASE_URL: 'http://127.0.0.1:18080',
             CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',

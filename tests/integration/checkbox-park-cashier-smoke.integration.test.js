@@ -506,7 +506,6 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY,
             CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY,
             CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID,
-            CHECKBOX_ALLOW_LOCAL_MOCK_HOST: process.env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST,
             CHECKBOX_EXPECT_IS_TEST: process.env.CHECKBOX_EXPECT_IS_TEST,
             PAYMENT_OUTBOX_WAKEUP_DISABLED: process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED
         };
@@ -533,7 +532,6 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY = 'mock-license';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY = 'mock-access';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID = 'eventgenix-smoke-device';
-        process.env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST = 'true';
         process.env.CHECKBOX_EXPECT_IS_TEST = 'true';
         process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED = 'true';
     });

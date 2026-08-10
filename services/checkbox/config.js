@@ -7,6 +7,10 @@ const DEFAULT_CLIENT_NAME = 'EventGenix Checkbox Sandbox QA';
 const DEFAULT_CLIENT_VERSION = 'eventgenix-checkbox-sandbox-smoke';
 const DEFAULT_RUNTIME_CLIENT_NAME = 'EventGenix Checkbox Runtime';
 const DEFAULT_RUNTIME_CLIENT_VERSION = 'eventgenix-checkbox-runtime';
+const OFFICIAL_CHECKBOX_API_HOSTS = Object.freeze([
+    'api.checkbox.in.ua',
+    'api.checkbox.ua'
+]);
 
 function boolEnv(value) {
     return /^(1|true|yes|on|sandbox)$/i.test(String(value || '').trim());
@@ -90,7 +94,7 @@ function assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost = false } = {}) {
     }
     const host = parsed.hostname.toLowerCase();
     const isLocalHttp = allowLocalMockHost === true && parsed.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(host);
-    const isOfficialHttps = parsed.protocol === 'https:' && (host === 'api.checkbox.in.ua' || host === 'api.checkbox.ua' || host.endsWith('.checkbox.in.ua') || host.endsWith('.checkbox.ua'));
+    const isOfficialHttps = parsed.protocol === 'https:' && OFFICIAL_CHECKBOX_API_HOSTS.includes(host);
     if (!isLocalHttp && !isOfficialHttps) {
         throw new CheckboxClientError('checkbox_runtime_base_url_not_allowed', 'Checkbox runtime base URL must be an official HTTPS Checkbox host; local HTTP is allowed only through explicit test injection', {
             status: 503,
@@ -101,7 +105,7 @@ function assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost = false } = {}) {
     return parsed.origin;
 }
 
-function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRef = credentialRef, deviceRef = credentialRef } = {}) {
+function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRef = credentialRef, deviceRef = credentialRef, allowLocalMockHost = false } = {}) {
     const cashierRef = normalizeCredentialRef(credentialRef);
     const registerRef = normalizeCredentialRef(licenseRef);
     const deviceRuntimeRef = normalizeCredentialRef(deviceRef);
@@ -128,7 +132,7 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
         });
     }
     return {
-        baseUrl: assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost: boolEnv(env.CHECKBOX_ALLOW_LOCAL_MOCK_HOST) }).replace(/\/+$/, ''),
+        baseUrl: assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost }).replace(/\/+$/, ''),
         login,
         password,
         licenseKey,
@@ -161,10 +165,9 @@ function assertSandboxBaseUrl(baseUrl) {
         throw new CheckboxClientError('checkbox_sandbox_base_url_not_https', 'CHECKBOX_SANDBOX_BASE_URL must use HTTPS', { status: 2 });
     }
     const host = parsed.hostname.toLowerCase();
-    const isOfficial = host === 'api.checkbox.in.ua' || host === 'api.checkbox.ua' || host.endsWith('.checkbox.in.ua') || host.endsWith('.checkbox.ua');
-    const isExplicitTestHost = /(sandbox|dev|test)/.test(host);
-    if (!isOfficial && !isExplicitTestHost) {
-        throw new CheckboxClientError('checkbox_sandbox_base_url_not_allowed', 'Refusing Checkbox QA because base URL host is not an official Checkbox HTTPS host or explicit test host', {
+    const isOfficial = OFFICIAL_CHECKBOX_API_HOSTS.includes(host);
+    if (!isOfficial) {
+        throw new CheckboxClientError('checkbox_sandbox_base_url_not_allowed', 'Refusing Checkbox QA because base URL host is not an exact official Checkbox HTTPS API host', {
             status: 2,
             details: { host }
         });
@@ -226,6 +229,7 @@ module.exports = {
     DEFAULT_OPENAPI_URL,
     DEFAULT_RUNTIME_CLIENT_NAME,
     DEFAULT_RUNTIME_CLIENT_VERSION,
+    OFFICIAL_CHECKBOX_API_HOSTS,
     credentialEnvPrefix,
     assertNoCredentialRefCollisions,
     assertRuntimeBaseUrl,

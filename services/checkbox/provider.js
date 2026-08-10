@@ -395,9 +395,7 @@ function trustedCheckboxOrigin(baseUrl) {
 function isTrustedCheckboxHost(hostname) {
     const host = String(hostname || '').toLowerCase();
     return host === 'api.checkbox.in.ua'
-        || host === 'api.checkbox.ua'
-        || host.endsWith('.checkbox.in.ua')
-        || host.endsWith('.checkbox.ua');
+        || host === 'api.checkbox.ua';
 }
 
 function safeCheckboxArtifactUrl(baseUrl, value) {
@@ -989,7 +987,7 @@ function runtimeContextKey({ fiscalProfileId, fiscalRegisterId }) {
     return `${profileId}:${registerId}`;
 }
 
-function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCache } = {}) {
+function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCache, allowLocalMockHost = false } = {}) {
     return {
         isEnabled() {
             return isCheckboxIntegrationEnabled(env);
@@ -997,7 +995,7 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
         canResolveRefs({ credentialRef, licenseRef } = {}) {
             if (!this.isEnabled()) return false;
             try {
-                loadCheckboxRuntimeConfig({ env, credentialRef, licenseRef });
+                loadCheckboxRuntimeConfig({ env, credentialRef, licenseRef, allowLocalMockHost });
                 return true;
             } catch {
                 return false;
@@ -1008,7 +1006,7 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                 throw new CheckboxProviderConfigError('checkbox_integration_disabled', 'Checkbox integration is disabled');
             }
             const refs = refsFromContext(context);
-            const config = loadCheckboxRuntimeConfig({ env, ...refs });
+            const config = loadCheckboxRuntimeConfig({ env, ...refs, allowLocalMockHost });
             return createProviderFromConfig(config, { fetchImpl, tokenCache });
         },
         async getEligibleRuntimeContexts(dbPool) {

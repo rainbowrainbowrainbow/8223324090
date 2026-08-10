@@ -8,8 +8,9 @@ Do not commit real values, passwords, license keys, access keys, PINs, tokens, p
 
 ```dotenv
 CHECKBOX_INTEGRATION_ENABLED=false
-EVENTGENIX_CASHIER_PRO_ENABLED=false
+CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false
 CHECKBOX_WEBHOOK_ENABLED=false
+EVENTGENIX_CASHIER_PRO_ENABLED=false
 CHECKBOX_WEBHOOK_SIGNING_SECRET=
 ```
 
@@ -28,8 +29,9 @@ CHECKBOX_<CASHIER_REF>_DEVICE_ID=
 
 Rules:
 
-- `BASE_URL` must be an official HTTPS Checkbox host.
-- Local HTTP mock hosts require explicit test-only injection and must not be used for production activation.
+- `BASE_URL` must be an exact official HTTPS Checkbox API host: `https://api.checkbox.in.ua` or `https://api.checkbox.ua`.
+- Local HTTP mock hosts require explicit test-only provider injection and must not be configurable through production environment variables.
+- `CHECKBOX_ACCEPT_PAYMENTS_ENABLED` stays `false` until a separate controlled first-receipt activation task.
 - Global fallback variables such as `CHECKBOX_LOGIN`, `CHECKBOX_PASSWORD`, or `CHECKBOX_LICENSE_KEY` are intentionally unsupported.
 - The database stores only logical refs, never raw credentials.
 - `CHECKBOX_WEBHOOK_SIGNING_SECRET` stays empty until a separate webhook activation task configures the official Checkbox callback. Do not commit or paste the real value into docs, CLI args, tests, logs, or chat.

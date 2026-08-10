@@ -5,6 +5,7 @@ const crypto = require('node:crypto');
 const { pool } = require('../db');
 const { BUSINESS_CONTEXTS } = require('../services/businessContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
+const { createActionPinHash, sanitizePin } = require('../services/payments/fiscalApprovals');
 
 const CRM_PROFILE_KEY = 'event_genix';
 const LOCATION_ALIAS = 'park';
@@ -15,6 +16,7 @@ const ITEM_TYPE = 'admission_ticket';
 const APPLY_CONFIRM_ENV = 'EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY';
 const APPLY_CONFIRM_VALUE = 'true';
 const ACTION_PIN_ENV = 'CHECKBOX_PILOT_ACTION_PIN';
+const ACTION_PIN_USER_ENV_PREFIX = 'CHECKBOX_PILOT_ACTION_PIN_USER_';
 
 const MODES = Object.freeze([
     'dry-run',
@@ -398,15 +400,54 @@ function requiresActionPin(capabilities = []) {
     return capabilities.some(capability => PIN_REQUIRED_CAPABILITIES.includes(capability));
 }
 
-function actionPinHash(env, capabilities) {
-    if (!requiresActionPin(capabilities)) return null;
-    const rawPin = String(env[ACTION_PIN_ENV] || '');
-    if (!rawPin.trim()) {
-        throw new PilotConfigError('pilot_config_action_pin_env_missing', `${ACTION_PIN_ENV} is required only for future approval/PRO bindings`);
+function actionPinEnvNameForUser(userId) {
+    return `${ACTION_PIN_USER_ENV_PREFIX}${Number(userId)}`;
+}
+
+function resolveActionPinsByUser(env, capabilities, userIds = []) {
+    if (!requiresActionPin(capabilities)) return new Map();
+    const ids = [...new Set((userIds || []).map(Number).filter(id => Number.isSafeInteger(id) && id > 0))];
+    if (!ids.length) {
+        throw new PilotConfigError('pilot_config_action_pin_user_required', 'Action PIN bootstrap requires exact user ids');
     }
-    const salt = crypto.randomBytes(16).toString('base64url');
-    const hash = crypto.scryptSync(rawPin, salt, 64).toString('base64url');
-    return `scrypt$${salt}$${hash}`;
+    const pins = new Map();
+    if (ids.length === 1) {
+        const userEnvName = actionPinEnvNameForUser(ids[0]);
+        const rawPin = String(env[userEnvName] || env[ACTION_PIN_ENV] || '');
+        if (!rawPin.trim()) {
+            throw new PilotConfigError('pilot_config_action_pin_env_missing', `${userEnvName} or ${ACTION_PIN_ENV} is required only for future approval/PRO bindings`);
+        }
+        pins.set(ids[0], sanitizePin(rawPin));
+        return pins;
+    }
+    if (String(env[ACTION_PIN_ENV] || '').trim()) {
+        throw new PilotConfigError('pilot_config_shared_action_pin_forbidden', `${ACTION_PIN_ENV} is forbidden for multiple PRO users; use ${ACTION_PIN_USER_ENV_PREFIX}<userId> per user`);
+    }
+    const used = new Map();
+    for (const userId of ids) {
+        const envName = actionPinEnvNameForUser(userId);
+        const rawPin = String(env[envName] || '');
+        if (!rawPin.trim()) {
+            throw new PilotConfigError('pilot_config_action_pin_env_missing', `${envName} is required for future approval/PRO binding user ${userId}`);
+        }
+        const pin = sanitizePin(rawPin);
+        const otherUserId = used.get(pin);
+        if (otherUserId && otherUserId !== userId) {
+            throw new PilotConfigError('pilot_config_shared_action_pin_forbidden', 'Future approval/PRO bindings require distinct per-user action PIN values');
+        }
+        used.set(pin, userId);
+        pins.set(userId, pin);
+    }
+    return pins;
+}
+
+async function actionPinHashesByUser(env, capabilities, userIds = []) {
+    const pins = resolveActionPinsByUser(env, capabilities, userIds);
+    const hashes = new Map();
+    for (const [userId, pin] of pins.entries()) {
+        hashes.set(userId, await createActionPinHash(pin));
+    }
+    return hashes;
 }
 
 function publicPlan(plan) {
@@ -713,7 +754,7 @@ async function applyPlan(client, plan, env = process.env) {
     }
     await assertNoExistingConflicts(client, plan);
     const beforeSnapshot = {};
-    const pinHash = actionPinHash(env, plan.capabilities);
+    const pinHashes = await actionPinHashesByUser(env, plan.capabilities, plan.cashierUserIds);
     const profile = await client.query(
         `INSERT INTO fiscal_profiles (
              crm_profile_key, legal_entity_key, legal_entity_name, tax_identifier,
@@ -776,6 +817,7 @@ async function applyPlan(client, plan, env = process.env) {
     const fiscalRegisterId = register.rows[0].id;
 
     for (const userId of plan.cashierUserIds) {
+        const pinHash = pinHashes.get(userId) || null;
         await client.query(
             `INSERT INTO fiscal_cashier_bindings (
                  fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
@@ -1021,7 +1063,7 @@ async function rotateBinding(client, plan, env = process.env) {
     if (!beforeStatus.found || !beforeStatus.fiscalRegisterId || !beforeStatus.fiscalLocationId) {
         throw new PilotConfigError('pilot_config_register_missing', 'Configured park middle register does not exist');
     }
-    const pinHash = actionPinHash(env, plan.capabilities);
+    const pinHashes = await actionPinHashesByUser(env, plan.capabilities, plan.cashierUserIds);
     await client.query(
         `UPDATE fiscal_cashier_bindings
             SET status = 'suspended',
@@ -1032,6 +1074,7 @@ async function rotateBinding(client, plan, env = process.env) {
         [beforeStatus.fiscalProfileId, beforeStatus.fiscalRegisterId]
     );
     for (const userId of plan.cashierUserIds) {
+        const pinHash = pinHashes.get(userId) || null;
         await client.query(
             `INSERT INTO fiscal_cashier_bindings (
                  fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
@@ -1264,10 +1307,13 @@ if (require.main === module) {
 
 module.exports = {
     ACTION_PIN_ENV,
+    ACTION_PIN_USER_ENV_PREFIX,
     APPLY_CONFIRM_ENV,
     DEFAULT_CAPABILITIES,
     PIN_REQUIRED_CAPABILITIES,
     PilotConfigError,
+    actionPinEnvNameForUser,
+    actionPinHashesByUser,
     activeAdmissionTicketCodes,
     applyPlan,
     configHash,

@@ -2,11 +2,15 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 
 const {
+    ACTION_PIN_ENV,
+    actionPinEnvNameForUser,
+    actionPinHashesByUser,
     PilotConfigError,
     parseArgs,
     publicPlan,
     run
 } = require('../scripts/configure-checkbox-park-pilot');
+const { verifyActionPin } = require('../services/payments/fiscalApprovals');
 
 const baseArgs = [
     '--legal-entity-key', 'park_fop',
@@ -274,6 +278,7 @@ class FakePilotConfigClient {
                 provider_cashier_id: params[6],
                 provider_cashier_login_ref: params[7],
                 capability_scope: params[8],
+                action_pin_hash: params[9],
                 status: 'active'
             });
             return { rows: [] };
@@ -441,4 +446,57 @@ test('park pilot config rejects credential refs that collide to the same env pre
         ]),
         error => error instanceof PilotConfigError && error.code === 'pilot_config_credential_ref_collision'
     );
+});
+
+test('park pilot config thin MVP bindings do not require action PIN', async () => {
+    const hashes = await actionPinHashesByUser({}, ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open'], [50]);
+    assert.equal(hashes.size, 0);
+});
+
+test('park pilot config uses runtime-compatible bcrypt action PIN hashes for future PRO bindings', async () => {
+    const pin = '837261';
+    const hashes = await actionPinHashesByUser(
+        { [ACTION_PIN_ENV]: pin },
+        ['payments.view', 'fiscal.service_out.approve'],
+        [50]
+    );
+    const hash = hashes.get(50);
+    assert.match(hash, /^\$2[aby]\$/);
+    assert.equal(await verifyActionPin(pin, hash), true);
+    assert.equal(await verifyActionPin('837262', hash), false);
+});
+
+test('park pilot config requires per-user distinct action PINs for future multi-user PRO bindings', async () => {
+    const proCapabilities = ['payments.view', 'fiscal.service_out.approve'];
+    await assert.rejects(
+        () => actionPinHashesByUser(
+            { [ACTION_PIN_ENV]: '837261' },
+            proCapabilities,
+            [50, 60]
+        ),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_shared_action_pin_forbidden'
+    );
+    await assert.rejects(
+        () => actionPinHashesByUser(
+            {
+                [actionPinEnvNameForUser(50)]: '837261',
+                [actionPinEnvNameForUser(60)]: '837261'
+            },
+            proCapabilities,
+            [50, 60]
+        ),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_shared_action_pin_forbidden'
+    );
+    const hashes = await actionPinHashesByUser(
+        {
+            [actionPinEnvNameForUser(50)]: '837261',
+            [actionPinEnvNameForUser(60)]: '941726'
+        },
+        proCapabilities,
+        [50, 60]
+    );
+    assert.equal(hashes.size, 2);
+    assert.equal(await verifyActionPin('837261', hashes.get(50)), true);
+    assert.equal(await verifyActionPin('941726', hashes.get(60)), true);
+    assert.notEqual(hashes.get(50), hashes.get(60));
 });

@@ -49,7 +49,7 @@ const files = [...new Set(SCOPES.flatMap(walk))]
 const failures = [];
 const pinPattern = /\b(?:pin|PIN|ПІН|пін)[^.\n]{0,40}\b1234\b|\b1234\b[^.\n]{0,40}(?:pin|PIN|ПІН|пін)/;
 const credentialLiteralPattern = /\b(?:password|license[_-]?key|access[_-]?key|webhook[_-]?secret|token)\s*[:=]\s*['"](?![^'"]*(?:mock|test|example|placeholder|integration|sandbox|redacted|secret|password|license|access|token|qwerty|abc123))[^'"]{8,}['"]/i;
-const productionMutationLinePattern = /^\s*(CHECKBOX_INTEGRATION_ENABLED|EVENTGENIX_CASHIER_PRO_ENABLED)\s*=\s*true\b/i;
+const productionMutationLinePattern = /^\s*(CHECKBOX_INTEGRATION_ENABLED|CHECKBOX_ACCEPT_PAYMENTS_ENABLED|CHECKBOX_WEBHOOK_ENABLED|EVENTGENIX_CASHIER_PRO_ENABLED)\s*=\s*true\b/i;
 
 for (const file of files) {
     const body = fs.readFileSync(file, 'utf8');

@@ -5,6 +5,8 @@ Status: production deployment runbook for disabled fiscal mode. Production activ
 ## Default production state
 
 - `CHECKBOX_INTEGRATION_ENABLED=false`.
+- `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false`.
+- `CHECKBOX_WEBHOOK_ENABLED=false`.
 - `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
 - Checkbox webhook configuration is not applied.
 - Fiscal register mappings remain disabled until an explicit operator preflight and enable command.
@@ -20,6 +22,7 @@ Status: production deployment runbook for disabled fiscal mode. Production activ
 6. Run `npm run configure:checkbox:park -- preflight` with value-free command history or a sanitized operator shell.
 7. Run the Checkbox test-mode smoke only when `/cashier/me` proves the cashier is test-mode.
 8. Enable the pilot register only after successful preflight and explicit activation approval.
+9. Turn on `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true` only in the separate controlled payment activation task.
 
 ## First test receipt
 
@@ -71,18 +74,18 @@ Refunds are not active in thin MVP production mode. Until Cashier PRO is explici
 
 There are two different stops:
 
-- Stop new payments: set the payment acceptance gate off or disable the specific register mapping so cashiers cannot confirm new money.
+- Stop new payments: set `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false` or disable the specific register mapping so cashiers cannot confirm new money.
 - Full emergency stop: set `CHECKBOX_INTEGRATION_ENABLED=false` to stop new provider HTTP mutations.
 
 Rollback procedure:
 
-1. Stop new payments first. Existing paid orders must stay visible in unresolved operations.
+1. Stop new payments first with `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false`. Existing paid orders must stay visible in unresolved operations.
 2. Drain already-paid queue where safe:
    - before external mutation, requeue only the safe pre-sale stage;
    - at or after `sale_submit`, use lookup-only recovery with the same provider receipt UUID;
    - never create a second sale UUID for the same payment order.
 3. If provider or code behavior is unsafe, use the full emergency kill switch: `CHECKBOX_INTEGRATION_ENABLED=false`.
-4. Keep `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
+4. Keep `CHECKBOX_WEBHOOK_ENABLED=false` and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
 5. If the page or routes regress, deploy the previous verified Railway release commit.
 6. Run `npm run version:smoke -- https://8223324090-production.up.railway.app`.
 7. Confirm `/cashier-payments` is either unavailable or shows disabled state.

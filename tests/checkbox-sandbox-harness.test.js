@@ -18,8 +18,9 @@ test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', 
   assert.equal(assertSandboxBaseUrl('https://api.checkbox.in.ua'), 'https://api.checkbox.in.ua');
   assert.equal(assertSandboxBaseUrl('https://api.checkbox.ua'), 'https://api.checkbox.ua');
   assert.throws(() => assertSandboxBaseUrl('http://api.checkbox.in.ua'), /must use HTTPS/);
-  assert.throws(() => assertSandboxBaseUrl('https://evil.example'), /not an official Checkbox HTTPS host/);
-  assert.equal(assertSandboxBaseUrl('https://sandbox.checkbox.example'), 'https://sandbox.checkbox.example');
+  assert.throws(() => assertSandboxBaseUrl('https://evil.example'), /exact official Checkbox HTTPS API host/);
+  assert.throws(() => assertSandboxBaseUrl('https://sandbox.checkbox.example'), /exact official Checkbox HTTPS API host/);
+  assert.throws(() => assertSandboxBaseUrl('https://dev.checkbox.ua'), /exact official Checkbox HTTPS API host/);
   const config = loadCheckboxSandboxConfig({
     CHECKBOX_SANDBOX_BASE_URL: 'https://api.checkbox.in.ua',
     CHECKBOX_SANDBOX_LOGIN: 'cashier',

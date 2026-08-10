@@ -2,14 +2,14 @@
 
 Status: implementation contract for a disabled production MVP. Production Checkbox activation is out of scope.
 
-Last reviewed: 2026-08-09.
+Last reviewed: 2026-08-10.
 
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Latest local Checkbox hardening package baseline in this worktree: `0.80.103` (`Checkbox Fiscal Hardening`).
-- Current accumulated hardening worktree: `.codex-temp/checkbox-final-software-hardening`.
-- Current accumulated hardening branch: `codex/checkbox-final-software-hardening`.
+- Live Checkbox hardening package baseline checked for this handoff: `0.80.108` (`Checkbox Fiscal Hardening`).
+- Live commit checked for this handoff: `a6b2366167dd27c08d55cb7b774cce6074d6b1fb`.
+- Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 
 All follow-up implementation or release tasks must start from the newest live source confirmed by the release staleness guard, not from stale chat history, stale docs, or a dirty `.codex-temp` branch.
@@ -20,7 +20,7 @@ All follow-up implementation or release tasks must start from the newest live so
 - ReDoc UI: `https://api.checkbox.in.ua/api/redoc`.
 - Swagger UI: `https://api.checkbox.in.ua/api/docs`.
 - OpenAPI JSON: `https://api.checkbox.in.ua/api/openapi.json`.
-- OpenAPI version reviewed: `2.104.1+7f81a60c`, OpenAPI `3.1.0`.
+- OpenAPI version reviewed during this task: `2.103.0+4bf7154a`, OpenAPI `3.1.0`.
 
 Relevant capabilities confirmed in the current OpenAPI contract:
 
@@ -51,7 +51,9 @@ Cashier PRO is Phase 2 and must stay disabled separately. Phase 2 includes servi
 ## Production Gates
 
 - Checkbox integration is disabled by default.
+- Payment acceptance is disabled by default even if the runtime adapter is later enabled for readiness or recovery tests.
 - Cashier PRO is disabled by a separate gate.
+- Checkbox webhook processing is disabled by default.
 - No production Checkbox call is allowed without a separate activation task.
 - No production Checkbox credentials, register IDs, webhook secrets, or provider PIN values may be committed, documented, logged, or stored as raw database values.
 - Real provider IDs are resolved through server-side configuration/mapping, not hardcoded code or fixtures.
@@ -67,6 +69,8 @@ Required logical gates for follow-up tasks:
 | Gate | Default | Scope |
 | --- | --- | --- |
 | `CHECKBOX_INTEGRATION_ENABLED` | `false` | Allows runtime provider calls and outbox processing for the thin MVP only |
+| `CHECKBOX_ACCEPT_PAYMENTS_ENABLED` | `false` | Allows cashier money confirmation only after provider-aware readiness and activation approval |
+| `CHECKBOX_WEBHOOK_ENABLED` | `false` | Allows Checkbox webhook route mutations only after a separate webhook activation task |
 | `EVENTGENIX_CASHIER_PRO_ENABLED` | `false` | Allows Phase 2 operational cashier workflows |
 | Register `feature_enabled` | `false` | Allows a specific fiscal register mapping after global enablement |
 
@@ -76,7 +80,7 @@ Required logical gates for follow-up tasks:
 | --- | --- | --- | --- |
 | Ledger schema | Additive fiscal/payment tables, BIGINT money, immutable item snapshots, idempotency constraints, explicit fiscal item mapping table | Production pilot mapping data still requires separate activation | Additional operational reporting and reconciliation revisions |
 | Payment workflow | Server-side order preview, cash/card manual confirmation, received/change snapshot, one local fiscal operation and outbox job | Real admission source activation and accountant-approved mapping data | Split/partial/prepayment not in scope |
-| Checkbox adapter | Runtime provider factory, worker-client DTO bridge, receipt UUID lookup, status/error normalization, sandbox harness | Real Checkbox sandbox/prod credentials are not configured in repository | Broader provider operations after MVP sale path |
+| Checkbox adapter | Runtime provider factory, worker-client DTO bridge, receipt UUID lookup, status/error normalization, sandbox harness, exact official API host allowlist | Real Checkbox sandbox/prod credentials are not configured in repository | Broader provider operations after MVP sale path |
 | Outbox/recovery | Worker skips claiming when disabled/unconfigured, uses locks/batches/retry/backoff/dead letter, and lookup-before-resale | Production integration gate remains disabled | Manual reconciliation UI and operations |
 | UI | `/cashier-payments` thin page and menu exist; creator and art director access exists; Phase 2 UI is gated | Live production QA must stay read-only while integration is disabled | Service in/out, close checklist, refunds, reports |
 | Permissions | Narrow capabilities, user/profile/location/register bindings, and `capability_scope` enforcement exist | Production bindings require separate operator configuration | Supervisor PIN approval workflows |
@@ -175,7 +179,7 @@ These are unresolved and block production fiscalization:
 - Whether service in/out is operationally allowed and who may approve it for Phase 2.
 - Preschool/day-care legal profile, FOP, register, cashier, item names, and taxes for a separate future activation.
 
-Until these are resolved, `CHECKBOX_INTEGRATION_ENABLED` and register-level `feature_enabled` must remain disabled in production.
+Until these are resolved, `CHECKBOX_INTEGRATION_ENABLED`, `CHECKBOX_ACCEPT_PAYMENTS_ENABLED`, `CHECKBOX_WEBHOOK_ENABLED`, and register-level `feature_enabled` must remain disabled in production.
 
 ## Implementation Guardrails
 

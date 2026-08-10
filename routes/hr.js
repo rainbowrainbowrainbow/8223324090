@@ -54,6 +54,11 @@ const {
 } = require('../services/hrAttendance');
 const { listTaskOwnerCandidates } = require('../services/taskExecution');
 const {
+    TASK_PERFORMANCE_POLICY_VERSION,
+    taskKpiEligibleSql,
+    taskKpiMachineSignalSql
+} = require('../services/taskPerformancePolicy');
+const {
     ONBOARDING_TASK_SOURCE_TYPE,
     assignOnboardingResponsible,
     attachOnboardingAssignments,
@@ -2932,13 +2937,29 @@ async function loadKpiSnapshot(monthValue, db = pool) {
         ),
         task_stats AS (
             SELECT ep.staff_id,
-                   COUNT(t.id)::int AS tasks_assigned,
-                   COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done', 'completed'))::int AS tasks_done,
+                   COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                    COUNT(t.id) FILTER (
-                       WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+                       WHERE ${taskKpiEligibleSql('t')}
+                         AND COALESCE(t.status, 'todo') IN ('done', 'completed')
+                   )::int AS tasks_done,
+                   COUNT(t.id) FILTER (
+                       WHERE ${taskKpiEligibleSql('t')}
+                         AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
                          AND t.deadline IS NOT NULL
                          AND t.deadline::date <= p.date_to
-                   )::int AS tasks_overdue
+                   )::int AS tasks_overdue,
+                   COUNT(t.id) FILTER (
+                       WHERE ${taskKpiEligibleSql('t')}
+                         AND ${taskKpiMachineSignalSql('t')}
+                   )::int AS tasks_machine_accepted,
+                   COUNT(t.id) FILTER (
+                       WHERE NOT ${taskKpiEligibleSql('t')}
+                         AND ${taskKpiMachineSignalSql('t')}
+                   )::int AS tasks_machine_excluded,
+                   COUNT(t.id) FILTER (
+                       WHERE NOT ${taskKpiEligibleSql('t')}
+                         AND NOT ${taskKpiMachineSignalSql('t')}
+                   )::int AS tasks_ambiguous_excluded
             FROM tasks t
             JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
             JOIN params p ON (
@@ -2992,6 +3013,9 @@ async function loadKpiSnapshot(monthValue, db = pool) {
                    COALESCE(tks.tasks_assigned, 0)::int AS tasks_assigned,
                    COALESCE(tks.tasks_done, 0)::int AS tasks_done,
                    COALESCE(tks.tasks_overdue, 0)::int AS tasks_overdue,
+                   COALESCE(tks.tasks_machine_accepted, 0)::int AS tasks_machine_accepted,
+                   COALESCE(tks.tasks_machine_excluded, 0)::int AS tasks_machine_excluded,
+                   COALESCE(tks.tasks_ambiguous_excluded, 0)::int AS tasks_ambiguous_excluded,
                    COALESCE(os.onboarding_total, 0)::int AS onboarding_total,
                    COALESCE(os.onboarding_completed, 0)::int AS onboarding_completed,
                    COALESCE(os.onboarding_active, 0)::int AS onboarding_active,
@@ -3051,7 +3075,10 @@ async function loadKpiSnapshot(monthValue, db = pool) {
         task_kpi: {
             tasks_assigned: Number(row.tasks_assigned || 0),
             tasks_done: Number(row.tasks_done || 0),
-            tasks_overdue: Number(row.tasks_overdue || 0)
+            tasks_overdue: Number(row.tasks_overdue || 0),
+            tasks_machine_accepted: Number(row.tasks_machine_accepted || 0),
+            tasks_machine_excluded: Number(row.tasks_machine_excluded || 0),
+            tasks_ambiguous_excluded: Number(row.tasks_ambiguous_excluded || 0)
         },
         task_completion_rate: row.task_completion_rate === null ? null : Number(row.task_completion_rate),
         development_kpi: {
@@ -3077,10 +3104,14 @@ async function loadKpiSnapshot(monthValue, db = pool) {
             staffRows: data.length,
             scheduleRows: data.filter(row => row.days_scheduled > 0).length,
             taskRows: data.filter(row => row.task_kpi.tasks_assigned > 0).length,
+            taskMachineAccepted: data.reduce((total, row) => total + row.task_kpi.tasks_machine_accepted, 0),
+            taskMachineExcluded: data.reduce((total, row) => total + row.task_kpi.tasks_machine_excluded, 0),
+            taskAmbiguousExcluded: data.reduce((total, row) => total + row.task_kpi.tasks_ambiguous_excluded, 0),
             onboardingRows: data.filter(row => row.development_kpi.total > 0).length,
             contributionRows: data.filter(row => row.contribution_kpi.events_period > 0).length,
             ratingsSource: 'disabled_no_period_source',
-            ruleVersion: 'manual_kpi_bonus_v1'
+            ruleVersion: 'manual_kpi_bonus_v1',
+            taskPerformancePolicyVersion: TASK_PERFORMANCE_POLICY_VERSION
         }
     };
 }
@@ -6871,13 +6902,29 @@ router.get('/report/monthly', async (req, res) => {
 
         const taskKpiRows = await pool.query(
             `SELECT ep.staff_id,
-                    COUNT(t.id)::int AS tasks_assigned,
-                    COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS tasks_done,
+                    COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                     COUNT(t.id) FILTER (
-                        WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'archived', 'cancelled')
+                        WHERE ${taskKpiEligibleSql('t')}
+                          AND COALESCE(t.status, 'todo') IN ('done', 'completed')
+                    )::int AS tasks_done,
+                    COUNT(t.id) FILTER (
+                        WHERE ${taskKpiEligibleSql('t')}
+                          AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
                           AND t.deadline IS NOT NULL
                           AND t.deadline < NOW()
-                    )::int AS tasks_overdue
+                    )::int AS tasks_overdue,
+                    COUNT(t.id) FILTER (
+                        WHERE ${taskKpiEligibleSql('t')}
+                          AND ${taskKpiMachineSignalSql('t')}
+                    )::int AS tasks_machine_accepted,
+                    COUNT(t.id) FILTER (
+                        WHERE NOT ${taskKpiEligibleSql('t')}
+                          AND ${taskKpiMachineSignalSql('t')}
+                    )::int AS tasks_machine_excluded,
+                    COUNT(t.id) FILTER (
+                        WHERE NOT ${taskKpiEligibleSql('t')}
+                          AND NOT ${taskKpiMachineSignalSql('t')}
+                    )::int AS tasks_ambiguous_excluded
              FROM tasks t
              JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
              WHERE t.owner_user_id IS NOT NULL
@@ -6897,7 +6944,10 @@ router.get('/report/monthly', async (req, res) => {
             taskKpiMap[r.staff_id] = {
                 tasks_assigned: parseInt(r.tasks_assigned) || 0,
                 tasks_done: parseInt(r.tasks_done) || 0,
-                tasks_overdue: parseInt(r.tasks_overdue) || 0
+                tasks_overdue: parseInt(r.tasks_overdue) || 0,
+                tasks_machine_accepted: parseInt(r.tasks_machine_accepted) || 0,
+                tasks_machine_excluded: parseInt(r.tasks_machine_excluded) || 0,
+                tasks_ambiguous_excluded: parseInt(r.tasks_ambiguous_excluded) || 0
             };
         }
 

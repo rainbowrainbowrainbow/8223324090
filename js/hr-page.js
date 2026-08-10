@@ -19824,6 +19824,7 @@ function renderKpiSources({ rows = [], sources: sourceCounts = {} } = {}) {
         renderKpiSourceLabel('HR-зріз', countText(sourceCounts.staffRows || rows.length, 'працівників')),
         renderKpiSourceLabel('Графік / присутність', countText(sourceCounts.scheduleRows, 'активних рядків')),
         renderKpiSourceLabel('Задачі', countText(sourceCounts.taskRows, 'працівників із задачами')),
+        renderKpiSourceLabel('Системні задачі', `${Number(sourceCounts.taskMachineExcluded || 0)} виключено · ${Number(sourceCounts.taskMachineAccepted || 0)} прийнято`),
         renderKpiSourceLabel('Онбординг', countText(sourceCounts.onboardingRows, 'процесів')),
         renderKpiSourceLabel('Події / внесок', countText(sourceCounts.contributionRows, 'працівників із подіями'))
     ].join('');
@@ -19885,6 +19886,7 @@ function renderKpiEmployeeItem(row = {}, itemIndex = 0, groupIndex = 0) {
     const taskAssigned = num(row.task_kpi?.tasks_assigned);
     const taskDone = num(row.task_kpi?.tasks_done);
     const taskDoneRate = taskAssigned > 0 ? num(row.task_completion_rate) : null;
+    const taskExcluded = num(row.task_kpi?.tasks_machine_excluded) + num(row.task_kpi?.tasks_ambiguous_excluded);
     const reliabilityIssues = num(row.late_count) + num(row.days_absent);
     const contribution = row.contribution_kpi || {};
     const development = row.development_kpi || {};
@@ -19924,7 +19926,7 @@ function renderKpiEmployeeItem(row = {}, itemIndex = 0, groupIndex = 0) {
                 <section class="hr-payroll-detail-card">
                     <span>Задачі</span>
                     <strong>${taskDoneRate !== null ? kpiSignal(`${taskDoneRate}%`, toneForPercent(taskDoneRate, 85, 65)) : '<span class="kpi-muted">даних ще немає</span>'}</strong>
-                    <small>${taskDone}/${taskAssigned} виконано · ${num(row.task_kpi?.tasks_overdue)} простр.</small>
+                    <small>${taskDone}/${taskAssigned} виконано · ${num(row.task_kpi?.tasks_overdue)} простр.${taskExcluded ? ` · ${taskExcluded} системних виключено` : ''}</small>
                 </section>
                 <section class="hr-payroll-detail-card">
                     <span>Внесок</span>
@@ -19968,6 +19970,8 @@ function renderKpi({ rows = [], sources = {} }) {
         acc.tasksAssigned += num(row.task_kpi?.tasks_assigned);
         acc.tasksDone += num(row.task_kpi?.tasks_done);
         acc.tasksOverdue += num(row.task_kpi?.tasks_overdue);
+        acc.tasksMachineExcluded += num(row.task_kpi?.tasks_machine_excluded);
+        acc.tasksAmbiguousExcluded += num(row.task_kpi?.tasks_ambiguous_excluded);
         acc.eventsPeriod += num(row.contribution_kpi?.events_period);
         acc.onboardingActive += num(row.development_kpi?.active);
         acc.onboardingTotal += num(row.development_kpi?.total);
@@ -19975,7 +19979,7 @@ function renderKpi({ rows = [], sources = {} }) {
         acc.onboardingDoneItems += num(row.development_kpi?.completed_items);
         acc.kpiScoreSum += num(row.kpi_score);
         return acc;
-    }, { scheduled: 0, worked: 0, late: 0, absent: 0, overtime: 0, tasksAssigned: 0, tasksDone: 0, tasksOverdue: 0, eventsPeriod: 0, onboardingActive: 0, onboardingTotal: 0, onboardingTotalItems: 0, onboardingDoneItems: 0, kpiScoreSum: 0 });
+    }, { scheduled: 0, worked: 0, late: 0, absent: 0, overtime: 0, tasksAssigned: 0, tasksDone: 0, tasksOverdue: 0, tasksMachineExcluded: 0, tasksAmbiguousExcluded: 0, eventsPeriod: 0, onboardingActive: 0, onboardingTotal: 0, onboardingTotalItems: 0, onboardingDoneItems: 0, kpiScoreSum: 0 });
     const attendance = kpiPercent(totals.worked, totals.scheduled);
     const taskRate = kpiPercent(totals.tasksDone, totals.tasksAssigned);
     const onboardingRate = kpiPercent(totals.onboardingDoneItems, totals.onboardingTotalItems);
@@ -19989,7 +19993,7 @@ function renderKpi({ rows = [], sources = {} }) {
             ? renderKpiCard('Надійність', `${totals.late + totals.absent}`, `${totals.late} запізнень · ${totals.absent} відсутностей`)
             : renderKpiCard('Надійність', 'даних ще немає', 'Потрібні записи присутності за період', { placeholder: true }),
         taskRate !== null
-            ? renderKpiCard('Активність / виконання', `${taskRate}%`, `${totals.tasksDone}/${totals.tasksAssigned} задач виконано · ${totals.tasksOverdue} прострочено`)
+            ? renderKpiCard('Активність / виконання', `${taskRate}%`, `${totals.tasksDone}/${totals.tasksAssigned} задач виконано · ${totals.tasksOverdue} прострочено · ${totals.tasksMachineExcluded + totals.tasksAmbiguousExcluded} системних виключено`)
             : renderKpiCard('Активність / виконання', 'даних ще немає', 'Немає привʼязаних задач за період', { placeholder: true }),
         sources.contributionRows
             ? renderKpiCard('Звіти / внесок', String(totals.eventsPeriod), 'Події за вибраний місяць з календаря бронювань')

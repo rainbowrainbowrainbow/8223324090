@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.114 - Task KPI Automation Fairness
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Задачі автоматизації більше не псують людський KPI** - HR KPI тепер рахує тільки ручні або прийняті власником machine-generated задачі, а archived/cancelled/system-only backlog не входить у denominator і overdue penalty.
+- **Системні задачі стали видимими як окремий hygiene-сигнал** - `/api/hr/kpi` повертає machine accepted/excluded та ambiguous excluded counts, а HR KPI UI пояснює, скільки задач було виключено.
+- **Regression guard додано в canonical npm test** - новий `taskPerformancePolicy` тест захищає fail-closed SQL policy і не дає повернути raw `COUNT(t.id)` у HR KPI.
+
+---
+
 ## v0.80.113 - Task Center 320px Composer Guard
 
 ### Release / Versioning / (10.08.2026) [codex]

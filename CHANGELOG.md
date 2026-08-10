@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.109 - Checkbox Fiscal Hardening
+
+### Release / Versioning / (10.08.2026) [codex]
+- **Checkbox Fiscal Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.108 - Checkbox Fiscal Hardening
 
 ### Release / Versioning / (09.08.2026) [codex]

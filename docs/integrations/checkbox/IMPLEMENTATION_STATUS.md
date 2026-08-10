@@ -5,8 +5,8 @@ Last updated: 2026-08-10.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live production package baseline checked for this handoff: `0.80.108` (`Checkbox Fiscal Hardening`).
-- Live commit checked for this handoff: `a6b2366167dd27c08d55cb7b774cce6074d6b1fb`.
+- Live production package baseline checked for this handoff: `0.80.113` (`Task Center 320px Composer Guard`).
+- Live commit checked for this handoff: `4d995ce419f37610b559584ae0c1eb78e668da54`.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
 - Current released Checkbox migrations: `316` through `331`.
@@ -35,37 +35,41 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - `EVENTGENIX_CASHIER_PRO_ENABLED=false` keeps Phase 2 operations hidden/fail-closed.
 - `fiscal_item_mappings` separates internal EventGenix tariff references from Checkbox fiscal names and tax IDs.
 - `scripts/configure-checkbox-park-pilot.js` provides repeatable dry-run-first pilot mapping setup without raw secrets.
+- The local non-secret test-mode mapping source is `C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json`; the CLI supports `--config-file` and `CHECKBOX_PILOT_CONFIG_FILE`.
 - Pilot configuration is version-aware: exact repeated apply is a no-op, generic apply refuses drift, and explicit mutation commands write append-only `fiscal_configuration_audit` rows.
+- CLI dry-run output is sanitized by default: provider organization/register/cashier IDs are shown only as configured/not-configured flags.
 - Fiscal item mapping supports explicit `taxed` / `untaxed` modes. `admission_tariff:*` is blocked from Checkbox tax fields.
 - `docs/integrations/checkbox/checkbox-test-mode.env.example` documents ref-specific test-mode env names without values.
 - Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
 - CI hardening gates now include value-free Checkbox OpenAPI compatibility checks, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
-- Release `0.80.108` is the latest live Checkbox hardening package baseline checked in this handoff. Reconfirm live version/commit before any delivery action.
+- Release `0.80.113` is the latest live package baseline checked in this handoff. Reconfirm live version/commit before any delivery action.
 - Provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization are part of the released baseline.
 
 ## Not Ready
 
 - Runtime provider and payment acceptance are disabled by default and have not been run against real Checkbox sandbox credentials.
 - Production pilot mapping has not been applied.
-- Real Checkbox credentials and register IDs are not configured, and must not be added to source.
+- Test-mode non-secret organization/register/cashier identity has been collected locally in the non-repository JSON config; secrets remain local-only and production mapping is not configured.
 - Accountant-approved fiscal item/tax values are still missing for production activation.
 - Sandbox QA has not been proven against real Checkbox test credentials.
 - End-of-day production policy still needs a final product decision before real activation: manual Checkbox portal close/runbook or narrow Phase-1 close flow.
 - `npm run test:integration:checkbox-ui-real:isolated` needs a disposable local `TEST_DATABASE_URL`; production `DATABASE_URL` must not be used as a fallback.
-- Residual software hardening remains local until an explicitly approved release: exact host allowlist, activation gate docs, source safety coverage, and Cashier PRO PIN bootstrap compatibility.
+- Current local preparation adds explicit password/PIN provider authentication and removes the unsafe requirement to invent an outlet ID. These changes are not released until a separately approved delivery task.
+- Mutation-free test-mode readiness reached the real Checkbox cashier identity on 2026-08-10 and failed closed because `cash_payment` and `card_payment` were not explicitly `true`. Enable both permissions for the test cashier in Checkbox before any controlled receipt test.
 
 ## Next Tasks
 
-1. Finish residual local software hardening for host allowlists, activation templates, source safety gates, and Cashier PRO PIN hashing compatibility.
-2. Commit/push/deploy those residual changes only in a separate approved release task after CI passes, keeping `CHECKBOX_INTEGRATION_ENABLED=false`, `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false`, `CHECKBOX_WEBHOOK_ENABLED=false`, and `EVENTGENIX_CASHIER_PRO_ENABLED=false`.
-3. Run real Checkbox sandbox QA only when local `CHECKBOX_SANDBOX_*` secrets exist and the provider reports exact test cashier/register state.
-4. Create a separate production activation task for real mapping/secrets/webhook/first fiscal receipt.
+1. Verify and release the local explicit password/PIN authentication and optional-outlet hardening after CI passes, keeping all production gates false.
+2. Run local config preflight from `CHECKBOX_PILOT_CONFIG_FILE` against a disposable/local PostgreSQL database before any apply. User `3` is the confirmed primary test cashier, and QA-only user `47` is allowed only for test-mode configuration.
+3. Run real Checkbox test-mode mutations only after a separate explicit approval, exact `is_test=true` readiness, and access-key requirements for the selected operations are confirmed.
+4. Create a separate production activation task for real legal/tax mapping, secrets, webhook, and first controlled fiscal receipt.
 
 ## Activation Blockers
 
 - Accountant-approved FOP data, fiscal item names, tax groups, VAT policy, and register/cashier mapping are missing.
 - Production Checkbox credentials and webhook setup require a separate activation task.
 - First real fiscal receipt requires explicit approval and controlled live QA.
+- The current test cashier must expose `sales=true`, `cash_payment=true`, and `card_payment=true` before Phase 1 accepts money.
 - Production mapping must be applied only by an authenticated active EventGenix user with non-delegable `fiscal.configure`, a mandatory reason, and no raw secrets in CLI args, DB, logs, docs, or tests.
 - Production register must remain disabled until successful preflight, sandbox/test-mode proof, explicit `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true`, and explicit activation approval.

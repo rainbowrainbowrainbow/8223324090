@@ -69,6 +69,28 @@ function readRefEnv(env, ref, suffix) {
     return String(env[`${prefix}_${suffix}`] || '').trim();
 }
 
+function resolveAuthMode({ explicitMode, login, password, pinCode, errorPrefix = 'checkbox_runtime' } = {}) {
+    const normalized = String(explicitMode || '').trim().toLowerCase();
+    if (normalized && !['password', 'pin'].includes(normalized)) {
+        throw new CheckboxClientError(`${errorPrefix}_auth_mode_invalid`, 'Checkbox auth mode must be password or pin', {
+            status: errorPrefix === 'checkbox_sandbox' ? 2 : 503,
+            retryable: false
+        });
+    }
+    if (normalized) return normalized;
+    const hasPasswordAuth = Boolean(login && password);
+    const hasPinAuth = Boolean(pinCode);
+    if (hasPasswordAuth && hasPinAuth) {
+        throw new CheckboxClientError(`${errorPrefix}_auth_mode_ambiguous`, 'Checkbox auth mode is ambiguous; set AUTH_MODE to password or pin', {
+            status: errorPrefix === 'checkbox_sandbox' ? 2 : 503,
+            retryable: false
+        });
+    }
+    if (hasPinAuth) return 'pin';
+    if (hasPasswordAuth) return 'password';
+    return '';
+}
+
 function assertNoCredentialRefCollisions(refs = []) {
     const byPrefix = new Map();
     for (const ref of refs.map(normalizeCredentialRef).filter(Boolean)) {
@@ -116,14 +138,23 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
     const baseUrl = readRefEnv(env, registerRef || cashierRef, 'BASE_URL');
     const login = readRefEnv(env, cashierRef || registerRef, 'LOGIN');
     const password = readRefEnv(env, cashierRef || registerRef, 'PASSWORD');
+    const pinCode = readRefEnv(env, cashierRef || registerRef, 'PIN_CODE');
+    const authMode = resolveAuthMode({
+        explicitMode: readRefEnv(env, cashierRef || registerRef, 'AUTH_MODE'),
+        login,
+        password,
+        pinCode
+    });
     const licenseKey = readRefEnv(env, registerRef || cashierRef, 'LICENSE_KEY');
     const accessKey = readRefEnv(env, registerRef || cashierRef, 'ACCESS_KEY') || null;
     const deviceId = readRefEnv(env, deviceRuntimeRef || registerRef || cashierRef, 'DEVICE_ID') || null;
     const missing = [];
     if (!baseUrl) missing.push('BASE_URL');
-    if (!login) missing.push('LOGIN');
-    if (!password) missing.push('PASSWORD');
     if (!licenseKey) missing.push('LICENSE_KEY');
+    if (!authMode) missing.push('AUTH_MODE or one complete auth credential set');
+    if (authMode === 'password' && !login) missing.push('LOGIN');
+    if (authMode === 'password' && !password) missing.push('PASSWORD');
+    if (authMode === 'pin' && !pinCode) missing.push('PIN_CODE');
     if (missing.length) {
         throw new CheckboxClientError('checkbox_runtime_env_missing', `Checkbox runtime env is missing: ${missing.join(', ')}`, {
             status: 503,
@@ -135,6 +166,8 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
         baseUrl: assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost }).replace(/\/+$/, ''),
         login,
         password,
+        pinCode,
+        authMode,
         licenseKey,
         accessKey,
         deviceId,
@@ -177,10 +210,31 @@ function assertSandboxBaseUrl(baseUrl) {
 
 function loadCheckboxSandboxConfig(env = process.env) {
     const baseUrl = assertSandboxBaseUrl(requireEnv(env, 'CHECKBOX_SANDBOX_BASE_URL'));
+    const login = String(env.CHECKBOX_SANDBOX_LOGIN || '').trim();
+    const password = String(env.CHECKBOX_SANDBOX_PASSWORD || '').trim();
+    const pinCode = String(env.CHECKBOX_SANDBOX_PIN_CODE || '').trim();
+    const authMode = resolveAuthMode({
+        explicitMode: env.CHECKBOX_SANDBOX_AUTH_MODE,
+        login,
+        password,
+        pinCode,
+        errorPrefix: 'checkbox_sandbox'
+    });
+    if (!authMode) {
+        throw new CheckboxClientError('checkbox_sandbox_auth_missing', 'Sandbox Checkbox QA requires password or PIN authentication credentials', { status: 2, retryable: false });
+    }
+    if (authMode === 'password' && (!login || !password)) {
+        throw new CheckboxClientError('checkbox_sandbox_password_auth_missing', 'Password auth requires CHECKBOX_SANDBOX_LOGIN and CHECKBOX_SANDBOX_PASSWORD', { status: 2, retryable: false });
+    }
+    if (authMode === 'pin' && !pinCode) {
+        throw new CheckboxClientError('checkbox_sandbox_pin_auth_missing', 'PIN auth requires CHECKBOX_SANDBOX_PIN_CODE', { status: 2, retryable: false });
+    }
     const config = {
         baseUrl,
-        login: requireEnv(env, 'CHECKBOX_SANDBOX_LOGIN'),
-        password: requireEnv(env, 'CHECKBOX_SANDBOX_PASSWORD'),
+        login,
+        password,
+        pinCode,
+        authMode,
         licenseKey: requireEnv(env, 'CHECKBOX_SANDBOX_LICENSE_KEY'),
         accessKey: String(env.CHECKBOX_SANDBOX_ACCESS_KEY || '').trim() || null,
         deviceId: String(env.CHECKBOX_SANDBOX_DEVICE_ID || '').trim() || `eventgenix-sandbox-${process.pid}`,
@@ -189,6 +243,7 @@ function loadCheckboxSandboxConfig(env = process.env) {
         openApiUrl: String(env.CHECKBOX_SANDBOX_OPENAPI_URL || DEFAULT_OPENAPI_URL).trim(),
         timeoutMs: Math.max(1000, Math.min(Number(env.CHECKBOX_SANDBOX_TIMEOUT_MS || 15000), 60000)),
         confirmMutations: String(env.CHECKBOX_SANDBOX_CONFIRM_MUTATIONS || '').trim() === 'sandbox',
+        readinessOnly: boolEnv(env.CHECKBOX_SANDBOX_READINESS_ONLY),
         closeShift: boolEnv(env.CHECKBOX_SANDBOX_CLOSE_SHIFT),
         webhookSecret: String(env.CHECKBOX_SANDBOX_WEBHOOK_SECRET || '').trim() || null,
         taxCode: String(env.CHECKBOX_SANDBOX_TAX_CODE || '').trim() || null,
@@ -213,12 +268,14 @@ function publicConfigSummary(config = {}) {
         openApiUrl: config.openApiUrl,
         timeoutMs: config.timeoutMs,
         confirmMutations: config.confirmMutations,
+        readinessOnly: config.readinessOnly,
         closeShift: config.closeShift,
         expectedOrganizationId: config.expectedOrganizationId,
         expectedOutletId: config.expectedOutletId,
         expectedRegisterId: config.expectedRegisterId,
         expectedCashierId: config.expectedCashierId,
         expectedIsTest: config.expectedIsTest,
+        authMode: config.authMode,
         includeProOperations: config.includeProOperations,
         hasWebhookSecret: Boolean(config.webhookSecret),
         hasTaxCode: Boolean(config.taxCode)
@@ -240,6 +297,7 @@ module.exports = {
     loadCheckboxSandboxConfig,
     loadCheckboxRuntimeConfig,
     normalizeCredentialRef,
+    resolveAuthMode,
     publicConfigSummary,
     assertSandboxBaseUrl,
     assertRuntimeBaseUrl

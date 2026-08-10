@@ -6,11 +6,16 @@ const { CheckboxClient } = require('../services/checkbox/client');
 const { loadCheckboxSandboxConfig, publicConfigSummary } = require('../services/checkbox/config');
 const { CheckboxClientError, redactCheckboxDiagnostics } = require('../services/checkbox/errors');
 const { mapFullReturnReceipt, mapSaleReceipt, mapServiceReceipt } = require('../services/checkbox/mapper');
+const { createProviderFromConfig } = require('../services/checkbox/provider');
 const { WebhookReplayGuard, signCheckboxWebhookBody, verifyCheckboxWebhookSignature } = require('../services/checkbox/signature');
 
 const REQUIRED_OPENAPI_PATHS = Object.freeze({
     '/api/v1/cashier/signin': ['post'],
+    '/api/v1/cashier/signinPinCode': ['post'],
     '/api/v1/cashier/me': ['get'],
+    '/api/v1/cash-registers/info': ['get'],
+    '/api/v1/cashier/check-signature': ['get'],
+    '/api/v1/cashier/tax': ['get'],
     '/api/v1/cashier/shift': ['get'],
     '/api/v1/shifts': ['get', 'post'],
     '/api/v1/shifts/close': ['post'],
@@ -67,8 +72,9 @@ function assertOpenApiOperationContract(contract, path, method, operation = {}) 
     if (['post', 'put', 'patch'].includes(method) && !operation.requestBody && !operation.parameters) {
         throw new CheckboxClientError('checkbox_openapi_request_contract_missing', `OpenAPI ${method.toUpperCase()} ${path} is missing request contract`, { status: 1, details: { path, method } });
     }
-    const encoded = JSON.stringify(operation).toLowerCase();
-    if (path.includes('/receipts') && method === 'post' && (!encoded.includes('goods') || !encoded.includes('payments'))) {
+    const receiptSellPaths = new Set(['/api/v1/receipts/validate', '/api/v1/receipts/sell']);
+    const requestSchema = operation.requestBody?.content?.['application/json']?.schema;
+    if (receiptSellPaths.has(path) && method === 'post' && (!schemaContainsProperty(contract, requestSchema, 'goods') || !schemaContainsProperty(contract, requestSchema, 'payments'))) {
         throw new CheckboxClientError('checkbox_openapi_receipt_payload_incomplete', `OpenAPI ${method.toUpperCase()} ${path} does not expose goods/payments contract`, { status: 1, details: { path, method } });
     }
     if ((path.includes('/shifts') || path.includes('/receipts')) && !/(security|authorization|x-license-key|x-access-key|x-device-id)/i.test(JSON.stringify(operation))) {
@@ -77,6 +83,28 @@ function assertOpenApiOperationContract(contract, path, method, operation = {}) 
             throw new CheckboxClientError('checkbox_openapi_auth_contract_missing', `OpenAPI ${method.toUpperCase()} ${path} does not expose auth/header contract`, { status: 1, details: { path, method } });
         }
     }
+}
+
+function resolveLocalOpenApiRef(contract, ref) {
+    if (!String(ref || '').startsWith('#/')) return null;
+    return String(ref).slice(2).split('/').reduce((value, segment) => {
+        if (!value || typeof value !== 'object') return null;
+        return value[segment.replace(/~1/g, '/').replace(/~0/g, '~')];
+    }, contract);
+}
+
+function schemaContainsProperty(contract, schema, propertyName, seen = new Set()) {
+    if (!schema || typeof schema !== 'object') return false;
+    if (schema.$ref) {
+        if (seen.has(schema.$ref)) return false;
+        seen.add(schema.$ref);
+        return schemaContainsProperty(contract, resolveLocalOpenApiRef(contract, schema.$ref), propertyName, seen);
+    }
+    if (schema.properties && Object.hasOwn(schema.properties, propertyName)) return true;
+    for (const branchKey of ['allOf', 'anyOf', 'oneOf']) {
+        if (Array.isArray(schema[branchKey]) && schema[branchKey].some(branch => schemaContainsProperty(contract, branch, propertyName, new Set(seen)))) return true;
+    }
+    return false;
 }
 
 function assertOpenApiGlobalContract(contract) {
@@ -123,10 +151,6 @@ async function waitReceiptDone(client, receiptId) {
     throw new CheckboxClientError('checkbox_sandbox_receipt_done_timeout', 'Sandbox receipt did not reach DONE in time', { status: 1, details: { receiptId, lastStatus: latest?.status || null } });
 }
 
-function boolish(value) {
-    return /^(1|true|yes|on)$/i.test(String(value || '').trim());
-}
-
 function firstText(...values) {
     for (const value of values) {
         const text = String(value ?? '').trim();
@@ -150,24 +174,6 @@ function assertExpectedSandboxIdentityConfig(config) {
     if (missing.length) {
         throw new CheckboxClientError('checkbox_sandbox_expected_identity_missing', 'Exact expected Checkbox test identity env is required before mutations', { status: 2, retryable: false, details: { missing } });
     }
-}
-
-function assertCashierTestIdentity(cashier, config) {
-    const cashierId = firstText(cashier?.id, cashier?.cashier_id);
-    const organizationId = firstText(cashier?.organization_id, cashier?.organization?.id, cashier?.organization?.organization_id);
-    const outletId = firstText(cashier?.outlet_id, cashier?.outlet?.id, cashier?.organization?.outlet_id);
-    const isTest = cashier?.is_test === true || cashier?.test === true || cashier?.organization?.is_test === true || boolish(cashier?.is_test);
-    assertSame(cashierId, config.expectedCashierId, 'checkbox_sandbox_cashier_id_mismatch', 'cashier.id');
-    assertSame(organizationId, config.expectedOrganizationId, 'checkbox_sandbox_organization_id_mismatch', 'organization.id');
-    assertSame(outletId, config.expectedOutletId, 'checkbox_sandbox_outlet_id_mismatch', 'outlet.id');
-    if (config.expectedIsTest !== true || isTest !== true) {
-        throw new CheckboxClientError('checkbox_sandbox_cashier_not_test', 'Sandbox smoke requires Checkbox cashier.is_test === true before any mutation', {
-            status: 2,
-            retryable: false,
-            details: { expectedIsTest: config.expectedIsTest, actualIsTest: isTest }
-        });
-    }
-    return { cashierId, organizationId, outletId, isTest };
 }
 
 function shiftIdentity(shift = {}) {
@@ -262,17 +268,39 @@ async function runSandboxSmoke() {
     const contract = await fetchOfficialOpenApi(config.openApiUrl);
     logStep('openapi-contract-ok', contract);
 
-    if (!config.confirmMutations) {
+    if (!config.readinessOnly && !config.confirmMutations) {
         throw new CheckboxClientError('checkbox_sandbox_mutation_confirmation_required', 'Set CHECKBOX_SANDBOX_CONFIRM_MUTATIONS=sandbox to run real sandbox fiscal operations', { status: 2 });
     }
     assertExpectedSandboxIdentityConfig(config);
 
-    const client = new CheckboxClient(config);
-    await client.signIn({ login: config.login, password: config.password });
-    logStep('cashier-auth-ok');
-    const cashier = await client.getCashierProfile();
-    const cashierIdentity = assertCashierTestIdentity(cashier, config);
-    logStep('cashier-readiness-ok', { cashierId: cashierIdentity.cashierId, organizationId: cashierIdentity.organizationId, outletId: cashierIdentity.outletId, isTest: cashierIdentity.isTest });
+    const provider = createProviderFromConfig(config);
+    const expectedIdentity = {
+        expectedOrganizationId: config.expectedOrganizationId,
+        expectedRegisterId: config.expectedRegisterId,
+        expectedCashierId: config.expectedCashierId,
+        expectedIsTest: true
+    };
+    const expectedTaxes = { expectedTaxIds: config.taxCode ? [config.taxCode] : [] };
+
+    if (config.readinessOnly) {
+        const diagnostics = await provider.collectReadinessDiagnostics(expectedIdentity, expectedTaxes);
+        logStep('cashier-readiness-checklist', diagnostics);
+        console.log(JSON.stringify({ ok: diagnostics.ready, smoke: 'checkbox:sandbox:readiness', mutations: false, readiness: diagnostics }));
+        if (!diagnostics.ready) process.exit(2);
+        return;
+    }
+
+    const readiness = await provider.verifyReadiness(expectedIdentity, expectedTaxes);
+    const client = provider.client;
+    logStep('cashier-readiness-ok', {
+        cashierId: readiness.cashier?.cashierId || null,
+        organizationId: readiness.cashier?.organizationId || null,
+        registerId: readiness.register?.registerId || null,
+        isTest: readiness.register?.isTest === true,
+        signatureAvailable: readiness.signature?.online === true,
+        taxCount: readiness.taxes?.availableCount || 0,
+        authMode: config.authMode
+    });
 
     let shift = await client.getCurrentShift().catch(error => {
         if (error.status === 404 || error.status === 422) return null;
@@ -324,4 +352,12 @@ async function runSandboxSmoke() {
     console.log(JSON.stringify({ ok: true, smoke: 'checkbox:sandbox' }));
 }
 
-runSandboxSmoke().catch(fail);
+if (require.main === module) runSandboxSmoke().catch(fail);
+
+module.exports = {
+    assertOpenApiOperationContract,
+    fetchOfficialOpenApi,
+    resolveLocalOpenApiRef,
+    runSandboxSmoke,
+    schemaContainsProperty
+};

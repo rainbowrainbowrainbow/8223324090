@@ -17,17 +17,21 @@ Status: production deployment runbook for disabled fiscal mode. Production activ
 1. Confirm production `/api/version` matches the intended release commit.
 2. Confirm the active deploy branch is the branch that contains the release commits.
 3. Collect accountant-approved FOP/legal entity data, fiscal item names, tax mode, and tax IDs.
-4. Collect exact Checkbox test-mode organization, outlet, register, cashier, and credential reference names.
+4. Collect exact Checkbox test-mode organization, register, cashier, and credential reference names. Outlet ID is optional metadata because the current official cashier/register schemas do not expose it; do not invent one.
 5. Store raw Checkbox credentials only in environment variables outside the repository.
-6. Run `npm run configure:checkbox:park -- preflight` with value-free command history or a sanitized operator shell.
-7. Run the Checkbox test-mode smoke only when `/cashier/me` proves the cashier is test-mode.
-8. Enable the pilot register only after successful preflight and explicit activation approval.
-9. Turn on `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true` only in the separate controlled payment activation task.
+6. For local test-mode preparation, keep non-secret mapping in `C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json` and run dry-run first:
+   `npm run configure:checkbox:park -- --config-file C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json`.
+7. Run preflight with the same config file only after dry-run is clean:
+   `npm run configure:checkbox:park -- preflight --config-file C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json`.
+8. Keep raw Checkbox credentials in the local env file only. Do not put password, PIN, license key, access key, token, webhook secret, or price overrides into the JSON config.
+9. Run the Checkbox test-mode smoke only when `/cashier/me` proves the cashier is test-mode.
+10. Enable the pilot register only after successful preflight and explicit activation approval.
+11. Turn on `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true` only in the separate controlled payment activation task.
 
 ## First test receipt
 
 1. Use Checkbox test-mode credentials only.
-2. Verify expected organization, outlet, register, cashier, and `is_test=true`.
+2. Verify expected organization, register, cashier, and `is_test=true`. Verify outlet only when it comes from an authoritative Checkbox source.
 3. Create one park `middle` walk-in admission order.
 4. Confirm payment only after readiness is fresh and ready.
 5. Verify the official receipt status is terminal successful and all immutable local fields match provider data.
@@ -96,7 +100,7 @@ Rollback procedure:
 Required external inputs for a future activation task:
 
 - FOP/legal entity key, legal name, and tax identifier;
-- Checkbox organization ID, outlet ID, register ID, cashier ID;
+- Checkbox organization ID, register ID, cashier ID, and optional authoritative outlet ID;
 - register and cashier credential reference names;
 - ref-specific environment variables for Checkbox base URL, login, password, license key, and access key;
 - expected test/production mode flag;

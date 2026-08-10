@@ -38,6 +38,7 @@ const browserSmoke = read('tests/browser/checkbox-cashier-real-routes-browser-sm
 
 for (const [needle, label] of [
     ['/api/v1/cashier/signin', 'cashier signin'],
+    ['/api/v1/cashier/signinPinCode', 'cashier PIN signin'],
     ['/api/v1/cashier/me', 'cashier identity'],
     ['/api/v1/cash-registers/info', 'cash register info'],
     ['/api/v1/cashier/check-signature', 'cashier signature'],
@@ -52,6 +53,7 @@ for (const [needle, label] of [
 }
 
 assertMatches(client, /X-License-Key/i, 'client license header');
+assertMatches(client, /pin_code/, 'client official CashierSignInPinCode payload');
 assertMatches(client, /X-Access-Key/i, 'client access-key header');
 assertMatches(webhook, /x-request-signature/i, 'webhook official signature header');
 assertMatches(webhook, /digest\('base64'\)/, 'webhook bare Base64 HMAC-SHA256');

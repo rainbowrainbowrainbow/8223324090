@@ -354,7 +354,8 @@ async function processOutboxWithMock(mock) {
         timeoutMs: 1000,
         expectedIsTest: true
     });
-    for (let i = 0; i < 8; i += 1) {
+    let idleRounds = 0;
+    for (let i = 0; i < 20; i += 1) {
         const batch = await processPaymentOutboxJobs({
             dbPool: pool,
             provider,
@@ -362,7 +363,13 @@ async function processOutboxWithMock(mock) {
             lockedBy: `checkbox-browser-ui-${process.pid}`,
             lockExpiryMs: 30_000
         });
-        if (batch.claimed === 0) break;
+        if (batch.claimed === 0) {
+            idleRounds += 1;
+            if (idleRounds >= 3) break;
+            await new Promise(resolve => setTimeout(resolve, 250));
+            continue;
+        }
+        idleRounds = 0;
     }
 }
 
@@ -392,6 +399,20 @@ async function run() {
         await loginViaApi(page, cashier);
         await page.goto(`${BASE_URL}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
+        const accessibilityContract = await page.evaluate(() => ({
+            formLabelledBy: document.querySelector('#paymentOrderForm')?.getAttribute('aria-labelledby'),
+            createDescribedBy: document.querySelector('#createPaymentOrderBtn')?.getAttribute('aria-describedby'),
+            confirmDescribedBy: document.querySelector('#confirmCashBtn')?.getAttribute('aria-describedby'),
+            globalStatusRole: document.querySelector('#cashierGlobalStatus')?.getAttribute('role'),
+            globalStatusLive: document.querySelector('#cashierGlobalStatus')?.getAttribute('aria-live'),
+            unresolvedLive: document.querySelector('#unresolvedOrdersBody')?.getAttribute('aria-live')
+        }));
+        assert.equal(accessibilityContract.formLabelledBy, 'paymentOrderFormTitle');
+        assert.equal(accessibilityContract.createDescribedBy, 'createPaymentDisabledReason');
+        assert.equal(accessibilityContract.confirmDescribedBy, 'confirmDisabledReason');
+        assert.equal(accessibilityContract.globalStatusRole, 'status');
+        assert.equal(accessibilityContract.globalStatusLive, 'polite');
+        assert.equal(accessibilityContract.unresolvedLive, 'polite');
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.registerState);
         const registerState = await page.evaluate(() => window.CashierPaymentsPage.state.registerState);
         assert.equal(registerState.readinessCode, 'ready', JSON.stringify(registerState));
@@ -401,6 +422,7 @@ async function run() {
         await page.fill('#paymentAdultsCount', '0');
         await page.keyboard.press('Tab');
         await page.focus('#createPaymentOrderBtn');
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'createPaymentOrderBtn');
         await page.keyboard.press('Enter');
         await page.waitForFunction(() => {
             const cancel = document.querySelector('#cancelDraftOrderBtn');
@@ -413,6 +435,8 @@ async function run() {
             throw new Error(`Payment order was not created: ${String(statusText || '').trim()}`);
         }
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
+        await page.focus('#cashReceivedAmount');
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount');
         await page.fill('#cashReceivedAmount', '5000');
         await page.click('#confirmCashBtn');
         await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');

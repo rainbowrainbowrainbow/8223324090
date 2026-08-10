@@ -1,5 +1,8 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
 
 const {
     ACTION_PIN_ENV,
@@ -11,6 +14,15 @@ const {
     run
 } = require('../scripts/configure-checkbox-park-pilot');
 const { verifyActionPin } = require('../services/payments/fiscalApprovals');
+
+const SIX_TICKET_CODES = Object.freeze([
+    'regular_child',
+    'under_3_child',
+    'discounted_child',
+    'birthday_child',
+    'adult_companion',
+    'adult_game'
+]);
 
 const baseArgs = [
     '--legal-entity-key', 'park_fop',
@@ -31,6 +43,48 @@ const baseArgs = [
 ];
 const mutationArgs = [...baseArgs, '--reason', 'test pilot config change'];
 const authorizedMutationArgs = [...mutationArgs, '--actor-user-id', '50'];
+
+function writeTempConfig(config) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-checkbox-config-'));
+    const file = path.join(dir, 'checkbox-park-test.config.json');
+    fs.writeFileSync(file, JSON.stringify(config, null, 2));
+    return file;
+}
+
+function testConfig(overrides = {}) {
+    return {
+        crmProfileKey: 'event_genix',
+        locationAlias: 'park',
+        registerAlias: 'middle',
+        registerDisplayName: 'Middle test',
+        legalEntityKey: 'park_test_fop',
+        legalEntityName: 'Park Test FOP',
+        taxIdentifier: '1234567890',
+        provider: 'checkbox',
+        credentialRef: 'park_middle_test',
+        expectedIsTest: true,
+        providerOrganizationId: 'org-test',
+        providerOutletId: '',
+        providerRegisterId: 'register-test',
+        providerCashierId: 'cashier-test',
+        integrationOwnerUserId: 4,
+        cashierUserIds: [3, 4, 47],
+        priceSource: 'EventGenix admission tariff immutable snapshot',
+        items: SIX_TICKET_CODES.map(code => ({
+            itemCode: code,
+            fiscalItemName: `Fiscal ${code}`,
+            taxMode: 'untaxed',
+            providerTaxId: null
+        })),
+        eventGenixUsers: {
+            primaryTestCashierUserId: 3,
+            primaryTestCashierName: 'Наталія Василівна',
+            cashierUserIds: [3, 4, 47],
+            integrationOwnerUserIds: [4]
+        },
+        ...overrides
+    };
+}
 
 function withoutItemArgs(args) {
     const output = [];
@@ -53,10 +107,29 @@ test('park pilot config CLI is dry-run by default and never enables register fea
     assert.equal(output.featureEnabled, false);
     assert.equal(output.itemMappings[0].providerTaxId, '7');
     assert.equal(output.actionPinRequired, false);
-    assert.equal(output.providerCashierId, 'cashier-50');
+    assert.equal(output.providerCashierIdConfigured, true);
+    assert.equal(output.providerRegisterIdConfigured, true);
+    assert.equal(output.providerOrganizationIdConfigured, true);
+    assert.equal('providerCashierId' in output, false);
+    assert.equal('providerRegisterId' in output, false);
+    assert.equal('providerOrganizationId' in output, false);
     assert.equal(output.integrationOwner, 'eventgenix-checkbox');
     assert.equal(output.expectedIsTest, true);
     assert.equal(output.itemMappings[0].taxMode, 'taxed');
+});
+
+test('park pilot config accepts missing provider outlet without inventing an identifier', () => {
+    const args = [];
+    for (let index = 0; index < baseArgs.length; index += 1) {
+        if (baseArgs[index] === '--provider-outlet-id') {
+            index += 1;
+            continue;
+        }
+        args.push(baseArgs[index]);
+    }
+    const plan = parseArgs(args);
+    assert.equal(plan.providerOutletId, null);
+    assert.equal(publicPlan(plan).providerOutletIdConfigured, false);
 });
 
 test('park pilot config rejects raw secret-like CLI arguments', () => {
@@ -67,6 +140,70 @@ test('park pilot config rejects raw secret-like CLI arguments', () => {
     assert.throws(
         () => parseArgs([...baseArgs, '--pin', 'forbidden-pin-value']),
         error => error instanceof PilotConfigError && error.code === 'pilot_config_secret_arg_forbidden'
+    );
+});
+
+test('park pilot config loads non-secret local config files and stays dry-run by default', () => {
+    const file = writeTempConfig(testConfig());
+    const plan = parseArgs(['--config-file', file]);
+    const output = publicPlan(plan);
+    assert.equal(plan.mode, 'dry-run');
+    assert.equal(plan.crmProfileKey, 'event_genix');
+    assert.equal(plan.locationAlias, 'park');
+    assert.equal(plan.registerAlias, 'middle');
+    assert.equal(plan.legalEntityKey, 'park_test_fop');
+    assert.equal(plan.providerOutletId, null);
+    assert.equal(plan.providerLicenseRef, 'park_middle_test');
+    assert.equal(plan.cashierLoginRef, 'park_middle_test');
+    assert.deepEqual(plan.cashierUserIds, [3, 4, 47]);
+    assert.equal(plan.primaryTestCashierUserId, 3);
+    assert.equal(plan.items.length, 6);
+    assert.deepEqual(plan.items.map(item => item.itemCode), SIX_TICKET_CODES);
+    assert.equal(output.providerOrganizationIdConfigured, true);
+    assert.equal(output.providerRegisterIdConfigured, true);
+    assert.equal(output.providerCashierIdConfigured, true);
+    assert.doesNotMatch(JSON.stringify(output), /org-test|register-test|cashier-test/);
+});
+
+test('park pilot config supports CHECKBOX_PILOT_CONFIG_FILE env fallback', () => {
+    const file = writeTempConfig(testConfig({ legalEntityKey: 'env_fop' }));
+    const plan = parseArgs([], { CHECKBOX_PILOT_CONFIG_FILE: file });
+    assert.equal(plan.legalEntityKey, 'env_fop');
+    assert.equal(plan.mode, 'dry-run');
+});
+
+test('park pilot config file rejects secrets and price overrides', () => {
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(testConfig({ password: 'secret' }))]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_secret_field_forbidden'
+    );
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(testConfig({ licenseKey: 'secret' }))]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_secret_field_forbidden'
+    );
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(testConfig({ items: [{ itemCode: 'regular_child', fiscalItemName: 'Ticket', taxMode: 'untaxed', providerTaxId: null, priceOverride: 100 }] }))]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_price_override_forbidden'
+    );
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(testConfig({ priceSource: 'manual override' }))]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_price_source_invalid'
+    );
+});
+
+test('park pilot config file enforces test-only QA user and unique item mappings', () => {
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(testConfig({ expectedIsTest: false }))]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_qa_user_test_only'
+    );
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(testConfig({
+            items: [
+                { itemCode: 'regular_child', fiscalItemName: 'One', taxMode: 'untaxed', providerTaxId: null },
+                { itemCode: 'regular_child', fiscalItemName: 'Two', taxMode: 'untaxed', providerTaxId: null }
+            ]
+        }))]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_item_duplicate'
     );
 });
 
@@ -184,7 +321,7 @@ class FakePilotConfigClient {
                 rows: params[0].map(id => ({
                     id,
                     username: `user-${id}`,
-                    name: `User ${id}`,
+                    name: Number(id) === 3 ? 'Наталія Василівна' : `User ${id}`,
                     role: 'creator',
                     extra_roles: [],
                     action_allowlist: [],
@@ -354,6 +491,18 @@ class FakePilotConfigClient {
     release() {}
 }
 
+class SixTicketPilotConfigDb extends FakePilotConfigDb {}
+class SixTicketPilotConfigClient extends FakePilotConfigClient {
+    async query(sql, params = []) {
+        const normalized = sql.replace(/\s+/g, ' ').trim();
+        if (normalized.startsWith('SELECT code FROM admission_ticket_types')) {
+            return { rows: SIX_TICKET_CODES.map(code => ({ code })) };
+        }
+        return super.query(sql, params);
+    }
+}
+SixTicketPilotConfigDb.prototype.connect = async function connect() { return new SixTicketPilotConfigClient(this); };
+
 test('park pilot config apply is explicit and idempotent', async () => {
     await assert.rejects(
         () => run(['--apply', ...authorizedMutationArgs], { env: {}, dbPool: new FakePilotConfigDb() }),
@@ -378,6 +527,25 @@ test('park pilot config apply is explicit and idempotent', async () => {
     assert.equal([...db.bindings.values()][0].provider_cashier_id, 'cashier-50');
     assert.equal([...db.items.values()][0].tax_mode, 'taxed');
     assert.equal(db.audits.length, 1);
+});
+
+test('park pilot config file preflight verifies six active CRM ticket mappings and user capabilities', async () => {
+    const file = writeTempConfig(testConfig());
+    const result = await run(['preflight', '--config-file', file], { dbPool: new SixTicketPilotConfigDb() });
+    assert.equal(result.ok, true);
+    assert.equal(result.preflight.checks.find(check => check.code === 'item_mappings_complete').ok, true);
+    assert.equal(result.preflight.checks.find(check => check.code === 'users_have_capabilities').ok, true);
+    assert.equal(result.preflight.checks.find(check => check.code === 'primary_test_cashier_confirmed').ok, true);
+    assert.equal(result.plan.itemMappings.length, 6);
+});
+
+test('park pilot config file preflight reports missing active CRM ticket mappings', async () => {
+    const config = testConfig({ items: testConfig().items.filter(item => item.itemCode !== 'adult_game') });
+    const result = await run(['preflight', '--config-file', writeTempConfig(config)], { dbPool: new SixTicketPilotConfigDb() });
+    assert.equal(result.ok, false);
+    const missing = result.preflight.checks.find(check => check.code === 'item_mappings_complete');
+    assert.equal(missing.ok, false);
+    assert.deepEqual(missing.details.missingMappings, ['adult_game']);
 });
 
 test('park pilot config generic apply fails closed on drift and diff explains changes', async () => {

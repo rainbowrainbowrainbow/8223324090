@@ -16,6 +16,7 @@ const CLOSED_SHIFT_STATUS = 'CLOSED';
 const OPENING_SHIFT_STATUSES = new Set(['CREATED', 'OPENING']);
 const CLOSING_SHIFT_STATUSES = new Set(['CLOSING', 'CLOSING_REQUESTED']);
 const TOKEN_CACHE = new Map();
+const READINESS_CHECK_STATUSES = new Set(['ready', 'blocked', 'unavailable', 'not_applicable']);
 
 class CheckboxProviderConfigError extends CheckboxClientError {
     constructor(code, message, options = {}) {
@@ -233,6 +234,96 @@ function validateCashierPermissions(profile = {}, { requireCash = true, requireC
         cashPayment: permissions.cash_payment === true,
         cardPayment: permissions.card_payment === true
     };
+}
+
+function readinessCheck({ code, label, status, ready = null, recommendation = null, details = null }) {
+    const normalizedStatus = READINESS_CHECK_STATUSES.has(status) ? status : 'blocked';
+    return {
+        code,
+        label,
+        status: normalizedStatus,
+        ready: ready == null ? normalizedStatus === 'ready' : Boolean(ready),
+        recommendation,
+        details: redactCheckboxDiagnostics(details || {})
+    };
+}
+
+function readinessRecommendation(code) {
+    switch (code) {
+        case 'auth':
+            return 'Перевірити credential mode: password або PIN, а також правильність локальних Checkbox credentials.';
+        case 'cashier_identity':
+            return 'Перевірити, що в локальному mapping вказаний саме тестовий касир Checkbox.';
+        case 'organization_identity':
+            return 'Перевірити, що Checkbox organization відповідає тестовому ФОП/акаунту.';
+        case 'register_identity':
+            return 'Перевірити, що вказана саме очікувана тестова каса middle, а не інша каса.';
+        case 'is_test':
+            return 'Перевірити тестову касу: cashier/register мають бути is_test=true для test-mode QA.';
+        case 'register_online':
+            return 'Перевірити стан каси в Checkbox: вона не має бути offline/stay_offline.';
+        case 'signature':
+            return 'Перевірити підпис касира в Checkbox: підпис має бути онлайн і дозволяти відкриття зміни.';
+        case 'certificate':
+            return 'Перевірити сертифікат/КЕП касира в Checkbox.';
+        case 'sales_permission':
+            return 'Увімкнути permission продажів для тестового касира Checkbox.';
+        case 'cash_permission':
+            return 'Увімкнути cash payment для тестового касира Checkbox.';
+        case 'card_permission':
+            return 'Увімкнути card/cashless payment для тестового касира Checkbox.';
+        case 'provider_taxes':
+            return 'Перевірити provider tax IDs або режим untaxed у fiscal item mapping.';
+        case 'current_shift':
+            return 'Перевірити поточну зміну Checkbox у тестовій касі; це read-only статус, зміна не відкривається автоматично.';
+        default:
+            return 'Перевірити налаштування Checkbox test-mode integration.';
+    }
+}
+
+function errorCheck(code, label, error) {
+    const status = error instanceof CheckboxClientError && error.retryable ? 'unavailable' : 'blocked';
+    return readinessCheck({
+        code,
+        label,
+        status,
+        ready: false,
+        recommendation: readinessRecommendation(code),
+        details: {
+            errorCode: error?.code || error?.name || 'checkbox_readiness_check_failed',
+            message: error?.message || 'Checkbox readiness check failed',
+            details: error?.details || null
+        }
+    });
+}
+
+function permissionValue(profile, key) {
+    const permissions = profile?.permissions;
+    if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) return null;
+    return permissions[key] === true ? true : permissions[key] === false ? false : null;
+}
+
+function permissionCheck(profile, key, code, label) {
+    const value = permissionValue(profile, key);
+    return readinessCheck({
+        code,
+        label,
+        status: value === true ? 'ready' : 'blocked',
+        ready: value === true,
+        recommendation: value === true ? null : readinessRecommendation(code),
+        details: { permission: key, value }
+    });
+}
+
+async function captureReadinessStep(checks, code, label, fn) {
+    try {
+        const result = await fn();
+        checks.push(readinessCheck({ code, label, status: 'ready', details: result }));
+        return result;
+    } catch (error) {
+        checks.push(errorCheck(code, label, error));
+        return null;
+    }
 }
 
 function validateSignatureStatus(signature = {}) {
@@ -585,11 +676,13 @@ function validateSaleResponse(response) {
 }
 
 class CheckboxRuntimeProvider {
-    constructor({ client, login, password, credentialRef = null, licenseRef = null, expectedIsTest = null, tokenCache = TOKEN_CACHE, tokenTtlMs = 10 * 60 * 1000 } = {}) {
+    constructor({ client, authMode = 'password', login, password, pinCode, credentialRef = null, licenseRef = null, expectedIsTest = null, tokenCache = TOKEN_CACHE, tokenTtlMs = 10 * 60 * 1000 } = {}) {
         if (!client) throw new CheckboxProviderConfigError('checkbox_client_required', 'Checkbox client is required');
         this.client = client;
         this.login = login;
         this.password = password;
+        this.pinCode = pinCode;
+        this.authMode = authMode;
         this.credentialRef = credentialRef;
         this.licenseRef = licenseRef;
         this.expectedIsTest = expectedIsTest;
@@ -600,7 +693,7 @@ class CheckboxRuntimeProvider {
     }
 
     tokenCacheKey() {
-        return [this.client.baseUrl, this.credentialRef || 'default', this.licenseRef || 'default'].join('|');
+        return [this.client.baseUrl, this.credentialRef || 'default', this.licenseRef || 'default', this.authMode].join('|');
     }
 
     clearCachedToken() {
@@ -618,7 +711,9 @@ class CheckboxRuntimeProvider {
             this.authenticated = true;
             return { reused: true };
         }
-        const response = await this.client.signIn({ login: this.login, password: this.password });
+        const response = this.authMode === 'pin'
+            ? await this.client.signInWithPinCode({ pinCode: this.pinCode })
+            : await this.client.signIn({ login: this.login, password: this.password });
         const token = this.client.accessToken;
         this.tokenCache.set(cacheKey, { token, expiresAt: Date.now() + this.tokenTtlMs });
         this.authenticated = true;
@@ -672,6 +767,244 @@ class CheckboxRuntimeProvider {
             }
         }
         throw new CheckboxClientError('checkbox_auth_retry_exhausted', 'Checkbox readiness authentication retry was exhausted', { status: 401, retryable: true, unknown: true });
+    }
+
+    async collectReadinessDiagnostics(expected = {}, { expectedTaxIds = [] } = {}) {
+        const strictExpected = { ...expected, expectedIsTest: expected.expectedIsTest ?? this.expectedIsTest };
+        const checks = [];
+        let authOk = false;
+        let profile = null;
+        let registerInfo = null;
+        let signature = null;
+        let taxes = null;
+        let currentShift = null;
+
+        try {
+            await this.authenticate({ force: false });
+            authOk = true;
+            checks.push(readinessCheck({
+                code: 'auth',
+                label: 'Авторизація Checkbox',
+                status: 'ready',
+                details: { authMode: this.authMode, credentialRef: this.credentialRef || null }
+            }));
+        } catch (error) {
+            checks.push(errorCheck('auth', 'Авторизація Checkbox', error));
+        }
+
+        if (authOk) {
+            try {
+                profile = await this.client.getCashierProfile();
+                const cashier = validateCashierReadiness(profile, { expectedCashierId: strictExpected.expectedCashierId, expectedIsTest: strictExpected.expectedIsTest });
+                checks.push(readinessCheck({
+                    code: 'cashier_identity',
+                    label: 'Касир Checkbox',
+                    status: 'ready',
+                    details: cashier
+                }));
+            } catch (error) {
+                checks.push(errorCheck('cashier_identity', 'Касир Checkbox', error));
+                profile = null;
+            }
+            if (profile) {
+                const cashier = extractCashierReadiness(profile);
+                checks.push(readinessCheck({
+                    code: 'organization_identity',
+                    label: 'ФОП / organization Checkbox',
+                    status: (() => {
+                        try {
+                            assertSameText(cashier.organizationId, strictExpected.expectedOrganizationId, 'checkbox_organization_identity_mismatch', 'organization_id');
+                            return 'ready';
+                        } catch {
+                            return 'blocked';
+                        }
+                    })(),
+                    ready: textOrNull(strictExpected.expectedOrganizationId) ? cashier.organizationId === textOrNull(strictExpected.expectedOrganizationId) : Boolean(cashier.organizationId),
+                    recommendation: textOrNull(strictExpected.expectedOrganizationId) && cashier.organizationId !== textOrNull(strictExpected.expectedOrganizationId) ? readinessRecommendation('organization_identity') : null,
+                    details: { organizationIdConfigured: Boolean(strictExpected.expectedOrganizationId), organizationIdSeen: Boolean(cashier.organizationId) }
+                }));
+                checks.push(readinessCheck({
+                    code: 'is_test',
+                    label: 'Test-mode identity',
+                    status: cashier.isTest === Boolean(strictExpected.expectedIsTest) ? 'ready' : 'blocked',
+                    ready: cashier.isTest === Boolean(strictExpected.expectedIsTest),
+                    recommendation: cashier.isTest === Boolean(strictExpected.expectedIsTest) ? null : readinessRecommendation('is_test'),
+                    details: { expectedIsTest: strictExpected.expectedIsTest, cashierIsTest: cashier.isTest }
+                }));
+                checks.push(permissionCheck(profile, 'sales', 'sales_permission', 'Право продажів'));
+                checks.push(permissionCheck(profile, 'cash_payment', 'cash_permission', 'Право оплати готівкою'));
+                checks.push(permissionCheck(profile, 'card_payment', 'card_permission', 'Право оплати карткою'));
+                checks.push(readinessCheck({
+                    code: 'certificate',
+                    label: 'Сертифікат касира',
+                    status: cashier.certificateEnd ? 'ready' : 'blocked',
+                    ready: Boolean(cashier.certificateEnd),
+                    recommendation: cashier.certificateEnd ? null : readinessRecommendation('certificate'),
+                    details: { certificateEndConfigured: Boolean(cashier.certificateEnd) }
+                }));
+            } else {
+                for (const [code, label] of [
+                    ['organization_identity', 'ФОП / organization Checkbox'],
+                    ['is_test', 'Test-mode identity'],
+                    ['sales_permission', 'Право продажів'],
+                    ['cash_permission', 'Право оплати готівкою'],
+                    ['card_permission', 'Право оплати карткою'],
+                    ['certificate', 'Сертифікат касира']
+                ]) {
+                    checks.push(readinessCheck({ code, label, status: 'unavailable', ready: false, recommendation: readinessRecommendation(code) }));
+                }
+            }
+
+            signature = await captureReadinessStep(checks, 'signature', 'Підпис Checkbox', async () => {
+                const value = await this.client.checkSignature();
+                return validateSignatureStatus(value);
+            });
+            taxes = await captureReadinessStep(checks, 'provider_taxes', 'Податкові групи Checkbox', async () => {
+                const value = await this.client.getCashierTaxes();
+                return validateProviderTaxes(value, expectedTaxIds);
+            });
+            try {
+                const value = await this.client.getCurrentShift();
+                currentShift = normalizeShiftResponse(value, strictExpected, { requireCashier: false });
+                const shiftStatus = upperStatus(currentShift.status);
+                checks.push(readinessCheck({
+                    code: 'current_shift',
+                    label: 'Поточна зміна Checkbox',
+                    status: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? 'blocked' : 'ready',
+                    ready: !(OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus)),
+                    recommendation: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? readinessRecommendation('current_shift') : null,
+                    details: currentShift
+                }));
+            } catch (error) {
+                if (error instanceof CheckboxClientError && (error.status === 404 || error.status === 422)) {
+                    checks.push(readinessCheck({
+                        code: 'current_shift',
+                        label: 'Поточна зміна Checkbox',
+                        status: 'not_applicable',
+                        ready: true,
+                        details: { shiftStatus: 'none' }
+                    }));
+                } else {
+                    checks.push(errorCheck('current_shift', 'Поточна зміна Checkbox', error));
+                }
+            }
+        } else {
+            for (const [code, label] of [
+                ['cashier_identity', 'Касир Checkbox'],
+                ['organization_identity', 'ФОП / organization Checkbox'],
+                ['is_test', 'Test-mode identity'],
+                ['signature', 'Підпис Checkbox'],
+                ['certificate', 'Сертифікат касира'],
+                ['sales_permission', 'Право продажів'],
+                ['cash_permission', 'Право оплати готівкою'],
+                ['card_permission', 'Право оплати карткою'],
+                ['provider_taxes', 'Податкові групи Checkbox'],
+                ['current_shift', 'Поточна зміна Checkbox']
+            ]) {
+                checks.push(readinessCheck({ code, label, status: 'unavailable', ready: false, recommendation: readinessRecommendation(code) }));
+            }
+        }
+
+        try {
+            const value = await this.client.getCashRegisterInfo();
+            if (!value || typeof value !== 'object' || Array.isArray(value)) {
+                throw new CheckboxClientError('checkbox_cash_register_info_malformed', 'Checkbox cash register info response is malformed', { status: 502, retryable: true, unknown: true });
+            }
+            const registerId = textOrNull(value.id);
+            const organizationId = textOrNull(value.organization_id);
+            const documentsState = value.documents_state && typeof value.documents_state === 'object' && !Array.isArray(value.documents_state)
+                ? value.documents_state
+                : null;
+            if (!registerId || !organizationId || typeof value.is_test !== 'boolean' || typeof value.offline_mode !== 'boolean' || typeof value.stay_offline !== 'boolean' || !documentsState) {
+                throw new CheckboxClientError('checkbox_cash_register_info_malformed', 'Checkbox cash register info response does not match official CashRegisterDeviceModel', {
+                    status: 502,
+                    retryable: true,
+                    unknown: true,
+                    details: redactCheckboxDiagnostics({
+                        hasId: Boolean(registerId),
+                        hasOrganizationId: Boolean(organizationId),
+                        isTestType: typeof value.is_test,
+                        offlineModeType: typeof value.offline_mode,
+                        stayOfflineType: typeof value.stay_offline,
+                        hasDocumentsState: Boolean(documentsState)
+                    })
+                });
+            }
+            const identityOk = (!textOrNull(strictExpected.expectedRegisterId) || registerId === textOrNull(strictExpected.expectedRegisterId))
+                && (!textOrNull(strictExpected.expectedOrganizationId) || organizationId === textOrNull(strictExpected.expectedOrganizationId));
+            registerInfo = {
+                registerId,
+                organizationId,
+                isTest: value.is_test,
+                fiscalNumber: textOrNull(value.fiscal_number),
+                offlineMode: value.offline_mode === true,
+                stayOffline: value.stay_offline === true,
+                documentsState: redactCheckboxDiagnostics(documentsState)
+            };
+            checks.push(readinessCheck({
+                code: 'register_identity',
+                label: 'Каса Checkbox',
+                status: identityOk ? 'ready' : 'blocked',
+                ready: identityOk,
+                recommendation: identityOk ? null : readinessRecommendation('register_identity'),
+                details: {
+                    registerIdConfigured: Boolean(strictExpected.expectedRegisterId),
+                    organizationIdConfigured: Boolean(strictExpected.expectedOrganizationId),
+                    registerIdSeen: Boolean(registerId),
+                    organizationIdSeen: Boolean(organizationId)
+                }
+            }));
+            const existingIsTest = checks.find(check => check.code === 'is_test');
+            if (existingIsTest && existingIsTest.status === 'ready' && registerInfo.isTest !== Boolean(strictExpected.expectedIsTest)) {
+                existingIsTest.status = 'blocked';
+                existingIsTest.ready = false;
+                existingIsTest.recommendation = readinessRecommendation('is_test');
+                existingIsTest.details = { ...existingIsTest.details, registerIsTest: registerInfo.isTest };
+            }
+            checks.push(readinessCheck({
+                code: 'register_online',
+                label: 'Онлайн-стан каси',
+                status: registerInfo.offlineMode || registerInfo.stayOffline ? 'blocked' : 'ready',
+                ready: !(registerInfo.offlineMode || registerInfo.stayOffline),
+                recommendation: registerInfo.offlineMode || registerInfo.stayOffline ? readinessRecommendation('register_online') : null,
+                details: {
+                    offlineMode: registerInfo.offlineMode,
+                    stayOffline: registerInfo.stayOffline,
+                    documentsState: registerInfo.documentsState || null
+                }
+            }));
+        } catch (error) {
+            checks.push(errorCheck('register_identity', 'Каса Checkbox', error));
+            checks.push(readinessCheck({
+                code: 'register_online',
+                label: 'Онлайн-стан каси',
+                status: 'unavailable',
+                ready: false,
+                recommendation: readinessRecommendation('register_online')
+            }));
+        }
+
+        const ready = checks.every(check => check.status === 'ready' || check.status === 'not_applicable');
+        return {
+            ready,
+            status: ready ? 'ready' : 'blocked',
+            mutations: false,
+            authMode: this.authMode,
+            checks,
+            summary: {
+                readyCount: checks.filter(check => check.status === 'ready').length,
+                blockedCount: checks.filter(check => check.status === 'blocked').length,
+                unavailableCount: checks.filter(check => check.status === 'unavailable').length,
+                notApplicableCount: checks.filter(check => check.status === 'not_applicable').length
+            },
+            raw: redactCheckboxDiagnostics({
+                cashier: profile,
+                register: registerInfo,
+                signature,
+                taxes,
+                currentShift
+            })
+        };
     }
 
     async prepareMutation(input = {}, { expectedTaxIds = [] } = {}) {
@@ -966,6 +1299,8 @@ function createProviderFromConfig(config = {}, { fetchImpl, tokenCache } = {}) {
         client,
         login: config.login,
         password: config.password,
+        pinCode: config.pinCode,
+        authMode: config.authMode || 'password',
         credentialRef: config.credentialRef,
         licenseRef: config.licenseRef,
         expectedIsTest: config.expectedIsTest,

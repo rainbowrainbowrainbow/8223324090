@@ -7,8 +7,8 @@ Last reviewed: 2026-08-10.
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live Checkbox hardening package baseline checked for this handoff: `0.80.108` (`Checkbox Fiscal Hardening`).
-- Live commit checked for this handoff: `a6b2366167dd27c08d55cb7b774cce6074d6b1fb`.
+- Live package baseline checked for this handoff: `0.80.113` (`Task Center 320px Composer Guard`).
+- Live commit checked for this handoff: `4d995ce419f37610b559584ae0c1eb78e668da54`.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 
@@ -20,7 +20,7 @@ All follow-up implementation or release tasks must start from the newest live so
 - ReDoc UI: `https://api.checkbox.in.ua/api/redoc`.
 - Swagger UI: `https://api.checkbox.in.ua/api/docs`.
 - OpenAPI JSON: `https://api.checkbox.in.ua/api/openapi.json`.
-- OpenAPI version reviewed during this task: `2.103.0+4bf7154a`, OpenAPI `3.1.0`.
+- OpenAPI version reviewed during this task: `2.104.1+7f81a60c`, OpenAPI `3.1.0`.
 
 Relevant capabilities confirmed in the current OpenAPI contract:
 
@@ -59,7 +59,11 @@ Cashier PRO is Phase 2 and must stay disabled separately. Phase 2 includes servi
 - Real provider IDs are resolved through server-side configuration/mapping, not hardcoded code or fixtures.
 - A missing, inactive, ambiguous, or wrong mapping blocks checkout before money confirmation.
 - Park + middle pilot configuration is applied by `npm run configure:checkbox:park` in dry-run mode by default.
-- The operator CLI stores only logical credential refs and provider identifiers; raw login/password/license/access key values stay in environment variables outside the repository.
+- Local test-mode mapping uses `C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json` as the canonical non-secret input. This file may contain provider IDs and EventGenix user IDs, but never passwords, PINs, license keys, access keys, tokens, webhook secrets, or price overrides.
+- The operator CLI supports `--config-file` and `CHECKBOX_PILOT_CONFIG_FILE`; dry-run output masks provider IDs by default.
+- The operator CLI stores only logical credential refs and provider identifiers; raw login/password/PIN/license/access key values stay in environment variables outside the repository.
+- Runtime supports the official password sign-in and license-bound PIN sign-in as explicit modes. Provider sign-in PIN is not the Cashier PRO action-approval PIN.
+- Provider outlet ID is optional metadata unless an authoritative Checkbox source supplies it. It is never invented and is not used instead of organization/register/cashier identity.
 - Register enablement is a separate `enable-register` mode and is allowed only after successful preflight.
 - Runtime credentials must use exact ref-specific `CHECKBOX_<REF>_*` environment variables. Global fallback credentials are intentionally unsupported.
 - Feature flags must fail closed in production-like environments.
@@ -84,6 +88,7 @@ Required logical gates for follow-up tasks:
 | Outbox/recovery | Worker skips claiming when disabled/unconfigured, uses locks/batches/retry/backoff/dead letter, and lookup-before-resale | Production integration gate remains disabled | Manual reconciliation UI and operations |
 | UI | `/cashier-payments` thin page and menu exist; creator and art director access exists; Phase 2 UI is gated | Live production QA must stay read-only while integration is disabled | Service in/out, close checklist, refunds, reports |
 | Permissions | Narrow capabilities, user/profile/location/register bindings, and `capability_scope` enforcement exist | Production bindings require separate operator configuration | Supervisor PIN approval workflows |
+| Configuration | Operator CLI supports dry-run/preflight/apply/status/diff, explicit change commands, and local non-secret config files | Production legal/tax/provider/user values still require explicit activation input | Multi-FOP production rollout |
 | Webhook | Route-specific raw body and official `x-request-signature` Base64 HMAC verification exist | Production webhook configuration remains disabled and out of scope | Provider webhook activation/configuration |
 | Sandbox QA | Sandbox smoke script and local mock HTTP/PostgreSQL integration tests exist | Real sandbox run requires local `CHECKBOX_SANDBOX_*` secrets and `is_test=true` proof before mutation | Extended scenarios after MVP sale succeeds |
 | Production activation | Not active | Separate activation task required | Preschool/day-care separate profile/FOP/register |

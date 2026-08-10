@@ -9,6 +9,7 @@ const { assertSandboxBaseUrl, loadCheckboxSandboxConfig, publicConfigSummary } =
 const { CheckboxClientError, redactCheckboxDiagnostics } = require('../services/checkbox/errors');
 const { mapFullReturnReceipt, mapSaleReceipt, mapServiceReceipt } = require('../services/checkbox/mapper');
 const { WebhookReplayGuard, signCheckboxWebhookBody, verifyCheckboxWebhookSignature } = require('../services/checkbox/signature');
+const { assertOpenApiOperationContract, schemaContainsProperty } = require('../scripts/checkbox-sandbox-smoke');
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
@@ -35,6 +36,49 @@ test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', 
   assert.doesNotMatch(summary, /secret-password|license-secret|access-secret/);
   assert.equal(config.expectedIsTest, true);
   assert.equal(config.includeProOperations, false);
+});
+
+test('sandbox config supports a mutation-free PIN readiness mode', () => {
+  const pinCode = crypto.randomUUID();
+  const config = loadCheckboxSandboxConfig({
+    CHECKBOX_SANDBOX_BASE_URL: 'https://api.checkbox.in.ua',
+    CHECKBOX_SANDBOX_AUTH_MODE: 'pin',
+    CHECKBOX_SANDBOX_PIN_CODE: pinCode,
+    CHECKBOX_SANDBOX_LICENSE_KEY: 'license-secret',
+    CHECKBOX_SANDBOX_READINESS_ONLY: 'true',
+    CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID: 'org-test',
+    CHECKBOX_SANDBOX_EXPECT_REGISTER_ID: 'register-test',
+    CHECKBOX_SANDBOX_EXPECT_CASHIER_ID: 'cashier-test'
+  });
+  assert.equal(config.authMode, 'pin');
+  assert.equal(config.readinessOnly, true);
+  assert.equal(config.confirmMutations, false);
+  assert.equal(config.login, '');
+  assert.equal(config.password, '');
+});
+
+test('OpenAPI compatibility resolves referenced and composed receipt payload schemas', () => {
+  const contract = {
+    security: [{ bearerAuth: [] }],
+    components: {
+      schemas: {
+        ReceiptSellPayload: {
+          allOf: [
+            { $ref: '#/components/schemas/ReceiptGoods' },
+            { type: 'object', properties: { payments: { type: 'array' } } }
+          ]
+        },
+        ReceiptGoods: { type: 'object', properties: { goods: { type: 'array' } } }
+      }
+    }
+  };
+  const operation = {
+    requestBody: { content: { 'application/json': { schema: { $ref: '#/components/schemas/ReceiptSellPayload' } } } },
+    responses: { 200: { description: 'ok' } }
+  };
+  assert.equal(schemaContainsProperty(contract, operation.requestBody.content['application/json'].schema, 'goods'), true);
+  assert.equal(schemaContainsProperty(contract, operation.requestBody.content['application/json'].schema, 'payments'), true);
+  assert.doesNotThrow(() => assertOpenApiOperationContract(contract, '/api/v1/receipts/validate', 'post', operation));
 });
 
 test('mapper produces official Checkbox receipt/service payload shapes without floating point money', () => {
@@ -90,6 +134,35 @@ test('client maps exact official endpoints, headers and timeout/lookup recovery 
   assert.match(calls.find(call => call.url.endsWith('/api/v1/receipts/sell')).headers.Authorization, /^Bearer /);
 });
 
+test('client maps official license-bound PIN signin without login or password fields', async () => {
+  const calls = [];
+  const pinCode = crypto.randomUUID();
+  const fetchImpl = async (url, request = {}) => {
+    calls.push({
+      url: String(url),
+      method: request.method,
+      headers: request.headers || {},
+      body: request.body ? JSON.parse(request.body) : null
+    });
+    return jsonResponse({ access_token: 'pin-token', token_type: 'bearer' });
+  };
+  const client = new CheckboxClient({
+    baseUrl: 'https://api.checkbox.in.ua',
+    licenseKey: 'license-secret',
+    deviceId: 'eventgenix-pin-device',
+    fetchImpl
+  });
+  await client.signInWithPinCode({ pinCode });
+  assert.equal(calls[0].url, 'https://api.checkbox.in.ua/api/v1/cashier/signinPinCode');
+  assert.equal(calls[0].method, 'POST');
+  assert.deepEqual(calls[0].body, { pin_code: pinCode });
+  assert.equal(calls[0].headers['X-License-Key'], 'license-secret');
+  assert.equal(calls[0].headers['X-Device-ID'], 'eventgenix-pin-device');
+  assert.equal(calls[0].headers.Authorization, undefined);
+  assert.equal(Object.hasOwn(calls[0].body, 'login'), false);
+  assert.equal(Object.hasOwn(calls[0].body, 'password'), false);
+});
+
 test('webhook signature and replay helper accepts first event, flags replay and rejects conflict', () => {
   const secret = 'sandbox-webhook-secret';
   const rawBody = Buffer.from(JSON.stringify({ id: crypto.randomUUID(), status: 'DONE' }));
@@ -120,10 +193,15 @@ test('sandbox smoke harness stays Phase 1 test-mode guarded by official contract
   assert.match(script, /assertOpenApiOperationContract/);
   assert.match(script, /x-request-signature/);
   assert.match(script, /assertExpectedSandboxIdentityConfig/);
-  assert.match(script, /assertCashierTestIdentity/);
-  assert.match(script, /cashier\?\.is_test === true/);
+  assert.match(script, /createProviderFromConfig/);
+  assert.match(script, /collectReadinessDiagnostics/);
+  assert.match(script, /cashier-readiness-checklist/);
+  assert.match(script, /provider\.verifyReadiness/);
+  assert.match(script, /expectedIsTest: true/);
   assert.match(script, /waitShiftOpened/);
   assert.match(script, /waitReceiptDone/);
   assert.match(script, /phase2-operations-skipped/);
+  assert.match(script, /checkbox:sandbox:readiness/);
+  assert.match(script, /mutations: false/);
   assert.doesNotMatch(script, /sha256=\\$\\{signCheckboxWebhookBody/);
 });

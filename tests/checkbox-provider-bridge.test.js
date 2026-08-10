@@ -324,6 +324,157 @@ test('runtime provider readiness supports fully untaxed admission mappings witho
     }
 });
 
+test('runtime provider aggregate readiness reports all read-only blockers without fiscal mutations', async () => {
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') {
+            return {
+                body: cashierProfile({
+                    permissions: { sales: true, cash_payment: null, card_payment: false },
+                    certificate_end: null
+                })
+            };
+        }
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ offline_mode: true }) };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ online: false }) };
+        if (call.path === '/api/v1/cashier/tax') return { body: [] };
+        if (call.path === '/api/v1/cashier/shift') return { status: 404, body: { error: 'no shift' } };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const diagnostics = await provider.collectReadinessDiagnostics({
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: false
+        }, { expectedTaxIds: ['7'] });
+        const byCode = new Map(diagnostics.checks.map(check => [check.code, check]));
+        assert.equal(diagnostics.ready, false);
+        assert.equal(byCode.get('auth').status, 'ready');
+        assert.equal(byCode.get('sales_permission').status, 'ready');
+        assert.equal(byCode.get('cash_permission').status, 'blocked');
+        assert.equal(byCode.get('card_permission').status, 'blocked');
+        assert.equal(byCode.get('signature').status, 'blocked');
+        assert.equal(byCode.get('certificate').status, 'blocked');
+        assert.equal(byCode.get('provider_taxes').status, 'blocked');
+        assert.equal(byCode.get('register_online').status, 'blocked');
+        assert.equal(byCode.get('current_shift').status, 'not_applicable');
+        assert.match(byCode.get('cash_permission').recommendation, /cash payment/);
+        assert.match(byCode.get('card_permission').recommendation, /card\/cashless payment/);
+        assert.equal(calls.some(call => ['/api/v1/shifts', '/api/v1/receipts/validate', '/api/v1/receipts/sell', '/api/v1/shifts/close'].includes(call.path)), false);
+        assert.doesNotMatch(JSON.stringify(diagnostics), /cashier-password|license-secret|access-secret|token-1/i);
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider aggregate readiness distinguishes cash/card permission true, false and null', async () => {
+    async function runPermissions(permissions) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ permissions }) };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+            if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+            if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig(providerConfig(baseUrl));
+            const diagnostics = await provider.collectReadinessDiagnostics({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest: false
+            }, { expectedTaxIds: ['7'] });
+            return new Map(diagnostics.checks.map(check => [check.code, check]));
+        } finally {
+            await close(server);
+        }
+    }
+
+    let checks = await runPermissions({ sales: true, cash_payment: true, card_payment: true });
+    assert.equal(checks.get('cash_permission').status, 'ready');
+    assert.equal(checks.get('card_permission').status, 'ready');
+
+    checks = await runPermissions({ sales: true, cash_payment: false, card_payment: false });
+    assert.equal(checks.get('cash_permission').status, 'blocked');
+    assert.equal(checks.get('cash_permission').details.value, false);
+    assert.equal(checks.get('card_permission').details.value, false);
+
+    checks = await runPermissions({ sales: true, cash_payment: null, card_payment: null });
+    assert.equal(checks.get('cash_permission').status, 'blocked');
+    assert.equal(checks.get('cash_permission').details.value, null);
+    assert.equal(checks.get('card_permission').details.value, null);
+});
+
+test('runtime provider aggregate readiness supports password and PIN auth modes', async () => {
+    async function runAuthMode(configOverrides, expectedPath) {
+        const { server, calls, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin' || call.path === '/api/v1/cashier/signinPinCode') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+            if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+            if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig({ ...providerConfig(baseUrl), ...configOverrides });
+            const diagnostics = await provider.collectReadinessDiagnostics({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest: false
+            }, { expectedTaxIds: ['7'] });
+            assert.equal(diagnostics.checks.find(check => check.code === 'auth').status, 'ready');
+            assert.ok(calls.find(call => call.path === expectedPath));
+            return calls.find(call => call.path === expectedPath);
+        } finally {
+            await close(server);
+        }
+    }
+
+    const passwordCall = await runAuthMode({ authMode: 'password' }, '/api/v1/cashier/signin');
+    assert.deepEqual(passwordCall.body, { login: 'cashier-login', password: 'cashier-password' });
+
+    const pinCode = crypto.randomUUID();
+    const pinCall = await runAuthMode({ authMode: 'pin', login: '', password: '', pinCode }, '/api/v1/cashier/signinPinCode');
+    assert.deepEqual(pinCall.body, { pin_code: pinCode });
+    assert.equal(pinCall.headers['x-license-key'], 'license-secret');
+});
+
+test('runtime provider aggregate readiness reports identity and is_test mismatch without hiding other checks', async () => {
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ id: 'wrong-cashier', is_test: true, organization: { id: 'wrong-org' } }) };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ id: 'wrong-register', organization_id: 'wrong-org', is_test: true }) };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+        if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ cash_register: { id: 'wrong-register' } }) };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const diagnostics = await provider.collectReadinessDiagnostics({
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: false
+        }, { expectedTaxIds: ['7'] });
+        const byCode = new Map(diagnostics.checks.map(check => [check.code, check]));
+        assert.equal(byCode.get('cashier_identity').status, 'blocked');
+        assert.equal(byCode.get('organization_identity').status, 'unavailable');
+        assert.equal(byCode.get('is_test').status, 'unavailable');
+        assert.equal(byCode.get('register_identity').status, 'blocked');
+        assert.equal(byCode.get('signature').status, 'ready');
+        assert.equal(byCode.get('provider_taxes').status, 'ready');
+    } finally {
+        await close(server);
+    }
+});
+
 test('runtime provider validation fails closed on nested false validation result', async () => {
     const receiptId = crypto.randomUUID();
     const { server, baseUrl } = await listenMock(call => {
@@ -849,6 +1000,78 @@ test('runtime config requires explicit CHECKBOX_EXPECT_IS_TEST before enabling p
     );
     assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'true' } }).expectedIsTest, true);
     assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'false' } }).expectedIsTest, false);
+});
+
+test('runtime config supports explicit password and PIN auth and rejects ambiguity', () => {
+    const pinCode = crypto.randomUUID();
+    const common = {
+        CHECKBOX_EXPECT_IS_TEST: 'true',
+        CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://api.checkbox.in.ua',
+        CHECKBOX_PARK_MIDDLE_LICENSE_KEY: 'license-secret'
+    };
+    const passwordConfig = loadCheckboxRuntimeConfig({
+        credentialRef: 'park-middle',
+        licenseRef: 'park-middle',
+        env: {
+            ...common,
+            CHECKBOX_PARK_MIDDLE_AUTH_MODE: 'password',
+            CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
+            CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret'
+        }
+    });
+    assert.equal(passwordConfig.authMode, 'password');
+    assert.equal(passwordConfig.pinCode, '');
+
+    const pinConfig = loadCheckboxRuntimeConfig({
+        credentialRef: 'park-middle',
+        licenseRef: 'park-middle',
+        env: {
+            ...common,
+            CHECKBOX_PARK_MIDDLE_AUTH_MODE: 'pin',
+            CHECKBOX_PARK_MIDDLE_PIN_CODE: pinCode
+        }
+    });
+    assert.equal(pinConfig.authMode, 'pin');
+    assert.equal(pinConfig.login, '');
+    assert.equal(pinConfig.password, '');
+
+    assert.throws(
+        () => loadCheckboxRuntimeConfig({
+            credentialRef: 'park-middle',
+            licenseRef: 'park-middle',
+            env: {
+                ...common,
+                CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
+                CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
+                CHECKBOX_PARK_MIDDLE_PIN_CODE: pinCode
+            }
+        }),
+        error => error instanceof CheckboxClientError && error.code === 'checkbox_runtime_auth_mode_ambiguous'
+    );
+});
+
+test('runtime provider uses the selected PIN signin endpoint', async () => {
+    const pinCode = crypto.randomUUID();
+    const mock = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signinPinCode') return { body: { access_token: 'pin-token' } };
+        return { body: {} };
+    });
+    try {
+        const provider = createProviderFromConfig({
+            ...providerConfig(mock.baseUrl),
+            authMode: 'pin',
+            login: '',
+            password: '',
+            pinCode
+        });
+        await provider.authenticate();
+        assert.equal(mock.calls.length, 1);
+        assert.equal(mock.calls[0].path, '/api/v1/cashier/signinPinCode');
+        assert.deepEqual(mock.calls[0].body, { pin_code: pinCode });
+        assert.equal(mock.calls[0].headers['x-license-key'], 'license-secret');
+    } finally {
+        await close(mock.server);
+    }
 });
 
 test('runtime config fails closed for credential ref collisions and non-allowlisted URLs', () => {

@@ -2,6 +2,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const { pool } = require('../db');
 const { BUSINESS_CONTEXTS } = require('../services/businessContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
@@ -17,6 +18,8 @@ const APPLY_CONFIRM_ENV = 'EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY';
 const APPLY_CONFIRM_VALUE = 'true';
 const ACTION_PIN_ENV = 'CHECKBOX_PILOT_ACTION_PIN';
 const ACTION_PIN_USER_ENV_PREFIX = 'CHECKBOX_PILOT_ACTION_PIN_USER_';
+const CONFIG_FILE_ENV = 'CHECKBOX_PILOT_CONFIG_FILE';
+const QA_TEST_USER_ID = 47;
 
 const MODES = Object.freeze([
     'dry-run',
@@ -56,7 +59,8 @@ class PilotConfigError extends Error {
     }
 }
 
-function parseArgs(argv = process.argv.slice(2)) {
+function parseArgs(argv = process.argv.slice(2), env = {}) {
+    const configFilePath = configFilePathFromArgs(argv) || optionalText(env[CONFIG_FILE_ENV]);
     const options = {
         mode: 'dry-run',
         crmProfileKey: CRM_PROFILE_KEY,
@@ -67,6 +71,9 @@ function parseArgs(argv = process.argv.slice(2)) {
         capabilities: [...DEFAULT_CAPABILITIES],
         actorLabel: 'codex-checkbox-config-cli'
     };
+    if (configFilePath) {
+        Object.assign(options, optionsFromConfigFile(configFilePath), { configFilePath });
+    }
     const forbidden = /password|secret|pin|token|access[-_]?key|license[-_]?key/i;
     for (let i = 0; i < argv.length; i += 1) {
         const arg = argv[i];
@@ -122,6 +129,13 @@ function parseArgs(argv = process.argv.slice(2)) {
             throw new PilotConfigError('pilot_config_arg_invalid', `Unexpected argument: ${arg}`);
         }
         const name = arg.slice(2);
+        if (name === 'config-file') {
+            if (!argv[i + 1] || argv[i + 1].startsWith('--')) {
+                throw new PilotConfigError('pilot_config_arg_value_missing', `Value is required for ${arg}`);
+            }
+            i += 1;
+            continue;
+        }
         if (forbidden.test(name) && !['provider-license-ref', 'cashier-login-ref'].includes(name)) {
             throw new PilotConfigError('pilot_config_secret_arg_forbidden', `Raw secret-like argument is forbidden: ${arg}`);
         }
@@ -201,6 +215,127 @@ function parseArgs(argv = process.argv.slice(2)) {
         }
     }
     return normalizePlan(options);
+}
+
+function configFilePathFromArgs(argv = []) {
+    for (let index = 0; index < argv.length; index += 1) {
+        if (argv[index] === '--config-file') {
+            const value = argv[index + 1];
+            if (!value || value.startsWith('--')) {
+                throw new PilotConfigError('pilot_config_arg_value_missing', 'Value is required for --config-file');
+            }
+            return value;
+        }
+    }
+    return null;
+}
+
+function assertNonSecretConfig(value, path = 'config') {
+    if (!value || typeof value !== 'object') return;
+    if (Array.isArray(value)) {
+        value.forEach((item, index) => assertNonSecretConfig(item, `${path}[${index}]`));
+        return;
+    }
+    for (const [key, child] of Object.entries(value)) {
+        const normalized = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+        if (
+            normalized.includes('password')
+            || normalized === 'pin'
+            || normalized === 'pincode'
+            || normalized.includes('licensekey')
+            || normalized.includes('accesskey')
+            || normalized.includes('token')
+            || normalized.includes('webhooksecret')
+            || normalized === 'secret'
+            || normalized.endsWith('secret')
+        ) {
+            throw new PilotConfigError('pilot_config_secret_field_forbidden', `Secret-like field is forbidden in config file: ${path}.${key}`);
+        }
+        if (['price', 'priceoverride', 'unitprice', 'unitpriceuah', 'unitpriceminor', 'amount', 'amountminor', 'total', 'totalamount', 'totalamountminor'].includes(normalized)) {
+            throw new PilotConfigError('pilot_config_price_override_forbidden', `Price override field is forbidden in config file: ${path}.${key}`);
+        }
+        assertNonSecretConfig(child, `${path}.${key}`);
+    }
+}
+
+function loadPilotConfigFile(filePath) {
+    const raw = fs.readFileSync(filePath, 'utf8').replace(/^\uFEFF/, '');
+    let data;
+    try {
+        data = JSON.parse(raw);
+    } catch (error) {
+        throw new PilotConfigError('pilot_config_file_json_invalid', `Config file is not valid JSON: ${error.message}`);
+    }
+    assertNonSecretConfig(data);
+    return data;
+}
+
+function stringOrNull(value) {
+    const text = optionalText(value);
+    return text || null;
+}
+
+function numberArray(value) {
+    if (!Array.isArray(value)) return [];
+    return value.map(item => Number(item)).filter(item => Number.isSafeInteger(item) && item > 0);
+}
+
+function itemFromConfig(item) {
+    if (!item || typeof item !== 'object') {
+        throw new PilotConfigError('pilot_config_item_invalid', 'Config item mapping must be an object');
+    }
+    return parseItem([
+        item.itemCode,
+        item.fiscalItemName,
+        item.taxMode || 'taxed',
+        item.providerTaxId || '',
+        item.taxCode ?? '',
+        item.taxRateBps ?? ''
+    ].join('|'));
+}
+
+function optionsFromConfigFile(filePath) {
+    const config = loadPilotConfigFile(filePath);
+    if (optionalText(config.provider) && optionalText(config.provider) !== PROVIDER) {
+        throw new PilotConfigError('pilot_config_provider_forbidden', 'Only Checkbox provider can be configured by this pilot tool');
+    }
+    const eventGenixUsers = config.eventGenixUsers && typeof config.eventGenixUsers === 'object' ? config.eventGenixUsers : {};
+    const cashierUserIds = numberArray(config.cashierUserIds).length
+        ? numberArray(config.cashierUserIds)
+        : numberArray(eventGenixUsers.cashierUserIds);
+    const credentialRef = stringOrNull(config.credentialRef);
+    const primaryTestCashierUserId = Number(eventGenixUsers.primaryTestCashierUserId || config.primaryTestCashierUserId || 0) || null;
+    const integrationOwnerUserId = stringOrNull(config.integrationOwnerUserId)
+        || stringOrNull(config.integrationOwner)
+        || stringOrNull(numberArray(eventGenixUsers.integrationOwnerUserIds)[0]);
+    const options = {
+        crmProfileKey: stringOrNull(config.crmProfileKey) || CRM_PROFILE_KEY,
+        locationAlias: stringOrNull(config.locationAlias) || LOCATION_ALIAS,
+        registerAlias: stringOrNull(config.registerAlias) || REGISTER_ALIAS,
+        legalEntityKey: stringOrNull(config.legalEntityKey),
+        legalEntityName: stringOrNull(config.legalEntityName),
+        taxIdentifier: stringOrNull(config.taxIdentifier),
+        providerOrganizationId: stringOrNull(config.providerOrganizationId),
+        locationName: stringOrNull(config.locationName) || stringOrNull(config.locationDisplayName) || stringOrNull(config.locationAlias) || 'Park',
+        providerOutletId: stringOrNull(config.providerOutletId),
+        registerName: stringOrNull(config.registerName) || stringOrNull(config.registerDisplayName) || stringOrNull(config.registerAlias) || 'Middle',
+        providerRegisterId: stringOrNull(config.providerRegisterId),
+        providerLicenseRef: stringOrNull(config.providerLicenseRef) || stringOrNull(config.registerCredentialRef) || credentialRef,
+        cashierUserIds,
+        providerCashierId: stringOrNull(config.providerCashierId),
+        cashierLoginRef: stringOrNull(config.cashierLoginRef) || stringOrNull(config.cashierCredentialRef) || credentialRef,
+        integrationOwner: integrationOwnerUserId,
+        expectedIsTest: config.expectedIsTest,
+        capabilities: Array.isArray(config.capabilities) ? config.capabilities.map(item => String(item).trim()).filter(Boolean) : [...DEFAULT_CAPABILITIES],
+        items: Array.isArray(config.items) ? config.items.map(itemFromConfig) : [],
+        configFilePath: filePath,
+        primaryTestCashierUserId,
+        primaryTestCashierName: stringOrNull(eventGenixUsers.primaryTestCashierName || config.primaryTestCashierName)
+    };
+    if (optionalText(config.priceSource) && optionalText(config.priceSource) !== 'EventGenix admission tariff immutable snapshot') {
+        throw new PilotConfigError('pilot_config_price_source_invalid', 'CRM tariff must remain the only source of price');
+    }
+    return options;
 }
 
 function parseItem(value) {
@@ -356,8 +491,14 @@ function normalizePlan(options) {
         capabilities,
         actorUserId: options.actorUserId == null ? null : Number(options.actorUserId),
         actorLabel: optionalText(options.actorLabel),
-        reason: optionalText(options.reason)
+        reason: optionalText(options.reason),
+        configFilePath: optionalText(options.configFilePath),
+        primaryTestCashierUserId: options.primaryTestCashierUserId == null ? null : Number(options.primaryTestCashierUserId),
+        primaryTestCashierName: optionalText(options.primaryTestCashierName)
     };
+    if (plan.primaryTestCashierUserId != null && (!Number.isSafeInteger(plan.primaryTestCashierUserId) || plan.primaryTestCashierUserId <= 0)) {
+        throw new PilotConfigError('pilot_config_primary_cashier_invalid', 'primaryTestCashierUserId must be a positive integer when provided');
+    }
     if (plan.actorUserId != null && (!Number.isSafeInteger(plan.actorUserId) || plan.actorUserId <= 0)) {
         throw new PilotConfigError('pilot_config_actor_user_invalid', 'actor-user-id must be a positive integer when provided');
     }
@@ -376,13 +517,23 @@ function normalizePlan(options) {
     if (!options.items.length) {
         throw new PilotConfigError('pilot_config_items_required', 'At least one fiscal item mapping is required');
     }
+    const duplicateItems = options.items
+        .map(item => item.itemCode)
+        .filter((code, index, list) => list.indexOf(code) !== index);
+    if (duplicateItems.length) {
+        throw new PilotConfigError('pilot_config_item_duplicate', 'Each fiscal item mapping itemCode must be unique', {
+            details: { duplicateItems: [...new Set(duplicateItems)] }
+        });
+    }
     const fullPlan = {
         ...plan,
         legalEntityName: requireText(options.legalEntityName, 'legal_entity_name'),
         taxIdentifier: requireText(options.taxIdentifier, 'tax_identifier'),
         providerOrganizationId: requireText(options.providerOrganizationId, 'provider_organization_id'),
         locationName: requireText(options.locationName, 'location_name'),
-        providerOutletId: requireText(options.providerOutletId, 'provider_outlet_id'),
+        // The current official Checkbox cashier/register responses do not expose an
+        // outlet identifier. Keep it as optional operator metadata and never invent it.
+        providerOutletId: optionalText(options.providerOutletId),
         registerName: requireText(options.registerName, 'register_name'),
         providerRegisterId: requireText(options.providerRegisterId, 'provider_register_id'),
         providerLicenseRef: normalizeRef(options.providerLicenseRef, 'provider_license_ref'),
@@ -392,6 +543,12 @@ function normalizePlan(options) {
         expectedIsTest: parseExpectedIsTest(options.expectedIsTest),
         items: options.items
     };
+    if (fullPlan.primaryTestCashierUserId && !fullPlan.cashierUserIds.includes(fullPlan.primaryTestCashierUserId)) {
+        throw new PilotConfigError('pilot_config_primary_cashier_missing', 'Primary test cashier user must be included in cashier bindings');
+    }
+    if (fullPlan.cashierUserIds.includes(QA_TEST_USER_ID) && fullPlan.expectedIsTest !== true) {
+        throw new PilotConfigError('pilot_config_qa_user_test_only', 'QA user 47 is allowed only for explicit test-mode configuration');
+    }
     assertNoCredentialRefCollisions([fullPlan.providerLicenseRef, fullPlan.cashierLoginRef]);
     return fullPlan;
 }
@@ -459,17 +616,18 @@ function publicPlan(plan) {
         taxIdentifierConfigured: Boolean(plan.taxIdentifier),
         locationAlias: plan.locationAlias,
         registerAlias: plan.registerAlias,
-        providerOrganizationId: plan.providerOrganizationId || null,
-        providerOutletId: plan.providerOutletId || null,
-        providerRegisterId: plan.providerRegisterId || null,
+        providerOrganizationIdConfigured: Boolean(plan.providerOrganizationId),
+        providerOutletIdConfigured: Boolean(plan.providerOutletId),
+        providerRegisterIdConfigured: Boolean(plan.providerRegisterId),
         providerLicenseRef: plan.providerLicenseRef || null,
-        providerCashierId: plan.providerCashierId || null,
+        providerCashierIdConfigured: Boolean(plan.providerCashierId),
         cashierUserIds: plan.cashierUserIds,
         cashierLoginRef: plan.cashierLoginRef || null,
         integrationOwner: plan.integrationOwner || null,
         expectedIsTest: plan.expectedIsTest,
         capabilities: plan.capabilities,
         actionPinRequired: requiresActionPin(plan.capabilities),
+        primaryTestCashierUserId: plan.primaryTestCashierUserId || null,
         itemMappings: (plan.items || []).map(item => ({
             sourceType: SOURCE_TYPE,
             itemType: ITEM_TYPE,
@@ -695,6 +853,19 @@ async function preflightPlan(client, plan, { useStoredMappings = false } = {}) {
     collectCheck(checks, 'users_exist', missingUsers.length === 0, 'All exact CRM user IDs exist', missingUsers.length ? { missingUsers } : null);
     const inactiveUsers = users.rows.filter(row => row.is_active !== true).map(row => Number(row.id));
     collectCheck(checks, 'users_active', inactiveUsers.length === 0, 'All exact CRM users are active', inactiveUsers.length ? { inactiveUsers } : null);
+    if (plan.primaryTestCashierUserId) {
+        const primary = userById.get(plan.primaryTestCashierUserId);
+        const nameText = `${primary?.name || ''} ${primary?.username || ''}`.toLowerCase();
+        const expectedName = String(plan.primaryTestCashierName || '').toLowerCase();
+        const primaryNameOk = !primary
+            ? false
+            : !expectedName
+                ? true
+                : expectedName.includes('наталія') || expectedName.includes('natalia')
+                    ? (nameText.includes('наталі') || nameText.includes('natal'))
+                    : true;
+        collectCheck(checks, 'primary_test_cashier_confirmed', primaryNameOk, 'Primary test cashier user identity matches the local test config expectation', primaryNameOk ? null : { userId: plan.primaryTestCashierUserId });
+    }
     const deniedCapabilities = [];
     for (const user of users.rows) {
         for (const capability of plan.capabilities) {
@@ -1207,7 +1378,7 @@ async function assertMutationActorAuthorized(client, plan) {
 }
 
 async function run(argv = process.argv.slice(2), { env = process.env, dbPool = pool } = {}) {
-    const plan = parseArgs(argv);
+    const plan = parseArgs(argv, env);
     if (plan.mode === 'dry-run') return { applied: false, plan: publicPlan(plan) };
     const client = await dbPool.connect();
     try {
@@ -1309,9 +1480,11 @@ module.exports = {
     ACTION_PIN_ENV,
     ACTION_PIN_USER_ENV_PREFIX,
     APPLY_CONFIRM_ENV,
+    CONFIG_FILE_ENV,
     DEFAULT_CAPABILITIES,
     PIN_REQUIRED_CAPABILITIES,
     PilotConfigError,
+    assertNonSecretConfig,
     actionPinEnvNameForUser,
     actionPinHashesByUser,
     activeAdmissionTicketCodes,
@@ -1321,6 +1494,7 @@ module.exports = {
     diffPlan,
     diffSnapshots,
     normalizePlan,
+    optionsFromConfigFile,
     parseArgs,
     parseItem,
     preflightPlan,

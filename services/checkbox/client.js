@@ -116,6 +116,18 @@ class CheckboxClient {
         return payload;
     }
 
+    async signInWithPinCode({ pinCode } = {}) {
+        const payload = await this.request('/api/v1/cashier/signinPinCode', {
+            method: 'POST',
+            auth: false,
+            license: true,
+            device: true,
+            body: { pin_code: pinCode }
+        });
+        this.setAccessToken(normalizeToken(payload));
+        return payload;
+    }
+
     async getCashierProfile() {
         return this.request('/api/v1/cashier/me');
     }

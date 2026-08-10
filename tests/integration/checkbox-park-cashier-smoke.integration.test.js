@@ -7,10 +7,14 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const fs = require('node:fs');
 const http = require('node:http');
+const os = require('node:os');
+const path = require('node:path');
 const { after, before, describe, test } = require('node:test');
 const assert = require('node:assert/strict');
 const { assertSafeTestDatabaseUrl } = require('../../scripts/test-db-safety');
+const { run: runPilotConfig } = require('../../scripts/configure-checkbox-park-pilot');
 const { pool } = require('../../db');
 const {
     cancelDraftPaymentOrder,
@@ -20,7 +24,6 @@ const {
 const { createProviderFromConfig } = require('../../services/checkbox/provider');
 const { processPaymentOutboxJobs } = require('../../services/payments/paymentOutboxWorker');
 const { verifyCheckboxWebhookSignature } = require('../../services/checkbox/webhookAuth');
-const { createActionPinHash } = require('../../services/payments/fiscalApprovals');
 const {
     listUnresolvedPaymentOrders,
     loadCheckboxSalesReport
@@ -35,6 +38,26 @@ const FISCAL_ACTIONS = Object.freeze([
     'payments.confirm_received',
     'fiscal.shift.open'
 ]);
+const CONFIG_ACTOR_ACTIONS = Object.freeze([
+    ...FISCAL_ACTIONS,
+    'fiscal.configure'
+]);
+const TICKET_CODES = Object.freeze([
+    'regular_child',
+    'under_3_child',
+    'discounted_child',
+    'birthday_child',
+    'adult_companion',
+    'adult_game'
+]);
+const TEST_TICKET_PRICES_UAH = Object.freeze({
+    regular_child: 100,
+    under_3_child: 100,
+    discounted_child: 100,
+    birthday_child: 100,
+    adult_companion: 10,
+    adult_game: 10
+});
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION=true');
@@ -62,109 +85,143 @@ function createUserPayload(row) {
     };
 }
 
-async function seedUser({ username, name, role }) {
+async function seedFixedUser({ id, username, name, role = 'reception', actions = FISCAL_ACTIONS }) {
     const result = await pool.query(
         `INSERT INTO users (
-             username, password_hash, name, role, is_active,
+             id, username, password_hash, name, role, is_active,
              action_allowlist, business_contexts, default_business_context
          )
-         VALUES ($1, $2, $3, $4, true, $5::text[], $6::text[], $7)
+         VALUES ($1, $2, $3, $4, $5, true, $6::text[], $7::text[], $8)
+         ON CONFLICT (id) DO UPDATE
+             SET username = EXCLUDED.username,
+                 password_hash = EXCLUDED.password_hash,
+                 name = EXCLUDED.name,
+                 role = EXCLUDED.role,
+                 is_active = true,
+                 action_allowlist = EXCLUDED.action_allowlist,
+                 business_contexts = EXCLUDED.business_contexts,
+                 default_business_context = EXCLUDED.default_business_context
          RETURNING id, username, name, role`,
         [
+            id,
             username,
             `smoke-password-hash-${crypto.randomUUID()}`,
             name,
             role,
-            FISCAL_ACTIONS,
+            actions,
             [CRM_PROFILE_KEY],
             CRM_PROFILE_KEY
         ]
     );
-    return createUserPayload(result.rows[0]);
+    await pool.query(
+        `SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST((SELECT MAX(id) FROM users), 1), true)`
+    );
+    return createUserPayload({
+        ...result.rows[0],
+        action_allowlist: actions,
+        actionAllowlist: actions
+    });
 }
 
-async function seedFiscalScope({ cashier }) {
-    const ephemeralPinHash = await createActionPinHash(String(crypto.randomInt(100000, 999999)));
-    const profile = await pool.query(
-        `INSERT INTO fiscal_profiles (
-             crm_profile_key, legal_entity_key, legal_entity_name,
-             tax_identifier, provider, provider_organization_id, currency, status, settings
-         )
-         VALUES ($1, $2, $3, $4, 'checkbox', $5, 'UAH', 'active', $6::jsonb)
-         RETURNING *`,
-        [
-            CRM_PROFILE_KEY,
-            `fop_park_smoke_${process.pid}`.toLowerCase(),
-            'Checkbox Park Smoke FOP',
-            `smoke-tax-${process.pid}`,
-            `mock-org-${process.pid}`,
-            JSON.stringify({ pilot: true, smoke: true })
-        ]
-    );
-    const location = await pool.query(
-        `INSERT INTO fiscal_locations (
-             fiscal_profile_id, crm_profile_key, location_alias, display_name,
-             provider_outlet_id, address_snapshot, status
-         )
-         VALUES ($1, $2, 'park', 'Park test location', $3, 'Local smoke address', 'active')
-         RETURNING *`,
-        [profile.rows[0].id, CRM_PROFILE_KEY, `mock-outlet-${process.pid}`]
-    );
-    const register = await pool.query(
-        `INSERT INTO fiscal_registers (
-             fiscal_profile_id, fiscal_location_id, crm_profile_key, register_alias,
-             display_name, provider, provider_register_id, provider_license_ref,
-             status, feature_enabled, metadata
-         )
-         VALUES ($1, $2, $3, $4, 'Middle cash register smoke', 'checkbox', $5, $6, 'active', true, $7::jsonb)
-         RETURNING *`,
-        [
-            profile.rows[0].id,
-            location.rows[0].id,
-            CRM_PROFILE_KEY,
-            REGISTER_ALIAS,
-            `mock-register-${process.pid}`,
-            'park-middle-smoke',
-            JSON.stringify({ integration_owner: 'checkbox-park-smoke', expected_is_test: true })
-        ]
-    );
-    await pool.query(
-        `INSERT INTO fiscal_cashier_bindings (
-             fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
-             user_id, provider, provider_cashier_id, provider_cashier_login_ref,
-             status, capability_scope, action_pin_hash, action_pin_set_at, action_pin_updated_by_user_id
-         )
-         VALUES ($1, $2, $3, $4, $5, 'checkbox', $6, $7, 'active', $8::text[], $9, NOW(), $5)`,
-        [
-            profile.rows[0].id,
-            register.rows[0].id,
-            location.rows[0].id,
-            CRM_PROFILE_KEY,
-            cashier.id,
-            `mock-cashier-${cashier.id}`,
-            'park-middle-smoke',
-            FISCAL_ACTIONS,
-            ephemeralPinHash
-        ]
-    );
+function testPilotConfig({ cashierIds, legalEntityKey, providerOrganizationId, providerRegisterId, providerCashierId }) {
+    return {
+        crmProfileKey: CRM_PROFILE_KEY,
+        locationAlias: 'park',
+        registerAlias: REGISTER_ALIAS,
+        legalEntityKey,
+        legalEntityName: 'ФОПТЕСТ',
+        taxIdentifier: `test-tax-${process.pid}`,
+        providerOrganizationId,
+        providerOutletId: null,
+        locationName: 'Дитячий критий парк',
+        registerName: 'Середня каса',
+        providerRegisterId,
+        credentialRef: 'park-middle-smoke',
+        providerCashierId,
+        expectedIsTest: true,
+        integrationOwnerUserId: cashierIds[0],
+        cashierUserIds: cashierIds,
+        eventGenixUsers: {
+            primaryTestCashierUserId: 3,
+            primaryTestCashierName: 'Natalia Vasylivna',
+            cashierUserIds: cashierIds,
+            integrationOwnerUserIds: [cashierIds[0]]
+        },
+        capabilities: [...FISCAL_ACTIONS],
+        priceSource: 'EventGenix admission tariff immutable snapshot',
+        items: TICKET_CODES.map(code => ({
+            itemCode: code,
+            fiscalItemName: code === 'adult_companion'
+                ? 'Дорослий супровід'
+                : `Тестовий квиток ${code}`,
+            taxMode: 'untaxed'
+        }))
+    };
+}
 
-    const itemCodes = ['park_child_day_cash', 'park_child_day_card', 'park_child_422', 'park_child_timeout', 'park_child_pending', 'park_child_malformed', 'park_child_concurrent'];
-    for (const itemCode of itemCodes) {
-        await pool.query(
-            `INSERT INTO fiscal_item_mappings (
-                 fiscal_profile_id, fiscal_register_id, crm_profile_key, source_type, item_type,
-                 item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps, status
-             )
-             VALUES ($1, $2, $3, 'admission_ticket', 'admission_ticket', $4, $5, 'checkbox', '7', 7, 0, 'active')`,
-            [
-                profile.rows[0].id,
-                register.rows[0].id,
-                CRM_PROFILE_KEY,
-                itemCode,
-                `Park admission ${itemCode}`
-            ]
-        );
+async function withTempConfigFile(config, callback) {
+    const filePath = path.join(os.tmpdir(), `checkbox-park-smoke-${process.pid}-${crypto.randomUUID()}.json`);
+    fs.writeFileSync(filePath, JSON.stringify(config, null, 2), 'utf8');
+    try {
+        return await callback(filePath);
+    } finally {
+        fs.rmSync(filePath, { force: true });
     }
+}
+
+async function seedFiscalScope({ cashier, secondCashier }) {
+    const legalEntityKey = `fop_park_smoke_${process.pid}`.toLowerCase();
+    const providerOrganizationId = `mock-org-${process.pid}`;
+    const providerRegisterId = `mock-register-${process.pid}`;
+    const providerCashierId = `mock-cashier-${cashier.id}`;
+    const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
+    const config = testPilotConfig({
+        cashierIds: [cashier.id, secondCashier.id],
+        legalEntityKey,
+        providerOrganizationId,
+        providerRegisterId,
+        providerCashierId
+    });
+    const applied = await withTempConfigFile(config, async filePath => {
+        const preflight = await runPilotConfig(['preflight', '--config-file', filePath], { env, dbPool: pool });
+        assert.equal(preflight.ok, true, JSON.stringify(preflight.preflight?.checks || preflight));
+        const apply = await runPilotConfig(
+            ['apply', '--config-file', filePath, '--actor-user-id', String(cashier.id), '--reason', 'integration smoke config-file apply'],
+            { env, dbPool: pool }
+        );
+        assert.equal(apply.applied, true);
+        const enabledRegister = await runPilotConfig(
+            ['enable-register', '--config-file', filePath, '--actor-user-id', String(cashier.id), '--reason', 'integration smoke enable local register'],
+            { env, dbPool: pool }
+        );
+        assert.equal(enabledRegister.featureEnabled, true);
+        return apply;
+    });
+
+    const mappingRows = await pool.query(
+        `SELECT item_code, tax_mode, provider_tax_id
+           FROM fiscal_item_mappings
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND status = 'active'
+          ORDER BY item_code`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId]
+    );
+    assert.deepEqual(mappingRows.rows.map(row => row.item_code), [...TICKET_CODES].sort());
+    assert.ok(mappingRows.rows.every(row => row.tax_mode === 'untaxed'));
+    assert.ok(mappingRows.rows.every(row => row.provider_tax_id === null));
+
+    const bindingRows = await pool.query(
+        `SELECT user_id, action_pin_hash, capability_scope
+           FROM fiscal_cashier_bindings
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND status = 'active'
+          ORDER BY user_id`,
+        [applied.fiscalProfileId, applied.fiscalRegisterId]
+    );
+    assert.deepEqual(bindingRows.rows.map(row => Number(row.user_id)), [cashier.id, secondCashier.id].sort((a, b) => a - b));
+    assert.ok(bindingRows.rows.every(row => row.action_pin_hash === null), 'thin MVP bindings must not require PIN');
 
     const dummyProfile = await pool.query(
         `INSERT INTO fiscal_profiles (
@@ -177,36 +234,15 @@ async function seedFiscalScope({ cashier }) {
     );
 
     return {
-        fiscalProfileId: Number(profile.rows[0].id),
-        fiscalLocationId: Number(location.rows[0].id),
-        fiscalRegisterId: Number(register.rows[0].id),
+        fiscalProfileId: Number(applied.fiscalProfileId),
+        fiscalLocationId: Number(applied.fiscalLocationId),
+        fiscalRegisterId: Number(applied.fiscalRegisterId),
         dummyFiscalProfileId: Number(dummyProfile.rows[0].id),
-        providerOrganizationId: profile.rows[0].provider_organization_id,
-        providerRegisterId: register.rows[0].provider_register_id
+        providerOrganizationId,
+        providerRegisterId,
+        providerCashierId,
+        legalEntityKey
     };
-}
-
-async function bindUserToFiscalScope({ user, scope }) {
-    const ephemeralPinHash = await createActionPinHash(String(crypto.randomInt(100000, 999999)));
-    await pool.query(
-        `INSERT INTO fiscal_cashier_bindings (
-             fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
-             user_id, provider, provider_cashier_id, provider_cashier_login_ref,
-             status, capability_scope, action_pin_hash, action_pin_set_at, action_pin_updated_by_user_id
-         )
-         VALUES ($1, $2, $3, $4, $5, 'checkbox', $6, $7, 'active', $8::text[], $9, NOW(), $5)`,
-        [
-            scope.fiscalProfileId,
-            scope.fiscalRegisterId,
-            scope.fiscalLocationId,
-            CRM_PROFILE_KEY,
-            user.id,
-            `mock-cashier-${user.id}`,
-            'park-middle-smoke',
-            FISCAL_ACTIONS,
-            ephemeralPinHash
-        ]
-    );
 }
 
 function makeQuote({ fingerprint, totalUah, code, name }) {
@@ -236,6 +272,8 @@ async function listenMockCheckbox() {
         calls: [],
         receipts: new Map(),
         modes: new Map(),
+        unavailablePaths: new Set(),
+        permissions: { sales: true, cash_payment: true, card_payment: true },
         tokensIssued: 0
     };
     const server = http.createServer((req, res) => {
@@ -261,9 +299,17 @@ async function listenMockCheckbox() {
             };
 
             try {
+                if (state.unavailablePaths.has(req.url)) {
+                    return send(503, { error: 'provider_unavailable' });
+                }
                 if (req.url === '/api/v1/cashier/signin' && req.method === 'POST') {
                     state.tokensIssued += 1;
                     return send(200, { access_token: `mock-token-${state.tokensIssued}`, token_type: 'bearer' });
+                }
+                if (req.url === '/api/v1/cashier/signinPinCode' && req.method === 'POST') {
+                    if (!body?.pin_code) return send(400, { error: 'pin_code_required' });
+                    state.tokensIssued += 1;
+                    return send(200, { access_token: `mock-pin-token-${state.tokensIssued}`, token_type: 'bearer' });
                 }
                 if (req.url === '/api/v1/cashier/me' && req.method === 'GET') {
                     return send(200, {
@@ -272,7 +318,7 @@ async function listenMockCheckbox() {
                         organization: { id: state.organizationId },
                         is_test: true,
                         certificate_end: '2099-01-01T00:00:00.000Z',
-                        permissions: { sales: true, cash_payment: true, card_payment: true }
+                        permissions: state.permissions
                     });
                 }
                 if (req.url === '/api/v1/cash-registers/info' && req.method === 'GET') {
@@ -346,7 +392,7 @@ async function listenMockCheckbox() {
                         type: 'SELL',
                         fiscal_code: `FC-${id}`.slice(0, 80),
                         serial: state.calls.filter(item => item.path === '/api/v1/receipts/sell').length,
-                        total_sum: body?.goods?.reduce((sum, item) => sum + Number(item.good?.price || 0) * Number(item.quantity || 1000) / 1000, 0) || 0,
+                        total_sum: (body?.goods?.reduce((sum, item) => sum + Number(item.good?.price || 0) * Number(item.quantity || 1000) / 1000, 0) || 0) + (mode === 'invalid_amount' ? 1 : 0),
                         total_payment: body?.payments?.[0]?.value || 0,
                         total_rest: Math.max(0, Number(body?.payments?.[0]?.value || 0) - (body?.goods?.reduce((sum, item) => sum + Number(item.good?.price || 0) * Number(item.quantity || 1000) / 1000, 0) || 0)),
                         payments: body?.payments || [],
@@ -385,7 +431,7 @@ async function listenMockCheckbox() {
     };
 }
 
-function providerConfig(baseUrl, timeoutMs = 1000) {
+function providerConfig(baseUrl, timeoutMs = 1000, overrides = {}) {
     return {
         baseUrl,
         login: 'mock-login',
@@ -396,7 +442,8 @@ function providerConfig(baseUrl, timeoutMs = 1000) {
         expectedIsTest: true,
         clientName: 'EventGenix Smoke',
         clientVersion: 'test',
-        timeoutMs
+        timeoutMs,
+        ...overrides
     };
 }
 
@@ -509,20 +556,23 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             CHECKBOX_EXPECT_IS_TEST: process.env.CHECKBOX_EXPECT_IS_TEST,
             PAYMENT_OUTBOX_WAKEUP_DISABLED: process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED
         };
-        cashier = await seedUser({
-            username: `cashier_http_smoke_${process.pid}`,
-            name: 'Checkbox HTTP smoke cashier',
-            role: 'reception'
+        cashier = await seedFixedUser({
+            id: 3,
+            username: `natalia_http_smoke_${process.pid}`,
+            name: 'Наталія Василівна / Natalia Vasylivna',
+            role: 'creator',
+            actions: CONFIG_ACTOR_ACTIONS
         });
-        scope = await seedFiscalScope({ cashier });
-        secondCashier = await seedUser({
+        secondCashier = await seedFixedUser({
+            id: 4,
             username: `cashier_http_smoke_second_${process.pid}`,
             name: 'Checkbox HTTP smoke second cashier',
-            role: 'reception'
+            role: 'reception',
+            actions: CONFIG_ACTOR_ACTIONS
         });
-        await bindUserToFiscalScope({ user: secondCashier, scope });
+        scope = await seedFiscalScope({ cashier, secondCashier });
         mock = await listenMockCheckbox();
-        mock.state.cashierId = `mock-cashier-${cashier.id}`;
+        mock.state.cashierId = scope.providerCashierId;
         mock.state.organizationId = scope.providerOrganizationId;
         mock.state.registerId = scope.providerRegisterId;
         process.env.CHECKBOX_INTEGRATION_ENABLED = 'true';
@@ -551,9 +601,9 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         const body = { tender: 'cash', admissionTicket: { sameTickets: true } };
         const sharedQuote = makeQuote({
             fingerprint: `quote-identical-${process.pid}`,
-            totalUah: 180,
-            code: 'park_child_day_cash',
-            name: 'Park child day'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            code: 'regular_child',
+            name: 'Дитячий test ticket'
         });
 
         const first = await createAdmissionTicketPaymentOrder({
@@ -608,13 +658,83 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         );
     });
 
+    test('local HTTP Checkbox readiness supports password and PIN auth without fiscal mutations', async () => {
+        const expected = {
+            expectedOrganizationId: scope.providerOrganizationId,
+            expectedRegisterId: scope.providerRegisterId,
+            expectedCashierId: scope.providerCashierId,
+            expectedIsTest: true
+        };
+        const passwordProvider = createProviderFromConfig(providerConfig(mock.baseUrl, 1000, { authMode: 'password' }));
+        const passwordDiagnostics = await passwordProvider.collectReadinessDiagnostics(expected);
+        assert.equal(passwordDiagnostics.mutations, false);
+        assert.equal(passwordDiagnostics.checks.find(check => check.code === 'auth')?.status, 'ready');
+        assert.equal(mock.state.calls.some(call => call.path === '/api/v1/cashier/signin'), true);
+
+        const pinProvider = createProviderFromConfig(providerConfig(mock.baseUrl, 1000, {
+            authMode: 'pin',
+            login: '',
+            password: '',
+            pinCode: crypto.randomUUID()
+        }));
+        const pinDiagnostics = await pinProvider.collectReadinessDiagnostics(expected);
+        assert.equal(pinDiagnostics.mutations, false);
+        assert.equal(pinDiagnostics.checks.find(check => check.code === 'auth')?.status, 'ready');
+        assert.equal(mock.state.calls.some(call => call.path === '/api/v1/cashier/signinPinCode'), true);
+        assert.equal(mock.state.calls.filter(call => ['/api/v1/shifts', '/api/v1/receipts/validate', '/api/v1/receipts/sell'].includes(call.path)).length, 0);
+    });
+
+    test('readiness negative scenarios aggregate wrong identity, missing permissions, and provider unavailable', async () => {
+        const expected = {
+            expectedOrganizationId: scope.providerOrganizationId,
+            expectedRegisterId: scope.providerRegisterId,
+            expectedCashierId: scope.providerCashierId,
+            expectedIsTest: true
+        };
+        const provider = createHttpProvider(mock);
+        const original = {
+            cashierId: mock.state.cashierId,
+            organizationId: mock.state.organizationId,
+            registerId: mock.state.registerId,
+            permissions: { ...mock.state.permissions }
+        };
+        try {
+            mock.state.cashierId = 'wrong-cashier';
+            const wrongCashierDiagnostics = await provider.collectReadinessDiagnostics(expected);
+            const wrongCashierByCode = new Map(wrongCashierDiagnostics.checks.map(check => [check.code, check]));
+            assert.equal(wrongCashierDiagnostics.ready, false);
+            assert.equal(wrongCashierByCode.get('cashier_identity')?.status, 'blocked');
+
+            mock.state.cashierId = original.cashierId;
+            mock.state.organizationId = 'wrong-org';
+            mock.state.registerId = 'wrong-register';
+            mock.state.permissions = { sales: false, cash_payment: false, card_payment: false };
+            mock.state.unavailablePaths.add('/api/v1/cash-registers/info');
+            const diagnostics = await provider.collectReadinessDiagnostics(expected);
+            const byCode = new Map(diagnostics.checks.map(check => [check.code, check]));
+            assert.equal(diagnostics.ready, false);
+            assert.equal(byCode.get('organization_identity')?.status, 'blocked');
+            assert.equal(byCode.get('register_identity')?.status, 'unavailable');
+            assert.equal(byCode.get('sales_permission')?.status, 'blocked');
+            assert.equal(byCode.get('cash_permission')?.status, 'blocked');
+            assert.equal(byCode.get('card_permission')?.status, 'blocked');
+            assert.equal(diagnostics.mutations, false);
+        } finally {
+            mock.state.cashierId = original.cashierId;
+            mock.state.organizationId = original.organizationId;
+            mock.state.registerId = original.registerId;
+            mock.state.permissions = original.permissions;
+            mock.state.unavailablePaths.clear();
+        }
+    });
+
     test('draft cancellation is audited and paid orders cannot be cancelled', async () => {
         const draft = await createOrder({
             user: cashier,
             key: 'cancel-draft',
             tender: 'cash',
-            totalUah: 90,
-            itemCode: 'park_child_day_cash'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
         const cancelled = await cancelDraftPaymentOrder({
             dbPool: pool,
@@ -642,8 +762,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'cancel-paid',
             tender: 'cash',
-            totalUah: 100,
-            itemCode: 'park_child_day_cash'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
         await confirmOrder({
             user: cashier,
@@ -663,27 +783,57 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         );
     });
 
+    test('all six active admission ticket codes can create immutable untaxed order items from config-file mapping', async () => {
+        for (const code of TICKET_CODES) {
+            const order = await createOrder({
+                user: cashier,
+                key: `six-codes-${code}`,
+                tender: 'cash',
+                totalUah: TEST_TICKET_PRICES_UAH[code],
+                itemCode: code
+            });
+            const items = await pool.query(
+                `SELECT item_code, provider_tax_id, tax_mode, unit_price_minor, total_amount_minor
+                   FROM payment_order_items
+                  WHERE payment_order_id = $1`,
+                [order.order.id]
+            );
+            assert.equal(items.rowCount, 1, code);
+            assert.equal(items.rows[0].item_code, code);
+            assert.equal(items.rows[0].provider_tax_id, null);
+            assert.equal(items.rows[0].tax_mode, 'untaxed');
+            assert.equal(BigInt(items.rows[0].unit_price_minor), BigInt(TEST_TICKET_PRICES_UAH[code] * 100));
+            assert.equal(BigInt(items.rows[0].total_amount_minor), BigInt(TEST_TICKET_PRICES_UAH[code] * 100));
+            await cancelDraftPaymentOrder({
+                dbPool: pool,
+                user: cashier,
+                orderId: order.order.id,
+                idempotencyKey: `cancel-six-codes-${code}-${process.pid}`
+            });
+        }
+    });
+
     test('manual terminal reference is metadata and does not globally block another payment', async () => {
         const first = await createOrder({
             user: cashier,
             key: 'terminal-ref-a',
             tender: 'card_terminal_manual',
-            totalUah: 130,
-            itemCode: 'park_child_day_card'
+            totalUah: TEST_TICKET_PRICES_UAH.adult_companion,
+            itemCode: 'adult_companion'
         });
         const second = await createOrder({
             user: cashier,
             key: 'terminal-ref-b',
             tender: 'card_terminal_manual',
-            totalUah: 130,
-            itemCode: 'park_child_day_card'
+            totalUah: TEST_TICKET_PRICES_UAH.adult_companion,
+            itemCode: 'adult_companion'
         });
         await confirmOrder({
             user: cashier,
             order: first,
             key: 'terminal-ref-a',
             tender: 'card_terminal_manual',
-            amountMinor: '13000',
+            amountMinor: '1000',
             terminalReference: 'same-terminal-report'
         });
         await confirmOrder({
@@ -691,7 +841,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             order: second,
             key: 'terminal-ref-b',
             tender: 'card_terminal_manual',
-            amountMinor: '13000',
+            amountMinor: '1000',
             terminalReference: 'same-terminal-report'
         });
         const refs = await pool.query(
@@ -715,15 +865,15 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'cash',
             tender: 'cash',
-            totalUah: 120,
-            itemCode: 'park_child_day_cash'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
         const confirmedCash = await confirmOrder({
             user: cashier,
             order: cashOrder,
             key: 'cash',
             tender: 'cash',
-            amountMinor: '12000',
+            amountMinor: '10000',
             receivedAmountMinor: '15000'
         });
         assert.ok(confirmedCash.fiscalOperationId);
@@ -731,7 +881,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
 
         const confirmation = await pool.query('SELECT confirmation_snapshot FROM payment_orders WHERE id = $1', [cashOrder.order.id]);
         assert.equal(confirmation.rows[0].confirmation_snapshot.received_amount_minor, '15000');
-        assert.equal(confirmation.rows[0].confirmation_snapshot.change_amount_minor, '3000');
+        assert.equal(confirmation.rows[0].confirmation_snapshot.change_amount_minor, '5000');
 
         const shiftOpenCallsBeforeCash = mock.state.calls.filter(call => call.path === '/api/v1/shifts').length;
         await runWorkerUntilIdle(createHttpProvider(mock));
@@ -756,15 +906,15 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'card',
             tender: 'card_terminal_manual',
-            totalUah: 180,
-            itemCode: 'park_child_day_card'
+            totalUah: TEST_TICKET_PRICES_UAH.adult_companion,
+            itemCode: 'adult_companion'
         });
         const confirmedCard = await confirmOrder({
             user: cashier,
             order: cardOrder,
             key: 'card',
             tender: 'card_terminal_manual',
-            amountMinor: '18000',
+            amountMinor: '1000',
             terminalReference: 'terminal-report-1'
         });
         const cardProviderRequestUuid = await providerRequestUuidForOperation(confirmedCard.fiscalOperationId);
@@ -782,7 +932,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         const saleCall = mock.state.calls.find(call => call.path === '/api/v1/receipts/sell' && call.body?.id === cashProviderRequestUuid);
         assert.equal(saleCall.headers.authorization.startsWith('Bearer '), true);
         assert.equal(saleCall.headers['x-access-key'], 'mock-access');
-        assert.deepEqual(saleCall.body.goods[0].good.tax, ['7']);
+        assert.equal(saleCall.body.goods[0].good.tax, undefined, 'untaxed test items must not send fabricated Checkbox tax ids');
         assert.doesNotMatch(JSON.stringify(saleCall.body), /admission_tariff:/);
     });
 
@@ -791,8 +941,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'concurrent',
             tender: 'cash',
-            totalUah: 90,
-            itemCode: 'park_child_concurrent'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
 
         const first = await confirmPaymentOrder({
@@ -830,8 +980,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'parallel',
             tender: 'cash',
-            totalUah: 95,
-            itemCode: 'park_child_concurrent'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
         const results = await Promise.allSettled([
             confirmPaymentOrder({
@@ -839,14 +989,14 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 user: cashier,
                 orderId: concurrentOrder.order.id,
                 idempotencyKey: `confirm-parallel-a-${process.pid}`,
-                body: { tender: 'cash', confirmedAmountMinor: '9500' }
+                body: { tender: 'cash', confirmedAmountMinor: '10000' }
             }),
             confirmPaymentOrder({
                 dbPool: pool,
                 user: cashier,
                 orderId: concurrentOrder.order.id,
                 idempotencyKey: `confirm-parallel-b-${process.pid}`,
-                body: { tender: 'cash', confirmedAmountMinor: '9500' }
+                body: { tender: 'cash', confirmedAmountMinor: '10000' }
             })
         ]);
         assert.equal(results.filter(result => result.status === 'fulfilled').length, 1);
@@ -866,29 +1016,29 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'report-cashier-a',
             tender: 'cash',
-            totalUah: 40,
-            itemCode: 'park_child_day_cash'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
         const firstConfirmed = await confirmOrder({
             user: cashier,
             order: first,
             key: 'report-cashier-a',
             tender: 'cash',
-            amountMinor: '4000'
+            amountMinor: '10000'
         });
         const second = await createOrder({
             user: secondCashier,
             key: 'report-cashier-b',
             tender: 'cash',
-            totalUah: 50,
-            itemCode: 'park_child_day_cash'
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
         });
         await confirmOrder({
             user: secondCashier,
             order: second,
             key: 'report-cashier-b',
             tender: 'cash',
-            amountMinor: '5000'
+            amountMinor: '10000'
         });
 
         const latestJobBefore = await pool.query(
@@ -938,7 +1088,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         });
         assert.equal(report.orders.length, 1, 'report rows respect pagination');
         assert.ok(report.totalCount >= 2, 'report totals count the full filter scope, not only current page');
-        assert.ok(BigInt(report.totals.paymentTotalMinor) >= 9000n);
+        assert.ok(BigInt(report.totals.paymentTotalMinor) >= 20000n);
 
         const mineReport = await loadCheckboxSalesReport({
             dbPool: pool,
@@ -956,19 +1106,30 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
     test('4xx, pending, malformed, timeout-after-success, webhook replay, cross-profile isolation, and redaction fail safely', async () => {
         await runWorkerUntilIdle(createHttpProvider(mock));
 
+        await expectErrorCode(
+            createOrder({
+                user: cashier,
+                key: 'missing-mapping',
+                tender: 'cash',
+                totalUah: 100,
+                itemCode: 'missing_ticket_mapping'
+            }),
+            'fiscal_item_mapping_missing'
+        );
+
         const validationOrder = await createOrder({
             user: cashier,
             key: '422',
             tender: 'cash',
-            totalUah: 70,
-            itemCode: 'park_child_422'
+            totalUah: TEST_TICKET_PRICES_UAH.discounted_child,
+            itemCode: 'discounted_child'
         });
         const validationConfirm = await confirmOrder({
             user: cashier,
             order: validationOrder,
             key: '422',
             tender: 'cash',
-            amountMinor: '7000'
+            amountMinor: '10000'
         });
         const validationProviderRequestUuid = await providerRequestUuidForOperation(validationConfirm.fiscalOperationId);
         mock.state.modes.set(validationProviderRequestUuid, 'validation_422');
@@ -982,15 +1143,15 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             user: cashier,
             key: 'timeout',
             tender: 'card_terminal_manual',
-            totalUah: 80,
-            itemCode: 'park_child_timeout'
+            totalUah: TEST_TICKET_PRICES_UAH.adult_companion,
+            itemCode: 'adult_companion'
         });
         const timeoutConfirm = await confirmOrder({
             user: cashier,
             order: timeoutOrder,
             key: 'timeout',
             tender: 'card_terminal_manual',
-            amountMinor: '8000',
+            amountMinor: '1000',
             terminalReference: 'timeout-terminal'
         });
         const timeoutProviderRequestUuid = await providerRequestUuidForOperation(timeoutConfirm.fiscalOperationId);
@@ -1015,15 +1176,15 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 user: cashier,
                 key: mode,
                 tender: 'cash',
-                totalUah: 60,
-                itemCode: mode === 'pending' ? 'park_child_pending' : 'park_child_malformed'
+                totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+                itemCode: mode === 'pending' ? 'under_3_child' : 'birthday_child'
             });
             const confirmed = await confirmOrder({
                 user: cashier,
                 order,
                 key: mode,
                 tender: 'cash',
-                amountMinor: '6000'
+                amountMinor: '10000'
             });
             const providerRequestUuid = await providerRequestUuidForOperation(confirmed.fiscalOperationId);
             mock.state.modes.set(providerRequestUuid, mode);
@@ -1036,6 +1197,27 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 0
             );
         }
+
+        const invalidAmountOrder = await createOrder({
+            user: cashier,
+            key: 'invalid-amount',
+            tender: 'cash',
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
+        });
+        const invalidAmountConfirm = await confirmOrder({
+            user: cashier,
+            order: invalidAmountOrder,
+            key: 'invalid-amount',
+            tender: 'cash',
+            amountMinor: '10000'
+        });
+        const invalidAmountUuid = await providerRequestUuidForOperation(invalidAmountConfirm.fiscalOperationId);
+        mock.state.modes.set(invalidAmountUuid, 'invalid_amount');
+        const invalidAmountBatches = await runWorkerUntilIdle(createHttpProvider(mock));
+        assert.ok(invalidAmountBatches.some(batch => batch.failed >= 1), 'wrong provider amount must fail closed');
+        const invalidAmountState = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [invalidAmountOrder.order.id]);
+        assert.notEqual(invalidAmountState.rows[0].fiscal_status, 'fiscalized');
 
         const rawWebhookBody = Buffer.from(JSON.stringify({ id: `event-${process.pid}`, receipt_id: timeoutProviderRequestUuid }));
         const webhookSecret = crypto.randomBytes(32).toString('hex');

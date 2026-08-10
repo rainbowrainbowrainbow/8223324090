@@ -123,7 +123,8 @@ function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeC
 function missingLocalFiscalContext(mapping = {}, binding = {}, runtimeConfig = null) {
     const missing = [];
     if (!String(mapping.provider_organization_id || '').trim()) missing.push('provider_organization_id');
-    if (!String(mapping.provider_outlet_id || '').trim()) missing.push('provider_outlet_id');
+    // Checkbox's official cashier/register readiness schemas do not expose outlet_id.
+    // Organization + register + cashier + is_test are the provider identity boundary.
     if (!String(mapping.provider_register_id || '').trim()) missing.push('provider_register_id');
     if (!String(binding.provider_cashier_id || '').trim()) missing.push('provider_cashier_id');
     if (!String(mapping.provider_license_ref || '').trim()) missing.push('register_credential_ref');

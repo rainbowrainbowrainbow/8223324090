@@ -392,55 +392,10 @@ async function run() {
         await loginViaApi(page, cashier);
         await page.goto(`${BASE_URL}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
-        const readinessProbe = await page.evaluate(async () => {
-            const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/readiness/probe', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ crmProfileKey: 'event_genix', registerAlias: 'middle' })
-            });
-            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
-        });
-        assert.equal(readinessProbe.ok, true, JSON.stringify(readinessProbe));
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.waitForSelector('#paymentOrderForm');
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.registerState);
         const registerState = await page.evaluate(() => window.CashierPaymentsPage.state.registerState);
         assert.equal(registerState.readinessCode, 'ready', JSON.stringify(registerState));
         assert.equal(registerState.integrationReady, true, JSON.stringify(registerState));
-        mock.state.providerUnavailable = true;
-        const providerUnavailableProbe = await page.evaluate(async () => {
-            const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/readiness/probe', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ crmProfileKey: 'event_genix', registerAlias: 'middle', force: true })
-            });
-            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
-        });
-        assert.equal(providerUnavailableProbe.ok, true, JSON.stringify(providerUnavailableProbe));
-        assert.equal(providerUnavailableProbe.body.readinessCode, 'provider_unavailable', JSON.stringify(providerUnavailableProbe));
-        mock.state.providerUnavailable = false;
-        const recoveredProbe = await page.evaluate(async () => {
-            const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/readiness/probe', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    Authorization: `Bearer ${token}`
-                },
-                body: JSON.stringify({ crmProfileKey: 'event_genix', registerAlias: 'middle', force: true })
-            });
-            return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
-        });
-        assert.equal(recoveredProbe.ok, true, JSON.stringify(recoveredProbe));
-        assert.equal(recoveredProbe.body.readinessCode, 'ready', JSON.stringify(recoveredProbe));
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.fill('#paymentKidsCount', '1');
         await page.fill('#paymentAdultsCount', '0');

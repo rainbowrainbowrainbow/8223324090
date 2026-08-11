@@ -160,7 +160,15 @@ test('final payroll snapshot stores immutable KPI audit payload with manual appr
     assert.equal(snapshot.appliesToInstallmentKind, 'final');
     assert.equal(snapshot.formula, null);
     assert.equal(snapshot.formulaStatus, 'not_configured');
-    assert.deepEqual(snapshot.metrics.tasks, { assigned: 10, done: 8, overdue: 1 });
+    assert.deepEqual(snapshot.metrics.tasks, {
+        assigned: 10,
+        done: 8,
+        overdue: 1,
+        machineAccepted: 0,
+        machineExcluded: 0,
+        ambiguousExcluded: 0,
+        eligibilityPolicyVersion: 'task_automation_policy_v1:performance_v2'
+    });
     assert.equal(snapshot.metrics.contribution.ratingsSource, 'disabled_no_period_source');
     assert.equal(snapshot.sourceTimestamp, '2026-07-31T18:00:00.000Z');
 });

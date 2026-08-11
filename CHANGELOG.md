@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.120 - Checkbox Shift Recovery
+
+### Release / Versioning / (11.08.2026) [codex]
+- **Checkbox Shift Recovery** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.119 - Task Archive UX
 
 ### Release / Versioning / (10.08.2026) [codex]

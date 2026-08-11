@@ -283,7 +283,7 @@ function validBundleProposal(impactIds, overrides = {}) {
                 description: 'Audit CRM flow without creating dependencies.',
                 impactIds: [firstImpact],
                 priority: 'high',
-                dueDate: '2099-02-01',
+                scheduleDate: '2099-02-01',
                 ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
                 confidence: {
                     overall: 0.91,
@@ -299,7 +299,7 @@ function validBundleProposal(impactIds, overrides = {}) {
                 description: 'Prepare Hermes worker safely.',
                 impactIds: [secondImpact],
                 priority: 'normal',
-                dueDate: null,
+                scheduleDate: null,
                 ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
                 confidence: {
                     overall: 0.89,
@@ -315,7 +315,7 @@ function validBundleProposal(impactIds, overrides = {}) {
                 description: 'Verify automation and AI outcome.',
                 impactIds: [thirdImpact],
                 priority: 'normal',
-                dueDate: null,
+                scheduleDate: null,
                 ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
                 confidence: {
                     overall: 0.9,
@@ -1048,7 +1048,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             tasks: validBundleProposal([crmImpact, hermesImpact, aiImpact]).tasks.map((task, index) => ({
                 ...task,
                 title: index < 2 ? duplicateTitle : task.title,
-                dueDate: index < 2 ? '2099-03-01' : task.dueDate,
+                scheduleDate: index < 2 ? '2099-03-01' : task.scheduleDate,
                 impactIds: [crmImpact]
             }))
         });

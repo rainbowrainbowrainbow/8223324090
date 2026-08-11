@@ -18,6 +18,73 @@ const DEFAULT_PROJECT = 'bc28b46c-d4bc-491c-893a-d8401c633668';
 const DEFAULT_LIVE_URL = 'https://8223324090-production.up.railway.app';
 const DEFAULT_POST_DEPLOY_SMOKE_ATTEMPTS = 36;
 const DEFAULT_POST_DEPLOY_SMOKE_DELAY_MS = 5000;
+const FULL_COMMIT_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+const COMPLETE_DEPLOYMENT_METADATA_STATUSES = new Set(['railway', 'manifest']);
+
+function isPlainObject(value) {
+    return Boolean(value) && typeof value === 'object' && !Array.isArray(value);
+}
+
+function parseVersion(value) {
+    const match = String(value || '').trim().match(/^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$/);
+    if (!match) return null;
+    return match.slice(1, 4).map(part => Number(part));
+}
+
+function compareVersions(left, right) {
+    const a = parseVersion(left);
+    const b = parseVersion(right);
+    if (!a || !b) throw new Error(`Cannot compare versions: ${left || '(missing)'} vs ${right || '(missing)'}`);
+    for (let index = 0; index < 3; index += 1) {
+        if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
+    }
+    return 0;
+}
+
+function normalizeCommit(value) {
+    const commit = String(value || '').trim().toLowerCase();
+    return FULL_COMMIT_SHA_PATTERN.test(commit) ? commit : '';
+}
+
+function assertCompleteLiveDeploymentMetadata(live) {
+    if (!isPlainObject(live)) throw new Error('Live /api/version did not return an object');
+    if (!String(live.version || '').trim()) throw new Error('Live /api/version is missing version');
+    if (!normalizeCommit(live.commitSha)) throw new Error('Live /api/version is missing a valid commitSha');
+    if (!String(live.sourceBranch || '').trim()) throw new Error('Live /api/version is missing sourceBranch');
+    const meta = live.deploymentMetadata;
+    if (!isPlainObject(meta)) throw new Error('Live /api/version is missing deploymentMetadata');
+    if (meta.complete !== true || !COMPLETE_DEPLOYMENT_METADATA_STATUSES.has(meta.status)) {
+        throw new Error(`Live deployment metadata is not complete (${meta.status || 'unknown'})`);
+    }
+}
+
+function assertPreDeployLiveSafety({ live, localVersion, head, branch, remoteSha = null }) {
+    assertCompleteLiveDeploymentMetadata(live);
+    const localHead = normalizeCommit(head);
+    const liveCommit = normalizeCommit(live.commitSha);
+    if (!localHead) throw new Error('Local release HEAD is not an exact 40-character SHA');
+    if (remoteSha !== null && normalizeCommit(remoteSha) !== localHead) {
+        throw new Error(`Remote release branch is ${shortSha(remoteSha)}, but local HEAD is ${shortSha(localHead)}`);
+    }
+    if (String(live.sourceBranch || '').trim() !== branch) {
+        throw new Error(`Live source branch is "${live.sourceBranch}", expected release branch "${branch}"`);
+    }
+    const versionComparison = compareVersions(localVersion, live.version);
+    if (versionComparison < 0) {
+        throw new Error(`Refusing to deploy v${localVersion} over newer live v${live.version}`);
+    }
+    if (versionComparison === 0 && liveCommit !== localHead) {
+        throw new Error(`Refusing same-version deploy v${localVersion}: live is ${shortSha(liveCommit)}, release is ${shortSha(localHead)}`);
+    }
+    return {
+        liveVersion: live.version,
+        liveCommit,
+        liveBranch: live.sourceBranch,
+        localVersion,
+        head: localHead,
+        branch
+    };
+}
 
 function parseArgs(argv) {
     const options = {
@@ -128,6 +195,18 @@ function git(args) {
     return run('git', args, { capture: true });
 }
 
+function gitExitStatus(args) {
+    const executable = resolveCommandExecutable('git');
+    const result = spawnSync(executable, args, {
+        encoding: 'utf8',
+        shell: false,
+        stdio: ['ignore', 'pipe', 'pipe'],
+        env: process.env
+    });
+    if (result.error) fail(`${commandText('git', args)} failed: ${result.error.message}`);
+    return result.status;
+}
+
 function assertCleanWorktree() {
     const status = git(['status', '--porcelain']);
     if (status) fail('Worktree is dirty. Use a clean release worktree before deploying.');
@@ -167,6 +246,16 @@ function remoteBranchSha(branch) {
     const sha = output.split(/\s+/)[0] || '';
     if (!/^[0-9a-f]{40}$/i.test(sha)) fail(`Could not resolve origin/${branch}`);
     return sha;
+}
+
+function assertReleaseDescendsFromLive(liveCommit, head) {
+    const liveSha = normalizeCommit(liveCommit);
+    const headSha = normalizeCommit(head);
+    if (!liveSha || !headSha || liveSha === headSha) return;
+    const status = gitExitStatus(['merge-base', '--is-ancestor', liveSha, headSha]);
+    if (status !== 0) {
+        fail(`Release HEAD ${shortSha(headSha)} is not a descendant of live SHA ${shortSha(liveSha)}. Rebase onto current production before deploying.`);
+    }
 }
 
 function shortSha(sha) {
@@ -268,7 +357,25 @@ function runPostDeploySmoke(liveUrl, head, branch) {
     fail(`Post-deploy version smoke did not verify the uploaded artifact: ${lastOutput || 'no output'}`);
 }
 
-function main() {
+async function fetchLiveVersionSnapshot(liveUrl, options = {}) {
+    const fetchImpl = options.fetchImpl || globalThis.fetch;
+    if (typeof fetchImpl !== 'function') throw new Error('fetch is required to read live /api/version');
+    const response = await fetchImpl(`${liveUrl}/api/version`, {
+        headers: { Accept: 'application/json' },
+        signal: options.signal
+    });
+    if (!response || response.ok !== true) {
+        throw new Error(`Live /api/version returned HTTP ${response?.status || 'unknown'}`);
+    }
+    const text = await response.text();
+    try {
+        return JSON.parse(text);
+    } catch {
+        throw new Error('Live /api/version did not return JSON');
+    }
+}
+
+async function main() {
     const options = parseArgs(process.argv.slice(2));
     assertSafeBranchName(options.branch);
     assertSafeRailwayTarget(options);
@@ -279,10 +386,21 @@ function main() {
     const expectedCommit = options.commit || head;
     if (expectedCommit !== head) fail(`Expected commit ${expectedCommit} does not match local HEAD ${head}`);
 
+    let remoteSha = null;
     if (!options.skipRemoteCheck) {
-        const remoteSha = remoteBranchSha(options.branch);
+        remoteSha = remoteBranchSha(options.branch);
         if (remoteSha !== head) fail(`origin/${options.branch} is ${remoteSha}, but local HEAD is ${head}. Push and wait for CI first.`);
     }
+
+    const liveSnapshot = await fetchLiveVersionSnapshot(liveUrl);
+    const preDeploy = assertPreDeployLiveSafety({
+        live: liveSnapshot,
+        localVersion: pkg.version,
+        head,
+        branch: options.branch,
+        remoteSha
+    });
+    assertReleaseDescendsFromLive(preDeploy.liveCommit, head);
 
     const message = options.message || `Release v${pkg.version} ${pkg.eventGenix?.releaseLabel || pkg.name} (${shortSha(head)}; ${options.branch})`;
     console.log(`[release:railway-up] project=${options.project}`);
@@ -324,11 +442,16 @@ function main() {
     }
 }
 
-if (require.main === module) main();
+if (require.main === module) {
+    main().catch(error => fail(error?.message || String(error)));
+}
 
 module.exports = {
     parseArgs,
     assertSafeRailwayTarget,
+    compareVersions,
+    assertPreDeployLiveSafety,
+    fetchLiveVersionSnapshot,
     validateExport,
     createCleanExport,
     runPostDeploySmoke

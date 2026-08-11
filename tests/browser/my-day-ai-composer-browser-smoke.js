@@ -232,7 +232,13 @@ function harnessHtml() {
       commitBundle: window.TaskCreate.commitAiDraftBundle
     });
     document.getElementById('create').addEventListener('click', async () => {
-      const payload = window.TaskAiDraft.commitPayloadFor(document.querySelector('[data-task-ai-draft-panel]'));
+      const panel = document.querySelector('[data-task-ai-draft-panel]');
+      const bundlePayload = window.TaskAiDraft.bundlePayloadFor(panel);
+      if (bundlePayload) {
+        await window.TaskCreate.commitAiDraftBundle(bundlePayload);
+        return;
+      }
+      const payload = window.TaskAiDraft.commitPayloadFor(panel);
       if (!payload) return;
       await window.TaskCreate.commitAiDraft(payload);
     });
@@ -356,7 +362,7 @@ async function runBundleScenario(browser, fixture, { dark, viewport }) {
         assert.deepEqual(payloadBeforeCreate.rejectedTaskMask, [3]);
         assert.equal(payloadBeforeCreate.tasks[0].title, 'Edited CRM booking funnel');
         assert.equal(payloadBeforeCreate.tasks.some(task => /Publish content update/.test(task.title)), false);
-        await page.click('[data-task-ai-draft-bundle-create]');
+        await page.click('#create');
         await page.waitForSelector('[data-ai-bundle-created="true"]');
         assert.equal(await page.locator('[data-ai-bundle-task]').count(), 3);
         await page.reload({ waitUntil: 'domcontentloaded' });

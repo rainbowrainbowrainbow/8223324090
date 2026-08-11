@@ -44,6 +44,9 @@ jobs:
       - name: Run anonymized HR attendance PDF visual audit
         run: npm run audit:hr-attendance-documents:visual:ci
 
+      - name: Run Railway pre-deploy collision guard tests
+        run: node --test tests/release-railway-up-predeploy.test.js
+
       - name: Run fast verification baseline
         run: npm test
 
@@ -73,7 +76,7 @@ jobs:
       - name: Run My Day draft regression browser smoke
         run: npm run test:browser:my-day-draft
 
-      - name: Run My Day AI composer browser smoke
+      - name: Run My Day AI composer main CTA browser smoke
         run: npm run test:browser:my-day-ai-composer
 
       - name: Run My Day interactions browser smoke
@@ -191,7 +194,7 @@ jobs:
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:admission-tickets:isolated
 
-      - name: Run My Day PostgreSQL classification integration
+      - name: Run My Day PostgreSQL classification, AI, and atomic commit integration
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE

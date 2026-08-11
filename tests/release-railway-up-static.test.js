@@ -26,6 +26,13 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /const DEFAULT_PROJECT = '[0-9a-f-]{36}';/);
     assert.match(script, /RELEASE_RAILWAY_PROJECT \|\| process\.env\.RAILWAY_PROJECT_ID \|\| DEFAULT_PROJECT/);
     assert.match(script, /assertSafeRailwayTarget\(options\)/);
+    assert.match(script, /fetchLiveVersionSnapshot\(liveUrl\)/);
+    assert.match(script, /assertPreDeployLiveSafety\(\{/);
+    assert.match(script, /assertReleaseDescendsFromLive\(preDeploy\.liveCommit, head\)/);
+    assert.match(script, /merge-base', '--is-ancestor'/);
+    assert.match(script, /Refusing same-version deploy/);
+    assert.match(script, /Refusing to deploy v\$\{localVersion\} over newer live/);
+    assert.match(script, /Live deployment metadata is not complete/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
     assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
     assert.match(script, /git archive/);

@@ -57,7 +57,13 @@ function serializeEntry(row = {}, now = new Date()) {
         durationSeconds,
         isActive: !endedAt,
         warning: !endedAt && durationSeconds >= ACTIVE_TIMER_WARNING_SECONDS ? 'long_running' : null,
-        task: row.task_id ? { id: Number(row.task_id), title: row.task_title || null, status: row.task_status || null } : null,
+        businessContext: row.task_business_context || row.business_context || null,
+        task: row.task_id ? {
+            id: Number(row.task_id),
+            title: row.task_title || null,
+            status: row.task_status || null,
+            businessContext: row.task_business_context || null
+        } : null,
         createdAt: row.created_at || null,
         updatedAt: row.updated_at || null
     };
@@ -66,7 +72,7 @@ function serializeEntry(row = {}, now = new Date()) {
 async function activeTimer(queryable, userId, options = {}) {
     const lock = options.lock === true ? ' FOR UPDATE' : '';
     const result = await queryable.query(
-        `SELECT e.*, t.title AS task_title, t.status AS task_status,
+        `SELECT e.*, t.title AS task_title, t.status AS task_status, t.business_context AS task_business_context,
                 GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - e.started_at))))::int AS duration_seconds
          FROM my_day_time_entries e
          JOIN tasks t ON t.id = e.task_id

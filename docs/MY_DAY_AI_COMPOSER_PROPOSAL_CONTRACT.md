@@ -107,7 +107,7 @@ For `tasks[]`, every item must include:
 - `description`;
 - `impactIds`, max 3 existing active impacts;
 - `priority`, one of `urgent`, `high`, `normal`, `low`, or `null`;
-- `dueDate`, `YYYY-MM-DD` or `null`;
+- `scheduleDate`, `YYYY-MM-DD` or `null`;
 - `ownerSuggestion` with `userId`, `name`, and `reason`;
 - `confidence`.
 

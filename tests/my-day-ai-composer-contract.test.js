@@ -59,7 +59,7 @@ test('My Day AI composer proposal contract fixture is strict and impacts-only', 
         'description',
         'impactIds',
         'priority',
-        'dueDate',
+        'scheduleDate',
         'ownerSuggestion',
         'confidence'
     ]);

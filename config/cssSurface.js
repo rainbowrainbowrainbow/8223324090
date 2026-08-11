@@ -542,6 +542,13 @@ const CSS_SURFACE = [
         reason: 'Profile avatar crop controls and compact soon-tab menu styles imported by pages.css.'
     },
     {
+        file: 'css/global-task-timer.css',
+        owner: 'tasks-my-day-time',
+        category: 'feature-shared',
+        status: 'active',
+        reason: 'Authenticated global task timer widget styles lazy-loaded by auth.js and mounted in the shared shell/sidebar.'
+    },
+    {
         file: 'css/task-ai-draft.css',
         owner: 'tasks-my-day-ai',
         category: 'feature-shared',

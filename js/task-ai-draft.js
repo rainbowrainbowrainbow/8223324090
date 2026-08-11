@@ -30,6 +30,7 @@
     }
 
     function normalizeDraftForFingerprint(draft = {}) {
+        const scheduleDate = String(draft.scheduleDate || draft.schedule_date || draft.dueDate || draft.due_date || draft.date || '').trim();
         return {
             title: String(draft.title || '').trim(),
             description: String(draft.description || '').trim(),
@@ -37,6 +38,7 @@
             kind: String(draft.kind || draft.taskKind || '').trim(),
             category: String(draft.category || '').trim(),
             subcategory: String(draft.subcategory || '').trim(),
+            scheduleDate: /^\d{4}-\d{2}-\d{2}$/.test(scheduleDate) ? scheduleDate : '',
             impactIds: Array.isArray(draft.impactIds) ? draft.impactIds.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
             subtasks: Array.isArray(draft.subtasks)
                 ? draft.subtasks.map(item => String(item?.title || item?.name || '').trim()).filter(Boolean)
@@ -67,7 +69,9 @@
                 rejected: new Set(),
                 userEdited: new Set(),
                 bundleTasks: [],
-                idempotencyKey: ''
+                idempotencyKey: '',
+                commitPending: false,
+                structurePreference: ''
             };
             stateByRoot.set(root, state);
         }
@@ -81,7 +85,12 @@
             description: 'Деталі',
             mode: 'Режим',
             impactIds: 'Впливи',
-            subtasks: 'Чекліст'
+            subtasks: 'Чекліст',
+            scheduleDate: 'Дата',
+            priority: 'Пріоритет',
+            owner: 'Виконавець',
+            visibility: 'Видимість',
+            workflow: 'Стан'
         }[field] || field;
     }
 
@@ -132,6 +141,11 @@
         return `<ol class="task-ai-draft-subtasks">${rows.map(item => `<li>${escapeHtml(compactText(item?.title || item?.name || '', 120))}</li>`).join('')}</ol>`;
     }
 
+    function normalizeScheduleDate(value) {
+        const text = String(value || '').trim();
+        return /^\d{4}-\d{2}-\d{2}$/.test(text) ? text : '';
+    }
+
     function bundleOwnerCatalog(preview = {}) {
         return (Array.isArray(preview.ownerCatalog) ? preview.ownerCatalog : [])
             .map(owner => ({
@@ -156,7 +170,7 @@
             description: String(task.description || '').trim(),
             impactIds: Array.isArray(task.impactIds) ? task.impactIds.map(Number).filter(Number.isInteger).slice(0, 3) : [],
             priority: ['urgent', 'high', 'normal', 'low'].includes(String(task.priority || '')) ? String(task.priority) : 'normal',
-            dueDate: /^\d{4}-\d{2}-\d{2}$/.test(String(task.dueDate || '')) ? String(task.dueDate) : '',
+            scheduleDate: normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date),
             ownerSuggestion: {
                 userId: selectedOwner?.id || null,
                 name: selectedOwner?.label || String(rawOwner.name || '').trim(),
@@ -186,7 +200,7 @@
         const editedFields = task.userEditedFields instanceof Set ? task.userEditedFields : new Set();
         const currentUserId = Number(preview.currentUserId || 0);
         const selectedOwnerId = Number(task.ownerSuggestion?.userId || currentUserId || 0);
-        return (Boolean(task.dueDate) && !editedFields.has('dueDate'))
+        return (Boolean(task.scheduleDate) && !editedFields.has('scheduleDate'))
             || (task.priority !== 'normal' && !editedFields.has('priority'))
             || (currentUserId > 0 && selectedOwnerId !== currentUserId && !editedFields.has('ownerUserId'));
     }
@@ -256,7 +270,7 @@
                 </label>
                 <label>
                     <span>Дата</span>
-                    <input type="date" data-task-ai-bundle-field="dueDate" value="${escapeHtml(task.dueDate)}" ${task.rejected ? 'disabled' : ''}>
+                    <input type="date" data-task-ai-bundle-field="scheduleDate" value="${escapeHtml(task.scheduleDate)}" ${task.rejected ? 'disabled' : ''}>
                 </label>
                 <label>
                     <span>Пріоритет</span>
@@ -269,8 +283,18 @@
                     ${renderBundleImpactEditor(task, preview)}
                 </div>
             </div>
-            <p class="task-ai-bundle-review-note">AI-пропозиція. Owner, дата і пріоритет застосуються тільки після явного підтвердження.</p>
+            <p class="task-ai-bundle-review-note">AI-пропозиція. Виконавець, дата і пріоритет застосуються тільки після явного підтвердження.</p>
         </article>`;
+    }
+
+    function renderStructureSelector(preview = {}, active = '') {
+        const decision = proposalDecision(preview);
+        if (!['checklist', 'task_bundle'].includes(decision)) return '';
+        const selected = active || (decision === 'task_bundle' ? 'bundle' : 'checklist');
+        return `<div class="task-ai-draft-structure" role="group" aria-label="Структура AI-пропозиції">
+            <button type="button" data-task-ai-structure="checklist" aria-pressed="${selected === 'checklist' ? 'true' : 'false'}">Одна задача з чеклістом</button>
+            <button type="button" data-task-ai-structure="bundle" aria-pressed="${selected === 'bundle' ? 'true' : 'false'}">Кілька окремих задач</button>
+        </div>`;
     }
 
     function renderBundleReview(root, state) {
@@ -291,16 +315,17 @@
                     </div>
                     <span class="task-ai-bundle-counter">${acceptedCount}/${activeCount} підтверджено</span>
                 </div>
+                ${renderStructureSelector(preview, 'bundle')}
                 ${activeCount === 1 ? '<p class="task-ai-bundle-warning">Залишилась 1 задача. Скасуйте bundle і створіть її через звичайну single-task форму — bundle потребує щонайменше дві окремі задачі.</p>' : ''}
                 <div class="task-ai-bundle-list">
                     ${tasks.map((task, index) => renderBundleTaskCard(task, index, preview)).join('')}
                 </div>
                 <div class="task-ai-draft-actions task-ai-bundle-actions">
-                    <button type="button" class="task-ai-draft-primary" data-task-ai-draft-bundle-create ${canCreate ? '' : 'disabled'}>Створити ${bundleCountLabel(activeCount)}</button>
+                    <button type="button" class="task-ai-draft-primary" data-task-ai-draft-submit-intent data-task-ai-draft-bundle-create ${canCreate ? '' : 'disabled'}>Створити ${bundleCountLabel(activeCount)}</button>
                     <button type="button" data-task-ai-bundle-accept-all>Прийняти все безпечне</button>
                     <button type="button" data-task-ai-draft-cancel>Скасувати bundle</button>
                 </div>
-                <p class="task-ai-draft-footnote">Кнопка створення не робить partial create. Якщо atomic bundle commit ще не підключений, ручне створення задач лишається доступним.</p>
+                <p class="task-ai-draft-footnote">Ця кнопка запускає той самий canonical submit, що й основне створення. Partial create не допускається.</p>
             </section>`;
     }
 
@@ -308,12 +333,27 @@
         if (field === 'impactIds') return renderImpacts(value, preview);
         if (field === 'subtasks') return renderSubtasks(value);
         if (field === 'mode') return escapeHtml(modeLabel(value));
+        if (field === 'scheduleDate') return escapeHtml(normalizeScheduleDate(value) || 'Без дати');
+        if (field === 'priority') return escapeHtml(priorityLabel(value));
         return escapeHtml(compactText(value, field === 'description' ? 360 : 180));
     }
 
     function changedFields(preview = {}) {
         const fromDiff = Array.isArray(preview.diff?.changedFields) ? preview.diff.changedFields : [];
-        return fromDiff.filter(field => ['title', 'description', 'mode', 'impactIds', 'subtasks'].includes(field));
+        return fromDiff.filter(field => ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow'].includes(field));
+    }
+
+    function safeAutoAcceptFields(preview = {}) {
+        const safe = new Set(['title', 'description', 'mode', 'impactIds', 'subtasks']);
+        return changedFields(preview).filter(field => safe.has(field));
+    }
+
+    function proposalDecision(preview = {}) {
+        const decision = String(preview.proposal?.decision || '').trim();
+        if (decision) return decision;
+        const action = String(preview.proposal?.action || '').trim();
+        if (action === 'apply') return preview.proposal?.mode === 'checklist' ? 'checklist' : 'single_task';
+        return action;
     }
 
     function fieldAfterValue(preview = {}, field) {
@@ -410,12 +450,18 @@
             return;
         }
         host.hidden = false;
+        const checklistCount = Array.isArray(preview.proposal?.subtasks) ? preview.proposal.subtasks.length : 0;
+        const decision = proposalDecision(preview);
+        const headline = decision === 'checklist'
+            ? 'AI пропонує одну складну задачу'
+            : 'AI пропонує зміни';
         host.innerHTML = `
             <section class="task-ai-draft-review" aria-label="Перевірка AI-пропозиції">
                 <div class="task-ai-draft-review-head">
-                    <strong>AI пропонує зміни</strong>
-                    <span>Нічого не збережеться, поки ви не створите задачу.</span>
+                    <strong>${escapeHtml(headline)}</strong>
+                    <span>${checklistCount >= 2 ? `${checklistCount} пункти чекліста. ` : ''}Нічого не збережеться, поки ви не створите задачу.</span>
                 </div>
+                ${renderStructureSelector(preview, decision === 'checklist' ? 'checklist' : '')}
                 <div class="task-ai-draft-fields">
                     ${fields.map(field => {
                         const accepted = state.accepted.has(field);
@@ -484,8 +530,8 @@
             const owner = bundleOwnerCatalog(state.preview).find(item => item.id === ownerId);
             task.ownerSuggestion.userId = owner?.id || null;
             task.ownerSuggestion.name = owner?.label || '';
-        } else if (field === 'dueDate') {
-            task.dueDate = String(control.value || '').trim();
+        } else if (field === 'scheduleDate') {
+            task.scheduleDate = String(control.value || '').trim();
         } else if (field === 'priority') {
             task.priority = ['urgent', 'high', 'normal', 'low'].includes(String(control.value || '')) ? String(control.value) : 'normal';
         } else if (field === 'title') {
@@ -547,7 +593,7 @@
             description: task.description || null,
             impactIds: task.impactIds || [],
             priority: task.priority || 'normal',
-            dueDate: task.dueDate || null,
+            scheduleDate: task.scheduleDate || null,
             ownerSuggestion: {
                 userId: task.ownerSuggestion?.userId || null,
                 name: task.ownerSuggestion?.name || null,
@@ -567,7 +613,8 @@
             acceptedTaskMask: acceptedTasks.map(task => task.proposalIndex),
             rejectedTaskMask: (state.bundleTasks || []).filter(task => task.rejected).map(task => task.proposalIndex),
             idempotencyKey: state.idempotencyKey || randomId('bundle_commit'),
-            sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft'
+            sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft',
+            commitType: 'bundle'
         };
     }
 
@@ -643,6 +690,7 @@
         state.userEdited.clear();
         state.bundleTasks = [];
         state.idempotencyKey = '';
+        state.commitPending = false;
         const host = root.querySelector('[data-task-ai-draft-review]');
         if (host) {
             host.hidden = true;
@@ -661,11 +709,12 @@
         }
     }
 
-    async function preview(root) {
+    async function preview(root, options = {}) {
         const state = rootState(root);
         const config = state.config || {};
         if (state.loading) return;
         const draft = typeof config.readDraft === 'function' ? config.readDraft() : {};
+        if (options.structurePreference) state.structurePreference = options.structurePreference;
         const key = draftKey(draft);
         if (!String(draft.title || draft.description || '').trim()) {
             setStatus(root, 'Додайте назву або деталі перед AI-підготовкою.', 'warning');
@@ -687,6 +736,7 @@
         try {
             const result = await window.TaskCreate?.requestAiDraftPreview?.({
                 currentDraft: draft,
+                structurePreference: state.structurePreference || '',
                 sourceSurface: config.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft'
             });
             if (state.requestId !== requestId) return;
@@ -700,7 +750,7 @@
                 return;
             }
             state.preview = result;
-            if (result.proposal?.decision === 'task_bundle') {
+            if (proposalDecision(result) === 'task_bundle') {
                 initializeBundleState(state);
                 renderBundleReview(root, state);
                 setStatus(root, 'Перевірте окремі AI-задачі. Нічого не створюється без явного підтвердження.', 'success');
@@ -732,6 +782,12 @@
         rootState(root, config);
         applyFeatureStatus(root);
         root.addEventListener('click', event => {
+            const structure = event.target.closest('[data-task-ai-structure]');
+            if (structure) {
+                event.preventDefault();
+                preview(root, { structurePreference: structure.dataset.taskAiStructure || '' });
+                return;
+            }
             const previewButton = event.target.closest('[data-task-ai-draft-preview]');
             if (previewButton) {
                 event.preventDefault();
@@ -759,7 +815,7 @@
             if (event.target.closest('[data-task-ai-draft-accept-all]')) {
                 event.preventDefault();
                 const state = rootState(root);
-                changedFields(state.preview || {}).forEach(field => {
+                safeAutoAcceptFields(state.preview || {}).forEach(field => {
                     if (state.rejected.has(field)) return;
                     if (state.userEdited.has(field)) {
                         state.accepted.add(field);
@@ -793,9 +849,10 @@
                 acceptAllBundleTasks(root);
                 return;
             }
-            if (event.target.closest('[data-task-ai-draft-bundle-create]')) {
+            if (event.target.closest('[data-task-ai-draft-submit-intent]')) {
                 event.preventDefault();
-                requestBundleCreate(root);
+                const state = rootState(root);
+                if (typeof state.config?.requestSubmit === 'function') state.config.requestSubmit();
                 return;
             }
             if (event.target.closest('[data-task-ai-draft-cancel]')) {
@@ -827,25 +884,57 @@
     function commitPayloadFor(root) {
         if (!root) return null;
         const state = rootState(root);
-        if (state.preview?.proposal?.decision === 'task_bundle') return null;
-        if (!state.preview?.proposalToken || !state.accepted.size) return null;
+        const decision = proposalDecision(state.preview);
+        if (decision === 'task_bundle') return bundlePayloadFor(root);
+        if (!state.preview?.proposalToken) return null;
         const finalDraft = typeof state.config?.readDraft === 'function' ? state.config.readDraft() : {};
+        const acceptedFieldMask = Array.from(new Set([
+            ...Array.from(state.accepted),
+            ...Array.from(state.userEdited),
+            ...(finalDraft.scheduleConfirmed && normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date) ? ['scheduleDate'] : [])
+        ]));
+        if (!acceptedFieldMask.length) return null;
+        if (!['single_task', 'checklist'].includes(decision)) return null;
         return {
             proposalToken: state.preview.proposalToken,
             proposal: state.preview.proposal,
             draftFingerprint: state.preview.draftFingerprint,
             proposalHash: state.preview.proposalHash,
             catalogVersion: state.preview.catalogVersion,
-            acceptedFieldMask: Array.from(state.accepted),
+            acceptedFieldMask,
             finalDraft: {
                 ...finalDraft,
+                scheduleDate: normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date) || null,
                 sourceType: 'ai_draft',
                 sourceModule: finalDraft.sourceModule || state.config?.sourceModule || 'tasks',
                 sourceSurface: state.config?.sourceSurface || finalDraft.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft'
             },
             idempotencyKey: state.idempotencyKey || randomId('commit'),
-            sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft'
+            sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft',
+            commitType: decision === 'checklist' ? 'checklist' : 'single'
         };
+    }
+
+    function setCommitPending(root, pending) {
+        if (!root) return;
+        const state = rootState(root);
+        state.commitPending = Boolean(pending);
+        root.classList.toggle('is-ai-committing', state.commitPending);
+        root.querySelectorAll('[data-task-ai-draft-submit-intent], [data-task-ai-draft-preview], [data-task-ai-bundle-accept], [data-task-ai-bundle-reject], [data-task-ai-bundle-accept-all]')
+            .forEach(button => {
+                if (state.commitPending) {
+                    button.disabled = true;
+                } else if (button.matches('[data-task-ai-draft-submit-intent]')) {
+                    button.disabled = !commitPayloadFor(root);
+                } else {
+                    button.disabled = false;
+                }
+                button.setAttribute('aria-busy', state.commitPending ? 'true' : 'false');
+            });
+    }
+
+    function isCommitPending(root) {
+        return root ? rootState(root).commitPending === true : false;
     }
 
     function clear(root) {
@@ -867,6 +956,8 @@
         bindComposer,
         commitPayloadFor,
         bundlePayloadFor,
+        setCommitPending,
+        isCommitPending,
         clear,
         markCommittedTaskId,
         isAiTask,

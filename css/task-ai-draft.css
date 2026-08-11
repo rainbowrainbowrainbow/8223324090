@@ -97,6 +97,35 @@
     gap: 10px;
 }
 
+.task-ai-draft-structure {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+.task-ai-draft-structure button {
+    border: 1px solid rgba(99, 102, 241, 0.28);
+    border-radius: 999px;
+    padding: 7px 11px;
+    background: rgba(99, 102, 241, 0.08);
+    color: #3730a3;
+    font-size: 12px;
+    font-weight: 900;
+    cursor: pointer;
+}
+
+.task-ai-draft-structure button[aria-pressed="true"] {
+    background: rgba(99, 102, 241, 0.18);
+    border-color: rgba(99, 102, 241, 0.55);
+}
+
+.task-ai-draft-panel.is-ai-committing,
+.task-composer.is-ai-committing,
+.cabinet-task-composer.is-ai-committing {
+    cursor: progress;
+}
+
 .task-ai-draft-field {
     border: 1px solid rgba(148, 163, 184, 0.32);
     border-radius: 16px;
@@ -478,6 +507,19 @@ body.dark-mode .task-ai-bundle-impact-chip.is-selected {
     border-color: rgba(129, 140, 248, 0.52);
     background: rgba(99, 102, 241, 0.24);
     color: #c7d2fe;
+}
+
+html[data-theme="dark"] .task-ai-draft-structure button,
+body.dark-mode .task-ai-draft-structure button {
+    border-color: rgba(129, 140, 248, 0.35);
+    background: rgba(99, 102, 241, 0.16);
+    color: #c7d2fe;
+}
+
+html[data-theme="dark"] .task-ai-draft-structure button[aria-pressed="true"],
+body.dark-mode .task-ai-draft-structure button[aria-pressed="true"] {
+    border-color: rgba(129, 140, 248, 0.62);
+    background: rgba(99, 102, 241, 0.28);
 }
 
 @media (max-width: 720px) {

@@ -8,11 +8,14 @@ const { replaceTaskClassification, normalizeImpactIds } = require('./myDayTaxono
 const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
+const { getAssignableTaskOwner } = require('./taskExecution');
 const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
+    TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
     activeImpactCatalogVersion,
+    normalizeScheduleDate,
     proposalHash,
     stableStringify,
     verifyProposalToken
@@ -23,7 +26,20 @@ const MAX_COMMIT_DESCRIPTION_CHARS = 700;
 const MAX_COMMIT_SUBTASKS = 7;
 const AI_DRAFT_COMMIT_SOURCE_SURFACE = 'task_ai_draft_commit';
 const AI_DRAFT_COMMIT_SOURCE_TYPE = 'ai_draft';
-const ACCEPTED_FIELD_ALLOWLIST = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'schedule']);
+const ACCEPTED_FIELD_ALLOWLIST = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
+const ACCEPTED_FIELD_ALIASES = Object.freeze({
+    schedule: 'scheduleDate',
+    dueDate: 'scheduleDate',
+    date: 'scheduleDate',
+    ownerUserId: 'owner',
+    owner_user_id: 'owner',
+    assigned_to: 'owner',
+    workflowState: 'workflow',
+    workflow_state: 'workflow'
+});
+const COMMIT_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low']);
+const COMMIT_VISIBILITIES = Object.freeze(['team', 'private', 'me_only']);
+const COMMIT_WORKFLOWS = Object.freeze(['inbox', 'todo', 'waiting', 'scheduled', 'in_progress']);
 
 function commitError(message, statusCode, code) {
     const error = new Error(message);
@@ -55,7 +71,10 @@ function normalizeIdempotencyKey(value) {
 
 function normalizeAcceptedFieldMask(value) {
     const raw = Array.isArray(value) ? value : [];
-    const fields = [...new Set(raw.map(item => String(item || '').trim()).filter(Boolean))];
+    const fields = [...new Set(raw
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .map(field => ACCEPTED_FIELD_ALIASES[field] || field))];
     const unsupported = fields.filter(field => !ACCEPTED_FIELD_ALLOWLIST.includes(field));
     if (unsupported.length) {
         throw commitError('Accepted field mask contains unsupported fields.', 400, 'TASK_AI_DRAFT_FIELD_MASK_INVALID');
@@ -74,8 +93,27 @@ function truthy(value) {
     return value === true || value === 'true' || value === '1' || value === 1 || value === 'yes' || value === 'on';
 }
 
-function normalizeFinalDraft(value = {}) {
+function normalizeEnum(value, allowed, fallback, fieldName) {
+    const raw = String(value || fallback || '').trim().toLowerCase();
+    if (allowed.includes(raw)) return raw;
+    throw commitError(`${fieldName} is invalid.`, 400, `TASK_AI_DRAFT_${fieldName.toUpperCase()}_INVALID`);
+}
+
+function normalizeOptionalOwnerUserId(value, { required = false } = {}) {
+    const raw = value === undefined || value === null || value === '' ? null : Number(value);
+    if (raw === null) {
+        if (required) throw commitError('Owner confirmation is invalid.', 400, 'TASK_AI_DRAFT_OWNER_INVALID');
+        return null;
+    }
+    if (!Number.isInteger(raw) || raw <= 0) {
+        throw commitError('Owner confirmation is invalid.', 400, 'TASK_AI_DRAFT_OWNER_INVALID');
+    }
+    return raw;
+}
+
+function normalizeFinalDraft(value = {}, options = {}) {
     const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const acceptedFields = new Set(normalizeAcceptedFieldMask(options.acceptedFieldMask || []));
     const title = compactString(draft.title, MAX_COMMIT_TITLE_CHARS);
     if (!title) throw commitError('Task title is required.', 400, 'TASK_AI_DRAFT_TITLE_REQUIRED');
     const description = compactString(draft.description, MAX_COMMIT_DESCRIPTION_CHARS);
@@ -86,12 +124,24 @@ function normalizeFinalDraft(value = {}) {
     });
     const impactIds = normalizeImpactIds(draft.impactIds ?? draft.impact_ids ?? []);
     const scheduleConfirmed = truthy(draft.scheduleConfirmed ?? draft.schedule_confirmed ?? draft.confirmSchedule ?? draft.confirm_schedule);
-    const date = scheduleConfirmed && /^\d{4}-\d{2}-\d{2}$/.test(String(draft.date || '').trim())
-        ? String(draft.date).trim()
+    const scheduleDate = acceptedFields.has('scheduleDate') && scheduleConfirmed
+        ? normalizeScheduleDate(draft.scheduleDate)
         : null;
-    const deadline = scheduleConfirmed && draft.deadline
+    const deadline = scheduleDate && draft.deadline
         ? String(draft.deadline).trim()
         : null;
+    const priority = acceptedFields.has('priority')
+        ? normalizeEnum(draft.priority, COMMIT_PRIORITIES, 'normal', 'priority')
+        : 'normal';
+    const ownerUserId = acceptedFields.has('owner')
+        ? normalizeOptionalOwnerUserId(draft.ownerUserId ?? draft.owner_user_id ?? draft.assignedToUserId ?? draft.assigned_to_user_id, { required: true })
+        : Number(options.defaultOwnerUserId || 0);
+    const visibility = acceptedFields.has('visibility')
+        ? normalizeEnum(draft.visibility, COMMIT_VISIBILITIES, 'team', 'visibility')
+        : (['private', 'personal', 'me_only'].includes(String(draft.taskMode || draft.task_mode || '').trim().toLowerCase()) ? 'private' : 'team');
+    const workflowState = acceptedFields.has('workflow')
+        ? normalizeEnum(draft.workflowState ?? draft.workflow_state, COMMIT_WORKFLOWS, 'inbox', 'workflow')
+        : 'inbox';
     return {
         title,
         description,
@@ -103,8 +153,12 @@ function normalizeFinalDraft(value = {}) {
         impactIds,
         subtasks,
         scheduleConfirmed,
-        date,
-        deadline
+        scheduleDate,
+        deadline,
+        priority,
+        ownerUserId,
+        visibility,
+        workflowState
     };
 }
 
@@ -121,7 +175,7 @@ function normalizeSubmittedProposalHash(body = {}) {
     throw commitError('Proposal hash is required.', 400, 'TASK_AI_DRAFT_PROPOSAL_HASH_REQUIRED');
 }
 
-function ensureTokenMatchesRequest({ tokenPayload, userId, businessScope, activeImpacts, body }) {
+function ensureTokenMatchesRequest({ tokenPayload, userId, businessScope, activeImpacts, body, finalDraft }) {
     if (Number(tokenPayload.userId || 0) !== Number(userId || 0)) {
         throw commitError('Proposal token belongs to another user.', 403, 'TASK_AI_DRAFT_TOKEN_USER_MISMATCH');
     }
@@ -130,8 +184,14 @@ function ensureTokenMatchesRequest({ tokenPayload, userId, businessScope, active
         throw commitError('Proposal token belongs to another business scope.', 403, 'TASK_AI_DRAFT_TOKEN_SCOPE_MISMATCH');
     }
     const submittedDraftFingerprint = String(body.draftFingerprint || body.draft_fingerprint || body.baseDraftFingerprint || body.base_draft_fingerprint || '').trim();
-    if (submittedDraftFingerprint && submittedDraftFingerprint !== tokenPayload.draftFingerprint) {
+    if (!submittedDraftFingerprint) {
+        throw commitError('Draft fingerprint is required.', 400, 'TASK_AI_DRAFT_FINGERPRINT_REQUIRED');
+    }
+    if (submittedDraftFingerprint !== tokenPayload.draftFingerprint) {
         throw commitError('Draft fingerprint does not match proposal token.', 409, 'TASK_AI_DRAFT_FINGERPRINT_CONFLICT');
+    }
+    if (finalDraft?.scheduleDate !== (tokenPayload.scheduleDate || null)) {
+        throw commitError('Task schedule changed after AI preview.', 409, 'TASK_AI_DRAFT_SCHEDULE_CONFLICT');
     }
     const submittedProposalHash = normalizeSubmittedProposalHash(body);
     if (submittedProposalHash !== tokenPayload.proposalHash) {
@@ -189,16 +249,21 @@ function replayResponse(row = {}) {
 async function commitTaskAiDraft(input = {}, options = {}) {
     const startedAt = Date.now();
     const db = options.pool || pool;
-    const finalDraft = normalizeFinalDraft(input.finalDraft || input.draft || {});
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const acceptedFieldMask = normalizeAcceptedFieldMask(input.acceptedFieldMask || input.accepted_field_mask || input.acceptedFields || input.accepted_fields);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw commitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
+    const finalDraft = normalizeFinalDraft(input.finalDraft || input.draft || {}, {
+        acceptedFieldMask,
+        defaultOwnerUserId: userId
+    });
 
     const tokenPayload = verifyProposalToken(input.proposalToken || input.proposal_token, {
         secret: options.proposalSecret || options.safetySecret,
         userId,
         businessScope: input.businessScope,
+        audience: TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
+        allowedDecisions: ['single_task', 'checklist'],
         now: options.now
     });
     const { submittedProposalHash, catalogVersion } = ensureTokenMatchesRequest({
@@ -206,7 +271,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         userId,
         businessScope: input.businessScope,
         activeImpacts: input.activeImpacts || input.impacts || [],
-        body: input
+        body: input,
+        finalDraft
     });
     const requestHash = hashCommitRequest({
         finalDraft,
@@ -223,6 +289,9 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
             `task_ai_draft_commit:${tokenPayload.proposalId || tokenPayload.proposalHash}`
+        ]);
+        await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+            `task_ai_draft_idempotency:${userId}:${input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix'}:${idempotencyKey}`
         ]);
 
         const existing = await findCommittedReplay(client, { userId, idempotencyKey, businessScope: input.businessScope });
@@ -251,16 +320,24 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         const actorLabel = legacyTaskTextRef(input.user?.username || input.user?.name, 'ai-draft');
         const ownerLabel = legacyTaskTextRef(input.user?.username || input.user?.name, null);
         const sourceId = legacyTaskTextRef(tokenPayload.proposalId || tokenPayload.proposalHash, null);
+        const resolveOwner = options.getAssignableTaskOwnerImpl || getAssignableTaskOwner;
+        const requestedOwnerId = Number(finalDraft.ownerUserId || userId);
+        const ownerRecord = requestedOwnerId === userId
+            ? {
+                id: userId,
+                label: ownerLabel || actorLabel
+            }
+            : await resolveOwner(requestedOwnerId, { pool: client, actor: input.user });
         const task = await createTaskImpl({
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || undefined,
             title: finalDraft.title,
             description: finalDraft.description || null,
-            date: finalDraft.date,
+            date: finalDraft.scheduleDate,
             deadline: finalDraft.deadline,
-            priority: 'normal',
-            assigned_to: ownerLabel,
-            owner_user_id: userId,
-            owner: ownerLabel,
+            priority: finalDraft.priority,
+            assigned_to: ownerRecord.label,
+            owner_user_id: ownerRecord.id,
+            owner: ownerRecord.label,
             task_type: 'human',
             dependency_ids: [],
             source_type: AI_DRAFT_COMMIT_SOURCE_TYPE,
@@ -271,8 +348,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             created_by_user_id: userId,
             task_mode: finalDraft.taskMode,
             task_kind: finalDraft.taskKind,
-            visibility: finalDraft.taskMode === 'private' || finalDraft.taskMode === 'personal' ? 'private' : 'team',
-            workflow_state: 'inbox',
+            visibility: finalDraft.visibility,
+            workflow_state: finalDraft.workflowState,
             source_module: 'tasks_ai_draft_commit',
             control_meta: {
                 aiDraft: {
@@ -307,7 +384,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                 changedFields: acceptedFieldMask,
                 impactCount: finalDraft.impactIds.length,
                 subtaskCount: subtasks.length,
-                scheduleWritten: Boolean(finalDraft.date || finalDraft.deadline)
+                scheduleWritten: Boolean(finalDraft.scheduleDate || finalDraft.deadline)
             },
             meta: {
                 idempotencyKey,

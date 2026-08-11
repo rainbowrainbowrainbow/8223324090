@@ -118,6 +118,7 @@ test('My Day task impact chips expose hidden third impact with tooltip and acces
     assert.match(html, /CRM/);
     assert.match(html, /Hermes/);
     assert.match(html, /my-day-task-chip--more/);
+    assert.match(html, /aria-expanded="false"/);
     assert.match(html, /title="Парк"/);
     assert.match(html, /aria-label="Ще впливи: Парк"/);
 });
@@ -148,8 +149,10 @@ test('My Day removable impact chips have motion, touch, and reduced-motion CSS s
     const cabinetCss = read('css/pages-cabinet.css');
 
     assert.match(css, /\.my-day-task-chip:is\(button\)/);
+    assert.match(css, /\.my-day-task-chip:is\(button\)\s*\{[\s\S]*min-height:\s*36px/);
     assert.match(css, /transform:\s*translateY\(-1px\)/);
     assert.match(css, /\.my-day-task-chip-remove\s*\{[\s\S]*opacity:\s*0/);
+    assert.match(css, /\.my-day-task-impact-chips\.is-classification-pending/);
     assert.match(css, /@media \(hover:\s*none\), \(pointer:\s*coarse\)/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
     assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--removable/);
@@ -161,10 +164,13 @@ test('Profile My Day shared task handler removes one impact through existing cla
     assert.match(profile, /action === 'remove-impact'/);
     assert.match(profile, /async function removeCabinetTaskImpact/);
     assert.match(profile, /saveTaskClassification\?\.\(taskId,\s*\{[\s\S]*impactIds:\s*remainingImpactIds/);
-    assert.match(profile, /cabinetImpactRemovalInFlight/);
+    assert.match(profile, /cabinetClassificationMutationInFlight/);
+    assert.match(profile, /const key = String\(taskId\)/);
+    assert.match(profile, /data-cabinet-task-action="remove-impact"[\s\S]*data-cabinet-task-action="reveal-impact"/);
     assert.match(profile, /refreshCabinetTaskClassificationBadges\(taskId,\s*classification\)/);
     assert.match(profile, /renderTaskBadges\?\.\(task\.myDay,\s*\{ taskId \}\)/);
     assert.match(profile, /function bindCabinetTaskActions/);
+    assert.match(profile, /aria-label="\$\{escapeHtml\(doneTitle\)\}"/);
 });
 
 test('Profile My Day compact cards use stable zones instead of one mixed meta row', () => {
@@ -184,16 +190,18 @@ test('Profile My Day compact cards use stable zones instead of one mixed meta ro
     assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
     const compactTimeControls = timeUi.slice(
-        timeUi.indexOf('my-day-time-task--compact'),
+        timeUi.indexOf('my-day-time-task--disclosure'),
         timeUi.indexOf('async function addManualEntry')
     );
     assert.match(compactTimeControls, /data-cabinet-task-action="time-menu"/);
+    assert.match(compactTimeControls, /aria-label="Деталі часу"/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entry"/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entries"/);
+    assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="timer-start"/);
     assert.match(css, /\.cabinet-task-zone--header/);
     assert.match(css, /-webkit-line-clamp:\s*2/);
     assert.match(css, /\.cabinet-task-card\.is-my-day-compact-card\[data-task-priority\][\s\S]*background:\s*transparent/);
-    assert.match(css, /\.cabinet-overdue-triage-row[\s\S]*background:\s*rgba\(255,\s*255,\s*255,\s*0\.58\)/);
+    assert.match(css, /\.cabinet-overdue-triage-row\s*\{[\s\S]*background:\s*transparent/);
 });
 
 test('Profile My Day card view mode is localStorage-scoped and has per-card expansion', () => {
@@ -212,8 +220,10 @@ test('Profile My Day card view mode is localStorage-scoped and has per-card expa
     assert.match(profile, /showMyDayDetails \? myDaySubtaskSummary : ''/);
     assert.match(timeUi, /options\.detailed === true/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
-    assert.match(timeUi, /data-cabinet-task-action="time-entry"/);
-    assert.match(timeUi, /data-cabinet-task-action="time-entries"/);
+    assert.match(timeUi, /const timerAction = active \? 'timer-stop' : 'timer-start'/);
+    assert.match(timeUi, /data-my-day-time-menu-action="\$\{timerAction\}"/);
+    assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
+    assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
     assert.match(css, /\.cabinet-day-list-toolbar/);
     assert.match(css, /\.cabinet-view-mode-toggle/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);

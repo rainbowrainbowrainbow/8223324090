@@ -170,7 +170,7 @@
             "description",
             "impactIds",
             "priority",
-            "dueDate",
+            "scheduleDate",
             "ownerSuggestion",
             "confidence"
           ],
@@ -207,7 +207,7 @@
                 null
               ]
             },
-            "dueDate": {
+            "scheduleDate": {
               "type": [
                 "string",
                 "null"

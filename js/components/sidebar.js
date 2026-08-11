@@ -4227,6 +4227,17 @@ const Sidebar = (() => {
         document.body.classList.toggle('sidebar-is-collapsed', collapsed);
     }
 
+    function _notifyGlobalTaskTimerShellChanged() {
+        try {
+            if (window.GlobalTaskTimer && typeof window.GlobalTaskTimer.mount === 'function') {
+                window.GlobalTaskTimer.mount();
+            }
+        } catch {}
+        try {
+            window.dispatchEvent(new CustomEvent('crm:sidebar-shell-changed'));
+        } catch {}
+    }
+
     function _setSidebarCollapsed(nextCollapsed, persist = true) {
         const sidebar = document.getElementById('sidebarNav');
         if (!sidebar) return;
@@ -4235,6 +4246,7 @@ const Sidebar = (() => {
         _syncSidebarCollapseButton(sidebar);
         _syncSidebarBusinessSwitcher();
         _queueActiveIndicatorUpdate();
+        _notifyGlobalTaskTimerShellChanged();
     }
 
     function _renderSidebarMiniLink(item, currentPath, currentHash, options = {}) {
@@ -4588,6 +4600,7 @@ const Sidebar = (() => {
         _refreshSidebarTimelineSummary({ clearCache: true, force: true });
         void _loadSidebarIdentityMeta(true);
         initUserCard();
+        _notifyGlobalTaskTimerShellChanged();
     });
     window.addEventListener('crmBusinessContextChanged', () => {
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');

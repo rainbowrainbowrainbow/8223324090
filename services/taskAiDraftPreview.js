@@ -35,6 +35,8 @@ const PREVIEW_DECISIONS = Object.freeze(['single_task', 'checklist', 'task_bundl
 const PREVIEW_ACTIONS = Object.freeze(['apply', 'needs_clarification', 'needs_project', 'no_change']);
 const PREVIEW_MODES = Object.freeze(['simple', 'checklist', null]);
 const PREVIEW_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low', null]);
+const TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE = 'task_ai_draft_commit';
+const TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE = 'task_ai_draft_bundle_commit';
 
 const CONFIDENCE_SCHEMA = Object.freeze({
     type: 'object',
@@ -83,7 +85,7 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
             items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['title', 'description', 'impactIds', 'priority', 'dueDate', 'ownerSuggestion', 'confidence'],
+                required: ['title', 'description', 'impactIds', 'priority', 'scheduleDate', 'ownerSuggestion', 'confidence'],
                 properties: {
                     title: { type: 'string', minLength: 3, maxLength: MAX_TITLE_CHARS },
                     description: { type: ['string', 'null'], maxLength: MAX_DESCRIPTION_CHARS },
@@ -93,7 +95,7 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
                         items: { type: 'integer' }
                     },
                     priority: { type: ['string', 'null'], enum: PREVIEW_PRIORITIES },
-                    dueDate: { type: ['string', 'null'], maxLength: 32 },
+                    scheduleDate: { type: ['string', 'null'], maxLength: 32 },
                     ownerSuggestion: {
                         type: 'object',
                         additionalProperties: false,
@@ -144,6 +146,16 @@ function normalizeMode(value) {
     return null;
 }
 
+function normalizeScheduleDate(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const scheduleDate = compactString(value, 32);
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(scheduleDate) ? new Date(`${scheduleDate}T00:00:00.000Z`) : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== scheduleDate) {
+        throw createPreviewError('AI draft has invalid scheduleDate.', 422, 'TASK_AI_DRAFT_INVALID_SCHEDULE');
+    }
+    return scheduleDate;
+}
+
 function normalizeDraftSnapshot(value = {}) {
     const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const title = compactString(draft.title, MAX_TITLE_CHARS);
@@ -163,6 +175,7 @@ function normalizeDraftSnapshot(value = {}) {
         taskMode: compactString(draft.taskMode || draft.task_mode, 60),
         sourceType: compactString(draft.sourceType || draft.source_type, 80),
         sourceModule: compactString(draft.sourceModule || draft.source_module, 80),
+        scheduleDate: normalizeScheduleDate(draft.scheduleDate),
         impactIds
     };
 }
@@ -234,8 +247,8 @@ function buildSystemPrompt() {
         'Cross-product work may use multiple context impacts. If more than three impacts are explicit, select the three strongest; explicit CRM, Hermes, and Park contexts outrank generic activity/outcome facets.',
         'serverExplicitImpactIds are deterministic matches from the same active catalog. For single_task/checklist include them before adding other facets. For task_bundle distribute them only to relevant tasks.',
         'Do not output tags, directions, dependencies, status, permissions, or business scope.',
-        'Priority, dueDate, and ownerSuggestion are review-only suggestions; the server will not auto-apply them without explicit human confirmation.',
-        'For every task_bundle item set ownerSuggestion.userId to null. Missing owner information is not a clarification reason. Use dueDate or elevated priority only when explicitly stated in currentDraft; otherwise return null.',
+        'Priority, scheduleDate, and ownerSuggestion are review-only suggestions; the server will not auto-apply them without explicit human confirmation.',
+        'For every task_bundle item set ownerSuggestion.userId to null. Missing owner information is not a clarification reason. Use scheduleDate or elevated priority only when explicitly stated in currentDraft; otherwise return null.',
         'The server will compute the diff and validate all IDs; do not include diff fields.',
         'Keep reason short and non-sensitive.',
         'Decision examples: "Call the lead and record the result" is single_task; "Fix a CRM form and verify validation" is checklist; "Rebuild UX, backend, AI, tests, and rollout" is task_bundle; an opaque number or "do this" needs_clarification.'
@@ -324,14 +337,14 @@ function normalizeDecisionMode(decision, value) {
     return PREVIEW_MODES.includes(mode) ? mode : null;
 }
 
-function normalizeDueDate(value) {
+function normalizeBundleScheduleDate(value) {
     if (value === null || value === undefined || value === '') return null;
-    const dueDate = compactString(value, 32);
-    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(dueDate) ? new Date(`${dueDate}T00:00:00.000Z`) : null;
-    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== dueDate) {
-        throw createPreviewError('AI draft proposal has invalid dueDate.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    const scheduleDate = compactString(value, 32);
+    const parsed = /^\d{4}-\d{2}-\d{2}$/.test(scheduleDate) ? new Date(`${scheduleDate}T00:00:00.000Z`) : null;
+    if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== scheduleDate) {
+        throw createPreviewError('AI draft proposal has invalid scheduleDate.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
-    return dueDate;
+    return scheduleDate;
 }
 
 function normalizeOwnerSuggestion(value = {}) {
@@ -403,7 +416,7 @@ function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
             description: payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS),
             impactIds,
             priority,
-            dueDate: normalizeDueDate(payload.dueDate),
+            scheduleDate: normalizeBundleScheduleDate(payload.scheduleDate),
             ownerSuggestion,
             confidence: normalizeConfidence(payload.confidence)
         };
@@ -479,6 +492,7 @@ function buildDraftDiff(currentDraft = {}, proposal = {}) {
         mode: proposal.mode,
         impactIds: proposal.impactIds || [],
         subtasks: proposal.subtasks || [],
+        scheduleDate: before.scheduleDate,
         bundleTitle: proposal.bundleTitle || null,
         tasks: proposal.tasks || []
     };
@@ -509,15 +523,22 @@ function proposalHash(proposal = {}) {
     return crypto.createHash('sha256').update(stableStringify(proposal)).digest('base64url');
 }
 
-function createProposalToken({ userId, businessScope, fingerprint, proposal, catalogVersion, now = Date.now(), secret }) {
+function createProposalToken({ userId, businessScope, fingerprint, proposal, catalogVersion, draftSnapshot, now = Date.now(), secret }) {
     const hash = proposalHash(proposal);
+    const decision = String(proposal?.decision || '').trim();
+    const audience = decision === 'task_bundle'
+        ? TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE
+        : TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE;
     return signProposalToken({
         v: 1,
         proposalId: crypto.randomUUID(),
         contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+        audience,
+        decision,
         userId: Number(userId || 0),
         businessContext: businessScope?.businessContext || businessScope?.business_context || null,
         draftFingerprint: fingerprint,
+        scheduleDate: normalizeDraftSnapshot(draftSnapshot || {}).scheduleDate,
         proposalHash: hash,
         catalogVersion,
         issuedAt: now,
@@ -549,6 +570,18 @@ function verifyProposalToken(token, options = {}) {
     const now = Number(options.now || Date.now());
     if (!Number.isFinite(payload.expiresAt) || payload.expiresAt <= now) {
         throw createPreviewError('Proposal token expired.', 409, 'TASK_AI_DRAFT_TOKEN_EXPIRED');
+    }
+    if (payload.contractVersion !== TASK_AI_DRAFT_CONTRACT_VERSION) {
+        throw createPreviewError('Unsupported proposal token contract version.', 409, 'TASK_AI_DRAFT_CONTRACT_VERSION_MISMATCH');
+    }
+    if (options.audience && payload.audience !== options.audience) {
+        throw createPreviewError('Proposal token audience does not match this endpoint.', 403, 'TASK_AI_DRAFT_TOKEN_AUDIENCE_MISMATCH');
+    }
+    if (options.decision && payload.decision !== options.decision) {
+        throw createPreviewError('Proposal token decision does not match this endpoint.', 409, 'TASK_AI_DRAFT_TOKEN_DECISION_MISMATCH');
+    }
+    if (Array.isArray(options.allowedDecisions) && !options.allowedDecisions.includes(payload.decision)) {
+        throw createPreviewError('Proposal token decision is not allowed for this endpoint.', 409, 'TASK_AI_DRAFT_TOKEN_DECISION_MISMATCH');
     }
     const userId = Number(options.userId || 0);
     if (userId && Number(payload.userId || 0) !== userId) {
@@ -673,6 +706,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             fingerprint,
             proposal,
             catalogVersion,
+            draftSnapshot: draft,
             secret: options.proposalSecret || options.safetySecret
         });
     } catch (error) {
@@ -779,6 +813,8 @@ module.exports = {
     TASK_AI_DRAFT_PROMPT_VERSION,
     TASK_AI_DRAFT_REASONING_EFFORT,
     TASK_AI_DRAFT_SCHEMA_NAME,
+    TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
+    TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_TIMEOUT_MS,
     TASK_AI_DRAFT_TOKEN_TTL_MS,
     activeImpactCatalogVersion,
@@ -794,6 +830,7 @@ module.exports = {
     mergeServerExplicitImpacts,
     normalizeDraftSnapshot,
     normalizeProposal,
+    normalizeScheduleDate,
     proposalHash,
     stableStringify,
     verifyProposalToken

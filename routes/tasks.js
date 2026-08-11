@@ -85,7 +85,9 @@ const {
 const { commitTaskAiDraft } = require('../services/taskAiDraftCommit');
 const { commitTaskAiDraftBundle, readTaskBundleForUser } = require('../services/taskAiDraftBundleCommit');
 const {
+    assertTaskAiDraftBundleFeatureEnabled,
     assertTaskAiDraftFeatureEnabled,
+    publicTaskAiDraftBundleFeatureStatus,
     publicTaskAiDraftFeatureStatus
 } = require('../services/taskAiDraftFeatureGate');
 const { checkTaskAiDraftRateLimit } = require('../services/taskAiDraftLimiter');
@@ -884,8 +886,25 @@ function taskAiDraftPayloadFromBody(body = {}) {
         subcategory: source.subcategory ?? body.subcategory,
         sourceType: source.sourceType ?? source.source_type ?? body.sourceType ?? body.source_type,
         sourceModule: source.sourceModule ?? source.source_module ?? body.sourceModule ?? body.source_module,
+        scheduleDate: source.scheduleDate ?? source.schedule_date ?? source.dueDate ?? source.due_date ?? source.date ?? body.scheduleDate ?? body.schedule_date ?? body.dueDate ?? body.due_date ?? body.date,
         impactIds: source.impactIds ?? source.impact_ids ?? body.impactIds ?? body.impact_ids ?? []
     };
+}
+
+function taskAiFinalDraftFromBody(body = {}) {
+    const source = body.finalDraft || body.final_draft || body.draft || body.currentDraft || body;
+    return {
+        ...source,
+        scheduleDate: source.scheduleDate ?? source.schedule_date ?? source.dueDate ?? source.due_date ?? source.date ?? null
+    };
+}
+
+function taskAiBundleTasksFromBody(body = {}) {
+    const tasks = body.tasks || body.finalTasks || body.final_tasks || [];
+    return (Array.isArray(tasks) ? tasks : []).map(task => ({
+        ...task,
+        scheduleDate: task.scheduleDate ?? task.schedule_date ?? task.dueDate ?? task.due_date ?? task.date ?? null
+    }));
 }
 
 function taskAiPreviewFailureStatus(result = {}) {
@@ -940,6 +959,19 @@ async function buildTaskAiDraftPreview(req, res) {
         safetyIdentifier: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET)
     });
     if (!result?.ok || result.proposal?.decision !== 'task_bundle') return result;
+    try {
+        assertTaskAiDraftBundleFeatureEnabled(req.user);
+    } catch (error) {
+        return {
+            ok: false,
+            code: error.code || 'TASK_AI_DRAFT_BUNDLE_DISABLED',
+            statusCode: error.statusCode || 403,
+            reason: 'bundle_disabled',
+            provider: 'openai',
+            model: result.model || 'gpt-5.6-luna',
+            meta: error.meta || undefined
+        };
+    }
     const ownerCatalog = await listTaskOwnerCandidates({ actor: req.user });
     return {
         ...result,
@@ -961,7 +993,7 @@ async function buildTaskAiDraftCommit(req, res) {
     const body = req.body || {};
     return commitTaskAiDraft({
         proposalToken: body.proposalToken || body.proposal_token,
-        finalDraft: body.finalDraft || body.final_draft || body.draft || body.currentDraft || body,
+        finalDraft: taskAiFinalDraftFromBody(body),
         acceptedFieldMask: body.acceptedFieldMask || body.accepted_field_mask || body.acceptedFields || body.accepted_fields || [],
         idempotencyKey: idempotencyKeyFromRequest(req),
         proposalHash: body.proposalHash || body.proposal_hash,
@@ -1037,7 +1069,7 @@ async function buildTaskAiDraftBundleCommit(req, res) {
         draftFingerprint: body.draftFingerprint || body.draft_fingerprint,
         baseDraftFingerprint: body.baseDraftFingerprint || body.base_draft_fingerprint,
         bundleTitle: body.bundleTitle || body.bundle_title,
-        tasks: body.tasks || body.finalTasks || body.final_tasks || [],
+        tasks: taskAiBundleTasksFromBody(body),
         acceptedTaskMask: body.acceptedTaskMask || body.accepted_task_mask || body.acceptedTasks || body.accepted_tasks || [],
         rejectedTaskMask: body.rejectedTaskMask || body.rejected_task_mask || body.rejectedTasks || body.rejected_tasks || [],
         idempotencyKey: idempotencyKeyFromRequest(req),
@@ -1853,6 +1885,7 @@ router.get('/ai-draft/status', requireRole('admin', 'user'), async (req, res) =>
     res.json({
         success: true,
         feature: publicTaskAiDraftFeatureStatus(req.user),
+        bundleFeature: publicTaskAiDraftBundleFeatureStatus(req.user),
         provider: 'openai',
         model: 'gpt-5.6-luna'
     });

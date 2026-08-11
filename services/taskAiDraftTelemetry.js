@@ -4,7 +4,7 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('TaskAiDraftTelemetry');
 
-const ALLOWED_EVENT_TYPES = Object.freeze(['preview', 'commit']);
+const ALLOWED_EVENT_TYPES = Object.freeze(['preview', 'commit', 'bundle_commit']);
 const ALLOWED_STATUSES = Object.freeze([
     'attempt',
     'success',
@@ -18,7 +18,7 @@ const ALLOWED_STATUSES = Object.freeze([
     'rollback',
     'error'
 ]);
-const SAFE_FIELD_MASK = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'schedule']);
+const SAFE_FIELD_MASK = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
 const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'type',
     'status',
@@ -36,6 +36,12 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'acceptedFieldMask',
     'rejectedFieldMask',
     'editedFieldMask',
+    'taskCount',
+    'acceptedTaskCount',
+    'rejectedTaskCount',
+    'editedTaskCount',
+    'replay',
+    'errorCategory',
     'usage'
 ]);
 const SENSITIVE_KEY_PATTERN = /(title|description|prompt|response|text|body|draft|task|secret|token|key|authorization)/i;
@@ -70,7 +76,7 @@ function sanitizeUsage(usage = {}) {
 
 function sanitizeTelemetryEvent(event = {}) {
     const source = event && typeof event === 'object' && !Array.isArray(event) ? event : {};
-    const type = ALLOWED_EVENT_TYPES.includes(source.type) ? source.type : 'preview';
+    const type = ALLOWED_EVENT_TYPES.includes(source.type) ? source.type : 'unknown';
     const status = ALLOWED_STATUSES.includes(source.status) ? source.status : 'error';
     return {
         type,
@@ -88,6 +94,12 @@ function sanitizeTelemetryEvent(event = {}) {
         acceptedFieldMask: safeFieldMask(source.acceptedFieldMask),
         rejectedFieldMask: safeFieldMask(source.rejectedFieldMask),
         editedFieldMask: safeFieldMask(source.editedFieldMask),
+        taskCount: safeInteger(source.taskCount),
+        acceptedTaskCount: safeInteger(source.acceptedTaskCount),
+        rejectedTaskCount: safeInteger(source.rejectedTaskCount),
+        editedTaskCount: safeInteger(source.editedTaskCount),
+        replay: source.replay === true || source.replayed === true,
+        errorCategory: compactString(source.errorCategory || '', 80),
         usage: sanitizeUsage(source.usage)
     };
 }
@@ -112,8 +124,37 @@ function recordTaskAiDraftTelemetry(event = {}, options = {}) {
     return safe;
 }
 
+function aggregateTaskAiDraftTelemetry(events = []) {
+    const rows = Array.isArray(events) ? events : [];
+    return rows.reduce((summary, event) => {
+        const safe = sanitizeTelemetryEvent(event);
+        const key = `${safe.type}:${safe.status}`;
+        summary.total += 1;
+        summary.byType[safe.type] = (summary.byType[safe.type] || 0) + 1;
+        summary.byStatus[safe.status] = (summary.byStatus[safe.status] || 0) + 1;
+        summary.byTypeStatus[key] = (summary.byTypeStatus[key] || 0) + 1;
+        summary.taskCount += safe.taskCount;
+        summary.acceptedTaskCount += safe.acceptedTaskCount;
+        summary.rejectedTaskCount += safe.rejectedTaskCount;
+        summary.editedTaskCount += safe.editedTaskCount;
+        if (safe.replay) summary.replayed += 1;
+        return summary;
+    }, {
+        total: 0,
+        byType: {},
+        byStatus: {},
+        byTypeStatus: {},
+        taskCount: 0,
+        acceptedTaskCount: 0,
+        rejectedTaskCount: 0,
+        editedTaskCount: 0,
+        replayed: 0
+    });
+}
+
 module.exports = {
     SAFE_FIELD_MASK,
+    aggregateTaskAiDraftTelemetry,
     assertNoSensitiveTelemetryFields,
     recordTaskAiDraftTelemetry,
     sanitizeTelemetryEvent

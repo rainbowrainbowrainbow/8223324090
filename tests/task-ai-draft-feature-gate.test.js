@@ -72,6 +72,26 @@ test('Task AI draft feature gate throws controlled disabled error', () => {
     );
 });
 
+test('Task AI draft bundle gate is separate and defaults to off/test-only', () => {
+    const user = { id: 42, username: 'serhii', email: 'owner@example.test' };
+    assert.deepEqual(
+        gate.publicTaskAiDraftBundleFeatureStatus(user, { env: { NODE_ENV: 'production', TASK_AI_DRAFT_ROLLOUT_PERCENT: '100' } }),
+        { enabled: false, reason: 'bundle_not_enabled', rolloutPercent: 0, matched: null }
+    );
+    assert.deepEqual(
+        gate.publicTaskAiDraftBundleFeatureStatus(user, { env: { NODE_ENV: 'production', TASK_AI_DRAFT_BUNDLE_TEST_USER_IDS: '42' } }),
+        { enabled: true, reason: 'bundle_test_user_id', rolloutPercent: 0, matched: 'user_id' }
+    );
+    assert.equal(
+        gate.publicTaskAiDraftBundleFeatureStatus(user, { env: { NODE_ENV: 'production', TASK_AI_DRAFT_BUNDLE_ENABLED: 'true' } }).enabled,
+        true
+    );
+    assert.throws(
+        () => gate.assertTaskAiDraftBundleFeatureEnabled(user, { env: { NODE_ENV: 'production' } }),
+        error => error.code === 'TASK_AI_DRAFT_BUNDLE_DISABLED' && error.statusCode === 403
+    );
+});
+
 test('Task AI draft routes and diagnostics expose rollout state without secrets', () => {
     const routes = fs.readFileSync(path.join(root, 'routes', 'tasks.js'), 'utf8');
     const aiConfig = fs.readFileSync(path.join(root, 'services', 'ai-config.js'), 'utf8');
@@ -80,8 +100,12 @@ test('Task AI draft routes and diagnostics expose rollout state without secrets'
 
     assert.match(routes, /router\.get\('\/ai-draft\/status'/);
     assert.match(routes, /assertTaskAiDraftFeatureEnabled\(req\.user\)/);
+    assert.match(routes, /bundleFeature: publicTaskAiDraftBundleFeatureStatus\(req\.user\)/);
+    assert.match(routes, /assertTaskAiDraftBundleFeatureEnabled\(req\.user\)/);
     assert.match(aiConfig, /id: 'task_ai_draft_composer'/);
     assert.match(aiConfig, /featureEnabled: taskAiDraftFeature\.enabled/);
+    assert.match(aiConfig, /bundleFeatureEnabled: taskAiDraftBundleFeature\.enabled/);
+    assert.match(aiConfig, /bundleRolloutPercent: taskAiDraftBundleFeature\.rolloutPercent/);
     assert.match(aiConfig, /model: MY_DAY_TASK_AI_MODEL/);
     assert.match(taskCreate, /requestAiDraftStatus/);
     assert.match(taskAiDraft, /applyFeatureStatus/);

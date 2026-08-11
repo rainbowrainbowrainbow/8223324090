@@ -50,6 +50,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
             title: 'crm form',
             description: 'broken submit',
             mode: 'simple',
+            scheduleDate: '2026-08-10',
             impactIds: []
         },
         impacts,
@@ -86,7 +87,15 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.equal(result.proposalHash, preview.proposalHash(result.proposal));
     assert.equal(result.diff.fields.title.changed, true);
     assert.equal(result.diff.fields.impactIds.changed, true);
+    assert.equal(result.diff.fields.scheduleDate.changed, false);
     assert.equal(result.diff.changedFields.includes('subtasks'), true);
+    assert.equal(result.draftFingerprint, preview.draftFingerprint({
+        title: 'crm form',
+        description: 'broken submit',
+        mode: 'simple',
+        scheduleDate: '2026-08-10',
+        impactIds: []
+    }));
 
     assert.equal(calls.length, 1);
     const request = calls[0];
@@ -116,6 +125,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.equal(Object.hasOwn(request.schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.schema.properties.tasks.maxItems, 6);
     assert.equal(request.schema.properties.tasks.items.additionalProperties, false);
+    assert.ok(request.schema.properties.tasks.items.required.includes('scheduleDate'));
     assert.equal(request.schema.properties.tasks.items.properties.impactIds.maxItems, 3);
     assert.equal(Object.hasOwn(request.schema.properties.tasks.items.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.reasoningEffort, 'low');
@@ -128,6 +138,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.match(serializedInput, /activeImpacts/);
     assert.match(serializedInput, /serverExplicitImpactIds/);
     assert.deepEqual(userMessage.serverExplicitImpactIds, [101]);
+    assert.equal(userMessage.currentDraft.scheduleDate, '2026-08-10');
     assert.match(serializedInput, /server will compute the diff|server/i);
     assert.match(serializedInput, /Do not output tags, directions/);
     assert.match(serializedInput, /scheduled, assigned, and completed independently/);
@@ -138,6 +149,18 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.match(serializedInput, /do not clarify merely because more than three impacts/i);
     assert.match(serializedInput, /ownerSuggestion\.userId to null/);
     assert.doesNotMatch(serializedInput, /OPENAI_API_KEY|OPENROUTER_API_KEY|chat_ai/i);
+
+    const token = preview.verifyProposalToken(result.proposalToken, {
+        secret: 'proposal-secret',
+        userId: 7,
+        businessScope: { businessContext: 'event_genix' },
+        audience: preview.TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
+        allowedDecisions: ['single_task', 'checklist']
+    });
+    assert.equal(token.contractVersion, preview.TASK_AI_DRAFT_CONTRACT_VERSION);
+    assert.equal(token.audience, preview.TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE);
+    assert.equal(token.decision, 'checklist');
+    assert.equal(token.scheduleDate, '2026-08-10');
 });
 
 test('task AI preview deterministically preserves explicit active impacts for single/checklist proposals', () => {
@@ -206,6 +229,35 @@ test('task AI preview telemetry records only metadata and strips task text/provi
         () => telemetry.recordTaskAiDraftTelemetry({ type: 'preview', status: 'success', promptText: 'secret task text' }),
         /sensitive fields/i
     );
+
+    const bundleEvent = telemetry.recordTaskAiDraftTelemetry({
+        type: 'bundle_commit',
+        status: 'success',
+        taskCount: 4,
+        acceptedTaskCount: 3,
+        rejectedTaskCount: 1,
+        editedTaskCount: 2,
+        replay: false
+    }, {
+        logger: { info: () => {} }
+    });
+    assert.equal(bundleEvent.type, 'bundle_commit');
+    assert.equal(bundleEvent.taskCount, 4);
+    assert.equal(bundleEvent.acceptedTaskCount, 3);
+    assert.equal(bundleEvent.rejectedTaskCount, 1);
+    assert.equal(bundleEvent.editedTaskCount, 2);
+
+    const unknownEvent = telemetry.sanitizeTelemetryEvent({ type: 'new_future_type', status: 'success' });
+    assert.equal(unknownEvent.type, 'unknown');
+
+    const aggregate = telemetry.aggregateTaskAiDraftTelemetry([
+        bundleEvent,
+        { type: 'bundle_commit', status: 'replayed', taskCount: 4, acceptedTaskCount: 3, replay: true }
+    ]);
+    assert.equal(aggregate.byType.bundle_commit, 2);
+    assert.equal(aggregate.taskCount, 8);
+    assert.equal(aggregate.acceptedTaskCount, 6);
+    assert.equal(aggregate.replayed, 1);
 });
 
 test('task AI draft preview returns clarification/no-change decisions without inventing subtasks', async () => {
@@ -297,7 +349,7 @@ test('task AI draft preview returns task bundle proposals with review-only task 
                         description: 'Make CRM booking intake reliable before automation.',
                         impactIds: [101],
                         priority: 'high',
-                        dueDate: '2026-08-20',
+                        scheduleDate: '2026-08-20',
                         ownerSuggestion: {
                             userId: null,
                             name: 'CRM owner',
@@ -317,7 +369,7 @@ test('task AI draft preview returns task bundle proposals with review-only task 
                         description: 'Connect Hermes processing after CRM form validation.',
                         impactIds: [102],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: {
                             userId: null,
                             name: null,
@@ -353,7 +405,7 @@ test('task AI draft preview returns task bundle proposals with review-only task 
     assert.equal(result.proposal.tasks.length, 2);
     assert.deepEqual(result.proposal.tasks[0].impactIds, [101]);
     assert.equal(result.proposal.tasks[0].priority, 'high');
-    assert.equal(result.proposal.tasks[0].dueDate, '2026-08-20');
+    assert.equal(result.proposal.tasks[0].scheduleDate, '2026-08-20');
     assert.equal(result.proposal.tasks[0].ownerSuggestion.userId, null);
     assert.equal(result.diff.fields.tasks.changed, true);
     assert.equal(result.diff.changedFields.includes('tasks'), true);
@@ -367,6 +419,8 @@ test('task AI draft preview returns task bundle proposals with review-only task 
         catalogVersion: result.catalogVersion
     });
     assert.equal(token.contractVersion, 'my_day_ai_composer_proposal_v2');
+    assert.equal(token.audience, preview.TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE);
+    assert.equal(token.decision, 'task_bundle');
     assert.equal(token.proposalHash, preview.proposalHash(result.proposal));
 });
 
@@ -394,7 +448,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                     description: null,
                     impactIds: [101],
                     priority: 'normal',
-                    dueDate: null,
+                    scheduleDate: null,
                     ownerSuggestion: { userId: null, name: null, reason: null },
                     confidence: validProposal().confidence
                 }]
@@ -428,7 +482,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         description: null,
                         impactIds: [101],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
                         confidence: validProposal().confidence
                     },
@@ -437,7 +491,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         description: null,
                         impactIds: [103],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
                         confidence: validProposal().confidence
                     }
@@ -472,7 +526,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         description: null,
                         impactIds: [101],
                         priority: 'normal',
-                        dueDate: 'tomorrow',
+                        scheduleDate: 'tomorrow',
                         ownerSuggestion: { userId: null, name: null, reason: null },
                         confidence: validProposal().confidence
                     },
@@ -481,7 +535,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         description: null,
                         impactIds: [102],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
                         confidence: validProposal().confidence
                     }
@@ -516,7 +570,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         description: null,
                         impactIds: [101],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: { userId: 999, name: 'Invented owner', reason: 'Unsafe.' },
                         confidence: validProposal().confidence
                     },
@@ -525,7 +579,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         description: null,
                         impactIds: [102],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
                         confidence: validProposal().confidence
                     }

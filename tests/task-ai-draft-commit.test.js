@@ -17,6 +17,7 @@ const impacts = [
 ];
 
 const proposal = {
+    decision: 'checklist',
     action: 'apply',
     mode: 'checklist',
     title: 'Fix CRM booking form',
@@ -47,6 +48,24 @@ function makeToken(secret = 'proposal-secret') {
             fingerprint: preview.draftFingerprint(draft),
             proposal,
             catalogVersion: preview.activeImpactCatalogVersion(impacts),
+            now: 1_000,
+            secret
+        }),
+        draftFingerprint: preview.draftFingerprint(draft),
+        proposalHash: preview.proposalHash(proposal)
+    };
+}
+
+function makeScheduledToken(secret = 'proposal-secret') {
+    const draft = { title: 'crm form', description: 'broken submit', scheduleDate: '2026-08-10' };
+    return {
+        token: preview.createProposalToken({
+            userId: 7,
+            businessScope: { businessContext: 'event_genix' },
+            fingerprint: preview.draftFingerprint(draft),
+            proposal,
+            catalogVersion: preview.activeImpactCatalogVersion(impacts),
+            draftSnapshot: draft,
             now: 1_000,
             secret
         }),
@@ -341,6 +360,43 @@ test('AI draft commit creates task, subtasks, impacts, and AI history in one tra
     assert.equal(JSON.stringify(telemetryEvents[0].data).includes('Fix CRM booking form'), false);
 });
 
+test('AI draft commit preserves reviewed schedule and manual fields without hardcoded defaults', async () => {
+    const tokenParts = makeScheduledToken();
+    const fakePool = createFakePool();
+    const result = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: 'Make validation safe.',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101],
+            subtasks: proposal.subtasks,
+            scheduleConfirmed: true,
+            scheduleDate: '2026-08-10',
+            priority: 'high',
+            ownerUserId: 9,
+            visibility: 'private',
+            workflowState: 'waiting'
+        },
+        acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool),
+        getAssignableTaskOwnerImpl: async userId => ({ id: userId, label: `Owner #${userId}` })
+    });
+
+    assert.equal(result.ok, true);
+    const task = fakePool.state.tasks[0];
+    assert.equal(task.date, '2026-08-10');
+    assert.equal(task.priority, 'high');
+    assert.equal(task.owner_user_id, 9);
+    assert.equal(task.assigned_to, 'Owner #9');
+    assert.equal(task.visibility, 'private');
+    assert.equal(task.workflow_state, 'waiting');
+});
+
 test('AI draft commit compacts legacy task text references to database-safe length', () => {
     const longValue = 'x'.repeat(120);
     assert.equal(commit.legacyTaskTextRef(longValue).length, 50);
@@ -406,6 +462,7 @@ test('AI draft commit returns existing result for idempotent replay and rejects 
 
 test('AI draft commit validates token TTL, proposal hash, draft fingerprint, and catalog version before writes', async () => {
     const tokenParts = makeToken();
+    const scheduledTokenParts = makeScheduledToken();
     const fakePool = createFakePool();
 
     await assert.rejects(
@@ -431,6 +488,34 @@ test('AI draft commit validates token TTL, proposal hash, draft fingerprint, and
             now: 2_000
         }),
         error => error.code === 'TASK_AI_DRAFT_CATALOG_CHANGED'
+    );
+    await assert.rejects(
+        () => commit.commitTaskAiDraft(commitInput(scheduledTokenParts, {
+            finalDraft: {
+                title: 'Fix CRM booking form',
+                description: 'Make validation safe.',
+                mode: 'checklist',
+                taskMode: 'work',
+                impactIds: [101],
+                subtasks: proposal.subtasks,
+                scheduleConfirmed: true,
+                scheduleDate: '2026-08-11'
+            },
+            acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate']
+        }), {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000
+        }),
+        error => error.code === 'TASK_AI_DRAFT_SCHEDULE_CONFLICT'
+    );
+    await assert.rejects(
+        () => commit.commitTaskAiDraft(commitInput(makeBundleToken()), {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000
+        }),
+        error => error.code === 'TASK_AI_DRAFT_TOKEN_AUDIENCE_MISMATCH'
     );
     await assert.rejects(
         () => commit.commitTaskAiDraft(commitInput(tokenParts), {
@@ -486,7 +571,7 @@ const bundleProposal = {
             description: 'Find broken validation path.',
             impactIds: [101],
             priority: 'high',
-            dueDate: '2026-08-10',
+            scheduleDate: '2026-08-10',
             ownerSuggestion: { userId: null, name: 'Tester', reason: 'Current user should review.' },
             confidence: proposal.confidence
         },
@@ -495,7 +580,7 @@ const bundleProposal = {
             description: 'Make worker safe.',
             impactIds: [104],
             priority: 'normal',
-            dueDate: null,
+            scheduleDate: null,
             ownerSuggestion: { userId: null, name: 'Tester', reason: 'Current user should review.' },
             confidence: proposal.confidence
         }
@@ -535,7 +620,7 @@ function bundleCommitInput(tokenParts, overrides = {}) {
             description: task.description,
             impactIds: task.impactIds,
             priority: task.priority,
-            dueDate: task.dueDate,
+            scheduleDate: task.scheduleDate,
             ownerSuggestion: task.ownerSuggestion
         })),
         acceptedTaskMask: proposalValue.tasks.map((_, index) => index),
@@ -690,7 +775,7 @@ test('AI draft bundle commit rejects unknown and archived impacts before opening
     );
 });
 
-test('AI draft bundle commit rejects invalid task count, date, priority, and unavailable reviewed owner', async () => {
+test('AI draft bundle commit rejects invalid task count, schedule, priority, and unavailable reviewed owner', async () => {
     const tokenParts = makeBundleToken();
     const fakePool = createFakePool();
     const base = bundleCommitInput(tokenParts);
@@ -723,13 +808,13 @@ test('AI draft bundle commit rejects invalid task count, date, priority, and una
         error => error.code === 'TASK_AI_BUNDLE_PRIORITY_INVALID'
     );
     await assert.rejects(
-        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], dueDate: 'tomorrow' }, base.tasks[1]] }, {
+        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], scheduleDate: 'tomorrow' }, base.tasks[1]] }, {
             pool: fakePool,
             proposalSecret: 'proposal-secret',
             now: 2_000,
             createTaskImpl: fakeCreateTaskImpl(fakePool)
         }),
-        error => error.code === 'TASK_AI_BUNDLE_DUE_DATE_INVALID'
+        error => error.code === 'TASK_AI_BUNDLE_SCHEDULE_DATE_INVALID'
     );
     await assert.rejects(
         () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], ownerSuggestion: { userId: 999, name: 'Other', reason: 'Unsafe' } }, base.tasks[1]] }, {
@@ -832,6 +917,19 @@ test('AI draft bundle commit rejects token tamper and expired token before write
             createTaskImpl: fakeCreateTaskImpl(fakePool)
         }),
         error => error.code === 'TASK_AI_DRAFT_TOKEN_INVALID'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle(bundleCommitInput({
+            token: makeToken().token,
+            proposalHash: makeToken().proposalHash,
+            draftFingerprint: makeToken().draftFingerprint
+        }), {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_DRAFT_TOKEN_AUDIENCE_MISMATCH'
     );
     await assert.rejects(
         () => bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(tokenParts), {

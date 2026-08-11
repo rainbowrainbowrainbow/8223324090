@@ -4480,6 +4480,18 @@ function applyTaskAiDraftField(field, value, meta = {}) {
         taskComposerAiImpactIds = (Array.isArray(value) ? value : []).map(Number).filter(Number.isInteger).slice(0, 3);
         return;
     }
+    if (field === 'scheduleDate') {
+        const input = document.getElementById('taskScheduleDate');
+        const date = String(value || '').trim();
+        if (input) input.value = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+        setTaskDuePreset(date ? 'custom' : 'no_date', { expand: false });
+        return;
+    }
+    if (field === 'priority') {
+        const select = document.getElementById('taskPriority');
+        if (select && ['urgent', 'high', 'normal', 'low'].includes(String(value || ''))) select.value = String(value);
+        return;
+    }
     if (field === 'subtasks') {
         replaceTaskComposerSubtasks(Array.isArray(value) ? value : [], { sourceType: meta.source === 'manual' ? 'manual' : 'ai' });
         setTaskDecompositionMode(Array.isArray(value) && value.length ? 'ai' : 'none', { keepRows: true, keepStatus: true });
@@ -4491,7 +4503,9 @@ function focusTaskAiDraftField(field) {
         title: 'taskTitle',
         description: 'taskDescription',
         mode: 'taskMode',
-        subtasks: 'taskSubtasksList'
+        subtasks: 'taskSubtasksList',
+        scheduleDate: 'taskScheduleDate',
+        priority: 'taskPriority'
     };
     document.getElementById(map[field])?.focus();
 }
@@ -4783,6 +4797,7 @@ function setupTaskComposer() {
             readDraft: readTaskComposerDraft,
             applyField: applyTaskAiDraftField,
             focusField: focusTaskAiDraftField,
+            requestSubmit: () => document.getElementById('addTaskBtn')?.click(),
             commitBundle: window.TaskCreate?.commitAiDraftBundle
         });
     }
@@ -4879,8 +4894,74 @@ async function addTask() {
         showNotification(taskCapabilityReason('create', false), 'error');
         return;
     }
+    const composer = document.getElementById('quickAdd');
     const mainDraft = readTaskComposerDraft();
     const batchDrafts = quickTaskBatchItems.map(taskDraftFromBatchItem);
+    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+    if (aiCommitPayload) {
+        if (window.TaskAiDraft?.isCommitPending?.(composer)) return;
+        if (batchDrafts.length) {
+            showNotification('AI-пропозиція створює тільки показану структуру. Приберіть додаткові ручні рядки або скасуйте AI-зміни.', 'warning');
+            return;
+        }
+        if (aiCommitPayload.commitType === 'bundle') {
+            if (!window.TaskCreate?.commitAiDraftBundle) {
+                showNotification('Створення кількох AI-задач тимчасово недоступне. Ручне створення працює як раніше.', 'error');
+                return;
+            }
+            window.TaskAiDraft?.setCommitPending?.(composer, true);
+            const result = await window.TaskCreate.commitAiDraftBundle({
+                ...aiCommitPayload,
+                sourceSurface: 'tasks_quick_composer'
+            });
+            window.TaskAiDraft?.setCommitPending?.(composer, false);
+            if (!result?.success) {
+                showNotification(result?.error || 'AI bundle не створено. Ручне створення доступне.', 'error');
+                return;
+            }
+            const createdTasks = (Array.isArray(result.tasks) ? result.tasks : [])
+                .map(row => row?.task || row)
+                .filter(Boolean);
+            createdTasks.forEach(task => {
+                window.TaskAiDraft?.markCommittedTaskId?.(task?.id || task?.taskId || task?.task_id);
+                keepNewTaskVisible(task, mainDraft);
+                notifyTaskWidgetsChanged({ action: 'create', taskId: task?.id || task?.taskId || task?.task_id });
+            });
+            resetTaskComposerAfterCreate();
+            showTaskCreateSuccessToast(createdTasks, createdTasks.map(task => ({ ...mainDraft, title: task?.title || mainDraft.title })), 0);
+            await loadAllTasks();
+            return;
+        }
+        if (window.TaskCreate?.commitAiDraft) {
+            window.TaskAiDraft?.setCommitPending?.(composer, true);
+            const result = await window.TaskCreate.commitAiDraft({
+                ...aiCommitPayload,
+                finalDraft: {
+                    ...mainDraft,
+                    ...(aiCommitPayload.finalDraft || {}),
+                    sourceType: 'ai_draft',
+                    sourceModule: 'tasks',
+                    sourceSurface: 'tasks_quick_composer'
+                }
+            });
+            window.TaskAiDraft?.setCommitPending?.(composer, false);
+            if (!result?.success) {
+                showNotification(result?.error || 'AI-задачу не створено. Ручне створення доступне.', 'error');
+                return;
+            }
+            const createdTask = result.task;
+            window.TaskAiDraft?.markCommittedTaskId?.(createdTask?.id || createdTask?.taskId || createdTask?.task_id);
+            lastCreatedTaskId = createdTask?.id || lastCreatedTaskId;
+            keepNewTaskVisible(createdTask, mainDraft);
+            resetTaskComposerAfterCreate();
+            showTaskCreateSuccessToast([createdTask], [mainDraft], Array.isArray(result.postCreateWarnings) ? result.postCreateWarnings.length : 0);
+            notifyTaskWidgetsChanged({ action: 'create', taskId: createdTask?.id });
+            await loadAllTasks();
+            return;
+        }
+        showNotification('AI commit тимчасово недоступний. Скасуйте AI-зміни або створіть задачу вручну.', 'error');
+        return;
+    }
     const drafts = [mainDraft, ...batchDrafts];
     const invalidIndex = drafts.findIndex(draft => !String(draft.title || '').trim());
     if (invalidIndex >= 0) {
@@ -4892,21 +4973,9 @@ async function addTask() {
 
     const createdTasks = [];
     let postCreateWarningCount = 0;
-    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(document.getElementById('quickAdd'));
     for (let i = 0; i < drafts.length; i += 1) {
         const data = buildTaskCreatePayload(drafts[i]);
-        const result = i === 0 && aiCommitPayload && window.TaskCreate?.commitAiDraft
-            ? await window.TaskCreate.commitAiDraft({
-                ...aiCommitPayload,
-                finalDraft: {
-                    ...drafts[i],
-                    ...(aiCommitPayload.finalDraft || {}),
-                    sourceType: 'ai_draft',
-                    sourceModule: 'tasks',
-                    sourceSurface: 'tasks_quick_composer'
-                }
-            })
-            : await apiCreateTask(data);
+        const result = await apiCreateTask(data);
         if (!result || !result.success) {
             if (!createdTasks.length && result?.duplicate) return;
             if (createdTasks.length) {
@@ -4919,7 +4988,6 @@ async function addTask() {
         }
         if (Array.isArray(result.postCreateWarnings)) postCreateWarningCount += result.postCreateWarnings.length;
         createdTasks.push(result.task);
-        if (i === 0 && aiCommitPayload) window.TaskAiDraft?.markCommittedTaskId?.(result.task?.id || result.task?.taskId || result.task?.task_id);
         lastCreatedTaskId = result.task?.id || lastCreatedTaskId;
         keepNewTaskVisible(result.task, data);
     }

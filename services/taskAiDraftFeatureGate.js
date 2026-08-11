@@ -93,6 +93,56 @@ function taskAiDraftFeatureStatus(user = {}, options = {}) {
     };
 }
 
+function taskAiDraftBundleFeatureStatus(user = {}, options = {}) {
+    const env = options.env || process.env;
+    const identity = userIdentity(user);
+    const forceDisabled = parseBool(env.TASK_AI_DRAFT_BUNDLE_DISABLED, false);
+    if (forceDisabled) {
+        return {
+            enabled: false,
+            reason: 'bundle_disabled_by_env',
+            rolloutPercent: 0,
+            matched: null
+        };
+    }
+
+    const explicitEnabled = parseBool(env.TASK_AI_DRAFT_BUNDLE_ENABLED, false);
+    const testUserIds = parseList(env.TASK_AI_DRAFT_BUNDLE_TEST_USER_IDS || env.TASK_AI_DRAFT_TEST_USER_IDS);
+    const testUsernames = parseList(env.TASK_AI_DRAFT_BUNDLE_TEST_USERNAMES || env.TASK_AI_DRAFT_TEST_USERNAMES);
+    const testEmails = parseList(env.TASK_AI_DRAFT_BUNDLE_TEST_EMAILS || env.TASK_AI_DRAFT_TEST_EMAILS);
+    const rolloutPercent = normalizePercent(env.TASK_AI_DRAFT_BUNDLE_ROLLOUT_PERCENT, explicitEnabled ? 100 : 0);
+
+    if (identity.id && testUserIds.includes(identity.id.toLowerCase())) {
+        return { enabled: true, reason: 'bundle_test_user_id', rolloutPercent, matched: 'user_id' };
+    }
+    if (identity.username && testUsernames.includes(identity.username)) {
+        return { enabled: true, reason: 'bundle_test_username', rolloutPercent, matched: 'username' };
+    }
+    if (identity.email && testEmails.includes(identity.email)) {
+        return { enabled: true, reason: 'bundle_test_email', rolloutPercent, matched: 'email' };
+    }
+
+    if (!explicitEnabled && rolloutPercent <= 0) {
+        return {
+            enabled: false,
+            reason: 'bundle_not_enabled',
+            rolloutPercent,
+            matched: null
+        };
+    }
+
+    const bucketSeed = identity.id || identity.username || identity.email || 'anonymous';
+    const bucket = stableBucket(`task-ai-draft-bundle:${bucketSeed}`);
+    const enabled = bucket < rolloutPercent;
+    return {
+        enabled,
+        reason: enabled ? 'bundle_rollout_bucket' : 'bundle_outside_rollout',
+        rolloutPercent,
+        bucket,
+        matched: enabled ? 'rollout' : null
+    };
+}
+
 function publicTaskAiDraftFeatureStatus(user = {}, options = {}) {
     const status = taskAiDraftFeatureStatus(user, options);
     return {
@@ -100,6 +150,23 @@ function publicTaskAiDraftFeatureStatus(user = {}, options = {}) {
         reason: status.reason,
         rolloutPercent: status.rolloutPercent,
         matched: status.matched
+    };
+}
+
+function publicTaskAiDraftBundleFeatureStatus(user = {}, options = {}) {
+    const status = taskAiDraftBundleFeatureStatus(user, options);
+    return {
+        enabled: status.enabled,
+        reason: status.reason,
+        rolloutPercent: status.rolloutPercent,
+        matched: status.matched
+    };
+}
+
+function publicTaskAiDraftFeaturesStatus(user = {}, options = {}) {
+    return {
+        composer: publicTaskAiDraftFeatureStatus(user, options),
+        bundle: publicTaskAiDraftBundleFeatureStatus(user, options)
     };
 }
 
@@ -113,9 +180,23 @@ function assertTaskAiDraftFeatureEnabled(user = {}, options = {}) {
     throw error;
 }
 
+function assertTaskAiDraftBundleFeatureEnabled(user = {}, options = {}) {
+    const status = taskAiDraftBundleFeatureStatus(user, options);
+    if (status.enabled) return status;
+    const error = new Error('AI task bundle creation is not enabled for this user.');
+    error.statusCode = 403;
+    error.code = 'TASK_AI_DRAFT_BUNDLE_DISABLED';
+    error.meta = publicTaskAiDraftBundleFeatureStatus(user, options);
+    throw error;
+}
+
 module.exports = {
+    assertTaskAiDraftBundleFeatureEnabled,
     assertTaskAiDraftFeatureEnabled,
+    publicTaskAiDraftBundleFeatureStatus,
     publicTaskAiDraftFeatureStatus,
+    publicTaskAiDraftFeaturesStatus,
+    taskAiDraftBundleFeatureStatus,
     stableBucket,
     taskAiDraftFeatureStatus
 };

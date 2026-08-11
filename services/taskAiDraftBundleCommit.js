@@ -10,6 +10,7 @@ const { getAssignableTaskOwner } = require('./taskExecution');
 const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
+    TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
     activeImpactCatalogVersion,
     proposalHash,
@@ -54,12 +55,12 @@ function normalizePriority(value) {
     return priority;
 }
 
-function normalizeDueDate(value) {
+function normalizeScheduleDate(value) {
     const text = String(value || '').trim();
     if (!text) return null;
     const parsed = /^\d{4}-\d{2}-\d{2}$/.test(text) ? new Date(`${text}T00:00:00.000Z`) : null;
     if (!parsed || Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== text) {
-        throw bundleCommitError('Bundle task due date is invalid.', 400, 'TASK_AI_BUNDLE_DUE_DATE_INVALID');
+        throw bundleCommitError('Bundle task schedule date is invalid.', 400, 'TASK_AI_BUNDLE_SCHEDULE_DATE_INVALID');
     }
     return text;
 }
@@ -85,7 +86,7 @@ function normalizeBundleTask(value = {}, index = 0) {
         description: compactString(task.description, MAX_BUNDLE_DESCRIPTION_CHARS) || null,
         impactIds: normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []),
         priority: normalizePriority(task.priority),
-        dueDate: normalizeDueDate(task.dueDate || task.due_date || task.date),
+        scheduleDate: normalizeScheduleDate(task.scheduleDate || task.schedule_date),
         ownerSuggestion: normalizeOwnerSuggestion(task.ownerSuggestion || task.owner_suggestion || {}),
         userEdited: task.userEdited === true || task.user_edited === true
     };
@@ -186,7 +187,10 @@ function ensureTokenMatchesBundleRequest({ tokenPayload, userId, businessScope, 
         throw bundleCommitError('Proposal token belongs to another business scope.', 403, 'TASK_AI_DRAFT_TOKEN_SCOPE_MISMATCH');
     }
     const submittedDraftFingerprint = String(body.draftFingerprint || body.draft_fingerprint || body.baseDraftFingerprint || body.base_draft_fingerprint || '').trim();
-    if (submittedDraftFingerprint && submittedDraftFingerprint !== tokenPayload.draftFingerprint) {
+    if (!submittedDraftFingerprint) {
+        throw bundleCommitError('Draft fingerprint is required.', 400, 'TASK_AI_DRAFT_FINGERPRINT_REQUIRED');
+    }
+    if (submittedDraftFingerprint !== tokenPayload.draftFingerprint) {
         throw bundleCommitError('Draft fingerprint does not match proposal token.', 409, 'TASK_AI_DRAFT_FINGERPRINT_CONFLICT');
     }
     const submittedProposalHash = normalizeSubmittedProposalHash(body);
@@ -358,6 +362,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
         secret: options.proposalSecret || options.safetySecret,
         userId,
         businessScope: input.businessScope,
+        audience: TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
+        decision: 'task_bundle',
         now: options.now
     });
     const { submittedProposalHash, catalogVersion } = ensureTokenMatchesBundleRequest({
@@ -409,7 +415,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
                 reasonCode: 'idempotent_replay',
                 userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
-                businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || ''
+                businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
+                taskCount: Number(existing.task_count || 0),
+                acceptedTaskCount: Array.isArray(existing.accepted_task_mask) ? existing.accepted_task_mask.length : 0,
+                rejectedTaskCount: Array.isArray(existing.rejected_task_mask) ? existing.rejected_task_mask.length : 0,
+                replay: true
             }, options.telemetry);
             return replayed;
         }
@@ -452,7 +462,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 businessContext,
                 title: finalTask.title,
                 description: finalTask.description,
-                date: finalTask.dueDate,
+                date: finalTask.scheduleDate,
                 priority: finalTask.priority,
                 assigned_to: ownerRecord.label,
                 owner_user_id: ownerRecord.id,
@@ -514,7 +524,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     bundleId,
                     bundleTaskIndex: index,
                     impactCount: finalTask.impactIds.length,
-                    scheduleWritten: Boolean(finalTask.dueDate)
+                    scheduleWritten: Boolean(finalTask.scheduleDate)
                 },
                 meta: {
                     idempotencyKey,
@@ -583,7 +593,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             reasonCode: 'bundle_committed',
             userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
-            taskCount: taskIds.length
+            taskCount: taskIds.length,
+            acceptedTaskCount: acceptedTaskMask.length,
+            rejectedTaskCount: rejectedTaskMask.length,
+            editedTaskCount: tasks.filter(task => task.userEdited).length,
+            replay: false
         }, options.telemetry);
 
         return {
@@ -613,7 +627,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
             reasonCode: error?.code || 'TASK_AI_BUNDLE_COMMIT_FAILED',
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
-            taskCount: tasks.length
+            taskCount: tasks.length,
+            acceptedTaskCount: acceptedTaskMask.length,
+            rejectedTaskCount: rejectedTaskMask.length,
+            editedTaskCount: tasks.filter(task => task.userEdited).length,
+            errorCategory: error?.code || 'TASK_AI_BUNDLE_COMMIT_FAILED'
         }, options.telemetry);
         throw error;
     } finally {

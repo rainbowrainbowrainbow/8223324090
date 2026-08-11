@@ -152,7 +152,7 @@
         const hiddenImpactRecords = impacts.slice(2);
         const hiddenImpactButtons = hiddenImpactRecords.map(record => renderImpactButton(record, true)).join('');
         const hiddenImpactLabel = hiddenImpactRecords.map(record => record?.name).filter(Boolean).join(', ');
-        const revealButton = hiddenImpactRecords.length ? `<button type="button" class="my-day-task-chip my-day-task-chip--more" title="${escape(hiddenImpactLabel)}" aria-label="${escape('Ще впливи: ' + hiddenImpactLabel)}" data-cabinet-task-action="reveal-impact" data-task-id="${escape(taskIdAttr)}" ${taskIdAttr ? '' : 'disabled aria-disabled="true"'}>+${hiddenImpactRecords.length}</button>` : '';
+        const revealButton = hiddenImpactRecords.length ? `<button type="button" class="my-day-task-chip my-day-task-chip--more" title="${escape(hiddenImpactLabel)}" aria-label="${escape('Ще впливи: ' + hiddenImpactLabel)}" aria-expanded="false" data-cabinet-task-action="reveal-impact" data-task-id="${escape(taskIdAttr)}" ${taskIdAttr ? '' : 'disabled aria-disabled="true"'}>+${hiddenImpactRecords.length}</button>` : '';
         if (visibleImpactButtons || revealButton || hiddenImpactButtons) {
             return `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${visibleImpactButtons}${revealButton}${hiddenImpactButtons}</span>`;
         }

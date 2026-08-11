@@ -7,6 +7,7 @@
     const DOCK_ROOT_ID = 'taskUiDropDock';
     const ACTION_MENU_FOCUSABLE_SELECTOR = 'button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])';
     let menuLastFocus = null;
+    let menuAnchorObserver = null;
     let dockController = null;
 
     const LABELS = {
@@ -69,7 +70,16 @@
             menuLastFocus.setAttribute('aria-expanded', 'false');
         }
         const root = document.getElementById(MENU_ROOT_ID);
-        if (root) root.remove();
+        if (menuAnchorObserver) {
+            menuAnchorObserver.disconnect();
+            menuAnchorObserver = null;
+        }
+        if (root) {
+            if (typeof root.dispatchEvent === 'function' && typeof CustomEvent === 'function') {
+                root.dispatchEvent(new CustomEvent('task-ui:surface-close', { bubbles: true }));
+            }
+            root.remove();
+        }
         lockBodyScroll(false);
         if (menuLastFocus?.isConnected) {
             try { menuLastFocus.focus({ preventScroll: true }); } catch {}
@@ -171,6 +181,15 @@
             }
         });
         document.body.appendChild(root);
+        if (typeof MutationObserver !== 'undefined') {
+            menuAnchorObserver = new MutationObserver(() => {
+                const currentRoot = document.getElementById(MENU_ROOT_ID);
+                if (!currentRoot?.isConnected || (menuLastFocus && !menuLastFocus.isConnected)) {
+                    closeActionMenu();
+                }
+            });
+            menuAnchorObserver.observe(document.body, { childList: true, subtree: true });
+        }
         if (mobile) lockBodyScroll(true);
         requestAnimationFrame(() => {
             if (!mobile) positionPopover(root, menuLastFocus);

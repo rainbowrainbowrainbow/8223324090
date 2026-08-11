@@ -3023,7 +3023,7 @@ function findCabinetTask(taskId) {
 
 const CABINET_ACTIVE_TASK_BUCKETS = ['all', 'focus', 'today', 'next', 'deferred', 'waiting', 'private', 'overdue', 'inbox', 'createdByMe'];
 const CABINET_PLANNING_TASK_BUCKETS = ['all', 'overdue', 'today', 'tomorrow', 'dayAfterTomorrow', 'plusThreeDays', 'monthEnd', 'noDate'];
-const cabinetImpactRemovalInFlight = new Set();
+const cabinetClassificationMutationInFlight = new Set();
 
 function cabinetProjectionTaskId(task = {}) {
     return normalizeCabinetTaskId(task?.id || task?.taskId || task?.task_id);
@@ -4146,6 +4146,17 @@ function applyCabinetAiDraftField(field, value, meta = {}) {
         setCabinetComposerImpactIds(value);
         return;
     }
+    if (field === 'scheduleDate') {
+        const input = document.getElementById('cabinetTaskDate');
+        const date = String(value || '').trim();
+        if (input) input.value = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : '';
+        setCabinetDuePreset(date ? 'custom' : 'no_date');
+        return;
+    }
+    if (field === 'priority') {
+        setCabinetCreatePriority(String(value || 'normal'));
+        return;
+    }
     if (field === 'subtasks') {
         replaceCabinetSubtasks(Array.isArray(value) ? value : [], { sourceType: meta.source === 'manual' ? 'manual' : 'ai' });
         setCabinetDecompositionMode(Array.isArray(value) && value.length ? 'ai' : 'none', { keepRows: true, keepStatus: true });
@@ -4157,7 +4168,9 @@ function focusCabinetAiDraftField(field) {
         title: 'cabinetTaskTitle',
         description: 'cabinetTaskDetails',
         mode: 'cabinetTaskMode',
-        subtasks: 'cabinetSubtaskList'
+        subtasks: 'cabinetSubtaskList',
+        scheduleDate: 'cabinetTaskDate',
+        priority: 'cabinetTaskPriority'
     };
     if (field === 'impactIds') {
         document.querySelector('[data-my-day-composer-impact-chip]')?.focus();
@@ -6110,8 +6123,6 @@ function renderCabinetTaskComposer(options = {}) {
                         <option value="none">Без декомпозиції</option>
                         <option value="manual">Вручну</option>
                         <option value="template">Шаблон</option>
-                        <option value="ai">AI чернетка</option>
-                        <option value="template_ai">Шаблон + AI</option>
                     </select>
                     <select id="cabinetDecompositionTemplate" aria-label="Шаблон декомпозиції">
                         <option value="personal_home">Побут / особисте</option>
@@ -6119,7 +6130,6 @@ function renderCabinetTaskComposer(options = {}) {
                         <option value="content_creation">Контент</option>
                         <option value="crm_sales_followup">CRM / продаж</option>
                     </select>
-                    <button type="button" id="cabinetSubtaskDraftBtn" class="cabinet-subtask-add">AI</button>
                     <button type="button" id="cabinetSubtaskAcceptDraftBtn" class="cabinet-subtask-add" hidden>Прийняти</button>
                 </div>
                 <div class="cabinet-template-controls">
@@ -6467,12 +6477,12 @@ function renderCabinetOverdueTriageRow(task = {}) {
     const classificationHtml = [myDayClassificationBadges, myDayDependencyBadge].filter(Boolean).join('');
     const timeControlsHtml = window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showMyDayDetails }) || '';
     const detailToggleHtml = globalViewMode === 'compact' ? `<button type="button" class="cabinet-overdue-triage-action cabinet-task-action-details" title="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-label="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-expanded="${cardDetailsExpanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>${cardDetailsExpanded ? '−' : '+'}</button>` : '';
-    return `<div class="cabinet-overdue-triage-row ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}">
+    return `<div class="cabinet-overdue-triage-row cabinet-task-card is-personal-day-card is-my-day-compact-card priority-${escapeHtml(priority)} ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}">
         <div class="cabinet-overdue-triage-main">
             <div class="cabinet-task-zone cabinet-task-zone--header">
                 <a class="cabinet-overdue-triage-title" href="/tasks?view=my&open=${encodeURIComponent(taskIdAttr)}" title="${escapeHtml(task.title || 'Без назви')}">${escapeHtml(task.title || 'Без назви')}</a>
                 <div class="cabinet-overdue-triage-actions cabinet-overdue-triage-actions--header">
-                    <button type="button" class="cabinet-overdue-triage-action is-done" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" title="${escapeHtml(doneTitle)}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                    <button type="button" class="cabinet-overdue-triage-action is-done" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneTitle)}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
                     <button type="button" class="cabinet-overdue-triage-action cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>
                     ${detailToggleHtml}
                     ${renderCabinetTaskMoreAction(taskIdAttr)}
@@ -7195,13 +7205,19 @@ async function updateCabinetTaskPriority(select) {
     if (typeof showNotification === 'function') showNotification(result?.error || 'Не вдалося змінити пріоритет', 'error');
 }
 
-function setCabinetImpactChipBusy(taskId, impactId, busy) {
+function setCabinetTaskClassificationBusy(taskId, busy, options = {}) {
     const id = normalizeCabinetTaskId(taskId);
-    const impact = Number(impactId);
-    if (!id || !Number.isInteger(impact)) return;
-    document.querySelectorAll(`[data-cabinet-task-action="remove-impact"][data-task-id="${id}"][data-my-day-impact-id="${impact}"]`).forEach(chip => {
+    const pendingImpactId = Number(options.impactId);
+    if (!id) return;
+    document.querySelectorAll('[data-my-day-task-impact-chips]').forEach(group => {
+        if (!group.querySelector?.(`[data-task-id="${id}"]`)) return;
+        group.classList.toggle('is-classification-pending', Boolean(busy));
+        group.setAttribute('aria-busy', busy ? 'true' : 'false');
+    });
+    document.querySelectorAll(`[data-cabinet-task-action="remove-impact"][data-task-id="${id}"], [data-cabinet-task-action="reveal-impact"][data-task-id="${id}"]`).forEach(chip => {
+        const isPendingChip = Number(chip.dataset.myDayImpactId) === pendingImpactId;
         chip.disabled = Boolean(busy);
-        chip.classList.toggle('is-pending', Boolean(busy));
+        chip.classList.toggle('is-pending', Boolean(busy && isPendingChip));
         chip.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
 }
@@ -7222,16 +7238,16 @@ async function removeCabinetTaskImpact(button, taskId) {
         if (typeof showNotification === 'function') showNotification('Не вдалося визначити вплив', 'error');
         return;
     }
-    const key = `${taskId}:${impactId}`;
-    if (cabinetImpactRemovalInFlight.has(key)) return;
+    const key = String(taskId);
+    if (cabinetClassificationMutationInFlight.has(key)) return;
     const task = findCabinetTask(taskId) || {};
     const currentImpacts = Array.isArray(task?.myDay?.impacts) ? task.myDay.impacts : [];
     const remainingImpactIds = currentImpacts
         .map(impact => Number(impact.id))
         .filter(id => Number.isInteger(id) && id !== impactId);
     if (remainingImpactIds.length === currentImpacts.length) return;
-    cabinetImpactRemovalInFlight.add(key);
-    setCabinetImpactChipBusy(taskId, impactId, true);
+    cabinetClassificationMutationInFlight.add(key);
+    setCabinetTaskClassificationBusy(taskId, true, { impactId });
     try {
         const result = await window.MyDayClassification?.saveTaskClassification?.(taskId, {
             impactIds: remainingImpactIds
@@ -7242,10 +7258,10 @@ async function removeCabinetTaskImpact(button, taskId) {
         notifyTaskWidgetsChanged({ action: 'task_impact_removed', taskId, impactId });
         if (typeof showNotification === 'function') showNotification('Вплив прибрано', 'success');
     } catch (error) {
-        setCabinetImpactChipBusy(taskId, impactId, false);
+        setCabinetTaskClassificationBusy(taskId, false, { impactId });
         if (typeof showNotification === 'function') showNotification(error.message || 'Не вдалося прибрати вплив', 'error');
     } finally {
-        cabinetImpactRemovalInFlight.delete(key);
+        cabinetClassificationMutationInFlight.delete(key);
     }
 }
 
@@ -7714,12 +7730,6 @@ async function executeCabinetMoveTarget(taskId, target, options = {}) {
 async function createCabinetTask(event, mode) {
     event.preventDefault();
     const input = document.getElementById('cabinetTaskTitle');
-    const title = String(input?.value || '').trim();
-    if (!title) {
-        input?.focus();
-        if (typeof showNotification === 'function') showNotification('Заповніть назву задачі', 'error');
-        return;
-    }
     let myDayClassification = null;
     try {
         myDayClassification = window.MyDayClassification?.readComposerClassification?.() || null;
@@ -7732,6 +7742,7 @@ async function createCabinetTask(event, mode) {
     const selectedMode = mode || document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
+    const title = String(input?.value || '').trim();
     const draft = {
         title,
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
@@ -7759,6 +7770,49 @@ async function createCabinetTask(event, mode) {
     };
     const composer = document.getElementById('cabinetTaskComposer');
     const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+    if (aiCommitPayload) {
+        if (window.TaskAiDraft?.isCommitPending?.(composer)) return;
+        if (aiCommitPayload.commitType === 'bundle') {
+            if (!window.TaskCreate?.commitAiDraftBundle) {
+                if (typeof showNotification === 'function') showNotification('Створення кількох AI-задач тимчасово недоступне. Ручне створення працює як раніше.', 'error');
+                return;
+            }
+            window.TaskAiDraft?.setCommitPending?.(composer, true);
+            let bundleResult;
+            try {
+                bundleResult = await window.TaskCreate.commitAiDraftBundle({
+                    ...aiCommitPayload,
+                    sourceSurface: 'profile_my_cabinet'
+                });
+            } finally {
+                window.TaskAiDraft?.setCommitPending?.(composer, false);
+            }
+            if (!bundleResult?.success) {
+                if (typeof showNotification === 'function') showNotification(bundleResult?.error || 'AI bundle не створено. Ручне створення доступне.', 'error');
+                return;
+            }
+            const bundleTasks = (Array.isArray(bundleResult.tasks) ? bundleResult.tasks : [])
+                .map(row => row?.task || row)
+                .filter(Boolean);
+            bundleTasks.forEach(task => {
+                const id = task?.id || task?.taskId || task?.task_id;
+                window.TaskAiDraft?.markCommittedTaskId?.(id);
+                notifyTaskWidgetsChanged({ action: 'create', taskId: id });
+            });
+            if (input) input.value = '';
+            const details = document.getElementById('cabinetTaskDetails');
+            if (details) details.value = '';
+            window.TaskAiDraft?.clear?.(composer);
+            if (typeof showNotification === 'function') showNotification(`Створено ${bundleTasks.length || 'кілька'} AI-задач`, 'success');
+            await refreshMyCabinetTab();
+            return;
+        }
+    }
+    if (!title && !aiCommitPayload) {
+        input?.focus();
+        if (typeof showNotification === 'function') showNotification('Заповніть назву задачі', 'error');
+        return;
+    }
     let payload;
     if (window.TaskCreate?.buildPayload) {
         payload = window.TaskCreate.buildPayload(draft, {
@@ -7796,25 +7850,37 @@ async function createCabinetTask(event, mode) {
             payload.effort_minutes = 30;
         }
     }
-    const result = aiCommitPayload && window.TaskCreate?.commitAiDraft
-        ? await window.TaskCreate.commitAiDraft({
-            ...aiCommitPayload,
-            finalDraft: {
-                ...draft,
-                ...(aiCommitPayload.finalDraft || {}),
-                ownerUserId: draft.ownerUserId,
-                sourceType: 'ai_draft',
-                sourceModule: 'profile_my_cabinet',
-                sourceSurface: 'profile_my_cabinet'
-            }
-        })
-        : (window.TaskCreate?.createTask
-        ? await window.TaskCreate.createTask(payload, {
-            onDuplicate: err => {
-                if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
-            }
-        })
-        : await apiPost('/tasks', payload));
+    let result;
+    if (aiCommitPayload) {
+        if (!window.TaskCreate?.commitAiDraft) {
+            if (typeof showNotification === 'function') showNotification('AI commit тимчасово недоступний. Скасуйте AI-зміни або створіть задачу вручну.', 'error');
+            return;
+        }
+        window.TaskAiDraft?.setCommitPending?.(composer, true);
+        try {
+            result = await window.TaskCreate.commitAiDraft({
+                ...aiCommitPayload,
+                finalDraft: {
+                    ...draft,
+                    ...(aiCommitPayload.finalDraft || {}),
+                    ownerUserId: draft.ownerUserId,
+                    sourceType: 'ai_draft',
+                    sourceModule: 'profile_my_cabinet',
+                    sourceSurface: 'profile_my_cabinet'
+                }
+            });
+        } finally {
+            window.TaskAiDraft?.setCommitPending?.(composer, false);
+        }
+    } else {
+        result = window.TaskCreate?.createTask
+            ? await window.TaskCreate.createTask(payload, {
+                onDuplicate: err => {
+                    if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
+                }
+            })
+            : await apiPost('/tasks', payload);
+    }
     if (!result?.success) {
         if (!result?.duplicate && typeof showNotification === 'function') {
             showNotification(result?.error || 'Не вдалося створити задачу', 'error');
@@ -8712,6 +8778,7 @@ function attachProfileListeners() {
             readDraft: readCabinetAiDraft,
             applyField: applyCabinetAiDraftField,
             focusField: focusCabinetAiDraftField,
+            requestSubmit: () => composer?.requestSubmit?.(),
             commitBundle: window.TaskCreate?.commitAiDraftBundle
         });
     }
@@ -9433,6 +9500,16 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
                 console.warn('Profile task projection refresh failed', error);
             });
         }, 300);
+    });
+    window.addEventListener('crm:timer-updated', (event) => {
+        if (event?.detail?.source !== 'global') return;
+        if (!profileData || !isOwnProfile || activeTab !== 'myday') return;
+        window.clearTimeout(profileTaskProjectionRefreshTimer);
+        profileTaskProjectionRefreshTimer = window.setTimeout(() => {
+            refreshMyCabinetTab({ silent: true, keepExistingOnError: true }).catch(error => {
+                console.warn('Profile My Day timer refresh failed', error);
+            });
+        }, 120);
     });
     window.addEventListener('task-ai-draft-bundle-committed', (event) => {
         if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;

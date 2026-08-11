@@ -2,6 +2,7 @@
     'use strict';
 
     const MIN_SEARCH_CHARS = 2;
+    const SEARCH_DEBOUNCE_MS = 220;
 
     function escape(value) {
         return window.TaskUI?.escapeHtml?.(String(value ?? '')) || String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -26,12 +27,20 @@
         return '<button type="button" class="cabinet-task-blocker-badge" data-cabinet-task-action="dependency-open" data-task-id="' + escape(open[0].id) + '" title="Відкрити задачу-передумову"><span aria-hidden="true">🔗</span><span>' + escape(label) + '</span></button>';
     }
 
-    function candidateList(rows, taskId, query) {
-        const needle = String(query || '').trim().toLowerCase();
-        if (needle.length < MIN_SEARCH_CHARS) return [];
-        return (Array.isArray(rows) ? rows : []).filter(task => Number(task.id) !== Number(taskId))
-            .filter(task => !needle || String(task.title || '').toLowerCase().includes(needle))
+    function candidateList(rows, taskId) {
+        return (Array.isArray(rows) ? rows : [])
+            .filter(task => Number(task.id) !== Number(taskId))
             .slice(0, 8);
+    }
+
+    function taskSearchPath(query) {
+        const Params = typeof URLSearchParams !== 'undefined' ? URLSearchParams : window.URLSearchParams;
+        const params = new Params({
+            mine: '1',
+            limit: '8',
+            search: String(query || '').trim()
+        });
+        return '?' + params.toString();
     }
 
     async function openManager(anchor, task, onChanged) {
@@ -70,6 +79,11 @@
         const quickCreateButton = root.querySelector('[data-dependency-quick-create]');
         let candidates = [];
         let pending = false;
+        let searchPending = false;
+        let completedSearchQuery = '';
+        let searchSequence = 0;
+        let searchDebounceTimer = null;
+        let searchAbortController = null;
         const setPending = active => {
             pending = Boolean(active);
             root.setAttribute('aria-busy', pending ? 'true' : 'false');
@@ -92,11 +106,66 @@
                 results.innerHTML = '<p class="my-day-dependency-hint">Введіть мінімум 2 символи для пошуку.</p>';
                 return;
             }
-            const list = candidateList(candidates, taskId, query);
+            if (searchPending || completedSearchQuery !== query) {
+                results.innerHTML = '<p class="my-day-dependency-hint">Шукаємо задачу…</p>';
+                return;
+            }
+            const list = candidateList(candidates, taskId);
             results.innerHTML = list.length ? list.map(item => `<button type="button" class="my-day-dependency-result-row" data-dependency-link="${escape(item.id)}" ${pending ? 'disabled aria-disabled="true"' : ''}>
                 <span title="${escape(item.title)}">${escape(item.title)}</span>
                 <small>Додати як передумову</small>
             </button>`).join('') : '<p class="my-day-dependency-empty">Збігів немає.</p>';
+        };
+        const abortSearch = () => {
+            if (searchDebounceTimer) {
+                window.clearTimeout?.(searchDebounceTimer);
+                searchDebounceTimer = null;
+            }
+            if (searchAbortController) {
+                searchAbortController.abort();
+                searchAbortController = null;
+            }
+        };
+        const scheduleSearch = () => {
+            const query = String(search?.value || '').trim();
+            abortSearch();
+            candidates = [];
+            if (query.length < MIN_SEARCH_CHARS) {
+                searchSequence += 1;
+                searchPending = false;
+                completedSearchQuery = '';
+                renderCandidates();
+                return;
+            }
+            const sequence = ++searchSequence;
+            searchPending = true;
+            completedSearchQuery = '';
+            renderCandidates();
+            const timer = typeof window.setTimeout === 'function'
+                ? window.setTimeout.bind(window)
+                : (typeof setTimeout === 'function' ? setTimeout : null);
+            const run = async () => {
+                searchDebounceTimer = null;
+                searchAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+                try {
+                    const payload = await request(taskSearchPath(query), { signal: searchAbortController?.signal });
+                    if (!root.isConnected || sequence !== searchSequence) return;
+                    candidates = payload.tasks || payload.data || [];
+                    completedSearchQuery = query;
+                    searchPending = false;
+                    renderCandidates();
+                } catch (error) {
+                    if (error?.name === 'AbortError' || sequence !== searchSequence || !root.isConnected) return;
+                    candidates = [];
+                    completedSearchQuery = query;
+                    searchPending = false;
+                    results.innerHTML = '<p class="my-day-dependency-empty">Не вдалося виконати пошук задач.</p>';
+                } finally {
+                    if (sequence === searchSequence) searchAbortController = null;
+                }
+            };
+            if (timer) searchDebounceTimer = timer(run, SEARCH_DEBOUNCE_MS);
+            else void run();
         };
         const syncCreateButton = () => {
             const disabled = pending || !String(create?.value || '').trim();
@@ -113,9 +182,8 @@
         renderCurrent();
         renderCandidates();
         syncCreateButton();
-        search?.addEventListener('input', renderCandidates);
+        search?.addEventListener('input', scheduleSearch);
         create?.addEventListener('input', syncCreateButton);
-        request('?mine=1&limit=100').then(payload => { candidates = payload.tasks || payload.data || []; renderCandidates(); }).catch(() => { results.innerHTML = '<p class="my-day-dependency-empty">Не вдалося завантажити задачі для пошуку.</p>'; });
         root.addEventListener('click', async event => {
             const link = event.target.closest('[data-dependency-link]');
             const remove = event.target.closest('[data-dependency-remove]');
@@ -143,6 +211,7 @@
                 syncCreateButton();
             }
         });
+        root.addEventListener('task-ui:surface-close', abortSearch, { once: true });
         return root;
     }
 

@@ -46,6 +46,9 @@ function registerAuthenticatedServiceWorker() {
 function markAuthenticatedRuntimeReady() {
     if (!hasAuthenticatedRuntimeSession()) return false;
     void registerAuthenticatedServiceWorker();
+    if (typeof window.scheduleGlobalTaskTimerAssets === 'function') {
+        window.scheduleGlobalTaskTimerAssets();
+    }
     if (authenticatedRuntimeReady) return true;
 
     authenticatedRuntimeReady = true;
@@ -120,6 +123,39 @@ window.isAuthenticatedRuntimeReady = isAuthenticatedRuntimeReady;
         return true;
     }
 
+    function ensureGlobalTaskTimerAssets() {
+        if (!hasAuthenticatedRuntimeSession()) return false;
+        const suffix = assetSuffix();
+
+        if (!document.querySelector('link[data-global-task-timer-css]')) {
+            const link = document.createElement('link');
+            link.rel = 'stylesheet';
+            link.href = '/css/global-task-timer.css' + suffix;
+            link.dataset.globalTaskTimerCss = 'true';
+            document.head.appendChild(link);
+        }
+
+        if (window.GlobalTaskTimer && typeof window.GlobalTaskTimer.init === 'function') {
+            window.GlobalTaskTimer.init();
+            return true;
+        }
+
+        if (!document.querySelector('script[data-global-task-timer-js]')) {
+            const script = document.createElement('script');
+            script.src = '/js/global-task-timer.js' + suffix;
+            script.defer = true;
+            script.dataset.globalTaskTimerJs = 'true';
+            script.onload = () => {
+                if (window.GlobalTaskTimer && typeof window.GlobalTaskTimer.init === 'function') {
+                    window.GlobalTaskTimer.init();
+                }
+            };
+            document.body.appendChild(script);
+        }
+
+        return true;
+    }
+
     function scheduleSidebarSmartMenuAssets() {
         const ensure = window.ensureSidebarSmartMenuAssets || ensureSidebarSmartMenuAssets;
         const timer = typeof window.setTimeout === 'function'
@@ -131,10 +167,25 @@ window.isAuthenticatedRuntimeReady = isAuthenticatedRuntimeReady;
         });
     }
 
+    function scheduleGlobalTaskTimerAssets() {
+        const ensure = window.ensureGlobalTaskTimerAssets || ensureGlobalTaskTimerAssets;
+        const timer = typeof window.setTimeout === 'function'
+            ? window.setTimeout.bind(window)
+            : (typeof setTimeout === 'function' ? setTimeout : null);
+        if (!timer) return;
+        [0, 120, 360, 900, 1800].forEach(delay => {
+            timer(() => ensure(), delay);
+        });
+    }
+
     if (!window.ensureSidebarSmartMenuAssets) {
         window.ensureSidebarSmartMenuAssets = ensureSidebarSmartMenuAssets;
     }
+    if (!window.ensureGlobalTaskTimerAssets) {
+        window.ensureGlobalTaskTimerAssets = ensureGlobalTaskTimerAssets;
+    }
     window.scheduleSidebarSmartMenuAssets = scheduleSidebarSmartMenuAssets;
+    window.scheduleGlobalTaskTimerAssets = scheduleGlobalTaskTimerAssets;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', scheduleSidebarSmartMenuAssets, { once: true });
@@ -300,6 +351,7 @@ function logout() {
 
     AppState.currentUser = null;
     resetAuthenticatedRuntimeReady();
+    window.dispatchEvent(new CustomEvent('crm:auth-cleared', { detail: { reason: 'logout' } }));
     clearAuthStorage();
     clearPrivateClientCaches();
     showLoginScreen();

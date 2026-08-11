@@ -366,7 +366,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     appearance: none;
     cursor: pointer;
     font: inherit;
-    min-height: 24px;
+    min-height: 36px;
     transition: transform 160ms ease, background-color 160ms ease, border-color 160ms ease, box-shadow 160ms ease, opacity 160ms ease;
 }
 
@@ -391,6 +391,10 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 .my-day-task-chip--removable.is-pending {
     pointer-events: none;
+}
+
+.my-day-task-impact-chips.is-classification-pending .my-day-task-chip:is(button) {
+    cursor: wait;
 }
 
 .my-day-task-chip-remove {
@@ -424,12 +428,17 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 @media (prefers-reduced-motion: reduce) {
     .my-day-task-chip:is(button),
-    .my-day-task-chip-remove {
+    .my-day-task-chip-remove,
+    .my-day-time-button,
+    .my-day-time-disclosure {
         transition: none;
     }
 
     .my-day-task-chip:is(button):hover,
-    .my-day-task-chip:is(button):focus-visible {
+    .my-day-task-chip:is(button):focus-visible,
+    .my-day-time-button:hover:not(:disabled),
+    .my-day-time-disclosure:hover,
+    .my-day-time-disclosure[aria-expanded="true"] {
         transform: none;
     }
 }
@@ -991,6 +1000,11 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     margin-top: 0;
 }
 
+.my-day-time-task--disclosure {
+    gap: 6px;
+    margin-top: 0;
+}
+
 .my-day-time-summary,
 .my-day-time-actions {
     align-items: center;
@@ -1002,6 +1016,10 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 }
 
 .my-day-time-summary--compact {
+    flex: 0 1 auto;
+}
+
+.my-day-time-summary--inline {
     flex: 0 1 auto;
 }
 
@@ -1090,8 +1108,65 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     transform: none;
 }
 
+.my-day-time-disclosure {
+    align-items: center;
+    appearance: none;
+    background: rgba(248, 250, 252, 0.72);
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 999px;
+    color: var(--text-secondary, #475569);
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 0.88rem;
+    font-weight: 900;
+    gap: 5px;
+    justify-content: center;
+    min-height: 34px;
+    min-width: 34px;
+    padding: 0 8px;
+    position: relative;
+    text-decoration: none;
+    transition: background-color 0.16s ease, border-color 0.16s ease, color 0.16s ease, transform 0.16s ease, box-shadow 0.16s ease;
+    white-space: nowrap;
+}
+
+.my-day-time-disclosure:hover,
+.my-day-time-disclosure[aria-expanded="true"] {
+    background: rgba(20, 184, 166, 0.10);
+    border-color: rgba(20, 184, 166, 0.36);
+    color: #0f766e;
+    transform: translateY(-1px);
+}
+
+.my-day-time-disclosure:focus-visible {
+    outline: 2px solid rgba(20, 184, 166, 0.62);
+    outline-offset: 2px;
+}
+
+.my-day-time-disclosure-icon {
+    display: inline-flex;
+    line-height: 1;
+}
+
+.my-day-time-running-dot {
+    background: #14b8a6;
+    border-radius: 999px;
+    box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.14);
+    display: inline-block;
+    height: 7px;
+    width: 7px;
+}
+
+.my-day-time-compact-elapsed {
+    color: var(--text-primary, #0f172a);
+    font-size: 0.78rem;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+}
+
 .my-day-time-popover.is-popover .task-ui-action-panel {
-    width: min(430px, calc(100vw - 24px));
+    width: min(380px, calc(100vw - 24px));
 }
 
 .my-day-time-popover .task-ui-action-body {
@@ -1112,6 +1187,20 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     flex-wrap: wrap;
     gap: 8px;
     min-width: 0;
+}
+
+.my-day-time-menu-state {
+    align-items: center;
+    color: var(--text-muted, #64748b);
+    display: inline-flex;
+    font-size: 0.82rem;
+    font-weight: 850;
+    gap: 7px;
+    margin: 0;
+}
+
+.my-day-time-menu-state.is-active {
+    color: #0f766e;
 }
 
 .my-day-time-menu-actions .my-day-time-button {
@@ -1194,6 +1283,18 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     }
     .my-day-time-task--compact .my-day-time-button {
         min-width: 38px;
+    }
+    .my-day-time-task--disclosure,
+    .my-day-time-task--disclosure .my-day-time-summary,
+    .my-day-time-task--disclosure .my-day-time-disclosure {
+        width: auto;
+    }
+    .my-day-time-task--disclosure {
+        justify-content: flex-start;
+    }
+    .my-day-time-disclosure {
+        min-height: 36px;
+        min-width: 36px;
     }
     .my-day-time-entry-row { grid-template-columns: 1fr; }
     .my-day-time-entry-actions { display: grid; grid-template-columns: 1fr 1fr; width: 100%; }
@@ -1594,6 +1695,34 @@ html[data-theme="dark"] body .my-day-time-popover .my-day-time-entry-row {
     color: var(--my-day-life-secondary, #cbd5e1);
 }
 
+body.dark-mode .profile-page.profile-work-mode .my-day-time-disclosure,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-disclosure {
+    background: rgba(15, 23, 42, 0.54);
+    border-color: rgba(148, 163, 184, 0.26);
+    color: var(--my-day-life-secondary, #cbd5e1);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-time-disclosure:hover,
+body.dark-mode .profile-page.profile-work-mode .my-day-time-disclosure[aria-expanded="true"],
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-disclosure:hover,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-disclosure[aria-expanded="true"] {
+    background: rgba(20, 184, 166, 0.14);
+    border-color: rgba(94, 234, 212, 0.42);
+    color: var(--my-day-life-text, #f8fafc);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-time-compact-elapsed,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-compact-elapsed {
+    color: var(--my-day-life-text, #f8fafc);
+}
+
+body.dark-mode .my-day-time-popover .task-ui-action-panel,
+html[data-theme="dark"] body .my-day-time-popover .task-ui-action-panel {
+    background: rgba(15, 23, 42, 0.96);
+    border-color: rgba(148, 163, 184, 0.26);
+    color: var(--my-day-life-secondary, #cbd5e1);
+}
+
 body.dark-mode .profile-page.profile-work-mode .my-day-time-button--primary,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-button--primary {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.94), rgba(37, 99, 235, 0.88));
@@ -1631,6 +1760,16 @@ html[data-theme="dark"] body .my-day-time-popover .my-day-time-button:hover:not(
     border-color: rgba(94, 234, 212, 0.52);
     box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
     color: var(--my-day-life-text, #f8fafc);
+}
+
+body.dark-mode .my-day-time-popover .my-day-time-menu-state,
+html[data-theme="dark"] body .my-day-time-popover .my-day-time-menu-state {
+    color: var(--my-day-life-muted, #94a3b8);
+}
+
+body.dark-mode .my-day-time-popover .my-day-time-menu-state.is-active,
+html[data-theme="dark"] body .my-day-time-popover .my-day-time-menu-state.is-active {
+    color: #99f6e4;
 }
 
 body.dark-mode .my-day-time-popover .my-day-time-entry-source,

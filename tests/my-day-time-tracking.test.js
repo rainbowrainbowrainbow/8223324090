@@ -91,7 +91,8 @@ test('My Day time controls use CRM classes instead of raw browser-default button
 
     assert.match(ui, /my-day-active-timer/);
     assert.match(ui, /my-day-time-summary/);
-    assert.match(ui, /my-day-time-actions/);
+    assert.match(ui, /my-day-time-disclosure/);
+    assert.match(ui, /aria-label="Деталі часу"/);
     assert.match(ui, /my-day-time-button--primary/);
     assert.match(ui, /my-day-time-button--stop/);
     assert.match(ui, /my-day-time-popover/);
@@ -99,13 +100,15 @@ test('My Day time controls use CRM classes instead of raw browser-default button
     assert.match(ui, />Видалити</);
     assert.doesNotMatch(ui, />Ред\.</);
     assert.match(css, /\.my-day-time-button\s*\{/);
-    assert.match(css, /min-height:\s*40px/);
-    assert.match(css, /\.my-day-time-actions\s*\{/);
+    assert.match(css, /min-height:\s*36px/);
+    assert.match(css, /\.my-day-time-disclosure\s*\{/);
+    assert.match(css, /min-height:\s*34px/);
     assert.match(css, /flex-wrap:\s*wrap/);
     assert.match(css, /\.my-day-time-popover\.is-popover \.task-ui-action-panel/);
     assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-active-timer/);
-    assert.match(css, /html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-time-button--ghost/);
-    assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.my-day-time-actions/);
+    assert.match(css, /html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-time-disclosure/);
+    assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.my-day-time-task--disclosure/);
+    assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.my-day-time-disclosure/);
     assert.match(taskUi, /event\.key === 'Escape'[\s\S]*closeActionMenu\(\)/);
     assert.match(taskUi, /data-task-ui-close/);
 });
@@ -144,8 +147,13 @@ test('My Day timer UI derives live elapsed seconds from client clock without dup
     assert.equal(api.liveSecondsLabel(95), '1:35', 'active timer keeps seconds after one minute');
     assert.ok(api.currentTimerDurationSeconds() >= 95);
     assert.match(api.renderActiveTimerStrip(), /data-my-day-active-timer-elapsed[^>]*>1:3\d</, 'active timer strip renders seconds-precision elapsed time');
-    assert.match(api.renderTaskControls({ id: 41, actualSeconds: 120 }), /data-my-day-time-task-actual="41"/);
-    assert.match(api.renderTaskControls({ id: 41, actualSeconds: 30 }), />0:30<\/span>/, 'active task fact renders seconds while timer is running');
+    const compactControls = api.renderTaskControls({ id: 41, actualSeconds: 30 });
+    assert.match(compactControls, /my-day-time-disclosure/);
+    assert.match(compactControls, /aria-label="Деталі часу"/);
+    assert.match(compactControls, /data-my-day-time-task-actual="41"/);
+    assert.match(compactControls, />0:30<\/span>/, 'active task disclosure renders seconds while timer is running');
+    assert.doesNotMatch(compactControls, /data-cabinet-task-action="timer-start"/, 'collapsed card does not render a large start button inline');
+    assert.doesNotMatch(compactControls, /data-cabinet-task-action="time-entry"/, 'collapsed card keeps manual time behind the popover');
 
     assert.equal(api.syncTicker(true), true);
     assert.equal(api.syncTicker(true), true);
@@ -183,6 +191,37 @@ test('My Day timer UI hydrates active timer from API and clears ticker on stop a
     assert.deepEqual(cleared, [1], 'stop clears live ticker');
     assert.deepEqual(fetchCalls.map(call => `${call.method} ${call.url}`), ['GET /api/my-day/timer', 'POST /api/my-day/timer/stop']);
 });
+
+test('My Day time disclosure opens a TaskUI popover with timer and detail actions', async () => {
+    const opened = {};
+    const fakeRoot = { querySelectorAll: () => [] };
+    const { api } = loadTimeTrackingUi({
+        taskUi: {
+            openActionMenu: (button, html, options) => {
+                opened.button = button;
+                opened.html = html;
+                opened.options = options;
+                return fakeRoot;
+            }
+        }
+    });
+
+    const controls = api.renderTaskControls({ id: 9, effortMinutes: 30, actualSeconds: 60 }, { detailed: false });
+    assert.match(controls, /my-day-time-disclosure/);
+    assert.doesNotMatch(controls, /data-cabinet-task-action="timer-start"/);
+    assert.doesNotMatch(controls, /data-cabinet-task-action="time-entry"/);
+
+    await api.handleAction('time-menu', 9, async () => {}, { id: 'time-trigger' }, { id: 9, effortMinutes: 30, actualSeconds: 60 });
+
+    assert.equal(opened.options.title, 'Час задачі');
+    assert.equal(opened.options.surfaceClassName, 'my-day-time-popover my-day-time-menu-popover');
+    assert.match(opened.html, /data-my-day-time-menu-action="timer-start"/);
+    assert.match(opened.html, /data-my-day-time-menu-action="time-entry"/);
+    assert.match(opened.html, /data-my-day-time-menu-action="time-entries"/);
+    assert.match(opened.html, />План</);
+    assert.match(opened.html, />Факт</);
+});
+
 test('My Day time entries popover uses CRM surface and accessible edit delete labels', async () => {
     const opened = {};
     const fakeRoot = { querySelectorAll: () => [] };

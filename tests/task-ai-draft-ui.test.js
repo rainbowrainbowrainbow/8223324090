@@ -55,22 +55,25 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-bundle-field="description"/);
     assert.match(aiCode, /data-task-ai-bundle-field="impactIds"/);
     assert.match(aiCode, /data-task-ai-bundle-field="ownerUserId"/);
-    assert.match(aiCode, /data-task-ai-bundle-field="dueDate"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="scheduleDate"/);
     assert.match(aiCode, /data-task-ai-bundle-field="priority"/);
     assert.match(aiCode, /data-task-ai-bundle-accept=/);
     assert.match(aiCode, /data-task-ai-bundle-reject=/);
     assert.match(aiCode, /data-task-ai-bundle-edit=/);
     assert.match(aiCode, /data-task-ai-bundle-accept-all/);
-    assert.match(aiCode, /data-task-ai-draft-bundle-create/);
+    assert.match(aiCode, /data-task-ai-draft-submit-intent/);
     assert.match(aiCode, /bundlePayloadFor/);
+    assert.match(aiCode, /renderStructureSelector/);
     assert.match(aiCode, /activeTasks\.length < 2/);
     assert.match(aiCode, /taskIds\.forEach\(id => lastCommittedAiTaskIds\.add\(id\)\)/);
     assert.doesNotMatch(aiCode, /\bcommittedTaskIds\b/);
-    assert.match(aiCode, /state\.preview\?\.proposal\?\.decision === 'task_bundle'\) return null/);
-    assert.match(aiCode, /atomic bundle commit endpoint/);
+    assert.match(aiCode, /commitType: 'bundle'/);
+    assert.doesNotMatch(aiCode, /state\.preview\?\.proposal\?\.decision === 'task_bundle'\) return null/);
     assert.match(aiCode, /sourceType: 'ai_draft'/);
     assert.match(aiCode, /dataset\.subtaskSource = 'manual'/);
     assert.match(aiCode, /markUserEdited\(root, 'subtasks'\)/);
+    assert.doesNotMatch(tasksHtml, /id="taskSubtaskDraftBtn"/);
+    assert.doesNotMatch(profileCode, /id="cabinetSubtaskDraftBtn"/);
 
     assert.match(profileCode, /window\.TaskAiDraft\.bindComposer/);
     assert.match(tasksCode, /window\.TaskAiDraft\.bindComposer/);
@@ -92,6 +95,7 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(css, /task-ai-bundle-fields/);
     assert.match(css, /task-ai-bundle-impact-grid/);
     assert.match(css, /task-ai-bundle-counter/);
+    assert.match(css, /task-ai-draft-structure/);
 });
 
 test('AI draft composer renders interactive task bundle review without single-task commit fallback', async () => {
@@ -139,7 +143,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
                         description: 'Make the form safe.',
                         impactIds: [101],
                         priority: 'high',
-                        dueDate: '2026-08-20',
+                        scheduleDate: '2026-08-20',
                         ownerSuggestion: { userId: null, name: 'CRM owner', reason: 'Review owner.' }
                     },
                     {
@@ -147,7 +151,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
                         description: 'Wire the event.',
                         impactIds: [102, 103],
                         priority: 'normal',
-                        dueDate: null,
+                        scheduleDate: null,
                         ownerSuggestion: { userId: null, name: '', reason: '' }
                     }
                 ]
@@ -175,29 +179,32 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.match(root.textContent, /AI .*2/);
     assert.match(root.textContent, /dependencies/);
     assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '7');
-    assert.ok(root.querySelector('[data-task-ai-draft-bundle-create]').disabled);
+    assert.ok(root.querySelector('[data-task-ai-draft-submit-intent]').disabled);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root), null);
+    assert.equal(root.querySelectorAll('[data-task-ai-structure]').length, 2);
 
     root.querySelector('[data-task-ai-bundle-accept-all]').click();
-    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, true);
+    assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, true);
     assert.match(root.textContent, /1\/2/);
     root.querySelector('[data-task-ai-bundle-accept]').click();
-    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, false);
+    assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, false);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 2);
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root).commitType, 'bundle');
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[0].scheduleDate, '2026-08-20');
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).acceptedTaskMask, [0, 1]);
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).rejectedTaskMask, []);
 
     const firstTitle = root.querySelector('[data-task-ai-bundle-card] [data-task-ai-bundle-field="title"]');
     firstTitle.value = 'Fix CRM intake after review';
     firstTitle.dispatchEvent(new window.Event('input', { bubbles: true }));
-    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, true);
+    assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, true);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root), null);
 
     root.querySelector('[data-task-ai-bundle-accept]').click();
     const secondReject = root.querySelectorAll('[data-task-ai-bundle-reject]')[1];
     secondReject.click();
-    assert.match(root.querySelector('[data-task-ai-draft-bundle-create]').textContent, /1/);
-    assert.equal(root.querySelector('[data-task-ai-draft-bundle-create]').disabled, true);
+    assert.match(root.querySelector('[data-task-ai-draft-submit-intent]').textContent, /1/);
+    assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, true);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root), null);
     assert.match(root.textContent, /single-task/);
 });

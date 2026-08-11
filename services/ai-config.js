@@ -11,7 +11,7 @@ const { settingsCache } = require('./cache');
 const { createLogger } = require('../utils/logger');
 const { myDayClassificationDiagnostics } = require('./myDayClassificationAi');
 const { MY_DAY_TASK_AI_MODEL } = require('./myDayTaskOpenAIClient');
-const { publicTaskAiDraftFeatureStatus } = require('./taskAiDraftFeatureGate');
+const { publicTaskAiDraftBundleFeatureStatus, publicTaskAiDraftFeatureStatus } = require('./taskAiDraftFeatureGate');
 
 const log = createLogger('AIConfig');
 
@@ -304,6 +304,7 @@ async function getAIProviderDiagnostics() {
     const openRouterConfigured = Boolean(getProviderKey('openrouter'));
     const openAIConfigured = Boolean(process.env.OPENAI_API_KEY);
     const taskAiDraftFeature = publicTaskAiDraftFeatureStatus(null);
+    const taskAiDraftBundleFeature = publicTaskAiDraftBundleFeatureStatus(null);
     const kieConfigured = Boolean(process.env.KIE_API_KEY);
     const kieSunoCallbackConfigured = hasKieSunoCallback();
 
@@ -429,6 +430,9 @@ async function getAIProviderDiagnostics() {
                 featureEnabled: taskAiDraftFeature.enabled,
                 featureReason: taskAiDraftFeature.reason,
                 rolloutPercent: taskAiDraftFeature.rolloutPercent,
+                bundleFeatureEnabled: taskAiDraftBundleFeature.enabled,
+                bundleFeatureReason: taskAiDraftBundleFeature.reason,
+                bundleRolloutPercent: taskAiDraftBundleFeature.rolloutPercent,
                 model: MY_DAY_TASK_AI_MODEL,
                 keyEnv: 'OPENAI_API_KEY',
                 boundary: 'task_ai_draft_direct_openai_responses',

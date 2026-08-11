@@ -352,9 +352,12 @@ async function listenMockCheckbox() {
                     }]);
                 }
                 if (req.url === '/api/v1/cashier/shift' && req.method === 'GET') {
+                    if (!state.shiftOpened) {
+                        return send(404, { error: 'shift_not_opened' });
+                    }
                     return send(200, {
-                        id: state.shiftOpened ? state.shiftId : 'mock-shift-closed',
-                        status: state.shiftOpened ? 'OPENED' : 'CLOSED',
+                        id: state.shiftId,
+                        status: 'OPENED',
                         cash_register_id: state.registerId,
                         cashier_id: state.cashierId
                     });

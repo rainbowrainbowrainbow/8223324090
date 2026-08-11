@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.122 - Checkbox Test Readiness
+
+### Release / Versioning / (11.08.2026) [codex]
+- **Checkbox Test Readiness** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.121 - Task Automation Hygiene
 
 ### Tasks / Automation Hygiene / (11.08.2026) [codex]

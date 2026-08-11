@@ -27,6 +27,15 @@ The script starts `BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY`,
 - The manifest must stay out of tracked repo history unless the owner explicitly approves storing production IDs.
 - The script does not select or print task titles, descriptions, user names, customer data, connection strings, or secrets.
 
+## Automation denominator
+
+The inventory exposes two separate automation counters:
+
+- `automationMarkerOverdue`: the shared marker-scope set used to reconcile with `task-stale-machine-report`; it excludes plain `source_type=manual` / `type=manual` tasks without an automation marker.
+- `broadAutomationOverdue`: the historical strict/legacy cleanup grouping used by older cleanup waves.
+
+Plain manual/My Day tasks are reported separately as human/manual overdue, not as automation backlog. Unanchored `source_type=manual` rows remain in automation scope only when they also carry an explicit machine marker such as `created_by=rule_engine` or `type=auto/auto_complete`.
+
 ## Cleanup candidate policy
 
 Only `cohorts.cleanupCandidates.strictCancelledBookings` is intended as the first possible cleanup candidate list.

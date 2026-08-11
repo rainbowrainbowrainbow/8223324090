@@ -18,7 +18,9 @@ const {
     MACHINE_SOURCE_TYPES,
     MACHINE_TASK_TYPES,
     PRIVATE_OR_PERSONAL,
+    TASK_AUTOMATION_MARKER_SCOPE_VERSION,
     TERMINAL_STATUSES,
+    hasAutomationMarkerScope,
     taskHumanTouchSql
 } = require('../services/taskAutomationPolicy');
 
@@ -314,6 +316,54 @@ function emptyIdBucket() {
     return { count: 0, ids: [] };
 }
 
+function idSetChecksum(scope, ids = []) {
+    return crypto.createHash('sha256').update(JSON.stringify({
+        scope,
+        ids: [...ids].map(Number).sort((left, right) => left - right)
+    })).digest('hex');
+}
+
+function automationEvidenceChecksum(rows = []) {
+    const normalizedEvidence = rows
+        .filter(row => row.canonical_overdue && hasAutomationMarkerScope(row))
+        .map(row => {
+            const provenance = classifyProvenance(row);
+            return {
+                id: Number(row.id),
+                provenance,
+                protectionReasons: protectionReasons(row, provenance),
+                status: normalize(row.status),
+                taskType: normalize(row.task_type_legacy),
+                sourceType: normalize(row.source_type),
+                sourceEntityType: normalize(row.source_entity_type),
+                relatedEntityType: normalize(row.related_entity_type),
+                sourceModule: normalize(row.source_module),
+                createdByUser: Number(row.created_by_user_id || 0) > 0,
+                ownerPresent: Number(row.owner_user_id || 0) > 0,
+                visibility: normalize(row.visibility),
+                taskMode: normalize(row.task_mode),
+                workflowState: normalize(row.workflow_state),
+                focus: Number(row.focus_rank || 0) > 0,
+                snoozed: Boolean(row.has_snooze),
+                futureSnooze: Boolean(row.has_future_snooze),
+                humanTouched: Boolean(row.human_touched),
+                subtaskCount: Number(row.subtask_count || 0),
+                dependencyCount: Number(row.dependency_count || 0),
+                observerCount: Number(row.observer_count || 0),
+                aiBundleCount: Number(row.ai_bundle_count || 0),
+                bookingFound: Boolean(row.booking_found),
+                bookingStatus: normalize(row.booking_status),
+                bookingCohort: normalize(row.source_type) === 'booking' ? bookingCohort(row) : '',
+                dueDate: String(row.due_date || '').slice(0, 10)
+            };
+        })
+        .sort((left, right) => left.id - right.id);
+    return crypto.createHash('sha256').update(JSON.stringify({
+        scope: TASK_AUTOMATION_MARKER_SCOPE_VERSION,
+        rows: normalizedEvidence
+    })).digest('hex');
+}
+
 function emptyBookingBuckets() {
     return {
         cancelled: emptyIdBucket(),
@@ -392,7 +442,10 @@ function buildManifest(rows = [], options = {}) {
         protectionReasons: {},
         cohorts: {
             canonicalOverdue: emptyIdBucket(),
+            automationMarkerOverdue: emptyIdBucket(),
             broadAutomationOverdue: emptyIdBucket(),
+            humanManualOverdue: emptyIdBucket(),
+            unknownProtectedOverdue: emptyIdBucket(),
             protectedReviewOverdue: emptyIdBucket(),
             cleanupCandidates: {
                 strictCancelledBookings: emptyIdBucket()
@@ -413,6 +466,7 @@ function buildManifest(rows = [], options = {}) {
         const reasons = protectionReasons(row, provenance);
         const protectedReview = reasons.length > 0;
         const broadAutomation = provenance === 'strict_rule_engine' || provenance === 'legacy_explicit_automation';
+        const automationMarker = hasAutomationMarkerScope(row);
 
         if (!manifest.provenance[provenance]) {
             manifest.provenance[provenance] = {
@@ -433,7 +487,10 @@ function buildManifest(rows = [], options = {}) {
 
         if (row.canonical_overdue) {
             pushId(manifest.cohorts.canonicalOverdue, id);
+            if (automationMarker) pushId(manifest.cohorts.automationMarkerOverdue, id);
             if (broadAutomation) pushId(manifest.cohorts.broadAutomationOverdue, id);
+            if (!automationMarker && provenance === 'manual') pushId(manifest.cohorts.humanManualOverdue, id);
+            if (!automationMarker && provenance !== 'manual') pushId(manifest.cohorts.unknownProtectedOverdue, id);
             if (protectedReview) pushId(manifest.cohorts.protectedReviewOverdue, id);
         }
 
@@ -471,6 +528,12 @@ function buildManifest(rows = [], options = {}) {
     }
 
     sortBuckets(manifest.cohorts);
+    manifest.cohorts.automationMarkerOverdue.scopeVersion = TASK_AUTOMATION_MARKER_SCOPE_VERSION;
+    manifest.cohorts.automationMarkerOverdue.membershipChecksum = idSetChecksum(
+        TASK_AUTOMATION_MARKER_SCOPE_VERSION,
+        manifest.cohorts.automationMarkerOverdue.ids
+    );
+    manifest.cohorts.automationMarkerOverdue.evidenceChecksum = automationEvidenceChecksum(rows);
     manifest.provenance = Object.fromEntries(Object.entries(manifest.provenance).sort(([left], [right]) => left.localeCompare(right)));
     manifest.protectionReasons = Object.fromEntries(Object.entries(manifest.protectionReasons).sort(([left], [right]) => left.localeCompare(right)));
     manifest.checksum = checksumManifest(manifest);
@@ -491,7 +554,15 @@ function summaryForStdout(manifest) {
         kyivToday: manifest.kyivToday,
         transactionReadOnlyVerified: manifest.safety.transactionReadOnlyVerified,
         totals: manifest.totals,
+        automationMarkerOverdue: {
+            count: manifest.cohorts.automationMarkerOverdue.count,
+            scopeVersion: manifest.cohorts.automationMarkerOverdue.scopeVersion,
+            membershipChecksum: manifest.cohorts.automationMarkerOverdue.membershipChecksum,
+            evidenceChecksum: manifest.cohorts.automationMarkerOverdue.evidenceChecksum
+        },
         broadAutomationOverdue: manifest.cohorts.broadAutomationOverdue.count,
+        humanManualOverdue: manifest.cohorts.humanManualOverdue.count,
+        unknownProtectedOverdue: manifest.cohorts.unknownProtectedOverdue.count,
         strictCancelledBookingCandidates: manifest.cohorts.cleanupCandidates.strictCancelledBookings.count,
         autoExpiredManualPrivate: manifest.cohorts.autoExpiredManualPrivate.count,
         bookingCohorts: {

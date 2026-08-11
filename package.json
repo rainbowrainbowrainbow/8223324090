@@ -76,7 +76,7 @@
     "test:hr-release-b": "node --test tests/hr-profession-conditions.test.js tests/hr-profession-checklist-migration.test.js tests/hr-profession-checklists.test.js tests/hr-onboarding-checklist-sync.test.js tests/profile-hr-professions-foundation.test.js tests/hr-profession-readiness-static.test.js tests/training-course-progress.test.js tests/payroll-profiles-migration.test.js tests/payroll-installments-foundation.test.js tests/payroll-canonical-calculator.test.js tests/payroll-scheme-history-hardening.test.js tests/hr-payroll-profiles-service.test.js",
     "test:payroll-contracts": "node --test tests/payroll-workflow-contract.test.js tests/payroll-finance-workflow-contract.test.js tests/payroll-permissions-contract.test.js tests/payroll-activation-preflight-contract.test.js tests/payroll-shadow-comparison.test.js tests/payroll-post-release-audit.test.js",
     "test:unit:hr-org-tree": "node --test tests/hr-org-tree-regressions.test.js",
-    "test:task-performance-policy": "node --test tests/task-performance-policy.test.js",
+    "test:task-performance-policy": "node --test tests/task-automation-policy.test.js tests/task-performance-policy.test.js tests/task-human-productivity-policy.test.js tests/payroll-kpi-audit-policy.test.js tests/gamification-schema-compat.test.js",
     "test:task-archive-system-filter": "node --test tests/task-archive-system-filter.test.js",
     "test:task-stale-machine-report": "node --test tests/task-stale-machine-report.test.js",
     "test:task-cleanup-operator": "node --test tests/task-cleanup-operator.test.js",

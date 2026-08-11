@@ -182,12 +182,6 @@ function buildReportSql() {
         CROSS JOIN runtime
         LEFT JOIN bookings b ON b.id::text = NULLIF(BTRIM(COALESCE(t.source_id, '')), '')
         LEFT JOIN task_templates tt ON tt.id = t.template_id
-        WHERE
-            LOWER(COALESCE(t.source_type, '')) = ANY(ARRAY['booking', 'manual', 'recurring', 'attendance', 'hermes', 'integration', 'ai_draft', 'ai_draft_bundle'])
-            OR LOWER(COALESCE(t.source_module, '')) = ANY(ARRAY['attendance', 'hermes', 'integration'])
-            OR LOWER(COALESCE(t.type, '')) = ANY(ARRAY['auto', 'auto_complete', 'recurring', 'ai_draft', 'ai_draft_bundle'])
-            OR LOWER(COALESCE(t.created_by, '')) = ANY(ARRAY['rule_engine', 'system', 'scheduler'])
-            OR t.template_id IS NOT NULL
         ORDER BY t.id ASC
     `;
 }

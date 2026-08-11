@@ -3,7 +3,9 @@ const {
     BOOKING_TERMINAL_STATUSES,
     MACHINE_CREATORS,
     MACHINE_TASK_TYPES,
+    TASK_AUTOMATION_MARKER_SCOPE_VERSION,
     bool,
+    hasAutomationMarkerScope,
     hasStrictMachineProvenance,
     isAiAssisted,
     isAttendance,
@@ -26,6 +28,13 @@ function sha256(payload) {
 
 function sortedTaskIds(rows) {
     return rows.map(row => Number(row.task_id || row.id)).filter(Number.isFinite).sort((a, b) => a - b);
+}
+
+function idSetChecksum(scope, ids = []) {
+    return sha256({
+        scope,
+        ids: [...ids].map(Number).sort((a, b) => a - b)
+    });
 }
 
 function isStrictRuleEngineBooking(row = {}) {
@@ -67,8 +76,19 @@ function safeEvidence(row = {}) {
             ? null
             : bool(row.template_context_match),
         sameTemplateDateDuplicate: bool(row.same_template_date_duplicate),
+        automationMarkerScope: hasAutomationMarkerScope(row),
         protectionFlags: protectionFlags(row).sort()
     };
+}
+
+function isPlainHumanManualOverdue(row = {}) {
+    const sourceType = normalize(row.source_type);
+    const taskType = normalize(row.task_type || row.type || row.task_type_legacy);
+    const creatorClass = normalize(row.creator_class || row.created_by_normalized || row.created_by);
+    return numeric(row.created_by_user_id) > 0
+        || sourceType === 'manual'
+        || taskType === 'manual'
+        || creatorClass === 'human_named_or_legacy';
 }
 
 function privateRecord(item = {}) {
@@ -90,6 +110,28 @@ function classifyStaleMachineTask(row = {}) {
             decision: 'ignored',
             cohort: 'ignored_terminal_or_archived',
             reason: 'terminal_or_archived_tasks_are_out_of_scope'
+        };
+    }
+
+    if (!hasAutomationMarkerScope(row)) {
+        if (bool(row.canonical_overdue) && isPlainHumanManualOverdue(row)) {
+            return {
+                decision: 'ignored',
+                cohort: 'outside_automation_scope_human_manual_overdue',
+                reason: 'plain_manual_or_human_task_not_in_automation_denominator'
+            };
+        }
+        if (bool(row.canonical_overdue)) {
+            return {
+                decision: 'ignored',
+                cohort: 'outside_automation_scope_unknown_overdue',
+                reason: 'unknown_without_automation_marker_not_in_automation_denominator'
+            };
+        }
+        return {
+            decision: 'ignored',
+            cohort: 'ignored_outside_automation_scope',
+            reason: 'not_in_automation_marker_scope'
         };
     }
 
@@ -295,14 +337,20 @@ function buildStaleMachineReport(rows = [], options = {}) {
         .map(cohort => ({
             cohort: cohort.cohort,
             decision: cohort.decision,
-            count: cohort.records.filter(record => record.evidence.canonicalOverdue === true).length,
+            count: cohort.records.filter(record => (
+                record.evidence.canonicalOverdue === true
+                && record.evidence.automationMarkerScope === true
+            )).length,
             membershipChecksum: sha256({
                 classifierVersion: CLASSIFIER_VERSION,
                 kyivToday,
                 overdueOnly: true,
                 cohort: cohort.cohort,
                 ids: cohort.records
-                    .filter(record => record.evidence.canonicalOverdue === true)
+                    .filter(record => (
+                        record.evidence.canonicalOverdue === true
+                        && record.evidence.automationMarkerScope === true
+                    ))
                     .map(record => record.taskId)
                     .sort((a, b) => a - b)
             }),
@@ -312,7 +360,10 @@ function buildStaleMachineReport(rows = [], options = {}) {
                 overdueOnly: true,
                 cohort: cohort.cohort,
                 rows: cohort.records
-                    .filter(record => record.evidence.canonicalOverdue === true)
+                    .filter(record => (
+                        record.evidence.canonicalOverdue === true
+                        && record.evidence.automationMarkerScope === true
+                    ))
                     .map(record => record.evidence)
                     .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
             })
@@ -320,17 +371,55 @@ function buildStaleMachineReport(rows = [], options = {}) {
         .filter(cohort => cohort.count > 0)
         .sort((a, b) => a.cohort.localeCompare(b.cohort));
 
-    const automationOverdueTotal = rows.filter(row => bool(row.canonical_overdue)).length;
+    const automationOverdueRows = rows.filter(row => bool(row.canonical_overdue) && hasAutomationMarkerScope(row));
+    const automationOverdueIds = sortedTaskIds(automationOverdueRows);
+    const humanManualOverdueTotal = rows.filter(row => (
+        bool(row.canonical_overdue)
+        && !hasAutomationMarkerScope(row)
+        && isPlainHumanManualOverdue(row)
+    )).length;
+    const unknownProtectedOverdueTotal = rows.filter(row => (
+        bool(row.canonical_overdue)
+        && !hasAutomationMarkerScope(row)
+        && !isPlainHumanManualOverdue(row)
+    )).length;
+    const strictMachineOverdueTotal = automationOverdueRows.filter(row => hasStrictMachineProvenance({
+        ...row,
+        type: row.task_type || row.type || row.task_type_legacy,
+        creator_class: row.creator_class || row.created_by_normalized
+    })).length;
+    const protectedAutomationOverdueTotal = cohorts
+        .filter(cohort => cohort.decision === 'protected')
+        .reduce((sum, cohort) => sum + cohort.records.filter(record => (
+            record.evidence.canonicalOverdue === true
+            && record.evidence.automationMarkerScope === true
+        )).length, 0);
+    const legacyExplicitAutomationOverdueTotal = Math.max(
+        0,
+        automationOverdueRows.length - strictMachineOverdueTotal - protectedAutomationOverdueTotal
+    );
+    const automationMarkerMembershipChecksum = idSetChecksum(TASK_AUTOMATION_MARKER_SCOPE_VERSION, automationOverdueIds);
+    const automationMarkerEvidenceChecksum = sha256({
+        scope: TASK_AUTOMATION_MARKER_SCOPE_VERSION,
+        rows: automationOverdueRows.map(safeEvidence).sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+    });
+    const automationOverdueTotal = automationOverdueRows.length;
     const overdueReconciledTotal = overdueCohorts.reduce((sum, cohort) => sum + cohort.count, 0);
     const overdueReconciliation = {
+        scopeVersion: TASK_AUTOMATION_MARKER_SCOPE_VERSION,
         automationOverdueTotal,
         reconciledTotal: overdueReconciledTotal,
         ok: automationOverdueTotal === overdueReconciledTotal,
+        membershipChecksum: automationMarkerMembershipChecksum,
+        evidenceChecksum: automationMarkerEvidenceChecksum,
         cohorts: overdueCohorts,
         checksum: sha256({
             classifierVersion: CLASSIFIER_VERSION,
             kyivToday,
+            scopeVersion: TASK_AUTOMATION_MARKER_SCOPE_VERSION,
             automationOverdueTotal,
+            membershipChecksum: automationMarkerMembershipChecksum,
+            evidenceChecksum: automationMarkerEvidenceChecksum,
             cohorts: overdueCohorts.map(cohort => ({
                 cohort: cohort.cohort,
                 decision: cohort.decision,
@@ -352,7 +441,12 @@ function buildStaleMachineReport(rows = [], options = {}) {
             reportCandidates: candidateTotal,
             protected: protectedTotal,
             ignored: ignoredTotal,
-            automationOverdue: automationOverdueTotal
+            automationOverdue: automationOverdueTotal,
+            strictMachineOverdue: strictMachineOverdueTotal,
+            legacyExplicitAutomationOverdue: legacyExplicitAutomationOverdueTotal,
+            protectedAutomationOverdue: protectedAutomationOverdueTotal,
+            humanManualOverdue: humanManualOverdueTotal,
+            unknownProtectedOverdue: unknownProtectedOverdueTotal
         },
         cohorts,
         overdueReconciliation,
@@ -370,9 +464,12 @@ function summaryForStdout(report = {}) {
         totals: report.totals,
         manifestChecksum: report.manifestChecksum,
         overdueReconciliation: report.overdueReconciliation ? {
+            scopeVersion: report.overdueReconciliation.scopeVersion,
             automationOverdueTotal: report.overdueReconciliation.automationOverdueTotal,
             reconciledTotal: report.overdueReconciliation.reconciledTotal,
             ok: report.overdueReconciliation.ok,
+            membershipChecksum: report.overdueReconciliation.membershipChecksum,
+            evidenceChecksum: report.overdueReconciliation.evidenceChecksum,
             checksum: report.overdueReconciliation.checksum,
             cohorts: (report.overdueReconciliation.cohorts || []).map(cohort => ({
                 cohort: cohort.cohort,

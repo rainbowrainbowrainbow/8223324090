@@ -61,22 +61,37 @@ test('stale machine report marks only terminal strict booking cohorts as report-
     assert.equal(past.candidateArchiveReason, undefined);
 });
 
-test('stale machine report protects manual, private, AI, integration, attendance and unknown tasks', () => {
-    const cases = [
-        row({ task_id: 10, source_type: 'manual', task_type: 'manual', creator_class: 'human_named_or_legacy', created_by_user_id: 7 }),
-        row({ task_id: 11, visibility: 'private' }),
-        row({ task_id: 12, source_type: 'ai_draft', task_type: 'ai_draft', created_by_user_id: 8 }),
-        row({ task_id: 13, source_type: 'hermes', creator_class: 'hermes' }),
-        row({ task_id: 14, source_type: 'attendance' }),
-        row({ task_id: 15, source_type: '', task_type: '', creator_class: 'unknown', health_score: 0 })
-    ];
+test('stale machine report keeps plain manual outside automation denominator and protects machine-like records', () => {
+    const manual = report.classifyStaleMachineTask(row({
+        task_id: 10,
+        source_type: 'manual',
+        task_type: 'manual',
+        creator_class: 'human_named_or_legacy',
+        created_by_user_id: 7
+    }));
+    assert.equal(manual.decision, 'ignored');
+    assert.equal(manual.cohort, 'outside_automation_scope_human_manual_overdue');
 
-    const results = cases.map(item => report.classifyStaleMachineTask(item));
+    const unknown = report.classifyStaleMachineTask(row({
+        task_id: 15,
+        source_type: 'unknown',
+        task_type: 'unknown',
+        creator_class: 'unknown',
+        health_score: 0
+    }));
+    assert.equal(unknown.decision, 'ignored');
+    assert.equal(unknown.cohort, 'outside_automation_scope_unknown_overdue');
+
+    const results = [
+        report.classifyStaleMachineTask(row({ task_id: 11, visibility: 'private' })),
+        report.classifyStaleMachineTask(row({ task_id: 12, source_type: 'ai_draft', task_type: 'ai_draft', created_by_user_id: 8 })),
+        report.classifyStaleMachineTask(row({ task_id: 13, source_type: 'hermes', creator_class: 'hermes' })),
+        report.classifyStaleMachineTask(row({ task_id: 14, source_type: 'attendance' }))
+    ];
     assert.ok(results.every(item => item.decision === 'protected'));
     assert.ok(results.some(item => item.cohort === 'protected_attendance'));
     assert.ok(results.some(item => item.cohort === 'protected_hermes_or_integration'));
     assert.ok(results.some(item => item.cohort === 'protected_ai_assisted'));
-    assert.ok(results.some(item => item.cohort === 'protected_unknown_or_unproven_machine_lineage'));
 });
 
 test('stale machine report protects current/future and human-touched machine tasks', () => {
@@ -169,7 +184,7 @@ test('stale recurring/template generated tasks require valid lineage and stay pr
     })).cohort, 'protected_recurring_same_template_date_duplicate_review');
 });
 
-test('stale machine report reconciles overdue cohorts and stdout summary contains no task IDs or PII keys', () => {
+test('stale machine report reconciles only automation-marker overdue cohorts and stdout summary contains no task IDs or PII keys', () => {
     const rows = [
         row({ task_id: 3, booking_status: 'confirmed' }),
         row({ task_id: 1, booking_status: 'cancelled' }),
@@ -185,10 +200,15 @@ test('stale machine report reconciles overdue cohorts and stdout summary contain
 
     assert.equal(first.manifestChecksum, second.manifestChecksum);
     assert.equal(first.totals.reportCandidates, 2);
-    assert.equal(first.totals.protected, 3);
-    assert.equal(first.totals.automationOverdue, 4);
+    assert.equal(first.totals.protected, 2);
+    assert.equal(first.totals.ignored, 1);
+    assert.equal(first.totals.automationOverdue, 3);
+    assert.equal(first.totals.strictMachineOverdue, 3);
+    assert.equal(first.totals.humanManualOverdue, 1);
     assert.equal(first.overdueReconciliation.ok, true);
-    assert.equal(first.overdueReconciliation.reconciledTotal, 4);
+    assert.equal(first.overdueReconciliation.reconciledTotal, 3);
+    assert.match(first.overdueReconciliation.membershipChecksum, /^[a-f0-9]{64}$/);
+    assert.match(first.overdueReconciliation.evidenceChecksum, /^[a-f0-9]{64}$/);
     assert.ok(first.cohorts.every(cohort => Array.isArray(cohort.records)));
     assert.ok(first.cohorts.some(cohort => cohort.records.some(record => record.taskId === 1)));
     assert.equal(serialized.includes('"ids"'), false);
@@ -215,6 +235,7 @@ test('stale machine report script is read-only and blocks mutation flags', () =>
     assert.match(sql, /snoozed_until AT TIME ZONE 'Europe\/Kyiv'/);
     assert.match(sql, /task_action_history tah/);
     assert.match(sql, /same_template_date_duplicate/);
+    assert.doesNotMatch(sql, /ANY\(ARRAY\[[^\]]*'manual'/);
     assert.doesNotMatch(sql, /\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|CREATE|MERGE|COMMIT)\b/i);
 });
 

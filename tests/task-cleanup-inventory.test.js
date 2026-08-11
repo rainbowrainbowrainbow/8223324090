@@ -145,7 +145,7 @@ test('task cleanup manifest is deterministic, checksummed, and keeps production 
     const rows = [
         row({ id: 102, booking_status: 'cancelled' }),
         row({ id: 101, booking_status: 'active', booking_date: '2026-08-01' }),
-        row({ id: 103, source_type: 'manual', task_type_legacy: 'manual', created_by_user_id: 5 }),
+        row({ id: 103, source_type: 'manual', task_type_legacy: 'manual', created_by_normalized: '', created_by_user_id: 5 }),
         row({ id: 104, archive_reason: 'auto_expired', source_type: 'manual', task_type_legacy: 'manual', created_by_user_id: 5, canonical_overdue: false, active: false, archived: true })
     ];
     const first = inventory.buildManifest(rows, { transactionReadOnlyVerified: true });
@@ -156,12 +156,20 @@ test('task cleanup manifest is deterministic, checksummed, and keeps production 
     assert.equal(first.checksum, second.checksum);
     assert.equal(first.checksum, later.checksum);
     assert.equal(first.classifierVersion, inventory.CLASSIFIER_VERSION);
+    assert.deepEqual(first.cohorts.automationMarkerOverdue.ids, [101, 102]);
+    assert.match(first.cohorts.automationMarkerOverdue.membershipChecksum, /^[a-f0-9]{64}$/);
+    assert.match(first.cohorts.automationMarkerOverdue.evidenceChecksum, /^[a-f0-9]{64}$/);
+    assert.deepEqual(first.cohorts.humanManualOverdue.ids, [103]);
     assert.deepEqual(first.cohorts.cleanupCandidates.strictCancelledBookings.ids, [102]);
     assert.deepEqual(first.cohorts.booking.strictRuleEngineOverdue.cancelled.ids, [102]);
     assert.deepEqual(first.cohorts.booking.strictRuleEngineOverdue.past_active.ids, [101]);
     assert.deepEqual(first.cohorts.autoExpiredManualPrivate.ids, [104]);
 
     const summary = inventory.summaryForStdout(first);
+    assert.equal(summary.automationMarkerOverdue.count, 2);
+    assert.match(summary.automationMarkerOverdue.membershipChecksum, /^[a-f0-9]{64}$/);
+    assert.match(summary.automationMarkerOverdue.evidenceChecksum, /^[a-f0-9]{64}$/);
+    assert.equal(summary.humanManualOverdue, 1);
     assert.equal(summary.strictCancelledBookingCandidates, 1);
     assert.equal(JSON.stringify(summary).includes('"ids"'), false);
 });

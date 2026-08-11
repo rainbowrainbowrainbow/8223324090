@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.123 - Gamification Schema Compatibility
+
+### Release / Versioning / (11.08.2026) [codex]
+- **Сумісність gamification із production schema** - achievements catalog і leaderboard більше не падають на legacy `user_achievements(user_id, achievement_id)` без DB migration.
+- **Task Automation Hygiene release збережено** - v0.80.121 KPI/lifecycle/reporting зміни залишилися активними, hotfix тільки виправляє live QA дефект у gamification read endpoints.
+
+---
+
 ## v0.80.122 - Checkbox Test Readiness
 
 ### Release / Versioning / (11.08.2026) [codex]

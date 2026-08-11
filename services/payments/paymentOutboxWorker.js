@@ -288,7 +288,7 @@ async function loadJobContext(client, job) {
              po.status AS payment_order_status,
              po.payment_status,
              po.fiscal_status AS payment_order_fiscal_status,
-             po.fiscal_register_id,
+             COALESCE(po.fiscal_register_id, fo.fiscal_register_id) AS fiscal_register_id,
              po.cashier_user_id,
              po.total_amount_minor,
              po.payment_method,
@@ -300,7 +300,11 @@ async function loadJobContext(client, job) {
              fr.status AS register_status,
              fr.provider_license_ref,
              fr.feature_enabled AS register_feature_enabled,
-             fr.metadata->>'expected_is_test' AS current_expected_is_test,
+             COALESCE(
+                 fr.metadata->>'expected_is_test',
+                 fr.metadata->>'expectedIsTest',
+                 fo.request_snapshot #>> '{provider_context,expected_is_test}'
+             ) AS current_expected_is_test,
              fp.provider_organization_id AS current_provider_organization_id,
              fl.provider_outlet_id AS current_provider_outlet_id,
              fs.status AS fiscal_shift_status,

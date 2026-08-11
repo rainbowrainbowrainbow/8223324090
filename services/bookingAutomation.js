@@ -15,6 +15,10 @@ const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { insertHistory } = require('./historyLog');
 const { createLogger } = require('../utils/logger');
 const { CLIENT_PINATA_FILLER_LABEL, isClientOwnedPinataFiller } = require('./pinataMode');
+const {
+    MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
+    buildMachineTaskControlMetaPatch
+} = require('./taskAutomationPolicy');
 
 const log = createLogger('Automation');
 
@@ -165,6 +169,11 @@ function pickDefined(source, keys) {
     return undefined;
 }
 
+function mergeControlMeta(base, patch) {
+    const normalizedBase = base && typeof base === 'object' && !Array.isArray(base) ? base : {};
+    return { ...normalizedBase, ...patch };
+}
+
 async function executeCreateTask(action, booking, rule) {
     const title = interpolate(action.title, booking);
     const taskDate = calculateTaskDate(booking.date, rule.days_before);
@@ -172,6 +181,13 @@ async function executeCreateTask(action, booking, rule) {
     const businessContext = pickDefined(action, ['businessContext', 'business_context'])
         || bookingBusinessContext(booking);
     const ownerUserId = positiveIntegerOrNull(pickDefined(action, ['owner_user_id', 'ownerUserId']));
+    const triggerActor = booking.createdBy || booking.created_by || null;
+    const controlMeta = mergeControlMeta(action.control_meta, buildMachineTaskControlMetaPatch('booking_automation', {
+        triggerActor,
+        ruleCode: rule.code || rule.name || null,
+        ruleId: rule.id || null,
+        lifecycleAutoArchivePolicy: bookingId ? MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING : null
+    }));
 
     const taskPayload = {
         title,
@@ -179,19 +195,20 @@ async function executeCreateTask(action, booking, rule) {
         status: 'todo',
         priority: action.priority || 'normal',
         category: action.category || 'purchase',
-        created_by: booking.createdBy || booking.created_by || 'system',
+        created_by: 'rule_engine',
+        created_by_user_id: null,
         type: 'auto_complete',
         source_type: bookingId ? 'booking' : 'manual',
         source_id: bookingId ? String(bookingId) : null,
         businessContext,
+        control_meta: controlMeta,
         duplicateMode: 'skip'
     };
 
     const passthroughFields = [
         'assigned_to', 'owner', 'deadline', 'time_window_start', 'time_window_end',
         'visibility', 'task_type', 'task_mode', 'task_kind', 'control_policy',
-        'control_meta', 'source_entity_type', 'source_entity_id', 'source_module',
-        'created_by_user_id'
+        'source_entity_type', 'source_entity_id', 'source_module'
     ];
     for (const field of passthroughFields) {
         if (action[field] !== undefined) taskPayload[field] = action[field];

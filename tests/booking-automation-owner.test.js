@@ -109,7 +109,7 @@ describe('booking automation create_task owner forwarding', () => {
         restoreDb();
     });
 
-    it('keeps existing create_task payload backward compatible without owner fields', async () => {
+    it('creates booking automation tasks with service-owned provenance and trigger metadata', async () => {
         installDbMock.rules = [makeRule({
             type: 'create_task',
             title: 'Prepare booking {date}',
@@ -126,11 +126,29 @@ describe('booking automation create_task owner forwarding', () => {
             status: 'todo',
             priority: 'normal',
             category: 'purchase',
-            created_by: 'automation-test',
+            created_by: 'rule_engine',
+            created_by_user_id: null,
             type: 'auto_complete',
             source_type: 'booking',
             source_id: '501',
             businessContext: 'maysternya_doli',
+            control_meta: {
+                automationProvenance: {
+                    policyVersion: 'task_automation_policy_v1',
+                    source: 'booking_automation',
+                    serviceOwned: true,
+                    triggerActor: 'automation-test',
+                    ruleCode: 'Owner forwarding rule',
+                    ruleId: 1001,
+                    eventId: null
+                },
+                machineLifecycle: {
+                    markerVersion: 'machine_lifecycle_marker_v1_2026_08_11',
+                    serviceOwned: true,
+                    source: 'booking_automation',
+                    autoArchivePolicy: 'strict_cancelled_booking_auto_archive_v1_2026_08_11'
+                }
+            },
             duplicateMode: 'skip'
         });
     });

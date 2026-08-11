@@ -6,46 +6,45 @@
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
 const { DEFAULT_TASK_BUSINESS_CONTEXT, activeTaskBusinessContext } = require('./taskBusinessScope');
+const {
+    MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
+    MACHINE_LIFECYCLE_MARKER_VERSION,
+    hasStrictMachineProvenance,
+    isAiAssisted,
+    isIntegration,
+    isPrivateOrPersonal,
+    isTerminalStatus,
+    taskHumanTouchSql,
+    taskWorkloadDateSql
+} = require('./taskAutomationPolicy');
+const { TASK_ACTION_TYPES } = require('./taskActionConstants');
 const log = createLogger('TaskLifecycle');
 let isTaskLifecycleRunning = false;
 
-const TERMINAL_STATUSES = new Set(['done', 'completed', 'cancelled', 'archived']);
-const PROTECTED_SOURCE_TYPES = new Set(['ai_draft', 'ai_draft_bundle', 'hermes', 'integration']);
-const PRIVATE_VISIBILITIES = new Set(['private', 'me_only']);
-const MACHINE_CREATED_BY = new Set(['rule_engine']);
-const MACHINE_SOURCE_TYPES = new Set(['booking', 'manual']);
-const MACHINE_TASK_TYPES = new Set(['auto', 'auto_complete']);
+const CANCELLED_BOOKING_AUTO_ARCHIVE_REASON = 'auto_archive_cancelled_booking_machine_v1';
+const CANCELLED_BOOKING_AUTO_ARCHIVE_BATCH_LIMIT = 50;
+const CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY = 'task_lifecycle_cancelled_booking_auto_archive_v1';
 
-function normalized(value) {
-    return String(value || '').trim().toLowerCase();
-}
-
-function isTerminalStatus(value) {
-    return TERMINAL_STATUSES.has(normalized(value));
-}
-
-function isPrivateTask(task = {}) {
-    return PRIVATE_VISIBILITIES.has(normalized(task.visibility)) || PRIVATE_VISIBILITIES.has(normalized(task.task_mode));
+function kyivDateString(now = new Date()) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Kyiv',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(now);
 }
 
 function hasExplicitMachineProvenance(task = {}) {
-    const createdBy = normalized(task.created_by);
-    const sourceType = normalized(task.source_type);
-    const taskType = normalized(task.type);
-
-    if (!MACHINE_CREATED_BY.has(createdBy)) return false;
-    if (!MACHINE_SOURCE_TYPES.has(sourceType)) return false;
-    if (!MACHINE_TASK_TYPES.has(taskType)) return false;
-    return true;
+    return hasStrictMachineProvenance(task);
 }
 
 function taskLifecycleProtectionReason(task = {}) {
     if (task.archived_at) return 'already_archived';
     if (isTerminalStatus(task.status)) return 'terminal_status';
     if (Number(task.created_by_user_id || 0) > 0) return 'typed_creator';
-    if (isPrivateTask(task)) return 'private_task';
-    if (PROTECTED_SOURCE_TYPES.has(normalized(task.source_type))) return 'protected_source';
-    if (/hermes|integration/.test(normalized(task.created_by))) return 'protected_creator';
+    if (isPrivateOrPersonal(task)) return 'private_task';
+    if (isAiAssisted(task)) return 'protected_ai_assisted';
+    if (isIntegration(task)) return 'protected_integration';
     if (task.human_touched) return 'human_touched';
     if (!hasExplicitMachineProvenance(task)) return 'unknown_or_human_provenance';
     return null;
@@ -56,6 +55,202 @@ function healthScoreMatches(existingScore, calculatedScore) {
     const current = Number(existingScore);
     const next = Number(calculatedScore);
     return Number.isFinite(current) && Number.isFinite(next) && current === next;
+}
+
+function machineLifecycleMarkerSql(taskAlias = 't') {
+    return `(
+        COALESCE(${taskAlias}.control_meta, '{}'::jsonb)->'machineLifecycle'->>'markerVersion' = '${MACHINE_LIFECYCLE_MARKER_VERSION}'
+        AND COALESCE(${taskAlias}.control_meta, '{}'::jsonb)->'machineLifecycle'->>'autoArchivePolicy' = '${MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING}'
+        AND COALESCE(${taskAlias}.control_meta, '{}'::jsonb)->'machineLifecycle'->>'serviceOwned' = 'true'
+    )`;
+}
+
+function cancelledBookingAutoArchivePredicateSql(taskAlias = 't', bookingAlias = 'b', todayPlaceholder = '$1') {
+    return `(
+        ${machineLifecycleMarkerSql(taskAlias)}
+        AND ${taskAlias}.archived_at IS NULL
+        AND LOWER(COALESCE(${taskAlias}.status, 'todo')) NOT IN ('done', 'completed', 'complete', 'cancelled', 'canceled', 'archived')
+        AND LOWER(COALESCE(${taskAlias}.status, 'todo')) <> 'in_progress'
+        AND LOWER(COALESCE(${taskAlias}.workflow_state, 'todo')) <> 'in_progress'
+        AND COALESCE(${taskAlias}.created_by_user_id, 0) = 0
+        AND LOWER(COALESCE(${taskAlias}.created_by, '')) = 'rule_engine'
+        AND LOWER(COALESCE(${taskAlias}.source_type, '')) = 'booking'
+        AND LOWER(COALESCE(${taskAlias}.type, '')) IN ('auto', 'auto_complete')
+        AND ${taskAlias}.source_id IS NOT NULL
+        AND ${bookingAlias}.id::text = ${taskAlias}.source_id::text
+        AND LOWER(COALESCE(${bookingAlias}.status, '')) IN ('cancelled', 'canceled')
+        AND ${taskWorkloadDateSql(taskAlias)} IS NOT NULL
+        AND ${taskWorkloadDateSql(taskAlias)} <= (${todayPlaceholder}::date - INTERVAL '7 days')::date
+        AND ${taskAlias}.snoozed_until IS NULL
+        AND COALESCE(${taskAlias}.focus_rank, 0) = 0
+        AND LOWER(COALESCE(${taskAlias}.visibility, 'team')) NOT IN ('private', 'me_only', 'personal')
+        AND LOWER(COALESCE(${taskAlias}.task_mode, 'work')) NOT IN ('private', 'me_only', 'personal')
+        AND LOWER(COALESCE(${taskAlias}.source_module, '')) NOT IN ('hermes', 'integration', 'attendance')
+        AND LOWER(COALESCE(${taskAlias}.source_type, '')) NOT IN ('ai_draft', 'ai_draft_bundle', 'hermes', 'integration', 'attendance', 'attendance_daily_review', 'recurring')
+        AND LOWER(COALESCE(${taskAlias}.type, '')) NOT IN ('ai_draft', 'ai_draft_bundle', 'recurring')
+        AND NOT ${taskHumanTouchSql(taskAlias)}
+        AND NOT EXISTS (SELECT 1 FROM task_subtasks ts WHERE ts.task_id = ${taskAlias}.id LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM task_dependencies td WHERE td.task_id = ${taskAlias}.id OR td.depends_on_task_id = ${taskAlias}.id LIMIT 1)
+        AND NOT EXISTS (SELECT 1 FROM task_observers tob WHERE tob.task_id = ${taskAlias}.id LIMIT 1)
+    )`;
+}
+
+function selectCancelledBookingAutoArchiveCandidatesSql() {
+    return `
+        SELECT t.id, t.status AS prior_status
+        FROM tasks t
+        JOIN bookings b ON t.source_id IS NOT NULL AND b.id::text = t.source_id::text
+        WHERE ${cancelledBookingAutoArchivePredicateSql('t', 'b', '$1')}
+        ORDER BY t.id
+        LIMIT $2
+    `;
+}
+
+function selectCancelledBookingAutoArchiveShadowSql() {
+    return `
+        SELECT
+            COUNT(*) FILTER (WHERE ${machineLifecycleMarkerSql('t')})::int AS marker_total,
+            COUNT(*) FILTER (WHERE ${cancelledBookingAutoArchivePredicateSql('t', 'b', '$1')})::int AS candidates
+        FROM tasks t
+        JOIN bookings b ON t.source_id IS NOT NULL AND b.id::text = t.source_id::text
+        WHERE ${machineLifecycleMarkerSql('t')}
+          AND LOWER(COALESCE(t.source_type, '')) = 'booking'
+          AND LOWER(COALESCE(b.status, '')) IN ('cancelled', 'canceled')
+    `;
+}
+
+function archiveCancelledBookingAutoArchiveBatchSql() {
+    return `
+        WITH exact_candidates AS (
+            SELECT t.id, t.status AS prior_status
+            FROM tasks t
+            JOIN bookings b ON t.source_id IS NOT NULL AND b.id::text = t.source_id::text
+            WHERE t.id = ANY($1::int[])
+              AND ${cancelledBookingAutoArchivePredicateSql('t', 'b', '$2')}
+            ORDER BY t.id
+            FOR UPDATE OF t SKIP LOCKED
+        ),
+        updated AS (
+            UPDATE tasks t
+            SET status = 'archived',
+                archived_at = NOW(),
+                archive_reason = $3
+            FROM exact_candidates c
+            WHERE t.id = c.id
+              AND t.id = ANY($1::int[])
+            RETURNING t.id, c.prior_status
+        ),
+        history AS (
+            INSERT INTO task_action_history (
+                task_id, action_type, actor_user_id, actor_name_snapshot, source_surface,
+                old_value_json, new_value_json, meta_json, summary
+            )
+            SELECT
+                u.id,
+                $4,
+                NULL,
+                'task_lifecycle',
+                'task_lifecycle_auto_archive',
+                jsonb_build_object('status', u.prior_status),
+                jsonb_build_object('status', 'archived'),
+                jsonb_build_object(
+                    'reason', $3,
+                    'policy', $5,
+                    'markerVersion', $6
+                ),
+                'Task automatically archived by cancelled booking machine lifecycle policy'
+            FROM updated u
+            RETURNING task_id
+        )
+        SELECT
+            (SELECT COUNT(*) FROM exact_candidates)::int AS exact_count,
+            (SELECT COUNT(*) FROM updated)::int AS archived,
+            (SELECT COUNT(*) FROM history)::int AS history_count
+    `;
+}
+
+async function tryAcquireCancelledBookingAutoArchiveLock(query) {
+    const result = await query('SELECT pg_try_advisory_lock(hashtext($1)) AS acquired', [CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY]);
+    return result.rows?.[0]?.acquired === true;
+}
+
+async function releaseCancelledBookingAutoArchiveLock(query) {
+    await query('SELECT pg_advisory_unlock(hashtext($1)) AS released', [CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY]);
+}
+
+async function runCancelledBookingAutoArchive(deps = {}) {
+    const query = deps.query || pool.query.bind(pool);
+    const now = deps.now || new Date();
+    const today = deps.today || kyivDateString(now);
+    const batchLimit = Math.max(1, Math.min(Number(deps.batchLimit) || CANCELLED_BOOKING_AUTO_ARCHIVE_BATCH_LIMIT, CANCELLED_BOOKING_AUTO_ARCHIVE_BATCH_LIMIT));
+    const dryRun = deps.dryRun === true;
+
+    const shadow = await query(selectCancelledBookingAutoArchiveShadowSql(), [today]);
+    const markerTotal = Number(shadow.rows?.[0]?.marker_total || 0);
+    const candidateCount = Number(shadow.rows?.[0]?.candidates || 0);
+    const protectedCount = Math.max(0, markerTotal - candidateCount);
+
+    const candidates = await query(selectCancelledBookingAutoArchiveCandidatesSql(), [today, batchLimit]);
+    const candidateIds = (candidates.rows || []).map(row => Number(row.id)).filter(id => Number.isInteger(id) && id > 0);
+
+    if (dryRun || !candidateIds.length) {
+        return {
+            candidates: candidateCount,
+            batchCandidates: candidateIds.length,
+            archived: 0,
+            protected: protectedCount,
+            skipped: dryRun ? candidateIds.length : 0,
+            drift: 0,
+            lockSkipped: false,
+            dryRun
+        };
+    }
+
+    const lockAcquired = await tryAcquireCancelledBookingAutoArchiveLock(query);
+    if (!lockAcquired) {
+        return {
+            candidates: candidateCount,
+            batchCandidates: candidateIds.length,
+            archived: 0,
+            protected: protectedCount,
+            skipped: candidateIds.length,
+            drift: candidateIds.length,
+            lockSkipped: true,
+            dryRun: false
+        };
+    }
+
+    let result;
+    try {
+        result = await query(
+            archiveCancelledBookingAutoArchiveBatchSql(),
+            [
+                candidateIds,
+                today,
+                CANCELLED_BOOKING_AUTO_ARCHIVE_REASON,
+                TASK_ACTION_TYPES.STATUS_CHANGED,
+                MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
+                MACHINE_LIFECYCLE_MARKER_VERSION
+            ]
+        );
+    } finally {
+        await releaseCancelledBookingAutoArchiveLock(query);
+    }
+    const archived = Number(result.rows?.[0]?.archived || 0);
+    const historyCount = Number(result.rows?.[0]?.history_count || 0);
+    const exactCount = Number(result.rows?.[0]?.exact_count || 0);
+
+    return {
+        candidates: candidateCount,
+        batchCandidates: candidateIds.length,
+        archived,
+        protected: protectedCount,
+        skipped: Math.max(0, candidateIds.length - exactCount),
+        drift: Math.max(0, candidateIds.length - archived),
+        history: historyCount,
+        lockSkipped: false,
+        dryRun: false
+    };
 }
 
 function calculateHealthScore(task, now = new Date()) {
@@ -101,22 +296,7 @@ async function runTaskLifecycle(deps = {}) {
                    t.last_activity_at, t.business_context, t.health_score, t.source_type,
                    t.type, t.created_by, t.created_by_user_id, t.task_type, t.task_mode,
                    t.visibility, t.archived_at,
-                   EXISTS (
-                       SELECT 1
-                       FROM task_logs tl
-                       WHERE tl.task_id = t.id
-                         AND LOWER(COALESCE(tl.actor, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
-                       LIMIT 1
-                   ) OR EXISTS (
-                       SELECT 1
-                       FROM task_action_history tah
-                       WHERE tah.task_id = t.id
-                         AND (
-                             tah.actor_user_id IS NOT NULL
-                             OR LOWER(COALESCE(tah.actor_name_snapshot, '')) NOT IN ('', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle')
-                         )
-                       LIMIT 1
-                   ) AS human_touched
+                   ${taskHumanTouchSql('t')} AS human_touched
             FROM tasks t
             WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
               AND t.archived_at IS NULL
@@ -126,6 +306,13 @@ async function runTaskLifecycle(deps = {}) {
         let updated = 0;
         let skipped = 0;
         let archiveCandidates = 0;
+        const autoArchive = await runCancelledBookingAutoArchive({
+            query,
+            now,
+            batchLimit: deps.autoArchiveBatchLimit,
+            dryRun: deps.autoArchiveDryRun === true
+        });
+        archived += Number(autoArchive.archived || 0);
 
         for (const task of tasks.rows) {
             const protectionReason = taskLifecycleProtectionReason(task);
@@ -146,14 +333,21 @@ async function runTaskLifecycle(deps = {}) {
             }
 
             const result = await query(
-                "UPDATE tasks SET health_score = $1 WHERE id = $2 AND COALESCE(business_context, 'event_genix') = $3 AND health_score IS DISTINCT FROM $1",
+                `UPDATE tasks
+                 SET health_score = $1
+                 WHERE id = $2
+                   AND COALESCE(business_context, 'event_genix') = $3
+                   AND archived_at IS NULL
+                   AND COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+                   AND health_score IS DISTINCT FROM $1`,
                 [score, task.id, businessContext]
             );
             updated += Number(result.rowCount || 0);
         }
 
         log.info(`Lifecycle: ${tasks.rows.length} checked, ${updated} updated, ${archiveCandidates} archive candidates, ${skipped} protected/skipped, ${archived} archived`);
-        return { skipped: false, checked: tasks.rows.length, updated, archived, archiveCandidates, protected: skipped };
+        log.info(`Cancelled booking auto-archive: ${autoArchive.candidates} candidates, ${autoArchive.archived} archived, ${autoArchive.protected} protected, ${autoArchive.drift} drift/skipped`);
+        return { skipped: false, checked: tasks.rows.length, updated, archived, archiveCandidates, protected: skipped, autoArchive };
     } catch (err) {
         log.error('Task lifecycle error', err);
         return { skipped: false, error: err.message };
@@ -167,5 +361,10 @@ module.exports = {
     calculateHealthScore,
     hasExplicitMachineProvenance,
     taskLifecycleProtectionReason,
-    healthScoreMatches
+    healthScoreMatches,
+    runCancelledBookingAutoArchive,
+    cancelledBookingAutoArchivePredicateSql,
+    machineLifecycleMarkerSql,
+    CANCELLED_BOOKING_AUTO_ARCHIVE_REASON,
+    CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY
 };

@@ -717,7 +717,9 @@ router.post('/webhook', async (req, res) => {
                         cbFrom.first_name || null
                     );
                     const { acknowledgeTask } = require('../services/kleshnya');
-                    await acknowledgeTask(taskId, actor, permission.actorUser?.id || null);
+                    await acknowledgeTask(taskId, actor, permission.actorUser?.id || null, {
+                        sourceSurface: 'telegram_task_ack'
+                    });
                     await answerCallback(id, '👀 Бачив зафіксовано');
                 } catch (err) {
                     log.error('task_ack error', err);
@@ -741,7 +743,11 @@ router.post('/webhook', async (req, res) => {
                         cbFrom.id || null,
                         cbFrom.first_name || null
                     );
-                    await updateTaskStatus(taskId, 'in_progress', actor);
+                    await updateTaskStatus(taskId, 'in_progress', actor, {
+                        actorUserId: permission.actorUser?.id || null,
+                        actor: permission.actorUser,
+                        sourceSurface: 'telegram_task_confirm'
+                    });
                     await answerCallback(id, 'Задачу підтверджено!');
                     await editCallbackMessageFinal(message, '✅ <b>Підтверджено</b>', 'task_confirm');
                 } catch (err) {
@@ -770,7 +776,11 @@ router.post('/webhook', async (req, res) => {
                         cbFrom?.id || null,
                         cbFrom?.first_name || null
                     );
-                    await updateTaskStatus(taskId, 'done', actor);
+                    await updateTaskStatus(taskId, 'done', actor, {
+                        actorUserId: permission.actorUser?.id || null,
+                        actor: permission.actorUser,
+                        sourceSurface: 'telegram_task_done'
+                    });
                     await answerCallback(id, 'Задачу завершено!');
                     await editCallbackMessageFinal(message, `✅ <b>Виконано</b> (${actor})`, 'task_done');
                 } catch (err) {

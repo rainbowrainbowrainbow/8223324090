@@ -23,6 +23,7 @@ const {
 } = require('./taskBusinessScope');
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
 const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
+const { logTaskActionEvent, TASK_ACTION_TYPES } = require('./taskActionHistory');
 
 const log = createLogger('Kleshnya');
 const TERMINAL_TASK_STATUSES = ['done', 'completed', 'cancelled', 'archived'];
@@ -268,7 +269,7 @@ async function createTask(data, options = {}) {
 /**
  * Update task status (with logging, points, notification)
  */
-async function updateTaskStatus(taskId, newStatus, actor = 'system') {
+async function updateTaskStatus(taskId, newStatus, actor = 'system', options = {}) {
     const taskResult = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
     if (taskResult.rows.length === 0) throw new Error('Task not found');
 
@@ -300,6 +301,13 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system') {
 
     // Log status change
     await logTaskAction(taskId, 'status_changed', oldStatus, newStatus, actor);
+    await logCanonicalTaskAction(taskId, newStatus === 'done' ? TASK_ACTION_TYPES.COMPLETED : TASK_ACTION_TYPES.STATUS_CHANGED, {
+        actor: options.actor || { id: options.actorUserId || null, username: actor },
+        oldValue: { status: oldStatus },
+        newValue: { status: newStatus },
+        sourceSurface: options.sourceSurface || 'kleshnya_update_task_status',
+        meta: { legacyActor: actor }
+    }, { pool });
 
     // Award points on completion
     if (newStatus === 'done' && task.task_type === 'human') {
@@ -494,6 +502,26 @@ async function logTaskAction(taskId, action, oldValue, newValue, actor = 'system
     }
 }
 
+async function logCanonicalTaskAction(taskId, actionType, event = {}, options = {}) {
+    const taskIdNumber = Number(taskId);
+    if (!Number.isInteger(taskIdNumber) || taskIdNumber <= 0) return null;
+    try {
+        return await logTaskActionEvent({
+            taskId: taskIdNumber,
+            actionType,
+            actor: event.actor || {},
+            sourceSurface: event.sourceSurface || 'kleshnya_task_action',
+            oldValue: event.oldValue,
+            newValue: event.newValue,
+            meta: event.meta,
+            summary: event.summary
+        }, { pool: options.pool || pool });
+    } catch (err) {
+        log.error(`Canonical task action history error: ${err.message}`);
+        return null;
+    }
+}
+
 // --- Telegram notification helpers ---
 
 /**
@@ -645,7 +673,7 @@ function isTelegramTaskActorAllowed(task = {}, actorUser = {}) {
     return allowedLabels.includes(actorUsername);
 }
 
-async function acknowledgeTask(taskId, actor = 'telegram', actorUserId = null) {
+async function acknowledgeTask(taskId, actor = 'telegram', actorUserId = null, options = {}) {
     const taskResult = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
     if (taskResult.rows.length === 0) throw new Error('Task not found');
 
@@ -653,6 +681,12 @@ async function acknowledgeTask(taskId, actor = 'telegram', actorUserId = null) {
     await pool.query('UPDATE tasks SET last_reminded_at = NOW(), updated_at = NOW() WHERE id = $1', [taskId]);
     const ackMeta = actorUserId ? `seen by user:${actorUserId}` : 'seen';
     await logTaskAction(taskId, 'acknowledged', null, ackMeta, actor);
+    await logCanonicalTaskAction(taskId, TASK_ACTION_TYPES.ACKNOWLEDGED, {
+        actor: { id: actorUserId || null, username: actor },
+        sourceSurface: options.sourceSurface || 'telegram_task_acknowledge',
+        newValue: { acknowledged: true },
+        meta: { legacyActor: actor }
+    }, { pool });
 
     const updated = await pool.query('SELECT * FROM tasks WHERE id = $1', [taskId]);
     return updated.rows[0] || task;

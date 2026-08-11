@@ -26,6 +26,10 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const {
+    MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
+    buildMachineTaskControlMetaPatch
+} = require('./taskAutomationPolicy');
 
 const log = createLogger('EventBus');
 
@@ -205,9 +209,15 @@ async function executeAction(action, payload, event) {
                 priority: action.priority || 'normal',
                 assigned_to: action.assigned_to || null,
                 created_by: 'rule_engine',
+                created_by_user_id: null,
                 category: action.category || 'admin',
                 source_type: bookingSourceId ? 'booking' : 'manual',
                 source_id: bookingSourceId ? String(bookingSourceId) : null,
+                control_meta: buildMachineTaskControlMetaPatch('event_rule_engine', {
+                    ruleCode: action.rule_code || event?.event_type || null,
+                    eventId: event?.id || null,
+                    lifecycleAutoArchivePolicy: bookingSourceId ? MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING : null
+                }),
                 duplicateMode: 'skip'
             });
             if (task?.duplicateSkipped) {

@@ -15,20 +15,27 @@ const {
     taskKpiOwnerAcceptedSql,
     taskKpiTerminalExclusionSql
 } = require('../services/taskPerformancePolicy');
+const { TASK_AUTOMATION_POLICY_VERSION } = require('../services/taskAutomationPolicy');
+const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 
 function readRepoFile(...segments) {
     return fs.readFileSync(path.join(ROOT, ...segments), 'utf8');
 }
 
 test('task performance policy is fail-closed for machine-generated KPI tasks', () => {
-    assert.equal(TASK_PERFORMANCE_POLICY_VERSION, 'task_performance_policy_v1');
-    assert.ok(OWNER_ACCEPTANCE_ACTIONS.includes('task_acknowledged'));
-    assert.ok(OWNER_ACCEPTANCE_ACTIONS.includes('task_completed'));
+    assert.equal(TASK_PERFORMANCE_POLICY_VERSION, `${TASK_AUTOMATION_POLICY_VERSION}:performance_v2`);
+    assert.ok(OWNER_ACCEPTANCE_ACTIONS.includes(TASK_ACTION_TYPES.ACKNOWLEDGED));
+    assert.ok(OWNER_ACCEPTANCE_ACTIONS.includes(TASK_ACTION_TYPES.COMPLETED));
+    assert.ok(OWNER_ACCEPTANCE_ACTIONS.includes(TASK_ACTION_TYPES.STATUS_CHANGED));
+    assert.equal(OWNER_ACCEPTANCE_ACTIONS.includes('status_changed'), false);
+    assert.equal(OWNER_ACCEPTANCE_ACTIONS.includes('completed'), false);
 
     const terminal = taskKpiTerminalExclusionSql('t');
     assert.match(terminal, /archived_at IS NOT NULL/);
     assert.match(terminal, /'cancelled'/);
     assert.match(terminal, /'canceled'/);
+    assert.doesNotMatch(terminal, /'done'/);
+    assert.doesNotMatch(terminal, /'completed'/);
 
     const machine = taskKpiMachineSignalSql('t');
     assert.match(machine, /created_by/);
@@ -41,19 +48,20 @@ test('task performance policy is fail-closed for machine-generated KPI tasks', (
 
     const human = taskKpiHumanCreatedSql('t');
     assert.match(human, /created_by_user_id/);
-    assert.match(human, /source_type, 'manual'/);
+    assert.match(human, /source_type, ''\)\) = 'manual'/);
     assert.match(human, /NOT IN \('auto', 'auto_complete', 'recurring'\)/);
 
     const accepted = taskKpiOwnerAcceptedSql('t');
     assert.match(accepted, /task_action_history/);
     assert.match(accepted, /actor_user_id = t\.owner_user_id/);
     assert.match(accepted, /'task_acknowledged'/);
-    assert.match(accepted, /'urgent_commitment'/);
+    assert.match(accepted, /'task_urgent_commitment_set'/);
+    assert.doesNotMatch(accepted, /LOWER\(COALESCE\(t\.status, 'todo'\)\) IN \('done', 'completed'\)/);
 
     const eligible = taskKpiEligibleSql('t');
     assert.match(eligible, /NOT \(/);
     assert.match(eligible, /task_action_history/);
-    assert.match(eligible, /LOWER\(COALESCE\(t\.status, 'todo'\)\) IN \('done', 'completed'\)/);
+    assert.doesNotMatch(eligible, /LOWER\(COALESCE\(t\.status, 'todo'\)\) IN \('done', 'completed'\)\s+OR EXISTS/);
 });
 
 test('HR KPI queries use task performance policy instead of raw task counts', () => {

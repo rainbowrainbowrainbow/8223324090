@@ -577,6 +577,7 @@ async function checkAutoBackup() {
 // v7.8: Auto-create recurring tasks from templates
 async function checkRecurringTasks() {
     try {
+        const { buildMachineTaskControlMetaPatch } = require('./taskAutomationPolicy');
         const todayStr = getKyivDateStr();
         if (recurringCreatedToday === todayStr) return;
 
@@ -633,6 +634,10 @@ async function checkRecurringTasks() {
                 created_by: 'system',
                 source_type: 'recurring',
                 template_id: tpl.id,
+                control_meta: buildMachineTaskControlMetaPatch('recurring_task_template', {
+                    ruleId: tpl.id || null,
+                    ruleCode: tpl.recurrence_pattern || null
+                }),
                 category: tpl.category || 'admin',
                 subcategory: tpl.subcategory || null,
                 task_kind: tpl.default_task_kind || 'action',

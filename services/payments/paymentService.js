@@ -52,6 +52,14 @@ function fingerprint(value) {
     return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
 }
 
+function normalizeBoolean(value) {
+    if (value === true || value === false) return value;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    return null;
+}
+
 function paymentAdvisoryScope(key) {
     return `eventgenix:payments:${String(key || '').trim()}`;
 }
@@ -72,7 +80,7 @@ function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeC
         provider_cashier_id: binding.provider_cashier_id || null,
         register_credential_ref: mapping.provider_license_ref || null,
         cashier_credential_ref: binding.provider_cashier_login_ref || mapping.provider_license_ref || null,
-        expected_is_test: runtimeConfig.expectedIsTest,
+        expected_is_test: normalizeBoolean(runtimeConfig.expectedIsTest ?? mapping.register_expected_is_test),
         fiscal_profile_id: mapping.fiscal_profile_id == null ? null : Number(mapping.fiscal_profile_id),
         fiscal_location_id: mapping.fiscal_location_id == null ? null : Number(mapping.fiscal_location_id),
         fiscal_register_id: mapping.fiscal_register_id == null ? null : Number(mapping.fiscal_register_id),
@@ -830,6 +838,7 @@ async function confirmPaymentOrder({
                 provider_outlet_id: order.provider_outlet_id,
                 provider_register_id: order.provider_register_id,
                 provider_license_ref: order.provider_license_ref,
+                register_expected_is_test: order.register_expected_is_test,
                 register_alias: order.register_alias
             },
             binding: readiness.binding,

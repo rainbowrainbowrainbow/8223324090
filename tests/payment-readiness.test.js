@@ -133,7 +133,8 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     const paymentService = read('services/payments/paymentService.js');
     const cashierOps = read('services/payments/cashierOperationsService.js');
     assert.match(paymentService, /fr\.metadata->>'expected_is_test' AS register_expected_is_test/);
-    assert.match(cashierOps, /expected_is_test: normalizeBoolean\(order\.register_expected_is_test\)/);
+    assert.match(cashierOps, /ensureOpenShiftForSale\(client, \{ order, user, fiscalConfig = null \}\)/);
+    assert.match(cashierOps, /expected_is_test: normalizeBoolean\(fiscalSnapshot\.expected_is_test \?\? order\.register_expected_is_test\)/);
     assert.match(cashierOps, /register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash/);
 });
 

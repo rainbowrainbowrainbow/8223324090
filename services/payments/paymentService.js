@@ -929,7 +929,7 @@ async function confirmPaymentOrder({
         );
         const recordedOrder = recorded.rows[0];
 
-        const shift = await ensureOpenShiftForSale(client, { order, user });
+        const shift = await ensureOpenShiftForSale(client, { order, user, fiscalConfig });
         const providerRequestUuid = crypto.randomUUID();
         const fiscalOperation = await client.query(
             `INSERT INTO fiscal_operations (

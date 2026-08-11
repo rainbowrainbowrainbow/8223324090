@@ -183,7 +183,7 @@ async function insertOutboxJob(client, {
     return result.rows[0] || null;
 }
 
-async function ensureOpenShiftForSale(client, { order, user }) {
+async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null }) {
     const fiscalProfileId = normalizePositiveId(order?.fiscal_profile_id, 'fiscal_profile_required');
     const fiscalRegisterId = normalizePositiveId(order?.fiscal_register_id, 'fiscal_register_required');
     const fiscalLocationId = normalizePositiveId(order?.fiscal_location_id, 'fiscal_location_required');
@@ -214,6 +214,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
             [fiscalProfileId, fiscalRegisterId, user?.id || null]
         )
         : { rows: [] };
+    const fiscalSnapshot = fiscalConfig?.snapshot || {};
     const providerContext = {
         provider_organization_id: order.provider_organization_id || null,
         provider_outlet_id: order.provider_outlet_id || null,
@@ -221,7 +222,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
         provider_cashier_id: binding.rows[0]?.provider_cashier_id || null,
         register_credential_ref: order.provider_license_ref || null,
         cashier_credential_ref: binding.rows[0]?.provider_cashier_login_ref || order.provider_license_ref || null,
-        expected_is_test: normalizeBoolean(order.register_expected_is_test),
+        expected_is_test: normalizeBoolean(fiscalSnapshot.expected_is_test ?? order.register_expected_is_test),
         fiscal_profile_id: fiscalProfileId,
         fiscal_location_id: fiscalLocationId,
         fiscal_register_id: fiscalRegisterId

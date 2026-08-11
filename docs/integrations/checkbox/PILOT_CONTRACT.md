@@ -2,13 +2,13 @@
 
 Status: implementation contract for a disabled production MVP. Production Checkbox activation is out of scope.
 
-Last reviewed: 2026-08-10.
+Last reviewed: 2026-08-11.
 
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live package baseline checked for this handoff: `0.80.113` (`Task Center 320px Composer Guard`).
-- Live commit checked for this handoff: `4d995ce419f37610b559584ae0c1eb78e668da54`.
+- Live package baseline checked for this handoff: `0.80.120` (`Checkbox Shift Recovery`).
+- Live commit checked for this handoff: `24c18183731cb12903c7d13920889483a07335e8`.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 

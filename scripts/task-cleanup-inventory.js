@@ -13,6 +13,14 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
+const {
+    MACHINE_CREATORS,
+    MACHINE_SOURCE_TYPES,
+    MACHINE_TASK_TYPES,
+    PRIVATE_OR_PERSONAL,
+    TERMINAL_STATUSES,
+    taskHumanTouchSql
+} = require('../services/taskAutomationPolicy');
 
 const CLASSIFIER_VERSION = 'task_cleanup_inventory_v1_2026_08_09';
 const BLOCKED_FLAGS = new Set([
@@ -27,14 +35,14 @@ const BLOCKED_FLAGS = new Set([
     '--update',
     '--write'
 ]);
-const TERMINAL_STATUSES = new Set(['done', 'completed', 'cancelled', 'canceled', 'archived']);
-const PRIVATE_OR_PERSONAL = new Set(['private', 'me_only', 'personal']);
+const TERMINAL_STATUS_SET = new Set(TERMINAL_STATUSES);
+const PRIVATE_OR_PERSONAL_SET = new Set(PRIVATE_OR_PERSONAL);
 const MACHINE_CREATED_BY = new Set(['rule_engine']);
-const MACHINE_SOURCE_TYPES = new Set(['booking', 'manual']);
-const MACHINE_TASK_TYPES = new Set(['auto', 'auto_complete']);
+const MACHINE_SOURCE_TYPE_SET = new Set([...MACHINE_SOURCE_TYPES, 'manual']);
+const MACHINE_TASK_TYPE_SET = new Set(MACHINE_TASK_TYPES.filter(type => type !== 'recurring'));
 const LEGACY_AUTOMATION_TASK_TYPES = new Set(['auto', 'auto_complete', 'recurring']);
 const LEGACY_AUTOMATION_SOURCE_TYPES = new Set(['automation', 'trigger', 'recurring', 'booking']);
-const LEGACY_AUTOMATION_CREATORS = new Set(['system', 'scheduler', 'kleshnya', 'rule_engine', 'task_lifecycle']);
+const LEGACY_AUTOMATION_CREATORS = new Set([...MACHINE_CREATORS, 'automation']);
 const CANCELLED_BOOKING_STATUSES = new Set(['cancelled', 'canceled']);
 
 function usage() {
@@ -163,7 +171,11 @@ function humanTouchedSql(tableAccess = {}) {
                 LIMIT 1
             )`);
     }
-    return checks.length ? checks.join(' OR ') : 'FALSE';
+    if (!checks.length) return 'FALSE';
+    return taskHumanTouchSql('t', {
+        includeTaskLogs: canReadTable(tableAccess, 'task_logs'),
+        includeTaskActionHistory: canReadTable(tableAccess, 'task_action_history')
+    });
 }
 
 function buildInventorySql(options = {}) {
@@ -226,8 +238,8 @@ function buildInventorySql(options = {}) {
 
 function isStrictRuleEngine(row = {}) {
     return MACHINE_CREATED_BY.has(normalize(row.created_by_normalized))
-        && MACHINE_SOURCE_TYPES.has(normalize(row.source_type))
-        && MACHINE_TASK_TYPES.has(normalize(row.task_type_legacy));
+        && MACHINE_SOURCE_TYPE_SET.has(normalize(row.source_type))
+        && MACHINE_TASK_TYPE_SET.has(normalize(row.task_type_legacy));
 }
 
 function classifyProvenance(row = {}) {
@@ -267,7 +279,7 @@ function protectionReasons(row = {}, provenance = classifyProvenance(row)) {
     const reasons = [];
     const status = normalize(row.status);
     if (Number(row.created_by_user_id || 0) > 0) reasons.push('typed_creator');
-    if (PRIVATE_OR_PERSONAL.has(normalize(row.visibility)) || PRIVATE_OR_PERSONAL.has(normalize(row.task_mode))) reasons.push('private_or_personal');
+    if (PRIVATE_OR_PERSONAL_SET.has(normalize(row.visibility)) || PRIVATE_OR_PERSONAL_SET.has(normalize(row.task_mode))) reasons.push('private_or_personal');
     if (status === 'in_progress' || normalize(row.workflow_state) === 'in_progress') reasons.push('in_progress');
     if (Number(row.focus_rank || 0) > 0) reasons.push('focus_rank');
     if (row.has_snooze) reasons.push(row.has_future_snooze ? 'future_snooze' : 'snooze_history');
@@ -449,8 +461,8 @@ function buildManifest(rows = [], options = {}) {
             row.archive_reason === 'auto_expired'
             && (
                 provenance === 'manual'
-                || PRIVATE_OR_PERSONAL.has(normalize(row.visibility))
-                || PRIVATE_OR_PERSONAL.has(normalize(row.task_mode))
+                || PRIVATE_OR_PERSONAL_SET.has(normalize(row.visibility))
+                || PRIVATE_OR_PERSONAL_SET.has(normalize(row.task_mode))
                 || Number(row.created_by_user_id || 0) > 0
             )
         ) {

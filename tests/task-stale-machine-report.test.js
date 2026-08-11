@@ -41,13 +41,14 @@ function row(overrides = {}) {
         template_context_match: Object.prototype.hasOwnProperty.call(overrides, 'template_context_match')
             ? overrides.template_context_match
             : null,
+        same_template_date_duplicate: overrides.same_template_date_duplicate || false,
         health_score: Object.prototype.hasOwnProperty.call(overrides, 'health_score') ? overrides.health_score : null,
         kyiv_today: overrides.kyiv_today || '2026-08-10',
         captured_at: overrides.captured_at || '2026-08-10T12:00:00.000Z'
     };
 }
 
-test('stale machine report marks strict booking cohorts as report-only candidates', () => {
+test('stale machine report marks only terminal strict booking cohorts as report-only candidates', () => {
     const cancelled = report.classifyStaleMachineTask(row({ task_id: 1, booking_status: 'cancelled' }));
     const past = report.classifyStaleMachineTask(row({ task_id: 2, booking_status: 'confirmed' }));
 
@@ -55,9 +56,9 @@ test('stale machine report marks strict booking cohorts as report-only candidate
     assert.equal(cancelled.cohort, 'candidate_strict_booking_cancelled');
     assert.equal(cancelled.candidateArchiveReason, 'cleanup_candidate_strict_booking_cancelled_v1');
 
-    assert.equal(past.decision, 'report_candidate');
-    assert.equal(past.cohort, 'candidate_strict_booking_past');
-    assert.equal(past.candidateArchiveReason, 'cleanup_candidate_strict_booking_past_v1');
+    assert.equal(past.decision, 'protected');
+    assert.equal(past.cohort, 'protected_booking_past_active_needs_business_decision');
+    assert.equal(past.candidateArchiveReason, undefined);
 });
 
 test('stale machine report protects manual, private, AI, integration, attendance and unknown tasks', () => {
@@ -96,7 +97,7 @@ test('stale machine report ignores terminal and archived tasks', () => {
     assert.equal(report.classifyStaleMachineTask(row({ task_id: 31, task_status: 'done', active: false })).cohort, 'ignored_terminal_or_archived');
 });
 
-test('stale recurring/template generated tasks are report-only candidates, not automatic mutations', () => {
+test('stale recurring/template generated tasks require valid lineage and stay protected', () => {
     const result = report.classifyStaleMachineTask(row({
         task_id: 40,
         source_type: 'recurring',
@@ -110,17 +111,71 @@ test('stale recurring/template generated tasks are report-only candidates, not a
         template_context_match: true
     }));
 
-    assert.equal(result.decision, 'report_candidate');
-    assert.equal(result.cohort, 'candidate_recurring_template_stale');
-    assert.equal(result.candidateArchiveReason, 'cleanup_candidate_recurring_template_stale_v1');
+    assert.equal(result.decision, 'protected');
+    assert.equal(result.cohort, 'protected_recurring_expected_template_series');
+    assert.equal(result.candidateArchiveReason, undefined);
+
+    const missing = report.classifyStaleMachineTask(row({
+        task_id: 41,
+        source_type: 'recurring',
+        task_type: 'recurring',
+        creator_class: 'system',
+        booking_found: false,
+        booking_date_bucket: 'missing',
+        has_template_id: true,
+        template_found: false
+    }));
+    assert.equal(missing.decision, 'protected');
+    assert.equal(missing.cohort, 'protected_recurring_missing_or_orphan_template');
+
+    assert.equal(report.classifyStaleMachineTask(row({
+        task_id: 42,
+        source_type: 'recurring',
+        task_type: 'recurring',
+        creator_class: 'system',
+        booking_found: false,
+        booking_date_bucket: 'missing',
+        has_template_id: true,
+        template_found: true,
+        template_active: false,
+        template_context_match: true
+    })).cohort, 'protected_recurring_inactive_template_residual');
+
+    assert.equal(report.classifyStaleMachineTask(row({
+        task_id: 43,
+        source_type: 'recurring',
+        task_type: 'recurring',
+        creator_class: 'system',
+        booking_found: false,
+        booking_date_bucket: 'missing',
+        has_template_id: true,
+        template_found: true,
+        template_active: true,
+        template_context_match: false
+    })).cohort, 'protected_recurring_template_context_mismatch');
+
+    assert.equal(report.classifyStaleMachineTask(row({
+        task_id: 44,
+        source_type: 'recurring',
+        task_type: 'recurring',
+        creator_class: 'system',
+        booking_found: false,
+        booking_date_bucket: 'missing',
+        has_template_id: true,
+        template_found: true,
+        template_active: true,
+        template_context_match: true,
+        same_template_date_duplicate: true
+    })).cohort, 'protected_recurring_same_template_date_duplicate_review');
 });
 
-test('stale machine report is deterministic and stdout summary contains no task IDs or PII keys', () => {
+test('stale machine report reconciles overdue cohorts and stdout summary contains no task IDs or PII keys', () => {
     const rows = [
         row({ task_id: 3, booking_status: 'confirmed' }),
         row({ task_id: 1, booking_status: 'cancelled' }),
         row({ task_id: 2, booking_status: 'cancelled', captured_at: '2026-08-10T12:05:00.000Z' }),
-        row({ task_id: 4, source_type: 'manual', task_type: 'manual', creator_class: 'unknown' })
+        row({ task_id: 4, source_type: 'manual', task_type: 'manual', creator_class: 'unknown' }),
+        row({ task_id: 5, booking_status: 'cancelled', canonical_overdue: false })
     ];
 
     const first = report.buildStaleMachineReport(rows, { kyivToday: '2026-08-10', capturedAt: '2026-08-10T12:00:00.000Z' });
@@ -129,9 +184,15 @@ test('stale machine report is deterministic and stdout summary contains no task 
     const serialized = JSON.stringify(summary);
 
     assert.equal(first.manifestChecksum, second.manifestChecksum);
-    assert.equal(first.totals.reportCandidates, 3);
-    assert.equal(first.totals.protected, 1);
+    assert.equal(first.totals.reportCandidates, 2);
+    assert.equal(first.totals.protected, 3);
+    assert.equal(first.totals.automationOverdue, 4);
+    assert.equal(first.overdueReconciliation.ok, true);
+    assert.equal(first.overdueReconciliation.reconciledTotal, 4);
+    assert.ok(first.cohorts.every(cohort => Array.isArray(cohort.records)));
+    assert.ok(first.cohorts.some(cohort => cohort.records.some(record => record.taskId === 1)));
     assert.equal(serialized.includes('"ids"'), false);
+    assert.equal(serialized.includes('"taskId"'), false);
     assert.equal(serialized.includes('task_id'), false);
     assert.equal(serialized.includes('title'), false);
     assert.equal(serialized.includes('owner'), false);
@@ -153,6 +214,7 @@ test('stale machine report script is read-only and blocks mutation flags', () =>
     assert.match(sql, /scheduled_start_at AT TIME ZONE 'Europe\/Kyiv'/);
     assert.match(sql, /snoozed_until AT TIME ZONE 'Europe\/Kyiv'/);
     assert.match(sql, /task_action_history tah/);
+    assert.match(sql, /same_template_date_duplicate/);
     assert.doesNotMatch(sql, /\b(INSERT|UPDATE|DELETE|TRUNCATE|DROP|ALTER|CREATE|MERGE|COMMIT)\b/i);
 });
 

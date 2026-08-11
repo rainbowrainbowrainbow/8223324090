@@ -1,25 +1,24 @@
 const crypto = require('node:crypto');
+const {
+    BOOKING_TERMINAL_STATUSES,
+    MACHINE_CREATORS,
+    MACHINE_TASK_TYPES,
+    bool,
+    hasStrictMachineProvenance,
+    isAiAssisted,
+    isAttendance,
+    isIntegration,
+    isPrivateOrPersonal,
+    isTerminalOrArchived,
+    normalize,
+    numeric,
+    protectionFlags
+} = require('./taskAutomationPolicy');
 
 const CLASSIFIER_VERSION = 'task_stale_machine_report_v1_2026_08_10';
-
-const TERMINAL_STATUSES = new Set(['done', 'completed', 'cancelled', 'archived']);
-const PRIVATE_OR_PERSONAL = new Set(['private', 'me_only', 'personal']);
-const MACHINE_CREATORS = new Set(['rule_engine', 'system', 'scheduler']);
-const MACHINE_TASK_TYPES = new Set(['auto', 'auto_complete', 'recurring']);
-const CANCELLED_BOOKING_STATUSES = new Set(['cancelled', 'canceled']);
-
-function normalize(value) {
-    return String(value || '').trim().toLowerCase();
-}
-
-function bool(value) {
-    return value === true || value === 'true' || value === 1 || value === '1';
-}
-
-function numeric(value) {
-    const parsed = Number(value || 0);
-    return Number.isFinite(parsed) ? parsed : 0;
-}
+const CANCELLED_BOOKING_STATUSES = new Set(BOOKING_TERMINAL_STATUSES);
+const MACHINE_CREATOR_SET = new Set(MACHINE_CREATORS);
+const MACHINE_TASK_TYPE_SET = new Set(MACHINE_TASK_TYPES);
 
 function sha256(payload) {
     return crypto.createHash('sha256').update(JSON.stringify(payload)).digest('hex');
@@ -29,45 +28,13 @@ function sortedTaskIds(rows) {
     return rows.map(row => Number(row.task_id || row.id)).filter(Number.isFinite).sort((a, b) => a - b);
 }
 
-function isTerminalOrArchived(row = {}) {
-    return bool(row.archived) || row.archived_at || TERMINAL_STATUSES.has(normalize(row.task_status || row.status));
-}
-
-function isPrivateOrPersonal(row = {}) {
-    return PRIVATE_OR_PERSONAL.has(normalize(row.visibility)) || PRIVATE_OR_PERSONAL.has(normalize(row.task_mode));
-}
-
-function isAiAssisted(row = {}) {
-    const sourceType = normalize(row.source_type);
-    const taskType = normalize(row.task_type || row.type || row.task_type_legacy);
-    return sourceType === 'ai_draft'
-        || sourceType === 'ai_draft_bundle'
-        || taskType === 'ai_draft'
-        || taskType === 'ai_draft_bundle'
-        || numeric(row.ai_bundle_count) > 0;
-}
-
-function isIntegration(row = {}) {
-    const sourceType = normalize(row.source_type);
-    const sourceModule = normalize(row.source_module);
-    const creatorClass = normalize(row.creator_class);
-    return sourceType === 'hermes'
-        || sourceType === 'integration'
-        || sourceModule === 'hermes'
-        || sourceModule === 'integration'
-        || creatorClass === 'hermes'
-        || creatorClass === 'integration';
-}
-
-function isAttendance(row = {}) {
-    return normalize(row.source_type) === 'attendance' || normalize(row.source_module) === 'attendance';
-}
-
 function isStrictRuleEngineBooking(row = {}) {
-    return normalize(row.source_type) === 'booking'
-        && normalize(row.creator_class || row.created_by_normalized) === 'rule_engine'
-        && MACHINE_TASK_TYPES.has(normalize(row.task_type || row.type || row.task_type_legacy))
-        && numeric(row.created_by_user_id) === 0;
+    return hasStrictMachineProvenance({
+        ...row,
+        source_type: 'booking',
+        creator_class: row.creator_class || row.created_by_normalized,
+        type: row.task_type || row.type || row.task_type_legacy
+    }) && normalize(row.source_type) === 'booking';
 }
 
 function isRecurringTemplateGenerated(row = {}) {
@@ -75,23 +42,8 @@ function isRecurringTemplateGenerated(row = {}) {
     const taskType = normalize(row.task_type || row.type || row.task_type_legacy);
     const creatorClass = normalize(row.creator_class || row.created_by_normalized);
     return (sourceType === 'recurring' || taskType === 'recurring' || bool(row.has_template_id))
-        && MACHINE_CREATORS.has(creatorClass)
+        && MACHINE_CREATOR_SET.has(creatorClass)
         && numeric(row.created_by_user_id) === 0;
-}
-
-function protectionFlags(row = {}) {
-    const flags = [];
-    if (numeric(row.created_by_user_id) > 0) flags.push('typed_creator');
-    if (isPrivateOrPersonal(row)) flags.push('private_or_personal');
-    if (normalize(row.task_status || row.status) === 'in_progress' || normalize(row.workflow_state) === 'in_progress') flags.push('in_progress');
-    if (numeric(row.focus_rank) > 0 || bool(row.is_focused)) flags.push('focus');
-    if (bool(row.has_future_snooze) || bool(row.has_snooze)) flags.push('snooze');
-    if (bool(row.human_touched)) flags.push('human_touched');
-    if (numeric(row.subtask_count) > 0) flags.push('subtasks');
-    if (numeric(row.dependency_count) > 0) flags.push('dependencies');
-    if (numeric(row.observer_count) > 0) flags.push('observers');
-    if (isAiAssisted(row)) flags.push('ai_assisted');
-    return flags;
 }
 
 function safeEvidence(row = {}) {
@@ -114,7 +66,21 @@ function safeEvidence(row = {}) {
         templateContextMatch: row.template_context_match === null || row.template_context_match === undefined
             ? null
             : bool(row.template_context_match),
+        sameTemplateDateDuplicate: bool(row.same_template_date_duplicate),
         protectionFlags: protectionFlags(row).sort()
+    };
+}
+
+function privateRecord(item = {}) {
+    const row = item.row || item;
+    const classification = item.classification || classifyStaleMachineTask(row);
+    return {
+        taskId: Number(row.task_id || row.id),
+        cohort: classification.cohort,
+        decision: classification.decision,
+        reason: classification.reason,
+        candidateArchiveReason: classification.candidateArchiveReason || null,
+        evidence: safeEvidence(row)
     };
 }
 
@@ -200,28 +166,49 @@ function classifyStaleMachineTask(row = {}) {
 
         if (bookingDateBucket === 'past') {
             return {
-                decision: 'report_candidate',
-                cohort: 'candidate_strict_booking_past',
-                reason: 'strict_rule_engine_booking_past',
-                candidateArchiveReason: 'cleanup_candidate_strict_booking_past_v1'
+                decision: 'protected',
+                cohort: 'protected_booking_past_active_needs_business_decision',
+                reason: 'past_active_booking_parent_is_not_terminal'
             };
         }
     }
 
     if (isRecurringTemplateGenerated(row)) {
-        if (bookingDateBucket === 'today_or_future') {
+        if (bool(row.template_found) && bool(row.template_active) && bool(row.template_context_match)) {
+            if (bool(row.same_template_date_duplicate)) {
+                return {
+                    decision: 'protected',
+                    cohort: 'protected_recurring_same_template_date_duplicate_review',
+                    reason: 'recurring_same_template_date_duplicate_requires_operator_review'
+                };
+            }
             return {
                 decision: 'protected',
-                cohort: 'protected_recurring_current_or_future',
-                reason: 'recurring_task_current_or_future'
+                cohort: 'protected_recurring_expected_template_series',
+                reason: 'template_lineage_is_valid_report_only'
+            };
+        }
+
+        if (!bool(row.template_found)) {
+            return {
+                decision: 'protected',
+                cohort: 'protected_recurring_missing_or_orphan_template',
+                reason: 'recurring_template_missing_or_orphaned'
+            };
+        }
+
+        if (!bool(row.template_active)) {
+            return {
+                decision: 'protected',
+                cohort: 'protected_recurring_inactive_template_residual',
+                reason: 'recurring_current_template_inactive_not_historical_proof'
             };
         }
 
         return {
-            decision: 'report_candidate',
-            cohort: 'candidate_recurring_template_stale',
-            reason: 'template_generated_recurring_task_stale',
-            candidateArchiveReason: 'cleanup_candidate_recurring_template_stale_v1'
+            decision: 'protected',
+            cohort: 'protected_recurring_template_context_mismatch',
+            reason: 'recurring_template_lineage_missing_inactive_or_mismatched'
         };
     }
 
@@ -264,6 +251,9 @@ function buildStaleMachineReport(rows = [], options = {}) {
                 reason: group.reason,
                 candidateArchiveReason: group.candidateArchiveReason,
                 count: ids.length,
+                records: group.rows
+                    .map(privateRecord)
+                    .sort((a, b) => a.taskId - b.taskId),
                 membershipChecksum: sha256({
                     classifierVersion: CLASSIFIER_VERSION,
                     kyivToday,
@@ -301,6 +291,56 @@ function buildStaleMachineReport(rows = [], options = {}) {
         }))
     });
 
+    const overdueCohorts = cohorts
+        .map(cohort => ({
+            cohort: cohort.cohort,
+            decision: cohort.decision,
+            count: cohort.records.filter(record => record.evidence.canonicalOverdue === true).length,
+            membershipChecksum: sha256({
+                classifierVersion: CLASSIFIER_VERSION,
+                kyivToday,
+                overdueOnly: true,
+                cohort: cohort.cohort,
+                ids: cohort.records
+                    .filter(record => record.evidence.canonicalOverdue === true)
+                    .map(record => record.taskId)
+                    .sort((a, b) => a - b)
+            }),
+            evidenceChecksum: sha256({
+                classifierVersion: CLASSIFIER_VERSION,
+                kyivToday,
+                overdueOnly: true,
+                cohort: cohort.cohort,
+                rows: cohort.records
+                    .filter(record => record.evidence.canonicalOverdue === true)
+                    .map(record => record.evidence)
+                    .sort((a, b) => JSON.stringify(a).localeCompare(JSON.stringify(b)))
+            })
+        }))
+        .filter(cohort => cohort.count > 0)
+        .sort((a, b) => a.cohort.localeCompare(b.cohort));
+
+    const automationOverdueTotal = rows.filter(row => bool(row.canonical_overdue)).length;
+    const overdueReconciledTotal = overdueCohorts.reduce((sum, cohort) => sum + cohort.count, 0);
+    const overdueReconciliation = {
+        automationOverdueTotal,
+        reconciledTotal: overdueReconciledTotal,
+        ok: automationOverdueTotal === overdueReconciledTotal,
+        cohorts: overdueCohorts,
+        checksum: sha256({
+            classifierVersion: CLASSIFIER_VERSION,
+            kyivToday,
+            automationOverdueTotal,
+            cohorts: overdueCohorts.map(cohort => ({
+                cohort: cohort.cohort,
+                decision: cohort.decision,
+                count: cohort.count,
+                membershipChecksum: cohort.membershipChecksum,
+                evidenceChecksum: cohort.evidenceChecksum
+            }))
+        })
+    };
+
     return {
         classifierVersion: CLASSIFIER_VERSION,
         capturedAt,
@@ -311,9 +351,11 @@ function buildStaleMachineReport(rows = [], options = {}) {
             considered: rows.length,
             reportCandidates: candidateTotal,
             protected: protectedTotal,
-            ignored: ignoredTotal
+            ignored: ignoredTotal,
+            automationOverdue: automationOverdueTotal
         },
         cohorts,
+        overdueReconciliation,
         manifestChecksum
     };
 }
@@ -327,6 +369,19 @@ function summaryForStdout(report = {}) {
         mutationAllowed: false,
         totals: report.totals,
         manifestChecksum: report.manifestChecksum,
+        overdueReconciliation: report.overdueReconciliation ? {
+            automationOverdueTotal: report.overdueReconciliation.automationOverdueTotal,
+            reconciledTotal: report.overdueReconciliation.reconciledTotal,
+            ok: report.overdueReconciliation.ok,
+            checksum: report.overdueReconciliation.checksum,
+            cohorts: (report.overdueReconciliation.cohorts || []).map(cohort => ({
+                cohort: cohort.cohort,
+                decision: cohort.decision,
+                count: cohort.count,
+                membershipChecksum: cohort.membershipChecksum,
+                evidenceChecksum: cohort.evidenceChecksum
+            }))
+        } : null,
         cohorts: (report.cohorts || []).map(cohort => ({
             cohort: cohort.cohort,
             decision: cohort.decision,

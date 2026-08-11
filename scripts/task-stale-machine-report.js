@@ -112,6 +112,7 @@ function humanTouchPredicateSql(alias = 't') {
 
 function buildReportSql() {
     const due = canonicalDueDateSql('t');
+    const duplicateDue = canonicalDueDateSql('dup');
     return `
         WITH runtime AS (
             SELECT (NOW() AT TIME ZONE 'Europe/Kyiv')::date AS kyiv_today, NOW() AS captured_at
@@ -163,6 +164,18 @@ function buildReportSql() {
                 WHEN tt.id IS NULL THEN NULL
                 ELSE COALESCE(tt.business_context, t.business_context, 'event_genix') = COALESCE(t.business_context, 'event_genix')
             END AS template_context_match,
+            (
+                t.template_id IS NOT NULL
+                AND EXISTS (
+                    SELECT 1
+                    FROM tasks dup
+                    WHERE dup.id <> t.id
+                      AND dup.template_id = t.template_id
+                      AND ${duplicateDue} = ${due}
+                      AND COALESCE(dup.business_context, 'event_genix') = COALESCE(t.business_context, 'event_genix')
+                    LIMIT 1
+                )
+            ) AS same_template_date_duplicate,
             runtime.kyiv_today::text AS kyiv_today,
             runtime.captured_at::text AS captured_at
         FROM tasks t
@@ -211,6 +224,9 @@ async function runReport(options = {}, env = process.env) {
         capturedAt: rows[0]?.captured_at,
         kyivToday: rows[0]?.kyiv_today
     });
+    if (report.overdueReconciliation?.ok !== true) {
+        throw new Error('stale_machine_overdue_reconciliation_failed');
+    }
 
     if (options.output) {
         const outputPath = path.resolve(options.output);

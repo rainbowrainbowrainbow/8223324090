@@ -22,6 +22,11 @@ const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const { Pool } = require('pg');
+const {
+    PRIVATE_OR_PERSONAL,
+    SYSTEM_ACTORS,
+    TERMINAL_STATUSES
+} = require('../services/taskAutomationPolicy');
 
 const BLOCKED_FLAGS = new Set([
     '--backfill',
@@ -37,9 +42,6 @@ const BLOCKED_FLAGS = new Set([
     '--write'
 ]);
 
-const TERMINAL_STATUSES = ['done', 'completed', 'cancelled', 'canceled', 'archived'];
-const PRIVATE_OR_PERSONAL = ['private', 'me_only', 'personal'];
-const SYSTEM_ACTORS = ['', 'system', 'kleshnya', 'rule_engine', 'scheduler', 'task_lifecycle', 'automation'];
 const DEFAULT_BATCH_SIZE = 50;
 const MAX_BATCH_SIZE = 100;
 

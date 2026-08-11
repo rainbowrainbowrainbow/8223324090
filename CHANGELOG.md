@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.121 - Task Automation Hygiene
+
+### Tasks / Automation Hygiene / (11.08.2026) [codex]
+- **Єдина task automation policy** - lifecycle, KPI, stale reports, cleanup tooling і task creation тепер використовують спільну класифікацію manual / strict machine / owner-accepted / protected.
+- **Системні задачі більше не псують людський KPI** - machine-generated task без дії власника не входить у HR/payroll/productivity/achievements/leaderboard denominators або rewards.
+- **Майбутній backlog скасованих бронювань закривається fail-closed** - нові trusted machine booking tasks отримують versioned lifecycle marker, а lifecycle може архівувати тільки cancelled-booking cohort з repeated UPDATE predicates, batch cap 50 і audit history.
+- **Stale-machine reporting стало вичерпним** - overdue automation backlog reconciled по cohorts із membership/evidence checksums, recurring/template tasks лишаються report-only без title-based classifier.
+
+---
+
 ## v0.80.120 - Checkbox Shift Recovery
 
 ### Release / Versioning / (11.08.2026) [codex]

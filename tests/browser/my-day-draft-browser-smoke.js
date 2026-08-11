@@ -242,6 +242,7 @@ async function assertFullComposerContract(page, state) {
     const title = page.locator('#cabinetTaskTitle');
     const toggle = page.locator('[data-cabinet-composer-toggle]');
     if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+    await title.fill('Browser full composer create');
     await page.locator('#cabinetTaskCategory').selectOption('event');
     await page.locator('#cabinetTaskMode').selectOption('personal');
     await page.locator('#cabinetTaskKind').selectOption('action');
@@ -280,16 +281,41 @@ async function assertFullComposerContract(page, state) {
         const url = new URL(response.url());
         return response.request().method() === 'POST' && url.pathname === '/api/tasks';
     };
-    const failedCreate = page.waitForResponse(isTaskCreate);
-    await page.locator('.cabinet-task-create-submit').click();
-    assert.equal((await failedCreate).status(), 503, '503 fixture create is delivered to the composer');
+    const submitComposer = async () => {
+        const submitState = await page.locator('#cabinetTaskComposer').evaluate(form => ({
+            valid: form.checkValidity(),
+            onsubmit: form.getAttribute('onsubmit') || '',
+            createHandlerType: typeof window.createCabinetTask,
+            title: document.getElementById('cabinetTaskTitle')?.value || '',
+            invalid: Array.from(form.elements || [])
+                .filter(element => typeof element.checkValidity === 'function' && !element.checkValidity())
+                .map(element => ({
+                    id: element.id || '',
+                    name: element.getAttribute('name') || '',
+                    value: element.value || '',
+                    message: element.validationMessage || ''
+                }))
+        }));
+        assert.equal(submitState.valid, true, `composer form is valid before submit: ${JSON.stringify(submitState)}`);
+        assert.match(submitState.onsubmit, /createCabinetTask/, 'composer form keeps create submit handler');
+        assert.equal(submitState.createHandlerType, 'function', 'createCabinetTask is globally callable');
+        assert.ok(submitState.title, 'composer title is set before submit');
+        await page.locator('.cabinet-task-create-submit').click();
+    };
+    const [failedCreate] = await Promise.all([
+        page.waitForResponse(isTaskCreate),
+        submitComposer()
+    ]);
+    assert.equal(failedCreate.status(), 503, '503 fixture create is delivered to the composer');
     await assertRetained('503 create failure');
     assert.equal(await customDate.inputValue(), '2099-05-31', '503 create failure keeps custom date');
 
     state.createMode = 'success';
-    const successfulCreate = page.waitForResponse(isTaskCreate);
-    await page.locator('.cabinet-task-create-submit').click();
-    assert.equal((await successfulCreate).status(), 200, 'verified fixture create succeeds');
+    const [successfulCreate] = await Promise.all([
+        page.waitForResponse(isTaskCreate),
+        submitComposer()
+    ]);
+    assert.equal(successfulCreate.status(), 200, 'verified fixture create succeeds');
     await page.waitForFunction(() => document.getElementById('cabinetTaskTitle')?.value === '');
     await page.waitForFunction(() => {
         const form = document.getElementById('cabinetTaskComposer');

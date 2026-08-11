@@ -349,6 +349,7 @@
     }
 
     function proposalDecision(preview = {}) {
+        preview = preview || {};
         const decision = String(preview.proposal?.decision || '').trim();
         if (decision) return decision;
         const action = String(preview.proposal?.action || '').trim();
@@ -884,6 +885,7 @@
     function commitPayloadFor(root) {
         if (!root) return null;
         const state = rootState(root);
+        if (!state.preview?.proposal) return null;
         const decision = proposalDecision(state.preview);
         if (decision === 'task_bundle') return bundlePayloadFor(root);
         if (!state.preview?.proposalToken) return null;

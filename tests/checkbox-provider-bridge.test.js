@@ -369,6 +369,62 @@ test('runtime provider aggregate readiness reports all read-only blockers withou
     }
 });
 
+test('runtime provider aggregate readiness treats null current shift as no open shift', async () => {
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+        if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+        if (call.path === '/api/v1/cashier/shift') return { body: null };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const diagnostics = await provider.collectReadinessDiagnostics({
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: false
+        }, { expectedTaxIds: ['7'] });
+        const currentShift = diagnostics.checks.find(check => check.code === 'current_shift');
+        assert.equal(currentShift.status, 'not_applicable');
+        assert.equal(currentShift.ready, true);
+        assert.equal(currentShift.details.shiftStatus, 'none');
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider aggregate readiness accepts test signature without certificate end only in test mode', async () => {
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') {
+            return { body: cashierProfile({ is_test: true, signature_type: 'TEST', certificate_end: null }) };
+        }
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: true }) };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: 'TEST' }) };
+        if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+        if (call.path === '/api/v1/cashier/shift') return { body: null };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig({ ...providerConfig(baseUrl), expectedIsTest: true });
+        const diagnostics = await provider.collectReadinessDiagnostics({
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: true
+        }, { expectedTaxIds: [] });
+        const certificate = diagnostics.checks.find(check => check.code === 'certificate');
+        assert.equal(certificate.status, 'ready');
+        assert.equal(certificate.details.certificateEndConfigured, false);
+        assert.equal(certificate.details.testSignature, true);
+    } finally {
+        await close(server);
+    }
+});
+
 test('runtime provider aggregate readiness distinguishes cash/card permission true, false and null', async () => {
     async function runPermissions(permissions) {
         const { server, baseUrl } = await listenMock(call => {

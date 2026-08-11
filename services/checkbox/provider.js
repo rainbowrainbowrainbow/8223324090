@@ -180,8 +180,13 @@ function extractCashierReadiness(profile = {}) {
         organizationId: textOrNull(profile.organization?.id || profile.organization_id),
         blocked: blockedValue(profile.blocked),
         isTest: typeof profile.is_test === 'boolean' ? profile.is_test : null,
-        certificateEnd: textOrNull(profile.certificate_end)
+        certificateEnd: textOrNull(profile.certificate_end),
+        signatureType: textOrNull(profile.signature_type)
     };
+}
+
+function hasTestModeCertificate(profile = {}, cashier = extractCashierReadiness(profile)) {
+    return cashier.isTest === true && String(cashier.signatureType || '').toUpperCase() === 'TEST';
 }
 
 function validateCashierReadiness(profile = {}, expected = {}) {
@@ -808,6 +813,7 @@ class CheckboxRuntimeProvider {
             }
             if (profile) {
                 const cashier = extractCashierReadiness(profile);
+                const certificateReady = Boolean(cashier.certificateEnd) || hasTestModeCertificate(profile, cashier);
                 checks.push(readinessCheck({
                     code: 'organization_identity',
                     label: 'ФОП / organization Checkbox',
@@ -837,10 +843,13 @@ class CheckboxRuntimeProvider {
                 checks.push(readinessCheck({
                     code: 'certificate',
                     label: 'Сертифікат касира',
-                    status: cashier.certificateEnd ? 'ready' : 'blocked',
-                    ready: Boolean(cashier.certificateEnd),
-                    recommendation: cashier.certificateEnd ? null : readinessRecommendation('certificate'),
-                    details: { certificateEndConfigured: Boolean(cashier.certificateEnd) }
+                    status: certificateReady ? 'ready' : 'blocked',
+                    ready: certificateReady,
+                    recommendation: certificateReady ? null : readinessRecommendation('certificate'),
+                    details: {
+                        certificateEndConfigured: Boolean(cashier.certificateEnd),
+                        testSignature: hasTestModeCertificate(profile, cashier)
+                    }
                 }));
             } else {
                 for (const [code, label] of [
@@ -865,7 +874,19 @@ class CheckboxRuntimeProvider {
             });
             try {
                 const value = await this.client.getCurrentShift();
-                currentShift = normalizeShiftResponse(value, strictExpected, { requireCashier: false });
+                if (!value) {
+                    checks.push(readinessCheck({
+                        code: 'current_shift',
+                        label: 'Поточна зміна Checkbox',
+                        status: 'not_applicable',
+                        ready: true,
+                        details: { shiftStatus: 'none' }
+                    }));
+                    currentShift = null;
+                } else {
+                    currentShift = normalizeShiftResponse(value, strictExpected, { requireCashier: false });
+                }
+                if (currentShift) {
                 const shiftStatus = upperStatus(currentShift.status);
                 checks.push(readinessCheck({
                     code: 'current_shift',
@@ -875,6 +896,7 @@ class CheckboxRuntimeProvider {
                     recommendation: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? readinessRecommendation('current_shift') : null,
                     details: currentShift
                 }));
+                }
             } catch (error) {
                 if (error instanceof CheckboxClientError && (error.status === 404 || error.status === 422)) {
                     checks.push(readinessCheck({

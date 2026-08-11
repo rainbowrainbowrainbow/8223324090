@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.124",
+  "version": "0.80.125",
   "eventGenix": {
-    "releaseLabel": "Task Automation Hygiene Closure"
+    "releaseLabel": "My Day AI Composer Integration"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.80.125 - My Day AI Composer Integration
+
+### Release / Versioning / (12.08.2026) [codex]
+- **My Day AI Composer Integration** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.80.124 - Task Automation Hygiene Closure
 
 ### Release / Versioning / (11.08.2026) [codex]

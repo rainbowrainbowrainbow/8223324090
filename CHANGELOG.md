@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.124 - Task Automation Hygiene Closure
+
+### Release / Versioning / (11.08.2026) [codex]
+- **Lifecycle concurrency закрито fail-closed** - auto-archive cancelled-booking задач працює через один transaction-scoped advisory lock, повторює safety predicates у `UPDATE` і не може випадково обробити той самий batch двічі.
+- **Archived/terminal задачі більше не реактивуються generic automation path** - reminders, escalations, penalties і bot/Kleshnya status updates повторно перевіряють active/nonterminal state; explicit user reopen лишається окремим контрольованим flow.
+- **KPI/reward eligibility уніфіковано** - system-completed machine task без owner-authored action не покращує і не погіршує людський KPI, payroll audit, productivity, achievements або points.
+- **Inventory і stale-machine report мають один denominator** - plain manual tasks більше не забруднюють automation-overdue backlog; inventory/report reconciliation має membership/evidence checksums і canonical CI regression coverage.
+
+---
+
 ## v0.80.123 - Gamification Schema Compatibility
 
 ### Release / Versioning / (11.08.2026) [codex]

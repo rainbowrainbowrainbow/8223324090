@@ -887,13 +887,21 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         assert.equal(confirmation.rows[0].confirmation_snapshot.change_amount_minor, '5000');
 
         const shiftOpenCallsBeforeCash = mock.state.calls.filter(call => call.path === '/api/v1/shifts').length;
-        await runWorkerUntilIdle(createHttpProvider(mock));
+        const cashWorkerBatches = await runWorkerUntilIdle(createHttpProvider(mock));
         const shiftOpenCallsAfterCash = mock.state.calls.filter(call => call.path === '/api/v1/shifts').length;
         assert.ok(
             shiftOpenCallsAfterCash === shiftOpenCallsBeforeCash || shiftOpenCallsAfterCash === shiftOpenCallsBeforeCash + 1,
             'provider shift is reused when already OPENED or opened at most once for the register'
         );
-        assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === cashProviderRequestUuid).length, 1);
+        assert.equal(
+            mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === cashProviderRequestUuid).length,
+            1,
+            JSON.stringify({
+                providerRequestUuid: cashProviderRequestUuid,
+                batches: cashWorkerBatches,
+                calls: mock.state.calls.map(call => ({ method: call.method, path: call.path, id: call.body?.id || null }))
+            })
+        );
 
         const cashCounts = await pool.query(
             `SELECT

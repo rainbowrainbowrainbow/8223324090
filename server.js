@@ -931,8 +931,9 @@ initializeDatabaseWithSchemaFence().catch(err => {
         // v40.5: Task lifecycle — run daily at midnight + once on startup
         try {
             const { runTaskLifecycle } = require('./services/taskLifecycle');
-            setTimeout(() => runTaskLifecycle().catch(() => {}), 30000); // 30s after boot
-            setInterval(() => runTaskLifecycle().catch(() => {}), 24 * 60 * 60 * 1000); // daily
+            const guardedTaskLifecycle = guardScheduler('runTaskLifecycle', runTaskLifecycle, { dedup: 'daily' });
+            setTimeout(() => guardedTaskLifecycle().catch(() => {}), 30000); // 30s after boot
+            schedulerIntervals.push(setInterval(guardedTaskLifecycle, 60 * 1000)); // daily via guardScheduler
             log.info('Task lifecycle scheduler started');
         } catch (e) { log.warn('Task lifecycle init failed:', e.message); }
     });

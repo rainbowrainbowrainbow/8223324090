@@ -65,10 +65,31 @@ function readRequired(relativePath) {
 
 function parseGuardedJobs(server) {
     const jobs = [];
+    const wrappers = new Map();
     const lines = server.split(/\r?\n/);
+    const wrapperRe = /const\s+([A-Za-z0-9_]+)\s*=\s*guardScheduler\('([^']+)'\s*,\s*([A-Za-z0-9_]+)\s*(?:,\s*\{([^}]*)\})?\)/;
     const guardRe = /guardScheduler\('([^']+)'\s*,\s*([A-Za-z0-9_]+)\s*(?:,\s*\{([^}]*)\})?\)/;
 
     for (const line of lines) {
+        const wrapperMatch = line.match(wrapperRe);
+        if (wrapperMatch) {
+            const options = wrapperMatch[4] || '';
+            const dedupMatch = options.match(/\bdedup:\s*(null|'[^']+')/);
+            let dedup = 'daily-default';
+            if (dedupMatch?.[1] === 'null') {
+                dedup = null;
+            } else if (dedupMatch?.[1]) {
+                dedup = dedupMatch[1].replace(/^'|'$/g, '');
+            }
+            wrappers.set(wrapperMatch[1], {
+                name: wrapperMatch[2],
+                functionName: wrapperMatch[3],
+                dedup,
+                interval: ''
+            });
+            continue;
+        }
+
         const guardMatch = line.match(guardRe);
         if (!guardMatch) continue;
 
@@ -90,7 +111,28 @@ function parseGuardedJobs(server) {
         });
     }
 
+    for (const [wrapperName, job] of wrappers.entries()) {
+        const intervalRe = new RegExp(`setInterval\\(${wrapperName},\\s*([^)]*?)\\)`);
+        const timeoutRe = new RegExp(`setTimeout\\((?:\\(\\) => )?${wrapperName}(?:\\(\\)\\.catch\\(\\(\\) => \\{\\}\\))?,\\s*([^)]*?)\\)`);
+        const intervalMatch = server.match(intervalRe);
+        const timeoutMatch = server.match(timeoutRe);
+        jobs.push({
+            ...job,
+            interval: normalizeWhitespace(intervalMatch?.[1] || timeoutMatch?.[1] || '')
+        });
+    }
+
     return jobs;
+}
+
+function parseGuardedWrapperNames(server) {
+    const names = new Set();
+    const wrapperRe = /const\s+([A-Za-z0-9_]+)\s*=\s*guardScheduler\('/g;
+    let match;
+    while ((match = wrapperRe.exec(server)) !== null) {
+        names.add(match[1]);
+    }
+    return names;
 }
 
 function assertDocMentions(doc, value, label) {
@@ -189,9 +231,11 @@ if (dailyDefaultJobs.length > 0) {
     fail(`No scheduler job may rely on guardScheduler default daily dedup; make dedup explicit for: ${dailyDefaultJobs.map(job => job.name).join(', ')}`);
 }
 
+const guardedWrapperNames = parseGuardedWrapperNames(server);
 const rawServerSetIntervals = server.split(/\r?\n/)
     .filter(line => line.includes('setInterval('))
     .filter(line => !line.includes('guardScheduler('))
+    .filter(line => ![...guardedWrapperNames].some(wrapperName => line.includes(`setInterval(${wrapperName},`)))
     .filter(line => !line.trim().startsWith('//'))
     .length;
 const expectedRawSetIntervals = RAW_SCHEDULER_INTERVALS.filter(job => job.kind === 'setInterval').length;

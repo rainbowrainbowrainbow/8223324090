@@ -37,7 +37,9 @@ function resetState() {
         autoArchiveMarkerTotal: 0,
         autoArchiveLockAcquired: true,
         locks: [],
-        failSelect: false
+        transactions: [],
+        failSelect: false,
+        failArchive: false
     };
 }
 
@@ -76,6 +78,11 @@ function createQuery(options = {}) {
         const text = compact(sql);
         state.queries.push({ text, params });
 
+        if (/^(BEGIN|COMMIT|ROLLBACK)$/i.test(text)) {
+            state.transactions.push(text.toUpperCase());
+            return { rows: [], rowCount: 0 };
+        }
+
         if (/^SELECT t\.id, t\.date, t\.status, t\.priority, t\.updated_at, t\.created_at/i.test(text)) {
             if (state.failSelect) throw new Error('planned lifecycle failure');
             if (options.blockSelectOnce && !options._blocked) {
@@ -84,7 +91,7 @@ function createQuery(options = {}) {
                 await options.blockSelectOnce.promise;
             }
             const rows = state.tasks
-                .filter(task => !['done', 'completed', 'cancelled', 'archived'].includes(task.status))
+                .filter(task => !['done', 'completed', 'complete', 'cancelled', 'canceled', 'archived'].includes(task.status))
                 .filter(task => task.archived_at == null)
                 .map(task => ({ ...task }));
             return { rows, rowCount: rows.length };
@@ -106,17 +113,13 @@ function createQuery(options = {}) {
             return { rows, rowCount: rows.length };
         }
 
-        if (/^SELECT pg_try_advisory_lock\(hashtext\(\$1\)\) AS acquired/i.test(text)) {
+        if (/^SELECT pg_try_advisory_xact_lock\(hashtext\(\$1\)\) AS acquired/i.test(text)) {
             state.locks.push({ operation: 'acquire', params });
             return { rows: [{ acquired: state.autoArchiveLockAcquired }], rowCount: 1 };
         }
 
-        if (/^SELECT pg_advisory_unlock\(hashtext\(\$1\)\) AS released/i.test(text)) {
-            state.locks.push({ operation: 'release', params });
-            return { rows: [{ released: true }], rowCount: 1 };
-        }
-
         if (/^WITH exact_candidates AS/i.test(text) && /UPDATE tasks t SET status = 'archived'/i.test(text)) {
+            if (state.failArchive) throw new Error('planned auto-archive failure');
             const ids = params[0] || [];
             const rows = state.autoArchiveCandidates.filter(row => ids.includes(row.id));
             for (const row of rows) {
@@ -147,10 +150,10 @@ function createQuery(options = {}) {
     };
 }
 
-function loadLifecycle() {
+function loadLifecycle(poolOverride = null) {
     clearModules();
     installMock('../db', {
-        pool: {
+        pool: poolOverride || {
             query: async () => {
                 throw new Error('Unexpected real DB query in task lifecycle scheduler test');
             }
@@ -187,7 +190,8 @@ describe('task lifecycle raw scheduler hardening', () => {
         assert.equal(result.archived, 0);
         assert.equal(result.archiveCandidates, 0);
         assert.equal(result.protected, 0);
-        assert.equal(state.queries.length, 3);
+        assert.equal(state.queries.length, 6);
+        assert.deepEqual(state.transactions, ['BEGIN', 'COMMIT']);
         assert.equal(state.updates.length, 0);
         assert.equal(state.archives.length, 0);
     });
@@ -383,7 +387,8 @@ describe('task lifecycle raw scheduler hardening', () => {
         assert.match(state.archives[0].text, /control_meta.*machineLifecycle/);
         assert.match(state.archives[0].text, /LOWER\(COALESCE\(b\.status, ''\)\) IN \('cancelled', 'canceled'\)/);
         assert.match(state.archives[0].text, /task_action_history/);
-        assert.deepEqual(state.locks.map(item => item.operation), ['acquire', 'release']);
+        assert.deepEqual(state.transactions, ['BEGIN', 'COMMIT']);
+        assert.deepEqual(state.locks.map(item => item.operation), ['acquire']);
     });
 
     it('skips automatic archive when the advisory lock is already held', async () => {
@@ -396,13 +401,55 @@ describe('task lifecycle raw scheduler hardening', () => {
             now: new Date('2026-08-11T12:00:00.000Z')
         });
 
-        assert.equal(result.candidates, 1);
+        assert.equal(result.candidates, 0);
         assert.equal(result.archived, 0);
-        assert.equal(result.skipped, 1);
+        assert.equal(result.skipped, 0);
         assert.equal(result.lockSkipped, true);
         assert.deepEqual(state.locks.map(item => item.operation), ['acquire']);
+        assert.deepEqual(state.transactions, ['BEGIN', 'ROLLBACK']);
         assert.equal(state.archives.length, 0);
         assert.equal(state.history.length, 0);
+    });
+
+    it('rolls back automatic archive transaction after an exception', async () => {
+        state.autoArchiveCandidates.push({ id: 821, prior_status: 'todo' });
+        state.failArchive = true;
+        const { runCancelledBookingAutoArchive } = loadLifecycle();
+
+        await assert.rejects(
+            () => runCancelledBookingAutoArchive({
+                query: createQuery(),
+                now: new Date('2026-08-11T12:00:00.000Z')
+            }),
+            /planned auto-archive failure/
+        );
+
+        assert.deepEqual(state.transactions, ['BEGIN', 'ROLLBACK']);
+        assert.deepEqual(state.locks.map(item => item.operation), ['acquire']);
+        assert.equal(state.history.length, 0);
+    });
+
+    it('uses one checked-out client for mutating automatic archive runs', async () => {
+        state.autoArchiveCandidates.push({ id: 831, prior_status: 'todo' });
+        let releaseCount = 0;
+        const client = {
+            query: createQuery(),
+            release: () => { releaseCount += 1; }
+        };
+        const { runCancelledBookingAutoArchive } = loadLifecycle({
+            query: async () => {
+                throw new Error('pool.query must not run mutating auto-archive');
+            },
+            connect: async () => client
+        });
+
+        const result = await runCancelledBookingAutoArchive({
+            now: new Date('2026-08-11T12:00:00.000Z')
+        });
+
+        assert.equal(result.archived, 1);
+        assert.deepEqual(state.transactions, ['BEGIN', 'COMMIT']);
+        assert.equal(releaseCount, 1);
     });
 
     it('caps automatic archive batches at 50 records', async () => {
@@ -421,12 +468,14 @@ describe('task lifecycle raw scheduler hardening', () => {
         assert.equal(state.archives.length, 50);
     });
 
-    it('keeps startup and daily scheduler timing unchanged in server.js', () => {
+    it('runs task lifecycle through scheduler guard daily dedup', () => {
         const server = fs.readFileSync(path.join(__dirname, '..', 'server.js'), 'utf8');
 
         assert.match(server, /const \{ runTaskLifecycle \} = require\('\.\/services\/taskLifecycle'\);/);
-        assert.match(server, /setTimeout\(\(\) => runTaskLifecycle\(\)\.catch\(\(\) => \{\}\), 30000\)/);
-        assert.match(server, /setInterval\(\(\) => runTaskLifecycle\(\)\.catch\(\(\) => \{\}\), 24 \* 60 \* 60 \* 1000\)/);
+        assert.match(server, /guardScheduler\('runTaskLifecycle', runTaskLifecycle, \{ dedup: 'daily' \}\)/);
+        assert.match(server, /setTimeout\(\(\) => guardedTaskLifecycle\(\)\.catch\(\(\) => \{\}\), 30000\)/);
+        assert.match(server, /schedulerIntervals\.push\(setInterval\(guardedTaskLifecycle, 60 \* 1000\)\)/);
+        assert.doesNotMatch(server, /setInterval\(\(\) => runTaskLifecycle\(\)\.catch/);
     });
 
     it('does not add direct Telegram, chat, push, or webhook side effects', () => {
@@ -437,9 +486,12 @@ describe('task lifecycle raw scheduler hardening', () => {
         assert.match(source, /taskHumanTouchSql\('t'\)/);
         assert.match(source, /taskAutomationPolicy/);
         assert.match(source, /healthScoreMatches\(task\.health_score, score\)/);
+        assert.match(source, /LOWER\(COALESCE\(t\.status, 'todo'\)\) NOT IN \('done', 'completed', 'complete', 'cancelled', 'canceled', 'archived'\)/);
         assert.match(source, /runCancelledBookingAutoArchive/);
         assert.match(source, /CANCELLED_BOOKING_AUTO_ARCHIVE_BATCH_LIMIT = 50/);
-        assert.match(source, /pg_try_advisory_lock/);
+        assert.match(source, /pg_try_advisory_xact_lock/);
+        assert.doesNotMatch(source, /pg_try_advisory_lock\(hashtext/);
+        assert.doesNotMatch(source, /pg_advisory_unlock/);
         assert.match(source, /archiveCancelledBookingAutoArchiveBatchSql/);
         assert.match(source, /TASK_ACTION_TYPES\.STATUS_CHANGED/);
         assert.doesNotMatch(source, /DELETE FROM tasks/i);

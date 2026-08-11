@@ -39,6 +39,7 @@ const {
     rescheduleTask
 } = require('../services/taskExecution');
 const { listTaskActionHistory, logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
+const { isTerminalStatus } = require('../services/taskAutomationPolicy');
 const { normalizeTaskPayload: normalizeTaskContractPayload } = require('../services/taskContract');
 const { withTaskDrawerContract } = require('../services/taskDetailContract');
 const { buildTaskOverview } = require('../services/taskOverviewProjection');
@@ -3736,7 +3737,14 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
             });
         }
         const kleshnya = getKleshnya();
-        const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor);
+        const task = await kleshnya.updateTaskStatus(parseInt(id), status, actor, {
+            allowTerminalReopen: visible.rows[0].archived_at == null
+                && isTerminalStatus(visible.rows[0].status)
+                && !isTerminalStatus(status),
+            actor: req.user,
+            actorUserId: req.user?.id || null,
+            sourceSurface: sourceSurface(req.body, 'task_detail')
+        });
         let responseTask = task;
         let historyEvent = null;
         try {

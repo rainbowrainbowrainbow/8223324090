@@ -24,9 +24,31 @@ const {
 const { emitTaskAssignedToOwner } = require('./taskNotifications');
 const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 const { logTaskActionEvent, TASK_ACTION_TYPES } = require('./taskActionHistory');
+const { isTerminalStatus } = require('./taskAutomationPolicy');
+const { taskKpiEligibleSql } = require('./taskPerformancePolicy');
 
 const log = createLogger('Kleshnya');
-const TERMINAL_TASK_STATUSES = ['done', 'completed', 'cancelled', 'archived'];
+const TERMINAL_TASK_STATUSES = ['done', 'completed', 'complete', 'cancelled', 'canceled', 'archived'];
+const TERMINAL_TASK_STATUS_SQL = "('done', 'completed', 'complete', 'cancelled', 'canceled', 'archived')";
+
+function isTaskArchivedOrTerminal(task = {}) {
+    return Boolean(task.archived_at) || isTerminalStatus(task.status);
+}
+
+function dbBool(value) {
+    return value === true || value === 'true' || value === 1 || value === '1';
+}
+
+async function isTaskEligibleForHumanPerformance(taskId) {
+    const result = await pool.query(
+        `SELECT (${taskKpiEligibleSql('t')}) AS eligible
+         FROM tasks t
+         WHERE t.id = $1
+         LIMIT 1`,
+        [taskId]
+    );
+    return dbBool(result.rows?.[0]?.eligible);
+}
 
 // --- Escalation messages (4 levels) ---
 const ESCALATION_MESSAGES = [
@@ -277,8 +299,17 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system', options = {
     const oldStatus = task.status;
 
     if (oldStatus === newStatus) return task;
+    if (Boolean(task.archived_at)) {
+        throw new Error('Archived task status changes require an explicit restore flow');
+    }
+    if (isTerminalStatus(oldStatus) && options.allowTerminalReopen !== true) {
+        throw new Error('Terminal or archived task status changes require an explicit restore/reopen flow');
+    }
 
     const currentVersion = task.version || 1;
+    const terminalPredicate = options.allowTerminalReopen === true
+        ? ''
+        : `AND LOWER(COALESCE(status, 'todo')) NOT IN ${TERMINAL_TASK_STATUS_SQL}`;
     const updateResult = await pool.query(
         `UPDATE tasks
          SET status=$1,
@@ -286,12 +317,13 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system', options = {
              schedule_status=CASE WHEN $4='done' AND scheduled_start_at IS NOT NULL THEN 'completed' WHEN $4<>'done' AND scheduled_start_at IS NOT NULL AND schedule_status='completed' THEN 'scheduled' ELSE schedule_status END,
              updated_at=NOW(),
              completed_at=CASE WHEN $4='done' THEN NOW() ELSE NULL END,
-             archived_at=NULL,
-             archive_reason=NULL,
              duplicate_of_task_id=NULL,
              escalation_level=0,
              version=version+1
-         WHERE id=$2 AND version=$3`,
+         WHERE id=$2
+           AND version=$3
+           AND archived_at IS NULL
+           ${terminalPredicate}`,
         [newStatus, taskId, currentVersion, newStatus]
     );
 
@@ -309,10 +341,10 @@ async function updateTaskStatus(taskId, newStatus, actor = 'system', options = {
         meta: { legacyActor: actor }
     }, { pool });
 
-    // Award points on completion
-    if (newStatus === 'done' && task.task_type === 'human') {
+    // Award points on completion only when the shared KPI/reward policy proves eligibility.
+    if (newStatus === 'done') {
         const assignee = task.assigned_to || task.owner;
-        if (assignee) {
+        if (assignee && await isTaskEligibleForHumanPerformance(taskId)) {
             await evaluateAndAwardPoints(task, assignee);
         }
     }
@@ -352,12 +384,22 @@ async function escalateTask(taskId) {
     if (taskResult.rows.length === 0) return;
 
     const task = taskResult.rows[0];
+    if (isTaskArchivedOrTerminal(task)) {
+        return { skipped: true, reason: 'terminal_or_archived' };
+    }
     const newLevel = Math.min((task.escalation_level || 0) + 1, 3);
 
-    await pool.query(
-        'UPDATE tasks SET escalation_level = $1, last_reminded_at = NOW(), updated_at = NOW() WHERE id = $2',
+    const updateResult = await pool.query(
+        `UPDATE tasks
+         SET escalation_level = $1, last_reminded_at = NOW(), updated_at = NOW()
+         WHERE id = $2
+           AND archived_at IS NULL
+           AND LOWER(COALESCE(status, 'todo')) NOT IN ${TERMINAL_TASK_STATUS_SQL}`,
         [newLevel, taskId]
     );
+    if (updateResult.rowCount === 0) {
+        return { skipped: true, reason: 'terminal_or_archived_race' };
+    }
 
     await logTaskAction(taskId, 'escalated', String(task.escalation_level), String(newLevel), 'kleshnya');
 
@@ -378,7 +420,7 @@ async function escalateTask(taskId) {
     });
 
     // Deduct points for overdue
-    if (newLevel >= 2 && task.assigned_to) {
+    if (newLevel >= 2 && task.assigned_to && await isTaskEligibleForHumanPerformance(taskId)) {
         const penalty = newLevel >= 2 ? POINTS.LATE_MAJOR : POINTS.LATE_MINOR;
         await awardPoints(task.assigned_to, penalty.monthly, 'monthly', penalty.reason, taskId);
         if (penalty.permanent !== 0) {
@@ -397,11 +439,24 @@ async function sendReminder(taskId) {
     if (taskResult.rows.length === 0) return;
 
     const task = taskResult.rows[0];
+    if (isTaskArchivedOrTerminal(task)) {
+        return { skipped: true, reason: 'terminal_or_archived' };
+    }
     const level = task.escalation_level || 0;
     const msgFn = ESCALATION_MESSAGES[level] || ESCALATION_MESSAGES[0];
     const text = msgFn(task);
 
-    await pool.query('UPDATE tasks SET last_reminded_at = NOW() WHERE id = $1', [taskId]);
+    const updateResult = await pool.query(
+        `UPDATE tasks
+         SET last_reminded_at = NOW()
+         WHERE id = $1
+           AND archived_at IS NULL
+           AND LOWER(COALESCE(status, 'todo')) NOT IN ${TERMINAL_TASK_STATUS_SQL}`,
+        [taskId]
+    );
+    if (updateResult.rowCount === 0) {
+        return { skipped: true, reason: 'terminal_or_archived_race' };
+    }
     await logTaskAction(taskId, 'reminded', null, `level ${level}`, 'kleshnya');
     await sendTaskNotification(text, task, { context: 'task_reminder' });
 
@@ -822,7 +877,7 @@ async function getTasksNeedingReminders() {
         const result = await pool.query(`
             SELECT * FROM tasks
             WHERE archived_at IS NULL
-              AND COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+              AND LOWER(COALESCE(status, 'todo')) NOT IN ${TERMINAL_TASK_STATUS_SQL}
               AND task_type = 'human'
               AND deadline IS NOT NULL
               AND (
@@ -847,7 +902,7 @@ async function getOverdueTasks() {
         const result = await pool.query(`
             SELECT * FROM tasks
             WHERE archived_at IS NULL
-              AND COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+              AND LOWER(COALESCE(status, 'todo')) NOT IN ${TERMINAL_TASK_STATUS_SQL}
               AND deadline IS NOT NULL
               AND deadline < NOW()
             ORDER BY deadline ASC

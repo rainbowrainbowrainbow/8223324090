@@ -84,7 +84,7 @@ test('reschedule button is opt-in only and callback data remains short', () => {
 test('terminal tasks do not expose Telegram action buttons', () => {
     const { getTaskInlineButtons } = loadKleshnya();
 
-    for (const status of ['done', 'completed', 'cancelled', 'archived']) {
+    for (const status of ['done', 'completed', 'complete', 'cancelled', 'canceled', 'archived']) {
         assert.equal(getTaskInlineButtons({ id: 42, status, task_type: 'human' }), null);
     }
 });
@@ -92,8 +92,9 @@ test('terminal tasks do not expose Telegram action buttons', () => {
 test('Kleshnya reminder queries exclude archived and terminal tasks', () => {
     const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'kleshnya.js'), 'utf8');
 
-    assert.match(source, /WHERE archived_at IS NULL\s+AND COALESCE\(status, 'todo'\) NOT IN \('done', 'completed', 'cancelled', 'archived'\)\s+AND task_type = 'human'/);
-    assert.match(source, /WHERE archived_at IS NULL\s+AND COALESCE\(status, 'todo'\) NOT IN \('done', 'completed', 'cancelled', 'archived'\)\s+AND deadline IS NOT NULL/);
+    assert.match(source, /WHERE archived_at IS NULL\s+AND LOWER\(COALESCE\(status, 'todo'\)\) NOT IN \$\{TERMINAL_TASK_STATUS_SQL\}\s+AND task_type = 'human'/);
+    assert.match(source, /WHERE archived_at IS NULL\s+AND LOWER\(COALESCE\(status, 'todo'\)\) NOT IN \$\{TERMINAL_TASK_STATUS_SQL\}\s+AND deadline IS NOT NULL/);
+    assert.match(source, /const TERMINAL_TASK_STATUSES = \['done', 'completed', 'complete', 'cancelled', 'canceled', 'archived'\]/);
 });
 
 test('telegram task actor guard keeps CRM owner id separate from Telegram ids', () => {
@@ -128,9 +129,8 @@ test('acknowledgeTask only records acknowledgement and reminder timestamp, not d
     assert.ok(queries.some(q => q.text.startsWith('INSERT INTO task_logs') && q.params[1] === 'acknowledged'));
 });
 
-test('updateTaskStatus reopens completed scheduled task as scheduled', async () => {
+test('updateTaskStatus does not reopen completed scheduled tasks through generic path', async () => {
     const queries = [];
-    let taskSelectCount = 0;
     const task = {
         id: 88,
         status: 'done',
@@ -140,6 +140,44 @@ test('updateTaskStatus reopens completed scheduled task as scheduled', async () 
         completed_at: '2099-02-01T10:00:00.000Z',
         version: 5,
         task_type: 'human'
+    };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) {
+                return { rows: [task] };
+            }
+            if (text.startsWith('UPDATE tasks')) {
+                throw new Error('generic reopen must not update archived or terminal tasks');
+            }
+            if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
+            return { rows: [] };
+        }
+    };
+    const { updateTaskStatus } = loadKleshnya(pool);
+
+    await assert.rejects(
+        () => updateTaskStatus(88, 'todo', 'route-smoke'),
+        /explicit restore\/reopen flow/
+    );
+    assert.equal(queries.some(q => q.text.startsWith('UPDATE tasks')), false);
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO task_logs')), false);
+});
+
+test('updateTaskStatus allows explicit non-archived user reopen without clearing archive markers', async () => {
+    const queries = [];
+    let taskSelectCount = 0;
+    const task = {
+        id: 87,
+        status: 'done',
+        workflow_state: 'done',
+        schedule_status: 'completed',
+        scheduled_start_at: '2099-02-01T09:00:00.000Z',
+        completed_at: '2099-02-01T10:00:00.000Z',
+        version: 5,
+        task_type: 'human',
+        archived_at: null
     };
     const reopened = {
         ...task,
@@ -159,11 +197,61 @@ test('updateTaskStatus reopens completed scheduled task as scheduled', async () 
             }
             if (text.startsWith('UPDATE tasks')) {
                 assert.equal(params[0], 'todo');
-                assert.equal(params[1], 88);
+                assert.equal(params[1], 87);
                 assert.equal(params[2], 5);
                 assert.equal(params[3], 'todo');
-                assert.match(text, /schedule_status=CASE WHEN \$4='done'/);
-                assert.match(text, /schedule_status='completed' THEN 'scheduled'/);
+                assert.match(text, /archived_at IS NULL/);
+                assert.doesNotMatch(text, /archive_reason\s*=\s*NULL/i);
+                assert.doesNotMatch(text, /LOWER\(COALESCE\(status, 'todo'\)\) NOT IN/);
+                return { rowCount: 1, rows: [] };
+            }
+            if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
+            if (text.startsWith('INSERT INTO task_action_history')) return { rowCount: 1, rows: [{}] };
+            return { rows: [] };
+        }
+    };
+    const { updateTaskStatus } = loadKleshnya(pool);
+
+    const result = await updateTaskStatus(87, 'todo', 'sergiy', {
+        allowTerminalReopen: true,
+        actorUserId: 7
+    });
+
+    assert.equal(result.status, 'todo');
+    assert.equal(result.completed_at, null);
+    assert.equal(result.workflow_state, 'todo');
+    assert.equal(result.schedule_status, 'scheduled');
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO task_logs') && q.params[2] === 'done' && q.params[3] === 'todo'), true);
+});
+
+test('updateTaskStatus preserves archive markers on active-to-done updates', async () => {
+    const queries = [];
+    let taskSelectCount = 0;
+    const task = {
+        id: 89,
+        status: 'todo',
+        workflow_state: 'todo',
+        schedule_status: 'scheduled',
+        scheduled_start_at: '2099-02-01T09:00:00.000Z',
+        version: 2,
+        task_type: 'human',
+        assigned_to: null,
+        archived_at: null
+    };
+    const done = { ...task, status: 'done', workflow_state: 'done', schedule_status: 'completed', version: 3 };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) {
+                taskSelectCount += 1;
+                return { rows: [taskSelectCount === 1 ? task : done] };
+            }
+            if (text.startsWith('UPDATE tasks')) {
+                assert.doesNotMatch(text, /archived_at\s*=\s*NULL/i);
+                assert.doesNotMatch(text, /archive_reason\s*=\s*NULL/i);
+                assert.match(text, /archived_at IS NULL/);
+                assert.match(text, /LOWER\(COALESCE\(status, 'todo'\)\) NOT IN/);
                 return { rowCount: 1, rows: [] };
             }
             if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
@@ -172,13 +260,175 @@ test('updateTaskStatus reopens completed scheduled task as scheduled', async () 
     };
     const { updateTaskStatus } = loadKleshnya(pool);
 
-    const result = await updateTaskStatus(88, 'todo', 'route-smoke');
+    const result = await updateTaskStatus(89, 'done', 'route-smoke');
 
-    assert.equal(result.status, 'todo');
-    assert.equal(result.completed_at, null);
-    assert.equal(result.workflow_state, 'todo');
-    assert.equal(result.schedule_status, 'scheduled');
-    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO task_logs') && q.params[2] === 'done' && q.params[3] === 'todo'), true);
+    assert.equal(result.status, 'done');
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO task_logs') && q.params[2] === 'todo' && q.params[3] === 'done'), true);
+});
+
+test('updateTaskStatus gates completion points through shared KPI policy after canonical history', async () => {
+    const queries = [];
+    let taskSelectCount = 0;
+    const task = {
+        id: 90,
+        status: 'todo',
+        workflow_state: 'todo',
+        schedule_status: 'scheduled',
+        version: 1,
+        task_type: 'human',
+        assigned_to: 'sergiy',
+        owner: 'sergiy',
+        archived_at: null
+    };
+    const done = { ...task, status: 'done', workflow_state: 'done', version: 2 };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) {
+                taskSelectCount += 1;
+                return { rows: [taskSelectCount === 1 ? task : done] };
+            }
+            if (text.startsWith('UPDATE tasks')) return { rowCount: 1, rows: [] };
+            if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
+            if (text.startsWith('INSERT INTO task_action_history')) return { rowCount: 1, rows: [{}] };
+            if (text.includes('AS eligible') && text.includes('task_action_history')) return { rows: [{ eligible: false }] };
+            if (text.startsWith('INSERT INTO user_points')) throw new Error('ineligible task must not receive completion points');
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    const { updateTaskStatus } = loadKleshnya(pool);
+
+    await updateTaskStatus(90, 'done', 'system');
+
+    const canonicalIndex = queries.findIndex(q => q.text.startsWith('INSERT INTO task_action_history'));
+    const eligibilityIndex = queries.findIndex(q => q.text.includes('AS eligible') && q.text.includes('task_action_history'));
+    assert.ok(canonicalIndex >= 0);
+    assert.ok(eligibilityIndex > canonicalIndex, 'eligibility must be checked after canonical owner-action history is written');
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO user_points')), false);
+});
+
+test('updateTaskStatus awards completion points only when shared KPI policy proves eligibility', async () => {
+    const queries = [];
+    let taskSelectCount = 0;
+    const task = {
+        id: 93,
+        status: 'todo',
+        workflow_state: 'todo',
+        schedule_status: 'scheduled',
+        version: 1,
+        task_type: 'human',
+        assigned_to: 'sergiy',
+        owner: 'sergiy',
+        archived_at: null
+    };
+    const done = { ...task, status: 'done', workflow_state: 'done', version: 2 };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) {
+                taskSelectCount += 1;
+                return { rows: [taskSelectCount === 1 ? task : done] };
+            }
+            if (text.startsWith('UPDATE tasks')) return { rowCount: 1, rows: [] };
+            if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
+            if (text.startsWith('INSERT INTO task_action_history')) return { rowCount: 1, rows: [{}] };
+            if (text.includes('AS eligible') && text.includes('task_action_history')) return { rows: [{ eligible: true }] };
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    const { updateTaskStatus } = loadKleshnya(pool);
+
+    await updateTaskStatus(93, 'done', 'sergiy', { actorUserId: 7 });
+
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO user_points')), true);
+});
+
+test('sendReminder and escalateTask skip archived or terminal tasks without side effects', async () => {
+    const queries = [];
+    const terminalTask = {
+        id: 91,
+        title: 'Closed',
+        status: 'archived',
+        archived_at: '2026-08-11T10:00:00.000Z',
+        escalation_level: 1,
+        assigned_to: 'sergiy'
+    };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) return { rows: [terminalTask] };
+            if (text.startsWith('UPDATE tasks')) throw new Error('terminal task must not be updated');
+            if (text.startsWith('INSERT INTO task_logs')) throw new Error('terminal task must not log reminder/escalation');
+            return { rows: [] };
+        }
+    };
+    const { sendReminder, escalateTask } = loadKleshnya(pool);
+
+    assert.deepEqual(await sendReminder(91), { skipped: true, reason: 'terminal_or_archived' });
+    assert.deepEqual(await escalateTask(91), { skipped: true, reason: 'terminal_or_archived' });
+    assert.equal(queries.filter(q => q.text.startsWith('UPDATE tasks')).length, 0);
+});
+
+test('sendReminder and escalateTask repeat active predicate in UPDATE to avoid terminal races', async () => {
+    const queries = [];
+    const task = {
+        id: 92,
+        title: 'Active',
+        status: 'todo',
+        archived_at: null,
+        escalation_level: 0,
+        assigned_to: null
+    };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) return { rows: [task] };
+            if (text.startsWith('UPDATE tasks')) {
+                assert.match(text, /archived_at IS NULL/);
+                assert.match(text, /LOWER\(COALESCE\(status, 'todo'\)\) NOT IN/);
+                return { rowCount: 0, rows: [] };
+            }
+            if (text.startsWith('INSERT INTO task_logs')) throw new Error('race-skipped task must not log reminder/escalation');
+            return { rows: [] };
+        }
+    };
+    const { sendReminder, escalateTask } = loadKleshnya(pool);
+
+    assert.deepEqual(await sendReminder(92), { skipped: true, reason: 'terminal_or_archived_race' });
+    assert.deepEqual(await escalateTask(92), { skipped: true, reason: 'terminal_or_archived_race' });
+});
+
+test('escalateTask does not apply overdue points penalty to KPI-ineligible tasks', async () => {
+    const queries = [];
+    const task = {
+        id: 94,
+        title: 'System task',
+        status: 'todo',
+        archived_at: null,
+        escalation_level: 1,
+        assigned_to: 'sergiy'
+    };
+    const pool = {
+        async query(sql, params) {
+            const text = String(sql);
+            queries.push({ text, params });
+            if (text.startsWith('SELECT * FROM tasks WHERE id = $1')) return { rows: [task] };
+            if (text.startsWith('UPDATE tasks')) return { rowCount: 1, rows: [] };
+            if (text.startsWith('INSERT INTO task_logs')) return { rowCount: 1, rows: [] };
+            if (text.includes('AS eligible') && text.includes('task_action_history')) return { rows: [{ eligible: false }] };
+            if (text.startsWith('INSERT INTO user_points')) throw new Error('ineligible task must not receive escalation penalty');
+            return { rows: [], rowCount: 1 };
+        }
+    };
+    const { escalateTask } = loadKleshnya(pool);
+
+    await escalateTask(94);
+
+    assert.equal(queries.some(q => q.text.startsWith('INSERT INTO user_points')), false);
 });
 
 test('buildOwnerTaskDigestText groups tasks into one Telegram-safe message', () => {

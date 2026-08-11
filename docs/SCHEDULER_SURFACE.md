@@ -47,6 +47,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkSLABreach` | `services/scheduler.js` | sla | `60000` | `hourly` |
 | `checkScheduledAnnouncements` | `services/scheduler.js` | announcements | `60000` | `hourly` |
 | `checkTaskOverdue` | `services/scheduler.js` | tasks | `60000` | `hourly` |
+| `runTaskLifecycle` | `services/taskLifecycle.js` | tasks | `60 * 1000` | `daily` |
 | `checkCustomerRetention` | `services/scheduler.js` | customers | `60000` | `daily` |
 | `checkAutoReport` | `services/scheduler.js` | reports | `60000` | `daily` |
 | `checkHotLeads` | `services/scheduler.js` | leads | `60000` | `hourly` |
@@ -155,8 +156,7 @@ These background jobs are not tracked through `scheduler_executions`.
 | `marketingPublishScheduled` | `server.js` | marketing | `5 * 60 * 1000` | Calls `publishScheduled`. |
 | `marketingWeeklyPlan` | `server.js` | marketing | `60 * 1000` | Checks for Wednesday 08:00 UTC before `generateWeeklyPlan`. |
 | `dashboardAlertBroadcaster` | `server.js` | dashboard | `60000` | Starts `startAlertBroadcaster(60000)`. |
-| `taskLifecycleStartup` | `server.js` | tasks | `30000` | One startup delay before `runTaskLifecycle`. |
-| `taskLifecycleDaily` | `server.js` | tasks | `24 * 60 * 60 * 1000` | Daily `runTaskLifecycle`. |
+| `taskLifecycleStartup` | `server.js` | tasks | `30000` | One startup delay before `guardedTaskLifecycle`. |
 
 Raw intervals need extra care before refactoring because they do not have the
 pause/dedup/error accounting from `guardScheduler`.
@@ -218,15 +218,14 @@ broadcast. It still has no durable multi-instance lock and no
 `scheduler_executions` pause/error accounting, so multiple app instances may
 broadcast independently.
 
-`taskLifecycleStartup` remains a raw startup `setTimeout` after 30 seconds and
-`taskLifecycleDaily` remains a raw 24-hour `setInterval`; both call
-`runTaskLifecycle()`. The lifecycle runner updates `tasks.health_score` for
-active tasks or archives score-zero tasks with `status = 'archived'` and
-`archive_reason = 'auto_expired'`. It now has an in-process overlap guard, so a
-second run in the same Node.js process returns `skipped: true` while the first
-run is still active, and the guard resets in `finally` after success or error.
-It still has no durable multi-instance lock and no `scheduler_executions`
-pause/error accounting.
+`taskLifecycleStartup` remains a raw startup `setTimeout` after 30 seconds, but
+it calls the same `guardedTaskLifecycle` runner as the minute interval. The
+guarded `runTaskLifecycle` job is deduplicated daily in `scheduler_executions`.
+The lifecycle runner updates `tasks.health_score` only when the calculated score
+changes and runs the strict cancelled-booking machine auto-archive policy. That
+archive path uses a transaction-scoped advisory lock, repeats the safety
+predicates in the `UPDATE`, writes canonical task history, and does not delete
+or mark tasks done. Generic score-zero archive remains report-only.
 
 ## Test Anchors
 

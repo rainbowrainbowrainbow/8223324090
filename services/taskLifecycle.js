@@ -170,59 +170,78 @@ function archiveCancelledBookingAutoArchiveBatchSql() {
 }
 
 async function tryAcquireCancelledBookingAutoArchiveLock(query) {
-    const result = await query('SELECT pg_try_advisory_lock(hashtext($1)) AS acquired', [CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY]);
+    const result = await query('SELECT pg_try_advisory_xact_lock(hashtext($1)) AS acquired', [CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY]);
     return result.rows?.[0]?.acquired === true;
 }
 
-async function releaseCancelledBookingAutoArchiveLock(query) {
-    await query('SELECT pg_advisory_unlock(hashtext($1)) AS released', [CANCELLED_BOOKING_AUTO_ARCHIVE_LOCK_KEY]);
-}
-
 async function runCancelledBookingAutoArchive(deps = {}) {
-    const query = deps.query || pool.query.bind(pool);
+    const poolClient = deps.client || null;
+    const ownsClient = !poolClient && !deps.query;
+    const client = poolClient || (deps.query ? { query: deps.query } : await pool.connect());
+    const query = client.query.bind(client);
     const now = deps.now || new Date();
     const today = deps.today || kyivDateString(now);
     const batchLimit = Math.max(1, Math.min(Number(deps.batchLimit) || CANCELLED_BOOKING_AUTO_ARCHIVE_BATCH_LIMIT, CANCELLED_BOOKING_AUTO_ARCHIVE_BATCH_LIMIT));
     const dryRun = deps.dryRun === true;
 
-    const shadow = await query(selectCancelledBookingAutoArchiveShadowSql(), [today]);
-    const markerTotal = Number(shadow.rows?.[0]?.marker_total || 0);
-    const candidateCount = Number(shadow.rows?.[0]?.candidates || 0);
-    const protectedCount = Math.max(0, markerTotal - candidateCount);
-
-    const candidates = await query(selectCancelledBookingAutoArchiveCandidatesSql(), [today, batchLimit]);
-    const candidateIds = (candidates.rows || []).map(row => Number(row.id)).filter(id => Number.isInteger(id) && id > 0);
-
-    if (dryRun || !candidateIds.length) {
-        return {
-            candidates: candidateCount,
-            batchCandidates: candidateIds.length,
-            archived: 0,
-            protected: protectedCount,
-            skipped: dryRun ? candidateIds.length : 0,
-            drift: 0,
-            lockSkipped: false,
-            dryRun
-        };
-    }
-
-    const lockAcquired = await tryAcquireCancelledBookingAutoArchiveLock(query);
-    if (!lockAcquired) {
-        return {
-            candidates: candidateCount,
-            batchCandidates: candidateIds.length,
-            archived: 0,
-            protected: protectedCount,
-            skipped: candidateIds.length,
-            drift: candidateIds.length,
-            lockSkipped: true,
-            dryRun: false
-        };
-    }
-
-    let result;
     try {
-        result = await query(
+        if (dryRun) {
+            const shadow = await query(selectCancelledBookingAutoArchiveShadowSql(), [today]);
+            const markerTotal = Number(shadow.rows?.[0]?.marker_total || 0);
+            const candidateCount = Number(shadow.rows?.[0]?.candidates || 0);
+            const protectedCount = Math.max(0, markerTotal - candidateCount);
+            const candidates = await query(selectCancelledBookingAutoArchiveCandidatesSql(), [today, batchLimit]);
+            const candidateIds = (candidates.rows || []).map(row => Number(row.id)).filter(id => Number.isInteger(id) && id > 0);
+            return {
+                candidates: candidateCount,
+                batchCandidates: candidateIds.length,
+                archived: 0,
+                protected: protectedCount,
+                skipped: candidateIds.length,
+                drift: 0,
+                lockSkipped: false,
+                dryRun: true
+            };
+        }
+
+        await query('BEGIN');
+        const lockAcquired = await tryAcquireCancelledBookingAutoArchiveLock(query);
+        if (!lockAcquired) {
+            await query('ROLLBACK');
+            return {
+                candidates: 0,
+                batchCandidates: 0,
+                archived: 0,
+                protected: 0,
+                skipped: 0,
+                drift: 0,
+                lockSkipped: true,
+                dryRun: false
+            };
+        }
+
+        const shadow = await query(selectCancelledBookingAutoArchiveShadowSql(), [today]);
+        const markerTotal = Number(shadow.rows?.[0]?.marker_total || 0);
+        const candidateCount = Number(shadow.rows?.[0]?.candidates || 0);
+        const protectedCount = Math.max(0, markerTotal - candidateCount);
+        const candidates = await query(selectCancelledBookingAutoArchiveCandidatesSql(), [today, batchLimit]);
+        const candidateIds = (candidates.rows || []).map(row => Number(row.id)).filter(id => Number.isInteger(id) && id > 0);
+
+        if (!candidateIds.length) {
+            await query('COMMIT');
+            return {
+                candidates: candidateCount,
+                batchCandidates: 0,
+                archived: 0,
+                protected: protectedCount,
+                skipped: 0,
+                drift: 0,
+                lockSkipped: false,
+                dryRun: false
+            };
+        }
+
+        const result = await query(
             archiveCancelledBookingAutoArchiveBatchSql(),
             [
                 candidateIds,
@@ -233,24 +252,31 @@ async function runCancelledBookingAutoArchive(deps = {}) {
                 MACHINE_LIFECYCLE_MARKER_VERSION
             ]
         );
-    } finally {
-        await releaseCancelledBookingAutoArchiveLock(query);
-    }
-    const archived = Number(result.rows?.[0]?.archived || 0);
-    const historyCount = Number(result.rows?.[0]?.history_count || 0);
-    const exactCount = Number(result.rows?.[0]?.exact_count || 0);
+        await query('COMMIT');
 
-    return {
-        candidates: candidateCount,
-        batchCandidates: candidateIds.length,
-        archived,
-        protected: protectedCount,
-        skipped: Math.max(0, candidateIds.length - exactCount),
-        drift: Math.max(0, candidateIds.length - archived),
-        history: historyCount,
-        lockSkipped: false,
-        dryRun: false
-    };
+        const archived = Number(result.rows?.[0]?.archived || 0);
+        const historyCount = Number(result.rows?.[0]?.history_count || 0);
+        const exactCount = Number(result.rows?.[0]?.exact_count || 0);
+
+        return {
+            candidates: candidateCount,
+            batchCandidates: candidateIds.length,
+            archived,
+            protected: protectedCount,
+            skipped: Math.max(0, candidateIds.length - exactCount),
+            drift: Math.max(0, candidateIds.length - archived),
+            history: historyCount,
+            lockSkipped: false,
+            dryRun: false
+        };
+    } catch (err) {
+        if (!dryRun) {
+            try { await query('ROLLBACK'); } catch (rollbackErr) { log.error('Cancelled booking auto-archive rollback failed', rollbackErr); }
+        }
+        throw err;
+    } finally {
+        if (ownsClient && typeof client.release === 'function') client.release();
+    }
 }
 
 function calculateHealthScore(task, now = new Date()) {
@@ -298,7 +324,7 @@ async function runTaskLifecycle(deps = {}) {
                    t.visibility, t.archived_at,
                    ${taskHumanTouchSql('t')} AS human_touched
             FROM tasks t
-            WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+            WHERE LOWER(COALESCE(t.status, 'todo')) NOT IN ('done', 'completed', 'complete', 'cancelled', 'canceled', 'archived')
               AND t.archived_at IS NULL
         `);
 
@@ -307,7 +333,7 @@ async function runTaskLifecycle(deps = {}) {
         let skipped = 0;
         let archiveCandidates = 0;
         const autoArchive = await runCancelledBookingAutoArchive({
-            query,
+            query: deps.query ? query : undefined,
             now,
             batchLimit: deps.autoArchiveBatchLimit,
             dryRun: deps.autoArchiveDryRun === true
@@ -338,7 +364,7 @@ async function runTaskLifecycle(deps = {}) {
                  WHERE id = $2
                    AND COALESCE(business_context, 'event_genix') = $3
                    AND archived_at IS NULL
-                   AND COALESCE(status, 'todo') NOT IN ('done', 'completed', 'cancelled', 'archived')
+                   AND LOWER(COALESCE(status, 'todo')) NOT IN ('done', 'completed', 'complete', 'cancelled', 'canceled', 'archived')
                    AND health_score IS DISTINCT FROM $1`,
                 [score, task.id, businessContext]
             );

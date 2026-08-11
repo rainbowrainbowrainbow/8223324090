@@ -22,6 +22,7 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkSLABreach', functionName: 'checkSLABreach', sourceFile: 'services/scheduler.js', owner: 'sla', interval: '60000', dedup: 'hourly', sideEffects: ['telegram', 'database'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkScheduledAnnouncements', functionName: 'checkScheduledAnnouncements', sourceFile: 'services/scheduler.js', owner: 'announcements', interval: '60000', dedup: 'hourly', sideEffects: ['telegram', 'database'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkTaskOverdue', functionName: 'checkTaskOverdue', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: 'hourly', sideEffects: ['database'] },
+    { name: 'runTaskLifecycle', functionName: 'runTaskLifecycle', sourceFile: 'services/taskLifecycle.js', owner: 'tasks', interval: '60 * 1000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/task-lifecycle-scheduler-hardening.test.js'] },
     { name: 'checkCustomerRetention', functionName: 'checkCustomerRetention', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkAutoReport', functionName: 'checkAutoReport', sourceFile: 'services/scheduler.js', owner: 'reports', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'] },
     { name: 'checkHotLeads', functionName: 'checkHotLeads', sourceFile: 'services/scheduler.js', owner: 'leads', interval: '60000', dedup: 'hourly', sideEffects: ['telegram', 'database'] },
@@ -60,8 +61,7 @@ const RAW_SCHEDULER_INTERVALS = [
     { name: 'marketingPublishScheduled', kind: 'setInterval', sourceFile: 'server.js', functionName: 'runMarketingScheduledPublish', interval: '5 * 60 * 1000', owner: 'marketing', fragment: 'await runMarketingScheduledPublish();', tests: ['tests/marketing-scheduler-hardening.test.js'] },
     { name: 'marketingWeeklyPlan', kind: 'setInterval', sourceFile: 'server.js', functionName: 'runMarketingWeeklyPlanScheduler', interval: '60 * 1000', owner: 'marketing', fragment: 'await runMarketingWeeklyPlanScheduler();', tests: ['tests/marketing-scheduler-hardening.test.js'] },
     { name: 'dashboardAlertBroadcaster', kind: 'starter', sourceFile: 'server.js', functionName: 'startAlertBroadcaster', interval: '60000', owner: 'dashboard', fragment: 'startAlertBroadcaster(60000)', tests: ['tests/dashboard-alert-broadcaster-hardening.test.js'] },
-    { name: 'taskLifecycleStartup', kind: 'setTimeout', sourceFile: 'server.js', functionName: 'runTaskLifecycle', interval: '30000', owner: 'tasks', fragment: 'setTimeout(() => runTaskLifecycle().catch(() => {}), 30000)', tests: ['tests/task-lifecycle-scheduler-hardening.test.js'] },
-    { name: 'taskLifecycleDaily', kind: 'setInterval', sourceFile: 'server.js', functionName: 'runTaskLifecycle', interval: '24 * 60 * 60 * 1000', owner: 'tasks', fragment: 'setInterval(() => runTaskLifecycle().catch(() => {}), 24 * 60 * 60 * 1000)', tests: ['tests/task-lifecycle-scheduler-hardening.test.js'] }
+    { name: 'taskLifecycleStartup', kind: 'setTimeout', sourceFile: 'server.js', functionName: 'guardedTaskLifecycle', interval: '30000', owner: 'tasks', fragment: 'setTimeout(() => guardedTaskLifecycle().catch(() => {}), 30000)', tests: ['tests/task-lifecycle-scheduler-hardening.test.js'] }
 ];
 
 const STATIC_ONLY_SCHEDULER_JOBS = [

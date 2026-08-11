@@ -59,6 +59,14 @@ function nullableAmountMinor(value) {
     return toPostgresBigint(value, { allowZero: true });
 }
 
+function normalizeBoolean(value) {
+    if (value === true || value === false) return value;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    return null;
+}
+
 function requireReason(value, code = 'reason_required') {
     const text = String(value || '').trim();
     if (!text) throw new CashierOperationsError(code, 'Reason is required');
@@ -213,6 +221,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
         provider_cashier_id: binding.rows[0]?.provider_cashier_id || null,
         register_credential_ref: order.provider_license_ref || null,
         cashier_credential_ref: binding.rows[0]?.provider_cashier_login_ref || order.provider_license_ref || null,
+        expected_is_test: normalizeBoolean(order.register_expected_is_test),
         fiscal_profile_id: fiscalProfileId,
         fiscal_location_id: fiscalLocationId,
         fiscal_register_id: fiscalRegisterId
@@ -244,10 +253,10 @@ async function ensureOpenShiftForSale(client, { order, user }) {
              fiscal_profile_id, fiscal_register_id, fiscal_shift_id, operation_type, status,
              idempotency_key, provider, provider_operation_id, currency, request_snapshot, initiated_by_user_id,
              provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
-             register_credential_ref, cashier_credential_ref, fiscal_configuration_hash, fiscal_location_id, external_stage
+             register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash, fiscal_location_id, external_stage
          )
          VALUES ($1, $2, $3, 'shift_open', 'pending', $4, 'checkbox', $5, 'UAH', $6::jsonb, $7,
-                 $8, $9, $10, $11, $12, $13, $14, $15, 'auth')
+                 $8, $9, $10, $11, $12, $13, $14, $15, $16, 'auth')
          RETURNING *`,
         [
             fiscalProfileId,
@@ -269,6 +278,7 @@ async function ensureOpenShiftForSale(client, { order, user }) {
             providerContext.provider_cashier_id,
             providerContext.register_credential_ref,
             providerContext.cashier_credential_ref,
+            providerContext.expected_is_test,
             configurationHash,
             fiscalLocationId
         ]

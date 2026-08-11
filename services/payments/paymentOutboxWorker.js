@@ -22,6 +22,15 @@ const RETRYABLE_JOB_TYPES = Object.freeze([
 ]);
 const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation']);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
+const SHIFT_OPEN_LOOKUP_STAGES = new Set(['shift_request_maybe_submitted', 'shift_lookup']);
+const SHIFT_CLOSE_LOOKUP_STAGES = new Set(['shift_close_request', 'shift_close_lookup']);
+const SHIFT_LIFECYCLE_TRANSITIONS = Object.freeze({
+    CREATED: ['OPENING'],
+    OPENING: ['OPENED', 'CLOSED'],
+    OPENED: ['CLOSING', 'CLOSED'],
+    CLOSING: ['CLOSED'],
+    CLOSED: ['OPENING']
+});
 const CASHIER_PRO_JOB_TYPES = new Set(['receipt_return', 'service_receipt']);
 
 class PaymentOutboxWorkerError extends Error {
@@ -81,6 +90,26 @@ function safeJsonObject(value) {
         }
     }
     return {};
+}
+
+function normalizeBoolean(value) {
+    if (value === true || value === false) return value;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    return null;
+}
+
+function assertLifecycleTransition(current, next) {
+    const currentText = String(current || '').trim().toUpperCase();
+    const nextText = String(next || '').trim().toUpperCase();
+    const allowed = SHIFT_LIFECYCLE_TRANSITIONS[currentText] || [];
+    if (!allowed.includes(nextText)) {
+        throw new PaymentOutboxWorkerError('invalid_shift_lifecycle_transition', 'Invalid fiscal shift lifecycle transition', {
+            retryable: false,
+            details: { current: currentText || null, next: nextText || null, allowed }
+        });
+    }
 }
 
 function classifyWorkerError(error) {
@@ -271,6 +300,7 @@ async function loadJobContext(client, job) {
              fr.status AS register_status,
              fr.provider_license_ref,
              fr.feature_enabled AS register_feature_enabled,
+             fr.metadata->>'expected_is_test' AS current_expected_is_test,
              fp.provider_organization_id AS current_provider_organization_id,
              fl.provider_outlet_id AS current_provider_outlet_id,
              fs.status AS fiscal_shift_status,
@@ -448,12 +478,20 @@ function assertImmutableProviderContext(context = {}) {
     for (const [field, expected, current] of pairs) {
         const expectedText = String(expected ?? '').trim();
         const currentText = String(current ?? '').trim();
-        if (expectedText && currentText && expectedText !== currentText) {
+        if (expectedText && expectedText !== currentText) {
             throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal mapping differs from immutable fiscal operation snapshot', {
                 retryable: false,
                 details: { field, expected: expectedText || null, current: currentText || null }
             });
         }
+    }
+    const expectedIsTest = normalizeBoolean(job.expected_is_test);
+    const currentExpectedIsTest = normalizeBoolean(job.current_expected_is_test);
+    if (expectedIsTest == null || currentExpectedIsTest == null || expectedIsTest !== currentExpectedIsTest) {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal mapping test-mode expectation differs from immutable fiscal operation snapshot', {
+            retryable: false,
+            details: { field: 'expected_is_test', expected: expectedIsTest, current: currentExpectedIsTest }
+        });
     }
     const request = safeJsonObject(job.fiscal_request_snapshot);
     const requestHash = String(request.fiscal_configuration_hash || '').trim();
@@ -1027,6 +1065,7 @@ async function markShiftJobSucceeded(client, context, result) {
                 details: { providerStatus: providerStatus || null }
             });
         }
+        assertLifecycleTransition(context.job.fiscal_shift_lifecycle_stage || 'OPENING', 'OPENED');
         await client.query(
             `UPDATE fiscal_shifts
                 SET status = 'open',
@@ -1050,7 +1089,15 @@ async function markShiftJobSucceeded(client, context, result) {
         return { ok: true, jobId: Number(context.job.id), source: result.source };
     }
     if (context.job.job_type === 'shift_close') {
+        const expectedShiftId = String(context.job.provider_shift_id || context.job.payload?.provider_shift_id || '').trim();
+        const actualShiftId = String(result.response?.id || '').trim();
         const providerStatus = String(result.response?.status || '').trim().toUpperCase();
+        if (!expectedShiftId || !actualShiftId || actualShiftId !== expectedShiftId) {
+            throw new PaymentOutboxWorkerError('checkbox_shift_close_identity_mismatch', 'Checkbox shift close lookup did not return the exact immutable provider shift id', {
+                retryable: false,
+                details: { expectedShiftId: expectedShiftId || null, actualShiftId: actualShiftId || null, providerStatus: providerStatus || null }
+            });
+        }
         if (providerStatus && providerStatus !== 'CLOSED') {
             throw new PaymentOutboxWorkerError('checkbox_shift_close_not_completed', 'Checkbox shift close has not reached CLOSED status', {
                 retryable: true,
@@ -1058,6 +1105,7 @@ async function markShiftJobSucceeded(client, context, result) {
                 details: { providerStatus }
             });
         }
+        assertLifecycleTransition(context.job.fiscal_shift_lifecycle_stage || 'CLOSING', 'CLOSED');
     }
     await client.query(
         `UPDATE fiscal_shifts
@@ -1081,7 +1129,7 @@ async function runShiftJob(provider, context) {
         throw new PaymentOutboxWorkerError('checkbox_shift_operation_not_supported', 'Checkbox shift operation is not configured', { retryable: false });
     }
     const stage = externalStage(context.job);
-    if (context.job.job_type === 'shift_open' && (Number(context.job.attempts || 0) > 1 || stage === 'shift_request_maybe_submitted' || stage === 'shift_lookup') && (provider.lookupShift || provider.ensureShiftOpened)) {
+    if (context.job.job_type === 'shift_open' && SHIFT_OPEN_LOOKUP_STAGES.has(stage) && (provider.lookupShift || provider.ensureShiftOpened)) {
         await context.recordStage?.('shift_lookup');
         const lookupInput = {
             providerOperationId: context.job.provider_operation_id,
@@ -1094,7 +1142,7 @@ async function runShiftJob(provider, context) {
             : await provider.ensureShiftOpened(lookupInput, { allowOpenRequest: false });
         return { response, source: 'shift_lookup' };
     }
-    if (context.job.job_type === 'shift_close' && Number(context.job.attempts || 0) > 1 && provider.getCurrentShiftStatus) {
+    if (context.job.job_type === 'shift_close' && SHIFT_CLOSE_LOOKUP_STAGES.has(stage) && provider.getCurrentShiftStatus) {
         await context.recordStage?.('shift_close_lookup');
         const response = await provider.getCurrentShiftStatus({
             providerOperationId: context.job.provider_operation_id,
@@ -1104,8 +1152,14 @@ async function runShiftJob(provider, context) {
         });
         const expectedShiftId = String(context.job.provider_shift_id || context.job.payload?.provider_shift_id || '').trim();
         const actualShiftId = String(response?.id || '').trim();
-        if (!actualShiftId || (expectedShiftId && actualShiftId !== expectedShiftId) || String(response?.status || '').toUpperCase() === 'CLOSED') {
-            return { response: { ...response, status: 'CLOSED', id: expectedShiftId || actualShiftId || null }, source: 'shift_close_lookup' };
+        if (!expectedShiftId || !actualShiftId || actualShiftId !== expectedShiftId) {
+            throw new PaymentOutboxWorkerError('checkbox_shift_close_identity_mismatch', 'Checkbox current shift does not match the immutable shift being closed', {
+                retryable: false,
+                details: { expectedShiftId: expectedShiftId || null, actualShiftId: actualShiftId || null, providerStatus: response?.status || null }
+            });
+        }
+        if (String(response?.status || '').toUpperCase() === 'CLOSED') {
+            return { response: { ...response, status: 'CLOSED', id: actualShiftId }, source: 'shift_close_lookup' };
         }
         throw new PaymentOutboxWorkerError('checkbox_shift_close_pending', 'Checkbox shift close is still pending', {
             retryable: true,
@@ -1122,7 +1176,10 @@ async function runShiftJob(provider, context) {
             payload: context.job.payload || {}
         });
     }
-    await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request_maybe_submitted' : 'shift_close_request');
+    await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request' : 'shift_close_request');
+    if (context.job.job_type === 'shift_open') {
+        await context.recordStage?.('shift_request_maybe_submitted');
+    }
     const response = await method.call(provider, {
         providerOperationId: context.job.provider_operation_id,
         providerRequestUuid: context.job.provider_operation_id,

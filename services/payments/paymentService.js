@@ -758,7 +758,8 @@ async function confirmPaymentOrder({
                     fr.status AS fiscal_register_status,
                     fr.feature_enabled,
                     fr.provider_license_ref,
-                    fr.provider_register_id
+                    fr.provider_register_id,
+                    fr.metadata->>'expected_is_test' AS register_expected_is_test
                FROM payment_orders po
                JOIN fiscal_profiles fp ON fp.id = po.fiscal_profile_id
                JOIN fiscal_registers fr

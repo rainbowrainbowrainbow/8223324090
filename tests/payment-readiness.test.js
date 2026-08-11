@@ -112,14 +112,29 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(worker, /recordStage\?\.\('receipt_lookup'\)/);
     assert.match(worker, /checkbox_shift_open_pending/);
     assert.match(worker, /checkbox_shift_close_pending/);
+    assert.match(worker, /SHIFT_OPEN_LOOKUP_STAGES\.has\(stage\)/);
+    assert.match(worker, /SHIFT_CLOSE_LOOKUP_STAGES\.has\(stage\)/);
+    assert.match(worker, /checkbox_shift_close_identity_mismatch/);
+    assert.match(worker, /assertLifecycleTransition/);
+    assert.match(worker, /current_expected_is_test/);
+    assert.match(worker, /expected_is_test/);
+    const shiftJobBlock = worker.slice(worker.indexOf('async function runShiftJob'), worker.indexOf('async function runReceiptSaleJob'));
+    assert.doesNotMatch(shiftJobBlock, /attempts\s*\|\|\s*0/, 'Shift recovery must not infer provider mutation from attempts count');
     assert.match(provider, /checkbox_shift_explicit_sync_required/);
     assert.match(provider, /expectedShiftId: expected\.expectedShiftId \|\| expected\.providerOperationId/);
+    assert.match(provider, /notFound: true/);
+    assert.doesNotMatch(provider, /id: expected\.expectedShiftId \|\| null, status: CLOSED_SHIFT_STATUS/);
     assert.match(client, /async closeShift\(\)[\s\S]*body: \{\}/);
     assert.match(recovery, /PRE_SELL_STAGES = new Set\(\['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation'\]\)/);
     assert.match(recovery, /Date\.parse\(row\.heartbeat_at \|\| row\.locked_at\)/);
     assert.match(recovery, /targetStage: stage \|\| 'auth'/);
     assert.doesNotMatch(recovery, /request_snapshot = COALESCE\(request_snapshot/);
     assert.match(recovery, /max_attempts = CASE WHEN status = 'dead' THEN max_attempts \+ 1 ELSE max_attempts END/);
+    const paymentService = read('services/payments/paymentService.js');
+    const cashierOps = read('services/payments/cashierOperationsService.js');
+    assert.match(paymentService, /fr\.metadata->>'expected_is_test' AS register_expected_is_test/);
+    assert.match(cashierOps, /expected_is_test: normalizeBoolean\(order\.register_expected_is_test\)/);
+    assert.match(cashierOps, /register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash/);
 });
 
 test('scheduler surface documents readiness probe and degraded outbox wrapper', () => {

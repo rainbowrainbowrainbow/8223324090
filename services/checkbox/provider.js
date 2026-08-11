@@ -1195,7 +1195,7 @@ class CheckboxRuntimeProvider {
                 return current;
             } catch (error) {
                 if (error instanceof CheckboxClientError && error.status === 404) {
-                    return { id: expected.expectedShiftId || null, status: CLOSED_SHIFT_STATUS, registerId: expected.expectedRegisterId || null, cashierId: expected.expectedCashierId || null, raw: {} };
+                    return { id: null, status: CLOSED_SHIFT_STATUS, registerId: expected.expectedRegisterId || null, cashierId: expected.expectedCashierId || null, raw: {}, notFound: true };
                 }
                 throw error;
             }

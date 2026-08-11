@@ -312,6 +312,7 @@ async function runSuite(testDb, testFile) {
         serverEnv.OPENAI_API_BASE_URL = `http://127.0.0.1:${myDayOpenAiMockPort}/v1`;
         serverEnv.MY_DAY_OPENAI_MOCK_PORT = String(myDayOpenAiMockPort);
         serverEnv.MY_DAY_CLASSIFICATION_TIMEOUT_MS = '250';
+        serverEnv.TASK_AI_DRAFT_BUNDLE_ENABLED = 'true';
     }
     if (checkboxBrowserMockPort) {
         const ref = 'PARK_MIDDLE_BROWSER';

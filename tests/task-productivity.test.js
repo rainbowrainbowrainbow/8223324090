@@ -13,6 +13,8 @@ test('derives productivity summary, streak, charts, and source insights from tas
         {
             id: 1,
             status: 'done',
+            source_type: 'manual',
+            created_by_user_id: 100,
             category: 'personal',
             created_at: '2026-05-20T08:00:00Z',
             completed_at: '2026-05-23T08:00:00Z',
@@ -28,6 +30,8 @@ test('derives productivity summary, streak, charts, and source insights from tas
         {
             id: 2,
             status: 'done',
+            source_type: 'manual',
+            created_by_user_id: 100,
             category: 'event',
             created_at: '2026-05-19T08:00:00Z',
             completed_at: '2026-05-22T08:00:00Z',
@@ -44,6 +48,8 @@ test('derives productivity summary, streak, charts, and source insights from tas
         {
             id: 3,
             status: 'done',
+            source_type: 'manual',
+            created_by_user_id: 100,
             category: 'admin',
             created_at: '2026-05-18T08:00:00Z',
             completed_at: '2026-05-21T08:00:00Z',
@@ -53,6 +59,8 @@ test('derives productivity summary, streak, charts, and source insights from tas
         {
             id: 4,
             status: 'in_progress',
+            source_type: 'manual',
+            created_by_user_id: 100,
             workflow_state: 'in_progress',
             category: 'personal',
             created_at: '2026-05-23T07:00:00Z',
@@ -67,6 +75,8 @@ test('derives productivity summary, streak, charts, and source insights from tas
         {
             id: 5,
             status: 'cancelled',
+            source_type: 'manual',
+            created_by_user_id: 100,
             category: 'admin',
             created_at: '2026-05-23T07:00:00Z',
             subtask_count: 10,
@@ -103,6 +113,72 @@ test('derives productivity summary, streak, charts, and source insights from tas
     assert.ok(data.charts.createdVsCompleted.some(item => item.date === '2026-05-23' && item.created === 1 && item.completed === 5));
     assert.ok(data.achievements.some(item => item.id === 'productivity_ai_first_done' && item.unlocked));
     assert.ok(data.achievements.some(item => item.id === 'productivity_template_first_done' && item.unlocked));
+});
+
+test('productivity excludes unaccepted machine and ambiguous tasks without breaking manual work', () => {
+    const data = buildTaskProductivity([
+        {
+            id: 10,
+            status: 'completed',
+            source_type: 'manual',
+            created_by_user_id: 100,
+            completed_at: '2026-05-23T08:00:00Z',
+            subtask_count: 0,
+            subtask_done_count: 0
+        },
+        {
+            id: 11,
+            status: 'done',
+            source_type: 'booking',
+            type: 'auto_complete',
+            created_by: 'rule_engine',
+            created_by_user_id: null,
+            completed_at: '2026-05-23T08:10:00Z',
+            subtask_count: 3,
+            subtask_done_count: 3,
+            subtask_completed_events: [
+                { id: 111, completed_at: '2026-05-23T08:15:00Z' }
+            ]
+        },
+        {
+            id: 12,
+            status: 'done',
+            source_type: 'booking',
+            type: 'auto_complete',
+            created_by: 'rule_engine',
+            created_by_user_id: null,
+            owner_accepted: true,
+            completed_at: '2026-05-23T08:20:00Z',
+            subtask_count: 0,
+            subtask_done_count: 0
+        },
+        {
+            id: 13,
+            status: 'todo',
+            deadline: '2026-05-22T08:00:00Z',
+            subtask_count: 0,
+            subtask_done_count: 0
+        },
+        {
+            id: 14,
+            status: 'todo',
+            source_type: 'manual',
+            created_by_user_id: 100,
+            snoozed_until: '2026-05-24T08:00:00Z',
+            deadline: '2026-05-20T08:00:00Z',
+            subtask_count: 0,
+            subtask_done_count: 0
+        }
+    ], {
+        now: new Date('2026-05-23T09:00:00+03:00')
+    });
+
+    assert.equal(data.summary.totalTasks, 3);
+    assert.equal(data.summary.completedParentTasks, 2);
+    assert.equal(data.summary.completedUnits, 2);
+    assert.equal(data.summary.overdueCount, 0);
+    assert.equal(data.summary.completionRate, 67);
+    assert.equal(data.charts.completedByDay.find(item => item.date === '2026-05-23')?.count, 2);
 });
 
 test('derives template_ai only when persisted child sources contain template and ai', () => {

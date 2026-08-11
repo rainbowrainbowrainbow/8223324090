@@ -18,6 +18,13 @@ const { buildWorkQueue } = require('../services/workQueue');
 const { getOmniAccountAlertsAsync } = require('../services/omni-accounts');
 const { TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const {
+    taskKpiActiveWorkSql,
+    taskKpiCanonicalOverdueSql,
+    taskKpiCompletedSql,
+    taskKpiEligibleSql,
+    taskKpiMachineSignalSql
+} = require('../services/taskPerformancePolicy');
+const {
     resolveBusinessScope,
     requireBusinessScope,
     pushBusinessScopeCondition
@@ -945,36 +952,37 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const statsBusinessCondition = appendDashboardBusinessScope(statsParams, businessScope, 't');
                 const statsResult = await pool.query(`
                     SELECT
-                        (COUNT(*) + COALESCE(SUM(COALESCE(st.total, 0)), 0))::int AS total,
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') NOT IN ('done','completed','complete','cancelled','archived'))::int AS active,
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'todo')::int AS todo,
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'in_progress')::int AS in_progress,
                         (
-                            COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete'))
-                            + COALESCE(SUM(COALESCE(st.done, 0)), 0)
+                            COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')})
+                            + COALESCE(SUM(COALESCE(st.total, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
+                        )::int AS total,
+                        COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')})::int AS active,
+                        COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')} AND COALESCE(t.status, 'todo') = 'todo')::int AS todo,
+                        COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')} AND COALESCE(t.status, 'todo') = 'in_progress')::int AS in_progress,
+                        (
+                            COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})
+                            + COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
                         )::int AS done,
                         (
                             COUNT(*) FILTER (
-                                WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete')
+                                WHERE ${taskKpiEligibleSql('t')}
+                                  AND ${taskKpiCompletedSql('t')}
                                   AND t.completed_at IS NOT NULL
                                   AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
                             )
-                            + COALESCE(SUM(COALESCE(st.done_today, 0)), 0)
+                            + COALESCE(SUM(COALESCE(st.done_today, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
                         )::int AS done_today,
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete'))::int AS parent_done,
+                        COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})::int AS parent_done,
                         COUNT(*) FILTER (
-                            WHERE COALESCE(t.status, 'todo') IN ('done','completed','complete')
+                            WHERE ${taskKpiEligibleSql('t')}
+                              AND ${taskKpiCompletedSql('t')}
                               AND t.completed_at IS NOT NULL
                               AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = ${statsTodayRef}::date
                         )::int AS parent_done_today,
-                        COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_done,
-                        COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
+                        COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtask_done,
+                        COALESCE(SUM(COALESCE(st.done_today, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtask_done_today,
                         'completed_units = completed_parent_tasks + completed_subtasks' AS completed_metric_contract,
-                        COUNT(*) FILTER (
-                            WHERE t.deadline IS NOT NULL
-                              AND t.deadline < NOW()
-                              AND COALESCE(t.status, 'todo') NOT IN ('done','completed','complete','cancelled','archived')
-                        )::int AS overdue
+                        COUNT(*) FILTER (WHERE ${taskKpiCanonicalOverdueSql('t', `${statsTodayRef}::date`)})::int AS overdue
                     FROM tasks t
                     LEFT JOIN (
                         SELECT task_id,
@@ -1789,11 +1797,12 @@ router.get('/widgets/:type', requireDashboardWidgetRevenue, allowDashboardPublic
                 const taskBusinessCondition = appendDashboardBusinessScope(params, businessScope, 't');
                 const stats = await pool.query(`
                     SELECT
-                        COUNT(*) FILTER (WHERE t.health_score > 70 AND t.status NOT IN ('done','cancelled','archived'))::int AS healthy,
-                        COUNT(*) FILTER (WHERE t.health_score BETWEEN 41 AND 70 AND t.status NOT IN ('done','cancelled','archived'))::int AS warning,
-                        COUNT(*) FILTER (WHERE t.health_score BETWEEN 1 AND 40 AND t.status NOT IN ('done','cancelled','archived'))::int AS critical,
-                        COUNT(*) FILTER (WHERE t.status = 'archived')::int AS archived,
-                        COALESCE(AVG(t.health_score) FILTER (WHERE t.status NOT IN ('done','cancelled','archived')), 0)::int AS avg_score
+                        COUNT(*) FILTER (WHERE ${taskKpiMachineSignalSql('t')} AND t.health_score > 70 AND ${taskKpiActiveWorkSql('t')})::int AS healthy,
+                        COUNT(*) FILTER (WHERE ${taskKpiMachineSignalSql('t')} AND t.health_score BETWEEN 41 AND 70 AND ${taskKpiActiveWorkSql('t')})::int AS warning,
+                        COUNT(*) FILTER (WHERE ${taskKpiMachineSignalSql('t')} AND t.health_score BETWEEN 1 AND 40 AND ${taskKpiActiveWorkSql('t')})::int AS critical,
+                        COUNT(*) FILTER (WHERE ${taskKpiMachineSignalSql('t')} AND t.status = 'archived')::int AS archived,
+                        COALESCE(AVG(t.health_score) FILTER (WHERE ${taskKpiMachineSignalSql('t')} AND ${taskKpiActiveWorkSql('t')}), 0)::int AS avg_score,
+                        'automation_hygiene' AS metric_scope
                     FROM tasks t
                     WHERE 1=1 ${visibility} ${taskBusinessCondition}
                 `, params).catch(() => ({ rows: [{ healthy: 0, warning: 0, critical: 0, archived: 0, avg_score: 0 }] }));

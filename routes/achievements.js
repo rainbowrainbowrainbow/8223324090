@@ -7,6 +7,10 @@ const { pool } = require('../db');
 const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
 const { buildTaskOwnerMatch } = require('../services/taskPolicy');
+const {
+    taskKpiCompletedSql,
+    taskKpiEligibleSql
+} = require('../services/taskPerformancePolicy');
 const log = createLogger('Achievements');
 
 async function optionalAchievementQuery(label, sql, params = [], fallbackRow = {}) {
@@ -163,11 +167,11 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
             optionalAchievementQuery('task_completion', `
                 SELECT
                     (
-                        COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
-                        + COALESCE(SUM(COALESCE(st.done, 0)), 0)
+                        COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})
+                        + COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)
                     )::int AS cnt,
-                    COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS parent_cnt,
-                    COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtask_cnt
+                    COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')})::int AS parent_cnt,
+                    COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtask_cnt
                 FROM tasks t
                 LEFT JOIN (
                     SELECT task_id,
@@ -180,11 +184,11 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
             optionalAchievementQuery('coin_transactions_gifts', "SELECT COUNT(*)::int as cnt FROM coin_transactions WHERE user_id = $1 AND type = 'gift' AND amount < 0", [userId], { cnt: 0 }),
             optionalAchievementQuery('task_decomposition', `
                 SELECT
-                    COUNT(DISTINCT t.id) FILTER (WHERE COALESCE(st.total, 0) > 0)::int AS decomposed_tasks,
-                    COUNT(DISTINCT t.id) FILTER (WHERE COALESCE(st.total, 0) > 0 AND t.status = 'done')::int AS decomposed_tasks_completed,
-                    COALESCE(SUM(COALESCE(st.done, 0)), 0)::int AS subtasks_completed,
-                    COUNT(DISTINCT t.id) FILTER (WHERE t.status = 'done' AND COALESCE(st.ai_count, 0) > 0)::int AS ai_decomposed_tasks_completed,
-                    COUNT(DISTINCT t.id) FILTER (WHERE t.status = 'done' AND COALESCE(st.template_count, 0) > 0)::int AS template_decomposed_tasks_completed
+                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND COALESCE(st.total, 0) > 0)::int AS decomposed_tasks,
+                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND COALESCE(st.total, 0) > 0 AND ${taskKpiCompletedSql('t')})::int AS decomposed_tasks_completed,
+                    COALESCE(SUM(COALESCE(st.done, 0)) FILTER (WHERE ${taskKpiEligibleSql('t')}), 0)::int AS subtasks_completed,
+                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')} AND COALESCE(st.ai_count, 0) > 0)::int AS ai_decomposed_tasks_completed,
+                    COUNT(DISTINCT t.id) FILTER (WHERE ${taskKpiEligibleSql('t')} AND ${taskKpiCompletedSql('t')} AND COALESCE(st.template_count, 0) > 0)::int AS template_decomposed_tasks_completed
                 FROM tasks t
                 LEFT JOIN (
                     SELECT task_id,

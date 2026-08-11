@@ -30,6 +30,13 @@ const {
 } = require('../services/credentialInput');
 const { buildTaskOwnerMatch, canMutateTask, normalizeUserId } = require('../services/taskPolicy');
 const { canonicalTaskOrderSql } = require('../services/taskScheduling');
+const {
+    taskKpiActiveWorkSql,
+    taskKpiCanonicalOverdueSql,
+    taskKpiCompletedSql,
+    taskKpiEligibleSql,
+    taskKpiWorkloadDateSql
+} = require('../services/taskPerformancePolicy');
 const { logTaskActionEvent, TASK_ACTION_TYPES } = require('../services/taskActionHistory');
 const {
     uploadProfileAvatarWithFallback,
@@ -165,12 +172,7 @@ function kyivDateStr(now = new Date()) {
 }
 
 function profileTaskWorkloadDateSql(alias = 'tasks') {
-    return `COALESCE(
-        (${alias}.scheduled_start_at AT TIME ZONE 'Europe/Kyiv')::date,
-        CASE WHEN LEFT(COALESCE(${alias}.date, ''), 10) ~ '^\\d{4}-\\d{2}-\\d{2}$' THEN LEFT(${alias}.date, 10)::date END,
-        (${alias}.deadline AT TIME ZONE 'Europe/Kyiv')::date,
-        (${alias}.remind_at AT TIME ZONE 'Europe/Kyiv')::date
-    )`;
+    return taskKpiWorkloadDateSql(alias);
 }
 
 function accountAuditIdentifierHash(value) {
@@ -445,7 +447,10 @@ router.get('/profile', authenticateToken, async (req, res) => {
             pool.query(
                 `SELECT ROUND(AVG(EXTRACT(EPOCH FROM (completed_at - created_at)) / 3600)::numeric, 1) as avg_hours
                  FROM tasks
-                 WHERE ${ownerWhere} AND status = 'done' AND completed_at IS NOT NULL`,
+                 WHERE ${ownerWhere}
+                   AND ${taskKpiEligibleSql('tasks')}
+                   AND ${taskKpiCompletedSql('tasks')}
+                   AND completed_at IS NOT NULL`,
                 ownerParams
             ),
             // 7: Escalation history (not just count — last 5)
@@ -565,7 +570,11 @@ router.get('/profile', authenticateToken, async (req, res) => {
                 `SELECT
                     COUNT(*) FILTER (WHERE completed_at >= $${ownerParams.length + 1}) ::int as this_week,
                     COUNT(*) FILTER (WHERE completed_at >= $${ownerParams.length + 2} AND completed_at < $${ownerParams.length + 1}) ::int as last_week
-                 FROM tasks WHERE ${ownerWhere} AND status = 'done' AND completed_at IS NOT NULL`,
+                 FROM tasks
+                 WHERE ${ownerWhere}
+                   AND ${taskKpiEligibleSql('tasks')}
+                   AND ${taskKpiCompletedSql('tasks')}
+                   AND completed_at IS NOT NULL`,
                 [...ownerParams, weekAgo.toISOString(), twoWeeksAgo.toISOString()]
             ),
             // 19: Delta — bookings this week vs last week
@@ -584,8 +593,8 @@ router.get('/profile', authenticateToken, async (req, res) => {
                  FROM users u
                  LEFT JOIN (
                     SELECT owner_map.id AS user_id,
-                           COUNT(*) FILTER (WHERE t.status != 'done') as open_tasks,
-                           COUNT(*) FILTER (WHERE t.status != 'done' AND t.deadline IS NOT NULL AND t.deadline < NOW()) as overdue_tasks
+                           COUNT(*) FILTER (WHERE ${taskKpiActiveWorkSql('t')} AND ${taskKpiEligibleSql('t')}) as open_tasks,
+                           COUNT(*) FILTER (WHERE ${taskKpiCanonicalOverdueSql('t')}) as overdue_tasks
                     FROM tasks t
                     JOIN users owner_map
                       ON owner_map.id = t.owner_user_id
@@ -607,12 +616,14 @@ router.get('/profile', authenticateToken, async (req, res) => {
             pool.query(
                 `SELECT
                     COUNT(*) FILTER (
-                        WHERE COALESCE(status, 'todo') = 'done'
+                        WHERE ${taskKpiEligibleSql('tasks')}
+                          AND ${taskKpiCompletedSql('tasks')}
                           AND completed_at IS NOT NULL
                           AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${ownerParams.length + 1}::date
                     ) ::int as done_today,
                     COUNT(*) FILTER (
-                        WHERE COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')
+                        WHERE ${taskKpiActiveWorkSql('tasks')}
+                          AND ${taskKpiEligibleSql('tasks')}
                           AND (${profileTaskWorkloadDateSql('tasks')} = $${ownerParams.length + 1}::date OR ${profileTaskWorkloadDateSql('tasks')} IS NULL)
                     ) ::int as remaining
                  FROM tasks WHERE ${ownerWhere}
@@ -694,27 +705,30 @@ router.get('/profile', authenticateToken, async (req, res) => {
             // 27: Completed work units (parent tasks + completed subtasks)
             pool.query(
                 `SELECT
-                    COUNT(*) FILTER (WHERE COALESCE(tasks.status, 'todo') = 'done')::int AS parent_done_total,
+                    COUNT(*) FILTER (WHERE ${taskKpiEligibleSql('tasks')} AND ${taskKpiCompletedSql('tasks')})::int AS parent_done_total,
                     COUNT(*) FILTER (
-                        WHERE COALESCE(tasks.status, 'todo') = 'done'
+                        WHERE ${taskKpiEligibleSql('tasks')}
+                          AND ${taskKpiCompletedSql('tasks')}
                           AND tasks.completed_at IS NOT NULL
                           AND DATE(tasks.completed_at AT TIME ZONE 'Europe/Kyiv') = ${completedUnitTodayRef}::date
                     )::int AS parent_done_today,
                     COUNT(*) FILTER (
-                        WHERE COALESCE(tasks.status, 'todo') = 'done'
+                        WHERE ${taskKpiEligibleSql('tasks')}
+                          AND ${taskKpiCompletedSql('tasks')}
                           AND tasks.completed_at IS NOT NULL
                           AND tasks.completed_at >= ${completedUnitWeekAgoRef}
                     )::int AS parent_done_this_week,
                     COUNT(*) FILTER (
-                        WHERE COALESCE(tasks.status, 'todo') = 'done'
+                        WHERE ${taskKpiEligibleSql('tasks')}
+                          AND ${taskKpiCompletedSql('tasks')}
                           AND tasks.completed_at IS NOT NULL
                           AND tasks.completed_at >= ${completedUnitTwoWeeksAgoRef}
                           AND tasks.completed_at < ${completedUnitWeekAgoRef}
                     )::int AS parent_done_last_week,
-                    COALESCE(SUM(COALESCE(st.done_total, 0)), 0)::int AS subtask_done_total,
-                    COALESCE(SUM(COALESCE(st.done_today, 0)), 0)::int AS subtask_done_today,
-                    COALESCE(SUM(COALESCE(st.done_this_week, 0)), 0)::int AS subtask_done_this_week,
-                    COALESCE(SUM(COALESCE(st.done_last_week, 0)), 0)::int AS subtask_done_last_week
+                    COALESCE(SUM(COALESCE(st.done_total, 0)) FILTER (WHERE ${taskKpiEligibleSql('tasks')}), 0)::int AS subtask_done_total,
+                    COALESCE(SUM(COALESCE(st.done_today, 0)) FILTER (WHERE ${taskKpiEligibleSql('tasks')}), 0)::int AS subtask_done_today,
+                    COALESCE(SUM(COALESCE(st.done_this_week, 0)) FILTER (WHERE ${taskKpiEligibleSql('tasks')}), 0)::int AS subtask_done_this_week,
+                    COALESCE(SUM(COALESCE(st.done_last_week, 0)) FILTER (WHERE ${taskKpiEligibleSql('tasks')}), 0)::int AS subtask_done_last_week
                  FROM tasks
                  LEFT JOIN (
                     SELECT task_id,

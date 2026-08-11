@@ -22,6 +22,11 @@ const {
 const { canAccessBusinessContext } = require('./businessContext');
 const { normalizeProfessionKey } = require('./professions');
 const { scheduleableStaffWhere } = require('./staffOperationalFilters');
+const {
+    TASK_PERFORMANCE_POLICY_VERSION,
+    taskKpiEligibleSql,
+    taskKpiMachineSignalSql
+} = require('./taskPerformancePolicy');
 
 const log = createLogger('Payroll');
 const OVERTIME_MULTIPLIER = 1.5;
@@ -3252,13 +3257,29 @@ async function fetchPayrollKpiAuditSnapshots(month, staffIds = [], db = pool) {
             ),
             task_stats AS (
                 SELECT ep.staff_id,
-                       COUNT(t.id)::int AS tasks_assigned,
-                       COUNT(t.id) FILTER (WHERE COALESCE(t.status, 'todo') IN ('done', 'completed'))::int AS tasks_done,
+                       COUNT(t.id) FILTER (WHERE ${taskKpiEligibleSql('t')})::int AS tasks_assigned,
                        COUNT(t.id) FILTER (
-                           WHERE COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
+                           WHERE ${taskKpiEligibleSql('t')}
+                             AND COALESCE(t.status, 'todo') IN ('done', 'completed')
+                       )::int AS tasks_done,
+                       COUNT(t.id) FILTER (
+                           WHERE ${taskKpiEligibleSql('t')}
+                             AND COALESCE(t.status, 'todo') NOT IN ('done', 'completed', 'archived', 'cancelled')
                              AND t.deadline IS NOT NULL
                              AND t.deadline::date <= p.date_to
                        )::int AS tasks_overdue,
+                       COUNT(t.id) FILTER (
+                           WHERE ${taskKpiEligibleSql('t')}
+                             AND ${taskKpiMachineSignalSql('t')}
+                       )::int AS tasks_machine_accepted,
+                       COUNT(t.id) FILTER (
+                           WHERE NOT ${taskKpiEligibleSql('t')}
+                             AND ${taskKpiMachineSignalSql('t')}
+                       )::int AS tasks_machine_excluded,
+                       COUNT(t.id) FILTER (
+                           WHERE NOT ${taskKpiEligibleSql('t')}
+                             AND NOT ${taskKpiMachineSignalSql('t')}
+                       )::int AS tasks_ambiguous_excluded,
                        MAX(GREATEST(t.created_at, COALESCE(t.completed_at, t.created_at))) AS source_timestamp
                 FROM tasks t
                 JOIN employee_profiles ep ON ep.user_id = t.owner_user_id AND ep.is_active = true
@@ -3303,6 +3324,9 @@ async function fetchPayrollKpiAuditSnapshots(month, staffIds = [], db = pool) {
                    COALESCE(ts.tasks_assigned, 0)::int AS tasks_assigned,
                    COALESCE(ts.tasks_done, 0)::int AS tasks_done,
                    COALESCE(ts.tasks_overdue, 0)::int AS tasks_overdue,
+                   COALESCE(ts.tasks_machine_accepted, 0)::int AS tasks_machine_accepted,
+                   COALESCE(ts.tasks_machine_excluded, 0)::int AS tasks_machine_excluded,
+                   COALESCE(ts.tasks_ambiguous_excluded, 0)::int AS tasks_ambiguous_excluded,
                    COALESCE(os.onboarding_total, 0)::int AS onboarding_total,
                    COALESCE(os.onboarding_completed, 0)::int AS onboarding_completed,
                    COALESCE(os.onboarding_active, 0)::int AS onboarding_active,
@@ -3322,7 +3346,11 @@ async function fetchPayrollKpiAuditSnapshots(month, staffIds = [], db = pool) {
                 tasks: {
                     assigned: Number(row.tasks_assigned || 0),
                     done: Number(row.tasks_done || 0),
-                    overdue: Number(row.tasks_overdue || 0)
+                    overdue: Number(row.tasks_overdue || 0),
+                    machineAccepted: Number(row.tasks_machine_accepted || 0),
+                    machineExcluded: Number(row.tasks_machine_excluded || 0),
+                    ambiguousExcluded: Number(row.tasks_ambiguous_excluded || 0),
+                    eligibilityPolicyVersion: TASK_PERFORMANCE_POLICY_VERSION
                 },
                 onboarding: {
                     total: Number(row.onboarding_total || 0),
@@ -3713,19 +3741,31 @@ function payrollLineTypeAmount(lines = [], type) {
 
 function buildPayrollKpiAuditSnapshot(month, row = {}, kpiSnapshot = null) {
     const metrics = kpiSnapshot?.metrics || {};
+    const taskMetrics = {
+        assigned: 0,
+        done: 0,
+        overdue: 0,
+        machineAccepted: 0,
+        machineExcluded: 0,
+        ambiguousExcluded: 0,
+        eligibilityPolicyVersion: TASK_PERFORMANCE_POLICY_VERSION,
+        ...(metrics.tasks || {})
+    };
+    taskMetrics.eligibilityPolicyVersion = taskMetrics.eligibilityPolicyVersion || TASK_PERFORMANCE_POLICY_VERSION;
     return {
         schemaVersion: 1,
         kpiMonth: month || row.periodMonth || row.month || null,
         source: 'payroll_kpi_audit_snapshot',
         sourceTimestamp: kpiSnapshot?.sourceTimestamp || null,
         ruleVersion: PAYROLL_KPI_BONUS_RULE_VERSION,
+        eligibilityPolicyVersion: TASK_PERFORMANCE_POLICY_VERSION,
         metrics: {
             attendance: {
                 daysWorked: Number(row.daysWorked ?? row.days_worked ?? 0),
                 plannedHours: Number(row.plannedHours ?? row.planned_hours ?? 0),
                 overtimeHours: Number(row.overtimeHours ?? row.overtime_hours ?? 0)
             },
-            tasks: metrics.tasks || { assigned: 0, done: 0, overdue: 0 },
+            tasks: taskMetrics,
             onboarding: metrics.onboarding || { total: 0, completed: 0, active: 0, totalItems: 0, completedItems: 0 },
             contribution: metrics.contribution || {
                 eventsPeriod: 0,
@@ -6086,6 +6126,7 @@ module.exports = {
     confirmPayrollInstallmentPayment,
     getPayrollSettlement,
     loadActivePayrollSchemeMap,
+    fetchPayrollKpiAuditSnapshots,
     loadOffRosterDraftReportReconciliation,
     loadPayrollAttendanceMetrics,
     loadPayrollProfileContext,

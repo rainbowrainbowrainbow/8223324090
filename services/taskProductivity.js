@@ -1,5 +1,10 @@
 const { buildTaskOwnerMatch, normalizeUserId } = require('./taskPolicy');
 const { appendTaskBusinessScopeSql, taskBusinessScopeMeta } = require('./taskBusinessScope');
+const {
+    classifyTaskKpiEligibility,
+    taskKpiEligibleSql,
+    taskMachineSignalSql
+} = require('./taskAutomationPolicy');
 
 const DEFAULT_TIME_ZONE = 'Europe/Kyiv';
 const FINAL_STATUSES = new Set(['cancelled', 'archived']);
@@ -96,15 +101,16 @@ function createdDate(row) {
 }
 
 function dueDate(row) {
-    return row.scheduled_end_at || row.scheduledEndAt
+    return row.scheduled_start_at || row.scheduledStartAt
+        || row.snoozed_until || row.snoozedUntil
         || row.deadline
-        || row.remind_at || row.remindAt
         || row.date
+        || row.remind_at || row.remindAt
         || null;
 }
 
 function isDone(row) {
-    return lowerToken(row.status, 'todo') === 'done';
+    return ['done', 'completed', 'complete'].includes(lowerToken(row.status, 'todo'));
 }
 
 function isActive(row) {
@@ -113,7 +119,18 @@ function isActive(row) {
 }
 
 function isCountable(row) {
-    return !FINAL_STATUSES.has(lowerToken(row.status, 'todo'));
+    if (FINAL_STATUSES.has(lowerToken(row.status, 'todo'))) return false;
+    if (row.task_kpi_eligible !== undefined || row.taskKpiEligible !== undefined) {
+        return row.task_kpi_eligible === true
+            || row.task_kpi_eligible === 'true'
+            || row.task_kpi_eligible === 1
+            || row.task_kpi_eligible === '1'
+            || row.taskKpiEligible === true
+            || row.taskKpiEligible === 'true'
+            || row.taskKpiEligible === 1
+            || row.taskKpiEligible === '1';
+    }
+    return classifyTaskKpiEligibility(row).eligible === true;
 }
 
 function taskSourceGroup(row = {}) {
@@ -274,9 +291,10 @@ function categoryCounts(rows) {
 
 function buildTaskProductivity(rows = [], options = {}) {
     const timeZone = options.timeZone || DEFAULT_TIME_ZONE;
-    const today = options.today || dateKey(options.now || new Date(), timeZone);
+    const referenceNow = options.now || new Date();
+    const today = options.today || dateKey(referenceNow, timeZone);
     const countableRows = rows.filter(isCountable);
-    const activeRows = rows.filter(isActive);
+    const activeRows = countableRows.filter(isActive);
     const doneRows = countableRows.filter(isDone);
     const datedDoneRows = doneRows.filter(row => completionDate(row));
     const completedUnitRows = completionUnitEvents(countableRows);
@@ -299,6 +317,8 @@ function buildTaskProductivity(rows = [], options = {}) {
     const completed30Days = completedDateKeys.filter(key => key >= day30Start && key <= today).length;
 
     const overdueRows = activeRows.filter(row => {
+        const snoozedUntil = asDate(row.snoozed_until || row.snoozedUntil);
+        if (snoozedUntil && snoozedUntil.getTime() > asDate(referenceNow).getTime()) return false;
         const key = dateKey(dueDate(row), timeZone);
         return key && key < today;
     });
@@ -373,8 +393,9 @@ function buildTaskProductivity(rows = [], options = {}) {
             timeZone,
             today,
             completionDateSource: 'tasks.completed_at + task_subtasks.completed_at',
-            completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks',
-            decompositionSourceTruth: 'task_subtasks.source_type',
+        completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks',
+        eligibilityPolicy: 'shared_task_kpi_eligibility',
+        decompositionSourceTruth: 'task_subtasks.source_type',
             templateAiSourceRule: 'derived_when_template_and_ai_subtasks_coexist',
             achievementMode: 'derived_idempotent_not_persisted'
         }
@@ -395,7 +416,11 @@ async function getTaskProductivity(pool, user, options = {}) {
     const result = await pool.query(
         `SELECT t.id, t.title, t.status, t.workflow_state, t.category, t.task_mode, t.task_kind,
                 t.created_at, t.updated_at, t.completed_at, t.deadline, t.date,
-                t.remind_at, t.scheduled_start_at, t.scheduled_end_at,
+                t.remind_at, t.snoozed_until, t.scheduled_start_at, t.scheduled_end_at,
+                t.source_type, t.source_module, t.type, t.created_by, t.created_by_user_id,
+                t.owner_user_id, t.visibility,
+                (${taskKpiEligibleSql('t')}) AS task_kpi_eligible,
+                (${taskMachineSignalSql('t')}) AS task_kpi_machine_signal,
                 COALESCE(st.total, 0)::int AS subtask_count,
                 COALESCE(st.done, 0)::int AS subtask_done_count,
                 COALESCE(st.manual_count, 0)::int AS subtask_manual_count,

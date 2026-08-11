@@ -6,6 +6,11 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { classifyTaskKpiEligibility } = require('./taskAutomationPolicy');
+const {
+    taskKpiCompletedSql,
+    taskKpiEligibleSql
+} = require('./taskPerformancePolicy');
 
 const log = createLogger('Gamification');
 
@@ -15,6 +20,17 @@ function taskOwnerUsernameSql(taskAlias = 't', userAlias = 'owner_u') {
 
 function taskOwnerJoinSql(taskAlias = 't', userAlias = 'owner_u') {
     return `LEFT JOIN users ${userAlias} ON ${userAlias}.id = ${taskAlias}.owner_user_id`;
+}
+
+function hasTaskProvenancePayload(task = {}) {
+    return ['source_type', 'sourceType', 'type', 'created_by', 'createdBy', 'created_by_user_id', 'createdByUserId', 'owner_accepted', 'ownerAccepted', 'has_owner_acceptance']
+        .some(key => Object.prototype.hasOwnProperty.call(task, key));
+}
+
+function shouldAwardTaskCompletion(task = {}) {
+    if (!task || typeof task !== 'object') return true;
+    if (!hasTaskProvenancePayload(task)) return true;
+    return classifyTaskKpiEligibility(task).eligible === true;
 }
 
 // XP rewards for various actions
@@ -282,7 +298,9 @@ async function checkAchievements(username, context = {}) {
                     `SELECT COUNT(*)
                      FROM tasks t
                      ${taskOwnerJoinSql('t', 'owner_u')}
-                     WHERE ${ownerUsername} = $1 AND t.status = 'done'`,
+                     WHERE ${ownerUsername} = $1
+                       AND ${taskKpiEligibleSql('t')}
+                       AND ${taskKpiCompletedSql('t')}`,
                     [username]
                 );
                 shouldUnlock = parseInt(rows[0].count) >= ach.condition_value;
@@ -689,6 +707,9 @@ async function giftCoins(fromUser, toUser, amount) {
  */
 async function onTaskComplete(username, task) {
     try {
+        if (!shouldAwardTaskCompletion(task)) {
+            return { coins: 0, xp: 0, achievements: [], skipped: 'task_not_kpi_eligible' };
+        }
         await ensureProfile(username);
         await ensureCurrency(username);
 
@@ -761,7 +782,9 @@ async function recalculateMonthlyLeaderboard(year, month) {
                     SELECT ${taskOwnerUsername} AS username
                     FROM tasks t
                     ${taskOwnerJoin}
-                    WHERE t.status = 'done' AND t.updated_at >= $1 AND t.updated_at < $2
+                    WHERE ${taskKpiEligibleSql('t')}
+                      AND ${taskKpiCompletedSql('t')}
+                      AND t.updated_at >= $1 AND t.updated_at < $2
                 ) task_owners
                 WHERE username IS NOT NULL
                 GROUP BY username`,
@@ -774,7 +797,9 @@ async function recalculateMonthlyLeaderboard(year, month) {
                       SELECT ${taskOwnerUsername} AS username
                       FROM tasks t
                       ${taskOwnerJoin}
-                      WHERE t.status = 'done' AND t.updated_at >= $1 AND t.updated_at < $2
+                      WHERE ${taskKpiEligibleSql('t')}
+                        AND ${taskKpiCompletedSql('t')}
+                        AND t.updated_at >= $1 AND t.updated_at < $2
                   ) task_xp_owners
                   WHERE username IS NOT NULL
                   GROUP BY username
@@ -901,7 +926,9 @@ async function checkSeasonalProgress(username) {
                     `SELECT COUNT(*)
                      FROM tasks t
                      ${taskOwnerJoinSql('t', 'owner_u')}
-                     WHERE ${ownerUsername} = $1 AND t.status = 'done'
+                     WHERE ${ownerUsername} = $1
+                     AND ${taskKpiEligibleSql('t')}
+                     AND ${taskKpiCompletedSql('t')}
                      AND t.updated_at >= $2 AND t.updated_at <= $3`,
                     [username, quest.start_date, quest.end_date]
                 );
@@ -1149,7 +1176,9 @@ async function recalculateTeamChallenges() {
                         `SELECT COUNT(*)
                          FROM tasks t
                          ${taskOwnerJoinSql('t', 'owner_u')}
-                         WHERE ${ownerUsername} = ANY($1) AND t.status = 'done'
+                         WHERE ${ownerUsername} = ANY($1)
+                         AND ${taskKpiEligibleSql('t')}
+                         AND ${taskKpiCompletedSql('t')}
                          AND t.updated_at >= $2 AND t.updated_at <= $3`,
                         [usernames, ch.start_date, ch.end_date]
                     );
@@ -1458,6 +1487,7 @@ module.exports = {
     getCoinHistory,
     updateProfile,
     giftCoins,
+    shouldAwardTaskCompletion,
     onTaskComplete,
     onBookingCreate,
     // v30.8.0 — Gamification v3

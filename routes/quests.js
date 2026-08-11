@@ -6,6 +6,10 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { requireRole, ANY_ROLE } = require('../middleware/auth');
 const { createLogger } = require('../utils/logger');
+const {
+    taskKpiCompletedSql,
+    taskKpiEligibleSql
+} = require('../services/taskPerformancePolicy');
 const log = createLogger('Quests');
 
 /**
@@ -265,7 +269,13 @@ async function checkTitles(userId) {
                     qualifies = true; // always qualifies
                     break;
                 case 'tasks_completed': {
-                    const r = await pool.query("SELECT COUNT(*) FROM tasks WHERE assigned_to = $1 AND status = 'done'", [userId]);
+                    const r = await pool.query(`
+                        SELECT COUNT(*)
+                        FROM tasks t
+                        WHERE t.owner_user_id = $1
+                          AND ${taskKpiEligibleSql('t')}
+                          AND ${taskKpiCompletedSql('t')}
+                    `, [userId]);
                     qualifies = parseInt(r.rows[0].count) >= title.condition_value;
                     break;
                 }

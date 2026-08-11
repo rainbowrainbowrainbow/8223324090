@@ -343,7 +343,7 @@ const DashboardPage = (() => {
         staff_today:    { icon: '👷', title: 'Хто на зміні', minRole: 'manager' },
         week_bookings:  { icon: '📆', title: 'Бронювання на тиждень', minRole: 'admin' },
         team_tasks:     { icon: '📝', title: 'Задачі команди', minRole: 'manager' },
-        task_health:    { icon: '🧭', title: 'Здоровʼя задач', minRole: 'manager' },
+        task_health:    { icon: '🧭', title: 'Automation hygiene', minRole: 'manager' },
         hr_overview:    { icon: '🏥', title: 'HR дайджест', minRole: 'hr' },
         director_pnl:   { icon: '💹', title: 'P&L', minRole: 'director' },
         content_pipeline: { icon: '🎨', title: 'Контент-пайплайн', minRole: 'art_director' },
@@ -6415,7 +6415,7 @@ const DashboardPage = (() => {
                 <div class="personal-tasker-metric warning"><strong>${warning}</strong><span>ризик</span></div>
                 <div class="personal-tasker-metric danger"><strong>${critical}</strong><span>критичні</span></div>
             </div>
-            <div class="task-health-bar" aria-label="Середній health score ${avg}">
+            <div class="task-health-bar" aria-label="Automation hygiene score ${avg}">
                 <span style="width:${Math.max(0, Math.min(100, avg))}%"></span>
             </div>
             <div class="widget-footer"><a href="/tasks" class="widget-footer-link">Перевірити задачі →</a></div>

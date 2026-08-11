@@ -22,7 +22,7 @@ test('auto-open shift is register-locked and linked to sale fiscal operations', 
   assert.match(migration316, /uq_fiscal_shifts_one_open_register_v316[\s\S]*WHERE status IN \('opening', 'open', 'closing'\)/);
   assert.match(service, /operation_type, status,[\s\S]*'shift_open', 'pending'/);
   assert.match(service, /SET open_operation_id = \$2/);
-  assert.match(paymentService, /ensureOpenShiftForSale\(client, \{ order, user \}\)/);
+  assert.match(paymentService, /ensureOpenShiftForSale\(client, \{ order, user, fiscalConfig \}\)/);
   assert.match(paymentService, /payment_order_id, fiscal_shift_id, operation_type/);
 });
 

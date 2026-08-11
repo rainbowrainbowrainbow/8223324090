@@ -33,6 +33,96 @@ function shouldAwardTaskCompletion(task = {}) {
     return classifyTaskKpiEligibility(task).eligible === true;
 }
 
+let userAchievementSchemaPromise = null;
+
+async function getUserAchievementSchema(db = pool) {
+    if (!userAchievementSchemaPromise) {
+        userAchievementSchemaPromise = db.query(
+            `SELECT column_name
+             FROM information_schema.columns
+             WHERE table_name = 'user_achievements'`
+        ).then(({ rows }) => {
+            const columns = new Set(rows.map(row => row.column_name));
+            if (columns.has('username') && columns.has('achievement_key')) {
+                return { mode: 'username_key', columns };
+            }
+            if (columns.has('user_id') && columns.has('achievement_id')) {
+                return { mode: 'user_id', columns };
+            }
+            throw new Error('Unsupported user_achievements schema');
+        });
+    }
+    return userAchievementSchemaPromise;
+}
+
+function userAchievementUnlockedAtSql(schema) {
+    if (schema.columns.has('unlocked_at')) return 'ua.unlocked_at';
+    if (schema.columns.has('completed_at') && schema.columns.has('created_at')) return 'COALESCE(ua.completed_at, ua.created_at)';
+    if (schema.columns.has('completed_at')) return 'ua.completed_at';
+    if (schema.columns.has('created_at')) return 'ua.created_at';
+    return 'NULL';
+}
+
+async function loadUserAchievements(username) {
+    const schema = await getUserAchievementSchema();
+    const unlockedAt = userAchievementUnlockedAtSql(schema);
+    if (schema.mode === 'username_key') {
+        return pool.query(
+            `SELECT ua.*, ac.name, ac.description, ac.icon, ac.type, ac.category, ac.rarity, ac.is_secret
+             FROM user_achievements ua
+             LEFT JOIN achievement_catalog ac ON ua.achievement_key = ac.key
+             WHERE ua.username = $1
+             ORDER BY ${unlockedAt} DESC NULLS LAST`,
+            [username]
+        );
+    }
+    return pool.query(
+        `SELECT ua.*, ac.key AS achievement_key, ${unlockedAt} AS unlocked_at,
+                ac.name, ac.description, ac.icon, ac.type, ac.category, ac.rarity, ac.is_secret
+         FROM user_achievements ua
+         JOIN users achievement_user ON achievement_user.id = ua.user_id
+         LEFT JOIN achievement_catalog ac ON ua.achievement_id = ac.id
+         WHERE achievement_user.username = $1
+         ORDER BY ${unlockedAt} DESC NULLS LAST`,
+        [username]
+    );
+}
+
+async function loadPendingAchievements(username) {
+    const schema = await getUserAchievementSchema();
+    if (schema.mode === 'username_key') {
+        return pool.query(
+            `SELECT ac.* FROM achievement_catalog ac
+             WHERE ac.is_active = true
+             AND ac.key NOT IN (
+                 SELECT achievement_key FROM user_achievements WHERE username = $1
+             )`,
+            [username]
+        );
+    }
+    return pool.query(
+        `SELECT ac.* FROM achievement_catalog ac
+         WHERE ac.is_active = true
+         AND ac.id NOT IN (
+             SELECT ua.achievement_id
+             FROM user_achievements ua
+             JOIN users achievement_user ON achievement_user.id = ua.user_id
+             WHERE achievement_user.username = $1
+         )`,
+        [username]
+    );
+}
+
+function achievementCountSubquery(usernameExpression, schema) {
+    if (schema.mode === 'username_key') {
+        return `(SELECT COUNT(*) FROM user_achievements ua WHERE ua.username = ${usernameExpression})`;
+    }
+    return `(SELECT COUNT(*)
+             FROM user_achievements ua
+             JOIN users achievement_user ON achievement_user.id = ua.user_id
+             WHERE achievement_user.username = ${usernameExpression})`;
+}
+
 // XP rewards for various actions
 const XP_REWARDS = {
     task_complete: 10,
@@ -85,14 +175,7 @@ async function getProfile(username) {
     const [profile, currency, achievements, inventory, equipped, streaks] = await Promise.all([
         pool.query('SELECT * FROM user_profiles_ext WHERE username = $1', [username]),
         pool.query('SELECT * FROM game_currency WHERE username = $1', [username]),
-        pool.query(
-            `SELECT ua.*, ac.name, ac.description, ac.icon, ac.type, ac.category, ac.rarity, ac.is_secret
-             FROM user_achievements ua
-             LEFT JOIN achievement_catalog ac ON ua.achievement_key = ac.key
-             WHERE ua.username = $1
-             ORDER BY ua.unlocked_at DESC`,
-            [username]
-        ),
+        loadUserAchievements(username),
         pool.query(
             `SELECT ui.*, ci.name, ci.description, ci.icon, ci.type, ci.rarity, ci.image_url
              FROM user_inventory ui
@@ -279,14 +362,7 @@ async function checkAchievements(username, context = {}) {
     const unlocked = [];
 
     // Get all active achievements user hasn't unlocked yet
-    const { rows: pending } = await pool.query(
-        `SELECT ac.* FROM achievement_catalog ac
-         WHERE ac.is_active = true
-         AND ac.key NOT IN (
-             SELECT achievement_key FROM user_achievements WHERE username = $1
-         )`,
-        [username]
-    );
+    const { rows: pending } = await loadPendingAchievements(username);
 
     for (const ach of pending) {
         let shouldUnlock = false;
@@ -353,16 +429,32 @@ async function unlockAchievement(username, achievement) {
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        const schema = await getUserAchievementSchema(client);
 
         // Insert into user_achievements
-        await client.query(
-            `INSERT INTO user_achievements (username, achievement_key, achievement_id, progress, max_progress, coins_awarded, xp_awarded, unlocked_at)
-             VALUES ($1, $2, $3, $4, $4, $5, $6, NOW())
-             ON CONFLICT (username, achievement_key) DO NOTHING`,
-            [username, achievement.key, achievement.id, achievement.condition_value,
-             achievement.reward_type === 'coins' ? achievement.reward_value : 0,
-             XP_REWARDS.achievement_unlock]
-        );
+        if (schema.mode === 'username_key') {
+            await client.query(
+                `INSERT INTO user_achievements (username, achievement_key, achievement_id, progress, max_progress, coins_awarded, xp_awarded, unlocked_at)
+                 VALUES ($1, $2, $3, $4, $4, $5, $6, NOW())
+                 ON CONFLICT (username, achievement_key) DO NOTHING`,
+                [username, achievement.key, achievement.id, achievement.condition_value,
+                 achievement.reward_type === 'coins' ? achievement.reward_value : 0,
+                 XP_REWARDS.achievement_unlock]
+            );
+        } else {
+            const userResult = await client.query(
+                'SELECT id FROM users WHERE username = $1',
+                [username]
+            );
+            const userId = userResult.rows[0]?.id;
+            if (!userId) throw new Error('Cannot unlock achievement without matching user id');
+            await client.query(
+                `INSERT INTO user_achievements (user_id, achievement_id, progress, completed, completed_at, times_completed)
+                 VALUES ($1, $2, $3, true, NOW(), 1)
+                 ON CONFLICT (user_id, achievement_id) DO NOTHING`,
+                [userId, achievement.id, achievement.condition_value]
+            );
+        }
 
         // Award coins if reward type is coins
         if (achievement.reward_type === 'coins' && achievement.reward_value > 0) {
@@ -538,32 +630,48 @@ async function unequipSlot(username, slot) {
  * Get leaderboard (top users by coins/xp/achievements).
  */
 async function getLeaderboard(sortBy = 'xp', limit = 20) {
+    const schema = await getUserAchievementSchema();
+    const gameCurrencyAchievementCount = achievementCountSubquery('gc.username', schema);
+    const profileAchievementCount = achievementCountSubquery('upe.username', schema);
     let query;
     switch (sortBy) {
         case 'coins':
             query = `SELECT gc.username, gc.coins, gc.total_earned,
                         upe.level, upe.title, upe.avatar_url, upe.display_name,
-                        (SELECT COUNT(*) FROM user_achievements ua WHERE ua.username = gc.username) as achievement_count
+                        ${gameCurrencyAchievementCount} as achievement_count
                      FROM game_currency gc
                      LEFT JOIN user_profiles_ext upe ON gc.username = upe.username
                      ORDER BY gc.coins DESC
                      LIMIT $1`;
             break;
         case 'achievements':
-            query = `SELECT ua.username, COUNT(*) as achievement_count,
-                        upe.level, upe.title, upe.avatar_url, upe.display_name,
-                        COALESCE(gc.coins, 0) as coins
-                     FROM user_achievements ua
-                     LEFT JOIN user_profiles_ext upe ON ua.username = upe.username
-                     LEFT JOIN game_currency gc ON ua.username = gc.username
-                     GROUP BY ua.username, upe.level, upe.title, upe.avatar_url, upe.display_name, gc.coins
-                     ORDER BY achievement_count DESC
-                     LIMIT $1`;
+            if (schema.mode === 'username_key') {
+                query = `SELECT ua.username, COUNT(*) as achievement_count,
+                            upe.level, upe.title, upe.avatar_url, upe.display_name,
+                            COALESCE(gc.coins, 0) as coins
+                         FROM user_achievements ua
+                         LEFT JOIN user_profiles_ext upe ON ua.username = upe.username
+                         LEFT JOIN game_currency gc ON ua.username = gc.username
+                         GROUP BY ua.username, upe.level, upe.title, upe.avatar_url, upe.display_name, gc.coins
+                         ORDER BY achievement_count DESC
+                         LIMIT $1`;
+            } else {
+                query = `SELECT achievement_user.username, COUNT(*) as achievement_count,
+                            upe.level, upe.title, upe.avatar_url, upe.display_name,
+                            COALESCE(gc.coins, 0) as coins
+                         FROM user_achievements ua
+                         JOIN users achievement_user ON achievement_user.id = ua.user_id
+                         LEFT JOIN user_profiles_ext upe ON achievement_user.username = upe.username
+                         LEFT JOIN game_currency gc ON achievement_user.username = gc.username
+                         GROUP BY achievement_user.username, upe.level, upe.title, upe.avatar_url, upe.display_name, gc.coins
+                         ORDER BY achievement_count DESC
+                         LIMIT $1`;
+            }
             break;
         default: // xp
             query = `SELECT upe.username, upe.xp, upe.level, upe.title, upe.avatar_url, upe.display_name,
                         COALESCE(gc.coins, 0) as coins,
-                        (SELECT COUNT(*) FROM user_achievements ua WHERE ua.username = upe.username) as achievement_count
+                        ${profileAchievementCount} as achievement_count
                      FROM user_profiles_ext upe
                      LEFT JOIN game_currency gc ON upe.username = gc.username
                      ORDER BY upe.xp DESC
@@ -578,16 +686,25 @@ async function getLeaderboard(sortBy = 'xp', limit = 20) {
  * Get achievement catalog (all available achievements).
  */
 async function getAchievementCatalog(username = null) {
-    const { rows } = await pool.query(
-        `SELECT ac.*,
-            CASE WHEN ua.id IS NOT NULL THEN true ELSE false END as unlocked,
-            ua.unlocked_at
-         FROM achievement_catalog ac
-         LEFT JOIN user_achievements ua ON ac.key = ua.achievement_key AND ua.username = $1
-         WHERE ac.is_active = true AND (ac.is_secret = false OR ua.id IS NOT NULL)
-         ORDER BY ac.sort_order, ac.rarity DESC`,
-        [username]
-    );
+    const schema = await getUserAchievementSchema();
+    const unlockedAt = userAchievementUnlockedAtSql(schema);
+    const query = schema.mode === 'username_key'
+        ? `SELECT ac.*,
+                CASE WHEN ua.id IS NOT NULL THEN true ELSE false END as unlocked,
+                ${unlockedAt} AS unlocked_at
+             FROM achievement_catalog ac
+             LEFT JOIN user_achievements ua ON ac.key = ua.achievement_key AND ua.username = $1
+             WHERE ac.is_active = true AND (ac.is_secret = false OR ua.id IS NOT NULL)
+             ORDER BY ac.sort_order, ac.rarity DESC`
+        : `SELECT ac.*,
+                CASE WHEN ua.id IS NOT NULL THEN true ELSE false END as unlocked,
+                ${unlockedAt} AS unlocked_at
+             FROM achievement_catalog ac
+             LEFT JOIN users achievement_user ON achievement_user.username = $1
+             LEFT JOIN user_achievements ua ON ua.achievement_id = ac.id AND ua.user_id = achievement_user.id
+             WHERE ac.is_active = true AND (ac.is_secret = false OR ua.id IS NOT NULL)
+             ORDER BY ac.sort_order, ac.rarity DESC`;
+    const { rows } = await pool.query(query, [username]);
     return rows;
 }
 

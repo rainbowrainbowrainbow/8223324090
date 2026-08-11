@@ -3,10 +3,11 @@
 const { TASK_ACTION_TYPES } = require('./taskActionConstants');
 
 const TASK_AUTOMATION_POLICY_VERSION = 'task_automation_policy_v1';
+const TASK_AUTOMATION_MARKER_SCOPE_VERSION = 'task_automation_marker_scope_v1';
 const MACHINE_LIFECYCLE_MARKER_VERSION = 'machine_lifecycle_marker_v1_2026_08_11';
 const MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING = 'strict_cancelled_booking_auto_archive_v1_2026_08_11';
 
-const TERMINAL_STATUSES = Object.freeze(['done', 'completed', 'cancelled', 'canceled', 'archived']);
+const TERMINAL_STATUSES = Object.freeze(['done', 'completed', 'complete', 'cancelled', 'canceled', 'archived']);
 const KPI_EXCLUDED_STATUSES = Object.freeze(['archived', 'cancelled', 'canceled']);
 const PRIVATE_OR_PERSONAL = Object.freeze(['private', 'me_only', 'personal']);
 const SYSTEM_ACTORS = Object.freeze(['', 'system', 'scheduler', 'kleshnya', 'rule_engine', 'task_lifecycle', 'automation', 'attendance-review-scheduler']);
@@ -16,6 +17,20 @@ const MACHINE_SOURCE_TYPES = Object.freeze(['booking', 'recurring', 'attendance'
 const PROTECTED_SOURCE_TYPES = Object.freeze(['ai_draft', 'ai_draft_bundle', 'hermes', 'integration', 'attendance', 'attendance_daily_review']);
 const INTEGRATION_SOURCE_TYPES = Object.freeze(['hermes', 'integration']);
 const AI_SOURCE_TYPES = Object.freeze(['ai_draft', 'ai_draft_bundle']);
+const AUTOMATION_MARKER_SOURCE_TYPES = Object.freeze([
+    'automation',
+    'trigger',
+    'booking',
+    'recurring',
+    'attendance',
+    'attendance_daily_review',
+    'hermes',
+    'integration',
+    'ai_draft',
+    'ai_draft_bundle'
+]);
+const AUTOMATION_MARKER_TASK_TYPES = Object.freeze(['auto', 'auto_complete', 'recurring', 'ai_draft', 'ai_draft_bundle']);
+const AUTOMATION_MARKER_CREATORS = Object.freeze([...MACHINE_CREATORS, 'automation']);
 const BOOKING_TERMINAL_STATUSES = Object.freeze(['cancelled', 'canceled']);
 
 const OWNER_ACCEPTANCE_ACTIONS = Object.freeze([
@@ -165,9 +180,10 @@ function hasMachineSignal(row = {}) {
     const creator = normalize(row.creator_class || row.created_by_normalized || row.created_by);
     const sourceModule = normalize(row.source_module);
     return MACHINE_CREATORS.includes(creator)
-        || [...MACHINE_SOURCE_TYPES, ...INTEGRATION_SOURCE_TYPES].includes(sourceType)
+        || [...MACHINE_SOURCE_TYPES, ...PROTECTED_SOURCE_TYPES].includes(sourceType)
         || MACHINE_TASK_TYPES.includes(taskType)
-        || /attendance|hermes|integration/.test(sourceModule);
+        || AI_SOURCE_TYPES.includes(taskType)
+        || /attendance|hermes|integration|ai/.test(sourceModule);
 }
 
 function hasHumanCreatedSignal(row = {}) {
@@ -182,18 +198,54 @@ function hasHumanCreatedSignal(row = {}) {
         );
 }
 
+function hasProtectedKpiSignal(row = {}) {
+    return isPrivateOrPersonal(row)
+        || isAiAssisted(row)
+        || isIntegration(row)
+        || isAttendance(row);
+}
+
+function hasAutomationMarkerScope(row = {}) {
+    const sourceType = normalize(row.source_type);
+    const sourceModule = normalize(row.source_module);
+    const sourceEntityType = normalize(row.source_entity_type);
+    const relatedEntityType = normalize(row.related_entity_type);
+    const taskType = normalize(row.type || row.task_type || row.task_type_legacy);
+    const creator = normalize(row.creator_class || row.created_by_normalized || row.created_by);
+    return AUTOMATION_MARKER_SOURCE_TYPES.includes(sourceType)
+        || AUTOMATION_MARKER_SOURCE_TYPES.includes(sourceModule)
+        || AUTOMATION_MARKER_SOURCE_TYPES.includes(sourceEntityType)
+        || AUTOMATION_MARKER_SOURCE_TYPES.includes(relatedEntityType)
+        || AUTOMATION_MARKER_TASK_TYPES.includes(taskType)
+        || AUTOMATION_MARKER_CREATORS.includes(creator)
+        || bool(row.has_template_id)
+        || numeric(row.template_id) > 0;
+}
+
 function classifyTaskKpiEligibility(row = {}) {
     if (isKpiExcluded(row)) {
         return { eligible: false, classification: 'terminal_excluded', reason: 'archived_or_cancelled' };
     }
-    if (hasHumanCreatedSignal(row)) {
-        return { eligible: true, classification: 'human_created', reason: 'human_created' };
+    if (isPrivateOrPersonal(row)) {
+        return { eligible: false, classification: 'ambiguous_excluded', reason: 'private_or_personal' };
+    }
+    if (isAiAssisted(row)) {
+        return { eligible: false, classification: 'ambiguous_excluded', reason: 'ai_assisted' };
+    }
+    if (isIntegration(row)) {
+        return { eligible: false, classification: 'ambiguous_excluded', reason: 'integration' };
+    }
+    if (isAttendance(row)) {
+        return { eligible: false, classification: 'ambiguous_excluded', reason: 'attendance' };
     }
     if (hasMachineSignal(row)) {
         if (bool(row.owner_accepted || row.ownerAccepted || row.has_owner_acceptance)) {
             return { eligible: true, classification: 'machine_owner_accepted', reason: 'owner_action_history' };
         }
         return { eligible: false, classification: 'machine_unaccepted', reason: 'missing_owner_action_history' };
+    }
+    if (hasHumanCreatedSignal(row)) {
+        return { eligible: true, classification: 'human_created', reason: 'human_created' };
     }
     return { eligible: false, classification: 'ambiguous_excluded', reason: 'ambiguous_provenance' };
 }
@@ -208,11 +260,24 @@ function taskTerminalExclusionSql(taskAlias = 't') {
 function taskMachineSignalSql(taskAlias = 't') {
     return `(
         LOWER(COALESCE(${taskAlias}.created_by, '')) IN (${listToSql(MACHINE_CREATORS)})
-        OR LOWER(COALESCE(${taskAlias}.source_type, '')) IN (${listToSql([...MACHINE_SOURCE_TYPES, ...INTEGRATION_SOURCE_TYPES])})
+        OR LOWER(COALESCE(${taskAlias}.source_type, '')) IN (${listToSql([...MACHINE_SOURCE_TYPES, ...PROTECTED_SOURCE_TYPES])})
         OR LOWER(COALESCE(${taskAlias}.type, '')) IN (${listToSql(MACHINE_TASK_TYPES)})
-        OR LOWER(COALESCE(${taskAlias}.source_module, '')) ~ '(attendance|hermes|integration)'
-        OR LOWER(COALESCE(${taskAlias}.source_entity_type, '')) ~ '(attendance|hermes|integration)'
-        OR LOWER(COALESCE(${taskAlias}.related_entity_type, '')) ~ '(attendance|hermes|integration)'
+        OR LOWER(COALESCE(${taskAlias}.type, '')) IN (${listToSql(AI_SOURCE_TYPES)})
+        OR LOWER(COALESCE(${taskAlias}.source_module, '')) ~ '(attendance|hermes|integration|ai)'
+        OR LOWER(COALESCE(${taskAlias}.source_entity_type, '')) ~ '(attendance|hermes|integration|ai)'
+        OR LOWER(COALESCE(${taskAlias}.related_entity_type, '')) ~ '(attendance|hermes|integration|ai)'
+    )`;
+}
+
+function taskProtectedKpiSignalSql(taskAlias = 't') {
+    return `(
+        LOWER(COALESCE(${taskAlias}.visibility, '')) IN (${listToSql(PRIVATE_OR_PERSONAL)})
+        OR LOWER(COALESCE(${taskAlias}.task_mode, '')) IN (${listToSql(PRIVATE_OR_PERSONAL)})
+        OR LOWER(COALESCE(${taskAlias}.source_type, '')) IN (${listToSql(PROTECTED_SOURCE_TYPES)})
+        OR LOWER(COALESCE(${taskAlias}.type, '')) IN (${listToSql([...AI_SOURCE_TYPES, 'attendance', 'attendance_daily_review'])})
+        OR LOWER(COALESCE(${taskAlias}.source_module, '')) ~ '(attendance|hermes|integration|ai)'
+        OR LOWER(COALESCE(${taskAlias}.source_entity_type, '')) ~ '(attendance|hermes|integration|ai)'
+        OR LOWER(COALESCE(${taskAlias}.related_entity_type, '')) ~ '(attendance|hermes|integration|ai)'
     )`;
 }
 
@@ -260,8 +325,12 @@ function taskOwnerAcceptedSql(taskAlias = 't', historyAlias = 'task_owner_accept
 function taskKpiEligibleSql(taskAlias = 't') {
     return `(
         NOT ${taskTerminalExclusionSql(taskAlias)}
+        AND NOT ${taskProtectedKpiSignalSql(taskAlias)}
         AND (
-            ${taskHumanCreatedSql(taskAlias)}
+            (
+                NOT ${taskMachineSignalSql(taskAlias)}
+                AND ${taskHumanCreatedSql(taskAlias)}
+            )
             OR (
                 ${taskMachineSignalSql(taskAlias)}
                 AND ${taskOwnerAcceptedSql(taskAlias)}
@@ -362,6 +431,9 @@ function isTrustedCancelledBookingAutoArchiveMarked(row = {}) {
 
 module.exports = {
     AI_SOURCE_TYPES,
+    AUTOMATION_MARKER_CREATORS,
+    AUTOMATION_MARKER_SOURCE_TYPES,
+    AUTOMATION_MARKER_TASK_TYPES,
     BOOKING_TERMINAL_STATUSES,
     INTEGRATION_SOURCE_TYPES,
     KPI_EXCLUDED_STATUSES,
@@ -375,11 +447,14 @@ module.exports = {
     PROTECTED_SOURCE_TYPES,
     SYSTEM_ACTORS,
     TASK_AUTOMATION_POLICY_VERSION,
+    TASK_AUTOMATION_MARKER_SCOPE_VERSION,
     TERMINAL_STATUSES,
     bool,
     buildMachineTaskControlMetaPatch,
     classifyTaskAutomation,
     classifyTaskKpiEligibility,
+    hasAutomationMarkerScope,
+    hasProtectedKpiSignal,
     hasStrictMachineProvenance,
     isAiAssisted,
     isAttendance,
@@ -399,6 +474,7 @@ module.exports = {
     taskKpiEligibleSql,
     taskMachineSignalSql,
     taskOwnerAcceptedSql,
+    taskProtectedKpiSignalSql,
     taskStrictMachineSignalSql,
     taskTerminalExclusionSql,
     taskWorkloadDateSql

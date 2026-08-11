@@ -28,8 +28,8 @@ function hasTaskProvenancePayload(task = {}) {
 }
 
 function shouldAwardTaskCompletion(task = {}) {
-    if (!task || typeof task !== 'object') return true;
-    if (!hasTaskProvenancePayload(task)) return true;
+    if (!task || typeof task !== 'object') return false;
+    if (!hasTaskProvenancePayload(task)) return false;
     return classifyTaskKpiEligibility(task).eligible === true;
 }
 

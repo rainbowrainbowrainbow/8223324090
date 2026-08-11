@@ -57,10 +57,10 @@ test('My Day contribution remains based on actual user completion actions', () =
     assert.doesNotMatch(myDayContribution, /taskKpiEligibleSql/);
 });
 
-test('gamification hook skips explicit unaccepted machine task payloads but keeps legacy manual payloads', () => {
+test('gamification hook skips missing-provenance and explicit unaccepted machine task payloads', () => {
     const { shouldAwardTaskCompletion } = require('../services/gamification');
 
-    assert.equal(shouldAwardTaskCompletion({ id: 1, status: 'done' }), true);
+    assert.equal(shouldAwardTaskCompletion({ id: 1, status: 'done' }), false);
     assert.equal(shouldAwardTaskCompletion({
         id: 2,
         status: 'done',
@@ -84,4 +84,10 @@ test('gamification hook skips explicit unaccepted machine task payloads but keep
         created_by_user_id: null,
         owner_accepted: true
     }), true);
+    assert.equal(shouldAwardTaskCompletion({
+        id: 5,
+        status: 'done',
+        source_type: 'hermes',
+        created_by_user_id: 10
+    }), false);
 });

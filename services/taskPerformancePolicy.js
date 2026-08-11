@@ -10,6 +10,7 @@ const {
     taskKpiEligibleSql,
     taskMachineSignalSql,
     taskOwnerAcceptedSql,
+    taskProtectedKpiSignalSql,
     taskTerminalExclusionSql,
     taskWorkloadDateSql
 } = require('./taskAutomationPolicy');
@@ -23,6 +24,7 @@ module.exports = {
     taskKpiHumanCreatedSql: taskHumanCreatedSql,
     taskKpiMachineSignalSql: taskMachineSignalSql,
     taskKpiOwnerAcceptedSql: taskOwnerAcceptedSql,
+    taskKpiProtectedSignalSql: taskProtectedKpiSignalSql,
     taskKpiTerminalExclusionSql: taskTerminalExclusionSql,
     taskKpiActiveWorkSql: taskActiveWorkSql,
     taskKpiCanonicalOverdueSql: taskCanonicalOverdueSql,

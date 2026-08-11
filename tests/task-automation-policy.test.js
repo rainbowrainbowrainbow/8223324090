@@ -13,9 +13,11 @@ const {
     buildMachineTaskControlMetaPatch,
     classifyTaskAutomation,
     classifyTaskKpiEligibility,
+    hasAutomationMarkerScope,
     hasStrictMachineProvenance,
     isTrustedCancelledBookingAutoArchiveMarked,
     taskKpiEligibleSql,
+    taskProtectedKpiSignalSql,
     taskOwnerAcceptedSql
 } = require('../services/taskAutomationPolicy');
 const { TASK_ACTION_TYPES } = require('../services/taskActionConstants');
@@ -152,6 +154,87 @@ test('KPI eligibility classifies owner-accepted, system-completed, human, termin
         type: '',
         created_by: ''
     }), { eligible: false, classification: 'ambiguous_excluded', reason: 'ambiguous_provenance' });
+
+    for (const row of [
+        {
+            source_type: 'booking',
+            type: 'auto_complete',
+            created_by: 'rule_engine',
+            created_by_user_id: 9,
+            status: 'done'
+        },
+        {
+            source_type: 'ai_draft',
+            type: 'manual',
+            created_by_user_id: 9,
+            status: 'done'
+        },
+        {
+            source_type: 'hermes',
+            type: 'manual',
+            created_by_user_id: 9,
+            status: 'done'
+        },
+        {
+            source_type: 'attendance',
+            type: 'manual',
+            created_by_user_id: 9,
+            status: 'done'
+        },
+        {
+            source_type: 'manual',
+            type: 'manual',
+            created_by_user_id: 9,
+            visibility: 'private',
+            status: 'done'
+        }
+    ]) {
+        assert.equal(
+            classifyTaskKpiEligibility(row).eligible,
+            false,
+            'typed creator must not override machine/protected provenance'
+        );
+    }
+});
+
+test('KPI SQL applies protected and machine precedence before typed human creator', () => {
+    const eligible = taskKpiEligibleSql('t');
+    assert.match(eligible, /AND NOT \(\s*LOWER\(COALESCE\(t\.visibility, ''\)\) IN/);
+    assert.match(eligible, /NOT \(\s*LOWER\(COALESCE\(t\.created_by, ''\)\) IN/);
+    assert.match(eligible, /COALESCE\(t\.created_by_user_id, 0\) > 0/);
+    assert.match(eligible, /OR \(\s*\(\s*LOWER\(COALESCE\(t\.created_by, ''\)\) IN[\s\S]*AND EXISTS \(/);
+
+    const protectedSql = taskProtectedKpiSignalSql('t');
+    assert.match(protectedSql, /'private'/);
+    assert.match(protectedSql, /'ai_draft'/);
+    assert.match(protectedSql, /'hermes'/);
+    assert.match(protectedSql, /'attendance'/);
+});
+
+test('automation marker scope excludes plain manual but keeps unanchored rule_engine/manual automation', () => {
+    assert.equal(hasAutomationMarkerScope({
+        source_type: 'manual',
+        type: 'manual',
+        created_by: 'sergiy',
+        created_by_user_id: 7
+    }), false);
+    assert.equal(hasAutomationMarkerScope({
+        source_type: 'manual',
+        type: 'auto',
+        created_by: 'rule_engine',
+        created_by_user_id: null
+    }), true);
+    assert.equal(hasAutomationMarkerScope({
+        source_type: 'booking',
+        type: 'manual',
+        created_by: 'booking_legacy'
+    }), true);
+    assert.equal(hasAutomationMarkerScope({
+        source_type: 'manual',
+        type: 'manual',
+        source_module: 'hermes',
+        created_by_user_id: 12
+    }), true);
 });
 
 test('task subsystems import the shared automation policy', () => {

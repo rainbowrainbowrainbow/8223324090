@@ -13,6 +13,7 @@ const {
     taskKpiHumanCreatedSql,
     taskKpiMachineSignalSql,
     taskKpiOwnerAcceptedSql,
+    taskKpiProtectedSignalSql,
     taskKpiTerminalExclusionSql
 } = require('../services/taskPerformancePolicy');
 const { TASK_AUTOMATION_POLICY_VERSION } = require('../services/taskAutomationPolicy');
@@ -44,7 +45,15 @@ test('task performance policy is fail-closed for machine-generated KPI tasks', (
     assert.match(machine, /'booking'/);
     assert.match(machine, /'attendance'/);
     assert.match(machine, /'hermes'/);
+    assert.match(machine, /'ai_draft'/);
     assert.match(machine, /'auto_complete'/);
+
+    const protectedSignal = taskKpiProtectedSignalSql('t');
+    assert.match(protectedSignal, /visibility/);
+    assert.match(protectedSignal, /'private'/);
+    assert.match(protectedSignal, /'ai_draft'/);
+    assert.match(protectedSignal, /'hermes'/);
+    assert.match(protectedSignal, /'attendance'/);
 
     const human = taskKpiHumanCreatedSql('t');
     assert.match(human, /created_by_user_id/);
@@ -60,6 +69,8 @@ test('task performance policy is fail-closed for machine-generated KPI tasks', (
 
     const eligible = taskKpiEligibleSql('t');
     assert.match(eligible, /NOT \(/);
+    assert.match(eligible, /AND NOT \(\s*LOWER\(COALESCE\(t\.visibility, ''\)\) IN/);
+    assert.match(eligible, /NOT \(\s*LOWER\(COALESCE\(t\.created_by, ''\)\) IN/);
     assert.match(eligible, /task_action_history/);
     assert.doesNotMatch(eligible, /LOWER\(COALESCE\(t\.status, 'todo'\)\) IN \('done', 'completed'\)\s+OR EXISTS/);
 });

@@ -14,6 +14,7 @@ let pool = null;
 let suffix = '';
 let creatorToken = '';
 let openAiMock = null;
+let previousBundleEnabled = undefined;
 
 function createPool() {
     const databaseUrl = String(process.env.DATABASE_URL || process.env.TEST_DATABASE_URL || '');
@@ -346,6 +347,8 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(process.env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER, 'true', 'My Day PostgreSQL tests require verified disposable database');
         assert.equal(String(process.env.OPENAI_API_BASE_URL || '').startsWith('http://127.0.0.1:'), true, 'My Day tests must use local OpenAI mock');
         assert.equal(process.env.OPENAI_API_KEY, 'isolated-my-day-openai-mock-key', 'My Day tests must not use a real OpenAI key');
+        previousBundleEnabled = process.env.TASK_AI_DRAFT_BUNDLE_ENABLED;
+        process.env.TASK_AI_DRAFT_BUNDLE_ENABLED = 'true';
         pool = createPool();
         suffix = `${process.pid}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
         creatorToken = await getToken();
@@ -366,6 +369,11 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             await query('DELETE FROM users WHERE username LIKE $1', [`my_day_pg_%_${suffix}`]).catch(() => {});
         }
         await pool?.end();
+        if (previousBundleEnabled === undefined) {
+            delete process.env.TASK_AI_DRAFT_BUNDLE_ENABLED;
+        } else {
+            process.env.TASK_AI_DRAFT_BUNDLE_ENABLED = previousBundleEnabled;
+        }
     });
 
     it('keeps migration 320 additive with tags column and tag_values constraint intact', async () => {

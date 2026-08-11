@@ -1065,8 +1065,34 @@ async function markShiftJobSucceeded(client, context, result) {
                 details: { providerStatus: providerStatus || null }
             });
         }
-        assertLifecycleTransition(context.job.fiscal_shift_lifecycle_stage || 'OPENING', 'OPENED');
-        await client.query(
+        let currentLifecycleStage = String(context.job.fiscal_shift_lifecycle_stage || 'CREATED').trim().toUpperCase();
+        if (currentLifecycleStage === 'CREATED') {
+            const opening = await client.query(
+                `UPDATE fiscal_shifts
+                    SET lifecycle_stage = 'OPENING',
+                        provider_snapshot = provider_snapshot || $3::jsonb,
+                        updated_at = NOW()
+                  WHERE id = $1
+                    AND fiscal_profile_id = $2
+                    AND lifecycle_stage = 'CREATED'
+                  RETURNING id`,
+                [
+                    shiftId,
+                    context.job.fiscal_profile_id,
+                    JSON.stringify({ lifecycle_stage: 'OPENING', external_stage: 'shift_request_maybe_submitted', source: 'shift_finalize' })
+                ]
+            );
+            if (!opening.rows.length) {
+                throw new PaymentOutboxWorkerError('checkbox_shift_lifecycle_mismatch', 'Shift lifecycle could not advance from CREATED to OPENING before finalize', {
+                    retryable: true,
+                    unknown: true,
+                    details: { currentLifecycleStage }
+                });
+            }
+            currentLifecycleStage = 'OPENING';
+        }
+        assertLifecycleTransition(currentLifecycleStage, 'OPENED');
+        const updatedShift = await client.query(
             `UPDATE fiscal_shifts
                 SET status = 'open',
                     lifecycle_stage = 'OPENED',
@@ -1077,7 +1103,8 @@ async function markShiftJobSucceeded(client, context, result) {
                     updated_at = NOW()
                   WHERE id = $1
                 AND fiscal_profile_id = $2
-                AND status = 'opening'`,
+                AND status = 'opening'
+              RETURNING id`,
             [
                 shiftId,
                 context.job.fiscal_profile_id,
@@ -1085,6 +1112,13 @@ async function markShiftJobSucceeded(client, context, result) {
                 JSON.stringify({ open_result: result.response || {}, lifecycle_stage: 'OPENED' })
             ]
         );
+        if (!updatedShift.rows.length) {
+            throw new PaymentOutboxWorkerError('checkbox_shift_open_finalize_mismatch', 'Provider-opened shift could not finalize the matching local shift row', {
+                retryable: true,
+                unknown: true,
+                details: { shiftId: Number(shiftId), currentLifecycleStage }
+            });
+        }
         await markJobSucceeded(client, context.job);
         return { ok: true, jobId: Number(context.job.id), source: result.source };
     }

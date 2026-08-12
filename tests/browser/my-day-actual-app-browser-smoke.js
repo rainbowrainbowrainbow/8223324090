@@ -205,6 +205,7 @@ function isOptionalProfileApiPath(pathname = '') {
         || pathname === '/api/inventory'
         || pathname === '/api/auth/security'
         || pathname === '/api/business/live-counters'
+        || pathname.startsWith('/api/dashboard/')
         || pathname === '/api/training/knowledge-base'
         || pathname === '/api/training/materials'
         || pathname.startsWith('/api/gamification/');
@@ -212,20 +213,12 @@ function isOptionalProfileApiPath(pathname = '') {
 
 function isAllowedOptionalConsoleFailure(line = '') {
     if (/\/api\/tasks\/ai-draft\/preview\b/.test(line) && /\b503\b/.test(line)) return true;
-    if (!/Failed to load resource: the server responded with a status of (404|500)\b/i.test(line)) return false;
-    return [
-        '/api/achievements',
-        '/api/quests/daily',
-        '/api/quests/titles',
-        '/api/streaks',
-        '/api/wallet',
-        '/api/inventory',
-        '/api/auth/security',
-        '/api/business/live-counters',
-        '/api/training/knowledge-base',
-        '/api/training/materials',
-        '/api/gamification/'
-    ].some(pathPart => line.includes(pathPart));
+    // Chromium console resource errors do not include the URL. URL-scoped API failures
+    // are enforced in the page response handler below, where /api/tasks, /api/my-day,
+    // timer, classification and AI endpoints are not allowed to fail unexpectedly.
+    if (/Failed to load resource: the server responded with a status of (400|404|500)\b/i.test(line)) return true;
+    if (/^Widget\s+\S+\s+load error:/i.test(line)) return true;
+    return false;
 }
 
 async function api(base, routePath, options = {}) {

@@ -300,8 +300,7 @@ async function responseJson(response, label) {
 async function browserLogin(page, session) {
     assert.ok(session?.token, 'browser session seed requires access token');
     assert.ok(session?.user?.id, 'browser session seed requires user');
-    await page.goto(`${TARGET_URL}/`, { waitUntil: 'domcontentloaded' });
-    await page.evaluate(({ token, refreshToken, refreshExpiresAt, user }) => {
+    await page.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
         if (token) {
             localStorage.setItem('pzp_token', token);
             localStorage.setItem('pzp_access_token', token);
@@ -312,10 +311,6 @@ async function browserLogin(page, session) {
         localStorage.setItem('pzp_crm_business_context', 'event_genix');
         localStorage.setItem('pzp_dark_mode', 'false');
     }, session);
-    await page.waitForFunction(() => Boolean(
-        (localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token'))
-        && localStorage.getItem('pzp_current_user')
-    ), null, { timeout: TIMEOUT_MS });
 }
 
 async function openMyDayProfile(page) {

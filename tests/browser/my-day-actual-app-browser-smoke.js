@@ -336,7 +336,28 @@ async function openMyDayProfile(page) {
         await waitForMyDayProfileRuntime(page);
     } catch (error) {
         await page.reload({ waitUntil: 'domcontentloaded' });
-        await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        try {
+            await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        } catch (retryComposerError) {
+            const diagnostics = await page.evaluate(() => ({
+                url: location.href,
+                readyState: document.readyState,
+                mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden')),
+                hasComposer: Boolean(document.getElementById('cabinetTaskComposer')),
+                authStorage: {
+                    hasLegacyToken: Boolean(localStorage.getItem('pzp_token')),
+                    hasAccessToken: Boolean(localStorage.getItem('pzp_access_token')),
+                    hasCurrentUser: Boolean(localStorage.getItem('pzp_current_user')),
+                    currentUserId: (() => {
+                        try { return JSON.parse(localStorage.getItem('pzp_current_user') || '{}')?.id || null; }
+                        catch { return null; }
+                    })()
+                },
+                activeProfileTab: document.querySelector('.profile-tab.active, [data-profile-tab].active')?.textContent?.trim() || null,
+                visibleHeading: Array.from(document.querySelectorAll('h1,h2,h3')).map(node => node.textContent?.trim()).filter(Boolean).slice(0, 8)
+            })).catch(() => null);
+            throw new Error(`${retryComposerError.message}; profile My Day composer retry diagnostics: ${JSON.stringify(diagnostics)}; initial runtime error: ${error.message}`);
+        }
         try {
             await waitForMyDayProfileRuntime(page);
         } catch (retryError) {
@@ -375,7 +396,6 @@ async function waitForMyDayProfileRuntime(page) {
         return Boolean(
             form
             && typeof form.requestSubmit === 'function'
-            && typeof window.createCabinetTask === 'function'
             && window.TaskCreate?.createTask
             && !document.getElementById('mainApp')?.classList.contains('hidden')
         );
@@ -398,27 +418,16 @@ async function submitCabinetComposer(page) {
     await submit.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
     await page.locator('#cabinetTaskComposer').evaluate(form => {
         const button = form.querySelector('.cabinet-task-create-submit');
-        if (typeof window.createCabinetTask !== 'function') {
-            throw new Error('createCabinetTask handler is not available on window');
-        }
-        return window.createCabinetTask({
-            preventDefault() {},
-            target: form,
-            submitter: button
-        }, 'personal');
+        if (typeof form.requestSubmit === 'function') form.requestSubmit(button);
+        else button?.click();
     });
 }
 
-async function invokeCabinetComposerHandler(page) {
+async function requestSubmitCabinetComposer(page) {
     await page.locator('#cabinetTaskComposer').evaluate(form => {
-        if (typeof window.createCabinetTask !== 'function') {
-            throw new Error('createCabinetTask handler is not available on window');
-        }
-        return window.createCabinetTask({
-            preventDefault() {},
-            target: form,
-            submitter: form.querySelector('.cabinet-task-create-submit')
-        }, 'personal');
+        const button = form.querySelector('.cabinet-task-create-submit');
+        if (typeof form.requestSubmit !== 'function') throw new Error('cabinetTaskComposer.requestSubmit is not available');
+        form.requestSubmit(button);
     });
 }
 
@@ -532,7 +541,7 @@ async function submitCabinetComposerForTaskCreate(page, methodName) {
     ]);
     if (quickResult) return quickResult;
     await restoreCabinetComposerDraft(page, draftSnapshot);
-    await invokeCabinetComposerHandler(page);
+    await requestSubmitCabinetComposer(page);
     try {
         return await waitForTaskCreateResult(page, methodName);
     } catch (error) {

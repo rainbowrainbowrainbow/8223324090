@@ -741,7 +741,9 @@ async function main() {
         expectedApiFailures.push({ method: 'POST', pathname: '/api/tasks/ai-draft/preview', status: 503 });
         await page.locator('#taskTitle').fill(`Provider unavailable source ${RUN_ID}`);
         await page.locator('#taskDescription').fill('Provider unavailable should not block manual create.');
+        const providerUnavailablePreview = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/preview');
         await page.locator('[data-task-ai-draft-preview]').click();
+        assert.equal((await providerUnavailablePreview).status(), 503, 'provider unavailable preview returns controlled 503');
         await page.locator('[data-task-ai-draft-status]').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         const providerFallbackTitle = `Manual fallback after provider ${RUN_ID}`;
         await page.locator('#taskTitle').fill(providerFallbackTitle);

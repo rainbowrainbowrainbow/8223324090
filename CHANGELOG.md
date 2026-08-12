@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.128 - My Day AI Evidence Gate Release
+
+### Release / Versioning / (12.08.2026) [codex]
+- **My Day AI rollout evidence** - rollout report now supports stdin-sanitized Railway logs, exact release/stage metadata and the agreed `24h stable window OR 30 successful proposals` gate.
+- **Actual-app My Day E2E** - browser coverage now fails on unexpected My Day/Tasks `4xx/5xx`, exercises real Profile and Tasks composers against Express/PostgreSQL, and keeps OpenAI calls fail-closed in CI.
+- **Release safety** - prepared v0.80.128 version/cache metadata without changing production rollout, secrets, migrations or Railway configuration.
+
+---
+
 ## v0.80.127 - My Day AI Hardening Release
 
 ### My Day / AI / Timer / (12.08.2026) [codex]

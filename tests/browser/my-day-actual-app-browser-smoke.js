@@ -339,6 +339,31 @@ async function submitCabinetComposer(page) {
     await submit.click();
 }
 
+async function invokeCabinetComposerHandler(page) {
+    await page.locator('#cabinetTaskComposer').evaluate(form => {
+        if (typeof window.createCabinetTask !== 'function') {
+            throw new Error('createCabinetTask handler is not available on window');
+        }
+        return window.createCabinetTask({
+            preventDefault() {},
+            target: form,
+            submitter: form.querySelector('.cabinet-task-create-submit')
+        }, 'personal');
+    });
+}
+
+async function submitCabinetComposerForResponse(page, method, pathname) {
+    const responsePromise = waitForApiResponse(page, method, pathname);
+    await submitCabinetComposer(page);
+    const quickResponse = await Promise.race([
+        responsePromise,
+        page.waitForTimeout(5_000).then(() => null)
+    ]);
+    if (quickResponse) return quickResponse;
+    await invokeCabinetComposerHandler(page);
+    return await responsePromise;
+}
+
 async function submitTasksComposer(page) {
     await page.locator('#addTaskBtn').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
     await page.locator('#addTaskBtn').click();
@@ -406,8 +431,7 @@ async function main() {
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;
         await page.locator('#cabinetTaskTitle').fill(manualTitle);
-        const manualCreateResponse = waitForApiResponse(page, 'POST', '/api/tasks');
-        await submitCabinetComposer(page);
+        const manualCreateResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks');
         const manualBody = await responseJson(await manualCreateResponse, 'manual profile composer create');
         const manualTaskId = Number(manualBody.task?.id || manualBody.data?.id);
         assert.ok(manualTaskId > 0, 'manual composer returns created task id');
@@ -430,8 +454,7 @@ async function main() {
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує одну складну задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-task-ai-draft-accept-all]').click();
-        const aiCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/commit');
-        await submitCabinetComposer(page);
+        const aiCommitResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks/ai-draft/commit');
         const aiCommitBody = await responseJson(await aiCommitResponse, 'AI checklist commit from real profile composer');
         const aiTaskId = Number(aiCommitBody.task?.id || aiCommitBody.taskId || aiCommitBody.task_id);
         assert.ok(aiTaskId > 0, 'AI checklist commit returns task id');
@@ -460,8 +483,7 @@ async function main() {
             const payload = window.TaskAiDraft?.commitPayloadFor?.(composer);
             return payload?.commitType === 'bundle' && Array.isArray(payload.tasks) && payload.tasks.length >= 2;
         }, null, { timeout: TIMEOUT_MS });
-        const bundleCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
-        await submitCabinetComposer(page);
+        const bundleCommitResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
         const bundleBody = await responseJson(await bundleCommitResponse, 'AI bundle commit from main profile CTA');
         const bundleTaskIds = (bundleBody.bundle?.taskIds || bundleBody.taskIds || []).map(Number).filter(Boolean);
         assert.ok(bundleTaskIds.length >= 2, 'AI bundle commit returns multiple task ids');

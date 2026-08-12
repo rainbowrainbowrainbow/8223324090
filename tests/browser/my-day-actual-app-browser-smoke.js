@@ -318,6 +318,15 @@ async function openMyDayProfile(page) {
             readyState: document.readyState,
             mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden')),
             hasComposer: Boolean(document.getElementById('cabinetTaskComposer')),
+            authStorage: {
+                hasLegacyToken: Boolean(localStorage.getItem('pzp_token')),
+                hasAccessToken: Boolean(localStorage.getItem('pzp_access_token')),
+                hasCurrentUser: Boolean(localStorage.getItem('pzp_current_user')),
+                currentUserId: (() => {
+                    try { return JSON.parse(localStorage.getItem('pzp_current_user') || '{}')?.id || null; }
+                    catch { return null; }
+                })()
+            },
             activeProfileTab: document.querySelector('.profile-tab.active, [data-profile-tab].active')?.textContent?.trim() || null,
             visibleHeading: Array.from(document.querySelectorAll('h1,h2,h3')).map(node => node.textContent?.trim()).filter(Boolean).slice(0, 8)
         })).catch(() => null);
@@ -577,7 +586,23 @@ async function main() {
     assert.ok(selectedImpactIds.length >= 2, 'starter kit exposes at least two active impacts');
 
     const browser = await chromium.launch({ headless: HEADLESS });
-    const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block' });
+    const targetOrigin = new URL(TARGET_URL).origin;
+    const sessionStorageState = {
+        cookies: [],
+        origins: [{
+            origin: targetOrigin,
+            localStorage: [
+                { name: 'pzp_token', value: session.token },
+                { name: 'pzp_access_token', value: session.token },
+                ...(session.refreshToken ? [{ name: 'pzp_refresh_token', value: session.refreshToken }] : []),
+                ...(session.refreshExpiresAt ? [{ name: 'pzp_refresh_expires_at', value: String(session.refreshExpiresAt) }] : []),
+                { name: 'pzp_current_user', value: JSON.stringify(session.user) },
+                { name: 'pzp_crm_business_context', value: 'event_genix' },
+                { name: 'pzp_dark_mode', value: 'false' }
+            ]
+        }]
+    };
+    const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block', storageState: sessionStorageState });
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
         if (token) {
             localStorage.setItem('pzp_token', token);

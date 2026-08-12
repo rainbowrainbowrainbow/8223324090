@@ -334,8 +334,9 @@ async function openTasksPage(page) {
 }
 
 async function submitCabinetComposer(page) {
-    await page.locator('#cabinetTaskComposer .cabinet-task-create-submit').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-    await page.locator('#cabinetTaskComposer').evaluate(form => form.requestSubmit());
+    const submit = page.locator('#cabinetTaskComposer .cabinet-task-create-submit');
+    await submit.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    await submit.click();
 }
 
 async function submitTasksComposer(page) {

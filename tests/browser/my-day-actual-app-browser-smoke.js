@@ -224,13 +224,18 @@ function isOptionalProfileApiPath(pathname = '') {
 }
 
 function isAllowedOptionalConsoleFailure(line = '') {
-    if (/\/api\/tasks\/ai-draft\/preview\b/.test(line) && /\b503\b/.test(line)) return true;
-    // Chromium console resource errors do not include the URL. URL-scoped API failures
-    // are enforced in the page response handler below, where /api/tasks, /api/my-day,
-    // timer, classification and AI endpoints are not allowed to fail unexpectedly.
-    if (/Failed to load resource: the server responded with a status of (400|404|500)\b/i.test(line)) return true;
     if (/^Widget\s+\S+\s+load error:/i.test(line)) return true;
     return false;
+}
+
+function consumeExpectedConsoleResourceFailure(line = '', expected = []) {
+    const match = String(line || '').match(/Failed to load resource: the server responded with a status of (\d{3})\b/i);
+    if (!match) return false;
+    const status = Number(match[1]);
+    const index = expected.findIndex(item => Number(item.status) === status);
+    if (index < 0) return false;
+    expected.splice(index, 1);
+    return true;
 }
 
 async function api(base, routePath, options = {}) {
@@ -632,8 +637,12 @@ async function main() {
     const apiFailures = [];
     const requestFailures = [];
     const expectedApiFailures = [];
+    const expectedConsoleFailures = [];
     page.on('console', message => {
-        if (message.type() === 'error') consoleErrors.push(message.text());
+        if (message.type() !== 'error') return;
+        const text = message.text();
+        if (consumeExpectedConsoleResourceFailure(text, expectedConsoleFailures)) return;
+        consoleErrors.push(text);
     });
     page.on('pageerror', error => consoleErrors.push(error.message));
     page.on('response', response => {
@@ -788,6 +797,7 @@ async function main() {
             () => jsonResponse({ error: { message: 'mock provider unavailable retry' } }, 503)
         );
         expectedApiFailures.push({ method: 'POST', pathname: '/api/tasks/ai-draft/preview', status: 503 });
+        expectedConsoleFailures.push({ status: 503 });
         await page.locator('#taskTitle').fill(providerUnavailableSource);
         await page.locator('#taskDescription').fill('Provider unavailable should not block manual create.');
         const providerUnavailablePreview = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/preview');
@@ -875,13 +885,15 @@ async function main() {
                 unexpectedConsoleErrors,
                 apiFailures,
                 requestFailures,
-                expectedApiFailures
+                expectedApiFailures,
+                expectedConsoleFailures
             }, null, 2));
         }
         assert.deepEqual(unexpectedConsoleErrors, [], 'browser console has no unexpected errors');
         assert.deepEqual(apiFailures, [], 'actual-app smoke has no unexpected API 4xx/5xx responses');
         assert.deepEqual(requestFailures, [], 'actual-app smoke has no unexpected critical request failures');
         assert.deepEqual(expectedApiFailures, [], 'all expected API failures were observed');
+        assert.deepEqual(expectedConsoleFailures, [], 'all expected browser resource failures were observed');
     } finally {
         await browser.close();
         await openAiMock.close();

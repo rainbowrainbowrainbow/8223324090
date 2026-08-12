@@ -360,7 +360,14 @@ async function openTasksPage(page) {
 async function submitCabinetComposer(page) {
     const submit = page.locator('#cabinetTaskComposer .cabinet-task-create-submit');
     await submit.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-    await submit.click();
+    await page.locator('#cabinetTaskComposer').evaluate(form => {
+        const button = form.querySelector('.cabinet-task-create-submit');
+        if (typeof form.requestSubmit === 'function') {
+            form.requestSubmit(button || undefined);
+            return;
+        }
+        button?.click();
+    });
 }
 
 async function invokeCabinetComposerHandler(page) {

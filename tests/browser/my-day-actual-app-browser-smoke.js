@@ -590,7 +590,9 @@ async function main() {
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;
         await fillCabinetField(page, 'cabinetTaskTitle', manualTitle);
-        const manualBody = await submitCabinetComposerForTaskCreate(page, 'createTask');
+        const manualResponse = waitForApiResponse(page, 'POST', '/api/tasks');
+        await submitCabinetComposer(page);
+        const manualBody = await responseJson(await manualResponse, 'Profile manual composer create');
         const manualTaskId = Number(manualBody.task?.id || manualBody.data?.id);
         assert.ok(manualTaskId > 0, 'manual composer returns created task id');
         await visibleTaskCard(page, manualTitle);

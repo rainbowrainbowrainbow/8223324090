@@ -364,6 +364,16 @@ async function submitCabinetComposerForResponse(page, method, pathname) {
     return await responsePromise;
 }
 
+async function fillCabinetField(page, id, value) {
+    await page.evaluate(({ fieldId, fieldValue }) => {
+        const field = document.getElementById(fieldId);
+        if (!field) throw new Error(`${fieldId} not found`);
+        field.value = fieldValue;
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
+    }, { fieldId: id, fieldValue: value });
+}
+
 async function submitTasksComposer(page) {
     await page.locator('#addTaskBtn').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
     await page.locator('#addTaskBtn').click();
@@ -430,7 +440,7 @@ async function main() {
         await openMyDayProfile(page);
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;
-        await page.locator('#cabinetTaskTitle').fill(manualTitle);
+        await fillCabinetField(page, 'cabinetTaskTitle', manualTitle);
         const manualCreateResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks');
         const manualBody = await responseJson(await manualCreateResponse, 'manual profile composer create');
         const manualTaskId = Number(manualBody.task?.id || manualBody.data?.id);
@@ -449,8 +459,8 @@ async function main() {
             assert.equal(body.store, false);
             return openAiDraftOutput(checklistProposal(selectedImpactIds.slice(0, 2), today));
         });
-        await page.locator('#cabinetTaskTitle').fill(`AI checklist source ${RUN_ID}`);
-        await page.locator('#cabinetTaskDetails').fill('Перевірити CRM звіти і Hermes статуси сьогодні.');
+        await fillCabinetField(page, 'cabinetTaskTitle', `AI checklist source ${RUN_ID}`);
+        await fillCabinetField(page, 'cabinetTaskDetails', 'Перевірити CRM звіти і Hermes статуси сьогодні.');
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує одну складну задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-task-ai-draft-accept-all]').click();
@@ -468,8 +478,8 @@ async function main() {
             assert.equal(body.store, false);
             return openAiDraftOutput(bundleProposal(selectedImpactIds.slice(0, 3), today));
         });
-        await page.locator('#cabinetTaskTitle').fill(`AI bundle source ${RUN_ID}`);
-        await page.locator('#cabinetTaskDetails').fill('Розклади перевірку звітів на CRM і Hermes задачі.');
+        await fillCabinetField(page, 'cabinetTaskTitle', `AI bundle source ${RUN_ID}`);
+        await fillCabinetField(page, 'cabinetTaskDetails', 'Розклади перевірку звітів на CRM і Hermes задачі.');
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує створити' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         const bundleAcceptButtons = page.locator('[data-task-ai-bundle-accept]');

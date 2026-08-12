@@ -57,7 +57,7 @@ const DecisionScreen = (() => {
         }
 
         try {
-            await apiCall('PUT', `/api/decisions/${id}/${action}`);
+            await apiCall('PUT', `/decisions/${id}/${action}`);
             _pending = _pending.filter(d => d.id !== id);
             _render();
 
@@ -77,7 +77,7 @@ const DecisionScreen = (() => {
     // ── Private ───────────────────────────────────────────────
     async function _loadAndRender() {
         try {
-            const data = await apiCall('GET', '/api/decisions/pending');
+            const data = await apiCall('GET', '/decisions/pending');
             _pending = data?.decisions || [];
         } catch (err) {
             console.warn('[DecisionScreen] load failed:', err);

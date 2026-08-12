@@ -304,6 +304,11 @@ async function browserLogin(page) {
 }
 
 async function openMyDayProfile(page) {
+    const projectionLoad = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return response.request().method() === 'GET'
+            && url.pathname === '/api/tasks/my-day';
+    }, { timeout: TIMEOUT_MS }).catch(() => null);
     await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated profile navigation should not redirect to the root fallback');
     await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
@@ -331,6 +336,17 @@ async function openMyDayProfile(page) {
             throw new Error(`${retryError.message}; profile runtime diagnostics: ${JSON.stringify(diagnostics)}`);
         }
     }
+    await projectionLoad;
+    await page.locator('#cabinetMyDaySegmentPanel').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    await page.waitForFunction(() => {
+        const form = document.getElementById('cabinetTaskComposer');
+        return Boolean(
+            form
+            && document.body.contains(form)
+            && form.querySelector('#cabinetTaskTitle')
+            && form.querySelector('.cabinet-task-create-submit')
+        );
+    }, null, { timeout: TIMEOUT_MS });
 }
 
 async function waitForMyDayProfileRuntime(page) {
@@ -456,9 +472,9 @@ async function cabinetComposerDiagnostics(page) {
 async function snapshotCabinetComposerDraft(page) {
     return page.evaluate(() => {
         const valueFor = fieldId => {
-            const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
-            const nonEmpty = fields.find(field => String(field.value || '').trim());
-            return nonEmpty?.value || fields[0]?.value || '';
+            const form = document.getElementById('cabinetTaskComposer');
+            const field = form?.querySelector(`#${CSS.escape(fieldId)}`) || document.getElementById(fieldId);
+            return field?.value || '';
         };
         return {
             title: valueFor('cabinetTaskTitle'),
@@ -473,13 +489,13 @@ async function restoreCabinetComposerDraft(page, draft = {}) {
             cabinetTaskTitle: snapshot.title || '',
             cabinetTaskDetails: snapshot.details || ''
         })) {
-            const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
-            fields.forEach(field => {
-                field.value = fieldValue;
-                field.setAttribute('value', fieldValue);
-                field.dispatchEvent(new Event('input', { bubbles: true }));
-                field.dispatchEvent(new Event('change', { bubbles: true }));
-            });
+            const form = document.getElementById('cabinetTaskComposer');
+            const field = form?.querySelector(`#${CSS.escape(fieldId)}`) || document.getElementById(fieldId);
+            if (!field) continue;
+            field.value = fieldValue;
+            field.setAttribute('value', fieldValue);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
         }
     }, draft);
     if (draft.title) await waitForCabinetFieldValue(page, 'cabinetTaskTitle', draft.title);
@@ -508,16 +524,12 @@ async function submitCabinetComposerForTaskCreate(page, methodName) {
 async function fillCabinetField(page, id, value) {
     await page.evaluate(({ fieldId, fieldValue }) => {
         const form = document.getElementById('cabinetTaskComposer');
-        const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
-        const formField = form?.querySelector(`#${CSS.escape(fieldId)}`);
-        if (formField && !fields.includes(formField)) fields.unshift(formField);
-        if (!fields.length) throw new Error(`${fieldId} not found`);
-        fields.forEach(field => {
-            field.value = fieldValue;
-            field.setAttribute('value', fieldValue);
-            field.dispatchEvent(new Event('input', { bubbles: true }));
-            field.dispatchEvent(new Event('change', { bubbles: true }));
-        });
+        const field = form?.querySelector(`#${CSS.escape(fieldId)}`) || document.getElementById(fieldId);
+        if (!field) throw new Error(`${fieldId} not found`);
+        field.value = fieldValue;
+        field.setAttribute('value', fieldValue);
+        field.dispatchEvent(new Event('input', { bubbles: true }));
+        field.dispatchEvent(new Event('change', { bubbles: true }));
     }, { fieldId: id, fieldValue: value });
     await waitForCabinetFieldValue(page, id, value);
 }
@@ -525,11 +537,8 @@ async function fillCabinetField(page, id, value) {
 async function waitForCabinetFieldValue(page, id, value) {
     await page.waitForFunction(({ fieldId, fieldValue }) => {
         const form = document.getElementById('cabinetTaskComposer');
-        const canonical = document.getElementById(fieldId);
         const formField = form?.querySelector(`#${CSS.escape(fieldId)}`);
-        const canonicalOk = !canonical || String(canonical.value || '') === String(fieldValue);
-        const formOk = !formField || String(formField.value || '') === String(fieldValue);
-        return Boolean(canonical || formField) && canonicalOk && formOk;
+        return Boolean(formField) && String(formField.value || '') === String(fieldValue);
     }, { fieldId: id, fieldValue: value }, { timeout: TIMEOUT_MS });
 }
 

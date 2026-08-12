@@ -448,7 +448,7 @@ async function submitCabinetComposerForTaskCreate(page, methodName) {
     const draftSnapshot = await snapshotCabinetComposerDraft(page);
     await submitCabinetComposer(page);
     const quickResult = await Promise.race([
-        waitForTaskCreateResult(page, methodName, 5_000),
+        waitForTaskCreateResult(page, methodName, 5_000).catch(() => null),
         page.waitForTimeout(5_000).then(() => null)
     ]);
     if (quickResult) return quickResult;

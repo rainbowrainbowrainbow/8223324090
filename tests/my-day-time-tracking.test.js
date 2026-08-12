@@ -64,23 +64,23 @@ test('time ledger contract has one active timer, atomic switch, completion stop,
     assert.match(projection, /actualSeconds: taskTimeTotalsByTaskId\.get\(taskId\) \|\| 0/);
 });
 
-test('My Day UI keeps plan and fact separate and restores active timer', () => {
+test('My Day UI keeps plan and fact behind compact card disclosure', () => {
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const ui = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
-    assert.match(profile, /renderActiveTimerStrip/);
+    assert.doesNotMatch(profile, /renderActiveTimerStrip/);
     assert.match(profile, /renderTaskControls/);
     assert.match(profile, /myDayTimeTracking\.load\(\)/);
     assert.match(profile, /myDayTimeTracking\.bind\?\.\(document\)/);
     assert.match(ui, /effortMinutes/);
     assert.match(ui, /actualSeconds/);
-    assert.match(ui, /data-my-day-active-timer-elapsed/);
+    assert.doesNotMatch(ui, /data-my-day-active-timer-elapsed/);
+    assert.doesNotMatch(ui, /data-my-day-time-strip/);
     assert.match(ui, /data-my-day-time-task-actual/);
     assert.match(ui, /timer-start/);
     assert.match(ui, /timer-stop/);
     assert.match(ui, /time-entries/);
     assert.match(ui, /data-my-day-time-edit/);
     assert.match(ui, /data-my-day-time-delete/);
-    assert.match(ui, /aria-live/);
     assert.doesNotMatch(ui, /Рџ|Рќ|Рў|Р¤|Р—|вЂ/);
 });
 
@@ -89,7 +89,7 @@ test('My Day time controls use CRM classes instead of raw browser-default button
     const css = fs.readFileSync(path.join(root, 'css', 'pages-profile.css'), 'utf8');
     const taskUi = fs.readFileSync(path.join(root, 'js', 'task-ui.js'), 'utf8');
 
-    assert.match(ui, /my-day-active-timer/);
+    assert.doesNotMatch(ui, /my-day-active-timer/);
     assert.match(ui, /my-day-time-summary/);
     assert.match(ui, /my-day-time-disclosure/);
     assert.match(ui, /aria-label="Деталі часу"/);
@@ -105,7 +105,7 @@ test('My Day time controls use CRM classes instead of raw browser-default button
     assert.match(css, /min-height:\s*34px/);
     assert.match(css, /flex-wrap:\s*wrap/);
     assert.match(css, /\.my-day-time-popover\.is-popover \.task-ui-action-panel/);
-    assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-active-timer/);
+    assert.doesNotMatch(css, /\.my-day-active-timer/);
     assert.match(css, /html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-time-disclosure/);
     assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.my-day-time-task--disclosure/);
     assert.match(css, /@media \(prefers-reduced-motion: reduce\)[\s\S]*\.my-day-time-disclosure/);
@@ -146,7 +146,6 @@ test('My Day timer UI derives live elapsed seconds from client clock without dup
     assert.equal(api.liveSecondsLabel(30), '0:30', 'active timer shows seconds before the first minute');
     assert.equal(api.liveSecondsLabel(95), '1:35', 'active timer keeps seconds after one minute');
     assert.ok(api.currentTimerDurationSeconds() >= 95);
-    assert.match(api.renderActiveTimerStrip(), /data-my-day-active-timer-elapsed[^>]*>1:3\d</, 'active timer strip renders seconds-precision elapsed time');
     const compactControls = api.renderTaskControls({ id: 41, actualSeconds: 30 });
     assert.match(compactControls, /my-day-time-disclosure/);
     assert.match(compactControls, /aria-label="Деталі часу"/);

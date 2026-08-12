@@ -1,5 +1,6 @@
 'use strict';
 
+const { canAccessBusinessContext } = require('./businessContext');
 const { myDayError } = require('./myDayTaxonomy');
 
 const MAX_MANUAL_DURATION_MINUTES = 24 * 60;
@@ -49,7 +50,6 @@ function serializeEntry(row = {}, now = new Date()) {
     ));
     return {
         id: Number(row.id),
-        userId: Number(row.user_id || row.userId),
         taskId: Number(row.task_id || row.taskId),
         startedAt,
         endedAt,
@@ -67,6 +67,52 @@ function serializeEntry(row = {}, now = new Date()) {
         createdAt: row.created_at || null,
         updatedAt: row.updated_at || null
     };
+}
+
+function publicTimerEntry(entry = {}, options = {}) {
+    if (!entry) return null;
+    const durationSeconds = Number(entry.durationSeconds ?? entry.duration_seconds ?? 0);
+    const base = {
+        startedAt: entry.startedAt || entry.started_at || null,
+        durationSeconds: Number.isFinite(durationSeconds) ? Math.max(0, durationSeconds) : 0,
+        isActive: entry.isActive !== false && !(entry.endedAt || entry.ended_at),
+        warning: entry.warning || null
+    };
+    if (options.includeTask === false) {
+        return {
+            ...base,
+            taskUnavailable: true,
+            task: null
+        };
+    }
+    const task = entry.task || null;
+    const businessContext = entry.businessContext || entry.business_context || task?.businessContext || task?.business_context || null;
+    return {
+        id: entry.id ? Number(entry.id) : null,
+        taskId: entry.taskId ? Number(entry.taskId) : Number(entry.task_id || task?.id || 0),
+        ...base,
+        endedAt: entry.endedAt || entry.ended_at || null,
+        source: entry.source || null,
+        businessContext,
+        taskUnavailable: false,
+        task: task ? {
+            id: Number(task.id || entry.taskId || entry.task_id || 0),
+            title: task.title || null,
+            status: task.status || null,
+            businessContext
+        } : null,
+        createdAt: entry.createdAt || entry.created_at || null,
+        updatedAt: entry.updatedAt || entry.updated_at || null
+    };
+}
+
+function sanitizeTimerForBusinessAccess(entry, user) {
+    if (!entry) return null;
+    const businessContext = entry.businessContext || entry.business_context || entry.task?.businessContext || entry.task?.business_context;
+    if (!businessContext || canAccessBusinessContext(user, businessContext)) {
+        return publicTimerEntry(entry, { includeTask: true });
+    }
+    return publicTimerEntry(entry, { includeTask: false });
 }
 
 async function activeTimer(queryable, userId, options = {}) {
@@ -231,6 +277,8 @@ module.exports = {
     listTimeEntries,
     loadTaskTimeTotals,
     manualInterval,
+    publicTimerEntry,
+    sanitizeTimerForBusinessAccess,
     startTimer,
     stopActiveTimerForUser,
     updateManualEntry

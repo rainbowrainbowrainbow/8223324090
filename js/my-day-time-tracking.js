@@ -2,7 +2,6 @@
     'use strict';
 
     const TIMER_TICK_MS = 1000;
-    const ACTIVE_TIMER_WARNING_SECONDS = 8 * 60 * 60;
     const state = { timer: null, loaded: false, loading: false };
     let timerTickInterval = null;
     const escape = value => window.TaskUI?.escapeHtml?.(String(value ?? '')) || String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -50,9 +49,6 @@
         const clientDelta = Math.max(0, Math.floor((nowMs() - syncedAt) / 1000));
         return base + clientDelta;
     }
-    function activeTimerWarning(timer = state.timer) {
-        return currentTimerDurationSeconds(timer) >= ACTIVE_TIMER_WARNING_SECONDS;
-    }
     async function request(path, options = {}) {
         const response = await fetch('/api/my-day' + path, {
             ...options,
@@ -74,13 +70,6 @@
     function updateTimerDom() {
         const timer = state.timer;
         if (!timer) return;
-        const durationText = liveSecondsLabel(currentTimerDurationSeconds(timer));
-        document?.querySelectorAll?.('[data-my-day-active-timer-elapsed]').forEach(node => {
-            node.textContent = durationText;
-        });
-        document?.querySelectorAll?.('[data-my-day-active-timer-warning]').forEach(node => {
-            node.hidden = !activeTimerWarning(timer);
-        });
         document?.querySelectorAll?.('[data-my-day-time-task-actual]').forEach(node => {
             if (Number(node.dataset.myDayTimeTaskActual) !== Number(timer.taskId)) return;
             const base = Math.max(0, Number(node.dataset.myDayTimeActualBase || 0));
@@ -101,7 +90,7 @@
         return true;
     }
     function bind(root = document) {
-        const hasTimerSurface = Boolean(root?.querySelector?.('[data-my-day-time-strip], [data-my-day-time-task]'));
+        const hasTimerSurface = Boolean(root?.querySelector?.('[data-my-day-time-task]'));
         syncTicker(hasTimerSurface);
         if (hasTimerSurface) updateTimerDom();
     }
@@ -110,20 +99,6 @@
         state.loading = true;
         try { state.timer = normalizeTimer((await request('/timer')).timer || null); state.loaded = true; return state.timer; }
         finally { state.loading = false; }
-    }
-    function renderActiveTimerStrip() {
-        const timer = state.timer;
-        if (!timer) return '<div class="my-day-time-strip my-day-active-timer is-idle" data-my-day-time-strip aria-live="polite"><span class="my-day-active-timer-label">Таймер не запущено</span></div>';
-        const warning = `<span class="my-day-time-warning" data-my-day-active-timer-warning ${activeTimerWarning(timer) ? '' : 'hidden'}>Понад 8 годин — перевірте таймер</span>`;
-        return `<div class="my-day-time-strip my-day-active-timer is-active" data-my-day-time-strip aria-live="polite">
-            <div class="my-day-active-timer-copy">
-                <span class="my-day-active-timer-label">Працює</span>
-                <strong class="my-day-active-timer-title">${escape(timer.task?.title || 'задача')}</strong>
-                <span class="my-day-active-timer-elapsed" data-my-day-active-timer-elapsed>${liveSecondsLabel(currentTimerDurationSeconds(timer))}</span>
-            </div>
-            ${warning}
-            <button type="button" class="my-day-time-button my-day-time-button--stop my-day-time-button--banner" data-cabinet-task-action="timer-stop" data-task-id="${escape(timer.taskId)}" aria-label="Зупинити активний таймер">Зупинити</button>
-        </div>`;
     }
     function renderTaskControls(task = {}, options = {}) {
         const taskId = Number(task.id || task.taskId || task.task_id || 0);
@@ -321,5 +296,5 @@
         await onChanged?.();
         return true;
     }
-    window.MyDayTimeTracking = { state, bind, currentTimerDurationSeconds, load, normalizeTimer, renderActiveTimerStrip, renderTaskControls, handleAction, secondsLabel, liveSecondsLabel, syncTicker, updateTimerDom, notifyTimerChanged };
+    window.MyDayTimeTracking = { state, bind, currentTimerDurationSeconds, load, normalizeTimer, renderTaskControls, handleAction, secondsLabel, liveSecondsLabel, syncTicker, updateTimerDom, notifyTimerChanged };
 }());

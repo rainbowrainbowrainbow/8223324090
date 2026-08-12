@@ -911,38 +911,6 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .my-day-habit-settings-fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; min-width: 0; }
 .my-day-habit-weekdays { display: flex; gap: 6px; flex-wrap: wrap; border: 0; padding: 0; margin: 0; }
 .my-day-habit-weekdays legend { width: 100%; font-size: 0.78rem; color: #64748b; }
-.my-day-active-timer {
-    align-items: center;
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.10), rgba(37, 99, 235, 0.08));
-    border: 1px solid rgba(20, 184, 166, 0.22);
-    border-radius: 14px;
-    color: var(--text-primary, #0f172a);
-    display: flex;
-    flex-wrap: wrap;
-    gap: 10px;
-    justify-content: space-between;
-    margin: 0 0 14px;
-    min-width: 0;
-    padding: 10px 12px;
-    width: 100%;
-}
-
-.my-day-active-timer.is-idle {
-    background: rgba(248, 250, 252, 0.72);
-    border-color: rgba(148, 163, 184, 0.22);
-    color: var(--text-muted, #64748b);
-}
-
-.my-day-active-timer-copy {
-    align-items: center;
-    display: flex;
-    flex: 1 1 260px;
-    flex-wrap: wrap;
-    gap: 8px;
-    min-width: 0;
-}
-
-.my-day-active-timer-label,
 .my-day-time-summary-label,
 .my-day-time-entry-source {
     color: var(--text-muted, #64748b);
@@ -950,27 +918,6 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     font-weight: 900;
     letter-spacing: 0.04em;
     text-transform: uppercase;
-}
-
-.my-day-active-timer-title {
-    color: var(--text-primary, #0f172a);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.my-day-active-timer-elapsed {
-    align-items: center;
-    background: rgba(20, 184, 166, 0.14);
-    border: 1px solid rgba(20, 184, 166, 0.24);
-    border-radius: 999px;
-    color: #0f766e;
-    display: inline-flex;
-    font-variant-numeric: tabular-nums;
-    font-weight: 950;
-    min-height: 28px;
-    padding: 0 9px;
 }
 
 .my-day-time-warning {
@@ -1264,8 +1211,6 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 @media (max-width: 640px) {
     .my-day-life-tabs, .my-day-habits-toolbar, .my-day-habit-main, .my-day-habit-meta, .my-day-habit-actions { width: 100%; }
-    .my-day-active-timer,
-    .my-day-active-timer-copy,
     .my-day-time-task,
     .my-day-time-summary,
     .my-day-time-actions,
@@ -1638,45 +1583,20 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-taxonomy-ro
     color: var(--my-day-life-text);
 }
 
-body.dark-mode .profile-page.profile-work-mode .my-day-active-timer,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-active-timer {
-    background: linear-gradient(135deg, rgba(20, 184, 166, 0.16), rgba(37, 99, 235, 0.12));
-    border-color: rgba(45, 212, 191, 0.28);
-    color: var(--my-day-life-secondary);
-}
-
-body.dark-mode .profile-page.profile-work-mode .my-day-active-timer.is-idle,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-active-timer.is-idle {
-    background: rgba(15, 23, 42, 0.68);
-    border-color: var(--my-day-life-border);
-    color: var(--my-day-life-muted);
-}
-
-body.dark-mode .profile-page.profile-work-mode .my-day-active-timer-title,
 body.dark-mode .profile-page.profile-work-mode .my-day-time-summary-item strong,
 body.dark-mode .profile-page.profile-work-mode .my-day-time-entry-time,
 body.dark-mode .profile-page.profile-work-mode .my-day-time-entry-duration,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-active-timer-title,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-summary-item strong,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-entry-time,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-entry-duration {
     color: var(--my-day-life-text);
 }
 
-body.dark-mode .profile-page.profile-work-mode .my-day-active-timer-label,
 body.dark-mode .profile-page.profile-work-mode .my-day-time-summary-label,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-active-timer-label,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-summary-label,
 body.dark-mode .my-day-time-popover .my-day-time-popover-date,
 html[data-theme="dark"] body .my-day-time-popover .my-day-time-popover-date {
     color: var(--my-day-life-muted, #94a3b8);
-}
-
-body.dark-mode .profile-page.profile-work-mode .my-day-active-timer-elapsed,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-active-timer-elapsed {
-    background: rgba(45, 212, 191, 0.16);
-    border-color: rgba(45, 212, 191, 0.32);
-    color: #99f6e4;
 }
 
 body.dark-mode .profile-page.profile-work-mode .my-day-time-warning,

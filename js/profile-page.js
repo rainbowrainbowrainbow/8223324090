@@ -5798,6 +5798,22 @@ function cabinetTaskVisibleBadges(task = {}, context = {}) {
     return [...required, ...optional.slice(0, Math.max(0, 5 - required.length))];
 }
 
+function renderCabinetMyDayClassificationZone(task = {}, taskId = 0, taskIdAttr = '') {
+    const badges = `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay, { taskId }) || ''}</span>`;
+    const blocker = window.MyDayDependencies?.renderTaskBlocker?.(task) || '';
+    return [badges, blocker].filter(Boolean).join('');
+}
+
+function renderCabinetMyDayTimeZone(task = {}, showDetails = false) {
+    return window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showDetails }) || '';
+}
+
+function renderCabinetMyDayDetailToggle(taskIdAttr = '', expanded = false, buttonClassName = 'cabinet-task-action-btn') {
+    const label = expanded ? 'Сховати деталі задачі' : 'Показати деталі задачі';
+    const text = expanded ? '−' : '+';
+    return `<button type="button" class="${escapeHtml(buttonClassName)} cabinet-task-action-details" title="${escapeHtml(label)}" aria-label="${escapeHtml(label)}" aria-expanded="${expanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${escapeHtml(taskIdAttr)}" ${taskIdAttr ? '' : 'disabled'}>${escapeHtml(text)}</button>`;
+}
+
 function renderCabinetTaskCard(task, compact = false, options = {}) {
     const taskId = Number(task.id || task.taskId || task.task_id || 0);
     const taskIdAttr = Number.isInteger(taskId) && taskId > 0 ? String(taskId) : '';
@@ -5831,10 +5847,6 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = isMyDayCard && (globalViewMode === 'detailed' || cardDetailsExpanded);
-    const myDayClassificationBadges = isMyDayCard
-        ? `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay, { taskId }) || ''}</span>`
-        : '';
-    const myDayDependencyBadge = isMyDayCard ? (window.MyDayDependencies?.renderTaskBlocker?.(task) || '') : '';
     const myDayFactsHtml = isMyDayCard ? [
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
@@ -5849,11 +5861,8 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         cabinetTaskVisibleBadge('kind', `<span>${escapeHtml(taskKindLabel(task))}</span>`),
         cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
     ].filter(Boolean).join('') : '';
-    const myDayClassificationHtml = isMyDayCard ? [
-        myDayClassificationBadges,
-        myDayDependencyBadge
-    ].filter(Boolean).join('') : '';
-    const myDayCommandsHtml = isMyDayCard ? (window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showMyDayDetails }) || '') : '';
+    const myDayClassificationHtml = isMyDayCard ? renderCabinetMyDayClassificationZone(task, taskId, taskIdAttr) : '';
+    const myDayCommandsHtml = isMyDayCard ? renderCabinetMyDayTimeZone(task, showMyDayDetails) : '';
     const metadataHtml = !isMyDayCard ? `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -5885,7 +5894,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         ? '<span class="task-ai-created-marker" aria-label="Створено з допомогою AI">✨ AI</span>'
         : '';
     const taskTitleHtml = `<div class="cabinet-task-title" title="${escapeHtml(task.title || 'Без назви')}">${aiCreatedMarker}${escapeHtml(task.title || 'Без назви')}</div>`;
-    const detailToggleHtml = isMyDayCard && globalViewMode === 'compact' ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-details" title="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-label="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-expanded="${cardDetailsExpanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>${cardDetailsExpanded ? '−' : '+'}</button>` : '';
+    const detailToggleHtml = isMyDayCard && globalViewMode === 'compact' ? renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded) : '';
     const taskActionsHtml = `<div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
                 ${isMyDayCard ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>` : ''}
@@ -6461,8 +6470,6 @@ function renderCabinetOverdueTriageRow(task = {}) {
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = globalViewMode === 'detailed' || cardDetailsExpanded;
-    const myDayClassificationBadges = `<span data-my-day-classification-badges="${taskIdAttr}">${window.MyDayClassification?.renderTaskBadges?.(task.myDay, { taskId }) || ''}</span>`;
-    const myDayDependencyBadge = window.MyDayDependencies?.renderTaskBlocker?.(task) || '';
     const factsHtml = [
         `<span class="cabinet-task-due-badge cabinet-task-due-badge--overdue">${escapeHtml(`${dueState.label || 'Прострочено'}${dueState.detail ? ` · ${dueState.detail}` : ''}`)}</span>`,
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
@@ -6474,9 +6481,9 @@ function renderCabinetOverdueTriageRow(task = {}) {
         renderCabinetOverdueTriageProgress(task),
         cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
     ].filter(Boolean).join('') : '';
-    const classificationHtml = [myDayClassificationBadges, myDayDependencyBadge].filter(Boolean).join('');
-    const timeControlsHtml = window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showMyDayDetails }) || '';
-    const detailToggleHtml = globalViewMode === 'compact' ? `<button type="button" class="cabinet-overdue-triage-action cabinet-task-action-details" title="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-label="${cardDetailsExpanded ? 'Сховати деталі задачі' : 'Показати деталі задачі'}" aria-expanded="${cardDetailsExpanded ? 'true' : 'false'}" data-cabinet-task-action="toggle-my-day-details" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>${cardDetailsExpanded ? '−' : '+'}</button>` : '';
+    const classificationHtml = renderCabinetMyDayClassificationZone(task, taskId, taskIdAttr);
+    const timeControlsHtml = renderCabinetMyDayTimeZone(task, showMyDayDetails);
+    const detailToggleHtml = globalViewMode === 'compact' ? renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded, 'cabinet-overdue-triage-action') : '';
     return `<div class="cabinet-overdue-triage-row cabinet-task-card is-personal-day-card is-my-day-compact-card priority-${escapeHtml(priority)} ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}">
         <div class="cabinet-overdue-triage-main">
             <div class="cabinet-task-zone cabinet-task-zone--header">
@@ -6622,7 +6629,6 @@ function renderMyDayCommandCenterTab() {
         <div class="cabinet-shell cabinet-command-center" id="myDayDayPanel" role="tabpanel" aria-labelledby="myDayModeDay">
             ${window.MyDayHabits?.renderModeTabs?.() || ''}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
-            ${window.MyDayTimeTracking?.renderActiveTimerStrip?.() || ''}
             ${renderCabinetCompletedHistoryStrip()}
             ${renderCabinetLoadNotice()}
             ${renderCabinetMyDayListModeToggle()}

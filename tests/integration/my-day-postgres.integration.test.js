@@ -117,9 +117,10 @@ async function createUser(label, role = 'instructor') {
 }
 
 async function createTask(user, title, options = {}) {
+    const businessContext = options.businessContext || 'event_genix';
     const result = await query(
         `INSERT INTO tasks (title, description, status, priority, deadline, owner_user_id, business_context, created_by, visibility)
-         VALUES ($1, $2, COALESCE($3, 'todo'), COALESCE($4, 'normal'), $5, $6, 'event_genix', $7, COALESCE($8, 'me_only'))
+         VALUES ($1, $2, COALESCE($3, 'todo'), COALESCE($4, 'normal'), $5, $6, $7, $8, COALESCE($9, 'me_only'))
          RETURNING id`,
         [
             `${title} ${suffix}`,
@@ -128,6 +129,7 @@ async function createTask(user, title, options = {}) {
             options.priority || 'normal',
             options.deadline || null,
             user.id,
+            businessContext,
             user.username,
             options.visibility || 'me_only'
         ]
@@ -209,6 +211,14 @@ async function postAuto(token, taskId) {
 
 async function postUndo(token, taskId, undoToken) {
     return request('POST', `/api/my-day/tasks/${taskId}/classification/undo`, { undoToken }, token);
+}
+
+async function getTimer(token) {
+    return request('GET', '/api/my-day/timer', undefined, token);
+}
+
+async function postTimerStop(token) {
+    return request('POST', '/api/my-day/timer/stop', {}, token);
 }
 
 async function postAiDraftPreview(token, body) {
@@ -424,6 +434,81 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(result.days[0].taskMinutes, 60);
         assert.equal(result.impacts.length, 3);
         assert.deepEqual(result.impacts.map(row => row.taskMinutes).sort((a, b) => a - b), [60, 60, 60]);
+    });
+
+    it('sanitizes global active timer after business access is revoked while preserving own stop', async () => {
+        const owner = await createUser('timer_revoke', 'director');
+        await query(
+            `UPDATE users
+             SET business_contexts = ARRAY['event_genix', 'dar']::text[],
+                 default_business_context = 'event_genix'
+             WHERE id = $1`,
+            [owner.id]
+        );
+        const refreshedLogin = await request('POST', '/api/auth/login', { username: owner.username, password: owner.password });
+        assert.equal(refreshedLogin.status, 200, JSON.stringify(refreshedLogin.data));
+        const token = refreshedLogin.data.token;
+        const taskId = await createTask(owner, 'timer secret dar task', { businessContext: 'dar' });
+        await query(
+            `INSERT INTO my_day_time_entries (user_id, task_id, started_at, source)
+             VALUES ($1, $2, NOW() - INTERVAL '9 minutes', 'timer')`,
+            [owner.id, taskId]
+        );
+
+        const visible = await getTimer(token);
+        assert.equal(visible.status, 200, JSON.stringify(visible.data));
+        assert.equal(visible.data?.timer?.taskId, taskId);
+        assert.equal(visible.data?.timer?.task?.title, `timer secret dar task ${suffix}`);
+        assert.equal(visible.data?.timer?.businessContext, 'dar');
+        assert.equal(Object.hasOwn(visible.data?.timer || {}, 'userId'), false);
+
+        await query(
+            `UPDATE users
+             SET business_contexts = ARRAY['event_genix']::text[],
+                 default_business_context = 'event_genix'
+             WHERE id = $1`,
+            [owner.id]
+        );
+
+        const hidden = await getTimer(token);
+        assert.equal(hidden.status, 200, JSON.stringify(hidden.data));
+        assert.deepEqual(Object.keys(hidden.data?.timer || {}).sort(), ['durationSeconds', 'isActive', 'startedAt', 'task', 'taskUnavailable', 'warning']);
+        assert.equal(hidden.data.timer.taskUnavailable, true);
+        assert.equal(hidden.data.timer.task, null);
+        assert.equal(JSON.stringify(hidden.data).includes(`timer secret dar task ${suffix}`), false);
+        assert.equal(JSON.stringify(hidden.data).includes(String(taskId)), false);
+        assert.equal(JSON.stringify(hidden.data).includes('dar'), false);
+        assert.equal(JSON.stringify(hidden.data).includes('userId'), false);
+
+        const stopped = await postTimerStop(token);
+        assert.equal(stopped.status, 200, JSON.stringify(stopped.data));
+        assert.equal(stopped.data?.timer?.taskUnavailable, true);
+        assert.equal(stopped.data?.timer?.task, null);
+        assert.equal(JSON.stringify(stopped.data).includes(`timer secret dar task ${suffix}`), false);
+        assert.equal(JSON.stringify(stopped.data).includes(String(taskId)), false);
+        assert.equal(JSON.stringify(stopped.data).includes('dar'), false);
+
+        const active = await query(
+            `SELECT COUNT(*)::int AS count
+             FROM my_day_time_entries
+             WHERE user_id = $1 AND ended_at IS NULL`,
+            [owner.id]
+        );
+        assert.equal(active.rows[0].count, 0);
+
+        const other = await createUser('timer_other', 'director');
+        await query(
+            `UPDATE users
+             SET business_contexts = ARRAY['event_genix', 'dar']::text[],
+                 default_business_context = 'event_genix'
+             WHERE id = $1`,
+            [other.id]
+        );
+        const otherLogin = await request('POST', '/api/auth/login', { username: other.username, password: other.password });
+        assert.equal(otherLogin.status, 200, JSON.stringify(otherLogin.data));
+        const otherTimer = await getTimer(otherLogin.data.token);
+        assert.equal(otherTimer.status, 200, JSON.stringify(otherTimer.data));
+        assert.equal(otherTimer.data?.timer, null);
     });
 
     it('normalizes the 24-impact catalog and merges health aliases without losing task or habit links', async () => {

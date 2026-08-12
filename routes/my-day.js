@@ -27,7 +27,7 @@ const {
     classifyMyDayTask,
     taskFingerprint
 } = require('../services/myDayClassificationAi');
-const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
+const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, sanitizeTimerForBusinessAccess, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
 const { buildMyDayContribution } = require('../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../services/myDayStarterKit');
 
@@ -392,7 +392,10 @@ router.post('/starter-kit', async (req, res) => {
     }
 });
 router.get('/timer', async (req, res) => {
-    try { res.json({ success: true, timer: await activeTimer(pool, currentUserId(req)) }); }
+    try {
+        const timer = await activeTimer(pool, currentUserId(req));
+        res.json({ success: true, timer: sanitizeTimerForBusinessAccess(timer, req.user) });
+    }
     catch (error) { sendMyDayError(res, error); }
 });
 
@@ -414,7 +417,21 @@ router.post('/timer/start', async (req, res) => {
 });
 
 router.post('/timer/stop', async (req, res) => {
-    try { res.json({ success: true, timer: await withMyDayTransaction(client => stopActiveTimerForUser(client, currentUserId(req))) }); }
+    try {
+        const timer = await withMyDayTransaction(async client => {
+            const userId = currentUserId(req);
+            const beforeStop = await activeTimer(client, userId, { lock: true });
+            const stopped = await stopActiveTimerForUser(client, userId);
+            if (!stopped) return null;
+            return sanitizeTimerForBusinessAccess({
+                ...beforeStop,
+                ...stopped,
+                task: beforeStop?.task || stopped.task || null,
+                businessContext: beforeStop?.businessContext || stopped.businessContext || null
+            }, req.user);
+        });
+        res.json({ success: true, timer });
+    }
     catch (error) { sendMyDayError(res, error); }
 });
 

@@ -300,6 +300,24 @@ async function responseJson(response, label) {
 async function browserLogin(page, session) {
     assert.ok(session?.token, 'browser session seed requires access token');
     assert.ok(session?.user?.id, 'browser session seed requires user');
+    await page.goto(TARGET_URL, { waitUntil: 'domcontentloaded' });
+    await page.waitForFunction(() => typeof window.login === 'function', null, { timeout: TIMEOUT_MS });
+    const result = await page.evaluate(async ({ username, password }) => {
+        return window.login(username, password);
+    }, { username: process.env.TEST_USER, password: process.env.TEST_PASS });
+    assert.equal(result?.success, true, 'browser frontend login succeeds');
+    await page.waitForFunction(() => Boolean(
+        localStorage.getItem('pzp_token')
+        && localStorage.getItem('pzp_current_user')
+    ), null, { timeout: TIMEOUT_MS });
+    const verify = await page.evaluate(async () => {
+        const token = localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token') || '';
+        const response = await fetch('/api/auth/verify', {
+            headers: { Authorization: `Bearer ${token}` }
+        });
+        return { ok: response.ok, status: response.status };
+    });
+    assert.equal(verify.ok, true, `browser auth verify succeeds: ${JSON.stringify(verify)}`);
 }
 
 async function openMyDayProfile(page) {

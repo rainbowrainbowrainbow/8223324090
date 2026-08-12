@@ -300,17 +300,6 @@ async function responseJson(response, label) {
 async function browserLogin(page, session) {
     assert.ok(session?.token, 'browser session seed requires access token');
     assert.ok(session?.user?.id, 'browser session seed requires user');
-    await page.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
-        if (token) {
-            localStorage.setItem('pzp_token', token);
-            localStorage.setItem('pzp_access_token', token);
-        }
-        if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
-        if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
-        if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
-        localStorage.setItem('pzp_crm_business_context', 'event_genix');
-        localStorage.setItem('pzp_dark_mode', 'false');
-    }, session);
 }
 
 async function openMyDayProfile(page) {
@@ -589,9 +578,18 @@ async function main() {
 
     const browser = await chromium.launch({ headless: HEADLESS });
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block' });
-    await context.addInitScript(() => {
+    await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
+        if (token) {
+            localStorage.setItem('pzp_token', token);
+            localStorage.setItem('pzp_access_token', token);
+        }
+        if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
+        if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
+        if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
+        localStorage.setItem('pzp_crm_business_context', 'event_genix');
+        localStorage.setItem('pzp_dark_mode', 'false');
         window.__eventGenixLiveQaReadOnly = true;
-    });
+    }, session);
     const page = await context.newPage();
     const consoleErrors = [];
     const apiFailures = [];

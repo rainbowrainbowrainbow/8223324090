@@ -352,16 +352,88 @@ async function invokeCabinetComposerHandler(page) {
     });
 }
 
-async function submitCabinetComposerForResponse(page, method, pathname) {
-    const responsePromise = waitForApiResponse(page, method, pathname);
+async function captureTaskCreateMethod(page, methodName) {
+    await page.evaluate(method => {
+        if (!window.TaskCreate || typeof window.TaskCreate[method] !== 'function') {
+            throw new Error(`TaskCreate.${method} is not available`);
+        }
+        window.__myDayActualAppTaskCreateCapture = null;
+        const current = window.TaskCreate[method];
+        if (current.__myDayActualAppCaptureWrapped) return;
+        const wrapped = async function wrappedTaskCreateMethod(...args) {
+            try {
+                const result = await current.apply(this, args);
+                window.__myDayActualAppTaskCreateCapture = { method, result };
+                return result;
+            } catch (error) {
+                window.__myDayActualAppTaskCreateCapture = {
+                    method,
+                    error: error?.message || String(error)
+                };
+                throw error;
+            }
+        };
+        wrapped.__myDayActualAppCaptureWrapped = true;
+        wrapped.__myDayActualAppOriginal = current;
+        window.TaskCreate[method] = wrapped;
+    }, methodName);
+}
+
+async function readTaskCreateCapture(page, methodName) {
+    return page.evaluate(method => {
+        const capture = window.__myDayActualAppTaskCreateCapture || null;
+        if (!capture || capture.method !== method) return null;
+        return capture;
+    }, methodName);
+}
+
+async function waitForTaskCreateResult(page, methodName, timeout = TIMEOUT_MS) {
+    await page.waitForFunction(method => {
+        const capture = window.__myDayActualAppTaskCreateCapture;
+        return Boolean(capture && capture.method === method);
+    }, methodName, { timeout });
+    const capture = await readTaskCreateCapture(page, methodName);
+    if (capture?.error) throw new Error(`TaskCreate.${methodName} failed: ${capture.error}`);
+    return capture?.result || null;
+}
+
+async function cabinetComposerDiagnostics(page) {
+    return page.evaluate(() => {
+        const form = document.getElementById('cabinetTaskComposer');
+        const title = document.getElementById('cabinetTaskTitle');
+        const details = document.getElementById('cabinetTaskDetails');
+        return {
+            hasForm: Boolean(form),
+            hasTitle: Boolean(title),
+            titleValueLength: String(title?.value || '').trim().length,
+            detailsValueLength: String(details?.value || '').trim().length,
+            submitDisabled: Boolean(form?.querySelector('.cabinet-task-create-submit')?.disabled),
+            hasCreateCabinetTask: typeof window.createCabinetTask === 'function',
+            hasTaskCreate: Boolean(window.TaskCreate),
+            hasCreateTask: typeof window.TaskCreate?.createTask === 'function',
+            hasCommitAiDraft: typeof window.TaskCreate?.commitAiDraft === 'function',
+            hasCommitAiDraftBundle: typeof window.TaskCreate?.commitAiDraftBundle === 'function',
+            aiCommitType: window.TaskAiDraft?.commitPayloadFor?.(form)?.commitType || null,
+            lastCapture: window.__myDayActualAppTaskCreateCapture || null
+        };
+    });
+}
+
+async function submitCabinetComposerForTaskCreate(page, methodName) {
+    await captureTaskCreateMethod(page, methodName);
     await submitCabinetComposer(page);
-    const quickResponse = await Promise.race([
-        responsePromise,
+    const quickResult = await Promise.race([
+        waitForTaskCreateResult(page, methodName, 5_000),
         page.waitForTimeout(5_000).then(() => null)
     ]);
-    if (quickResponse) return quickResponse;
+    if (quickResult) return quickResult;
     await invokeCabinetComposerHandler(page);
-    return await responsePromise;
+    try {
+        return await waitForTaskCreateResult(page, methodName);
+    } catch (error) {
+        const diagnostics = await cabinetComposerDiagnostics(page).catch(() => null);
+        throw new Error(`${error.message}; composer diagnostics: ${JSON.stringify(diagnostics)}`);
+    }
 }
 
 async function fillCabinetField(page, id, value) {
@@ -441,8 +513,7 @@ async function main() {
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;
         await fillCabinetField(page, 'cabinetTaskTitle', manualTitle);
-        const manualCreateResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks');
-        const manualBody = await responseJson(await manualCreateResponse, 'manual profile composer create');
+        const manualBody = await submitCabinetComposerForTaskCreate(page, 'createTask');
         const manualTaskId = Number(manualBody.task?.id || manualBody.data?.id);
         assert.ok(manualTaskId > 0, 'manual composer returns created task id');
         await visibleTaskCard(page, manualTitle);
@@ -464,8 +535,7 @@ async function main() {
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує одну складну задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-task-ai-draft-accept-all]').click();
-        const aiCommitResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks/ai-draft/commit');
-        const aiCommitBody = await responseJson(await aiCommitResponse, 'AI checklist commit from real profile composer');
+        const aiCommitBody = await submitCabinetComposerForTaskCreate(page, 'commitAiDraft');
         const aiTaskId = Number(aiCommitBody.task?.id || aiCommitBody.taskId || aiCommitBody.task_id);
         assert.ok(aiTaskId > 0, 'AI checklist commit returns task id');
         await visibleTaskCard(page, `AI checklist actual app ${RUN_ID}`);
@@ -493,8 +563,7 @@ async function main() {
             const payload = window.TaskAiDraft?.commitPayloadFor?.(composer);
             return payload?.commitType === 'bundle' && Array.isArray(payload.tasks) && payload.tasks.length >= 2;
         }, null, { timeout: TIMEOUT_MS });
-        const bundleCommitResponse = submitCabinetComposerForResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
-        const bundleBody = await responseJson(await bundleCommitResponse, 'AI bundle commit from main profile CTA');
+        const bundleBody = await submitCabinetComposerForTaskCreate(page, 'commitAiDraftBundle');
         const bundleTaskIds = (bundleBody.bundle?.taskIds || bundleBody.taskIds || []).map(Number).filter(Boolean);
         assert.ok(bundleTaskIds.length >= 2, 'AI bundle commit returns multiple task ids');
         const cabinetAfterBundle = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });

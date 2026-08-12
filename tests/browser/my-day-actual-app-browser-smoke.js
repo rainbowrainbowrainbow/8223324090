@@ -176,6 +176,58 @@ function parseBody(text) {
     try { return JSON.parse(text); } catch { return text; }
 }
 
+function isSameTargetOrigin(responseUrl) {
+    try {
+        return new URL(responseUrl).origin === new URL(TARGET_URL).origin;
+    } catch {
+        return false;
+    }
+}
+
+function isCriticalApiPath(pathname = '') {
+    return pathname === '/api/auth/login'
+        || pathname === '/api/auth/profile'
+        || pathname === '/api/tasks'
+        || pathname === '/api/tasks/my-cabinet'
+        || pathname.startsWith('/api/tasks/')
+        || pathname === '/api/my-day/timer'
+        || pathname.startsWith('/api/my-day/')
+        || pathname.includes('/ai-draft')
+        || pathname.includes('/classification');
+}
+
+function isOptionalProfileApiPath(pathname = '') {
+    return pathname === '/api/achievements'
+        || pathname === '/api/quests/daily'
+        || pathname === '/api/quests/titles'
+        || pathname === '/api/streaks'
+        || pathname === '/api/wallet'
+        || pathname === '/api/inventory'
+        || pathname === '/api/auth/security'
+        || pathname === '/api/business/live-counters'
+        || pathname === '/api/training/knowledge-base'
+        || pathname === '/api/training/materials'
+        || pathname.startsWith('/api/gamification/');
+}
+
+function isAllowedOptionalConsoleFailure(line = '') {
+    if (/\/api\/tasks\/ai-draft\/preview\b/.test(line) && /\b503\b/.test(line)) return true;
+    if (!/Failed to load resource: the server responded with a status of (404|500)\b/i.test(line)) return false;
+    return [
+        '/api/achievements',
+        '/api/quests/daily',
+        '/api/quests/titles',
+        '/api/streaks',
+        '/api/wallet',
+        '/api/inventory',
+        '/api/auth/security',
+        '/api/business/live-counters',
+        '/api/training/knowledge-base',
+        '/api/training/materials',
+        '/api/gamification/'
+    ].some(pathPart => line.includes(pathPart));
+}
+
 async function api(base, routePath, options = {}) {
     const response = await fetch(new URL(routePath, base), {
         method: options.method || 'GET',
@@ -270,9 +322,25 @@ async function openMyDayProfile(page) {
     }, null, { timeout: TIMEOUT_MS });
 }
 
+async function openTasksPage(page) {
+    await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
+    assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated tasks navigation should not redirect to the root fallback');
+    await page.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    await page.waitForFunction(() => Boolean(
+        window.TaskCreate?.createTask
+        && window.TaskAiDraft
+        && !document.getElementById('mainApp')?.classList.contains('hidden')
+    ), null, { timeout: TIMEOUT_MS });
+}
+
 async function submitCabinetComposer(page) {
     await page.locator('#cabinetTaskComposer .cabinet-task-create-submit').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
     await page.locator('#cabinetTaskComposer').evaluate(form => form.requestSubmit());
+}
+
+async function submitTasksComposer(page) {
+    await page.locator('#addTaskBtn').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    await page.locator('#addTaskBtn').click();
 }
 
 async function visibleTaskCard(page, title) {
@@ -297,10 +365,38 @@ async function main() {
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block' });
     const page = await context.newPage();
     const consoleErrors = [];
+    const apiFailures = [];
+    const requestFailures = [];
+    const expectedApiFailures = [];
     page.on('console', message => {
         if (message.type() === 'error') consoleErrors.push(message.text());
     });
     page.on('pageerror', error => consoleErrors.push(error.message));
+    page.on('response', response => {
+        if (!isSameTargetOrigin(response.url()) || response.status() < 400) return;
+        const url = new URL(response.url());
+        if (isOptionalProfileApiPath(url.pathname)) return;
+        const expectedIndex = expectedApiFailures.findIndex(item => (
+            item.method === response.request().method()
+            && item.pathname === url.pathname
+            && item.status === response.status()
+        ));
+        if (expectedIndex >= 0) {
+            expectedApiFailures.splice(expectedIndex, 1);
+            return;
+        }
+        if (isCriticalApiPath(url.pathname)) {
+            apiFailures.push(`${response.request().method()} ${url.pathname} returned ${response.status()}`);
+            return;
+        }
+        apiFailures.push(`${response.request().method()} ${url.pathname} returned ${response.status()}`);
+    });
+    page.on('requestfailed', request => {
+        if (!isSameTargetOrigin(request.url())) return;
+        const url = new URL(request.url());
+        if (isOptionalProfileApiPath(url.pathname)) return;
+        if (isCriticalApiPath(url.pathname)) requestFailures.push(`${request.method()} ${url.pathname}: ${request.failure()?.errorText || 'failed'}`);
+    });
 
     try {
         const today = kyivDateOffset(0);
@@ -372,11 +468,95 @@ async function main() {
         const projectedTitles = extractTitles(cabinetAfterBundle);
         assert.ok(projectedTitles.includes(`Bundle CRM actual app ${RUN_ID}`), 'bundle task scheduled for today appears in My Day projection');
 
+        await openTasksPage(page);
+        await page.locator('[data-due-preset="tomorrow"]').click();
+        const tasksManualTomorrowTitle = `Tasks manual tomorrow ${RUN_ID}`;
+        await page.locator('#taskTitle').fill(tasksManualTomorrowTitle);
+        const tasksManualTomorrowResponse = waitForApiResponse(page, 'POST', '/api/tasks');
+        await submitTasksComposer(page);
+        const tasksManualTomorrowBody = await responseJson(await tasksManualTomorrowResponse, 'manual Tasks composer tomorrow create');
+        assert.ok(Number(tasksManualTomorrowBody.task?.id || tasksManualTomorrowBody.data?.id) > 0, 'Tasks composer returns tomorrow task id');
+        const cabinetAfterTomorrow = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
+        assert.equal(extractTitles(cabinetAfterTomorrow).includes(tasksManualTomorrowTitle), false, 'tomorrow task is not projected into Today');
+
+        await openTasksPage(page);
+        await page.locator('[data-due-preset="no_date"]').click();
+        const tasksManualNoDateTitle = `Tasks manual no date ${RUN_ID}`;
+        await page.locator('#taskTitle').fill(tasksManualNoDateTitle);
+        const tasksManualNoDateResponse = waitForApiResponse(page, 'POST', '/api/tasks');
+        await submitTasksComposer(page);
+        const tasksManualNoDateBody = await responseJson(await tasksManualNoDateResponse, 'manual Tasks composer no-date create');
+        assert.ok(Number(tasksManualNoDateBody.task?.id || tasksManualNoDateBody.data?.id) > 0, 'Tasks composer returns no-date task id');
+        const cabinetAfterNoDate = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
+        assert.equal(extractTitles(cabinetAfterNoDate).includes(tasksManualNoDateTitle), false, 'no-date task is not projected into Today');
+
+        await openTasksPage(page);
+        await page.locator('[data-due-preset="custom"]').click();
+        const customDate = kyivDateOffset(5);
+        await page.locator('#taskScheduleDate').fill(customDate);
+        const tasksManualCustomTitle = `Tasks manual custom date ${RUN_ID}`;
+        await page.locator('#taskTitle').fill(tasksManualCustomTitle);
+        const tasksManualCustomResponse = waitForApiResponse(page, 'POST', '/api/tasks');
+        await submitTasksComposer(page);
+        const tasksManualCustomBody = await responseJson(await tasksManualCustomResponse, 'manual Tasks composer custom-date create');
+        assert.ok(Number(tasksManualCustomBody.task?.id || tasksManualCustomBody.data?.id) > 0, 'Tasks composer returns custom-date task id');
+        const cabinetAfterCustom = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
+        assert.equal(extractTitles(cabinetAfterCustom).includes(tasksManualCustomTitle), false, 'custom-date task is not projected into Today');
+
+        await openTasksPage(page);
+        openAiMock.enqueue(() => jsonResponse({ error: { message: 'mock provider unavailable' } }, 503));
+        expectedApiFailures.push({ method: 'POST', pathname: '/api/tasks/ai-draft/preview', status: 503 });
+        await page.locator('#taskTitle').fill(`Provider unavailable source ${RUN_ID}`);
+        await page.locator('#taskDescription').fill('Provider unavailable should not block manual create.');
+        await page.locator('[data-task-ai-draft-preview]').click();
+        await page.locator('[data-task-ai-draft-status]').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        const providerFallbackTitle = `Manual fallback after provider ${RUN_ID}`;
+        await page.locator('#taskTitle').fill(providerFallbackTitle);
+        const providerFallbackResponse = waitForApiResponse(page, 'POST', '/api/tasks');
+        await submitTasksComposer(page);
+        const providerFallbackBody = await responseJson(await providerFallbackResponse, 'manual Tasks composer after provider unavailable');
+        assert.ok(Number(providerFallbackBody.task?.id || providerFallbackBody.data?.id) > 0, 'manual composer still creates after provider unavailable');
+
+        await openTasksPage(page);
+        openAiMock.enqueue(() => openAiDraftOutput({
+            decision: 'needs_clarification',
+            mode: null,
+            title: null,
+            description: null,
+            impactIds: [],
+            subtasks: [],
+            bundleTitle: null,
+            tasks: [],
+            confidence: confidence(0.35),
+            reason: 'Please specify what report and expected result.'
+        }));
+        await page.locator('#taskTitle').fill(`Clarification source ${RUN_ID}`);
+        await page.locator('[data-task-ai-draft-preview]').click();
+        await page.locator('[data-task-ai-draft-review].is-clarification').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+
+        await openTasksPage(page);
+        openAiMock.enqueue(body => {
+            assert.equal(body.model, 'gpt-5.6-luna');
+            assert.equal(body.store, false);
+            return openAiDraftOutput(checklistProposal(selectedImpactIds.slice(0, 2), today));
+        });
+        await page.locator('#taskTitle').fill(`Tasks AI checklist source ${RUN_ID}`);
+        await page.locator('#taskDescription').fill('Prepare a checklist from the Tasks composer.');
+        await page.locator('[data-task-ai-draft-preview]').click();
+        await page.locator('[data-task-ai-draft-review]').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-task-ai-draft-accept-all]').click();
+        const tasksAiCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/commit');
+        await submitTasksComposer(page);
+        const tasksAiCommitBody = await responseJson(await tasksAiCommitResponse, 'AI checklist commit from real Tasks composer');
+        assert.ok(Number(tasksAiCommitBody.task?.id || tasksAiCommitBody.taskId || tasksAiCommitBody.task_id) > 0, 'Tasks AI checklist commit returns task id');
+
         await api(TARGET_URL, '/api/my-day/timer/start', { method: 'POST', token: session.token, body: { taskId: manualTaskId } });
         await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
         await page.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('.global-task-timer__title, .global-task-timer-panel__title, .global-task-timer-chip').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.goto(`${TARGET_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
+        await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await api(TARGET_URL, '/api/my-day/timer/stop', { method: 'POST', token: session.token, body: {} });
         await page.evaluate(() => {
             window.dispatchEvent(new CustomEvent('crm:timer-updated', { detail: { action: 'stop', emittedAt: Date.now() } }));
@@ -403,13 +583,13 @@ async function main() {
         assert.ok(openAiMock.calls.length >= 2, 'actual-app smoke used local OpenAI mock for AI previews');
         const unexpectedConsoleErrors = consoleErrors.filter(line => {
             if (/favicon|ResizeObserver/i.test(line)) return false;
-            // The full profile shell can request optional gamification/profile resources
-            // that are intentionally outside the disposable My Day schema in this smoke.
-            // My Day API writes and projections are asserted explicitly above.
-            if (/Failed to load resource: the server responded with a status of (404|500)\b/i.test(line)) return false;
+            if (isAllowedOptionalConsoleFailure(line)) return false;
             return true;
         });
         assert.deepEqual(unexpectedConsoleErrors, [], 'browser console has no unexpected errors');
+        assert.deepEqual(apiFailures, [], 'actual-app smoke has no unexpected API 4xx/5xx responses');
+        assert.deepEqual(requestFailures, [], 'actual-app smoke has no unexpected critical request failures');
+        assert.deepEqual(expectedApiFailures, [], 'all expected API failures were observed');
     } finally {
         await browser.close();
         await openAiMock.close();

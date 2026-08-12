@@ -51,6 +51,7 @@ async function readRequestJson(req) {
 
 function createOpenAIMockServer(port) {
     const queue = [];
+    const interceptors = [];
     const calls = [];
     const server = http.createServer(async (req, res) => {
         try {
@@ -61,7 +62,10 @@ function createOpenAIMockServer(port) {
             }
             const body = await readRequestJson(req);
             calls.push(body);
-            const handler = queue.shift() || (() => jsonResponse({
+            const interceptorIndex = interceptors.findIndex(item => item.predicate(body));
+            const handler = interceptorIndex >= 0
+                ? interceptors.splice(interceptorIndex, 1)[0].handler
+                : queue.shift() || (() => jsonResponse({
                 output_text: JSON.stringify({
                     decision: 'needs_clarification',
                     mode: null,
@@ -87,6 +91,9 @@ function createOpenAIMockServer(port) {
         calls,
         enqueue(handler) {
             queue.push(handler);
+        },
+        intercept(predicate, handler) {
+            interceptors.push({ predicate, handler });
         },
         start() {
             return new Promise((resolve, reject) => {
@@ -737,9 +744,13 @@ async function main() {
         assert.equal(extractTodayTitles(cabinetAfterCustom).includes(tasksManualCustomTitle), false, 'custom-date task is not projected into Today');
 
         await openTasksPage(page);
-        openAiMock.enqueue(() => jsonResponse({ error: { message: 'mock provider unavailable' } }, 503));
+        const providerUnavailableSource = `Provider unavailable source ${RUN_ID}`;
+        openAiMock.intercept(
+            body => JSON.stringify(body).includes(providerUnavailableSource),
+            () => jsonResponse({ error: { message: 'mock provider unavailable' } }, 503)
+        );
         expectedApiFailures.push({ method: 'POST', pathname: '/api/tasks/ai-draft/preview', status: 503 });
-        await page.locator('#taskTitle').fill(`Provider unavailable source ${RUN_ID}`);
+        await page.locator('#taskTitle').fill(providerUnavailableSource);
         await page.locator('#taskDescription').fill('Provider unavailable should not block manual create.');
         const providerUnavailablePreview = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/preview');
         await page.locator('[data-task-ai-draft-preview]').click();

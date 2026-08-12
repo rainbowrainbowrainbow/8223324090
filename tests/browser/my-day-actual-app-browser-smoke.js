@@ -193,6 +193,7 @@ function isSameTargetOrigin(responseUrl) {
 
 function isCriticalApiPath(pathname = '') {
     return pathname === '/api/auth/login'
+        || pathname === '/api/auth/verify'
         || pathname === '/api/auth/profile'
         || pathname === '/api/tasks'
         || pathname === '/api/tasks/my-cabinet'

@@ -1285,6 +1285,8 @@ async function initProfilePage() {
         const user = typeof apiVerifyToken === 'function' ? await apiVerifyToken() : null;
         if (!user) { window.location.href = '/'; return; }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        if (typeof hydrateBusinessOperatingProfile === 'function') await hydrateBusinessOperatingProfile(user);
+        if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
         window.WorkingRole?.hydrate?.();
         currentUserId = user.id;
         loadCabinetMyDayViewModePreference();

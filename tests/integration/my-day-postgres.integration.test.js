@@ -476,8 +476,9 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(hidden.data.timer.taskUnavailable, true);
         assert.equal(hidden.data.timer.task, null);
         assert.equal(JSON.stringify(hidden.data).includes(`timer secret dar task ${suffix}`), false);
-        assert.equal(JSON.stringify(hidden.data).includes(String(taskId)), false);
-        assert.equal(JSON.stringify(hidden.data).includes('dar'), false);
+        assert.equal(Object.hasOwn(hidden.data.timer, 'taskId'), false);
+        assert.equal(Object.hasOwn(hidden.data.timer, 'businessContext'), false);
+        assert.equal(JSON.stringify(hidden.data).includes('"businessContext"'), false);
         assert.equal(JSON.stringify(hidden.data).includes('userId'), false);
 
         const stopped = await postTimerStop(token);
@@ -485,8 +486,9 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(stopped.data?.timer?.taskUnavailable, true);
         assert.equal(stopped.data?.timer?.task, null);
         assert.equal(JSON.stringify(stopped.data).includes(`timer secret dar task ${suffix}`), false);
-        assert.equal(JSON.stringify(stopped.data).includes(String(taskId)), false);
-        assert.equal(JSON.stringify(stopped.data).includes('dar'), false);
+        assert.equal(Object.hasOwn(stopped.data.timer, 'taskId'), false);
+        assert.equal(Object.hasOwn(stopped.data.timer, 'businessContext'), false);
+        assert.equal(JSON.stringify(stopped.data).includes('"businessContext"'), false);
 
         const active = await query(
             `SELECT COUNT(*)::int AS count

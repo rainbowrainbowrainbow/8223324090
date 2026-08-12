@@ -248,7 +248,7 @@ async function installSession(context, session) {
 }
 
 async function openMyDayProfile(page) {
-    await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${TARGET_URL}/profile.html?tab=myday`, { waitUntil: 'domcontentloaded' });
     await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
 }
 

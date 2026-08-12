@@ -584,6 +584,7 @@ async function main() {
         if (!isSameTargetOrigin(response.url()) || response.status() < 400) return;
         const url = new URL(response.url());
         if (isOptionalProfileApiPath(url.pathname)) return;
+        const failureLabel = `${response.request().method()} ${url.pathname} returned ${response.status()}`;
         const expectedIndex = expectedApiFailures.findIndex(item => (
             item.method === response.request().method()
             && item.pathname === url.pathname
@@ -594,16 +595,22 @@ async function main() {
             return;
         }
         if (isCriticalApiPath(url.pathname)) {
-            apiFailures.push(`${response.request().method()} ${url.pathname} returned ${response.status()}`);
+            console.error(`[my-day-actual-app-browser-smoke] unexpected critical API failure: ${failureLabel}`);
+            apiFailures.push(failureLabel);
             return;
         }
-        apiFailures.push(`${response.request().method()} ${url.pathname} returned ${response.status()}`);
+        console.error(`[my-day-actual-app-browser-smoke] unexpected API failure: ${failureLabel}`);
+        apiFailures.push(failureLabel);
     });
     page.on('requestfailed', request => {
         if (!isSameTargetOrigin(request.url())) return;
         const url = new URL(request.url());
         if (isOptionalProfileApiPath(url.pathname)) return;
-        if (isCriticalApiPath(url.pathname)) requestFailures.push(`${request.method()} ${url.pathname}: ${request.failure()?.errorText || 'failed'}`);
+        if (isCriticalApiPath(url.pathname)) {
+            const failureLabel = `${request.method()} ${url.pathname}: ${request.failure()?.errorText || 'failed'}`;
+            console.error(`[my-day-actual-app-browser-smoke] unexpected critical request failure: ${failureLabel}`);
+            requestFailures.push(failureLabel);
+        }
     });
 
     try {
@@ -797,6 +804,14 @@ async function main() {
             if (isAllowedOptionalConsoleFailure(line)) return false;
             return true;
         });
+        if (unexpectedConsoleErrors.length || apiFailures.length || requestFailures.length || expectedApiFailures.length) {
+            console.error('[my-day-actual-app-browser-smoke] failure summary', JSON.stringify({
+                unexpectedConsoleErrors,
+                apiFailures,
+                requestFailures,
+                expectedApiFailures
+            }, null, 2));
+        }
         assert.deepEqual(unexpectedConsoleErrors, [], 'browser console has no unexpected errors');
         assert.deepEqual(apiFailures, [], 'actual-app smoke has no unexpected API 4xx/5xx responses');
         assert.deepEqual(requestFailures, [], 'actual-app smoke has no unexpected critical request failures');

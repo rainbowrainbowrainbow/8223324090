@@ -1756,6 +1756,8 @@ async function initPage() {
     try {
         pageCurrentUser = user;
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        if (typeof hydrateBusinessOperatingProfile === 'function') await hydrateBusinessOperatingProfile(user);
+        if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
         const userEl = document.getElementById('currentUser');
         if (userEl) userEl.textContent = user.name;
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();

@@ -393,12 +393,27 @@ async function waitForMyDayProfileRuntime(page) {
 async function openTasksPage(page) {
     await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated tasks navigation should not redirect to the root fallback');
-    await page.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-    await page.waitForFunction(() => Boolean(
-        window.TaskCreate?.createTask
-        && window.TaskAiDraft
-        && !document.getElementById('mainApp')?.classList.contains('hidden')
-    ), null, { timeout: TIMEOUT_MS });
+    try {
+        await page.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.waitForFunction(() => Boolean(
+            window.TaskCreate?.createTask
+            && window.TaskAiDraft
+            && !document.getElementById('mainApp')?.classList.contains('hidden')
+        ), null, { timeout: TIMEOUT_MS });
+    } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+            url: location.href,
+            readyState: document.readyState,
+            hasTaskTitle: Boolean(document.getElementById('taskTitle')),
+            hasTaskCreate: Boolean(window.TaskCreate),
+            hasCreateTask: typeof window.TaskCreate?.createTask === 'function',
+            hasTaskAiDraft: Boolean(window.TaskAiDraft),
+            mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden')),
+            currentUser: Boolean(window.AppState?.currentUser),
+            authPermissions: Boolean(window.AppState?.authPermissions)
+        })).catch(() => null);
+        throw new Error(`${error.message}; tasks runtime diagnostics: ${JSON.stringify(diagnostics)}`);
+    }
 }
 
 async function submitCabinetComposer(page) {

@@ -315,7 +315,19 @@ async function openMyDayProfile(page) {
     }, { timeout: TIMEOUT_MS }).catch(() => null);
     await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated profile navigation should not redirect to the root fallback');
-    await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    try {
+        await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    } catch (error) {
+        const diagnostics = await page.evaluate(() => ({
+            url: location.href,
+            readyState: document.readyState,
+            mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden')),
+            hasComposer: Boolean(document.getElementById('cabinetTaskComposer')),
+            activeProfileTab: document.querySelector('.profile-tab.active, [data-profile-tab].active')?.textContent?.trim() || null,
+            visibleHeading: Array.from(document.querySelectorAll('h1,h2,h3')).map(node => node.textContent?.trim()).filter(Boolean).slice(0, 8)
+        })).catch(() => null);
+        throw new Error(`${error.message}; profile My Day composer diagnostics: ${JSON.stringify(diagnostics)}`);
+    }
     try {
         await waitForMyDayProfileRuntime(page);
     } catch (error) {
@@ -571,6 +583,9 @@ async function main() {
 
     const browser = await chromium.launch({ headless: HEADLESS });
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block' });
+    await context.addInitScript(() => {
+        window.__eventGenixLiveQaReadOnly = true;
+    });
     const page = await context.newPage();
     const consoleErrors = [];
     const apiFailures = [];

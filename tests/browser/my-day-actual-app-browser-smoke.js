@@ -335,47 +335,22 @@ async function openMyDayProfile(page) {
     try {
         await waitForMyDayProfileRuntime(page);
     } catch (error) {
-        await page.reload({ waitUntil: 'domcontentloaded' });
-        try {
-            await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-        } catch (retryComposerError) {
-            const diagnostics = await page.evaluate(() => ({
+        const diagnostics = await page.evaluate(() => {
+            const form = document.getElementById('cabinetTaskComposer');
+            return {
                 url: location.href,
                 readyState: document.readyState,
-                mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden')),
-                hasComposer: Boolean(document.getElementById('cabinetTaskComposer')),
-                authStorage: {
-                    hasLegacyToken: Boolean(localStorage.getItem('pzp_token')),
-                    hasAccessToken: Boolean(localStorage.getItem('pzp_access_token')),
-                    hasCurrentUser: Boolean(localStorage.getItem('pzp_current_user')),
-                    currentUserId: (() => {
-                        try { return JSON.parse(localStorage.getItem('pzp_current_user') || '{}')?.id || null; }
-                        catch { return null; }
-                    })()
-                },
-                activeProfileTab: document.querySelector('.profile-tab.active, [data-profile-tab].active')?.textContent?.trim() || null,
-                visibleHeading: Array.from(document.querySelectorAll('h1,h2,h3')).map(node => node.textContent?.trim()).filter(Boolean).slice(0, 8)
-            })).catch(() => null);
-            throw new Error(`${retryComposerError.message}; profile My Day composer retry diagnostics: ${JSON.stringify(diagnostics)}; initial runtime error: ${error.message}`);
-        }
-        try {
-            await waitForMyDayProfileRuntime(page);
-        } catch (retryError) {
-            const diagnostics = await page.evaluate(() => {
-                const form = document.getElementById('cabinetTaskComposer');
-                return {
-                    url: location.href,
-                    readyState: document.readyState,
-                    hasForm: Boolean(form),
-                    formRequestSubmit: typeof form?.requestSubmit,
-                    hasCreateCabinetTask: typeof window.createCabinetTask === 'function',
-                    hasTaskCreate: Boolean(window.TaskCreate),
-                    hasCreateTask: typeof window.TaskCreate?.createTask === 'function',
-                    mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden'))
-                };
-            }).catch(() => null);
-            throw new Error(`${retryError.message}; profile runtime diagnostics: ${JSON.stringify(diagnostics)}`);
-        }
+                hasForm: Boolean(form),
+                formRequestSubmit: typeof form?.requestSubmit,
+                hasCreateCabinetTask: typeof window.createCabinetTask === 'function',
+                hasTaskCreate: Boolean(window.TaskCreate),
+                hasCreateTask: typeof window.TaskCreate?.createTask === 'function',
+                hasTaskAiDraft: Boolean(window.TaskAiDraft),
+                hasAiPreviewButton: Boolean(document.querySelector('[data-task-ai-draft-preview]')),
+                mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden'))
+            };
+        }).catch(() => null);
+        throw new Error(`${error.message}; profile runtime diagnostics: ${JSON.stringify(diagnostics)}`);
     }
     await projectionLoad;
     await page.locator('#cabinetMyDaySegmentPanel').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
@@ -396,8 +371,7 @@ async function waitForMyDayProfileRuntime(page) {
         return Boolean(
             form
             && typeof form.requestSubmit === 'function'
-            && window.TaskCreate?.createTask
-            && !document.getElementById('mainApp')?.classList.contains('hidden')
+            && document.querySelector('[data-task-ai-draft-preview]')
         );
     }, null, { timeout: TIMEOUT_MS });
 }

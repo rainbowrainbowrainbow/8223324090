@@ -438,12 +438,20 @@ async function submitCabinetComposerForTaskCreate(page, methodName) {
 
 async function fillCabinetField(page, id, value) {
     await page.evaluate(({ fieldId, fieldValue }) => {
-        const field = document.getElementById(fieldId);
-        if (!field) throw new Error(`${fieldId} not found`);
-        field.value = fieldValue;
-        field.dispatchEvent(new Event('input', { bubbles: true }));
-        field.dispatchEvent(new Event('change', { bubbles: true }));
+        const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
+        if (!fields.length) throw new Error(`${fieldId} not found`);
+        fields.forEach(field => {
+            field.value = fieldValue;
+            field.setAttribute('value', fieldValue);
+            field.dispatchEvent(new Event('input', { bubbles: true }));
+            field.dispatchEvent(new Event('change', { bubbles: true }));
+        });
     }, { fieldId: id, fieldValue: value });
+    await page.waitForFunction(({ fieldId, fieldValue }) => {
+        return Array.from(document.querySelectorAll('[id]'))
+            .filter(field => field.id === fieldId)
+            .some(field => String(field.value || '') === String(fieldValue));
+    }, { fieldId: id, fieldValue: value }, { timeout: TIMEOUT_MS });
 }
 
 async function submitTasksComposer(page) {

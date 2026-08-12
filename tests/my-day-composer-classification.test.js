@@ -183,7 +183,8 @@ test('Profile My Day compact cards use stable zones instead of one mixed meta ro
     assert.match(profile, /cabinet-task-zone--classification/);
     assert.match(profile, /cabinet-task-zone--commands/);
     assert.match(profile, /cabinet-task-main--my-day/);
-    assert.match(profile, /renderTaskControls\?\.\(task,\s*\{ detailed:\s*showMyDayDetails \}\)/);
+    assert.match(profile, /function renderCabinetMyDayTimeZone\(task = \{\}, showDetails = false\)/);
+    assert.match(profile, /renderTaskControls\?\.\(task,\s*\{ detailed: showDetails \}\)/);
     assert.match(profile, /renderCabinetOverdueTriageProgress\(task\)/);
     assert.match(profile, /time-menu/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
@@ -216,7 +217,8 @@ test('Profile My Day card view mode is localStorage-scoped and has per-card expa
     assert.match(profile, /localStorage\?\.setItem\?\.\(cabinetMyDayViewPreferenceKey\(\), cabinetMyDayViewMode\)/);
     assert.match(profile, /TimelineBusinessContext\?\.storageKey/);
     assert.match(profile, /data-cabinet-task-action="toggle-my-day-details"/);
-    assert.match(profile, /aria-expanded="\$\{cardDetailsExpanded \? 'true' : 'false'\}"/);
+    assert.match(profile, /function renderCabinetMyDayDetailToggle\(taskIdAttr = '', expanded = false/);
+    assert.match(profile, /aria-expanded="\$\{expanded \? 'true' : 'false'\}"/);
     assert.match(profile, /showMyDayDetails \? myDaySubtaskSummary : ''/);
     assert.match(timeUi, /options\.detailed === true/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);

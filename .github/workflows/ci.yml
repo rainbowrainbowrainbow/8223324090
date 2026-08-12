@@ -73,15 +73,6 @@ jobs:
 
       - name: Install Chromium
         run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
-      - name: Run My Day draft regression browser smoke
-        run: npm run test:browser:my-day-draft
-
-      - name: Run My Day AI composer main CTA browser smoke
-        run: npm run test:browser:my-day-ai-composer
-
-      - name: Run My Day interactions browser smoke
-        run: npm run test:browser:my-day-interactions
-
 
       - name: Run access editor lifecycle and focus browser smoke
         run: npm run test:browser:account-access:lifecycle
@@ -121,6 +112,60 @@ jobs:
 
       - name: Run staff schedule overlap and paid-role browser smoke
         run: npm run test:browser:staff-schedule
+
+  my-day-browser:
+    name: My Day browser interactions
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventgenix_my_day_browser_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventgenix_my_day_browser_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install Chromium
+        run: npm exec --yes --package=playwright -c "playwright install --with-deps chromium"
+
+      - name: Run My Day draft regression browser smoke
+        run: npm run test:browser:my-day-draft
+
+      - name: Run My Day AI composer synthetic browser smoke
+        run: npm run test:browser:my-day-ai-composer
+
+      - name: Run My Day interactions synthetic browser smoke
+        run: npm run test:browser:my-day-interactions
+
+      - name: Run My Day actual app browser to API to PostgreSQL smoke
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_my_day_browser_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:browser:my-day-actual-app:isolated
 
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration
@@ -194,12 +239,6 @@ jobs:
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:integration:admission-tickets:isolated
 
-      - name: Run My Day PostgreSQL classification, AI, and atomic commit integration
-        env:
-          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
-          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
-        run: npm run test:integration:my-day:isolated
-
       - name: Run banquet production recovery integration
         env:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
@@ -214,6 +253,48 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:browser:hr-onboarding:fullstack:isolated
+
+  my-day-postgres:
+    name: My Day PostgreSQL integration
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: eventgenix_my_day_ci_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d eventgenix_my_day_ci_test"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v5
+
+      - name: Use Node.js from repo baseline
+        uses: actions/setup-node@v5
+        with:
+          node-version-file: .node-version
+          cache: npm
+
+      - name: Align npm baseline
+        run: npm install -g npm@10.9.8
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run My Day PostgreSQL classification, AI, timer, and atomic commit integration
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_my_day_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:integration:my-day:isolated
 
   checkbox-park-postgres:
     name: Checkbox park PostgreSQL mock integration

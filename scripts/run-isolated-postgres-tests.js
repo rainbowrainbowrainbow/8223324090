@@ -50,6 +50,9 @@ const MODES = {
     'my-day': [
         'tests/integration/my-day-postgres.integration.test.js'
     ],
+    'my-day-browser': [
+        'tests/browser/my-day-actual-app-browser-smoke.js'
+    ],
     'cashier-smoke': [
         'tests/integration/checkbox-park-cashier-smoke.integration.test.js'
     ],
@@ -73,7 +76,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|cashier-smoke|checkbox-config|checkbox-ui-real|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|my-day-browser|cashier-smoke|checkbox-config|checkbox-ui-real|onboarding|backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -288,7 +291,7 @@ function runsAgainstDatabaseOnly(testFile) {
 async function runSuite(testDb, testFile) {
     const port = await reservePort();
     const checkboxBrowserMockPort = testFile.includes('checkbox-cashier-real-routes-browser-smoke') ? await reservePort() : null;
-    const myDayOpenAiMockPort = testFile.includes('my-day-postgres.integration') ? await reservePort() : null;
+    const myDayOpenAiMockPort = (testFile.includes('my-day-postgres.integration') || testFile.includes('my-day-actual-app-browser-smoke')) ? await reservePort() : null;
     const baseUrl = `http://127.0.0.1:${port}`;
     assertSafeIsolatedTestUrl(baseUrl);
     const credentials = {
@@ -352,6 +355,7 @@ async function runSuite(testDb, testFile) {
         RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
+        RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION: testFile.includes('checkbox-park-cashier-smoke') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CONFIG_INTEGRATION: testFile.includes('checkbox-park-config') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
@@ -437,10 +441,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'my-day-browser', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill]
         : MODES[mode];
 
     for (const testFile of files) {

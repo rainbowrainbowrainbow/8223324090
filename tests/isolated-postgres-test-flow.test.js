@@ -139,9 +139,14 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(readme, /test:integration:payroll-profiles:isolated/);
         assert.match(readme, /HR and payroll PostgreSQL integration/);
         assert.match(readme, /payroll profiles and\s+simultaneous-additional payroll suite/);
-        assert.match(agents, /HR and payroll PostgreSQL integration/);
+        assert.match(readme, /My Day PostgreSQL integration/);
+        assert.match(readme, /My Day browser interactions/);
+        assert.match(agents, /separate disposable PostgreSQL\/browser jobs for HR\/payroll and My Day/);
         assert.match(agents, /payroll profile\/simultaneous-pay/);
+        assert.match(agents, /test:browser:my-day-actual-app:isolated/);
         assert.match(workflow, /name: HR and payroll PostgreSQL integration/);
+        assert.match(workflow, /name: My Day PostgreSQL integration/);
+        assert.match(workflow, /name: My Day browser interactions/);
         assert.match(workflow, /Run payroll profession and reversal integration/);
         assert.match(workflow, /test:integration:payroll-profiles:isolated/);
     });
@@ -239,6 +244,12 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(onboardingSuite, /cook progress remains unchanged/);
         assert.match(workflow, /hr-payroll-postgres:/);
         assert.match(workflow, /name: HR and payroll PostgreSQL integration/);
+        assert.match(workflow, /my-day-postgres:/);
+        assert.match(workflow, /name: My Day PostgreSQL integration/);
+        assert.match(workflow, /test:integration:my-day:isolated/);
+        assert.match(workflow, /my-day-browser:/);
+        assert.match(workflow, /name: My Day browser interactions/);
+        assert.match(workflow, /test:browser:my-day-actual-app:isolated/);
         assert.match(workflow, /test:integration:attendance-lock:isolated/);
         assert.match(workflow, /test:integration:banquet-recovery:isolated/);
         assert.match(attendanceLockSuite, /pg_locks/);

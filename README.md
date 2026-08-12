@@ -80,6 +80,8 @@ OPENAI_API_BASE=https://api.openai.com/v1
 
 Do not place OpenAI keys in HTML, browser JavaScript, localStorage, screenshots, changelog text, or seeded data. Without `OPENAI_API_KEY`, `/api/crm-assistant/*` returns a controlled `openai_not_configured` error, the global CRM assistant rail stays in text fallback mode, and `/api/products/menu-ai-draft` returns its controlled fallback draft.
 
+Task AI rollout evidence is collected through sanitized metadata only. Use `npm run task-ai-rollout-report -- --events-file <railway-jsonl> --database --format markdown` with a dedicated read-only `TASK_AI_ROLLOUT_DATABASE_URL`; the script intentionally ignores `DATABASE_URL`, writes a redacted artifact under `output/task-ai-rollout/`, and holds rollout if it lacks 24 hours, 30 successful proposals, clean DB consistency checks, or low provider-error evidence. The legacy alias `npm run report:task-ai-rollout` points to the same command. Paid real Luna eval remains separate: `npm run eval:task-ai:live` requires explicit `TASK_AI_LIVE_EVAL_CONFIRM=RUN_LUNA_PROPOSAL_EVAL` and never runs in CI/test.
+
 ## Public Landing Materials
 
 Current public sales/manager materials live under `landing/`:
@@ -192,7 +194,8 @@ The CI gate covers:
 - JavaScript parser checks through `npm run check:syntax`;
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`;
-- an isolated PostgreSQL job named `HR and payroll PostgreSQL integration` for attendance advisory-lock concurrency, attendance backup/recovery, HR onboarding/backfill, payroll profile/simultaneous-pay, admission ticket, and full-stack onboarding coverage.
+- an isolated PostgreSQL job named `HR and payroll PostgreSQL integration` for attendance advisory-lock concurrency, attendance backup/recovery, HR onboarding/backfill, payroll profile/simultaneous-pay, admission ticket, and full-stack onboarding coverage;
+- separate `My Day PostgreSQL integration` and `My Day browser interactions` jobs for My Day AI/timer/classification contracts, synthetic browser smokes, and actual Profile composer → Express API → disposable PostgreSQL coverage.
 
 The route smoke layer is intentionally shallow: it checks public/protected/custom-secret/API-key boundaries and cheap route contracts such as version, landing, packages, task permissions, user role metadata, and chat-adjacent auth fallback. It does not exercise full PostgreSQL-backed route behavior.
 
@@ -202,9 +205,11 @@ CI does not run the general PostgreSQL-backed API/integration suites,
 production deploy verification, or live Railway health checks. Its dedicated
 `HR and payroll PostgreSQL integration` job runs targeted disposable PostgreSQL
 coverage for HR/payroll/admission flows, including the payroll profiles and
-simultaneous-additional payroll suite. Use `npm run test:api`,
-`npm run test:integration`, and manual health checks against a configured
-app/database for other scopes.
+simultaneous-additional payroll suite. The dedicated My Day jobs run
+`npm run test:integration:my-day:isolated` and
+`npm run test:browser:my-day-actual-app:isolated` against disposable PostgreSQL
+with local AI mocks. Use `npm run test:api`, `npm run test:integration`, and
+manual health checks against a configured app/database for other scopes.
 
 ## Version And Changelog Discipline
 

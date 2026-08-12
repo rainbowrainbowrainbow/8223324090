@@ -592,7 +592,14 @@ async function main() {
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує одну складну задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-task-ai-draft-accept-all]').click();
-        const aiCommitBody = await submitCabinetComposerForTaskCreate(page, 'commitAiDraft');
+        await page.waitForFunction(() => {
+            const composer = document.getElementById('cabinetTaskComposer');
+            const payload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+            return ['single', 'checklist'].includes(payload?.commitType);
+        }, null, { timeout: TIMEOUT_MS });
+        const aiCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/commit');
+        await submitCabinetComposer(page);
+        const aiCommitBody = await responseJson(await aiCommitResponse, 'Profile AI checklist commit');
         const aiTaskId = Number(aiCommitBody.task?.id || aiCommitBody.taskId || aiCommitBody.task_id);
         assert.ok(aiTaskId > 0, 'AI checklist commit returns task id');
         await visibleTaskCard(page, `AI checklist actual app ${RUN_ID}`);
@@ -620,7 +627,9 @@ async function main() {
             const payload = window.TaskAiDraft?.commitPayloadFor?.(composer);
             return payload?.commitType === 'bundle' && Array.isArray(payload.tasks) && payload.tasks.length >= 2;
         }, null, { timeout: TIMEOUT_MS });
-        const bundleBody = await submitCabinetComposerForTaskCreate(page, 'commitAiDraftBundle');
+        const bundleCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
+        await submitCabinetComposer(page);
+        const bundleBody = await responseJson(await bundleCommitResponse, 'Profile AI bundle commit');
         const bundleTaskIds = (bundleBody.bundle?.taskIds || bundleBody.taskIds || []).map(Number).filter(Boolean);
         assert.ok(bundleTaskIds.length >= 2, 'AI bundle commit returns multiple task ids');
         const cabinetAfterBundle = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });

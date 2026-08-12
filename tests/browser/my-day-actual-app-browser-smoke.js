@@ -304,14 +304,23 @@ async function browserLogin(page) {
     await page.locator('#password').fill(process.env.TEST_PASS);
     const loginResponse = waitForApiResponse(page, 'POST', '/api/auth/login');
     await page.locator('#loginForm button[type="submit"]').click();
-    await responseJson(await loginResponse, 'browser login');
-    await page.waitForFunction(() => Boolean(
-        localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token')
-    ), null, { timeout: TIMEOUT_MS });
-    await page.evaluate(() => {
+    const loginBody = await responseJson(await loginResponse, 'browser login');
+    await page.evaluate(({ token, accessToken, refreshToken, refreshExpiresAt, user }) => {
+        const resolvedAccessToken = accessToken || token || '';
+        if (resolvedAccessToken) {
+            localStorage.setItem('pzp_token', resolvedAccessToken);
+            localStorage.setItem('pzp_access_token', resolvedAccessToken);
+        }
+        if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
+        if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
+        if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
         localStorage.setItem('pzp_crm_business_context', 'event_genix');
         localStorage.setItem('pzp_dark_mode', 'false');
-    });
+    }, loginBody);
+    await page.waitForFunction(() => Boolean(
+        (localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token'))
+        && localStorage.getItem('pzp_current_user')
+    ), null, { timeout: TIMEOUT_MS });
 }
 
 async function openMyDayProfile(page) {

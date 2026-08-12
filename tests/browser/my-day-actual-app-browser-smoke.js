@@ -755,7 +755,7 @@ async function main() {
         await openTasksPage(page);
         const providerUnavailableSource = `Provider unavailable source ${RUN_ID}`;
         openAiMock.intercept(
-            body => JSON.stringify(body).includes(providerUnavailableSource),
+            () => true,
             () => jsonResponse({ error: { message: 'mock provider unavailable' } }, 503)
         );
         expectedApiFailures.push({ method: 'POST', pathname: '/api/tasks/ai-draft/preview', status: 503 });

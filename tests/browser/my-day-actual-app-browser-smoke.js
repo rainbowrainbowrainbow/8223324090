@@ -362,11 +362,14 @@ async function submitCabinetComposer(page) {
     await submit.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
     await page.locator('#cabinetTaskComposer').evaluate(form => {
         const button = form.querySelector('.cabinet-task-create-submit');
-        if (typeof form.requestSubmit === 'function') {
-            form.requestSubmit(button || undefined);
-            return;
+        if (typeof window.createCabinetTask !== 'function') {
+            throw new Error('createCabinetTask handler is not available on window');
         }
-        button?.click();
+        return window.createCabinetTask({
+            preventDefault() {},
+            target: form,
+            submitter: button
+        }, 'personal');
     });
 }
 

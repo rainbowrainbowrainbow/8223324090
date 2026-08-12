@@ -656,6 +656,11 @@ async function main() {
         }]
     };
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block', storageState: sessionStorageState });
+    await context.route('https://www.clarity.ms/**', route => route.fulfill({
+        status: 204,
+        contentType: 'application/javascript',
+        body: ''
+    }));
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
         if (token) {
             localStorage.setItem('pzp_token', token);

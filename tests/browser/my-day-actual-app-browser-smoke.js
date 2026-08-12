@@ -420,10 +420,17 @@ async function cabinetComposerDiagnostics(page) {
 }
 
 async function snapshotCabinetComposerDraft(page) {
-    return page.evaluate(() => ({
-        title: document.getElementById('cabinetTaskTitle')?.value || '',
-        details: document.getElementById('cabinetTaskDetails')?.value || ''
-    }));
+    return page.evaluate(() => {
+        const valueFor = fieldId => {
+            const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
+            const nonEmpty = fields.find(field => String(field.value || '').trim());
+            return nonEmpty?.value || fields[0]?.value || '';
+        };
+        return {
+            title: valueFor('cabinetTaskTitle'),
+            details: valueFor('cabinetTaskDetails')
+        };
+    });
 }
 
 async function restoreCabinetComposerDraft(page, draft = {}) {

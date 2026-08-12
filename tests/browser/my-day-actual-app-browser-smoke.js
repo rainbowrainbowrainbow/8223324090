@@ -337,6 +337,17 @@ async function main() {
         await page.locator('#cabinetTaskDetails').fill('Розклади перевірку звітів на CRM і Hermes задачі.');
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує створити' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        const bundleAcceptButtons = page.locator('[data-task-ai-bundle-accept]');
+        const bundleAcceptCount = await bundleAcceptButtons.count();
+        assert.ok(bundleAcceptCount >= 2, 'bundle preview renders explicit per-task accept controls');
+        for (let index = 0; index < bundleAcceptCount; index += 1) {
+            await bundleAcceptButtons.nth(index).click();
+        }
+        await page.waitForFunction(() => {
+            const composer = document.getElementById('cabinetTaskComposer');
+            const payload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+            return payload?.commitType === 'bundle' && Array.isArray(payload.tasks) && payload.tasks.length >= 2;
+        }, null, { timeout: TIMEOUT_MS });
         const bundleCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
         await page.locator('#cabinetTaskComposer .cabinet-task-create-submit').click();
         const bundleBody = await responseJson(await bundleCommitResponse, 'AI bundle commit from main profile CTA');

@@ -452,6 +452,8 @@ async function restoreCabinetComposerDraft(page, draft = {}) {
             });
         }
     }, draft);
+    if (draft.title) await waitForCabinetFieldValue(page, 'cabinetTaskTitle', draft.title);
+    if (draft.details) await waitForCabinetFieldValue(page, 'cabinetTaskDetails', draft.details);
 }
 
 async function submitCabinetComposerForTaskCreate(page, methodName) {
@@ -475,7 +477,10 @@ async function submitCabinetComposerForTaskCreate(page, methodName) {
 
 async function fillCabinetField(page, id, value) {
     await page.evaluate(({ fieldId, fieldValue }) => {
+        const form = document.getElementById('cabinetTaskComposer');
         const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
+        const formField = form?.querySelector(`#${CSS.escape(fieldId)}`);
+        if (formField && !fields.includes(formField)) fields.unshift(formField);
         if (!fields.length) throw new Error(`${fieldId} not found`);
         fields.forEach(field => {
             field.value = fieldValue;
@@ -484,10 +489,17 @@ async function fillCabinetField(page, id, value) {
             field.dispatchEvent(new Event('change', { bubbles: true }));
         });
     }, { fieldId: id, fieldValue: value });
+    await waitForCabinetFieldValue(page, id, value);
+}
+
+async function waitForCabinetFieldValue(page, id, value) {
     await page.waitForFunction(({ fieldId, fieldValue }) => {
-        return Array.from(document.querySelectorAll('[id]'))
-            .filter(field => field.id === fieldId)
-            .some(field => String(field.value || '') === String(fieldValue));
+        const form = document.getElementById('cabinetTaskComposer');
+        const canonical = document.getElementById(fieldId);
+        const formField = form?.querySelector(`#${CSS.escape(fieldId)}`);
+        const canonicalOk = !canonical || String(canonical.value || '') === String(fieldValue);
+        const formOk = !formField || String(formField.value || '') === String(fieldValue);
+        return Boolean(canonical || formField) && canonicalOk && formOk;
     }, { fieldId: id, fieldValue: value }, { timeout: TIMEOUT_MS });
 }
 

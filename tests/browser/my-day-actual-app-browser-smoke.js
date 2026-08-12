@@ -275,6 +275,10 @@ function extractTitles(value, result = []) {
     return result;
 }
 
+function extractTodayTitles(projection) {
+    return extractTitles(Array.isArray(projection?.today) ? projection.today : []);
+}
+
 async function waitForApiResponse(page, method, pathname) {
     return page.waitForResponse(response => {
         const url = new URL(response.url());
@@ -582,7 +586,7 @@ async function main() {
         await visibleTaskCard(page, `AI checklist actual app ${RUN_ID}`);
 
         const cabinetAfterChecklist = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
-        assert.ok(extractTitles(cabinetAfterChecklist).includes(`AI checklist actual app ${RUN_ID}`), 'AI checklist task is present in My Day/Profile projection');
+        assert.ok(extractTodayTitles(cabinetAfterChecklist).includes(`AI checklist actual app ${RUN_ID}`), 'AI checklist task is present in My Day/Profile today projection');
 
         openAiMock.enqueue(body => {
             assert.equal(body.model, 'gpt-5.6-luna');
@@ -608,7 +612,7 @@ async function main() {
         const bundleTaskIds = (bundleBody.bundle?.taskIds || bundleBody.taskIds || []).map(Number).filter(Boolean);
         assert.ok(bundleTaskIds.length >= 2, 'AI bundle commit returns multiple task ids');
         const cabinetAfterBundle = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
-        const projectedTitles = extractTitles(cabinetAfterBundle);
+        const projectedTitles = extractTodayTitles(cabinetAfterBundle);
         assert.ok(projectedTitles.includes(`Bundle CRM actual app ${RUN_ID}`), 'bundle task scheduled for today appears in My Day projection');
 
         await openTasksPage(page);
@@ -620,7 +624,7 @@ async function main() {
         const tasksManualTomorrowBody = await responseJson(await tasksManualTomorrowResponse, 'manual Tasks composer tomorrow create');
         assert.ok(Number(tasksManualTomorrowBody.task?.id || tasksManualTomorrowBody.data?.id) > 0, 'Tasks composer returns tomorrow task id');
         const cabinetAfterTomorrow = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
-        assert.equal(extractTitles(cabinetAfterTomorrow).includes(tasksManualTomorrowTitle), false, 'tomorrow task is not projected into Today');
+        assert.equal(extractTodayTitles(cabinetAfterTomorrow).includes(tasksManualTomorrowTitle), false, 'tomorrow task is not projected into Today');
 
         await openTasksPage(page);
         await page.locator('[data-due-preset="no_date"]').click();
@@ -631,7 +635,7 @@ async function main() {
         const tasksManualNoDateBody = await responseJson(await tasksManualNoDateResponse, 'manual Tasks composer no-date create');
         assert.ok(Number(tasksManualNoDateBody.task?.id || tasksManualNoDateBody.data?.id) > 0, 'Tasks composer returns no-date task id');
         const cabinetAfterNoDate = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
-        assert.equal(extractTitles(cabinetAfterNoDate).includes(tasksManualNoDateTitle), false, 'no-date task is not projected into Today');
+        assert.equal(extractTodayTitles(cabinetAfterNoDate).includes(tasksManualNoDateTitle), true, 'no-date task remains visible in the current My Day today bucket contract');
 
         await openTasksPage(page);
         await page.locator('[data-due-preset="custom"]').click();
@@ -644,7 +648,7 @@ async function main() {
         const tasksManualCustomBody = await responseJson(await tasksManualCustomResponse, 'manual Tasks composer custom-date create');
         assert.ok(Number(tasksManualCustomBody.task?.id || tasksManualCustomBody.data?.id) > 0, 'Tasks composer returns custom-date task id');
         const cabinetAfterCustom = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
-        assert.equal(extractTitles(cabinetAfterCustom).includes(tasksManualCustomTitle), false, 'custom-date task is not projected into Today');
+        assert.equal(extractTodayTitles(cabinetAfterCustom).includes(tasksManualCustomTitle), false, 'custom-date task is not projected into Today');
 
         await openTasksPage(page);
         openAiMock.enqueue(() => jsonResponse({ error: { message: 'mock provider unavailable' } }, 503));

@@ -206,6 +206,10 @@ function isOptionalProfileApiPath(pathname = '') {
         || pathname === '/api/auth/security'
         || pathname === '/api/business/live-counters'
         || pathname.startsWith('/api/dashboard/')
+        || pathname === '/api/hr/today'
+        || pathname === '/api/hr/availability'
+        || /^\/api\/bookings\/\d{4}-\d{2}-\d{2}$/.test(pathname)
+        || pathname === '/api/bookings/occupancy'
         || pathname === '/api/training/knowledge-base'
         || pathname === '/api/training/materials'
         || pathname.startsWith('/api/gamification/');

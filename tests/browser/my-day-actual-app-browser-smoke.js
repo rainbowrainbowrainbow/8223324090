@@ -228,8 +228,29 @@ function isAllowedOptionalConsoleFailure(line = '') {
     return false;
 }
 
-function consumeExpectedConsoleResourceFailure(line = '', expected = []) {
-    const match = String(line || '').match(/Failed to load resource: the server responded with a status of (\d{3})\b/i);
+function consoleEventText(event) {
+    return typeof event === 'string' ? event : String(event?.text || '');
+}
+
+function consoleEventLocationUrl(event) {
+    const url = typeof event === 'string' ? '' : String(event?.location?.url || '');
+    if (url) return url;
+    const text = consoleEventText(event);
+    const match = text.match(/https?:\/\/\S+/i);
+    return match ? match[0] : '';
+}
+
+function isOptionalConsoleResourceFailure(event) {
+    const text = consoleEventText(event);
+    const match = text.match(/Failed to load resource: the server responded with a status of (\d{3})\b/i);
+    if (!match) return false;
+    const locationUrl = consoleEventLocationUrl(event);
+    if (!locationUrl || !isSameTargetOrigin(locationUrl)) return false;
+    return isOptionalProfileApiPath(new URL(locationUrl).pathname);
+}
+
+function consumeExpectedConsoleResourceFailure(event, expected = []) {
+    const match = consoleEventText(event).match(/Failed to load resource: the server responded with a status of (\d{3})\b/i);
     if (!match) return false;
     const status = Number(match[1]);
     const index = expected.findIndex(item => Number(item.status) === status);
@@ -656,9 +677,9 @@ async function main() {
     const optionalConsoleFailures = [];
     page.on('console', message => {
         if (message.type() !== 'error') return;
-        consoleErrors.push(message.text());
+        consoleErrors.push({ text: message.text(), location: message.location() });
     });
-    page.on('pageerror', error => consoleErrors.push(error.message));
+    page.on('pageerror', error => consoleErrors.push({ text: error.message, location: null }));
     page.on('response', response => {
         if (!isSameTargetOrigin(response.url()) || response.status() < 400) return;
         const url = new URL(response.url());
@@ -893,10 +914,12 @@ async function main() {
 
         assert.ok(openAiMock.calls.length >= 2, 'actual-app smoke used local OpenAI mock for AI previews');
         const unexpectedConsoleErrors = consoleErrors.filter(line => {
-            if (/favicon|ResizeObserver/i.test(line)) return false;
+            const text = consoleEventText(line);
+            if (/favicon|ResizeObserver/i.test(text)) return false;
             if (consumeExpectedConsoleResourceFailure(line, expectedConsoleFailures)) return false;
             if (consumeExpectedConsoleResourceFailure(line, optionalConsoleFailures)) return false;
-            if (isAllowedOptionalConsoleFailure(line)) return false;
+            if (isOptionalConsoleResourceFailure(line)) return false;
+            if (isAllowedOptionalConsoleFailure(text)) return false;
             return true;
         });
         if (unexpectedConsoleErrors.length || apiFailures.length || requestFailures.length || expectedApiFailures.length) {

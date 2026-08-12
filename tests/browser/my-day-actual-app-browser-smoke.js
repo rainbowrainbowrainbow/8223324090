@@ -679,7 +679,7 @@ async function main() {
         }));
         await page.locator('#taskTitle').fill(`Clarification source ${RUN_ID}`);
         await page.locator('[data-task-ai-draft-preview]').click();
-        await page.locator('[data-task-ai-draft-review].is-clarification').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-task-ai-draft-review] .is-clarification').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
 
         await openTasksPage(page);
         openAiMock.enqueue(body => {

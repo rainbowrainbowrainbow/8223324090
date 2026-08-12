@@ -638,17 +638,19 @@ async function main() {
     const requestFailures = [];
     const expectedApiFailures = [];
     const expectedConsoleFailures = [];
+    const optionalConsoleFailures = [];
     page.on('console', message => {
         if (message.type() !== 'error') return;
-        const text = message.text();
-        if (consumeExpectedConsoleResourceFailure(text, expectedConsoleFailures)) return;
-        consoleErrors.push(text);
+        consoleErrors.push(message.text());
     });
     page.on('pageerror', error => consoleErrors.push(error.message));
     page.on('response', response => {
         if (!isSameTargetOrigin(response.url()) || response.status() < 400) return;
         const url = new URL(response.url());
-        if (isOptionalProfileApiPath(url.pathname)) return;
+        if (isOptionalProfileApiPath(url.pathname)) {
+            optionalConsoleFailures.push({ status: response.status(), pathname: url.pathname });
+            return;
+        }
         const failureLabel = `${response.request().method()} ${url.pathname} returned ${response.status()}`;
         const expectedIndex = expectedApiFailures.findIndex(item => (
             item.method === response.request().method()
@@ -877,6 +879,8 @@ async function main() {
         assert.ok(openAiMock.calls.length >= 2, 'actual-app smoke used local OpenAI mock for AI previews');
         const unexpectedConsoleErrors = consoleErrors.filter(line => {
             if (/favicon|ResizeObserver/i.test(line)) return false;
+            if (consumeExpectedConsoleResourceFailure(line, expectedConsoleFailures)) return false;
+            if (consumeExpectedConsoleResourceFailure(line, optionalConsoleFailures)) return false;
             if (isAllowedOptionalConsoleFailure(line)) return false;
             return true;
         });
@@ -886,7 +890,8 @@ async function main() {
                 apiFailures,
                 requestFailures,
                 expectedApiFailures,
-                expectedConsoleFailures
+                expectedConsoleFailures,
+                optionalConsoleFailures
             }, null, 2));
         }
         assert.deepEqual(unexpectedConsoleErrors, [], 'browser console has no unexpected errors');

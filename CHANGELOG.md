@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.126 - AI Provider Diagnostics Hotfix
+
+### Release / Versioning / (12.08.2026) [codex]
+- **AI provider diagnostics** - fixed the Task AI draft feature gate null-user path so `/api/settings/ai/providers` can render My Day/Luna diagnostics without throwing a 500.
+- **Release safety** - added a focused regression test for diagnostics-safe feature status while keeping the AI composer rollout capped at 20% and bundle access test-user only.
+
+---
+
 ## v0.80.125 - My Day AI Composer Integration
 
 ### Release / Versioning / (12.08.2026) [codex]

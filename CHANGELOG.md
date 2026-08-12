@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.127 - My Day AI Hardening Release
+
+### My Day / AI / Timer / (12.08.2026) [codex]
+- **Глобальний таймер** — `/api/my-day/timer` більше не розкриває назву або ID задачі, якщо користувач втратив доступ до її business context; власний застряглий таймер усе ще можна зупинити.
+- **Картки My Day** — прибрано старий великий active timer strip, залишено компактний time control і єдину системну модель таймера.
+- **AI rollout gates** — додано actual-app My Day browser gate, isolated PostgreSQL wiring, sanitized rollout report і live mutation smoke із guard-ами для test account.
+
+---
+
 ## v0.80.126 - AI Provider Diagnostics Hotfix
 
 ### Release / Versioning / (12.08.2026) [codex]

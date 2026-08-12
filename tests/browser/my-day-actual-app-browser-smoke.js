@@ -297,26 +297,21 @@ async function responseJson(response, label) {
     return body;
 }
 
-async function browserLogin(page) {
+async function browserLogin(page, session) {
+    assert.ok(session?.token, 'browser session seed requires access token');
+    assert.ok(session?.user?.id, 'browser session seed requires user');
     await page.goto(`${TARGET_URL}/`, { waitUntil: 'domcontentloaded' });
-    await page.locator('#loginForm').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-    await page.locator('#username').fill(process.env.TEST_USER);
-    await page.locator('#password').fill(process.env.TEST_PASS);
-    const loginResponse = waitForApiResponse(page, 'POST', '/api/auth/login');
-    await page.locator('#loginForm button[type="submit"]').click();
-    const loginBody = await responseJson(await loginResponse, 'browser login');
-    await page.evaluate(({ token, accessToken, refreshToken, refreshExpiresAt, user }) => {
-        const resolvedAccessToken = accessToken || token || '';
-        if (resolvedAccessToken) {
-            localStorage.setItem('pzp_token', resolvedAccessToken);
-            localStorage.setItem('pzp_access_token', resolvedAccessToken);
+    await page.evaluate(({ token, refreshToken, refreshExpiresAt, user }) => {
+        if (token) {
+            localStorage.setItem('pzp_token', token);
+            localStorage.setItem('pzp_access_token', token);
         }
         if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
         if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
         if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
         localStorage.setItem('pzp_crm_business_context', 'event_genix');
         localStorage.setItem('pzp_dark_mode', 'false');
-    }, loginBody);
+    }, session);
     await page.waitForFunction(() => Boolean(
         (localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token'))
         && localStorage.getItem('pzp_current_user')
@@ -646,7 +641,7 @@ async function main() {
 
     try {
         const today = kyivDateOffset(0);
-        await browserLogin(page);
+        await browserLogin(page, session);
         await openMyDayProfile(page);
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;

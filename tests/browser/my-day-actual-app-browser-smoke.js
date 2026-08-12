@@ -307,6 +307,33 @@ async function openMyDayProfile(page) {
     await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated profile navigation should not redirect to the root fallback');
     await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    try {
+        await waitForMyDayProfileRuntime(page);
+    } catch (error) {
+        await page.reload({ waitUntil: 'domcontentloaded' });
+        await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        try {
+            await waitForMyDayProfileRuntime(page);
+        } catch (retryError) {
+            const diagnostics = await page.evaluate(() => {
+                const form = document.getElementById('cabinetTaskComposer');
+                return {
+                    url: location.href,
+                    readyState: document.readyState,
+                    hasForm: Boolean(form),
+                    formRequestSubmit: typeof form?.requestSubmit,
+                    hasCreateCabinetTask: typeof window.createCabinetTask === 'function',
+                    hasTaskCreate: Boolean(window.TaskCreate),
+                    hasCreateTask: typeof window.TaskCreate?.createTask === 'function',
+                    mainAppHidden: Boolean(document.getElementById('mainApp')?.classList.contains('hidden'))
+                };
+            }).catch(() => null);
+            throw new Error(`${retryError.message}; profile runtime diagnostics: ${JSON.stringify(diagnostics)}`);
+        }
+    }
+}
+
+async function waitForMyDayProfileRuntime(page) {
     await page.waitForFunction(() => {
         const form = document.getElementById('cabinetTaskComposer');
         return Boolean(

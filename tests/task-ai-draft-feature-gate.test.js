@@ -72,6 +72,17 @@ test('Task AI draft feature gate throws controlled disabled error', () => {
     );
 });
 
+test('Task AI draft public feature status is null-safe for provider diagnostics', () => {
+    assert.deepEqual(
+        gate.publicTaskAiDraftFeatureStatus(null, { env: { NODE_ENV: 'production' } }),
+        { enabled: false, reason: 'not_enabled', rolloutPercent: 0, matched: null }
+    );
+    assert.deepEqual(
+        gate.publicTaskAiDraftBundleFeatureStatus(null, { env: { NODE_ENV: 'production' } }),
+        { enabled: false, reason: 'bundle_not_enabled', rolloutPercent: 0, matched: null }
+    );
+});
+
 test('Task AI draft bundle gate is separate and defaults to off/test-only', () => {
     const user = { id: 42, username: 'serhii', email: 'owner@example.test' };
     assert.deepEqual(

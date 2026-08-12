@@ -26,10 +26,11 @@ function normalizePercent(value, fallback = DEFAULT_ROLLOUT_PERCENT) {
 }
 
 function userIdentity(user = {}) {
+    const source = user && typeof user === 'object' ? user : {};
     return {
-        id: String(user.id || user.userId || user.user_id || '').trim(),
-        username: String(user.username || user.name || user.login || '').trim().toLowerCase(),
-        email: String(user.email || '').trim().toLowerCase()
+        id: String(source.id || source.userId || source.user_id || '').trim(),
+        username: String(source.username || source.name || source.login || '').trim().toLowerCase(),
+        email: String(source.email || '').trim().toLowerCase()
     };
 }
 

@@ -584,6 +584,21 @@ async function submitTasksComposer(page) {
     await page.locator('#addTaskBtn').click();
 }
 
+async function evaluateAfterNavigationSettles(page, callback, arg) {
+    await page.waitForLoadState('domcontentloaded', { timeout: TIMEOUT_MS }).catch(() => {});
+    await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+    try {
+        return await page.evaluate(callback, arg);
+    } catch (error) {
+        if (!/Execution context was destroyed/i.test(String(error?.message || error))) {
+            throw error;
+        }
+        await page.waitForLoadState('domcontentloaded', { timeout: TIMEOUT_MS }).catch(() => {});
+        await page.waitForLoadState('networkidle', { timeout: 5000 }).catch(() => {});
+        return page.evaluate(callback, arg);
+    }
+}
+
 async function visibleTaskCard(page, title) {
     const card = page.locator('.cabinet-task-card, [data-cabinet-overdue-triage-row]').filter({ hasText: title }).first();
     await card.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
@@ -854,18 +869,18 @@ async function main() {
         await page.goto(`${TARGET_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
         await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await api(TARGET_URL, '/api/my-day/timer/stop', { method: 'POST', token: session.token, body: {} });
-        await page.evaluate(() => {
+        await evaluateAfterNavigationSettles(page, () => {
             window.dispatchEvent(new CustomEvent('crm:timer-updated', { detail: { action: 'stop', emittedAt: Date.now() } }));
             window.GlobalTaskTimer?.hydrate?.({ reason: 'actual-app-smoke-stop' });
         });
 
         await page.setViewportSize({ width: 390, height: 780 });
-        await page.evaluate(() => localStorage.setItem('pzp_dark_mode', 'true'));
+        await evaluateAfterNavigationSettles(page, () => localStorage.setItem('pzp_dark_mode', 'true'));
         await openMyDayProfile(page);
         const overflow = await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
         assert.ok(overflow <= 4, `mobile dark My Day should not horizontally overflow, got ${overflow}px`);
 
-        await page.evaluate(() => {
+        await evaluateAfterNavigationSettles(page, () => {
             localStorage.removeItem('pzp_token');
             localStorage.removeItem('pzp_access_token');
             localStorage.removeItem('pzp_refresh_token');

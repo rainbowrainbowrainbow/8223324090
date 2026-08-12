@@ -419,14 +419,40 @@ async function cabinetComposerDiagnostics(page) {
     });
 }
 
+async function snapshotCabinetComposerDraft(page) {
+    return page.evaluate(() => ({
+        title: document.getElementById('cabinetTaskTitle')?.value || '',
+        details: document.getElementById('cabinetTaskDetails')?.value || ''
+    }));
+}
+
+async function restoreCabinetComposerDraft(page, draft = {}) {
+    await page.evaluate(snapshot => {
+        for (const [fieldId, fieldValue] of Object.entries({
+            cabinetTaskTitle: snapshot.title || '',
+            cabinetTaskDetails: snapshot.details || ''
+        })) {
+            const fields = Array.from(document.querySelectorAll('[id]')).filter(field => field.id === fieldId);
+            fields.forEach(field => {
+                field.value = fieldValue;
+                field.setAttribute('value', fieldValue);
+                field.dispatchEvent(new Event('input', { bubbles: true }));
+                field.dispatchEvent(new Event('change', { bubbles: true }));
+            });
+        }
+    }, draft);
+}
+
 async function submitCabinetComposerForTaskCreate(page, methodName) {
     await captureTaskCreateMethod(page, methodName);
+    const draftSnapshot = await snapshotCabinetComposerDraft(page);
     await submitCabinetComposer(page);
     const quickResult = await Promise.race([
         waitForTaskCreateResult(page, methodName, 5_000),
         page.waitForTimeout(5_000).then(() => null)
     ]);
     if (quickResult) return quickResult;
+    await restoreCabinetComposerDraft(page, draftSnapshot);
     await invokeCabinetComposerHandler(page);
     try {
         return await waitForTaskCreateResult(page, methodName);

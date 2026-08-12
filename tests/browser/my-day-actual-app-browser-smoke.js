@@ -783,6 +783,10 @@ async function main() {
             () => true,
             () => jsonResponse({ error: { message: 'mock provider unavailable' } }, 503)
         );
+        openAiMock.intercept(
+            () => true,
+            () => jsonResponse({ error: { message: 'mock provider unavailable retry' } }, 503)
+        );
         expectedApiFailures.push({ method: 'POST', pathname: '/api/tasks/ai-draft/preview', status: 503 });
         await page.locator('#taskTitle').fill(providerUnavailableSource);
         await page.locator('#taskDescription').fill('Provider unavailable should not block manual create.');

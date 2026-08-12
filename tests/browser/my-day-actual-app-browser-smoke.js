@@ -237,18 +237,26 @@ async function responseJson(response, label) {
     return body;
 }
 
-async function installSession(context, session) {
-    await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
-        localStorage.setItem('pzp_token', token);
-        localStorage.setItem('pzp_access_token', token);
-        if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
-        if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', refreshExpiresAt);
-        localStorage.setItem('pzp_current_user', JSON.stringify(user));
-    }, session);
+async function browserLogin(page) {
+    await page.goto(`${TARGET_URL}/`, { waitUntil: 'domcontentloaded' });
+    await page.locator('#loginForm').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    await page.locator('#username').fill(process.env.TEST_USER);
+    await page.locator('#password').fill(process.env.TEST_PASS);
+    const loginResponse = waitForApiResponse(page, 'POST', '/api/auth/login');
+    await page.locator('#loginForm button[type="submit"]').click();
+    await responseJson(await loginResponse, 'browser login');
+    await page.waitForFunction(() => Boolean(
+        localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token')
+    ), null, { timeout: TIMEOUT_MS });
+    await page.evaluate(() => {
+        localStorage.setItem('pzp_crm_business_context', 'event_genix');
+        localStorage.setItem('pzp_dark_mode', 'false');
+    });
 }
 
 async function openMyDayProfile(page) {
-    await page.goto(`${TARGET_URL}/profile.html?tab=myday`, { waitUntil: 'domcontentloaded' });
+    await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
+    assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated profile navigation should not redirect to the root fallback');
     await page.locator('#cabinetTaskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
 }
 
@@ -271,8 +279,7 @@ async function main() {
     assert.ok(selectedImpactIds.length >= 2, 'starter kit exposes at least two active impacts');
 
     const browser = await chromium.launch({ headless: HEADLESS });
-    const context = await browser.newContext({ viewport: { width: 1366, height: 900 } });
-    await installSession(context, session);
+    const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block' });
     const page = await context.newPage();
     const consoleErrors = [];
     page.on('console', message => {
@@ -282,6 +289,7 @@ async function main() {
 
     try {
         const today = kyivDateOffset(0);
+        await browserLogin(page);
         await openMyDayProfile(page);
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;

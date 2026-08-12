@@ -30,9 +30,14 @@ const FAILURE_STATUSES = new Set([
 function parseArgs(argv = []) {
     const options = {
         eventsFile: '',
+        stdin: false,
         useDatabase: false,
         output: '',
         format: 'json',
+        stage: '',
+        version: '',
+        sha: '',
+        expectedRolloutPercent: '',
         businessContext: '',
         hours: DEFAULTS.hours,
         minProposals: DEFAULTS.minProposals,
@@ -46,9 +51,14 @@ function parseArgs(argv = []) {
             return argv[index];
         };
         if (arg === '--events-file') options.eventsFile = next();
+        else if (arg === '--stdin') options.stdin = true;
         else if (arg === '--database') options.useDatabase = true;
         else if (arg === '--output') options.output = next();
         else if (arg === '--format') options.format = next();
+        else if (arg === '--stage') options.stage = next();
+        else if (arg === '--version') options.version = next();
+        else if (arg === '--sha') options.sha = next();
+        else if (arg === '--expected-rollout-percent') options.expectedRolloutPercent = next();
         else if (arg === '--business-context') options.businessContext = next();
         else if (arg === '--hours') options.hours = Number(next());
         else if (arg === '--min-proposals') options.minProposals = Number(next());
@@ -72,10 +82,15 @@ function usage() {
         '',
         'Inputs:',
         '  --events-file <path>      Exported structured logs containing task_ai_draft_event rows.',
+        '  --stdin                   Read structured logs from stdin instead of a raw saved log file.',
         '  --database                Also read durable commit/bundle evidence from TASK_AI_ROLLOUT_DATABASE_URL.',
         '  --hours <n>               Window size, default 24.',
         '  --min-proposals <n>       Required successful preview proposals, default 30.',
         '  --provider-error-rate-max <n>  Default 0.05.',
+        '  --stage <name>            Rollout stage label, for example 20, 50, bundle-test.',
+        '  --version <version>       Exact deployed application version for the evidence artifact.',
+        '  --sha <sha>               Exact deployed commit SHA for the evidence artifact.',
+        '  --expected-rollout-percent <n>  Expected rollout percentage for this artifact.',
         '',
         'Safety:',
         '  No DATABASE_URL fallback is used. DB mode requires TASK_AI_ROLLOUT_DATABASE_URL.'
@@ -150,6 +165,11 @@ function loadTelemetryEvents(filePath) {
     if (!filePath) return [];
     const resolved = path.resolve(filePath);
     const text = fs.readFileSync(resolved, 'utf8');
+    return parseTelemetryLogText(text);
+}
+
+function loadTelemetryFromStdin() {
+    const text = fs.readFileSync(0, 'utf8');
     return parseTelemetryLogText(text);
 }
 
@@ -235,6 +255,9 @@ async function queryOne(client, text, params = []) {
 async function collectDatabaseEvidence(options = {}, env = process.env) {
     const pool = options.pool || poolFromEnv(env);
     const ownsPool = !options.pool;
+    const client = typeof pool.connect === 'function' ? await pool.connect() : pool;
+    const releaseClient = typeof client.release === 'function' ? () => client.release() : null;
+    let transactionOpen = false;
     const params = [Number(options.hours || DEFAULTS.hours)];
     let businessSql = '';
     if (options.businessContext) {
@@ -242,7 +265,13 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
         businessSql = ` AND COALESCE(t.business_context, 'event_genix') = $${params.length}`;
     }
     try {
-        const rowsResult = await pool.query(
+        if (typeof pool.connect === 'function') {
+            await client.query('BEGIN READ ONLY');
+            transactionOpen = true;
+            await client.query(`SET LOCAL statement_timeout = '5000ms'`);
+            await client.query(`SET TRANSACTION READ ONLY`);
+        }
+        const rowsResult = await client.query(
             `SELECT h.action_type, h.source_surface, h.created_at, h.actor_user_id,
                     h.new_value_json, h.meta_json, COALESCE(t.business_context, 'event_genix') AS business_context
              FROM task_action_history h
@@ -273,7 +302,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
                 reasonCode: isBundle ? 'durable_bundle_history' : 'durable_commit_history'
             }, 'database');
         });
-        const duplicateSingle = await queryOne(pool, `
+        const duplicateSingle = await queryOne(client, `
             SELECT COUNT(*)::int AS count
             FROM (
                 SELECT h.actor_user_id, h.meta_json->>'idempotencyKey' AS idempotency_key, COUNT(*)::int AS event_count
@@ -287,7 +316,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
                 GROUP BY h.actor_user_id, h.meta_json->>'idempotencyKey'
                 HAVING COUNT(*) > 1
             ) duplicates`, params);
-        const partialImpacts = await queryOne(pool, `
+        const partialImpacts = await queryOne(client, `
             SELECT COUNT(*)::int AS count
             FROM task_action_history h
             JOIN tasks t ON t.id = h.task_id
@@ -301,7 +330,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
               AND h.created_at >= NOW() - ($1::int * INTERVAL '1 hour')
               AND COALESCE((h.new_value_json->>'impactCount')::int, 0) <> COALESCE(actual.impact_count, 0)
               ${businessSql}`, params);
-        const partialSubtasks = await queryOne(pool, `
+        const partialSubtasks = await queryOne(client, `
             SELECT COUNT(*)::int AS count
             FROM task_action_history h
             JOIN tasks t ON t.id = h.task_id
@@ -315,7 +344,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
               AND h.created_at >= NOW() - ($1::int * INTERVAL '1 hour')
               AND COALESCE((h.new_value_json->>'subtaskCount')::int, 0) <> COALESCE(actual.subtask_count, 0)
               ${businessSql}`, params);
-        const partialBundles = await queryOne(pool, `
+        const partialBundles = await queryOne(client, `
             SELECT COUNT(*)::int AS count
             FROM task_bundles b
             LEFT JOIN LATERAL (
@@ -329,7 +358,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
               ${options.businessContext ? `AND b.business_context = $2` : ''}`,
             options.businessContext ? [Number(options.hours || DEFAULTS.hours), String(options.businessContext)] : [Number(options.hours || DEFAULTS.hours)]
         );
-        const scheduleFailures = await queryOne(pool, `
+        const scheduleFailures = await queryOne(client, `
             SELECT COUNT(*)::int AS count
             FROM task_action_history h
             JOIN tasks t ON t.id = h.task_id
@@ -338,7 +367,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
               AND COALESCE((h.new_value_json->>'scheduleWritten')::boolean, false) = true
               AND t.date IS NULL
               ${businessSql}`, params);
-        return {
+        const evidence = {
             available: true,
             events: historyEvents,
             checks: {
@@ -349,7 +378,16 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
                 schedulePlacementFailures: Number(scheduleFailures.count || 0)
             }
         };
+        if (transactionOpen) {
+            await client.query('COMMIT');
+            transactionOpen = false;
+        }
+        return evidence;
     } finally {
+        if (transactionOpen) {
+            try { await client.query('ROLLBACK'); } catch {}
+        }
+        if (releaseClient) releaseClient();
         if (ownsPool) await pool.end();
     }
 }
@@ -372,12 +410,21 @@ function buildVerdict({ telemetry, window, dbEvidence = {}, thresholds = {} }) {
             && Number(telemetry.byReasonCode?.TASK_AI_BUNDLE_UNKNOWN_IMPACT || 0) === 0,
         schedulePlacementFailures: dbEvidence.available === true && Number(checks.schedulePlacementFailures || 0) === 0
     };
+    gates.enoughVolumeOrTimeEvidence = gates.enoughSuccessfulProposals || gates.enoughTimeEvidence;
     const missingEvidence = [];
     if (!telemetry.previewAttempts) missingEvidence.push('structured telemetry logs with preview events');
     if (!window.hasTimestamps) missingEvidence.push('timestamped telemetry window');
     if (dbEvidence.available !== true) missingEvidence.push('read-only database evidence from TASK_AI_ROLLOUT_DATABASE_URL');
+    if (!gates.enoughVolumeOrTimeEvidence) missingEvidence.push(`at least ${thresholds.minProposals} successful proposals or ${thresholds.hours}h of timestamped evidence`);
     return {
-        status: Object.values(gates).every(Boolean) ? 'pass' : 'hold',
+        status: gates.enoughVolumeOrTimeEvidence
+            && gates.providerErrorRate
+            && gates.partialWrites
+            && gates.duplicateCommits
+            && gates.unknownImpactIds
+            && gates.schedulePlacementFailures
+            ? 'pass'
+            : 'hold',
         gates,
         thresholds,
         providerErrorRate,
@@ -399,6 +446,12 @@ function buildReport({ logEvents = [], dbEvidence = {}, options = {} }) {
         generatedAt: new Date().toISOString(),
         report: 'task_ai_rollout_gate',
         contentPolicy: 'sanitized metadata only; task content and secrets are excluded',
+        release: {
+            version: String(options.version || '').trim() || null,
+            sha: String(options.sha || '').trim() || null,
+            stage: String(options.stage || '').trim() || null,
+            expectedRolloutPercent: String(options.expectedRolloutPercent || '').trim() || null
+        },
         sources: {
             logs: { available: logEvents.length > 0, events: logEvents.length },
             database: { available: dbEvidence.available === true, events: dbEvents.length }
@@ -418,6 +471,8 @@ function reportMarkdown(report = {}) {
         `# Task AI rollout report`,
         '',
         `- generatedAt: \`${report.generatedAt}\``,
+        `- version/SHA: \`${report.release?.version || 'unknown'}\` / \`${report.release?.sha || 'unknown'}\``,
+        `- stage: \`${report.release?.stage || 'unknown'}\` (expected rollout ${report.release?.expectedRolloutPercent || 'unknown'}%)`,
         `- verdict: \`${v.status || 'hold'}\``,
         `- window: \`${report.window?.from || 'unknown'} → ${report.window?.to || 'unknown'}\` (${report.window?.spanHours || 0}h)`,
         `- successful proposals: ${t.successfulProposals || 0}`,
@@ -463,7 +518,10 @@ async function main() {
         process.stdout.write(`${usage()}\n`);
         return;
     }
-    const logEvents = loadTelemetryEvents(options.eventsFile);
+    const logEvents = [
+        ...loadTelemetryEvents(options.eventsFile),
+        ...(options.stdin ? loadTelemetryFromStdin() : [])
+    ];
     const dbEvidence = options.useDatabase
         ? await collectDatabaseEvidence(options)
         : { available: false, events: [], checks: null };

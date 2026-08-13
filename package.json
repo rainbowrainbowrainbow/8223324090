@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.128",
+  "version": "0.80.129",
   "eventGenix": {
-    "releaseLabel": "My Day AI Evidence Gate Release"
+    "releaseLabel": "My Day Entry Hotfix Release"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

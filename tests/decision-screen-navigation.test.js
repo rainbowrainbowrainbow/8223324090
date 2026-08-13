@@ -79,6 +79,21 @@ test('Escape closes Decision Center so sidebar navigation is no longer blocked',
     assert.equal(window.document.body.classList.contains('ds-open'), false);
 });
 
+test('Repeated dismissal cannot cancel an in-progress close', async () => {
+    const { window, decisionScreen } = createDecisionScreen();
+    await decisionScreen.init();
+    const overlay = window.document.getElementById('decisionScreen');
+
+    decisionScreen.dismiss();
+    decisionScreen.dismiss();
+    window.document.dispatchEvent(new window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    await delay(320);
+
+    assert.equal(overlay.classList.contains('hidden'), true);
+    assert.equal(overlay.classList.contains('ds-closing'), false);
+    assert.equal(window.document.body.classList.contains('ds-open'), false);
+});
+
 test('Decision Center traps keyboard focus while open', async () => {
     const { window, decisionScreen } = createDecisionScreen();
     await decisionScreen.init();

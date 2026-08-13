@@ -78,7 +78,10 @@ const DecisionScreen = (() => {
     }
 
     function dismiss() {
+        const el = document.getElementById('decisionScreen');
+        if (el?.classList.contains('ds-closing')) return;
         clearTimeout(_hideTimeout);
+        _hideTimeout = null;
         _hide();
     }
 
@@ -174,6 +177,7 @@ const DecisionScreen = (() => {
         if (!el || el.classList.contains('hidden') || el.classList.contains('ds-closing')) return;
         el.classList.add('ds-closing');
         const finish = () => {
+            _hideTimeout = null;
             el.classList.add('hidden');
             el.classList.remove('ds-closing');
             el.setAttribute('aria-hidden', 'true');

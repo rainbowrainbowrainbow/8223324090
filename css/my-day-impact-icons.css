@@ -31,15 +31,34 @@
 }
 
 .my-day-impact-group {
+    background: color-mix(in srgb, var(--surface-color, #fff) 84%, var(--my-day-group-accent, #64748b) 4%);
+    border: 1px solid color-mix(in srgb, var(--my-day-group-accent, #64748b) 18%, rgba(148, 163, 184, 0.20));
+    border-radius: 14px;
     display: grid;
-    gap: 8px;
+    gap: 9px;
     min-width: 0;
+    padding: 10px;
 }
 
 .my-day-impact-group + .my-day-impact-group {
-    border-top: 1px solid rgba(148, 163, 184, 0.18);
-    margin-top: 4px;
-    padding-top: 12px;
+    margin-top: 0;
+}
+
+.my-day-impact-group[data-my-day-impact-group="context"] { --my-day-group-accent: #7c3aed; }
+.my-day-impact-group[data-my-day-impact-group="activity"] { --my-day-group-accent: #2563eb; }
+.my-day-impact-group[data-my-day-impact-group="outcome"] { --my-day-group-accent: #0891b2; }
+.my-day-impact-group[data-my-day-impact-group="personal"] { --my-day-group-accent: #059669; }
+.my-day-impact-group[data-my-day-impact-group="custom"] { --my-day-group-accent: #d97706; }
+
+.my-day-impact-group[hidden] {
+    display: none !important;
+}
+
+.my-day-impact-group-head {
+    align-items: center;
+    display: flex;
+    gap: 8px;
+    justify-content: space-between;
 }
 
 .my-day-impact-group-title {
@@ -51,26 +70,63 @@
     text-transform: uppercase;
 }
 
+.my-day-impact-group-count {
+    align-items: center;
+    background: color-mix(in srgb, var(--my-day-group-accent, #64748b) 13%, transparent);
+    border-radius: 999px;
+    color: var(--my-day-group-accent, #64748b);
+    display: inline-flex;
+    font-size: 10px;
+    font-weight: 900;
+    height: 20px;
+    justify-content: center;
+    min-width: 20px;
+    padding: 0 6px;
+}
+
 .my-day-impact-group-grid {
     display: grid;
-    gap: 8px;
-    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 7px;
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 172px), 1fr));
     min-width: 0;
 }
 
 .my-day-impact-group-grid .my-day-impact-chip {
+    align-items: center !important;
+    background: color-mix(in srgb, var(--surface-color, #fff) 94%, transparent);
+    border-radius: 11px;
+    display: flex !important;
+    flex-direction: row !important;
+    gap: 8px;
     justify-content: flex-start;
-    min-height: 46px;
-    padding: 7px 10px 7px 8px;
+    min-height: 44px;
+    padding: 6px 9px 6px 7px;
     text-align: left;
     width: 100%;
 }
 
+.my-day-impact-group-grid .my-day-impact-chip[hidden] {
+    display: none !important;
+}
+
 .my-day-impact-group-grid .my-day-impact-chip > span:last-child {
+    display: -webkit-box;
+    font-size: 12px;
+    line-height: 1.22;
     min-width: 0;
     overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+}
+
+.my-day-impact-group-grid .my-day-impact-chip:hover {
+    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 58%, transparent);
+    transform: translateY(-1px);
+}
+
+.my-day-impact-group-grid .my-day-impact-chip:focus-within {
+    outline: 2px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 42%, transparent);
+    outline-offset: 2px;
 }
 
 .my-day-impact-group-grid .my-day-impact-chip.is-selected {
@@ -100,6 +156,64 @@
     font-size: 11px;
     font-weight: 800;
     margin-left: 6px;
+}
+
+.my-day-impact-toolbar {
+    align-items: center;
+    display: flex;
+    gap: 10px;
+    justify-content: space-between;
+}
+
+.my-day-impact-search {
+    align-items: center;
+    background: color-mix(in srgb, var(--surface-color, #fff) 92%, transparent);
+    border: 1px solid rgba(148, 163, 184, 0.28);
+    border-radius: 10px;
+    color: var(--text-muted, #64748b);
+    display: flex !important;
+    flex: 1 1 260px;
+    gap: 7px !important;
+    max-width: 360px;
+    min-height: 38px;
+    padding: 0 10px;
+}
+
+.my-day-impact-search input {
+    background: transparent;
+    border: 0;
+    color: var(--text-primary, #0f172a);
+    font: inherit;
+    font-size: 12px;
+    min-width: 0;
+    outline: 0;
+    width: 100%;
+}
+
+.my-day-impact-search:focus-within {
+    border-color: rgba(37, 99, 235, 0.50);
+    box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.10);
+}
+
+.my-day-impact-selection-count {
+    background: rgba(148, 163, 184, 0.12);
+    border-radius: 999px;
+    color: var(--text-secondary, #475569);
+    flex: 0 0 auto;
+    font-size: 11px;
+    font-weight: 900;
+    padding: 5px 9px;
+}
+
+.my-day-impact-filter-empty {
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px dashed rgba(148, 163, 184, 0.30);
+    border-radius: 12px;
+    color: var(--text-muted, #64748b);
+    font-size: 12px;
+    margin: 0;
+    padding: 14px;
+    text-align: center;
 }
 
 .my-day-impact-footer {
@@ -134,9 +248,35 @@
     text-decoration-color: currentColor;
 }
 
-html[data-theme="dark"] .my-day-impact-group + .my-day-impact-group,
-body.dark-mode .my-day-impact-group + .my-day-impact-group {
-    border-top-color: rgba(148, 163, 184, 0.14);
+html[data-theme="dark"] .my-day-impact-group,
+body.dark-mode .my-day-impact-group {
+    background: color-mix(in srgb, #111c2f 94%, var(--my-day-group-accent, #64748b) 6%);
+    border-color: color-mix(in srgb, var(--my-day-group-accent, #64748b) 24%, rgba(148, 163, 184, 0.13));
+}
+
+html[data-theme="dark"] .my-day-impact-group-grid .my-day-impact-chip,
+body.dark-mode .my-day-impact-group-grid .my-day-impact-chip,
+html[data-theme="dark"] .my-day-impact-search,
+body.dark-mode .my-day-impact-search {
+    background: rgba(15, 26, 44, 0.88);
+    color: #dbe5f5;
+}
+
+html[data-theme="dark"] .my-day-impact-search input,
+body.dark-mode .my-day-impact-search input {
+    color: #dbe5f5;
+}
+
+html[data-theme="dark"] .my-day-impact-selection-count,
+body.dark-mode .my-day-impact-selection-count {
+    background: rgba(148, 163, 184, 0.13);
+    color: #cbd5e1;
+}
+
+html[data-theme="dark"] .my-day-impact-filter-empty,
+body.dark-mode .my-day-impact-filter-empty {
+    background: rgba(15, 26, 44, 0.72);
+    color: #94a3b8;
 }
 
 html[data-theme="dark"] .my-day-impact-group-grid .my-day-impact-chip.is-selected,
@@ -146,6 +286,26 @@ body.dark-mode .my-day-impact-group-grid .my-day-impact-chip.is-selected {
 
 @media (max-width: 680px) {
     .my-day-impact-group-grid {
+        grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .my-day-impact-toolbar {
+        align-items: stretch;
+    }
+
+    .my-day-impact-search {
+        max-width: none;
+    }
+}
+
+@media (max-width: 430px) {
+    .my-day-impact-group-grid {
         grid-template-columns: 1fr;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .my-day-impact-group-grid .my-day-impact-chip {
+        transition: none;
     }
 }

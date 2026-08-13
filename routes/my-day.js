@@ -30,7 +30,7 @@ const {
 const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, sanitizeTimerForBusinessAccess, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
 const { buildMyDayContribution } = require('../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../services/myDayStarterKit');
-const { loadMyDayAiImpactCatalog } = require('../services/myDayAiImpactCatalog');
+const { loadMyDayAiImpactCatalog, loadMyDayImpactCatalog } = require('../services/myDayAiImpactCatalog');
 
 router.use(authenticateToken);
 
@@ -128,8 +128,8 @@ function verifyClassificationUndoToken(token, now = Date.now()) {
     return payload;
 }
 
-function taxonomyRoutes(kind) {
-    router.get('/' + kind, async (req, res) => {
+function taxonomyRoutes(kind, options = {}) {
+    if (options.get !== false) router.get('/' + kind, async (req, res) => {
         try {
             const records = await listTaxonomy(pool, currentUserId(req), kind, {
                 includeArchived: req.query.includeArchived === '1'
@@ -160,7 +160,25 @@ function taxonomyRoutes(kind) {
 }
 
 taxonomyRoutes('directions');
-taxonomyRoutes('impacts');
+router.get('/impacts', async (req, res) => {
+    try {
+        const { impacts, sync } = await loadMyDayImpactCatalog(pool, currentUserId(req), {
+            includeArchived: req.query.includeArchived === '1'
+        });
+        res.json({
+            success: true,
+            impacts,
+            catalog: {
+                ready: sync.items.length,
+                created: sync.created,
+                normalized: sync.skipped
+            }
+        });
+    } catch (error) {
+        sendMyDayError(res, error);
+    }
+});
+taxonomyRoutes('impacts', { get: false });
 
 router.get('/contribution', async (req, res) => {
     try {

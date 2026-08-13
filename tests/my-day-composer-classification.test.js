@@ -51,6 +51,10 @@ test('My Day composer renders only impact chip controls', () => {
     assert.match(html, /my-day-composer-impact-chip/);
     assert.match(html, /type="checkbox" name="composerImpactIds"/);
     assert.match(html, /data-my-day-composer-impact-chip/);
+    assert.match(html, /data-my-day-impact-filter/);
+    assert.match(html, /data-my-day-impact-selection-count>0 \/ 5/);
+    assert.match(html, /my-day-impact-group-count/);
+    assert.match(html, /2 готових категорій/);
     assert.doesNotMatch(html, /my-day-composer-tag-field|data-my-day-tag-input|cabinetTaskDirection/);
     assert.doesNotMatch(source, /data-my-day-composer-tag-value|renderTagInput|normalizeTags|bindTagInputs/);
     assert.doesNotMatch(composerBody(source), /<select[^>]+multiple/);
@@ -95,6 +99,11 @@ test('My Day composer CSS isolates impacts layout without task tag styles', () =
     assert.match(css, /\.my-day-composer-classification\s*\{[\s\S]*grid-template-columns:\s*1fr/);
     assert.match(css, /\.my-day-composer-impact-grid\s*\{[\s\S]*display:\s*grid/);
     assert.match(iconCss, /\.my-day-impact-group-grid\s*\{[\s\S]*grid-template-columns/);
+    assert.match(iconCss, /\.my-day-impact-group-grid \.my-day-impact-chip\s*\{[\s\S]*display:\s*flex !important/);
+    assert.match(iconCss, /\.my-day-impact-group-grid \.my-day-impact-chip\[hidden\]\s*\{[\s\S]*display:\s*none !important/);
+    assert.match(iconCss, /\.my-day-impact-group\[hidden\]\s*\{[\s\S]*display:\s*none !important/);
+    assert.match(iconCss, /\.my-day-impact-toolbar\s*\{[\s\S]*justify-content:\s*space-between/);
+    assert.match(iconCss, /@media \(max-width: 680px\)[\s\S]*repeat\(2, minmax\(0, 1fr\)\)/);
     assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-composer-classification/);
     assert.doesNotMatch(css, /\.my-day-tag|\.my-day-task-tags|my-day-composer-direction-select/);
 });
@@ -104,6 +113,9 @@ test('My Day composer chip binder disables unselected impacts after the fifth se
     assert.match(source, /data-my-day-composer-impact-chip/);
     assert.match(source, /input\.disabled = atLimit && !input\.checked/);
     assert.match(source, /data-my-day-composer-impact-selected/);
+    assert.match(source, /data-my-day-impact-filter/);
+    assert.match(source, /chip\.hidden = !matches/);
+    assert.match(source, /count\.textContent = `\$\{selectedIds\.length\} \/ \$\{maxImpacts\(\)\}`/);
 });
 
 test('My Day task impact chips expose hidden third impact with tooltip and accessible label', () => {

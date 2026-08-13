@@ -66,6 +66,12 @@
         return definitions.map(group => ({ ...group, records: buckets.get(group.id) || [] })).filter(group => group.records.length);
     }
 
+    function impactCatalogSummary(records = []) {
+        const active = activeRecords(records);
+        const ready = active.filter(record => window.MyDayImpactIcons?.metaFor?.(record)?.group !== 'custom').length;
+        return { ready, custom: active.length - ready };
+    }
+
     function options(records, selected, multiple) {
         const selectedSet = new Set(Array.isArray(selected) ? selected.map(Number) : [Number(selected)]);
         return records.filter(record => record.isActive !== false).map(record =>
@@ -100,11 +106,11 @@
         if (!impacts.length) return '<p class="my-day-taxonomy-empty">Активних впливів ще немає.</p>';
         const atLimit = selectedSet.size >= maxImpacts();
         return `<div class="my-day-composer-impact-grid" data-my-day-composer-impact-group>${impactGroups(impacts).map(group => `<section class="my-day-impact-group" data-my-day-impact-group="${escape(group.id)}">
-            <h4 class="my-day-impact-group-title">${escape(group.label)}</h4>
+            <div class="my-day-impact-group-head"><h4 class="my-day-impact-group-title">${escape(group.label)}</h4><span class="my-day-impact-group-count" aria-label="${escape(group.records.length + ' категорій')}">${group.records.length}</span></div>
             <div class="my-day-impact-group-grid">${group.records.map(impact => {
                 const isSelected = selectedSet.has(Number(impact.id));
                 const disabled = atLimit && !isSelected;
-                return `<label class="my-day-choice-chip my-day-impact-chip my-day-composer-impact-chip ${isSelected ? 'is-selected' : ''} ${disabled ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}">
+                return `<label class="my-day-choice-chip my-day-impact-chip my-day-composer-impact-chip ${isSelected ? 'is-selected' : ''} ${disabled ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}" data-my-day-impact-search="${escape(String(impact.name || '').toLocaleLowerCase('uk-UA'))}">
                     <input type="checkbox" name="composerImpactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''} data-my-day-composer-impact-chip>
                     ${impactIcon(impact)}<span>${escape(impact.name)}</span>
                 </label>`;
@@ -120,15 +126,22 @@
     }
 
     function renderComposerFields() {
+        const catalog = impactCatalogSummary(state.impacts);
+        const catalogLabel = `${catalog.ready} готових категорій${catalog.custom ? ` + ${catalog.custom} власних` : ''}`;
         const status = state.error
             ? `<p class="my-day-taxonomy-notice is-error" role="status">${escape(state.error)}</p>`
             : (state.loading ? '<p class="my-day-taxonomy-notice" aria-live="polite">Завантаження впливів…</p>' : '');
         return `
             <div class="my-day-classification-fields my-day-composer-classification" data-my-day-classification-fields data-my-day-composer-classification>
                 <fieldset class="my-day-composer-impact-field my-day-choice-field">
-                    <legend>Впливи <small>до ${maxImpacts()}</small><span class="my-day-impact-count">32 готові категорії + власні</span></legend>
+                    <legend>Впливи <small>до ${maxImpacts()}</small><span class="my-day-impact-count">${escape(catalogLabel)}</span></legend>
                     <div class="my-day-composer-impact-selected" data-my-day-composer-impact-selected aria-live="polite">${renderComposerSelectedImpacts([])}</div>
+                    <div class="my-day-impact-toolbar">
+                        <label class="my-day-impact-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Знайти вплив" autocomplete="off" data-my-day-impact-filter></label>
+                        <span class="my-day-impact-selection-count" data-my-day-impact-selection-count>0 / ${maxImpacts()}</span>
+                    </div>
                     ${renderComposerImpactChips([])}
+                    <p class="my-day-impact-filter-empty" data-my-day-impact-filter-empty hidden>Нічого не знайдено. Спробуйте інше слово.</p>
                     <div class="my-day-impact-footer">
                         <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До ${maxImpacts()} впливів: контекст, діяльність, результат або особиста сфера.</p>
                         <button type="button" class="my-day-impact-manage" data-my-day-manage-impacts>Налаштувати каталог та свої іконки</button>
@@ -530,6 +543,8 @@
                 if (help) help.textContent = atLimit ? `Обрано максимум ${maxImpacts()} впливів. Щоб додати інший — зніміть один обраний.` : `До ${maxImpacts()} впливів: контекст, діяльність, результат або особиста сфера.`;
                 const selectedNode = container.querySelector('[data-my-day-composer-impact-selected]');
                 if (selectedNode) selectedNode.innerHTML = renderComposerSelectedImpacts(selectedIds);
+                const count = container.querySelector('[data-my-day-impact-selection-count]');
+                if (count) count.textContent = `${selectedIds.length} / ${maxImpacts()}`;
             };
             container.querySelectorAll('[data-my-day-composer-impact-chip]').forEach(input => {
                 input.addEventListener('change', refreshComposerImpacts);
@@ -537,7 +552,26 @@
             container.querySelector('[data-my-day-manage-impacts]')?.addEventListener('click', () => {
                 window.MyDayHabits?.openSetup?.({ returnMode: 'day' });
             });
+            const filter = container.querySelector('[data-my-day-impact-filter]');
+            const refreshFilter = () => {
+                const query = String(filter?.value || '').trim().toLocaleLowerCase('uk-UA');
+                let visible = 0;
+                container.querySelectorAll('[data-my-day-impact-group]').forEach(group => {
+                    let groupVisible = 0;
+                    group.querySelectorAll('[data-my-day-impact-search]').forEach(chip => {
+                        const matches = !query || String(chip.dataset.myDayImpactSearch || '').includes(query);
+                        chip.hidden = !matches;
+                        if (matches) groupVisible += 1;
+                    });
+                    group.hidden = groupVisible === 0;
+                    visible += groupVisible;
+                });
+                const empty = container.querySelector('[data-my-day-impact-filter-empty]');
+                if (empty) empty.hidden = visible !== 0;
+            };
+            filter?.addEventListener('input', refreshFilter);
             refreshComposerImpacts();
+            refreshFilter();
         });
         root?.querySelectorAll('[data-my-day-impacts]').forEach(select => {
             if (select.dataset.myDayImpactBound === 'true') return;

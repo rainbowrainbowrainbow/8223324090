@@ -211,15 +211,25 @@ test('canonical impact catalog and browser SVG registry stay in exact icon parit
     });
 });
 
-test('AI impact catalog loader commits sync before returning the catalog and always releases', () => {
+test('shared impact catalog loader commits sync before returning the catalog and always releases', () => {
     const source = read('services/myDayAiImpactCatalog.js');
     const begin = source.indexOf("client.query('BEGIN')");
     const sync = source.indexOf('syncMyDayImpactCatalog(client, userId)');
-    const list = source.indexOf("listTaxonomy(client, userId, 'impacts')");
+    const list = source.indexOf("listTaxonomy(client, userId, 'impacts', {");
     const commit = source.indexOf("client.query('COMMIT')");
     assert.ok(begin >= 0 && begin < sync && sync < list && list < commit);
     assert.match(source, /client\.query\('ROLLBACK'\)/);
     assert.match(source, /finally \{[\s\S]*client\.release\(\)/);
+    assert.match(source, /loadMyDayAiImpactCatalog:\s*loadMyDayImpactCatalog/);
+});
+
+test('opening the impacts menu synchronizes all ready categories without creating habits', () => {
+    const route = read('routes/my-day.js');
+    const impactsGet = route.slice(route.indexOf("router.get('/impacts'"), route.indexOf("taxonomyRoutes('impacts'"));
+    assert.match(impactsGet, /loadMyDayImpactCatalog\(pool, currentUserId\(req\)/);
+    assert.match(impactsGet, /includeArchived: req\.query\.includeArchived === '1'/);
+    assert.match(impactsGet, /ready: sync\.items\.length/);
+    assert.doesNotMatch(impactsGet, /applyMyDayStarterKit|habit/i);
 });
 
 test('starter kit normalizes canonical metadata but preserves existing archive state', async () => {

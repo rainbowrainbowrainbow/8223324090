@@ -164,7 +164,8 @@ test('route, projection, migration, and profile UI retain the impacts-only activ
     const migration = fs.readFileSync(path.join(root, 'db', 'migrations', '312_my_day_task_classification.sql'), 'utf8');
     const tagsMigration = fs.readFileSync(path.join(root, 'db', 'migrations', '320_my_day_task_metadata_tags.sql'), 'utf8');
     assert.match(route, /taxonomyRoutes\('directions'\)/);
-    assert.match(route, /taxonomyRoutes\('impacts'\)/);
+    assert.match(route, /router\.get\('\/impacts'/);
+    assert.match(route, /taxonomyRoutes\('impacts', \{ get: false \}\)/);
     assert.match(route, /router\.put\('\/tasks\/:taskId\/classification'/);
     assert.match(route, /ensureWritableTaskBusinessScope/);
     assert.match(route, /BEGIN/);

@@ -4,12 +4,14 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
+const vm = require('node:vm');
 
 const {
     STARTER_KIT,
     applyMyDayStarterKit,
     normalizeNameKey,
-    publicStarterKit
+    publicStarterKit,
+    syncMyDayImpactCatalog
 } = require('../services/myDayStarterKit');
 
 const root = path.resolve(__dirname, '..');
@@ -174,6 +176,50 @@ test('starter kit creates only caller-scoped taxonomy and habits once', async ()
     assert.deepEqual(second.skipped, { impacts: 32, habits: 5 });
     assert.equal(fake.state.impacts.length, 32);
     assert.equal(fake.state.habits.length, 5);
+});
+
+test('AI catalog sync adds and normalizes canonical impacts without creating habits', async () => {
+    const fake = makeFakeDb({
+        impacts: [{ id: 8, user_id: 42, name: 'CRM', color: '#111111', icon: '🗂️', sort_order: 888, is_active: true }]
+    });
+
+    const first = await syncMyDayImpactCatalog(fake, 42);
+    assert.equal(first.created, 31);
+    assert.equal(first.skipped, 1);
+    assert.equal(fake.state.impacts.length, 32);
+    assert.equal(fake.state.habits.length, 0);
+    assert.equal(fake.state.impacts.find(row => row.id === 8).icon, 'crm');
+    assert.equal(fake.state.impacts.every(row => typeof row.icon === 'string' && row.icon.length > 1), true);
+
+    const second = await syncMyDayImpactCatalog(fake, 42);
+    assert.equal(second.created, 0);
+    assert.equal(second.skipped, 32);
+    assert.equal(fake.state.impacts.length, 32);
+    assert.equal(fake.state.habits.length, 0);
+});
+
+test('canonical impact catalog and browser SVG registry stay in exact icon parity', () => {
+    const sandbox = { window: {} };
+    vm.runInNewContext(read('js/my-day-impact-icons.js'), sandbox, { filename: 'js/my-day-impact-icons.js' });
+    const registry = sandbox.window.MyDayImpactIcons;
+    const choices = new Set(registry.choices());
+
+    STARTER_KIT.impacts.forEach(impact => {
+        assert.equal(registry.metaFor(impact).icon, impact.icon, `wrong icon mapping for ${impact.name}`);
+        assert.equal(choices.has(impact.icon), true, `missing SVG icon choice: ${impact.icon}`);
+        assert.match(registry.render(impact), new RegExp(`data-my-day-impact-icon="${impact.icon}"`));
+    });
+});
+
+test('AI impact catalog loader commits sync before returning the catalog and always releases', () => {
+    const source = read('services/myDayAiImpactCatalog.js');
+    const begin = source.indexOf("client.query('BEGIN')");
+    const sync = source.indexOf('syncMyDayImpactCatalog(client, userId)');
+    const list = source.indexOf("listTaxonomy(client, userId, 'impacts')");
+    const commit = source.indexOf("client.query('COMMIT')");
+    assert.ok(begin >= 0 && begin < sync && sync < list && list < commit);
+    assert.match(source, /client\.query\('ROLLBACK'\)/);
+    assert.match(source, /finally \{[\s\S]*client\.release\(\)/);
 });
 
 test('starter kit normalizes canonical metadata but preserves existing archive state', async () => {

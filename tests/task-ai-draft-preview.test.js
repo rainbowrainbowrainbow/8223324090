@@ -738,7 +738,7 @@ test('tasks route exposes ai-draft preview and keeps decompose-draft as non-Open
 
     assert.match(route, /router\.post\('\/ai-draft\/preview'/);
     assert.match(route, /generateTaskAiDraftPreview/);
-    assert.match(route, /listTaxonomy\(pool, userId, 'impacts'\)/);
+    assert.match(route, /loadMyDayAiImpactCatalog\(pool, userId\)/);
     assert.match(route, /listTaskOwnerCandidates\(\{ actor: req\.user \}\)/);
     assert.match(route, /ownerCatalog: ownerCatalog\.map/);
     assert.match(route, /currentUserId: userId/);

@@ -134,6 +134,7 @@ const {
     normalizeTaskCabinetFocusDate
 } = require('../services/taskCabinetProjection');
 const { listTaxonomy } = require('../services/myDayTaxonomy');
+const { loadMyDayAiImpactCatalog } = require('../services/myDayAiImpactCatalog');
 const { hmacSafetyIdentifier } = require('../services/myDayTaskOpenAIClient');
 
 const {
@@ -946,7 +947,7 @@ async function buildTaskAiDraftPreview(req, res) {
             model: 'gpt-5.6-luna'
         };
     }
-    const impacts = await listTaxonomy(pool, userId, 'impacts');
+    const { impacts } = await loadMyDayAiImpactCatalog(pool, userId);
     const result = await generateTaskAiDraftPreview({
         draft: taskAiDraftPayloadFromBody(req.body || {}),
         impacts,

@@ -30,6 +30,7 @@ const {
 const { activeTimer, createManualEntry, deleteTimeEntry, listTimeEntries, sanitizeTimerForBusinessAccess, startTimer, stopActiveTimerForUser, updateManualEntry } = require('../services/myDayTimeTracking');
 const { buildMyDayContribution } = require('../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../services/myDayStarterKit');
+const { loadMyDayAiImpactCatalog } = require('../services/myDayAiImpactCatalog');
 
 router.use(authenticateToken);
 
@@ -258,10 +259,8 @@ router.post('/tasks/:taskId/classification/auto', myDayAiClassificationLimiter, 
             throw myDayError('Немає прав для AI-розмітки цієї задачі.', 403, 'MY_DAY_TASK_CLASSIFICATION_FORBIDDEN');
         }
         const beforeTaskFingerprint = taskFingerprint(task);
-        const [impacts, previousClassification] = await Promise.all([
-            listTaxonomy(pool, userId, 'impacts'),
-            readTaskClassification(pool, userId, req.params.taskId)
-        ]);
+        const { impacts } = await loadMyDayAiImpactCatalog(pool, userId);
+        const previousClassification = await readTaskClassification(pool, userId, req.params.taskId);
         const beforeClassificationFingerprint = classificationFingerprint(previousClassification, beforeTaskFingerprint);
 
         const aiResult = await classifyMyDayTask({ task, impacts });

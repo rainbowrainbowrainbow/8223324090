@@ -233,9 +233,11 @@ test('My Day AI route keeps LLM calls outside transactions, detects classificati
     assert.match(route, /ipKeyGenerator/);
     assert.match(route, /keyGenerator: req => String\(req\.user\?\.id \|\| ipKeyGenerator\(req\.ip\)/);
     assert.match(route, /loadMyCabinetTaskSnapshot\(pool, req\.user, businessScope, req\.params\.taskId\)/);
+    assert.match(route, /loadMyDayAiImpactCatalog\(pool, userId\)/);
     assert.match(route, /readTaskClassification\(pool, userId, req\.params\.taskId\)/);
     assert.match(route, /beforeClassificationFingerprint = classificationFingerprint\(previousClassification, beforeTaskFingerprint\)/);
     assert.match(route, /const aiResult = await classifyMyDayTask\(\{ task, impacts \}\)/);
+    assert.ok(routeBlock.indexOf('loadMyDayAiImpactCatalog') < routeBlock.indexOf('const aiResult = await classifyMyDayTask'));
     assert.ok(routeBlock.indexOf('const aiResult = await classifyMyDayTask') < routeBlock.indexOf("await client.query('BEGIN')"));
     assert.match(routeBlock, /const lockedTask = await loadMyCabinetTask\(client, req\.user, businessScope, req\.params\.taskId\)/);
     assert.match(routeBlock, /lockedTaskFingerprint !== beforeTaskFingerprint/);

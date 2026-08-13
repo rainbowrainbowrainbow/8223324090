@@ -295,9 +295,7 @@ async function applyMyDayStarterKit(queryable, userId) {
     try {
         await lockStarterKit(queryable, ownerId);
 
-        for (const item of STARTER_IMPACTS) {
-            pushOutcome(summary.impacts, await createOrFindCatalog(queryable, ownerId, 'impacts', item));
-        }
+        summary.impacts = await syncMyDayImpactCatalog(queryable, ownerId, { lock: false });
 
         const impactIds = indexActiveRecords(summary.impacts.items);
         for (const habit of STARTER_HABITS) {
@@ -325,9 +323,20 @@ async function applyMyDayStarterKit(queryable, userId) {
     };
 }
 
+async function syncMyDayImpactCatalog(queryable, userId, options = {}) {
+    const ownerId = positiveInteger(userId, 'user');
+    const impacts = summaryBucket();
+    if (options.lock !== false) await lockStarterKit(queryable, ownerId);
+    for (const item of STARTER_IMPACTS) {
+        pushOutcome(impacts, await createOrFindCatalog(queryable, ownerId, 'impacts', item));
+    }
+    return impacts;
+}
+
 module.exports = {
     STARTER_KIT,
     applyMyDayStarterKit,
     normalizeNameKey,
-    publicStarterKit
+    publicStarterKit,
+    syncMyDayImpactCatalog
 };

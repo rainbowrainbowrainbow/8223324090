@@ -668,6 +668,12 @@ async function main() {
         contentType: 'application/javascript',
         body: ''
     }));
+    const fulfillOptionalFontResource = route => route.fulfill({
+        status: 204,
+        body: ''
+    });
+    await context.route('https://fonts.googleapis.com/**', fulfillOptionalFontResource);
+    await context.route('https://fonts.gstatic.com/**', fulfillOptionalFontResource);
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
         if (token && !localStorage.getItem('pzp_token') && !localStorage.getItem('pzp_access_token')) {
             localStorage.setItem('pzp_token', token);

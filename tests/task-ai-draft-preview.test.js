@@ -121,12 +121,12 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
         'needs_clarification',
         'no_change'
     ]);
-    assert.equal(request.schema.properties.impactIds.maxItems, 3);
+    assert.equal(request.schema.properties.impactIds.maxItems, 5);
     assert.equal(Object.hasOwn(request.schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.schema.properties.tasks.maxItems, 6);
     assert.equal(request.schema.properties.tasks.items.additionalProperties, false);
     assert.ok(request.schema.properties.tasks.items.required.includes('scheduleDate'));
-    assert.equal(request.schema.properties.tasks.items.properties.impactIds.maxItems, 3);
+    assert.equal(request.schema.properties.tasks.items.properties.impactIds.maxItems, 5);
     assert.equal(Object.hasOwn(request.schema.properties.tasks.items.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.reasoningEffort, 'low');
     assert.equal(request.maxOutputTokens, preview.TASK_AI_DRAFT_MAX_OUTPUT_TOKENS);
@@ -146,7 +146,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.match(serializedInput, /untrusted task data/);
     assert.match(serializedInput, /context \+ activity \+ outcome/);
     assert.match(serializedInput, /Do not return only the context/);
-    assert.match(serializedInput, /do not clarify merely because more than three impacts/i);
+    assert.match(serializedInput, /do not clarify merely because more than 5 impacts/i);
     assert.match(serializedInput, /ownerSuggestion\.userId to null/);
     assert.doesNotMatch(serializedInput, /OPENAI_API_KEY|OPENROUTER_API_KEY|chat_ai/i);
 

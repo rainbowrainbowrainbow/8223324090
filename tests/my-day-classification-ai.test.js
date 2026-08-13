@@ -56,7 +56,7 @@ test('My Day AI classifier uses direct OpenAI Responses API with strict impacts-
     assert.equal(body.text.format.strict, true);
     assert.equal(body.text.format.schema.additionalProperties, false);
     assert.deepEqual(body.text.format.schema.required, ['impactIds', 'confidence', 'reason']);
-    assert.equal(body.text.format.schema.properties.impactIds.maxItems, 3);
+    assert.equal(body.text.format.schema.properties.impactIds.maxItems, 5);
     assert.equal(Object.hasOwn(body.text.format.schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(body.text.format.schema.properties.reason.maxLength, 180);
 

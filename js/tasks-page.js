@@ -4479,7 +4479,8 @@ function applyTaskAiDraftField(field, value, meta = {}) {
         return;
     }
     if (field === 'impactIds') {
-        taskComposerAiImpactIds = (Array.isArray(value) ? value : []).map(Number).filter(Number.isInteger).slice(0, 3);
+        const maxImpacts = Number(window.MyDayImpactIcons?.MAX_SELECTED_IMPACTS || 5);
+        taskComposerAiImpactIds = (Array.isArray(value) ? value : []).map(Number).filter(Number.isInteger).slice(0, maxImpacts);
         return;
     }
     if (field === 'scheduleDate') {

@@ -19,9 +19,11 @@ const STARTER_IMPACTS = [
     'Робота: Парк', 'Робота: CRM', 'Робота: Hermes',
     'Операційка / процеси', 'Автоматизація / AI', 'Продукт / розробка', 'Аналітика / рішення',
     'Контент / медіа', 'Маркетинг / залучення', 'Команда / делегування', 'Стратегія / пріоритети',
+    'Люди / HR', 'Документи / право', 'Закупівлі / постачання', 'Партнерства / нетворкінг',
     'Продажі / клієнти', 'Фінанси / облік', 'Якість сервісу', 'Системність',
     'Швидкість / ефективність', 'Бренд / репутація', 'Ризики / безпека',
-    'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут / комфорт', 'Навчання / розвиток', 'Близькі / стосунки'
+    'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут / комфорт', 'Навчання / розвиток', 'Близькі / стосунки',
+    'Творчість / самовираження', 'Подорожі / враження', 'Спільнота / внесок', 'Баланс / сенси'
 ];
 const STARTER_HABITS = ['Ранкова зарядка', 'Планування дня', 'Відновлення без екранів', 'Навчання 20 хв', 'Побутовий порядок'];
 
@@ -154,7 +156,7 @@ test('starter kit exposes the exact canonical caller-owned payload', () => {
 test('starter kit creates only caller-scoped taxonomy and habits once', async () => {
     const fake = makeFakeDb();
     const first = await applyMyDayStarterKit(fake, 42);
-    assert.deepEqual(first.created, { impacts: 24, habits: 5 });
+    assert.deepEqual(first.created, { impacts: 32, habits: 5 });
     assert.deepEqual(first.skipped, { impacts: 0, habits: 0 });
     assert.equal(fake.state.impacts.every(row => row.user_id === 42), true);
     assert.equal(fake.state.habits.every(row => row.user_id === 42), true);
@@ -169,8 +171,8 @@ test('starter kit creates only caller-scoped taxonomy and habits once', async ()
 
     const second = await applyMyDayStarterKit(fake, 42);
     assert.deepEqual(second.created, { impacts: 0, habits: 0 });
-    assert.deepEqual(second.skipped, { impacts: 24, habits: 5 });
-    assert.equal(fake.state.impacts.length, 24);
+    assert.deepEqual(second.skipped, { impacts: 32, habits: 5 });
+    assert.equal(fake.state.impacts.length, 32);
     assert.equal(fake.state.habits.length, 5);
 });
 
@@ -181,7 +183,7 @@ test('starter kit normalizes canonical metadata but preserves existing archive s
     await applyMyDayStarterKit(fake, 5);
     const existingImpact = fake.state.impacts.find(row => row.id === 8);
     assert.equal(existingImpact.color, '#3B82F6');
-    assert.equal(existingImpact.icon, '🧠');
+    assert.equal(existingImpact.icon, 'learning');
     assert.equal(existingImpact.sort_order, 350);
     assert.equal(existingImpact.is_active, false);
 });
@@ -194,7 +196,7 @@ test('starter kit safely normalizes the exact legacy team impact name and canoni
     const normalized = fake.state.impacts.find(row => row.id === 9);
     assert.equal(normalized.name, 'Команда / делегування');
     assert.equal(normalized.color, '#06B6D4');
-    assert.equal(normalized.icon, '👥');
+    assert.equal(normalized.icon, 'team');
     assert.equal(normalized.sort_order, 170);
     assert.equal(normalized.is_active, false);
     assert.equal(result.details.impacts.items.find(item => item.id === 9).normalizedFrom, 'Команда і делегування');
@@ -221,7 +223,7 @@ test('starter kit merges apostrophe-normalized health duplicates and preserves a
     const canonical = fake.state.impacts.find(row => row.id === 13);
     const duplicate = fake.state.impacts.find(row => row.id === 26);
     assert.equal(canonical.name, 'Здоровʼя');
-    assert.equal(canonical.icon, '❤️');
+    assert.equal(canonical.icon, 'health');
     assert.equal(canonical.sort_order, 310);
     assert.equal(duplicate.is_active, false);
     assert.match(duplicate.name, /merged #26/);
@@ -274,10 +276,10 @@ test('starter kit idempotency is isolated per user', async () => {
         habits: [{ id: 79, user_id: 99, name: 'Планування дня', color: '#000000', icon: 'Z', direction_id: 77, metric: 'boolean', target_value: 1, cadence: 'daily', selected_weekdays: [], times_per_week: null, is_paused: false, is_archived: false, sort_order: 1 }]
     });
     const result = await applyMyDayStarterKit(fake, 5);
-    assert.deepEqual(result.created, { impacts: 24, habits: 5 });
+    assert.deepEqual(result.created, { impacts: 32, habits: 5 });
     assert.equal(fake.state.impacts.filter(row => row.user_id === 99).length, 1);
     assert.equal(fake.state.habits.filter(row => row.user_id === 99).length, 1);
-    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 24);
+    assert.equal(fake.state.impacts.filter(row => row.user_id === 5).length, 32);
     assert.equal(fake.state.habits.filter(row => row.user_id === 5).length, 5);
 });
 

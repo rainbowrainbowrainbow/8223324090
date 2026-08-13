@@ -99,6 +99,7 @@ this document, and `npm run test:ui` coverage in the same pack.
 | `css/pages-profile.css` | shared-ui | `shared` | active | Profile avatar crop controls and compact soon-tab menu styles imported by `pages.css`. |
 | `css/global-task-timer.css` | tasks-my-day-time | `feature-shared` | active | Authenticated global task timer widget styles lazy-loaded by `auth.js` and mounted in the shared shell/sidebar. |
 | `css/task-ai-draft.css` | tasks-my-day-ai | `feature-shared` | active | Shared AI draft composer preview, review, field-mask, mobile, and dark-mode styles used by Profile My Day and Tasks composer. |
+| `css/my-day-impact-icons.css` | tasks-my-day | `feature-shared` | active | Shared grouped impact selector, semantic SVG icon, selected state, custom catalog link, mobile, and dark-mode styles used by Profile My Day and Tasks. |
 | `css/pages-reports.css` | reports | `page-scoped` | active | Reports workspace payroll reconciliation, discrepancy badges, and dark-mode report table review styles imported by `pages.css`. |
 | `css/pages-center-operations.css` | center | `page-scoped` | active | Center operations shift dashboard, staffing blockers, report/task rows, and handover notes imported by `pages.css`. |
 | `css/pages-products.css` | products | `page-scoped` | active | Products kitchen menu photo cards, product-side AI actions, and menu image prompt studio styles. |

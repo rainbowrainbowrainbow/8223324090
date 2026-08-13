@@ -16,11 +16,12 @@ const {
     updateTaxonomy
 } = require('../services/myDayTaxonomy');
 
-test('My Day taxonomy validates names, duplicate impacts, and the three-impact limit', () => {
+test('My Day taxonomy validates names, duplicate impacts, and the five-impact limit', () => {
     assert.throws(() => normalizeName('   '), { code: 'MY_DAY_VALIDATION_ERROR' });
     assert.deepEqual(normalizeImpactIds([1, '2', 3]), [1, 2, 3]);
     assert.throws(() => normalizeImpactIds([1, 1]), { code: 'MY_DAY_VALIDATION_ERROR' });
-    assert.throws(() => normalizeImpactIds([1, 2, 3, 4]), { code: 'MY_DAY_IMPACT_LIMIT_EXCEEDED' });
+    assert.deepEqual(normalizeImpactIds([1, 2, 3, 4, 5]), [1, 2, 3, 4, 5]);
+    assert.throws(() => normalizeImpactIds([1, 2, 3, 4, 5, 6]), { code: 'MY_DAY_IMPACT_LIMIT_EXCEEDED' });
     assert.deepEqual(classificationImpactIds({ impacts: [{ id: 3 }, { id: '1' }, { id: 3 }] }), [1, 3]);
     assert.equal(
         classificationFingerprint({ impacts: [{ id: 3 }, { id: 1 }] }, 'task-v1'),

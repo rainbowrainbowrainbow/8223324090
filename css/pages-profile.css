@@ -297,10 +297,8 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 }
 
 .my-day-composer-impact-grid {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
+    display: grid;
+    gap: 12px;
     min-width: 0;
 }
 
@@ -308,7 +306,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     max-width: 100%;
 }
 
-.my-day-composer-impact-chip span {
+.my-day-composer-impact-chip > span:last-child {
     overflow: hidden;
     text-overflow: ellipsis;
     white-space: nowrap;

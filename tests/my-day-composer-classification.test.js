@@ -70,14 +70,14 @@ test('My Day composer payload sends only impactIds', () => {
     assert.deepEqual(JSON.parse(JSON.stringify(payload)), { impactIds: [20, 21, 22] });
 });
 
-test('My Day composer guards max three impacts and preserves create integration', () => {
+test('My Day composer guards max five impacts and preserves create integration', () => {
     const context = loadClassificationUi();
     const api = context.window.MyDayClassification;
     const profile = read('js/profile-page.js');
     context.document = {
         getElementById: () => null,
         querySelectorAll: selector => selector === '[data-my-day-composer-impact-chip]:checked'
-            ? [{ value: '20' }, { value: '21' }, { value: '22' }, { value: '23' }]
+            ? [{ value: '20' }, { value: '21' }, { value: '22' }, { value: '23' }, { value: '24' }, { value: '25' }]
             : []
     };
 
@@ -90,14 +90,16 @@ test('My Day composer guards max three impacts and preserves create integration'
 
 test('My Day composer CSS isolates impacts layout without task tag styles', () => {
     const css = read('css/pages-profile.css');
+    const iconCss = read('css/my-day-impact-icons.css');
     assert.match(css, /cabinet-task-composer-meta-advanced > \.my-day-composer-classification\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
     assert.match(css, /\.my-day-composer-classification\s*\{[\s\S]*grid-template-columns:\s*1fr/);
-    assert.match(css, /\.my-day-composer-impact-grid\s*\{[\s\S]*flex-wrap:\s*wrap/);
+    assert.match(css, /\.my-day-composer-impact-grid\s*\{[\s\S]*display:\s*grid/);
+    assert.match(iconCss, /\.my-day-impact-group-grid\s*\{[\s\S]*grid-template-columns/);
     assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-composer-classification/);
     assert.doesNotMatch(css, /\.my-day-tag|\.my-day-task-tags|my-day-composer-direction-select/);
 });
 
-test('My Day composer chip binder disables unselected impacts after the third selection', () => {
+test('My Day composer chip binder disables unselected impacts after the fifth selection', () => {
     const source = read('js/my-day-classification.js');
     assert.match(source, /data-my-day-composer-impact-chip/);
     assert.match(source, /input\.disabled = atLimit && !input\.checked/);

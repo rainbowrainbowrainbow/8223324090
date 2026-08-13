@@ -4,7 +4,7 @@ const TAXONOMY = Object.freeze({
     directions: { table: 'my_day_directions', defaults: { color: '#6366F1', icon: '•' } },
     impacts: { table: 'my_day_impacts', defaults: { color: '#0EA5E9', icon: '•' } }
 });
-const MAX_IMPACTS_PER_TASK = 3;
+const MAX_IMPACTS_PER_TASK = 5;
 
 function myDayError(message, statusCode, code) {
     const error = new Error(message);
@@ -58,7 +58,7 @@ function normalizeImpactIds(value) {
     if (!Array.isArray(value)) throw myDayError('Впливи мають бути масивом.', 400, 'MY_DAY_VALIDATION_ERROR');
     const ids = value.map(positiveInteger);
     if (new Set(ids).size !== ids.length) throw myDayError('Впливи не можуть повторюватися.', 400, 'MY_DAY_VALIDATION_ERROR');
-    if (ids.length > MAX_IMPACTS_PER_TASK) throw myDayError('До задачі можна додати максимум три впливи.', 409, 'MY_DAY_IMPACT_LIMIT_EXCEEDED');
+    if (ids.length > MAX_IMPACTS_PER_TASK) throw myDayError(`До задачі можна додати максимум ${MAX_IMPACTS_PER_TASK} впливів.`, 409, 'MY_DAY_IMPACT_LIMIT_EXCEEDED');
     return ids;
 }
 

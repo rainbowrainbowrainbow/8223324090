@@ -25,9 +25,11 @@
             'Робота: Парк', 'Робота: CRM', 'Робота: Hermes',
             'Операційка / процеси', 'Автоматизація / AI', 'Продукт / розробка', 'Аналітика / рішення',
             'Контент / медіа', 'Маркетинг / залучення', 'Команда / делегування', 'Стратегія / пріоритети',
+            'Люди / HR', 'Документи / право', 'Закупівлі / постачання', 'Партнерства / нетворкінг',
             'Продажі / клієнти', 'Фінанси / облік', 'Якість сервісу', 'Системність',
             'Швидкість / ефективність', 'Бренд / репутація', 'Ризики / безпека',
-            'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут / комфорт', 'Навчання / розвиток', 'Близькі / стосунки'
+            'Здоровʼя', 'Фізична форма', 'Відновлення', 'Побут / комфорт', 'Навчання / розвиток', 'Близькі / стосунки',
+            'Творчість / самовираження', 'Подорожі / враження', 'Спільнота / внесок', 'Баланс / сенси'
         ],
         habits: [
             { name: 'Ранкова зарядка', detail: '10 хв щодня · Здоровʼя, Фізична форма' },
@@ -87,6 +89,27 @@
         return (window.MyDayClassification?.state?.impacts || []).filter(item => item.isActive !== false);
     }
 
+    function maxImpacts() {
+        return Number(window.MyDayImpactIcons?.MAX_SELECTED_IMPACTS || 5);
+    }
+
+    function impactIcon(record = {}, compact = false) {
+        const rendered = window.MyDayImpactIcons?.render?.(record, { size: compact ? 16 : 18 });
+        if (!rendered) return `<span class="my-day-impact-icon-wrap ${compact ? 'my-day-impact-icon-wrap--compact' : ''}" aria-hidden="true">${escape(record.icon || '•')}</span>`;
+        return `<span class="my-day-impact-icon-wrap ${compact ? 'my-day-impact-icon-wrap--compact' : ''}">${rendered}</span>`;
+    }
+
+    function impactGroups(records = []) {
+        const definitions = window.MyDayImpactIcons?.GROUPS || [{ id: 'custom', label: 'Впливи' }];
+        const buckets = new Map(definitions.map(group => [group.id, []]));
+        records.forEach(record => {
+            const group = window.MyDayImpactIcons?.metaFor?.(record)?.group || 'custom';
+            if (!buckets.has(group)) buckets.set(group, []);
+            buckets.get(group).push(record);
+        });
+        return definitions.map(group => ({ ...group, records: buckets.get(group.id) || [] })).filter(group => group.records.length);
+    }
+
     const WEEKDAY_LABELS = [
         { value: 1, label: 'Пн' },
         { value: 2, label: 'Вт' },
@@ -109,7 +132,7 @@
     function taxonomyOptions(records, selected, emptyLabel) {
         const selectedSet = new Set(Array.isArray(selected) ? selected.map(Number) : [Number(selected)]);
         const empty = emptyLabel ? `<option value="">${escape(emptyLabel)}</option>` : '';
-        return empty + records.map(record => `<option value="${escape(record.id)}" ${selectedSet.has(Number(record.id)) ? 'selected' : ''}>${escape((record.icon || '*') + ' ' + record.name)}</option>`).join('');
+        return empty + records.map(record => `<option value="${escape(record.id)}" ${selectedSet.has(Number(record.id)) ? 'selected' : ''}>${escape(record.name)}</option>`).join('');
     }
 
     async function load(force = false) {
@@ -158,7 +181,7 @@
     }
     function chip(record, kind) {
         if (!record) return '';
-        return `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${escape(record.icon || '*')} <span>${escape(record.name)}</span></span>`;
+        return `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${impactIcon(record, true)}<span>${escape(record.name)}</span></span>`;
     }
 
     function renderBadges(habit) {
@@ -236,14 +259,17 @@
         const selectedSet = new Set((selected || []).map(Number));
         const impacts = activeImpacts();
         if (!impacts.length) return '<p class="my-day-taxonomy-empty">Активних впливів ще немає.</p>';
-        const atLimit = selectedSet.size >= 3;
-        return `<div class="my-day-choice-grid my-day-impact-chip-grid" data-my-day-habit-impact-group>${impacts.map(impact => {
-            const isSelected = selectedSet.has(Number(impact.id));
-            return `<label class="my-day-choice-chip my-day-impact-chip ${isSelected ? 'is-selected' : ''} ${atLimit && !isSelected ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}">
-                <input type="checkbox" name="impactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${atLimit && !isSelected ? 'disabled' : ''} data-my-day-habit-impact-chip>
-                <span>${escape(impact.icon || '•')} ${escape(impact.name)}</span>
-            </label>`;
-        }).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? 'Обрано максимум три впливи.' : 'До 3 впливів: контекст, діяльність, результат або особиста сфера.'}</p>`;
+        const atLimit = selectedSet.size >= maxImpacts();
+        return `<div class="my-day-impact-chip-grid" data-my-day-habit-impact-group>${impactGroups(impacts).map(group => `<section class="my-day-impact-group">
+            <h4 class="my-day-impact-group-title">${escape(group.label)}</h4>
+            <div class="my-day-impact-group-grid">${group.records.map(impact => {
+                const isSelected = selectedSet.has(Number(impact.id));
+                return `<label class="my-day-choice-chip my-day-impact-chip ${isSelected ? 'is-selected' : ''} ${atLimit && !isSelected ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}">
+                    <input type="checkbox" name="impactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${atLimit && !isSelected ? 'disabled' : ''} data-my-day-habit-impact-chip>
+                    ${impactIcon(impact)}<span>${escape(impact.name)}</span>
+                </label>`;
+            }).join('')}</div>
+        </section>`).join('')}</div><p class="my-day-field-help" data-my-day-habit-impact-help>${atLimit ? `Обрано максимум ${maxImpacts()} впливів.` : `До ${maxImpacts()} впливів: контекст, діяльність, результат або особиста сфера.`}</p>`;
     }
 
     function habitEditorFields(habit = {}) {
@@ -345,7 +371,7 @@
     function formPayload(form) {
         const data = new FormData(form);
         const impacts = Array.from(form.querySelectorAll('input[name="impactIds"]:checked')).map(input => Number(input.value)).filter(Number.isInteger);
-        if (impacts.length > 3) throw new Error('Можна обрати максимум три впливи.');
+        if (impacts.length > maxImpacts()) throw new Error(`Можна обрати максимум ${maxImpacts()} впливів.`);
         return {
             name: data.get('name'),
             metric: data.get('metric'),
@@ -544,7 +570,7 @@
             };
             const refreshImpacts = () => {
                 const selected = Array.from(form.querySelectorAll('input[name="impactIds"]:checked'));
-                const atLimit = selected.length >= 3;
+                const atLimit = selected.length >= maxImpacts();
                 form.querySelectorAll('[data-my-day-habit-impact-chip]').forEach(input => {
                     const label = input.closest('.my-day-impact-chip');
                     input.disabled = atLimit && !input.checked;
@@ -552,7 +578,7 @@
                     label?.classList.toggle('is-disabled', input.disabled);
                 });
                 const help = form.querySelector('[data-my-day-habit-impact-help]');
-                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи.' : 'До 3 впливів: контекст, діяльність, результат або особиста сфера.';
+                if (help) help.textContent = atLimit ? `Обрано максимум ${maxImpacts()} впливів.` : `До ${maxImpacts()} впливів: контекст, діяльність, результат або особиста сфера.`;
             };
             form.querySelectorAll('input[name="metric"], input[name="cadence"]').forEach(input => input.addEventListener('change', refreshConditionals));
             form.querySelectorAll('[data-my-day-habit-impact-chip]').forEach(input => input.addEventListener('change', refreshImpacts));

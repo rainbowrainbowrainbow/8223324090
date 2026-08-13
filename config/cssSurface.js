@@ -556,6 +556,13 @@ const CSS_SURFACE = [
         reason: 'Shared AI draft composer preview, review, field-mask, mobile, and dark-mode styles used by Profile My Day and Tasks composer.'
     },
     {
+        file: 'css/my-day-impact-icons.css',
+        owner: 'tasks-my-day',
+        category: 'feature-shared',
+        status: 'active',
+        reason: 'Shared grouped impact selector, semantic SVG icon, selected state, custom catalog link, mobile, and dark-mode styles used by Profile My Day and Tasks.'
+    },
+    {
         file: 'css/pages-reports.css',
         owner: 'reports',
         category: 'page-scoped',

@@ -9,21 +9,6 @@
     };
 
     const TAXONOMY_COLORS = ['#6366f1', '#0ea5e9', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#14b8a6', '#f97316'];
-    const TAXONOMY_ICONS = {
-        impacts: [
-            '•', '⚡', '❤️', '🛡️', '📈', '🌿', '🏃', '😊',
-            '💰', '🤝', '🎯', '✅', '⏱️', '🚀', '🔥', '💎',
-            '🧠', '📚', '🧭', '🔁', '🧱', '🧩', '🛠️', '🔍',
-            '📣', '⭐', '🏆', '🎁', '🌱', '💤', '🧘', '💪',
-            '🥗', '🫀', '🏡', '🏠', '🎡', '🧹', '🛋️', '🎨', '🌈', '🙌',
-            '⚙️', '🤖', '📊', '👥', '💻', '🧑‍💻', '📱', '🌐',
-            '🗂️', '📋', '📝', '✍️', '💡', '🔧', '🔨', '🔗',
-            '🔒', '🧪', '🎥', '🎙️', '📷', '📢', '💬', '📅',
-            '🗓️', '🧾', '📦', '🛒', '🏷️', '🏗️', '🧯', '💳',
-            '📞', '✉️', '🕵️', '🔔', '🧮', '📌', '🧰', '♻️'
-        ]
-    };
-
     function headers() {
         return typeof window.getAuthHeaders === 'function'
             ? window.getAuthHeaders()
@@ -60,10 +45,31 @@
             : String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
 
+    function maxImpacts() {
+        return Number(window.MyDayImpactIcons?.MAX_SELECTED_IMPACTS || 5);
+    }
+
+    function impactIcon(record = {}, compact = false) {
+        const rendered = window.MyDayImpactIcons?.render?.(record, { size: compact ? 16 : 18 });
+        if (!rendered) return `<span class="my-day-impact-icon-wrap ${compact ? 'my-day-impact-icon-wrap--compact' : ''}" aria-hidden="true">${escape(record.icon || '•')}</span>`;
+        return `<span class="my-day-impact-icon-wrap ${compact ? 'my-day-impact-icon-wrap--compact' : ''}">${rendered}</span>`;
+    }
+
+    function impactGroups(records = []) {
+        const definitions = window.MyDayImpactIcons?.GROUPS || [{ id: 'custom', label: 'Впливи' }];
+        const buckets = new Map(definitions.map(group => [group.id, []]));
+        for (const record of records) {
+            const group = window.MyDayImpactIcons?.metaFor?.(record)?.group || 'custom';
+            if (!buckets.has(group)) buckets.set(group, []);
+            buckets.get(group).push(record);
+        }
+        return definitions.map(group => ({ ...group, records: buckets.get(group.id) || [] })).filter(group => group.records.length);
+    }
+
     function options(records, selected, multiple) {
         const selectedSet = new Set(Array.isArray(selected) ? selected.map(Number) : [Number(selected)]);
         return records.filter(record => record.isActive !== false).map(record =>
-            `<option value="${record.id}" ${selectedSet.has(Number(record.id)) ? 'selected' : ''}>${escape((record.icon || '•') + ' ' + record.name)}</option>`
+            `<option value="${record.id}" ${selectedSet.has(Number(record.id)) ? 'selected' : ''}>${escape(record.name)}</option>`
         ).join('');
     }
 
@@ -92,22 +98,25 @@
         const selectedSet = new Set((selected || []).map(Number));
         const impacts = activeRecords(state.impacts);
         if (!impacts.length) return '<p class="my-day-taxonomy-empty">Активних впливів ще немає.</p>';
-        const atLimit = selectedSet.size >= 3;
-        return `<div class="my-day-choice-grid my-day-composer-impact-grid" data-my-day-composer-impact-group>${impacts.map(impact => {
-            const isSelected = selectedSet.has(Number(impact.id));
-            const disabled = atLimit && !isSelected;
-            return `<label class="my-day-choice-chip my-day-impact-chip my-day-composer-impact-chip ${isSelected ? 'is-selected' : ''} ${disabled ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}">
-                <input type="checkbox" name="composerImpactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''} data-my-day-composer-impact-chip>
-                <span>${escape(impact.icon || '•')} ${escape(impact.name)}</span>
-            </label>`;
-        }).join('')}</div>`;
+        const atLimit = selectedSet.size >= maxImpacts();
+        return `<div class="my-day-composer-impact-grid" data-my-day-composer-impact-group>${impactGroups(impacts).map(group => `<section class="my-day-impact-group" data-my-day-impact-group="${escape(group.id)}">
+            <h4 class="my-day-impact-group-title">${escape(group.label)}</h4>
+            <div class="my-day-impact-group-grid">${group.records.map(impact => {
+                const isSelected = selectedSet.has(Number(impact.id));
+                const disabled = atLimit && !isSelected;
+                return `<label class="my-day-choice-chip my-day-impact-chip my-day-composer-impact-chip ${isSelected ? 'is-selected' : ''} ${disabled ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}">
+                    <input type="checkbox" name="composerImpactIds" value="${escape(impact.id)}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''} data-my-day-composer-impact-chip>
+                    ${impactIcon(impact)}<span>${escape(impact.name)}</span>
+                </label>`;
+            }).join('')}</div>
+        </section>`).join('')}</div>`;
     }
 
     function renderComposerSelectedImpacts(selectedIds = []) {
         const selectedSet = new Set((selectedIds || []).map(Number));
         const selected = activeRecords(state.impacts).filter(impact => selectedSet.has(Number(impact.id)));
         if (!selected.length) return '<span class="my-day-composer-impact-placeholder">Впливи не обрано</span>';
-        return selected.map(impact => `<span class="my-day-task-chip my-day-task-chip--impact" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}">${escape(impact.icon || '•')} <span>${escape(impact.name)}</span></span>`).join('');
+        return selected.map(impact => `<span class="my-day-task-chip my-day-task-chip--impact" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(impact.name)}">${impactIcon(impact, true)}<span>${escape(impact.name)}</span></span>`).join('');
     }
 
     function renderComposerFields() {
@@ -117,10 +126,13 @@
         return `
             <div class="my-day-classification-fields my-day-composer-classification" data-my-day-classification-fields data-my-day-composer-classification>
                 <fieldset class="my-day-composer-impact-field my-day-choice-field">
-                    <legend>Впливи <small>до 3</small></legend>
+                    <legend>Впливи <small>до ${maxImpacts()}</small><span class="my-day-impact-count">32 готові категорії + власні</span></legend>
                     <div class="my-day-composer-impact-selected" data-my-day-composer-impact-selected aria-live="polite">${renderComposerSelectedImpacts([])}</div>
                     ${renderComposerImpactChips([])}
-                    <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До 3 впливів: контекст, діяльність, результат або особиста сфера.</p>
+                    <div class="my-day-impact-footer">
+                        <p class="my-day-field-help" id="cabinetTaskImpactsHelp" data-my-day-composer-impact-help>До ${maxImpacts()} впливів: контекст, діяльність, результат або особиста сфера.</p>
+                        <button type="button" class="my-day-impact-manage" data-my-day-manage-impacts>Налаштувати каталог та свої іконки</button>
+                    </div>
                 </fieldset>
 
                 ${status}
@@ -133,7 +145,7 @@
             .filter(Number.isInteger);
         const legacyImpacts = selectedValues(document.getElementById('cabinetTaskImpacts'));
         const impacts = composerImpacts.length ? composerImpacts : legacyImpacts;
-        if (impacts.length > 3) throw new Error('Оберіть не більше трьох впливів.');
+        if (impacts.length > maxImpacts()) throw new Error(`Оберіть не більше ${maxImpacts()} впливів.`);
         return {
             impactIds: impacts
         };
@@ -146,7 +158,7 @@
             const impactId = String(record?.id || '').trim();
             const name = String(record?.name || '').trim();
             const disabled = !taskIdAttr || !impactId;
-            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--removable${hidden ? ' is-hidden-impact' : ''}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-cabinet-task-action="remove-impact" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" ${hidden ? 'hidden' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''}>${escape(record.icon || '•')} <span>${escape(name)}</span><span class="my-day-task-chip-remove" aria-hidden="true">×</span></button>`;
+            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--removable${hidden ? ' is-hidden-impact' : ''}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-cabinet-task-action="remove-impact" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" ${hidden ? 'hidden' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''}>${impactIcon(record, true)}<span>${escape(name)}</span><span class="my-day-task-chip-remove" aria-hidden="true">×</span></button>`;
         };
         const visibleImpactButtons = impacts.slice(0, 2).map(record => renderImpactButton(record)).join('');
         const hiddenImpactRecords = impacts.slice(2);
@@ -156,7 +168,7 @@
         if (visibleImpactButtons || revealButton || hiddenImpactButtons) {
             return `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${visibleImpactButtons}${revealButton}${hiddenImpactButtons}</span>`;
         }
-        const chip = (record, kind) => `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${escape(record.icon || '•')} <span>${escape(record.name)}</span></span>`;
+        const chip = (record, kind) => `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${impactIcon(record, true)}<span>${escape(record.name)}</span></span>`;
         const impactChips = impacts.slice(0, 2).map(record => chip(record, 'impact')).join('');
         const hiddenImpacts = impacts.slice(2);
         const hiddenLabel = hiddenImpacts.map(record => record?.name).filter(Boolean).join(', ');
@@ -325,7 +337,7 @@
         const myDay = task.myDay || {};
         const impactIds = (myDay.impacts || []).map(record => record.id);
         return `<div class="my-day-editor-fields" data-my-day-editor-fields>
-            <label>Впливи <small>до 3</small>
+            <label>Впливи <small>до ${maxImpacts()}</small>
                 <select data-my-day-impacts multiple size="4">
                     ${options(state.impacts, impactIds, true)}
                 </select>
@@ -345,8 +357,8 @@
         const status = root.querySelector('[data-my-day-editor-status]');
         save?.addEventListener('click', async () => {
             const impacts = selectedValues(fields?.querySelector('[data-my-day-impacts]'));
-            if (impacts.length > 3) {
-                status.textContent = 'Оберіть не більше трьох впливів.';
+            if (impacts.length > maxImpacts()) {
+                status.textContent = `Оберіть не більше ${maxImpacts()} впливів.`;
                 return;
             }
             save.disabled = true;
@@ -389,11 +401,11 @@
     }
 
     function renderIconChoices(kind, selectedIcon) {
-        const icons = TAXONOMY_ICONS[kind] || TAXONOMY_ICONS.impacts;
-        const selected = selectedIcon || icons[0];
+        const icons = window.MyDayImpactIcons?.choices?.() || ['custom'];
+        const selected = window.MyDayImpactIcons?.metaFor?.({ icon: selectedIcon })?.icon || icons[0];
         return `<div class="my-day-choice-grid my-day-icon-grid" role="radiogroup" aria-label="Іконка">${icons.map(icon => `<label class="my-day-icon-choice ${icon === selected ? 'is-selected' : ''}">
             <input type="radio" name="icon" value="${escape(icon)}" ${icon === selected ? 'checked' : ''}>
-            <span aria-hidden="true">${escape(icon)}</span>
+            <span class="my-day-impact-icon-wrap">${window.MyDayImpactIcons?.render?.({ icon, name: icon }) || escape(icon)}</span>
             <span class="sr-only">Іконка ${escape(icon)}</span>
         </label>`).join('')}</div>`;
     }
@@ -437,7 +449,7 @@
         const isEditing = currentSetupEditor() === editorKey;
         return `<li class="my-day-taxonomy-row ${isActive ? '' : 'is-archived'}" data-my-day-taxonomy-row="${kind}:${escape(record.id)}">
             <div class="my-day-taxonomy-row-card">
-                <span class="my-day-taxonomy-swatch" style="background:${escape(record.color || '#64748b')}">${escape(record.icon || '•')}</span>
+                <span class="my-day-taxonomy-swatch" style="--my-day-chip-color:${escape(record.color || '#64748b')};background:color-mix(in srgb, ${escape(record.color || '#64748b')} 18%, transparent)">${impactIcon(record)}</span>
                 <div class="my-day-taxonomy-summary">
                     <strong class="my-day-taxonomy-name">${escape(record.name)}</strong>
                     <span class="my-day-taxonomy-state">${isActive ? 'Активний' : 'Архів'}</span>
@@ -504,7 +516,7 @@
             const refreshComposerImpacts = () => {
                 const selected = Array.from(container.querySelectorAll('[data-my-day-composer-impact-chip]:checked'));
                 const selectedIds = selected.map(input => Number(input.value)).filter(Number.isInteger);
-                const atLimit = selectedIds.length >= 3;
+                const atLimit = selectedIds.length >= maxImpacts();
                 container.querySelectorAll('[data-my-day-composer-impact-chip]').forEach(input => {
                     const label = input.closest('.my-day-composer-impact-chip');
                     if (label && !label.dataset.myDayComposerImpactTitle) label.dataset.myDayComposerImpactTitle = label.getAttribute('title') || '';
@@ -512,15 +524,18 @@
                     input.setAttribute('aria-disabled', input.disabled ? 'true' : 'false');
                     label?.classList.toggle('is-selected', input.checked);
                     label?.classList.toggle('is-disabled', input.disabled);
-                    label?.setAttribute('title', input.disabled ? 'Спочатку зніміть один із трьох обраних впливів.' : (label?.dataset.myDayComposerImpactTitle || ''));
+                    label?.setAttribute('title', input.disabled ? `Спочатку зніміть один із ${maxImpacts()} обраних впливів.` : (label?.dataset.myDayComposerImpactTitle || ''));
                 });
                 const help = container.querySelector('[data-my-day-composer-impact-help]');
-                if (help) help.textContent = atLimit ? 'Обрано максимум три впливи. Щоб додати інший — зніміть один обраний.' : 'До 3 впливів: контекст, діяльність, результат або особиста сфера.';
+                if (help) help.textContent = atLimit ? `Обрано максимум ${maxImpacts()} впливів. Щоб додати інший — зніміть один обраний.` : `До ${maxImpacts()} впливів: контекст, діяльність, результат або особиста сфера.`;
                 const selectedNode = container.querySelector('[data-my-day-composer-impact-selected]');
                 if (selectedNode) selectedNode.innerHTML = renderComposerSelectedImpacts(selectedIds);
             };
             container.querySelectorAll('[data-my-day-composer-impact-chip]').forEach(input => {
                 input.addEventListener('change', refreshComposerImpacts);
+            });
+            container.querySelector('[data-my-day-manage-impacts]')?.addEventListener('click', () => {
+                window.MyDayHabits?.openSetup?.({ returnMode: 'day' });
             });
             refreshComposerImpacts();
         });
@@ -529,11 +544,11 @@
             select.dataset.myDayImpactBound = 'true';
             select.addEventListener('change', () => {
                 const values = selectedValues(select);
-                if (values.length <= 3) return;
+                if (values.length <= maxImpacts()) return;
                 Array.from(select.options).forEach(option => {
-                    if (option.selected && !values.slice(0, 3).includes(Number(option.value))) option.selected = false;
+                    if (option.selected && !values.slice(0, maxImpacts()).includes(Number(option.value))) option.selected = false;
                 });
-                window.showNotification?.('Можна обрати максимум три впливи.', 'warning');
+                window.showNotification?.(`Можна обрати максимум ${maxImpacts()} впливів.`, 'warning');
             });
         });
 

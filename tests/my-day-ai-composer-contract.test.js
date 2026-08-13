@@ -46,13 +46,13 @@ test('My Day AI composer proposal contract fixture is strict and impacts-only', 
     ]);
     assert.deepEqual(schema.properties.decision.enum, fixture.allowedDecisions);
     assert.deepEqual(schema.properties.mode.enum, ['simple', 'checklist', null]);
-    assert.equal(schema.properties.impactIds.maxItems, 3);
+    assert.equal(schema.properties.impactIds.maxItems, 5);
     assert.equal(Object.hasOwn(schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(schema.properties.subtasks.maxItems, 7);
     assert.equal(schema.properties.subtasks.items.additionalProperties, false);
     assert.equal(schema.properties.tasks.maxItems, 6);
     assert.equal(schema.properties.tasks.items.additionalProperties, false);
-    assert.equal(schema.properties.tasks.items.properties.impactIds.maxItems, 3);
+    assert.equal(schema.properties.tasks.items.properties.impactIds.maxItems, 5);
     assert.equal(Object.hasOwn(schema.properties.tasks.items.properties.impactIds, 'uniqueItems'), false);
     assert.deepEqual(schema.properties.tasks.items.required, [
         'title',

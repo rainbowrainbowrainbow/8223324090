@@ -82,19 +82,19 @@ test('My Day setup catalog editors are clean one-at-a-time inline surfaces', () 
     assert.match(css, /\.my-day-taxonomy-row-card/);
     assert.match(css, /\.my-day-setup-archive/);
 });
-test('My Day setup offers expanded icon preset palette for impacts', () => {
-    const taxonomyUi = read('js/my-day-classification.js');
-    const iconBlock = taxonomyUi.match(/const TAXONOMY_ICONS = \{([\s\S]*?)\n    \};/);
-    assert.ok(iconBlock);
-    const impactMatch = iconBlock[1].match(/impacts:\s*\[([\s\S]*?)\]/);
-    assert.ok(impactMatch);
-    const impactIcons = Array.from(impactMatch[1].matchAll(/'([^']+)'/g)).map(match => match[1]);
-    assert.ok(impactIcons.length >= 80);
-    assert.equal(new Set(impactIcons).size, impactIcons.length);
-    assert.ok(impactIcons.includes('\u26A1'));
-    assert.ok(impactIcons.includes('\u{1F4B0}'));
-    assert.ok(impactIcons.includes('\u{1F9D8}'));
-    ['⚙️', '🤖', '📣', '📊', '👥'].forEach(icon => assert.ok(impactIcons.includes(icon)));
+test('My Day setup offers a consistent custom SVG icon preset palette for impacts', () => {
+    const iconUi = read('js/my-day-impact-icons.js');
+    const classificationUi = read('js/my-day-classification.js');
+    const profile = read('profile.html');
+    const tasks = read('tasks.html');
+    const keys = ['park', 'crm', 'hermes', 'processes', 'ai', 'development', 'analytics', 'media', 'marketing', 'team', 'strategy', 'sales', 'finance', 'quality', 'system', 'speed', 'brand', 'security', 'health', 'fitness', 'recovery', 'home', 'learning', 'relationships', 'hr', 'legal', 'procurement', 'network', 'creativity', 'travel', 'community', 'balance'];
+    keys.forEach(key => assert.match(iconUi, new RegExp(`\\n\\s{8}${key}:`)));
+    assert.match(iconUi, /<svg class="my-day-impact-icon"/);
+    assert.match(iconUi, /MAX_SELECTED_IMPACTS = 5/);
+    assert.match(classificationUi, /data-my-day-manage-impacts/);
+    assert.match(classificationUi, /MyDayHabits\?\.openSetup/);
+    assert.match(profile, /js\/my-day-impact-icons\.js/);
+    assert.match(tasks, /js\/my-day-impact-icons\.js/);
 });
 
 
@@ -111,9 +111,9 @@ test('My Day explains impacts as the only active classification model', () => {
     assert.match(taxonomyUi, /Доробити CRM-фічу/);
     assert.match(taxonomyUi, /Підготувати зміну в парку/);
     assert.match(taxonomyUi, /Налаштувати Hermes/);
-    assert.match(taxonomyUi, /До 3 впливів: контекст, діяльність, результат або особиста сфера./);
+    assert.match(taxonomyUi, /До \$\{maxImpacts\(\)\} впливів: контекст, діяльність, результат або особиста сфера./);
     assert.doesNotMatch(habitsUi, /Проєкт або сфера звички./);
-    assert.match(habitsUi, /До 3 впливів: контекст, діяльність, результат або особиста сфера./);
+    assert.match(habitsUi, /До \$\{maxImpacts\(\)\} впливів: контекст, діяльність, результат або особиста сфера./);
     assert.match(css, /\.my-day-taxonomy-guide/);
     assert.match(css, /\.my-day-taxonomy-examples/);
     assert.match(css, /body\.dark-mode \.profile-page\.profile-work-mode \.my-day-taxonomy-guide/);
@@ -172,7 +172,7 @@ test('My Day habit setup uses a compact editor with conditional fields and check
     assert.match(setupSlice, /data-my-day-habit-conditional="times"/);
     assert.match(habitsUi, /refreshConditionals/);
     assert.match(habitsUi, /refreshImpacts/);
-    assert.match(habitsUi, /selected\.length >= 3/);
+    assert.match(habitsUi, /selected\.length >= maxImpacts\(\)/);
     assert.match(css, /\.my-day-habit-editor-grid/);
     assert.match(css, /\.my-day-impact-chip/);
     assert.match(css, /\.my-day-habit-editor \[hidden\]/);

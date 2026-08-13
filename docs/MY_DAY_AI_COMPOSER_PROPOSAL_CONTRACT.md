@@ -94,7 +94,7 @@ Required top-level fields:
 - `mode`: one of `simple`, `checklist`, or `null`.
 - `title`: string or null.
 - `description`: string or null.
-- `impactIds`: array of existing active impact IDs, max 3.
+- `impactIds`: array of existing active impact IDs, max 5.
 - `subtasks`: array of checklist items, max 7.
 - `bundleTitle`: string or null.
 - `tasks`: array of proposed full tasks, max 6.
@@ -105,7 +105,7 @@ For `tasks[]`, every item must include:
 
 - `title`;
 - `description`;
-- `impactIds`, max 3 existing active impacts;
+- `impactIds`, max 5 existing active impacts;
 - `priority`, one of `urgent`, `high`, `normal`, `low`, or `null`;
 - `scheduleDate`, `YYYY-MM-DD` or `null`;
 - `ownerSuggestion` with `userId`, `name`, and `reason`;

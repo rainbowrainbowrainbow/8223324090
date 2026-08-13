@@ -15,6 +15,16 @@
         }[char]));
     }
 
+    function maxImpacts() {
+        return Number(window.MyDayImpactIcons?.MAX_SELECTED_IMPACTS || 5);
+    }
+
+    function impactIcon(record = {}, compact = false) {
+        const rendered = window.MyDayImpactIcons?.render?.(record, { size: compact ? 16 : 18 });
+        if (!rendered) return `<span class="my-day-impact-icon-wrap ${compact ? 'my-day-impact-icon-wrap--compact' : ''}" aria-hidden="true">${escapeHtml(record.icon || '•')}</span>`;
+        return `<span class="my-day-impact-icon-wrap ${compact ? 'my-day-impact-icon-wrap--compact' : ''}">${rendered}</span>`;
+    }
+
     function compactText(value, max = 240) {
         const text = String(value || '').trim().replace(/\s+/g, ' ');
         if (!text) return '—';
@@ -134,7 +144,7 @@
         if (!safeIds.length) return '<span class="task-ai-draft-muted">Впливи не обрано</span>';
         return `<span class="task-ai-draft-chip-list">${safeIds.map(id => {
             const impact = catalog.get(id) || { id, name: `Impact #${id}`, icon: '•', color: '#64748b' };
-            return `<span class="my-day-task-chip my-day-task-chip--impact task-ai-draft-impact-chip" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}" title="${escapeHtml(impact.name || `Impact #${id}`)}">${escapeHtml(impact.icon || '•')} <span>${escapeHtml(impact.name || `Impact #${id}`)}</span></span>`;
+            return `<span class="my-day-task-chip my-day-task-chip--impact task-ai-draft-impact-chip" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}" title="${escapeHtml(impact.name || `Impact #${id}`)}">${impactIcon(impact, true)}<span>${escapeHtml(impact.name || `Impact #${id}`)}</span></span>`;
         }).join('')}</span>`;
     }
 
@@ -171,7 +181,7 @@
             clientId: task.clientId || `bundle_${index}_${randomId('task')}`,
             title: String(task.title || '').trim(),
             description: String(task.description || '').trim(),
-            impactIds: Array.isArray(task.impactIds) ? task.impactIds.map(Number).filter(Number.isInteger).slice(0, 3) : [],
+            impactIds: Array.isArray(task.impactIds) ? task.impactIds.map(Number).filter(Number.isInteger).slice(0, maxImpacts()) : [],
             priority: ['urgent', 'high', 'normal', 'low'].includes(String(task.priority || '')) ? String(task.priority) : 'normal',
             scheduleDate: normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date),
             ownerSuggestion: {
@@ -249,10 +259,10 @@
             ${catalog.map(impact => {
                 const id = Number(impact.id);
                 const checked = selected.has(id);
-                const disabled = !checked && selected.size >= 3;
+                const disabled = !checked && selected.size >= maxImpacts();
                 return `<label class="task-ai-bundle-impact-chip ${checked ? 'is-selected' : ''}">
                     <input type="checkbox" data-task-ai-bundle-field="impactIds" value="${id}" ${checked ? 'checked' : ''} ${disabled ? 'disabled' : ''}>
-                    <span>${escapeHtml(impact.icon || '•')} ${escapeHtml(impact.name || `Impact #${id}`)}</span>
+                    ${impactIcon(impact, true)}<span>${escapeHtml(impact.name || `Impact #${id}`)}</span>
                 </label>`;
             }).join('')}
         </div>`;
@@ -546,7 +556,7 @@
             task.impactIds = Array.from(card.querySelectorAll('[data-task-ai-bundle-field="impactIds"]:checked'))
                 .map(input => Number(input.value))
                 .filter(Number.isInteger)
-                .slice(0, 3);
+                .slice(0, maxImpacts());
         } else if (field === 'ownerUserId') {
             const ownerId = Number(control.value || 0);
             const owner = bundleOwnerCatalog(state.preview).find(item => item.id === ownerId);

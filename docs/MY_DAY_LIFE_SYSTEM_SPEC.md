@@ -29,7 +29,7 @@ My Day uses an impacts-only active UX:
 - A representative work task normally uses `context + activity + outcome`.
   The system never forces all groups, and cross-product work may use two
   contexts.
-- A task or habit may have zero through three impacts.
+- A task or habit may have zero through five impacts.
 - Legacy directions remain in the database and API for rollback/history, but
   new active UX does not ask for a direction and new writes do not change
   legacy `direction_id`.
@@ -129,7 +129,7 @@ an explicitly approved data-fix.
 | \`created_at\` | Audit timestamp. |
 
 Its unique key is \`(user_id, task_id, impact_id)\`. The service rejects more
-than three impacts for the pair before writing. No rows are represented as
+than five impacts for the pair before writing. No rows are represented as
 **Без впливу**. Index task tables by \`(user_id, task_id)\`.
 
 ### Task blockers
@@ -196,7 +196,7 @@ exposes hidden task titles or other private task fields from this ledger.
 | \`times_per_week\` | Required only for weekly cadence; positive integer. |
 | \`direction_id\` | Legacy nullable FK to \`my_day_directions\`; preserved for rollback/history and not written by new active UX. |
 
-\`my_day_habit_impacts\` links one habit to zero through three impacts and has
+\`my_day_habit_impacts\` links one habit to zero through five impacts and has
 unique key \`(habit_id, impact_id)\`.
 
 `my_day_habit_checkins` has required `habit_id`, `user_id`,
@@ -248,12 +248,15 @@ Canonical payload:
 - Activity impacts: `Операційка / процеси`, `Автоматизація / AI`,
   `Продукт / розробка`, `Аналітика / рішення`, `Контент / медіа`,
   `Маркетинг / залучення`, `Команда / делегування`,
-  `Стратегія / пріоритети`.
+  `Стратегія / пріоритети`, `Люди / HR`, `Документи / право`,
+  `Закупівлі / постачання`, `Партнерства / нетворкінг`.
 - Outcome impacts: `Продажі / клієнти`, `Фінанси / облік`,
   `Якість сервісу`, `Системність`, `Швидкість / ефективність`,
   `Бренд / репутація`, `Ризики / безпека`.
 - Personal impacts: `Здоровʼя`, `Фізична форма`, `Відновлення`,
-  `Побут / комфорт`, `Навчання / розвиток`, `Близькі / стосунки`.
+  `Побут / комфорт`, `Навчання / розвиток`, `Близькі / стосунки`,
+  `Творчість / самовираження`, `Подорожі / враження`,
+  `Спільнота / внесок`, `Баланс / сенси`.
 - Habits:
   - `Ранкова зарядка`: `minutes`, target `10`, `daily`, impacts
     `Здоровʼя` and `Фізична форма`.
@@ -318,7 +321,7 @@ is accepted for one-client rollout compatibility; non-empty \`tags\` returns
 \`409 MY_DAY_TAGS_DEPRECATED\`. The request preserves existing legacy
 \`direction_id\` and the historical database tags column. It validates current
 task read visibility, current writable business scope, active caller-owned
-impacts, numeric IDs, unique impact IDs, and the maximum of three impacts. It
+impacts, numeric IDs, unique impact IDs, and the maximum of five impacts. It
 persists nothing on failure.
 
 Error contract:
@@ -328,7 +331,7 @@ Error contract:
 | Task outside current task visibility or business scope | \`404 MY_DAY_TASK_NOT_FOUND\` |
 | Viewable task denied by current mutation policy | \`403 MY_DAY_TASK_CLASSIFICATION_FORBIDDEN\` |
 | Malformed payload, duplicate impact, foreign taxonomy | \`400 MY_DAY_VALIDATION_ERROR\` |
-| More than three impacts | \`409 MY_DAY_IMPACT_LIMIT_EXCEEDED\` |
+| More than five impacts | \`409 MY_DAY_IMPACT_LIMIT_EXCEEDED\` |
 | Non-empty deprecated tags | \`409 MY_DAY_TAGS_DEPRECATED\` |
 
 \`POST /api/my-day/tasks/:taskId/classification/auto\` calls the direct OpenAI

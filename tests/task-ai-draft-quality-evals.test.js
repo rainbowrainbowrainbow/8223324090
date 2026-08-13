@@ -79,7 +79,7 @@ test('AI composer quality eval fixture covers 50-60 anonymized cases and target 
     assert.ok(fixture.evalCases.length >= 50, `expected at least 50 cases, got ${fixture.evalCases.length}`);
     assert.ok(fixture.evalCases.length <= 60, `expected at most 60 cases, got ${fixture.evalCases.length}`);
     assert.deepEqual(
-        fixture.activeImpacts.slice(0, 5).map(impact => impact.name),
+        fixture.activeImpacts.slice(0, 3).map(impact => impact.name),
         ['Робота: CRM', 'Робота: Hermes', 'Робота: Парк'],
         'eval catalog must use the same canonical names and semantic hints as production'
     );

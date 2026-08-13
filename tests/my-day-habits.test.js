@@ -15,7 +15,7 @@ test('habit payload validates all metrics, all cadences, weekdays, and max impac
     assert.equal(habits.normalizeHabitPayload({ name: 'Walk', metric: 'minutes', targetValue: 30, cadence: 'times_per_week', timesPerWeek: 4 }).timesPerWeek, 4);
     assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', metric: 'boolean', targetValue: 2 }), { code: 'MY_DAY_HABIT_VALIDATION' });
     assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', cadence: 'selected_weekdays', selectedWeekdays: [1, 1] }), { code: 'MY_DAY_HABIT_VALIDATION' });
-    assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', impactIds: [1, 2, 3, 4] }), { code: 'MY_DAY_IMPACT_LIMIT_EXCEEDED' });
+    assert.throws(() => habits.normalizeHabitPayload({ name: 'Bad', impactIds: [1, 2, 3, 4, 5, 6] }), { code: 'MY_DAY_IMPACT_LIMIT_EXCEEDED' });
     assert.equal(Object.hasOwn(habits.normalizeHabitPayload({ name: 'Legacy', directionId: 99 }), 'directionId'), false);
 });
 

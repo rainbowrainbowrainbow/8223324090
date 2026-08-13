@@ -513,7 +513,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(otherTimer.data?.timer, null);
     });
 
-    it('normalizes the 24-impact catalog and merges health aliases without losing task or habit links', async () => {
+    it('normalizes the 32-impact catalog and merges health aliases without losing task or habit links', async () => {
         const owner = await createUser('starter_alias');
         const legacy = await query(
             `INSERT INTO my_day_impacts (user_id, name, color, icon, sort_order, is_active)
@@ -561,7 +561,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             client.release();
         }
 
-        assert.deepEqual(first.created, { impacts: 22, habits: 5 });
+        assert.deepEqual(first.created, { impacts: 30, habits: 5 });
         assert.deepEqual(first.skipped, { impacts: 2, habits: 0 });
         const catalog = await query(
             `SELECT id, name, color, icon, sort_order, is_active
@@ -570,15 +570,15 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
              ORDER BY sort_order, id`,
             [owner.id]
         );
-        assert.equal(catalog.rows.length, 25);
-        assert.equal(catalog.rows.filter(row => row.is_active).length, 24);
+        assert.equal(catalog.rows.length, 33);
+        assert.equal(catalog.rows.filter(row => row.is_active).length, 32);
         ['Продукт / розробка', 'Маркетинг / залучення', 'Стратегія / пріоритети', 'Фінанси / облік', 'Близькі / стосунки']
             .forEach(name => assert.ok(catalog.rows.some(row => row.name === name), `missing starter impact: ${name}`));
         assert.equal(catalog.rows.some(row => row.name === 'Команда і делегування'), false);
         const normalized = catalog.rows.find(row => Number(row.id) === Number(legacy.rows[0].id));
         assert.equal(normalized.name, 'Команда / делегування');
         assert.equal(normalized.color, '#06B6D4');
-        assert.equal(normalized.icon, '👥');
+        assert.equal(normalized.icon, 'team');
         assert.equal(Number(normalized.sort_order), 170);
         assert.equal(normalized.is_active, true);
 
@@ -587,7 +587,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         const healthTarget = healthRows.find(row => row.name === 'Здоровʼя');
         const healthDuplicate = healthRows.find(row => /merged #/.test(row.name));
         assert.equal(Number(healthTarget.id), Number(asciiHealth.rows[0].id));
-        assert.equal(healthTarget.icon, '❤️');
+        assert.equal(healthTarget.icon, 'health');
         assert.equal(Number(healthTarget.sort_order), 310);
         assert.equal(healthTarget.is_active, true);
         assert.equal(healthDuplicate.is_active, false);
@@ -623,7 +623,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             secondClient.release();
         }
         assert.deepEqual(second.created, { impacts: 0, habits: 0 });
-        assert.deepEqual(second.skipped, { impacts: 24, habits: 5 });
+        assert.deepEqual(second.skipped, { impacts: 32, habits: 5 });
     });
 
     it('enforces auth, ownership, writable business scope, impacts-only writes, legacy direction, and tags preservation', async () => {

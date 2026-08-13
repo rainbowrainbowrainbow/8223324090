@@ -164,7 +164,13 @@ test('AI draft composer renders interactive task bundle review without single-ta
 
     const root = window.document.getElementById('composer');
     window.TaskAiDraft.bindComposer(root, {
-        readDraft: () => ({ title: 'CRM + Hermes rollout', description: 'split it', impactIds: [] }),
+        readDraft: () => ({
+            title: 'CRM + Hermes rollout',
+            description: 'split it',
+            impactIds: [],
+            scheduleDate: '2026-08-18',
+            scheduleConfirmed: true
+        }),
         applyField: () => {
             throw new Error('bundle preview must not apply fields into the single-task composer');
         }
@@ -190,7 +196,8 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, false);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root).tasks.length, 2);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).commitType, 'bundle');
-    assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[0].scheduleDate, '2026-08-20');
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[0].scheduleDate, '2026-08-18');
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[1].scheduleDate, '2026-08-18');
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).acceptedTaskMask, [0, 1]);
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).rejectedTaskMask, []);
 
@@ -207,4 +214,27 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(root.querySelector('[data-task-ai-draft-submit-intent]').disabled, true);
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root), null);
     assert.match(root.textContent, /single-task/);
+});
+
+test('AI draft fingerprint rejects stale schedule confirmation changes', () => {
+    const dom = new JSDOM('<!doctype html><body></body>', {
+        runScripts: 'outside-only',
+        url: 'https://crm.test/tasks'
+    });
+    const { window } = dom;
+    window.eval(read('js/task-ai-draft.js'));
+
+    const todayDraft = {
+        title: 'Prepare reports',
+        scheduleDate: '2026-08-18',
+        duePreset: 'today',
+        scheduleConfirmed: true
+    };
+    const noDateDraft = {
+        ...todayDraft,
+        duePreset: 'no_date',
+        scheduleConfirmed: false
+    };
+
+    assert.notEqual(window.TaskAiDraft._draftKey(todayDraft), window.TaskAiDraft._draftKey(noDateDraft));
 });

@@ -8,6 +8,8 @@ const DecisionScreen = (() => {
     let _pending = [];
     let _initialized = false;
     let _hideTimeout = null;
+    let _eventsBound = false;
+    let _returnFocus = null;
 
     // ── Локальні утиліти ──────────────────────────────────────
     function _esc(s) {
@@ -46,6 +48,7 @@ const DecisionScreen = (() => {
             return;
         }
 
+        _bindDismissEvents();
         await _loadAndRender();
     }
 
@@ -72,6 +75,11 @@ const DecisionScreen = (() => {
                 card.querySelectorAll('.ds-btn').forEach(b => (b.disabled = false));
             }
         }
+    }
+
+    function dismiss() {
+        clearTimeout(_hideTimeout);
+        _hide();
     }
 
     // ── Private ───────────────────────────────────────────────
@@ -150,25 +158,82 @@ const DecisionScreen = (() => {
     function _show() {
         const el = document.getElementById('decisionScreen');
         if (!el) return;
+        clearTimeout(_hideTimeout);
+        _returnFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
         el.classList.remove('hidden');
+        el.classList.remove('ds-closing');
         el.removeAttribute('aria-hidden');
         document.body.classList.add('ds-open');
         requestAnimationFrame(() => {
-            el.querySelector('.ds-btn')?.focus();
+            el.querySelector('[data-decision-screen-dismiss], .ds-btn')?.focus();
         });
     }
 
     function _hide() {
         const el = document.getElementById('decisionScreen');
-        if (!el) return;
+        if (!el || el.classList.contains('hidden') || el.classList.contains('ds-closing')) return;
         el.classList.add('ds-closing');
-        setTimeout(() => {
+        const finish = () => {
             el.classList.add('hidden');
             el.classList.remove('ds-closing');
             el.setAttribute('aria-hidden', 'true');
             document.body.classList.remove('ds-open');
-        }, 300);
+            if (_returnFocus?.isConnected) _returnFocus.focus();
+            _returnFocus = null;
+        };
+        if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) {
+            finish();
+            return;
+        }
+        _hideTimeout = setTimeout(finish, 300);
     }
 
-    return { init, decide };
+    function _focusableElements(el) {
+        return Array.from(el.querySelectorAll([
+            'button:not([disabled])',
+            'a[href]',
+            'input:not([disabled])',
+            'select:not([disabled])',
+            'textarea:not([disabled])',
+            '[tabindex]:not([tabindex="-1"])'
+        ].join(','))).filter(node => !node.hasAttribute('hidden') && node.getAttribute('aria-hidden') !== 'true');
+    }
+
+    function _bindDismissEvents() {
+        if (_eventsBound) return;
+        const el = document.getElementById('decisionScreen');
+        if (!el) return;
+        _eventsBound = true;
+        el.addEventListener('click', event => {
+            const target = event.target instanceof Element ? event.target : null;
+            if (target === el || target?.closest('[data-decision-screen-dismiss]')) dismiss();
+        });
+        document.addEventListener('keydown', event => {
+            if (el.classList.contains('hidden')) return;
+            if (event.key === 'Escape') {
+                event.preventDefault();
+                dismiss();
+                return;
+            }
+            if (event.key === 'Tab') {
+                const focusable = _focusableElements(el);
+                if (!focusable.length) {
+                    event.preventDefault();
+                    el.focus();
+                    return;
+                }
+                const first = focusable[0];
+                const last = focusable[focusable.length - 1];
+                if (event.shiftKey && document.activeElement === first) {
+                    event.preventDefault();
+                    last.focus();
+                } else if (!event.shiftKey && document.activeElement === last) {
+                    event.preventDefault();
+                    first.focus();
+                }
+            }
+        });
+    }
+
+    return { init, decide, dismiss };
 })();

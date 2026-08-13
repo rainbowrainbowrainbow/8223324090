@@ -31,6 +31,7 @@
 
     function normalizeDraftForFingerprint(draft = {}) {
         const scheduleDate = String(draft.scheduleDate || draft.schedule_date || draft.dueDate || draft.due_date || draft.date || '').trim();
+        const duePreset = String(draft.duePreset || draft.due_preset || '').trim();
         return {
             title: String(draft.title || '').trim(),
             description: String(draft.description || '').trim(),
@@ -39,6 +40,8 @@
             category: String(draft.category || '').trim(),
             subcategory: String(draft.subcategory || '').trim(),
             scheduleDate: /^\d{4}-\d{2}-\d{2}$/.test(scheduleDate) ? scheduleDate : '',
+            scheduleConfirmed: draft.scheduleConfirmed === true || draft.schedule_confirmed === true,
+            duePreset: ['today', 'tomorrow', 'custom', 'no_date'].includes(duePreset) ? duePreset : '',
             impactIds: Array.isArray(draft.impactIds) ? draft.impactIds.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
             subtasks: Array.isArray(draft.subtasks)
                 ? draft.subtasks.map(item => String(item?.title || item?.name || '').trim()).filter(Boolean)
@@ -183,9 +186,27 @@
         };
     }
 
+    function confirmedComposerScheduleDate(state = {}) {
+        const draft = state.beforeDraft && typeof state.beforeDraft === 'object'
+            ? state.beforeDraft
+            : {};
+        if (draft.scheduleConfirmed !== true) return '';
+        return normalizeScheduleDate(draft.scheduleDate || draft.schedule_date || draft.dueDate || draft.due_date || draft.date);
+    }
+
     function initializeBundleState(state) {
         const tasks = Array.isArray(state.preview?.proposal?.tasks) ? state.preview.proposal.tasks : [];
-        state.bundleTasks = tasks.map((task, index) => normalizeBundleTask(task, index, state.preview));
+        const confirmedScheduleDate = confirmedComposerScheduleDate(state);
+        state.bundleTasks = tasks.map((task, index) => normalizeBundleTask({
+            ...task,
+            // The explicit composer date is the human-confirmed source of truth.
+            // Luna may return null for bundle items, which previously created tasks
+            // outside My Day even when the composer was set to Today.
+            scheduleDate: confirmedScheduleDate || task?.scheduleDate || task?.schedule_date || task?.dueDate || task?.due_date || task?.date,
+            userEditedFields: confirmedScheduleDate
+                ? [...(Array.isArray(task?.userEditedFields) ? task.userEditedFields : []), 'scheduleDate']
+                : task?.userEditedFields
+        }, index, state.preview));
     }
 
     function activeBundleTasks(state) {

@@ -69,6 +69,7 @@ body.ds-open #decisionScreen { pointer-events: all; }
     border-radius: var(--radius, 16px) var(--radius, 16px) 0 0;
 }
 .ds-header-left { display: flex; align-items: center; gap: 10px; }
+.ds-header-actions { display: flex; align-items: center; gap: 10px; }
 .ds-icon { font-size: 22px; line-height: 1; }
 .ds-title-text {
     margin: 0;
@@ -86,6 +87,25 @@ body.ds-open #decisionScreen { pointer-events: all; }
     padding: 3px 10px;
     border-radius: 999px;
     white-space: nowrap;
+}
+.ds-dismiss {
+    width: 36px;
+    height: 36px;
+    border: 1px solid var(--gray-200);
+    border-radius: 10px;
+    background: transparent;
+    color: var(--gray-600);
+    font: inherit;
+    font-size: 24px;
+    line-height: 1;
+    cursor: pointer;
+}
+.ds-dismiss:hover { background: var(--gray-100); color: var(--gray-900); }
+.ds-dismiss:focus-visible,
+.ds-btn:focus-visible {
+    outline: 3px solid rgba(16, 185, 129, 0.38);
+    outline: 3px solid color-mix(in srgb, var(--primary, #10B981) 38%, transparent);
+    outline-offset: 2px;
 }
 
 /* ── List ────────────────────────────────────── */
@@ -192,11 +212,16 @@ h3.ds-title {
 /* ── Footer ──────────────────────────────────── */
 .ds-footer {
     padding: 14px 28px 20px;
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
     border-top: 1px solid var(--gray-100);
     border-radius: 0 0 var(--radius, 16px) var(--radius, 16px);
 }
 .ds-hint { font-size: 12px; color: var(--gray-400); margin: 0; }
+.ds-btn--continue { background: var(--gray-100); color: var(--gray-700); flex: 0 0 auto; }
+.ds-btn--continue:hover { background: var(--gray-200); }
 
 /* ════ DARK MODE ════ */
 body.dark-mode .ds-inner { background: #1e1e32; }
@@ -207,6 +232,13 @@ body.dark-mode .ds-count-badge {
     border-color: rgba(16, 185, 129, 0.25);
     color: #34D399;
 }
+body.dark-mode .ds-dismiss {
+    border-color: rgba(255, 255, 255, 0.12);
+    color: #CBD5E1;
+}
+body.dark-mode .ds-dismiss:hover,
+body.dark-mode .ds-btn--continue { background: rgba(255, 255, 255, 0.08); color: #E2E8F0; }
+body.dark-mode .ds-btn--continue:hover { background: rgba(255, 255, 255, 0.14); }
 body.dark-mode .ds-card { background: rgba(255, 255, 255, 0.04); }
 body.dark-mode .ds-card--critical { background: rgba(239, 68, 68, 0.12); }
 body.dark-mode .ds-card--important { background: rgba(245, 158, 11, 0.12); }
@@ -243,7 +275,7 @@ body.dark-mode .ds-footer { border-top-color: rgba(255, 255, 255, 0.06); }
     }
     .ds-header { padding: 18px 20px 14px; }
     .ds-list { padding: 14px 20px; }
-    .ds-footer { padding: 12px 20px 16px; }
+    .ds-footer { padding: 12px 20px 16px; align-items: stretch; flex-direction: column; }
     .ds-actions { flex-direction: column; }
     .ds-btn { width: 100%; text-align: center; }
 }

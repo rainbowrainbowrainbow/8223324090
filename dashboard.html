@@ -333,7 +333,10 @@
                     <span class="ds-icon" aria-hidden="true">⚡</span>
                     <h2 class="ds-title-text">Центр прийняття рішень</h2>
                 </div>
-                <span class="ds-count-badge" id="dsCount" aria-live="polite"></span>
+                <div class="ds-header-actions">
+                    <span class="ds-count-badge" id="dsCount" aria-live="polite"></span>
+                    <button type="button" class="ds-dismiss" data-decision-screen-dismiss aria-label="Закрити центр рішень">×</button>
+                </div>
             </div>
             <div class="ds-list" id="dsDecisionList" role="list">
                 <div class="ds-empty">
@@ -342,7 +345,8 @@
                 </div>
             </div>
             <div class="ds-footer">
-                <p class="ds-hint">Прийміть всі рішення щоб продовжити роботу</p>
+                <p class="ds-hint">Рішення залишаться в черзі — їх можна опрацювати пізніше.</p>
+                <button type="button" class="ds-btn ds-btn--continue" data-decision-screen-dismiss>Продовжити роботу</button>
             </div>
         </div>
     </div>

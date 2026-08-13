@@ -417,6 +417,11 @@ async function waitForMyDayProfileRuntime(page) {
 }
 
 async function openTasksPage(page) {
+    const permissionsLoad = page.waitForResponse(response => {
+        const url = new URL(response.url());
+        return response.request().method() === 'GET'
+            && url.pathname === '/api/tasks/permissions';
+    }, { timeout: TIMEOUT_MS });
     await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated tasks navigation should not redirect to the root fallback');
     try {
@@ -426,6 +431,8 @@ async function openTasksPage(page) {
             && window.TaskAiDraft
             && !document.getElementById('mainApp')?.classList.contains('hidden')
         ), null, { timeout: TIMEOUT_MS });
+        const permissionsResponse = await permissionsLoad;
+        assert.equal(permissionsResponse.ok(), true, `Tasks permissions bootstrap succeeds: HTTP ${permissionsResponse.status()}`);
     } catch (error) {
         const diagnostics = await page.evaluate(() => ({
             url: location.href,
@@ -662,15 +669,15 @@ async function main() {
         body: ''
     }));
     await context.addInitScript(({ token, refreshToken, refreshExpiresAt, user }) => {
-        if (token) {
+        if (token && !localStorage.getItem('pzp_token') && !localStorage.getItem('pzp_access_token')) {
             localStorage.setItem('pzp_token', token);
             localStorage.setItem('pzp_access_token', token);
         }
-        if (refreshToken) localStorage.setItem('pzp_refresh_token', refreshToken);
-        if (refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
-        if (user) localStorage.setItem('pzp_current_user', JSON.stringify(user));
-        localStorage.setItem('pzp_crm_business_context', 'event_genix');
-        localStorage.setItem('pzp_dark_mode', 'false');
+        if (refreshToken && !localStorage.getItem('pzp_refresh_token')) localStorage.setItem('pzp_refresh_token', refreshToken);
+        if (refreshExpiresAt && !localStorage.getItem('pzp_refresh_expires_at')) localStorage.setItem('pzp_refresh_expires_at', String(refreshExpiresAt));
+        if (user && !localStorage.getItem('pzp_current_user')) localStorage.setItem('pzp_current_user', JSON.stringify(user));
+        if (!localStorage.getItem('pzp_crm_business_context')) localStorage.setItem('pzp_crm_business_context', 'event_genix');
+        if (!localStorage.getItem('pzp_dark_mode')) localStorage.setItem('pzp_dark_mode', 'false');
         window.__eventGenixLiveQaReadOnly = true;
     }, session);
     const page = await context.newPage();
@@ -793,6 +800,9 @@ async function main() {
         const cabinetAfterBundle = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
         const projectedTitles = extractTodayTitles(cabinetAfterBundle);
         assert.ok(projectedTitles.includes(`Bundle CRM actual app ${RUN_ID}`), 'bundle task scheduled for today appears in My Day projection');
+        assert.ok(projectedTitles.includes(`Bundle Hermes actual app ${RUN_ID}`), 'bundle task with null AI date inherits the human-confirmed Today date');
+        await visibleTaskCard(page, `Bundle CRM actual app ${RUN_ID}`);
+        await visibleTaskCard(page, `Bundle Hermes actual app ${RUN_ID}`);
 
         await openTasksPage(page);
         await page.locator('[data-due-preset="tomorrow"]').click();
@@ -805,7 +815,6 @@ async function main() {
         const cabinetAfterTomorrow = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
         assert.equal(extractTodayTitles(cabinetAfterTomorrow).includes(tasksManualTomorrowTitle), false, 'tomorrow task is not projected into Today');
 
-        await openTasksPage(page);
         await page.locator('[data-due-preset="no_date"]').click();
         const tasksManualNoDateTitle = `Tasks manual no date ${RUN_ID}`;
         await page.locator('#taskTitle').fill(tasksManualNoDateTitle);
@@ -816,7 +825,6 @@ async function main() {
         const cabinetAfterNoDate = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
         assert.equal(extractTodayTitles(cabinetAfterNoDate).includes(tasksManualNoDateTitle), true, 'no-date task remains visible in the current My Day today bucket contract');
 
-        await openTasksPage(page);
         await page.locator('[data-due-preset="custom"]').click();
         const customDate = kyivDateOffset(5);
         await page.locator('#taskScheduleDate').fill(customDate);
@@ -829,7 +837,6 @@ async function main() {
         const cabinetAfterCustom = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
         assert.equal(extractTodayTitles(cabinetAfterCustom).includes(tasksManualCustomTitle), false, 'custom-date task is not projected into Today');
 
-        await openTasksPage(page);
         const providerUnavailableSource = `Provider unavailable source ${RUN_ID}`;
         openAiMock.intercept(
             () => true,
@@ -854,7 +861,6 @@ async function main() {
         const providerFallbackBody = await responseJson(await providerFallbackResponse, 'manual Tasks composer after provider unavailable');
         assert.ok(Number(providerFallbackBody.task?.id || providerFallbackBody.data?.id) > 0, 'manual composer still creates after provider unavailable');
 
-        await openTasksPage(page);
         openAiMock.enqueue(() => openAiDraftOutput({
             decision: 'needs_clarification',
             mode: null,
@@ -871,7 +877,6 @@ async function main() {
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review] .is-clarification').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
 
-        await openTasksPage(page);
         openAiMock.enqueue(body => {
             assert.equal(body.model, 'gpt-5.6-luna');
             assert.equal(body.store, false);
@@ -889,10 +894,34 @@ async function main() {
 
         await api(TARGET_URL, '/api/my-day/timer/start', { method: 'POST', token: session.token, body: { taskId: manualTaskId } });
         await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
-        await page.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('.global-task-timer__title, .global-task-timer-panel__title, .global-task-timer-chip').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        const decisionSeed = await api(TARGET_URL, '/api/decisions', {
+            method: 'POST',
+            token: session.token,
+            body: {
+                title: `My Day navigation decision ${RUN_ID}`,
+                description: 'Disposable browser fixture for the Decision Center navigation regression.',
+                priority: 'important',
+                source: 'manual'
+            }
+        });
+        assert.ok(Number(decisionSeed.id) > 0, 'browser smoke creates one disposable pending decision');
         await page.goto(`${TARGET_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
+        await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        const decisionOverlay = page.locator('#decisionScreen');
+        await decisionOverlay.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await decisionOverlay.locator('[data-decision-screen-dismiss]').first().click();
+        await decisionOverlay.waitFor({ state: 'hidden', timeout: TIMEOUT_MS });
+        const productivitySection = page.locator('#sidebarProductivityQuick');
+        await productivitySection.waitFor({ state: 'attached', timeout: TIMEOUT_MS });
+        const productivityToggle = productivitySection.locator('[data-sidebar-productivity-toggle-section]');
+        if (await productivityToggle.getAttribute('aria-expanded') === 'false') await productivityToggle.click();
+        const myDaySidebarLink = productivitySection.locator('a[href="/profile?tab=myday"], a[href="/profile.html?tab=myday"]').first();
+        await myDaySidebarLink.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await myDaySidebarLink.click();
+        await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday', { timeout: TIMEOUT_MS });
+        await page.locator('#cabinetMyDaySegmentPanel').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await api(TARGET_URL, '/api/my-day/timer/stop', { method: 'POST', token: session.token, body: {} });
         await evaluateAfterNavigationSettles(page, () => {

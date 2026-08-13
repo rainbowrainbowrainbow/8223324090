@@ -315,8 +315,11 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .my-day-task-impact-chips {
     align-items: center;
     display: inline-flex;
+    flex: 1 1 auto;
     flex-wrap: wrap;
     gap: 4px;
+    max-width: 100%;
+    min-width: 0;
 }
 
 .my-day-classification-fields label,
@@ -356,7 +359,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     font-weight: 700;
     gap: 3px;
     line-height: 1.15;
-    max-width: 150px;
+    max-width: min(220px, 100%);
     padding: 3px 7px;
 }
 
@@ -438,6 +441,10 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     .my-day-time-disclosure:hover,
     .my-day-time-disclosure[aria-expanded="true"] {
         transform: none;
+    }
+
+    .cabinet-task-action-timer.is-busy .my-day-time-disclosure-icon {
+        animation: none;
     }
 }
 .my-day-taxonomy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -1094,6 +1101,55 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     line-height: 1;
 }
 
+.cabinet-task-action-timer {
+    border-radius: 12px;
+    height: 36px;
+    min-height: 36px;
+    min-width: 36px;
+    padding: 0;
+    width: 36px;
+}
+
+.cabinet-task-actions .cabinet-task-action-timer {
+    height: 40px;
+    min-height: 40px;
+    min-width: 40px;
+    padding: 0;
+    width: 40px;
+}
+
+.cabinet-overdue-triage-actions--header .cabinet-task-action-timer {
+    height: 36px;
+    min-height: 36px;
+    min-width: 36px;
+    padding: 0;
+    width: 36px;
+}
+
+.cabinet-task-action-timer.is-active {
+    background: rgba(20, 184, 166, 0.14);
+    border-color: rgba(20, 184, 166, 0.48);
+    box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.10), 0 0 0 3px rgba(20, 184, 166, 0.08);
+    color: #0f766e;
+}
+
+.cabinet-task-action-timer.is-busy .my-day-time-disclosure-icon {
+    animation: my-day-timer-button-pulse 0.8s ease-in-out infinite alternate;
+}
+
+.cabinet-task-action-timer .my-day-time-running-dot {
+    height: 6px;
+    position: absolute;
+    right: 5px;
+    top: 5px;
+    width: 6px;
+}
+
+@keyframes my-day-timer-button-pulse {
+    from { opacity: 0.42; }
+    to { opacity: 1; }
+}
+
 .my-day-time-running-dot {
     background: #14b8a6;
     border-radius: 999px;
@@ -1111,11 +1167,24 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 }
 
 .my-day-time-popover.is-popover .task-ui-action-panel {
-    width: min(380px, calc(100vw - 24px));
+    width: min(336px, calc(100vw - 24px));
 }
 
 .my-day-time-popover .task-ui-action-body {
-    padding: 12px;
+    padding: 10px 12px 12px;
+}
+
+.my-day-time-menu-popover .task-ui-action-head {
+    padding: 10px 12px 8px;
+}
+
+.my-day-time-menu-popover .task-ui-action-head strong {
+    font-size: 14px;
+}
+
+.my-day-time-menu-popover .task-ui-icon-btn {
+    height: 32px;
+    width: 32px;
 }
 
 .my-day-time-popover-content,
@@ -1125,31 +1194,67 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     min-width: 0;
 }
 
-.my-day-time-menu-summary,
-.my-day-time-menu-actions {
-    align-items: center;
-    display: flex;
-    flex-wrap: wrap;
+.my-day-time-menu-summary {
+    display: grid;
     gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     min-width: 0;
+}
+
+.my-day-time-menu-stat {
+    align-items: flex-start;
+    background: rgba(248, 250, 252, 0.88);
+    border: 1px solid rgba(148, 163, 184, 0.22);
+    border-radius: 12px;
+    display: grid;
+    gap: 4px;
+    min-width: 0;
+    padding: 9px 10px;
+}
+
+.my-day-time-menu-stat strong {
+    color: var(--text-primary, #0f172a);
+    font-size: 0.94rem;
+    font-variant-numeric: tabular-nums;
+    font-weight: 950;
 }
 
 .my-day-time-menu-state {
     align-items: center;
+    background: rgba(148, 163, 184, 0.08);
+    border: 1px solid rgba(148, 163, 184, 0.15);
+    border-radius: 10px;
     color: var(--text-muted, #64748b);
-    display: inline-flex;
+    display: flex;
     font-size: 0.82rem;
     font-weight: 850;
     gap: 7px;
     margin: 0;
+    min-height: 36px;
+    padding: 7px 9px;
 }
 
 .my-day-time-menu-state.is-active {
+    background: rgba(20, 184, 166, 0.10);
+    border-color: rgba(20, 184, 166, 0.22);
     color: #0f766e;
 }
 
+.my-day-time-menu-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-width: 0;
+}
+
 .my-day-time-menu-actions .my-day-time-button {
-    flex: 1 1 130px;
+    min-width: 0;
+    width: 100%;
+}
+
+.my-day-time-menu-primary {
+    grid-column: 1 / -1;
+    min-height: 44px;
 }
 
 .my-day-time-entry-list {
@@ -1641,15 +1746,38 @@ html[data-theme="dark"] body .my-day-time-popover .task-ui-action-panel {
     color: var(--my-day-life-secondary, #cbd5e1);
 }
 
+body.dark-mode .profile-page.profile-work-mode .cabinet-task-action-timer.is-active,
+html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-action-timer.is-active {
+    background: rgba(20, 184, 166, 0.16);
+    border-color: rgba(94, 234, 212, 0.42);
+    box-shadow: inset 0 0 0 1px rgba(94, 234, 212, 0.08), 0 0 0 3px rgba(20, 184, 166, 0.10);
+    color: #99f6e4;
+}
+
+body.dark-mode .my-day-time-popover .my-day-time-menu-stat,
+html[data-theme="dark"] body .my-day-time-popover .my-day-time-menu-stat {
+    background: rgba(15, 23, 42, 0.72);
+    border-color: rgba(148, 163, 184, 0.26);
+}
+
+body.dark-mode .my-day-time-popover .my-day-time-menu-stat strong,
+html[data-theme="dark"] body .my-day-time-popover .my-day-time-menu-stat strong {
+    color: var(--my-day-life-text, #f8fafc);
+}
+
 body.dark-mode .profile-page.profile-work-mode .my-day-time-button--primary,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-button--primary {
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-button--primary,
+body.dark-mode .my-day-time-popover .my-day-time-button--primary,
+html[data-theme="dark"] body .my-day-time-popover .my-day-time-button--primary {
     background: linear-gradient(135deg, rgba(16, 185, 129, 0.94), rgba(37, 99, 235, 0.88));
     border-color: rgba(94, 234, 212, 0.34);
-    color: var(--my-day-life-text);
+    color: var(--my-day-life-text, #f8fafc);
 }
 
 body.dark-mode .profile-page.profile-work-mode .my-day-time-button--stop,
-html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-button--stop {
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-time-button--stop,
+body.dark-mode .my-day-time-popover .my-day-time-button--stop,
+html[data-theme="dark"] body .my-day-time-popover .my-day-time-button--stop {
     background: rgba(244, 63, 94, 0.16);
     border-color: rgba(251, 113, 133, 0.34);
     color: #fecdd3;
@@ -1682,11 +1810,15 @@ html[data-theme="dark"] body .my-day-time-popover .my-day-time-button:hover:not(
 
 body.dark-mode .my-day-time-popover .my-day-time-menu-state,
 html[data-theme="dark"] body .my-day-time-popover .my-day-time-menu-state {
+    background: rgba(148, 163, 184, 0.10);
+    border-color: rgba(148, 163, 184, 0.20);
     color: var(--my-day-life-muted, #94a3b8);
 }
 
 body.dark-mode .my-day-time-popover .my-day-time-menu-state.is-active,
 html[data-theme="dark"] body .my-day-time-popover .my-day-time-menu-state.is-active {
+    background: rgba(20, 184, 166, 0.12);
+    border-color: rgba(94, 234, 212, 0.24);
     color: #99f6e4;
 }
 

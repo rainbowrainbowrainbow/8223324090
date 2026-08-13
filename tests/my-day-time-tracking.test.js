@@ -64,11 +64,12 @@ test('time ledger contract has one active timer, atomic switch, completion stop,
     assert.match(projection, /actualSeconds: taskTimeTotalsByTaskId\.get\(taskId\) \|\| 0/);
 });
 
-test('My Day UI keeps plan and fact behind compact card disclosure', () => {
+test('My Day UI keeps an icon trigger in the header and plan/fact in details', () => {
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const ui = fs.readFileSync(path.join(root, 'js', 'my-day-time-tracking.js'), 'utf8');
     assert.doesNotMatch(profile, /renderActiveTimerStrip/);
-    assert.match(profile, /renderTaskControls/);
+    assert.match(profile, /renderTaskTrigger/);
+    assert.match(profile, /renderTaskSummary/);
     assert.match(profile, /myDayTimeTracking\.load\(\)/);
     assert.match(profile, /myDayTimeTracking\.bind\?\.\(document\)/);
     assert.match(ui, /effortMinutes/);
@@ -92,7 +93,9 @@ test('My Day time controls use CRM classes instead of raw browser-default button
     assert.doesNotMatch(ui, /my-day-active-timer/);
     assert.match(ui, /my-day-time-summary/);
     assert.match(ui, /my-day-time-disclosure/);
-    assert.match(ui, /aria-label="Деталі часу"/);
+    assert.match(ui, /cabinet-task-action-timer/);
+    assert.match(ui, /Відкрити час задачі/);
+    assert.match(ui, /aria-haspopup="dialog"/);
     assert.match(ui, /my-day-time-button--primary/);
     assert.match(ui, /my-day-time-button--stop/);
     assert.match(ui, /my-day-time-popover/);
@@ -105,6 +108,10 @@ test('My Day time controls use CRM classes instead of raw browser-default button
     assert.match(css, /min-height:\s*34px/);
     assert.match(css, /flex-wrap:\s*wrap/);
     assert.match(css, /\.my-day-time-popover\.is-popover \.task-ui-action-panel/);
+    assert.match(css, /\.my-day-time-menu-actions\s*\{[\s\S]*display:\s*grid/);
+    assert.match(css, /\.my-day-time-menu-primary\s*\{[\s\S]*grid-column:\s*1 \/ -1/);
+    assert.match(css, /body\.dark-mode \.my-day-time-popover \.my-day-time-button--primary/);
+    assert.match(css, /body\.dark-mode \.my-day-time-popover \.my-day-time-button--stop/);
     assert.doesNotMatch(css, /\.my-day-active-timer/);
     assert.match(css, /html\[data-theme="dark"\] body \.profile-page\.profile-work-mode \.my-day-time-disclosure/);
     assert.match(css, /@media \(max-width: 640px\)[\s\S]*\.my-day-time-task--disclosure/);
@@ -118,7 +125,7 @@ function loadTimeTrackingUi(overrides = {}) {
     const cleared = [];
     const context = {
         console,
-        Date,
+        Date: overrides.Date || Date,
         Intl,
         fetch: overrides.fetch || (async () => ({ ok: true, status: 200, json: async () => ({ success: true }) })),
         setInterval: callback => { intervals.push(callback); return intervals.length; },
@@ -128,7 +135,8 @@ function loadTimeTrackingUi(overrides = {}) {
             TaskUI: { escapeHtml: value => String(value), ...(overrides.taskUi || {}) },
             getAuthHeaders: () => ({ Authorization: 'Bearer test-token' }),
             promptModal: async () => null,
-            showNotification: () => {}
+            showNotification: () => {},
+            ...(overrides.window || {})
         }
     };
     vm.createContext(context);
@@ -137,28 +145,84 @@ function loadTimeTrackingUi(overrides = {}) {
 }
 
 test('My Day timer UI derives live elapsed seconds from client clock without duplicate intervals', () => {
-    const { api, intervals, cleared } = loadTimeTrackingUi();
+    let now = 1_800_000_000_000;
+    class TestDate extends Date {
+        static now() { return now; }
+    }
+    const actualNode = {
+        dataset: {
+            myDayTimeTaskActual: '41',
+            myDayTimeActualBase: '30',
+            myDayTimeSyncedAt: String(now)
+        },
+        textContent: '0:30'
+    };
+    const { api, intervals, cleared } = loadTimeTrackingUi({
+        Date: TestDate,
+        document: {
+            querySelector: () => null,
+            querySelectorAll: selector => selector === '[data-my-day-time-task-actual]' ? [actualNode] : []
+        }
+    });
     const timer = api.normalizeTimer({ taskId: 41, durationSeconds: 30, isActive: true, task: { title: 'Live task' } });
-    timer.clientSyncedAt = Date.now() - 65_000;
+    timer.clientSyncedAt = now - 65_000;
     api.state.timer = timer;
 
     assert.equal(api.secondsLabel(30), '0:00', 'settled summaries keep minute precision');
     assert.equal(api.liveSecondsLabel(30), '0:30', 'active timer shows seconds before the first minute');
     assert.equal(api.liveSecondsLabel(95), '1:35', 'active timer keeps seconds after one minute');
     assert.ok(api.currentTimerDurationSeconds() >= 95);
-    const compactControls = api.renderTaskControls({ id: 41, actualSeconds: 30 });
-    assert.match(compactControls, /my-day-time-disclosure/);
-    assert.match(compactControls, /aria-label="Деталі часу"/);
-    assert.match(compactControls, /data-my-day-time-task-actual="41"/);
-    assert.match(compactControls, />0:30<\/span>/, 'active task disclosure renders seconds while timer is running');
-    assert.doesNotMatch(compactControls, /data-cabinet-task-action="timer-start"/, 'collapsed card does not render a large start button inline');
-    assert.doesNotMatch(compactControls, /data-cabinet-task-action="time-entry"/, 'collapsed card keeps manual time behind the popover');
+    const trigger = api.renderTaskTrigger({ id: 41, actualSeconds: 30 });
+    assert.match(trigger, /my-day-time-disclosure/);
+    assert.match(trigger, /cabinet-task-action-timer/);
+    assert.match(trigger, /aria-label="Таймер працює — відкрити час задачі"/);
+    assert.match(trigger, /aria-haspopup="dialog"/);
+    assert.match(trigger, /my-day-time-running-dot/);
+    assert.doesNotMatch(trigger, /data-my-day-time-task-actual|>0:30<\/span>/, 'header trigger stays icon-only');
+
+    const summary = api.renderTaskSummary({ id: 41, actualSeconds: 30 });
+    assert.match(summary, /data-my-day-time-task-actual="41"/);
+    assert.match(summary, />0:30<\/span>/, 'detailed summary renders live seconds');
+    assert.doesNotMatch(trigger, /data-cabinet-task-action="timer-start"/, 'collapsed card does not render a large start button inline');
+    assert.doesNotMatch(trigger, /data-cabinet-task-action="time-entry"/, 'collapsed card keeps manual time behind the popover');
+
+    now += 1_000;
+    api.updateTimerDom();
+    assert.equal(actualNode.textContent, '0:31', 'live DOM advances one second instead of dropping to minute precision');
 
     assert.equal(api.syncTicker(true), true);
     assert.equal(api.syncTicker(true), true);
     assert.equal(intervals.length, 1, 'ticker starts only one interval');
     assert.equal(api.syncTicker(false), false);
     assert.deepEqual(cleared, [1], 'ticker clears the active interval');
+});
+
+test('My Day timer hydration deduplicates concurrent requests and resolves fresh state', async () => {
+    let fetchCount = 0;
+    let releaseFetch;
+    const responsePromise = new Promise(resolve => { releaseFetch = resolve; });
+    const { api } = loadTimeTrackingUi({
+        fetch: async () => {
+            fetchCount += 1;
+            return responsePromise;
+        }
+    });
+
+    const first = api.load();
+    const second = api.load();
+    assert.equal(fetchCount, 1, 'concurrent hydration shares one request');
+    releaseFetch({
+        ok: true,
+        status: 200,
+        json: async () => ({ success: true, timer: { taskId: 55, durationSeconds: 9, isActive: true } })
+    });
+    const [firstTimer, secondTimer] = await Promise.all([first, second]);
+
+    assert.equal(firstTimer.taskId, 55);
+    assert.equal(secondTimer.taskId, 55);
+    assert.equal(api.state.timer.taskId, 55);
+    assert.equal(api.state.loaded, true);
+    assert.equal(api.state.loading, false);
 });
 
 test('My Day timer UI hydrates active timer from API and clears ticker on stop action', async () => {
@@ -191,10 +255,42 @@ test('My Day timer UI hydrates active timer from API and clears ticker on stop a
     assert.deepEqual(fetchCalls.map(call => `${call.method} ${call.url}`), ['GET /api/my-day/timer', 'POST /api/my-day/timer/stop']);
 });
 
-test('My Day time disclosure opens a TaskUI popover with timer and detail actions', async () => {
+test('My Day timer Start and Stop notify the global timer immediately', async () => {
+    const notifications = [];
+    const fetchCalls = [];
+    const { api } = loadTimeTrackingUi({
+        window: {
+            GlobalTaskTimer: { notifyLocalChange: action => notifications.push(action) }
+        },
+        fetch: async (url, options = {}) => {
+            fetchCalls.push(`${options.method || 'GET'} ${url}`);
+            if (String(url).endsWith('/timer/start')) {
+                return { ok: true, status: 200, json: async () => ({ success: true, timer: { taskId: 9, durationSeconds: 0, isActive: true } }) };
+            }
+            return { ok: true, status: 200, json: async () => ({ success: true, timer: null }) };
+        }
+    });
+
+    let changed = 0;
+    await api.handleAction('timer-start', 9, async () => { changed += 1; });
+    assert.equal(api.state.timer.taskId, 9);
+    await api.handleAction('timer-stop', 9, async () => { changed += 1; });
+
+    assert.equal(api.state.timer, null);
+    assert.equal(changed, 2);
+    assert.deepEqual(notifications, ['start', 'stop']);
+    assert.deepEqual(fetchCalls, ['POST /api/my-day/timer/start', 'POST /api/my-day/timer/stop']);
+});
+
+test('My Day time disclosure refreshes stale timer state before opening the TaskUI popover', async () => {
     const opened = {};
+    const fetchCalls = [];
     const fakeRoot = { querySelectorAll: () => [] };
     const { api } = loadTimeTrackingUi({
+        fetch: async (url, options = {}) => {
+            fetchCalls.push(`${options.method || 'GET'} ${url}`);
+            return { ok: true, status: 200, json: async () => ({ success: true, timer: null }) };
+        },
         taskUi: {
             openActionMenu: (button, html, options) => {
                 opened.button = button;
@@ -210,8 +306,19 @@ test('My Day time disclosure opens a TaskUI popover with timer and detail action
     assert.doesNotMatch(controls, /data-cabinet-task-action="timer-start"/);
     assert.doesNotMatch(controls, /data-cabinet-task-action="time-entry"/);
 
-    await api.handleAction('time-menu', 9, async () => {}, { id: 'time-trigger' }, { id: 9, effortMinutes: 30, actualSeconds: 60 });
+    api.state.loaded = true;
+    api.state.timer = api.normalizeTimer({ taskId: 9, durationSeconds: 8, isActive: true });
+    const trigger = {
+        id: 'time-trigger',
+        disabled: false,
+        classList: { add: () => {}, remove: () => {} },
+        setAttribute: () => {},
+        removeAttribute: () => {}
+    };
+    await api.handleAction('time-menu', 9, async () => {}, trigger, { id: 9, effortMinutes: 30, actualSeconds: 60 });
 
+    assert.deepEqual(fetchCalls, ['GET /api/my-day/timer'], 'opening always waits for a fresh timer snapshot even after prior hydration');
+    assert.equal(trigger.disabled, false, 'trigger busy state is restored');
     assert.equal(opened.options.title, 'Час задачі');
     assert.equal(opened.options.surfaceClassName, 'my-day-time-popover my-day-time-menu-popover');
     assert.match(opened.html, /data-my-day-time-menu-action="timer-start"/);
@@ -219,6 +326,87 @@ test('My Day time disclosure opens a TaskUI popover with timer and detail action
     assert.match(opened.html, /data-my-day-time-menu-action="time-entries"/);
     assert.match(opened.html, />План</);
     assert.match(opened.html, />Факт</);
+});
+
+test('opening the time menu preserves live fact accumulated after the card snapshot', async () => {
+    let now = 1_800_000_000_000;
+    class TestDate extends Date {
+        static now() { return now; }
+    }
+    const opened = {};
+    const { api } = loadTimeTrackingUi({
+        Date: TestDate,
+        fetch: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true, timer: { id: 7, taskId: 9, startedAt: '2026-08-13T10:00:00Z', durationSeconds: 150, isActive: true } })
+        }),
+        taskUi: {
+            openActionMenu: (_button, html) => {
+                opened.html = html;
+                return { querySelectorAll: () => [] };
+            }
+        }
+    });
+    api.state.timer = api.normalizeTimer({ id: 7, taskId: 9, startedAt: '2026-08-13T10:00:00Z', durationSeconds: 30, isActive: true });
+    api.state.loaded = true;
+    api.renderTaskTrigger({ id: 9, actualSeconds: 130 });
+
+    now += 120_000;
+    await api.handleAction('time-menu', 9, async () => {}, null, { id: 9, actualSeconds: 130 });
+
+    assert.match(opened.html, /data-my-day-time-actual-base="250"/);
+    assert.match(opened.html, />4:10<\/span>/, 'menu fact keeps the 120 seconds accumulated since the card snapshot');
+});
+
+test('My Day time menu explains an active timer on another task and keeps Start as the switch action', async () => {
+    const opened = {};
+    const { api } = loadTimeTrackingUi({
+        fetch: async () => ({
+            ok: true,
+            status: 200,
+            json: async () => ({ success: true, timer: { taskId: 88, durationSeconds: 12, isActive: true } })
+        }),
+        taskUi: {
+            openActionMenu: (_button, html) => {
+                opened.html = html;
+                return { querySelectorAll: () => [] };
+            }
+        }
+    });
+
+    await api.handleAction('time-menu', 9, async () => {}, null, { id: 9, effortMinutes: 30, actualSeconds: 0 });
+
+    assert.match(opened.html, /Таймер працює для іншої задачі\. Старт перемкне його сюди\./);
+    assert.match(opened.html, /data-my-day-time-menu-action="timer-start"/);
+    assert.match(opened.html, />Старт<\/button>/);
+});
+
+test('cancelling manual time from the menu keeps it open and skips refresh', async () => {
+    let menuHandler = null;
+    let closeCount = 0;
+    let changed = 0;
+    const manualButton = {
+        dataset: { myDayTimeMenuAction: 'time-entry' },
+        disabled: false,
+        isConnected: true,
+        addEventListener: (_event, handler) => { menuHandler = handler; }
+    };
+    const { api } = loadTimeTrackingUi({
+        window: { promptModal: async () => null },
+        taskUi: {
+            openActionMenu: () => ({ querySelectorAll: selector => selector === '[data-my-day-time-menu-action]' ? [manualButton] : [] }),
+            closeActionMenu: () => { closeCount += 1; }
+        }
+    });
+
+    await api.handleAction('time-menu', 9, async () => { changed += 1; }, null, { id: 9 });
+    assert.equal(typeof menuHandler, 'function');
+    await menuHandler({ preventDefault: () => {}, stopPropagation: () => {} });
+
+    assert.equal(closeCount, 0);
+    assert.equal(changed, 0);
+    assert.equal(manualButton.disabled, false);
 });
 
 test('My Day time entries popover uses CRM surface and accessible edit delete labels', async () => {

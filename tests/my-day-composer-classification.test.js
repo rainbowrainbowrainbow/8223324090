@@ -118,7 +118,7 @@ test('My Day composer chip binder disables unselected impacts after the fifth se
     assert.match(source, /count\.textContent = `\$\{selectedIds\.length\} \/ \$\{maxImpacts\(\)\}`/);
 });
 
-test('My Day task impact chips expose hidden third impact with tooltip and accessible label', () => {
+test('My Day task impact chips show every selected impact without an overflow counter', () => {
     const context = loadClassificationUi();
     const api = context.window.MyDayClassification;
     const html = api.renderTaskBadges({
@@ -131,10 +131,26 @@ test('My Day task impact chips expose hidden third impact with tooltip and acces
 
     assert.match(html, /CRM/);
     assert.match(html, /Hermes/);
-    assert.match(html, /my-day-task-chip--more/);
-    assert.match(html, /aria-expanded="false"/);
+    assert.match(html, /Парк/);
+    assert.doesNotMatch(html, /my-day-task-chip--more/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="reveal-impact"/);
+    assert.doesNotMatch(html, /\shidden(?:\s|>)/);
     assert.match(html, /title="Парк"/);
-    assert.match(html, /aria-label="Ще впливи: Парк"/);
+});
+
+test('My Day task impact chips keep all five allowed impacts visible', () => {
+    const context = loadClassificationUi();
+    const html = context.window.MyDayClassification.renderTaskBadges({
+        impacts: Array.from({ length: 5 }, (_, index) => ({
+            id: index + 1,
+            name: `Impact ${index + 1}`,
+            icon: String(index + 1),
+            color: '#2563eb'
+        }))
+    }, { taskId: 101 });
+
+    assert.equal((html.match(/data-cabinet-task-action="remove-impact"/g) || []).length, 5);
+    assert.doesNotMatch(html, /my-day-task-chip--more|reveal-impact|\shidden(?:\s|>)/);
 });
 
 test('My Day task impact chips are removable buttons with task and impact ids', () => {
@@ -150,12 +166,13 @@ test('My Day task impact chips are removable buttons with task and impact ids', 
 
     assert.match(html, /<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--removable/);
     assert.match(html, /data-cabinet-task-action="remove-impact"/);
-    assert.match(html, /data-cabinet-task-action="reveal-impact"/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="reveal-impact"/);
     assert.match(html, /data-task-id="101"/);
     assert.match(html, /data-my-day-impact-id="1"/);
     assert.match(html, /data-my-day-impact-name="CRM"/);
     assert.match(html, /aria-label="Прибрати вплив CRM"/);
-    assert.match(html, /data-my-day-impact-id="3"[\s\S]*hidden/);
+    assert.match(html, /data-my-day-impact-id="3"/);
+    assert.doesNotMatch(html, /\shidden(?:\s|>)/);
 });
 
 test('My Day removable impact chips have motion, touch, and reduced-motion CSS states', () => {
@@ -180,7 +197,8 @@ test('Profile My Day shared task handler removes one impact through existing cla
     assert.match(profile, /saveTaskClassification\?\.\(taskId,\s*\{[\s\S]*impactIds:\s*remainingImpactIds/);
     assert.match(profile, /cabinetClassificationMutationInFlight/);
     assert.match(profile, /const key = String\(taskId\)/);
-    assert.match(profile, /data-cabinet-task-action="remove-impact"[\s\S]*data-cabinet-task-action="reveal-impact"/);
+    assert.match(profile, /data-cabinet-task-action="remove-impact"/);
+    assert.doesNotMatch(profile, /data-cabinet-task-action="reveal-impact"/);
     assert.match(profile, /refreshCabinetTaskClassificationBadges\(taskId,\s*classification\)/);
     assert.match(profile, /renderTaskBadges\?\.\(task\.myDay,\s*\{ taskId \}\)/);
     assert.match(profile, /function bindCabinetTaskActions/);
@@ -195,21 +213,23 @@ test('Profile My Day compact cards use stable zones instead of one mixed meta ro
     assert.match(profile, /cabinet-task-zone--header/);
     assert.match(profile, /cabinet-task-zone--facts/);
     assert.match(profile, /cabinet-task-zone--classification/);
-    assert.match(profile, /cabinet-task-zone--commands/);
+    assert.match(profile, /renderCabinetMyDayTimeTrigger/);
+    assert.match(profile, /renderCabinetMyDayTimeSummary/);
     assert.match(profile, /cabinet-task-main--my-day/);
-    assert.match(profile, /function renderCabinetMyDayTimeZone\(task = \{\}, showDetails = false\)/);
-    assert.match(profile, /renderTaskControls\?\.\(task,\s*\{ detailed: showDetails \}\)/);
+    assert.match(profile, /renderTaskTrigger\(task,\s*\{ buttonClassName \}\)/);
+    assert.match(profile, /renderTaskSummary\?\.\(task\)/);
     assert.match(profile, /renderCabinetOverdueTriageProgress\(task\)/);
     assert.match(profile, /time-menu/);
     assert.match(timeUi, /data-cabinet-task-action="time-menu"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entry"/);
     assert.match(timeUi, /data-my-day-time-menu-action="time-entries"/);
     const compactTimeControls = timeUi.slice(
-        timeUi.indexOf('my-day-time-task--disclosure'),
+        timeUi.indexOf('function renderTaskTrigger'),
         timeUi.indexOf('async function addManualEntry')
     );
     assert.match(compactTimeControls, /data-cabinet-task-action="time-menu"/);
-    assert.match(compactTimeControls, /aria-label="Деталі часу"/);
+    assert.match(compactTimeControls, /Відкрити час задачі/);
+    assert.match(compactTimeControls, /cabinet-task-action-timer/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entry"/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="time-entries"/);
     assert.doesNotMatch(compactTimeControls, /data-cabinet-task-action="timer-start"/);

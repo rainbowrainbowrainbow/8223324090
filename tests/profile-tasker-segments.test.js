@@ -256,7 +256,10 @@ test('profile My Day overdue segment renders triage rows with existing task acti
         cabinetCreateDuePreset = 'today';
         MyDayClassification = { renderTaskBadges: myDay => myDay?.impacts?.length ? '<span class="my-day-task-impact-chips">CRM + Hermes</span>' : '' };
         MyDayDependencies = { renderTaskBlocker: task => '<button type="button" class="cabinet-task-dependency-action" data-cabinet-task-action="dependencies" data-task-id="' + task.id + '">Потрібно спочатку</button>' };
-        MyDayTimeTracking = { renderTaskControls: task => '<span class="my-day-time-task my-day-time-task--disclosure"><button type="button" class="my-day-time-disclosure" data-cabinet-task-action="time-menu" data-task-id="' + task.id + '" aria-label="Деталі часу">⏱</button></span>' };
+        MyDayTimeTracking = {
+            renderTaskTrigger: task => '<button type="button" class="cabinet-task-action-btn cabinet-task-action-timer" data-my-day-time-task="' + task.id + '" data-cabinet-task-action="time-menu" data-task-id="' + task.id + '" aria-label="Відкрити час задачі">⏱</button>',
+            renderTaskSummary: task => '<span class="my-day-time-summary" data-render-time-summary="' + task.id + '">План / Факт</span>'
+        };
         myCabinetData = {
             all: [
                 {
@@ -297,8 +300,9 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.match(html, /data-cabinet-task-action="dependencies"/);
     assert.match(html, /data-cabinet-task-action="ai-classification"/);
     assert.match(html, /cabinet-task-action-ai/);
-    assert.match(html, /my-day-time-task--disclosure/);
+    assert.match(html, /cabinet-task-action-timer/);
     assert.match(html, /data-cabinet-task-action="time-menu"/);
+    assert.equal((html.match(/data-cabinet-task-action="time-menu"/g) || []).length, 1);
     assert.doesNotMatch(html, /data-cabinet-task-action="timer-start"/);
     assert.doesNotMatch(html, /data-cabinet-task-action="time-entry"/);
     assert.match(html, /data-cabinet-task-action="move-target"/);
@@ -1517,7 +1521,10 @@ test('profile My Day compact cards keep critical badges and move details behind 
 
     vm.runInContext(`
         activeTab = 'myday';
-        MyDayTimeTracking = { renderTaskControls: (task, options) => '<span class="my-day-time-task my-day-time-task--disclosure" data-render-detailed="' + String(options?.detailed === true) + '"><button type="button" class="my-day-time-disclosure" data-cabinet-task-action="time-menu" data-task-id="' + task.id + '" aria-label="Деталі часу">⏱</button></span>' };
+        MyDayTimeTracking = {
+            renderTaskTrigger: task => '<button type="button" class="cabinet-task-action-btn cabinet-task-action-timer" data-my-day-time-task="' + task.id + '" data-cabinet-task-action="time-menu" data-task-id="' + task.id + '" aria-label="Відкрити час задачі">⏱</button>',
+            renderTaskSummary: task => '<span class="my-day-time-summary" data-render-time-summary="' + task.id + '">План / Факт</span>'
+        };
     `, ctx);
     const html = ctx.renderCabinetTaskCard(task, false, { surface: 'myday', activeInlineTaskId: 44 });
     const visibleBadgeCount = (html.match(/data-cabinet-visible-badge=/g) || []).length;
@@ -1534,15 +1541,20 @@ test('profile My Day compact cards keep critical badges and move details behind 
     assert.match(html, /data-cabinet-task-action="ai-classification"/);
     assert.match(html, /data-cabinet-task-action="toggle-my-day-details"/);
     assert.match(html, /data-cabinet-task-action="more"/);
-    assert.match(html, /my-day-time-task--disclosure/);
+    assert.match(html, /cabinet-task-action-timer/);
     assert.match(html, /data-cabinet-task-action="time-menu"/);
     assert.doesNotMatch(html, /data-cabinet-task-action="timer-start"/);
+    assert.ok(
+        html.indexOf('data-cabinet-task-action="done"') < html.indexOf('data-cabinet-task-action="time-menu"')
+        && html.indexOf('data-cabinet-task-action="time-menu"') < html.indexOf('data-cabinet-task-action="ai-classification"'),
+        'timer trigger should sit between done and AI actions'
+    );
 
     vm.runInContext(`cabinetMyDayViewMode = 'detailed';`, ctx);
     const detailedHtml = ctx.renderCabinetTaskCard(task, false, { surface: 'myday', activeInlineTaskId: 44 });
     assert.match(detailedHtml, /data-cabinet-visible-badge="report"/);
     assert.match(detailedHtml, /cabinet-subtask-progress/);
-    assert.match(detailedHtml, /data-render-detailed="true"/);
+    assert.match(detailedHtml, /data-render-time-summary="44"/);
 });
 
 test('profile My Day shows one active checklist slice and keeps the full checklist behind the toggle', () => {

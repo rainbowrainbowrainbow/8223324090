@@ -5806,8 +5806,17 @@ function renderCabinetMyDayClassificationZone(task = {}, taskId = 0, taskIdAttr 
     return [badges, blocker].filter(Boolean).join('');
 }
 
-function renderCabinetMyDayTimeZone(task = {}, showDetails = false) {
-    return window.MyDayTimeTracking?.renderTaskControls?.(task, { detailed: showDetails }) || '';
+function renderCabinetMyDayTimeTrigger(task = {}, buttonClassName = 'cabinet-task-action-btn') {
+    const tracking = window.MyDayTimeTracking;
+    if (typeof tracking?.renderTaskTrigger === 'function') {
+        return tracking.renderTaskTrigger(task, { buttonClassName }) || '';
+    }
+    return tracking?.renderTaskControls?.(task, { detailed: false, buttonClassName }) || '';
+}
+
+function renderCabinetMyDayTimeSummary(task = {}, showDetails = false) {
+    if (!showDetails) return '';
+    return window.MyDayTimeTracking?.renderTaskSummary?.(task) || '';
 }
 
 function renderCabinetMyDayDetailToggle(taskIdAttr = '', expanded = false, buttonClassName = 'cabinet-task-action-btn') {
@@ -5849,6 +5858,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = isMyDayCard && (globalViewMode === 'detailed' || cardDetailsExpanded);
+    const myDayTimeSummaryHtml = isMyDayCard ? renderCabinetMyDayTimeSummary(task, showMyDayDetails) : '';
     const myDayFactsHtml = isMyDayCard ? [
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
@@ -5861,10 +5871,10 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         relationLabel ? cabinetTaskVisibleBadge('relation', `<span class="cabinet-task-relation-badge">${escapeHtml(relationLabel)}</span>`) : null,
         cabinetTaskVisibleBadge('mode', `<span>${escapeHtml(taskModeLabel(task))}</span>`),
         cabinetTaskVisibleBadge('kind', `<span>${escapeHtml(taskKindLabel(task))}</span>`),
-        cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
+        cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task)),
+        myDayTimeSummaryHtml
     ].filter(Boolean).join('') : '';
     const myDayClassificationHtml = isMyDayCard ? renderCabinetMyDayClassificationZone(task, taskId, taskIdAttr) : '';
-    const myDayCommandsHtml = isMyDayCard ? renderCabinetMyDayTimeZone(task, showMyDayDetails) : '';
     const metadataHtml = !isMyDayCard ? `
                     ${renderCabinetDueBadge(task, taskIdAttr, dueState)}
                     ${renderCabinetMoveTodayAction(task, taskIdAttr, dueState)}
@@ -5897,8 +5907,10 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         : '';
     const taskTitleHtml = `<div class="cabinet-task-title" title="${escapeHtml(task.title || 'Без назви')}">${aiCreatedMarker}${escapeHtml(task.title || 'Без назви')}</div>`;
     const detailToggleHtml = isMyDayCard && globalViewMode === 'compact' ? renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded) : '';
+    const taskTimerActionHtml = isMyDayCard ? renderCabinetMyDayTimeTrigger(task) : '';
     const taskActionsHtml = `<div class="cabinet-task-actions">
                 <button type="button" class="cabinet-task-action-btn cabinet-task-action-done" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneActionLabel)}" data-tooltip="${escapeHtml(doneActionLabel)}" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                ${taskTimerActionHtml}
                 ${isMyDayCard ? `<button type="button" class="cabinet-task-action-btn cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>` : ''}
                 ${detailToggleHtml}
                 ${renderCabinetTaskMoreAction(taskIdAttr)}
@@ -5914,7 +5926,6 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
                 ${myDayFactsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--facts">${myDayFactsHtml}</div>` : ''}
                 ${myDayClassificationHtml ? `<div class="cabinet-task-zone cabinet-task-zone--classification">${myDayClassificationHtml}</div>` : ''}
                 ${myDayDetailsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--details">${myDayDetailsHtml}</div>` : ''}
-                ${myDayCommandsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--commands">${myDayCommandsHtml}</div>` : ''}
                 ${showMyDayDetails ? myDaySubtaskSummary : ''}
                 ${renderCabinetSubtasksPanel(task, taskIdAttr, subtasksExpanded, { showHead: false })}
             </div>
@@ -6472,6 +6483,7 @@ function renderCabinetOverdueTriageRow(task = {}) {
     const globalViewMode = getCabinetMyDayViewMode();
     const cardDetailsExpanded = isCabinetMyDayTaskExpanded(taskId);
     const showMyDayDetails = globalViewMode === 'detailed' || cardDetailsExpanded;
+    const timeSummaryHtml = renderCabinetMyDayTimeSummary(task, showMyDayDetails);
     const factsHtml = [
         `<span class="cabinet-task-due-badge cabinet-task-due-badge--overdue">${escapeHtml(`${dueState.label || 'Прострочено'}${dueState.detail ? ` · ${dueState.detail}` : ''}`)}</span>`,
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
@@ -6481,10 +6493,11 @@ function renderCabinetOverdueTriageRow(task = {}) {
         cabinetTaskVisibleBadge('mode', `<span>${escapeHtml(taskModeLabel(task))}</span>`),
         cabinetTaskVisibleBadge('kind', `<span>${escapeHtml(taskKindLabel(task))}</span>`),
         renderCabinetOverdueTriageProgress(task),
-        cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task))
+        cabinetTaskVisibleBadge('report', cabinetTaskReportBadge(task)),
+        timeSummaryHtml
     ].filter(Boolean).join('') : '';
     const classificationHtml = renderCabinetMyDayClassificationZone(task, taskId, taskIdAttr);
-    const timeControlsHtml = renderCabinetMyDayTimeZone(task, showMyDayDetails);
+    const timeTriggerHtml = renderCabinetMyDayTimeTrigger(task, 'cabinet-overdue-triage-action');
     const detailToggleHtml = globalViewMode === 'compact' ? renderCabinetMyDayDetailToggle(taskIdAttr, cardDetailsExpanded, 'cabinet-overdue-triage-action') : '';
     return `<div class="cabinet-overdue-triage-row cabinet-task-card is-personal-day-card is-my-day-compact-card priority-${escapeHtml(priority)} ${attentionClass}" data-cabinet-overdue-triage-row data-task-id="${taskIdAttr}" data-task-status="${escapeHtml(taskStatus)}" data-task-priority="${escapeHtml(priority)}" data-task-attention-level="${attentionLevel}" data-task-due-state="${escapeHtml(dueState.key)}" data-my-day-view-mode="${escapeHtml(globalViewMode)}" data-my-day-details-expanded="${showMyDayDetails ? 'true' : 'false'}">
         <div class="cabinet-overdue-triage-main">
@@ -6492,6 +6505,7 @@ function renderCabinetOverdueTriageRow(task = {}) {
                 <a class="cabinet-overdue-triage-title" href="/tasks?view=my&open=${encodeURIComponent(taskIdAttr)}" title="${escapeHtml(task.title || 'Без назви')}">${escapeHtml(task.title || 'Без назви')}</a>
                 <div class="cabinet-overdue-triage-actions cabinet-overdue-triage-actions--header">
                     <button type="button" class="cabinet-overdue-triage-action is-done" data-cabinet-task-action="done" data-task-id="${taskIdAttr}" title="${escapeHtml(doneTitle)}" aria-label="${escapeHtml(doneTitle)}" ${taskIdAttr && !doneBlocked ? '' : 'disabled'}>✓</button>
+                    ${timeTriggerHtml}
                     <button type="button" class="cabinet-overdue-triage-action cabinet-task-action-ai" title="AI: розмітити" aria-label="AI: розмітити" data-tooltip="AI: розмітити" data-cabinet-task-action="ai-classification" data-task-id="${taskIdAttr}" ${taskIdAttr ? '' : 'disabled'}>AI</button>
                     ${detailToggleHtml}
                     ${renderCabinetTaskMoreAction(taskIdAttr)}
@@ -6501,7 +6515,6 @@ function renderCabinetOverdueTriageRow(task = {}) {
             ${classificationHtml ? `<div class="cabinet-task-zone cabinet-task-zone--classification">${classificationHtml}</div>` : ''}
             ${detailsHtml ? `<div class="cabinet-task-zone cabinet-task-zone--details">${detailsHtml}</div>` : ''}
             <div class="cabinet-task-zone cabinet-task-zone--commands">
-                ${timeControlsHtml}
                 <div class="cabinet-overdue-triage-actions cabinet-overdue-triage-actions--commands">
                     <button type="button" class="cabinet-overdue-triage-action is-primary" data-cabinet-task-action="move-to-today" data-task-id="${taskIdAttr}" ${moveState.canMove ? '' : 'disabled'} title="${escapeHtml(moveState.canMove ? 'Перенести на сьогодні' : moveState.reason || 'Перенесення недоступне')}">На сьогодні</button>
                     <button type="button" class="cabinet-overdue-triage-action" data-cabinet-task-action="reschedule-overdue" data-reschedule-option="custom" data-source-surface="profile_my_cabinet_overdue_triage" data-task-id="${taskIdAttr}" ${canReschedule ? '' : 'disabled'}>Відкласти</button>
@@ -7222,22 +7235,12 @@ function setCabinetTaskClassificationBusy(taskId, busy, options = {}) {
         group.classList.toggle('is-classification-pending', Boolean(busy));
         group.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
-    document.querySelectorAll(`[data-cabinet-task-action="remove-impact"][data-task-id="${id}"], [data-cabinet-task-action="reveal-impact"][data-task-id="${id}"]`).forEach(chip => {
+    document.querySelectorAll(`[data-cabinet-task-action="remove-impact"][data-task-id="${id}"]`).forEach(chip => {
         const isPendingChip = Number(chip.dataset.myDayImpactId) === pendingImpactId;
         chip.disabled = Boolean(busy);
         chip.classList.toggle('is-pending', Boolean(busy && isPendingChip));
         chip.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
-}
-
-function revealCabinetHiddenImpact(button) {
-    const group = button?.closest?.('[data-my-day-task-impact-chips]');
-    const hidden = group ? Array.from(group.querySelectorAll('.my-day-task-chip--removable[hidden]')) : [];
-    hidden.forEach(chip => { chip.hidden = false; });
-    button.hidden = true;
-    button.setAttribute('aria-expanded', 'true');
-    hidden[0]?.focus?.({ preventScroll: true });
-    bindCabinetTaskActions(group || document);
 }
 
 async function removeCabinetTaskImpact(button, taskId) {
@@ -7312,11 +7315,6 @@ async function handleCabinetTaskActionClick(event) {
 
     if (action === 'remove-impact') {
         await removeCabinetTaskImpact(button, taskId);
-        return;
-    }
-
-    if (action === 'reveal-impact') {
-        revealCabinetHiddenImpact(button);
         return;
     }
 
@@ -9513,7 +9511,12 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         if (event?.detail?.source !== 'global') return;
         if (!profileData || !isOwnProfile || activeTab !== 'myday') return;
         window.clearTimeout(profileTaskProjectionRefreshTimer);
-        profileTaskProjectionRefreshTimer = window.setTimeout(() => {
+        profileTaskProjectionRefreshTimer = window.setTimeout(async () => {
+            try {
+                await window.MyDayTimeTracking?.load?.();
+            } catch (error) {
+                console.warn('Profile My Day timer state refresh failed', error);
+            }
             refreshMyCabinetTab({ silent: true, keepExistingOnError: true }).catch(error => {
                 console.warn('Profile My Day timer refresh failed', error);
             });

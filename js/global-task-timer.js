@@ -160,7 +160,11 @@
     function handleSignal(payload) {
         if (!isValidSignal(payload) || payload.eventId === state.lastSignalId) return;
         state.lastSignalId = payload.eventId;
-        void hydrate({ reason: 'signal' });
+        return hydrate({ reason: 'signal' }).then(() => {
+            try {
+                window.dispatchEvent(new CustomEvent('crm:timer-updated', { detail: { source: 'global', action: payload.action, reason: 'signal' } }));
+            } catch {}
+        });
     }
 
     function timerTitle(timer = state.timer) {
@@ -534,6 +538,7 @@
             CONTRACT_VERSION,
             STORAGE_SIGNAL_KEY,
             buildSignalPayload,
+            handleSignal,
             isValidSignal,
             normalizeTimer,
             currentDurationSeconds,

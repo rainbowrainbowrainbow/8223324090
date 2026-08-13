@@ -2324,6 +2324,17 @@ body.dark-mode .profile-task-priority--low {
     gap: 5px;
 }
 
+.cabinet-task-zone--classification > [data-my-day-classification-badges]:not(:empty) {
+    display: flex;
+    flex: 1 1 auto;
+    max-width: 100%;
+    min-width: 0;
+}
+
+.cabinet-task-zone--classification > [data-my-day-classification-badges]:empty {
+    display: none;
+}
+
 .cabinet-task-zone--details {
     gap: 5px;
 }
@@ -2340,7 +2351,10 @@ body.dark-mode .profile-task-priority--low {
 
 .cabinet-task-card .my-day-task-impact-chips,
 .cabinet-overdue-triage-row .my-day-task-impact-chips {
+    display: flex;
+    flex: 1 1 auto;
     max-width: 100%;
+    min-width: 0;
 }
 
 .cabinet-task-card .my-day-task-chip--removable,

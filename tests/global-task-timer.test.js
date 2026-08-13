@@ -14,6 +14,7 @@ function read(file) {
 
 function loadGlobalTimer(overrides = {}) {
     const listeners = [];
+    const dispatched = [];
     const context = {
         console: { warn: () => {} },
         Date,
@@ -55,10 +56,10 @@ function loadGlobalTimer(overrides = {}) {
         },
         window: {
             addEventListener: (...args) => listeners.push(['window', ...args]),
-            dispatchEvent: () => {},
+            dispatchEvent: event => { dispatched.push(event); },
             setInterval: () => 1,
             clearInterval: () => {},
-            isAuthenticatedRuntimeReady: () => false,
+            isAuthenticatedRuntimeReady: () => overrides.runtimeReady === true,
             getAuthHeaders: () => ({ Authorization: 'Bearer test' })
         },
         CustomEvent: class {
@@ -76,7 +77,7 @@ function loadGlobalTimer(overrides = {}) {
     context.window.BroadcastChannel = context.BroadcastChannel;
     vm.createContext(context);
     vm.runInContext(read('js/global-task-timer.js'), context);
-    return { api: context.window.GlobalTaskTimer, context, listeners };
+    return { api: context.window.GlobalTaskTimer, context, listeners, dispatched };
 }
 
 test('global task timer assets are lazy-loaded after authenticated runtime is ready', () => {
@@ -101,6 +102,27 @@ test('global task timer broadcast contract carries only a refetch signal', () =>
     assert.equal(api._test.isValidSignal({ ...payload, title: 'Secret title' }), false);
     assert.equal(api._test.isValidSignal({ ...payload, userId: 7 }), false);
     assert.equal(api._test.isValidSignal({ ...payload, businessContext: 'event_genix' }), false);
+});
+
+test('global task timer cross-tab signal hydrates and notifies My Day surfaces', async () => {
+    const fetchCalls = [];
+    const { api, context, dispatched } = loadGlobalTimer({
+        fetch: async (url) => {
+            fetchCalls.push(String(url));
+            return { ok: true, status: 200, json: async () => ({ success: true, timer: { taskId: 19, durationSeconds: 4, isActive: true } }) };
+        }
+    });
+    context.window.isAuthenticatedRuntimeReady = () => true;
+    const payload = api._test.buildSignalPayload('start');
+
+    await api._test.handleSignal(payload);
+
+    assert.deepEqual(fetchCalls, ['/api/my-day/timer']);
+    assert.equal(api.state.timer.taskId, 19);
+    const event = dispatched.find(item => item.type === 'crm:timer-updated');
+    assert.equal(event?.detail?.source, 'global');
+    assert.equal(event?.detail?.action, 'start');
+    assert.equal(event?.detail?.reason, 'signal');
 });
 
 test('global task timer normalizes sanitized and full timer payloads', () => {

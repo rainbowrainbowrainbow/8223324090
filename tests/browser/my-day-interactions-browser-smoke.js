@@ -7,6 +7,7 @@ const http = require('node:http');
 const path = require('node:path');
 
 const ROOT = path.resolve(__dirname, '..', '..');
+const OUTPUT_DIR = path.join(ROOT, 'output', 'playwright', 'my-day-task-timer-polish');
 const HEADLESS = process.env.MY_DAY_INTERACTIONS_BROWSER_SMOKE_HEADLESS !== 'false';
 const MIME = {
     '.css': 'text/css; charset=utf-8',
@@ -34,8 +35,8 @@ function harnessHtml() {
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <link rel="stylesheet" href="/css/pages-profile.css">
   <link rel="stylesheet" href="/css/pages-cabinet.css">
+  <link rel="stylesheet" href="/css/pages-profile.css">
   <link rel="stylesheet" href="/css/pages-tasks.css">
   <style>
     body { margin: 0; padding: 24px; background: #f8fafc; color: #0f172a; font-family: system-ui, sans-serif; }
@@ -45,25 +46,39 @@ function harnessHtml() {
     .harness-card.cabinet-task-card, .harness-card.cabinet-overdue-triage-row { display: grid; grid-template-columns: 1fr; gap: 10px; margin-inline: 0; }
     body.dark-mode .harness-card { background: rgba(15,23,42,.94); }
     .harness-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+    .harness-card .cabinet-task-zone--header { display: flex; justify-content: space-between; gap: 12px; }
     .task-ui-action-panel { z-index: 1; }
   </style>
 </head>
-<body>
-  <main class="harness-grid">
+<body class="profile-page profile-work-mode">
+  <main class="harness-grid profile-page profile-work-mode">
     <section class="harness-card cabinet-task-card" data-task-id="101" id="normal-card">
-      <h1>Normal My Day task</h1>
+      <div class="cabinet-task-zone cabinet-task-zone--header">
+        <h1 class="cabinet-task-title">Normal My Day task</h1>
+        <div class="cabinet-task-actions" data-header-actions="normal">
+          <button type="button" class="cabinet-task-action-btn" data-cabinet-task-action="done" data-task-id="101">✓</button>
+          <span data-my-day-time-fixture="101"></span>
+          <button id="ai-normal" type="button" class="cabinet-task-action-btn cabinet-task-action-ai" data-cabinet-task-action="ai-classification" data-task-id="101">AI</button>
+          <button type="button" class="cabinet-task-action-btn" data-cabinet-task-action="toggle-my-day-details" data-task-id="101">+</button>
+          <button type="button" class="cabinet-task-action-btn" data-cabinet-task-action="more" data-task-id="101">…</button>
+        </div>
+      </div>
       <div data-my-day-classification-badges="101"></div>
-      <div data-my-day-time-fixture="101"></div>
       <div class="harness-actions">
         <button id="manual-normal" type="button">Manual impacts</button>
-        <button id="ai-normal" type="button" class="cabinet-task-action-ai" data-task-id="101">AI</button>
         <button id="deps-normal" type="button" data-task-id="101">Dependencies</button>
       </div>
     </section>
     <section class="harness-card cabinet-overdue-triage-row" data-task-id="202" id="overdue-card">
-      <h2>Overdue My Day task</h2>
+      <div class="cabinet-task-zone cabinet-task-zone--header">
+        <h2 class="cabinet-task-title">Overdue My Day task</h2>
+        <div class="cabinet-overdue-triage-actions cabinet-overdue-triage-actions--header" data-header-actions="overdue">
+          <button type="button" class="cabinet-overdue-triage-action" data-cabinet-task-action="done" data-task-id="202">✓</button>
+          <span data-my-day-time-fixture="202"></span>
+          <button id="ai-overdue" type="button" class="cabinet-overdue-triage-action cabinet-task-action-ai" data-cabinet-task-action="ai-classification" data-task-id="202">AI</button>
+        </div>
+      </div>
       <div data-my-day-classification-badges="202"></div>
-      <button id="ai-overdue" type="button" class="cabinet-task-action-ai" data-task-id="202">AI</button>
     </section>
   </main>
   <script src="/js/task-ui.js"></script>
@@ -75,7 +90,9 @@ function harnessHtml() {
     const impacts = [
       { id: 1, name: 'Робота: CRM', color: '#0EA5E9', icon: 'C', isActive: true },
       { id: 2, name: 'Робота: Hermes', color: '#8B5CF6', icon: 'H', isActive: true },
-      { id: 3, name: 'Команда', color: '#10B981', icon: 'T', isActive: true }
+      { id: 3, name: 'Команда', color: '#10B981', icon: 'T', isActive: true },
+      { id: 4, name: 'Системність і процеси', color: '#F59E0B', icon: 'S', isActive: true },
+      { id: 5, name: 'Якість клієнтського сервісу', color: '#EC4899', icon: 'Q', isActive: true }
     ];
     const state = {
       aiMode: 'success',
@@ -97,6 +114,8 @@ function harnessHtml() {
       classificationError: false,
       timeMenuOpened: 0,
       timeMenuError: '',
+      timerEvents: [],
+      activeTimer: null,
       removeInFlight: new Set(),
       previous: {}
     };
@@ -112,26 +131,24 @@ function harnessHtml() {
       status,
       headers: { 'content-type': 'application/json' }
     }));
-    document.querySelector('[data-my-day-time-fixture="101"]').innerHTML = window.MyDayTimeTracking.renderTaskControls(state.tasks[101]);
+    const renderTimeTriggers = () => {
+      document.querySelector('[data-my-day-time-fixture="101"]').innerHTML = window.MyDayTimeTracking.renderTaskTrigger(state.tasks[101]);
+      document.querySelector('[data-my-day-time-fixture="202"]').innerHTML = window.MyDayTimeTracking.renderTaskTrigger(state.tasks[202], { buttonClassName: 'cabinet-overdue-triage-action' });
+    };
+    renderTimeTriggers();
     window.getAuthHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer local-browser-fixture' });
     window.showNotification = (message, type) => state.notifications.push({ message, type });
+    window.addEventListener('crm:timer-updated', event => state.timerEvents.push(event.detail));
     window.__MY_DAY_INTERACTIONS__ = { state, applyClassification };
     document.addEventListener('click', async event => {
       const actionButton = event.target.closest('[data-cabinet-task-action]');
       if (!actionButton) return;
       const action = actionButton.dataset.cabinetTaskAction;
-      if (action === 'reveal-impact') {
-        event.preventDefault();
-        const group = actionButton.closest('[data-my-day-task-impact-chips]');
-        group.querySelectorAll('.my-day-task-chip--removable[hidden]').forEach(chip => { chip.hidden = false; });
-        actionButton.hidden = true;
-        return;
-      }
       if (action === 'time-menu') {
         event.preventDefault();
         const taskId = Number(actionButton.dataset.taskId);
         try {
-          await window.MyDayTimeTracking.handleAction(action, taskId, async () => {}, actionButton, state.tasks[taskId]);
+          await window.MyDayTimeTracking.handleAction(action, taskId, async () => renderTimeTriggers(), actionButton, state.tasks[taskId]);
           state.timeMenuOpened += 1;
         } catch (error) {
           state.timeMenuError = error.message || String(error);
@@ -167,6 +184,18 @@ function harnessHtml() {
       const body = options.body ? JSON.parse(options.body) : {};
       if (method === 'GET' && url.pathname === '/api/my-day/impacts') {
         return json({ success: true, impacts });
+      }
+      if (method === 'GET' && url.pathname === '/api/my-day/timer') {
+        return json({ success: true, timer: clone(state.activeTimer) });
+      }
+      if (method === 'POST' && url.pathname === '/api/my-day/timer/start') {
+        state.activeTimer = { taskId: Number(body.taskId), durationSeconds: 0, isActive: true };
+        return json({ success: true, timer: clone(state.activeTimer) });
+      }
+      if (method === 'POST' && url.pathname === '/api/my-day/timer/stop') {
+        const stopped = state.activeTimer ? { ...state.activeTimer, durationSeconds: 1, isActive: false, endedAt: new Date().toISOString() } : null;
+        state.activeTimer = null;
+        return json({ success: true, timer: stopped });
       }
       const classificationMatch = url.pathname.match(/^\\/api\\/my-day\\/tasks\\/(\\d+)\\/classification$/);
       if (classificationMatch && method === 'PUT') {
@@ -318,12 +347,31 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         if (dark) await page.evaluate(() => document.body.classList.add('dark-mode'));
         await page.waitForSelector('#manual-normal');
 
+        const normalHeaderActions = await page.locator('[data-header-actions="normal"] [data-cabinet-task-action]').evaluateAll(nodes => nodes.map(node => node.dataset.cabinetTaskAction));
+        assert.deepEqual(normalHeaderActions.slice(0, 3), ['done', 'time-menu', 'ai-classification']);
+        const overdueHeaderActions = await page.locator('[data-header-actions="overdue"] [data-cabinet-task-action]').evaluateAll(nodes => nodes.map(node => node.dataset.cabinetTaskAction));
+        assert.deepEqual(overdueHeaderActions.slice(0, 3), ['done', 'time-menu', 'ai-classification']);
+        assert.equal(await page.locator('#normal-card > [data-my-day-time-fixture], #overdue-card > [data-my-day-time-fixture]').count(), 0, 'timer must not render as a standalone lower-row control');
+
         await page.locator('#manual-normal').click();
-        await page.locator('[data-my-day-impacts]').selectOption(['1', '2', '3']);
+        await page.locator('[data-my-day-impacts]').selectOption(['1', '2', '3', '4', '5']);
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
-        await page.locator('[data-cabinet-task-action="reveal-impact"][data-task-id="101"]').click();
-        await page.waitForSelector('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="3"]:not([hidden])');
+        await page.waitForSelector('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="3"]');
+        const impactButtons = page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"]');
+        assert.equal(await impactButtons.count(), 5);
+        assert.equal(await page.locator('[data-cabinet-task-action="reveal-impact"][data-task-id="101"]').count(), 0);
+        const impactVisibility = await impactButtons.evaluateAll(buttons => buttons.map(button => {
+          const rect = button.getBoundingClientRect();
+          return { hidden: button.hidden, width: rect.width, height: rect.height };
+        }));
+        assert.ok(impactVisibility.every(item => !item.hidden && item.width > 0 && item.height > 0), `all five impacts must be visible: ${JSON.stringify(impactVisibility)}`);
+        const badgeRowOverflow = await page.locator('[data-my-day-classification-badges="101"]').evaluate(node => node.scrollWidth - node.clientWidth);
+        assert.ok(badgeRowOverflow <= 1, `impact row has horizontal overflow: ${badgeRowOverflow}px`);
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, `five-impacts-${viewport.width}-${dark ? 'dark' : 'light'}.png`),
+          fullPage: true
+        });
         const putCountBeforeRemove = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length);
         await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
         await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
@@ -338,7 +386,7 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.evaluate(() => {
           window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 0;
           window.__MY_DAY_INTERACTIONS__.state.classificationError = true;
-          window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Р РѕР±РѕС‚Р°: CRM', color: '#0EA5E9', icon: 'C', isActive: true }] });
+          window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Робота: CRM', color: '#0EA5E9', icon: 'C', isActive: true }] });
         });
         await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
         await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.notifications.some(item => item.type === 'error'));
@@ -353,8 +401,48 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         assert.match(timeMenuText, /Факт/);
         assert.match(timeMenuText, /Додати час/);
         assert.match(timeMenuText, /Записи/);
+        const surfaceMode = await page.locator('#taskUiActionSurface').getAttribute('class');
+        assert.match(surfaceMode || '', viewport.width <= 768 ? /is-sheet/ : /is-popover/);
+        const panelBounds = await page.locator('#taskUiActionSurface .task-ui-action-panel').boundingBox();
+        assert.ok(panelBounds, 'time panel should be measurable');
+        assert.ok(panelBounds.x >= -1 && panelBounds.y >= -1, `time panel starts outside viewport: ${JSON.stringify(panelBounds)}`);
+        assert.ok(panelBounds.x + panelBounds.width <= viewport.width + 1, `time panel overflows viewport width: ${JSON.stringify(panelBounds)}`);
+        assert.ok(panelBounds.y + panelBounds.height <= viewport.height + 1, `time panel overflows viewport height: ${JSON.stringify(panelBounds)}`);
+        const primaryWidth = await page.locator('.my-day-time-menu-primary').evaluate(node => node.getBoundingClientRect().width);
+        const primaryAppearance = await page.locator('.my-day-time-menu-primary').evaluate(node => ({
+          color: getComputedStyle(node).color,
+          opacity: getComputedStyle(node).opacity,
+          text: node.textContent.trim()
+        }));
+        assert.equal(primaryAppearance.text, 'Старт');
+        assert.equal(primaryAppearance.opacity, '1');
+        if (dark) assert.match(primaryAppearance.color, /rgb\((248, 250, 252|255, 255, 255)\)/);
+        const secondaryWidths = await page.locator('.my-day-time-menu-secondary').evaluateAll(nodes => nodes.map(node => node.getBoundingClientRect().width));
+        assert.equal(secondaryWidths.length, 2);
+        assert.ok(Math.abs(secondaryWidths[0] - secondaryWidths[1]) <= 1, `secondary actions should be equal: ${secondaryWidths.join(', ')}`);
+        assert.ok(primaryWidth > secondaryWidths[0] * 1.8, `primary action should span the menu: ${primaryWidth} vs ${secondaryWidths[0]}`);
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, `time-menu-${viewport.width}-${dark ? 'dark' : 'light'}.png`),
+          fullPage: true
+        });
+        await page.locator('.my-day-time-menu-primary').click();
+        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.activeTimer?.taskId), 101);
+        assert.equal(await page.locator('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"].is-active').count(), 1);
+        assert.equal(await page.locator('[data-header-actions="normal"] .my-day-time-running-dot').count(), 1);
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.timerEvents.at(-1)?.action), 'start');
+        await page.locator('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"]').click();
+        await page.waitForSelector('[data-my-day-time-menu-action="timer-stop"]');
+        await page.locator('[data-my-day-time-menu-action="timer-stop"]').click();
+        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.activeTimer), null);
+        assert.equal(await page.locator('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"].is-active').count(), 0);
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.timerEvents.at(-1)?.action), 'stop');
+        await page.locator('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"]').click();
+        await page.waitForSelector('[data-my-day-time-menu]');
         await page.keyboard.press('Escape');
         await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
+        assert.equal(await page.evaluate(() => document.activeElement?.dataset?.cabinetTaskAction), 'time-menu');
         await assertNoOverflow(page);
 
         await page.locator('#ai-overdue').click();
@@ -407,11 +495,12 @@ async function runScenario(browser, fixture, { dark, viewport }) {
 
 async function run() {
     const { chromium } = requirePlaywright();
+    fs.mkdirSync(OUTPUT_DIR, { recursive: true });
     const fixture = await createStaticServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
-        await runScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
-        await runScenario(browser, fixture, { dark: true, viewport: { width: 1440, height: 900 } });
+        await runScenario(browser, fixture, { dark: false, viewport: { width: 1280, height: 900 } });
+        await runScenario(browser, fixture, { dark: true, viewport: { width: 1280, height: 900 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 390, height: 844 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         console.log('My Day interactions browser smoke passed');

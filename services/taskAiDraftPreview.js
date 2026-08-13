@@ -19,7 +19,7 @@ const { findExplicitImpactIds, mergeExplicitImpactIds } = require('./myDayClassi
 
 const TASK_AI_DRAFT_CONTRACT_VERSION = 'my_day_ai_composer_proposal_v2';
 const TASK_AI_DRAFT_SCHEMA_NAME = 'my_day_task_draft_preview';
-const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-09.4';
+const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-13.5';
 const TASK_AI_DRAFT_TIMEOUT_MS = 15_000;
 const TASK_AI_DRAFT_MAX_OUTPUT_TOKENS = 1_600;
 const TASK_AI_DRAFT_REASONING_EFFORT = 'low';
@@ -246,6 +246,7 @@ function buildSystemPrompt() {
         'If CRM, Hermes, Park, AI, content, analytics, team, process, revenue, or quality is explicitly named or unmistakably described, include its matching active impact unless negated.',
         `Cross-product work may use multiple context impacts. If more than ${MAX_IMPACTS_PER_TASK} impacts are explicit, select the ${MAX_IMPACTS_PER_TASK} strongest; explicit CRM, Hermes, and Park contexts outrank generic activity/outcome facets.`,
         'serverExplicitImpactIds are deterministic matches from the same active catalog. For single_task/checklist include them before adding other facets. For task_bundle distribute them only to relevant tasks.',
+        'When serverExplicitImpactIds is non-empty and the draft contains a concrete action or result, do not return needs_clarification or no_change merely because impact selection is uncertain.',
         'Do not output tags, directions, dependencies, status, permissions, or business scope.',
         'Priority, scheduleDate, and ownerSuggestion are review-only suggestions; the server will not auto-apply them without explicit human confirmation.',
         'For every task_bundle item set ownerSuggestion.userId to null. Missing owner information is not a clarification reason. Use scheduleDate or elevated priority only when explicitly stated in currentDraft; otherwise return null.',
@@ -290,12 +291,42 @@ function buildOpenAIResponsesInput({ draft, impacts }) {
 }
 
 function mergeServerExplicitImpacts(proposal = {}, draft = {}, impacts = []) {
-    if (!['single_task', 'checklist'].includes(proposal.decision)) return proposal;
     const explicitImpactIds = findExplicitImpactIds(draft, impacts);
+    if (['needs_clarification', 'no_change'].includes(proposal.decision)
+        && explicitImpactIds.length
+        && hasActionableDraftContext(draft)
+        && explicitImpactIds.some(id => !normalizeDraftSnapshot(draft).impactIds.includes(id))) {
+        const normalizedDraft = normalizeDraftSnapshot(draft);
+        return {
+            ...proposal,
+            decision: 'single_task',
+            action: 'apply',
+            mode: 'simple',
+            title: normalizedDraft.title,
+            description: normalizedDraft.description || null,
+            impactIds: mergeExplicitImpactIds(explicitImpactIds, normalizedDraft.impactIds),
+            subtasks: [],
+            bundleTitle: null,
+            tasks: [],
+            confidence: {
+                ...proposal.confidence,
+                overall: Math.max(Number(proposal.confidence?.overall || 0), 0.65),
+                impacts: Math.max(Number(proposal.confidence?.impacts || 0), 0.9)
+            },
+            reason: 'Server recovered explicit active impacts from a sufficiently detailed draft.'
+        };
+    }
+    if (!['single_task', 'checklist'].includes(proposal.decision)) return proposal;
     return {
         ...proposal,
         impactIds: mergeExplicitImpactIds(explicitImpactIds, proposal.impactIds)
     };
+}
+
+function hasActionableDraftContext(draft = {}) {
+    const normalized = normalizeDraftSnapshot(draft);
+    const words = `${normalized.title} ${normalized.description}`.match(/[\p{L}\p{N}]{2,}/gu) || [];
+    return normalized.title.length >= 12 && (words.length >= 4 || normalized.description.length >= 24);
 }
 
 function assertStrictProposalKeys(payload = {}) {
@@ -827,6 +858,7 @@ module.exports = {
     draftFingerprint,
     generateTaskAiDraftPreview,
     legacyDecompositionResponseFromPreview,
+    hasActionableDraftContext,
     mergeServerExplicitImpacts,
     normalizeDraftSnapshot,
     normalizeProposal,

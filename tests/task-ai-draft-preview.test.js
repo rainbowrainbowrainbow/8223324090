@@ -180,6 +180,30 @@ test('task AI preview deterministically preserves explicit active impacts for si
         impactIds: []
     }, { title: 'CRM 3321' }, impacts);
     assert.deepEqual(clarification.impactIds, [], 'clarification must not silently apply deterministic classification');
+
+    const expandedImpacts = [
+        ...impacts,
+        { id: 104, name: 'Документи / право', icon: 'legal', isActive: true },
+        { id: 105, name: 'Партнерства / нетворкінг', icon: 'network', isActive: true },
+        { id: 106, name: 'Ризики / безпека', icon: 'security', isActive: true }
+    ];
+    const recovered = preview.mergeServerExplicitImpacts({
+        ...validProposal(),
+        decision: 'needs_clarification',
+        mode: null,
+        title: null,
+        description: null,
+        impactIds: []
+    }, {
+        title: 'Підготувати договір з новим партнером та перевірити ризики',
+        description: 'Узгодити юридичні умови партнерства і перевірити безпеку.',
+        impactIds: []
+    }, expandedImpacts);
+    assert.equal(recovered.decision, 'single_task');
+    assert.equal(recovered.action, 'apply');
+    assert.deepEqual(recovered.impactIds, [104, 105, 106]);
+    assert.equal(recovered.confidence.impacts, 0.9);
+    assert.match(recovered.reason, /recovered explicit active impacts/);
 });
 
 test('task AI preview telemetry records only metadata and strips task text/provider payloads', async () => {

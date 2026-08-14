@@ -55,13 +55,26 @@ test('frontend cancellation UI is readiness-driven and has no generic undo resto
 });
 
 test('room hardening closes known active write paths and adds not-valid guards', () => {
+    const bookingRoutes = read('routes/bookings.js');
+    const banquetService = read('services/banquetGroups.js');
     const graduation = read('routes/graduation.js');
     const secondAnimator = read('scripts/audit-second-animator-links.js');
+    const reconcileScript = read('scripts/reconcile-banquet-groups.js');
+    const repairScript = read('scripts/repair-banquet-activity-consistency.js');
+    const backfillScript = read('scripts/backfill-room-resource-id.js');
     const migration = read('db/migrations/332_booking_room_identity_active_guards.sql');
+    assert.match(bookingRoutes, /activeEventGenixRoomIdentityRequired\(payload, businessContext\)/);
+    assert.match(banquetService, /assertActiveBookingRoomIdentity\(primary, context/);
+    assert.match(banquetService, /primary_room_identity_invalid/);
     assert.match(graduation, /canonicalizeBookingRoomResource/);
     assert.match(graduation, /room_resource_id/);
     assert.match(secondAnimator, /room_resource_id/);
     assert.match(secondAnimator, /refusing to create linked second animator booking/);
+    assert.match(reconcileScript, /room_identity_required/);
+    assert.match(repairScript, /Promotion target room identity invalid/);
+    assert.match(backfillScript, /buildBackfillManifest/);
+    assert.match(backfillScript, /zeroMutationProof/);
+    assert.match(backfillScript, /manifestHash/);
     assert.match(migration, /NOT VALID/);
     assert.match(migration, /chk_bookings_active_room_identity_v332/);
     assert.match(migration, /trg_banquet_groups_identity_v332/);

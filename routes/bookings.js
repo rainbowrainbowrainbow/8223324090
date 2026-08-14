@@ -102,6 +102,7 @@ const {
     listTimelineResources,
     resolveRoomTimelineResourceIdentity,
     canonicalizeBookingRoomResource,
+    activeEventGenixRoomIdentityRequired,
     resourceTypeForDisplayMode
 } = require('../services/timelineResources');
 const {
@@ -2279,7 +2280,7 @@ function rejectClientTicketSnapshotPayload(res, booking = {}) {
 async function validateBookingRoomResourceForWrite(queryable, payload, businessContext, options = {}) {
     try {
         await canonicalizeBookingRoomResource(queryable, businessContext, payload, {
-            required: businessContext === DEFAULT_TIMELINE_CONTEXT,
+            required: activeEventGenixRoomIdentityRequired(payload, businessContext),
             allowInactiveResourceId: options.allowInactiveResourceId || null
         });
         return null;

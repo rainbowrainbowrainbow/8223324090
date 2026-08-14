@@ -27,6 +27,9 @@ const {
     mergeTimelineResourceRenameAliases,
     resolveRoomTimelineResourceIdentity,
     canonicalizeBookingRoomResource,
+    assertActiveBookingRoomIdentity,
+    activeEventGenixRoomIdentityRequired,
+    roomTextLooksInvalid,
     upsertTimelineResource,
     countFutureActiveBookingsForTimelineResource
 } = require('../services/timelineResources');
@@ -3650,6 +3653,24 @@ test('takeaway room write uses a virtual durable identity without querying the p
     assert.equal(resource.virtual, true);
     assert.equal(booking.roomResourceId, 'room-takeaway');
     assert.equal(booking.room, 'На виніс');
+});
+
+test('active EventGenix room identity guard rejects missing or corrupt rooms but allows cancelled legacy rows', () => {
+    assert.equal(activeEventGenixRoomIdentityRequired({ status: 'confirmed' }, 'event_genix'), true);
+    assert.equal(activeEventGenixRoomIdentityRequired({ status: 'cancelled' }, 'event_genix'), false);
+    assert.equal(roomTextLooksInvalid('??????'), true);
+    assert.equal(roomTextLooksInvalid('Marvel Hall'), false);
+    assert.throws(
+        () => assertActiveBookingRoomIdentity({ status: 'active', room: 'Marvel Hall' }, 'event_genix'),
+        error => error.code === 'ROOM_RESOURCE_REQUIRED'
+    );
+    assert.throws(
+        () => assertActiveBookingRoomIdentity({ status: 'active', room: '??????', roomResourceId: 'room-marvel' }, 'event_genix'),
+        error => error.code === 'ROOM_RESOURCE_INVALID_TEXT'
+    );
+    assert.doesNotThrow(() =>
+        assertActiveBookingRoomIdentity({ status: 'cancelled', room: '??????', roomResourceId: null }, 'event_genix')
+    );
 });
 
 test('timeline resource rename metadata preserves old and incoming aliases', () => {

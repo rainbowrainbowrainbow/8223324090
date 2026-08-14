@@ -34,7 +34,11 @@ const { applyEffectiveBookingPrice } = require('./productPricing');
 const { BanquetDepositError, upsertManagerBookingDeposit } = require('./banquetDeposits');
 const { broadcastBanquetEvent = () => 0 } = require('./websocket');
 const { normalizeCustomerSource } = require('./customerSource');
-const { canonicalizeBookingRoomResource } = require('./timelineResources');
+const {
+    canonicalizeBookingRoomResource,
+    activeEventGenixRoomIdentityRequired,
+    assertActiveBookingRoomIdentity
+} = require('./timelineResources');
 const {
     createBookingFinanceInTransaction,
     syncBookingFinanceInTransaction
@@ -965,7 +969,7 @@ async function getMembershipRows(db, groupId, businessContext) {
 async function canonicalizeBanquetBookingRoom(db, booking, businessContext, options = {}) {
     try {
         await canonicalizeBookingRoomResource(db, businessContext, booking, {
-            required: (businessContext || DEFAULT_TIMELINE_CONTEXT) === DEFAULT_TIMELINE_CONTEXT,
+            required: activeEventGenixRoomIdentityRequired(booking, businessContext || DEFAULT_TIMELINE_CONTEXT),
             allowInactiveResourceId: options.allowInactiveResourceId || null
         });
         return booking;
@@ -1378,6 +1382,16 @@ async function reconcileBanquetGroupForBooking({
                 return banquetAutoGroupSkip(cleanBookingId, context, 'primary_arrival_time_invalid', {
                     candidateBookingIds,
                     primaryBookingId: cleanId(primary.id)
+                });
+            }
+            try {
+                assertActiveBookingRoomIdentity(primary, context, { entity: 'banquet primary booking' });
+            } catch (error) {
+                await client.query('ROLLBACK');
+                return banquetAutoGroupSkip(cleanBookingId, context, 'primary_room_identity_invalid', {
+                    candidateBookingIds,
+                    primaryBookingId: cleanId(primary.id),
+                    code: error.code || 'ROOM_RESOURCE_INVALID'
                 });
             }
             const groupResult = await client.query(

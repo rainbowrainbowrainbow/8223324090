@@ -7496,7 +7496,7 @@ test('banquet activity metadata repair handles only proven cancelled-group and s
         ],
         bookings: [
             { id: 'BK-OLD', status: 'cancelled', extra_data: JSON.stringify({ multiActivity: { activityIds: ['old'] } }) },
-            { id: 'BK-KITCHEN', status: 'confirmed', extra_data: '{}' }
+            { id: 'BK-KITCHEN', status: 'confirmed', room: 'Room A', room_resource_id: 'room-a', extra_data: '{}' }
         ]
     }, 'event_genix');
     assert.equal(promoted.action, 'promoted_primary');

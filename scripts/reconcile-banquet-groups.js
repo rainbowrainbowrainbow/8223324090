@@ -29,6 +29,7 @@ const { pool } = require('../db');
 const { BANQUET_SERVICE_LINE_ID } = require('../services/booking');
 const { DEFAULT_TIMELINE_CONTEXT } = require('../services/timelineContext');
 const { reconcileBanquetGroupForBooking } = require('../services/banquetGroups');
+const { roomTextLooksInvalid } = require('../services/timelineResources');
 
 const SCRIPT_USER = Object.freeze({
     id: null,
@@ -224,7 +225,7 @@ function groupKey(row = {}) {
     return [
         row.business_context || DEFAULT_TIMELINE_CONTEXT,
         row.date,
-        String(row.room || '').trim(),
+        String(row.room_resource_id || row.roomResourceId || row.room || '').trim(),
         String(row.customer_id || '')
     ].join('\u0001');
 }
@@ -251,7 +252,7 @@ async function loadCandidateRows(db, options) {
         `SELECT b.id,
                 COALESCE(NULLIF(BTRIM(b.business_context), ''), '${DEFAULT_TIMELINE_CONTEXT}') AS business_context,
                 b.date, b.time, b.line_id, b.program_id, b.program_code, b.label, b.program_name, b.category,
-                b.duration, b.price, b.room, b.linked_to, b.status, b.group_name, b.extra_data,
+                b.duration, b.price, b.room, b.room_resource_id, b.linked_to, b.status, b.group_name, b.extra_data,
                 b.customer_id, b.banquet_guests, b.banquet_adults, b.banquet_tables, b.banquet_menu
            FROM bookings b
           WHERE b.date >= $1
@@ -302,9 +303,22 @@ function buildPlan(rows, memberships) {
             businessContext: first.business_context || DEFAULT_TIMELINE_CONTEXT,
             date: first.date,
             room: String(first.room || '').trim(),
+            roomResourceId: String(first.room_resource_id || '').trim() || null,
             customerHash: hashCustomerId(first.customer_id),
             bookingIds: sorted.map(row => row.id)
         };
+        const invalidRoomIdentity = sorted.find(row =>
+            !String(row.room_resource_id || '').trim()
+            || roomTextLooksInvalid(row.room)
+        );
+        if (invalidRoomIdentity) {
+            skipped.push({
+                ...base,
+                reason: 'room_identity_required',
+                invalidBookingId: invalidRoomIdentity.id
+            });
+            continue;
+        }
 
         if (!anchorExists) {
             skipped.push({ ...base, reason: 'missing_banquet_anchor' });

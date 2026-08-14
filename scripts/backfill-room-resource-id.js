@@ -3,6 +3,7 @@
 
 const fs = require('node:fs');
 const path = require('node:path');
+const crypto = require('node:crypto');
 
 const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
 const APPLY_CONFIRMATION = 'BACKFILL_ROOM_RESOURCE_ID';
@@ -63,9 +64,11 @@ function parseArgs(argv = process.argv.slice(2)) {
     return {
         apply: flags.has('--apply'),
         dryRun: flags.has('--dry-run') || !flags.has('--apply'),
+        manifest: flags.has('--manifest'),
         json: flags.has('--json'),
         businessContext: String(argValue(argv, '--business-context', DEFAULT_BUSINESS_CONTEXT) || DEFAULT_BUSINESS_CONTEXT).trim(),
         confirmation: String(argValue(argv, '--confirm', '') || '').trim(),
+        sourceCommit: String(argValue(argv, '--source-commit', '') || '').trim() || null,
         expectedSafe: expectedSafeRaw === null ? null : Number(expectedSafeRaw)
     };
 }
@@ -176,6 +179,58 @@ function summarizeItems(items = []) {
     };
 }
 
+function stableJson(value) {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
+}
+
+function sha256(value) {
+    return crypto.createHash('sha256').update(stableJson(value)).digest('hex');
+}
+
+function itemEvidence(category) {
+    if (category === 'exact_canonical_name') return 'room text exactly matches canonical timeline_resources.name';
+    if (category === 'short_name') return 'room text exactly matches unique timeline_resources.short_name';
+    if (category === 'unique_alias') return 'room text exactly matches unique timeline_resources.metadata.aliases';
+    if (category === 'takeaway') return 'room text is recognized virtual takeaway identity';
+    if (category === 'inactive_unique_resource') return 'room text matches one inactive resource; operator review recommended before apply';
+    if (category === 'already_assigned') return 'row already has room_resource_id';
+    if (category === 'assigned_unknown_resource') return 'row has room_resource_id that is not present in current room catalog';
+    if (category === 'ambiguous_name_or_alias') return 'room text matches multiple resources';
+    if (category === 'mojibake') return 'room text is corrupt or placeholder characters';
+    if (category === 'empty') return 'room text is empty';
+    return 'room text has no deterministic catalog evidence';
+}
+
+function proposedActionForItem(item = {}) {
+    if (item.category === 'already_assigned') return 'NO_OP';
+    if (SAFE_CATEGORIES.has(item.category) && item.resourceId) return 'SET_ROOM_RESOURCE_ID';
+    return 'BLOCK_OPERATOR_DECISION_REQUIRED';
+}
+
+function reportFingerprint(report = {}) {
+    return sha256({
+        businessContext: report.businessContext || DEFAULT_BUSINESS_CONTEXT,
+        plannedCatalogAliases: report.plannedCatalogAliases || [],
+        tables: Object.fromEntries(Object.entries(report.tables || {}).map(([table, payload]) => [
+            table,
+            (payload.items || []).map(item => ({
+                table: item.table,
+                id: item.id,
+                currentRoom: item.currentRoom || null,
+                currentRoomResourceId: item.currentRoomResourceId || null,
+                category: item.category,
+                proposedRoomResourceId: item.resourceId || null
+            }))
+        ])),
+        banquetBookingMismatches: report.banquetBookingMismatches || [],
+        unresolvedTechnicalIds: report.unresolvedTechnicalIds || []
+    });
+}
+
 async function buildBackfillReport(db, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const resources = await loadResources(db, businessContext);
     const knownResourceIds = new Set(resources.map(resource => String(resource.resource_id || resource.resourceId)));
@@ -195,8 +250,19 @@ async function buildBackfillReport(db, businessContext = DEFAULT_BUSINESS_CONTEX
             return {
                 table: table.name,
                 id: String(row.id),
+                currentRoom: String(row.room || '').trim() || null,
+                currentRoomResourceId: existingId || null,
                 category: classification.category,
-                resourceId: classification.resourceId
+                resourceId: classification.resourceId,
+                proposedRoomResourceId: classification.resourceId || null,
+                evidenceSource: itemEvidence(classification.category),
+                proposedAction: proposedActionForItem({
+                    category: classification.category,
+                    resourceId: classification.resourceId
+                }),
+                blocker: SAFE_CATEGORIES.has(classification.category) || classification.category === 'already_assigned'
+                    ? null
+                    : classification.category
             };
         });
         tables[table.name] = { summary: summarizeItems(items), items };
@@ -243,6 +309,70 @@ async function buildBackfillReport(db, businessContext = DEFAULT_BUSINESS_CONTEX
         unresolvedTechnicalIds: allItems
             .filter(item => !SAFE_CATEGORIES.has(item.category) && item.category !== 'already_assigned')
             .map(({ table, id, category }) => ({ table, id, category }))
+    };
+}
+
+async function buildBackfillManifest(db, businessContext = DEFAULT_BUSINESS_CONTEXT, options = {}) {
+    const first = await buildBackfillReport(db, businessContext);
+    const second = await buildBackfillReport(db, businessContext);
+    const beforeFingerprint = reportFingerprint(first);
+    const afterFingerprint = reportFingerprint(second);
+    const mutationItems = Object.values(second.tables || {})
+        .flatMap(table => table.items || [])
+        .map(item => ({
+            table: item.table,
+            id: item.id,
+            currentRoom: item.currentRoom,
+            currentRoomResourceId: item.currentRoomResourceId,
+            proposedRoomResourceId: item.proposedRoomResourceId,
+            category: item.category,
+            evidenceSource: item.evidenceSource,
+            proposedAction: item.proposedAction,
+            blocker: item.blocker
+        }));
+    const manifest = {
+        schemaVersion: 1,
+        kind: 'room_identity_backfill_quarantine_manifest',
+        mode: 'dry-run',
+        readOnly: true,
+        piiIncluded: false,
+        generatedAt: options.generatedAt || new Date().toISOString(),
+        sourceCommit: options.sourceCommit || null,
+        businessContext,
+        policy: {
+            doNotInventRoomIds: true,
+            constraintsRemainNotValid: true,
+            productionApplyRequiresExactOwnerApproval: true
+        },
+        zeroMutationProof: {
+            beforeFingerprint,
+            afterFingerprint,
+            unchanged: beforeFingerprint === afterFingerprint
+        },
+        summary: second.summary,
+        plannedCatalogAliases: second.plannedCatalogAliases || [],
+        proposedMutations: mutationItems.filter(item => item.proposedAction !== 'NO_OP'),
+        alreadyAssigned: mutationItems.filter(item => item.proposedAction === 'NO_OP').map(({ table, id, currentRoomResourceId }) => ({
+            table,
+            id,
+            currentRoomResourceId
+        })),
+        banquetBookingMismatches: second.banquetBookingMismatches || [],
+        blockers: [
+            ...mutationItems
+                .filter(item => item.proposedAction === 'BLOCK_OPERATOR_DECISION_REQUIRED')
+                .map(({ table, id, category, evidenceSource }) => ({ table, id, category, evidenceSource })),
+            ...((second.banquetBookingMismatches || []).map(item => ({
+                table: 'banquet_groups',
+                id: item.banquetGroupId,
+                category: 'group_primary_room_mismatch',
+                evidenceSource: `primary booking ${item.primaryBookingId} does not match group room identity`
+            })))
+        ]
+    };
+    return {
+        ...manifest,
+        manifestHash: sha256(manifest)
     };
 }
 
@@ -348,7 +478,12 @@ async function main(argv = process.argv.slice(2)) {
     const { pool } = require('../db');
     try {
         const report = await buildBackfillReport(pool, options.businessContext);
-        if (options.apply) {
+        if (options.manifest && !options.apply) {
+            const manifest = await buildBackfillManifest(pool, options.businessContext, {
+                sourceCommit: options.sourceCommit
+            });
+            console.log(JSON.stringify(manifest, null, 2));
+        } else if (options.apply) {
             const result = await applyBackfill(pool, report, options);
             if (options.json) console.log(JSON.stringify({ dryRun: report, apply: result }, null, 2));
             else {
@@ -381,5 +516,7 @@ module.exports = {
     classifyRoomValue,
     summarizeItems,
     buildBackfillReport,
+    buildBackfillManifest,
+    reportFingerprint,
     applyBackfill
 };

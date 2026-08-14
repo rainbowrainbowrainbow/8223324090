@@ -935,6 +935,10 @@ async function withApp(dbOptions, fn) {
             booking.room_resource_id = resource.resourceId;
             return resource;
         },
+        activeEventGenixRoomIdentityRequired: (booking = {}, businessContext = 'event_genix') => (
+            businessContext === 'event_genix'
+            && String(booking.status || 'confirmed').trim().toLowerCase() !== 'cancelled'
+        ),
         resolveRoomTimelineResourceIdentity: (resources, booking) => {
             const room = String(booking.room || '').trim();
             const resource = resources.find(item => item.name === room);

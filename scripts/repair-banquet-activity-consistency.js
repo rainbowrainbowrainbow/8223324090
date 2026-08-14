@@ -10,6 +10,9 @@ const {
 const {
     persistDerivedBookingSetMetadata
 } = require('../services/banquetGroups');
+const {
+    assertActiveBookingRoomIdentity
+} = require('../services/timelineResources');
 
 const DEFAULT_BUSINESS_CONTEXT = 'event_genix';
 const APPLY_CONFIRMATION = 'REPAIR_BANQUET_ACTIVITY_METADATA';
@@ -245,6 +248,13 @@ async function prepareGroupLifecycleForRepair(db, group, locked, businessContext
     if (!promotedBooking) {
         throw new Error(`Promotion target booking not found: group=${group.id}`);
     }
+    try {
+        assertActiveBookingRoomIdentity(promotedBooking, businessContext, {
+            entity: 'promoted banquet primary booking'
+        });
+    } catch (error) {
+        throw new Error(`Promotion target room identity invalid: group=${group.id} booking=${promotedBooking.id} code=${error.code || 'ROOM_RESOURCE_INVALID'}`);
+    }
     const oldPrimaryId = String(group.primary_booking_id || '');
     await db.query(
         `DELETE FROM banquet_group_bookings
@@ -265,12 +275,14 @@ async function prepareGroupLifecycleForRepair(db, group, locked, businessContext
     await db.query(
         `UPDATE banquet_groups
             SET primary_booking_id = $4,
+                room = $5,
+                room_resource_id = $6,
                 status = 'active',
                 updated_at = NOW(),
                 updated_by = $3
           WHERE id = $1
             AND COALESCE(NULLIF(BTRIM(business_context), ''), $2) = $2`,
-        [group.id, businessContext, REPAIR_ACTOR, promotedBooking.id]
+        [group.id, businessContext, REPAIR_ACTOR, promotedBooking.id, promotedBooking.room, promotedBooking.room_resource_id]
     );
     await db.query(
         `DELETE FROM booking_banquet_links

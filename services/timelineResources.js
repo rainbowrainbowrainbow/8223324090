@@ -453,6 +453,18 @@ function bookingRoomResourceId(booking = {}) {
     ).trim();
 }
 
+function roomTextLooksInvalid(value) {
+    const text = String(value || '').trim();
+    return !text || /^[?\uFFFDпїЅ]+$/u.test(text);
+}
+
+function activeEventGenixRoomIdentityRequired(booking = {}, context = DEFAULT_TIMELINE_CONTEXT) {
+    const businessContext = normalizeTimelineContext(context);
+    if (businessContext !== DEFAULT_TIMELINE_CONTEXT) return false;
+    const status = String(booking.status || booking.booking_status || 'confirmed').trim().toLowerCase();
+    return status !== 'cancelled';
+}
+
 function isTakeawayRoomIdentity(resourceId, room) {
     const normalizedId = normalizedRoomIdentityValue(resourceId);
     const normalizedRoom = normalizedRoomIdentityValue(room);
@@ -468,6 +480,22 @@ function roomResourceWriteError(message, code, statusCode = 400, details = null)
     return error;
 }
 
+function assertActiveBookingRoomIdentity(booking = {}, context = DEFAULT_TIMELINE_CONTEXT, options = {}) {
+    if (!activeEventGenixRoomIdentityRequired(booking, context)) return null;
+    const resourceId = bookingRoomResourceId(booking);
+    const room = String(booking.room || '').trim();
+    const entity = options.entity || 'booking';
+    if (!resourceId) {
+        throw roomResourceWriteError(`${entity} requires room_resource_id`, 'ROOM_RESOURCE_REQUIRED');
+    }
+    if (roomTextLooksInvalid(room)) {
+        throw roomResourceWriteError(`${entity} room must be a valid catalog room name`, 'ROOM_RESOURCE_INVALID_TEXT', 422, {
+            resourceId
+        });
+    }
+    return null;
+}
+
 async function canonicalizeBookingRoomResource(db = defaultPool, context = DEFAULT_TIMELINE_CONTEXT, booking = {}, options = {}) {
     const businessContext = normalizeTimelineContext(context);
     const requestedResourceId = bookingRoomResourceId(booking);
@@ -480,6 +508,7 @@ async function canonicalizeBookingRoomResource(db = defaultPool, context = DEFAU
         booking.room_resource_id = 'room-takeaway';
         booking.roomResourceType = 'room';
         booking.room = options.takeawayName || '\u041d\u0430 \u0432\u0438\u043d\u0456\u0441';
+        assertActiveBookingRoomIdentity(booking, businessContext, options);
         return {
             resourceId: 'room-takeaway',
             type: 'room',
@@ -532,6 +561,7 @@ async function canonicalizeBookingRoomResource(db = defaultPool, context = DEFAU
     booking.room_resource_id = resource.resourceId;
     booking.roomResourceType = 'room';
     booking.room = resource.name;
+    assertActiveBookingRoomIdentity(booking, businessContext, options);
     return resource;
 }
 
@@ -1067,6 +1097,9 @@ module.exports = {
     mergeTimelineResourceRenameAliases,
     resolveRoomTimelineResourceIdentity,
     canonicalizeBookingRoomResource,
+    assertActiveBookingRoomIdentity,
+    activeEventGenixRoomIdentityRequired,
+    roomTextLooksInvalid,
     bookingRoomResourceId,
     upsertTimelineResource,
     ensureDefaultTimelineResources,

@@ -6,6 +6,7 @@ const {
     LEGACY_ROOM_ALIASES,
     classifyRoomValue,
     buildBackfillReport,
+    buildBackfillManifest,
     applyBackfill
 } = require('../scripts/backfill-room-resource-id');
 
@@ -87,9 +88,9 @@ test('room resource backfill dry-run reports technical IDs without customer fiel
     const db = {
         query: async sql => {
             if (/FROM timeline_resources/i.test(sql)) return { rows: resources };
+            if (/FROM banquet_groups bg/i.test(sql)) return { rows: [] };
             const table = Object.keys(tableRows).find(name => new RegExp(`FROM ${name}\\b`, 'i').test(sql));
             if (table) return { rows: tableRows[table] };
-            if (/FROM banquet_groups bg/i.test(sql)) return { rows: [] };
             throw new Error(`Unexpected query: ${sql}`);
         }
     };
@@ -110,6 +111,53 @@ test('room resource backfill dry-run reports technical IDs without customer fiel
         category: 'unknown_or_custom'
     }]);
     assert.equal(JSON.stringify(report).includes('customer'), false);
+});
+
+test('room resource backfill manifest includes exact actions, blockers, hash and zero-mutation proof', async () => {
+    const tableRows = {
+        bookings: [
+            { id: 'BK-1', room: 'Old Marvel', room_resource_id: null, business_context: 'event_genix' },
+            { id: 'BK-2', room: '??????', room_resource_id: null, business_context: 'event_genix' }
+        ],
+        banquet_groups: [{ id: 'BQ-1', room: 'Retired Room', room_resource_id: null, business_context: 'event_genix' }],
+        booking_templates: [],
+        recurring_templates: []
+    };
+    const db = {
+        query: async sql => {
+            if (/FROM timeline_resources/i.test(sql)) return { rows: resources };
+            if (/FROM banquet_groups bg/i.test(sql)) return { rows: [] };
+            const table = Object.keys(tableRows).find(name => new RegExp(`FROM ${name}\\b`, 'i').test(sql));
+            if (table) return { rows: tableRows[table] };
+            throw new Error(`Unexpected query: ${sql}`);
+        }
+    };
+
+    const manifest = await buildBackfillManifest(db, 'event_genix', {
+        generatedAt: '2026-08-14T00:00:00.000Z',
+        sourceCommit: 'abc123'
+    });
+    assert.equal(manifest.readOnly, true);
+    assert.equal(manifest.zeroMutationProof.unchanged, true);
+    assert.match(manifest.manifestHash, /^[a-f0-9]{64}$/);
+    assert.ok(manifest.proposedMutations.some(item =>
+        item.table === 'bookings'
+        && item.id === 'BK-1'
+        && item.proposedAction === 'SET_ROOM_RESOURCE_ID'
+        && item.proposedRoomResourceId === 'room-marvel'
+    ));
+    assert.ok(manifest.proposedMutations.some(item =>
+        item.table === 'banquet_groups'
+        && item.id === 'BQ-1'
+        && item.category === 'inactive_unique_resource'
+    ));
+    assert.deepEqual(manifest.blockers, [{
+        table: 'bookings',
+        id: 'BK-2',
+        category: 'mojibake',
+        evidenceSource: 'room text is corrupt or placeholder characters'
+    }]);
+    assert.equal(JSON.stringify(manifest).includes('customer'), false);
 });
 
 test('room resource backfill apply requires confirmation and exact dry-run count', async () => {

@@ -1195,9 +1195,11 @@ function setMyCabinetProjectionData(data, options = {}) {
 
 async function loadMyCabinetProjection(options = {}) {
     const requestSequence = ++cabinetProjectionRequestSequence;
-    const focusDate = normalizeCabinetDuePreset(cabinetCreateDuePreset) === 'custom'
+    const requestedFocusDate = cabinetTaskDateKeyFromValue(options.focusDate || '');
+    const selectedFocusDate = normalizeCabinetDuePreset(cabinetCreateDuePreset) === 'custom'
         ? cabinetSelectedDueDate()
         : '';
+    const focusDate = requestedFocusDate || selectedFocusDate;
     const path = focusDate
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
@@ -4019,7 +4021,69 @@ function setCabinetTaskComposerExpanded(expanded = true, options = {}) {
 }
 window.setCabinetTaskComposerExpanded = setCabinetTaskComposerExpanded;
 
-function setCabinetDuePreset(preset = 'today') {
+function cabinetSelectedFocusDateNeedsFetch(state = getCabinetMyDayState()) {
+    const preset = normalizeCabinetDuePreset(state.selectedDuePreset);
+    if (!state.selectedDueDate || preset === 'no_date') return '';
+    if (preset === 'custom') return state.selectedDueDate;
+    return myCabinetData?.meta?.planning?.isPartial ? state.selectedDueDate : '';
+}
+
+function renderCabinetMyDaySegmentPanelFromState(state = getCabinetMyDayState()) {
+    const focusedTasks = cabinetFocusedMyDayTasks(state);
+    const focusedMeta = cabinetFocusedMyDayMeta(state);
+    const overdue = cabinetMyDayOverdueTasks();
+    const activeFocus = focusedTasks.length;
+    const focusedDropOptions = state.selectedDuePreset === 'today'
+        ? {
+            dropTarget: 'today',
+            dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
+            dropLabel: 'Сьогодні: перетягніть сюди задачу, щоб перенести її на сьогодні'
+        }
+        : {};
+    const primaryContext = {
+        isAllMode: false,
+        allGroups: [],
+        focusedMeta,
+        focusedTasks,
+        focusedDropOptions,
+        overdue,
+        waiting: cabinetList('waiting'),
+        deferred: cabinetList('deferred'),
+        privateTasks: cabinetList('private'),
+        privatePreview: cabinetList('private').slice(0, 4)
+    };
+    return `<div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: ${escapeHtml(focusedMeta.statLabel || focusedMeta.title || '')} і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="focused-overdue" data-cabinet-focused-preset="${escapeHtml(state.selectedDuePreset)}">
+                <div class="cabinet-day-primary cabinet-day-column cabinet-day-column--today">
+                    ${renderCabinetMyDayTodayPrimary(primaryContext)}
+                </div>
+                <div class="cabinet-day-secondary cabinet-day-column cabinet-day-column--overdue">
+                    ${renderCabinetOverdueTriageList(overdue)}
+                </div>
+            </div>`;
+}
+
+function rerenderCabinetMyDaySegmentPanel() {
+    const panel = document.getElementById?.('cabinetMyDaySegmentPanel');
+    if (!panel) return false;
+    panel.outerHTML = renderCabinetMyDaySegmentPanelFromState();
+    attachProfileListeners();
+    return true;
+}
+
+async function refreshCabinetFocusedDatePanel(options = {}) {
+    const state = getCabinetMyDayState();
+    const focusDate = cabinetSelectedFocusDateNeedsFetch(state);
+    if (focusDate) {
+        await refreshMyCabinetTab({
+            silent: true,
+            keepExistingOnError: true,
+            focusDate
+        });
+    }
+    if (options.rerender !== false && activeTab === 'myday') rerenderCabinetMyDaySegmentPanel();
+}
+
+function setCabinetDuePreset(preset = 'today', options = {}) {
     cabinetCreateDuePreset = normalizeCabinetDuePreset(preset);
     const date = document.getElementById?.('cabinetTaskDate');
     if (date && cabinetCreateDuePreset !== 'custom') date.value = cabinetDueDateForPreset(cabinetCreateDuePreset);
@@ -4029,6 +4093,13 @@ function setCabinetDuePreset(preset = 'today') {
         btn.setAttribute('aria-pressed', active ? 'true' : 'false');
     });
     if (cabinetCreateDuePreset === 'custom') setCabinetTaskComposerExpanded(true, { focusDate: true });
+    if (options.refreshList === true) {
+        refreshCabinetFocusedDatePanel({ rerender: options.rerender !== false })
+            .catch(error => console.warn('Profile cabinet focused date refresh failed', error));
+    } else if (options.rerender === true) {
+        rerenderCabinetMyDaySegmentPanel();
+    }
+    return cabinetCreateDuePreset;
 }
 
 function syncCabinetTaskCreateMode() {
@@ -4092,13 +4163,16 @@ function readCabinetAiDraft() {
     const kind = document.getElementById('cabinetTaskKind')?.value || 'action';
     const selectedMode = document.getElementById('cabinetTaskMode')?.value || cabinetCreateDefaultsForSegment(myTasksSegment).mode;
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
+    const subtasks = readCabinetSubtasks();
+    const structuralMode = kind === 'checklist' || subtasks.length ? 'checklist' : 'simple';
     return {
         title: document.getElementById('cabinetTaskTitle')?.value.trim() || '',
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
         category: document.getElementById('cabinetTaskCategory')?.value || cabinetCreateDefaultsForSegment(myTasksSegment, selectedMode).category,
         priority: readCabinetCreatePriority(),
         taskType: 'human',
-        mode: selectedMode,
+        mode: structuralMode,
+        structuralMode,
         taskMode: selectedMode,
         kind,
         taskKind: kind,
@@ -4112,7 +4186,7 @@ function readCabinetAiDraft() {
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
         impactIds: readCabinetComposerImpactIds(),
-        subtasks: readCabinetSubtasks(),
+        subtasks,
         scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
         reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
@@ -4132,15 +4206,12 @@ function applyCabinetAiDraftField(field, value, meta = {}) {
         return;
     }
     if (field === 'mode') {
-        const mode = value === 'checklist' ? 'work' : String(value || '');
-        const select = document.getElementById('cabinetTaskMode');
-        if (select && ['work', 'personal', 'private'].includes(mode)) {
-            select.value = mode;
-            syncCabinetTaskCreateMode();
-        }
+        const mode = String(value || '');
+        const kind = document.getElementById('cabinetTaskKind');
         if (value === 'checklist') {
-            const kind = document.getElementById('cabinetTaskKind');
-            if (kind) kind.value = 'action';
+            if (kind) kind.value = 'checklist';
+        } else if (mode === 'simple' || mode === 'action') {
+            if (kind && kind.value === 'checklist') kind.value = 'action';
         }
         return;
     }
@@ -6603,14 +6674,8 @@ function renderMyDayCommandCenterTab() {
         return `<div class="my-day-life-shell">${window.MyDayHabits?.renderSetupSurface?.() || ''}</div>`;
     }
     const myDayState = getCabinetMyDayState();
-    const todayState = {
-        ...myDayState,
-        selectedDuePreset: 'today',
-        selectedDueDate: cabinetDateKeyOffset(0),
-        listMode: 'focused'
-    };
-    const focusedTasks = cabinetFocusedMyDayTasks(todayState);
-    const focusedMeta = cabinetFocusedMyDayMeta(todayState);
+    const focusedTasks = cabinetFocusedMyDayTasks(myDayState);
+    const focusedMeta = cabinetFocusedMyDayMeta(myDayState);
     const overdue = cabinetMyDayOverdueTasks();
     const deferred = cabinetList('deferred');
     const waiting = cabinetList('waiting');
@@ -6622,6 +6687,11 @@ function renderMyDayCommandCenterTab() {
         dropHint: 'Перетягніть сюди, щоб запланувати на сьогодні',
         dropLabel: 'Сьогодні: перетягніть сюди задачу, щоб перенести її на сьогодні'
     };
+    if (myDayState.selectedDuePreset !== 'today') {
+        focusedDropOptions.dropTarget = '';
+        focusedDropOptions.dropHint = '';
+        focusedDropOptions.dropLabel = '';
+    }
     const primaryContext = {
         isAllMode: false,
         allGroups: [],
@@ -6647,7 +6717,7 @@ function renderMyDayCommandCenterTab() {
             ${renderCabinetCompletedHistoryStrip()}
             ${renderCabinetLoadNotice()}
             ${renderCabinetMyDayListModeToggle()}
-            <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: сьогодні і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="today-overdue">
+            <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: ${escapeHtml(focusedMeta.statLabel || focusedMeta.title || '')} і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="focused-overdue" data-cabinet-focused-preset="${escapeHtml(myDayState.selectedDuePreset)}">
                 <div class="cabinet-day-primary cabinet-day-column cabinet-day-column--today">
                     ${renderCabinetMyDayTodayPrimary(primaryContext)}
                 </div>
@@ -7483,7 +7553,8 @@ function bindCabinetTaskActions(root = document) {
 
 async function refreshMyCabinetTab(options = {}) {
     const projection = await loadMyCabinetProjection({
-        keepExistingOnError: options.keepExistingOnError !== false
+        keepExistingOnError: options.keepExistingOnError !== false,
+        focusDate: options.focusDate || ''
     });
     applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
     await refreshCabinetPulseCounts();
@@ -7744,6 +7815,7 @@ async function createCabinetTask(event, mode) {
     const selectedDate = document.getElementById('cabinetTaskDate')?.value || '';
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
     const title = String(input?.value || '').trim();
+    const subtasks = readCabinetSubtasks();
     const draft = {
         title,
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
@@ -7752,6 +7824,8 @@ async function createCabinetTask(event, mode) {
         priority: readCabinetCreatePriority(),
         taskType: 'human',
         mode: selectedMode,
+        taskMode: selectedMode,
+        structuralMode: kind === 'checklist' || subtasks.length ? 'checklist' : 'simple',
         kind,
         visibility: document.getElementById('cabinetTaskVisibility')?.value || (selectedMode === 'private' ? 'private' : (selectedMode === 'personal' ? 'me_only' : 'team')),
         workflowState: kind === 'waiting' ? 'waiting' : 'inbox',
@@ -7763,7 +7837,7 @@ async function createCabinetTask(event, mode) {
         sourceModule: 'profile_my_cabinet',
         sourceSurface: 'profile_my_cabinet',
         impactIds: myDayClassification?.impactIds || [],
-        subtasks: readCabinetSubtasks(),
+        subtasks,
         scheduleConfirmed: cabinetCreateDuePreset !== 'no_date',
         reportRequired: document.getElementById('cabinetTaskReportRequired')?.checked === true,
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
@@ -8677,7 +8751,7 @@ function attachProfileListeners() {
     document.querySelectorAll('[data-cabinet-due-preset]').forEach(button => {
         if (button.dataset.cabinetDueBound === 'true') return;
         button.dataset.cabinetDueBound = 'true';
-        button.addEventListener('click', () => setCabinetDuePreset(button.dataset.cabinetDuePreset));
+        button.addEventListener('click', () => setCabinetDuePreset(button.dataset.cabinetDuePreset, { refreshList: true }));
     });
     document.querySelectorAll('[data-cabinet-list-mode]').forEach(button => {
         if (button.dataset.cabinetListModeBound === 'true') return;
@@ -8729,10 +8803,11 @@ function attachProfileListeners() {
     if (cabinetDate && cabinetDate.dataset.cabinetDateBound !== 'true') {
         cabinetDate.dataset.cabinetDateBound = 'true';
         cabinetDate.addEventListener('change', () => {
-            setCabinetDuePreset('custom');
+            setCabinetDuePreset('custom', { rerender: true });
             const focusDate = cabinetSelectedDueDate();
             if (!focusDate) return;
             refreshMyCabinetTab({ silent: true, keepExistingOnError: true })
+                .then(() => rerenderCabinetMyDaySegmentPanel())
                 .catch(error => console.warn('Profile cabinet custom focus refresh failed', error));
         });
     }

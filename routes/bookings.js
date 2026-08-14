@@ -63,6 +63,7 @@ const {
 const {
     TrustedQaRunError,
     prepareTrustedQaBookingInput,
+    qaPublicDetails,
     registerQaEntity
 } = require('../services/trustedQaRuns');
 const { broadcastBookingEvent } = require('../services/websocket');
@@ -3741,8 +3742,8 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
             const linkedId = await generateBookingNumber(client);
             const linkedInsert = await client.query(
-                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30)
+                `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31)
                  RETURNING *`,
                 [linkedId, businessContext, b.date, b.time, ensuredSecondAnimatorLine.lineId, b.programId, b.programCode,
                  b.label, b.programName, b.category, b.duration, 0, b.hosts,
@@ -3750,7 +3751,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                  b.pinataFillerNumber, b.clientPinataServicePrice,
                  b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes,
                  b.createdBy, b.id, b.status, nullableBookingCount(b.kidsCount), b.groupName || null,
-                 null]
+                 bookingExtraDataSqlValue(b), bookingCreateSideEffectsAllowed() ? Boolean(b.skipNotification) : true]
             );
             if (linkedInsert.rows[0]) linkedInsertedRows.push(linkedInsert.rows[0]);
         }
@@ -3835,12 +3836,15 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             }, b.id, `booking_created_${b.id}`);
         }
 
-        await registerQaEntity(client, qaContext, 'booking', b.id, {
-            businessContext,
-            date: b.date,
-            status: b.status || 'confirmed',
-            linkedTo: b.linkedTo || null
-        });
+        for (const createdId of [b.id, ...linkedInsertedRows.map(row => row.id)]) {
+            await registerQaEntity(client, qaContext, 'booking', createdId, {
+                businessContext,
+                date: b.date,
+                status: b.status || 'confirmed',
+                linkedTo: createdId === b.id ? (b.linkedTo || null) : b.id,
+                source: 'bookings_single'
+            });
+        }
 
         await commitBookingTransaction(client, 'booking create');
 
@@ -3976,7 +3980,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // Integration 2: HR shift warning (no block)
         // Note: bookings.hosts is INTEGER (animator count). Use second_animator for name matching.
-        if (b.secondAnimator && b.date) {
+        if (bookingCreateSideEffectsAllowed() && b.secondAnimator && b.date) {
             setImmediate(async () => {
                 try {
                     const animName = String(b.secondAnimator).split(',')[0].trim();
@@ -4128,7 +4132,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             success: false,
             error: err.publicMessage || 'Internal server error',
             code: err.code || 'internal_error',
-            details: err.details || undefined,
+            details: err instanceof TrustedQaRunError ? qaPublicDetails(err.details) : (err.details || undefined),
             missingBookingIds: err.missingBookingIds || undefined
         });
     } finally {
@@ -4735,7 +4739,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
              RETURNING *`,
-            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.roomResourceId || null, main.notes, main.createdBy, null, main.status, nullableBookingCount(main.kidsCount), main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, main.skipNotification || false, customerId, main.paymentMethod || null, nullableBookingCount(main.banquetGuests), nullableBookingCount(main.banquetAdults), nullableBookingCount(main.banquetTables), main.banquetMenu || null]
+            [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.roomResourceId || null, main.notes, main.createdBy, null, main.status, nullableBookingCount(main.kidsCount), main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, fullCreateSideEffectsAllowed() ? (main.skipNotification || false) : true, customerId, main.paymentMethod || null, nullableBookingCount(main.banquetGuests), nullableBookingCount(main.banquetAdults), nullableBookingCount(main.banquetTables), main.banquetMenu || null]
         );
         const managerDepositResult = await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user);
 
@@ -4772,10 +4776,10 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
                 const lbId = await generateBookingNumber(client);
                 const lbInsert = await client.query(
-                    `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data)
-                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30)
+                    `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification)
+                     VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31)
                      RETURNING *`,
-                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.roomResourceId || null, lb.notes, lb.createdBy, main.id, lb.status, nullableBookingCount(lb.kidsCount), lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb)]
+                    [lbId, businessContext, lb.date, lb.time, lb.lineId, lb.programId, lb.programCode, lb.label, lb.programName, lb.category, lb.duration, lb.price, lb.hosts, lb.secondAnimator, lb.pinataFiller, lb.pinataMode, lb.pinataNumber, lb.pinataFillerNumber, lb.clientPinataServicePrice, lb.clientPinataServiceNote, lb.costume || null, lb.room, lb.roomResourceId || null, lb.notes, lb.createdBy, main.id, lb.status, nullableBookingCount(lb.kidsCount), lb.groupName || main.groupName || null, bookingExtraDataSqlValue(lb), fullCreateSideEffectsAllowed() ? Boolean(lb.skipNotification) : true]
                 );
                 if (lbInsert.rows[0]) linkedRows.push(lbInsert.rows[0]);
             }
@@ -5111,7 +5115,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             success: false,
             error: err.publicMessage || 'Internal server error',
             code: err.code || 'internal_error',
-            details: err.details || undefined,
+            details: err instanceof TrustedQaRunError ? qaPublicDetails(err.details) : (err.details || undefined),
             missingBookingIds: err.missingBookingIds || undefined
         });
     } finally {

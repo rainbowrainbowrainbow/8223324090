@@ -49,6 +49,7 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'syncAgentActivities', functionName: 'syncAgentActivities', sourceFile: 'server.js:inline', owner: 'agent-tracker', interval: '30 * 60 * 1000', dedup: 'hourly', sideEffects: ['filesystem', 'database'] },
     { name: 'runCheckboxReadinessProbeScheduler', functionName: 'runCheckboxReadinessProbeScheduler', sourceFile: 'services/payments/paymentReadinessService.js', owner: 'payments', interval: '60000', dedup: null, sideEffects: ['database', 'checkbox'], tests: ['tests/payment-readiness.test.js'] },
     { name: 'processPaymentOutboxJobs', functionName: 'processPaymentOutboxJobs', sourceFile: 'services/payments/paymentOutboxWorker.js', owner: 'payments', interval: '30000', dedup: null, sideEffects: ['database', 'checkbox'], tests: ['tests/checkbox-webhook-reconciliation.test.js'] },
+    { name: 'runTrustedQaCleanupWatchdog', functionName: 'runTrustedQaCleanupWatchdog', sourceFile: 'services/trustedQaRuns.js', owner: 'trusted-qa', interval: '60000', dedup: '5min', sideEffects: ['database', 'bookings', 'tasks', 'history'], tests: ['tests/trusted-qa-runs.test.js'] },
     { name: 'cleanupOutbox', functionName: 'cleanupOutbox', sourceFile: 'services/eventBus.js', owner: 'event-bus', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/event-queue.test.js'] },
     { name: 'cleanupRefreshTokens', functionName: 'cleanupRefreshTokens', sourceFile: 'middleware/auth.js', owner: 'auth', interval: '60000', dedup: 'daily', sideEffects: ['database'] }
 ];

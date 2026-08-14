@@ -74,6 +74,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `syncAgentActivities` | `server.js:inline` | agent-tracker | `30 * 60 * 1000` | `hourly` |
 | `runCheckboxReadinessProbeScheduler` | `services/payments/paymentReadinessService.js` | payments | `60000` | none |
 | `processPaymentOutboxJobs` | `services/payments/paymentOutboxWorker.js` | payments | `30000` | none |
+| `runTrustedQaCleanupWatchdog` | `services/trustedQaRuns.js` | trusted-qa | `60000` | `5min` |
 | `cleanupOutbox` | `services/eventBus.js` | event-bus | `60000` | `daily` |
 | `cleanupRefreshTokens` | `middleware/auth.js` | auth | `60000` | `daily` |
 
@@ -95,6 +96,14 @@ Unsupported dedup values are rejected before the scheduler function can run.
 `runCheckboxReadinessProbeScheduler` runs every minute without guard-level dedup because readiness freshness is scoped by `checkbox_readiness_snapshots.expires_at`. It records sanitized Checkbox readiness only; raw secrets, PINs, and tokens are not stored. Direct coverage lives in `tests/payment-readiness.test.js`.
 
 `processPaymentOutboxJobs` runs every 30 seconds without guard-level dedup because durable locking is owned by `payment_outbox_jobs`. It claims bounded batches with `FOR UPDATE SKIP LOCKED`, recovers expired locks, applies exponential backoff, moves exhausted jobs to dead-letter status, and performs receipt status lookup before retrying any sale after unknown provider responses. Direct coverage lives in `tests/checkbox-webhook-reconciliation.test.js`.
+
+`runTrustedQaCleanupWatchdog` runs every minute with a `5min` guard-level dedup.
+It only processes server-authorized trusted QA runs in `cleanup_pending`, claims
+bounded batches with `FOR UPDATE SKIP LOCKED`, retries with capped backoff, and
+marks exhausted runs `blocked` instead of hiding cleanup failures. Cleanup is
+strictly ID-manifest driven from `trusted_qa_run_entities`; client-supplied
+`disposableQa` or `skipNotification` fields are not treated as authorization.
+Direct coverage lives in `tests/trusted-qa-runs.test.js`.
 
 `checkHrAttendancePrintAutomations` runs every minute without guard-level dedup.
 Its durable deduplication is owned by `hr_attendance_document_jobs`: the unique

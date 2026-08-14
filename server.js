@@ -885,6 +885,7 @@ initializeDatabaseWithSchemaFence().catch(err => {
 
         // v38.4.0: Outbox relay — process transactional outbox events every 5 seconds
         const { processOutbox, cleanupOutbox } = require('./services/eventBus');
+        const { runTrustedQaCleanupWatchdog } = require('./services/trustedQaRuns');
         schedulerIntervals.push(setInterval(async () => {
             try { await processOutbox(); } catch (e) { log.error('Outbox relay error', e.message); }
         }, 5000));
@@ -893,10 +894,11 @@ initializeDatabaseWithSchemaFence().catch(err => {
         const { cleanupRefreshTokens } = require('./middleware/auth');
         schedulerIntervals.push(setInterval(guardScheduler('runCheckboxReadinessProbeScheduler', runCheckboxReadinessProbeScheduler, { dedup: null, autoPause: false }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('processPaymentOutboxJobs', processPaymentOutboxJobs, { dedup: null, autoPause: false }), 30000));
+        schedulerIntervals.push(setInterval(guardScheduler('runTrustedQaCleanupWatchdog', runTrustedQaCleanupWatchdog, { dedup: '5min' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupOutbox', cleanupOutbox, { dedup: 'daily' }), 60000));
         schedulerIntervals.push(setInterval(guardScheduler('cleanupRefreshTokens', cleanupRefreshTokens, { dedup: 'daily' }), 60000));
 
-        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker + outbox + token-cleanup');
+        log.info('Schedulers started (guarded): digest + reminder + backup + recurring + afisha + auto-delete + cert-expiry + kleshnya + greeting-cleanup + streaks + birthdays + event-queue + sla + announcements + task-overdue + retention + auto-report + tg-retry + training + guardian + ai-learn + agent-tracker + outbox + trusted-qa-cleanup + token-cleanup');
 
         // v42.3: Marketing agent — auto-publish scheduled posts every 5 min
         try {

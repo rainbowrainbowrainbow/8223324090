@@ -568,8 +568,10 @@ async function createSourceFixtures(pool, suffix) {
     const bookingId = `recovery-booking-${suffix}`;
     await pool.query(
         `INSERT INTO bookings (
-             id, date, time, line_id, label, notes, customer_id, extra_data, business_context
-         ) VALUES ($1, '2099-07-15', '10:00', 'qa-line', $2, $3, $4, $5::jsonb, 'event_genix')`,
+             id, date, time, line_id, label, notes, customer_id, extra_data, business_context,
+             room, room_resource_id
+         ) VALUES ($1, '2099-07-15', '10:00', 'qa-line', $2, $3, $4, $5::jsonb, 'event_genix',
+             'QA Recovery Room', 'qa-recovery-room')`,
         [
             bookingId,
             `Recovery Booking ${suffix}`,

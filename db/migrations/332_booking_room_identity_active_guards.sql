@@ -2,7 +2,7 @@
 -- SAFETY: Adds NOT VALID active-row checks and deferred constraint triggers only. Existing legacy cancelled/history rows are not rewritten, constraints are not validated here, and no production cleanup/backfill is executed.
 -- DATA_SCOPE: schema-only active-row guards; no existing booking or banquet rows are read, rewritten, cancelled, quarantined, or validated.
 -- OPERATOR_APPROVAL: required
--- ROLLBACK: Disable application writes, export active invalid room inventory, then DROP TRIGGER IF EXISTS trg_banquet_groups_identity_v332 ON banquet_groups; DROP TRIGGER IF EXISTS trg_banquet_group_bookings_identity_v332 ON banquet_group_bookings; DROP TRIGGER IF EXISTS trg_bookings_primary_banquet_identity_v332 ON bookings; DROP FUNCTION IF EXISTS assert_banquet_group_identity_v332(); DROP FUNCTION IF EXISTS assert_booking_primary_group_identity_v332(); DROP FUNCTION IF EXISTS active_room_text_invalid_v332(TEXT); ALTER TABLE bookings DROP CONSTRAINT IF EXISTS chk_bookings_active_room_identity_v332; ALTER TABLE banquet_groups DROP CONSTRAINT IF EXISTS chk_banquet_groups_active_room_identity_v332;
+-- ROLLBACK: Disable application writes, export active invalid room inventory, then DROP TRIGGER IF EXISTS trg_banquet_groups_identity_v332 ON banquet_groups; DROP TRIGGER IF EXISTS trg_banquet_group_bookings_identity_v332 ON banquet_group_bookings; DROP TRIGGER IF EXISTS trg_bookings_primary_banquet_identity_v332 ON bookings; DROP FUNCTION IF EXISTS assert_banquet_group_identity_v332(); DROP FUNCTION IF EXISTS assert_booking_primary_group_identity_v332(); DROP FUNCTION IF EXISTS canonical_business_context_v332(TEXT); DROP FUNCTION IF EXISTS active_room_text_invalid_v332(TEXT); ALTER TABLE bookings DROP CONSTRAINT IF EXISTS chk_bookings_active_room_identity_v332; ALTER TABLE banquet_groups DROP CONSTRAINT IF EXISTS chk_banquet_groups_active_room_identity_v332;
 
 CREATE OR REPLACE FUNCTION active_room_text_invalid_v332(value TEXT)
 RETURNS BOOLEAN
@@ -11,6 +11,18 @@ IMMUTABLE
 AS $$
     SELECT COALESCE(BTRIM(value), '') = ''
         OR BTRIM(value) ~ '^[?�]+$'
+$$;
+
+CREATE OR REPLACE FUNCTION canonical_business_context_v332(value TEXT)
+RETURNS TEXT
+LANGUAGE SQL
+IMMUTABLE
+AS $$
+    SELECT CASE
+        WHEN LOWER(COALESCE(NULLIF(BTRIM(value), ''), 'event_genix'))
+             IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
+        ELSE LOWER(COALESCE(NULLIF(BTRIM(value), ''), 'event_genix'))
+    END
 $$;
 
 DO $$
@@ -24,11 +36,7 @@ BEGIN
             ADD CONSTRAINT chk_bookings_active_room_identity_v332
             CHECK (
                 NOT (
-                    CASE
-                        WHEN LOWER(COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix'))
-                             IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-                        ELSE LOWER(COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix'))
-                    END = 'event_genix'
+                    canonical_business_context_v332(business_context) = 'event_genix'
                     AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) <> 'cancelled'
                     AND (
                         COALESCE(BTRIM(room_resource_id), '') = ''
@@ -47,11 +55,7 @@ BEGIN
             ADD CONSTRAINT chk_banquet_groups_active_room_identity_v332
             CHECK (
                 NOT (
-                    CASE
-                        WHEN LOWER(COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix'))
-                             IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-                        ELSE LOWER(COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix'))
-                    END = 'event_genix'
+                    canonical_business_context_v332(business_context) = 'event_genix'
                     AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) <> 'cancelled'
                     AND (
                         COALESCE(BTRIM(room_resource_id), '') = ''
@@ -93,11 +97,7 @@ BEGIN
         RETURN NEW;
     END IF;
 
-    IF CASE
-            WHEN LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-                 IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-            ELSE LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-       END <> 'event_genix'
+    IF canonical_business_context_v332(group_row.business_context) <> 'event_genix'
        OR LOWER(COALESCE(NULLIF(BTRIM(group_row.status), ''), 'active')) = 'cancelled' THEN
         IF TG_OP = 'DELETE' THEN RETURN OLD; END IF;
         RETURN NEW;
@@ -126,15 +126,7 @@ BEGIN
             USING ERRCODE = '23514';
     END IF;
 
-    IF CASE
-            WHEN LOWER(COALESCE(NULLIF(BTRIM(primary_row.business_context), ''), 'event_genix'))
-                 IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-            ELSE LOWER(COALESCE(NULLIF(BTRIM(primary_row.business_context), ''), 'event_genix'))
-       END <> CASE
-            WHEN LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-                 IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-            ELSE LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-       END THEN
+    IF canonical_business_context_v332(primary_row.business_context) <> canonical_business_context_v332(group_row.business_context) THEN
         RAISE EXCEPTION 'active banquet group and primary booking business context mismatch'
             USING ERRCODE = '23514';
     END IF;
@@ -162,23 +154,11 @@ BEGIN
          WHERE bg.primary_booking_id = COALESCE(NEW.id, OLD.id)
            AND LOWER(COALESCE(NULLIF(BTRIM(bg.status), ''), 'active')) <> 'cancelled'
     LOOP
-        IF CASE
-                WHEN LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-                     IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-                ELSE LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-           END = 'event_genix'
+        IF canonical_business_context_v332(group_row.business_context) = 'event_genix'
            AND (
                 COALESCE(BTRIM(NEW.room_resource_id), '') = ''
                 OR NEW.room_resource_id IS DISTINCT FROM group_row.room_resource_id
-                OR CASE
-                    WHEN LOWER(COALESCE(NULLIF(BTRIM(NEW.business_context), ''), 'event_genix'))
-                         IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-                    ELSE LOWER(COALESCE(NULLIF(BTRIM(NEW.business_context), ''), 'event_genix'))
-                END IS DISTINCT FROM CASE
-                    WHEN LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-                         IN ('park_zakrevsky', 'park', 'pzp') THEN 'event_genix'
-                    ELSE LOWER(COALESCE(NULLIF(BTRIM(group_row.business_context), ''), 'event_genix'))
-                END
+                OR canonical_business_context_v332(NEW.business_context) IS DISTINCT FROM canonical_business_context_v332(group_row.business_context)
            ) THEN
             RAISE EXCEPTION 'active banquet group and primary booking identity mismatch'
                 USING ERRCODE = '23514';

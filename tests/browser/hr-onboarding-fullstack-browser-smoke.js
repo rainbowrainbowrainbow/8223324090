@@ -130,12 +130,15 @@ async function waitForApi(page, method, pathname) {
 
 async function waitForAppShell(page, options = {}) {
     await page.locator('#mainApp:not(.hidden)').waitFor();
-    await page.waitForFunction(({ requireHrFetch }) => {
+    await page.waitForFunction(({ requireCrmApiFetch, requireHrFetch }) => {
         if (document.readyState === 'loading') return false;
-        if (typeof window.crmApiFetch !== 'function') return false;
+        if (requireCrmApiFetch && typeof window.crmApiFetch !== 'function') return false;
         if (requireHrFetch && typeof window.hrFetch !== 'function') return false;
         return true;
-    }, { requireHrFetch: Boolean(options.requireHrFetch) });
+    }, {
+        requireCrmApiFetch: options.requireCrmApiFetch !== false,
+        requireHrFetch: Boolean(options.requireHrFetch)
+    });
 }
 
 async function reloadVacanciesWithStatus(page, status) {
@@ -436,8 +439,10 @@ async function run() {
 
         await step('open Training onboarding with two profession processes', async () => {
             await page.goto(`${base}/training.html`, { waitUntil: 'domcontentloaded' });
-            await waitForAppShell(page);
+            await waitForAppShell(page, { requireCrmApiFetch: false });
+            const onboardingResponsePromise = waitForApi(page, 'GET', '/api/hr/onboarding');
             await page.locator('[data-tab="onboarding"]').click();
+            await responseJson(await onboardingResponsePromise, 'load onboarding processes');
             const group = page.locator('.training-onboarding-staff-group').filter({ hasText: primaryCandidateName });
             await group.waitFor();
             assert.equal(await group.locator('.training-onboarding-card').count(), 2);

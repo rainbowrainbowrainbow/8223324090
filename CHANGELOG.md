@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.141 - Banquet Cancellation Delivery
+
+### Банкетні скасування / QA / Room identity / (14.08.2026) [codex]
+- **Безпечне скасування банкетів** - підготовлено delivery-реліз із канонічним readiness/cancellation flow, group-aware UI, idempotency і структурованими blocker-повідомленнями.
+- **Trusted QA lifecycle** - закріплено server-authorized QA контекст, exact manifests і zero-side-effect cleanup без довіри до client-supplied marker.
+- **Room identity hardening** - додано guard-и, dry-run tooling і staged constraints для активних booking/banquet group записів без вигаданого backfill.
+- **Release safety** - оновлено CI/release tooling, cache tags, visible version metadata і rollback target для контрольованого production deploy.
+
+---
+
 ## v0.80.140 - Banquet Cancellation Hardening
 
 ### Release / Versioning / (14.08.2026) [codex]

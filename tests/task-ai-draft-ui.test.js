@@ -238,3 +238,79 @@ test('AI draft fingerprint rejects stale schedule confirmation changes', () => {
 
     assert.notEqual(window.TaskAiDraft._draftKey(todayDraft), window.TaskAiDraft._draftKey(noDateDraft));
 });
+
+test('AI draft accept-all does not overwrite existing manual subtasks without explicit subtask acceptance', async () => {
+    const dom = new JSDOM(`<!doctype html><body>
+        <div id="composer" data-source-surface="test">
+            <button type="button" data-task-ai-draft-preview>AI</button>
+            <div data-task-ai-draft-status></div>
+            <div data-task-ai-draft-review hidden></div>
+        </div>
+    </body>`, {
+        runScripts: 'outside-only',
+        url: 'https://crm.test/tasks'
+    });
+    const { window } = dom;
+    const applied = [];
+    window.TaskCreate = {
+        requestAiDraftStatus: async () => ({ success: true, feature: { enabled: true } }),
+        requestAiDraftPreview: async () => ({
+            success: true,
+            proposalToken: 'payload.signature',
+            draftFingerprint: 'draft-hash',
+            proposalHash: 'proposal-hash',
+            catalogVersion: 'catalog-hash',
+            proposal: {
+                decision: 'checklist',
+                action: 'apply',
+                mode: 'checklist',
+                title: 'AI checklist title',
+                description: 'AI checklist description',
+                impactIds: [],
+                subtasks: [
+                    { title: 'AI step one' },
+                    { title: 'AI step two' }
+                ]
+            },
+            diff: {
+                changedFields: ['title', 'mode', 'subtasks'],
+                fields: {
+                    title: { before: 'Manual title', after: 'AI checklist title', changed: true },
+                    mode: { before: 'checklist', after: 'checklist', changed: false },
+                    subtasks: {
+                        before: [{ title: 'Manual step one' }, { title: 'Manual step two' }],
+                        after: [{ title: 'AI step one' }, { title: 'AI step two' }],
+                        changed: true
+                    }
+                }
+            },
+            impactCatalog: []
+        })
+    };
+    window.eval(read('js/task-ai-draft.js'));
+
+    const root = window.document.getElementById('composer');
+    window.TaskAiDraft.bindComposer(root, {
+        readDraft: () => ({
+            title: 'Manual title',
+            mode: 'checklist',
+            taskMode: 'personal',
+            subtasks: [{ title: 'Manual step one' }, { title: 'Manual step two' }]
+        }),
+        applyField: (field, value) => applied.push({ field, value })
+    });
+    await tick();
+
+    root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+    root.querySelector('[data-task-ai-draft-accept-all]').click();
+
+    assert.deepEqual(applied.map(item => item.field), ['title', 'mode']);
+    assert.equal(applied.some(item => item.field === 'subtasks'), false);
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root).acceptedFieldMask.includes('subtasks'), false);
+
+    root.querySelector('[data-task-ai-draft-accept="subtasks"]').click();
+    assert.equal(applied.at(-1).field, 'subtasks');
+    assert.equal(window.TaskAiDraft.commitPayloadFor(root).acceptedFieldMask.includes('subtasks'), true);
+});

@@ -146,6 +146,14 @@ function normalizeMode(value) {
     return null;
 }
 
+function normalizeStructuralMode(draft = {}, subtasks = []) {
+    const direct = normalizeMode(draft.structuralMode || draft.structural_mode || draft.mode);
+    if (direct) return direct;
+    const kindMode = normalizeMode(draft.taskKind || draft.task_kind || draft.kind);
+    if (kindMode) return kindMode;
+    return subtasks.length ? 'checklist' : 'simple';
+}
+
 function normalizeScheduleDate(value) {
     if (value === null || value === undefined || value === '') return null;
     const scheduleDate = compactString(value, 32);
@@ -161,6 +169,10 @@ function normalizeDraftSnapshot(value = {}) {
     const title = compactString(draft.title, MAX_TITLE_CHARS);
     const description = compactString(draft.description, MAX_DESCRIPTION_CHARS);
     const rawImpacts = draft.impactIds ?? draft.impact_ids ?? [];
+    const subtasks = normalizeDraftItems(Array.isArray(draft.subtasks) ? draft.subtasks : [], {
+        sourceType: 'manual',
+        maxItems: MAX_SUBTASKS
+    }).map(item => ({ title: item.title }));
     let impactIds = [];
     if (Array.isArray(rawImpacts)) {
         impactIds = normalizeImpactIds(rawImpacts);
@@ -168,7 +180,7 @@ function normalizeDraftSnapshot(value = {}) {
     return {
         title,
         description,
-        mode: normalizeMode(draft.mode || draft.taskMode || draft.task_mode || draft.taskKind || draft.task_kind),
+        mode: normalizeStructuralMode(draft, subtasks),
         category: compactString(draft.category, 80),
         subcategory: compactString(draft.subcategory, 80),
         taskKind: compactString(draft.taskKind || draft.task_kind, 60),
@@ -176,7 +188,8 @@ function normalizeDraftSnapshot(value = {}) {
         sourceType: compactString(draft.sourceType || draft.source_type, 80),
         sourceModule: compactString(draft.sourceModule || draft.source_module, 80),
         scheduleDate: normalizeScheduleDate(draft.scheduleDate),
-        impactIds
+        impactIds,
+        subtasks
     };
 }
 
@@ -529,7 +542,7 @@ function buildDraftDiff(currentDraft = {}, proposal = {}) {
     };
     const fields = {};
     for (const field of Object.keys(after)) {
-        const beforeValue = field === 'subtasks' ? [] : before[field];
+        const beforeValue = before[field];
         const afterValue = after[field];
         const changed = stableStringify(beforeValue) !== stableStringify(afterValue);
         fields[field] = { before: beforeValue, after: afterValue, changed };

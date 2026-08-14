@@ -117,7 +117,7 @@ function normalizeFinalDraft(value = {}, options = {}) {
     const title = compactString(draft.title, MAX_COMMIT_TITLE_CHARS);
     if (!title) throw commitError('Task title is required.', 400, 'TASK_AI_DRAFT_TITLE_REQUIRED');
     const description = compactString(draft.description, MAX_COMMIT_DESCRIPTION_CHARS);
-    const mode = normalizeMode(draft.mode || draft.taskMode || draft.task_mode || draft.taskKind || draft.task_kind);
+    const mode = normalizeMode(draft.structuralMode || draft.structural_mode || draft.mode || draft.taskKind || draft.task_kind || draft.kind);
     const subtasks = normalizeDraftItems(Array.isArray(draft.subtasks) ? draft.subtasks : [], {
         sourceType: 'ai',
         maxItems: MAX_COMMIT_SUBTASKS

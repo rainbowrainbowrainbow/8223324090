@@ -206,6 +206,49 @@ test('task AI preview deterministically preserves explicit active impacts for si
     assert.match(recovered.reason, /recovered explicit active impacts/);
 });
 
+test('task AI preview separates structural mode from taskMode and diffs existing subtasks', () => {
+    const currentDraft = {
+        title: 'Р’С–РґСЂРµРјРѕРЅС‚СѓРІР°С‚Рё AI РґР»СЏ С‡РµРєР»С–СЃС‚С–РІ',
+        description: 'Р„ РґРІР° СЂСѓС‡РЅС– РїСѓРЅРєС‚Рё, AI РјР°С” РїРѕРєР°Р·Р°С‚Рё before/after.',
+        mode: 'work',
+        taskMode: 'personal',
+        taskKind: 'checklist',
+        subtasks: [
+            { title: 'Р—Р±РµСЂРµРіС‚Рё СЂСѓС‡РЅРёР№ РїСѓРЅРєС‚ 1' },
+            { title: 'Р—Р±РµСЂРµРіС‚Рё СЂСѓС‡РЅРёР№ РїСѓРЅРєС‚ 2' }
+        ],
+        impactIds: [101]
+    };
+    const proposal = {
+        ...validProposal(),
+        subtasks: [
+            { title: 'AI РїСѓРЅРєС‚ 1' },
+            { title: 'AI РїСѓРЅРєС‚ 2' },
+            { title: 'AI РїСѓРЅРєС‚ 3' }
+        ]
+    };
+
+    const snapshot = preview.normalizeDraftSnapshot(currentDraft);
+    const diff = preview.buildDraftDiff(currentDraft, proposal);
+
+    assert.equal(snapshot.mode, 'checklist');
+    assert.equal(snapshot.taskMode, 'personal');
+    assert.deepEqual(snapshot.subtasks.map(item => item.title), [
+        'Р—Р±РµСЂРµРіС‚Рё СЂСѓС‡РЅРёР№ РїСѓРЅРєС‚ 1',
+        'Р—Р±РµСЂРµРіС‚Рё СЂСѓС‡РЅРёР№ РїСѓРЅРєС‚ 2'
+    ]);
+    assert.deepEqual(diff.fields.subtasks.before.map(item => item.title), [
+        'Р—Р±РµСЂРµРіС‚Рё СЂСѓС‡РЅРёР№ РїСѓРЅРєС‚ 1',
+        'Р—Р±РµСЂРµРіС‚Рё СЂСѓС‡РЅРёР№ РїСѓРЅРєС‚ 2'
+    ]);
+    assert.deepEqual(diff.fields.subtasks.after.map(item => item.title), ['AI РїСѓРЅРєС‚ 1', 'AI РїСѓРЅРєС‚ 2', 'AI РїСѓРЅРєС‚ 3']);
+    assert.equal(diff.fields.subtasks.changed, true);
+    assert.notEqual(
+        preview.draftFingerprint({ ...currentDraft, subtasks: currentDraft.subtasks.slice(0, 1) }),
+        preview.draftFingerprint(currentDraft)
+    );
+});
+
 test('task AI preview telemetry records only metadata and strips task text/provider payloads', async () => {
     const events = [];
     const result = await preview.generateTaskAiDraftPreview({

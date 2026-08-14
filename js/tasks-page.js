@@ -4330,7 +4330,7 @@ async function refreshTaskDecompositionSuggestions() {
         category: draft.category,
         subcategory: draft.subcategory,
         taskKind: draft.kind,
-        taskMode: draft.mode
+        taskMode: draft.taskMode || draft.mode
     });
     taskDecompositionSuggestions = result?.success ? (result.suggestions || []) : [];
     renderTaskDecompositionSuggestions();
@@ -4431,6 +4431,9 @@ function readTaskComposerDraft() {
     const category = document.getElementById('taskCategory')?.value || 'admin';
     const scheduleDate = document.getElementById('taskScheduleDate')?.value || getTodayStr();
     const mode = document.getElementById('taskMode')?.value || (captureIntent.private ? 'private' : (captureIntent.personal ? 'personal' : 'work'));
+    const kind = document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action');
+    const subtasks = readTaskComposerSubtasks();
+    const structuralMode = kind === 'checklist' || subtasks.length ? 'checklist' : 'simple';
     return {
         title: document.getElementById('taskTitle')?.value.trim() || '',
         description: document.getElementById('taskDescription')?.value.trim() || '',
@@ -4441,8 +4444,10 @@ function readTaskComposerDraft() {
         deadlineTime: document.getElementById('taskDeadlineTime')?.value || '',
         ownerUserId: resolveQuickAddOwnerUserId(),
         assigneeMode: taskAssigneeMode,
-        mode,
-        kind: document.getElementById('taskKind')?.value || (captureIntent.waiting ? 'waiting' : 'action'),
+        mode: structuralMode,
+        structuralMode,
+        taskMode: mode,
+        kind,
         visibility: defaultVisibilityForTaskMode(mode, document.getElementById('taskVisibility')?.value || 'team'),
         duePreset: taskDuePreset,
         scheduleDate,
@@ -4450,7 +4455,7 @@ function readTaskComposerDraft() {
         durationMinutes: Math.max(5, parseInt(document.getElementById('taskScheduleDuration')?.value, 10) || 30),
         scheduleSlot: quickScheduleSlot,
         impactIds: [...taskComposerAiImpactIds],
-        subtasks: readTaskComposerSubtasks(),
+        subtasks,
         scheduleConfirmed: taskDuePreset !== 'no_date',
         allowReschedule: document.getElementById('taskAllowReschedule')?.checked !== false,
         captureIntent: { ...captureIntent }
@@ -4469,12 +4474,12 @@ function applyTaskAiDraftField(field, value, meta = {}) {
         return;
     }
     if (field === 'mode') {
-        const mode = value === 'checklist' ? 'work' : String(value || '');
-        const select = document.getElementById('taskMode');
-        if (select && ['work', 'personal', 'private'].includes(mode)) select.value = mode;
+        const mode = String(value || '');
+        const kind = document.getElementById('taskKind');
         if (value === 'checklist') {
-            const kind = document.getElementById('taskKind');
             if (kind) kind.value = 'checklist';
+        } else if (mode === 'simple' || mode === 'action') {
+            if (kind && kind.value === 'checklist') kind.value = 'action';
         }
         return;
     }
@@ -4520,7 +4525,7 @@ function cloneTaskBatchSettings(source = {}) {
         taskType: source.taskType || 'human',
         ownerUserId: source.ownerUserId || null,
         assigneeMode: source.assigneeMode || taskAssigneeMode || 'self',
-        mode: source.mode || 'work',
+        mode: source.taskMode || source.mode || 'work',
         kind: source.kind || 'action',
         visibility: source.visibility || 'team',
         scheduleSlot: source.scheduleSlot || quickScheduleSlot || 'morning',
@@ -4667,9 +4672,9 @@ function buildTaskCreatePayload(draft = {}) {
         priority: draft.priority || 'normal',
         category,
         task_type: draft.taskType || 'human',
-        task_mode: draft.mode || 'work',
+        task_mode: draft.taskMode || draft.mode || 'work',
         task_kind: draft.kind || 'action',
-        visibility: defaultVisibilityForTaskMode(draft.mode || 'work', draft.visibility || 'team'),
+        visibility: defaultVisibilityForTaskMode(draft.taskMode || draft.mode || 'work', draft.visibility || 'team'),
         workflow_state: draft.captureIntent?.waiting ? 'waiting' : 'inbox',
         subcategory,
         checklist_template_key: normalizeChecklistTemplateKey(category, subcategory),

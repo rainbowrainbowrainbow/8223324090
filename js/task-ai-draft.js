@@ -42,10 +42,14 @@
     function normalizeDraftForFingerprint(draft = {}) {
         const scheduleDate = String(draft.scheduleDate || draft.schedule_date || draft.dueDate || draft.due_date || draft.date || '').trim();
         const duePreset = String(draft.duePreset || draft.due_preset || '').trim();
+        const structuralMode = ['simple', 'checklist'].includes(String(draft.structuralMode || draft.structural_mode || draft.mode || '').trim())
+            ? String(draft.structuralMode || draft.structural_mode || draft.mode || '').trim()
+            : (String(draft.kind || draft.taskKind || '').trim() === 'checklist' || (Array.isArray(draft.subtasks) && draft.subtasks.length) ? 'checklist' : 'simple');
         return {
             title: String(draft.title || '').trim(),
             description: String(draft.description || '').trim(),
-            mode: String(draft.mode || draft.taskMode || '').trim(),
+            mode: structuralMode,
+            taskMode: String(draft.taskMode || draft.task_mode || '').trim(),
             kind: String(draft.kind || draft.taskKind || '').trim(),
             category: String(draft.category || '').trim(),
             subcategory: String(draft.subcategory || '').trim(),
@@ -377,6 +381,15 @@
     function safeAutoAcceptFields(preview = {}) {
         const safe = new Set(['title', 'description', 'mode', 'impactIds', 'subtasks']);
         return changedFields(preview).filter(field => safe.has(field));
+    }
+
+    function hasExistingChecklistItems(state) {
+        const items = fieldBeforeValue(state, 'subtasks');
+        return Array.isArray(items) && items.some(item => String(item?.title || item?.name || item || '').trim());
+    }
+
+    function canAutoAcceptField(state, field) {
+        return !(field === 'subtasks' && hasExistingChecklistItems(state));
     }
 
     function proposalDecision(preview = {}) {
@@ -848,6 +861,7 @@
                 event.preventDefault();
                 const state = rootState(root);
                 safeAutoAcceptFields(state.preview || {}).forEach(field => {
+                    if (!canAutoAcceptField(state, field)) return;
                     if (state.rejected.has(field)) return;
                     if (state.userEdited.has(field)) {
                         state.accepted.add(field);

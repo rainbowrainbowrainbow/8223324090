@@ -370,7 +370,7 @@ async function assertMyDayLifeModes(page, label) {
 async function assertMyDayShell(page) {
     await page.waitForSelector('[data-profile-my-day-capsule]');
     await page.waitForSelector('.cabinet-shell.cabinet-command-center');
-    await page.waitForSelector('[data-cabinet-my-day-layout="today-overdue"]');
+    await page.waitForSelector('[data-cabinet-my-day-layout="focused-overdue"]');
     await page.waitForSelector('.cabinet-day-column--today');
     await page.waitForSelector('.cabinet-day-column--overdue');
     await page.waitForSelector('[data-cabinet-composer-toggle]');
@@ -383,7 +383,7 @@ async function assertMyDayShell(page) {
     assert.equal(await page.locator('.cabinet-support-panel').count(), 0, 'CRM signal/support panels do not push down My Day focus');
 
     const shell = await page.evaluate(() => {
-        const workspace = document.querySelector('[data-cabinet-my-day-layout="today-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
+        const workspace = document.querySelector('[data-cabinet-my-day-layout="focused-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
         const today = document.querySelector('.cabinet-day-column--today');
         const overdue = document.querySelector('.cabinet-day-column--overdue');
         const completed = document.querySelector('.cabinet-completed-details');
@@ -398,7 +398,7 @@ async function assertMyDayShell(page) {
             composerExpanded: composerToggle?.getAttribute('aria-expanded') || ''
         };
     });
-    assert.equal(shell.layout, 'today-overdue', 'My Day uses the two-column today/overdue layout');
+    assert.equal(shell.layout, 'focused-overdue', 'My Day uses the focused-date/overdue layout');
     assert.match(shell.todayTitle, /Сьогодні|РЎСЊРѕРіРѕРґРЅС–/, 'today column renders today copy');
     assert.match(shell.overdueTitle, /Прострочено|РџСЂРѕСЃС‚СЂРѕС‡РµРЅРѕ|Немає прострочених|РќРµРјР°С” РїСЂРѕСЃС‚СЂРѕС‡РµРЅРёС…/, 'overdue column renders overdue copy');
     assert.equal(shell.completedOpen, false, 'completed history is collapsed by default');
@@ -432,7 +432,7 @@ async function assertOverdueTriageSurface(page) {
 async function assertNoHorizontalOverflow(page, label) {
     const metrics = await page.evaluate(() => {
         const profile = document.querySelector('.profile-page');
-        const workspace = document.querySelector('[data-cabinet-my-day-layout="today-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
+        const workspace = document.querySelector('[data-cabinet-my-day-layout="focused-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
         const profileBox = profile?.getBoundingClientRect();
         const workspaceBox = workspace?.getBoundingClientRect();
         return {

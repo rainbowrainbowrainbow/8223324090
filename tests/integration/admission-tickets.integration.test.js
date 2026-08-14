@@ -188,7 +188,10 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
                 })
             ]
         );
-        await pool.query(
+        const legacyGroupClient = await pool.connect();
+        try {
+            await legacyGroupClient.query('BEGIN');
+            await legacyGroupClient.query(
             `INSERT INTO banquet_groups (
                  id, business_context, primary_booking_id, date, room,
                  room_resource_id, guest_arrival_time, status, source
@@ -199,19 +202,32 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
              )`,
             [legacyGroupId, legacyBookingId]
         );
-        await pool.query(
+            await legacyGroupClient.query(
             `INSERT INTO banquet_group_bookings (
                  group_id, business_context, booking_id, role, created_by
              )
              VALUES ($1, 'event_genix', $2, 'primary', 'admission_test')`,
             [legacyGroupId, legacyBookingId]
-        );
+            );
+            await legacyGroupClient.query('COMMIT');
+        } catch (error) {
+            await legacyGroupClient.query('ROLLBACK');
+            throw error;
+        } finally {
+            legacyGroupClient.release();
+        }
     });
 
     after(async () => {
         if (!pool) return;
         try {
             if (legacyGroupId) {
+                await pool.query(
+                    `UPDATE banquet_groups
+                     SET status = 'cancelled'
+                     WHERE id = $1`,
+                    [legacyGroupId]
+                );
                 await pool.query('DELETE FROM banquet_group_bookings WHERE group_id = $1', [legacyGroupId]);
                 await pool.query('DELETE FROM banquet_groups WHERE id = $1', [legacyGroupId]);
             }
@@ -929,7 +945,11 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
                  )`,
                 [primaryBookingId, date]
             );
-            const group = await pool.query(
+            const groupClient = await pool.connect();
+            let group;
+            try {
+                await groupClient.query('BEGIN');
+                group = await groupClient.query(
                 `INSERT INTO banquet_groups (
                      id, business_context, primary_booking_id, date, room,
                      room_resource_id, guest_arrival_time, status, source, meta
@@ -949,17 +969,24 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
                         packageOwnerBookingId: ownerBookingId
                     })
                 ]
-            );
-            groupInserted = true;
-            await pool.query(
+                );
+                groupInserted = true;
+                await groupClient.query(
                 `INSERT INTO banquet_group_bookings (
                      group_id, business_context, booking_id, role, sort_order, created_by
                  )
                  VALUES
                      ($1, 'event_genix', $2, 'primary', 10, 'admission_test'),
                      ($1, 'event_genix', $3, 'kitchen', 20, 'admission_test')`,
-                [groupId, primaryBookingId, ownerBookingId]
-            );
+                    [groupId, primaryBookingId, ownerBookingId]
+                );
+                await groupClient.query('COMMIT');
+            } catch (error) {
+                await groupClient.query('ROLLBACK');
+                throw error;
+            } finally {
+                groupClient.release();
+            }
 
             const beforeRejectedWrites = await pool.query(
                 `SELECT status, date, room, room_resource_id, notes,
@@ -989,7 +1016,9 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
                     { token: creatorToken }
                 );
                 assert.equal(deleted.status, 409, JSON.stringify(deleted.body));
-                assert.equal(deleted.body.code, 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT');
+                assert.equal(deleted.body.code, 'BANQUET_ROUTE_REQUIRED');
+                assert.equal(deleted.body.details?.nextAction, 'manual_resolution');
+                assert.ok(Array.isArray(deleted.body.details?.blockers));
             }
 
             const linkedAtomic = await apiRequest(
@@ -1128,6 +1157,12 @@ describe('admission ticket migration 300 and APIs on isolated PostgreSQL', {
             assert.equal(Number(finance.rows[0].amount), Number(storedGroup.rows[0].price));
         } finally {
             if (groupInserted) {
+                await pool.query(
+                    `UPDATE banquet_groups
+                     SET status = 'cancelled'
+                     WHERE id = $1`,
+                    [groupId]
+                );
                 await pool.query(
                     'DELETE FROM banquet_group_bookings WHERE group_id = $1',
                     [groupId]

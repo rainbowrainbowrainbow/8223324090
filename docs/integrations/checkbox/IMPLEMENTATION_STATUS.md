@@ -5,8 +5,8 @@ Last updated: 2026-08-13.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Live production package baseline prepared for this handoff: `0.80.135` (`My Day Impact Editor`).
-- Release commit prepared for this handoff: final SHA to be confirmed after the v0.80.135 release commit.
+- Live production package baseline prepared for this handoff: `0.80.136` (`My Day Impact Inline Editing`).
+- Release commit prepared for this handoff: final SHA to be confirmed after the v0.80.136 release commit.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
 - Current released Checkbox migrations: `316` through `331`.
@@ -43,7 +43,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
 - CI hardening gates now include value-free Checkbox OpenAPI compatibility checks, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
-- Release `0.80.135` is the package baseline prepared in this handoff. Reconfirm live version/commit before any future delivery or activation action.
+- Release `0.80.136` is the package baseline prepared in this handoff. Reconfirm live version/commit before any future delivery or activation action.
 - Provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization are part of the released baseline.
 
 ## Not Ready

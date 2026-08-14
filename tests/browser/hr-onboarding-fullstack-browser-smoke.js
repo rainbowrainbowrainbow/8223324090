@@ -530,7 +530,7 @@ async function run() {
             );
 
             await page.goto(`${base}/staff.html`, { waitUntil: 'domcontentloaded' });
-            await waitForAppShell(page);
+            await waitForAppShell(page, { requireCrmApiFetch: false });
             const rows = page.locator(`[data-schedule-staff-row="${staffId}"]`);
             await rows.first().waitFor({ state: 'visible' });
             const rowTexts = await rows.allTextContents();

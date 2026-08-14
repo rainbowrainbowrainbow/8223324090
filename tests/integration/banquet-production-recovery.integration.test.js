@@ -89,12 +89,12 @@ async function insertBooking(pool, id, overrides = {}) {
         `INSERT INTO bookings (
              id, business_context, date, time, line_id, customer_id,
              program_id, program_code, label, program_name, category,
-             duration, price, hosts, room, status, created_by, extra_data
+             duration, price, hosts, room, room_resource_id, status, created_by, extra_data
          )
          VALUES (
              $1, $2, $3, $4, $5, $6,
              $7, $8, $9, $10, $11,
-             $12, $13, $14, $15, $16, $17, $18::jsonb
+             $12, $13, $14, $15, $16, $17, $18, $19::jsonb
          )`,
         [
             id,
@@ -112,6 +112,7 @@ async function insertBooking(pool, id, overrides = {}) {
             overrides.price ?? 0,
             overrides.hosts ?? 1,
             overrides.room || 'Room A',
+            overrides.roomResourceId || 'room-a',
             overrides.status || 'confirmed',
             'banquet-recovery-integration',
             JSON.stringify(overrides.extraData || {})
@@ -140,22 +141,37 @@ async function seedDetachPair(pool, suffix, options = {}) {
         programId: options.pinataProgramId ?? 'pinata',
         programCode: options.pinataProgramCode ?? 'PIN'
     });
-    await pool.query(
-        `INSERT INTO banquet_groups
-            (id, business_context, primary_booking_id, customer_id, date, room, group_name,
-             guest_arrival_time, status, source, created_by)
-         VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', $5,
-                 '12:30', 'active', 'integration_test', 'banquet-recovery-integration')`,
-        [groupId, BUSINESS_CONTEXT, primaryId, customerId, `Recovery ${suffix}`]
-    );
-    if (options.membership !== false) {
-        await pool.query(
-            `INSERT INTO banquet_group_bookings
-                (group_id, business_context, booking_id, role, sort_order, created_by)
-             VALUES ($1, $2, $3, $4, 100, 'banquet-recovery-integration')`,
-            [groupId, BUSINESS_CONTEXT, pinataId, options.role || 'activity']
-        );
-    }
+    await withClient(pool, async client => {
+        await client.query('BEGIN');
+        try {
+            await client.query(
+                `INSERT INTO banquet_groups
+                    (id, business_context, primary_booking_id, customer_id, date, room, room_resource_id, group_name,
+                     guest_arrival_time, status, source, created_by)
+                 VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', 'room-a', $5,
+                         '12:30', 'active', 'integration_test', 'banquet-recovery-integration')`,
+                [groupId, BUSINESS_CONTEXT, primaryId, customerId, `Recovery ${suffix}`]
+            );
+            await client.query(
+                `INSERT INTO banquet_group_bookings
+                    (group_id, business_context, booking_id, role, sort_order, created_by)
+                 VALUES ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration')`,
+                [groupId, BUSINESS_CONTEXT, primaryId]
+            );
+            if (options.membership !== false) {
+                await client.query(
+                    `INSERT INTO banquet_group_bookings
+                        (group_id, business_context, booking_id, role, sort_order, created_by)
+                     VALUES ($1, $2, $3, $4, 100, 'banquet-recovery-integration')`,
+                    [groupId, BUSINESS_CONTEXT, pinataId, options.role || 'activity']
+                );
+            }
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        }
+    });
     if (options.link !== false) {
         await pool.query(
             `INSERT INTO booking_banquet_links
@@ -218,22 +234,31 @@ async function seedQaCleanupGroup(pool, suffix) {
         category: 'banquet',
         extraData: qaCleanupMarker(runId, 'banquet_kitchen')
     });
-    await pool.query(
-        `INSERT INTO banquet_groups
-            (id, business_context, primary_booking_id, customer_id, date, room, group_name,
-             guest_arrival_time, status, source, created_by)
-         VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', $5,
-                 '11:45', 'active', 'timeline_browser_smoke', 'banquet-recovery-integration')`,
-        [groupId, BUSINESS_CONTEXT, primaryId, customerId, `QA ${suffix}`]
-    );
-    await pool.query(
-        `INSERT INTO banquet_group_bookings
-            (group_id, business_context, booking_id, role, sort_order, created_by)
-         VALUES
-            ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration'),
-            ($1, $2, $4, 'kitchen', 20, 'banquet-recovery-integration')`,
-        [groupId, BUSINESS_CONTEXT, primaryId, kitchenId]
-    );
+    await withClient(pool, async client => {
+        await client.query('BEGIN');
+        try {
+            await client.query(
+                `INSERT INTO banquet_groups
+                    (id, business_context, primary_booking_id, customer_id, date, room, room_resource_id, group_name,
+                     guest_arrival_time, status, source, created_by)
+                 VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', 'room-a', $5,
+                         '11:45', 'active', 'timeline_browser_smoke', 'banquet-recovery-integration')`,
+                [groupId, BUSINESS_CONTEXT, primaryId, customerId, `QA ${suffix}`]
+            );
+            await client.query(
+                `INSERT INTO banquet_group_bookings
+                    (group_id, business_context, booking_id, role, sort_order, created_by)
+                 VALUES
+                    ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration'),
+                    ($1, $2, $4, 'kitchen', 20, 'banquet-recovery-integration')`,
+                [groupId, BUSINESS_CONTEXT, primaryId, kitchenId]
+            );
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        }
+    });
     await pool.query(
         `INSERT INTO booking_banquet_links
             (business_context, booking_a_id, booking_b_id, relation_type, label, created_by)
@@ -340,22 +365,31 @@ async function seedActiveGroupWithCancelledPrimary(pool, suffix, options = {}) {
         price: options.kitchenPrice ?? 0,
         status: 'confirmed'
     });
-    await pool.query(
-        `INSERT INTO banquet_groups
-            (id, business_context, primary_booking_id, customer_id, date, room, group_name,
-             guest_arrival_time, status, source, created_by)
-         VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', $5,
-                 '11:45', 'active', 'integration_test', 'banquet-recovery-integration')`,
-        [groupId, BUSINESS_CONTEXT, primaryId, customerId, `State ${suffix}`]
-    );
-    await pool.query(
-        `INSERT INTO banquet_group_bookings
-            (group_id, business_context, booking_id, role, sort_order, created_by)
-         VALUES
-            ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration'),
-            ($1, $2, $4, 'kitchen', 20, 'banquet-recovery-integration')`,
-        [groupId, BUSINESS_CONTEXT, primaryId, kitchenId]
-    );
+    await withClient(pool, async client => {
+        await client.query('BEGIN');
+        try {
+            await client.query(
+                `INSERT INTO banquet_groups
+                    (id, business_context, primary_booking_id, customer_id, date, room, room_resource_id, group_name,
+                     guest_arrival_time, status, source, created_by)
+                 VALUES ($1, $2, $3, $4, '2099-08-20', 'Room A', 'room-a', $5,
+                         '11:45', 'active', 'integration_test', 'banquet-recovery-integration')`,
+                [groupId, BUSINESS_CONTEXT, primaryId, customerId, `State ${suffix}`]
+            );
+            await client.query(
+                `INSERT INTO banquet_group_bookings
+                    (group_id, business_context, booking_id, role, sort_order, created_by)
+                 VALUES
+                    ($1, $2, $3, 'primary', 10, 'banquet-recovery-integration'),
+                    ($1, $2, $4, 'kitchen', 20, 'banquet-recovery-integration')`,
+                [groupId, BUSINESS_CONTEXT, primaryId, kitchenId]
+            );
+            await client.query('COMMIT');
+        } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+        }
+    });
     return { groupId, primaryId, kitchenId, customerId };
 }
 

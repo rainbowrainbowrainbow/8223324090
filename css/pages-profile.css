@@ -448,11 +448,22 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     font-weight: 800;
 }
 
+.my-day-impact-editor-selected-chip-wrap {
+    align-items: center;
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 7%, rgba(248, 250, 252, 0.96));
+    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 26%, rgba(148, 163, 184, 0.28));
+    border-radius: 999px;
+    display: inline-flex;
+    gap: 2px;
+    max-width: 100%;
+    padding: 2px;
+}
+
 .my-day-impact-editor-selected-chip {
     align-items: center;
     appearance: none;
-    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 10%, rgba(248, 250, 252, 0.96));
-    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 34%, rgba(148, 163, 184, 0.34));
+    background: transparent;
+    border: 0;
     border-radius: 999px;
     color: var(--text-primary, #0f172a);
     cursor: pointer;
@@ -463,13 +474,73 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     gap: 6px;
     line-height: 1.2;
     max-width: 100%;
-    min-height: 32px;
-    padding: 5px 9px;
+    min-height: 28px;
+    padding: 4px 7px;
 }
 
 .my-day-impact-editor-selected-chip span:nth-child(2) {
     min-width: 0;
     overflow-wrap: anywhere;
+}
+
+.my-day-impact-editor-selected-edit {
+    align-items: center;
+    appearance: none;
+    background: rgba(15, 23, 42, 0.06);
+    border: 0;
+    border-radius: 50%;
+    color: var(--text-muted, #64748b);
+    cursor: pointer;
+    display: inline-flex;
+    font-size: 12px;
+    font-weight: 950;
+    height: 28px;
+    justify-content: center;
+    width: 28px;
+}
+
+.my-day-impact-editor-selected-chip:hover,
+.my-day-impact-editor-selected-chip:focus-visible,
+.my-day-impact-editor-selected-edit:hover,
+.my-day-impact-editor-selected-edit:focus-visible {
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 13%, rgba(255, 255, 255, 0.9));
+    color: var(--text-primary, #0f172a);
+    outline: none;
+}
+
+.my-day-impact-editor-edit-slot:empty {
+    display: none;
+}
+
+.my-day-impact-editor-edit-form {
+    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 24%, rgba(148, 163, 184, 0.28));
+    border-radius: 14px;
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+}
+
+.my-day-impact-editor-edit-title {
+    display: grid;
+    gap: 3px;
+}
+
+.my-day-impact-editor-edit-title strong {
+    color: var(--text-primary, #0f172a);
+    font-size: 13px;
+    font-weight: 950;
+}
+
+.my-day-impact-editor-edit-title span {
+    color: var(--text-muted, #64748b);
+    font-size: 12px;
+    line-height: 1.35;
+}
+
+.my-day-impact-editor-edit-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr 1fr;
 }
 
 .my-day-impact-editor-search {
@@ -569,6 +640,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
     .my-day-impact-editor-summary,
     .my-day-impact-editor-actions,
+    .my-day-impact-editor-edit-actions,
     .my-day-impact-editor-grid {
         grid-template-columns: 1fr;
     }
@@ -1994,17 +2066,40 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-task-chip--
     color: var(--my-day-life-secondary);
 }
 
-body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip,
-html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip {
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip-wrap,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip-wrap {
     background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 20%, rgba(15, 23, 42, 0.82));
     border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 44%, rgba(148, 163, 184, 0.30));
     color: #e2e8f0;
 }
 
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip {
+    color: #e2e8f0;
+}
+
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-edit,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-edit {
+    background: rgba(226, 232, 240, 0.10);
+    color: #cbd5e1;
+}
+
 body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-create,
-html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-create {
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-edit-form,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-create,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-edit-form {
     background: rgba(15, 23, 42, 0.54);
     border-color: rgba(148, 163, 184, 0.24);
+}
+
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-edit-title strong,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-edit-title strong {
+    color: #f8fafc;
+}
+
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-edit-title span,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-edit-title span {
+    color: #cbd5e1;
 }
 
 body.dark-mode .profile-page.profile-work-mode .cabinet-task-blocker-badge,

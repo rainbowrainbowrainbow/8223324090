@@ -381,8 +381,32 @@
         return selectedIds.map(id => {
             const record = findImpactRecord(id, task) || { id, name: 'Вплив #' + id, color: '#64748B', icon: 'custom' };
             const name = String(record.name || '').trim() || ('Вплив #' + id);
-            return `<button type="button" class="my-day-impact-editor-selected-chip" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-my-day-editor-remove-impact="${escape(id)}">${impactIcon(record, true)}<span>${escape(name)}</span><span aria-hidden="true">×</span></button>`;
+            return `<span class="my-day-impact-editor-selected-chip-wrap" style="--my-day-chip-color:${escape(record.color || '#64748B')}">
+                <button type="button" class="my-day-impact-editor-selected-chip" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-my-day-editor-remove-impact="${escape(id)}">${impactIcon(record, true)}<span>${escape(name)}</span><span aria-hidden="true">×</span></button>
+                <button type="button" class="my-day-impact-editor-selected-edit" title="${escape('Редагувати ' + name)}" aria-label="${escape('Редагувати вплив ' + name)}" data-my-day-editor-edit-impact="${escape(id)}">✎</button>
+            </span>`;
         }).join('');
+    }
+
+    function renderEditorImpactEditForm(record = {}) {
+        const id = Number(record.id);
+        if (!Number.isInteger(id)) return '';
+        const name = String(record.name || '').trim() || ('Вплив #' + id);
+        return `<form class="my-day-impact-editor-edit-form" data-my-day-editor-edit-form data-impact-id="${escape(id)}" style="--my-day-chip-color:${escape(record.color || '#64748B')}">
+            <div class="my-day-impact-editor-edit-title">
+                <strong>Редагувати вплив</strong>
+                <span>Для власних впливів зміни зберігаються стабільно. Готові системні впливи можуть бути нормалізовані каталогом.</span>
+            </div>
+            <label class="my-day-setup-field my-day-setup-field--full">Назва
+                <input name="name" maxlength="100" required value="${escape(name)}" autocomplete="off">
+            </label>
+            <fieldset class="my-day-choice-field"><legend>Колір</legend>${renderColorChoices('color', record.color || '#64748B')}</fieldset>
+            <fieldset class="my-day-choice-field"><legend>Іконка</legend>${renderIconChoices('impacts', record.icon || 'custom')}</fieldset>
+            <div class="my-day-impact-editor-edit-actions">
+                <button type="button" class="my-day-setup-secondary" data-my-day-editor-edit-cancel>Закрити</button>
+                <button type="submit" class="my-day-setup-primary">Зберегти зміни</button>
+            </div>
+        </form>`;
     }
 
     function renderEditorImpactCatalog(selectedIds = [], task = {}) {
@@ -412,6 +436,7 @@
                 <div class="my-day-impact-editor-selected" data-my-day-editor-selected aria-live="polite">${renderEditorSelectedImpacts(impactIds, task)}</div>
                 <span class="my-day-impact-selection-count" data-my-day-editor-count>${impactIds.length} / ${maxImpacts()}</span>
             </div>
+            <div class="my-day-impact-editor-edit-slot" data-my-day-editor-edit-slot></div>
             <label class="my-day-impact-search my-day-impact-editor-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Знайти вплив" autocomplete="off" data-my-day-editor-filter></label>
             ${renderEditorImpactCatalog(impactIds, task)}
             <p class="my-day-impact-filter-empty" data-my-day-editor-filter-empty hidden>Нічого не знайдено.</p>
@@ -451,7 +476,49 @@
         const selectedNode = root.querySelector('[data-my-day-editor-selected]');
         const count = root.querySelector('[data-my-day-editor-count]');
         const filter = root.querySelector('[data-my-day-editor-filter]');
+        const editSlot = root.querySelector('[data-my-day-editor-edit-slot]');
         const taskId = task.id || task.taskId || task.task_id;
+
+        const taskWithSelectedIds = selectedIds => ({
+            ...task,
+            myDay: {
+                ...(task.myDay || {}),
+                impacts: selectedIds
+                    .map(id => findImpactRecord(id, task) || { id, name: 'Вплив #' + id, color: '#64748B', icon: 'custom' })
+                    .filter(Boolean)
+            }
+        });
+
+        const bindEditForm = form => {
+            if (!form || form.dataset.myDayBound === 'true') return;
+            form.dataset.myDayBound = 'true';
+            form.querySelector('[data-my-day-editor-edit-cancel]')?.addEventListener('click', () => {
+                if (editSlot) editSlot.innerHTML = '';
+            });
+            form.addEventListener('submit', async event => {
+                event.preventDefault();
+                const submit = form.querySelector('button[type="submit"]');
+                const selectedIds = checkedEditorImpactIds(fields);
+                submit.disabled = true;
+                if (status) status.textContent = '';
+                try {
+                    await request('/impacts/' + encodeURIComponent(form.dataset.impactId), {
+                        method: 'PATCH',
+                        body: JSON.stringify(taxonomyBody(form))
+                    });
+                    await load(true);
+                    window.TaskUI?.closeActionMenu?.();
+                    await openTaskEditor(button, taskWithSelectedIds(selectedIds), onSaved);
+                    window.showNotification?.('Вплив оновлено', 'success');
+                } catch (error) {
+                    const message = error.message || 'Не вдалося оновити вплив.';
+                    if (status) status.textContent = message;
+                    window.showNotification?.(message, 'error');
+                } finally {
+                    if (submit.isConnected) submit.disabled = false;
+                }
+            });
+        };
 
         const refreshFilter = () => {
             const query = String(filter?.value || '').trim().toLocaleLowerCase('uk-UA');
@@ -492,11 +559,25 @@
         });
         fields?.addEventListener('click', event => {
             const remove = event.target.closest?.('[data-my-day-editor-remove-impact]');
-            if (!remove) return;
-            event.preventDefault();
-            const input = fields.querySelector(`[data-my-day-editor-impact-chip][value="${escapeSelectorValue(remove.dataset.myDayEditorRemoveImpact || '')}"]`);
-            if (input) input.checked = false;
-            refreshEditor();
+            const edit = event.target.closest?.('[data-my-day-editor-edit-impact]');
+            if (remove) {
+                event.preventDefault();
+                const input = fields.querySelector(`[data-my-day-editor-impact-chip][value="${escapeSelectorValue(remove.dataset.myDayEditorRemoveImpact || '')}"]`);
+                if (input) input.checked = false;
+                if (editSlot) editSlot.innerHTML = '';
+                refreshEditor();
+                return;
+            }
+            if (edit) {
+                event.preventDefault();
+                const record = findImpactRecord(edit.dataset.myDayEditorEditImpact, task);
+                if (!record) return;
+                if (editSlot) {
+                    editSlot.innerHTML = renderEditorImpactEditForm(record);
+                    bindEditForm(editSlot.querySelector('[data-my-day-editor-edit-form]'));
+                    editSlot.querySelector('input[name="name"]')?.focus();
+                }
+            }
         });
         filter?.addEventListener('input', refreshFilter);
         root.querySelector('[data-my-day-editor-cancel]')?.addEventListener('click', () => window.TaskUI?.closeActionMenu?.());

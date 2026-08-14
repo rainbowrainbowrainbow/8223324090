@@ -136,11 +136,11 @@ function harnessHtml() {
       document.querySelector('[data-my-day-time-fixture="101"]').innerHTML = window.MyDayTimeTracking.renderTaskTrigger(state.tasks[101]);
       document.querySelector('[data-my-day-time-fixture="202"]').innerHTML = window.MyDayTimeTracking.renderTaskTrigger(state.tasks[202], { buttonClassName: 'cabinet-overdue-triage-action' });
     };
-    renderTimeTriggers();
     window.getAuthHeaders = () => ({ 'Content-Type': 'application/json', Authorization: 'Bearer local-browser-fixture' });
     window.showNotification = (message, type) => state.notifications.push({ message, type });
     window.addEventListener('crm:timer-updated', event => state.timerEvents.push(event.detail));
-    window.__MY_DAY_INTERACTIONS__ = { state, applyClassification };
+    window.__MY_DAY_INTERACTIONS__ = { state, applyClassification, renderTimeTriggers };
+    renderTimeTriggers();
     document.addEventListener('click', async event => {
       const actionButton = event.target.closest('[data-cabinet-task-action]');
       if (!actionButton) return;
@@ -177,6 +177,17 @@ function harnessHtml() {
         const impact = { id: impacts.length + 1, name: body.name, color: body.color, icon: body.icon, isActive: true };
         impacts.push(impact);
         return json({ success: true, impact });
+      }
+      const impactMatch = url.pathname.match(/^\\/api\\/my-day\\/impacts\\/(\\d+)$/);
+      if (impactMatch && method === 'PATCH') {
+        const impact = impacts.find(item => Number(item.id) === Number(impactMatch[1]));
+        if (!impact) return json({ success: false, error: 'impact not found' }, 404);
+        Object.assign(impact, {
+          name: body.name || impact.name,
+          color: body.color || impact.color,
+          icon: body.icon || impact.icon
+        });
+        return json({ success: true, impact: clone(impact) });
       }
       if (method === 'GET' && url.pathname === '/api/my-day/timer') {
         return json({ success: true, timer: clone(state.activeTimer) });
@@ -339,6 +350,20 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.goto(`${fixture.baseUrl}/my-day-interactions-harness.html`, { waitUntil: 'domcontentloaded' });
         if (dark) await page.evaluate(() => document.body.classList.add('dark-mode'));
         await page.waitForSelector('#manual-normal');
+        await page.waitForFunction(() => window.MyDayTimeTracking && window.__MY_DAY_INTERACTIONS__);
+        await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.renderTimeTriggers());
+        try {
+            await page.waitForSelector('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"]');
+            await page.waitForSelector('[data-header-actions="overdue"] [data-cabinet-task-action="time-menu"]');
+        } catch (error) {
+            const diagnostics = await page.evaluate(() => ({
+                hasTracking: Boolean(window.MyDayTimeTracking),
+                triggerPreview: window.MyDayTimeTracking?.renderTaskTrigger?.({ id: 101, effortMinutes: 30, actualSeconds: 0 }) || '',
+                normalFixture: document.querySelector('[data-my-day-time-fixture="101"]')?.innerHTML || '',
+                pageText: document.body.innerText.slice(0, 240)
+            }));
+            throw new Error(`time trigger did not render: ${JSON.stringify(diagnostics)} (${error.message})`);
+        }
 
         const normalHeaderActions = await page.locator('[data-header-actions="normal"] [data-cabinet-task-action]').evaluateAll(nodes => nodes.map(node => node.dataset.cabinetTaskAction));
         assert.deepEqual(normalHeaderActions.slice(0, 3), ['done', 'time-menu', 'ai-classification']);
@@ -383,6 +408,14 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.waitForSelector('[data-my-day-editor-impact-chip][value="6"]:checked');
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Custom QA'));
+        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="6"]').click();
+        await page.locator('[data-my-day-editor-edit-impact="6"]').click();
+        await page.locator('[data-my-day-editor-edit-form] input[name="name"]').fill('Custom QA Edited');
+        await page.locator('[data-my-day-editor-edit-form] button[type="submit"]').click();
+        await page.waitForSelector('[data-my-day-editor-impact-chip][value="6"]:checked');
+        await page.locator('[data-my-day-editor-save]').click();
+        await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Custom QA Edited'));
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.some(call => call === 'PATCH /api/my-day/impacts/6')), true);
         await page.evaluate(() => {
           window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 0;
           window.__MY_DAY_INTERACTIONS__.state.classificationError = true;

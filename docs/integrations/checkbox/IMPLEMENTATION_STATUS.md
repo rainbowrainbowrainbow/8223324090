@@ -6,7 +6,7 @@ Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
 - Live production package baseline prepared for this handoff: `0.80.140` (`Banquet Cancellation Hardening`).
-- Release commit prepared for this handoff: `e20f95bb77beb46c3a409a85f717973b335d7468`.
+- Release commit prepared for this handoff: confirm from the pushed release branch before deploy.
 - Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
 - Current released Checkbox migrations: `316` through `331`.

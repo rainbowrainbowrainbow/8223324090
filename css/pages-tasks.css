@@ -193,6 +193,10 @@ body.dark-mode .task-priority-select--low {
     background: rgba(2, 6, 23, 0.58);
 }
 
+.task-ui-action-surface.is-dialog .task-ui-action-backdrop {
+    background: rgba(2, 6, 23, 0.62);
+}
+
 .task-ui-action-panel {
     pointer-events: auto;
     border: 1px solid rgba(148, 163, 184, 0.20);
@@ -209,6 +213,21 @@ body.dark-mode .task-priority-select--low {
     overflow: auto;
 }
 
+.task-ui-action-surface.is-dialog {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+}
+
+.task-ui-action-surface.is-dialog .task-ui-action-panel {
+    display: flex;
+    flex-direction: column;
+    width: min(640px, calc(100vw - 32px));
+    max-height: min(82dvh, calc(100dvh - 32px));
+    overflow: hidden;
+}
+
 .task-ui-action-surface.is-sheet {
     display: flex;
     align-items: flex-end;
@@ -218,9 +237,15 @@ body.dark-mode .task-priority-select--low {
 
 .task-ui-action-surface.is-sheet .task-ui-action-panel {
     width: min(560px, 100%);
-    max-height: min(78dvh, calc(100dvh - 32px));
-    overflow: auto;
+    max-height: min(92dvh, calc(100dvh - 24px - env(safe-area-inset-bottom, 0px)));
+    overflow: hidden;
     border-radius: 18px 18px 12px 12px;
+}
+
+.task-ui-action-surface.is-dialog .task-ui-action-body,
+.task-ui-action-surface.is-sheet .task-ui-action-body {
+    min-height: 0;
+    overflow: auto;
 }
 
 .task-ui-action-head {

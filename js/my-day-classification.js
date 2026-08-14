@@ -468,6 +468,7 @@
         await load();
         const root = window.TaskUI?.openActionMenu?.(button, renderEditorFields(task), {
             title: 'Впливи задачі',
+            presentation: 'dialog',
             surfaceClassName: 'task-ui-action-surface--my-day-impacts'
         });
         if (!root) return;

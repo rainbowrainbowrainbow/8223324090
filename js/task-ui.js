@@ -154,19 +154,27 @@
         closeActionMenu();
         menuLastFocus = stableActionAnchor(anchor);
         const mobile = options.mobile ?? isSmallScreen();
+        const presentation = String(options.presentation || '').trim().toLowerCase();
+        const dialog = presentation === 'dialog' && !mobile;
+        const surfaceMode = mobile ? 'sheet' : (dialog ? 'dialog' : 'popover');
         const root = document.createElement('div');
         const surfaceClassName = String(options.surfaceClassName || '').trim().replace(/[^a-zA-Z0-9 _-]/g, '');
         root.id = MENU_ROOT_ID;
+        if (typeof root.setAttribute === 'function') {
+            root.setAttribute('data-task-ui-presentation', surfaceMode);
+        } else {
+            root.taskUiPresentation = surfaceMode;
+        }
         if (typeof menuLastFocus?.setAttribute === 'function') {
             menuLastFocus.setAttribute('aria-expanded', 'true');
             menuLastFocus.setAttribute('aria-controls', MENU_ROOT_ID);
         }
-        root.className = `task-ui-action-surface ${mobile ? 'is-sheet' : 'is-popover'}`;
+        root.className = `task-ui-action-surface is-${surfaceMode}`;
         if (surfaceClassName) root.classList.add(...surfaceClassName.split(/\s+/).filter(Boolean));
         const title = options.title || 'Дії задачі';
         root.innerHTML = `
             <div class="task-ui-action-backdrop" data-task-ui-close></div>
-            <section class="task-ui-action-panel" role="dialog" aria-modal="${mobile ? 'true' : 'false'}" aria-label="${escapeHtml(title)}">
+            <section class="task-ui-action-panel" role="dialog" aria-modal="${mobile || dialog ? 'true' : 'false'}" aria-label="${escapeHtml(title)}">
                 <div class="task-ui-action-head">
                     <strong>${escapeHtml(title)}</strong>
                     <button type="button" class="task-ui-icon-btn" data-task-ui-close aria-label="Закрити">×</button>
@@ -190,9 +198,9 @@
             });
             menuAnchorObserver.observe(document.body, { childList: true, subtree: true });
         }
-        if (mobile) lockBodyScroll(true);
+        if (mobile || dialog) lockBodyScroll(true);
         requestAnimationFrame(() => {
-            if (!mobile) positionPopover(root, menuLastFocus);
+            if (!mobile && !dialog) positionPopover(root, menuLastFocus);
             actionMenuFocusableElements(root)[0]?.focus({ preventScroll: true });
         });
         return root;

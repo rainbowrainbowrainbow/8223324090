@@ -415,31 +415,50 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 }
 .my-day-task-chip--more { background: var(--surface-muted, #f1f5f9); border-color: transparent; }
 
-.task-ui-action-surface--my-day-impacts.is-popover .task-ui-action-panel {
-    width: min(460px, calc(100vw - 24px));
-    max-width: calc(100vw - 24px);
+.task-ui-action-surface--my-day-impacts.is-dialog .task-ui-action-panel {
+    width: min(640px, calc(100vw - 32px));
+    max-height: min(82dvh, calc(100dvh - 32px));
+}
+
+.task-ui-action-surface--my-day-impacts .task-ui-action-panel {
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
 }
 
 .task-ui-action-surface--my-day-impacts.is-sheet .task-ui-action-panel {
-    max-height: min(92dvh, calc(100dvh - 16px));
+    max-height: min(92dvh, calc(100dvh - max(16px, env(safe-area-inset-bottom, 0px))));
 }
 
 .task-ui-action-surface--my-day-impacts .task-ui-action-body {
+    box-sizing: border-box;
+    min-height: 0;
     overflow-x: hidden;
-    padding: 12px;
+    overflow-y: auto;
+    padding: 0 14px 14px;
+}
+
+.task-ui-action-surface--my-day-impacts *,
+.task-ui-action-surface--my-day-impacts *::before,
+.task-ui-action-surface--my-day-impacts *::after {
+    box-sizing: border-box;
 }
 
 .my-day-impact-editor {
     display: grid;
     gap: 12px;
-    min-width: min(420px, calc(100vw - 48px));
+    min-width: 0;
+    width: 100%;
 }
 
 .my-day-impact-editor-summary {
     align-items: start;
+    background: rgba(255, 255, 255, 0.98);
+    box-sizing: border-box;
     display: grid;
     gap: 8px;
     grid-template-columns: minmax(0, 1fr) auto;
+    padding: 12px 0 10px;
 }
 
 .my-day-impact-editor-selected {
@@ -562,6 +581,9 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     margin: 0;
     min-height: 40px;
     padding: 0 10px;
+    position: sticky;
+    top: 0;
+    z-index: 2;
 }
 
 .my-day-impact-editor-search input {
@@ -580,9 +602,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .my-day-impact-editor-catalog {
     display: grid;
     gap: 10px;
-    max-height: min(320px, 45dvh);
-    overflow: auto;
-    padding-right: 2px;
+    overflow: visible;
 }
 
 .my-day-impact-editor-group {
@@ -601,7 +621,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 .my-day-impact-editor-grid {
     display: grid;
     gap: 7px;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
 }
 
 .task-ui-action-surface--my-day-impacts .my-day-impact-editor-option {
@@ -654,9 +674,15 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 }
 
 .my-day-impact-editor-actions {
+    background: rgba(255, 255, 255, 0.98);
+    box-sizing: border-box;
     display: grid;
     gap: 8px;
     grid-template-columns: 1fr 1fr;
+    padding: 10px 0 0;
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -690,7 +716,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     }
 
     .task-ui-action-surface--my-day-impacts .task-ui-action-body {
-        padding: 10px;
+        padding: 0 12px calc(12px + env(safe-area-inset-bottom, 0px));
     }
 
     .my-day-impact-editor {
@@ -698,8 +724,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     }
 
     .my-day-impact-editor-summary,
-    .my-day-impact-editor-edit-actions,
-    .my-day-impact-editor-grid {
+    .my-day-impact-editor-edit-actions {
         grid-template-columns: 1fr;
     }
 
@@ -707,9 +732,8 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
         grid-template-columns: 1fr 1fr;
     }
 
-    .my-day-impact-editor-catalog {
-        max-height: min(240px, 24dvh);
-        padding-right: 0;
+    .my-day-impact-editor-actions {
+        padding-bottom: env(safe-area-inset-bottom, 0px);
     }
 
     .my-day-impact-editor-selected-chip {
@@ -2135,6 +2159,15 @@ html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-task-chip--
     background: rgba(15, 23, 42, 0.76);
     border-color: rgba(148, 163, 184, 0.32);
     color: var(--my-day-life-secondary);
+}
+
+body.dark-mode .task-ui-action-surface--my-day-impacts .task-ui-action-body,
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-summary,
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-actions,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .task-ui-action-body,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-summary,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-actions {
+    background: rgba(15, 23, 42, 0.98);
 }
 
 body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip-wrap,

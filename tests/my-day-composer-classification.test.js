@@ -182,7 +182,9 @@ test('My Day task impact chips open the editor with task and impact ids', () => 
 
 test('My Day editable impact chips and task editor have compact responsive CSS states', () => {
     const classification = read('js/my-day-classification.js');
+    const taskUi = read('js/task-ui.js');
     const css = read('css/pages-profile.css');
+    const tasksCss = read('css/pages-tasks.css');
     const cabinetCss = read('css/pages-cabinet.css');
 
     assert.match(classification, /data-my-day-editor-edit-impact/);
@@ -196,12 +198,23 @@ test('My Day editable impact chips and task editor have compact responsive CSS s
     assert.match(css, /\.my-day-impact-editor-selected-edit/);
     assert.match(css, /\.my-day-impact-editor-edit-form/);
     assert.match(css, /\.my-day-impact-editor-edit-actions/);
-    assert.match(css, /\.task-ui-action-surface--my-day-impacts\.is-popover \.task-ui-action-panel/);
-    assert.match(css, /\.task-ui-action-surface--my-day-impacts \.task-ui-action-body\s*\{[\s\S]*overflow-x:\s*hidden/);
-    assert.match(css, /\.my-day-impact-editor-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-    assert.match(css, /@media \(max-width:\s*720px\), \(pointer:\s*coarse\)[\s\S]*\.my-day-impact-editor-edit-actions,[\s\S]*\.my-day-impact-editor-grid\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+    assert.match(classification, /presentation:\s*'dialog'/);
+    assert.match(taskUi, /presentation\s*===\s*'dialog'/);
+    assert.match(taskUi, /is-\$\{surfaceMode\}/);
+    assert.match(tasksCss, /\.task-ui-action-surface\.is-dialog \.task-ui-action-panel\s*\{[\s\S]*width:\s*min\(640px,\s*calc\(100vw - 32px\)\)/);
+    assert.match(tasksCss, /\.task-ui-action-surface\.is-dialog \.task-ui-action-panel\s*\{[\s\S]*max-height:\s*min\(82dvh,\s*calc\(100dvh - 32px\)\)/);
+    assert.match(tasksCss, /\.task-ui-action-surface\.is-sheet \.task-ui-action-panel\s*\{[\s\S]*max-height:\s*min\(92dvh/);
+    assert.match(css, /\.task-ui-action-surface--my-day-impacts\.is-dialog \.task-ui-action-panel/);
+    assert.match(css, /\.task-ui-action-surface--my-day-impacts \.task-ui-action-body\s*\{[\s\S]*overflow-x:\s*hidden[\s\S]*overflow-y:\s*auto/);
+    assert.match(css, /\.my-day-impact-editor\s*\{[\s\S]*min-width:\s*0[\s\S]*width:\s*100%/);
+    assert.match(css, /\.my-day-impact-editor-search\s*\{[\s\S]*position:\s*sticky/);
+    assert.match(css, /\.my-day-impact-editor-actions\s*\{[\s\S]*position:\s*sticky[\s\S]*bottom:\s*0/);
+    assert.match(css, /\.my-day-impact-editor-catalog\s*\{[\s\S]*overflow:\s*visible/);
+    assert.match(css, /\.my-day-impact-editor-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(auto-fit,\s*minmax\(min\(100%,\s*260px\),\s*1fr\)\)/);
+    assert.doesNotMatch(css, /\.my-day-impact-editor-catalog\s*\{[\s\S]*max-height:\s*min\(320px,\s*45dvh\)/);
     assert.match(css, /body\.dark-mode \.task-ui-action-surface--my-day-impacts \.my-day-impact-editor-option/);
     assert.match(css, /html\[data-theme="dark"\] \.task-ui-action-surface--my-day-impacts \.my-day-impact-editor-option\.is-selected/);
+    assert.match(css, /body\.dark-mode \.task-ui-action-surface--my-day-impacts \.my-day-impact-editor-actions/);
     assert.match(css, /\.my-day-task-impact-chips\.is-classification-pending/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
     assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--editable/);

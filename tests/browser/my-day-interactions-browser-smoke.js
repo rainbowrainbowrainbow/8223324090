@@ -383,10 +383,39 @@ async function runScenario(browser, fixture, { dark, viewport }) {
 
         await page.locator('#manual-normal').click();
         await page.waitForSelector('[data-my-day-editor-fields]');
+        const impactSurfaceMode = await page.locator('#taskUiActionSurface').evaluate(node => ({
+          classes: node.className,
+          presentation: node.dataset.taskUiPresentation
+        }));
+        assert.match(impactSurfaceMode.classes || '', viewport.width <= 768 ? /is-sheet/ : /is-dialog/);
+        assert.equal(impactSurfaceMode.presentation, viewport.width <= 768 ? 'sheet' : 'dialog');
         const impactPanelBounds = await page.locator('#taskUiActionSurface .task-ui-action-panel').boundingBox();
         assert.ok(impactPanelBounds, 'impact editor panel should be measurable');
         assert.ok(impactPanelBounds.x >= -1, `impact editor starts outside viewport: ${JSON.stringify(impactPanelBounds)}`);
         assert.ok(impactPanelBounds.x + impactPanelBounds.width <= viewport.width + 1, `impact editor overflows viewport width: ${JSON.stringify(impactPanelBounds)}`);
+        const impactEditorOverflow = await page.locator('#taskUiActionSurface .task-ui-action-panel').evaluate(panel => {
+          const body = panel.querySelector('.task-ui-action-body');
+          const catalog = panel.querySelector('.my-day-impact-editor-catalog');
+          const footer = panel.querySelector('.my-day-impact-editor-actions');
+          const panelRect = panel.getBoundingClientRect();
+          const bodyStyle = body ? getComputedStyle(body) : null;
+          const catalogStyle = catalog ? getComputedStyle(catalog) : null;
+          const footerRect = footer ? footer.getBoundingClientRect() : null;
+          return {
+            panelScrollWidth: panel.scrollWidth,
+            panelClientWidth: panel.clientWidth,
+            bodyScrollWidth: body?.scrollWidth || 0,
+            bodyClientWidth: body?.clientWidth || 0,
+            bodyOverflowY: bodyStyle?.overflowY || '',
+            catalogOverflowY: catalogStyle?.overflowY || '',
+            footerInsidePanel: Boolean(footerRect && footerRect.left >= panelRect.left - 1 && footerRect.right <= panelRect.right + 1 && footerRect.bottom <= panelRect.bottom + 1)
+          };
+        });
+        assert.ok(impactEditorOverflow.panelScrollWidth <= impactEditorOverflow.panelClientWidth + 1, `impact panel should not scroll horizontally: ${JSON.stringify(impactEditorOverflow)}`);
+        assert.ok(impactEditorOverflow.bodyScrollWidth <= impactEditorOverflow.bodyClientWidth + 1, `impact body should not scroll horizontally: ${JSON.stringify(impactEditorOverflow)}`);
+        assert.match(impactEditorOverflow.bodyOverflowY, /auto|scroll/);
+        assert.match(impactEditorOverflow.catalogOverflowY, /visible|clip/);
+        assert.ok(impactEditorOverflow.footerInsidePanel, `impact footer should be visible inside panel: ${JSON.stringify(impactEditorOverflow)}`);
         const impactOptionMetrics = await page.locator('.my-day-impact-editor-option').evaluateAll(nodes => nodes.slice(0, 4).map(node => {
           const rect = node.getBoundingClientRect();
           const style = getComputedStyle(node);
@@ -426,6 +455,9 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         }));
         assert.equal(selectedImpactEditorChips.length, 5);
         assert.ok(selectedImpactEditorChips.every(item => item.width <= viewport.width - 90 && item.height > 0), `selected impact editor chips should stay compact: ${JSON.stringify(selectedImpactEditorChips)}`);
+        await page.locator('[data-my-day-editor-save]').scrollIntoViewIfNeeded();
+        const saveButtonBounds = await page.locator('[data-my-day-editor-save]').boundingBox();
+        assert.ok(saveButtonBounds && saveButtonBounds.width > 0 && saveButtonBounds.height > 0, `impact save button should remain reachable after selecting five impacts: ${JSON.stringify(saveButtonBounds)}`);
         await page.screenshot({
           path: path.join(OUTPUT_DIR, `impact-editor-selected-${viewport.width}-${dark ? 'dark' : 'light'}.png`),
           fullPage: true

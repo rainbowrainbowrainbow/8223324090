@@ -1,0 +1,80 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
+const test = require('node:test');
+
+const ROOT = path.join(__dirname, '..');
+const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
+
+test('generic booking DELETE routes active banquet members to canonical cancellation endpoints', () => {
+    const route = read('routes/bookings.js');
+    const deleteBlock = route.slice(route.indexOf("router.delete('/:id'"), route.indexOf('// Update booking'));
+    const service = read('services/banquetCancellation.js');
+    assert.match(deleteBlock, /getBookingCancellationReadiness/);
+    assert.match(deleteBlock, /routeRequiredPayload/);
+    assert.match(service, /BANQUET_ROUTE_REQUIRED/);
+    assert.doesNotMatch(deleteBlock, /preflightActiveBanquetPrimaryCancellation\(client/);
+});
+
+test('banquet cancellation service treats price-only as safe and hard artifacts as blockers', () => {
+    const service = read('services/banquetCancellation.js');
+    assert.match(service, /bookingHardBlockers/);
+    assert.doesNotMatch(service, /Number\(booking\.price \|\| 0\) > 0\) blockers/);
+    for (const token of [
+        'paid_amount',
+        'payment_status',
+        'certificate',
+        'fiscal_receipt',
+        'receipt',
+        'noncanonical_finance',
+        'stock_without_provenance'
+    ]) {
+        assert.match(service, new RegExp(token));
+    }
+    assert.match(service, /syncBookingFinanceInTransaction\(client, booking/);
+    assert.match(service, /optional: false/);
+});
+
+test('frontend cancellation UI is readiness-driven and has no generic undo restore after cancel', () => {
+    const booking = read('js/booking.js');
+    const api = read('js/api.js');
+    const ws = read('js/ws.js');
+    assert.match(api, /apiGetBookingCancellationReadiness/);
+    assert.match(api, /apiCancelBanquetActivity/);
+    assert.match(api, /apiCancelBanquetGroup/);
+    assert.match(booking, /requestBookingCancellation/);
+    assert.match(booking, /renderBookingCancellationAction/);
+    assert.match(booking, /Прибрати складову/);
+    assert.match(booking, /Скасувати весь банкет/);
+    assert.match(booking, /Скасувати бронювання/);
+    assert.doesNotMatch(booking.slice(booking.indexOf('async function requestBookingCancellation')), /pushUndo\('delete'/);
+    assert.match(ws, /case 'banquet:booking-set-updated':/);
+});
+
+test('room hardening closes known active write paths and adds not-valid guards', () => {
+    const graduation = read('routes/graduation.js');
+    const secondAnimator = read('scripts/audit-second-animator-links.js');
+    const migration = read('db/migrations/332_booking_room_identity_active_guards.sql');
+    assert.match(graduation, /canonicalizeBookingRoomResource/);
+    assert.match(graduation, /room_resource_id/);
+    assert.match(secondAnimator, /room_resource_id/);
+    assert.match(secondAnimator, /refusing to create linked second animator booking/);
+    assert.match(migration, /NOT VALID/);
+    assert.match(migration, /chk_bookings_active_room_identity_v332/);
+    assert.match(migration, /trg_banquet_groups_identity_v332/);
+});
+
+test('trusted QA markers require server token and manifest registration', () => {
+    const service = read('services/trustedQaRuns.js');
+    const bookings = read('routes/bookings.js');
+    const migration = read('db/migrations/333_trusted_qa_runs.sql');
+    assert.match(service, /QA_MARKER_UNTRUSTED/);
+    assert.match(service, /token_hash/);
+    assert.match(service, /prepareTrustedQaBookingInput/);
+    assert.match(bookings, /prepareTrustedQaBookingInput/);
+    assert.match(bookings, /registerQaEntity/);
+    assert.match(migration, /trusted_qa_runs/);
+    assert.match(migration, /trusted_qa_run_entities/);
+});

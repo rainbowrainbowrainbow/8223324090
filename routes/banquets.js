@@ -35,6 +35,12 @@ const {
     getDepositProjectionForKnownContext,
     resolveDepositContextFromBooking
 } = require('../services/banquetDeposits');
+const {
+    BanquetCancellationError,
+    cancelBanquetActivity,
+    cancelBanquetGroup,
+    idempotencyKeyFromInput
+} = require('../services/banquetCancellation');
 const { shapeBanquetGroupForRevenueAccess } = require('../services/revenueAccessPolicy');
 const { createLogger } = require('../utils/logger');
 
@@ -192,7 +198,7 @@ async function sendReadResult(req, res, snapshot) {
 }
 
 function sendWriteError(res, err) {
-    if (err instanceof AdmissionTicketError) {
+    if (err instanceof AdmissionTicketError || err instanceof BanquetCancellationError) {
         return res.status(err.status || err.statusCode || 422).json({
             success: false,
             error: err.publicMessage || err.message,
@@ -385,6 +391,55 @@ router.put('/:groupId/booking-set', requireAction('edit_booking'), async (req, r
         return res.json(result);
     } catch (err) {
         if (!(err instanceof BanquetGroupError)) log.error('PUT /banquets/:groupId/booking-set error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.delete('/:groupId/activities/:bookingId', requireAction('delete_booking'), async (req, res) => {
+    try {
+        const { groupId, bookingId } = req.params;
+        if (!validateId(groupId) || !validateId(bookingId)) {
+            return res.status(400).json({ success: false, error: 'Invalid booking or group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
+        const result = await cancelBanquetActivity({
+            groupId,
+            bookingId,
+            businessContext,
+            user: req.user,
+            idempotencyKey: idempotencyKeyFromInput({
+                idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotencyKey || req.body?.idempotency_key
+            })
+        });
+        return res.json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetCancellationError)) log.error('DELETE /banquets/:groupId/activities/:bookingId error', err);
+        return sendWriteError(res, err);
+    }
+});
+
+router.post('/:groupId/cancel', requireAction('delete_booking'), async (req, res) => {
+    try {
+        const { groupId } = req.params;
+        if (!validateId(groupId)) {
+            return res.status(400).json({ success: false, error: 'Invalid banquet group ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
+        const result = await cancelBanquetGroup({
+            groupId,
+            businessContext,
+            user: req.user,
+            idempotencyKey: idempotencyKeyFromInput({
+                idempotencyKey: req.get('Idempotency-Key') || req.body?.idempotencyKey || req.body?.idempotency_key
+            })
+        });
+        return res.json(result);
+    } catch (err) {
+        if (!(err instanceof BanquetCancellationError)) log.error('POST /banquets/:groupId/cancel error', err);
         return sendWriteError(res, err);
     }
 });

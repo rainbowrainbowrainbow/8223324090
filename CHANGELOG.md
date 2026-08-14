@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.140 - Banquet Cancellation Hardening
+
+### Release / Versioning / (14.08.2026) [codex]
+- **Скасування банкетів стало канонічним і атомарним** - додано readiness-контракт, окремі операції для складової та всього банкету, структуровані блокери й idempotent retry.
+- **UI більше не веде складові банкету через generic delete** - деталі бронювання fail-closed чекають readiness, показують `Прибрати складову` / `Скасувати весь банкет` / конкретні блокери замість raw 409.
+- **Фінанси й legacy-кімнати обробляються безпечніше** - price-only і canonical unpaid income не блокують cancellation, реальні оплати/чеки/сертифікати блокують, а cancellation-only flow не валиться на незмінене `??????`.
+- **Додано hardening для кімнат, QA і cleanup** - нові NOT VALID DB guards, trusted QA registry/token foundation і read-only guarded manifest для BK-2026-0662–0668 без production apply.
+
+---
+
 ## v0.80.139 - My Day Workbench Release
 
 ### Release / Versioning / (14.08.2026) [codex]

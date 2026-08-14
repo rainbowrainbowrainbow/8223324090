@@ -193,7 +193,7 @@ test('booking duplicate guard excludes the linked edit group from self-conflicts
     assert.equal(context.createRelevant, true);
 });
 
-test('timeline delete controls use the shared delete permission contract', () => {
+test('timeline cancellation controls use the shared delete permission contract', () => {
     const bookingJs = fs.readFileSync(path.join(ROOT, 'js', 'booking.js'), 'utf8');
     assert.deepEqual(ACTION_PERMISSION_BY_KEY.delete_booking.defaultRoles, [
         'creator', 'director', 'vice_director', 'senior_manager', 'manager',
@@ -201,7 +201,8 @@ test('timeline delete controls use the shared delete permission contract', () =>
     ]);
     assert.match(bookingJs, /function canDeleteTimelineBooking/);
     assert.match(bookingJs, /canAccess\('delete_booking'\)/);
-    assert.match(bookingJs, /if \(!canDeleteTimelineBooking\(\)\) \{\s*showNotification\('Недостатньо прав для видалення бронювання'/s);
+    assert.match(bookingJs, /async function requestBookingCancellation\(bookingId\)/);
+    assert.match(bookingJs, /if \(!canDeleteTimelineBooking\(\)\) \{\s*showNotification\('Недостатньо прав для скасування бронювання'/s);
     assert.match(bookingJs, /const deleteButton = canDeleteTimelineBooking\(\)/);
 });
 

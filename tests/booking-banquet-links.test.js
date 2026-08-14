@@ -707,7 +707,7 @@ function makeDb(rows, links = [], options = {}) {
             const rows = state.banquetMemberships.filter(item => item.group_id === params[0]).map(row => ({ ...row }));
             return { rows, rowCount: rows.length };
         }
-        if (/SELECT bgb\.group_id, bgb\.booking_id, bgb\.role, bg\.primary_booking_id, bg\.status AS group_status\s+FROM banquet_group_bookings bgb\s+JOIN banquet_groups bg ON bg\.id = bgb\.group_id/i.test(sql)) {
+        if (/SELECT bgb\.group_id, bgb\.booking_id, bgb\.role,[\s\S]*bg\.primary_booking_id[\s\S]*bg\.status AS group_status\s+FROM banquet_group_bookings bgb\s+JOIN banquet_groups bg ON bg\.id = bgb\.group_id/i.test(sql)) {
             const membership = state.banquetMemberships.find(item => item.booking_id === params[0]);
             if (!membership) return { rows: [], rowCount: 0 };
             const group = state.banquetGroups.find(item => item.id === membership.group_id);
@@ -716,7 +716,9 @@ function makeDb(rows, links = [], options = {}) {
                     group_id: membership.group_id,
                     booking_id: membership.booking_id,
                     role: membership.role,
+                    sort_order: membership.sort_order || 100,
                     primary_booking_id: group.primary_booking_id,
+                    group_updated_at: group.updated_at || null,
                     group_status: group.status || 'active'
                 }] : [],
                 rowCount: group ? 1 : 0
@@ -4976,8 +4978,8 @@ test('DELETE booking rejects an active banquet activity and rolls back the entir
         const res = await fetch(`${baseUrl}/api/bookings/BK-ACTIVE?businessContext=event_genix`, { method: 'DELETE' });
         const data = await res.json();
         assert.equal(res.status, 409, JSON.stringify(data));
-        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
-        assert.ok(data.details.blockers.includes('non_primary_member'));
+        assert.equal(data.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(data.details.operation, 'banquet_activity_cancel');
         assert.equal(data.details.groupId, 'BQ-ROOT');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVE-CHILD').status, 'confirmed');
@@ -5056,8 +5058,8 @@ test('DELETE booking rejects the active canonical kitchen package owner and roll
         const res = await fetch(`${baseUrl}/api/bookings/BK-KITCHEN?businessContext=event_genix`, { method: 'DELETE' });
         const data = await res.json();
         assert.equal(res.status, 409, JSON.stringify(data));
-        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
-        assert.ok(data.details.blockers.includes('non_primary_member'));
+        assert.equal(data.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(data.details.operation, 'banquet_activity_cancel');
         assert.equal(data.details.groupId, 'BQ-ACTIVITY-FIRST');
         assert.equal(state.rows.find(row => row.id === 'BK-KITCHEN').status, 'confirmed');
         assert.equal(state.rows.find(row => row.id === 'BK-ACTIVITY-FIRST').status, 'confirmed');
@@ -5102,7 +5104,7 @@ test('DELETE booking rejects the active canonical kitchen package owner and roll
     });
 });
 
-test('DELETE soft-cancels a dependency-free primary and its banquet group atomically, while permanent delete stays blocked', async () => {
+test('DELETE routes a dependency-free primary to canonical banquet cancellation endpoint, including permanent delete', async () => {
     await withApp([
         bookingRow({
             id: 'BK-ROOT',
@@ -5117,9 +5119,11 @@ test('DELETE soft-cancels a dependency-free primary and its banquet group atomic
             { method: 'DELETE' }
         );
         const softData = await softResponse.json();
-        assert.equal(softResponse.status, 200, JSON.stringify(softData));
-        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'cancelled');
-        assert.equal(state.banquetGroups[0].status, 'cancelled');
+        assert.equal(softResponse.status, 409, JSON.stringify(softData));
+        assert.equal(softData.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(softData.details.operation, 'banquet_group_cancel');
+        assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
+        assert.equal(state.banquetGroups[0].status, 'active');
 
         state.rows.find(row => row.id === 'BK-ROOT').status = 'confirmed';
         state.banquetGroups[0].status = 'active';
@@ -5129,14 +5133,14 @@ test('DELETE soft-cancels a dependency-free primary and its banquet group atomic
         );
         const permanentData = await permanentResponse.json();
         assert.equal(permanentResponse.status, 409, JSON.stringify(permanentData));
-        assert.equal(permanentData.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
-        assert.deepEqual(permanentData.details.blockers, ['permanent_delete']);
+        assert.equal(permanentData.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(permanentData.details.operation, 'banquet_group_cancel');
         assert.equal(state.rows.find(row => row.id === 'BK-ROOT').status, 'confirmed');
         assert.equal(state.banquetGroups[0].status, 'active');
-        assert.equal(state.histories.length, 2);
+        assert.equal(state.histories.length, 0);
         assert.deepEqual(state.tx, [
             'BEGIN ISOLATION LEVEL SERIALIZABLE',
-            'COMMIT',
+            'ROLLBACK',
             'BEGIN ISOLATION LEVEL SERIALIZABLE',
             'ROLLBACK'
         ]);
@@ -5162,9 +5166,8 @@ test('DELETE primary reports active banquet members and leaves the entire group 
         );
         const data = await response.json();
         assert.equal(response.status, 409, JSON.stringify(data));
-        assert.equal(data.code, 'BANQUET_PRIMARY_CANCELLATION_BLOCKED');
-        assert.deepEqual(data.details.blockers, ['active_members']);
-        assert.equal(data.details.counts.activeMembers, 1);
+        assert.equal(data.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(data.details.operation, 'banquet_group_cancel');
         assert.equal(state.rows.every(row => row.status === 'confirmed'), true);
         assert.equal(state.banquetGroups[0].status, 'active');
         assert.equal(state.histories.length, 0);
@@ -5198,19 +5201,8 @@ test('DELETE primary reports deposit, financial, finance-transaction, and ticket
         );
         const data = await response.json();
         assert.equal(response.status, 409, JSON.stringify(data));
-        assert.deepEqual(data.details.blockers, [
-            'active_deposit',
-            'financial_data',
-            'finance_transactions',
-            'tickets'
-        ]);
-        assert.deepEqual(data.details.counts, {
-            activeMembers: 0,
-            activeDeposits: 1,
-            financialBookings: 1,
-            financeTransactions: 1,
-            ticketBookings: 1
-        });
+        assert.equal(data.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(data.details.operation, 'banquet_group_cancel');
         assert.equal(state.rows[0].status, 'confirmed');
         assert.equal(state.banquetGroups[0].status, 'active');
         assert.equal(state.banquetDeposits[0].status, 'manager_reported');
@@ -5244,7 +5236,8 @@ test('DELETE primary rolls booking cancellation back when the locked group updat
         );
         const data = await response.json();
         assert.equal(response.status, 409, JSON.stringify(data));
-        assert.equal(data.code, 'BANQUET_CANCELLATION_STATE_CHANGED');
+        assert.equal(data.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(data.details.operation, 'banquet_group_cancel');
         assert.equal(state.rows[0].status, 'confirmed');
         assert.equal(state.banquetGroups[0].status, 'active');
         assert.equal(state.histories.length, 0);
@@ -5261,7 +5254,7 @@ test('DELETE primary rolls booking cancellation back when the locked group updat
     });
 });
 
-test('DELETE primary sees a concurrently added active member during locked preflight and fails closed', async () => {
+test('DELETE primary uses route-required response without running canonical cancellation preflight', async () => {
     await withApp([
         bookingRow({ id: 'BK-ROOT', price: 0 })
     ], [], async ({ baseUrl, state }) => {
@@ -5271,15 +5264,14 @@ test('DELETE primary sees a concurrently added active member during locked prefl
         );
         const data = await response.json();
         assert.equal(response.status, 409, JSON.stringify(data));
-        assert.deepEqual(data.details.blockers, ['active_members']);
-        assert.equal(data.details.counts.activeMembers, 1);
+        assert.equal(data.code, 'BANQUET_ROUTE_REQUIRED');
+        assert.equal(data.details.operation, 'banquet_group_cancel');
         assert.equal(state.rows[0].status, 'confirmed');
         assert.equal(state.rows.some(row => row.id === 'BK-CONCURRENT'), false);
         assert.equal(state.banquetGroups[0].status, 'active');
         assert.deepEqual(state.tx, ['BEGIN ISOLATION LEVEL SERIALIZABLE', 'ROLLBACK']);
-        assert.ok(state.queries.some(item => /FOR UPDATE OF bgb, b/i.test(item.sql)));
+        assert.equal(state.queries.some(item => /JOIN bookings b ON b\.id = bgb\.booking_id[\s\S]*FOR UPDATE OF bgb, b/i.test(item.sql)), false);
     }, {
-        addConcurrentActiveMemberOnCancellationPreflight: true,
         banquetGroups: [{
             id: 'BQ-ROOT', business_context: 'event_genix', primary_booking_id: 'BK-ROOT',
             status: 'active', meta: {}

@@ -1703,8 +1703,13 @@ if (typeof document !== 'undefined') {
     }
 }
 
+var _customConfirmActiveClose = null;
+
 function customConfirm(message, title = 'Підтвердження') {
     return new Promise((resolve) => {
+        if (typeof _customConfirmActiveClose === 'function') {
+            _customConfirmActiveClose(false);
+        }
         const modal = document.getElementById('confirmModal');
         const titleEl = document.getElementById('confirmTitle');
         const messageEl = document.getElementById('confirmMessage');
@@ -1718,34 +1723,44 @@ function customConfirm(message, title = 'Підтвердження') {
         openModal(modal);
 
         let resolved = false;
+        const finish = (value) => {
+            if (resolved) return;
+            resolved = true;
+            cleanup();
+            resolve(value);
+        };
         const cleanup = () => {
             closeModal(modal);
             yesBtn.removeEventListener('click', onYes);
             yesBtn.removeEventListener('touchend', onYes);
             noBtn.removeEventListener('click', onNo);
             noBtn.removeEventListener('touchend', onNo);
+            document.removeEventListener('keydown', onKeyDown, true);
+            if (_customConfirmActiveClose === finish) _customConfirmActiveClose = null;
         };
 
         const onYes = (e) => {
             e.preventDefault();
-            if (resolved) return;
-            resolved = true;
-            cleanup();
-            resolve(true);
+            finish(true);
         };
 
         const onNo = (e) => {
             e.preventDefault();
-            if (resolved) return;
-            resolved = true;
-            cleanup();
-            resolve(false);
+            finish(false);
         };
 
+        const onKeyDown = (e) => {
+            if (e.key !== 'Escape') return;
+            e.preventDefault();
+            finish(false);
+        };
+
+        _customConfirmActiveClose = finish;
         yesBtn.addEventListener('click', onYes);
         yesBtn.addEventListener('touchend', onYes);
         noBtn.addEventListener('click', onNo);
         noBtn.addEventListener('touchend', onNo);
+        document.addEventListener('keydown', onKeyDown, true);
     });
 }
 

@@ -6,6 +6,7 @@ const router = require('express').Router();
 const { pool } = require('../db');
 const { canUseAction, requireAction, requireRole } = require('../middleware/auth');
 const { validateBookingWithinWorkingHours } = require('../services/booking');
+const { canonicalizeBookingRoomResource } = require('../services/timelineResources');
 const { createLogger } = require('../utils/logger');
 const {
     isFinancialFieldKey,
@@ -950,13 +951,18 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         const client = await pool.connect();
         try {
             await client.query('BEGIN');
+            const roomIdentity = {
+                room: room || null,
+                roomResourceId: req.body.roomResourceId || req.body.room_resource_id || null
+            };
+            await canonicalizeBookingRoomResource(client, 'event_genix', roomIdentity, { required: true });
 
             await client.query(
-                `INSERT INTO bookings (id, date, time, line_id, room, program_name, kids_count,
+                `INSERT INTO bookings (id, business_context, date, time, line_id, room, room_resource_id, program_name, kids_count,
                     price, category, duration, status, extra_data, created_by)
-                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'graduation', $9, 'confirmed',
-                    $10, $11)`,
-                [bookingId, date, time, lineId || 'graduation', room || null, programName, q.kids_count,
+                 VALUES ($1, 'event_genix', $2, $3, $4, $5, $6, $7, $8, $9, 'graduation', $10, 'confirmed',
+                    $11, $12)`,
+                [bookingId, date, time, lineId || 'graduation', roomIdentity.room, roomIdentity.roomResourceId, programName, q.kids_count,
                  Math.round(q.total_all), parentDuration, JSON.stringify({
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
@@ -1006,6 +1012,14 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         }
     } catch (err) {
         log.error('Create booking from quote error', err);
+        if (String(err?.code || '').startsWith('ROOM_RESOURCE_')) {
+            return res.status(err.statusCode || 400).json({
+                success: false,
+                code: err.code,
+                error: err.message,
+                details: err.details || null
+            });
+        }
         res.status(500).json({ error: 'Internal server error' });
     }
 });

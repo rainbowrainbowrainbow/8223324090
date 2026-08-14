@@ -369,6 +369,7 @@ var ParkWS = (function () {
                 break;
 
             case 'banquet:arrival-updated':
+            case 'banquet:booking-set-updated':
                 _handleBanquetEvent(message);
                 break;
 

@@ -34,11 +34,11 @@ const PROTECTED_TIMELINE_BLOCKS = [
         file: 'js/booking.js',
         start: "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",
         end: 'function selectedBanquetCandidateRole(bookingId)',
-        sha256: '37fb776b66f3f31cdc936f7c2cb3e24b6e2bd732cdb53f32b557fc124804a347',
+        sha256: '198a22c5a0f22034b1706474a6402b4f1a7c814edf2f69b329ec65e54a802b2a',
         approval: {
-            approvedBy: 'Product owner (explicit Codex Task 4 approval)',
-            approvedOn: '2026-07-21',
-            reason: 'Canonical detail flow blocks legacy banquet mutation and offers only a clean standard replacement create flow without customer, deposit, or membership transfer.'
+            approvedBy: 'Product owner (explicit Codex Tasks 1-5 approval)',
+            approvedOn: '2026-08-14',
+            reason: 'Canonical detail modal now renders booking cancellation actions from server readiness and routes active banquet members to canonical cancellation endpoints. Booking detail ownership, source priorities, and timeline renderer boundaries are unchanged.'
         },
         requiredNeedles: [
             "function bookingDetailSafeRender(section, booking = {}, renderFn, fallback = '')",

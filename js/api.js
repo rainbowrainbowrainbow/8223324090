@@ -2001,11 +2001,74 @@ async function apiAttachBanquetGroupBooking(groupId, bookingId, options = {}) {
     }
 }
 
-async function apiDeleteBooking(id) {
+async function apiGetBookingCancellationReadiness(id, options = {}) {
     try {
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/cancellation-readiness`, {
+            businessContext: options.businessContext
+        })}`, {
+            method: 'GET',
+            headers: getTimelineAuthHeaders(false)
+        });
+        if (handleAuthError(response)) return apiAuthFailure(response);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return apiFailureFromBody(body, response);
+        return body;
+    } catch (err) {
+        console.error('API getBookingCancellationReadiness error:', err);
+        return apiOfflineFailure(err, 'Не вдалося перевірити готовність до скасування. Перевірте зʼєднання і спробуйте ще раз.');
+    }
+}
+
+async function apiCancelBanquetActivity(groupId, bookingId, options = {}) {
+    try {
+        const headers = getTimelineAuthHeaders(false);
+        if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activities/${encodeURIComponent(bookingId)}`, {
+            businessContext: options.businessContext
+        })}`, {
+            method: 'DELETE',
+            headers
+        });
+        if (handleAuthError(response)) return apiAuthFailure(response);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return apiFailureFromBody(body, response);
+        return body;
+    } catch (err) {
+        console.error('API cancelBanquetActivity error:', err);
+        return apiOfflineFailure(err, 'Не вдалося прибрати складову банкету. Перевірте зʼєднання і спробуйте ще раз.');
+    }
+}
+
+async function apiCancelBanquetGroup(groupId, options = {}) {
+    try {
+        const headers = getTimelineAuthHeaders();
+        if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
+        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/cancel`, {
+            businessContext: options.businessContext
+        })}`, {
+            method: 'POST',
+            headers,
+            body: JSON.stringify(timelineApiPayload({
+                idempotencyKey: options.idempotencyKey || null
+            }))
+        });
+        if (handleAuthError(response)) return apiAuthFailure(response);
+        const body = await response.json().catch(() => ({}));
+        if (!response.ok) return apiFailureFromBody(body, response);
+        return body;
+    } catch (err) {
+        console.error('API cancelBanquetGroup error:', err);
+        return apiOfflineFailure(err, 'Не вдалося скасувати банкет. Перевірте зʼєднання і спробуйте ще раз.');
+    }
+}
+
+async function apiDeleteBooking(id, options = {}) {
+    try {
+        const headers = getTimelineAuthHeaders(false);
+        if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
         const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'DELETE',
-            headers: getTimelineAuthHeaders(false)
+            headers
         });
         if (handleAuthError(response)) return apiAuthFailure(response);
         if (!response.ok) {

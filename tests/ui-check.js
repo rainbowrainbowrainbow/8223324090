@@ -1906,8 +1906,8 @@ checkPage('staff.html', (doc, html) => {
     check('Staff schedule keeps premium HR Pulse switcher and unified panel rhythm',
         !!doc.getElementById('staffScheduleShell')
         && doc.getElementById('staffScheduleShell')?.dataset.staffScheduleShell === 'standalone'
-        && html.includes('js/staff-schedule-shell.js?v=0.80.139')
-        && html.includes('js/hr-pulse-switcher.js?v=0.80.139')
+        && html.includes('js/staff-schedule-shell.js?v=0.80.140')
+        && html.includes('js/hr-pulse-switcher.js?v=0.80.140')
         && staffScheduleShellCode.includes('function scheduleWorkspaceTemplate')
         && staffScheduleShellCode.includes('function scheduleModalTemplate')
         && staffScheduleShellCode.includes('window.StaffScheduleShell')
@@ -4975,10 +4975,10 @@ check('Critical booking mutations use normalized failure contract and user-visib
     && /async function apiDeleteBooking[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося видалити бронювання/.test(apiCode)
     && /async function apiUpdateBooking[\s\S]*apiAuthFailure\(response\)[\s\S]*apiFailureFromBody\(body, response, 'Конфлікт даних'\)[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*apiOfflineFailure\(err, 'Не вдалося оновити бронювання/.test(apiCode)
     && bookingMutationCode.includes('if (!updateResult || updateResult.success === false)')
-    && bookingMutationCode.includes('if (!delResult || delResult.success === false)')
+    && bookingMutationCode.includes('const result = await apiDeleteBooking(id);')
     && bookingMutationCode.includes('if (!result || result.success === false)')
     && bookingMutationCode.includes('const failures = []')
-    && bookingMutationCode.includes('Видалено ${successCount}/${ids.length}. ${failures[0]}'));
+    && bookingMutationCode.includes('Скасовано ${successCount}/${ids.length}. ${failures[0]}'));
 check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));
 check('Timeline responsive density updates JS cell geometry with viewport', uiCode.includes('function applyTimelineResponsiveDensity') && uiCode.includes('_timelineResponsiveCellWidth') && uiCode.includes('--timeline-cell-w') && htmlContains('js/app.js', 'initTimelineResponsiveResize'));
 check('Timeline Android density reads lexical CONFIG and visual viewport', uiCode.includes("typeof CONFIG === 'undefined'") && !uiCode.includes('if (!window.CONFIG || !CONFIG.TIMELINE)') && uiCode.includes('let lastViewportSignature =') && uiCode.includes('if (viewportSignature === lastViewportSignature) return') && uiCode.includes('window.visualViewport?.addEventListener?.(\'resize\'') && uiCode.includes('window.visualViewport?.addEventListener?.(\'scroll\''));
@@ -5689,7 +5689,7 @@ check('Booking detail modal keeps rare operational actions collapsed',
 check('Booking banquet modal UX regression guard keeps compact defaults',
     bookingDetailEditControlsBlock.includes('const secondaryActionHtml = [')
     && bookingDetailEditControlsBlock.includes('const moreActionsHtml = secondaryActionHtml ?')
-    && bookingDetailEditControlsBlock.includes('const dangerZoneHtml = canDeleteTimelineBooking() ?')
+    && bookingDetailEditControlsBlock.includes('const dangerZoneHtml = renderBookingCancellationAction(booking, cancellationReadiness)')
     && bookingDetailCompactFooterBlock.includes('booking-detail-action--primary btn-edit-booking')
     && bookingDetailCompactFooterBlock.includes('booking-summary-action">Банкетний лист</a>')
     && !bookingDetailCompactFooterBlock.includes('Вижимка')
@@ -5709,7 +5709,8 @@ check('Booking banquet modal UX regression guard keeps compact defaults',
     && !bookingDetailAdvancedActionsBlock.includes(' open')
     && bookingDetailEditControlsBlock.indexOf('${dangerZoneHtml}') >= 0
     && bookingDetailEditControlsBlock.indexOf('<div class="booking-actions modal-footer-sticky booking-actions--compact">') > bookingDetailEditControlsBlock.indexOf('${dangerZoneHtml}')
-    && bookingDetailEditControlsBlock.includes('booking-detail-danger-action">Видалити</button>')
+    && bookingCode.includes('booking-detail-danger-action')
+    && bookingCode.includes('requestBookingCancellation')
     && !bookingDetailEditControlsBlock.includes('class="btn-delete-booking">Видалити</button>')
     && globalModalsCss.includes('#bookingModal .booking-actions.modal-footer-sticky.booking-actions--compact')
     && globalModalsCss.includes('.booking-detail-more-actions__panel')
@@ -6078,6 +6079,14 @@ check('Booking banquet selector loads same-customer groups and routes selected k
     && /async function apiCreateBanquetActivityBooking[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiCreateBanquetActivityBookingFromSource/.test(apiCode)
     && /async function apiCreateBanquetActivityBookingFromSource[\s\S]*apiFailureFromBody\(body, response\)[\s\S]*async function apiAttachBanquetGroupBooking/.test(apiCode)
     && apiCode.includes('/banquets/from-source/activity-booking'));
+check('Booking cancellation UI is group-aware and readiness fail-closed',
+    bookingCode.includes('function renderBookingCancellationAction')
+    && bookingCode.includes('requestBookingCancellation')
+    && bookingCode.includes('apiGetBookingCancellationReadiness')
+    && bookingCode.includes('apiCancelBanquetActivity')
+    && bookingCode.includes('apiCancelBanquetGroup')
+    && bookingCode.includes('Перевірка скасування недоступна')
+    && !bookingCode.includes('deleteBookingLegacyRemoved'));
 check('Booking kitchen menu supports serving times and banquet service events without schema changes',
     bookingCode.includes('servingTime')
     && bookingCode.includes('servingNote')
@@ -6355,7 +6364,7 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !/\{\s*id:\s*'team',\s*label:\s*'[^']+',\s*tab:\s*'team'\s*\}/.test(hrCode)
     && !/\{\s*id:\s*'onboarding',\s*label:/.test(hrCode)
     && !/\{\s*id:\s*'costumes',\s*label:/.test(hrCode)
-    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.80.139')
+    && htmlContains('hr.html', 'js/hr-pulse-switcher.js?v=0.80.140')
     && hrPulseSwitcherCode.includes('const PULSE_ITEMS')
     && hrPulseSwitcherCode.includes("id: 'today'")
     && hrPulseSwitcherCode.includes("id: 'schedule'")
@@ -6364,8 +6373,8 @@ check('HR grouped IA keeps Pulse clean and vacancy workspace owns hiring surface
     && !hrPulseSwitcherCode.includes("hrHref: '/staff'")
     && htmlContains('hr.html', 'id="hrStaffScheduleShell"')
     && htmlContains('hr.html', 'data-staff-schedule-shell="hr"')
-    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.80.139')
-    && htmlContains('hr.html', 'js/staff-page.js?v=0.80.139')
+    && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.80.140')
+    && htmlContains('hr.html', 'js/staff-page.js?v=0.80.140')
     && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"')
     && !htmlContains('hr.html', 'data-src="/staff?embed=1"')
     && hrCode.includes('function loadHrScheduleModule')
@@ -7059,7 +7068,7 @@ check('HR staff profile can choose hourly, daily, or monthly rate units', htmlCo
 check('HR staff profile hides the manual pool status selector', !htmlContains('hr.html', 'id="editPoolStatus"') && hrCode.includes("const editPoolStatus = document.getElementById('editPoolStatus');") && hrCode.includes("if (editPoolStatus) body.hr_pool_status = editPoolStatus.value || 'core';") && !hrCode.includes("hr_pool_status: document.getElementById('editPoolStatus')?.value || 'core'"));
 check('HR staff profile hides blacklist reason from the profile form', !htmlContains('hr.html', 'id="editBlacklistReason"') && !hrCode.includes("blacklist_reason: document.getElementById('editBlacklistReason')") && hrCode.includes("formModal('Причина чорного списку'") && hrRouteCode.includes("queueStaffUpdate('blacklist_reason'"));
 check('HR Team permanent staff delete is guarded for duplicate cleanup', hrCode.includes('hr-team-delete') && hrCode.includes('hr-team-menu-section--danger') && hrCode.includes('тільки для дубля') && hrCode.includes('function deleteStaffProfile') && hrCode.includes("hrFetch(`/staff/${staffId}/delete-readiness`)") && hrCode.includes('Введіть ТАК для підтвердження') && hrCode.includes("confirmation: 'ТАК'") && hrCode.includes('window.deleteStaffProfile = deleteStaffProfile') && hrRouteCode.includes("router.get('/staff/:id/delete-readiness'") && hrRouteCode.includes("router.delete('/staff/:id'") && hrRouteCode.includes("const STAFF_DELETE_CONFIRMATION = 'ТАК'") && hrRouteCode.includes('STAFF_DELETE_BLOCKER_CHECKS') && hrRouteCode.includes('UPDATE hr_audit_log SET staff_id = NULL') && hrRouteCode.includes('staff_delete_permanent') && pagesCss.includes('.hr-team-delete') && pagesCss.includes('body.dark-mode .page-container .hr-team-delete'));
-check('HR schedule mounts shared staff schedule module without leave request controls below it', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.80.139') && htmlContains('hr.html', 'js/staff-page.js?v=0.80.139') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && !htmlContains('hr.html', 'Заявки на відпустки та вихідні') && !htmlContains('hr.html', 'id="leaveStatusFilter"') && !htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="btnNewLeave"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
+check('HR schedule mounts shared staff schedule module without leave request controls below it', htmlContains('hr.html', 'id="hrStaffScheduleShell"') && htmlContains('hr.html', 'data-staff-schedule-shell="hr"') && htmlContains('hr.html', 'js/staff-schedule-shell.js?v=0.80.140') && htmlContains('hr.html', 'js/staff-page.js?v=0.80.140') && !htmlContains('hr.html', 'id="hrScheduleEmbedFrame"') && !htmlContains('hr.html', 'data-src="/staff?embed=1"') && !htmlContains('hr.html', 'Заявки на відпустки та вихідні') && !htmlContains('hr.html', 'id="leaveStatusFilter"') && !htmlContains('hr.html', 'id="leavesList"') && !htmlContains('hr.html', 'id="btnNewLeave"') && !htmlContains('hr.html', 'id="tab-leaves"') && hrCode.includes('function loadHrScheduleModule') && hrCode.includes('window.StaffSchedulePage.init') && !htmlContains('hr.html', 'id="schedHead"') && !htmlContains('hr.html', 'id="schedBody"'));
 check('HR salary exposes calendar period filter without letting custom ranges commit payroll', htmlContains('hr.html', 'id="salaryDateFrom"') && htmlContains('hr.html', 'id="salaryDateTo"') && htmlContains('hr.html', 'type="date"') && htmlContains('hr.html', 'id="btnApplySalaryPeriod"') && htmlContains('hr.html', 'id="btnResetSalaryPeriod"') && pagesCss.includes('v0.73.78: HR salary calendar period picker') && pagesCss.includes('body.dark-mode .hr-salary-date-input') && hrCode.includes('function payrollMonthBounds') && hrCode.includes('function currentSalaryPeriod') && hrCode.includes('function salaryPeriodQueryString') && hrCode.includes('hrFetch(`/salary?${query}`)') && hrCode.includes("period.mode === 'range'") && hrCode.includes('Нарахування зарплати доступне тільки для повного місяця') && hrPayrollPeriodServiceCode.includes('function payrollPeriodRange') && hrRouteCode.includes('$2::date AS date_from') && hrRouteCode.includes("sa.month >= p.month_from AND sa.month <= p.month_to"));
 check('HR Salary and KPI expose accessible local employee filters without changing summary snapshots', htmlContains('hr.html', 'id="salarySearch"') && htmlContains('hr.html', 'id="salaryFilterInfo"') && htmlContains('hr.html', 'id="salaryFilterReset"') && htmlContains('hr.html', 'id="salaryDepartmentFilters"') && htmlContains('hr.html', 'id="kpiSearch"') && htmlContains('hr.html', 'id="kpiFilterInfo"') && htmlContains('hr.html', 'id="kpiFilterReset"') && htmlContains('hr.html', 'id="kpiDepartmentFilters"') && htmlContains('hr.html', 'aria-live="polite"') && hrCode.includes('const payrollViewState =') && hrCode.includes('function payrollFilteredRows') && hrCode.includes('normalizeSearchText(parts.filter(Boolean).join') && hrCode.includes('data-payroll-department=') && hrCode.includes('aria-pressed=') && hrCode.includes('renderKpiSources({ rows: allRows, sources })') && hrCode.includes('const totals = allRows.reduce') && hrPageCss.includes('#tab-salary .hr-payroll-filters') && hrPageCss.includes('[data-theme="dark"] #tab-kpi .hr-payroll-filters') && hrPageCss.includes('#tab-salary .hr-payroll-empty-state') && hrPageCss.includes('@media (max-width: 480px)'));
 check('HR Salary and KPI group visible rows with persistent native-button toggles', hrCode.includes("storageKey: 'pzp_hr_payroll_salary_expanded_groups'") && hrCode.includes("storageKey: 'pzp_hr_payroll_kpi_expanded_groups'") && hrCode.includes("hydratePayrollExpandedGroups('salary')") && hrCode.includes("hydratePayrollExpandedGroups('kpi')") && hrCode.includes('function payrollGroupedRows') && hrCode.includes('function persistPayrollExpandedGroups') && hrCode.includes('function payrollSearchAutoExpandsGroups') && hrCode.includes('type="button" class="hr-payroll-group-toggle"') && hrCode.includes('data-payroll-group-toggle=') && hrCode.includes('aria-expanded=') && hrCode.includes("renderPayrollGroupedList('salary'") && hrCode.includes("renderPayrollGroupedList('kpi'") && hrPageCss.includes('#tab-salary .hr-payroll-group-header') && hrPageCss.includes('#tab-kpi .hr-payroll-group-toggle:focus-visible') && hrPageCss.includes('[data-theme="dark"] #tab-kpi .hr-payroll-group-header'));
@@ -7068,8 +7077,8 @@ check('HR KPI uses the backend KPI snapshot instead of client-side source mergin
 check('HR dark and mobile styles cover nav badges, compact people cards, KPI sources and result grid layout', htmlContains('hr.html', 'body.dark-mode .hr-nav-count') && htmlContains('hr.html', 'body.dark-mode .hr-kpi-source') && htmlContains('hr.html', 'body.dark-mode .hr-people-empty--error') && htmlContains('hr.html', '@media (max-width: 768px)') && htmlContains('hr.html', '.hr-people-results-grid { grid-template-columns: 1fr; }') && htmlContains('hr.html', 'grid-template-columns: repeat(auto-fill, minmax(268px, 1fr))') && htmlContains('hr.html', '.hr-team-avatar { width: 40px; height: 40px; font-size: 15px; }') && htmlContains('hr.html', '.hr-team-training-compact') && htmlContains('hr.html', '.hr-team-overflow-menu') && !/\.hr-people-results\s*\{[^}]*overflow-[xy]\s*:/.test(hrHtmlForContracts));
 check('HR exposes account center with account creation, profile, staff binding, password controls, and safe list recovery', htmlContains('hr.html', 'id="tab-accounts"') && hrCode.includes("{ id: 'accounts', label: 'Акаунти', visible: () => canManageAccountSecurity() }") && htmlContains('hr.html', 'accountCenterList') && htmlContains('hr.html', 'accountCreateBtn') && htmlContains('hr.html', 'accountCenterResetFiltersBtn') && htmlContains('hr.html', 'accountCenterFilterNotice') && hrCode.includes('function loadAccountCenter') && hrCode.includes('function canManageAccountSecurity') && hrCode.includes('openAccountCreateModal') && hrCode.includes('function openAccountProfileModal') && hrCode.includes('function loadAccountStaffOptions') && hrCode.includes('/api/users/${encodeURIComponent(userId)}/profile') && hrCode.includes('function openAccountPasswordModal') && hrCode.includes('/api/users/${encodeURIComponent(userId)}/reset-password') && hrCode.includes('function resetAccountCenterFilters') && hrCode.includes('loadAccountCenter({ resetFilters: true })') && !hrCode.includes('deactivateKarinaAccounts') && !htmlContains('hr.html', 'Вимкнути акаунти Каріни') && htmlContains('routes/users.js', 'ACCOUNT_MANAGER_ROLES') && htmlContains('routes/users.js', "router.get('/staff-options'") && htmlContains('routes/users.js', "router.patch('/:id/profile'"));
 check('HR Account Center uses the dedicated effective-access workspace',
-    htmlContains('hr.html', 'css/account-access-editor.css?v=0.80.139')
-    && htmlContains('hr.html', 'js/account-access-editor.js?v=0.80.139')
+    htmlContains('hr.html', 'css/account-access-editor.css?v=0.80.140')
+    && htmlContains('hr.html', 'js/account-access-editor.js?v=0.80.140')
     && hrCode.includes('window.AccountAccessEditor.open')
     && hrCode.includes('resolveCapability: window.resolveCapability')
     && hrCode.includes('/workspace')

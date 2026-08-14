@@ -16359,6 +16359,64 @@ async function resolveBookingDetailsRecord(cleanBookingId, options = {}) {
     };
 }
 
+const _bookingCancellationInFlight = new Map();
+
+function bookingCancellationIdempotencyKey(bookingId) {
+    return [
+        'booking-cancel',
+        String(bookingId || '').trim(),
+        Date.now().toString(36),
+        Math.random().toString(36).slice(2, 10)
+    ].filter(Boolean).join(':');
+}
+
+function bookingCancellationSelectorId(bookingId) {
+    const value = String(bookingId || '');
+    return (window.CSS && typeof window.CSS.escape === 'function')
+        ? window.CSS.escape(value)
+        : value.replace(/["\\]/g, '\\$&');
+}
+
+function bookingCancellationBlockersText(readiness = {}) {
+    const blockers = Array.isArray(readiness.blockers) ? readiness.blockers : [];
+    return blockers.map(item => item?.message || item?.code).filter(Boolean).join('; ');
+}
+
+function renderBookingCancellationAction(booking, readiness) {
+    if (!canDeleteTimelineBooking()) return '';
+    if (!readiness || readiness.success === false || readiness.offline) {
+        return `
+            <div class="booking-detail-danger-zone booking-detail-danger-zone--blocked">
+                <span class="booking-detail-danger-zone__label">Скасування</span>
+                <div class="booking-detail-danger-note">Перевірка скасування недоступна. Дія прихована до оновлення даних.</div>
+            </div>
+        `;
+    }
+    if (readiness.allowed === false) {
+        return `
+            <div class="booking-detail-danger-zone booking-detail-danger-zone--blocked">
+                <span class="booking-detail-danger-zone__label">Скасування заблоковано</span>
+                <div class="booking-detail-danger-note">${escapeHtml(bookingCancellationBlockersText(readiness) || 'Потрібна ручна перевірка')}</div>
+            </div>
+        `;
+    }
+    const operation = readiness.operation || 'standalone_cancel';
+    const label = operation === 'banquet_activity_cancel'
+        ? 'Прибрати складову'
+        : (operation === 'banquet_group_cancel' ? 'Скасувати весь банкет' : 'Скасувати бронювання');
+    return `
+        <div class="booking-detail-danger-zone">
+            <span class="booking-detail-danger-zone__label">Скасування</span>
+            <button
+                type="button"
+                onclick="requestBookingCancellation('${escapeHtml(booking.id)}')"
+                class="booking-detail-danger-action"
+                data-cancellation-booking-id="${escapeHtml(booking.id)}"
+            >${escapeHtml(label)}</button>
+        </div>
+    `;
+}
+
 async function showBookingDetails(bookingId, options = {}) {
     const cleanBookingId = String(bookingId || '').trim();
     if (!cleanBookingId) return false;
@@ -16436,6 +16494,15 @@ async function showBookingDetails(bookingId, options = {}) {
             if (snapshot?.success) banquetSnapshot = snapshot;
         } catch (err) {
             console.warn('Banquet detail snapshot unavailable:', err);
+        }
+    }
+    let cancellationReadiness = null;
+    if (canDeleteTimelineBooking() && typeof apiGetBookingCancellationReadiness === 'function') {
+        try {
+            const readiness = await apiGetBookingCancellationReadiness(booking.id);
+            if (readiness?.success) cancellationReadiness = readiness;
+        } catch (err) {
+            console.warn('Booking cancellation readiness unavailable:', err);
         }
     }
     const banquetEditIntegrityIssue = banquetSnapshotEditIntegrityIssue(banquetSnapshot || {});
@@ -16522,12 +16589,7 @@ async function showBookingDetails(bookingId, options = {}) {
                 </div>
             </details>
         ` : '';
-    const dangerZoneHtml = canDeleteTimelineBooking() ? `
-        <div class="booking-detail-danger-zone">
-            <span class="booking-detail-danger-zone__label">Небезпечна дія</span>
-            <button onclick="deleteBooking('${escapeHtml(booking.id)}')" class="booking-detail-danger-action">Видалити</button>
-        </div>
-    ` : '';
+    const dangerZoneHtml = renderBookingCancellationAction(booking, cancellationReadiness);
     const timeShiftControlsHtml = `
         <div class="booking-time-shift">
             <span class="label">Перенести час:</span>
@@ -18129,58 +18191,123 @@ async function cancelEducationSeriesFromManager(seriesId, scope = 'future', refe
 }
 
 async function deleteBooking(bookingId) {
+    return requestBookingCancellation(bookingId);
+}
+
+async function requestBookingCancellation(bookingId) {
     try {
         if (!canDeleteTimelineBooking()) {
-            showNotification('Недостатньо прав для видалення бронювання', 'error');
+            showNotification('Недостатньо прав для скасування бронювання', 'error');
             return;
         }
-        const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
-        const booking = bookings.find(b => b.id === bookingId);
-        if (!booking) return;
-
-        let mainBookingId = bookingId;
-        let allToDelete = [];
-
-        if (booking.linkedTo) {
-            mainBookingId = booking.linkedTo;
-            const mainBooking = bookings.find(b => b.id === mainBookingId);
-            if (mainBooking) {
-                allToDelete = bookings.filter(b => b.linkedTo === mainBookingId);
-                allToDelete.push(mainBooking);
-            } else {
-                allToDelete = [booking];
+        const cleanBookingId = String(bookingId || '').trim();
+        if (!cleanBookingId) return;
+        if (_bookingCancellationInFlight.has(cleanBookingId)) {
+            return _bookingCancellationInFlight.get(cleanBookingId);
+        }
+        const run = (async () => {
+            document.querySelectorAll(`[data-cancellation-booking-id="${bookingCancellationSelectorId(cleanBookingId)}"]`).forEach(button => {
+                button.disabled = true;
+                button.setAttribute('aria-busy', 'true');
+            });
+            const readiness = typeof apiGetBookingCancellationReadiness === 'function'
+                ? await apiGetBookingCancellationReadiness(cleanBookingId)
+                : { success: false, error: 'Cancellation readiness API is unavailable' };
+            if (!readiness || readiness.success === false || readiness.offline) {
+                showNotification(readiness?.error || 'Не вдалося перевірити готовність до скасування', 'error');
+                return;
             }
-        } else {
-            allToDelete = bookings.filter(b => b.linkedTo === bookingId);
-            allToDelete.push(booking);
-        }
+            if (readiness.allowed === false) {
+                showNotification(bookingCancellationBlockersText(readiness) || 'Скасування заблоковано', 'warning');
+                await showBookingDetails(cleanBookingId, { source: 'cancellation_readiness_conflict' });
+                return;
+            }
 
-        const othersCount = allToDelete.length - 1;
+            const bookings = await getBookingsForDate(AppState.selectedDate, { force: true });
+            const booking = bookings.find(b => b.id === cleanBookingId);
+            if (!booking) return;
 
-        const confirmMsg = othersCount > 0
-            ? `Видалити це бронювання разом з ${othersCount} повʼязаними?`
-            : 'Видалити це бронювання?';
+            let mainBookingId = cleanBookingId;
+            let allToCancel = [];
 
-        const confirmed = await customConfirm(confirmMsg, 'Видалення бронювання');
-        if (!confirmed) return;
+            if (readiness.operation === 'standalone_cancel') {
+                if (booking.linkedTo) {
+                    mainBookingId = booking.linkedTo;
+                    const mainBooking = bookings.find(b => b.id === mainBookingId);
+                    allToCancel = mainBooking
+                        ? [mainBooking, ...bookings.filter(b => b.linkedTo === mainBookingId)]
+                        : [booking];
+                } else {
+                    allToCancel = [booking, ...bookings.filter(b => b.linkedTo === cleanBookingId)];
+                }
+            } else {
+                allToCancel = bookings.filter(b => (readiness.affectedBookingIds || []).includes(b.id));
+            }
 
-        // v5.7: Single server call — server handles linked deletion, history, Telegram
-        const delResult = await apiDeleteBooking(mainBookingId);
-        if (!delResult || delResult.success === false) {
-            showNotification(delResult?.error || 'Помилка видалення бронювання', 'error');
-            return;
-        }
+            const operation = readiness.operation || 'standalone_cancel';
+            const confirmMsg = operation === 'banquet_activity_cancel'
+                ? 'Прибрати цю складову з банкету?'
+                : (operation === 'banquet_group_cancel'
+                    ? 'Скасувати весь банкет разом з усіма складовими?'
+                    : (allToCancel.length > 1
+                        ? `Скасувати це бронювання разом з ${allToCancel.length - 1} повʼязаними?`
+                        : 'Скасувати це бронювання?'));
 
-        pushUndo('delete', [...allToDelete]);
-        invalidateBookingBanquetPreviewFreshness({
-            bookingIds: allToDelete.map(item => item?.id).filter(Boolean)
-        });
-        invalidateBookingTimelineDateCache(AppState.selectedDate, { lines: false });
-        closeAllModals();
-        await renderTimeline();
-        showNotification(othersCount > 0 ? `Видалено ${allToDelete.length} бронювань` : 'Бронювання видалено', 'success');
+            const confirmed = await customConfirm(confirmMsg, 'Скасування бронювання');
+            if (!confirmed) return;
+
+            const idempotencyKey = bookingCancellationIdempotencyKey(cleanBookingId);
+            let result = null;
+            if (operation === 'banquet_activity_cancel') {
+                result = await apiCancelBanquetActivity(readiness.groupId, cleanBookingId, { idempotencyKey });
+            } else if (operation === 'banquet_group_cancel') {
+                result = await apiCancelBanquetGroup(readiness.groupId, { idempotencyKey });
+            } else {
+                result = await apiDeleteBooking(mainBookingId, { idempotencyKey });
+            }
+
+            if (!result || result.success === false) {
+                if (result?.status === 409 || result?.code === 'BANQUET_ROUTE_REQUIRED' || result?.code === 'BANQUET_CANCELLATION_BLOCKED') {
+                    invalidateBookingBanquetPreviewFreshness({
+                        bookingIds: [cleanBookingId, ...((result.details && result.details.affectedBookingIds) || [])],
+                        groupId: result.details?.groupId || readiness.groupId || null
+                    });
+                    await showBookingDetails(cleanBookingId, { source: 'cancellation_conflict' });
+                    showNotification(bookingCancellationBlockersText(result.details || {}) || result.error || 'Скасування потребує оновлення даних', 'warning');
+                    return;
+                }
+                showNotification(result?.error || 'Помилка скасування бронювання', 'error');
+                return;
+            }
+
+            const affectedIds = result.affectedBookingIds || readiness.affectedBookingIds || allToCancel.map(item => item.id);
+            invalidateBookingBanquetPreviewFreshness({
+                bookingIds: affectedIds,
+                groupId: result.groupId || readiness.groupId || null
+            });
+            (result.affectedDates || readiness.affectedDates || [AppState.selectedDate]).forEach(date => {
+                if (date) invalidateBookingTimelineDateCache(date, { lines: false });
+            });
+            closeAllModals();
+            await renderTimeline();
+            showNotification(operation === 'banquet_activity_cancel'
+                ? 'Складову прибрано'
+                : (operation === 'banquet_group_cancel' ? 'Банкет скасовано' : 'Бронювання скасовано'), 'success');
+        })();
+        _bookingCancellationInFlight.set(cleanBookingId, run);
+        await run;
+        return run;
     } catch (error) {
-        handleError('Видалення бронювання', error);
+        handleError('Скасування бронювання', error);
+    } finally {
+        const cleanBookingId = String(bookingId || '').trim();
+        if (cleanBookingId) {
+            _bookingCancellationInFlight.delete(cleanBookingId);
+            document.querySelectorAll(`[data-cancellation-booking-id="${bookingCancellationSelectorId(cleanBookingId)}"]`).forEach(button => {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            });
+        }
     }
 }
 
@@ -18500,7 +18627,7 @@ const BulkOps = {
                 document.body.appendChild(bar);
             }
             const deleteButton = canDeleteTimelineBooking()
-                ? '<button onclick="BulkOps.bulkDelete()">🗑 Видалити</button>'
+                ? '<button onclick="BulkOps.bulkDelete()">🗑 Скасувати</button>'
                 : '';
             const statusButtons = canEditTimelineBooking()
                 ? `<button onclick="BulkOps.bulkStatus('confirmed')">✅ Підтвердити</button>
@@ -18520,15 +18647,14 @@ const BulkOps = {
     async bulkDelete() {
         if (this._busy) return;
         if (!canDeleteTimelineBooking()) {
-            showNotification('Недостатньо прав для видалення бронювань', 'error');
+            showNotification('Недостатньо прав для скасування бронювань', 'error');
             return;
         }
-        if (!await customConfirm(`Видалити ${this.selected.size} бронювань?`)) return;
+        if (!await customConfirm(`Скасувати ${this.selected.size} бронювань?`)) return;
         if (this._busy) return;
         this._busy = true;
         try {
             const ids = Array.from(this.selected);
-            const undoData = [];
             const failures = [];
 
             for (const id of ids) {
@@ -18540,13 +18666,11 @@ const BulkOps = {
                         failures.push(result?.error || `Не вдалося видалити ${id}`);
                         continue;
                     }
-                    if (b) undoData.push(b);
                 } catch (e) {
-                    failures.push(e?.message || `Не вдалося видалити ${id}`);
+                    failures.push(e?.message || `Не вдалося скасувати ${id}`);
                 }
             }
 
-            if (undoData.length > 0) pushUndo('delete', undoData);
             const successCount = ids.length - failures.length;
             if (successCount > 0) {
                 this.clear();
@@ -18554,10 +18678,10 @@ const BulkOps = {
                 await renderTimeline();
             }
             if (failures.length > 0) {
-                showNotification(`Видалено ${successCount}/${ids.length}. ${failures[0]}`, successCount > 0 ? 'warning' : 'error');
+                showNotification(`Скасовано ${successCount}/${ids.length}. ${failures[0]}`, successCount > 0 ? 'warning' : 'error');
                 return;
             }
-            showNotification(`Видалено ${ids.length} бронювань`, 'warning');
+            showNotification(`Скасовано ${ids.length} бронювань`, 'warning');
         } finally {
             this._busy = false;
         }

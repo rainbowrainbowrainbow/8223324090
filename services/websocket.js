@@ -587,7 +587,11 @@ function broadcastBanquetEvent(eventType, banquetAudience, excludeUserId = null,
             ...options,
             bookingVisibility: true,
             visibilityBookings: [visibilityBooking],
-            payload: payload => ({ groupId, ...payload })
+            payload: payload => ({
+                groupId,
+                ...payload,
+                ...(options.extraPayload && typeof options.extraPayload === 'object' ? options.extraPayload : {})
+            })
         });
     } catch (err) {
         log.error(`Banquet broadcast [${eventType}] failed:`, err.message);

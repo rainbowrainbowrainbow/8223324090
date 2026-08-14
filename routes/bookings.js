@@ -56,6 +56,15 @@ const {
     isBookingCancellationConcurrencyError,
     lockBookingCancellationSet
 } = require('../services/bookingCancellationGuard');
+const {
+    getBookingCancellationReadiness,
+    routeRequiredPayload
+} = require('../services/banquetCancellation');
+const {
+    TrustedQaRunError,
+    prepareTrustedQaBookingInput,
+    registerQaEntity
+} = require('../services/trustedQaRuns');
 const { broadcastBookingEvent } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
@@ -3263,6 +3272,29 @@ router.get('/:id/banquet-summary.pdf', requireAction('view_revenue'), requireAct
     }
 });
 
+router.get('/:id/cancellation-readiness', requireAction('delete_booking'), async (req, res) => {
+    try {
+        const { id } = req.params;
+        if (!validateId(id)) {
+            return res.status(400).json({ success: false, error: 'Invalid booking ID' });
+        }
+        const businessContext = timelineContextFromRequest(req);
+        if (!requireTimelineContext(req, res, businessContext)) return;
+        if (!requireTimelineAction(req, res, businessContext, 'delete')) return;
+        const booking = await getScopedBookingById(pool, id, businessContext);
+        if (!booking) return res.status(404).json({ success: false, error: 'Booking not found' });
+        if (!canViewBooking(req.user, booking)) return sendBookingDenied(req, res, booking);
+        const readiness = await getBookingCancellationReadiness({
+            bookingId: id,
+            businessContext
+        });
+        return res.json(readiness);
+    } catch (err) {
+        log.error('GET /bookings/:id/cancellation-readiness error', err);
+        return res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
 router.get('/detail/:id', async (req, res) => {
     try {
         const { id } = req.params;
@@ -3525,9 +3557,14 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         if (pastValidationError) return res.status(400).json({ success: false, error: pastValidationError });
     }
 
+    let qaContext = { trusted: false, suppressSideEffects: false };
+    const bookingCreateSideEffectsAllowed = () => sideEffectsAllowedForContext(businessContext) && !qaContext.suppressSideEffects;
+    const parkBookingCreateSideEffectsAllowed = () => parkSideEffectsAllowedForContext(businessContext) && !qaContext.suppressSideEffects;
+
     const client = await pool.connect();
     try {
         await client.query('BEGIN');
+        qaContext = await prepareTrustedQaBookingInput(client, req, b, businessContext);
 
         const pinataFields = applyPinataNormalization(b);
         if (pinataFields.error) {
@@ -3635,7 +3672,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // CRM: resolve or create customer (v30.4: auto-link by phone)
         let customerId = b.customerId ? parseInt(b.customerId) : null;
-        if (sideEffectsAllowedForContext(businessContext) && b.customer && b.customer.name && !customerId) {
+        if (bookingCreateSideEffectsAllowed() && b.customer && b.customer.name && !customerId) {
             const c = b.customer;
             // v30.4: Try to find existing customer by phone first
             if (c.phone && c.phone.trim()) {
@@ -3657,7 +3694,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 customerId = custResult.rows[0].id;
             }
         }
-        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+        if (bookingCreateSideEffectsAllowed() && customerId) {
             const scopedCustomer = await client.query(
                 "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
                 [customerId, businessContext]
@@ -3674,7 +3711,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // v33.8.0 Integration 6: Certificate validation (INSIDE transaction)
         let certificateId = null;
-        if (parkSideEffectsAllowedForContext(businessContext) && b.certificateCode) {
+        if (parkBookingCreateSideEffectsAllowed() && b.certificateCode) {
             const certRow = await client.query(
                 `SELECT id, status, display_value FROM certificates WHERE cert_code = $1 FOR UPDATE`,
                 [String(b.certificateCode).toUpperCase()]
@@ -3696,7 +3733,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37, $38)
              RETURNING *`,
-            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes, b.createdBy, b.linkedTo, b.status, nullableBookingCount(b.kidsCount), b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, sideEffectsAllowedForContext(businessContext) ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null]
+            [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes, b.createdBy, b.linkedTo, b.status, nullableBookingCount(b.kidsCount), b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, bookingCreateSideEffectsAllowed() ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null]
         );
         const managerDepositResult = await syncManagerDepositForBooking(client, b, insertResult.rows[0], businessContext, req.user);
 
@@ -3735,7 +3772,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
         // Update first_visit which is not covered by the trigger
-        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+        if (bookingCreateSideEffectsAllowed() && customerId) {
             await client.query(
                 `UPDATE customers SET
                     first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
@@ -3754,7 +3791,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         await syncBanquetActualMenuTask(client, createdBookingRow, { businessContext, actor: req.user });
         const strictTicketFinance = bookingRequiresStrictFinanceSync(createdBookingRow);
         if (
-            parkSideEffectsAllowedForContext(businessContext)
+            parkBookingCreateSideEffectsAllowed()
             && !b.linkedTo
             && (strictTicketFinance || (b.price > 0 && b.status !== 'preliminary'))
         ) {
@@ -3778,7 +3815,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v33.8.0 Integration 6: Certificate payment finance record
-        if (parkSideEffectsAllowedForContext(businessContext) && certificateId && b.price > 0) {
+        if (parkBookingCreateSideEffectsAllowed() && certificateId && b.price > 0) {
             await runOptionalBookingTransactionStep(client, 'Certificate finance record', async () => {
                 await client.query(
                     `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, certificate_id, created_by)
@@ -3789,7 +3826,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             });
         }
 
-        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
+        if (bookingCreateSideEffectsAllowed() && !b.linkedTo) {
             await queueBookingEventInTransaction(client, 'booking.created', {
                 booking_id: b.id, business_context: businessContext, date: b.date, time: b.time, room: b.room,
                 program_code: b.programCode, program_name: b.programName,
@@ -3797,6 +3834,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 kids_count: b.kidsCount, created_by: b.createdBy
             }, b.id, `booking_created_${b.id}`);
         }
+
+        await registerQaEntity(client, qaContext, 'booking', b.id, {
+            businessContext,
+            date: b.date,
+            status: b.status || 'confirmed',
+            linkedTo: b.linkedTo || null
+        });
 
         await commitBookingTransaction(client, 'booking create');
 
@@ -3809,7 +3853,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         const durableById = new Map(durableRows.map(row => [String(row.id), row]));
 
         // v12.6: skip_notification flag — suppress all notifications
-        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo && b.status !== 'preliminary' && !b.skipNotification) {
+        if (bookingCreateSideEffectsAllowed() && !b.linkedTo && b.status !== 'preliminary' && !b.skipNotification) {
             getLineName(b.lineId, b.date, businessContext).then(lineName => notifyTelegram('create', {
                 ...b, label: b.label, program_code: b.programCode,
                 program_name: b.programName, kids_count: b.kidsCount,
@@ -3819,7 +3863,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v8.3: Run automation rules (fire-and-forget after commit)
-        if (sideEffectsAllowedForContext(businessContext) && !b.linkedTo) {
+        if (bookingCreateSideEffectsAllowed() && !b.linkedTo) {
             processBookingAutomation(b)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
@@ -3887,7 +3931,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         // ==========================================
 
         // Integration 1: Warehouse stock deduction
-        if (parkSideEffectsAllowedForContext(businessContext) && b.programId) {
+        if (parkBookingCreateSideEffectsAllowed() && b.programId) {
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -3963,7 +4007,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // Integration 7: Loyalty tier auto-upgrade
-        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+        if (bookingCreateSideEffectsAllowed() && customerId) {
             setImmediate(async () => {
                 try {
                     const cust = await pool.query(
@@ -4004,7 +4048,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // Integration 10: Gamification achievements check
-        setImmediate(async () => {
+        if (bookingCreateSideEffectsAllowed()) setImmediate(async () => {
             try {
                 const { checkAchievements } = require('../services/gamification');
                 const hostUsername = b.hosts ? String(b.hosts).split(',')[0].trim() : null;
@@ -4021,7 +4065,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         });
 
         // v33.9.0: Post message to room channel
-        if (parkSideEffectsAllowedForContext(businessContext) && b.lineId) {
+        if (parkBookingCreateSideEffectsAllowed() && b.lineId) {
             setImmediate(async () => {
                 try {
                     const roomChan = await pool.query(
@@ -4042,7 +4086,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
         }
 
         // v33.15.0: Auto birthday announcement
-        if (parkSideEffectsAllowedForContext(businessContext) && (b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
+        if (parkBookingCreateSideEffectsAllowed() && (b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
             setImmediate(async () => {
                 try {
                     const eventTime = new Date(`${b.date}T${b.time}`);
@@ -4472,7 +4516,16 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
+        let qaContext = { trusted: false, suppressSideEffects: false };
+        const fullCreateSideEffectsAllowed = () => sideEffectsAllowedForContext(businessContext) && !qaContext.suppressSideEffects;
+        const parkFullCreateSideEffectsAllowed = () => parkSideEffectsAllowedForContext(businessContext) && !qaContext.suppressSideEffects;
+
         await client.query('BEGIN');
+        qaContext = await prepareTrustedQaBookingInput(client, req, main, businessContext);
+        for (const qaCandidate of [...linked, ...banquetActivities]) {
+            const childQaContext = await prepareTrustedQaBookingInput(client, req, qaCandidate, businessContext);
+            if (childQaContext.trusted) qaContext = childQaContext;
+        }
         const activitySecondAnimatorLines = new Map();
 
         await resolveAndApplyAdmissionTicketQuote({
@@ -4645,7 +4698,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         // CRM: resolve or create customer
         let customerId = main.customerId ? parseInt(main.customerId) : null;
-        if (sideEffectsAllowedForContext(businessContext) && main.customer && main.customer.name && !customerId) {
+        if (fullCreateSideEffectsAllowed() && main.customer && main.customer.name && !customerId) {
             const c = main.customer;
             if (c.phone && c.phone.trim()) {
                 const existing = await client.query(
@@ -4663,7 +4716,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 customerId = custResult.rows[0].id;
             }
         }
-        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+        if (fullCreateSideEffectsAllowed() && customerId) {
             const scopedCustomer = await client.query(
                 "SELECT id FROM customers WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2 LIMIT 1",
                 [customerId, businessContext]
@@ -4687,7 +4740,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const managerDepositResult = await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user);
 
         // v19.10: CRM aggregates now handled by DB trigger
-        if (sideEffectsAllowedForContext(businessContext) && customerId) {
+        if (fullCreateSideEffectsAllowed() && customerId) {
             await client.query(
                 `UPDATE customers SET
                     first_visit = LEAST(COALESCE(first_visit, $1::date), $1::date),
@@ -4776,7 +4829,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 `INSERT INTO bookings (id, business_context, date, time, line_id, program_id, program_code, label, program_name, category, duration, price, hosts, second_animator, pinata_filler, pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price, client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status, kids_count, group_name, extra_data, skip_notification, customer_id, payment_method, banquet_guests, banquet_adults, banquet_tables, banquet_menu)
                  VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, $17, $18, $19, $20, $21, $22, $23, $24, $25, $26, $27, $28, $29, $30, $31, $32, $33, $34, $35, $36, $37)
                  RETURNING *`,
-                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.roomResourceId || null, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, nullableBookingCount(activity.kidsCount), activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, sideEffectsAllowedForContext(businessContext) ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, nullableBookingCount(activity.banquetGuests), nullableBookingCount(activity.banquetAdults), nullableBookingCount(activity.banquetTables), activity.banquetMenu || null]
+                [activity.id, businessContext, activity.date, activity.time, activity.lineId, activity.programId, activity.programCode, activity.label, activity.programName, activity.category, activity.duration, activity.price || 0, activity.hosts, activity.secondAnimator, activity.pinataFiller, activity.pinataMode, activity.pinataNumber, activity.pinataFillerNumber, activity.clientPinataServicePrice, activity.clientPinataServiceNote, activity.costume || null, activity.room, activity.roomResourceId || null, activity.notes, activity.createdBy || main.createdBy, null, activity.status || main.status, nullableBookingCount(activity.kidsCount), activity.groupName || main.groupName || null, activity.extraData ? JSON.stringify(activity.extraData) : null, fullCreateSideEffectsAllowed() ? Boolean(activity.skipNotification) : true, customerId, activity.paymentMethod || main.paymentMethod || null, nullableBookingCount(activity.banquetGuests), nullableBookingCount(activity.banquetAdults), nullableBookingCount(activity.banquetTables), activity.banquetMenu || null]
             );
             if (activityInsert.rows[0]) {
                 activityRows.push(activityInsert.rows[0]);
@@ -4855,7 +4908,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
 
         const strictMainTicketFinance = bookingRequiresStrictFinanceSync(mainInsert.rows[0]);
         if (
-            parkSideEffectsAllowedForContext(businessContext)
+            parkFullCreateSideEffectsAllowed()
             && (strictMainTicketFinance || (main.price > 0 && main.status !== 'preliminary'))
         ) {
             if (strictMainTicketFinance) {
@@ -4878,7 +4931,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
         for (const activityRow of activityRows) {
             const activityPrice = Number(activityRow.price || 0);
-            if (parkSideEffectsAllowedForContext(businessContext) && activityPrice > 0 && activityRow.status !== 'preliminary') {
+            if (parkFullCreateSideEffectsAllowed() && activityPrice > 0 && activityRow.status !== 'preliminary') {
                 await runOptionalBookingTransactionStep(client, 'Finance auto-record (create/full activity)', async () => {
                     await client.query(
                         `INSERT INTO finance_transactions (business_context, type, category_id, amount, description, date, payment_method, booking_id, created_by)
@@ -4898,7 +4951,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
-        if (sideEffectsAllowedForContext(businessContext)) {
+        if (fullCreateSideEffectsAllowed()) {
             await queueBookingEventInTransaction(client, 'booking.created', {
                 booking_id: main.id, business_context: businessContext, date: main.date, time: main.time, room: main.room,
                 program_code: main.programCode, program_name: main.programName,
@@ -4933,6 +4986,15 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             }
         }
 
+        for (const createdId of [main.id, ...linkedRows.map(row => row.id), ...activityRows.map(row => row.id)]) {
+            await registerQaEntity(client, qaContext, 'booking', createdId, {
+                businessContext,
+                date: main.date,
+                status: main.status || 'confirmed',
+                source: 'bookings_full'
+            });
+        }
+
         await commitBookingTransaction(client, 'booking create/full');
 
         const durableRows = await assertDurableCreatedBookings(
@@ -4944,7 +5006,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         const durableById = new Map(durableRows.map(row => [String(row.id), row]));
 
         // v12.6: skip_notification flag — suppress all notifications
-        if (sideEffectsAllowedForContext(businessContext) && main.status !== 'preliminary' && !main.skipNotification) {
+        if (fullCreateSideEffectsAllowed() && main.status !== 'preliminary' && !main.skipNotification) {
             getLineName(main.lineId, main.date, businessContext).then(lineName => notifyTelegram('create', {
                 ...main, program_code: main.programCode, program_name: main.programName,
                 kids_count: main.kidsCount, created_by: main.createdBy
@@ -4953,7 +5015,7 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         }
 
         // v8.3: Run automation rules (fire-and-forget after commit)
-        if (sideEffectsAllowedForContext(businessContext)) {
+        if (fullCreateSideEffectsAllowed()) {
             processBookingAutomation(main)
                 .catch(err => log.error(`Automation failed (non-blocking): ${err.message}`));
         }
@@ -5208,37 +5270,24 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
         const activeBanquetMembership = banquetMembership
             && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
-        const activePrimaryBanquetMembership = activeBanquetMembership
-            && String(banquetMembership.role || '').trim().toLowerCase() === 'primary'
-            && String(banquetMembership.primary_booking_id || '').trim() === String(id);
         let banquetCancellationPreflight = null;
-        if (
-            activeBanquetMembership
-            && !activePrimaryBanquetMembership
-            && hasBookingTicketDependency(booking)
-        ) {
-            await client.query('ROLLBACK');
-            return res.status(409).json({
-                success: false,
-                code: 'BANQUET_BOOKING_REQUIRES_ATOMIC_ENDPOINT',
-                error: 'Active banquet members must be changed through the atomic banquet booking-set endpoint',
-                details: {
-                    groupId: banquetMembership.group_id || null,
-                    bookingId: id
-                }
-            });
-        }
         if (activeBanquetMembership) {
-            banquetCancellationPreflight = await preflightActiveBanquetPrimaryCancellation(client, {
-                membership: banquetMembership,
-                bookingId: id,
-                businessContext,
-                permanent
-            });
-            if (!banquetCancellationPreflight.ready) {
-                await client.query('ROLLBACK');
-                return sendBanquetCancellationBlocked(res, banquetCancellationPreflight);
-            }
+            const memberRole = String(banquetMembership.role || '').trim().toLowerCase() || null;
+            const isPrimaryMember = String(banquetMembership.primary_booking_id || '') === String(id)
+                || memberRole === 'primary';
+            const readiness = {
+                operation: isPrimaryMember ? 'banquet_group_cancel' : 'banquet_activity_cancel',
+                memberRole,
+                groupId: banquetMembership.group_id || null,
+                primaryBookingId: banquetMembership.primary_booking_id || null,
+                affectedBookingIds: [id, banquetMembership.primary_booking_id].filter(Boolean),
+                affectedDates: [booking.date].filter(Boolean)
+            };
+            await client.query('ROLLBACK');
+            return res.status(409).json(routeRequiredPayload(
+                readiness,
+                'Active banquet members must be cancelled through the canonical banquet cancellation endpoint'
+            ));
         }
 
         const action = permanent ? 'permanent_delete' : 'delete';

@@ -255,7 +255,7 @@ async function loadCandidateBookings(client) {
         `SELECT b.id, b.business_context, b.date, b.time, b.line_id, b.program_id, b.program_code,
                 b.label, b.program_name, b.category, b.duration, b.hosts, b.second_animator,
                 b.pinata_filler, b.pinata_mode, b.pinata_number, b.pinata_filler_number,
-                b.client_pinata_service_price, b.client_pinata_service_note, b.costume, b.room,
+                b.client_pinata_service_price, b.client_pinata_service_note, b.costume, b.room, b.room_resource_id,
                 b.notes, b.created_by, b.status, b.kids_count, b.group_name
            FROM bookings b
           WHERE ${filters.join('\n            AND ')}
@@ -347,6 +347,12 @@ async function existingLinkedSecondAnimator(client, booking, line) {
 }
 
 async function insertLinkedSecondAnimator(client, booking, line) {
+    if (!String(booking.room_resource_id || '').trim()) {
+        const error = new Error('Active main booking is missing room_resource_id; refusing to create linked second animator booking');
+        error.code = 'ROOM_RESOURCE_REQUIRED';
+        error.details = { bookingId: booking.id };
+        throw error;
+    }
     const workingHoursValidation = validateBookingWithinWorkingHours({
         businessContext: CONTEXT,
         date: booking.date,
@@ -370,12 +376,12 @@ async function insertLinkedSecondAnimator(client, booking, line) {
             id, business_context, date, time, line_id, program_id, program_code, label,
             program_name, category, duration, price, hosts, second_animator, pinata_filler,
             pinata_mode, pinata_number, pinata_filler_number, client_pinata_service_price,
-            client_pinata_service_note, costume, room, notes, created_by, linked_to, status,
+            client_pinata_service_note, costume, room, room_resource_id, notes, created_by, linked_to, status,
             kids_count, group_name, extra_data, skip_notification
         )
         VALUES (
             $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,0,$12,$13,$14,$15,$16,$17,$18,$19,
-            $20,$21,$22,$23,$24,$25,$26,$27,$28,true
+            $20,$21,$22,$23,$24,$25,$26,$27,$28,$29,true
         )`,
         [
             linkedId,
@@ -399,6 +405,7 @@ async function insertLinkedSecondAnimator(client, booking, line) {
             booking.client_pinata_service_note,
             booking.costume || null,
             booking.room,
+            booking.room_resource_id,
             booking.notes,
             booking.created_by,
             booking.id,

@@ -61,6 +61,7 @@ Do not update the hash just to make CI green.
 
 ## Approval Log
 
+- 2026-08-14, `booking-detail-safe-open`: explicit product-owner Tasks 1-5 approval. Canonical booking detail now renders destructive cancellation actions only after server readiness, routes active banquet members to canonical banquet cancellation endpoints, and keeps timeline from owning any alternate booking detail renderer.
 - 2026-08-02, `booking-detail-identity`: explicit product-owner Task 5 approval for `view_revenue` redaction in canonical banquet deposit detail UI. Booking identity priorities, endpoint sources, and modal ownership are unchanged.
 - 2026-07-24, `service-booking-row-map`: explicit product-owner delivery approval for preserving explicit zero banquet ticket counts. `services/booking.js` now maps `banquet_guests`, `banquet_adults`, and `banquet_tables` with nullish semantics so `0` survives detail and timeline projections.
 - 2026-07-21, `booking-detail-identity` and `booking-detail-safe-open`: explicit product-owner Task 4 approval. Active banquet groups with a cancelled or missing primary remain readable, but canonical detail/edit flow suppresses mutation controls and can open only a clean standard replacement form without restoring the primary or transferring customer, deposit, or membership data.

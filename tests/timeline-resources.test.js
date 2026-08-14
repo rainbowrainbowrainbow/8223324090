@@ -3104,7 +3104,7 @@ test('room timeline banquet preview hydration is guarded against stale async mut
     assert.match(booking, /function invalidateBookingBanquetPreviewFreshness\(options = \{\}\)/);
     assert.match(booking, /apiUpdateBooking\(booking\.id, booking\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
     assert.match(booking, /collectCreatedBookingRecords\(createResult\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
-    assert.match(booking, /apiDeleteBooking\(mainBookingId\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
+    assert.match(booking, /apiDeleteBooking\(mainBookingId,\s*\{\s*idempotencyKey\s*\}\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(/);
 });
 
 test('room timeline banquet preview state only top-aligns headers with rendered cards', () => {
@@ -5007,7 +5007,7 @@ test('banquet delete flow invalidates snapshot-backed room preview caches', () =
     assert.match(timeline, /window\.invalidateTimelineBanquetPreviewFreshness = invalidateTimelineBanquetPreviewFreshness/);
     assert.match(timeline, /async function removeBookingBanquetLink[\s\S]*invalidateTimelineBanquetPreviewFreshness\(\{ bookingIds: \[sourceId, targetId\] \}\)/);
     assert.match(booking, /function invalidateBookingBanquetPreviewFreshness\(options = \{\}\)[\s\S]*window\.invalidateTimelineBanquetPreviewFreshness/);
-    assert.match(booking, /apiDeleteBooking\(mainBookingId\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(\{\s*bookingIds: allToDelete\.map\(item => item\?\.id\)\.filter\(Boolean\)\s*\}\)/);
+    assert.match(booking, /apiDeleteBooking\(mainBookingId,\s*\{\s*idempotencyKey\s*\}\)[\s\S]*const affectedIds = result\.affectedBookingIds \|\| readiness\.affectedBookingIds \|\| allToCancel\.map\(item => item\.id\)[\s\S]*invalidateBookingBanquetPreviewFreshness\(\{\s*bookingIds: affectedIds/);
 });
 
 test('room timeline keeps banquet root teaser visible when activity count reaches zero', () => {

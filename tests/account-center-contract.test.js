@@ -13,6 +13,7 @@ const HR_CSS = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
 const USERS_ROUTE = fs.readFileSync(path.join(ROOT, 'routes', 'users.js'), 'utf8');
 const UI_CODE = fs.readFileSync(path.join(ROOT, 'js', 'ui.js'), 'utf8');
 const STAFF_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
+const HR_FULLSTACK_BROWSER_SMOKE = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'hr-onboarding-fullstack-browser-smoke.js'), 'utf8');
 
 function between(source, startMarker, endMarker) {
     const start = source.indexOf(startMarker);
@@ -154,4 +155,13 @@ test('account onboarding recovers from request failures and never logs issued cr
     const staffCredentialSource = between(STAFF_PAGE_CODE, 'function showOneTimeCredential(', 'function suggestUsernameFromStaffInfo(');
     assert.doesNotMatch(hrCredentialSource, /console\.(?:log|info|warn|error)/);
     assert.doesNotMatch(staffCredentialSource, /console\.(?:log|info|warn|error)/);
+});
+
+test('HR onboarding full-stack browser smoke uses deterministic app readiness and vacancy reloads', () => {
+    assert.match(HR_FULLSTACK_BROWSER_SMOKE, /async function waitForAppShell/);
+    assert.match(HR_FULLSTACK_BROWSER_SMOKE, /document\.readyState === 'loading'/);
+    assert.match(HR_FULLSTACK_BROWSER_SMOKE, /typeof window\.crmApiFetch !== 'function'/);
+    assert.match(HR_FULLSTACK_BROWSER_SMOKE, /async function reloadVacanciesWithStatus/);
+    assert.match(HR_FULLSTACK_BROWSER_SMOKE, /return window\.loadVacancies\(\)/);
+    assert.doesNotMatch(HR_FULLSTACK_BROWSER_SMOKE, /selectOption\('all'\)/);
 });

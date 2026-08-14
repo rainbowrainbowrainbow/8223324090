@@ -61,6 +61,9 @@ version/health smoke не підтверджені.
 For manual production deploys, prefer the repo helper over raw `railway up`:
 
 ~~~powershell
+# Canonical PowerShell/npm form. Keep `--` before helper flags.
+npm run release:railway-up -- --branch <confirmed-production-branch> --commit <exact-release-sha> --live-url https://<live-crm-host>
+
 # Safe dry run: cannot deploy.
 npm run release:railway-up:dry-run:branch -- codex/lead-guest-context-v08018-final
 

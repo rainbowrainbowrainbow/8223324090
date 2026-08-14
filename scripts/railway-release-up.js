@@ -41,6 +41,15 @@ function compareVersions(left, right) {
     return 0;
 }
 
+function envBoolean(value) {
+    return ['1', 'true', 'yes'].includes(String(value || '').trim().toLowerCase());
+}
+
+function missingOptionValue(value) {
+    const normalized = String(value || '').trim();
+    return !normalized || normalized === 'true';
+}
+
 function normalizeCommit(value) {
     const commit = String(value || '').trim().toLowerCase();
     return FULL_COMMIT_SHA_PATTERN.test(commit) ? commit : '';
@@ -91,20 +100,23 @@ function parseArgs(argv) {
         project: process.env.RELEASE_RAILWAY_PROJECT || process.env.RAILWAY_PROJECT_ID || DEFAULT_PROJECT,
         service: process.env.RELEASE_RAILWAY_SERVICE || process.env.RAILWAY_SERVICE || DEFAULT_SERVICE,
         environment: process.env.RELEASE_RAILWAY_ENVIRONMENT || process.env.RAILWAY_ENVIRONMENT || DEFAULT_ENVIRONMENT,
-        branch: process.env.RELEASE_DEPLOY_BRANCH || '',
-        commit: process.env.RELEASE_DEPLOY_COMMIT || '',
-        message: process.env.RELEASE_DEPLOY_MESSAGE || '',
-        liveUrl: process.env.RELEASE_LIVE_URL || DEFAULT_LIVE_URL,
-        dryRun: false,
-        skipRemoteCheck: false,
-        keepExport: process.env.RELEASE_RAILWAY_KEEP_EXPORT === 'true',
-        exportRoot: process.env.RELEASE_RAILWAY_EXPORT_ROOT || ''
+        branch: process.env.RELEASE_DEPLOY_BRANCH || process.env.npm_config_branch || '',
+        commit: process.env.RELEASE_DEPLOY_COMMIT || process.env.npm_config_commit || '',
+        message: process.env.RELEASE_DEPLOY_MESSAGE || process.env.npm_config_message || '',
+        liveUrl: process.env.RELEASE_LIVE_URL || process.env.npm_config_live_url || DEFAULT_LIVE_URL,
+        dryRun: envBoolean(process.env.npm_config_dry_run),
+        parseOnly: process.env.RELEASE_RAILWAY_UP_PARSE_ONLY === 'true',
+        skipRemoteCheck: envBoolean(process.env.npm_config_skip_remote_check),
+        keepExport: process.env.RELEASE_RAILWAY_KEEP_EXPORT === 'true' || envBoolean(process.env.npm_config_keep_export),
+        exportRoot: process.env.RELEASE_RAILWAY_EXPORT_ROOT || process.env.npm_config_export_root || ''
     };
 
     for (let index = 0; index < argv.length; index += 1) {
         const arg = argv[index];
         if (arg === '--dry-run') {
             options.dryRun = true;
+        } else if (arg === '--parse-only') {
+            options.parseOnly = true;
         } else if (arg === '--skip-remote-check') {
             options.skipRemoteCheck = true;
         } else if (arg === '--keep-export') {
@@ -125,12 +137,53 @@ function parseArgs(argv) {
             options.message = requireValue(argv, index += 1, arg);
         } else if (arg === '--live-url') {
             options.liveUrl = requireValue(argv, index += 1, arg);
+        } else if (isForwardedNpmConfigValue(arg, options)) {
+            // npm on Windows/PowerShell can consume `--branch value` style flags
+            // into npm_config_* env vars and append only the positional values.
+            // Accept only exact values already represented in npm config; every
+            // unrelated positional argument remains a hard failure.
+            continue;
+        } else if (applyForwardedNpmRunPositional(arg, options)) {
+            continue;
         } else {
             fail(`Unknown argument: ${arg}`);
         }
     }
 
     return options;
+}
+
+function isForwardedNpmConfigValue(arg, options) {
+    const value = String(arg || '').trim();
+    if (!value || value.startsWith('--')) return false;
+    return [
+        options.branch,
+        options.commit,
+        options.message,
+        options.liveUrl,
+        options.project,
+        options.service,
+        options.environment,
+        options.exportRoot
+    ].some(optionValue => value === String(optionValue || '').trim());
+}
+
+function applyForwardedNpmRunPositional(arg, options) {
+    const value = String(arg || '').trim();
+    if (!value || value.startsWith('--')) return false;
+    if (missingOptionValue(options.branch) && /^[A-Za-z0-9._/-]+$/.test(value) && value.includes('/')) {
+        options.branch = value;
+        return true;
+    }
+    if (missingOptionValue(options.commit) && FULL_COMMIT_SHA_PATTERN.test(value)) {
+        options.commit = value.toLowerCase();
+        return true;
+    }
+    if ((!process.env.RELEASE_LIVE_URL && (missingOptionValue(options.liveUrl) || options.liveUrl === DEFAULT_LIVE_URL)) && /^https?:\/\//i.test(value)) {
+        options.liveUrl = value;
+        return true;
+    }
+    return false;
 }
 
 function requireValue(argv, index, flag) {
@@ -377,6 +430,19 @@ async function fetchLiveVersionSnapshot(liveUrl, options = {}) {
 
 async function main() {
     const options = parseArgs(process.argv.slice(2));
+    if (options.parseOnly) {
+        console.log(JSON.stringify({
+            branch: options.branch,
+            commit: options.commit,
+            liveUrl: options.liveUrl,
+            dryRun: options.dryRun,
+            skipRemoteCheck: options.skipRemoteCheck,
+            project: options.project,
+            service: options.service,
+            environment: options.environment
+        }));
+        return;
+    }
     assertSafeBranchName(options.branch);
     assertSafeRailwayTarget(options);
     assertCleanWorktree();

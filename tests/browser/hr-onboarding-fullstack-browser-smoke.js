@@ -128,6 +128,26 @@ async function waitForApi(page, method, pathname) {
     return page.waitForResponse(response => matchesApiResponse(response, method, pathname), { timeout: TIMEOUT_MS });
 }
 
+async function waitForAppShell(page, options = {}) {
+    await page.locator('#mainApp:not(.hidden)').waitFor();
+    await page.waitForFunction(({ requireHrFetch }) => {
+        if (document.readyState === 'loading') return false;
+        if (typeof window.crmApiFetch !== 'function') return false;
+        if (requireHrFetch && typeof window.hrFetch !== 'function') return false;
+        return true;
+    }, { requireHrFetch: Boolean(options.requireHrFetch) });
+}
+
+async function reloadVacanciesWithStatus(page, status) {
+    const responsePromise = waitForApi(page, 'GET', '/api/hr/vacancies');
+    await page.evaluate(nextStatus => {
+        const filter = document.getElementById('vacStatusFilter');
+        if (filter) filter.value = nextStatus;
+        return window.loadVacancies();
+    }, status);
+    return responseJson(await responsePromise, `load ${status} vacancies`);
+}
+
 async function fillFormModal(page, values) {
     const modal = page.locator('.form-modal-overlay').last();
     await modal.waitFor({ state: 'visible' });
@@ -327,7 +347,7 @@ async function run() {
     try {
         await step('open real HR vacancies UI', async () => {
             await page.goto(`${base}/hr.html#vacancies`, { waitUntil: 'domcontentloaded' });
-            await page.locator('#mainApp:not(.hidden)').waitFor();
+            await waitForAppShell(page, { requireHrFetch: true });
             await page.locator('#btnAddVacancy').waitFor({ state: 'visible' });
         });
 
@@ -391,9 +411,7 @@ async function run() {
         assert.equal(Number(secondHire.hired_count), 1);
 
         await step('verify keep-open and auto-filled headcount states in HR UI', async () => {
-            const vacanciesResponsePromise = waitForApi(page, 'GET', '/api/hr/vacancies');
-            await page.locator('#vacStatusFilter').selectOption('all');
-            await responseJson(await vacanciesResponsePromise, 'load all vacancies');
+            await reloadVacanciesWithStatus(page, 'all');
             const animatorCard = page.locator('#vacanciesList .hr-vacancy-card').filter({ hasText: animatorVacancyTitle });
             const baristaCard = page.locator('#vacanciesList .hr-vacancy-card').filter({ hasText: baristaVacancyTitle });
             await animatorCard.getByText('Найнято 1 із 2').waitFor();
@@ -418,7 +436,7 @@ async function run() {
 
         await step('open Training onboarding with two profession processes', async () => {
             await page.goto(`${base}/training.html`, { waitUntil: 'domcontentloaded' });
-            await page.locator('#mainApp:not(.hidden)').waitFor();
+            await waitForAppShell(page);
             await page.locator('[data-tab="onboarding"]').click();
             const group = page.locator('.training-onboarding-staff-group').filter({ hasText: primaryCandidateName });
             await group.waitFor();
@@ -507,7 +525,7 @@ async function run() {
             );
 
             await page.goto(`${base}/staff.html`, { waitUntil: 'domcontentloaded' });
-            await page.locator('#mainApp:not(.hidden)').waitFor();
+            await waitForAppShell(page);
             const rows = page.locator(`[data-schedule-staff-row="${staffId}"]`);
             await rows.first().waitFor({ state: 'visible' });
             const rowTexts = await rows.allTextContents();

@@ -80,6 +80,36 @@ test('room hardening closes known active write paths and adds not-valid guards',
     assert.match(migration, /trg_banquet_groups_identity_v332/);
 });
 
+test('active banquet fixtures keep room identity and transactional group invariants', () => {
+    const routeSmoke = read('tests/route-smoke.test.js');
+    const banquetLinks = read('tests/booking-banquet-links.test.js');
+    const packageContract = read('tests/booking-package-contract.test.js');
+    const banquetService = read('services/banquetGroups.js');
+
+    for (const fixtureId of [
+        'BK-AUTO-KITCHEN',
+        'BK-AUTO-ACTIVITY',
+        'BK-AUTO-ACTIVITY-SECOND',
+        'BK-AUTO-DIFFERENT-CUSTOMER',
+        'BK-AUTO-DIFFERENT-ROOM',
+        'BK-AUTO-DIFFERENT-DATE'
+    ]) {
+        assert.match(
+            routeSmoke,
+            new RegExp(`id: '${fixtureId}'[\\s\\S]{0,900}room_resource_id: 'room-`),
+            `${fixtureId} must carry a durable room_resource_id fixture`
+        );
+    }
+
+    assert.match(routeSmoke, /membersById\.get\('BK-AUTO-KITCHEN'\)\?\.membershipRole, 'primary'/);
+    assert.match(routeSmoke, /membersById\.get\('BK-AUTO-ACTIVITY'\)\?\.membershipRole, 'activity'/);
+    assert.match(routeSmoke, /membersById\.get\('BK-AUTO-ACTIVITY-SECOND'\)\?\.membershipRole, 'activity'/);
+    assert.match(banquetService, /createBanquetGroupInTransaction/);
+    assert.match(banquetLinks, /ROLLBACK/);
+    assert.match(packageContract, /room_resource_id: 'room-marvel'/);
+    assert.doesNotMatch(routeSmoke, /status: 'confirmed'[\s\S]{0,500}room_resource_id: null/);
+});
+
 test('trusted QA markers require server token and manifest registration', () => {
     const service = read('services/trustedQaRuns.js');
     const bookings = read('routes/bookings.js');

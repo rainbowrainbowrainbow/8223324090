@@ -350,17 +350,18 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 .my-day-task-chip {
     align-items: center;
-    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 14%, transparent);
-    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 45%, transparent);
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 8%, rgba(248, 250, 252, 0.92));
+    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 28%, rgba(148, 163, 184, 0.32));
     border-radius: 999px;
     color: var(--text-primary, #1e293b);
     display: inline-flex;
-    font-size: 11px;
-    font-weight: 700;
-    gap: 3px;
-    line-height: 1.15;
-    max-width: min(220px, 100%);
-    padding: 3px 7px;
+    font-size: 12px;
+    font-weight: 800;
+    gap: 5px;
+    line-height: 1.2;
+    max-width: min(320px, 100%);
+    padding: 5px 9px;
+    white-space: normal;
 }
 
 .my-day-task-chip:is(button) {
@@ -373,9 +374,9 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 .my-day-task-chip:is(button):hover,
 .my-day-task-chip:is(button):focus-visible {
-    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 22%, transparent);
-    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 62%, transparent);
-    box-shadow: 0 3px 10px color-mix(in srgb, var(--my-day-chip-color, #64748b) 16%, transparent);
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 14%, rgba(248, 250, 252, 0.94));
+    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 46%, rgba(148, 163, 184, 0.34));
+    box-shadow: 0 3px 10px color-mix(in srgb, var(--my-day-chip-color, #64748b) 12%, transparent);
     transform: translateY(-1px);
 }
 
@@ -390,46 +391,150 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     transform: none;
 }
 
-.my-day-task-chip--removable.is-pending {
-    pointer-events: none;
-}
-
 .my-day-task-impact-chips.is-classification-pending .my-day-task-chip:is(button) {
     cursor: wait;
 }
 
-.my-day-task-chip-remove {
-    display: inline-flex;
-    flex: 0 0 auto;
-    font-size: 13px;
-    font-weight: 900;
-    line-height: 1;
-    opacity: 0;
-    transform: scale(0.72);
-    transition: opacity 160ms ease, transform 160ms ease;
+.my-day-task-chip--add {
+    background: rgba(248, 250, 252, 0.88);
+    border-color: rgba(148, 163, 184, 0.34);
+    color: var(--text-secondary, #475569);
 }
 
-.my-day-task-chip--removable:hover .my-day-task-chip-remove,
-.my-day-task-chip--removable:focus-visible .my-day-task-chip-remove,
-.my-day-task-chip--removable.is-pending .my-day-task-chip-remove {
-    opacity: 1;
-    transform: scale(1);
+.my-day-task-chip--editable .my-day-impact-icon-wrap,
+.my-day-task-chip--add .my-day-impact-icon-wrap {
+    color: var(--my-day-chip-color, #64748b);
 }
 
-.my-day-task-chip span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.my-day-task-chip .my-day-task-chip-remove { overflow: visible; }
+.my-day-task-chip span {
+    min-width: 0;
+    overflow-wrap: anywhere;
+    white-space: normal;
+}
 .my-day-task-chip--more { background: var(--surface-muted, #f1f5f9); border-color: transparent; }
 
-@media (hover: none), (pointer: coarse) {
-    .my-day-task-chip-remove {
-        opacity: 1;
-        transform: scale(1);
-    }
+.task-ui-action-surface--my-day-impacts.is-popover .task-ui-action-panel {
+    width: min(460px, calc(100vw - 24px));
+}
+
+.task-ui-action-surface--my-day-impacts .task-ui-action-body {
+    padding: 12px;
+}
+
+.my-day-impact-editor {
+    display: grid;
+    gap: 12px;
+    min-width: min(420px, calc(100vw - 48px));
+}
+
+.my-day-impact-editor-summary {
+    align-items: start;
+    display: grid;
+    gap: 8px;
+    grid-template-columns: minmax(0, 1fr) auto;
+}
+
+.my-day-impact-editor-selected {
+    align-items: center;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    min-width: 0;
+}
+
+.my-day-impact-editor-empty {
+    color: var(--text-muted, #64748b);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.my-day-impact-editor-selected-chip {
+    align-items: center;
+    appearance: none;
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 10%, rgba(248, 250, 252, 0.96));
+    border: 1px solid color-mix(in srgb, var(--my-day-chip-color, #64748b) 34%, rgba(148, 163, 184, 0.34));
+    border-radius: 999px;
+    color: var(--text-primary, #0f172a);
+    cursor: pointer;
+    display: inline-flex;
+    font: inherit;
+    font-size: 12px;
+    font-weight: 850;
+    gap: 6px;
+    line-height: 1.2;
+    max-width: 100%;
+    min-height: 32px;
+    padding: 5px 9px;
+}
+
+.my-day-impact-editor-selected-chip span:nth-child(2) {
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.my-day-impact-editor-search {
+    margin: 0;
+}
+
+.my-day-impact-editor-catalog {
+    display: grid;
+    gap: 10px;
+    max-height: min(320px, 45dvh);
+    overflow: auto;
+    padding-right: 2px;
+}
+
+.my-day-impact-editor-group {
+    display: grid;
+    gap: 7px;
+}
+
+.my-day-impact-editor-group-title {
+    color: var(--text-muted, #64748b);
+    font-size: 11px;
+    font-weight: 950;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+}
+
+.my-day-impact-editor-grid {
+    display: grid;
+    gap: 7px;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.my-day-impact-editor-option {
+    min-height: 38px;
+}
+
+.my-day-impact-editor-create {
+    border: 1px solid rgba(148, 163, 184, 0.24);
+    border-radius: 12px;
+    overflow: hidden;
+}
+
+.my-day-impact-editor-create > summary {
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 900;
+    padding: 10px 12px;
+}
+
+.my-day-impact-editor-create-form {
+    border-top: 1px solid rgba(148, 163, 184, 0.16);
+    display: grid;
+    gap: 10px;
+    padding: 12px;
+}
+
+.my-day-impact-editor-actions {
+    display: grid;
+    gap: 8px;
+    grid-template-columns: 1fr 1fr;
 }
 
 @media (prefers-reduced-motion: reduce) {
     .my-day-task-chip:is(button),
-    .my-day-task-chip-remove,
     .my-day-time-button,
     .my-day-time-disclosure {
         transition: none;
@@ -445,6 +550,31 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
     .cabinet-task-action-timer.is-busy .my-day-time-disclosure-icon {
         animation: none;
+    }
+}
+
+@media (max-width: 560px) {
+    .my-day-task-chip {
+        max-width: 100%;
+        min-height: 36px;
+    }
+
+    .task-ui-action-surface--my-day-impacts .task-ui-action-body {
+        padding: 10px;
+    }
+
+    .my-day-impact-editor {
+        min-width: 0;
+    }
+
+    .my-day-impact-editor-summary,
+    .my-day-impact-editor-actions,
+    .my-day-impact-editor-grid {
+        grid-template-columns: 1fr;
+    }
+
+    .my-day-impact-editor-catalog {
+        max-height: 34dvh;
     }
 }
 .my-day-taxonomy-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; }
@@ -1852,9 +1982,29 @@ body.dark-mode .profile-page.profile-work-mode .cabinet-task-blocker-badge,
 html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-task-chip,
 html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-dependency-action,
 html[data-theme="dark"] body .profile-page.profile-work-mode .cabinet-task-blocker-badge {
-    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 28%, rgba(15, 23, 42, 0.72));
-    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 58%, rgba(148, 163, 184, 0.26));
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 18%, rgba(15, 23, 42, 0.82));
+    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 42%, rgba(148, 163, 184, 0.30));
     color: var(--my-day-life-text);
+}
+
+body.dark-mode .profile-page.profile-work-mode .my-day-task-chip--add,
+html[data-theme="dark"] body .profile-page.profile-work-mode .my-day-task-chip--add {
+    background: rgba(15, 23, 42, 0.76);
+    border-color: rgba(148, 163, 184, 0.32);
+    color: var(--my-day-life-secondary);
+}
+
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-selected-chip {
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 20%, rgba(15, 23, 42, 0.82));
+    border-color: color-mix(in srgb, var(--my-day-chip-color, #64748b) 44%, rgba(148, 163, 184, 0.30));
+    color: #e2e8f0;
+}
+
+body.dark-mode .task-ui-action-surface--my-day-impacts .my-day-impact-editor-create,
+html[data-theme="dark"] .task-ui-action-surface--my-day-impacts .my-day-impact-editor-create {
+    background: rgba(15, 23, 42, 0.54);
+    border-color: rgba(148, 163, 184, 0.24);
 }
 
 body.dark-mode .profile-page.profile-work-mode .cabinet-task-blocker-badge,

@@ -7235,7 +7235,7 @@ function setCabinetTaskClassificationBusy(taskId, busy, options = {}) {
         group.classList.toggle('is-classification-pending', Boolean(busy));
         group.setAttribute('aria-busy', busy ? 'true' : 'false');
     });
-    document.querySelectorAll(`[data-cabinet-task-action="remove-impact"][data-task-id="${id}"]`).forEach(chip => {
+    document.querySelectorAll(`[data-cabinet-task-action="classification"][data-task-id="${id}"], [data-cabinet-task-action="remove-impact"][data-task-id="${id}"]`).forEach(chip => {
         const isPendingChip = Number(chip.dataset.myDayImpactId) === pendingImpactId;
         chip.disabled = Boolean(busy);
         chip.classList.toggle('is-pending', Boolean(busy && isPendingChip));
@@ -7313,11 +7313,6 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (action === 'remove-impact') {
-        await removeCabinetTaskImpact(button, taskId);
-        return;
-    }
-
     if (action === 'toggle-my-day-details') {
         toggleCabinetMyDayTaskDetails(taskId, { rerender: true });
         return;
@@ -7334,7 +7329,7 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (action === 'classification') {
+    if (action === 'classification' || action === 'remove-impact') {
         const anchor = stableCabinetTaskSurfaceAnchor(button, taskId, 'more');
         await window.MyDayClassification?.openTaskEditor?.(anchor, findCabinetTask(taskId) || {}, async () => {
             await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });

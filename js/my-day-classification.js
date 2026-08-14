@@ -45,6 +45,11 @@
             : String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
     }
 
+    function escapeSelectorValue(value) {
+        if (typeof window.CSS?.escape === 'function') return window.CSS.escape(String(value ?? ''));
+        return String(value ?? '').replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+    }
+
     function maxImpacts() {
         return Number(window.MyDayImpactIcons?.MAX_SELECTED_IMPACTS || 5);
     }
@@ -72,13 +77,6 @@
         return { ready, custom: active.length - ready };
     }
 
-    function options(records, selected, multiple) {
-        const selectedSet = new Set(Array.isArray(selected) ? selected.map(Number) : [Number(selected)]);
-        return records.filter(record => record.isActive !== false).map(record =>
-            `<option value="${record.id}" ${selectedSet.has(Number(record.id)) ? 'selected' : ''}>${escape(record.name)}</option>`
-        ).join('');
-    }
-
     async function load(force = false) {
         if (state.loading) return state;
         if (state.loaded && !force) return state;
@@ -98,6 +96,44 @@
 
     function activeRecords(records = []) {
         return records.filter(record => record.isActive !== false);
+    }
+
+    function compactImpactName(record = {}) {
+        const name = String(record?.name || '').trim();
+        if (!name) return '';
+        const withoutWorkPrefix = name.replace(/^Робота:\s*/i, '').replace(/^Робота\s*[:·-]\s*/i, '');
+        const firstPart = withoutWorkPrefix.split('/')[0]?.trim() || withoutWorkPrefix;
+        return firstPart.length <= 28 ? firstPart : name;
+    }
+
+    function taskImpactIds(task = {}) {
+        return (task?.myDay?.impacts || [])
+            .map(record => Number(record?.id))
+            .filter(Number.isInteger);
+    }
+
+    function findImpactRecord(id, task = {}) {
+        const target = Number(id);
+        return state.impacts.find(record => Number(record.id) === target)
+            || (task?.myDay?.impacts || []).find(record => Number(record.id) === target)
+            || null;
+    }
+
+    function editorCatalogRecords(selectedIds = [], task = {}) {
+        const selectedSet = new Set((selectedIds || []).map(Number));
+        const records = [...activeRecords(state.impacts)];
+        for (const record of task?.myDay?.impacts || []) {
+            const id = Number(record?.id);
+            if (!Number.isInteger(id) || !selectedSet.has(id)) continue;
+            if (!records.some(item => Number(item.id) === id)) records.push(record);
+        }
+        return records;
+    }
+
+    function checkedEditorImpactIds(root) {
+        return Array.from(root?.querySelectorAll?.('[data-my-day-editor-impact-chip]:checked') || [])
+            .map(input => Number(input.value))
+            .filter(Number.isInteger);
     }
 
     function renderComposerImpactChips(selected = []) {
@@ -167,20 +203,21 @@
         const impacts = Array.isArray(myDay?.impacts) ? myDay.impacts : [];
         const taskId = options.taskId ?? options.taskID ?? myDay.taskId ?? myDay.task_id ?? '';
         const taskIdAttr = String(taskId || '').trim();
+        const disabledAttr = taskIdAttr ? '' : 'disabled aria-disabled="true"';
         const renderImpactButton = record => {
             const impactId = String(record?.id || '').trim();
             const name = String(record?.name || '').trim();
+            const label = compactImpactName(record) || name;
             const disabled = !taskIdAttr || !impactId;
-            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--removable" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-cabinet-task-action="remove-impact" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" ${disabled ? 'disabled aria-disabled="true"' : ''}>${impactIcon(record, true)}<span>${escape(name)}</span><span class="my-day-task-chip-remove" aria-hidden="true">×</span></button>`;
+            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--editable" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Змінити вплив ' + name)}" data-cabinet-task-action="classification" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" aria-haspopup="dialog" ${disabled ? 'disabled aria-disabled="true"' : ''}>${impactIcon(record, true)}<span>${escape(label)}</span></button>`;
         };
         const impactButtons = impacts.map(renderImpactButton).join('');
-        if (impactButtons) {
-            return `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${impactButtons}</span>`;
-        }
-        const chip = (record, kind) => `<span class="my-day-task-chip my-day-task-chip--${kind}" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(record.name)}">${impactIcon(record, true)}<span>${escape(record.name)}</span></span>`;
-        const impactChips = impacts.map(record => chip(record, 'impact')).join('');
-        const impactGroup = impactChips ? `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${impactChips}</span>` : '';
-        return impactGroup;
+        const addLabel = impacts.length >= maxImpacts() ? 'Змінити' : '+ Вплив';
+        const addTitle = impacts.length >= maxImpacts()
+            ? `Змінити обрані впливи (${impacts.length}/${maxImpacts()})`
+            : 'Додати вплив до задачі';
+        const addButton = `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--add" title="${escape(addTitle)}" aria-label="${escape(addTitle)}" data-cabinet-task-action="classification" data-task-id="${escape(taskIdAttr)}" aria-haspopup="dialog" ${disabledAttr}>${impactIcon({ icon: 'custom', color: '#64748B', name: addLabel }, true)}<span>${escape(addLabel)}</span></button>`;
+        return `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${impactButtons}${addButton}</span>`;
     }
 
     async function saveTaskClassification(taskId, classification) {
@@ -339,48 +376,180 @@
         }
     }
 
-    function renderEditorFields(task = {}) {
-        const myDay = task.myDay || {};
-        const impactIds = (myDay.impacts || []).map(record => record.id);
-        return `<div class="my-day-editor-fields" data-my-day-editor-fields>
-            <label>Впливи <small>до ${maxImpacts()}</small>
-                <select data-my-day-impacts multiple size="4">
-                    ${options(state.impacts, impactIds, true)}
-                </select>
-            </label>
+    function renderEditorSelectedImpacts(selectedIds = [], task = {}) {
+        if (!selectedIds.length) return '<span class="my-day-impact-editor-empty">Впливи не обрано</span>';
+        return selectedIds.map(id => {
+            const record = findImpactRecord(id, task) || { id, name: 'Вплив #' + id, color: '#64748B', icon: 'custom' };
+            const name = String(record.name || '').trim() || ('Вплив #' + id);
+            return `<button type="button" class="my-day-impact-editor-selected-chip" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-my-day-editor-remove-impact="${escape(id)}">${impactIcon(record, true)}<span>${escape(name)}</span><span aria-hidden="true">×</span></button>`;
+        }).join('');
+    }
 
+    function renderEditorImpactCatalog(selectedIds = [], task = {}) {
+        const selectedSet = new Set((selectedIds || []).map(Number));
+        const records = editorCatalogRecords(selectedIds, task);
+        if (!records.length) return '<p class="my-day-taxonomy-empty">Активних впливів ще немає.</p>';
+        const atLimit = selectedSet.size >= maxImpacts();
+        return `<div class="my-day-impact-editor-catalog" data-my-day-editor-catalog>${impactGroups(records).map(group => `<section class="my-day-impact-editor-group" data-my-day-editor-group="${escape(group.id)}">
+            <div class="my-day-impact-editor-group-title">${escape(group.label)}</div>
+            <div class="my-day-impact-editor-grid">${group.records.map(impact => {
+                const id = Number(impact.id);
+                const isSelected = selectedSet.has(id);
+                const disabled = atLimit && !isSelected;
+                const name = String(impact.name || '').trim();
+                return `<label class="my-day-choice-chip my-day-impact-chip my-day-impact-editor-option ${isSelected ? 'is-selected' : ''} ${disabled ? 'is-disabled' : ''}" style="--my-day-chip-color:${escape(impact.color || '#64748b')}" title="${escape(name)}" data-my-day-editor-impact-search="${escape(name.toLocaleLowerCase('uk-UA'))}">
+                    <input type="checkbox" value="${escape(id)}" ${isSelected ? 'checked' : ''} ${disabled ? 'disabled aria-disabled="true"' : ''} data-my-day-editor-impact-chip>
+                    ${impactIcon(impact)}<span>${escape(name)}</span>
+                </label>`;
+            }).join('')}</div>
+        </section>`).join('')}</div>`;
+    }
+
+    function renderTaskImpactEditor(task = {}) {
+        const impactIds = taskImpactIds(task);
+        return `<div class="my-day-impact-editor" data-my-day-editor-fields>
+            <div class="my-day-impact-editor-summary">
+                <div class="my-day-impact-editor-selected" data-my-day-editor-selected aria-live="polite">${renderEditorSelectedImpacts(impactIds, task)}</div>
+                <span class="my-day-impact-selection-count" data-my-day-editor-count>${impactIds.length} / ${maxImpacts()}</span>
+            </div>
+            <label class="my-day-impact-search my-day-impact-editor-search"><span aria-hidden="true">⌕</span><input type="search" placeholder="Знайти вплив" autocomplete="off" data-my-day-editor-filter></label>
+            ${renderEditorImpactCatalog(impactIds, task)}
+            <p class="my-day-impact-filter-empty" data-my-day-editor-filter-empty hidden>Нічого не знайдено.</p>
+            <details class="my-day-impact-editor-create" data-my-day-editor-create>
+                <summary>Створити власний</summary>
+                <form class="my-day-impact-editor-create-form" data-my-day-editor-create-form>
+                    <label class="my-day-setup-field my-day-setup-field--full">Назва
+                        <input name="name" maxlength="60" required placeholder="Наприклад: Hermes QA" autocomplete="off">
+                    </label>
+                    <fieldset class="my-day-choice-field"><legend>Колір</legend>${renderColorChoices('color', '#0ea5e9')}</fieldset>
+                    <fieldset class="my-day-choice-field"><legend>Іконка</legend>${renderIconChoices('impacts', 'custom')}</fieldset>
+                    <button type="submit" class="my-day-setup-secondary">Створити й додати</button>
+                </form>
+            </details>
             <p class="my-day-taxonomy-notice" data-my-day-editor-status aria-live="polite"></p>
-            <button type="button" class="my-day-taxonomy-primary" data-my-day-editor-save>Зберегти маркування</button>
+            <div class="my-day-impact-editor-actions">
+                <button type="button" class="my-day-setup-secondary" data-my-day-editor-cancel>Скасувати</button>
+                <button type="button" class="my-day-setup-primary" data-my-day-editor-save>Зберегти</button>
+            </div>
         </div>`;
+    }
+
+    function renderEditorFields(task = {}) {
+        return renderTaskImpactEditor(task);
     }
 
     async function openTaskEditor(button, task, onSaved) {
         await load();
-        const root = window.TaskUI?.openActionMenu?.(button, renderEditorFields(task), { title: 'Впливи' });
+        const root = window.TaskUI?.openActionMenu?.(button, renderEditorFields(task), {
+            title: 'Впливи задачі',
+            surfaceClassName: 'task-ui-action-surface--my-day-impacts'
+        });
         if (!root) return;
-        const save = root.querySelector('[data-my-day-editor-save]');
         const fields = root.querySelector('[data-my-day-editor-fields]');
         const status = root.querySelector('[data-my-day-editor-status]');
+        const save = root.querySelector('[data-my-day-editor-save]');
+        const selectedNode = root.querySelector('[data-my-day-editor-selected]');
+        const count = root.querySelector('[data-my-day-editor-count]');
+        const filter = root.querySelector('[data-my-day-editor-filter]');
+        const taskId = task.id || task.taskId || task.task_id;
+
+        const refreshFilter = () => {
+            const query = String(filter?.value || '').trim().toLocaleLowerCase('uk-UA');
+            let visible = 0;
+            root.querySelectorAll('[data-my-day-editor-group]').forEach(group => {
+                let groupVisible = 0;
+                group.querySelectorAll('[data-my-day-editor-impact-search]').forEach(chip => {
+                    const matches = !query || String(chip.dataset.myDayEditorImpactSearch || '').includes(query);
+                    chip.hidden = !matches;
+                    if (matches) groupVisible += 1;
+                });
+                group.hidden = groupVisible === 0;
+                visible += groupVisible;
+            });
+            const empty = root.querySelector('[data-my-day-editor-filter-empty]');
+            if (empty) empty.hidden = visible !== 0;
+        };
+
+        const refreshEditor = () => {
+            const selectedIds = checkedEditorImpactIds(fields);
+            const atLimit = selectedIds.length >= maxImpacts();
+            root.querySelectorAll('[data-my-day-editor-impact-chip]').forEach(input => {
+                const label = input.closest('.my-day-impact-editor-option');
+                input.disabled = atLimit && !input.checked;
+                input.setAttribute('aria-disabled', input.disabled ? 'true' : 'false');
+                label?.classList.toggle('is-selected', input.checked);
+                label?.classList.toggle('is-disabled', input.disabled);
+            });
+            if (selectedNode) selectedNode.innerHTML = renderEditorSelectedImpacts(selectedIds, task);
+            if (count) count.textContent = `${selectedIds.length} / ${maxImpacts()}`;
+            if (status) status.textContent = atLimit ? `Обрано максимум ${maxImpacts()} впливів.` : '';
+            refreshFilter();
+        };
+
+        fields?.addEventListener('change', event => {
+            if (!event.target.closest?.('[data-my-day-editor-impact-chip]')) return;
+            refreshEditor();
+        });
+        fields?.addEventListener('click', event => {
+            const remove = event.target.closest?.('[data-my-day-editor-remove-impact]');
+            if (!remove) return;
+            event.preventDefault();
+            const input = fields.querySelector(`[data-my-day-editor-impact-chip][value="${escapeSelectorValue(remove.dataset.myDayEditorRemoveImpact || '')}"]`);
+            if (input) input.checked = false;
+            refreshEditor();
+        });
+        filter?.addEventListener('input', refreshFilter);
+        root.querySelector('[data-my-day-editor-cancel]')?.addEventListener('click', () => window.TaskUI?.closeActionMenu?.());
+        root.querySelector('[data-my-day-editor-create-form]')?.addEventListener('submit', async event => {
+            event.preventDefault();
+            const form = event.currentTarget;
+            const createButton = form.querySelector('button[type="submit"]');
+            const selectedIds = checkedEditorImpactIds(fields);
+            if (selectedIds.length >= maxImpacts()) {
+                if (status) status.textContent = `Спочатку приберіть один із ${maxImpacts()} обраних впливів.`;
+                return;
+            }
+            createButton.disabled = true;
+            if (status) status.textContent = '';
+            try {
+                const result = await request('/impacts', { method: 'POST', body: JSON.stringify(taxonomyBody(form)) });
+                await load(true);
+                const created = result?.impact;
+                const createdId = Number(created?.id);
+                if (!Number.isInteger(createdId)) throw new Error('Не вдалося визначити створений вплив.');
+                window.TaskUI?.closeActionMenu?.();
+                await openTaskEditor(button, { ...task, myDay: { ...(task.myDay || {}), impacts: [...selectedIds, createdId].map(id => findImpactRecord(id, task) || created).filter(Boolean) } }, onSaved);
+            } catch (error) {
+                const message = error.message || 'Не вдалося створити вплив.';
+                if (status) status.textContent = message;
+                window.showNotification?.(message, 'error');
+            } finally {
+                if (createButton.isConnected) createButton.disabled = false;
+            }
+        });
         save?.addEventListener('click', async () => {
-            const impacts = selectedValues(fields?.querySelector('[data-my-day-impacts]'));
+            const impacts = checkedEditorImpactIds(fields);
             if (impacts.length > maxImpacts()) {
-                status.textContent = `Оберіть не більше ${maxImpacts()} впливів.`;
+                if (status) status.textContent = `Оберіть не більше ${maxImpacts()} впливів.`;
                 return;
             }
             save.disabled = true;
+            if (status) status.textContent = '';
             try {
-                await saveTaskClassification(task.id || task.taskId || task.task_id, {
-                    impactIds: impacts
-                });
+                await saveTaskClassification(taskId, { impactIds: impacts });
                 window.TaskUI?.closeActionMenu?.();
                 await onSaved?.();
                 window.showNotification?.('Маркування задачі збережено', 'success');
             } catch (error) {
-                status.textContent = error.message || 'Не вдалося зберегти маркування.';
+                const message = error.message || 'Не вдалося зберегти маркування.';
+                if (status) status.textContent = message;
+                window.showNotification?.(message, 'error');
             } finally {
                 if (save.isConnected) save.disabled = false;
             }
         });
+        refreshEditor();
+        refreshFilter();
     }
 
     function currentSetupEditor() {

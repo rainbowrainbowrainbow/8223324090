@@ -82,6 +82,7 @@ function harnessHtml() {
     </section>
   </main>
   <script src="/js/task-ui.js"></script>
+  <script src="/js/my-day-impact-icons.js"></script>
   <script src="/js/my-day-classification.js"></script>
   <script src="/js/my-day-dependencies.js"></script>
   <script src="/js/my-day-time-tracking.js"></script>
@@ -155,26 +156,13 @@ function harnessHtml() {
         }
         return;
       }
-      if (action !== 'remove-impact') return;
+      if (action !== 'classification') return;
       event.preventDefault();
       const taskId = Number(actionButton.dataset.taskId);
-      const impactId = Number(actionButton.dataset.myDayImpactId);
-      const key = taskId + ':' + impactId;
-      if (state.removeInFlight.has(key)) return;
-      const current = state.tasks[taskId].myDay.impacts || [];
-      const impactIds = current.map(impact => Number(impact.id)).filter(id => id !== impactId);
-      state.removeInFlight.add(key);
-      actionButton.disabled = true;
-      actionButton.classList.add('is-pending');
       try {
-        const result = await window.MyDayClassification.saveTaskClassification(taskId, { impactIds });
-        applyClassification(taskId, result.classification);
+        await window.MyDayClassification.openTaskEditor(actionButton, state.tasks[taskId], async () => {});
       } catch (error) {
-        actionButton.disabled = false;
-        actionButton.classList.remove('is-pending');
         window.showNotification(error.message, 'error');
-      } finally {
-        state.removeInFlight.delete(key);
       }
     });
     window.fetch = async (input, options = {}) => {
@@ -184,6 +172,11 @@ function harnessHtml() {
       const body = options.body ? JSON.parse(options.body) : {};
       if (method === 'GET' && url.pathname === '/api/my-day/impacts') {
         return json({ success: true, impacts });
+      }
+      if (method === 'POST' && url.pathname === '/api/my-day/impacts') {
+        const impact = { id: impacts.length + 1, name: body.name, color: body.color, icon: body.icon, isActive: true };
+        impacts.push(impact);
+        return json({ success: true, impact });
       }
       if (method === 'GET' && url.pathname === '/api/my-day/timer') {
         return json({ success: true, timer: clone(state.activeTimer) });
@@ -354,13 +347,16 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         assert.equal(await page.locator('#normal-card > [data-my-day-time-fixture], #overdue-card > [data-my-day-time-fixture]').count(), 0, 'timer must not render as a standalone lower-row control');
 
         await page.locator('#manual-normal').click();
-        await page.locator('[data-my-day-impacts]').selectOption(['1', '2', '3', '4', '5']);
+        for (const impactId of ['1', '2', '3', '4', '5']) {
+          await page.locator(`[data-my-day-editor-impact-chip][value="${impactId}"]`).check({ force: true });
+        }
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
-        await page.waitForSelector('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="3"]');
-        const impactButtons = page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"]');
+        await page.waitForSelector('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="3"]');
+        const impactButtons = page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id]');
         assert.equal(await impactButtons.count(), 5);
         assert.equal(await page.locator('[data-cabinet-task-action="reveal-impact"][data-task-id="101"]').count(), 0);
+        assert.equal(await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"]').count(), 0);
         const impactVisibility = await impactButtons.evaluateAll(buttons => buttons.map(button => {
           const rect = button.getBoundingClientRect();
           return { hidden: button.hidden, width: rect.width, height: rect.height };
@@ -373,24 +369,32 @@ async function runScenario(browser, fixture, { dark, viewport }) {
           fullPage: true
         });
         const putCountBeforeRemove = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length);
-        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
+        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="1"]').click();
+        await page.locator('[data-my-day-editor-remove-impact="1"]').click();
+        await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
         assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length), putCountBeforeRemove + 1);
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Hermes/);
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /РљРѕРјР°РЅРґР°|Команда/);
-        await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 100; });
-        const putCountBeforeRapid = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length);
-        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="2"]').dblclick();
-        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Hermes'));
-        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length), putCountBeforeRapid + 1);
+        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"]').last().click();
+        await page.locator('[data-my-day-editor-create] summary').click();
+        await page.locator('[data-my-day-editor-create-form] input[name="name"]').fill('Custom QA');
+        await page.locator('[data-my-day-editor-create-form] button[type="submit"]').click();
+        await page.waitForSelector('[data-my-day-editor-impact-chip][value="6"]:checked');
+        await page.locator('[data-my-day-editor-save]').click();
+        await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Custom QA'));
         await page.evaluate(() => {
           window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 0;
           window.__MY_DAY_INTERACTIONS__.state.classificationError = true;
           window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Робота: CRM', color: '#0EA5E9', icon: 'C', isActive: true }] });
         });
-        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
+        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="1"]').click();
+        await page.locator('[data-my-day-editor-remove-impact="1"]').click();
+        await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.notifications.some(item => item.type === 'error'));
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /CRM/);
+        await page.keyboard.press('Escape');
+        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationError = false; });
         await page.locator('[data-cabinet-task-action="time-menu"][data-task-id="101"]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-time-menu]') || window.__MY_DAY_INTERACTIONS__.state.timeMenuError);

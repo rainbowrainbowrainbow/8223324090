@@ -2357,8 +2357,10 @@ body.dark-mode .profile-task-priority--low {
     min-width: 0;
 }
 
-.cabinet-task-card .my-day-task-chip--removable,
-.cabinet-overdue-triage-row .my-day-task-chip--removable {
+.cabinet-task-card .my-day-task-chip--editable,
+.cabinet-task-card .my-day-task-chip--add,
+.cabinet-overdue-triage-row .my-day-task-chip--editable,
+.cabinet-overdue-triage-row .my-day-task-chip--add {
     min-width: 0;
 }
 

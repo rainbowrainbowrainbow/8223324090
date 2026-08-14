@@ -340,6 +340,16 @@ async function assertNoOverflow(page) {
     assert.ok(overflow <= 1, `page has horizontal overflow: ${overflow}px offenders=${JSON.stringify(offenders)}`);
 }
 
+function rgbLuminance(color) {
+    const match = String(color || '').match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+    const srgb = String(color || '').match(/color\(srgb\s+([\d.]+)\s+([\d.]+)\s+([\d.]+)/);
+    if (!match && !srgb) return 255;
+    const [, r, g, b] = match
+        ? match.map(Number)
+        : [0, ...srgb.slice(1, 4).map(value => Number(value) * 255)];
+    return (0.2126 * r) + (0.7152 * g) + (0.0722 * b);
+}
+
 async function runScenario(browser, fixture, { dark, viewport }) {
     const context = await browser.newContext({ serviceWorkers: 'block', viewport });
     const page = await context.newPage();
@@ -372,14 +382,60 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         assert.equal(await page.locator('#normal-card > [data-my-day-time-fixture], #overdue-card > [data-my-day-time-fixture]').count(), 0, 'timer must not render as a standalone lower-row control');
 
         await page.locator('#manual-normal').click();
+        await page.waitForSelector('[data-my-day-editor-fields]');
+        const impactPanelBounds = await page.locator('#taskUiActionSurface .task-ui-action-panel').boundingBox();
+        assert.ok(impactPanelBounds, 'impact editor panel should be measurable');
+        assert.ok(impactPanelBounds.x >= -1, `impact editor starts outside viewport: ${JSON.stringify(impactPanelBounds)}`);
+        assert.ok(impactPanelBounds.x + impactPanelBounds.width <= viewport.width + 1, `impact editor overflows viewport width: ${JSON.stringify(impactPanelBounds)}`);
+        const impactOptionMetrics = await page.locator('.my-day-impact-editor-option').evaluateAll(nodes => nodes.slice(0, 4).map(node => {
+          const rect = node.getBoundingClientRect();
+          const style = getComputedStyle(node);
+          return {
+            backgroundColor: style.backgroundColor,
+            color: style.color,
+            left: rect.left,
+            top: rect.top,
+            width: rect.width,
+            height: rect.height
+          };
+        }));
+        const impactSearchAppearance = await page.locator('.my-day-impact-editor-search').evaluate(node => ({
+          backgroundColor: getComputedStyle(node).backgroundColor,
+          color: getComputedStyle(node).color
+        }));
+        assert.ok(impactOptionMetrics.every(item => item.width > 0 && item.width <= viewport.width - 20), `impact options should fit viewport: ${JSON.stringify(impactOptionMetrics)}`);
+        if (dark) {
+          assert.ok(rgbLuminance(impactSearchAppearance.backgroundColor) < 95, `dark impact search background is too light: ${JSON.stringify(impactSearchAppearance)}`);
+          assert.ok(rgbLuminance(impactOptionMetrics[0]?.backgroundColor) < 95, `dark impact option background is too light: ${JSON.stringify(impactOptionMetrics[0])}`);
+          assert.ok(rgbLuminance(impactOptionMetrics[0]?.color) > 150, `dark impact option text is too dim: ${JSON.stringify(impactOptionMetrics[0])}`);
+        }
+        if (viewport.width <= 720 && impactOptionMetrics.length >= 2) {
+          assert.ok(Math.abs(impactOptionMetrics[0].left - impactOptionMetrics[1].left) <= 1, `mobile impact options should use one column: ${JSON.stringify(impactOptionMetrics.slice(0, 2))}`);
+          assert.ok(impactOptionMetrics[1].top > impactOptionMetrics[0].top, `mobile impact options should stack vertically: ${JSON.stringify(impactOptionMetrics.slice(0, 2))}`);
+        }
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, `impact-editor-${viewport.width}-${dark ? 'dark' : 'light'}.png`),
+          fullPage: true
+        });
         for (const impactId of ['1', '2', '3', '4', '5']) {
           await page.locator(`[data-my-day-editor-impact-chip][value="${impactId}"]`).check({ force: true });
         }
+        const selectedImpactEditorChips = await page.locator('.my-day-impact-editor-selected-chip').evaluateAll(nodes => nodes.map(node => {
+          const rect = node.getBoundingClientRect();
+          return { width: rect.width, height: rect.height, text: node.textContent.trim() };
+        }));
+        assert.equal(selectedImpactEditorChips.length, 5);
+        assert.ok(selectedImpactEditorChips.every(item => item.width <= viewport.width - 90 && item.height > 0), `selected impact editor chips should stay compact: ${JSON.stringify(selectedImpactEditorChips)}`);
+        await page.screenshot({
+          path: path.join(OUTPUT_DIR, `impact-editor-selected-${viewport.width}-${dark ? 'dark' : 'light'}.png`),
+          fullPage: true
+        });
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
         await page.waitForSelector('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="3"]');
         const impactButtons = page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id]');
         assert.equal(await impactButtons.count(), 5);
+        assert.equal((await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"].my-day-task-chip--add').textContent())?.trim(), '+');
         assert.equal(await page.locator('[data-cabinet-task-action="reveal-impact"][data-task-id="101"]').count(), 0);
         assert.equal(await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"]').count(), 0);
         const impactVisibility = await impactButtons.evaluateAll(buttons => buttons.map(button => {

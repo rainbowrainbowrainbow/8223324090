@@ -175,6 +175,8 @@ test('My Day task impact chips open the editor with task and impact ids', () => 
     assert.match(html, /aria-label="Змінити вплив CRM"/);
     assert.match(html, /data-my-day-impact-id="3"/);
     assert.match(html, /my-day-task-chip--add/);
+    assert.match(html, />\+<\/span>/);
+    assert.doesNotMatch(html, />\+ Вплив<\/span>/);
     assert.doesNotMatch(html, /\shidden(?:\s|>)/);
 });
 
@@ -195,8 +197,11 @@ test('My Day editable impact chips and task editor have compact responsive CSS s
     assert.match(css, /\.my-day-impact-editor-edit-form/);
     assert.match(css, /\.my-day-impact-editor-edit-actions/);
     assert.match(css, /\.task-ui-action-surface--my-day-impacts\.is-popover \.task-ui-action-panel/);
+    assert.match(css, /\.task-ui-action-surface--my-day-impacts \.task-ui-action-body\s*\{[\s\S]*overflow-x:\s*hidden/);
     assert.match(css, /\.my-day-impact-editor-grid\s*\{[\s\S]*grid-template-columns:\s*repeat\(2,\s*minmax\(0,\s*1fr\)\)/);
-    assert.match(css, /@media \(max-width:\s*560px\)[\s\S]*\.my-day-impact-editor-edit-actions,[\s\S]*\.my-day-impact-editor-grid\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+    assert.match(css, /@media \(max-width:\s*720px\), \(pointer:\s*coarse\)[\s\S]*\.my-day-impact-editor-edit-actions,[\s\S]*\.my-day-impact-editor-grid\s*\{[\s\S]*grid-template-columns:\s*1fr/);
+    assert.match(css, /body\.dark-mode \.task-ui-action-surface--my-day-impacts \.my-day-impact-editor-option/);
+    assert.match(css, /html\[data-theme="dark"\] \.task-ui-action-surface--my-day-impacts \.my-day-impact-editor-option\.is-selected/);
     assert.match(css, /\.my-day-task-impact-chips\.is-classification-pending/);
     assert.match(css, /@media \(prefers-reduced-motion:\s*reduce\)/);
     assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--editable/);

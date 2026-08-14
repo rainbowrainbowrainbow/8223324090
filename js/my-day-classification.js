@@ -212,11 +212,11 @@
             return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--editable" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Змінити вплив ' + name)}" data-cabinet-task-action="classification" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" aria-haspopup="dialog" ${disabled ? 'disabled aria-disabled="true"' : ''}>${impactIcon(record, true)}<span>${escape(label)}</span></button>`;
         };
         const impactButtons = impacts.map(renderImpactButton).join('');
-        const addLabel = impacts.length >= maxImpacts() ? 'Змінити' : '+ Вплив';
+        const addLabel = '+';
         const addTitle = impacts.length >= maxImpacts()
             ? `Змінити обрані впливи (${impacts.length}/${maxImpacts()})`
             : 'Додати вплив до задачі';
-        const addButton = `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--add" title="${escape(addTitle)}" aria-label="${escape(addTitle)}" data-cabinet-task-action="classification" data-task-id="${escape(taskIdAttr)}" aria-haspopup="dialog" ${disabledAttr}>${impactIcon({ icon: 'custom', color: '#64748B', name: addLabel }, true)}<span>${escape(addLabel)}</span></button>`;
+        const addButton = `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--add" title="${escape(addTitle)}" aria-label="${escape(addTitle)}" data-cabinet-task-action="classification" data-task-id="${escape(taskIdAttr)}" aria-haspopup="dialog" ${disabledAttr}><span aria-hidden="true">${escape(addLabel)}</span></button>`;
         return `<span class="my-day-task-impact-chips" data-my-day-task-impact-chips>${impactButtons}${addButton}</span>`;
     }
 
@@ -381,8 +381,9 @@
         return selectedIds.map(id => {
             const record = findImpactRecord(id, task) || { id, name: 'Вплив #' + id, color: '#64748B', icon: 'custom' };
             const name = String(record.name || '').trim() || ('Вплив #' + id);
+            const label = compactImpactName(record) || name;
             return `<span class="my-day-impact-editor-selected-chip-wrap" style="--my-day-chip-color:${escape(record.color || '#64748B')}">
-                <button type="button" class="my-day-impact-editor-selected-chip" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-my-day-editor-remove-impact="${escape(id)}">${impactIcon(record, true)}<span>${escape(name)}</span><span aria-hidden="true">×</span></button>
+                <button type="button" class="my-day-impact-editor-selected-chip" title="${escape(name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-my-day-editor-remove-impact="${escape(id)}">${impactIcon(record, true)}<span>${escape(label)}</span><span aria-hidden="true">×</span></button>
                 <button type="button" class="my-day-impact-editor-selected-edit" title="${escape('Редагувати ' + name)}" aria-label="${escape('Редагувати вплив ' + name)}" data-my-day-editor-edit-impact="${escape(id)}">✎</button>
             </span>`;
         }).join('');

@@ -193,6 +193,23 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
                 { id: 105, title: 'Completed segment task', status: 'done', completedAt: '${today}T10:00:00.000Z' },
                 { id: 106, title: 'Completed second task', status: 'done', completedAt: '${today}T11:00:00.000Z' }
             ],
+            completedTodayTasks: [
+                {
+                    id: 107,
+                    title: 'Dashboard completed task',
+                    status: 'done',
+                    completedAt: '${today}T12:00:00.000Z',
+                    actualSeconds: 1800,
+                    completedSubtasksToday: 2,
+                    subtasks: [
+                        { id: 701, title: 'Step one', isDone: true, completedAt: '${today}T12:10:00.000Z' },
+                        { id: 702, title: 'Step two', isDone: true, completedAt: '${today}T12:20:00.000Z' }
+                    ],
+                    myDay: {
+                        impacts: [{ id: 9, name: 'CRM', color: '#0EA5E9', icon: 'C' }]
+                    }
+                }
+            ],
             stats: { taskQuick: { completedTotal: 2, completedToday: 2, activeMyDay: 4 } }
         };
         cabinetTaskComposerExpanded = false;
@@ -216,6 +233,12 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.doesNotMatch(html, /cabinet-support-panel/);
     assert.doesNotMatch(html, /cabinet-quick-cluster/);
     assert.match(html, /cabinet-task-composer/);
+    assert.match(html, /cabinet-completed-today-dashboard/);
+    assert.match(html, /Dashboard completed task/);
+    assert.match(html, /data-cabinet-completed-today-filter="impact:9"/);
+    assert.match(html, /data-cabinet-task-action="open" data-task-id="107"/);
+    assert.ok(html.indexOf('cabinet-completed-strip') < html.indexOf('cabinet-completed-today-dashboard'));
+    assert.ok(html.indexOf('cabinet-completed-today-dashboard') < html.indexOf('cabinet-view-mode-toggle'));
     assert.match(html, /data-cabinet-my-day-layout="focused-overdue"/);
     assert.match(html, /cabinet-day-column--today/);
     assert.match(html, /cabinet-day-column--overdue/);
@@ -1920,6 +1943,11 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /completedTotal:\s*quickStats\.done_total/);
     assert.match(source, /completedSubtasksToday:\s*quickStats\.subtask_done_today/);
     assert.match(source, /completedMetricContract:\s*'completed_units = completed_parent_tasks \+ completed_subtasks'/);
+    assert.match(source, /completedTodayTasks/);
+    assert.match(source, /completedTodaySourceRows/);
+    assert.match(source, /completed_subtask_count_today/);
+    assert.match(source, /latest_subtask_completed_at/);
+    assert.match(source, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\) = \$\$\{completedTodayDateParam\}::date/);
     assert.match(source, /remaining_today/);
     assert.match(source, /overdue_carryover/);
     assert.match(source, /active_my_day/);
@@ -1934,6 +1962,7 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
     assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
+    assert.match(source, /\.\.\.completedHistorySourceRows,\s*\.\.\.completedTodaySourceRows/);
     assert.match(authSource, /Completed work units \(parent tasks \+ completed subtasks\)/);
     assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
     assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
@@ -2189,6 +2218,98 @@ test('my cabinet planning projection keeps owner and business scope guards', asy
     assert.match(planningCall.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/);
     assert.match(planningCall.text, /COALESCE\(t\.status, 'todo'\) NOT IN \('done','cancelled','archived'\)/);
     assert.deepEqual(planningCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-07-02', '2026-07-31', 261]);
+});
+
+test('my cabinet completed today dashboard bucket is exact and independent from 36-row history', async () => {
+    const { buildTaskCabinetProjection } = require('../services/taskCabinetProjection');
+    const calls = [];
+    const historyRows = Array.from({ length: 36 }, (_, index) => ({
+        id: 1000 + index,
+        title: `History ${index + 1}`,
+        status: 'done',
+        completed_at: `2026-08-14T${String(8 + (index % 10)).padStart(2, '0')}:00:00.000Z`
+    }));
+    const completedTodayRow = {
+        id: 500,
+        title: 'Exact today completion outside history window',
+        status: 'done',
+        completed_at: '2026-08-14T13:30:00.000Z',
+        completed_subtask_count_today: 2,
+        latest_subtask_completed_at: '2026-08-14T13:45:00.000Z',
+        subtasks: [
+            { id: 1, title: 'Done step', is_done: true, completed_at: '2026-08-14T13:40:00.000Z' },
+            { id: 2, title: 'Second step', is_done: true, completed_at: '2026-08-14T13:45:00.000Z' }
+        ]
+    };
+    const pool = {
+        async query(text, params = []) {
+            calls.push({ text, params });
+            if (/SELECT COUNT\(\*\)::int AS open_count/.test(text)) {
+                return { rows: [{ open_count: 0 }] };
+            }
+            if (/completed_subtask_count_today/.test(text)) {
+                return { rows: [completedTodayRow] };
+            }
+            if (/COALESCE\(t\.status, 'todo'\) = 'done'/.test(text) && /LIMIT \$\d+/.test(text)) {
+                return { rows: historyRows };
+            }
+            if (/done_total/.test(text)) {
+                return {
+                    rows: [{
+                        done_total: 99,
+                        done_today: 3,
+                        parent_done_today: 1,
+                        subtask_done_today: 2,
+                        subtask_done_total: 44,
+                        remaining_today: 0,
+                        overdue_carryover: 0,
+                        active_my_day: 0
+                    }]
+                };
+            }
+            if (/FROM unnest\(\$2::int\[\]\)/.test(text)) {
+                return {
+                    rows: [{
+                        task_id: 500,
+                        direction_id: null,
+                        impacts: [{ id: 9, name: 'CRM', color: '#0EA5E9', icon: 'C', isActive: true }]
+                    }]
+                };
+            }
+            return { rows: [] };
+        }
+    };
+
+    const projection = await buildTaskCabinetProjection({
+        pool,
+        user: {
+            id: 7,
+            username: 'serhiy',
+            name: 'Serhiy',
+            role: 'creator'
+        },
+        businessScope: {
+            mode: 'single',
+            activeContext: 'event_genix',
+            selectedContexts: ['event_genix']
+        },
+        ensurePreferences: false,
+        now: new Date('2026-08-14T12:00:00.000Z')
+    });
+
+    const completedTodayCall = calls.find(call => /completed_subtask_count_today/.test(call.text));
+    assert.ok(completedTodayCall, 'completedTodayTasks query should be executed separately');
+    assert.match(completedTodayCall.text, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\)/);
+    assert.match(completedTodayCall.text, /COALESCE\(today_subtasks\.done_today, 0\) > 0/);
+    assert.deepEqual(completedTodayCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-08-14']);
+    assert.equal(projection.completedHistory.length, 36);
+    assert.equal(projection.completedTodayTasks.length, 1);
+    assert.equal(projection.completedTodayTasks[0].id, 500);
+    assert.equal(projection.completedTodayTasks[0].completedSubtasksToday, 2);
+    assert.equal(projection.completedTodayTasks[0].actualSeconds, 0);
+    assert.equal(projection.completedTodayTasks[0].myDay.impacts[0].name, 'CRM');
+    assert.equal(projection.stats.taskQuick.completedParentToday, 1);
+    assert.equal(projection.stats.taskQuick.completedSubtasksToday, 2);
 });
 
 test('urgent priority has dashboard alert escalation and alert-panel commitment action', () => {

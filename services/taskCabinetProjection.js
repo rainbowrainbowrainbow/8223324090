@@ -434,14 +434,83 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistorySourceRows = Array.isArray(completedHistoryResult.rows)
         ? completedHistoryResult.rows
         : [];
-    const myDayTaskIds = [...new Set([...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows]
+    const completedTodayParams = [...ownParams, today];
+    const completedTodayDateParam = completedTodayParams.length;
+    const completedTodayResult = await queryable.query(
+        `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
+                COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
+                COALESCE(st.total, 0)::int AS subtask_count,
+                COALESCE(st.done, 0)::int AS subtask_done_count,
+                COALESCE(today_subtasks.done_today, 0)::int AS completed_subtask_count_today,
+                today_subtasks.latest_completed_at AS latest_subtask_completed_at
+         FROM tasks t
+         LEFT JOIN users u ON u.id = t.owner_user_id
+         LEFT JOIN (
+            SELECT task_id,
+                   COUNT(*)::int AS total,
+                   COUNT(*) FILTER (WHERE is_done = true)::int AS done
+            FROM task_subtasks
+            GROUP BY task_id
+         ) st ON st.task_id = t.id
+         LEFT JOIN (
+            SELECT task_id,
+                   COUNT(*) FILTER (
+                       WHERE is_done = true
+                         AND completed_at IS NOT NULL
+                         AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDateParam}::date
+                   )::int AS done_today,
+                   MAX(completed_at) FILTER (
+                       WHERE is_done = true
+                         AND completed_at IS NOT NULL
+                         AND DATE(completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDateParam}::date
+                   ) AS latest_completed_at
+            FROM task_subtasks
+            GROUP BY task_id
+         ) today_subtasks ON today_subtasks.task_id = t.id
+         LEFT JOIN (
+            SELECT task_id,
+                   json_agg(json_build_object(
+                       'id', id,
+                       'task_id', task_id,
+                       'title', title,
+                       'is_done', is_done,
+                       'sort_order', sort_order,
+                       'source_type', COALESCE(source_type, 'manual'),
+                       'created_at', created_at,
+                       'completed_at', completed_at,
+                       'updated_at', updated_at
+                   ) ORDER BY sort_order ASC, id ASC) AS subtasks
+            FROM task_subtasks
+            GROUP BY task_id
+         ) subtask_rows ON subtask_rows.task_id = t.id
+         WHERE ${ownMatch}
+           ${ownBusinessCondition}
+           AND COALESCE(t.status, 'todo') NOT IN ('cancelled','archived')
+           AND (
+                (
+                    COALESCE(t.status, 'todo') = 'done'
+                    AND t.completed_at IS NOT NULL
+                    AND DATE(t.completed_at AT TIME ZONE 'Europe/Kyiv') = $${completedTodayDateParam}::date
+                )
+                OR COALESCE(today_subtasks.done_today, 0) > 0
+           )
+         ORDER BY GREATEST(
+             COALESCE(t.completed_at, t.updated_at, t.created_at),
+             COALESCE(today_subtasks.latest_completed_at, t.updated_at, t.created_at)
+         ) DESC, t.id DESC`,
+        completedTodayParams
+    );
+    const completedTodaySourceRows = Array.isArray(completedTodayResult.rows)
+        ? completedTodayResult.rows
+        : [];
+    const myDayTaskIds = [...new Set([...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows, ...completedTodaySourceRows]
         .map(row => Number(row.id || row.task_id || row.taskId))
         .filter(id => Number.isInteger(id) && id > 0))];
     const myDayClassificationsByTaskId = await loadTaskClassifications(queryable, userId, myDayTaskIds);
     const dependencyStatesByTaskId = await loadTaskDependencyStates(queryable, myDayTaskIds);
     const taskTimeTotalsByTaskId = await loadTaskTimeTotals(queryable, userId, myDayTaskIds);
     const explanationTaskIds = [...new Set(
-        [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows]
+        [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows, ...completedTodaySourceRows]
             .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
             .map(row => Number(row.id || row.task_id || row.taskId))
             .filter(id => Number.isInteger(id) && id > 0)
@@ -459,7 +528,13 @@ async function buildTaskCabinetProjection(options = {}) {
             blocked_by_titles: dependencyState?.blockedByTitles || null,
             dependencies: dependencyState?.dependencies || []
         }, { postponementEvent: postponementEventsByTaskId.get(taskId) || null, user });
-        return { ...task, actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0, myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] } };
+        return {
+            ...task,
+            actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0,
+            completedSubtasksToday: Number(row.completed_subtask_count_today || row.completedSubtasksToday || 0),
+            latestSubtaskCompletedAt: row.latest_subtask_completed_at || row.latestSubtaskCompletedAt || null,
+            myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] }
+        };
     };
     const rows = activeSourceRows.map(normalizeProjectionRow);
     const planningRows = planningSourceRows.map(normalizeProjectionRow);
@@ -478,6 +553,7 @@ async function buildTaskCabinetProjection(options = {}) {
         order: 'overdue_today_later_no_date'
     };
     const completedHistory = completedHistorySourceRows.map(normalizeProjectionRow);
+    const completedTodayTasks = completedTodaySourceRows.map(normalizeProjectionRow);
 
     const buckets = {
         focus: [],
@@ -579,6 +655,7 @@ async function buildTaskCabinetProjection(options = {}) {
         private: buckets.private,
         overdue: buckets.overdue,
         inbox: buckets.inbox,
+        completedTodayTasks,
         completedHistory,
         all: rows,
         planning,

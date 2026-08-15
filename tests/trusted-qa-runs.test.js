@@ -4,6 +4,8 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const {
+    TRUSTED_QA_CAPABILITY_STATUS,
+    TRUSTED_QA_SIDE_EFFECT_CAPABILITIES,
     TrustedQaRunError,
     cleanupTrustedQaRun,
     createTrustedQaRun,
@@ -13,7 +15,8 @@ const {
     registerQaEntity,
     requestEndpointKey,
     runTrustedQaCleanupWatchdog,
-    sha256
+    sha256,
+    trustedQaSideEffectInventory
 } = require('../services/trustedQaRuns');
 
 function makeReq({
@@ -82,6 +85,31 @@ function makeBooking(overrides = {}) {
     };
 }
 
+const REQUIRED_SIDE_EFFECT_TABLES = TRUSTED_QA_SIDE_EFFECT_CAPABILITIES
+    .filter(capability => capability.required)
+    .map(capability => capability.tableName);
+
+const DEFAULT_SIDE_EFFECT_COLUMNS = Object.freeze({
+    finance_transactions: ['booking_id'],
+    receipts: ['booking_id'],
+    banquet_deposits: ['primary_booking_id'],
+    warehouse_stock_movements: ['source_type', 'source_id', 'status'],
+    warehouse_history: ['source_type', 'source_id', 'status'],
+    outbox_events: ['source_type', 'source_id', 'status'],
+    event_queue: ['source_type', 'source_id', 'status'],
+    rule_execution_log: ['source_type', 'source_id', 'status'],
+    notification_outbox: ['source_type', 'source_id', 'status'],
+    chat_messages: ['source_type', 'source_id', 'status'],
+    announcements: ['source_type', 'source_id', 'status'],
+    print_jobs: ['source_type', 'source_id', 'status'],
+    loyalty_transactions: ['source_type', 'source_id', 'status'],
+    gamification_events: ['source_type', 'source_id', 'status']
+});
+
+function defaultReadableSideEffectTables() {
+    return Object.fromEntries(REQUIRED_SIDE_EFFECT_TABLES.map(tableName => [tableName, 0]));
+}
+
 class FakeTrustedQaDb {
     constructor({
         token = 'valid-token',
@@ -89,14 +117,16 @@ class FakeTrustedQaDb {
         entities = [],
         entityCount = entities.length,
         failBookingCleanup = false,
-        sideEffectTables = {}
+        sideEffectTables = {},
+        sideEffectColumns = {}
     } = {}) {
         this.token = token;
         this.run = { ...run };
         this.entities = entities.map(row => ({ ...row }));
         this.entityCount = entityCount;
         this.failBookingCleanup = failBookingCleanup;
-        this.sideEffectTables = { ...sideEffectTables };
+        this.sideEffectTables = { ...defaultReadableSideEffectTables(), ...sideEffectTables };
+        this.sideEffectColumns = { ...DEFAULT_SIDE_EFFECT_COLUMNS, ...sideEffectColumns };
         this.queries = [];
         this.deletedEventQueueRows = [];
         this.tokenUses = new Set();
@@ -212,23 +242,56 @@ class FakeTrustedQaDb {
             return { rows: [], rowCount: 0 };
         }
         if (normalized.startsWith('SELECT to_regclass')) {
+            const value = this.sideEffectTables[params[0]];
+            if (value?.relationError) throw value.relationError;
             return {
-                rows: [{ relation_name: Object.hasOwn(this.sideEffectTables, params[0]) ? params[0] : null }],
+                rows: [{ relation_name: Object.hasOwn(this.sideEffectTables, params[0]) && value !== 'absent' ? params[0] : null }],
                 rowCount: 1
+            };
+        }
+        if (normalized.includes('FROM information_schema.columns')) {
+            const tableName = params[0];
+            const value = this.sideEffectTables[tableName];
+            if (value?.columnsError) throw value.columnsError;
+            const columns = value?.columns || this.sideEffectColumns[tableName] || [];
+            return {
+                rows: columns.map((column_name, index) => ({ column_name, ordinal_position: index + 1 })),
+                rowCount: columns.length
             };
         }
         if (normalized.includes('DELETE FROM event_queue row_value')) {
             const value = this.sideEffectTables.event_queue || 0;
             const rows = Array.isArray(value)
                 ? value
+                : (Array.isArray(value?.rows) ? value.rows
                 : Array.from({ length: Number(value || 0) }, (_, index) => ({
                     id: index + 1,
                     event_type: 'booking.cancelled',
                     status: 'processed'
-                }));
+                })));
             this.deletedEventQueueRows.push(...rows);
             this.sideEffectTables.event_queue = 0;
             return { rows, rowCount: rows.length };
+        }
+        const structuredSideEffectMatch = normalized.match(/FROM "([a-z_]+)" WHERE/);
+        if (structuredSideEffectMatch) {
+            const tableName = structuredSideEffectMatch[1];
+            const value = this.sideEffectTables[tableName] || 0;
+            if (value?.queryError) throw value.queryError;
+            const rows = Array.isArray(value)
+                ? value
+                : (Array.isArray(value?.rows) ? value.rows
+                    : Array.from({ length: Number(value?.count ?? value ?? 0) }, () => ({ status: 'pending' })));
+            const terminal = new Set(['processed', 'done', 'completed', 'complete', 'archived', 'cleaned', 'cancelled', 'canceled', 'closed', 'resolved', 'sent', 'delivered', 'skipped', 'ignored']);
+            const active = rows.filter(row => !terminal.has(String(row.status || 'pending').toLowerCase()));
+            return {
+                rows: [{
+                    exact_count: rows.length,
+                    active_count: active.length,
+                    processed_historical_count: rows.length - active.length
+                }],
+                rowCount: 1
+            };
         }
         const sideEffectMatch = normalized.match(/FROM ([a-z_]+) row_value/);
         if (sideEffectMatch) {
@@ -446,7 +509,7 @@ test('cleanup is exact-manifest driven, cancels registered bookings/groups and i
     assert.equal(second.idempotent, true);
 });
 
-test('cleanup purges exact trusted QA event queue rows before side-effect postconditions', async () => {
+test('cleanup keeps processed trusted QA event queue rows as historical evidence', async () => {
     const db = new FakeTrustedQaDb({
         entities: [
             { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
@@ -462,9 +525,100 @@ test('cleanup purges exact trusted QA event queue rows before side-effect postco
     const result = await cleanupTrustedQaRun(db, 11);
 
     assert.equal(result.status, 'cleaned');
-    assert.deepEqual(result.purgedEventQueueIds, [1939, 1940]);
-    assert.deepEqual(db.deletedEventQueueRows.map(row => row.id), [1939, 1940]);
+    assert.deepEqual(result.purgedEventQueueIds, []);
+    assert.deepEqual(db.deletedEventQueueRows, []);
     assert.equal(result.sideEffectCounts.event_queue, 0);
+    assert.equal(result.sideEffectExactCounts.event_queue, 2);
+    assert.equal(result.sideEffectProcessedHistoricalCounts.event_queue, 2);
+});
+
+test('side-effect inventory separates processed historical evidence from active leftovers', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: {
+            outbox_events: [{ status: 'processed' }],
+            notification_outbox: [{ status: 'pending' }]
+        }
+    });
+    const inventory = {
+        run: db.run,
+        entities: db.entities
+    };
+
+    const result = await trustedQaSideEffectInventory(db, inventory, ['BK-QA-1'], []);
+    const outbox = result.capabilities.find(item => item.tableName === 'outbox_events');
+    const notifications = result.capabilities.find(item => item.tableName === 'notification_outbox');
+
+    assert.equal(outbox.status, TRUSTED_QA_CAPABILITY_STATUS.READABLE);
+    assert.equal(outbox.exactCount, 1);
+    assert.equal(outbox.activeCount, 0);
+    assert.equal(outbox.processedHistoricalCount, 1);
+    assert.equal(outbox.blocking, false);
+    assert.equal(notifications.activeCount, 1);
+    assert.equal(result.total, 1);
+});
+
+test('side-effect inventory classifies optional absent capabilities as non-blocking', async () => {
+    const db = new FakeTrustedQaDb();
+    const inventory = {
+        run: db.run,
+        entities: [{ id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }]
+    };
+
+    const result = await trustedQaSideEffectInventory(db, inventory, ['BK-QA-1'], []);
+    const loyalty = result.capabilities.find(item => item.tableName === 'loyalty_transactions');
+    const gamification = result.capabilities.find(item => item.tableName === 'gamification_events');
+
+    assert.equal(loyalty.status, TRUSTED_QA_CAPABILITY_STATUS.ABSENT);
+    assert.equal(loyalty.required, false);
+    assert.equal(loyalty.blocking, false);
+    assert.equal(gamification.status, TRUSTED_QA_CAPABILITY_STATUS.ABSENT);
+    assert.equal(gamification.blocking, false);
+});
+
+test('side-effect inventory blocks required visibility failures instead of treating them as zero', async () => {
+    const permissionError = new Error('permission denied for table notification_outbox');
+    permissionError.code = '42501';
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: {
+            notification_outbox: { relationError: permissionError }
+        }
+    });
+    const inventory = {
+        run: db.run,
+        entities: db.entities
+    };
+
+    const result = await trustedQaSideEffectInventory(db, inventory, ['BK-QA-1'], []);
+    const notifications = result.capabilities.find(item => item.tableName === 'notification_outbox');
+
+    assert.equal(notifications.status, TRUSTED_QA_CAPABILITY_STATUS.PERMISSION_DENIED);
+    assert.equal(notifications.blocking, true);
+    assert.equal(result.visibilityBlockers.length, 1);
+});
+
+test('cleanup fails closed when required side-effect visibility is incomplete', async () => {
+    const permissionError = new Error('permission denied for table notification_outbox');
+    permissionError.code = '42501';
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: {
+            notification_outbox: { relationError: permissionError }
+        }
+    });
+
+    await assert.rejects(
+        () => cleanupTrustedQaRun(db, 11),
+        err => err instanceof TrustedQaRunError && err.code === 'QA_RUN_SIDE_EFFECT_VISIBILITY_BLOCKER'
+    );
+    assert.deepEqual(db.cancelledBookingIds, []);
 });
 
 test('watchdog retries cleanup_pending and blocks after bounded failures', async () => {

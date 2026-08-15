@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.151 - Banquet Cancellation Final Guard
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Синхронізація банкетного скасування між вкладками** - `banquet:booking-set-updated` тепер має повний visibility context, affected booking IDs і affected dates, тому друга вкладка оновлює timeline/cache після activity або full banquet cancellation.
+- **Trusted QA inventory без false positives** - cleanup рахує side effects тільки через точні durable атрибути run/entity/booking/group/product, розділяє active leftovers і processed historical evidence та fail-closed блокує відсутні required visibility права.
+- **Audit/event history не видаляється** - trusted QA cleanup більше не чистить `event_queue` фізичним broad JSON delete; processed rows залишаються audit evidence, active rows стають явним blocker.
+
+---
+
 ## v0.80.150 - My Day Live Smoke Guard
 
 ### Release / Versioning / (15.08.2026) [codex]

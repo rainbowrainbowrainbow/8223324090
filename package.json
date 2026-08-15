@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.150",
+  "version": "0.80.151",
   "eventGenix": {
-    "releaseLabel": "My Day Live Smoke Guard"
+    "releaseLabel": "Banquet Cancellation Final Guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

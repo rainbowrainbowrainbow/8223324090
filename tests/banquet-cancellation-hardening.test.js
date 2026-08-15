@@ -138,7 +138,9 @@ test('trusted QA markers require server token and manifest registration', () => 
     assert.match(bookings, /bookingCreateSideEffectsAllowed\(\)\s*\?\s*await syncManagerDepositForBooking/);
     assert.match(bookings, /if \(bookingCreateSideEffectsAllowed\(\)\) \{\s*await syncBookingLeadHandoff/);
     assert.match(service, /QA_RUN_SIDE_EFFECT_BLOCKER/);
-    assert.match(service, /purgeTrustedQaEventQueueRows/);
+    assert.match(service, /QA_RUN_SIDE_EFFECT_VISIBILITY_BLOCKER/);
+    assert.match(service, /processedHistoricalCount/);
+    assert.doesNotMatch(service, /DELETE FROM event_queue/);
     assert.match(service, /TRUSTED_QA_SIDE_EFFECT_TABLES/);
     assert.match(bookings, /bookingCreateSideEffectsAllowed\(\) && b\.secondAnimator && b\.date/);
     assert.match(bookings, /fullCreateSideEffectsAllowed\(\) \? Boolean\(lb\.skipNotification\) : true/);

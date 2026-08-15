@@ -234,9 +234,10 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.doesNotMatch(html, /cabinet-quick-cluster/);
     assert.match(html, /cabinet-task-composer/);
     assert.match(html, /cabinet-completed-today-dashboard/);
-    assert.match(html, /Dashboard completed task/);
-    assert.match(html, /data-cabinet-completed-today-filter="impact:9"/);
-    assert.match(html, /data-cabinet-task-action="open" data-task-id="107"/);
+    assert.match(html, /cabinet-completed-today-pulse/);
+    assert.match(html, /data-cabinet-completed-today-toggle/);
+    assert.doesNotMatch(html, /Dashboard completed task/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="open" data-task-id="107"/);
     assert.ok(html.indexOf('cabinet-completed-strip') < html.indexOf('cabinet-completed-today-dashboard'));
     assert.ok(html.indexOf('cabinet-completed-today-dashboard') < html.indexOf('cabinet-view-mode-toggle'));
     assert.match(html, /data-cabinet-my-day-layout="focused-overdue"/);
@@ -247,6 +248,14 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.match(html, /Today segment task/);
     assert.match(html, /Overdue segment task/);
     assert.doesNotMatch(html, /Waiting segment task/);
+
+    vm.runInContext('completedTodayDashboardExpanded = true;', ctx);
+    html = ctx.renderMyDayTab();
+    assert.match(html, /data-cabinet-completed-today-details/);
+    assert.match(html, /Dashboard completed task/);
+    assert.doesNotMatch(html, /data-cabinet-completed-today-all/);
+    assert.match(html, /data-cabinet-task-action="open" data-task-id="107"/);
+    assert.doesNotMatch(html, /Задача виконана|Є виконані підпунки|Є виконані підпункти/);
 
     ctx.setCabinetMyDaySegment('waiting');
     html = ctx.renderMyDayTab();
@@ -262,6 +271,124 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.match(html, /data-cabinet-my-day-layout="focused-overdue"/);
     assert.match(html, /cabinet-completed-strip/);
     assert.match(html, /Completed segment task/);
+});
+
+test('profile completed today dashboard is compact by default and limits expanded rows', () => {
+    const ctx = loadProfileTaskerContext();
+    const today = '2026-08-14';
+    const completedTasks = Array.from({ length: 15 }, (_, index) => ({
+        id: 900 + index,
+        title: `Completed ${String(index + 1).padStart(2, '0')}`,
+        status: 'done',
+        completedAt: `${today}T12:${String(index).padStart(2, '0')}:00.000Z`,
+        actualSeconds: index === 0 ? 60 : 0,
+        myDay: {
+            impacts: index >= 11 ? [{ id: 9, name: 'CRM', color: '#0EA5E9', icon: 'C' }] : []
+        }
+    }));
+
+    vm.runInContext(`
+        myCabinetData = {
+            meta: { calendar: { today: '${today}' } },
+            completedTodayTasks: ${JSON.stringify(completedTasks)}
+        };
+        completedTodayDashboardExpanded = false;
+        completedTodayDashboardShowAll = false;
+    `, ctx);
+
+    let html = ctx.renderCabinetCompletedTodayDashboard();
+    assert.match(html, /cabinet-completed-today-pulse/);
+    assert.match(html, /data-cabinet-completed-today-toggle/);
+    assert.match(html, /15 разом/);
+    assert.match(html, /Без впливу/);
+    assert.doesNotMatch(html, /data-cabinet-completed-today-details/);
+    assert.doesNotMatch(html, /Completed 01/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="open"/);
+    assert.equal(vm.runInContext('completedTodayDashboardExpanded', ctx), false);
+    assert.equal(vm.runInContext('completedTodayDashboardShowAll', ctx), false);
+
+    vm.runInContext('completedTodayDashboardExpanded = true;', ctx);
+    html = ctx.renderCabinetCompletedTodayDashboard();
+    assert.match(html, /data-cabinet-completed-today-details/);
+    assert.match(html, /Completed 01/);
+    assert.match(html, /Completed 05/);
+    assert.doesNotMatch(html, /Completed 06/);
+    assert.match(html, /data-cabinet-completed-today-all/);
+    assert.match(html, /\+10/);
+    assert.doesNotMatch(html, /Задача виконана|Є виконані підпунки|Є виконані підпункти/);
+
+    vm.runInContext('completedTodayDashboardShowAll = true;', ctx);
+    html = ctx.renderCabinetCompletedTodayDashboard();
+    assert.match(html, /Completed 15/);
+    assert.doesNotMatch(html, /data-cabinet-completed-today-all/);
+
+    vm.runInContext(`
+        myCabinetData = { meta: { calendar: { today: '${today}' } }, completedTodayTasks: [] };
+        completedTodayDashboardExpanded = false;
+        completedTodayDashboardShowAll = false;
+    `, ctx);
+    html = ctx.renderCabinetCompletedTodayDashboard();
+    assert.match(html, /is-empty/);
+    assert.match(html, /Ще немає виконань/);
+    assert.doesNotMatch(html, /data-cabinet-task-action="open"/);
+});
+
+test('profile completed today details toggle is local and does not reload projection', () => {
+    const ctx = loadProfileTaskerContext();
+    const today = '2026-08-14';
+    vm.runInContext(`
+        myCabinetData = {
+            meta: { calendar: { today: '${today}' } },
+            completedTodayTasks: [{
+                id: 990,
+                title: 'Toggle completed task',
+                status: 'done',
+                completedAt: '${today}T12:00:00.000Z',
+                actualSeconds: 120,
+                subtask_count: 2,
+                subtask_done_count: 1,
+                subtasks: [{ id: 1, title: 'Step', status: 'done', completedAt: '${today}T11:59:00.000Z' }],
+                myDay: { impacts: [{ id: 9, name: 'CRM', color: '#0EA5E9', icon: 'C' }] }
+            }]
+        };
+        completedTodayDashboardExpanded = false;
+        completedTodayDashboardShowAll = false;
+        let projectionReloads = 0;
+        loadMyCabinetProjection = async () => { projectionReloads += 1; };
+        const initialHtml = renderCabinetCompletedTodayDashboard();
+        let renderedHtml = initialHtml;
+        let queryCalls = 0;
+        const currentNode = {
+            get outerHTML() { return renderedHtml; },
+            set outerHTML(value) { renderedHtml = value; }
+        };
+        const nextNode = { querySelectorAll: () => [] };
+        document = {
+            addEventListener() {},
+            querySelector(selector) {
+                if (selector !== '[data-cabinet-completed-today-dashboard]') return null;
+                queryCalls += 1;
+                return queryCalls === 1 ? currentNode : nextNode;
+            }
+        };
+        toggleCabinetCompletedTodayDetails();
+        window.__COMPLETED_TOGGLE_RESULT__ = {
+            expanded: completedTodayDashboardExpanded,
+            showAll: completedTodayDashboardShowAll,
+            projectionReloads,
+            initialHtml,
+            renderedHtml
+        };
+    `, ctx);
+    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.initialHtml, /1 разом/);
+    assert.doesNotMatch(ctx.__COMPLETED_TOGGLE_RESULT__.initialHtml, /Toggle completed task/);
+    assert.doesNotMatch(ctx.__COMPLETED_TOGGLE_RESULT__.initialHtml, /data-cabinet-task-action="open"/);
+    assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.expanded, true);
+    assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.showAll, false);
+    assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.projectionReloads, 0);
+    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-completed-today-details/);
+    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-task-action="open" data-task-id="990"/);
+    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /1\/2 пунктів/);
 });
 
 test('profile My Day overdue segment renders triage rows with existing task actions', () => {
@@ -2304,6 +2431,7 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
     assert.deepEqual(completedTodayCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-08-14']);
     assert.equal(projection.completedHistory.length, 36);
     assert.equal(projection.completedTodayTasks.length, 1);
+    assert.equal(projection.completedHistory.some(task => task.id === 500), false);
     assert.equal(projection.completedTodayTasks[0].id, 500);
     assert.equal(projection.completedTodayTasks[0].completedSubtasksToday, 2);
     assert.equal(projection.completedTodayTasks[0].actualSeconds, 0);

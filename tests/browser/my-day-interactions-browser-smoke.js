@@ -47,11 +47,51 @@ function harnessHtml() {
     body.dark-mode .harness-card { background: rgba(15,23,42,.94); }
     .harness-actions { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
     .harness-card .cabinet-task-zone--header { display: flex; justify-content: space-between; gap: 12px; }
+    .harness-detail-drawer { position: fixed; inset: auto 16px 16px auto; min-width: 220px; padding: 14px 16px; border-radius: 16px; border: 1px solid rgba(20,184,166,.45); background: rgba(15,23,42,.96); color: #f8fafc; box-shadow: 0 18px 45px rgba(15,23,42,.35); }
     .task-ui-action-panel { z-index: 1; }
   </style>
 </head>
 <body class="profile-page profile-work-mode">
   <main class="harness-grid profile-page profile-work-mode">
+    <section class="cabinet-completed-today-dashboard" data-cabinet-completed-today-dashboard aria-label="Completed today">
+      <div class="cabinet-completed-today-pulse">
+        <div class="cabinet-completed-today-head">
+          <div class="cabinet-completed-today-ring" style="--completed-ring:70" aria-label="3 completions"><b>3</b></div>
+          <div class="cabinet-completed-today-title">
+            <span class="cabinet-kicker">Completed today</span>
+            <h3>3 total</h3>
+            <p>2 tasks · 1 subtask · 4 min</p>
+          </div>
+        </div>
+        <div class="cabinet-completed-today-metrics">
+          <span><b>2</b><small>tasks</small></span>
+          <span><b>1</b><small>points</small></span>
+          <span><b>4 min</b><small>time</small></span>
+        </div>
+        <div class="cabinet-completed-today-top">
+          <div class="cabinet-completed-today-impact-bars">
+            <div class="cabinet-completed-today-impact-row"><span class="cabinet-completed-today-filter-dot" style="--my-day-chip-color:#0EA5E9">C</span><span>CRM</span><div class="cabinet-completed-today-bar"><i style="width:100%;--my-day-chip-color:#0EA5E9"></i></div><b>2</b></div>
+            <div class="cabinet-completed-today-impact-row"><span class="cabinet-completed-today-filter-dot is-muted">—</span><span>No impact</span><div class="cabinet-completed-today-bar"><i style="width:50%;--my-day-chip-color:#5eead4"></i></div><b>1</b></div>
+          </div>
+        </div>
+        <div class="cabinet-completed-today-actions"><button type="button" class="cabinet-completed-today-toggle" data-cabinet-completed-today-toggle aria-expanded="false">Details</button></div>
+      </div>
+      <div class="cabinet-completed-today-details" data-cabinet-completed-today-details hidden>
+        <div class="cabinet-completed-today-chart">
+          <h4>Impacts</h4>
+          <div class="cabinet-completed-today-impact-bars">
+            <div class="cabinet-completed-today-impact-row"><span class="cabinet-completed-today-filter-dot" style="--my-day-chip-color:#0EA5E9">C</span><span>CRM</span><div class="cabinet-completed-today-bar"><i style="width:100%;--my-day-chip-color:#0EA5E9"></i></div><b>2</b></div>
+          </div>
+        </div>
+        <div class="cabinet-completed-today-list">
+          <div class="cabinet-completed-today-list-head"><h4>Recent</h4><span>2 of 2</span></div>
+          <button type="button" class="cabinet-completed-today-row" data-cabinet-task-action="open" data-task-id="777">
+            <span class="cabinet-completed-today-row-mark" aria-hidden="true">1</span>
+            <span class="cabinet-completed-today-row-main"><b>Completed row QA</b><small>12:00 · 2 min · 1/2 points</small><span class="cabinet-completed-today-row-impacts"><span class="cabinet-completed-today-impact-chip" style="--my-day-chip-color:#0EA5E9"><span>C</span>CRM</span></span></span>
+          </button>
+        </div>
+      </div>
+    </section>
     <section class="harness-card cabinet-task-card" data-task-id="101" id="normal-card">
       <div class="cabinet-task-zone cabinet-task-zone--header">
         <h1 class="cabinet-task-title">Normal My Day task</h1>
@@ -81,6 +121,7 @@ function harnessHtml() {
       <div data-my-day-classification-badges="202"></div>
     </section>
   </main>
+  <aside class="harness-detail-drawer" data-task-detail-drawer hidden tabindex="-1" aria-label="Task detail drawer"></aside>
   <script src="/js/task-ui.js"></script>
   <script src="/js/my-day-impact-icons.js"></script>
   <script src="/js/my-day-classification.js"></script>
@@ -120,6 +161,9 @@ function harnessHtml() {
       removeInFlight: new Set(),
       previous: {}
     };
+    state.completedProjectionReads = 0;
+    state.completedDashboardExpanded = false;
+    state.openedTaskId = null;
     const clone = value => JSON.parse(JSON.stringify(value));
     const classificationFromIds = ids => ({ impacts: ids.map(id => impacts.find(impact => impact.id === Number(id))).filter(Boolean) });
     const applyClassification = (taskId, classification) => {
@@ -142,9 +186,30 @@ function harnessHtml() {
     window.__MY_DAY_INTERACTIONS__ = { state, applyClassification, renderTimeTriggers };
     renderTimeTriggers();
     document.addEventListener('click', async event => {
+      const completedToggle = event.target.closest('[data-cabinet-completed-today-toggle]');
+      if (completedToggle) {
+        event.preventDefault();
+        state.completedDashboardExpanded = !state.completedDashboardExpanded;
+        completedToggle.setAttribute('aria-expanded', state.completedDashboardExpanded ? 'true' : 'false');
+        const panel = document.querySelector('[data-cabinet-completed-today-details]');
+        if (panel) panel.hidden = !state.completedDashboardExpanded;
+        return;
+      }
       const actionButton = event.target.closest('[data-cabinet-task-action]');
       if (!actionButton) return;
       const action = actionButton.dataset.cabinetTaskAction;
+      if (action === 'open') {
+        event.preventDefault();
+        state.openedTaskId = Number(actionButton.dataset.taskId || 0);
+        const drawer = document.querySelector('[data-task-detail-drawer]');
+        if (drawer) {
+          drawer.hidden = false;
+          drawer.dataset.openTaskId = String(state.openedTaskId);
+          drawer.textContent = 'Task detail drawer opened for task ' + state.openedTaskId;
+          drawer.focus();
+        }
+        return;
+      }
       if (action === 'time-menu') {
         event.preventDefault();
         const taskId = Number(actionButton.dataset.taskId);
@@ -361,6 +426,43 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         if (dark) await page.evaluate(() => document.body.classList.add('dark-mode'));
         await page.waitForSelector('#manual-normal');
         await page.waitForFunction(() => window.MyDayTimeTracking && window.__MY_DAY_INTERACTIONS__);
+        assert.equal(await page.locator('[data-cabinet-completed-today-details]').isHidden(), true, 'completed-today details must be hidden by default');
+        const completedPulseMetrics = await page.locator('[data-cabinet-completed-today-dashboard]').evaluate(node => {
+            const rect = node.getBoundingClientRect();
+            return {
+                height: rect.height,
+                overflow: node.scrollWidth - node.clientWidth,
+                detailHidden: node.querySelector('[data-cabinet-completed-today-details]')?.hidden,
+                projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads
+            };
+        });
+        assert.ok(completedPulseMetrics.height <= (viewport.width <= 640 ? 220 : 130), `completed pulse default is too tall: ${JSON.stringify(completedPulseMetrics)}`);
+        assert.ok(completedPulseMetrics.overflow <= 1, `completed pulse default overflows horizontally: ${JSON.stringify(completedPulseMetrics)}`);
+        assert.equal(completedPulseMetrics.detailHidden, true);
+        assert.equal(completedPulseMetrics.projectionReads, 0);
+        const completedToggle = page.locator('[data-cabinet-completed-today-toggle]');
+        const completedToggleBounds = await completedToggle.boundingBox();
+        assert.ok(completedToggleBounds && completedToggleBounds.height >= 34, `completed details toggle tap target is too small: ${JSON.stringify(completedToggleBounds)}`);
+        await completedToggle.press('Enter');
+        await page.waitForFunction(() => !document.querySelector('[data-cabinet-completed-today-details]')?.hidden);
+        const completedExpandedMetrics = await page.locator('[data-cabinet-completed-today-dashboard]').evaluate(node => ({
+            overflow: node.scrollWidth - node.clientWidth,
+            detailColumns: getComputedStyle(node.querySelector('[data-cabinet-completed-today-details]')).gridTemplateColumns,
+            projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads
+        }));
+        assert.ok(completedExpandedMetrics.overflow <= 1, `completed pulse expanded overflows horizontally: ${JSON.stringify(completedExpandedMetrics)}`);
+        assert.equal(completedExpandedMetrics.projectionReads, 0, 'completed details toggle must not reload projection');
+        if (viewport.width <= 640) {
+            assert.ok(!completedExpandedMetrics.detailColumns.includes(' '), `mobile completed details should be one column: ${JSON.stringify(completedExpandedMetrics)}`);
+        }
+        const completedRowBounds = await page.locator('[data-cabinet-completed-today-details] [data-cabinet-task-action="open"]').boundingBox();
+        assert.ok(completedRowBounds && completedRowBounds.height >= (viewport.width <= 640 ? 44 : 40), `completed row tap target is too small: ${JSON.stringify(completedRowBounds)}`);
+        await page.locator('[data-cabinet-completed-today-details] [data-cabinet-task-action="open"]').click();
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.openedTaskId), 777);
+        await page.waitForSelector('[data-task-detail-drawer][data-open-task-id="777"]', { state: 'visible' });
+        assert.match(await page.locator('[data-task-detail-drawer]').textContent(), /task 777/);
+        await completedToggle.click();
+        await page.waitForFunction(() => document.querySelector('[data-cabinet-completed-today-details]')?.hidden);
         await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.renderTimeTriggers());
         try {
             await page.waitForSelector('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"]');

@@ -39,7 +39,8 @@ let cabinetCreateDuePreset = 'today';
 let cabinetMyDayListMode = 'focused';
 let cabinetMyDaySegment = 'today';
 let cabinetMyDayViewMode = 'compact';
-let cabinetCompletedTodayFilter = 'all';
+let completedTodayDashboardShowAll = false;
+let completedTodayDashboardExpanded = false;
 let activeCabinetInlineTaskId = null;
 let cabinetCreatePriority = 'normal';
 let cabinetTaskComposerExpanded = false;
@@ -3655,21 +3656,6 @@ function cabinetCompletedTodayTaskImpacts(task = {}) {
         : [];
 }
 
-function normalizeCabinetCompletedTodayFilter(value = cabinetCompletedTodayFilter) {
-    const raw = String(value || 'all').trim();
-    if (raw === 'all' || raw === 'none') return raw;
-    const impactId = Number(raw.replace(/^impact:/, ''));
-    return Number.isInteger(impactId) && impactId > 0 ? `impact:${impactId}` : 'all';
-}
-
-function cabinetCompletedTodayFilteredTasks(tasks = cabinetCompletedTodayTasksList(), filter = cabinetCompletedTodayFilter) {
-    const normalized = normalizeCabinetCompletedTodayFilter(filter);
-    if (normalized === 'all') return tasks;
-    if (normalized === 'none') return tasks.filter(task => !cabinetCompletedTodayTaskImpacts(task).length);
-    const impactId = Number(normalized.replace('impact:', ''));
-    return tasks.filter(task => cabinetCompletedTodayTaskImpacts(task).some(impact => Number(impact.id) === impactId));
-}
-
 function cabinetCompletedTodayMetrics(tasks = cabinetCompletedTodayTasksList()) {
     const parentTasks = tasks.filter(cabinetTaskParentCompletedToday).length;
     const subtasks = tasks.reduce((sum, task) => sum + cabinetTaskCompletedSubtasksToday(task), 0);
@@ -3705,60 +3691,9 @@ function cabinetCompletedTodayImpactDistribution(tasks = cabinetCompletedTodayTa
     };
 }
 
-function renderCabinetCompletedTodayFilters(distribution = cabinetCompletedTodayImpactDistribution(), filter = cabinetCompletedTodayFilter, totalTasks = 0) {
-    const normalized = normalizeCabinetCompletedTodayFilter(filter);
-    const allActive = normalized === 'all';
-    const noneActive = normalized === 'none';
-    const impactButtons = distribution.impacts.map(impact => {
-        const value = `impact:${Number(impact.id)}`;
-        const active = normalized === value;
-        return `<button type="button" class="cabinet-completed-today-filter ${active ? 'active' : ''}" data-cabinet-completed-today-filter="${escapeHtml(value)}" aria-pressed="${active ? 'true' : 'false'}">
-            <span class="cabinet-completed-today-filter-dot" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}">${escapeHtml(impact.icon || '•')}</span>
-            <span>${escapeHtml(impact.name || 'Вплив')}</span>
-            <b>${formatCabinetPulseCount(impact.count || 0)}</b>
-        </button>`;
-    }).join('');
-    return `<div class="cabinet-completed-today-filters" aria-label="Фільтр виконань за впливом">
-        <button type="button" class="cabinet-completed-today-filter ${allActive ? 'active' : ''}" data-cabinet-completed-today-filter="all" aria-pressed="${allActive ? 'true' : 'false'}">
-            <span>Усі</span><b>${formatCabinetPulseCount(totalTasks)}</b>
-        </button>
-        ${impactButtons}
-        <button type="button" class="cabinet-completed-today-filter ${noneActive ? 'active' : ''}" data-cabinet-completed-today-filter="none" aria-pressed="${noneActive ? 'true' : 'false'}">
-            <span>Без впливу</span><b>${formatCabinetPulseCount(distribution.withoutImpact || 0)}</b>
-        </button>
-    </div>`;
-}
-
-function renderCabinetCompletedTodayImpactBars(distribution = cabinetCompletedTodayImpactDistribution(), totalTasks = 0) {
-    if (!distribution.impacts.length && !distribution.withoutImpact) {
-        return '<div class="cabinet-completed-today-empty-mini">Класифікації ще немає.</div>';
-    }
-    const max = Math.max(1, ...distribution.impacts.map(item => Number(item.count || 0)), Number(distribution.withoutImpact || 0));
-    const rows = distribution.impacts.slice(0, 6).map(impact => {
-        const count = Number(impact.count || 0);
-        const width = Math.max(8, Math.round((count / max) * 100));
-        return `<div class="cabinet-completed-today-impact-row">
-            <span class="cabinet-completed-today-filter-dot" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}">${escapeHtml(impact.icon || '•')}</span>
-            <span>${escapeHtml(impact.name || 'Вплив')}</span>
-            <div class="cabinet-completed-today-bar" aria-hidden="true"><i style="width:${width}%; --my-day-chip-color:${escapeHtml(impact.color || '#64748b')}"></i></div>
-            <b>${formatCabinetPulseCount(count)}</b>
-        </div>`;
-    }).join('');
-    const without = distribution.withoutImpact
-        ? `<div class="cabinet-completed-today-impact-row">
-            <span class="cabinet-completed-today-filter-dot is-muted">—</span>
-            <span>Без впливу</span>
-            <div class="cabinet-completed-today-bar" aria-hidden="true"><i style="width:${Math.max(8, Math.round((distribution.withoutImpact / max) * 100))}%"></i></div>
-            <b>${formatCabinetPulseCount(distribution.withoutImpact)}</b>
-        </div>`
-        : '';
-    return `<div class="cabinet-completed-today-impact-bars" aria-label="Розподіл ${formatCabinetPulseCount(totalTasks)} завершених задач за впливами">${rows}${without}</div>`;
-}
-
 function renderCabinetCompletedTodayTaskRow(task = {}, index = 0) {
     const taskId = normalizeCabinetTaskId(task.id || task.taskId || task.task_id);
     const completedAt = cabinetTaskCompletedAt(task);
-    const parentDone = cabinetTaskParentCompletedToday(task);
     const subSummary = cabinetSubtaskSummary(task);
     const completedSubtasksToday = cabinetTaskCompletedSubtasksToday(task);
     const impacts = cabinetCompletedTodayTaskImpacts(task);
@@ -3766,12 +3701,17 @@ function renderCabinetCompletedTodayTaskRow(task = {}, index = 0) {
         ? `<div class="cabinet-completed-today-row-impacts">${impacts.slice(0, 5).map(impact => `<span class="cabinet-completed-today-impact-chip" style="--my-day-chip-color:${escapeHtml(impact.color || '#64748b')}"><span>${escapeHtml(impact.icon || '•')}</span>${escapeHtml(impact.name || 'Вплив')}</span>`).join('')}</div>`
         : '<div class="cabinet-completed-today-row-impacts"><span class="cabinet-completed-today-impact-chip is-muted">Без впливу</span></div>';
     const progress = subSummary.total
-        ? `<span>${formatCabinetPulseCount(subSummary.done)}/${formatCabinetPulseCount(subSummary.total)} пунктів</span>`
+        ? `${formatCabinetPulseCount(subSummary.done)}/${formatCabinetPulseCount(subSummary.total)} пунктів`
         : '';
     const todaySubtasks = completedSubtasksToday
-        ? `<span>${formatCabinetPulseCount(completedSubtasksToday)} підпунктів сьогодні</span>`
+        ? `${formatCabinetPulseCount(completedSubtasksToday)} підпунктів сьогодні`
         : '';
-    const status = parentDone ? 'Задача виконана' : 'Є виконані підпункти';
+    const completedMeta = [
+        completedAt ? profileFormatTime(completedAt) : '',
+        cabinetFormatDuration(task.actualSeconds || task.actual_seconds || 0),
+        progress,
+        todaySubtasks
+    ].filter(Boolean).join(' · ');
     const actionAttrs = taskId
         ? `data-cabinet-task-action="open" data-task-id="${taskId}"`
         : 'disabled';
@@ -3779,59 +3719,115 @@ function renderCabinetCompletedTodayTaskRow(task = {}, index = 0) {
         <span class="cabinet-completed-today-row-mark" aria-hidden="true">${index + 1}</span>
         <span class="cabinet-completed-today-row-main">
             <b>${escapeHtml(task.title || 'Без назви')}</b>
-            <small>${escapeHtml([status, completedAt ? profileFormatTime(completedAt) : '', cabinetFormatDuration(task.actualSeconds || task.actual_seconds || 0)].filter(Boolean).join(' · '))}</small>
+            <small>${escapeHtml(completedMeta)}</small>
             ${impactChips}
         </span>
-        <span class="cabinet-completed-today-row-stats">
-            ${progress}
-            ${todaySubtasks}
-        </span>
     </button>`;
+}
+
+function cabinetCompletedTodayDistributionItems(distribution = cabinetCompletedTodayImpactDistribution()) {
+    const impactItems = (Array.isArray(distribution.impacts) ? distribution.impacts : []).map(impact => ({
+        key: `impact:${Number(impact.id)}`,
+        label: impact.name || 'Вплив',
+        count: Number(impact.count || 0),
+        color: impact.color || '#64748b',
+        icon: impact.icon || '•',
+        muted: false
+    }));
+    if (Number(distribution.withoutImpact || 0) > 0) {
+        impactItems.push({
+            key: 'none',
+            label: 'Без впливу',
+            count: Number(distribution.withoutImpact || 0),
+            color: '#5eead4',
+            icon: '—',
+            muted: true
+        });
+    }
+    return impactItems
+        .filter(item => item.count > 0)
+        .sort((a, b) => b.count - a.count || String(a.label || '').localeCompare(String(b.label || '')));
+}
+
+function renderCabinetCompletedTodayPulseImpacts(distribution = cabinetCompletedTodayImpactDistribution(), totalTasks = 0, options = {}) {
+    const limit = Math.max(1, Number(options.limit || 3));
+    const items = cabinetCompletedTodayDistributionItems(distribution).slice(0, limit);
+    if (!items.length) {
+        return '<div class="cabinet-completed-today-empty-mini">Ще немає класифікації.</div>';
+    }
+    const max = Math.max(1, ...items.map(item => item.count));
+    return `<div class="cabinet-completed-today-impact-bars" aria-label="Топ впливів виконаного сьогодні">
+        ${items.map(item => {
+            const width = Math.max(8, Math.round((item.count / max) * 100));
+            return `<div class="cabinet-completed-today-impact-row">
+                <span class="cabinet-completed-today-filter-dot ${item.muted ? 'is-muted' : ''}" style="--my-day-chip-color:${escapeHtml(item.color)}">${escapeHtml(item.icon)}</span>
+                <span>${escapeHtml(item.label)}</span>
+                <div class="cabinet-completed-today-bar" aria-hidden="true"><i style="width:${width}%; --my-day-chip-color:${escapeHtml(item.color)}"></i></div>
+                <b>${formatCabinetPulseCount(item.count)}</b>
+            </div>`;
+        }).join('')}
+        ${totalTasks > items.reduce((sum, item) => sum + item.count, 0) && options.showOther
+            ? `<div class="cabinet-completed-today-more">+${formatCabinetPulseCount(totalTasks - items.reduce((sum, item) => sum + item.count, 0))} інших</div>`
+            : ''}
+    </div>`;
+}
+
+function renderCabinetCompletedTodayDetails(tasks = cabinetCompletedTodayTasksList(), distribution = cabinetCompletedTodayImpactDistribution()) {
+    const visibleTasks = completedTodayDashboardShowAll ? tasks : tasks.slice(0, 5);
+    const overflow = completedTodayDashboardShowAll ? 0 : Math.max(0, tasks.length - visibleTasks.length);
+    return `<div class="cabinet-completed-today-details" data-cabinet-completed-today-details>
+        <div class="cabinet-completed-today-chart">
+            <h4>Класифікація</h4>
+            ${renderCabinetCompletedTodayPulseImpacts(distribution, tasks.length, { limit: 6 })}
+        </div>
+        <div class="cabinet-completed-today-list">
+            <div class="cabinet-completed-today-list-head">
+                <h4>Останні виконані</h4>
+                <span>${formatCabinetPulseCount(visibleTasks.length)} з ${formatCabinetPulseCount(tasks.length)}</span>
+            </div>
+            ${visibleTasks.length
+                ? visibleTasks.map(renderCabinetCompletedTodayTaskRow).join('')
+                : '<div class="cabinet-completed-today-empty">Ще немає виконань сьогодні.</div>'}
+            ${overflow ? `<button type="button" class="cabinet-completed-today-all" data-cabinet-completed-today-all="true">Всі деталі · +${formatCabinetPulseCount(overflow)}</button>` : ''}
+        </div>
+    </div>`;
 }
 
 function renderCabinetCompletedTodayDashboard() {
     const tasks = cabinetCompletedTodayTasksList();
     const metrics = cabinetCompletedTodayMetrics(tasks);
     const distribution = cabinetCompletedTodayImpactDistribution(tasks);
-    const filter = normalizeCabinetCompletedTodayFilter(cabinetCompletedTodayFilter);
-    const filteredTasks = cabinetCompletedTodayFilteredTasks(tasks, filter);
-    const todayLabel = myCabinetData?.meta?.calendar?.today || 'сьогодні';
+    const expanded = Boolean(completedTodayDashboardExpanded);
     const hasData = tasks.length > 0 || metrics.totalUnits > 0;
-    const filterLabel = filter === 'all' ? 'усі виконання' : filter === 'none' ? 'без впливу' : 'обраний вплив';
-    return `<section class="cabinet-completed-today-dashboard ${hasData ? '' : 'is-empty'}" data-cabinet-completed-today-dashboard aria-label="Виконано сьогодні: задачі, підпункти, час і впливи">
-        <div class="cabinet-completed-today-head">
-            <div>
-                <span class="cabinet-kicker">Виконано сьогодні</span>
-                <h3>${formatCabinetPulseCount(metrics.totalUnits)} виконань за ${escapeHtml(todayLabel)}</h3>
-                <p>Окремо рахуємо закриті задачі та підпункти. Історія на 36 записів тут не використовується.</p>
-            </div>
-            <div class="cabinet-completed-today-ring" style="--completed-ring:${Math.min(100, metrics.totalUnits ? Math.max(12, Math.round((metrics.parentTasks / Math.max(1, metrics.totalUnits)) * 100)) : 0)}" aria-label="${formatCabinetPulseCount(metrics.parentTasks)} задач і ${formatCabinetPulseCount(metrics.subtasks)} підпунктів">
-                <b>${formatCabinetPulseCount(metrics.totalUnits)}</b>
-                <span>разом</span>
-            </div>
-        </div>
-        <div class="cabinet-completed-today-metrics">
-            <span><b>${formatCabinetPulseCount(metrics.parentTasks)}</b><small>виконані задачі</small></span>
-            <span><b>${formatCabinetPulseCount(metrics.subtasks)}</b><small>виконані підпункти</small></span>
-            <span><b>${formatCabinetPulseCount(metrics.totalUnits)}</b><small>загальна кількість виконань</small></span>
-            <span><b>${escapeHtml(cabinetFormatDuration(metrics.seconds))}</b><small>зафіксований час</small></span>
-        </div>
-        ${renderCabinetCompletedTodayFilters(distribution, filter, tasks.length)}
-        <div class="cabinet-completed-today-body">
-            <div class="cabinet-completed-today-chart">
-                <h4>Класифікація</h4>
-                ${renderCabinetCompletedTodayImpactBars(distribution, tasks.length)}
-            </div>
-            <div class="cabinet-completed-today-list">
-                <div class="cabinet-completed-today-list-head">
-                    <h4>Завершені рядки</h4>
-                    <span>${formatCabinetPulseCount(filteredTasks.length)} · ${escapeHtml(filterLabel)}</span>
+    return `<section class="cabinet-completed-today-dashboard ${hasData ? '' : 'is-empty'} ${expanded ? 'is-expanded' : ''}" data-cabinet-completed-today-dashboard aria-label="Виконано сьогодні">
+        <div class="cabinet-completed-today-pulse">
+            <div class="cabinet-completed-today-head">
+                <div class="cabinet-completed-today-ring" style="--completed-ring:${Math.min(100, metrics.totalUnits ? Math.max(12, Math.round((metrics.parentTasks / Math.max(1, metrics.totalUnits)) * 100)) : 0)}" aria-label="${formatCabinetPulseCount(metrics.totalUnits)} виконань разом">
+                    <b>${formatCabinetPulseCount(metrics.totalUnits)}</b>
                 </div>
-                ${filteredTasks.length
-                    ? filteredTasks.map(renderCabinetCompletedTodayTaskRow).join('')
-                    : `<div class="cabinet-completed-today-empty">${hasData ? 'У цьому фільтрі немає виконань.' : 'Коли сьогодні закриєте задачу або підпункт, вони зʼявляться тут.'}</div>`}
+                <div class="cabinet-completed-today-title">
+                    <span class="cabinet-kicker">Виконано сьогодні</span>
+                    <h3>${hasData ? `${formatCabinetPulseCount(metrics.totalUnits)} разом` : 'Ще немає виконань'}</h3>
+                    <p>${hasData
+                        ? `${formatCabinetPulseCount(metrics.parentTasks)} задач · ${formatCabinetPulseCount(metrics.subtasks)} підпунктів · ${escapeHtml(cabinetFormatDuration(metrics.seconds))}`
+                        : 'Закриті задачі й підпункти зʼявляться тут коротким підсумком.'}</p>
+                </div>
+            </div>
+            <div class="cabinet-completed-today-metrics">
+                <span><b>${formatCabinetPulseCount(metrics.parentTasks)}</b><small>задач</small></span>
+                <span><b>${formatCabinetPulseCount(metrics.subtasks)}</b><small>пункти</small></span>
+                <span><b>${escapeHtml(cabinetFormatDuration(metrics.seconds))}</b><small>час</small></span>
+            </div>
+            <div class="cabinet-completed-today-top">
+                ${renderCabinetCompletedTodayPulseImpacts(distribution, tasks.length, { limit: 3 })}
+            </div>
+            <div class="cabinet-completed-today-actions">
+                <button type="button" class="cabinet-completed-today-toggle" data-cabinet-completed-today-toggle aria-expanded="${expanded ? 'true' : 'false'}">
+                    ${expanded ? 'Стисло' : 'Деталі'}
+                </button>
             </div>
         </div>
+        ${expanded ? renderCabinetCompletedTodayDetails(tasks, distribution) : ''}
     </section>`;
 }
 
@@ -3845,8 +3841,17 @@ function rerenderCabinetCompletedTodayDashboard() {
     bindCabinetCompletedTodayDashboard(next);
 }
 
-function setCabinetCompletedTodayFilter(value) {
-    cabinetCompletedTodayFilter = normalizeCabinetCompletedTodayFilter(value);
+function showAllCabinetCompletedTodayDetails() {
+    completedTodayDashboardExpanded = true;
+    completedTodayDashboardShowAll = true;
+    rerenderCabinetCompletedTodayDashboard();
+}
+
+function toggleCabinetCompletedTodayDetails() {
+    completedTodayDashboardExpanded = !completedTodayDashboardExpanded;
+    if (!completedTodayDashboardExpanded) {
+        completedTodayDashboardShowAll = false;
+    }
     rerenderCabinetCompletedTodayDashboard();
 }
 
@@ -7793,13 +7798,22 @@ function bindCabinetTaskActions(root = document) {
 }
 
 function bindCabinetCompletedTodayDashboard(root = document) {
-    root?.querySelectorAll?.('[data-cabinet-completed-today-filter]').forEach(button => {
-        if (button.dataset.cabinetCompletedTodayFilterBound === 'true') return;
-        button.dataset.cabinetCompletedTodayFilterBound = 'true';
+    root?.querySelectorAll?.('[data-cabinet-completed-today-toggle]').forEach(button => {
+        if (button.dataset.cabinetCompletedTodayToggleBound === 'true') return;
+        button.dataset.cabinetCompletedTodayToggleBound = 'true';
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            setCabinetCompletedTodayFilter(button.dataset.cabinetCompletedTodayFilter);
+            toggleCabinetCompletedTodayDetails();
+        });
+    });
+    root?.querySelectorAll?.('[data-cabinet-completed-today-all]').forEach(button => {
+        if (button.dataset.cabinetCompletedTodayAllBound === 'true') return;
+        button.dataset.cabinetCompletedTodayAllBound = 'true';
+        button.addEventListener('click', event => {
+            event.preventDefault();
+            event.stopPropagation();
+            showAllCabinetCompletedTodayDetails();
         });
     });
 }

@@ -43,6 +43,19 @@ let completedDashboardShowAll = false;
 let completedDashboardExpanded = false;
 let completedDashboardTab = 'today';
 let completedDashboardVisibleCount = 5;
+let completedDashboardHistoryVisibleCount = 5;
+let completedDashboardHistoryState = {
+    scopeKey: '',
+    items: [],
+    nextCursor: '',
+    hasMore: false,
+    loading: false,
+    error: '',
+    requestSeq: 0,
+    total: 0,
+    limit: 36,
+    initialized: false
+};
 let activeCabinetInlineTaskId = null;
 let cabinetCreatePriority = 'normal';
 let cabinetTaskComposerExpanded = false;
@@ -1182,6 +1195,40 @@ async function apiGetScoped(path) {
     } catch (e) { console.error('API scoped GET', path, e); return null; }
 }
 
+function cabinetCompletionHistoryApiUrl({ cursor = '', limit = CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT } = {}) {
+    const params = new URLSearchParams();
+    params.set('period', 'history');
+    params.set('limit', String(Math.max(1, Math.min(100, Number(limit || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT) || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT))));
+    if (cursor) params.set('cursor', String(cursor));
+    const path = `/api/tasks/my-cabinet/completions?${params.toString()}`;
+    return typeof window !== 'undefined' && window.CrmBusinessContext?.apiUrl
+        ? window.CrmBusinessContext.apiUrl(path)
+        : path;
+}
+
+async function fetchCabinetCompletionHistoryPage({ cursor = '', limit = CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT } = {}) {
+    const url = cabinetCompletionHistoryApiUrl({ cursor, limit });
+    const response = await fetch(url, { headers: getAuthHeaders(false) });
+    if (handleAuthError(response)) {
+        return { success: false, error: 'Потрібна повторна авторизація.', status: response?.status || 401 };
+    }
+    const payload = await response.json().catch(() => ({}));
+    if (!response.ok || payload?.success === false) {
+        return {
+            success: false,
+            error: payload?.error || payload?.message || 'Не вдалося завантажити історію виконань.',
+            code: payload?.code || '',
+            status: response.status
+        };
+    }
+    return {
+        success: true,
+        items: Array.isArray(payload.items) ? payload.items : [],
+        pagination: payload.pagination || {},
+        totals: payload.totals || {}
+    };
+}
+
 function cabinetProjectionLoadErrorText(message = '') {
     return message || 'Не вдалося завантажити задачі. Перевірте зʼєднання і повторіть спробу.';
 }
@@ -1190,6 +1237,7 @@ function setMyCabinetProjectionData(data, options = {}) {
     if (data && typeof data === 'object') {
         myCabinetData = data;
         myCabinetLoadError = '';
+        syncCabinetCompletionHistoryStateFromProjection(data);
         return myCabinetData;
     }
     myCabinetLoadError = cabinetProjectionLoadErrorText(options.message);
@@ -3201,6 +3249,7 @@ function applyCabinetTaskStatusToProjection(taskId, status, resultTask = {}, fal
     myCabinetData.completedTodayTasks = myCabinetData.completedTodayTasks.filter(task => cabinetProjectionTaskId(task) !== id);
     myCabinetData.completedTodayTasks.unshift(completedTask);
     applyCabinetCompletionStats(removed.buckets);
+    syncCabinetCompletionHistoryStateFromProjection(myCabinetData);
     return true;
 }
 
@@ -3259,7 +3308,8 @@ function renderCabinetActiveTab() {
 }
 
 function cabinetCompletedHistoryList() {
-    return cabinetList('completedHistory');
+    const state = syncCabinetCompletionHistoryStateFromProjection();
+    return Array.isArray(state.items) ? state.items : cabinetList('completedHistory');
 }
 
 function cabinetCompletedHistoryCounts(data = myCabinetData) {
@@ -3269,6 +3319,94 @@ function cabinetCompletedHistoryCounts(data = myCabinetData) {
     const shown = Number(quick.completedHistoryShown ?? history.length) || history.length;
     const overflow = Number(quick.completedHistoryOverflow ?? Math.max(0, total - shown)) || 0;
     return { total, shown: Math.min(shown, history.length), overflow };
+}
+
+function cabinetCompletionHistoryMeta(data = myCabinetData) {
+    const meta = data?.meta?.completedHistory || {};
+    return {
+        nextCursor: typeof meta.nextCursor === 'string' ? meta.nextCursor : '',
+        hasMore: Boolean(meta.hasMore),
+        limit: Math.max(1, Math.min(100, Number(meta.limit || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT) || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT)),
+        returned: Math.max(0, Number(meta.returned || 0) || 0)
+    };
+}
+
+function cabinetCompletionHistoryScopeKey(data = myCabinetData) {
+    const user = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
+    const userId = String(user.id || user.user_id || currentUserId || 'anonymous').trim() || 'anonymous';
+    const business = cabinetMyDayBusinessPreferenceScope().replace(/[^a-zA-Z0-9:_-]/g, '_');
+    const metaScope = data?.meta?.businessScope && typeof data.meta.businessScope === 'object'
+        ? JSON.stringify(data.meta.businessScope)
+        : '';
+    return `${userId}:${business}:${metaScope}`;
+}
+
+function mergeCabinetCompletionHistoryItems(primary = [], secondary = []) {
+    const seen = new Set();
+    const result = [];
+    [...(Array.isArray(primary) ? primary : []), ...(Array.isArray(secondary) ? secondary : [])].forEach(task => {
+        const id = cabinetProjectionTaskId(task);
+        const key = id ? `id:${id}` : `fallback:${cabinetTaskCompletedAt(task)}:${task?.title || ''}`;
+        if (seen.has(key)) return;
+        seen.add(key);
+        result.push(task);
+    });
+    return result;
+}
+
+function resetCabinetCompletionHistoryState(scopeKey = cabinetCompletionHistoryScopeKey()) {
+    completedDashboardHistoryState = {
+        scopeKey,
+        items: [],
+        nextCursor: '',
+        hasMore: false,
+        loading: false,
+        error: '',
+        requestSeq: completedDashboardHistoryState.requestSeq || 0,
+        total: 0,
+        limit: CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT,
+        initialized: false
+    };
+    completedDashboardHistoryVisibleCount = CABINET_COMPLETION_ROWS_INITIAL;
+    completedDashboardShowAll = false;
+    return completedDashboardHistoryState;
+}
+
+function syncCabinetCompletionHistoryStateFromProjection(data = myCabinetData) {
+    const scopeKey = cabinetCompletionHistoryScopeKey(data);
+    const projectionItems = Array.isArray(data?.completedHistory) ? data.completedHistory : [];
+    const meta = cabinetCompletionHistoryMeta(data);
+    const counts = cabinetCompletedHistoryCounts(data);
+    const current = completedDashboardHistoryState || {};
+    const scopeChanged = current.scopeKey !== scopeKey;
+    if (scopeChanged) {
+        resetCabinetCompletionHistoryState(scopeKey);
+    }
+    const state = completedDashboardHistoryState;
+    const preservePagination = !scopeChanged && state.initialized && state.items.length > projectionItems.length;
+    const inferredHasMore = Boolean(meta.hasMore && meta.nextCursor);
+    state.scopeKey = scopeKey;
+    state.items = mergeCabinetCompletionHistoryItems(projectionItems, scopeChanged ? [] : state.items);
+    state.nextCursor = preservePagination ? (state.nextCursor || '') : (meta.nextCursor || state.nextCursor || '');
+    state.hasMore = preservePagination ? Boolean(state.hasMore) : inferredHasMore;
+    state.limit = meta.limit || state.limit || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT;
+    state.total = Math.max(Number(counts.total || 0) || 0, state.items.length);
+    state.initialized = true;
+    if (!state.loading) state.error = state.error || '';
+    return state;
+}
+
+function cabinetCompletionHistoryState() {
+    return syncCabinetCompletionHistoryStateFromProjection();
+}
+
+function cabinetCompletionHistoryLoadedCount() {
+    return cabinetCompletionHistoryState().items.length;
+}
+
+function cabinetCompletionHistoryTotalCount() {
+    const state = cabinetCompletionHistoryState();
+    return Math.max(Number(state.total || 0) || 0, state.items.length);
 }
 
 function cabinetTaskCompletedAt(task = {}) {
@@ -3587,6 +3725,10 @@ function cabinetCompletionRowTypeLabel(task = {}, mode = 'today') {
 
 function cabinetCompletionVisibleCount(total = 0) {
     const safeTotal = Math.max(0, Number(total || 0));
+    if (normalizeCabinetCompletionTab() === 'history') {
+        const current = Math.max(CABINET_COMPLETION_ROWS_INITIAL, Number(completedDashboardHistoryVisibleCount || 0));
+        return Math.min(safeTotal, Number.isFinite(current) ? current : CABINET_COMPLETION_ROWS_INITIAL);
+    }
     if (completedDashboardShowAll) return safeTotal;
     const current = Math.max(CABINET_COMPLETION_ROWS_INITIAL, Number(completedDashboardVisibleCount || 0));
     return Math.min(safeTotal, Number.isFinite(current) ? current : CABINET_COMPLETION_ROWS_INITIAL);
@@ -3711,7 +3853,7 @@ function normalizeCabinetCompletionTab(tab = completedDashboardTab) {
 
 function renderCabinetCompletionTabs(activeTab = normalizeCabinetCompletionTab()) {
     const todayCount = cabinetCompletedTodayMetrics().totalUnits;
-    const historyCount = cabinetCompletedHistoryList().length;
+    const historyCount = cabinetCompletionHistoryTotalCount();
     return `<div class="cabinet-completion-tabs" role="tablist" aria-label="Зріз виконань">
         <button type="button" id="cabinetCompletionTabToday" class="${activeTab === 'today' ? 'active' : ''}" data-cabinet-completion-tab="today" role="tab" aria-selected="${activeTab === 'today' ? 'true' : 'false'}" aria-controls="cabinetCompletionDetails">Сьогодні <b>${formatCabinetPulseCount(todayCount)}</b></button>
         <button type="button" id="cabinetCompletionTabHistory" class="${activeTab === 'history' ? 'active' : ''}" data-cabinet-completion-tab="history" role="tab" aria-selected="${activeTab === 'history' ? 'true' : 'false'}" aria-controls="cabinetCompletionDetails">Історія <b>${formatCabinetPulseCount(historyCount)}</b></button>
@@ -3721,13 +3863,17 @@ function renderCabinetCompletionTabs(activeTab = normalizeCabinetCompletionTab()
 function renderCabinetCompletionDetails() {
     const activeTab = normalizeCabinetCompletionTab();
     const todayTasks = cabinetCompletedTodayTasksList();
-    const history = cabinetCompletedHistoryList();
+    const historyState = cabinetCompletionHistoryState();
+    const history = historyState.items;
     const tasks = activeTab === 'history' ? history : todayTasks;
     const visibleCount = cabinetCompletionVisibleCount(tasks.length);
     const visibleTasks = tasks.slice(0, visibleCount);
-    const overflow = Math.max(0, tasks.length - visibleTasks.length);
+    const localOverflow = Math.max(0, tasks.length - visibleTasks.length);
+    const historyHasMore = activeTab === 'history' && Boolean(historyState.hasMore);
+    const historyLoading = activeTab === 'history' && Boolean(historyState.loading);
+    const historyError = activeTab === 'history' ? historyState.error || '' : '';
     const distribution = cabinetCompletedTodayImpactDistribution(tasks);
-    const title = activeTab === 'history' ? 'Останні 36 задач' : 'Сьогодні';
+    const title = activeTab === 'history' ? 'Історія' : 'Сьогодні';
     const empty = activeTab === 'history'
         ? 'Історія виконань поки порожня.'
         : 'Ще немає виконань сьогодні.';
@@ -3738,21 +3884,35 @@ function renderCabinetCompletionDetails() {
                 ${group.tasks.map(({ task, index }) => renderCabinetCompletionTaskRow(task, index, activeTab)).join('')}`;
         }).join('')
         : visibleTasks.map((task, index) => renderCabinetCompletionTaskRow(task, index, activeTab)).join('');
-    const footerLabel = `Показати ще · +${formatCabinetPulseCount(overflow)}`;
+    const totalHistory = cabinetCompletionHistoryTotalCount();
+    const countLabel = activeTab === 'history'
+        ? `Завантажено ${formatCabinetExactCount(history.length)} із ${formatCabinetExactCount(totalHistory)}`
+        : `${formatCabinetPulseCount(visibleTasks.length)} з ${formatCabinetPulseCount(tasks.length)}`;
+    const distributionHint = activeTab === 'history' && historyHasMore
+        ? '<small>Серед завантажених</small>'
+        : '';
+    const footerLabel = activeTab === 'history' && historyHasMore && !localOverflow
+        ? 'Завантажити ще'
+        : `Показати ще · +${formatCabinetPulseCount(localOverflow)}`;
+    const showFooter = activeTab === 'history'
+        ? (localOverflow > 0 || historyHasMore || Boolean(historyError))
+        : localOverflow > 0;
     return `<div id="cabinetCompletionDetails" class="cabinet-completion-details" data-cabinet-completion-details role="tabpanel" aria-labelledby="${activeTab === 'history' ? 'cabinetCompletionTabHistory' : 'cabinetCompletionTabToday'}">
         <div class="cabinet-completion-impact-strip">
-            <h4>${activeTab === 'history' ? 'Класифікація історії' : 'Класифікація сьогодні'}</h4>
+            <h4>${activeTab === 'history' ? 'Класифікація історії' : 'Класифікація сьогодні'}${distributionHint}</h4>
             ${renderCabinetCompletedTodayPulseImpacts(distribution, tasks.length, { limit: 4, showOther: true, ariaLabel: activeTab === 'history' ? 'Топ впливів історії виконань' : 'Топ впливів виконань сьогодні' })}
         </div>
         <div class="cabinet-completion-list">
             <div class="cabinet-completion-list-head">
                 <h4>${escapeHtml(title)}</h4>
-                <span>${formatCabinetPulseCount(visibleTasks.length)} з ${formatCabinetPulseCount(tasks.length)}${activeTab === 'history' ? ' задач' : ''}</span>
+                <span>${escapeHtml(countLabel)}</span>
             </div>
             ${visibleTasks.length
                 ? rows
                 : `<div class="cabinet-completion-empty">${escapeHtml(empty)}</div>`}
-            ${overflow ? `<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true">${escapeHtml(footerLabel)}</button>` : ''}
+            ${historyError ? `<div class="cabinet-completion-error" role="status">${escapeHtml(historyError)}</div>` : ''}
+            ${historyLoading ? '<div class="cabinet-completion-loading" role="status">Завантажуємо історію…</div>' : ''}
+            ${showFooter ? `<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true" ${historyLoading ? 'disabled aria-busy="true"' : ''}>${escapeHtml(historyError ? 'Повторити' : footerLabel)}</button>` : ''}
         </div>
     </div>`;
 }
@@ -3810,21 +3970,92 @@ function rerenderCabinetCompletedTodayDashboard() {
     rerenderCabinetCompletionPulse();
 }
 
+async function loadNextCabinetCompletionHistoryPage() {
+    const state = cabinetCompletionHistoryState();
+    if (state.loading || !state.hasMore || !state.nextCursor) return state;
+    const requestSeq = (state.requestSeq || 0) + 1;
+    const scopeKey = state.scopeKey;
+    const cursor = state.nextCursor;
+    state.requestSeq = requestSeq;
+    state.loading = true;
+    state.error = '';
+    rerenderCabinetCompletionPulse();
+    try {
+        const result = await fetchCabinetCompletionHistoryPage({ cursor, limit: state.limit || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT });
+        const current = completedDashboardHistoryState;
+        if (current.requestSeq !== requestSeq || current.scopeKey !== scopeKey || normalizeCabinetCompletionTab() !== 'history') {
+            if (current.requestSeq === requestSeq && current.scopeKey === scopeKey) current.loading = false;
+            return current;
+        }
+        if (!result?.success) {
+            current.loading = false;
+            current.error = result?.error || 'Не вдалося завантажити історію виконань.';
+            return current;
+        }
+        const pagination = result.pagination || {};
+        current.items = mergeCabinetCompletionHistoryItems(current.items, result.items || []);
+        current.nextCursor = typeof pagination.nextCursor === 'string' ? pagination.nextCursor : '';
+        current.hasMore = Boolean(pagination.hasMore);
+        current.limit = Number(pagination.limit || current.limit || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT) || CABINET_COMPLETED_HISTORY_VISIBLE_LIMIT;
+        current.total = Math.max(
+            Number(result.totals?.completedParentTotal || 0) || 0,
+            current.total || 0,
+            current.items.length
+        );
+        current.loading = false;
+        current.error = '';
+        return current;
+    } catch (error) {
+        const current = completedDashboardHistoryState;
+        if (current.requestSeq === requestSeq && current.scopeKey === scopeKey) {
+            current.loading = false;
+            current.error = error?.message || 'Не вдалося завантажити історію виконань.';
+        }
+        return current;
+    } finally {
+        rerenderCabinetCompletionPulse();
+    }
+}
+
 function showAllCabinetCompletionDetails() {
     completedDashboardExpanded = true;
+    if (normalizeCabinetCompletionTab() === 'history') {
+        const state = cabinetCompletionHistoryState();
+        completedDashboardShowAll = false;
+        completedDashboardHistoryVisibleCount = Math.max(CABINET_COMPLETION_ROWS_INITIAL, state.items.length);
+        rerenderCabinetCompletionPulse();
+        return;
+    }
     completedDashboardShowAll = true;
-    const tasks = normalizeCabinetCompletionTab() === 'history'
-        ? cabinetCompletedHistoryList()
-        : cabinetCompletedTodayTasksList();
+    const tasks = cabinetCompletedTodayTasksList();
     completedDashboardVisibleCount = Math.max(CABINET_COMPLETION_ROWS_INITIAL, tasks.length);
     rerenderCabinetCompletionPulse();
 }
 
-function showMoreCabinetCompletionDetails() {
+async function showMoreCabinetCompletionDetails() {
     completedDashboardExpanded = true;
-    const tasks = normalizeCabinetCompletionTab() === 'history'
-        ? cabinetCompletedHistoryList()
-        : cabinetCompletedTodayTasksList();
+    if (normalizeCabinetCompletionTab() === 'history') {
+        const state = cabinetCompletionHistoryState();
+        const current = cabinetCompletionVisibleCount(state.items.length);
+        if (current < state.items.length) {
+            completedDashboardHistoryVisibleCount = Math.min(state.items.length, current + CABINET_COMPLETION_ROWS_BATCH);
+            completedDashboardShowAll = false;
+            rerenderCabinetCompletionPulse();
+            return;
+        }
+        if (state.hasMore && !state.loading) {
+            await loadNextCabinetCompletionHistoryPage();
+            const nextState = cabinetCompletionHistoryState();
+            completedDashboardHistoryVisibleCount = Math.min(nextState.items.length, current + CABINET_COMPLETION_ROWS_BATCH);
+            completedDashboardShowAll = false;
+            rerenderCabinetCompletionPulse();
+            return;
+        }
+        completedDashboardHistoryVisibleCount = current;
+        rerenderCabinetCompletionPulse();
+        return;
+    }
+    const tasks = cabinetCompletedTodayTasksList();
     const current = cabinetCompletionVisibleCount(tasks.length);
     completedDashboardVisibleCount = Math.min(tasks.length, current + CABINET_COMPLETION_ROWS_BATCH);
     completedDashboardShowAll = completedDashboardVisibleCount >= tasks.length;
@@ -3839,7 +4070,12 @@ function setCabinetCompletionTab(tab = 'today') {
     completedDashboardTab = normalizeCabinetCompletionTab(tab);
     completedDashboardExpanded = true;
     completedDashboardShowAll = false;
-    completedDashboardVisibleCount = CABINET_COMPLETION_ROWS_INITIAL;
+    if (completedDashboardTab === 'history') {
+        completedDashboardHistoryVisibleCount = Math.max(CABINET_COMPLETION_ROWS_INITIAL, Number(completedDashboardHistoryVisibleCount || 0));
+        cabinetCompletionHistoryState();
+    } else {
+        completedDashboardVisibleCount = CABINET_COMPLETION_ROWS_INITIAL;
+    }
     rerenderCabinetCompletionPulse();
 }
 
@@ -4892,6 +5128,12 @@ function formatCabinetPulseCount(value) {
     const n = Number(value || 0);
     if (!Number.isFinite(n) || n <= 0) return '0';
     if (n > 99) return '99+';
+    return String(Math.floor(n));
+}
+
+function formatCabinetExactCount(value) {
+    const n = Number(value || 0);
+    if (!Number.isFinite(n) || n <= 0) return '0';
     return String(Math.floor(n));
 }
 
@@ -7830,7 +8072,13 @@ function bindCabinetCompletionPulse(root = document) {
         button.addEventListener('click', event => {
             event.preventDefault();
             event.stopPropagation();
-            showMoreCabinetCompletionDetails();
+            showMoreCabinetCompletionDetails().catch(error => {
+                console.error('Completion history pagination failed', error);
+                const state = cabinetCompletionHistoryState();
+                state.loading = false;
+                state.error = error?.message || 'Не вдалося завантажити історію виконань.';
+                rerenderCabinetCompletionPulse();
+            });
         });
     });
 }

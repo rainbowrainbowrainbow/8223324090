@@ -3937,6 +3937,19 @@ body.dark-mode .cabinet-task-priority--critical {
     white-space: nowrap;
 }
 
+.cabinet-completion-impact-strip h4 small {
+    display: block;
+    margin-top: 2px;
+    overflow: hidden;
+    color: var(--completion-muted);
+    font-size: 0.66rem;
+    font-weight: 850;
+    line-height: 1.15;
+    text-overflow: ellipsis;
+    text-transform: none;
+    white-space: nowrap;
+}
+
 .cabinet-completion-impact-strip {
     grid-template-columns: minmax(120px, 0.22fr) minmax(0, 1fr);
     align-items: center;
@@ -4092,7 +4105,9 @@ body.dark-mode .cabinet-task-priority--critical {
 }
 
 .cabinet-completion-empty,
-.cabinet-completion-empty-mini {
+.cabinet-completion-empty-mini,
+.cabinet-completion-loading,
+.cabinet-completion-error {
     min-width: 0;
     padding: 10px 12px;
     border: 1px dashed rgba(148, 163, 184, 0.28);
@@ -4103,10 +4118,27 @@ body.dark-mode .cabinet-task-priority--critical {
     line-height: 1.35;
 }
 
+.cabinet-completion-loading {
+    border-style: solid;
+    background: rgba(45, 212, 191, 0.08);
+    color: #99f6e4;
+}
+
+.cabinet-completion-error {
+    border-color: rgba(251, 113, 133, 0.42);
+    background: rgba(127, 29, 29, 0.18);
+    color: #fecdd3;
+}
+
 .cabinet-completion-all {
     width: 100%;
     min-height: 40px;
     margin-top: 4px;
+}
+
+.cabinet-completion-all[disabled] {
+    cursor: wait;
+    opacity: 0.72;
 }
 
 body:not(.dark-mode) .cabinet-completion-pulse,
@@ -4152,6 +4184,19 @@ html[data-theme="light"] body .cabinet-completion-row,
 html[data-theme="light"] body .cabinet-completion-impact-strip,
 html[data-theme="light"] body .cabinet-completion-list {
     background: rgba(255, 255, 255, 0.64);
+}
+
+body:not(.dark-mode) .cabinet-completion-loading,
+html[data-theme="light"] body .cabinet-completion-loading {
+    background: rgba(20, 184, 166, 0.1);
+    color: #0f766e;
+}
+
+body:not(.dark-mode) .cabinet-completion-error,
+html[data-theme="light"] body .cabinet-completion-error {
+    border-color: rgba(225, 29, 72, 0.28);
+    background: rgba(255, 241, 242, 0.84);
+    color: #be123c;
 }
 
 body:not(.dark-mode) .cabinet-completion-icon,

@@ -29,6 +29,7 @@ function loadProfileTaskerContext() {
         },
         getAuthHeaders: () => ({}),
         handleAuthError: () => false,
+        URLSearchParams,
         setTimeout,
         clearTimeout,
         document: { addEventListener() {} },
@@ -485,7 +486,16 @@ test('profile completion pulse covers 0, 1, 15+ today and 36-row history contrac
 
     vm.runInContext(`
         myCabinetData = {
-            meta: { calendar: { today: '${today}' } },
+            meta: {
+                calendar: { today: '${today}' },
+                completedHistory: {
+                    type: 'cursor',
+                    limit: 36,
+                    returned: 36,
+                    hasMore: true,
+                    nextCursor: 'history-page-2'
+                }
+            },
             completedTodayTasks: [],
             completedHistory: ${JSON.stringify(Array.from({ length: 36 }, (_, index) => ({
                 id: 8000 + index,
@@ -501,13 +511,136 @@ test('profile completion pulse covers 0, 1, 15+ today and 36-row history contrac
         completedDashboardVisibleCount = 5;
     `, ctx);
     html = ctx.renderCabinetCompletionPulse();
-    assert.match(html, /Останні 36 задач/);
+    assert.match(html, /Історія/);
+    assert.match(html, /Завантажено 36 із 50/);
+    assert.match(html, /Серед завантажених/);
     assert.match(html, /History case 1/);
     assert.match(html, /History case 5/);
     assert.doesNotMatch(html, /History case 6/);
     assert.match(html, /Показати ще · \+31/);
     assert.match(html, /50 за весь час/);
     assert.match(html, /останні 36 задач/);
+});
+
+test('profile completion History tab paginates from the projection first page', async () => {
+    const ctx = loadProfileTaskerContext();
+    const today = '2026-08-14';
+    const makeHistoryTask = index => ({
+        id: 8100 + index,
+        title: `History cursor ${index}`,
+        status: 'done',
+        completedAt: `2026-08-${String(14 - Math.floor(index / 12)).padStart(2, '0')}T10:${String(index % 60).padStart(2, '0')}:00.000Z`,
+        myDay: { impacts: index % 2 ? [{ id: 30, name: 'Системність', color: '#6366F1', icon: 'system' }] : [] }
+    });
+    vm.runInContext(`
+        myCabinetData = {
+            meta: {
+                calendar: { today: '${today}' },
+                businessScope: { mode: 'single', activeContext: 'event_genix' },
+                completedHistory: {
+                    type: 'cursor',
+                    limit: 36,
+                    returned: 36,
+                    hasMore: true,
+                    nextCursor: 'cursor-page-2'
+                }
+            },
+            completedTodayTasks: [],
+            completedHistory: ${JSON.stringify(Array.from({ length: 36 }, (_, index) => makeHistoryTask(index + 1)))},
+            stats: { taskQuick: { completedParentTotal: 73, completedHistoryShown: 36, completedHistoryOverflow: 37 } }
+        };
+        completedDashboardExpanded = true;
+        completedDashboardTab = 'history';
+        completedDashboardShowAll = false;
+        completedDashboardVisibleCount = 5;
+        completedDashboardHistoryVisibleCount = 5;
+        window.CrmBusinessContext = { apiUrl(path) { return path + (path.includes('?') ? '&' : '?') + 'businessContext=event_genix'; } };
+        let fetchCalls = [];
+        let fetchMode = 'success';
+        fetch = async function(url) {
+            fetchCalls.push(String(url));
+            if (fetchMode === 'fail') {
+                return { ok: false, status: 503, json: async () => ({ success: false, error: 'History API down' }) };
+            }
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({
+                    success: true,
+                    period: 'history',
+                    items: [
+                        ${JSON.stringify(makeHistoryTask(1))},
+                        ...${JSON.stringify(Array.from({ length: 36 }, (_, index) => makeHistoryTask(37 + index)))}
+                    ],
+                    pagination: {
+                        type: 'cursor',
+                        limit: 36,
+                        returned: 36,
+                        hasMore: true,
+                        nextCursor: 'cursor-page-3'
+                    },
+                    totals: { completedParentTotal: 73 }
+                })
+            };
+        };
+        window.fetch = fetch;
+        window.__FETCH_CALLS__ = fetchCalls;
+        window.__SET_FETCH_MODE__ = value => { fetchMode = value; };
+        document = {
+            querySelector() { return null; }
+        };
+        syncCabinetCompletionHistoryStateFromProjection(myCabinetData);
+    `, ctx);
+
+    let html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /Завантажено 36 із 73/);
+    assert.match(html, /History cursor 5/);
+    assert.doesNotMatch(html, /History cursor 6/);
+
+    for (let index = 0; index < 7; index += 1) {
+        await ctx.showMoreCabinetCompletionDetails();
+    }
+    assert.equal(ctx.window.__FETCH_CALLS__.length, 0, 'local rows should expand before calling the cursor endpoint');
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /History cursor 36/);
+    assert.doesNotMatch(html, /History cursor 37/);
+    assert.match(html, /Завантажити ще/);
+    const beforeFetchState = vm.runInContext('({ visible: completedDashboardHistoryVisibleCount, loaded: completedDashboardHistoryState.items.length, hasMore: completedDashboardHistoryState.hasMore, nextCursor: completedDashboardHistoryState.nextCursor, loading: completedDashboardHistoryState.loading, tab: completedDashboardTab })', ctx);
+    assert.equal(beforeFetchState.visible, 36);
+    assert.equal(beforeFetchState.loaded, 36);
+    assert.equal(beforeFetchState.hasMore, true);
+    assert.equal(beforeFetchState.nextCursor, 'cursor-page-2');
+    assert.equal(beforeFetchState.loading, false);
+    assert.equal(beforeFetchState.tab, 'history');
+
+    await ctx.showMoreCabinetCompletionDetails();
+    const afterFetchAttempt = vm.runInContext('({ calls: window.__FETCH_CALLS__.length, visible: completedDashboardHistoryVisibleCount, loaded: completedDashboardHistoryState.items.length, hasMore: completedDashboardHistoryState.hasMore, nextCursor: completedDashboardHistoryState.nextCursor, loading: completedDashboardHistoryState.loading, error: completedDashboardHistoryState.error, requestSeq: completedDashboardHistoryState.requestSeq })', ctx);
+    assert.equal(afterFetchAttempt.error, '', JSON.stringify(afterFetchAttempt));
+    assert.equal(ctx.window.__FETCH_CALLS__.length, 1);
+    assert.match(ctx.window.__FETCH_CALLS__[0], /\/api\/tasks\/my-cabinet\/completions\?/);
+    assert.match(ctx.window.__FETCH_CALLS__[0], /period=history/);
+    assert.match(ctx.window.__FETCH_CALLS__[0], /limit=36/);
+    assert.match(ctx.window.__FETCH_CALLS__[0], /cursor=cursor-page-2/);
+    assert.match(ctx.window.__FETCH_CALLS__[0], /businessContext=event_genix/);
+    const stateAfterLoad = vm.runInContext('completedDashboardHistoryState', ctx);
+    assert.equal(stateAfterLoad.items.length, 72, 'duplicate task id from page 2 should be deduped');
+    assert.equal(new Set(stateAfterLoad.items.map(item => item.id)).size, 72);
+    assert.equal(stateAfterLoad.nextCursor, 'cursor-page-3');
+    assert.equal(stateAfterLoad.hasMore, true);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /Завантажено 72 із 73/);
+    assert.match(html, /History cursor 41/);
+    assert.doesNotMatch(html, /History cursor 42/);
+    assert.match(html, /Серед завантажених/);
+
+    vm.runInContext('window.__SET_FETCH_MODE__("fail"); completedDashboardHistoryVisibleCount = completedDashboardHistoryState.items.length;', ctx);
+    await ctx.showMoreCabinetCompletionDetails();
+    const failedState = vm.runInContext('completedDashboardHistoryState', ctx);
+    assert.equal(failedState.items.length, 72, 'retry error must not clear loaded history');
+    assert.match(failedState.error, /History API down/);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /History API down/);
+    assert.match(html, /Повторити/);
 });
 
 test('profile My Day overdue segment renders triage rows with existing task actions', () => {
@@ -649,7 +782,8 @@ test('profile My Day completion pulse exposes history as an expanded tab', () =>
     const html = ctx.renderMyDayTab();
     assert.match(html, /data-cabinet-completion-pulse/);
     assert.match(html, /data-cabinet-completion-tab="history"/);
-    assert.match(html, /Останні 36/);
+    assert.match(html, /Історія/);
+    assert.match(html, /Завантажено 1 із 1/);
     assert.match(html, /Closed payload task/);
     assert.match(html, /data-cabinet-task-action="open" data-task-id="301"/);
     assert.doesNotMatch(html, /cabinet-completed-strip/);
@@ -1674,7 +1808,8 @@ test('profile my day renders unified completion pulse without hover-only history
     assert.match(stripHtml, /data-cabinet-completion-pulse/);
     assert.match(stripHtml, /data-cabinet-completion-tab="today"/);
     assert.match(stripHtml, /data-cabinet-completion-tab="history"/);
-    assert.match(stripHtml, /Останні 36/);
+    assert.match(stripHtml, /Історія/);
+    assert.match(stripHtml, /Завантажено 2 із 4/);
     assert.match(stripHtml, /Закрити закупівлю/);
     assert.match(stripHtml, /Передати звіт/);
     assert.match(stripHtml, /cabinet-completion-day-divider/);

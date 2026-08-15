@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.144 - Trusted QA Execution Window
+
+### Release / Versioning / (15.08.2026) [codex]
+- **QA token прив’язаний до exact execution window** - server перевіряє погоджені `lineId`, business date, час початку та повне завершення booking у межах дозволеного вікна.
+- **Operator preflight перевіряє реальну готовність timeline** - virtual/відсутня roster line та зайняте room/animator window блокують run до створення test-data.
+- **Schema зберігає authorization constraints** - additive migration додає line/date/from/to до trusted QA registry без зміни наявних production записів.
+- **Початковий run безпечно прибрано** - manifest на 2099 рік був заблокований через відсутню roster line; створений QA product деактивовано, side effects дорівнюють нулю, повторний cleanup є no-op.
+
+---
+
 ## v0.80.143 - Trusted QA Manifest Readiness
 
 ### Release / Versioning / (15.08.2026) [codex]

@@ -85,7 +85,7 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
             items: {
                 type: 'object',
                 additionalProperties: false,
-                required: ['title', 'description', 'impactIds', 'priority', 'scheduleDate', 'ownerSuggestion', 'confidence'],
+                required: ['title', 'description', 'impactIds', 'subtasks', 'priority', 'scheduleDate', 'ownerSuggestion', 'confidence'],
                 properties: {
                     title: { type: 'string', minLength: 3, maxLength: MAX_TITLE_CHARS },
                     description: { type: ['string', 'null'], maxLength: MAX_DESCRIPTION_CHARS },
@@ -93,6 +93,18 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
                         type: 'array',
                         maxItems: MAX_IMPACTS_PER_TASK,
                         items: { type: 'integer' }
+                    },
+                    subtasks: {
+                        type: 'array',
+                        maxItems: MAX_SUBTASKS,
+                        items: {
+                            type: 'object',
+                            additionalProperties: false,
+                            required: ['title'],
+                            properties: {
+                                title: { type: 'string', minLength: 3, maxLength: 160 }
+                            }
+                        }
                     },
                     priority: { type: ['string', 'null'], enum: PREVIEW_PRIORITIES },
                     scheduleDate: { type: ['string', 'null'], maxLength: 32 },
@@ -248,6 +260,7 @@ function buildSystemPrompt() {
         'If the user explicitly asks for multiple separate, independent, or full tasks, choose task_bundle and preserve the requested task count within server limits.',
         'Do not collapse independent CRM, Hermes, Park, AI, content, analytics, or team deliverables into one checklist.',
         'Never model bundle grouping as dependencies or checklist items.',
+        'Bundle tasks may include their own short subtasks only when a full task has internal verification steps. Do not use subtasks to represent other bundle tasks.',
         `Use needs_clarification only when the intended result is genuinely unknowable or a required human choice changes the task. Do not clarify merely because more than ${MAX_IMPACTS_PER_TASK} impacts are mentioned.`,
         'Use no_change only when currentDraft already has the right mode and all clearly supported impactIds, and no useful title, description, or checklist improvement remains.',
         'Allowed modes are simple, checklist, or null. Use checklist only for the checklist decision.',
@@ -455,10 +468,15 @@ function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
         if (ownerSuggestion.userId !== null) {
             throw createPreviewError('AI may not select a task owner without the server owner catalog and human review.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
         }
+        const subtasks = normalizeDraftItems(Array.isArray(payload.subtasks) ? payload.subtasks : [], {
+            sourceType: 'ai',
+            maxItems: MAX_SUBTASKS
+        }).map(item => ({ title: item.title }));
         return {
             title,
             description: payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS),
             impactIds,
+            subtasks,
             priority,
             scheduleDate: normalizeBundleScheduleDate(payload.scheduleDate),
             ownerSuggestion,

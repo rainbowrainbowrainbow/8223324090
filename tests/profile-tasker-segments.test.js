@@ -2477,8 +2477,10 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(source, /planningWindow:\s*'overdue_undated_through_planning_end'/);
     assert.match(source, /planning,\s*\n\s*preferences:/);
     assert.match(source, /calendar,\s*\n\s*buckets:\s*\{/);
-    assert.match(source, /postponementExplanationContract:\s*'postponement_explanation_v1',\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
+    assert.match(source, /postponementExplanationContract:\s*'postponement_explanation_v1'/);
     assert.match(source, /planning:\s*planningMeta/);
+    assert.match(source, /completedHistory:\s*\{\s*\n\s*\.\.\.completedHistoryPage\.pagination/);
+    assert.match(source, /privacyRule:\s*'private\/me_only tasks are owner-only'/);
     assert.match(source, /planningDateSql\} IS NULL/);
     assert.match(source, /planningDateSql\} BETWEEN/);
     assert.match(profileSource, /function cabinetPlanningList/);

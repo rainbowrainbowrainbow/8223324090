@@ -195,7 +195,7 @@ The CI gate covers:
 - self-contained unit, auth-boundary, and route-level safety smoke tests through `npm run test:unit`;
 - static UI smoke through `npm run test:ui`;
 - an isolated PostgreSQL job named `HR and payroll PostgreSQL integration` for attendance advisory-lock concurrency, attendance backup/recovery, HR onboarding/backfill, payroll profile/simultaneous-pay, admission ticket, and full-stack onboarding coverage;
-- separate `My Day PostgreSQL integration` and `My Day browser interactions` jobs for My Day AI/timer/classification contracts, synthetic browser smokes, and actual Profile composer → Express API → disposable PostgreSQL coverage.
+- separate `My Day PostgreSQL integration` and `My Day browser interactions` jobs for My Day AI/timer/classification contracts, synthetic browser smokes, and actual Profile/Tasks/Dashboard → Express API → disposable PostgreSQL coverage. The actual-app My Day browser smoke uses a local loopback OpenAI mock, fails closed if a real OpenAI host/key is used in CI, rejects unexpected `/api/tasks`, `/api/my-day`, timer, dependency, classification, or AI `4xx/5xx` responses, and covers bundle field masks, schedule projection, timer account isolation, and request-budget regressions.
 
 The route smoke layer is intentionally shallow: it checks public/protected/custom-secret/API-key boundaries and cheap route contracts such as version, landing, packages, task permissions, user role metadata, and chat-adjacent auth fallback. It does not exercise full PostgreSQL-backed route behavior.
 
@@ -208,7 +208,7 @@ coverage for HR/payroll/admission flows, including the payroll profiles and
 simultaneous-additional payroll suite. The dedicated My Day jobs run
 `npm run test:integration:my-day:isolated` and
 `npm run test:browser:my-day-actual-app:isolated` against disposable PostgreSQL
-with local AI mocks. Use `npm run test:api`, `npm run test:integration`, and
+with local AI mocks. The browser suite keeps fast synthetic harnesses for component-level coverage, then separately drives the real Profile, Tasks, and Dashboard pages through Express into disposable PostgreSQL. Use `npm run test:api`, `npm run test:integration`, and
 manual health checks against a configured app/database for other scopes.
 
 ## Version And Changelog Discipline

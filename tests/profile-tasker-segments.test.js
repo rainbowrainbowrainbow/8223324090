@@ -2435,7 +2435,9 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /taskPriorityOrderSql/);
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
-    assert.match(completionHistorySource, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
+    assert.match(completionHistorySource, /async function loadCompletionHistorySubtasksByTaskId/);
+    assert.match(completionHistorySource, /WHERE task_id = ANY\(\$1::int\[\]\)/);
+    assert.match(source, /includeSubtasks:\s*false/);
     assert.match(source, /completedHistory:\s*\{\s*\n\s*\.\.\.completedHistoryPage\.pagination/);
     assert.match(source, /async function loadSubtaskProjectionByTaskId/);
     assert.match(source, /WHERE task_id = ANY\(\$1::int\[\]\)/);

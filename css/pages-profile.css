@@ -408,6 +408,30 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     color: var(--my-day-chip-color, #64748b);
 }
 
+.my-day-task-chip-remove {
+    align-items: center;
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 18%, transparent);
+    border-radius: 999px;
+    display: inline-flex;
+    font-size: 14px;
+    font-weight: 900;
+    height: 18px;
+    justify-content: center;
+    line-height: 1;
+    margin-left: 1px;
+    opacity: 0;
+    transform: scale(0.82);
+    transition: opacity 160ms ease, transform 160ms ease, background-color 160ms ease;
+    width: 18px;
+}
+
+.my-day-task-chip--removable:hover .my-day-task-chip-remove,
+.my-day-task-chip--removable:focus-visible .my-day-task-chip-remove,
+.my-day-task-chip--removable.is-pending .my-day-task-chip-remove {
+    opacity: 1;
+    transform: scale(1);
+}
+
 .my-day-task-chip span {
     min-width: 0;
     overflow-wrap: anywhere;
@@ -687,6 +711,7 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
 
 @media (prefers-reduced-motion: reduce) {
     .my-day-task-chip:is(button),
+    .my-day-task-chip-remove,
     .my-day-time-button,
     .my-day-time-disclosure {
         transition: none;
@@ -700,6 +725,10 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
         transform: none;
     }
 
+    .my-day-task-chip-remove {
+        transform: none;
+    }
+
     .cabinet-task-action-timer.is-busy .my-day-time-disclosure-icon {
         animation: none;
     }
@@ -709,6 +738,11 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     .my-day-task-chip {
         max-width: 100%;
         min-height: 36px;
+    }
+
+    .my-day-task-chip-remove {
+        opacity: 1;
+        transform: none;
     }
 
     .task-ui-action-surface--my-day-impacts .task-ui-action-panel {

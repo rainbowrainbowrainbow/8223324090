@@ -122,6 +122,30 @@ test('My Day explains impacts as the only active classification model', () => {
     assert.match(spec, /guidance only; they do\s+not add required validation/);
 });
 
+test('task impact chips remove a single impact without opening the editor', () => {
+    const taxonomyUi = read('js/my-day-classification.js');
+    const profile = read('js/profile-page.js');
+    const css = read('css/pages-profile.css');
+    const renderStart = taxonomyUi.indexOf('function renderTaskBadges');
+    const renderEnd = taxonomyUi.indexOf('async function saveTaskClassification', renderStart);
+    const renderSlice = taxonomyUi.slice(renderStart, renderEnd);
+    const handlerStart = profile.indexOf('async function handleCabinetTaskActionClick');
+    const handlerEnd = profile.indexOf("if (action === 'ai-classification')", handlerStart);
+    const handlerSlice = profile.slice(handlerStart, handlerEnd);
+
+    assert.match(renderSlice, /data-cabinet-task-action="remove-impact"/);
+    assert.match(renderSlice, /aria-label="\$\{escape\('Прибрати вплив ' \+ name\)\}"/);
+    assert.match(renderSlice, /class="my-day-task-chip-remove"/);
+    assert.doesNotMatch(renderSlice, /aria-haspopup="dialog"[\s\S]{0,160}data-cabinet-task-action="remove-impact"/);
+    assert.match(handlerSlice, /if \(action === 'remove-impact'\) \{[\s\S]*await removeCabinetTaskImpact\(button, taskId\);[\s\S]*return;/);
+    assert.match(handlerSlice, /if \(action === 'classification'\) \{/);
+    assert.ok(handlerSlice.indexOf("action === 'remove-impact'") < handlerSlice.indexOf("action === 'classification'"));
+    assert.match(profile, /const key = String\(taskId\);[\s\S]*cabinetClassificationMutationInFlight\.has\(key\)/);
+    assert.match(css, /\.my-day-task-chip-remove/);
+    assert.match(css, /\.my-day-task-chip--removable:hover \.my-day-task-chip-remove/);
+    assert.match(css, /@media \(max-width: 720px\), \(pointer: coarse\)[\s\S]*\.my-day-task-chip-remove[\s\S]*opacity:\s*1/);
+});
+
 test('Profile Settings no longer renders My Day management forms', () => {
     const profile = read('js/profile-page.js');
     const start = profile.indexOf('function renderProfileSettingsTab()');

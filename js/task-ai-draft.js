@@ -633,6 +633,14 @@
         const activeTasks = activeBundleTasks(state);
         if (activeTasks.length < 2) return null;
         const acceptedTasks = acceptedBundleTasks(state);
+        const bundleFieldMask = task => {
+            const edited = task.userEditedFields instanceof Set ? task.userEditedFields : new Set();
+            const fields = new Set(['title', 'description', 'impactIds']);
+            if (task.scheduleDate || edited.has('scheduleDate')) fields.add('scheduleDate');
+            if ((task.priority && task.priority !== 'normal') || edited.has('priority')) fields.add('priority');
+            if (task.ownerSuggestion?.userId || edited.has('ownerUserId')) fields.add('owner');
+            return Array.from(fields);
+        };
         const tasks = acceptedTasks.map(task => ({
             title: task.title,
             description: task.description || null,
@@ -644,6 +652,7 @@
                 name: task.ownerSuggestion?.name || null,
                 reason: task.ownerSuggestion?.reason || null
             },
+            acceptedFieldMask: bundleFieldMask(task),
             userEdited: task.userEdited === true
         }));
         if (!tasks.length || tasks.length !== activeTasks.length) return null;

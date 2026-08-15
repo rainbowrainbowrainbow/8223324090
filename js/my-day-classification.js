@@ -209,7 +209,7 @@
             const name = String(record?.name || '').trim();
             const label = compactImpactName(record) || name;
             const disabled = !taskIdAttr || !impactId;
-            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--editable" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape(name)}" aria-label="${escape('Змінити вплив ' + name)}" data-cabinet-task-action="classification" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" aria-haspopup="dialog" ${disabled ? 'disabled aria-disabled="true"' : ''}>${impactIcon(record, true)}<span>${escape(label)}</span></button>`;
+            return `<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--editable my-day-task-chip--removable" style="--my-day-chip-color:${escape(record.color || '#64748B')}" title="${escape('Прибрати вплив ' + name)}" aria-label="${escape('Прибрати вплив ' + name)}" data-cabinet-task-action="remove-impact" data-task-id="${escape(taskIdAttr)}" data-my-day-impact-id="${escape(impactId)}" data-my-day-impact-name="${escape(name)}" ${disabled ? 'disabled aria-disabled="true"' : ''}>${impactIcon(record, true)}<span>${escape(label)}</span><span class="my-day-task-chip-remove" aria-hidden="true">×</span></button>`;
         };
         const impactButtons = impacts.map(renderImpactButton).join('');
         const addLabel = '+';

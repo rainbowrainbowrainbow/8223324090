@@ -33,6 +33,7 @@ let profileMaterialsState = {
 };
 let myCabinetData = null;
 let myCabinetLoadError = '';
+let myCabinetLoading = false;
 let myTasksSegment = 'all';
 let cabinetProjectionRequestSequence = 0;
 let cabinetCreateDuePreset = 'today';
@@ -67,6 +68,8 @@ const expandedCabinetSubtaskIds = new Set();
 const collapsedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
+const PROFILE_API_GET_TIMEOUT_MS = 20_000;
+const PROFILE_CABINET_API_TIMEOUT_MS = 25_000;
 
 function notifyTaskWidgetsChanged(detail = {}) {
     const payload = { source: 'profile_my_cabinet', ...detail };
@@ -1159,23 +1162,44 @@ function syncOwnProfileAvatarSession(data = profileData) {
 // ==========================================
 // API
 // ==========================================
-async function apiGet(path) {
+async function profileFetchWithTimeout(url, options = {}) {
+    const timeoutMs = Number(options.timeoutMs || PROFILE_API_GET_TIMEOUT_MS);
+    const supportsAbort = typeof AbortController === 'function' && timeoutMs > 0;
+    const controller = supportsAbort ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
     try {
-        const r = await fetch(`/api${path}`, { headers: getAuthHeaders(false) });
+        return await fetch(url, {
+            ...(options.fetchOptions || {}),
+            signal: controller?.signal
+        });
+    } finally {
+        if (timer) clearTimeout(timer);
+    }
+}
+
+async function apiGet(path, options = {}) {
+    try {
+        const r = await profileFetchWithTimeout(`/api${path}`, {
+            timeoutMs: options.timeoutMs,
+            fetchOptions: { headers: getAuthHeaders(false) }
+        });
         if (handleAuthError(r)) return null;
         if (!r.ok) return null;
         return await r.json();
     } catch (e) { console.error('API GET', path, e); return null; }
 }
 
-async function apiGetScoped(path) {
+async function apiGetScoped(path, options = {}) {
     try {
         const raw = String(path || '');
         const normalized = raw.startsWith('/api') ? raw : `/api${raw.startsWith('/') ? raw : `/${raw}`}`;
         const url = typeof window !== 'undefined' && window.CrmBusinessContext?.apiUrl
             ? window.CrmBusinessContext.apiUrl(normalized)
             : normalized;
-        const r = await fetch(url, { headers: getAuthHeaders(false) });
+        const r = await profileFetchWithTimeout(url, {
+            timeoutMs: options.timeoutMs,
+            fetchOptions: { headers: getAuthHeaders(false) }
+        });
         if (handleAuthError(r)) return null;
         if (!r.ok) return null;
         return await r.json();
@@ -1209,7 +1233,15 @@ async function loadMyCabinetProjection(options = {}) {
     const path = focusDate
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
-    const data = await apiGet(path);
+    myCabinetLoading = true;
+    let data = null;
+    try {
+        data = await apiGet(path, { timeoutMs: PROFILE_CABINET_API_TIMEOUT_MS });
+    } finally {
+        if (requestSequence === cabinetProjectionRequestSequence) {
+            myCabinetLoading = false;
+        }
+    }
     if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
     return setMyCabinetProjectionData(data, {
         keepExistingOnError: options.keepExistingOnError,
@@ -1321,9 +1353,34 @@ async function initProfilePage() {
 
     // Load data
     await loadProfileData(viewUserId);
+    if (isProfileTaskProjectionTab(activeTab) && getProfileResourceState('cabinet').status !== 'loaded') {
+        myCabinetLoading = true;
+    }
     renderProfile();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    if (isProfileTaskProjectionTab(activeTab) && getProfileResourceState('cabinet').status !== 'loaded') {
+        ensureProfileTabData(activeTab)
+            .then(() => {
+                if (!isProfileTaskProjectionTab(activeTab)) return;
+                const tabContent = document.getElementById('tabContent');
+                if (tabContent) {
+                    tabContent.innerHTML = renderTabContent();
+                    attachProfileListeners();
+                }
+            })
+            .catch(error => {
+                console.warn('Profile My Day background load failed', error);
+                if (isProfileTaskProjectionTab(activeTab)) {
+                    myCabinetLoadError = cabinetProjectionLoadErrorText();
+                    const tabContent = document.getElementById('tabContent');
+                    if (tabContent) {
+                        tabContent.innerHTML = renderTabContent();
+                        attachProfileListeners();
+                    }
+                }
+            });
+    }
 }
 
 async function loadProfileData(userId) {
@@ -1335,6 +1392,7 @@ async function loadProfileData(userId) {
     }
     profileWidgetConfig = normalizeProfileCockpitWidgets(profileData?.profilePreferences?.cockpitWidgets);
     ensureActiveProfessionKey();
+    if (isProfileTaskProjectionTab(activeTab)) return;
     await ensureProfileTabData(activeTab);
 }
 
@@ -1835,6 +1893,14 @@ async function switchTab(tab, options = {}) {
     activeTab = tab;
     if (!options.skipUrl) syncProfileTabToUrl(tab);
     const locked = profileTabLock(tab);
+    if (!locked && isProfileTaskProjectionTab(tab) && getProfileResourceState('cabinet').status !== 'loaded') {
+        myCabinetLoading = true;
+        const tabContent = document.getElementById('tabContent');
+        if (tabContent) {
+            tabContent.innerHTML = renderTabContent();
+            attachProfileListeners();
+        }
+    }
     if (!locked) await ensureProfileTabData(tab);
     if (requestSeq !== profileTabRequestSeq || activeTab !== tab) return false;
     // Lazy load data for tabs that need it
@@ -6740,11 +6806,26 @@ function renderMyTasksTab() {
 }
 
 function renderCabinetLoadNotice() {
-    if (!myCabinetLoadError) return '';
+    if (!myCabinetLoadError && !myCabinetLoading) return '';
+    const message = myCabinetLoading && !myCabinetLoadError
+        ? 'Завантажую Мій день…'
+        : myCabinetLoadError;
     return `
-        <div class="cabinet-load-notice" role="status" aria-live="polite">
-            <span>${escapeHtml(myCabinetLoadError)}</span>
-            <button type="button" data-cabinet-refresh>Оновити</button>
+        <div class="cabinet-load-notice ${myCabinetLoading ? 'is-loading' : ''}" role="status" aria-live="polite">
+            <span>${escapeHtml(message)}</span>
+            ${myCabinetLoading ? '' : '<button type="button" data-cabinet-refresh>Оновити</button>'}
+        </div>`;
+}
+
+function renderCabinetPlanningPartialNotice() {
+    const planning = myCabinetData?.meta?.planning;
+    if (!planning?.isPartial) return '';
+    const rowLimit = Number(planning.rowLimit || planning.returnedRows || 0);
+    const countLabel = rowLimit > 0 ? `Показано перші ${rowLimit} задач у цьому зрізі.` : 'Показано обмежений зріз задач.';
+    return `
+        <div class="cabinet-load-notice cabinet-load-notice--partial" role="status">
+            <span>${escapeHtml(countLabel)} Для точного пошуку оберіть конкретну дату або відкрийте повний список задач.</span>
+            <a href="/tasks?view=my">Повний список задач</a>
         </div>`;
 }
 
@@ -6967,6 +7048,7 @@ function renderMyDayCommandCenterTab() {
             ${window.MyDayHabits?.renderModeTabs?.() || ''}
             ${renderCabinetTaskComposer({ segment: 'personal', mode: 'personal' })}
             ${renderCabinetLoadNotice()}
+            ${renderCabinetPlanningPartialNotice()}
             ${renderCabinetCompletionPulse()}
             <div class="cabinet-day-workspace cabinet-day-workspace--two-column" id="cabinetMyDaySegmentPanel" role="region" aria-label="Мій день: ${escapeHtml(focusedMeta.statLabel || focusedMeta.title || '')} і прострочені" data-active-today="${activeFocus}" data-active-overdue="${overdue.length}" data-cabinet-my-day-layout="focused-overdue" data-cabinet-focused-preset="${escapeHtml(myDayState.selectedDuePreset)}">
                 <div class="cabinet-day-workspace-toolbar">
@@ -7653,7 +7735,12 @@ async function handleCabinetTaskActionClick(event) {
         return;
     }
 
-    if (action === 'classification' || action === 'remove-impact') {
+    if (action === 'remove-impact') {
+        await removeCabinetTaskImpact(button, taskId);
+        return;
+    }
+
+    if (action === 'classification') {
         const anchor = stableCabinetTaskSurfaceAnchor(button, taskId, 'more');
         await window.MyDayClassification?.openTaskEditor?.(anchor, findCabinetTask(taskId) || {}, async () => {
             await refreshMyCabinetTab({ silent: false, keepExistingOnError: true });

@@ -27,53 +27,163 @@
   "activeImpacts": [
     {
       "id": 101,
-      "name": "Work: CRM",
+      "name": "Робота: CRM",
       "group": "context"
     },
     {
       "id": 102,
-      "name": "Work: Hermes",
+      "name": "Робота: Hermes",
       "group": "context"
     },
     {
       "id": 103,
-      "name": "Work: Park",
+      "name": "Робота: Парк",
       "group": "context"
     },
     {
       "id": 104,
-      "name": "Automation / AI",
+      "name": "Автоматизація / AI",
       "group": "activity"
     },
     {
       "id": 105,
-      "name": "Content / Media",
+      "name": "Контент / медіа",
       "group": "activity"
     },
     {
       "id": 106,
-      "name": "Analytics / Decisions",
+      "name": "Аналітика / рішення",
       "group": "activity"
     },
     {
       "id": 107,
-      "name": "Team / Delegation",
+      "name": "Команда / делегування",
       "group": "activity"
     },
     {
       "id": 108,
-      "name": "Operations / Processes",
+      "name": "Операційка / процеси",
       "group": "activity"
     },
     {
       "id": 109,
-      "name": "Revenue",
+      "name": "Продажі / клієнти",
       "group": "outcome"
     },
     {
       "id": 110,
-      "name": "Quality",
+      "name": "Якість сервісу",
       "group": "outcome"
+    },
+    {
+      "id": 111,
+      "name": "Продукт / розробка",
+      "group": "activity"
+    },
+    {
+      "id": 112,
+      "name": "Маркетинг / залучення",
+      "group": "activity"
+    },
+    {
+      "id": 113,
+      "name": "Стратегія / пріоритети",
+      "group": "activity"
+    },
+    {
+      "id": 114,
+      "name": "Люди / HR",
+      "group": "activity"
+    },
+    {
+      "id": 115,
+      "name": "Документи / право",
+      "group": "activity"
+    },
+    {
+      "id": 116,
+      "name": "Закупівлі / постачання",
+      "group": "activity"
+    },
+    {
+      "id": 117,
+      "name": "Партнерства / нетворкінг",
+      "group": "activity"
+    },
+    {
+      "id": 118,
+      "name": "Фінанси / облік",
+      "group": "outcome"
+    },
+    {
+      "id": 119,
+      "name": "Системність",
+      "group": "outcome"
+    },
+    {
+      "id": 120,
+      "name": "Швидкість / ефективність",
+      "group": "outcome"
+    },
+    {
+      "id": 121,
+      "name": "Бренд / репутація",
+      "group": "outcome"
+    },
+    {
+      "id": 122,
+      "name": "Ризики / безпека",
+      "group": "outcome"
+    },
+    {
+      "id": 123,
+      "name": "Здоровʼя",
+      "group": "personal"
+    },
+    {
+      "id": 124,
+      "name": "Фізична форма",
+      "group": "personal"
+    },
+    {
+      "id": 125,
+      "name": "Відновлення",
+      "group": "personal"
+    },
+    {
+      "id": 126,
+      "name": "Побут / комфорт",
+      "group": "personal"
+    },
+    {
+      "id": 127,
+      "name": "Навчання / розвиток",
+      "group": "personal"
+    },
+    {
+      "id": 128,
+      "name": "Близькі / стосунки",
+      "group": "personal"
+    },
+    {
+      "id": 129,
+      "name": "Творчість / самовираження",
+      "group": "personal"
+    },
+    {
+      "id": 130,
+      "name": "Подорожі / враження",
+      "group": "personal"
+    },
+    {
+      "id": 131,
+      "name": "Спільнота / внесок",
+      "group": "personal"
+    },
+    {
+      "id": 132,
+      "name": "Баланс / сенси",
+      "group": "personal"
     }
   ],
   "schema": {

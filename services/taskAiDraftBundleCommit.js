@@ -5,9 +5,11 @@ const crypto = require('node:crypto');
 const { pool } = require('../db');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
 const { replaceTaskClassification, normalizeImpactIds } = require('./myDayTaxonomy');
+const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
 const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
+const { normalizeDraftItems } = require('./taskDecomposition');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
@@ -27,9 +29,52 @@ const MIN_BUNDLE_COMMIT_TASKS = 2;
 const MAX_BUNDLE_COMMIT_TASKS = 6;
 const MAX_BUNDLE_TITLE_CHARS = 180;
 const MAX_BUNDLE_DESCRIPTION_CHARS = 700;
+const MAX_BUNDLE_SUBTASKS = 7;
 const AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE = 'task_ai_draft_bundle_commit';
 const AI_DRAFT_BUNDLE_SOURCE_TYPE = 'ai_draft_bundle';
 const BUNDLE_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low']);
+const BUNDLE_FIELD_ALLOWLIST = Object.freeze(['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
+const BUNDLE_FIELD_ALIASES = Object.freeze({
+    impact_ids: 'impactIds',
+    impacts: 'impactIds',
+    scheduleDate: 'dueDate',
+    schedule_date: 'dueDate',
+    due_date: 'dueDate',
+    date: 'dueDate',
+    ownerUserId: 'owner',
+    owner_user_id: 'owner',
+    ownerSuggestion: 'owner',
+    owner_suggestion: 'owner'
+});
+const BUNDLE_TASK_ALLOWED_KEYS = Object.freeze([
+    'title',
+    'description',
+    'impactIds',
+    'impact_ids',
+    'subtasks',
+    'priority',
+    'scheduleDate',
+    'schedule_date',
+    'dueDate',
+    'due_date',
+    'date',
+    'ownerSuggestion',
+    'owner_suggestion',
+    'userEdited',
+    'user_edited',
+    'proposalIndex',
+    'proposal_index',
+    'clientId',
+    'client_id',
+    'acceptedFieldMask',
+    'accepted_field_mask',
+    'acceptedFields',
+    'accepted_fields',
+    'editedFieldMask',
+    'edited_field_mask',
+    'editedFields',
+    'edited_fields'
+]);
 
 function bundleCommitError(message, statusCode, code) {
     const error = new Error(message);
@@ -75,24 +120,155 @@ function normalizeOwnerSuggestion(value = {}) {
     };
 }
 
-function normalizeBundleTask(value = {}, index = 0) {
+function normalizeBundleFieldName(value) {
+    const raw = String(value || '').trim();
+    if (!raw) return '';
+    return BUNDLE_FIELD_ALIASES[raw] || raw;
+}
+
+function normalizeBundleFieldMask(value, { required = false } = {}) {
+    const fields = [...new Set((Array.isArray(value) ? value : [])
+        .map(normalizeBundleFieldName)
+        .filter(Boolean))];
+    const unsupported = fields.filter(field => !BUNDLE_FIELD_ALLOWLIST.includes(field));
+    if (unsupported.length) {
+        throw bundleCommitError('Bundle field mask contains unsupported fields.', 400, 'TASK_AI_BUNDLE_FIELD_MASK_INVALID');
+    }
+    if (required && !fields.length) {
+        throw bundleCommitError('Bundle task accepted field mask is required.', 400, 'TASK_AI_BUNDLE_FIELD_MASK_REQUIRED');
+    }
+    return fields;
+}
+
+function normalizeBundleFieldMaskMap(value, taskCount) {
+    if (!value) return new Map();
+    const map = new Map();
+    if (Array.isArray(value)) {
+        value.forEach((entry, fallbackIndex) => {
+            if (Array.isArray(entry)) {
+                map.set(fallbackIndex, normalizeBundleFieldMask(entry));
+                return;
+            }
+            if (entry && typeof entry === 'object') {
+                const index = Number(entry.proposalIndex ?? entry.proposal_index ?? entry.taskIndex ?? entry.task_index ?? fallbackIndex);
+                if (Number.isInteger(index) && index >= 0 && index < taskCount) {
+                    map.set(index, normalizeBundleFieldMask(entry.fields || entry.fieldMask || entry.field_mask || entry.acceptedFieldMask || entry.accepted_field_mask));
+                }
+            }
+        });
+        return map;
+    }
+    if (typeof value === 'object') {
+        Object.entries(value).forEach(([key, fields]) => {
+            const index = Number(key);
+            if (Number.isInteger(index) && index >= 0 && index < taskCount) {
+                map.set(index, normalizeBundleFieldMask(fields));
+            }
+        });
+    }
+    return map;
+}
+
+function assertNoUnsupportedTaskFields(task = {}) {
+    const unsupported = Object.keys(task).filter(key => !BUNDLE_TASK_ALLOWED_KEYS.includes(key));
+    if (unsupported.length) {
+        throw bundleCommitError('Bundle task contains unsupported fields.', 400, 'TASK_AI_BUNDLE_TASK_FIELD_UNSUPPORTED');
+    }
+}
+
+function fieldSubmitted(task = {}, field) {
+    if (field === 'impactIds') return Object.prototype.hasOwnProperty.call(task, 'impactIds') || Object.prototype.hasOwnProperty.call(task, 'impact_ids');
+    if (field === 'dueDate') {
+        return Object.prototype.hasOwnProperty.call(task, 'scheduleDate')
+            || Object.prototype.hasOwnProperty.call(task, 'schedule_date')
+            || Object.prototype.hasOwnProperty.call(task, 'dueDate')
+            || Object.prototype.hasOwnProperty.call(task, 'due_date')
+            || Object.prototype.hasOwnProperty.call(task, 'date');
+    }
+    if (field === 'owner') return Object.prototype.hasOwnProperty.call(task, 'ownerSuggestion') || Object.prototype.hasOwnProperty.call(task, 'owner_suggestion');
+    if (field === 'userEdited') return Object.prototype.hasOwnProperty.call(task, 'userEdited') || Object.prototype.hasOwnProperty.call(task, 'user_edited');
+    return Object.prototype.hasOwnProperty.call(task, field);
+}
+
+function normalizeBundleSubtasks(value) {
+    return normalizeDraftItems(Array.isArray(value) ? value : [], {
+        sourceType: 'ai',
+        maxItems: MAX_BUNDLE_SUBTASKS
+    });
+}
+
+function normalizeComparableBundleField(task = {}, field) {
+    if (field === 'title') return compactString(task.title, MAX_BUNDLE_TITLE_CHARS);
+    if (field === 'description') return compactString(task.description, MAX_BUNDLE_DESCRIPTION_CHARS) || null;
+    if (field === 'impactIds') return normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []);
+    if (field === 'subtasks') return normalizeBundleSubtasks(task.subtasks).map(item => ({ title: item.title }));
+    if (field === 'priority') return normalizePriority(task.priority);
+    if (field === 'dueDate') return normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date);
+    if (field === 'owner') return normalizeOwnerSuggestion(task.ownerSuggestion || task.owner_suggestion || {});
+    return null;
+}
+
+function valuesMatchProposal(finalTask = {}, proposalTask = {}, field) {
+    return stableStringify(normalizeComparableBundleField(finalTask, field)) === stableStringify(normalizeComparableBundleField(proposalTask, field));
+}
+
+function isEmptyUnacceptedField(task = {}, field) {
+    const value = normalizeComparableBundleField(task, field);
+    if (field === 'impactIds' || field === 'subtasks') return Array.isArray(value) && value.length === 0;
+    if (field === 'priority') return value === 'normal';
+    if (field === 'owner') return !value?.userId;
+    return value === null || value === '';
+}
+
+function normalizeBundleTask(value = {}, index = 0, options = {}) {
     const task = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    assertNoUnsupportedTaskFields(task);
+    const acceptedFieldMask = normalizeBundleFieldMask(
+        options.acceptedFieldMask || task.acceptedFieldMask || task.accepted_field_mask || task.acceptedFields || task.accepted_fields,
+        { required: options.requireFieldMask === true }
+    );
+    const editedFieldMask = normalizeBundleFieldMask(
+        options.editedFieldMask || task.editedFieldMask || task.edited_field_mask || task.editedFields || task.edited_fields
+    );
+    const accepted = new Set(acceptedFieldMask);
+    const edited = new Set(editedFieldMask);
+    if (editedFieldMask.some(field => !accepted.has(field))) {
+        throw bundleCommitError('Edited bundle fields must also be accepted.', 400, 'TASK_AI_BUNDLE_FIELD_MASK_INVALID');
+    }
+    for (const field of BUNDLE_FIELD_ALLOWLIST) {
+        if (!accepted.has(field) && fieldSubmitted(task, field) && !isEmptyUnacceptedField(task, field)) {
+            throw bundleCommitError('Bundle task submitted an unaccepted field.', 400, 'TASK_AI_BUNDLE_FIELD_NOT_ACCEPTED');
+        }
+    }
+    if (options.proposalTask) {
+        for (const field of acceptedFieldMask) {
+            if (!edited.has(field) && !valuesMatchProposal(task, options.proposalTask, field)) {
+                throw bundleCommitError('Bundle task final value differs from the signed proposal without edited provenance.', 409, 'TASK_AI_BUNDLE_REVIEW_CONFLICT');
+            }
+        }
+    }
+    if (!accepted.has('title')) {
+        throw bundleCommitError(`Task ${index + 1} title field must be accepted.`, 400, 'TASK_AI_BUNDLE_TITLE_NOT_ACCEPTED');
+    }
     const title = compactString(task.title, MAX_BUNDLE_TITLE_CHARS);
     if (!title) {
         throw bundleCommitError(`Task ${index + 1} title is required.`, 400, 'TASK_AI_BUNDLE_TASK_TITLE_REQUIRED');
     }
     return {
         title,
-        description: compactString(task.description, MAX_BUNDLE_DESCRIPTION_CHARS) || null,
-        impactIds: normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []),
-        priority: normalizePriority(task.priority),
-        scheduleDate: normalizeScheduleDate(task.scheduleDate || task.schedule_date),
-        ownerSuggestion: normalizeOwnerSuggestion(task.ownerSuggestion || task.owner_suggestion || {}),
+        description: accepted.has('description') ? (compactString(task.description, MAX_BUNDLE_DESCRIPTION_CHARS) || null) : null,
+        impactIds: accepted.has('impactIds') ? normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []) : [],
+        subtasks: accepted.has('subtasks') ? normalizeBundleSubtasks(task.subtasks) : [],
+        priority: accepted.has('priority') ? normalizePriority(task.priority) : 'normal',
+        scheduleDate: accepted.has('dueDate') ? normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date) : null,
+        ownerSuggestion: accepted.has('owner') ? normalizeOwnerSuggestion(task.ownerSuggestion || task.owner_suggestion || {}) : normalizeOwnerSuggestion({}),
+        acceptedFieldMask,
+        editedFieldMask,
         userEdited: task.userEdited === true || task.user_edited === true
     };
 }
 
-function normalizeBundleTasks(value) {
+function normalizeBundleTasks(value, options = {}) {
     const rows = Array.isArray(value) ? value : [];
     if (rows.length < MIN_BUNDLE_COMMIT_TASKS) {
         throw bundleCommitError('Bundle commit requires at least two accepted tasks.', 400, 'TASK_AI_BUNDLE_TOO_SMALL');
@@ -100,7 +276,12 @@ function normalizeBundleTasks(value) {
     if (rows.length > MAX_BUNDLE_COMMIT_TASKS) {
         throw bundleCommitError('Bundle commit contains too many tasks.', 400, 'TASK_AI_BUNDLE_TOO_LARGE');
     }
-    return rows.map(normalizeBundleTask);
+    return rows.map((row, index) => normalizeBundleTask(row, index, {
+        ...options,
+        acceptedFieldMask: options.acceptedFieldMasks?.get(Number(row?.proposalIndex ?? row?.proposal_index ?? index)) || options.acceptedFieldMasks?.get(index),
+        editedFieldMask: options.editedFieldMasks?.get(Number(row?.proposalIndex ?? row?.proposal_index ?? index)) || options.editedFieldMasks?.get(index),
+        proposalTask: options.proposalTasks?.[Number(row?.proposalIndex ?? row?.proposal_index ?? index)] || options.proposalTasks?.[index]
+    }));
 }
 
 function normalizeAcceptedTaskMask(value, taskCount) {
@@ -345,10 +526,25 @@ function taskControlMetaForBundle({ bundleId, index, taskCount }) {
 async function commitTaskAiDraftBundle(input = {}, options = {}) {
     const startedAt = Date.now();
     const db = options.pool || pool;
-    const tasks = normalizeBundleTasks(input.tasks || input.finalTasks || input.final_tasks || []);
-    const proposalTaskCount = Array.isArray(input.proposal?.tasks) ? input.proposal.tasks.length : tasks.length;
+    const rawTasks = input.tasks || input.finalTasks || input.final_tasks || [];
+    const proposalTasks = Array.isArray(input.proposal?.tasks) ? input.proposal.tasks : [];
+    const proposalTaskCount = proposalTasks.length || (Array.isArray(rawTasks) ? rawTasks.length : 0);
     const acceptedTaskMask = normalizeAcceptedTaskMask(input.acceptedTaskMask || input.accepted_task_mask || input.acceptedTasks || input.accepted_tasks, proposalTaskCount);
     const rejectedTaskMask = normalizeRejectedTaskMask(input.rejectedTaskMask || input.rejected_task_mask || input.rejectedTasks || input.rejected_tasks, proposalTaskCount);
+    const acceptedFieldMasks = normalizeBundleFieldMaskMap(
+        input.acceptedFieldMasks || input.accepted_field_masks || input.acceptedTaskFieldMasks || input.accepted_task_field_masks,
+        proposalTaskCount
+    );
+    const editedFieldMasks = normalizeBundleFieldMaskMap(
+        input.editedFieldMasks || input.edited_field_masks || input.editedTaskFieldMasks || input.edited_task_field_masks,
+        proposalTaskCount
+    );
+    const tasks = normalizeBundleTasks(rawTasks, {
+        requireFieldMask: true,
+        acceptedFieldMasks,
+        editedFieldMasks,
+        proposalTasks
+    });
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw bundleCommitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
@@ -382,6 +578,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
         tasks,
         acceptedTaskMask,
         rejectedTaskMask,
+        acceptedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: acceptedFieldMasks.get(index) || [] })),
+        editedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: editedFieldMasks.get(index) || [] })),
         idempotencyKey,
         proposalHash: submittedProposalHash,
         draftFingerprint: tokenPayload.draftFingerprint,
@@ -476,7 +674,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 created_by: actorLabel,
                 created_by_user_id: userId,
                 task_mode: 'work',
-                task_kind: 'action',
+                task_kind: finalTask.subtasks.length ? 'checklist' : 'action',
                 visibility: 'team',
                 workflow_state: 'inbox',
                 source_module: 'tasks_ai_draft_bundle_commit',
@@ -493,6 +691,9 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 afterCommit
             });
 
+            const subtasks = finalTask.subtasks.length
+                ? await replaceTaskSubtasks(client, task.id, finalTask.subtasks, { sourceType: 'ai' })
+                : [];
             const classification = await replaceTaskClassification(client, {
                 userId,
                 taskId: task.id,
@@ -508,9 +709,9 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             createdTasks.push({
                 ...task,
                 classification,
-                subtask_count: 0,
-                subtask_done_count: 0,
-                subtasks: []
+                subtask_count: subtasks.length,
+                subtask_done_count: subtasks.filter(item => item.isDone || item.is_done).length,
+                subtasks
             });
 
             await logTaskActionEvent({
@@ -524,6 +725,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     bundleId,
                     bundleTaskIndex: index,
                     impactCount: finalTask.impactIds.length,
+                    subtaskCount: finalTask.subtasks.length,
                     scheduleWritten: Boolean(finalTask.scheduleDate)
                 },
                 meta: {
@@ -537,6 +739,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     catalogVersion,
                     contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                     promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                    acceptedFieldMask: finalTask.acceptedFieldMask,
+                    editedFieldMask: finalTask.editedFieldMask,
                     provider: 'openai',
                     model: MY_DAY_TASK_AI_MODEL,
                     source: AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,
@@ -573,6 +777,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 catalogVersion,
                 contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                acceptedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: acceptedFieldMasks.get(index) || [] })),
+                editedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: editedFieldMasks.get(index) || [] })),
                 provider: 'openai',
                 model: MY_DAY_TASK_AI_MODEL,
                 source: AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,

@@ -8,6 +8,10 @@ const { Pool } = require('pg');
 const { getToken, request } = require('../helpers');
 const { buildMyDayContribution } = require('../../services/myDayContribution');
 const { applyMyDayStarterKit } = require('../../services/myDayStarterKit');
+const {
+    buildTaskCabinetBucketPage,
+    buildTaskCabinetProjection
+} = require('../../services/taskCabinetProjection');
 
 const enabled = process.env.RUN_MY_DAY_POSTGRES_INTEGRATION === 'true';
 let pool = null;
@@ -434,6 +438,171 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         assert.equal(result.days[0].taskMinutes, 60);
         assert.equal(result.impacts.length, 3);
         assert.deepEqual(result.impacts.map(row => row.taskMinutes).sort((a, b) => a - b), [60, 60, 60]);
+    });
+
+    it('keeps large My Day cabinet projection bounded, paged, and free of duplicate task rows', async () => {
+        const user = await createUser('projection_large');
+        const impactIds = [
+            await createImpact(user.id, 'projection CRM'),
+            await createImpact(user.id, 'projection Park'),
+            await createImpact(user.id, 'projection AI')
+        ];
+        const today = '2026-08-15';
+        const inserted = await query(
+            `INSERT INTO tasks (title, description, status, priority, date, deadline, owner_user_id, business_context, created_by, visibility, postponement_count, last_postponed_at)
+             SELECT
+                'large projection task ' || gs::text || ' ${suffix}',
+                'large projection fixture',
+                CASE WHEN gs <= 24 THEN 'done' ELSE 'todo' END,
+                CASE WHEN gs % 17 = 0 THEN 'urgent' WHEN gs % 7 = 0 THEN 'high' ELSE 'normal' END,
+                CASE
+                    WHEN gs <= 320 THEN '2026-08-01'
+                    WHEN gs <= 390 THEN '2026-08-15'
+                    ELSE NULL
+                END,
+                CASE
+                    WHEN gs <= 320 THEN '2026-08-01 09:00:00+03'::timestamptz
+                    WHEN gs <= 390 THEN '2026-08-15 09:00:00+03'::timestamptz
+                    ELSE NULL
+                END,
+                $1,
+                'event_genix',
+                $2,
+                'me_only',
+                CASE WHEN gs <= 30 THEN 2 ELSE 0 END,
+                CASE WHEN gs <= 30 THEN '2026-08-10 09:00:00+03'::timestamptz ELSE NULL END
+             FROM generate_series(1, 430) AS gs
+             RETURNING id`,
+            [user.id, user.username]
+        );
+        const taskIds = inserted.rows.map(row => Number(row.id));
+        assert.equal(taskIds.length, 430);
+
+        await query(
+            `INSERT INTO task_subtasks (task_id, title, is_done, sort_order, completed_at)
+             SELECT task_id,
+                    'Subtask ' || step::text || ' ${suffix}',
+                    step = 1,
+                    step,
+                    CASE WHEN step = 1 THEN '2026-08-15 12:00:00+03'::timestamptz ELSE NULL END
+             FROM unnest($1::int[]) AS task_id
+             CROSS JOIN generate_series(1, 2) AS step`,
+            [taskIds.slice(0, 160)]
+        );
+        await query(
+            `INSERT INTO my_day_task_impacts (user_id, task_id, impact_id)
+             SELECT $1, task_id, impact_id
+             FROM unnest($2::int[]) AS task_id
+             CROSS JOIN unnest($3::int[]) AS impact_id`,
+            [user.id, taskIds.slice(0, 35), impactIds]
+        );
+        await query(
+            `INSERT INTO task_dependencies (task_id, depends_on_task_id)
+             SELECT dependent_id, blocker_id
+             FROM unnest($1::int[], $2::int[]) AS pair(dependent_id, blocker_id)`,
+            [taskIds.slice(40, 70), taskIds.slice(0, 30)]
+        );
+        await query(
+            `INSERT INTO my_day_time_entries (user_id, task_id, started_at, ended_at, source)
+             SELECT $1, task_id, '2026-08-15 10:00:00+03'::timestamptz, '2026-08-15 10:30:00+03'::timestamptz, 'manual'
+             FROM unnest($2::int[]) AS task_id`,
+            [user.id, taskIds.slice(0, 40)]
+        );
+        await query(
+            `INSERT INTO task_action_history (task_id, action_type, actor_user_id, actor_name_snapshot, source_surface, old_value_json, new_value_json, meta_json, summary, created_at)
+             SELECT task_id,
+                    'task_rescheduled',
+                    $1,
+                    $2,
+                    'my_day_projection_large_fixture',
+                    '{"date":"2026-07-30"}'::jsonb,
+                    '{"date":"2026-08-01"}'::jsonb,
+                    '{"reason":"postponement_fixture"}'::jsonb,
+                    'Projection postponement fixture',
+                    '2026-08-10 09:00:00+03'::timestamptz
+             FROM unnest($3::int[]) AS task_id`,
+            [user.id, user.username, taskIds.slice(0, 30)]
+        );
+
+        const calls = [];
+        const instrumentedPool = {
+            async query(text, params = []) {
+                calls.push(String(text));
+                return query(text, params);
+            }
+        };
+        const projection = await buildTaskCabinetProjection({
+            pool: instrumentedPool,
+            user,
+            businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] },
+            ensurePreferences: false,
+            planningRowLimit: 80,
+            completedTodayLimit: 20,
+            now: new Date(`${today}T12:00:00.000Z`)
+        });
+
+        assert.equal(projection.success, true);
+        assert.equal(projection.stats.openTaskCount, 406);
+        assert.ok(projection.meta.planning.buckets.overdue.total >= 296);
+        assert.ok(projection.meta.planning.buckets.overdue.hasMore);
+        assert.ok(projection.meta.buckets.completedToday.total >= 24);
+        assert.equal(projection.completedTodayTasks.length, 20);
+        assert.equal(projection.completedTodayTasks.length, new Set(projection.completedTodayTasks.map(task => task.id)).size);
+        assert.equal(projection.planning.all.length, 80);
+        assert.equal(projection.planning.all.length, new Set(projection.planning.all.map(task => task.id)).size);
+        assert.ok(projection.planning.all.some(task => (task.subtasks || []).length === 2));
+        assert.ok(projection.planning.all.some(task => (task.myDay?.impacts || []).length === 3));
+        assert.ok(projection.planning.all.every(task => (task.myDay?.impacts || []).length <= 3));
+        assert.ok(projection.planning.all.some(task => Number(task.actualSeconds || 0) === 1800));
+
+        const selectWithRepeatedSubtaskAggregate = calls.filter(text => /SELECT t\.\*/.test(text)
+            && /FROM task_subtasks[\s\S]*GROUP BY task_id/.test(text));
+        assert.deepEqual(selectWithRepeatedSubtaskAggregate, []);
+        const scopedSubtaskAggregates = calls.filter(text => /FROM task_subtasks/.test(text)
+            && /WHERE task_id = ANY\(\$1::int\[\]\)/.test(text));
+        assert.equal(scopedSubtaskAggregates.length, 1);
+
+        const firstPage = await buildTaskCabinetBucketPage({
+            pool: instrumentedPool,
+            user,
+            businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] },
+            bucket: 'overdue',
+            bucketLimit: 50,
+            bucketOffset: 0,
+            now: new Date(`${today}T12:00:00.000Z`)
+        });
+        const secondPage = await buildTaskCabinetBucketPage({
+            pool: instrumentedPool,
+            user,
+            businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] },
+            bucket: 'overdue',
+            bucketLimit: 50,
+            bucketOffset: 50,
+            now: new Date(`${today}T12:00:00.000Z`)
+        });
+        assert.equal(firstPage.meta.bucketPage.total, secondPage.meta.bucketPage.total);
+        assert.ok(firstPage.meta.bucketPage.total >= 296);
+        assert.equal(firstPage.tasks.length, 50);
+        assert.equal(secondPage.tasks.length, 50);
+        const firstIds = new Set(firstPage.tasks.map(task => task.id));
+        const secondIds = new Set(secondPage.tasks.map(task => task.id));
+        assert.equal([...firstIds].some(id => secondIds.has(id)), false);
+        assert.ok(firstPage.meta.bucketPage.hasMore);
+        assert.deepEqual(firstPage.meta.bucketPage.nextCursor, { bucket: 'overdue', offset: 50, limit: 50 });
+
+        const noDatePage = await buildTaskCabinetBucketPage({
+            pool: instrumentedPool,
+            user,
+            businessScope: { mode: 'single', activeContext: 'event_genix', selectedContexts: ['event_genix'] },
+            bucket: 'noDate',
+            bucketLimit: 10,
+            bucketOffset: 0,
+            now: new Date(`${today}T12:00:00.000Z`)
+        });
+        assert.equal(noDatePage.success, true);
+        assert.equal(noDatePage.meta.bucketPage.limit, 10);
+        assert.ok(noDatePage.tasks.length > 0);
+        assert.ok(noDatePage.tasks.every(task => !task.dueDate));
     });
 
     it('sanitizes global active timer after business access is revoked while preserving own stop', async () => {

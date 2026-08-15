@@ -129,8 +129,12 @@ const {
     emitTaskAssignedToOwner: emitCanonicalTaskAssignedToOwner
 } = require('../services/taskNotifications');
 const {
+    buildTaskCabinetBucketPage,
     buildTaskCabinetProjection,
     ensureTaskPreferences,
+    normalizeTaskCabinetBucket,
+    normalizeTaskCabinetBucketLimit,
+    normalizeTaskCabinetBucketOffset,
     normalizeTaskCabinetFocusDate
 } = require('../services/taskCabinetProjection');
 const { listTaskCompletionHistory } = require('../services/taskCompletionHistory');
@@ -2220,11 +2224,29 @@ router.get('/my-cabinet', async (req, res) => {
     try {
         const businessScope = requireTaskReadScope(req, res);
         if (!businessScope) return;
+        const rawBucket = req.query.bucket || req.query.pageBucket || req.query.page_bucket;
+        const bucket = normalizeTaskCabinetBucket(rawBucket);
+        if (rawBucket && !bucket) {
+            return res.status(400).json({ success: false, error: 'Unsupported My Cabinet bucket' });
+        }
+        if (bucket) {
+            const page = await buildTaskCabinetBucketPage({
+                pool,
+                user: req.user,
+                businessScope,
+                bucket,
+                bucketLimit: normalizeTaskCabinetBucketLimit(req.query.limit || req.query.bucketLimit || req.query.bucket_limit),
+                bucketOffset: normalizeTaskCabinetBucketOffset(req.query.offset || req.query.bucketOffset || req.query.bucket_offset)
+            });
+            return res.json(page);
+        }
         const projection = await buildTaskCabinetProjection({
             pool,
             user: req.user,
             businessScope,
-            focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date)
+            focusDate: normalizeTaskCabinetFocusDate(req.query.focusDate || req.query.focus_date),
+            planningRowLimit: req.query.planningRowLimit || req.query.planning_row_limit,
+            completedTodayLimit: req.query.completedTodayLimit || req.query.completed_today_limit
         });
         res.json(projection);
     } catch (err) {

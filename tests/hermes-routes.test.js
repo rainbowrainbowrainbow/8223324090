@@ -350,6 +350,9 @@ function createCabinetFakePool(options = {}) {
             if (/FROM my_day_time_entries/i.test(compact)) {
                 return { rows: [], rowCount: 0 };
             }
+            if (/FROM task_subtasks/i.test(compact) && /WHERE task_id = ANY\(\$1::int\[\]\)/i.test(compact)) {
+                return { rows: [], rowCount: 0 };
+            }
 
 
             if (/FROM tasks t/i.test(compact)) {

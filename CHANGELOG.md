@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.153 - Trusted QA Cleanup Guard
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Trusted QA cleanup для product-only run** - cleanup більше не блокується, якщо Trusted QA run встиг створити лише зареєстрований QA product, але ще не створив booking/group records.
+- **Стабільний side-effect inventory SQL** - exact attribution тепер будує параметри динамічно, тому таблиці з `correlation_id`/`run_id` не падають через PostgreSQL `42P18`.
+- **Fail-closed гарантії збережені** - для runs із bookings/groups required visibility blockers і active business side effects і далі блокують cleanup до точного розбору.
+
+---
+
 ## v0.80.152 - My Day Completion Live QA Guard
 
 ### My Day / QA / (15.08.2026) [codex]

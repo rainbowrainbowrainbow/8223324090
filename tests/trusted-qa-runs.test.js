@@ -150,8 +150,12 @@ class FakeTrustedQaDb {
         this.groupRows = this.entities
             .filter(row => row.entity_type === 'banquet_group')
             .map(row => ({ id: row.entity_id, business_context: this.run.business_context, status: 'active' }));
+        this.productRows = this.entities
+            .filter(row => row.entity_type === 'product')
+            .map(row => ({ id: row.entity_id, business_context: this.run.business_context, is_active: true }));
         this.historyWrites = [];
         this.released = false;
+        this.cleanedProductIds = [];
     }
 
     async query(sql, params = []) {
@@ -318,12 +322,23 @@ class FakeTrustedQaDb {
                 : row);
             return { rows: [], rowCount: params[0].length };
         }
+        if (normalized.includes('UPDATE products SET is_active = false')) {
+            this.cleanedProductIds.push(...params[0]);
+            this.productRows = this.productRows.map(row => params[0].includes(row.id)
+                ? { ...row, is_active: false }
+                : row);
+            return { rows: [], rowCount: params[0].length };
+        }
         if (normalized.includes('SELECT COUNT(*)::int AS count FROM bookings')) {
             const count = this.bookingRows.filter(row => (params[0] || []).includes(row.id) && row.status !== 'cancelled').length;
             return { rows: [{ count }], rowCount: 1 };
         }
         if (normalized.includes('SELECT COUNT(*)::int AS count FROM banquet_groups')) {
             const count = this.groupRows.filter(row => (params[0] || []).includes(row.id) && row.status !== 'cancelled').length;
+            return { rows: [{ count }], rowCount: 1 };
+        }
+        if (normalized.includes('SELECT COUNT(*)::int AS count FROM products')) {
+            const count = this.productRows.filter(row => (params[0] || []).includes(row.id) && row.is_active).length;
             return { rows: [{ count }], rowCount: 1 };
         }
         if (normalized.includes('UPDATE trusted_qa_run_entities SET cleanup_state')) {
@@ -530,6 +545,37 @@ test('cleanup keeps processed trusted QA event queue rows as historical evidence
     assert.equal(result.sideEffectCounts.event_queue, 0);
     assert.equal(result.sideEffectExactCounts.event_queue, 2);
     assert.equal(result.sideEffectProcessedHistoricalCounts.event_queue, 2);
+});
+
+test('cleanup supports product-only trusted QA run before bookings are created', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'product', entity_id: 'qa-product-only', cleanup_state: 'active' }
+        ],
+        sideEffectColumns: {
+            ...DEFAULT_SIDE_EFFECT_COLUMNS,
+            outbox_events: ['correlation_id', 'status']
+        }
+    });
+
+    const result = await cleanupTrustedQaRun(db, 11);
+    const unsupportedRequired = result.sideEffectInventory.filter(item => (
+        item.required
+        && item.status === TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED
+    ));
+
+    assert.equal(result.status, 'cleaned');
+    assert.deepEqual(result.cleanedBookingIds, []);
+    assert.deepEqual(result.cleanedGroupIds, []);
+    assert.deepEqual(result.cleanedProductIds, ['qa-product-only']);
+    assert.deepEqual(db.cleanedProductIds, ['qa-product-only']);
+    assert.equal(db.run.state, 'cleaned');
+    assert.equal(unsupportedRequired.every(item => item.blocking === false), true);
+    assert.equal(unsupportedRequired.every(item => item.error?.reason === 'no_booking_or_group_scope'), true);
+    assert.ok(
+        db.queries.some(entry => /FROM "outbox_events" WHERE/.test(entry.sql) && entry.params.length === 1),
+        'structured side-effect query should use compact dynamic params'
+    );
 });
 
 test('side-effect inventory separates processed historical evidence from active leftovers', async () => {

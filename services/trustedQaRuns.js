@@ -622,61 +622,67 @@ function trustedQaTextArray(values = []) {
 function buildTrustedQaAttributionClauses(columns, scope) {
     const clauses = [];
     const methods = [];
+    const queryParams = [];
     const has = column => columns.has(column);
     const column = name => quoteTrustedQaIdent(name);
+    const param = (value, cast) => {
+        queryParams.push(value);
+        return `$${queryParams.length}${cast ? `::${cast}` : ''}`;
+    };
     if (has('trusted_qa_run_id') && Number.isSafeInteger(scope.runDbId)) {
-        clauses.push(`${column('trusted_qa_run_id')} = $1`);
+        clauses.push(`${column('trusted_qa_run_id')} = ${param(scope.runDbId, 'int')}`);
         methods.push('trusted_qa_run_id');
     }
     if (has('trusted_qa_run_entity_id') && scope.entityRowIds.length) {
-        clauses.push(`${column('trusted_qa_run_entity_id')} = ANY($2::int[])`);
+        clauses.push(`${column('trusted_qa_run_entity_id')} = ANY(${param(scope.entityRowIds, 'int[]')})`);
         methods.push('trusted_qa_run_entity_id');
     }
     if (has('run_id') && scope.runPublicId) {
-        clauses.push(`${column('run_id')} = $3`);
+        clauses.push(`${column('run_id')} = ${param(scope.runPublicId, 'text')}`);
         methods.push('run_id');
     }
     if (has('booking_id') && scope.bookingIds.length) {
-        clauses.push(`${column('booking_id')} = ANY($4::text[])`);
+        clauses.push(`${column('booking_id')} = ANY(${param(trustedQaTextArray(scope.bookingIds), 'text[]')})`);
         methods.push('booking_id');
     }
     if (has('primary_booking_id') && scope.bookingIds.length) {
-        clauses.push(`${column('primary_booking_id')} = ANY($4::text[])`);
+        clauses.push(`${column('primary_booking_id')} = ANY(${param(trustedQaTextArray(scope.bookingIds), 'text[]')})`);
         methods.push('primary_booking_id');
     }
     if (has('source_booking_id') && scope.bookingIds.length) {
-        clauses.push(`${column('source_booking_id')} = ANY($4::text[])`);
+        clauses.push(`${column('source_booking_id')} = ANY(${param(trustedQaTextArray(scope.bookingIds), 'text[]')})`);
         methods.push('source_booking_id');
     }
     if (has('source_type') && has('source_id') && scope.bookingIds.length) {
-        clauses.push(`(LOWER(${column('source_type')}::text) = 'booking' AND ${column('source_id')} = ANY($4::text[]))`);
+        clauses.push(`(LOWER(${column('source_type')}::text) = 'booking' AND ${column('source_id')} = ANY(${param(trustedQaTextArray(scope.bookingIds), 'text[]')}))`);
         methods.push('source_type_booking');
     }
     if (has('banquet_group_id') && scope.groupIds.length) {
-        clauses.push(`${column('banquet_group_id')} = ANY($5::text[])`);
+        clauses.push(`${column('banquet_group_id')} = ANY(${param(trustedQaTextArray(scope.groupIds), 'text[]')})`);
         methods.push('banquet_group_id');
     }
     if (has('group_id') && scope.groupIds.length) {
-        clauses.push(`${column('group_id')} = ANY($5::text[])`);
+        clauses.push(`${column('group_id')} = ANY(${param(trustedQaTextArray(scope.groupIds), 'text[]')})`);
         methods.push('group_id');
     }
     if (has('source_type') && has('source_id') && scope.groupIds.length) {
-        clauses.push(`(LOWER(${column('source_type')}::text) = 'banquet_group' AND ${column('source_id')} = ANY($5::text[]))`);
+        clauses.push(`(LOWER(${column('source_type')}::text) = 'banquet_group' AND ${column('source_id')} = ANY(${param(trustedQaTextArray(scope.groupIds), 'text[]')}))`);
         methods.push('source_type_banquet_group');
     }
     if (has('product_id') && scope.productIds.length) {
-        clauses.push(`${column('product_id')} = ANY($6::text[])`);
+        clauses.push(`${column('product_id')} = ANY(${param(trustedQaTextArray(scope.productIds), 'text[]')})`);
         methods.push('product_id');
     }
     for (const correlationColumn of ['idempotency_key', 'correlation_id', 'request_id', 'request_key']) {
         if (has(correlationColumn) && scope.runPublicId) {
-            clauses.push(`${column(correlationColumn)} = $3`);
+            clauses.push(`${column(correlationColumn)} = ${param(scope.runPublicId, 'text')}`);
             methods.push(correlationColumn);
         }
     }
     return {
         whereSql: clauses.length ? `(${clauses.join(' OR ')})` : '',
-        attributionMethod: [...new Set(methods)].sort()
+        attributionMethod: [...new Set(methods)].sort(),
+        queryParams
     };
 }
 
@@ -753,14 +759,7 @@ async function trustedQaSideEffectCapabilityInventory(queryable, capability, sco
                     COUNT(*) FILTER (WHERE NOT (${activeSql}))::int AS processed_historical_count
                FROM ${tableSql}
               WHERE ${attribution.whereSql}`,
-            [
-                Number.isSafeInteger(scope.runDbId) ? scope.runDbId : null,
-                scope.entityRowIds,
-                scope.runPublicId || null,
-                trustedQaTextArray(scope.bookingIds),
-                trustedQaTextArray(scope.groupIds),
-                trustedQaTextArray(scope.productIds)
-            ]
+            attribution.queryParams
         );
         const row = result.rows?.[0] || {};
         const activeCount = Number(row.active_count || 0);
@@ -783,9 +782,24 @@ async function trustedQaSideEffectCapabilityInventory(queryable, capability, sco
 
 async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
     const scope = trustedQaSideEffectScope(inventory, bookingIds, groupIds);
+    const hasBookingOrGroupScope = scope.bookingIds.length > 0 || scope.groupIds.length > 0;
     const capabilities = [];
     for (const capability of TRUSTED_QA_SIDE_EFFECT_CAPABILITIES) {
-        capabilities.push(await trustedQaSideEffectCapabilityInventory(queryable, capability, scope));
+        const item = await trustedQaSideEffectCapabilityInventory(queryable, capability, scope);
+        if (!hasBookingOrGroupScope
+            && item.status === TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED
+            && item.error?.code === 'NO_DURABLE_ATTRIBUTION') {
+            capabilities.push({
+                ...item,
+                blocking: false,
+                error: {
+                    ...item.error,
+                    reason: 'no_booking_or_group_scope'
+                }
+            });
+            continue;
+        }
+        capabilities.push(item);
     }
     const counts = Object.fromEntries(capabilities.map(item => [item.tableName, item.activeCount]));
     const exactCounts = Object.fromEntries(capabilities.map(item => [item.tableName, item.exactCount]));

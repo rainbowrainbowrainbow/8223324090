@@ -112,9 +112,15 @@ async function createHrSession(base) {
     return { ...session, userId: hrAccount.userId, responsibleUserId: ownerAccount.userId };
 }
 
-function matchesApiResponse(response, method, pathname) {
+function matchesApiResponse(response, method, pathname, options = {}) {
     const url = new URL(response.url());
-    return url.pathname === pathname && response.request().method() === method;
+    if (url.pathname !== pathname || response.request().method() !== method) return false;
+    if (options.searchParams) {
+        for (const [key, value] of Object.entries(options.searchParams)) {
+            if (url.searchParams.get(key) !== String(value)) return false;
+        }
+    }
+    return true;
 }
 
 async function responseJson(response, label) {
@@ -124,8 +130,8 @@ async function responseJson(response, label) {
     return body;
 }
 
-async function waitForApi(page, method, pathname) {
-    return page.waitForResponse(response => matchesApiResponse(response, method, pathname), { timeout: TIMEOUT_MS });
+async function waitForApi(page, method, pathname, options = {}) {
+    return page.waitForResponse(response => matchesApiResponse(response, method, pathname, options), { timeout: TIMEOUT_MS });
 }
 
 async function waitForAppShell(page, options = {}) {
@@ -142,7 +148,7 @@ async function waitForAppShell(page, options = {}) {
 }
 
 async function reloadVacanciesWithStatus(page, status) {
-    const responsePromise = waitForApi(page, 'GET', '/api/hr/vacancies');
+    const responsePromise = waitForApi(page, 'GET', '/api/hr/vacancies', { searchParams: { status } });
     await page.evaluate(nextStatus => {
         const filter = document.getElementById('vacStatusFilter');
         if (filter) filter.value = nextStatus;

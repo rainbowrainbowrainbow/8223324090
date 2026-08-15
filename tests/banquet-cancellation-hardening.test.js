@@ -54,6 +54,20 @@ test('frontend cancellation UI is readiness-driven and has no generic undo resto
     assert.match(ws, /case 'banquet:booking-set-updated':/);
 });
 
+test('banquet cancellation broadcasts booking-set updates to same-user tabs', () => {
+    const service = read('services/banquetCancellation.js');
+    const start = service.indexOf('function broadcastCancellation');
+    const end = service.indexOf('module.exports', start);
+    const block = service.slice(start, end);
+    assert.ok(start >= 0 && end > start);
+    assert.match(block, /broadcastBookingEvent\('booking:deleted', booking, excludeUserId/);
+    assert.match(
+        block,
+        /broadcastBanquetEvent\('banquet:booking-set-updated'[\s\S]*?\}, null, \{/,
+        'banquet booking-set broadcast must not exclude the initiating user because other same-user tabs need the WS invalidation'
+    );
+});
+
 test('room hardening closes known active write paths and adds not-valid guards', () => {
     const bookingRoutes = read('routes/bookings.js');
     const banquetService = read('services/banquetGroups.js');

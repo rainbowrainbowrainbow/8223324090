@@ -20304,6 +20304,7 @@ let currentVacancyId = null;
 let currentApplications = [];
 let currentVacancies = [];
 let activeVacancyWorkspaceTab = 'vacancies';
+let vacancyLoadSequence = 0;
 let vacancyPlatformTemplates = [];
 let vacancyPlatformAiMeta = null;
 const VAC_STATUS_LABEL = {
@@ -20551,8 +20552,10 @@ async function copyVacancyTemplateOutput() {
 }
 
 async function loadVacancies() {
+    const loadSequence = ++vacancyLoadSequence;
     initVacancyWorkspaceTabs();
     await loadVacancyPlatformTemplates();
+    if (loadSequence !== vacancyLoadSequence) return;
     renderVacancyTemplateStudio();
     const status = document.getElementById('vacStatusFilter')?.value || 'open';
     const list = document.getElementById('vacanciesList');
@@ -20565,6 +20568,7 @@ async function loadVacancies() {
     renderInterviewResults();
 
     const data = await hrFetch(`/vacancies?status=${status}`);
+    if (loadSequence !== vacancyLoadSequence) return;
     if (!data?.success) {
         if (list) list.innerHTML = '<div style="text-align:center;color:var(--danger);padding:24px">Помилка завантаження</div>';
         return;

@@ -670,7 +670,7 @@ function broadcastCancellation(result = {}, user = {}) {
             businessContext,
             updatedAt: new Date().toISOString(),
             primaryBooking
-        }, excludeUserId, {
+        }, null, {
             visibilityBooking: primaryBooking,
             extraPayload: {
                 groupId: result.groupId,

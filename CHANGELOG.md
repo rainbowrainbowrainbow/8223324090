@@ -4,6 +4,14 @@
 
 ---
 
+## v0.80.156 - Banquet Same-User WS Sync
+
+### Banquet cancellation / WebSocket / (15.08.2026) [codex]
+- **Синхронізація двох вкладок** - `banquet:booking-set-updated` після скасування банкетної складової більше не виключає інші вкладки того самого користувача.
+- **Регресійний захист** - додано тест, який фіксує правило: generic `booking:deleted` може виключати ініціатора, але банкетний booking-set update має доходити до same-user вкладок.
+
+---
+
 ## v0.80.155 - My Day Full Completion History
 
 ### My Day / Completion history / (15.08.2026) [codex]

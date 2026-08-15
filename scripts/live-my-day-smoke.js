@@ -374,19 +374,20 @@ async function assertMyDayShell(page) {
     await page.waitForSelector('.cabinet-day-column--today');
     await page.waitForSelector('.cabinet-day-column--overdue');
     await page.waitForSelector('[data-cabinet-composer-toggle]');
-    await page.waitForSelector('.cabinet-completed-strip--compact details.cabinet-completed-details');
+    await page.waitForSelector('[data-cabinet-completion-pulse]');
     await page.waitForSelector('[data-cabinet-overdue-triage]');
 
     assert.equal(await page.locator('.cabinet-day-command-bar').count(), 0, 'old My Day command bar is absent');
     assert.equal(await page.locator('[data-cabinet-my-day-sound-settings]').count(), 0, 'old visible sound shortcut is absent');
     assert.equal(await page.locator('.cabinet-day-action--settings').count(), 0, 'old settings action is absent');
     assert.equal(await page.locator('.cabinet-support-panel').count(), 0, 'CRM signal/support panels do not push down My Day focus');
+    assert.equal(await page.locator('.cabinet-completed-strip, [data-cabinet-completed-today-dashboard], [data-cabinet-completed-today-toggle]').count(), 0, 'old split completion surfaces are absent');
 
     const shell = await page.evaluate(() => {
         const workspace = document.querySelector('[data-cabinet-my-day-layout="focused-overdue"], #myDayHabitsPanel, #myDayContributionPanel');
         const today = document.querySelector('.cabinet-day-column--today');
         const overdue = document.querySelector('.cabinet-day-column--overdue');
-        const completed = document.querySelector('.cabinet-completed-details');
+        const completionToggle = document.querySelector('[data-cabinet-completion-toggle]');
         const composerToggle = document.querySelector('[data-cabinet-composer-toggle]');
         return {
             layout: workspace?.getAttribute('data-cabinet-my-day-layout') || '',
@@ -394,22 +395,90 @@ async function assertMyDayShell(page) {
             activeOverdue: Number(workspace?.getAttribute('data-active-overdue') || 0),
             todayTitle: today?.textContent?.trim().slice(0, 200) || '',
             overdueTitle: overdue?.textContent?.trim().slice(0, 200) || '',
-            completedOpen: Boolean(completed?.hasAttribute('open')),
+            completionExpanded: completionToggle?.getAttribute('aria-expanded') || '',
+            completionDetailsInDom: Boolean(document.querySelector('[data-cabinet-completion-details]')),
             composerExpanded: composerToggle?.getAttribute('aria-expanded') || ''
         };
     });
     assert.equal(shell.layout, 'focused-overdue', 'My Day uses the focused-date/overdue layout');
     assert.match(shell.todayTitle, /Сьогодні|РЎСЊРѕРіРѕРґРЅС–/, 'today column renders today copy');
     assert.match(shell.overdueTitle, /Прострочено|РџСЂРѕСЃС‚СЂРѕС‡РµРЅРѕ|Немає прострочених|РќРµРјР°С” РїСЂРѕСЃС‚СЂРѕС‡РµРЅРёС…/, 'overdue column renders overdue copy');
-    assert.equal(shell.completedOpen, false, 'completed history is collapsed by default');
+    assert.equal(shell.completionExpanded, 'false', 'completion pulse is collapsed by default');
+    assert.equal(shell.completionDetailsInDom, false, 'completion details are not rendered before disclosure');
     assert.equal(shell.composerExpanded, 'false', 'quick-add composer starts collapsed');
 }
 
-async function assertCompletedHistoryDisclosure(page) {
-    const details = page.locator('.cabinet-completed-details').first();
-    await details.locator('summary').click();
-    await page.waitForFunction(() => document.querySelector('.cabinet-completed-details')?.hasAttribute('open'));
-    assert.equal(await details.evaluate(node => node.hasAttribute('open')), true, 'completed history details can open');
+async function assertCompletionPulseDisclosure(page, label) {
+    const pulse = page.locator('[data-cabinet-completion-pulse]');
+    assert.equal(await pulse.count(), 1, `${label}: command center renders one completion pulse`);
+    assert.equal(await page.locator('[data-cabinet-completion-toggle]').count(), 1, `${label}: completion pulse has one disclosure action`);
+    assert.equal(await page.locator('.cabinet-completed-strip, [data-cabinet-completed-today-dashboard], [data-cabinet-completed-today-toggle]').count(), 0, `${label}: legacy completion surfaces are absent`);
+
+    const viewport = page.viewportSize() || VIEWPORTS.desktop;
+    const collapsed = await pulse.evaluate(node => {
+        const rect = node.getBoundingClientRect();
+        const visibleText = (node.innerText || '').replace(/\s+/g, ' ');
+        const rawKeys = ['system', 'processes', 'learning', 'network']
+            .filter(key => new RegExp(`(^|\\s)${key}(?=\\s|$)`, 'i').test(visibleText));
+        return {
+            height: rect.height,
+            overflow: node.scrollWidth - node.clientWidth,
+            rawKeys,
+            expanded: node.querySelector('[data-cabinet-completion-toggle]')?.getAttribute('aria-expanded') || '',
+            detailsCount: node.querySelectorAll('[data-cabinet-completion-details]').length,
+            viewLabel: document.querySelector('.cabinet-view-mode-label')?.textContent?.trim() || ''
+        };
+    });
+    assert.equal(collapsed.expanded, 'false', `${label}: completion pulse starts collapsed`);
+    assert.equal(collapsed.detailsCount, 0, `${label}: completion details are absent in default compact state`);
+    assert.ok(collapsed.height <= (viewport.width <= 640 ? 220 : 150), `${label}: collapsed completion pulse is too tall: ${JSON.stringify(collapsed)}`);
+    assert.ok(collapsed.overflow <= 1, `${label}: collapsed completion pulse overflows horizontally: ${JSON.stringify(collapsed)}`);
+    assert.deepEqual(collapsed.rawKeys, [], `${label}: raw impact icon keys visible: ${collapsed.rawKeys.join(',')}`);
+    assert.match(collapsed.viewLabel, /Вигляд карток/i, `${label}: card view mode control has an explicit label`);
+
+    const toggle = page.locator('[data-cabinet-completion-toggle]');
+    assert.equal(await toggle.getAttribute('aria-controls'), 'cabinetCompletionDetails', `${label}: disclosure controls completion details`);
+    await toggle.click();
+    await page.waitForSelector('[data-cabinet-completion-details]', { state: 'visible' });
+    assert.equal(await toggle.getAttribute('aria-expanded'), 'true', `${label}: disclosure opens completion pulse`);
+
+    assert.equal(await page.locator('[data-cabinet-completion-tab="today"]').getAttribute('aria-controls'), 'cabinetCompletionDetails', `${label}: Today tab controls details panel`);
+    assert.equal(await page.locator('[data-cabinet-completion-tab="history"]').getAttribute('aria-controls'), 'cabinetCompletionDetails', `${label}: History tab controls details panel`);
+    await page.locator('[data-cabinet-completion-tab="history"]').click();
+    await page.locator('[data-cabinet-completion-tab="today"]').click();
+
+    const expanded = await pulse.evaluate(node => {
+        const details = node.querySelector('[data-cabinet-completion-details]');
+        const visibleText = (node.innerText || '').replace(/\s+/g, ' ');
+        const rawKeys = ['system', 'processes', 'learning', 'network']
+            .filter(key => new RegExp(`(^|\\s)${key}(?=\\s|$)`, 'i').test(visibleText));
+        const impactOverlaps = Array.from(node.querySelectorAll('.cabinet-completion-impact-row'))
+            .filter(row => row.offsetParent !== null)
+            .map(row => {
+                const labelBox = row.querySelector('span')?.getBoundingClientRect();
+                const barBox = row.querySelector('.cabinet-completion-bar')?.getBoundingClientRect();
+                return labelBox && barBox ? Math.round(labelBox.right - barBox.left) : 0;
+            })
+            .filter(value => value > 1);
+        return {
+            overflow: node.scrollWidth - node.clientWidth,
+            detailsOverflow: details ? details.scrollWidth - details.clientWidth : 0,
+            rawKeys,
+            impactOverlaps,
+            showMore: Boolean(node.querySelector('[data-cabinet-completion-all]'))
+        };
+    });
+    assert.ok(expanded.overflow <= 1 && expanded.detailsOverflow <= 1, `${label}: expanded completion pulse overflows horizontally: ${JSON.stringify(expanded)}`);
+    assert.deepEqual(expanded.rawKeys, [], `${label}: raw impact icon keys visible after expansion: ${expanded.rawKeys.join(',')}`);
+    assert.deepEqual(expanded.impactOverlaps, [], `${label}: completion impact labels overlap bars: ${JSON.stringify(expanded)}`);
+    if (expanded.showMore) {
+        await page.locator('[data-cabinet-completion-all]').click();
+        await page.waitForFunction(() => !document.querySelector('[data-cabinet-completion-extra]')?.hidden);
+    }
+
+    await toggle.click();
+    await page.waitForFunction(() => document.querySelector('[data-cabinet-completion-toggle]')?.getAttribute('aria-expanded') === 'false');
+    assert.equal(await page.locator('[data-cabinet-completion-details]').count(), 0, `${label}: completion details are removed after collapse`);
 }
 
 async function assertOverdueTriageSurface(page) {
@@ -486,7 +555,7 @@ async function runViewport(browser, base, session, viewport, label) {
         await assertMyDayShell(page);
         const draftVerified = VERIFY_DRAFT ? await assertComposerDraftSurvivesDueChanges(page) : false;
         const overdue = await assertOverdueTriageSurface(page);
-        await assertCompletedHistoryDisclosure(page);
+        await assertCompletionPulseDisclosure(page, label);
         await assertNoHorizontalOverflow(page, label);
         await assertMyDayLifeModes(page, label);
         await page.screenshot({ path: path.join(OUTPUT_DIR, `${label}.png`), fullPage: true });

@@ -66,6 +66,7 @@ test('time ledger contract has one active timer, atomic switch, completion stop,
     const route = fs.readFileSync(path.join(root, 'routes', 'my-day.js'), 'utf8');
     const execution = fs.readFileSync(path.join(root, 'services', 'taskExecution.js'), 'utf8');
     const projection = fs.readFileSync(path.join(root, 'services', 'taskCabinetProjection.js'), 'utf8');
+    const completionHistory = fs.readFileSync(path.join(root, 'services', 'taskCompletionHistory.js'), 'utf8');
     assert.match(migration, /uq_my_day_time_entries_one_active_per_user/);
     assert.match(migration, /ended_at IS NULL/);
     assert.match(migration, /ended_at > started_at/);
@@ -78,7 +79,8 @@ test('time ledger contract has one active timer, atomic switch, completion stop,
     assert.match(route, /router\.get\('\/time-entries'/);
     assert.match(route, /router\.patch\('\/time-entries\/:id'/);
     assert.match(execution, /stopActiveTimerForUser\(query, normalizeUserId\(actor\), \{ taskId: task\.id \}\)/);
-    assert.match(projection, /actualSeconds: taskTimeTotalsByTaskId\.get\(taskId\) \|\| 0/);
+    assert.match(projection, /normalizeTaskCabinetRows/);
+    assert.match(completionHistory, /actualSeconds: timeTotalsByTaskId\.get\(taskId\) \|\| 0/);
 });
 
 test('My Day UI keeps an icon trigger in the header and plan/fact in details', () => {

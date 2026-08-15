@@ -26,20 +26,17 @@ const {
 const { deriveTaskIntelligence } = require('./taskIntelligence');
 const {
     buildPostponementExplanation,
-    normalizePostponementCount,
     postponementAttentionLevel
 } = require('./taskPostponementPolicy');
-const { listLatestTaskPostponementEvents } = require('./taskActionHistory');
 const {
     appendTaskBusinessScopeSql,
     taskBusinessScopeMeta
 } = require('./taskBusinessScope');
-const { loadTaskClassifications } = require('./myDayTaxonomy');
-const { loadTaskDependencyStates } = require('./taskDependencies');
 const {
-    loadTaskTimeTotals,
-    loadTaskTimeTotalsForDate
-} = require('./myDayTimeTracking');
+    normalizeCompletionHistoryLimit,
+    normalizeTaskCabinetRows,
+    queryTaskCompletionHistoryPage
+} = require('./taskCompletionHistory');
 
 const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;
 const MAX_TASK_CABINET_PLANNING_ROW_LIMIT = 500;
@@ -253,9 +250,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const planningRowLimit = normalizeTaskCabinetPlanningLimit(options.planningRowLimit);
     const planningFetchLimit = planningRowLimit + 1;
     const nextWeek = addDays(today, 7);
-    const completedHistoryLimit = Number.isInteger(options.completedHistoryLimit) && options.completedHistoryLimit > 0
-        ? options.completedHistoryLimit
-        : 36;
+    const completedHistoryLimit = normalizeCompletionHistoryLimit(options.completedHistoryLimit);
 
     const result = await queryable.query(
         `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
@@ -396,47 +391,12 @@ async function buildTaskCabinetProjection(options = {}) {
     const planningIsPartial = planningResultRows.length > planningRowLimit;
     const planningSourceRows = planningResultRows.slice(0, planningRowLimit);
 
-    const completedHistoryParams = [...ownParams, completedHistoryLimit];
-    const completedHistoryResult = await queryable.query(
-        `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
-                COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                COALESCE(st.total, 0)::int AS subtask_count,
-                COALESCE(st.done, 0)::int AS subtask_done_count
-         FROM tasks t
-         LEFT JOIN users u ON u.id = t.owner_user_id
-         LEFT JOIN (
-            SELECT task_id,
-                   COUNT(*)::int AS total,
-                   COUNT(*) FILTER (WHERE is_done = true)::int AS done
-            FROM task_subtasks
-            GROUP BY task_id
-         ) st ON st.task_id = t.id
-         LEFT JOIN (
-            SELECT task_id,
-                   json_agg(json_build_object(
-                       'id', id,
-                       'task_id', task_id,
-                       'title', title,
-                       'is_done', is_done,
-                       'sort_order', sort_order,
-                       'source_type', COALESCE(source_type, 'manual'),
-                       'created_at', created_at,
-                       'completed_at', completed_at,
-                       'updated_at', updated_at
-                   ) ORDER BY sort_order ASC, id ASC) AS subtasks
-            FROM task_subtasks
-            GROUP BY task_id
-         ) subtask_rows ON subtask_rows.task_id = t.id
-         WHERE ${ownMatch}
-           ${ownBusinessCondition}
-           AND COALESCE(t.status, 'todo') = 'done'
-         ORDER BY COALESCE(t.completed_at, t.updated_at, t.created_at) DESC, t.id DESC
-         LIMIT $${completedHistoryParams.length}`,
-        completedHistoryParams
-    );
-    const completedHistorySourceRows = Array.isArray(completedHistoryResult.rows)
-        ? completedHistoryResult.rows
-        : [];
+    const completedHistoryPage = await queryTaskCompletionHistoryPage(queryable, {
+        user,
+        businessScope,
+        limit: completedHistoryLimit
+    });
+    const completedHistorySourceRows = completedHistoryPage.sourceRows;
     const completedTodayParams = [...ownParams, today];
     const completedTodayDateParam = completedTodayParams.length;
     const completedTodayResult = await queryable.query(
@@ -506,52 +466,20 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedTodaySourceRows = Array.isArray(completedTodayResult.rows)
         ? completedTodayResult.rows
         : [];
-    const myDayTaskIds = [...new Set([...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows, ...completedTodaySourceRows]
-        .map(row => Number(row.id || row.task_id || row.taskId))
-        .filter(id => Number.isInteger(id) && id > 0))];
-    const myDayClassificationsByTaskId = await loadTaskClassifications(queryable, userId, myDayTaskIds);
-    const dependencyStatesByTaskId = await loadTaskDependencyStates(queryable, myDayTaskIds);
-    const taskTimeTotalsByTaskId = await loadTaskTimeTotals(queryable, userId, myDayTaskIds);
-    const taskTimeTotalsTodayByTaskId = await loadTaskTimeTotalsForDate(queryable, userId, myDayTaskIds, today);
-    const explanationTaskIds = [...new Set(
-        [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows, ...completedTodaySourceRows]
-            .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
-            .map(row => Number(row.id || row.task_id || row.taskId))
-            .filter(id => Number.isInteger(id) && id > 0)
-    )];
-    const postponementEventsByTaskId = await listLatestTaskPostponementEvents(explanationTaskIds, {
-        pool: queryable
+    const allSourceRows = [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows, ...completedTodaySourceRows];
+    const allProjectionRows = await normalizeTaskCabinetRows(queryable, {
+        rows: allSourceRows,
+        user,
+        today
     });
-    const normalizeProjectionRow = row => {
-        const taskId = Number(row.id || row.task_id || row.taskId);
-        const dependencyState = dependencyStatesByTaskId.get(taskId);
-        const completedSubtasksToday = Number(row.completed_subtask_count_today || row.completedSubtasksToday || 0);
-        const completedParentToday = String(row.status || row.workflowState || row.workflow_state || '').toLowerCase() === 'done'
-            && row.completed_at
-            && taskDateOnly(row.completed_at) === today;
-        const completedTodayKind = completedParentToday
-            ? (completedSubtasksToday > 0 ? 'task_and_subtasks' : 'task')
-            : (completedSubtasksToday > 0 ? 'subtasks' : 'none');
-        const task = normalizeTaskPayload({
-            ...row,
-            dependency_count: dependencyState?.dependencyCount || 0,
-            open_dependency_count: dependencyState?.openDependencyCount || 0,
-            blocked_by_titles: dependencyState?.blockedByTitles || null,
-            dependencies: dependencyState?.dependencies || []
-        }, { postponementEvent: postponementEventsByTaskId.get(taskId) || null, user });
-        return {
-            ...task,
-            actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0,
-            actualSecondsToday: taskTimeTotalsTodayByTaskId.get(taskId) || 0,
-            completedSubtasksToday,
-            completedParentToday,
-            completedTodayKind,
-            latestSubtaskCompletedAt: row.latest_subtask_completed_at || row.latestSubtaskCompletedAt || null,
-            myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] }
-        };
+    let projectionOffset = 0;
+    const takeProjectionRows = sourceRows => {
+        const projected = allProjectionRows.slice(projectionOffset, projectionOffset + sourceRows.length);
+        projectionOffset += sourceRows.length;
+        return projected;
     };
-    const rows = activeSourceRows.map(normalizeProjectionRow);
-    const planningRows = planningSourceRows.map(normalizeProjectionRow);
+    const rows = takeProjectionRows(activeSourceRows);
+    const planningRows = takeProjectionRows(planningSourceRows);
     const planning = buildTaskCabinetPlanningProjection(planningRows, calendar, now);
     const planningVisibleCounts = Object.fromEntries(
         Object.entries(planning).map(([key, value]) => [key, Array.isArray(value) ? value.length : 0])
@@ -566,8 +494,8 @@ async function buildTaskCabinetProjection(options = {}) {
         visibleCounts: planningVisibleCounts,
         order: 'overdue_today_later_no_date'
     };
-    const completedHistory = completedHistorySourceRows.map(normalizeProjectionRow);
-    const completedTodayTasks = completedTodaySourceRows.map(normalizeProjectionRow);
+    const completedHistory = takeProjectionRows(completedHistorySourceRows);
+    const completedTodayTasks = takeProjectionRows(completedTodaySourceRows);
 
     const buckets = {
         focus: [],
@@ -729,6 +657,11 @@ async function buildTaskCabinetProjection(options = {}) {
             calendar,
             postponementExplanationContract: 'postponement_explanation_v1',
             planning: planningMeta,
+            completedHistory: {
+                ...completedHistoryPage.pagination,
+                source: 'parent_tasks_keyset_history',
+                order: 'COALESCE(completed_at, updated_at, created_at) DESC, id DESC'
+            },
             privacyRule: 'private/me_only tasks are owner-only',
             businessScope: taskBusinessScopeMeta(businessScope)
         }

@@ -67,6 +67,7 @@ test('Task 3 route, projection, UI, and compatibility migration retain the block
     const root = path.resolve(__dirname, '..');
     const routes = fs.readFileSync(path.join(root, 'routes', 'tasks.js'), 'utf8');
     const projection = fs.readFileSync(path.join(root, 'services', 'taskCabinetProjection.js'), 'utf8');
+    const completionHistory = fs.readFileSync(path.join(root, 'services', 'taskCompletionHistory.js'), 'utf8');
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const ui = fs.readFileSync(path.join(root, 'js', 'my-day-dependencies.js'), 'utf8');
     assert.match(routes, /router\.get\('\/:id\/dependencies'/);
@@ -74,7 +75,8 @@ test('Task 3 route, projection, UI, and compatibility migration retain the block
     assert.match(routes, /router\.delete\('\/:id\/dependencies\/:dependsOnTaskId'/);
     assert.match(routes, /BEGIN/);
     assert.match(routes, /my_day_task_metadata/);
-    assert.match(projection, /loadTaskDependencyStates/);
+    assert.match(projection, /normalizeTaskCabinetRows/);
+    assert.match(completionHistory, /loadTaskDependencyStates/);
     assert.match(profile, /data-cabinet-task-action': 'dependencies'/);
     assert.match(profile, /complete-despite-blocker/);
     assert.match(ui, /Спочатку:/);

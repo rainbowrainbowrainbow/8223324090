@@ -133,6 +133,7 @@ const {
     ensureTaskPreferences,
     normalizeTaskCabinetFocusDate
 } = require('../services/taskCabinetProjection');
+const { listTaskCompletionHistory } = require('../services/taskCompletionHistory');
 const { listTaxonomy } = require('../services/myDayTaxonomy');
 const { loadMyDayAiImpactCatalog } = require('../services/myDayAiImpactCatalog');
 const { hmacSafetyIdentifier } = require('../services/myDayTaskOpenAIClient');
@@ -2178,6 +2179,39 @@ router.post('/decomposition-suggestions', requireRole('admin', 'user'), async (r
         if (err.statusCode) return res.status(err.statusCode).json({ success: false, error: err.message });
         log.error('Task decomposition suggestions error', err);
         res.status(500).json({ success: false, error: 'Internal server error' });
+    }
+});
+
+// GET /api/tasks/my-cabinet/completions — paginated parent task completion history
+router.get('/my-cabinet/completions', async (req, res) => {
+    try {
+        const businessScope = requireTaskReadScope(req, res);
+        if (!businessScope) return;
+        const period = String(req.query.period || 'history').trim().toLowerCase();
+        if (period !== 'history') {
+            return res.status(400).json({
+                success: false,
+                error: 'Unsupported completion period',
+                code: 'TASK_COMPLETION_PERIOD_UNSUPPORTED'
+            });
+        }
+        const history = await listTaskCompletionHistory(pool, {
+            user: req.user,
+            businessScope,
+            cursor: req.query.cursor,
+            limit: req.query.limit
+        });
+        res.json(history);
+    } catch (err) {
+        if (err.statusCode) {
+            return res.status(err.statusCode).json({
+                success: false,
+                error: err.message,
+                code: err.code || 'TASK_COMPLETION_HISTORY_FAILED'
+            });
+        }
+        log.error('My cabinet completion history error', err);
+        res.status(500).json({ success: false, error: 'Internal server error', code: 'TASK_COMPLETION_HISTORY_FAILED' });
     }
 });
 

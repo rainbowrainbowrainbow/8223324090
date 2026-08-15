@@ -159,6 +159,7 @@ test('route, projection, migration, and profile UI retain the impacts-only activ
     const root = path.resolve(__dirname, '..');
     const route = fs.readFileSync(path.join(root, 'routes', 'my-day.js'), 'utf8');
     const projection = fs.readFileSync(path.join(root, 'services', 'taskCabinetProjection.js'), 'utf8');
+    const completionHistory = fs.readFileSync(path.join(root, 'services', 'taskCompletionHistory.js'), 'utf8');
     const profile = fs.readFileSync(path.join(root, 'js', 'profile-page.js'), 'utf8');
     const service = fs.readFileSync(path.join(root, 'services', 'myDayTaxonomy.js'), 'utf8');
     const migration = fs.readFileSync(path.join(root, 'db', 'migrations', '312_my_day_task_classification.sql'), 'utf8');
@@ -175,7 +176,8 @@ test('route, projection, migration, and profile UI retain the impacts-only activ
     assert.match(service, /classificationFingerprint/);
     assert.match(service, /allowArchivedImpactIds/);
     assert.doesNotMatch(service, /INSERT INTO my_day_task_metadata \(user_id, task_id, tags\)|DO UPDATE SET tags/);
-    assert.match(projection, /loadTaskClassifications/);
+    assert.match(projection, /normalizeTaskCabinetRows/);
+    assert.match(completionHistory, /loadTaskClassifications/);
     assert.doesNotMatch(projection, /tags: \[\]/);
     assert.match(profile, /data-cabinet-task-action': 'classification'/);
     assert.match(profile, /renderTaskBadges/);

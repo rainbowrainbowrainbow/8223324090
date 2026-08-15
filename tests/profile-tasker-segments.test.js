@@ -2182,6 +2182,7 @@ test('profile unfinished gamification tabs use soon lockdown by role', () => {
 
 test('my cabinet task projection counts today, undated and overdue carry-over workload', () => {
     const source = fs.readFileSync(path.join(ROOT, 'services', 'taskCabinetProjection.js'), 'utf8');
+    const completionHistorySource = fs.readFileSync(path.join(ROOT, 'services', 'taskCompletionHistory.js'), 'utf8');
     const authSource = fs.readFileSync(path.join(ROOT, 'routes', 'auth.js'), 'utf8');
     const sidebarSource = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
@@ -2206,9 +2207,15 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /completedTodaySourceRows/);
     assert.match(source, /completed_subtask_count_today/);
     assert.match(source, /latest_subtask_completed_at/);
-    assert.match(source, /loadTaskTimeTotalsForDate\(queryable, userId, myDayTaskIds, today\)/);
-    assert.match(source, /actualSecondsToday: taskTimeTotalsTodayByTaskId\.get\(taskId\) \|\| 0/);
-    assert.match(source, /completedTodayKind/);
+    assert.match(source, /queryTaskCompletionHistoryPage\(queryable, \{/);
+    assert.match(source, /normalizeTaskCabinetRows\(queryable, \{/);
+    assert.match(completionHistorySource, /loadTaskTimeTotalsForDate\(queryable, userId, taskIds, today\)/);
+    assert.match(completionHistorySource, /actualSecondsToday: timeTotalsTodayByTaskId\.get\(taskId\) \|\| 0/);
+    assert.match(completionHistorySource, /function queryTaskCompletionHistoryPage/);
+    assert.match(completionHistorySource, /ORDER BY \$\{orderExpression\} DESC, t\.id DESC/);
+    assert.match(completionHistorySource, /LIMIT \$\$\{limitParam\}/);
+    assert.match(completionHistorySource, /nextCursor: hasMore \? encodeCompletionHistoryCursor/);
+    assert.match(completionHistorySource, /completedTodayKind/);
     assert.match(source, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\) = \$\$\{completedTodayDateParam\}::date/);
     assert.match(source, /remaining_today/);
     assert.match(source, /overdue_carryover/);
@@ -2225,6 +2232,7 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /dueDate === today \|\| !dueDate/);
     assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
     assert.match(source, /\.\.\.completedHistorySourceRows,\s*\.\.\.completedTodaySourceRows/);
+    assert.match(source, /completedHistory:\s*\{\s*\n\s*\.\.\.completedHistoryPage\.pagination/);
     assert.match(authSource, /Completed work units \(parent tasks \+ completed subtasks\)/);
     assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
     assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
@@ -2258,7 +2266,7 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(source, /planningResultRows\.length > planningRowLimit/);
     assert.match(source, /planningWindow:\s*'overdue_undated_through_planning_end'/);
     assert.match(source, /planning,\s*\n\s*preferences:/);
-    assert.match(source, /calendar,\s*\n\s*postponementExplanationContract:\s*'postponement_explanation_v1',\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
+    assert.match(source, /calendar,\s*\n\s*postponementExplanationContract:\s*'postponement_explanation_v1',[\s\S]*planning:\s*planningMeta,[\s\S]*privacyRule:/);
     assert.match(source, /planning:\s*planningMeta/);
     assert.match(source, /planningDateSql\} IS NULL/);
     assert.match(source, /planningDateSql\} BETWEEN/);

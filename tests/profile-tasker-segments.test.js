@@ -2206,16 +2206,16 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /completedTodaySourceRows/);
     assert.match(source, /completed_subtask_count_today/);
     assert.match(source, /latest_subtask_completed_at/);
-    assert.match(source, /loadTaskTimeTotalsForDate\(queryable, userId, myDayTaskIds, today\)/);
+    assert.match(source, /loadTaskTimeTotalsForDate\(queryable, userId, ids, today\)/);
     assert.match(source, /actualSecondsToday: taskTimeTotalsTodayByTaskId\.get\(taskId\) \|\| 0/);
     assert.match(source, /completedTodayKind/);
-    assert.match(source, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\) = \$\$\{completedTodayDateParam\}::date/);
+    assert.match(source, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\) = \$\$\{completedTodayDatePlaceholder\}::date/);
     assert.match(source, /remaining_today/);
     assert.match(source, /overdue_carryover/);
     assert.match(source, /active_my_day/);
     assert.match(source, /remaining:\s*activeMyDay/);
     assert.match(source, /SELECT COUNT\(\*\)::int AS open_count/);
-    assert.match(source, /const openTaskCount = Number\(openCountResult\.rows\[0\]\?\.open_count \|\| activeSourceRows\.length\);/);
+    assert.match(source, /const openTaskCount = Number\(openCountResult\.rows\[0\]\?\.open_count \|\| activeSourceRowsRaw\.length\);/);
     assert.match(source, /sidebarOpenWorkload:\s*openTaskCount/);
     assert.match(source, /scope:\s*'completed_units_today_and_active_my_day_or_undated'/);
     assert.match(source, /scheduled_start_at/);
@@ -2223,8 +2223,9 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
     assert.match(source, /taskPriorityOrderSql/);
     assert.match(source, /dueDate && dueDate < today/);
     assert.match(source, /dueDate === today \|\| !dueDate/);
-    assert.match(source, /COALESCE\(subtask_rows\.subtasks, '\[\]'::json\) AS subtasks/);
-    assert.match(source, /\.\.\.completedHistorySourceRows,\s*\.\.\.completedTodaySourceRows/);
+    assert.match(source, /async function loadSubtaskProjectionByTaskId/);
+    assert.match(source, /WHERE task_id = ANY\(\$1::int\[\]\)/);
+    assert.match(source, /\.\.\.completedHistorySourceRowsRaw,\s*\.\.\.completedTodaySourceRowsRaw/);
     assert.match(authSource, /Completed work units \(parent tasks \+ completed subtasks\)/);
     assert.match(authSource, /tasks\.completedUnits = parentDoneTotal \+ subtaskDoneTotal/);
     assert.match(authSource, /tasks\.done = tasks\.completedUnits/);
@@ -2240,6 +2241,9 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
 
     assert.match(routeSource, /router\.get\('\/my-cabinet'/);
     assert.match(routeSource, /const businessScope = requireTaskReadScope\(req, res\);/);
+    assert.match(routeSource, /const rawBucket = req\.query\.bucket \|\| req\.query\.pageBucket \|\| req\.query\.page_bucket/);
+    assert.match(routeSource, /buildTaskCabinetBucketPage\(\{/);
+    assert.match(routeSource, /Unsupported My Cabinet bucket/);
     assert.match(routeSource, /buildTaskCabinetProjection\(\{\s*pool,\s*user: req\.user,\s*businessScope/s);
     assert.match(routeSource, /focusDate: normalizeTaskCabinetFocusDate\(req\.query\.focusDate \|\| req\.query\.focus_date\)/);
     assert.match(source, /function buildTaskCabinetPlanningProjection/);
@@ -2258,7 +2262,8 @@ test('my cabinet projection exposes additive planning calendar contract', () => 
     assert.match(source, /planningResultRows\.length > planningRowLimit/);
     assert.match(source, /planningWindow:\s*'overdue_undated_through_planning_end'/);
     assert.match(source, /planning,\s*\n\s*preferences:/);
-    assert.match(source, /calendar,\s*\n\s*postponementExplanationContract:\s*'postponement_explanation_v1',\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
+    assert.match(source, /calendar,\s*\n\s*buckets:\s*\{/);
+    assert.match(source, /postponementExplanationContract:\s*'postponement_explanation_v1',\s*\n\s*planning:\s*planningMeta,\s*\n\s*privacyRule:/);
     assert.match(source, /planning:\s*planningMeta/);
     assert.match(source, /planningDateSql\} IS NULL/);
     assert.match(source, /planningDateSql\} BETWEEN/);
@@ -2509,8 +2514,26 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
             if (/SELECT COUNT\(\*\)::int AS open_count/.test(text)) {
                 return { rows: [{ open_count: 0 }] };
             }
-            if (/completed_subtask_count_today/.test(text)) {
+            if (/today_subtask_exists/.test(text) && /SELECT t\.\*/.test(text)) {
                 return { rows: [completedTodayRow] };
+            }
+            if (/today_subtask_exists/.test(text) && /SELECT COUNT\(\*\)::int AS total/.test(text)) {
+                return { rows: [{ total: 1 }] };
+            }
+            if (/FROM task_subtasks/.test(text) && /WHERE task_id = ANY\(\$1::int\[\]\)/.test(text)) {
+                return {
+                    rows: [{
+                        task_id: 500,
+                        total: 2,
+                        done: 2,
+                        done_today: 2,
+                        latest_completed_at: '2026-08-14T13:45:00.000Z',
+                        subtasks: [
+                            { id: 1, title: 'Done step', is_done: true, completed_at: '2026-08-14T13:40:00.000Z' },
+                            { id: 2, title: 'Second step', is_done: true, completed_at: '2026-08-14T13:45:00.000Z' }
+                        ]
+                    }]
+                };
             }
             if (/COALESCE\(t\.status, 'todo'\) = 'done'/.test(text) && /LIMIT \$\d+/.test(text)) {
                 return { rows: historyRows };
@@ -2563,11 +2586,11 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
         now: new Date('2026-08-14T12:00:00.000Z')
     });
 
-    const completedTodayCall = calls.find(call => /completed_subtask_count_today/.test(call.text));
+    const completedTodayCall = calls.find(call => /today_subtask_exists/.test(call.text) && /SELECT t\.\*/.test(call.text));
     assert.ok(completedTodayCall, 'completedTodayTasks query should be executed separately');
     assert.match(completedTodayCall.text, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\)/);
-    assert.match(completedTodayCall.text, /COALESCE\(today_subtasks\.done_today, 0\) > 0/);
-    assert.deepEqual(completedTodayCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-08-14']);
+    assert.match(completedTodayCall.text, /today_subtask_exists\.is_done = true/);
+    assert.deepEqual(completedTodayCall.params, ['serhiy', 'Serhiy', 7, 'event_genix', '2026-08-14', 121]);
     assert.equal(projection.completedHistory.length, 36);
     assert.equal(projection.completedTodayTasks.length, 1);
     assert.equal(projection.completedHistory.some(task => task.id === 500), false);

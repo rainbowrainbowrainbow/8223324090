@@ -4027,25 +4027,58 @@ async function updateBanquetBookingSet({
             groupId: cleanGroupId,
             businessContext: context
         });
+        const groupPayload = snapshot?.group || mapGroupRow(updatedGroup);
+        const primaryBookingPayload = snapshot?.bookings?.primary || mapBookingRow(updatedPrimaryRow);
+        const packageOwnerBookingPayload = snapshot?.members
+            ?.find(member => cleanId(member.bookingId) === canonicalPackageOwnerBookingId)
+            ?.booking
+            || (updatedPackageOwnerRow ? mapBookingRow(updatedPackageOwnerRow) : primaryBookingPayload);
+        const activityBookingPayloads = snapshot?.bookings?.activities || savedActivityRows.map(mapBookingRow);
+        const affectedBookingIds = [...new Set([
+            cleanPrimaryBookingId,
+            canonicalPackageOwnerBookingId,
+            ...savedActivityRows.map(row => cleanId(row.id)),
+            ...removedActivityIds.map(cleanId)
+        ].filter(Boolean))];
+        const affectedDates = [...new Set([
+            primaryBookingPayload?.date,
+            groupPayload?.date,
+            ...activityBookingPayloads.map(booking => booking?.date)
+        ].filter(Boolean).map(value => String(value).slice(0, 10)))];
         await client.query('COMMIT');
 
         broadcastBanquetEvent('banquet:booking-set-updated', {
             groupId: cleanGroupId,
             primaryBookingId: cleanPrimaryBookingId,
             businessContext: context,
-            updatedAt: mapGroupRow(updatedGroup)?.updatedAt || null,
-            cancelledActivityBookingIds: removedActivityIds
+            date: primaryBookingPayload?.date || groupPayload?.date || affectedDates[0] || null,
+            updatedAt: groupPayload?.updatedAt || null,
+            primaryBooking: primaryBookingPayload,
+            roomResourceId: primaryBookingPayload?.roomResourceId || groupPayload?.roomResourceId || null,
+            affectedBookingIds,
+            affectedDates,
+            cancelledActivityBookingIds: removedActivityIds,
+            operation: 'banquet_booking_set_update'
+        }, null, {
+            visibilityBooking: primaryBookingPayload,
+            extraPayload: {
+                groupId: cleanGroupId,
+                primaryBookingId: cleanPrimaryBookingId,
+                primaryBooking: primaryBookingPayload,
+                roomResourceId: primaryBookingPayload?.roomResourceId || groupPayload?.roomResourceId || null,
+                affectedBookingIds,
+                affectedDates,
+                cancelledActivityBookingIds: removedActivityIds,
+                operation: 'banquet_booking_set_update'
+            }
         });
         return {
             success: true,
-            group: snapshot?.group || mapGroupRow(updatedGroup),
-            primaryBooking: snapshot?.bookings?.primary || mapBookingRow(updatedPrimaryRow),
+            group: groupPayload,
+            primaryBooking: primaryBookingPayload,
             packageOwnerBookingId: canonicalPackageOwnerBookingId,
-            packageOwnerBooking: snapshot?.members
-                ?.find(member => cleanId(member.bookingId) === canonicalPackageOwnerBookingId)
-                ?.booking
-                || mapBookingRow(updatedPackageOwnerRow),
-            activityBookings: snapshot?.bookings?.activities || savedActivityRows.map(mapBookingRow),
+            packageOwnerBooking: packageOwnerBookingPayload,
+            activityBookings: activityBookingPayloads,
             cancelledActivityBookingIds: removedActivityIds,
             banquetGroup: snapshot,
             serverVerified: true

@@ -182,6 +182,66 @@ test('arrival update invalidates scoped timeline and banquet caches before dispa
     dom.window.close();
 });
 
+test('booking-set update invalidates all affected dates and booking-scoped banquet caches', async () => {
+    FakeWebSocket.instances = [];
+    const dom = new JSDOM('<!doctype html><html><body></body></html>', {
+        url: 'http://localhost/',
+        runScripts: 'outside-only'
+    });
+    const { window } = dom;
+    window.WebSocket = FakeWebSocket;
+    window.fetch = async () => ({ ok: true, json: async () => ({ total: 0 }) });
+    window.AppState = { cachedLines: {}, cachedBookings: {} };
+    window.TimelineBusinessContext = { current: () => ({ apiValue: 'event_genix' }) };
+    const dateInvalidations = [];
+    const previewInvalidations = [];
+    const received = [];
+    let renders = 0;
+    window.invalidateTimelineDateCache = (date, options) => dateInvalidations.push({ date, options });
+    window.invalidateTimelineBanquetPreviewFreshness = options => previewInvalidations.push(options);
+    window.renderTimeline = () => { renders += 1; };
+    window.addEventListener('ws:banquet', event => received.push(event.detail));
+    Object.defineProperty(window.navigator, 'onLine', { configurable: true, value: true });
+    window.localStorage.setItem('pzp_token', 'test-token');
+    window.eval(wsClientCode);
+
+    window.ParkWS.connect();
+    const socket = FakeWebSocket.instances[0];
+    socket.open();
+    socket.receive({ type: 'auth:success', payload: { username: 'test', connectedClients: 1 } });
+    socket.receive({
+        type: 'banquet:booking-set-updated',
+        payload: {
+            groupId: 'BQ-CLIENT-BOOKING-SET',
+            date: '2026-07-22',
+            affectedDates: ['2026-07-22', '2026-07-23', '2026-07-22'],
+            affectedBookingIds: ['BK-PRIMARY', 'BK-ACTIVITY'],
+            primaryBookingId: 'BK-PRIMARY',
+            primaryBooking: { id: 'BK-PRIMARY', date: '2026-07-23' },
+            businessContext: 'event_genix',
+            updatedAt: '2026-07-13T12:35:00.000Z'
+        }
+    });
+    await new Promise(resolve => setTimeout(resolve, 350));
+
+    assert.deepEqual(dateInvalidations.map(item => item.date), ['2026-07-22', '2026-07-23']);
+    dateInvalidations.forEach(item => assert.deepEqual(JSON.parse(JSON.stringify(item.options)), {
+        lines: false,
+        bookings: true,
+        fresh: true,
+        businessContext: 'event_genix'
+    }));
+    assert.deepEqual(JSON.parse(JSON.stringify(previewInvalidations)), [{
+        groupId: 'BQ-CLIENT-BOOKING-SET',
+        bookingIds: ['BK-PRIMARY', 'BK-ACTIVITY'],
+        businessContext: 'event_genix'
+    }]);
+    assert.equal(received.length, 1);
+    assert.equal(renders, 1);
+    window.ParkWS.disconnect();
+    dom.window.close();
+});
+
 test('reconnect reconciles every subscribed date and banquet snapshot with fresh server reads', () => {
     FakeWebSocket.instances = [];
     const dom = new JSDOM('<!doctype html><html><body></body></html>', {

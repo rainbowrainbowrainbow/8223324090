@@ -380,6 +380,64 @@ describe('WebSocket chat membership authorization', () => {
         });
     });
 
+    it('sends banquet booking-set updates to every subscribed tab with exact invalidation metadata', async () => {
+        const firstTab = await openAuthedClient(1);
+        const secondTab = await openAuthedClient(1);
+        const otherDate = await openAuthedClient(1);
+        await withClients([firstTab, secondTab, otherDate], async () => {
+            await Promise.all([
+                subscribeDate(firstTab, '2026-07-24'),
+                subscribeDate(secondTab, '2026-07-24'),
+                subscribeDate(otherDate, '2026-07-25')
+            ]);
+            let leakedToOtherDate = false;
+            otherDate.on('message', raw => {
+                if (JSON.parse(raw.toString()).type === 'banquet:booking-set-updated') leakedToOtherDate = true;
+            });
+            const firstMessage = waitForMessage(firstTab, msg => msg.type === 'banquet:booking-set-updated');
+            const secondMessage = waitForMessage(secondTab, msg => msg.type === 'banquet:booking-set-updated');
+
+            wsService.broadcastBanquetEvent('banquet:booking-set-updated', {
+                groupId: 'BQ-WS-BOOKING-SET',
+                date: '2026-07-24',
+                businessContext: 'event_genix',
+                updatedAt: '2026-07-13T12:40:00.000Z',
+                primaryBooking: {
+                    id: 'BK-WS-PRIMARY',
+                    date: '2026-07-24',
+                    businessContext: 'event_genix',
+                    created_by: 'creator-event'
+                }
+            }, null, {
+                visibilityBooking: {
+                    id: 'BK-WS-PRIMARY',
+                    date: '2026-07-24',
+                    businessContext: 'event_genix',
+                    created_by: 'creator-event'
+                },
+                extraPayload: {
+                    operation: 'banquet_booking_set_update',
+                    primaryBookingId: 'BK-WS-PRIMARY',
+                    affectedBookingIds: ['BK-WS-PRIMARY', 'BK-WS-ACTIVITY'],
+                    affectedDates: ['2026-07-24'],
+                    roomResourceId: 'room-marvel'
+                }
+            });
+
+            const messages = await Promise.all([firstMessage, secondMessage]);
+            await wait(80);
+            messages.forEach(message => {
+                assert.equal(message.payload.groupId, 'BQ-WS-BOOKING-SET');
+                assert.equal(message.payload.operation, 'banquet_booking_set_update');
+                assert.equal(message.payload.primaryBookingId, 'BK-WS-PRIMARY');
+                assert.deepEqual(message.payload.affectedBookingIds, ['BK-WS-PRIMARY', 'BK-WS-ACTIVITY']);
+                assert.deepEqual(message.payload.affectedDates, ['2026-07-24']);
+                assert.equal(message.payload.roomResourceId, 'room-marvel');
+            });
+            assert.equal(leakedToOtherDate, false);
+        });
+    });
+
     it('broadcasts arrival only after the owning transaction commit', () => {
         const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'banquetGroups.js'), 'utf8');
         const start = source.indexOf('async function updateBanquetGuestArrival');
@@ -388,6 +446,20 @@ describe('WebSocket chat membership authorization', () => {
         assert.ok(start >= 0 && end > start);
         assert.ok(block.indexOf("await client.query('COMMIT')") < block.indexOf("broadcastBanquetEvent('banquet:arrival-updated'"));
         assert.equal((block.match(/broadcastBanquetEvent\('banquet:arrival-updated'/g) || []).length, 1);
+    });
+
+    it('broadcasts booking-set updates only after commit with a visibility booking', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'banquetGroups.js'), 'utf8');
+        const start = source.indexOf('async function updateBanquetBookingSet');
+        const end = source.indexOf('async function validateSingleBookingActivitySetUpdate', start);
+        const block = source.slice(start, end);
+        const commitIndex = block.indexOf("await client.query('COMMIT')");
+        const broadcastIndex = block.indexOf("broadcastBanquetEvent('banquet:booking-set-updated'");
+        assert.ok(start >= 0 && end > start);
+        assert.ok(commitIndex >= 0 && broadcastIndex > commitIndex);
+        assert.match(block, /visibilityBooking:\s*primaryBookingPayload/);
+        assert.match(block, /affectedBookingIds/);
+        assert.match(block, /affectedDates/);
     });
 
     it('notifies both old and new scoped audiences when an update moves a booking', async () => {

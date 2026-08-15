@@ -36,7 +36,10 @@ const {
 } = require('./taskBusinessScope');
 const { loadTaskClassifications } = require('./myDayTaxonomy');
 const { loadTaskDependencyStates } = require('./taskDependencies');
-const { loadTaskTimeTotals } = require('./myDayTimeTracking');
+const {
+    loadTaskTimeTotals,
+    loadTaskTimeTotalsForDate
+} = require('./myDayTimeTracking');
 
 const DEFAULT_TASK_CABINET_PLANNING_ROW_LIMIT = 260;
 const MAX_TASK_CABINET_PLANNING_ROW_LIMIT = 500;
@@ -509,6 +512,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const myDayClassificationsByTaskId = await loadTaskClassifications(queryable, userId, myDayTaskIds);
     const dependencyStatesByTaskId = await loadTaskDependencyStates(queryable, myDayTaskIds);
     const taskTimeTotalsByTaskId = await loadTaskTimeTotals(queryable, userId, myDayTaskIds);
+    const taskTimeTotalsTodayByTaskId = await loadTaskTimeTotalsForDate(queryable, userId, myDayTaskIds, today);
     const explanationTaskIds = [...new Set(
         [...activeSourceRows, ...planningSourceRows, ...completedHistorySourceRows, ...completedTodaySourceRows]
             .filter(row => normalizePostponementCount(row.postponement_count ?? row.postponementCount) > 0)
@@ -521,6 +525,13 @@ async function buildTaskCabinetProjection(options = {}) {
     const normalizeProjectionRow = row => {
         const taskId = Number(row.id || row.task_id || row.taskId);
         const dependencyState = dependencyStatesByTaskId.get(taskId);
+        const completedSubtasksToday = Number(row.completed_subtask_count_today || row.completedSubtasksToday || 0);
+        const completedParentToday = String(row.status || row.workflowState || row.workflow_state || '').toLowerCase() === 'done'
+            && row.completed_at
+            && taskDateOnly(row.completed_at) === today;
+        const completedTodayKind = completedParentToday
+            ? (completedSubtasksToday > 0 ? 'task_and_subtasks' : 'task')
+            : (completedSubtasksToday > 0 ? 'subtasks' : 'none');
         const task = normalizeTaskPayload({
             ...row,
             dependency_count: dependencyState?.dependencyCount || 0,
@@ -531,7 +542,10 @@ async function buildTaskCabinetProjection(options = {}) {
         return {
             ...task,
             actualSeconds: taskTimeTotalsByTaskId.get(taskId) || 0,
-            completedSubtasksToday: Number(row.completed_subtask_count_today || row.completedSubtasksToday || 0),
+            actualSecondsToday: taskTimeTotalsTodayByTaskId.get(taskId) || 0,
+            completedSubtasksToday,
+            completedParentToday,
+            completedTodayKind,
             latestSubtaskCompletedAt: row.latest_subtask_completed_at || row.latestSubtaskCompletedAt || null,
             myDay: myDayClassificationsByTaskId.get(taskId) || { direction: null, impacts: [] }
         };
@@ -590,6 +604,7 @@ async function buildTaskCabinetProjection(options = {}) {
     const quickDateSql = taskWorkloadDateSql('t');
     const quickResult = await queryable.query(
         `SELECT
+                COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')::int AS parent_done_total,
                 (
                     COUNT(*) FILTER (WHERE COALESCE(t.status, 'todo') = 'done')
                     + COALESCE(SUM(COALESCE(st.done, 0)), 0)
@@ -641,6 +656,12 @@ async function buildTaskCabinetProjection(options = {}) {
     const remainingToday = Number(quickStats.remaining_today || 0);
     const overdueCarryover = Number(quickStats.overdue_carryover || 0);
     const activeMyDay = Number(quickStats.active_my_day || 0) || remainingToday + overdueCarryover || buckets.today.length + buckets.overdue.length;
+    const completedParentTotal = Number(quickStats.parent_done_total || 0);
+    const completedSubtasksTotal = Number(quickStats.subtask_done_total || 0);
+    const completedUnitsTotal = Number(quickStats.done_total || (completedParentTotal + completedSubtasksTotal) || 0);
+    const completedParentToday = Number(quickStats.parent_done_today || 0);
+    const completedSubtasksToday = Number(quickStats.subtask_done_today || 0);
+    const completedUnitsToday = Number(quickStats.done_today || (completedParentToday + completedSubtasksToday) || 0);
     const prefs = await taskPreferencesForProjection(queryable, userId, {
         ensurePreferences: options.ensurePreferences !== false
     });
@@ -661,7 +682,7 @@ async function buildTaskCabinetProjection(options = {}) {
         planning,
         preferences: prefs,
         stats: {
-            todayDone: quickStats.done_today || 0,
+            todayDone: completedUnitsToday,
             todayPlanned: remainingToday || buckets.today.length,
             todayWorkloadCount: remainingToday || buckets.today.length,
             overdueCarryover,
@@ -671,14 +692,17 @@ async function buildTaskCabinetProjection(options = {}) {
             openTaskCount,
             activeOpenCount: openTaskCount,
             taskQuick: {
-                completed: quickStats.done_today || 0,
-                completedToday: quickStats.done_today || 0,
-                completedTotal: quickStats.done_total || 0,
-                completedParentToday: quickStats.parent_done_today || 0,
-                completedSubtasksToday: quickStats.subtask_done_today || 0,
-                completedSubtasksTotal: quickStats.subtask_done_total || 0,
+                completed: completedUnitsToday,
+                completedToday: completedUnitsToday,
+                completedTotal: completedUnitsTotal,
+                completedUnitsTotal,
+                completedParentTotal,
+                completedSubtasksTotal,
+                completedUnitsToday,
+                completedParentToday,
+                completedSubtasksToday,
                 completedHistoryShown: completedHistory.length,
-                completedHistoryOverflow: Math.max(0, Number(quickStats.done_total || 0) - completedHistory.length),
+                completedHistoryOverflow: Math.max(0, completedParentTotal - completedHistory.length),
                 remaining: activeMyDay,
                 todayRemaining: remainingToday || buckets.today.length,
                 overdueCarryover,
@@ -688,7 +712,9 @@ async function buildTaskCabinetProjection(options = {}) {
                 sidebarOpenWorkload: openTaskCount,
                 sidebarScope: 'all_open_owned_tasks_in_business_scope',
                 scope: 'completed_units_today_and_active_my_day_or_undated',
-                completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks'
+                completedMetricContract: 'completed_units = completed_parent_tasks + completed_subtasks',
+                completedHistoryContract: 'completed_history_contains_parent_tasks_only',
+                completedTodayTasksContract: 'task_completed_today_or_task_with_subtasks_completed_today'
             },
             waitingCount: buckets.waiting.length,
             deferredCount: buckets.deferred.length,

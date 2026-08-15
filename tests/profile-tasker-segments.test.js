@@ -210,12 +210,15 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
                     }
                 }
             ],
-            stats: { taskQuick: { completedTotal: 2, completedToday: 2, activeMyDay: 4 } }
+            stats: { taskQuick: { completedParentTotal: 2, completedUnitsTotal: 4, completedTotal: 4, completedToday: 3, activeMyDay: 4 } }
         };
         cabinetTaskComposerExpanded = false;
         cabinetMyDayListMode = 'focused';
         cabinetCreateDuePreset = 'today';
         cabinetMyDaySegment = 'today';
+        completedDashboardExpanded = false;
+        completedDashboardShowAll = false;
+        completedDashboardTab = 'today';
     `, ctx);
 
     const counts = ctx.cabinetMyDaySegmentCounts();
@@ -233,14 +236,21 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.doesNotMatch(html, /cabinet-support-panel/);
     assert.doesNotMatch(html, /cabinet-quick-cluster/);
     assert.match(html, /cabinet-task-composer/);
-    assert.match(html, /cabinet-completed-today-dashboard/);
-    assert.match(html, /cabinet-completed-today-pulse/);
-    assert.match(html, /data-cabinet-completed-today-toggle/);
+    assert.match(html, /data-cabinet-completion-pulse/);
+    assert.equal((html.match(/data-cabinet-completion-pulse/g) || []).length, 1);
+    assert.match(html, /cabinet-completion-summary/);
+    assert.match(html, /data-cabinet-completion-toggle/);
+    assert.equal((html.match(/data-cabinet-completion-toggle/g) || []).length, 1);
+    assert.doesNotMatch(html, /cabinet-completed-strip/);
+    assert.doesNotMatch(html, /cabinet-completed-today-ring/);
     assert.doesNotMatch(html, /Dashboard completed task/);
     assert.doesNotMatch(html, /data-cabinet-task-action="open" data-task-id="107"/);
-    assert.ok(html.indexOf('cabinet-completed-strip') < html.indexOf('cabinet-completed-today-dashboard'));
-    assert.ok(html.indexOf('cabinet-completed-today-dashboard') < html.indexOf('cabinet-view-mode-toggle'));
+    assert.ok(html.indexOf('data-cabinet-completion-pulse') < html.indexOf('cabinet-day-workspace'));
+    assert.ok(html.indexOf('cabinet-view-mode-toggle') > html.indexOf('cabinet-day-workspace'));
     assert.match(html, /data-cabinet-my-day-layout="focused-overdue"/);
+    assert.match(html, /Вигляд карток/);
+    assert.match(html, /cabinet-view-mode-label/);
+    assert.match(html, /role="group" aria-label="Вигляд карток: Компактний або Повний"/);
     assert.match(html, /cabinet-day-column--today/);
     assert.match(html, /cabinet-day-column--overdue/);
     assert.match(html, /data-active-today="1"/);
@@ -249,13 +259,15 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.match(html, /Overdue segment task/);
     assert.doesNotMatch(html, /Waiting segment task/);
 
-    vm.runInContext('completedTodayDashboardExpanded = true;', ctx);
+    vm.runInContext('completedDashboardExpanded = true; completedDashboardTab = "today";', ctx);
     html = ctx.renderMyDayTab();
-    assert.match(html, /data-cabinet-completed-today-details/);
+    assert.match(html, /data-cabinet-completion-details/);
+    assert.match(html, /data-cabinet-completion-tab="today"/);
+    assert.match(html, /data-cabinet-completion-tab="history"/);
     assert.match(html, /Dashboard completed task/);
-    assert.doesNotMatch(html, /data-cabinet-completed-today-all/);
+    assert.doesNotMatch(html, /data-cabinet-completion-all/);
     assert.match(html, /data-cabinet-task-action="open" data-task-id="107"/);
-    assert.doesNotMatch(html, /Задача виконана|Є виконані підпунки|Є виконані підпункти/);
+    assert.match(html, /Задача виконана/);
 
     ctx.setCabinetMyDaySegment('waiting');
     html = ctx.renderMyDayTab();
@@ -267,15 +279,24 @@ test('profile My Day renders fixed today and overdue columns while hiding duplic
     assert.match(html, /cabinet-view-mode-toggle/);
 
     ctx.setCabinetMyDaySegment('completed');
+    vm.runInContext('completedDashboardExpanded = true; completedDashboardTab = "history";', ctx);
     html = ctx.renderMyDayTab();
     assert.match(html, /data-cabinet-my-day-layout="focused-overdue"/);
-    assert.match(html, /cabinet-completed-strip/);
+    assert.doesNotMatch(html, /cabinet-completed-strip/);
     assert.match(html, /Completed segment task/);
 });
 
-test('profile completed today dashboard is compact by default and limits expanded rows', () => {
+test('profile completion pulse is compact by default and limits expanded rows', () => {
     const ctx = loadProfileTaskerContext();
+    const renderedIconKeys = [];
+    ctx.window.MyDayImpactIcons = {
+        render(impact) {
+            renderedIconKeys.push(impact.icon);
+            return `<svg data-rendered-impact-icon="${impact.icon}" viewBox="0 0 24 24"><path d="M4 12h16"></path></svg>`;
+        }
+    };
     const today = '2026-08-14';
+    const iconKeys = ['system', 'processes', 'learning', 'network'];
     const completedTasks = Array.from({ length: 15 }, (_, index) => ({
         id: 900 + index,
         title: `Completed ${String(index + 1).padStart(2, '0')}`,
@@ -283,7 +304,7 @@ test('profile completed today dashboard is compact by default and limits expande
         completedAt: `${today}T12:${String(index).padStart(2, '0')}:00.000Z`,
         actualSeconds: index === 0 ? 60 : 0,
         myDay: {
-            impacts: index >= 11 ? [{ id: 9, name: 'CRM', color: '#0EA5E9', icon: 'C' }] : []
+            impacts: index >= 11 ? [{ id: 9 + index, name: `Impact ${index}`, color: '#0EA5E9', icon: iconKeys[(index - 11) % iconKeys.length] }] : []
         }
     }));
 
@@ -292,48 +313,70 @@ test('profile completed today dashboard is compact by default and limits expande
             meta: { calendar: { today: '${today}' } },
             completedTodayTasks: ${JSON.stringify(completedTasks)}
         };
-        completedTodayDashboardExpanded = false;
-        completedTodayDashboardShowAll = false;
+        completedDashboardExpanded = false;
+        completedDashboardShowAll = false;
+        completedDashboardTab = 'today';
+        completedDashboardVisibleCount = 5;
     `, ctx);
 
-    let html = ctx.renderCabinetCompletedTodayDashboard();
-    assert.match(html, /cabinet-completed-today-pulse/);
-    assert.match(html, /data-cabinet-completed-today-toggle/);
+    let html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /cabinet-completion-summary/);
+    assert.match(html, /function renderCabinetImpactIcon|cabinet-completion-icon/);
+    assert.match(html, /data-cabinet-completion-toggle/);
+    assert.match(html, /aria-controls="cabinetCompletionDetails"/);
     assert.match(html, /15 разом/);
     assert.match(html, /Без впливу/);
-    assert.doesNotMatch(html, /data-cabinet-completed-today-details/);
+    assert.doesNotMatch(html, />system</);
+    assert.doesNotMatch(html, />processes</);
+    assert.doesNotMatch(html, />learning</);
+    assert.doesNotMatch(html, />network</);
+    assert.doesNotMatch(html, /data-cabinet-completion-details/);
     assert.doesNotMatch(html, /Completed 01/);
     assert.doesNotMatch(html, /data-cabinet-task-action="open"/);
-    assert.equal(vm.runInContext('completedTodayDashboardExpanded', ctx), false);
-    assert.equal(vm.runInContext('completedTodayDashboardShowAll', ctx), false);
+    assert.equal(vm.runInContext('completedDashboardExpanded', ctx), false);
+    assert.equal(vm.runInContext('completedDashboardShowAll', ctx), false);
 
-    vm.runInContext('completedTodayDashboardExpanded = true;', ctx);
-    html = ctx.renderCabinetCompletedTodayDashboard();
-    assert.match(html, /data-cabinet-completed-today-details/);
+    vm.runInContext('completedDashboardExpanded = true;', ctx);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /data-cabinet-completion-details/);
     assert.match(html, /Completed 01/);
     assert.match(html, /Completed 05/);
     assert.doesNotMatch(html, /Completed 06/);
-    assert.match(html, /data-cabinet-completed-today-all/);
+    assert.match(html, /data-cabinet-completion-all/);
     assert.match(html, /\+10/);
-    assert.doesNotMatch(html, /Задача виконана|Є виконані підпунки|Є виконані підпункти/);
+    assert.match(html, /Задача виконана/);
+    ['system', 'processes', 'learning', 'network'].forEach(icon => {
+        ctx.renderCabinetImpactIcon({ name: icon, color: '#6366F1', icon });
+    });
+    assert.ok(renderedIconKeys.includes('system'), 'system impact uses MyDayImpactIcons renderer');
+    assert.ok(renderedIconKeys.includes('processes'), 'processes impact uses MyDayImpactIcons renderer');
+    assert.ok(renderedIconKeys.includes('learning'), 'learning impact uses MyDayImpactIcons renderer');
+    assert.ok(renderedIconKeys.includes('network'), 'network impact uses MyDayImpactIcons renderer');
 
-    vm.runInContext('completedTodayDashboardShowAll = true;', ctx);
-    html = ctx.renderCabinetCompletedTodayDashboard();
+    vm.runInContext('completedDashboardVisibleCount = 10; completedDashboardShowAll = false;', ctx);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /Completed 10/);
+    assert.doesNotMatch(html, /Completed 11/);
+    assert.match(html, /\+5/);
+
+    vm.runInContext('completedDashboardShowAll = true;', ctx);
+    html = ctx.renderCabinetCompletionPulse();
     assert.match(html, /Completed 15/);
-    assert.doesNotMatch(html, /data-cabinet-completed-today-all/);
+    assert.doesNotMatch(html, /data-cabinet-completion-all/);
 
     vm.runInContext(`
         myCabinetData = { meta: { calendar: { today: '${today}' } }, completedTodayTasks: [] };
-        completedTodayDashboardExpanded = false;
-        completedTodayDashboardShowAll = false;
+        completedDashboardExpanded = false;
+        completedDashboardShowAll = false;
+        completedDashboardVisibleCount = 5;
     `, ctx);
-    html = ctx.renderCabinetCompletedTodayDashboard();
+    html = ctx.renderCabinetCompletionPulse();
     assert.match(html, /is-empty/);
     assert.match(html, /Ще немає виконань/);
     assert.doesNotMatch(html, /data-cabinet-task-action="open"/);
 });
 
-test('profile completed today details toggle is local and does not reload projection', () => {
+test('profile completion details toggle is local and does not reload projection', () => {
     const ctx = loadProfileTaskerContext();
     const today = '2026-08-14';
     vm.runInContext(`
@@ -351,11 +394,12 @@ test('profile completed today details toggle is local and does not reload projec
                 myDay: { impacts: [{ id: 9, name: 'CRM', color: '#0EA5E9', icon: 'C' }] }
             }]
         };
-        completedTodayDashboardExpanded = false;
-        completedTodayDashboardShowAll = false;
+        completedDashboardExpanded = false;
+        completedDashboardShowAll = false;
+        completedDashboardTab = 'today';
         let projectionReloads = 0;
         loadMyCabinetProjection = async () => { projectionReloads += 1; };
-        const initialHtml = renderCabinetCompletedTodayDashboard();
+        const initialHtml = renderCabinetCompletionPulse();
         let renderedHtml = initialHtml;
         let queryCalls = 0;
         const currentNode = {
@@ -366,15 +410,15 @@ test('profile completed today details toggle is local and does not reload projec
         document = {
             addEventListener() {},
             querySelector(selector) {
-                if (selector !== '[data-cabinet-completed-today-dashboard]') return null;
+                if (selector !== '[data-cabinet-completion-pulse]') return null;
                 queryCalls += 1;
                 return queryCalls === 1 ? currentNode : nextNode;
             }
         };
-        toggleCabinetCompletedTodayDetails();
+        toggleCabinetCompletionDetails();
         window.__COMPLETED_TOGGLE_RESULT__ = {
-            expanded: completedTodayDashboardExpanded,
-            showAll: completedTodayDashboardShowAll,
+            expanded: completedDashboardExpanded,
+            showAll: completedDashboardShowAll,
             projectionReloads,
             initialHtml,
             renderedHtml
@@ -386,9 +430,84 @@ test('profile completed today details toggle is local and does not reload projec
     assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.expanded, true);
     assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.showAll, false);
     assert.equal(ctx.__COMPLETED_TOGGLE_RESULT__.projectionReloads, 0);
-    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-completed-today-details/);
+    assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-completion-details/);
     assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /data-cabinet-task-action="open" data-task-id="990"/);
     assert.match(ctx.__COMPLETED_TOGGLE_RESULT__.renderedHtml, /1\/2 пунктів/);
+});
+
+test('profile completion pulse covers 0, 1, 15+ today and 36-row history contracts', () => {
+    const ctx = loadProfileTaskerContext();
+    const today = '2026-08-14';
+    const makeTask = index => ({
+        id: 7000 + index,
+        title: `Completion case ${index}`,
+        status: 'done',
+        completedAt: `${today}T10:${String(index % 60).padStart(2, '0')}:00.000Z`,
+        completedParentToday: true,
+        actualSecondsToday: index * 60,
+        myDay: { impacts: index % 2 ? [{ id: 20 + index, name: 'Системність', color: '#6366F1', icon: 'system' }] : [] }
+    });
+
+    vm.runInContext(`
+        myCabinetData = { meta: { calendar: { today: '${today}' } }, completedTodayTasks: [] };
+        completedDashboardExpanded = false;
+        completedDashboardShowAll = false;
+        completedDashboardTab = 'today';
+        completedDashboardVisibleCount = 5;
+    `, ctx);
+    let html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /Ще немає виконань/);
+    assert.doesNotMatch(html, /data-cabinet-completion-details/);
+
+    vm.runInContext(`
+        myCabinetData = { meta: { calendar: { today: '${today}' } }, completedTodayTasks: [${JSON.stringify(makeTask(1))}] };
+        completedDashboardExpanded = true;
+        completedDashboardTab = 'today';
+        completedDashboardVisibleCount = 5;
+    `, ctx);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /1 разом/);
+    assert.match(html, /Completion case 1/);
+    assert.doesNotMatch(html, /data-cabinet-completion-all/);
+
+    vm.runInContext(`
+        myCabinetData = { meta: { calendar: { today: '${today}' } }, completedTodayTasks: ${JSON.stringify(Array.from({ length: 15 }, (_, index) => makeTask(index + 1)))} };
+        completedDashboardExpanded = true;
+        completedDashboardTab = 'today';
+        completedDashboardShowAll = false;
+        completedDashboardVisibleCount = 5;
+    `, ctx);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /15 разом/);
+    assert.match(html, /Completion case 5/);
+    assert.doesNotMatch(html, /Completion case 6/);
+    assert.match(html, /Показати ще · \+10/);
+
+    vm.runInContext(`
+        myCabinetData = {
+            meta: { calendar: { today: '${today}' } },
+            completedTodayTasks: [],
+            completedHistory: ${JSON.stringify(Array.from({ length: 36 }, (_, index) => ({
+                id: 8000 + index,
+                title: `History case ${index + 1}`,
+                status: 'done',
+                completedAt: `2026-08-${String(14 - Math.floor(index / 12)).padStart(2, '0')}T10:00:00.000Z`
+            })))},
+            stats: { taskQuick: { completedParentTotal: 50, completedHistoryShown: 36, completedHistoryOverflow: 14 } }
+        };
+        completedDashboardExpanded = true;
+        completedDashboardTab = 'history';
+        completedDashboardShowAll = false;
+        completedDashboardVisibleCount = 5;
+    `, ctx);
+    html = ctx.renderCabinetCompletionPulse();
+    assert.match(html, /Останні 36 задач/);
+    assert.match(html, /History case 1/);
+    assert.match(html, /History case 5/);
+    assert.doesNotMatch(html, /History case 6/);
+    assert.match(html, /Показати ще · \+31/);
+    assert.match(html, /50 за весь час/);
+    assert.match(html, /останні 36 задач/);
 });
 
 test('profile My Day overdue segment renders triage rows with existing task actions', () => {
@@ -501,7 +620,7 @@ test('profile My Day hides sound shortcut after command bar cleanup while preser
     assert.match(profileSource, /apiPatch\('\/tasks\/preferences'/);
 });
 
-test('profile My Day completed history is compact by default while preserving day groups', () => {
+test('profile My Day completion pulse exposes history as an expanded tab', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
     const today = taskCreateCtx.TaskCreate.todayStr();
@@ -520,19 +639,21 @@ test('profile My Day completed history is compact by default while preserving da
             completedHistory: [
                 { id: 301, title: 'Closed payload task', status: 'done', completedAt: '${today}T10:00:00.000Z' }
             ],
-            stats: { taskQuick: { completedTotal: 1, completedToday: 1, activeMyDay: 0 } }
+            stats: { taskQuick: { completedParentTotal: 1, completedUnitsTotal: 1, completedTotal: 1, completedToday: 0, activeMyDay: 0 } }
         };
+        completedDashboardExpanded = true;
+        completedDashboardTab = 'history';
+        completedDashboardShowAll = false;
     `, ctx);
 
     const html = ctx.renderMyDayTab();
-    assert.match(html, /cabinet-completed-strip--compact/);
-    assert.match(html, /<details class="cabinet-completed-details">/);
-    assert.match(html, /<summary class="cabinet-completed-strip-summary">/);
-    assert.doesNotMatch(html, /<details class="cabinet-completed-details" open>/);
-    assert.match(html, /1 виконань/);
+    assert.match(html, /data-cabinet-completion-pulse/);
+    assert.match(html, /data-cabinet-completion-tab="history"/);
+    assert.match(html, /Останні 36/);
     assert.match(html, /Closed payload task/);
-    assert.match(html, /data-cabinet-completed-day-divider/);
-    assert.match(html, /aria-describedby=/);
+    assert.match(html, /data-cabinet-task-action="open" data-task-id="301"/);
+    assert.doesNotMatch(html, /cabinet-completed-strip/);
+    assert.doesNotMatch(html, /cabinet-completed-tile/);
 });
 
 test('profile quick task card counts overdue carry-over when activeMyDay is absent', () => {
@@ -1503,7 +1624,7 @@ test('profile My Day keeps existing projection and shows a non-sensitive load no
     assert.doesNotMatch(noticeHtml, /Sensitive existing task title/);
 });
 
-test('profile my day renders compact completed task history with hover/focus details', () => {
+test('profile my day renders unified completion pulse without hover-only history dots', () => {
     const ctx = loadProfileTaskerContext();
     vm.runInContext(`
         myCabinetData = {
@@ -1535,34 +1656,35 @@ test('profile my day renders compact completed task history with hover/focus det
             stats: {
                 taskQuick: {
                     completedTotal: 4,
+                    completedParentTotal: 4,
                     completedHistoryShown: 2,
                     completedHistoryOverflow: 2
                 }
             }
         };
         cabinetTaskComposerExpanded = false;
+        completedDashboardExpanded = true;
+        completedDashboardTab = 'history';
+        completedDashboardShowAll = false;
     `, ctx);
 
-    const stripHtml = ctx.renderCabinetCompletedHistoryStrip();
+    const stripHtml = ctx.renderCabinetCompletionPulse();
     const myDayHtml = ctx.renderMyDayTab();
 
-    assert.match(stripHtml, /cabinet-completed-strip/);
-    assert.match(stripHtml, /cabinet-completed-tile/);
-    assert.match(stripHtml, /role="tooltip"/);
-    assert.match(stripHtml, /aria-describedby="cabinetCompletedDetail501"/);
-    assert.match(stripHtml, /cabinet-completed-day-divider/);
-    assert.match(stripHtml, /data-cabinet-completed-day-divider/);
-    assert.match(stripHtml, /data-day-key="2026-05-26"/);
-    assert.match(stripHtml, /data-day-key="2026-05-25"/);
-    assert.match(stripHtml, /cabinet-completed-day-stats/);
-    assert.match(stripHtml, /Видимі дні/);
+    assert.match(stripHtml, /data-cabinet-completion-pulse/);
+    assert.match(stripHtml, /data-cabinet-completion-tab="today"/);
+    assert.match(stripHtml, /data-cabinet-completion-tab="history"/);
+    assert.match(stripHtml, /Останні 36/);
     assert.match(stripHtml, /Закрити закупівлю/);
     assert.match(stripHtml, /Передати звіт/);
-    assert.match(stripHtml, /Високий/);
-    assert.match(stripHtml, /Закупівлі/);
-    assert.match(stripHtml, /\+2/);
-    assert.match(myDayHtml, /cabinet-completed-strip/);
-    assert.match(myDayHtml, /Компактна історія виконаних задач/);
+    assert.match(stripHtml, /cabinet-completion-day-divider/);
+    assert.match(stripHtml, /data-cabinet-task-action="open" data-task-id="501"/);
+    assert.match(stripHtml, /data-cabinet-task-action="open" data-task-id="502"/);
+    assert.doesNotMatch(stripHtml, /cabinet-completed-tile|role="tooltip"|data-cabinet-completed-day-divider/);
+    assert.match(stripHtml, /4 за весь час/);
+    assert.match(stripHtml, /останні 2 задач/);
+    assert.match(myDayHtml, /data-cabinet-completion-pulse/);
+    assert.doesNotMatch(myDayHtml, /cabinet-completed-strip|Компактна історія виконаних задач/);
 });
 
 test('profile my tasks no longer forces the daily quick mode when switching tabs', () => {
@@ -2065,15 +2187,28 @@ test('my cabinet task projection counts today, undated and overdue carry-over wo
 
     assert.match(source, /function taskWorkloadDateSql/);
     assert.match(source, /taskQuick/);
-    assert.match(source, /completed:\s*quickStats\.done_today/);
-    assert.match(source, /completedToday:\s*quickStats\.done_today/);
-    assert.match(source, /completedTotal:\s*quickStats\.done_total/);
-    assert.match(source, /completedSubtasksToday:\s*quickStats\.subtask_done_today/);
+    assert.match(source, /COUNT\(\*\) FILTER \(WHERE COALESCE\(t\.status, 'todo'\) = 'done'\)::int AS parent_done_total/);
+    assert.match(source, /const completedParentTotal = Number\(quickStats\.parent_done_total \|\| 0\);/);
+    assert.match(source, /const completedUnitsTotal = Number\(quickStats\.done_total/);
+    assert.match(source, /completed:\s*completedUnitsToday/);
+    assert.match(source, /completedToday:\s*completedUnitsToday/);
+    assert.match(source, /completedTotal:\s*completedUnitsTotal/);
+    assert.match(source, /completedUnitsTotal/);
+    assert.match(source, /completedParentTotal/);
+    assert.match(source, /completedSubtasksTotal/);
+    assert.match(source, /completedParentToday/);
+    assert.match(source, /completedSubtasksToday/);
     assert.match(source, /completedMetricContract:\s*'completed_units = completed_parent_tasks \+ completed_subtasks'/);
+    assert.match(source, /completedHistoryContract:\s*'completed_history_contains_parent_tasks_only'/);
+    assert.match(source, /completedTodayTasksContract:\s*'task_completed_today_or_task_with_subtasks_completed_today'/);
+    assert.match(source, /completedHistoryOverflow:\s*Math\.max\(0, completedParentTotal - completedHistory\.length\)/);
     assert.match(source, /completedTodayTasks/);
     assert.match(source, /completedTodaySourceRows/);
     assert.match(source, /completed_subtask_count_today/);
     assert.match(source, /latest_subtask_completed_at/);
+    assert.match(source, /loadTaskTimeTotalsForDate\(queryable, userId, myDayTaskIds, today\)/);
+    assert.match(source, /actualSecondsToday: taskTimeTotalsTodayByTaskId\.get\(taskId\) \|\| 0/);
+    assert.match(source, /completedTodayKind/);
     assert.match(source, /DATE\(t\.completed_at AT TIME ZONE 'Europe\/Kyiv'\) = \$\$\{completedTodayDateParam\}::date/);
     assert.match(source, /remaining_today/);
     assert.match(source, /overdue_carryover/);
@@ -2383,6 +2518,7 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
             if (/done_total/.test(text)) {
                 return {
                     rows: [{
+                        parent_done_total: 55,
                         done_total: 99,
                         done_today: 3,
                         parent_done_today: 1,
@@ -2393,6 +2529,9 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
                         active_my_day: 0
                     }]
                 };
+            }
+            if (/actual_seconds_today/.test(text)) {
+                return { rows: [{ task_id: 500, actual_seconds_today: 600 }] };
             }
             if (/FROM unnest\(\$2::int\[\]\)/.test(text)) {
                 return {
@@ -2435,9 +2574,21 @@ test('my cabinet completed today dashboard bucket is exact and independent from 
     assert.equal(projection.completedTodayTasks[0].id, 500);
     assert.equal(projection.completedTodayTasks[0].completedSubtasksToday, 2);
     assert.equal(projection.completedTodayTasks[0].actualSeconds, 0);
+    assert.equal(projection.completedTodayTasks[0].actualSecondsToday, 600);
+    assert.equal(projection.completedTodayTasks[0].completedParentToday, true);
+    assert.equal(projection.completedTodayTasks[0].completedTodayKind, 'task_and_subtasks');
     assert.equal(projection.completedTodayTasks[0].myDay.impacts[0].name, 'CRM');
+    assert.equal(projection.stats.taskQuick.completedParentTotal, 55);
+    assert.equal(projection.stats.taskQuick.completedSubtasksTotal, 44);
+    assert.equal(projection.stats.taskQuick.completedUnitsTotal, 99);
+    assert.equal(projection.stats.taskQuick.completedTotal, 99);
     assert.equal(projection.stats.taskQuick.completedParentToday, 1);
     assert.equal(projection.stats.taskQuick.completedSubtasksToday, 2);
+    assert.equal(projection.stats.taskQuick.completedUnitsToday, 3);
+    assert.equal(projection.stats.taskQuick.completedHistoryShown, 36);
+    assert.equal(projection.stats.taskQuick.completedHistoryOverflow, 19);
+    assert.equal(projection.stats.taskQuick.completedHistoryContract, 'completed_history_contains_parent_tasks_only');
+    assert.equal(projection.stats.taskQuick.completedTodayTasksContract, 'task_completed_today_or_task_with_subtasks_completed_today');
 });
 
 test('urgent priority has dashboard alert escalation and alert-panel commitment action', () => {

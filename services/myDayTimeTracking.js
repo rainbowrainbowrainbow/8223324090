@@ -268,6 +268,33 @@ async function loadTaskTimeTotals(queryable, userId, taskIds = []) {
     return new Map((result.rows || []).map(row => [Number(row.task_id), Number(row.actual_seconds || 0)]));
 }
 
+async function loadTaskTimeTotalsForDate(queryable, userId, taskIds = [], localDate) {
+    const ids = [...new Set(Array.from(taskIds || []).map(Number).filter(id => Number.isInteger(id) && id > 0))];
+    if (!ids.length) return new Map();
+    const day = normalizeLocalDate(localDate);
+    const result = await queryable.query(
+        `WITH bounds AS (
+            SELECT
+                ($3::date::timestamp AT TIME ZONE 'Europe/Kyiv') AS day_start,
+                (($3::date + 1)::timestamp AT TIME ZONE 'Europe/Kyiv') AS day_end
+         )
+         SELECT e.task_id,
+                COALESCE(SUM(GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (
+                    LEAST(COALESCE(e.ended_at, NOW()), bounds.day_end)
+                    - GREATEST(e.started_at, bounds.day_start)
+                ))))), 0)::int AS actual_seconds_today
+         FROM my_day_time_entries e
+         CROSS JOIN bounds
+         WHERE e.user_id = $1
+           AND e.task_id = ANY($2::int[])
+           AND e.started_at < bounds.day_end
+           AND COALESCE(e.ended_at, NOW()) > bounds.day_start
+         GROUP BY e.task_id`,
+        [positiveInteger(userId, 'користувач'), ids, day]
+    );
+    return new Map((result.rows || []).map(row => [Number(row.task_id), Number(row.actual_seconds_today || 0)]));
+}
+
 module.exports = {
     ACTIVE_TIMER_WARNING_SECONDS,
     MAX_MANUAL_DURATION_MINUTES,
@@ -276,6 +303,7 @@ module.exports = {
     deleteTimeEntry,
     listTimeEntries,
     loadTaskTimeTotals,
+    loadTaskTimeTotalsForDate,
     manualInterval,
     publicTimerEntry,
     sanitizeTimerForBusinessAccess,

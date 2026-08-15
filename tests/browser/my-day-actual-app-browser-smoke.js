@@ -405,6 +405,83 @@ async function openMyDayProfile(page) {
     }, null, { timeout: TIMEOUT_MS });
 }
 
+async function assertMyDayCompletionPulseContracts(page, label = 'My Day', { openDrawer = false } = {}) {
+    const pulse = page.locator('[data-cabinet-completion-pulse]');
+    await pulse.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    assert.equal(await pulse.count(), 1, `${label}: command center renders one completion pulse`);
+    assert.equal(await page.locator('[data-cabinet-completion-toggle]').count(), 1, `${label}: completion pulse has one disclosure action`);
+    assert.equal(await page.locator('.cabinet-completed-strip, [data-cabinet-completed-today-dashboard], [data-cabinet-completed-today-toggle]').count(), 0, `${label}: legacy completion surfaces are absent`);
+    assert.equal(await page.locator('.cabinet-view-mode-label', { hasText: 'Вигляд карток' }).count(), 1, `${label}: card view mode control has an explicit label`);
+    assert.equal(await page.locator('.cabinet-view-mode-toggle[role="group"][aria-label*="Вигляд карток"]').count(), 1, `${label}: card view mode control is grouped and labelled`);
+
+    const collapsed = await pulse.evaluate(node => {
+        const rect = node.getBoundingClientRect();
+        return {
+            height: rect.height,
+            overflow: node.scrollWidth - node.clientWidth,
+            text: node.innerText,
+            oldCompletionCount: node.querySelectorAll('.cabinet-completed-strip, .cabinet-completed-today-dashboard').length
+        };
+    });
+    assert.ok(collapsed.height <= (page.viewportSize()?.width <= 640 ? 220 : 140), `${label}: collapsed completion pulse is too tall: ${JSON.stringify(collapsed)}`);
+    assert.ok(collapsed.overflow <= 1, `${label}: collapsed completion pulse overflows: ${JSON.stringify(collapsed)}`);
+    assert.equal(collapsed.oldCompletionCount, 0, `${label}: old completion DOM nested in pulse`);
+    assert.doesNotMatch(collapsed.text, /\b(system|processes|learning|network)\b/i, `${label}: raw impact keys visible in collapsed pulse`);
+
+    const toggle = page.locator('[data-cabinet-completion-toggle]');
+    if (await toggle.getAttribute('aria-expanded') !== 'true') await toggle.click();
+    await page.locator('[data-cabinet-completion-details]').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+    assert.equal(await page.locator('[data-cabinet-completion-tab="today"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
+    assert.equal(await page.locator('[data-cabinet-completion-tab="history"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
+    await page.locator('[data-cabinet-completion-tab="history"]').click();
+    await page.locator('[data-cabinet-completion-tab="today"]').click();
+
+    const showMore = page.locator('[data-cabinet-completion-all]');
+    if (await showMore.count()) {
+        const beforeRows = await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').count();
+        await showMore.first().click();
+        await page.waitForFunction(before => document.querySelectorAll('[data-cabinet-completion-details] .cabinet-completion-row').length >= before, beforeRows);
+    }
+
+    const expanded = await pulse.evaluate(node => {
+        const pulseRect = node.getBoundingClientRect();
+        const rows = Array.from(node.querySelectorAll('.cabinet-completion-impact-row')).filter(row => row.offsetParent !== null);
+        return {
+            overflow: node.scrollWidth - node.clientWidth,
+            text: node.innerText,
+            impactRowCount: rows.length,
+            svgCount: node.querySelectorAll('.cabinet-completion-impact-row svg, .cabinet-completion-impact-chip svg').length,
+            impactOverlaps: rows.map(row => {
+                const labelRect = row.querySelector('span:nth-child(2)')?.getBoundingClientRect();
+                const barRect = row.querySelector('.cabinet-completion-bar')?.getBoundingClientRect();
+                if (!labelRect || !barRect) return 0;
+                return Math.max(0, Math.round(labelRect.right - barRect.left));
+            }),
+            buttonLeaks: Array.from(node.querySelectorAll('button')).filter(button => button.offsetParent !== null).map(button => {
+                const rect = button.getBoundingClientRect();
+                return {
+                    label: button.textContent.trim(),
+                    left: Math.round(rect.left - pulseRect.left),
+                    right: Math.round(rect.right - pulseRect.right),
+                    top: Math.round(rect.top - pulseRect.top),
+                    bottom: Math.round(rect.bottom - pulseRect.bottom)
+                };
+            }).filter(item => item.left < -1 || item.right > 1 || item.top < -1 || item.bottom > 1)
+        };
+    });
+    assert.ok(expanded.overflow <= 1, `${label}: expanded completion pulse overflows: ${JSON.stringify(expanded)}`);
+    if (expanded.impactRowCount > 0) assert.ok(expanded.svgCount >= expanded.impactRowCount, `${label}: impact rows should render SVG icons: ${JSON.stringify(expanded)}`);
+    assert.doesNotMatch(expanded.text, /\b(system|processes|learning|network)\b/i, `${label}: raw impact keys visible in expanded pulse`);
+    assert.deepEqual(expanded.impactOverlaps.filter(value => value > 1), [], `${label}: impact labels overlap bars: ${JSON.stringify(expanded)}`);
+    assert.deepEqual(expanded.buttonLeaks, [], `${label}: completion buttons leak outside pulse: ${JSON.stringify(expanded)}`);
+
+    const firstRow = page.locator('[data-cabinet-completion-details] [data-cabinet-task-action="open"]').first();
+    if (openDrawer && await firstRow.count()) {
+        await firstRow.click();
+        await page.locator('[data-task-detail-drawer], .task-detail-drawer, #taskDetailDrawer').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS }).catch(() => {});
+    }
+}
+
 async function waitForMyDayProfileRuntime(page) {
     await page.waitForFunction(() => {
         const form = document.getElementById('cabinetTaskComposer');
@@ -738,6 +815,7 @@ async function main() {
         const today = kyivDateOffset(0);
         await browserLogin(page, session);
         await openMyDayProfile(page);
+        await assertMyDayCompletionPulseContracts(page, 'desktop light My Day');
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;
         await fillCabinetField(page, 'cabinetTaskTitle', manualTitle);
@@ -938,6 +1016,7 @@ async function main() {
         await page.setViewportSize({ width: 390, height: 780 });
         await evaluateAfterNavigationSettles(page, () => localStorage.setItem('pzp_dark_mode', 'true'));
         await openMyDayProfile(page);
+        await assertMyDayCompletionPulseContracts(page, 'mobile dark My Day', { openDrawer: true });
         const overflow = await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
         assert.ok(overflow <= 4, `mobile dark My Day should not horizontally overflow, got ${overflow}px`);
 

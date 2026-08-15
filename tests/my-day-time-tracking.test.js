@@ -23,6 +23,23 @@ test('task totals are user-scoped and preserve seconds without changing planned 
     assert.deepEqual(calls[0].params, [7, [41]]);
 });
 
+test('task day totals clip entries to the Kyiv-day boundaries', async () => {
+    const calls = [];
+    const totals = await time.loadTaskTimeTotalsForDate({
+        query: async (sql, params) => {
+            calls.push({ sql, params });
+            return { rows: [{ task_id: 41, actual_seconds_today: 1800 }] };
+        }
+    }, 7, [41, 41, 0], '2026-08-14');
+    assert.equal(totals.get(41), 1800);
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].sql, /WITH bounds AS/);
+    assert.match(calls[0].sql, /AT TIME ZONE 'Europe\/Kyiv'/);
+    assert.match(calls[0].sql, /LEAST\(COALESCE\(e\.ended_at, NOW\(\)\), bounds\.day_end\)/);
+    assert.match(calls[0].sql, /GREATEST\(e\.started_at, bounds\.day_start\)/);
+    assert.deepEqual(calls[0].params, [7, [41], '2026-08-14']);
+});
+
 test('manual time uses PostgreSQL Europe/Kyiv conversion and rejects overlap server-side', async () => {
     const calls = [];
     const interval = await time.manualInterval({

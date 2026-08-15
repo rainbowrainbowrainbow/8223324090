@@ -53,42 +53,45 @@ function harnessHtml() {
 </head>
 <body class="profile-page profile-work-mode">
   <main class="harness-grid profile-page profile-work-mode">
-    <section class="cabinet-completed-today-dashboard" data-cabinet-completed-today-dashboard aria-label="Completed today">
-      <div class="cabinet-completed-today-pulse">
-        <div class="cabinet-completed-today-head">
-          <div class="cabinet-completed-today-ring" style="--completed-ring:70" aria-label="3 completions"><b>3</b></div>
-          <div class="cabinet-completed-today-title">
+    <section class="cabinet-completion-pulse" data-cabinet-completion-pulse aria-label="Виконано">
+      <div class="cabinet-completion-summary">
+        <div class="cabinet-completion-head">
+          <div class="cabinet-completion-title">
             <span class="cabinet-kicker">Completed today</span>
             <h3>3 total</h3>
             <p>2 tasks · 1 subtask · 4 min</p>
           </div>
         </div>
-        <div class="cabinet-completed-today-metrics">
+        <div class="cabinet-completion-metrics">
           <span><b>2</b><small>tasks</small></span>
           <span><b>1</b><small>points</small></span>
           <span><b>4 min</b><small>time</small></span>
         </div>
-        <div class="cabinet-completed-today-top">
-          <div class="cabinet-completed-today-impact-bars">
-            <div class="cabinet-completed-today-impact-row"><span class="cabinet-completed-today-filter-dot" style="--my-day-chip-color:#0EA5E9">C</span><span>CRM</span><div class="cabinet-completed-today-bar"><i style="width:100%;--my-day-chip-color:#0EA5E9"></i></div><b>2</b></div>
-            <div class="cabinet-completed-today-impact-row"><span class="cabinet-completed-today-filter-dot is-muted">—</span><span>No impact</span><div class="cabinet-completed-today-bar"><i style="width:50%;--my-day-chip-color:#5eead4"></i></div><b>1</b></div>
-          </div>
+        <div class="cabinet-completion-top">
+          <div class="cabinet-completion-impact-bars" data-completion-impact-fixture="summary"></div>
         </div>
-        <div class="cabinet-completed-today-actions"><button type="button" class="cabinet-completed-today-toggle" data-cabinet-completed-today-toggle aria-expanded="false">Details</button></div>
+        <div class="cabinet-completion-actions"><button type="button" class="cabinet-completion-toggle" data-cabinet-completion-toggle aria-expanded="false" aria-controls="cabinetCompletionDetails">Details</button></div>
       </div>
-      <div class="cabinet-completed-today-details" data-cabinet-completed-today-details hidden>
-        <div class="cabinet-completed-today-chart">
+      <div class="cabinet-completion-tabs" role="tablist" aria-label="Completion period" hidden>
+        <button type="button" class="active" data-cabinet-completion-tab="today" role="tab" aria-selected="true" aria-controls="cabinetCompletionDetails">Today <b>3</b></button>
+        <button type="button" data-cabinet-completion-tab="history" role="tab" aria-selected="false" aria-controls="cabinetCompletionDetails">History <b>2</b></button>
+      </div>
+      <div id="cabinetCompletionDetails" class="cabinet-completion-details" data-cabinet-completion-details hidden>
+        <div class="cabinet-completion-impact-strip">
           <h4>Impacts</h4>
-          <div class="cabinet-completed-today-impact-bars">
-            <div class="cabinet-completed-today-impact-row"><span class="cabinet-completed-today-filter-dot" style="--my-day-chip-color:#0EA5E9">C</span><span>CRM</span><div class="cabinet-completed-today-bar"><i style="width:100%;--my-day-chip-color:#0EA5E9"></i></div><b>2</b></div>
-          </div>
+          <div class="cabinet-completion-impact-bars" data-completion-impact-fixture="details"></div>
         </div>
-        <div class="cabinet-completed-today-list">
-          <div class="cabinet-completed-today-list-head"><h4>Recent</h4><span>2 of 2</span></div>
-          <button type="button" class="cabinet-completed-today-row" data-cabinet-task-action="open" data-task-id="777">
-            <span class="cabinet-completed-today-row-mark" aria-hidden="true">1</span>
-            <span class="cabinet-completed-today-row-main"><b>Completed row QA</b><small>12:00 · 2 min · 1/2 points</small><span class="cabinet-completed-today-row-impacts"><span class="cabinet-completed-today-impact-chip" style="--my-day-chip-color:#0EA5E9"><span>C</span>CRM</span></span></span>
+        <div class="cabinet-completion-list">
+          <div class="cabinet-completion-list-head"><h4>Recent</h4><span>1 of 1</span></div>
+          <button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="777">
+            <span class="cabinet-completion-row-mark" aria-hidden="true">1</span>
+            <span class="cabinet-completion-row-main"><b>Completed row QA</b><small>Задача виконана · 12:00 · 2 min · 1/2 points</small><span class="cabinet-completion-row-impacts" data-completion-impact-fixture="row"></span></span>
           </button>
+          <button type="button" class="cabinet-completion-row" data-cabinet-completion-extra hidden data-cabinet-task-action="open" data-task-id="778">
+            <span class="cabinet-completion-row-mark" aria-hidden="true">2</span>
+            <span class="cabinet-completion-row-main"><b>Subtask-only row QA</b><small>Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points</small><span class="cabinet-completion-row-impacts"><span class="cabinet-completion-impact-chip is-muted">Без впливу</span></span></span>
+          </button>
+          <button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true">Показати ще · +3</button>
         </div>
       </div>
     </section>
@@ -130,12 +133,27 @@ function harnessHtml() {
   <script>
   (() => {
     const impacts = [
-      { id: 1, name: 'Робота: CRM', color: '#0EA5E9', icon: 'C', isActive: true },
-      { id: 2, name: 'Робота: Hermes', color: '#8B5CF6', icon: 'H', isActive: true },
-      { id: 3, name: 'Команда', color: '#10B981', icon: 'T', isActive: true },
-      { id: 4, name: 'Системність і процеси', color: '#F59E0B', icon: 'S', isActive: true },
-      { id: 5, name: 'Якість клієнтського сервісу', color: '#EC4899', icon: 'Q', isActive: true }
+      { id: 1, name: 'Системність', color: '#6366F1', icon: 'system', isActive: true },
+      { id: 2, name: 'Операційка / процеси', color: '#64748B', icon: 'processes', isActive: true },
+      { id: 3, name: 'Навчання / розвиток', color: '#3B82F6', icon: 'learning', isActive: true },
+      { id: 4, name: 'Партнерства / нетворкінг', color: '#8B5CF6', icon: 'network', isActive: true },
+      { id: 5, name: 'Якість клієнтського сервісу', color: '#EC4899', icon: 'quality', isActive: true }
     ];
+    const renderCompletionIcon = impact => '<span class="cabinet-completion-icon" style="--my-day-chip-color:' + impact.color + '" aria-hidden="true">' + window.MyDayImpactIcons.render(impact, { size: 14 }) + '</span>';
+    const renderCompletionImpactRow = (impact, count, max) => {
+      const width = Math.max(8, Math.round((count / Math.max(1, max)) * 100));
+      return '<div class="cabinet-completion-impact-row" data-impact-key="' + impact.icon + '">' +
+        renderCompletionIcon(impact) +
+        '<span>' + impact.name + '</span>' +
+        '<div class="cabinet-completion-bar" aria-hidden="true"><i style="width:' + width + '%;--my-day-chip-color:' + impact.color + '"></i></div>' +
+        '<b>' + count + '</b>' +
+        '</div>';
+    };
+    const renderCompletionImpactChip = impact => '<span class="cabinet-completion-impact-chip" style="--my-day-chip-color:' + impact.color + '">' + renderCompletionIcon(impact).replace('cabinet-completion-icon', 'cabinet-completion-icon cabinet-completion-impact-chip-icon') + '<span>' + impact.name + '</span></span>';
+    const completionCounts = [3, 2, 1, 1];
+    document.querySelector('[data-completion-impact-fixture="summary"]').innerHTML = impacts.slice(0, 3).map((impact, index) => renderCompletionImpactRow(impact, completionCounts[index], 3)).join('');
+    document.querySelector('[data-completion-impact-fixture="details"]').innerHTML = impacts.slice(0, 4).map((impact, index) => renderCompletionImpactRow(impact, completionCounts[index], 3)).join('');
+    document.querySelector('[data-completion-impact-fixture="row"]').innerHTML = impacts.slice(0, 2).map(renderCompletionImpactChip).join('') + '<span class="cabinet-completion-impact-chip is-muted">+2</span>';
     const state = {
       aiMode: 'success',
       calls: [],
@@ -186,13 +204,22 @@ function harnessHtml() {
     window.__MY_DAY_INTERACTIONS__ = { state, applyClassification, renderTimeTriggers };
     renderTimeTriggers();
     document.addEventListener('click', async event => {
-      const completedToggle = event.target.closest('[data-cabinet-completed-today-toggle]');
+      const completedToggle = event.target.closest('[data-cabinet-completion-toggle]');
       if (completedToggle) {
         event.preventDefault();
         state.completedDashboardExpanded = !state.completedDashboardExpanded;
         completedToggle.setAttribute('aria-expanded', state.completedDashboardExpanded ? 'true' : 'false');
-        const panel = document.querySelector('[data-cabinet-completed-today-details]');
+        const panel = document.querySelector('[data-cabinet-completion-details]');
         if (panel) panel.hidden = !state.completedDashboardExpanded;
+        document.querySelectorAll('.cabinet-completion-tabs').forEach(node => { node.hidden = !state.completedDashboardExpanded; });
+        return;
+      }
+      const completedShowMore = event.target.closest('[data-cabinet-completion-all]');
+      if (completedShowMore) {
+        event.preventDefault();
+        state.completedRowsVisible = (state.completedRowsVisible || 1) + 1;
+        document.querySelectorAll('[data-cabinet-completion-extra]').forEach(node => { node.hidden = false; });
+        completedShowMore.remove();
         return;
       }
       const actionButton = event.target.closest('[data-cabinet-task-action]');
@@ -426,43 +453,79 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         if (dark) await page.evaluate(() => document.body.classList.add('dark-mode'));
         await page.waitForSelector('#manual-normal');
         await page.waitForFunction(() => window.MyDayTimeTracking && window.__MY_DAY_INTERACTIONS__);
-        assert.equal(await page.locator('[data-cabinet-completed-today-details]').isHidden(), true, 'completed-today details must be hidden by default');
-        const completedPulseMetrics = await page.locator('[data-cabinet-completed-today-dashboard]').evaluate(node => {
+        assert.equal(await page.locator('[data-cabinet-completion-pulse]').count(), 1, 'command center must render exactly one completion component');
+        assert.equal(await page.locator('[data-cabinet-completion-toggle]').count(), 1, 'completion component must expose exactly one disclosure action');
+        assert.equal(await page.locator('[data-cabinet-completion-details]').isHidden(), true, 'completion details must be hidden by default');
+        const completedPulseMetrics = await page.locator('[data-cabinet-completion-pulse]').evaluate(node => {
             const rect = node.getBoundingClientRect();
             return {
                 height: rect.height,
                 overflow: node.scrollWidth - node.clientWidth,
-                detailHidden: node.querySelector('[data-cabinet-completed-today-details]')?.hidden,
-                projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads
+                detailHidden: node.querySelector('[data-cabinet-completion-details]')?.hidden,
+                projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads,
+                visibleText: node.innerText
             };
         });
         assert.ok(completedPulseMetrics.height <= (viewport.width <= 640 ? 220 : 130), `completed pulse default is too tall: ${JSON.stringify(completedPulseMetrics)}`);
         assert.ok(completedPulseMetrics.overflow <= 1, `completed pulse default overflows horizontally: ${JSON.stringify(completedPulseMetrics)}`);
         assert.equal(completedPulseMetrics.detailHidden, true);
         assert.equal(completedPulseMetrics.projectionReads, 0);
-        const completedToggle = page.locator('[data-cabinet-completed-today-toggle]');
+        assert.doesNotMatch(completedPulseMetrics.visibleText, /\b(system|processes|learning|network)\b/i, 'raw impact icon keys must not appear as visible completion text');
+        const completedToggle = page.locator('[data-cabinet-completion-toggle]');
+        assert.equal(await completedToggle.getAttribute('aria-controls'), 'cabinetCompletionDetails');
         const completedToggleBounds = await completedToggle.boundingBox();
         assert.ok(completedToggleBounds && completedToggleBounds.height >= 34, `completed details toggle tap target is too small: ${JSON.stringify(completedToggleBounds)}`);
         await completedToggle.press('Enter');
-        await page.waitForFunction(() => !document.querySelector('[data-cabinet-completed-today-details]')?.hidden);
-        const completedExpandedMetrics = await page.locator('[data-cabinet-completed-today-dashboard]').evaluate(node => ({
+        await page.waitForFunction(() => !document.querySelector('[data-cabinet-completion-details]')?.hidden);
+        const completedExpandedMetrics = await page.locator('[data-cabinet-completion-pulse]').evaluate(node => ({
             overflow: node.scrollWidth - node.clientWidth,
-            detailColumns: getComputedStyle(node.querySelector('[data-cabinet-completed-today-details]')).gridTemplateColumns,
-            projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads
+            detailColumns: getComputedStyle(node.querySelector('[data-cabinet-completion-details]')).gridTemplateColumns,
+            projectionReads: window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads,
+            svgCount: node.querySelectorAll('.cabinet-completion-impact-row svg, .cabinet-completion-impact-chip svg').length,
+            rawVisibleText: node.innerText,
+            impactOverlaps: Array.from(node.querySelectorAll('.cabinet-completion-impact-row')).filter(row => row.offsetParent !== null).map(row => {
+                const label = row.querySelector('span:nth-child(2)')?.getBoundingClientRect();
+                const bar = row.querySelector('.cabinet-completion-bar')?.getBoundingClientRect();
+                if (!label || !bar) return null;
+                return Math.max(0, Math.round(label.right - bar.left));
+            }).filter(value => value !== null),
+            buttonLeaks: Array.from(node.querySelectorAll('button')).filter(button => button.offsetParent !== null).map(button => {
+                const container = node.getBoundingClientRect();
+                const rect = button.getBoundingClientRect();
+                return {
+                    text: button.textContent.trim(),
+                    left: Math.round(rect.left - container.left),
+                    right: Math.round(rect.right - container.right),
+                    top: Math.round(rect.top - container.top),
+                    bottom: Math.round(rect.bottom - container.bottom)
+                };
+            }).filter(item => item.left < -1 || item.right > 1 || item.top < -1 || item.bottom > 1)
         }));
         assert.ok(completedExpandedMetrics.overflow <= 1, `completed pulse expanded overflows horizontally: ${JSON.stringify(completedExpandedMetrics)}`);
         assert.equal(completedExpandedMetrics.projectionReads, 0, 'completed details toggle must not reload projection');
+        assert.ok(completedExpandedMetrics.svgCount >= 4, `completion impact keys must render SVG icons: ${JSON.stringify(completedExpandedMetrics)}`);
+        assert.doesNotMatch(completedExpandedMetrics.rawVisibleText, /\b(system|processes|learning|network)\b/i, 'raw impact icon keys must not appear after expansion');
+        assert.deepEqual(completedExpandedMetrics.impactOverlaps.filter(value => value > 1), [], `completion impact labels overlap bars: ${JSON.stringify(completedExpandedMetrics)}`);
+        assert.deepEqual(completedExpandedMetrics.buttonLeaks, [], `completion buttons leak outside the container: ${JSON.stringify(completedExpandedMetrics)}`);
+        assert.equal(await page.locator('[data-cabinet-completion-tab="today"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
+        assert.equal(await page.locator('[data-cabinet-completion-tab="history"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
         if (viewport.width <= 640) {
             assert.ok(!completedExpandedMetrics.detailColumns.includes(' '), `mobile completed details should be one column: ${JSON.stringify(completedExpandedMetrics)}`);
         }
-        const completedRowBounds = await page.locator('[data-cabinet-completed-today-details] [data-cabinet-task-action="open"]').boundingBox();
+        assert.equal(await page.locator('[data-cabinet-completion-extra]').isHidden(), true, 'extra completion rows are hidden before Show more');
+        await page.locator('[data-cabinet-completion-all]').click();
+        await page.waitForFunction(() => !document.querySelector('[data-cabinet-completion-extra]')?.hidden);
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads), 0, 'Show more must be local and not reload projection');
+        assert.match(await page.locator('[data-cabinet-completion-extra]').innerText(), /Виконано 2 підпунктів/);
+        const firstCompletedRow = page.locator('[data-cabinet-completion-details] [data-cabinet-task-action="open"]').first();
+        const completedRowBounds = await firstCompletedRow.boundingBox();
         assert.ok(completedRowBounds && completedRowBounds.height >= (viewport.width <= 640 ? 44 : 40), `completed row tap target is too small: ${JSON.stringify(completedRowBounds)}`);
-        await page.locator('[data-cabinet-completed-today-details] [data-cabinet-task-action="open"]').click();
+        await firstCompletedRow.click();
         assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.openedTaskId), 777);
         await page.waitForSelector('[data-task-detail-drawer][data-open-task-id="777"]', { state: 'visible' });
         assert.match(await page.locator('[data-task-detail-drawer]').textContent(), /task 777/);
         await completedToggle.click();
-        await page.waitForFunction(() => document.querySelector('[data-cabinet-completed-today-details]')?.hidden);
+        await page.waitForFunction(() => document.querySelector('[data-cabinet-completion-details]')?.hidden);
         await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.renderTimeTriggers());
         try {
             await page.waitForSelector('[data-header-actions="normal"] [data-cabinet-task-action="time-menu"]');
@@ -565,7 +628,7 @@ async function runScenario(browser, fixture, { dark, viewport }) {
           fullPage: true
         });
         await page.locator('[data-my-day-editor-save]').click();
-        await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
+        await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Системність'));
         await page.waitForSelector('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="3"]');
         const impactButtons = page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id]');
         assert.equal(await impactButtons.count(), 5);
@@ -587,10 +650,10 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="1"]').click();
         await page.locator('[data-my-day-editor-remove-impact="1"]').click();
         await page.locator('[data-my-day-editor-save]').click();
-        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('CRM'));
+        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Системність'));
         assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length), putCountBeforeRemove + 1);
-        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Hermes/);
-        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /РљРѕРјР°РЅРґР°|Команда/);
+        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Операційка/);
+        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Навчання/);
         await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"]').last().click();
         await page.locator('[data-my-day-editor-create] summary').click();
         await page.locator('[data-my-day-editor-create-form] input[name="name"]').fill('Custom QA');
@@ -609,13 +672,13 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.evaluate(() => {
           window.__MY_DAY_INTERACTIONS__.state.classificationDelay = 0;
           window.__MY_DAY_INTERACTIONS__.state.classificationError = true;
-          window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Робота: CRM', color: '#0EA5E9', icon: 'C', isActive: true }] });
+          window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Системність', color: '#6366F1', icon: 'system', isActive: true }] });
         });
         await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="1"]').click();
         await page.locator('[data-my-day-editor-remove-impact="1"]').click();
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.notifications.some(item => item.type === 'error'));
-        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /CRM/);
+        assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Системність/);
         await page.keyboard.press('Escape');
         await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationError = false; });
@@ -673,9 +736,9 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await assertNoOverflow(page);
 
         await page.locator('#ai-overdue').click();
-        await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="202"]')?.textContent?.includes('Hermes'));
+        await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="202"]')?.textContent?.includes('Навчання'));
         await page.locator('[data-my-day-ai-undo]').click();
-        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="202"]')?.textContent?.includes('Hermes'));
+        await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="202"]')?.textContent?.includes('Навчання'));
 
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.aiMode = 'provider'; });
         await page.locator('#ai-normal').click();
@@ -726,8 +789,12 @@ async function run() {
     const fixture = await createStaticServer();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
+        await runScenario(browser, fixture, { dark: false, viewport: { width: 1440, height: 900 } });
+        await runScenario(browser, fixture, { dark: true, viewport: { width: 1440, height: 900 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 1280, height: 900 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 1280, height: 900 } });
+        await runScenario(browser, fixture, { dark: false, viewport: { width: 1280, height: 720 } });
+        await runScenario(browser, fixture, { dark: true, viewport: { width: 1280, height: 720 } });
         await runScenario(browser, fixture, { dark: false, viewport: { width: 390, height: 844 } });
         await runScenario(browser, fixture, { dark: true, viewport: { width: 390, height: 844 } });
         console.log('My Day interactions browser smoke passed');

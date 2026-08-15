@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.149 - My Day Completion Pulse CI Guard
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Єдина completion-панель** - My Day більше не показує окремі “Історію закриття” і “Виконано сьогодні” як два схожі блоки; presentation contract закріплено тестами.
+- **Семантично точні виконання** - projection розділяє завершені задачі, завершені підпункти, загальні completion units, overflow останніх 36 parent tasks і exact today time.
+- **CI ловить production-візуальні регресії** - browser smoke перевіряє реальні SVG-іконки впливів, відсутність raw `system/processes/learning/network`, horizontal overflow, накладання тексту, details tabs і Show more.
+
+---
+
 ## v0.80.148 - My Day Compact Pulse
 
 ### Release / Versioning / (15.08.2026) [codex]

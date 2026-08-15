@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.143 - Trusted QA Manifest Readiness
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Exact endpoint allowlist працює для root booking route** - `POST /api/bookings/` канонічно нормалізується до `POST /api/bookings`, тому standalone trusted QA request не відхиляється через службовий trailing slash.
+- **QA product preflight перевіряє реальні межі schema** - id/code/label/category/duration валідуються до production transaction; несумісний manifest блокується до owner approval і створення run.
+- **Regression coverage закріплює обидві гарантії** - додано focused tests для endpoint normalization та `products.code VARCHAR(20)` contract.
+
+---
+
 ## v0.80.142 - Trusted QA Lifecycle Hardening
 
 ### Release / Versioning / (15.08.2026) [codex]

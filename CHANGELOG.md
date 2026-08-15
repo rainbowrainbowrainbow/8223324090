@@ -4,6 +4,17 @@
 
 ---
 
+## v0.80.142 - Trusted QA Lifecycle Hardening
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Клієнтські прапорці більше не є дозволом** - `disposableQa` і `skipNotification` не можуть вимкнути бізнес-логіку без server-issued trusted QA token, а fake/replayed token завершується 403 до першого запису.
+- **Exact manifest тепер охоплює весь граф QA-запису** - booking, banquet group, membership, links і тимчасовий QA product реєструються в тій самій транзакції з bounded entity limit.
+- **Cleanup працює fail-closed та idempotent** - перед скасуванням перевіряються marker/customer/context, активні задачі й persistent finance/event/notification/warehouse/CRM side effects; повторний cleanup повертає успішний no-op.
+- **Додано контрольований operator flow** - read-only plan формує стабільний SHA-256 manifest, raw token не потрапляє в БД або логи, а product/run creation вимагає exact approval hash.
+- **Production inventory більше не приховує нестачу прав** - недоступний QA registry позначається як blocker замість хибного висновку про нуль run-ів.
+
+---
+
 ## v0.80.141 - Banquet Cancellation Delivery
 
 ### Банкетні скасування / QA / Room identity / (14.08.2026) [codex]

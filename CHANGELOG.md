@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.150 - My Day Live Smoke Guard
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Live My Day smoke оновлено під completion pulse** - production smoke більше не шукає старі `cabinet-completed-details` / history-strip selectors і перевіряє єдину completion-панель.
+- **Read-only QA guard став корисним для нового UI** - smoke перевіряє disclosure, Today/History tabs, Show more, raw impact keys, overlap/overflow і відсутність legacy completion blocks.
+- **UI-check закріплює новий smoke contract** - статичний guard не дасть повернути stale completion selectors у live smoke.
+
+---
+
 ## v0.80.149 - My Day Completion Pulse CI Guard
 
 ### Release / Versioning / (15.08.2026) [codex]

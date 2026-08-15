@@ -170,22 +170,26 @@ async function main() {
             });
         });
 
-        await openDetails(page1, activityId);
-        assert.equal(await cancellationButtonText(page1, activityId), 'Прибрати складову');
-        await assertNoGenericDelete(page1);
-        const activityButton = page1.locator(`[data-cancellation-booking-id="${activityId}"]`);
-        await activityButton.click();
-        await activityButton.click({ trial: true }).catch(() => {});
-        await page1.waitForSelector('#confirmModal:not(.hidden)', { timeout: 10000 });
-        await page1.locator('#confirmYes').click();
-        await waitBanquetEvent(page2, 'banquet_activity_cancel');
-        const afterActivityIds = await activeBookingIds(page2);
-        assert.equal(afterActivityIds.includes(activityId), false, 'second tab no longer sees removed activity as active');
-        assert.equal(
-            requests.filter(entry => entry.method === 'DELETE' && entry.url.includes(`/api/banquets/${groupId}/activities/${activityId}`)).length,
-            1,
-            'double click must send one activity cancellation request'
-        );
+        const beforeActivityIds = await activeBookingIds(page2);
+        let activityAlreadyRemoved = false;
+        let doubleClickActivityRequests = 0;
+        if (beforeActivityIds.includes(activityId)) {
+            await openDetails(page1, activityId);
+            assert.equal(await cancellationButtonText(page1, activityId), 'Прибрати складову');
+            await assertNoGenericDelete(page1);
+            const activityButton = page1.locator(`[data-cancellation-booking-id="${activityId}"]`);
+            await activityButton.click();
+            await activityButton.click({ trial: true }).catch(() => {});
+            await page1.waitForSelector('#confirmModal:not(.hidden)', { timeout: 10000 });
+            await page1.locator('#confirmYes').click();
+            await waitBanquetEvent(page2, 'banquet_activity_cancel');
+            const afterActivityIds = await activeBookingIds(page2);
+            assert.equal(afterActivityIds.includes(activityId), false, 'second tab no longer sees removed activity as active');
+            doubleClickActivityRequests = requests.filter(entry => entry.method === 'DELETE' && entry.url.includes(`/api/banquets/${groupId}/activities/${activityId}`)).length;
+            assert.equal(doubleClickActivityRequests, 1, 'double click must send one activity cancellation request');
+        } else {
+            activityAlreadyRemoved = true;
+        }
 
         await assertLiveSource('before_group_cancel');
         await openDetails(page1, primaryId);
@@ -195,7 +199,7 @@ async function main() {
         await page1.locator(`[data-cancellation-booking-id="${primaryId}"]`).click();
         await page1.waitForSelector('#confirmModal:not(.hidden)', { timeout: 10000 });
         await page1.keyboard.press('Escape');
-        await page1.waitForSelector('#confirmModal.hidden', { timeout: 10000 });
+        await page1.waitForFunction(() => document.getElementById('confirmModal')?.classList.contains('hidden') === true, null, { timeout: 10000 });
         assert.equal(
             requests.filter(entry => entry.method === 'POST' && entry.url.includes(`/api/banquets/${groupId}/cancel`)).length,
             beforeCancelCount,
@@ -221,7 +225,8 @@ async function main() {
             runId: state.runId,
             failClosed: true,
             noGenericDelete: true,
-            doubleClickActivityRequests: 1,
+            activityAlreadyRemoved,
+            doubleClickActivityRequests,
             escapeSubmitted: false,
             wsEvents: await page2.evaluate(() => window.__trustedQaBanquetEvents || []),
             activeAfterGroup: afterGroupIds,

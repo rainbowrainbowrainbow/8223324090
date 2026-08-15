@@ -144,6 +144,21 @@ function checklistProposal(impactIds, today) {
     };
 }
 
+function simpleProposal(impactIds) {
+    return {
+        decision: 'single_task',
+        mode: 'simple',
+        title: `AI simple actual app ${RUN_ID}`,
+        description: 'Prepared as a single task through the real Tasks composer.',
+        impactIds: impactIds.slice(0, 1),
+        subtasks: [],
+        bundleTitle: null,
+        tasks: [],
+        confidence: confidence(0.9),
+        reason: 'A single actionable task is enough.'
+    };
+}
+
 function bundleProposal(impactIds, today) {
     return {
         decision: 'task_bundle',
@@ -158,6 +173,10 @@ function bundleProposal(impactIds, today) {
                 title: `Bundle CRM actual app ${RUN_ID}`,
                 description: 'Created as a separate task from the real composer.',
                 impactIds: [impactIds[0]],
+                subtasks: [
+                    { title: 'Open CRM report' },
+                    { title: 'Check CRM totals' }
+                ],
                 priority: 'high',
                 scheduleDate: today,
                 ownerSuggestion: { userId: null, name: null, reason: 'No auto-assignee in browser smoke.' },
@@ -167,10 +186,26 @@ function bundleProposal(impactIds, today) {
                 title: `Bundle Hermes actual app ${RUN_ID}`,
                 description: 'Second atomic task from the same bundle.',
                 impactIds: [impactIds[1] || impactIds[0]],
+                subtasks: [
+                    { title: 'Open Hermes queue' },
+                    { title: 'Verify pending alerts' }
+                ],
                 priority: 'normal',
                 scheduleDate: null,
                 ownerSuggestion: { userId: null, name: null, reason: 'No auto-assignee in browser smoke.' },
                 confidence: confidence(0.9)
+            },
+            {
+                title: `Bundle optional actual app ${RUN_ID}`,
+                description: 'Optional task that the browser smoke rejects before commit.',
+                impactIds: [impactIds[2] || impactIds[0]],
+                subtasks: [
+                    { title: 'Review optional follow-up' }
+                ],
+                priority: 'low',
+                scheduleDate: null,
+                ownerSuggestion: { userId: null, name: null, reason: 'No auto-assignee in browser smoke.' },
+                confidence: confidence(0.88)
             }
         ],
         confidence: confidence(0.91),
@@ -278,15 +313,38 @@ async function api(base, routePath, options = {}) {
     return body;
 }
 
-async function login(base) {
+async function login(base, credentials = {}) {
+    const username = credentials.username || process.env.TEST_USER;
+    const password = credentials.password || process.env.TEST_PASS;
     const body = await api(base, '/api/auth/login', {
         method: 'POST',
-        body: { username: process.env.TEST_USER, password: process.env.TEST_PASS }
+        body: { username, password }
     });
     const token = body.accessToken || body.token;
     assert.ok(token, '/api/auth/login returns token');
     assert.ok(body.user?.id, '/api/auth/login returns user');
     return { token, refreshToken: body.refreshToken || '', refreshExpiresAt: body.refreshExpiresAt || '', user: body.user };
+}
+
+async function createDisposableUser(base, creatorToken) {
+    const username = `myday_e2e_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
+    const password = `Safe-${crypto.randomBytes(18).toString('base64url')}`;
+    const created = await api(base, '/api/users', {
+        method: 'POST',
+        token: creatorToken,
+        body: {
+            username,
+            password,
+            name: `My Day E2E secondary ${RUN_ID}`,
+            role: 'director',
+            actionAllowlist: [],
+            actionDenylist: [],
+            businessContexts: ['event_genix'],
+            defaultBusinessContext: 'event_genix'
+        }
+    });
+    assert.ok(Number(created.user?.id) > 0, 'secondary disposable account is created through Express API');
+    return login(base, { username, password });
 }
 
 function kyivDateOffset(days = 0) {
@@ -403,6 +461,43 @@ async function openMyDayProfile(page) {
             && form.querySelector('.cabinet-task-create-submit')
         );
     }, null, { timeout: TIMEOUT_MS });
+}
+
+function browserStorageStateForSession(session, { darkMode = false } = {}) {
+    const targetOrigin = new URL(TARGET_URL).origin;
+    return {
+        cookies: [],
+        origins: [{
+            origin: targetOrigin,
+            localStorage: [
+                { name: 'pzp_token', value: session.token },
+                { name: 'pzp_access_token', value: session.token },
+                ...(session.refreshToken ? [{ name: 'pzp_refresh_token', value: session.refreshToken }] : []),
+                ...(session.refreshExpiresAt ? [{ name: 'pzp_refresh_expires_at', value: String(session.refreshExpiresAt) }] : []),
+                { name: 'pzp_current_user', value: JSON.stringify(session.user) },
+                { name: 'pzp_crm_business_context', value: 'event_genix' },
+                { name: 'pzp_dark_mode', value: darkMode ? 'true' : 'false' }
+            ]
+        }]
+    };
+}
+
+async function withBrowserRequestBudget(requestLog, label, action, options = {}) {
+    const before = requestLog.length;
+    const result = await action();
+    await new Promise(resolve => setTimeout(resolve, options.settleMs || 150));
+    const slice = requestLog.slice(before);
+    const cabinetRequests = slice.filter(item => item.method === 'GET' && item.pathname === '/api/tasks/my-cabinet');
+    const byUrl = new Map();
+    for (const item of cabinetRequests) {
+        const key = `${item.method} ${item.pathname}${item.search || ''}`;
+        byUrl.set(key, (byUrl.get(key) || 0) + 1);
+    }
+    const repeated = Array.from(byUrl.entries()).filter(([, count]) => count >= 4);
+    assert.deepEqual(repeated, [], `${label}: no four identical cabinet projection requests`);
+    const maxCabinetRequests = Number(options.maxCabinetRequests || 3);
+    assert.ok(cabinetRequests.length <= maxCabinetRequests, `${label}: cabinet projection request budget exceeded (${cabinetRequests.length}/${maxCabinetRequests})`);
+    return result;
 }
 
 async function assertMyDayCompletionPulseContracts(page, label = 'My Day', { openDrawer = false } = {}) {
@@ -735,22 +830,7 @@ async function main() {
     assert.ok(selectedImpactIds.length >= 2, 'starter kit exposes at least two active impacts');
 
     const browser = await chromium.launch({ headless: HEADLESS });
-    const targetOrigin = new URL(TARGET_URL).origin;
-    const sessionStorageState = {
-        cookies: [],
-        origins: [{
-            origin: targetOrigin,
-            localStorage: [
-                { name: 'pzp_token', value: session.token },
-                { name: 'pzp_access_token', value: session.token },
-                ...(session.refreshToken ? [{ name: 'pzp_refresh_token', value: session.refreshToken }] : []),
-                ...(session.refreshExpiresAt ? [{ name: 'pzp_refresh_expires_at', value: String(session.refreshExpiresAt) }] : []),
-                { name: 'pzp_current_user', value: JSON.stringify(session.user) },
-                { name: 'pzp_crm_business_context', value: 'event_genix' },
-                { name: 'pzp_dark_mode', value: 'false' }
-            ]
-        }]
-    };
+    const sessionStorageState = browserStorageStateForSession(session);
     const context = await browser.newContext({ viewport: { width: 1366, height: 900 }, serviceWorkers: 'block', storageState: sessionStorageState });
     await context.route('https://www.clarity.ms/**', route => route.fulfill({
         status: 204,
@@ -782,6 +862,17 @@ async function main() {
     const expectedApiFailures = [];
     const expectedConsoleFailures = [];
     const optionalConsoleFailures = [];
+    const requestLog = [];
+    page.on('request', request => {
+        if (!isSameTargetOrigin(request.url())) return;
+        const url = new URL(request.url());
+        requestLog.push({
+            method: request.method(),
+            pathname: url.pathname,
+            search: url.search,
+            ts: Date.now()
+        });
+    });
     page.on('console', message => {
         if (message.type() !== 'error') return;
         consoleErrors.push({ text: message.text(), location: message.location() });
@@ -826,7 +917,7 @@ async function main() {
     try {
         const today = kyivDateOffset(0);
         await browserLogin(page, session);
-        await openMyDayProfile(page);
+        await withBrowserRequestBudget(requestLog, 'initial Profile My Day open', () => openMyDayProfile(page));
         await assertMyDayCompletionPulseContracts(page, 'desktop light My Day');
 
         const manualTitle = `Manual actual app My Day ${RUN_ID}`;
@@ -877,27 +968,46 @@ async function main() {
         await fillCabinetField(page, 'cabinetTaskDetails', 'Розклади перевірку звітів на CRM і Hermes задачі.');
         await page.locator('[data-task-ai-draft-preview]').click();
         await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує створити' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-        const bundleAcceptButtons = page.locator('[data-task-ai-bundle-accept]');
-        const bundleAcceptCount = await bundleAcceptButtons.count();
-        assert.ok(bundleAcceptCount >= 2, 'bundle preview renders explicit per-task accept controls');
-        for (let index = 0; index < bundleAcceptCount; index += 1) {
-            await bundleAcceptButtons.nth(index).click();
-        }
+        assert.ok(await page.locator('[data-task-ai-bundle-card]').count() >= 3, 'bundle preview renders at least three task cards for accept/reject coverage');
+        await page.locator('[data-task-ai-bundle-accept-all]').click();
+        const editedBundleTitle = `Bundle CRM edited actual app ${RUN_ID}`;
+        await page.locator('[data-task-ai-bundle-card]').first().locator('[data-task-ai-bundle-field="title"]').fill(editedBundleTitle);
+        await page.locator('[data-task-ai-bundle-card]').nth(2).locator('[data-task-ai-bundle-reject]').click();
         await page.waitForFunction(() => {
             const composer = document.getElementById('cabinetTaskComposer');
             const payload = window.TaskAiDraft?.commitPayloadFor?.(composer);
-            return payload?.commitType === 'bundle' && Array.isArray(payload.tasks) && payload.tasks.length >= 2;
+            return payload?.commitType === 'bundle'
+                && Array.isArray(payload.tasks)
+                && payload.tasks.length === 2
+                && Array.isArray(payload.acceptedFieldMasks)
+                && payload.acceptedFieldMasks.length === 2
+                && Array.isArray(payload.editedFieldMasks)
+                && payload.editedFieldMasks.some(entry => Array.isArray(entry.fields) && entry.fields.includes('title'));
         }, null, { timeout: TIMEOUT_MS });
+        const bundlePayloadBeforeCommit = await page.evaluate(() => window.TaskAiDraft.bundlePayloadFor(document.getElementById('cabinetTaskComposer')));
+        assert.deepEqual(bundlePayloadBeforeCommit.acceptedTaskMask, [0, 1], 'bundle review keeps only accepted tasks in the accepted mask');
+        assert.deepEqual(bundlePayloadBeforeCommit.rejectedTaskMask, [2], 'bundle review sends rejected task mask');
+        assert.ok(bundlePayloadBeforeCommit.acceptedFieldMasks.every(entry => (
+            ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority'].every(field => entry.fields.includes(field))
+        )), 'bundle review sends explicit accepted field masks for every accepted task');
+        assert.ok(bundlePayloadBeforeCommit.editedFieldMasks[0].fields.includes('title'), 'bundle review marks edited title as user_edited');
         const bundleCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/bundle/commit');
         await submitCabinetComposer(page);
-        const bundleBody = await responseJson(await bundleCommitResponse, 'Profile AI bundle commit');
+        const bundleResponse = await bundleCommitResponse;
+        const bundleCommitRequestBody = parseBody(bundleResponse.request().postData() || '{}');
+        assert.deepEqual(bundleCommitRequestBody.acceptedTaskMask, [0, 1], 'bundle commit request carries accepted task mask');
+        assert.deepEqual(bundleCommitRequestBody.rejectedTaskMask, [2], 'bundle commit request carries rejected task mask');
+        assert.ok(bundleCommitRequestBody.acceptedFieldMasks?.[0]?.fields?.includes('subtasks'), 'bundle commit request carries accepted subtasks field mask');
+        assert.ok(bundleCommitRequestBody.editedFieldMasks?.[0]?.fields?.includes('title'), 'bundle commit request carries edited title field mask');
+        const bundleBody = await responseJson(bundleResponse, 'Profile AI bundle commit');
         const bundleTaskIds = (bundleBody.bundle?.taskIds || bundleBody.taskIds || []).map(Number).filter(Boolean);
         assert.ok(bundleTaskIds.length >= 2, 'AI bundle commit returns multiple task ids');
         const cabinetAfterBundle = await api(TARGET_URL, '/api/tasks/my-cabinet', { token: session.token });
         const projectedTitles = extractTodayTitles(cabinetAfterBundle);
-        assert.ok(projectedTitles.includes(`Bundle CRM actual app ${RUN_ID}`), 'bundle task scheduled for today appears in My Day projection');
+        assert.ok(projectedTitles.includes(editedBundleTitle), 'edited bundle task scheduled for today appears in My Day projection');
         assert.ok(projectedTitles.includes(`Bundle Hermes actual app ${RUN_ID}`), 'bundle task with null AI date inherits the human-confirmed Today date');
-        await visibleTaskCard(page, `Bundle CRM actual app ${RUN_ID}`);
+        assert.equal(projectedTitles.includes(`Bundle optional actual app ${RUN_ID}`), false, 'rejected bundle task is not created or projected');
+        await visibleTaskCard(page, editedBundleTitle);
         await visibleTaskCard(page, `Bundle Hermes actual app ${RUN_ID}`);
 
         await openTasksPage(page);
@@ -988,10 +1098,45 @@ async function main() {
         const tasksAiCommitBody = await responseJson(await tasksAiCommitResponse, 'AI checklist commit from real Tasks composer');
         assert.ok(Number(tasksAiCommitBody.task?.id || tasksAiCommitBody.taskId || tasksAiCommitBody.task_id) > 0, 'Tasks AI checklist commit returns task id');
 
+        openAiMock.enqueue(body => {
+            assert.equal(body.model, 'gpt-5.6-luna');
+            assert.equal(body.store, false);
+            return openAiDraftOutput(simpleProposal(selectedImpactIds.slice(0, 1)));
+        });
+        await page.locator('#taskTitle').fill(`Tasks AI simple source ${RUN_ID}`);
+        await page.locator('#taskDescription').fill('Create a simple task through the canonical AI flow.');
+        await page.locator('[data-task-ai-draft-preview]').click();
+        await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує оновити задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-task-ai-draft-accept-all]').click();
+        const tasksSimpleAiCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/commit');
+        await submitTasksComposer(page);
+        const tasksSimpleAiCommitBody = await responseJson(await tasksSimpleAiCommitResponse, 'AI simple commit from real Tasks composer');
+        assert.ok(Number(tasksSimpleAiCommitBody.task?.id || tasksSimpleAiCommitBody.taskId || tasksSimpleAiCommitBody.task_id) > 0, 'Tasks AI simple commit returns task id');
+
         await api(TARGET_URL, '/api/my-day/timer/start', { method: 'POST', token: session.token, body: { taskId: manualTaskId } });
         await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
         await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('.global-task-timer__title, .global-task-timer-panel__title, .global-task-timer-chip').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        const secondarySession = await createDisposableUser(TARGET_URL, session.token);
+        const secondaryTimerApi = await api(TARGET_URL, '/api/my-day/timer', { token: secondarySession.token });
+        assert.equal(secondaryTimerApi.timer, null, 'second disposable account does not see the first account active timer through API');
+        const secondaryContext = await browser.newContext({
+            viewport: { width: 1366, height: 900 },
+            serviceWorkers: 'block',
+            storageState: browserStorageStateForSession(secondarySession)
+        });
+        await secondaryContext.route('https://www.clarity.ms/**', route => route.fulfill({ status: 204, contentType: 'application/javascript', body: '' }));
+        await secondaryContext.route('https://fonts.googleapis.com/**', fulfillOptionalFontResource);
+        await secondaryContext.route('https://fonts.gstatic.com/**', fulfillOptionalFontResource);
+        const secondaryPage = await secondaryContext.newPage();
+        try {
+            await browserLogin(secondaryPage, secondarySession);
+            await secondaryPage.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
+            await secondaryPage.locator('#taskTitle').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+            assert.equal(await secondaryPage.locator('[data-global-task-timer-elapsed]').count(), 0, 'second disposable account does not render the first account timer in shell');
+        } finally {
+            await secondaryContext.close();
+        }
         const decisionSeed = await api(TARGET_URL, '/api/decisions', {
             method: 'POST',
             token: session.token,
@@ -1027,7 +1172,7 @@ async function main() {
 
         await page.setViewportSize({ width: 390, height: 780 });
         await evaluateAfterNavigationSettles(page, () => localStorage.setItem('pzp_dark_mode', 'true'));
-        await openMyDayProfile(page);
+        await withBrowserRequestBudget(requestLog, 'mobile dark Profile My Day reopen', () => openMyDayProfile(page));
         await assertMyDayCompletionPulseContracts(page, 'mobile dark My Day', { openDrawer: true });
         const overflow = await page.evaluate(() => Math.max(0, document.documentElement.scrollWidth - document.documentElement.clientWidth));
         assert.ok(overflow <= 4, `mobile dark My Day should not horizontally overflow, got ${overflow}px`);

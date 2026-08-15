@@ -292,6 +292,10 @@ function validBundleProposal(impactIds, overrides = {}) {
                 title: `AI bundle CRM audit ${suffix}`,
                 description: 'Audit CRM flow without creating dependencies.',
                 impactIds: [firstImpact],
+                subtasks: [
+                    { title: 'Open CRM audit checklist' },
+                    { title: 'Verify CRM totals' }
+                ],
                 priority: 'high',
                 scheduleDate: '2099-02-01',
                 ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
@@ -308,6 +312,10 @@ function validBundleProposal(impactIds, overrides = {}) {
                 title: `AI bundle Hermes worker ${suffix}`,
                 description: 'Prepare Hermes worker safely.',
                 impactIds: [secondImpact],
+                subtasks: [
+                    { title: 'Open Hermes worker queue' },
+                    { title: 'Confirm notification path' }
+                ],
                 priority: 'normal',
                 scheduleDate: null,
                 ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
@@ -324,6 +332,9 @@ function validBundleProposal(impactIds, overrides = {}) {
                 title: `AI bundle automation QA ${suffix}`,
                 description: 'Verify automation and AI outcome.',
                 impactIds: [thirdImpact],
+                subtasks: [
+                    { title: 'Run automation QA pass' }
+                ],
                 priority: 'normal',
                 scheduleDate: null,
                 ownerSuggestion: { userId: null, name: null, reason: 'Review-only owner suggestion.' },
@@ -348,6 +359,13 @@ function validBundleProposal(impactIds, overrides = {}) {
         reason: 'Clear multi-task bundle.',
         ...overrides
     };
+}
+
+function bundleAcceptedFieldMasks(proposal, acceptedTaskMask = []) {
+    return acceptedTaskMask.map(index => ({
+        proposalIndex: index,
+        fields: ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']
+    }));
 }
 
 describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, () => {
@@ -959,6 +977,8 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             tasks: preview.data.proposal.tasks,
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
+            acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
+            editedFieldMasks: [],
             idempotencyKey: `ai-bundle-commit-${suffix}`
         };
         const committed = await postAiDraftBundleCommit(owner.token, commitBody);
@@ -1091,6 +1111,8 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             tasks: preview.data.proposal.tasks,
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
+            acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
+            editedFieldMasks: [],
             idempotencyKey: `ai-bundle-double-${suffix}`
         };
 
@@ -1153,6 +1175,8 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             tasks: preview.data.proposal.tasks,
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
+            acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
+            editedFieldMasks: [],
             idempotencyKey: `ai-bundle-dup-${suffix}`
         });
         assert.equal(response.status, 409, JSON.stringify(response.data));
@@ -1217,6 +1241,8 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
                 tasks: preview.data.proposal.tasks,
                 acceptedTaskMask: [0, 1, 2],
                 rejectedTaskMask: [],
+                acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
+                editedFieldMasks: [],
                 idempotencyKey: `ai-bundle-impact-fail-${suffix}`
             });
             assert.equal(response.status, 500, JSON.stringify(response.data));

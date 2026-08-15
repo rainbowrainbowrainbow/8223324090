@@ -35,6 +35,7 @@ let myCabinetData = null;
 let myCabinetLoadError = '';
 let myTasksSegment = 'all';
 let cabinetProjectionRequestSequence = 0;
+const cabinetProjectionInFlightByPath = new Map();
 let cabinetCreateDuePreset = 'today';
 let cabinetMyDayListMode = 'focused';
 let cabinetMyDaySegment = 'today';
@@ -1248,7 +1249,6 @@ function setMyCabinetProjectionData(data, options = {}) {
 }
 
 async function loadMyCabinetProjection(options = {}) {
-    const requestSequence = ++cabinetProjectionRequestSequence;
     const requestedFocusDate = cabinetTaskDateKeyFromValue(options.focusDate || '');
     const selectedFocusDate = normalizeCabinetDuePreset(cabinetCreateDuePreset) === 'custom'
         ? cabinetSelectedDueDate()
@@ -1257,12 +1257,26 @@ async function loadMyCabinetProjection(options = {}) {
     const path = focusDate
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
-    const data = await apiGet(path);
-    if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
-    return setMyCabinetProjectionData(data, {
-        keepExistingOnError: options.keepExistingOnError,
-        message: options.message
-    });
+    const cacheKey = path;
+    if (cabinetProjectionInFlightByPath.has(cacheKey)) {
+        return cabinetProjectionInFlightByPath.get(cacheKey);
+    }
+    const requestSequence = ++cabinetProjectionRequestSequence;
+    const promise = apiGet(path)
+        .then(data => {
+            if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
+            return setMyCabinetProjectionData(data, {
+                keepExistingOnError: options.keepExistingOnError,
+                message: options.message
+            });
+        })
+        .finally(() => {
+            if (cabinetProjectionInFlightByPath.get(cacheKey) === promise) {
+                cabinetProjectionInFlightByPath.delete(cacheKey);
+            }
+        });
+    cabinetProjectionInFlightByPath.set(cacheKey, promise);
+    return promise;
 }
 
 async function apiPost(path, body) {

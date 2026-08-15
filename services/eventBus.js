@@ -33,6 +33,19 @@ const {
 
 const log = createLogger('EventBus');
 
+function trustedQaRunPublicIdFromPayload(payload = {}) {
+    if (!payload || typeof payload !== 'object') return null;
+    const direct = String(payload.trustedQaRunPublicId || payload.trusted_qa_run_public_id || '').trim();
+    if (direct) return direct.slice(0, 100);
+    const disposableQa = payload.disposableQa
+        || payload.disposable_qa
+        || payload.extraData?.disposableQa
+        || payload.extra_data?.disposableQa;
+    if (!disposableQa || disposableQa.source !== 'trusted_qa') return null;
+    const runId = String(disposableQa.runId || disposableQa.run_id || '').trim();
+    return runId ? runId.slice(0, 100) : null;
+}
+
 /**
  * Publish an event to the event queue.
  * Idempotency key is auto-generated if not provided.
@@ -89,11 +102,13 @@ async function processEventRules(event) {
             `SELECT * FROM rule_definitions WHERE trigger_event = $1 AND is_active = true ORDER BY priority DESC`,
             [event.event_type]
         );
+        const eventPayload = typeof event.payload === 'string' ? JSON.parse(event.payload) : (event.payload || {});
+        const trustedQaRunPublicId = trustedQaRunPublicIdFromPayload(eventPayload);
 
         for (const rule of rules.rows) {
             try {
                 // Check conditions against payload
-                const payload = typeof event.payload === 'string' ? JSON.parse(event.payload) : (event.payload || {});
+                const payload = eventPayload;
                 if (rule.conditions && Object.keys(rule.conditions).length > 0) {
                     const conditions = typeof rule.conditions === 'string' ? JSON.parse(rule.conditions) : rule.conditions;
                     const match = Object.entries(conditions).every(([k, v]) => payload[k] === v);
@@ -115,16 +130,16 @@ async function processEventRules(event) {
 
                 // Log successful execution
                 await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, output)
-                     VALUES ($1, $2, 'success', $3)`,
-                    [rule.id, event.event_type, JSON.stringify({ actions_count: actionsExecuted, event_id: event.id })]
+                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, output, trusted_qa_run_public_id)
+                     VALUES ($1, $2, 'success', $3, $4)`,
+                    [rule.id, event.event_type, JSON.stringify({ actions_count: actionsExecuted, event_id: event.id }), trustedQaRunPublicId]
                 );
                 applied++;
             } catch (ruleErr) {
                 await pool.query(
-                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, error, output)
-                     VALUES ($1, $2, 'error', $3, $4)`,
-                    [rule.id, event.event_type, ruleErr.message, JSON.stringify({ event_id: event.id })]
+                    `INSERT INTO rule_execution_log (rule_id, trigger_event, result, error, output, trusted_qa_run_public_id)
+                     VALUES ($1, $2, 'error', $3, $4, $5)`,
+                    [rule.id, event.event_type, ruleErr.message, JSON.stringify({ event_id: event.id }), trustedQaRunPublicId]
                 );
             }
         }
@@ -195,6 +210,7 @@ function classifyEventProcessingError(event, err) {
  */
 async function executeAction(action, payload, event) {
     const type = action.type;
+    const trustedQaRunPublicId = trustedQaRunPublicIdFromPayload(payload);
 
     switch (type) {
         case 'create_task': {
@@ -293,9 +309,9 @@ async function executeAction(action, payload, event) {
                 const seqRes = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
                 const seq    = seqRes.rows[0].seq;
                 await client.query(
-                    `INSERT INTO chat_messages (channel_id, user_id, seq, content, created_at)
-                     VALUES ($1, $2, $3, $4, NOW())`,
-                    [channelId, sysUserId, seq, message]
+                    `INSERT INTO chat_messages (channel_id, user_id, seq, content, created_at, trusted_qa_run_public_id)
+                     VALUES ($1, $2, $3, $4, NOW(), $5)`,
+                    [channelId, sysUserId, seq, message, trustedQaRunPublicId]
                 );
                 await client.query('COMMIT');
                 log.info(`chat_message: #${channelId} seq=${seq} "${message.slice(0, 50)}"`);

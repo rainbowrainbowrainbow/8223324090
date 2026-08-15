@@ -641,6 +641,10 @@ function buildTrustedQaAttributionClauses(columns, scope) {
         clauses.push(`${column('run_id')} = ${param(scope.runPublicId, 'text')}`);
         methods.push('run_id');
     }
+    if (has('trusted_qa_run_public_id') && scope.runPublicId) {
+        clauses.push(`${column('trusted_qa_run_public_id')} = ${param(scope.runPublicId, 'text')}`);
+        methods.push('trusted_qa_run_public_id');
+    }
     if (has('booking_id') && scope.bookingIds.length) {
         clauses.push(`${column('booking_id')} = ANY(${param(trustedQaTextArray(scope.bookingIds), 'text[]')})`);
         methods.push('booking_id');
@@ -783,7 +787,7 @@ async function trustedQaSideEffectCapabilityInventory(queryable, capability, sco
 async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds, options = {}) {
     const scope = trustedQaSideEffectScope(inventory, bookingIds, groupIds);
     const hasBookingOrGroupScope = scope.bookingIds.length > 0 || scope.groupIds.length > 0;
-    const allowUnsupportedNoAttribution = options.allowUnsupportedNoAttribution === true;
+    const allowUnsupportedNoAttribution = !hasBookingOrGroupScope && options.allowUnsupportedNoAttribution === true;
     const unsupportedNoAttributionReason = cleanText(options.unsupportedNoAttributionReason || (
         hasBookingOrGroupScope ? '' : 'no_booking_or_group_scope'
     ), 100);
@@ -982,7 +986,7 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     }
     const hasSuppressionProof = await trustedQaCleanupHasSuppressionProof(queryable, inventory, cleanupRows);
     const sideEffects = await trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds, {
-        allowUnsupportedNoAttribution: hasSuppressionProof,
+        allowUnsupportedNoAttribution: false,
         unsupportedNoAttributionReason: hasSuppressionProof ? 'trusted_qa_suppression_proof' : ''
     });
     if (sideEffects.visibilityBlockers?.length) {

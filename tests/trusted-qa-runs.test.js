@@ -1,6 +1,8 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 const test = require('node:test');
 
 const {
@@ -591,7 +593,7 @@ test('cleanup supports product-only trusted QA run before bookings are created',
     );
 });
 
-test('cleanup allows unsupported no-attribution tables only with trusted QA suppression proof', async () => {
+test('cleanup blocks unsupported no-attribution tables when booking scope exists', async () => {
     const db = new FakeTrustedQaDb({
         entities: [
             { id: 1, run_id: 11, entity_type: 'product', entity_id: 'qa-no-stock-product', cleanup_state: 'active' },
@@ -607,18 +609,13 @@ test('cleanup allows unsupported no-attribution tables only with trusted QA supp
         }
     });
 
-    const result = await cleanupTrustedQaRun(db, 11);
-    const warehouse = result.sideEffectInventory.find(item => item.tableName === 'warehouse_stock_movements');
-    const notifications = result.sideEffectInventory.find(item => item.tableName === 'notification_outbox');
-
-    assert.equal(result.status, 'cleaned');
-    assert.deepEqual(result.cleanedBookingIds, ['BK-QA-1']);
-    assert.deepEqual(result.cleanedProductIds, ['qa-no-stock-product']);
-    assert.equal(warehouse.status, TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED);
-    assert.equal(warehouse.blocking, false);
-    assert.equal(warehouse.error.reason, 'trusted_qa_suppression_proof');
-    assert.equal(notifications.status, TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED);
-    assert.equal(notifications.blocking, false);
+    await assert.rejects(
+        cleanupTrustedQaRun(db, 11),
+        error => error?.code === 'QA_RUN_SIDE_EFFECT_VISIBILITY_BLOCKER'
+            && error.details.capabilities.some(item => item.tableName === 'warehouse_stock_movements')
+            && error.details.capabilities.some(item => item.tableName === 'notification_outbox')
+    );
+    assert.deepEqual(db.cancelledBookingIds, [], 'cleanup must stop before mutating bookings when visibility is incomplete');
 });
 
 test('side-effect inventory separates processed historical evidence from active leftovers', async () => {
@@ -647,6 +644,88 @@ test('side-effect inventory separates processed historical evidence from active 
     assert.equal(outbox.blocking, false);
     assert.equal(notifications.activeCount, 1);
     assert.equal(result.total, 1);
+});
+
+test('side-effect inventory detects trusted QA public-id attributed leftovers', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectColumns: {
+            ...DEFAULT_SIDE_EFFECT_COLUMNS,
+            warehouse_stock_movements: ['trusted_qa_run_public_id', 'status'],
+            warehouse_history: ['trusted_qa_run_public_id', 'status'],
+            rule_execution_log: ['trusted_qa_run_public_id', 'status'],
+            notification_outbox: ['trusted_qa_run_public_id', 'status'],
+            chat_messages: ['trusted_qa_run_public_id', 'status'],
+            announcements: ['trusted_qa_run_public_id', 'status']
+        },
+        sideEffectTables: {
+            warehouse_stock_movements: [{ trusted_qa_run_public_id: 'qa-run-11', status: 'pending' }],
+            warehouse_history: [{ trusted_qa_run_public_id: 'qa-run-11', status: 'archived' }],
+            rule_execution_log: 0,
+            notification_outbox: 0,
+            chat_messages: 0,
+            announcements: 0
+        }
+    });
+    const inventory = {
+        run: db.run,
+        entities: db.entities
+    };
+
+    const result = await trustedQaSideEffectInventory(db, inventory, ['BK-QA-1'], []);
+    const stock = result.capabilities.find(item => item.tableName === 'warehouse_stock_movements');
+    const history = result.capabilities.find(item => item.tableName === 'warehouse_history');
+
+    assert.equal(stock.status, TRUSTED_QA_CAPABILITY_STATUS.READABLE);
+    assert.deepEqual(stock.attributionMethod, ['trusted_qa_run_public_id']);
+    assert.equal(stock.activeCount, 1);
+    assert.equal(stock.blocking, true);
+    assert.equal(history.processedHistoricalCount, 1);
+    assert.equal(result.total, 1);
+    assert.ok(
+        db.queries.some(entry => /FROM "warehouse_stock_movements" WHERE/.test(entry.sql)
+            && entry.params.includes('qa-run-11')),
+        'inventory must query durable trusted_qa_run_public_id'
+    );
+});
+
+test('migration 336 adds durable trusted QA attribution to supported side-effect tables', () => {
+    const migration = fs.readFileSync(
+        path.join(__dirname, '..', 'db', 'migrations', '336_trusted_qa_side_effect_attribution.sql'),
+        'utf8'
+    );
+    for (const table of [
+        'warehouse_stock_movements',
+        'warehouse_history',
+        'rule_execution_log',
+        'notification_outbox',
+        'chat_messages',
+        'announcements'
+    ]) {
+        assert.match(migration, new RegExp(`'${table}'`));
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS trusted_qa_run_id BIGINT/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS trusted_qa_run_entity_id BIGINT/);
+        assert.match(migration, /ADD COLUMN IF NOT EXISTS trusted_qa_run_public_id VARCHAR\(100\)/);
+        assert.match(migration, /NOT VALID/);
+    }
+    assert.doesNotMatch(migration, /\bUPDATE\b|\bDELETE\s+FROM\b|\bVALIDATE\s+CONSTRAINT\b/i);
+});
+
+test('trusted QA side-effect writers preserve public attribution when a row is emitted', () => {
+    const eventBus = fs.readFileSync(path.join(__dirname, '..', 'services', 'eventBus.js'), 'utf8');
+    const notificationOutbox = fs.readFileSync(path.join(__dirname, '..', 'services', 'notificationOutbox.js'), 'utf8');
+    const bookingRoutes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'bookings.js'), 'utf8');
+
+    assert.match(eventBus, /trustedQaRunPublicIdFromPayload/);
+    assert.match(eventBus, /INSERT INTO rule_execution_log[\s\S]*trusted_qa_run_public_id/);
+    assert.match(eventBus, /INSERT INTO chat_messages[\s\S]*trusted_qa_run_public_id/);
+    assert.match(notificationOutbox, /trustedQaRunPublicIdFromNotificationPayload/);
+    assert.match(notificationOutbox, /INSERT INTO notification_outbox[\s\S]*trusted_qa_run_public_id/);
+    assert.match(bookingRoutes, /trustedQaRunPublicIdFromBooking/);
+    assert.match(bookingRoutes, /INSERT INTO warehouse_history[\s\S]*trusted_qa_run_public_id/);
+    assert.match(bookingRoutes, /INSERT INTO announcements[\s\S]*trusted_qa_run_public_id/);
 });
 
 test('side-effect inventory classifies optional absent capabilities as non-blocking', async () => {

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.156",
+  "version": "0.80.157",
   "eventGenix": {
-    "releaseLabel": "Banquet Same-User WS Sync"
+    "releaseLabel": "Trusted QA Attribution"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

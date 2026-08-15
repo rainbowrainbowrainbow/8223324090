@@ -645,6 +645,12 @@ function hasTrustedQaBookingMarker(booking = {}) {
         && Boolean(marker.testCustomerMarker || marker.test_customer_marker);
 }
 
+function trustedQaRunPublicIdFromBooking(booking = {}) {
+    const marker = disposableQaMarkerFrom(booking);
+    if (!marker || marker.source !== DISPOSABLE_QA_TRUSTED_SOURCE) return null;
+    return technicalLogToken(marker.runId || marker.run_id, 100);
+}
+
 function technicalLogToken(value, maxLength = 96) {
     const token = String(value || '').trim().replace(/[^a-zA-Z0-9_.:/-]/g, '_');
     return token ? token.slice(0, maxLength) : null;
@@ -3981,6 +3987,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // Integration 1: Warehouse stock deduction
         if (parkBookingCreateSideEffectsAllowed() && b.programId) {
+            const trustedQaRunPublicId = trustedQaRunPublicIdFromBooking(b);
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -4012,10 +4019,10 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                         );
 
                         // Batch INSERT history
-                        const histValues = reqs.rows.map((r, i) => `($${i*3+1}, $${i*3+2}, $${i*3+3}, 'booking', NOW())`).join(',');
-                        const histParams = reqs.rows.flatMap(r => [r.stock_id, -r.quantity, `Бронювання ${bookingId}`]);
+                        const histValues = reqs.rows.map((r, i) => `($${i*4+1}, $${i*4+2}, $${i*4+3}, 'booking', NOW(), $${i*4+4})`).join(',');
+                        const histParams = reqs.rows.flatMap(r => [r.stock_id, -r.quantity, `Бронювання ${bookingId}`, trustedQaRunPublicId]);
                         await pool.query(
-                            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at) VALUES ${histValues}`,
+                            `INSERT INTO warehouse_history (stock_id, change, reason, created_by, created_at, trusted_qa_run_public_id) VALUES ${histValues}`,
                             histParams
                         );
                     }
@@ -4115,6 +4122,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // v33.9.0: Post message to room channel
         if (parkBookingCreateSideEffectsAllowed() && b.lineId) {
+            const trustedQaRunPublicId = trustedQaRunPublicIdFromBooking(b);
             setImmediate(async () => {
                 try {
                     const roomChan = await pool.query(
@@ -4125,10 +4133,11 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                     if (!sysUser.rowCount) return;
                     const seqRes = await pool.query('SELECT next_chat_seq($1) AS seq', [roomChan.rows[0].id]);
                     await pool.query(
-                        `INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, created_at)
-                         VALUES ($1, $2, $3, $4, true, NOW())`,
+                        `INSERT INTO chat_messages (channel_id, user_id, seq, content, is_bot, created_at, trusted_qa_run_public_id)
+                         VALUES ($1, $2, $3, $4, true, NOW(), $5)`,
                         [roomChan.rows[0].id, sysUser.rows[0].id, seqRes.rows[0].seq,
-                         `📅 ${b.date} ${b.time} — ${b.programName || b.label}${b.kidsCount ? ' | 👶' + b.kidsCount : ''}`]
+                         `📅 ${b.date} ${b.time} — ${b.programName || b.label}${b.kidsCount ? ' | 👶' + b.kidsCount : ''}`,
+                         trustedQaRunPublicId]
                     );
                 } catch (e) { /* silent */ }
             });
@@ -4136,6 +4145,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // v33.15.0: Auto birthday announcement
         if (parkBookingCreateSideEffectsAllowed() && (b.programName || '').toLowerCase().match(/день народж|birthday|дн\b/i) && b.date && b.time) {
+            const trustedQaRunPublicId = trustedQaRunPublicIdFromBooking(b);
             setImmediate(async () => {
                 try {
                     const eventTime = new Date(`${b.date}T${b.time}`);
@@ -4144,9 +4154,9 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                     const childName = (b.label || '').replace(/[^а-яА-ЯіІїЇєЄa-zA-Z\s]/g, '').trim().split(/\s+/)[0] || '';
                     const text = `Шановні відвідувачі! Сьогодні у нас особливий гість${childName ? ' — ' + childName : ''}! Святкування починається о ${b.time.slice(0, 5)}. Бажаємо прекрасного свята! 🎉`;
                     await pool.query(
-                        `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, status, priority, created_by)
-                         VALUES ($1, $2, 'birthday', 'once', $3, 'scheduled', 5, 'booking_auto')`,
-                        [`🎂 ДН: ${childName || b.label}`, text, annTime.toISOString()]
+                        `INSERT INTO announcements (title, text_content, announcement_type, schedule_type, scheduled_at, status, priority, created_by, trusted_qa_run_public_id)
+                         VALUES ($1, $2, 'birthday', 'once', $3, 'scheduled', 5, 'booking_auto', $4)`,
+                        [`🎂 ДН: ${childName || b.label}`, text, annTime.toISOString(), trustedQaRunPublicId]
                     );
                 } catch (e) { /* silent */ }
             });

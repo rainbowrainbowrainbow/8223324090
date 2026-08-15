@@ -112,6 +112,21 @@ function safeTextOrNull(value, maxLength = 500) {
         .slice(0, maxLength);
 }
 
+function trustedQaRunPublicIdFromNotificationPayload(...values) {
+    for (const value of values) {
+        if (!value || typeof value !== 'object') continue;
+        const direct = safeTextOrNull(value.trustedQaRunPublicId || value.trusted_qa_run_public_id, 100);
+        if (direct) return direct;
+        const disposableQa = value.disposableQa
+            || value.disposable_qa
+            || value.extraData?.disposableQa
+            || value.extra_data?.disposableQa;
+        const runId = safeTextOrNull(disposableQa?.runId || disposableQa?.run_id, 100);
+        if (runId && safeTextOrNull(disposableQa?.source, 100) === 'trusted_qa') return runId;
+    }
+    return null;
+}
+
 function isoOrNull(value) {
     if (!value) return null;
     if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value.toISOString();
@@ -862,6 +877,13 @@ async function createNotificationOutboxEvent(input = {}, options = {}) {
     const eventId = textOrNull(input.eventId || input.event_id)
         || generateNotificationEventId(task, identity.eventType);
     const availableAt = input.availableAt || input.available_at || options.availableAt || null;
+    const trustedQaRunPublicId = trustedQaRunPublicIdFromNotificationPayload(
+        input,
+        options,
+        payload,
+        options.context,
+        input.context
+    );
 
     const inserted = await query.query(
         `INSERT INTO notification_outbox (
@@ -872,9 +894,10 @@ async function createNotificationOutboxEvent(input = {}, options = {}) {
              payload_json,
              payload_hash,
              status,
-             available_at
+             available_at,
+             trusted_qa_run_public_id
          )
-         VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'pending', COALESCE($7::timestamptz, NOW()))
+         VALUES ($1, $2, $3, $4, $5::jsonb, $6, 'pending', COALESCE($7::timestamptz, NOW()), $8)
          ON CONFLICT DO NOTHING
          RETURNING *`,
         [
@@ -884,7 +907,8 @@ async function createNotificationOutboxEvent(input = {}, options = {}) {
             identity.eventType,
             JSON.stringify(payload),
             payloadHash,
-            availableAt
+            availableAt,
+            trustedQaRunPublicId
         ]
     );
 

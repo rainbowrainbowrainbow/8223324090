@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.157 - Trusted QA Attribution
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Durable Trusted QA attribution** - side-effect tables отримали nullable exact-attribution поля для `trusted_qa_run_id`, `trusted_qa_run_entity_id` і public run id без backfill або production data mutation.
+- **Fail-closed cleanup visibility** - cleanup для runs із bookings/groups більше не приймає required side-effect tables без durable attribution як “suppression proof”; schema drift стає явним blocker.
+- **Writer propagation** - booking/event/notification paths зберігають `trusted_qa_run_public_id`, якщо trusted QA side-effect row усе ж був створений, щоб audit міг знайти exact leftover.
+
+---
+
 ## v0.80.156 - Banquet Same-User WS Sync
 
 ### Banquet cancellation / WebSocket / (15.08.2026) [codex]

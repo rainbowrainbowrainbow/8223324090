@@ -160,6 +160,7 @@
     "smoke:staff-schedule": "npx --yes --package playwright node scripts/live-staff-schedule-smoke.js",
     "smoke:staff-schedule:write": "npx --yes --package playwright node scripts/live-staff-schedule-write-smoke.js",
     "qa:live:multi-segment": "node scripts/live-multi-segment-qa.js",
+    "qa:trusted-run": "node scripts/trusted-qa-run.js",
     "qa:live:tickets": "npx --yes --package playwright node scripts/live-ticket-release-gate.js",
     "smoke:hr-team:write": "npm exec --yes --package=playwright -c \"node scripts/live-hr-staff-profile-write-smoke.js\"",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",

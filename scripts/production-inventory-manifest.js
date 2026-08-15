@@ -142,6 +142,15 @@ async function tableExists(client, table) {
     return Boolean(result.rows?.[0]?.regclass);
 }
 
+async function tableSelectAllowed(client, table) {
+    if (!await tableExists(client, table)) return false;
+    const result = await client.query(
+        `SELECT has_table_privilege(current_user, $1, 'SELECT') AS allowed`,
+        [`public.${table}`]
+    );
+    return result.rows?.[0]?.allowed === true;
+}
+
 async function optionalSelect(client, table, wantedColumns, whereSql, params = [], orderSql = '') {
     if (!await tableExists(client, table)) return [];
     const columns = await getColumns(client, table);
@@ -497,12 +506,17 @@ async function buildRoomManifest(client, context) {
 }
 
 async function buildTrustedQaManifest(client, context) {
-    const qaRuns = await optionalSelect(client, 'trusted_qa_runs', [
+    const registryReadable = await tableSelectAllowed(client, 'trusted_qa_runs');
+    const entitiesReadable = await tableSelectAllowed(client, 'trusted_qa_run_entities');
+    const inspectionBlockers = [];
+    if (!registryReadable) inspectionBlockers.push('trusted_qa_runs_select_denied_or_missing');
+    if (!entitiesReadable) inspectionBlockers.push('trusted_qa_run_entities_select_denied_or_missing');
+    const qaRuns = registryReadable ? await optionalSelect(client, 'trusted_qa_runs', [
         'id', 'run_id', 'source', 'business_context', 'operator_user_id',
         'test_customer_marker', 'max_entity_count', 'state', 'expires_at', 'created_at', 'updated_at'
-    ], 'WHERE true', [], 'ORDER BY id');
+    ], 'WHERE true', [], 'ORDER BY id') : [];
     const runIds = qaRuns.map(row => Number(row.id)).filter(Number.isFinite);
-    const entities = runIds.length ? await optionalSelect(client, 'trusted_qa_run_entities', [
+    const entities = entitiesReadable && runIds.length ? await optionalSelect(client, 'trusted_qa_run_entities', [
         'id', 'run_id', 'entity_type', 'entity_id', 'cleanup_state', 'created_at', 'updated_at'
     ], 'WHERE run_id = ANY($1::int[])', [runIds], 'ORDER BY run_id, entity_type, entity_id') : [];
     const states = qaRuns.reduce((acc, row) => {
@@ -532,6 +546,8 @@ async function buildTrustedQaManifest(client, context) {
         sourceBranch: SOURCE_BRANCH,
         generatedAt: context.generatedAt,
         summary: {
+            inspectionBlocked: inspectionBlockers.length > 0,
+            inspectionBlockers,
             runs: qaRuns.length,
             states,
             entities: entities.length,
@@ -550,7 +566,8 @@ async function buildTrustedQaManifest(client, context) {
         policy: {
             clientMarkerIsNotAuthorization: true,
             rawTokensStored: false,
-            mutationRequiresExactApproval: true
+            mutationRequiresExactApproval: true,
+            zeroRunsIsAuthoritative: inspectionBlockers.length === 0
         }
     };
     manifest.hash = sha256({ ...manifest, hash: undefined });

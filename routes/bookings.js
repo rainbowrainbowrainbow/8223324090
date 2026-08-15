@@ -3737,7 +3737,9 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
              RETURNING *`,
             [b.id, businessContext, b.date, b.time, b.lineId, b.programId, b.programCode, b.label, b.programName, b.category, b.duration, b.price, b.hosts, b.secondAnimator, b.pinataFiller, b.pinataMode, b.pinataNumber, b.pinataFillerNumber, b.clientPinataServicePrice, b.clientPinataServiceNote, b.costume || null, b.room, b.roomResourceId || null, b.notes, b.createdBy, b.linkedTo, b.status, nullableBookingCount(b.kidsCount), b.groupName || null, b.extraData ? JSON.stringify(b.extraData) : null, bookingCreateSideEffectsAllowed() ? (b.skipNotification || false) : true, customerId, b.paymentMethod || null, certificateId, nullableBookingCount(b.banquetGuests), nullableBookingCount(b.banquetAdults), nullableBookingCount(b.banquetTables), b.banquetMenu || null]
         );
-        const managerDepositResult = await syncManagerDepositForBooking(client, b, insertResult.rows[0], businessContext, req.user);
+        const managerDepositResult = bookingCreateSideEffectsAllowed()
+            ? await syncManagerDepositForBooking(client, b, insertResult.rows[0], businessContext, req.user)
+            : null;
 
         const linkedInsertedRows = [];
         if (ensuredSecondAnimatorLine && String(ensuredSecondAnimatorLine.lineId) !== String(b.lineId)) {
@@ -3784,13 +3786,17 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        await syncBookingLeadHandoff(client, b, customerId, businessContext, 'Lead booking handoff');
+        if (bookingCreateSideEffectsAllowed()) {
+            await syncBookingLeadHandoff(client, b, customerId, businessContext, 'Lead booking handoff');
+        }
 
         await insertScopedHistory(client, 'create', b.createdBy || req.user?.username, b, businessContext);
 
         // Canonical ticket totals and their non-certificate finance row commit atomically.
         const createdBookingRow = insertResult.rows[0];
-        await syncBanquetActualMenuTask(client, createdBookingRow, { businessContext, actor: req.user });
+        if (bookingCreateSideEffectsAllowed()) {
+            await syncBanquetActualMenuTask(client, createdBookingRow, { businessContext, actor: req.user });
+        }
         const strictTicketFinance = bookingRequiresStrictFinanceSync(createdBookingRow);
         if (
             parkBookingCreateSideEffectsAllowed()
@@ -3846,6 +3852,29 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
                 source: 'bookings_single'
             });
         }
+        if (createdBanquetGroup?.groupRow?.id) {
+            await registerQaEntity(client, qaContext, 'banquet_group', createdBanquetGroup.groupRow.id, {
+                businessContext,
+                primaryBookingId: b.id,
+                source: 'bookings_single'
+            });
+            for (const membership of [createdBanquetGroup.membershipRow, ...(createdBanquetGroup.memberRows || [])].filter(Boolean)) {
+                await registerQaEntity(
+                    client,
+                    qaContext,
+                    'banquet_membership',
+                    `${membership.group_id}:${membership.booking_id}`,
+                    { groupId: membership.group_id, bookingId: membership.booking_id, role: membership.role }
+                );
+            }
+        }
+        for (const link of sharedRoomLinkRows.filter(row => row?.id)) {
+            await registerQaEntity(client, qaContext, 'booking_banquet_link', String(link.id), {
+                bookingAId: link.booking_a_id,
+                bookingBId: link.booking_b_id,
+                relationType: link.relation_type
+            });
+        }
 
         await commitBookingTransaction(client, 'booking create');
 
@@ -3888,14 +3917,16 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        await reconcileBookingBanquetGroupsSafely(
-            [
-                booking.id || b.id,
-                ...(createdBanquetGroup ? [] : linkedBookings.map(item => item.id))
-            ],
-            businessContext,
-            req.user
-        );
+        if (bookingCreateSideEffectsAllowed()) {
+            await reconcileBookingBanquetGroupsSafely(
+                [
+                    booking.id || b.id,
+                    ...(createdBanquetGroup ? [] : linkedBookings.map(item => item.id))
+                ],
+                businessContext,
+                req.user
+            );
+        }
         let allCreatedBookings = [booking, ...linkedBookings];
         await Promise.all(allCreatedBookings.map(async createdBooking => {
             createdBooking.timelineProjection = await bookingDayProjectionStatus(client, {
@@ -3929,7 +3960,7 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
 
         // WebSocket: notify other clients
         broadcastBookingEvent('booking:created', responseBooking, req.user?.id?.toString(), { businessContext });
-        _alertPush();
+        if (bookingCreateSideEffectsAllowed()) _alertPush();
 
         // ==========================================
         // v33.8.0: Post-commit integrations (all fire-and-forget)
@@ -4742,7 +4773,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
              RETURNING *`,
             [main.id, businessContext, main.date, main.time, main.lineId, main.programId, main.programCode, main.label, main.programName, main.category, main.duration, main.price, main.hosts, main.secondAnimator, main.pinataFiller, main.pinataMode, main.pinataNumber, main.pinataFillerNumber, main.clientPinataServicePrice, main.clientPinataServiceNote, main.costume || null, main.room, main.roomResourceId || null, main.notes, main.createdBy, null, main.status, nullableBookingCount(main.kidsCount), main.groupName || null, main.extraData ? JSON.stringify(main.extraData) : null, fullCreateSideEffectsAllowed() ? (main.skipNotification || false) : true, customerId, main.paymentMethod || null, nullableBookingCount(main.banquetGuests), nullableBookingCount(main.banquetAdults), nullableBookingCount(main.banquetTables), main.banquetMenu || null]
         );
-        const managerDepositResult = await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user);
+        const managerDepositResult = fullCreateSideEffectsAllowed()
+            ? await syncManagerDepositForBooking(client, main, mainInsert.rows[0], businessContext, req.user)
+            : null;
 
         // v19.10: CRM aggregates now handled by DB trigger
         if (fullCreateSideEffectsAllowed() && customerId) {
@@ -4755,7 +4788,9 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        await syncBookingLeadHandoff(client, main, customerId, businessContext, 'Lead booking handoff (create/full)');
+        if (fullCreateSideEffectsAllowed()) {
+            await syncBookingLeadHandoff(client, main, customerId, businessContext, 'Lead booking handoff (create/full)');
+        }
 
         const linkedRows = [];
         if (Array.isArray(linked)) {
@@ -4906,9 +4941,11 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             );
         }
 
-        await syncBanquetActualMenuTask(client, mainInsert.rows[0], { businessContext, actor: req.user });
-        for (const activityRow of activityRows) {
-            await syncBanquetActualMenuTask(client, activityRow, { businessContext, actor: req.user });
+        if (fullCreateSideEffectsAllowed()) {
+            await syncBanquetActualMenuTask(client, mainInsert.rows[0], { businessContext, actor: req.user });
+            for (const activityRow of activityRows) {
+                await syncBanquetActualMenuTask(client, activityRow, { businessContext, actor: req.user });
+            }
         }
 
         const strictMainTicketFinance = bookingRequiresStrictFinanceSync(mainInsert.rows[0]);
@@ -4999,6 +5036,29 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
                 source: 'bookings_full'
             });
         }
+        if (createdBanquetGroup?.groupRow?.id) {
+            await registerQaEntity(client, qaContext, 'banquet_group', createdBanquetGroup.groupRow.id, {
+                businessContext,
+                primaryBookingId: main.id,
+                source: 'bookings_full'
+            });
+            for (const membership of [createdBanquetGroup.membershipRow, ...(createdBanquetGroup.memberRows || [])].filter(Boolean)) {
+                await registerQaEntity(
+                    client,
+                    qaContext,
+                    'banquet_membership',
+                    `${membership.group_id}:${membership.booking_id}`,
+                    { groupId: membership.group_id, bookingId: membership.booking_id, role: membership.role }
+                );
+            }
+        }
+        for (const link of [...banquetLinkRows, ...sharedRoomLinkRows].filter(row => row?.id)) {
+            await registerQaEntity(client, qaContext, 'booking_banquet_link', String(link.id), {
+                bookingAId: link.booking_a_id,
+                bookingBId: link.booking_b_id,
+                relationType: link.relation_type
+            });
+        }
 
         await commitBookingTransaction(client, 'booking create/full');
 
@@ -5039,15 +5099,17 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             mapped.serverVerified = true;
             return mapped;
         });
-        await reconcileBookingBanquetGroupsSafely(
-            [
-                mainBooking.id || main.id,
-                ...(createdBanquetGroup ? [] : linkedBookings.map(item => item.id)),
-                ...(createdBanquetGroup ? [] : activityBookings.map(item => item.id))
-            ],
-            businessContext,
-            req.user
-        );
+        if (fullCreateSideEffectsAllowed()) {
+            await reconcileBookingBanquetGroupsSafely(
+                [
+                    mainBooking.id || main.id,
+                    ...(createdBanquetGroup ? [] : linkedBookings.map(item => item.id)),
+                    ...(createdBanquetGroup ? [] : activityBookings.map(item => item.id))
+                ],
+                businessContext,
+                req.user
+            );
+        }
         let allBookings = [mainBooking, ...linkedBookings, ...activityBookings];
         await Promise.all(allBookings.map(async booking => {
             booking.timelineProjection = await bookingDayProjectionStatus(client, {

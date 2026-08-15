@@ -25,6 +25,29 @@ const DEFAULT_MAX_ENTITY_COUNT = 25;
 const DEFAULT_TTL_MINUTES = 30;
 const WATCHDOG_BATCH_LIMIT = 10;
 const WATCHDOG_MAX_ATTEMPTS = 5;
+const TRUSTED_QA_ENTITY_TYPES = new Set([
+    'booking',
+    'banquet_group',
+    'banquet_membership',
+    'booking_banquet_link',
+    'product'
+]);
+const TRUSTED_QA_SIDE_EFFECT_TABLES = Object.freeze([
+    'finance_transactions',
+    'receipts',
+    'banquet_deposits',
+    'warehouse_stock_movements',
+    'warehouse_history',
+    'outbox_events',
+    'event_queue',
+    'rule_execution_log',
+    'notification_outbox',
+    'chat_messages',
+    'announcements',
+    'print_jobs',
+    'loyalty_transactions',
+    'gamification_events'
+]);
 
 class TrustedQaRunError extends Error {
     constructor(message, code, details = {}, statusCode = 403) {
@@ -311,6 +334,10 @@ async function prepareTrustedQaBookingInput(queryable, req, booking = {}, busine
         );
     }
     if (!token) {
+        // A client flag is presentation input, not authorization to suppress
+        // Telegram, rules, warehouse, CRM, or other business side effects.
+        booking.skipNotification = false;
+        booking.skip_notification = false;
         return {
             trusted: false,
             suppressSideEffects: false,
@@ -356,9 +383,43 @@ async function registeredEntityCount(queryable, runId) {
 async function registerQaEntity(queryable, qaContext, entityType, entityId, payload = {}) {
     if (!qaContext?.trusted || !qaContext.run?.id || !entityId) return { registered: false };
     const entity = cleanId(entityId);
-    const maxEntityCount = boundedNumber(qaContext.run.max_entity_count, DEFAULT_MAX_ENTITY_COUNT, 1, 500);
+    const normalizedType = cleanText(entityType, 80);
+    if (!TRUSTED_QA_ENTITY_TYPES.has(normalizedType)) {
+        throw new TrustedQaRunError(
+            'Unsupported trusted QA entity type',
+            'QA_RUN_ENTITY_TYPE_UNSUPPORTED',
+            { entityType: normalizedType },
+            409
+        );
+    }
+    const runLock = await queryable.query(
+        `SELECT id, max_entity_count, state
+           FROM trusted_qa_runs
+          WHERE id = $1
+          FOR UPDATE`,
+        [qaContext.run.id]
+    );
+    const lockedRun = runLock.rows?.[0];
+    if (!lockedRun || lockedRun.state !== TRUSTED_QA_STATES.ACTIVE) {
+        throw new TrustedQaRunError('QA run is not active', 'QA_RUN_NOT_ACTIVE', {
+            state: lockedRun?.state || null
+        });
+    }
+    const existing = await queryable.query(
+        `SELECT id
+           FROM trusted_qa_run_entities
+          WHERE run_id = $1 AND entity_type = $2 AND entity_id = $3
+          LIMIT 1`,
+        [qaContext.run.id, normalizedType, entity]
+    );
+    const maxEntityCount = boundedNumber(
+        lockedRun.max_entity_count,
+        DEFAULT_MAX_ENTITY_COUNT,
+        1,
+        500
+    );
     const count = await registeredEntityCount(queryable, qaContext.run.id);
-    if (count >= maxEntityCount) {
+    if (!existing.rowCount && count >= maxEntityCount) {
         throw new TrustedQaRunError(
             'QA run entity limit exceeded',
             'QA_RUN_ENTITY_LIMIT_EXCEEDED',
@@ -375,7 +436,7 @@ async function registerQaEntity(queryable, qaContext, entityType, entityId, payl
          RETURNING id`,
         [
             qaContext.run.id,
-            cleanText(entityType, 80),
+            normalizedType,
             entity,
             JSON.stringify({
                 ...safeJsonObject(payload),
@@ -383,7 +444,7 @@ async function registerQaEntity(queryable, qaContext, entityType, entityId, payl
             })
         ]
     );
-    return { registered: true, entityId: entity };
+    return { registered: true, entityId: entity, existed: Boolean(existing.rowCount) };
 }
 
 async function markTrustedQaRunCleanupPending(queryable, runId, reason = 'transport_failure') {
@@ -438,6 +499,126 @@ function classifyCleanupInventory(inventory) {
     };
 }
 
+function entityIdsByType(inventory, entityType) {
+    return [...new Set((inventory?.entities || [])
+        .filter(row => row.entity_type === entityType)
+        .map(row => cleanId(row.entity_id))
+        .filter(Boolean))].sort();
+}
+
+async function relationExists(queryable, tableName) {
+    const result = await queryable.query('SELECT to_regclass($1)::text AS relation_name', [tableName]);
+    return Boolean(result.rows?.[0]?.relation_name);
+}
+
+async function countRowsContainingNeedles(queryable, tableName, needles) {
+    if (!needles.length || !await relationExists(queryable, tableName)) return 0;
+    const result = await queryable.query(
+        `SELECT COUNT(*)::int AS count
+           FROM ${tableName} row_value
+          WHERE EXISTS (
+                SELECT 1
+                  FROM unnest($1::text[]) needle(value)
+                 WHERE to_jsonb(row_value)::text LIKE ('%' || needle.value || '%')
+          )`,
+        [needles]
+    );
+    return Number(result.rows?.[0]?.count || 0);
+}
+
+async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
+    const needles = [...new Set([
+        ...bookingIds,
+        ...groupIds,
+        cleanId(inventory?.run?.run_id),
+        cleanText(inventory?.run?.test_customer_marker, 200)
+    ].filter(Boolean))];
+    const counts = {};
+    for (const tableName of TRUSTED_QA_SIDE_EFFECT_TABLES) {
+        counts[tableName] = await countRowsContainingNeedles(queryable, tableName, needles);
+    }
+    return {
+        counts,
+        total: Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0)
+    };
+}
+
+function assertTrustedQaBookingRows(rows, inventory, bookingIds) {
+    const actualIds = rows.map(row => cleanId(row.id)).sort();
+    if (JSON.stringify(actualIds) !== JSON.stringify(bookingIds)) {
+        throw new TrustedQaRunError(
+            'Trusted QA booking manifest changed',
+            'QA_RUN_BOOKING_MANIFEST_DRIFT',
+            { expectedCount: bookingIds.length, actualCount: actualIds.length },
+            409
+        );
+    }
+    const run = inventory.run;
+    const expectedContext = normalizeBusinessContext(run.business_context || DEFAULT_BUSINESS_CONTEXT);
+    const requiredCustomerId = cleanId(run.required_customer_id);
+    let customerMatched = !requiredCustomerId || rows.length === 0;
+    for (const row of rows) {
+        const marker = safeJsonObject(row.extra_data).disposableQa || {};
+        if (normalizeBusinessContext(row.business_context || DEFAULT_BUSINESS_CONTEXT) !== expectedContext
+            || cleanId(marker.runId) !== cleanId(run.run_id)
+            || cleanText(marker.source, 100) !== cleanText(run.source, 100)
+            || cleanText(marker.testCustomerMarker, 200) !== cleanText(run.test_customer_marker, 200)) {
+            throw new TrustedQaRunError(
+                'Trusted QA booking marker changed',
+                'QA_RUN_BOOKING_MARKER_DRIFT',
+                { bookingId: cleanId(row.id) },
+                409
+            );
+        }
+        if (requiredCustomerId && cleanId(row.customer_id) === requiredCustomerId) customerMatched = true;
+        if (row.customer_id && requiredCustomerId && cleanId(row.customer_id) !== requiredCustomerId) {
+            throw new TrustedQaRunError(
+                'Trusted QA booking customer changed',
+                'QA_RUN_CUSTOMER_MISMATCH',
+                { bookingId: cleanId(row.id) },
+                409
+            );
+        }
+    }
+    if (!customerMatched) {
+        throw new TrustedQaRunError(
+            'Trusted QA customer is absent from the exact booking set',
+            'QA_RUN_CUSTOMER_MISMATCH',
+            {},
+            409
+        );
+    }
+}
+
+async function loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupIds) {
+    const bookings = bookingIds.length ? await queryable.query(
+        `SELECT id, business_context, status, customer_id, extra_data
+           FROM bookings
+          WHERE id = ANY($1::text[])
+          ORDER BY id
+          FOR UPDATE`,
+        [bookingIds]
+    ) : { rows: [] };
+    const groups = groupIds.length ? await queryable.query(
+        `SELECT id, business_context, status
+           FROM banquet_groups
+          WHERE id = ANY($1::text[])
+          ORDER BY id
+          FOR UPDATE`,
+        [groupIds]
+    ) : { rows: [] };
+    assertTrustedQaBookingRows(bookings.rows || [], inventory, bookingIds);
+    if ((groups.rows || []).length !== groupIds.length) {
+        throw new TrustedQaRunError(
+            'Trusted QA banquet group manifest changed',
+            'QA_RUN_GROUP_MANIFEST_DRIFT',
+            { expectedCount: groupIds.length, actualCount: groups.rows?.length || 0 },
+            409
+        );
+    }
+    return { bookings: bookings.rows || [], groups: groups.rows || [] };
+}
+
 async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     const inventory = await loadTrustedQaCleanupInventory(queryable, runId, { forUpdate: options.forUpdate === true });
     const classified = classifyCleanupInventory(inventory);
@@ -451,7 +632,49 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
         );
         return { ...classified, state: TRUSTED_QA_STATES.CLEANED, idempotent: true };
     }
+    const unsupportedEntities = (inventory.entities || [])
+        .filter(row => !TRUSTED_QA_ENTITY_TYPES.has(row.entity_type));
+    if (unsupportedEntities.length) {
+        throw new TrustedQaRunError(
+            'Trusted QA cleanup found unsupported manifest entities',
+            'QA_RUN_ENTITY_TYPE_UNSUPPORTED',
+            { entityTypes: [...new Set(unsupportedEntities.map(row => row.entity_type))].sort() },
+            409
+        );
+    }
     const bookingIds = classified.bookingIds;
+    const groupIds = entityIdsByType(inventory, 'banquet_group');
+    const productIds = entityIdsByType(inventory, 'product');
+    const context = normalizeBusinessContext(inventory.run.business_context || DEFAULT_BUSINESS_CONTEXT);
+    await loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupIds);
+    const openTasks = bookingIds.length ? await queryable.query(
+        `SELECT id
+           FROM tasks
+          WHERE source_type = 'booking'
+            AND source_id = ANY($1::text[])
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'todo')) NOT IN
+                ('done', 'completed', 'complete', 'archived', 'cancelled', 'canceled', 'resolved', 'closed')
+          ORDER BY id
+          FOR UPDATE`,
+        [bookingIds]
+    ) : { rows: [] };
+    if (openTasks.rows?.length) {
+        throw new TrustedQaRunError(
+            'Trusted QA cleanup found unexpected active tasks',
+            'QA_RUN_ACTIVE_TASK_BLOCKER',
+            { count: openTasks.rows.length },
+            409
+        );
+    }
+    const sideEffects = await trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds);
+    if (sideEffects.total > 0) {
+        throw new TrustedQaRunError(
+            'Trusted QA cleanup found persistent business side effects',
+            'QA_RUN_SIDE_EFFECT_BLOCKER',
+            { counts: sideEffects.counts },
+            409
+        );
+    }
     if (bookingIds.length) {
         await queryable.query(
             `UPDATE bookings
@@ -461,26 +684,62 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
               WHERE id = ANY($1::text[])
                 AND COALESCE(NULLIF(BTRIM(business_context), ''), $2) = $2
                 AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) <> 'cancelled'`,
-            [bookingIds, normalizeBusinessContext(inventory.run.business_context || DEFAULT_BUSINESS_CONTEXT)]
+            [bookingIds, context]
         );
+    }
+    if (groupIds.length) {
         await queryable.query(
-            `UPDATE tasks
-                SET status = 'archived',
-                    control_meta = COALESCE(control_meta, '{}'::jsonb) || $3::jsonb,
+            `UPDATE banquet_groups
+                SET status = 'cancelled',
+                    updated_by = 'trusted_qa_cleanup',
                     updated_at = NOW()
-              WHERE source_type = 'booking'
-                AND source_id = ANY($1::text[])
+              WHERE id = ANY($1::text[])
                 AND COALESCE(NULLIF(BTRIM(business_context), ''), $2) = $2
-                AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'todo')) NOT IN ('done', 'archived', 'cancelled')
-                AND (
-                    created_by ~* '(system|service|automation|smoke|qa|codex|rule)'
-                    OR control_meta::text ~* '(system|service|automation|smoke|qa|codex|rule)'
-                )`,
-            [
-                bookingIds,
-                normalizeBusinessContext(inventory.run.business_context || DEFAULT_BUSINESS_CONTEXT),
-                JSON.stringify({ trustedQaCleanup: { runId: inventory.run.run_id, cleanedAt: new Date().toISOString() } })
-            ]
+                AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) <> 'cancelled'`,
+            [groupIds, context]
+        );
+    }
+    if (productIds.length) {
+        await queryable.query(
+            `UPDATE products
+                SET is_active = false,
+                    updated_by = 'trusted_qa_cleanup',
+                    updated_at = NOW()
+              WHERE id = ANY($1::text[])
+                AND COALESCE(NULLIF(BTRIM(business_context), ''), $2) = $2
+                AND is_active = true`,
+            [productIds, context]
+        );
+    }
+    const activeAfter = bookingIds.length ? await queryable.query(
+        `SELECT COUNT(*)::int AS count
+           FROM bookings
+          WHERE id = ANY($1::text[])
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) <> 'cancelled'`,
+        [bookingIds]
+    ) : { rows: [{ count: 0 }] };
+    const activeGroupsAfter = groupIds.length ? await queryable.query(
+        `SELECT COUNT(*)::int AS count
+           FROM banquet_groups
+          WHERE id = ANY($1::text[])
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'active')) <> 'cancelled'`,
+        [groupIds]
+    ) : { rows: [{ count: 0 }] };
+    const activeProductsAfter = productIds.length ? await queryable.query(
+        `SELECT COUNT(*)::int AS count
+           FROM products
+          WHERE id = ANY($1::text[])
+            AND is_active = true`,
+        [productIds]
+    ) : { rows: [{ count: 0 }] };
+    if (Number(activeAfter.rows?.[0]?.count || 0)
+        || Number(activeGroupsAfter.rows?.[0]?.count || 0)
+        || Number(activeProductsAfter.rows?.[0]?.count || 0)) {
+        throw new TrustedQaRunError(
+            'Trusted QA cleanup postcondition failed',
+            'QA_RUN_CLEANUP_POSTCONDITION_FAILED',
+            {},
+            409
         );
     }
     await queryable.query(
@@ -507,6 +766,8 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
         data: {
             run_id: inventory.run.run_id,
             booking_count: bookingIds.length,
+            group_count: groupIds.length,
+            product_count: productIds.length,
             entity_count: classified.entityCount
         }
     });
@@ -514,7 +775,10 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
         ...classified,
         status: 'cleaned',
         state: TRUSTED_QA_STATES.CLEANED,
-        cleanedBookingIds: bookingIds
+        cleanedBookingIds: bookingIds,
+        cleanedGroupIds: groupIds,
+        cleanedProductIds: productIds,
+        sideEffectCounts: sideEffects.counts
     };
 }
 

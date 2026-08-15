@@ -79,17 +79,37 @@ class FakeTrustedQaDb {
         run = makeRun(),
         entities = [],
         entityCount = entities.length,
-        failBookingCleanup = false
+        failBookingCleanup = false,
+        sideEffectTables = {}
     } = {}) {
         this.token = token;
         this.run = { ...run };
         this.entities = entities.map(row => ({ ...row }));
         this.entityCount = entityCount;
         this.failBookingCleanup = failBookingCleanup;
+        this.sideEffectTables = { ...sideEffectTables };
         this.queries = [];
         this.tokenUses = new Set();
         this.cancelledBookingIds = [];
-        this.archivedTaskBookingIds = [];
+        this.cancelledGroupIds = [];
+        this.bookingRows = this.entities
+            .filter(row => row.entity_type === 'booking')
+            .map(row => ({
+                id: row.entity_id,
+                business_context: this.run.business_context,
+                status: 'confirmed',
+                customer_id: this.run.required_customer_id,
+                extra_data: {
+                    disposableQa: {
+                        runId: this.run.run_id,
+                        source: this.run.source,
+                        testCustomerMarker: this.run.test_customer_marker
+                    }
+                }
+            }));
+        this.groupRows = this.entities
+            .filter(row => row.entity_type === 'banquet_group')
+            .map(row => ({ id: row.entity_id, business_context: this.run.business_context, status: 'active' }));
         this.historyWrites = [];
         this.released = false;
     }
@@ -138,6 +158,14 @@ class FakeTrustedQaDb {
         if (normalized.includes('SELECT COUNT(*)::int AS count FROM trusted_qa_run_entities')) {
             return { rows: [{ count: this.entityCount }], rowCount: 1 };
         }
+        if (normalized.includes('FROM trusted_qa_run_entities')
+            && normalized.includes('entity_type = $2')
+            && normalized.includes('entity_id = $3')) {
+            const match = this.entities.find(row => Number(row.run_id) === Number(params[0])
+                && row.entity_type === params[1]
+                && row.entity_id === params[2]);
+            return { rows: match ? [{ id: match.id }] : [], rowCount: match ? 1 : 0 };
+        }
         if (normalized.includes('INSERT INTO trusted_qa_run_entities')) {
             this.entityCount += 1;
             this.entities.push({
@@ -156,6 +184,28 @@ class FakeTrustedQaDb {
         if (normalized.includes('FROM trusted_qa_run_entities')) {
             return { rows: this.entities.filter(row => Number(row.run_id) === Number(params[0])), rowCount: this.entities.length };
         }
+        if (normalized.includes('FROM bookings') && normalized.includes('FOR UPDATE')) {
+            const ids = params[0] || [];
+            const rows = this.bookingRows.filter(row => ids.includes(row.id));
+            return { rows, rowCount: rows.length };
+        }
+        if (normalized.includes('FROM banquet_groups') && normalized.includes('FOR UPDATE')) {
+            const ids = params[0] || [];
+            const rows = this.groupRows.filter(row => ids.includes(row.id));
+            return { rows, rowCount: rows.length };
+        }
+        if (normalized.startsWith('SELECT id FROM tasks')) {
+            return { rows: [], rowCount: 0 };
+        }
+        if (normalized.startsWith('SELECT to_regclass')) {
+            return {
+                rows: [{ relation_name: Object.hasOwn(this.sideEffectTables, params[0]) ? params[0] : null }],
+                rowCount: 1
+            };
+        }
+        if (normalized.includes('FROM finance_transactions row_value')) {
+            return { rows: [{ count: Number(this.sideEffectTables.finance_transactions || 0) }], rowCount: 1 };
+        }
         if (normalized.includes('UPDATE bookings SET status =')) {
             if (this.failBookingCleanup) {
                 const err = new Error('simulated cleanup transport failure');
@@ -163,11 +213,25 @@ class FakeTrustedQaDb {
                 throw err;
             }
             this.cancelledBookingIds.push(...params[0]);
+            this.bookingRows = this.bookingRows.map(row => params[0].includes(row.id)
+                ? { ...row, status: 'cancelled' }
+                : row);
             return { rows: [], rowCount: params[0].length };
         }
-        if (normalized.includes('UPDATE tasks SET status =')) {
-            this.archivedTaskBookingIds.push(...params[0]);
+        if (normalized.includes('UPDATE banquet_groups SET status =')) {
+            this.cancelledGroupIds.push(...params[0]);
+            this.groupRows = this.groupRows.map(row => params[0].includes(row.id)
+                ? { ...row, status: 'cancelled' }
+                : row);
             return { rows: [], rowCount: params[0].length };
+        }
+        if (normalized.includes('SELECT COUNT(*)::int AS count FROM bookings')) {
+            const count = this.bookingRows.filter(row => (params[0] || []).includes(row.id) && row.status !== 'cancelled').length;
+            return { rows: [{ count }], rowCount: 1 };
+        }
+        if (normalized.includes('SELECT COUNT(*)::int AS count FROM banquet_groups')) {
+            const count = this.groupRows.filter(row => (params[0] || []).includes(row.id) && row.status !== 'cancelled').length;
+            return { rows: [{ count }], rowCount: 1 };
         }
         if (normalized.includes('UPDATE trusted_qa_run_entities SET cleanup_state')) {
             this.entities = this.entities.map(row => Number(row.run_id) === Number(params[0])
@@ -240,6 +304,18 @@ test('invalid token is rejected without registration or side-effect suppression'
     assert.equal(db.entities.length, 0);
 });
 
+test('client skipNotification flag is ignored without a trusted QA token', async () => {
+    const db = new FakeTrustedQaDb();
+    const booking = makeBooking({ skipNotification: true, skip_notification: true });
+    const context = await prepareTrustedQaBookingInput(db, makeReq(), booking, 'event_genix');
+
+    assert.equal(context.trusted, false);
+    assert.equal(context.suppressSideEffects, false);
+    assert.equal(booking.skipNotification, false);
+    assert.equal(booking.skip_notification, false);
+    assert.equal(db.queries.length, 0);
+});
+
 test('valid trusted QA token attaches server marker and consumes request id once', async () => {
     const db = new FakeTrustedQaDb();
     const req = makeReq({ token: 'valid-token', requestId: 'req-1' });
@@ -293,12 +369,12 @@ test('registered entity IDs are stored atomically and enforce max count', async 
     assert.deepEqual(db.entities.map(row => row.entity_id), ['BK-QA-1', 'BK-QA-2', 'BK-QA-3']);
 });
 
-test('cleanup is exact-manifest driven, archives machine task scope and is idempotent', async () => {
+test('cleanup is exact-manifest driven, cancels registered bookings/groups and is idempotent', async () => {
     const db = new FakeTrustedQaDb({
         entities: [
             { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' },
             { id: 2, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-2', cleanup_state: 'active' },
-            { id: 3, run_id: 11, entity_type: 'event', entity_id: 'outbox-1', cleanup_state: 'active' }
+            { id: 3, run_id: 11, entity_type: 'banquet_group', entity_id: 'BQ-QA-1', cleanup_state: 'active' }
         ]
     });
 
@@ -307,8 +383,9 @@ test('cleanup is exact-manifest driven, archives machine task scope and is idemp
 
     assert.equal(first.status, 'cleaned');
     assert.deepEqual(first.cleanedBookingIds, ['BK-QA-1', 'BK-QA-2']);
+    assert.deepEqual(first.cleanedGroupIds, ['BQ-QA-1']);
     assert.deepEqual(db.cancelledBookingIds, ['BK-QA-1', 'BK-QA-2']);
-    assert.deepEqual(db.archivedTaskBookingIds, ['BK-QA-1', 'BK-QA-2']);
+    assert.deepEqual(db.cancelledGroupIds, ['BQ-QA-1']);
     assert.equal(db.entities.every(row => row.cleanup_state === 'cleaned'), true);
     assert.equal(second.idempotent, true);
 });
@@ -328,6 +405,22 @@ test('watchdog retries cleanup_pending and blocks after bounded failures', async
     assert.equal(result.runs[0].status, 'retry_scheduled');
     assert.equal(db.run.state, 'blocked');
     assert.match(db.run.cleanup_last_error, /simulated cleanup transport failure/);
+});
+
+test('cleanup fails closed when a persistent business side effect exists', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: { finance_transactions: 1 }
+    });
+
+    await assert.rejects(
+        () => cleanupTrustedQaRun(db, 11),
+        err => err instanceof TrustedQaRunError && err.code === 'QA_RUN_SIDE_EFFECT_BLOCKER'
+    );
+    assert.deepEqual(db.cancelledBookingIds, []);
+    assert.equal(db.run.state, 'active');
 });
 
 test('createTrustedQaRun stores only token hash and returns raw token to caller', async () => {

@@ -3856,6 +3856,10 @@ const Sidebar = (() => {
         widget.hidden = false;
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
+        if (window.location?.pathname === '/profile' || window.location?.pathname === '/profile.html') {
+            _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
+            return;
+        }
         try {
             const authHeaders = typeof getAuthHeaders === 'function'
                 ? getAuthHeaders(false)

@@ -36,6 +36,8 @@ let myCabinetLoadError = '';
 let myTasksSegment = 'all';
 let cabinetProjectionRequestSequence = 0;
 const cabinetProjectionInFlightByPath = new Map();
+let cabinetProjectionRecent = { path: '', at: 0, data: null };
+const CABINET_PROJECTION_RECENT_REUSE_MS = 2500;
 let cabinetCreateDuePreset = 'today';
 let cabinetMyDayListMode = 'focused';
 let cabinetMyDaySegment = 'today';
@@ -1258,6 +1260,16 @@ async function loadMyCabinetProjection(options = {}) {
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
     const cacheKey = path;
+    const now = Date.now();
+    if (options.force !== true
+        && cabinetProjectionRecent.path === cacheKey
+        && cabinetProjectionRecent.data
+        && now - cabinetProjectionRecent.at <= CABINET_PROJECTION_RECENT_REUSE_MS) {
+        return setMyCabinetProjectionData(cabinetProjectionRecent.data, {
+            keepExistingOnError: options.keepExistingOnError,
+            message: options.message
+        });
+    }
     if (cabinetProjectionInFlightByPath.has(cacheKey)) {
         return cabinetProjectionInFlightByPath.get(cacheKey);
     }
@@ -1265,6 +1277,9 @@ async function loadMyCabinetProjection(options = {}) {
     const promise = apiGet(path)
         .then(data => {
             if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
+            if (data && typeof data === 'object') {
+                cabinetProjectionRecent = { path: cacheKey, at: Date.now(), data };
+            }
             return setMyCabinetProjectionData(data, {
                 keepExistingOnError: options.keepExistingOnError,
                 message: options.message
@@ -8104,7 +8119,8 @@ function bindCabinetCompletedTodayDashboard(root = document) {
 async function refreshMyCabinetTab(options = {}) {
     const projection = await loadMyCabinetProjection({
         keepExistingOnError: options.keepExistingOnError !== false,
-        focusDate: options.focusDate || ''
+        focusDate: options.focusDate || '',
+        force: options.force === true
     });
     applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
     await refreshCabinetPulseCounts();
@@ -8122,7 +8138,7 @@ async function verifyCabinetCreatedTask(result = {}) {
         };
     }
 
-    const projection = await refreshMyCabinetTab({ silent: true });
+    const projection = await refreshMyCabinetTab({ silent: true, force: true });
     if (cabinetTaskProjectionContainsId(projection, taskId)) {
         return { ok: true, taskId };
     }
@@ -8130,7 +8146,7 @@ async function verifyCabinetCreatedTask(result = {}) {
     const canonical = await apiGet(`/tasks/${encodeURIComponent(taskId)}`);
     const canonicalId = createdCabinetTaskId({ task: canonical });
     if (canonicalId === taskId) {
-        const retryProjection = await refreshMyCabinetTab({ silent: true });
+        const retryProjection = await refreshMyCabinetTab({ silent: true, force: true });
         if (cabinetTaskProjectionContainsId(retryProjection, taskId)) {
             return { ok: true, taskId };
         }
@@ -10132,7 +10148,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;
         const taskIds = Array.isArray(event?.detail?.taskIds) ? event.detail.taskIds : [];
         taskIds.forEach(taskId => notifyTaskWidgetsChanged({ action: 'create', taskId }));
-        refreshMyCabinetTab({ silent: false }).catch(error => {
+        refreshMyCabinetTab({ silent: false, force: true }).catch(error => {
             console.warn('Profile AI bundle refresh failed', error);
         });
     });

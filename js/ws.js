@@ -575,10 +575,10 @@ var ParkWS = (function () {
             return;
         }
         var payload = message.payload || {};
-        var affectedDate = _extractDateFromPayload(payload);
+        var affectedDates = _extractDatesFromPayload(payload);
         var businessContext = _payloadBusinessContext(payload);
         var groupId = String(payload.groupId || payload.group_id || '').trim();
-        if (affectedDate) {
+        affectedDates.forEach(function (affectedDate) {
             window.invalidateTimelineDateCache?.(affectedDate, {
                 lines: false,
                 bookings: true,
@@ -586,12 +586,16 @@ var ParkWS = (function () {
                 businessContext: businessContext
             });
             _invalidateSWCache('/api/bookings/' + affectedDate);
-        }
+        });
         if (groupId) {
-            window.invalidateTimelineBanquetPreviewFreshness?.({
+            var previewInvalidation = {
                 groupId: groupId,
                 businessContext: businessContext
-            });
+            };
+            if (Array.isArray(payload.affectedBookingIds) && payload.affectedBookingIds.length) {
+                previewInvalidation.bookingIds = payload.affectedBookingIds;
+            }
+            window.invalidateTimelineBanquetPreviewFreshness?.(previewInvalidation);
         }
         _triggerTimelineRefresh();
         window.dispatchEvent(new CustomEvent('ws:banquet', {
@@ -629,6 +633,18 @@ var ParkWS = (function () {
     function _extractDateFromPayload(payload) {
         if (!payload) return null;
         return payload.date || payload.bookingDate || payload.dateStr || null;
+    }
+
+    function _extractDatesFromPayload(payload) {
+        if (!payload) return [];
+        var dates = [];
+        if (Array.isArray(payload.affectedDates)) dates = dates.concat(payload.affectedDates);
+        if (Array.isArray(payload.affected_dates)) dates = dates.concat(payload.affected_dates);
+        dates.push(_extractDateFromPayload(payload));
+        dates.push(payload.primaryBooking?.date || payload.primary_booking?.date || null);
+        return [...new Set(dates
+            .map(function (date) { return String(date || '').slice(0, 10); })
+            .filter(function (date) { return /^\d{4}-\d{2}-\d{2}$/.test(date); }))];
     }
 
     // ==========================================

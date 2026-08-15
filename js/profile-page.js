@@ -1327,7 +1327,7 @@ async function loadMyCabinetProjection(options = {}) {
             message: options.message
         });
     }
-    if (options.force !== true && cabinetProjectionInFlightByPath.has(cacheKey)) {
+    if (cabinetProjectionInFlightByPath.has(cacheKey)) {
         return cabinetProjectionInFlightByPath.get(cacheKey);
     }
     const requestSequence = ++cabinetProjectionRequestSequence;
@@ -8332,7 +8332,8 @@ function bindCabinetCompletedTodayDashboard(root = document) {
 async function refreshMyCabinetTab(options = {}) {
     const projection = await loadMyCabinetProjection({
         keepExistingOnError: options.keepExistingOnError !== false,
-        focusDate: options.focusDate || ''
+        focusDate: options.focusDate || '',
+        force: options.force === true
     });
     applyCabinetTaskSoundPreferences(myCabinetData?.preferences || {});
     await refreshCabinetPulseCounts();
@@ -8350,7 +8351,7 @@ async function verifyCabinetCreatedTask(result = {}) {
         };
     }
 
-    const projection = await refreshMyCabinetTab({ silent: true });
+    const projection = await refreshMyCabinetTab({ silent: true, force: true });
     if (cabinetTaskProjectionContainsId(projection, taskId)) {
         return { ok: true, taskId };
     }
@@ -8358,7 +8359,7 @@ async function verifyCabinetCreatedTask(result = {}) {
     const canonical = await apiGet(`/tasks/${encodeURIComponent(taskId)}`);
     const canonicalId = createdCabinetTaskId({ task: canonical });
     if (canonicalId === taskId) {
-        const retryProjection = await refreshMyCabinetTab({ silent: true });
+        const retryProjection = await refreshMyCabinetTab({ silent: true, force: true });
         if (cabinetTaskProjectionContainsId(retryProjection, taskId)) {
             return { ok: true, taskId };
         }
@@ -10369,7 +10370,7 @@ if (typeof window !== 'undefined' && typeof window.addEventListener === 'functio
         if (!profileData || !isOwnProfile || !isProfileTaskProjectionTab(activeTab)) return;
         const taskIds = Array.isArray(event?.detail?.taskIds) ? event.detail.taskIds : [];
         taskIds.forEach(taskId => notifyTaskWidgetsChanged({ action: 'create', taskId }));
-        refreshMyCabinetTab({ silent: false }).catch(error => {
+        refreshMyCabinetTab({ silent: false, force: true }).catch(error => {
             console.warn('Profile AI bundle refresh failed', error);
         });
     });

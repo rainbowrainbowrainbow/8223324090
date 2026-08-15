@@ -404,7 +404,7 @@ async function openMyDayProfile(page) {
     const projectionLoad = page.waitForResponse(response => {
         const url = new URL(response.url());
         return response.request().method() === 'GET'
-            && url.pathname === '/api/tasks/my-day';
+            && url.pathname === '/api/tasks/my-cabinet';
     }, { timeout: TIMEOUT_MS }).catch(() => null);
     await page.goto(`${TARGET_URL}/profile?tab=myday`, { waitUntil: 'domcontentloaded' });
     assert.notEqual(new URL(page.url()).pathname, '/', 'authenticated profile navigation should not redirect to the root fallback');

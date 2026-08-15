@@ -352,14 +352,15 @@ async function archiveExactQaTask(base, session, options = {}, taskId) {
         businessContext: options.businessContext
     });
     assertTaskContainsMarker(task.task || task, options.marker);
-    await fetchJson(base, routeWithBusinessContext(`/api/tasks/${encodeURIComponent(id)}/status`, options.businessContext), {
-        method: 'PATCH',
+    await fetchJson(base, routeWithBusinessContext('/api/tasks/bulk', options.businessContext), {
+        method: 'POST',
         token: session.token,
         timeoutMs: options.timeoutMs,
         businessContext: options.businessContext,
         idempotencyKey: `${options.marker}:archive:${id}`,
         body: {
-            status: 'archived',
+            ids: [id],
+            action: 'archive',
             sourceSurface: SMOKE_SURFACE,
             archiveReason: 'live_my_day_completion_mutation_smoke_cleanup',
             businessContext: options.businessContext

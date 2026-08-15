@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.152 - My Day Completion Live QA Guard
+
+### My Day / QA / (15.08.2026) [codex]
+- **Контрольований live QA smoke для completion pulse** - перевіряє створення, виконання та появу тестової задачі у `completedTodayTasks` і completion pulse.
+- **Безпечний cleanup** - smoke створює та архівує лише одну марковану QA-задачу в дозволеному тестовому акаунті; реальні задачі не зачіпаються.
+- **CI guard** - smoke contract і cleanup-перевірки додані до `test:my-day`, включно з явним live-write confirmation та exact test-user guard.
+
+---
+
 ## v0.80.151 - Banquet Cancellation Final Guard
 
 ### Release / Versioning / (15.08.2026) [codex]

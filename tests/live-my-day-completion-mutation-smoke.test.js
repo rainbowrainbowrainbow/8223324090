@@ -84,6 +84,7 @@ test('completedTodayTasks assertion separates missing row from updated count', (
 test('business context helper keeps task routes explicitly scoped', () => {
     assert.equal(smoke.routeWithBusinessContext('/api/tasks', 'event_genix'), '/api/tasks?businessContext=event_genix');
     assert.equal(smoke.routeWithBusinessContext('/api/tasks?businessContext=event_genix', 'event_genix'), '/api/tasks?businessContext=event_genix');
+    assert.equal(smoke.routeWithBusinessContext('/api/tasks/bulk', 'event_genix'), '/api/tasks/bulk?businessContext=event_genix');
 });
 
 test('cleanup guard archives only tasks with the exact QA marker', () => {

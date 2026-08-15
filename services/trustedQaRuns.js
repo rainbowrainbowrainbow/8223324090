@@ -32,22 +32,33 @@ const TRUSTED_QA_ENTITY_TYPES = new Set([
     'booking_banquet_link',
     'product'
 ]);
-const TRUSTED_QA_SIDE_EFFECT_TABLES = Object.freeze([
-    'finance_transactions',
-    'receipts',
-    'banquet_deposits',
-    'warehouse_stock_movements',
-    'warehouse_history',
-    'outbox_events',
-    'event_queue',
-    'rule_execution_log',
-    'notification_outbox',
-    'chat_messages',
-    'announcements',
-    'print_jobs',
-    'loyalty_transactions',
-    'gamification_events'
+const TRUSTED_QA_CAPABILITY_STATUS = Object.freeze({
+    READABLE: 'readable',
+    ABSENT: 'absent',
+    PERMISSION_DENIED: 'permission_denied',
+    SCHEMA_MISMATCH: 'schema_mismatch',
+    QUERY_FAILED: 'query_failed',
+    UNSUPPORTED: 'unsupported'
+});
+const TRUSTED_QA_SIDE_EFFECT_CAPABILITIES = Object.freeze([
+    { tableName: 'finance_transactions', required: true },
+    { tableName: 'receipts', required: true },
+    { tableName: 'banquet_deposits', required: true },
+    { tableName: 'warehouse_stock_movements', required: true },
+    { tableName: 'warehouse_history', required: true },
+    { tableName: 'outbox_events', required: true },
+    { tableName: 'event_queue', required: true },
+    { tableName: 'rule_execution_log', required: true },
+    { tableName: 'notification_outbox', required: true },
+    { tableName: 'chat_messages', required: true },
+    { tableName: 'announcements', required: true },
+    { tableName: 'print_jobs', required: true },
+    { tableName: 'loyalty_transactions', required: false },
+    { tableName: 'gamification_events', required: false }
 ]);
+const TRUSTED_QA_SIDE_EFFECT_TABLES = Object.freeze(
+    TRUSTED_QA_SIDE_EFFECT_CAPABILITIES.map(capability => capability.tableName)
+);
 
 class TrustedQaRunError extends Error {
     constructor(message, code, details = {}, statusCode = 403) {
@@ -552,56 +563,244 @@ async function relationExists(queryable, tableName) {
     return Boolean(result.rows?.[0]?.relation_name);
 }
 
-async function countRowsContainingNeedles(queryable, tableName, needles) {
-    if (!needles.length || !await relationExists(queryable, tableName)) return 0;
-    const result = await queryable.query(
-        `SELECT COUNT(*)::int AS count
-           FROM ${tableName} row_value
-          WHERE EXISTS (
-                SELECT 1
-                  FROM unnest($1::text[]) needle(value)
-                 WHERE to_jsonb(row_value)::text LIKE ('%' || needle.value || '%')
-          )`,
-        [needles]
-    );
-    return Number(result.rows?.[0]?.count || 0);
-}
-
-function trustedQaSideEffectNeedles(inventory, bookingIds, groupIds) {
-    return [...new Set([
-        ...bookingIds,
-        ...groupIds,
-        cleanId(inventory?.run?.run_id),
-        cleanText(inventory?.run?.test_customer_marker, 200)
-    ].filter(Boolean))];
-}
-
-async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
-    const needles = trustedQaSideEffectNeedles(inventory, bookingIds, groupIds);
-    const counts = {};
-    for (const tableName of TRUSTED_QA_SIDE_EFFECT_TABLES) {
-        counts[tableName] = await countRowsContainingNeedles(queryable, tableName, needles);
+function quoteTrustedQaIdent(value) {
+    const ident = String(value || '').trim();
+    if (!/^[a-z_][a-z0-9_]*$/i.test(ident)) {
+        throw new TrustedQaRunError('Unsafe trusted QA SQL identifier', 'QA_RUN_UNSAFE_IDENTIFIER', {}, 500);
     }
+    return `"${ident.replace(/"/g, '""')}"`;
+}
+
+function sanitizedQueryError(err) {
+    const code = cleanText(err?.code || '', 80);
+    const message = cleanText(err?.message || String(err || ''), 240);
+    if (code === '42501' || /permission denied/i.test(message)) {
+        return { status: TRUSTED_QA_CAPABILITY_STATUS.PERMISSION_DENIED, code, message: 'permission denied' };
+    }
+    if (code === '42P01' || /does not exist|undefined_table/i.test(message)) {
+        return { status: TRUSTED_QA_CAPABILITY_STATUS.ABSENT, code, message: 'relation absent' };
+    }
+    if (code === '42703' || /undefined_column|column .* does not exist/i.test(message)) {
+        return { status: TRUSTED_QA_CAPABILITY_STATUS.SCHEMA_MISMATCH, code, message: 'schema mismatch' };
+    }
+    return { status: TRUSTED_QA_CAPABILITY_STATUS.QUERY_FAILED, code, message };
+}
+
+async function trustedQaTableColumns(queryable, tableName) {
+    const result = await queryable.query(
+        `SELECT column_name
+           FROM information_schema.columns
+          WHERE table_schema = ANY (current_schemas(false))
+            AND table_name = $1
+          ORDER BY ordinal_position`,
+        [tableName]
+    );
+    return new Set((result.rows || []).map(row => String(row.column_name || '').trim()).filter(Boolean));
+}
+
+function trustedQaEntityRowIds(inventory) {
+    return [...new Set((inventory?.entities || [])
+        .map(row => Number.parseInt(row.id, 10))
+        .filter(Number.isSafeInteger))];
+}
+
+function trustedQaSideEffectScope(inventory, bookingIds, groupIds) {
     return {
-        counts,
-        total: Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0)
+        runDbId: Number.parseInt(inventory?.run?.id, 10),
+        runPublicId: cleanId(inventory?.run?.run_id),
+        entityRowIds: trustedQaEntityRowIds(inventory),
+        bookingIds: trustedQaTextArray(bookingIds),
+        groupIds: trustedQaTextArray(groupIds),
+        productIds: entityIdsByType(inventory, 'product')
     };
 }
 
-async function purgeTrustedQaEventQueueRows(queryable, inventory, bookingIds, groupIds) {
-    const needles = trustedQaSideEffectNeedles(inventory, bookingIds, groupIds);
-    if (!needles.length || !await relationExists(queryable, 'event_queue')) return [];
-    const result = await queryable.query(
-        `DELETE FROM event_queue row_value
-          WHERE EXISTS (
-                SELECT 1
-                  FROM unnest($1::text[]) needle(value)
-                 WHERE to_jsonb(row_value)::text LIKE ('%' || needle.value || '%')
-          )
-          RETURNING id, event_type, status`,
-        [needles]
-    );
-    return result.rows || [];
+function trustedQaTextArray(values = []) {
+    return [...new Set(values.map(cleanId).filter(Boolean))];
+}
+
+function buildTrustedQaAttributionClauses(columns, scope) {
+    const clauses = [];
+    const methods = [];
+    const has = column => columns.has(column);
+    const column = name => quoteTrustedQaIdent(name);
+    if (has('trusted_qa_run_id') && Number.isSafeInteger(scope.runDbId)) {
+        clauses.push(`${column('trusted_qa_run_id')} = $1`);
+        methods.push('trusted_qa_run_id');
+    }
+    if (has('trusted_qa_run_entity_id') && scope.entityRowIds.length) {
+        clauses.push(`${column('trusted_qa_run_entity_id')} = ANY($2::int[])`);
+        methods.push('trusted_qa_run_entity_id');
+    }
+    if (has('run_id') && scope.runPublicId) {
+        clauses.push(`${column('run_id')} = $3`);
+        methods.push('run_id');
+    }
+    if (has('booking_id') && scope.bookingIds.length) {
+        clauses.push(`${column('booking_id')} = ANY($4::text[])`);
+        methods.push('booking_id');
+    }
+    if (has('primary_booking_id') && scope.bookingIds.length) {
+        clauses.push(`${column('primary_booking_id')} = ANY($4::text[])`);
+        methods.push('primary_booking_id');
+    }
+    if (has('source_booking_id') && scope.bookingIds.length) {
+        clauses.push(`${column('source_booking_id')} = ANY($4::text[])`);
+        methods.push('source_booking_id');
+    }
+    if (has('source_type') && has('source_id') && scope.bookingIds.length) {
+        clauses.push(`(LOWER(${column('source_type')}::text) = 'booking' AND ${column('source_id')} = ANY($4::text[]))`);
+        methods.push('source_type_booking');
+    }
+    if (has('banquet_group_id') && scope.groupIds.length) {
+        clauses.push(`${column('banquet_group_id')} = ANY($5::text[])`);
+        methods.push('banquet_group_id');
+    }
+    if (has('group_id') && scope.groupIds.length) {
+        clauses.push(`${column('group_id')} = ANY($5::text[])`);
+        methods.push('group_id');
+    }
+    if (has('source_type') && has('source_id') && scope.groupIds.length) {
+        clauses.push(`(LOWER(${column('source_type')}::text) = 'banquet_group' AND ${column('source_id')} = ANY($5::text[]))`);
+        methods.push('source_type_banquet_group');
+    }
+    if (has('product_id') && scope.productIds.length) {
+        clauses.push(`${column('product_id')} = ANY($6::text[])`);
+        methods.push('product_id');
+    }
+    for (const correlationColumn of ['idempotency_key', 'correlation_id', 'request_id', 'request_key']) {
+        if (has(correlationColumn) && scope.runPublicId) {
+            clauses.push(`${column(correlationColumn)} = $3`);
+            methods.push(correlationColumn);
+        }
+    }
+    return {
+        whereSql: clauses.length ? `(${clauses.join(' OR ')})` : '',
+        attributionMethod: [...new Set(methods)].sort()
+    };
+}
+
+function trustedQaActiveSql(columns) {
+    const column = name => quoteTrustedQaIdent(name);
+    if (columns.has('status')) {
+        return `LOWER(COALESCE(NULLIF(BTRIM(${column('status')}::text), ''), 'pending')) NOT IN (
+            'processed', 'done', 'completed', 'complete', 'archived', 'cleaned',
+            'cancelled', 'canceled', 'closed', 'resolved', 'sent', 'delivered',
+            'skipped', 'ignored'
+        )`;
+    }
+    if (columns.has('processed_at')) return `${column('processed_at')} IS NULL`;
+    if (columns.has('archived_at')) return `${column('archived_at')} IS NULL`;
+    if (columns.has('deleted_at')) return `${column('deleted_at')} IS NULL`;
+    return 'TRUE';
+}
+
+function emptyTrustedQaCapability(capability, status, extra = {}) {
+    const blocking = status === TRUSTED_QA_CAPABILITY_STATUS.PERMISSION_DENIED
+        || status === TRUSTED_QA_CAPABILITY_STATUS.SCHEMA_MISMATCH
+        || status === TRUSTED_QA_CAPABILITY_STATUS.QUERY_FAILED
+        || (capability.required && status !== TRUSTED_QA_CAPABILITY_STATUS.ABSENT
+            && status !== TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED);
+    return {
+        tableName: capability.tableName,
+        required: Boolean(capability.required),
+        status,
+        exactCount: 0,
+        activeCount: 0,
+        processedHistoricalCount: 0,
+        attributionMethod: [],
+        blocking,
+        error: null,
+        ...extra
+    };
+}
+
+async function trustedQaSideEffectCapabilityInventory(queryable, capability, scope) {
+    let exists = false;
+    try {
+        exists = await relationExists(queryable, capability.tableName);
+    } catch (err) {
+        const error = sanitizedQueryError(err);
+        return emptyTrustedQaCapability(capability, error.status, { blocking: capability.required || error.status !== TRUSTED_QA_CAPABILITY_STATUS.ABSENT, error });
+    }
+    if (!exists) {
+        return emptyTrustedQaCapability(capability, TRUSTED_QA_CAPABILITY_STATUS.ABSENT, {
+            blocking: Boolean(capability.required)
+        });
+    }
+
+    let columns;
+    try {
+        columns = await trustedQaTableColumns(queryable, capability.tableName);
+    } catch (err) {
+        const error = sanitizedQueryError(err);
+        return emptyTrustedQaCapability(capability, error.status, { blocking: true, error });
+    }
+    const attribution = buildTrustedQaAttributionClauses(columns, scope);
+    if (!attribution.whereSql) {
+        return emptyTrustedQaCapability(capability, TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED, {
+            blocking: Boolean(capability.required),
+            error: capability.required ? { code: 'NO_DURABLE_ATTRIBUTION', message: 'no supported exact attribution columns' } : null
+        });
+    }
+
+    const activeSql = trustedQaActiveSql(columns);
+    const tableSql = quoteTrustedQaIdent(capability.tableName);
+    try {
+        const result = await queryable.query(
+            `SELECT COUNT(*)::int AS exact_count,
+                    COUNT(*) FILTER (WHERE ${activeSql})::int AS active_count,
+                    COUNT(*) FILTER (WHERE NOT (${activeSql}))::int AS processed_historical_count
+               FROM ${tableSql}
+              WHERE ${attribution.whereSql}`,
+            [
+                Number.isSafeInteger(scope.runDbId) ? scope.runDbId : null,
+                scope.entityRowIds,
+                scope.runPublicId || null,
+                trustedQaTextArray(scope.bookingIds),
+                trustedQaTextArray(scope.groupIds),
+                trustedQaTextArray(scope.productIds)
+            ]
+        );
+        const row = result.rows?.[0] || {};
+        const activeCount = Number(row.active_count || 0);
+        return {
+            tableName: capability.tableName,
+            required: Boolean(capability.required),
+            status: TRUSTED_QA_CAPABILITY_STATUS.READABLE,
+            exactCount: Number(row.exact_count || 0),
+            activeCount,
+            processedHistoricalCount: Number(row.processed_historical_count || 0),
+            attributionMethod: attribution.attributionMethod,
+            blocking: activeCount > 0,
+            error: null
+        };
+    } catch (err) {
+        const error = sanitizedQueryError(err);
+        return emptyTrustedQaCapability(capability, error.status, { blocking: true, error });
+    }
+}
+
+async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
+    const scope = trustedQaSideEffectScope(inventory, bookingIds, groupIds);
+    const capabilities = [];
+    for (const capability of TRUSTED_QA_SIDE_EFFECT_CAPABILITIES) {
+        capabilities.push(await trustedQaSideEffectCapabilityInventory(queryable, capability, scope));
+    }
+    const counts = Object.fromEntries(capabilities.map(item => [item.tableName, item.activeCount]));
+    const exactCounts = Object.fromEntries(capabilities.map(item => [item.tableName, item.exactCount]));
+    const processedHistoricalCounts = Object.fromEntries(capabilities.map(item => [item.tableName, item.processedHistoricalCount]));
+    const visibilityBlockers = capabilities.filter(item => item.blocking && item.activeCount === 0);
+    const activeLeftovers = capabilities.filter(item => item.activeCount > 0);
+    return {
+        capabilities,
+        counts,
+        exactCounts,
+        processedHistoricalCounts,
+        total: activeLeftovers.reduce((sum, item) => sum + Number(item.activeCount || 0), 0),
+        visibilityBlockers,
+        blocking: activeLeftovers.length > 0 || visibilityBlockers.length > 0
+    };
 }
 
 function assertTrustedQaBookingRows(rows, inventory, bookingIds) {
@@ -727,13 +926,37 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             409
         );
     }
-    const purgedEventQueueRows = await purgeTrustedQaEventQueueRows(queryable, inventory, bookingIds, groupIds);
     const sideEffects = await trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds);
+    if (sideEffects.visibilityBlockers?.length) {
+        throw new TrustedQaRunError(
+            'Trusted QA cleanup could not prove side-effect visibility',
+            'QA_RUN_SIDE_EFFECT_VISIBILITY_BLOCKER',
+            {
+                capabilities: sideEffects.visibilityBlockers.map(item => ({
+                    tableName: item.tableName,
+                    status: item.status,
+                    required: item.required,
+                    error: item.error
+                }))
+            },
+            409
+        );
+    }
     if (sideEffects.total > 0) {
         throw new TrustedQaRunError(
             'Trusted QA cleanup found persistent business side effects',
             'QA_RUN_SIDE_EFFECT_BLOCKER',
-            { counts: sideEffects.counts },
+            {
+                counts: sideEffects.counts,
+                capabilities: sideEffects.capabilities
+                    .filter(item => item.activeCount > 0)
+                    .map(item => ({
+                        tableName: item.tableName,
+                        activeCount: item.activeCount,
+                        exactCount: item.exactCount,
+                        attributionMethod: item.attributionMethod
+                    }))
+            },
             409
         );
     }
@@ -831,7 +1054,7 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             group_count: groupIds.length,
             product_count: productIds.length,
             entity_count: classified.entityCount,
-            purged_event_queue_count: purgedEventQueueRows.length
+            purged_event_queue_count: 0
         }
     });
     return {
@@ -842,7 +1065,10 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
         cleanedGroupIds: groupIds,
         cleanedProductIds: productIds,
         sideEffectCounts: sideEffects.counts,
-        purgedEventQueueIds: purgedEventQueueRows.map(row => row.id)
+        sideEffectInventory: sideEffects.capabilities,
+        sideEffectExactCounts: sideEffects.exactCounts,
+        sideEffectProcessedHistoricalCounts: sideEffects.processedHistoricalCounts,
+        purgedEventQueueIds: []
     };
 }
 
@@ -904,7 +1130,10 @@ async function runTrustedQaCleanupWatchdog(options = {}) {
 
 module.exports = {
     DEFAULT_MAX_ENTITY_COUNT,
+    TRUSTED_QA_CAPABILITY_STATUS,
     TRUSTED_QA_ENTITY_STATES,
+    TRUSTED_QA_SIDE_EFFECT_CAPABILITIES,
+    TRUSTED_QA_SIDE_EFFECT_TABLES,
     TRUSTED_QA_STATES,
     TrustedQaRunError,
     assertRunMatchesRequest,
@@ -924,5 +1153,6 @@ module.exports = {
     requestQaToken,
     requestReplayKey,
     runTrustedQaCleanupWatchdog,
-    sha256
+    sha256,
+    trustedQaSideEffectInventory
 };

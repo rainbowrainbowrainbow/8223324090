@@ -72,6 +72,15 @@ function cleanId(value) {
     return cleanText(value, 120);
 }
 
+function dateOnly(value) {
+    if (value instanceof Date) {
+        return Number.isNaN(value.getTime()) ? '' : value.toISOString().slice(0, 10);
+    }
+    const normalized = cleanText(value, 40);
+    const match = normalized.match(/^(\d{4}-\d{2}-\d{2})/);
+    return match ? match[1] : '';
+}
+
 function safeJsonObject(value) {
     if (!value) return {};
     if (typeof value === 'object' && !Array.isArray(value)) return value;
@@ -229,8 +238,8 @@ function assertRunMatchesRequest(run, req, booking, businessContext) {
     if (expectedLine && cleanId(bookingConstraintValue(booking, 'lineId', 'line_id')) !== expectedLine) {
         throw new TrustedQaRunError('QA run timeline line mismatch', 'QA_RUN_LINE_MISMATCH', { entityType: 'booking' });
     }
-    const expectedDate = cleanText(run.allowed_date, 10);
-    if (expectedDate && cleanText(bookingConstraintValue(booking, 'date'), 10) !== expectedDate) {
+    const expectedDate = dateOnly(run.allowed_date);
+    if (expectedDate && dateOnly(bookingConstraintValue(booking, 'date')) !== expectedDate) {
         throw new TrustedQaRunError('QA run date mismatch', 'QA_RUN_DATE_MISMATCH', { entityType: 'booking' });
     }
     const start = timeMinutes(run.allowed_start_time);

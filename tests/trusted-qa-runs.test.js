@@ -54,7 +54,7 @@ function makeRun(overrides = {}) {
         required_product_id: null,
         required_room_resource_id: 'room-qa',
         required_line_id: 'line-qa',
-        allowed_date: '2026-08-14',
+        allowed_date: new Date('2026-08-14T00:00:00.000Z'),
         allowed_start_time: '12:00:00',
         allowed_end_time: '18:00:00',
         test_customer_marker: 'qa-test-customer',

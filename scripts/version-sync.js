@@ -18,6 +18,7 @@
  *   7. sw.js CACHE_NAME and API_CACHE_NAME
  *   8. server.js inline versioned asset references
  *   9. /api/version static route contract uses services/release.js
+ *  10. Checkbox implementation status release package markers
  */
 
 const fs = require('fs');
@@ -460,6 +461,35 @@ function syncServiceWorker(version) {
     if (FIX) write(file, sw);
 }
 
+function syncCheckboxStatusText(content, version, releaseLabel) {
+    const label = normalizeLabel(releaseLabel);
+    return String(content)
+        .replace(
+            /^(- (?:Live production|Release) package baseline prepared for this handoff: `)[\d.]+` \([^)]*\)\.$/m,
+            (line, prefix) => `${prefix}${version}\` (\`${label}\`).`
+        )
+        .replace(
+            /(- Release `)[\d.]+(` is the package baseline prepared in this handoff\.)/,
+            `$1${version}$2`
+        );
+}
+
+function syncCheckboxImplementationStatus(version, releaseLabel) {
+    const file = 'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md';
+    if (!exists(file)) return;
+
+    const current = read(file);
+    const expected = syncCheckboxStatusText(current, version, releaseLabel);
+    const currentMatches = current.includes(`Release package baseline prepared for this handoff: \`${version}\` (\`${releaseLabel}\`).`)
+        && current.includes(`Release \`${version}\` is the package baseline prepared in this handoff.`);
+    if (currentMatches) {
+        ok(file, 'release package markers');
+        return;
+    }
+    report(file, 'release package markers', 'stale or missing', `v${version} ${releaseLabel}`);
+    if (FIX) write(file, expected);
+}
+
 function main() {
     let pkg = readJson('package.json');
     let version = pkg.version;
@@ -508,6 +538,7 @@ function main() {
     }
     checkMarkdownChangelog(version, releaseLabel);
     checkApiVersionContract();
+    syncCheckboxImplementationStatus(version, releaseLabel);
 
     console.log('');
     if (issues === 0) {
@@ -529,5 +560,6 @@ if (require.main === module) {
 
 module.exports = {
     collectVersionedAssetFiles,
-    shouldSkipVersionedAssetDir
+    shouldSkipVersionedAssetDir,
+    syncCheckboxStatusText
 };

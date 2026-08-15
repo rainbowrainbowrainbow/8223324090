@@ -6,7 +6,8 @@ const path = require('node:path');
 
 const {
     collectVersionedAssetFiles,
-    shouldSkipVersionedAssetDir
+    shouldSkipVersionedAssetDir,
+    syncCheckboxStatusText
 } = require('../scripts/version-sync');
 
 function versionedAsset(ref, version) {
@@ -64,4 +65,17 @@ test('version asset scanner skips generated dirs and inaccessible directories', 
         collectVersionedAssetFiles(root, [], root),
         ['index.html', 'js/app.js', 'public/page.html']
     );
+});
+
+test('version sync owns both Checkbox release package markers', () => {
+    const stale = [
+        '- Release package baseline prepared for this handoff: `0.80.141` (`Old Release`).',
+        '- Release `0.80.141` is the package baseline prepared in this handoff.'
+    ].join('\n');
+
+    const synced = syncCheckboxStatusText(stale, '0.80.142', 'Trusted QA Lifecycle Hardening');
+
+    assert.match(synced, /Release package baseline prepared for this handoff: `0\.80\.142` \(`Trusted QA Lifecycle Hardening`\)\./);
+    assert.match(synced, /Release `0\.80\.142` is the package baseline prepared in this handoff\./);
+    assert.doesNotMatch(synced, /0\.80\.141/);
 });

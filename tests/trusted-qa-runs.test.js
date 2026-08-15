@@ -7,9 +7,11 @@ const {
     TrustedQaRunError,
     cleanupTrustedQaRun,
     createTrustedQaRun,
+    endpointAllowed,
     prepareTrustedQaBookingInput,
     qaPublicDetails,
     registerQaEntity,
+    requestEndpointKey,
     runTrustedQaCleanupWatchdog,
     sha256
 } = require('../services/trustedQaRuns');
@@ -314,6 +316,16 @@ test('client skipNotification flag is ignored without a trusted QA token', async
     assert.equal(booking.skipNotification, false);
     assert.equal(booking.skip_notification, false);
     assert.equal(db.queries.length, 0);
+});
+
+test('root booking route normalizes to the exact allowlisted endpoint without trailing slash', () => {
+    const req = {
+        method: 'POST',
+        baseUrl: '/api/bookings',
+        route: { path: '/' }
+    };
+    assert.equal(requestEndpointKey(req), 'POST /api/bookings');
+    assert.equal(endpointAllowed(requestEndpointKey(req), ['POST /api/bookings']), true);
 });
 
 test('valid trusted QA token attaches server marker and consumes request id once', async () => {

@@ -69,6 +69,17 @@ function readPlan(filePath) {
         || !manifest.allowedEndpoints.length || !manifest.expectedEntityTypes.length) {
         throw new Error('Trusted QA plan is incomplete or outside bounded limits');
     }
+    if (manifest.qaProduct?.create === true) {
+        const product = manifest.qaProduct;
+        if (String(product.id || '').trim() !== manifest.programId
+            || !String(product.code || '').trim() || String(product.code).trim().length > 20
+            || !String(product.label || '').trim() || String(product.label).trim().length > 100
+            || !String(product.category || '').trim() || String(product.category).trim().length > 50
+            || !Number.isInteger(Number(product.duration))
+            || Number(product.duration) < 1 || Number(product.duration) > 1440) {
+            throw new Error('Trusted QA product plan is incompatible with the products schema');
+        }
+    }
     return manifest;
 }
 

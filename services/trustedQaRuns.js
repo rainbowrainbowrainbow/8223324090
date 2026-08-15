@@ -124,8 +124,10 @@ function requestEndpointKey(req) {
         240
     ).split('?')[0];
     const base = cleanText(req?.baseUrl || '', 160);
-    const joined = path.startsWith('/api/') || !base ? path : `${base}${path}`;
-    return `${method} ${joined.replace(/\/+/g, '/')}`;
+    const joined = (path.startsWith('/api/') || !base ? path : `${base}${path}`)
+        .replace(/\/+/g, '/');
+    const normalizedPath = joined.length > 1 ? joined.replace(/\/+$/, '') : joined;
+    return `${method} ${normalizedPath}`;
 }
 
 function normalizeAllowedEndpoints(value) {

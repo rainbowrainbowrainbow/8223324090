@@ -73,6 +73,15 @@ test('trusted QA operator plan rejects unbounded or incomplete manifests', () =>
         () => withPlanFile(plan({ roomResourceId: '' }), readPlan),
         /incomplete or outside bounded limits/
     );
+    assert.throws(
+        () => withPlanFile(plan({
+            qaProduct: {
+                ...plan().qaProduct,
+                code: 'QA-PRODUCT-CODE-THAT-EXCEEDS-VARCHAR-20'
+            }
+        }), readPlan),
+        /incompatible with the products schema/
+    );
 });
 
 test('booking routes suppress persistent side effects and register the QA graph', () => {

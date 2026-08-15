@@ -181,6 +181,27 @@ function harnessHtml() {
     };
     state.completedProjectionReads = 0;
     state.completedDashboardExpanded = false;
+    state.completedActiveTab = 'today';
+    state.completedHistoryApiReads = 0;
+    state.completedHistoryFetchMode = 'success';
+    state.completedHistory = {
+      visible: 1,
+      total: 5,
+      hasMore: true,
+      nextCursor: 'browser-history-page-2',
+      loading: false,
+      error: '',
+      loaded: [
+        { id: 777, title: 'Completed row QA', meta: 'Задача виконана · 12:00 · 2 min · 1/2 points', impacts: 'row' },
+        { id: 778, title: 'Subtask-only row QA', meta: 'Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points', impacts: 'none' },
+        { id: 779, title: 'Local history row QA', meta: 'Задача виконана · 11:40 · 0 min', impacts: 'none' }
+      ],
+      apiRows: [
+        { id: 779, title: 'Local history row QA duplicate', meta: 'Задача виконана · 11:40 · 0 min', impacts: 'none' },
+        { id: 780, title: 'API history row QA', meta: 'Задача виконана · 11:30 · 4 min', impacts: 'row' },
+        { id: 781, title: 'API tail history row QA', meta: 'Задача виконана · 11:20 · 0 min', impacts: 'none' }
+      ]
+    };
     state.openedTaskId = null;
     const clone = value => JSON.parse(JSON.stringify(value));
     const classificationFromIds = ids => ({ impacts: ids.map(id => impacts.find(impact => impact.id === Number(id))).filter(Boolean) });
@@ -203,6 +224,78 @@ function harnessHtml() {
     window.addEventListener('crm:timer-updated', event => state.timerEvents.push(event.detail));
     window.__MY_DAY_INTERACTIONS__ = { state, applyClassification, renderTimeTriggers };
     renderTimeTriggers();
+    const completionList = () => document.querySelector('[data-cabinet-completion-details] .cabinet-completion-list');
+    const completionTab = name => document.querySelector('[data-cabinet-completion-tab="' + name + '"]');
+    const renderHistoryImpactMarkup = mode => mode === 'row'
+      ? impacts.slice(0, 2).map(renderCompletionImpactChip).join('')
+      : '<span class="cabinet-completion-impact-chip is-muted">Без впливу</span>';
+    const renderHistoryRows = () => {
+      const history = state.completedHistory;
+      const visibleRows = history.loaded.slice(0, history.visible);
+      const rows = visibleRows.map((row, index) => '<button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="' + row.id + '">' +
+        '<span class="cabinet-completion-row-mark" aria-hidden="true">' + (index + 1) + '</span>' +
+        '<span class="cabinet-completion-row-main"><b>' + row.title + '</b><small>' + row.meta + '</small><span class="cabinet-completion-row-impacts">' + renderHistoryImpactMarkup(row.impacts) + '</span></span>' +
+        '</button>').join('');
+      const canShowMore = history.visible < history.loaded.length || history.hasMore || history.error;
+      const footer = canShowMore
+        ? '<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true"' + (history.loading ? ' disabled aria-busy="true"' : '') + '>' + (history.error ? 'Повторити' : (history.visible < history.loaded.length ? 'Показати ще · +' + (history.loaded.length - history.visible) : 'Завантажити ще')) + '</button>'
+        : '';
+      completionList().innerHTML =
+        '<div class="cabinet-completion-list-head"><h4>Історія</h4><span>Завантажено ' + history.loaded.length + ' із ' + history.total + '</span></div>' +
+        rows +
+        (history.loading ? '<div class="cabinet-completion-loading" role="status">Завантажуємо історію…</div>' : '') +
+        (history.error ? '<div class="cabinet-completion-error" role="status">' + history.error + '</div>' : '') +
+        footer;
+    };
+    const renderTodayRows = () => {
+      completionList().innerHTML =
+        '<div class="cabinet-completion-list-head"><h4>Recent</h4><span>1 of 1</span></div>' +
+        '<button type="button" class="cabinet-completion-row" data-cabinet-task-action="open" data-task-id="777"><span class="cabinet-completion-row-mark" aria-hidden="true">1</span><span class="cabinet-completion-row-main"><b>Completed row QA</b><small>Задача виконана · 12:00 · 2 min · 1/2 points</small><span class="cabinet-completion-row-impacts" data-completion-impact-fixture="row">' + impacts.slice(0, 2).map(renderCompletionImpactChip).join('') + '<span class="cabinet-completion-impact-chip is-muted">+2</span></span></span></button>' +
+        '<button type="button" class="cabinet-completion-row" data-cabinet-completion-extra hidden data-cabinet-task-action="open" data-task-id="778"><span class="cabinet-completion-row-mark" aria-hidden="true">2</span><span class="cabinet-completion-row-main"><b>Subtask-only row QA</b><small>Виконано 2 підпунктів · 11:50 · 1 min · 2/3 points</small><span class="cabinet-completion-row-impacts"><span class="cabinet-completion-impact-chip is-muted">Без впливу</span></span></span></button>' +
+        '<button type="button" class="cabinet-completion-all" data-cabinet-completion-all="true">Показати ще · +3</button>';
+    };
+    const setCompletionTab = tab => {
+      state.completedActiveTab = tab === 'history' ? 'history' : 'today';
+      for (const name of ['today', 'history']) {
+        const button = completionTab(name);
+        if (!button) continue;
+        const active = name === state.completedActiveTab;
+        button.classList.toggle('active', active);
+        button.setAttribute('aria-selected', active ? 'true' : 'false');
+      }
+      if (state.completedActiveTab === 'history') renderHistoryRows();
+      else renderTodayRows();
+    };
+    const loadCompletionHistoryPage = async () => {
+      const history = state.completedHistory;
+      if (history.loading || !history.hasMore) return;
+      history.loading = true;
+      history.error = '';
+      renderHistoryRows();
+      await new Promise(resolve => setTimeout(resolve, 160));
+      state.completedHistoryApiReads += 1;
+      history.loading = false;
+      if (state.completedHistoryFetchMode === 'fail') {
+        history.error = 'History API down';
+        renderHistoryRows();
+        return;
+      }
+      const seen = new Set(history.loaded.map(row => Number(row.id)));
+      for (const row of history.apiRows) {
+        if (seen.has(Number(row.id))) continue;
+        seen.add(Number(row.id));
+        history.loaded.push(row);
+      }
+      history.visible = Math.min(history.loaded.length, history.visible + 2);
+      history.hasMore = false;
+      history.nextCursor = '';
+      history.error = '';
+      renderHistoryRows();
+    };
+    window.__MY_DAY_INTERACTIONS__.simulateCompletionProjectionRefresh = () => {
+      state.completedProjectionReads += 1;
+      setCompletionTab(state.completedActiveTab);
+    };
     document.addEventListener('click', async event => {
       const completedToggle = event.target.closest('[data-cabinet-completion-toggle]');
       if (completedToggle) {
@@ -217,9 +310,25 @@ function harnessHtml() {
       const completedShowMore = event.target.closest('[data-cabinet-completion-all]');
       if (completedShowMore) {
         event.preventDefault();
+        if (state.completedActiveTab === 'history') {
+          const history = state.completedHistory;
+          if (history.visible < history.loaded.length) {
+            history.visible = Math.min(history.loaded.length, history.visible + 2);
+            renderHistoryRows();
+            return;
+          }
+          await loadCompletionHistoryPage();
+          return;
+        }
         state.completedRowsVisible = (state.completedRowsVisible || 1) + 1;
         document.querySelectorAll('[data-cabinet-completion-extra]').forEach(node => { node.hidden = false; });
         completedShowMore.remove();
+        return;
+      }
+      const completedTab = event.target.closest('[data-cabinet-completion-tab]');
+      if (completedTab) {
+        event.preventDefault();
+        setCompletionTab(completedTab.dataset.cabinetCompletionTab);
         return;
       }
       const actionButton = event.target.closest('[data-cabinet-task-action]');
@@ -517,6 +626,34 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.waitForFunction(() => !document.querySelector('[data-cabinet-completion-extra]')?.hidden);
         assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads), 0, 'Show more must be local and not reload projection');
         assert.match(await page.locator('[data-cabinet-completion-extra]').innerText(), /Виконано 2 підпунктів/);
+        await page.locator('[data-cabinet-completion-tab="history"]').click();
+        await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.completedActiveTab === 'history');
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.completedProjectionReads), 0, 'History tab switch must not reload projection');
+        assert.match(await page.locator('[data-cabinet-completion-details]').textContent(), /Завантажено 3 із 5/);
+        assert.equal(await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').count(), 1, 'History starts with compact visible rows');
+        await page.locator('[data-cabinet-completion-all]').click();
+        await page.waitForFunction(() => document.querySelectorAll('[data-cabinet-completion-details] .cabinet-completion-row').length === 3);
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.completedHistoryApiReads), 0, 'local History rows expand before API pagination');
+        await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.completedHistoryFetchMode = 'fail'; });
+        await page.locator('[data-cabinet-completion-all]').click();
+        await page.waitForSelector('.cabinet-completion-loading');
+        await page.waitForSelector('.cabinet-completion-error', { timeout: 5_000 });
+        assert.match(await page.locator('.cabinet-completion-error').textContent(), /History API down/);
+        assert.equal(await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').count(), 3, 'failed API page must preserve loaded History rows');
+        await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.completedHistoryFetchMode = 'success'; });
+        await page.locator('[data-cabinet-completion-all]').click();
+        await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.completedHistoryApiReads === 2);
+        await page.waitForFunction(() => document.querySelectorAll('[data-cabinet-completion-details] .cabinet-completion-row').length === 5);
+        const historyRows = await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').evaluateAll(rows => rows.map(row => ({
+            id: row.dataset.taskId,
+            text: row.textContent.trim()
+        })));
+        assert.equal(new Set(historyRows.map(row => row.id)).size, historyRows.length, `History rows must be deduped by task id: ${JSON.stringify(historyRows)}`);
+        assert.equal(historyRows.some(row => /duplicate/i.test(row.text)), false, `duplicate API row should not replace existing row: ${JSON.stringify(historyRows)}`);
+        await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.simulateCompletionProjectionRefresh());
+        assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.completedActiveTab), 'history', 'projection refresh should preserve History tab state');
+        assert.equal(await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').count(), 5, 'projection refresh should preserve loaded History rows');
+        assert.equal(await page.locator('[data-cabinet-completion-all]').count(), 0, 'History hides Show more after all cursor pages are loaded');
         const firstCompletedRow = page.locator('[data-cabinet-completion-details] [data-cabinet-task-action="open"]').first();
         const completedRowBounds = await firstCompletedRow.boundingBox();
         assert.ok(completedRowBounds && completedRowBounds.height >= (viewport.width <= 640 ? 44 : 40), `completed row tap target is too small: ${JSON.stringify(completedRowBounds)}`);

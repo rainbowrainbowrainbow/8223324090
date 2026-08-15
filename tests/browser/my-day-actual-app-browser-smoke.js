@@ -434,6 +434,18 @@ async function assertMyDayCompletionPulseContracts(page, label = 'My Day', { ope
     assert.equal(await page.locator('[data-cabinet-completion-tab="today"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
     assert.equal(await page.locator('[data-cabinet-completion-tab="history"]').getAttribute('aria-controls'), 'cabinetCompletionDetails');
     await page.locator('[data-cabinet-completion-tab="history"]').click();
+    await page.waitForFunction(() => document.querySelector('[data-cabinet-completion-tab="history"]')?.getAttribute('aria-selected') === 'true');
+    const historyDetailsText = await page.locator('[data-cabinet-completion-details]').textContent();
+    assert.match(historyDetailsText || '', /Завантажено|Історія виконань поки порожня/, `${label}: History tab exposes loaded-count or empty-state copy`);
+    assert.doesNotMatch(historyDetailsText || '', /Вся історія/i, `${label}: History tab must not promise full history without pagination completion`);
+    const historyShowMore = page.locator('[data-cabinet-completion-all]');
+    if (await historyShowMore.count()) {
+        const beforeHistoryRows = await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').count();
+        await historyShowMore.first().click();
+        await page.waitForFunction(before => document.querySelectorAll('[data-cabinet-completion-details] .cabinet-completion-row').length >= before, beforeHistoryRows);
+        const visibleHistoryIds = await page.locator('[data-cabinet-completion-details] .cabinet-completion-row').evaluateAll(rows => rows.map(row => row.dataset.taskId).filter(Boolean));
+        assert.equal(new Set(visibleHistoryIds).size, visibleHistoryIds.length, `${label}: History rows should not duplicate task ids after Show more`);
+    }
     await page.locator('[data-cabinet-completion-tab="today"]').click();
 
     const showMore = page.locator('[data-cabinet-completion-all]');

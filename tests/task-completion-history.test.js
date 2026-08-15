@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const {
     decodeCompletionHistoryCursor,
+    encodeCompletionHistoryCursor,
     listTaskCompletionHistory,
     normalizeCompletionHistoryLimit
 } = require('../services/taskCompletionHistory');
@@ -143,6 +144,86 @@ test('completion history uses keyset pagination without duplicates across 73 par
     assert.equal(pool.calls.filter(call => /SELECT t\.\*, u\.name AS owner_name/.test(call.text)).length, 3);
 });
 
+test('completion history page matrix covers empty, boundary, and 100+ parent task counts', async () => {
+    for (const total of [0, 1, 36, 37, 73, 105]) {
+        const pool = makeCompletionHistoryPool(completionRows(total, { sameTimestampEvery: 10 }));
+        const seenIds = [];
+        const pageSizes = [];
+        let cursor = '';
+        let safety = 0;
+        do {
+            const page = await listTaskCompletionHistory(pool, {
+                user: USER,
+                businessScope: BUSINESS_SCOPE,
+                cursor,
+                limit: 36,
+                today: '2026-08-14'
+            });
+            safety += 1;
+            pageSizes.push(page.items.length);
+            seenIds.push(...page.items.map(item => item.id));
+            assert.equal(page.pagination.limit, 36, `limit remains stable for ${total}`);
+            assert.equal(page.pagination.returned, page.items.length, `returned count matches items for ${total}`);
+            assert.equal(page.totals.completedParentTotal, total, `total is exact for ${total}`);
+            cursor = page.pagination.nextCursor || '';
+            assert.equal(Boolean(cursor), page.pagination.hasMore, `cursor and hasMore match for ${total}`);
+            assert.ok(safety <= 5, `pagination should finish for ${total}`);
+        } while (cursor);
+
+        assert.equal(seenIds.length, total, `all rows returned for ${total}`);
+        assert.equal(new Set(seenIds).size, total, `no duplicates for ${total}`);
+        assert.equal(
+            pool.calls.filter(call => /SELECT t\.\*, u\.name AS owner_name/.test(call.text)).length,
+            pageSizes.length,
+            `one row query per page for ${total}`
+        );
+        assert.equal(
+            pool.calls.filter(call => /SELECT COUNT\(\*\)::int AS completed_parent_total/.test(call.text)).length,
+            pageSizes.length,
+            `one exact parent-total query per page for ${total}`
+        );
+        assert.deepEqual(
+            pageSizes,
+            total === 0 ? [0] : [
+                ...Array.from({ length: Math.floor(total / 36) }, () => 36),
+                ...(total % 36 ? [total % 36] : [])
+            ],
+            `page sizes are stable for ${total}`
+        );
+    }
+});
+
+test('completion history orders ten identical completion timestamps by id without omissions', async () => {
+    const pool = makeCompletionHistoryPool(completionRows(10, { sameTimestampEvery: 10 }));
+    const first = await listTaskCompletionHistory(pool, {
+        user: USER,
+        businessScope: BUSINESS_SCOPE,
+        limit: 4,
+        today: '2026-08-14'
+    });
+    const second = await listTaskCompletionHistory(pool, {
+        user: USER,
+        businessScope: BUSINESS_SCOPE,
+        cursor: first.pagination.nextCursor,
+        limit: 4,
+        today: '2026-08-14'
+    });
+    const third = await listTaskCompletionHistory(pool, {
+        user: USER,
+        businessScope: BUSINESS_SCOPE,
+        cursor: second.pagination.nextCursor,
+        limit: 4,
+        today: '2026-08-14'
+    });
+    const ids = [...first.items, ...second.items, ...third.items].map(item => item.id);
+
+    assert.deepEqual(ids, [5000, 4999, 4998, 4997, 4996, 4995, 4994, 4993, 4992, 4991]);
+    assert.equal(new Set(ids).size, 10);
+    assert.equal(first.pagination.hasMore, true);
+    assert.equal(second.pagination.hasMore, true);
+    assert.equal(third.pagination.hasMore, false);
+});
+
 test('completion history cursor validates payload and uses timestamp plus id tie-breaker', async () => {
     const pool = makeCompletionHistoryPool(completionRows(37, { sameTimestampEvery: 37 }));
     const first = await listTaskCompletionHistory(pool, {
@@ -173,6 +254,45 @@ test('completion history cursor validates payload and uses timestamp plus id tie
         }),
         error => error.statusCode === 400 && error.code === 'TASK_COMPLETION_HISTORY_CURSOR_INVALID'
     );
+    await assert.rejects(
+        () => listTaskCompletionHistory(pool, {
+            user: USER,
+            businessScope: BUSINESS_SCOPE,
+            cursor: Buffer.from(JSON.stringify({ v: 999, ts: decoded.timestamp, id: decoded.id })).toString('base64url'),
+            today: '2026-08-14'
+        }),
+        error => error.statusCode === 400 && error.code === 'TASK_COMPLETION_HISTORY_CURSOR_INVALID'
+    );
+    await assert.rejects(
+        () => listTaskCompletionHistory(pool, {
+            user: USER,
+            businessScope: BUSINESS_SCOPE,
+            cursor: Buffer.from(JSON.stringify({ v: 1, ts: '2026-08-14T12:00:00.000Z', id: 'not-int' })).toString('base64url'),
+            today: '2026-08-14'
+        }),
+        error => error.statusCode === 400 && error.code === 'TASK_COMPLETION_HISTORY_CURSOR_INVALID'
+    );
+});
+
+test('completion history obsolete valid cursor is not an auth boundary and returns an empty scoped page', async () => {
+    const pool = makeCompletionHistoryPool(completionRows(10));
+    const obsoleteCursor = encodeCompletionHistoryCursor({
+        id: 1,
+        completed_at: '1970-01-01T00:00:00.000Z'
+    });
+    const page = await listTaskCompletionHistory(pool, {
+        user: USER,
+        businessScope: BUSINESS_SCOPE,
+        cursor: obsoleteCursor,
+        limit: 36,
+        today: '2026-08-14'
+    });
+
+    assert.equal(page.success, true);
+    assert.deepEqual(page.items, []);
+    assert.equal(page.pagination.hasMore, false);
+    assert.equal(page.pagination.nextCursor, null);
+    assert.equal(page.totals.completedParentTotal, 10);
 });
 
 test('completion history keeps owner and business scope on every cursor page', async () => {
@@ -182,6 +302,10 @@ test('completion history keeps owner and business scope on every cursor page', a
         owner_user_id: 99,
         assigned_to: 'other',
         owner: 'Other'
+    }))).concat(completionRows(8).map(row => ({
+        ...row,
+        id: row.id - 2000,
+        business_context: 'other_context'
     })));
     const firstPool = makeCompletionHistoryPool(rows);
     const first = await listTaskCompletionHistory(firstPool, {
@@ -198,6 +322,18 @@ test('completion history keeps owner and business scope on every cursor page', a
         limit: 36,
         today: '2026-08-14'
     });
+    const otherBusinessPool = makeCompletionHistoryPool(rows, { businessContext: 'other_context' });
+    const otherBusiness = await listTaskCompletionHistory(otherBusinessPool, {
+        user: USER,
+        businessScope: {
+            mode: 'single',
+            activeContext: 'other_context',
+            selectedContexts: ['other_context']
+        },
+        cursor: first.pagination.nextCursor,
+        limit: 36,
+        today: '2026-08-14'
+    });
     const pageCalls = firstPool.calls.filter(call => /SELECT t\.\*, u\.name AS owner_name/.test(call.text));
     const firstPageCall = pageCalls[0];
 
@@ -206,11 +342,25 @@ test('completion history keeps owner and business scope on every cursor page', a
     assert.match(firstPageCall.text, /COALESCE\(t\.business_context, 'event_genix'\) = \$\d+/);
     assert.equal(second.items.length, 0);
     assert.equal(second.totals.completedParentTotal, 10);
+    assert.equal(otherBusiness.items.length, 0);
+    assert.equal(otherBusiness.totals.completedParentTotal, 8);
 });
 
-test('completion history limit defaults to 36 and caps at 100', () => {
+test('completion history limit defaults to 36 and caps at 100', async () => {
     assert.equal(normalizeCompletionHistoryLimit(undefined), 36);
     assert.equal(normalizeCompletionHistoryLimit('bad'), 36);
     assert.equal(normalizeCompletionHistoryLimit(12), 12);
     assert.equal(normalizeCompletionHistoryLimit(500), 100);
+
+    const pool = makeCompletionHistoryPool(completionRows(105));
+    const page = await listTaskCompletionHistory(pool, {
+        user: USER,
+        businessScope: BUSINESS_SCOPE,
+        limit: 500,
+        today: '2026-08-14'
+    });
+    assert.equal(page.items.length, 100);
+    assert.equal(page.pagination.limit, 100);
+    assert.equal(page.pagination.returned, 100);
+    assert.equal(page.pagination.hasMore, true);
 });

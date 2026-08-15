@@ -350,6 +350,16 @@ function validBundleProposal(impactIds, overrides = {}) {
     };
 }
 
+function acceptedBundleTasks(tasks = []) {
+    return tasks.map(task => {
+        const acceptedFieldMask = ['title', 'description', 'impactIds'];
+        if (task.scheduleDate) acceptedFieldMask.push('scheduleDate');
+        if (task.priority && task.priority !== 'normal') acceptedFieldMask.push('priority');
+        if (Number(task.ownerSuggestion?.userId || 0) > 0) acceptedFieldMask.push('owner');
+        return { ...task, acceptedFieldMask };
+    });
+}
+
 describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, () => {
     before(async () => {
         assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true', 'My Day PostgreSQL tests require isolated disposable target');
@@ -956,7 +966,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             draftFingerprint: preview.data.draftFingerprint,
             proposal: preview.data.proposal,
             bundleTitle: preview.data.proposal.bundleTitle,
-            tasks: preview.data.proposal.tasks,
+            tasks: acceptedBundleTasks(preview.data.proposal.tasks),
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
             idempotencyKey: `ai-bundle-commit-${suffix}`
@@ -1088,7 +1098,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             draftFingerprint: preview.data.draftFingerprint,
             proposal: preview.data.proposal,
             bundleTitle: preview.data.proposal.bundleTitle,
-            tasks: preview.data.proposal.tasks,
+            tasks: acceptedBundleTasks(preview.data.proposal.tasks),
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
             idempotencyKey: `ai-bundle-double-${suffix}`
@@ -1150,7 +1160,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             draftFingerprint: preview.data.draftFingerprint,
             proposal: preview.data.proposal,
             bundleTitle: preview.data.proposal.bundleTitle,
-            tasks: preview.data.proposal.tasks,
+            tasks: acceptedBundleTasks(preview.data.proposal.tasks),
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
             idempotencyKey: `ai-bundle-dup-${suffix}`
@@ -1214,7 +1224,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
                 draftFingerprint: preview.data.draftFingerprint,
                 proposal: preview.data.proposal,
                 bundleTitle: preview.data.proposal.bundleTitle,
-                tasks: preview.data.proposal.tasks,
+                tasks: acceptedBundleTasks(preview.data.proposal.tasks),
                 acceptedTaskMask: [0, 1, 2],
                 rejectedTaskMask: [],
                 idempotencyKey: `ai-bundle-impact-fail-${suffix}`

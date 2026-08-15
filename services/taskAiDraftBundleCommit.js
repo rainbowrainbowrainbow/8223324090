@@ -30,6 +30,17 @@ const MAX_BUNDLE_DESCRIPTION_CHARS = 700;
 const AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE = 'task_ai_draft_bundle_commit';
 const AI_DRAFT_BUNDLE_SOURCE_TYPE = 'ai_draft_bundle';
 const BUNDLE_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low']);
+const BUNDLE_FIELD_ALLOWLIST = Object.freeze(['title', 'description', 'impactIds', 'scheduleDate', 'priority', 'owner']);
+const BUNDLE_FIELD_ALIASES = Object.freeze({
+    impacts: 'impactIds',
+    impact_ids: 'impactIds',
+    dueDate: 'scheduleDate',
+    due_date: 'scheduleDate',
+    date: 'scheduleDate',
+    ownerUserId: 'owner',
+    owner_user_id: 'owner',
+    assigned_to: 'owner'
+});
 
 function bundleCommitError(message, statusCode, code) {
     const error = new Error(message);
@@ -75,6 +86,19 @@ function normalizeOwnerSuggestion(value = {}) {
     };
 }
 
+function normalizeAcceptedFieldMask(value) {
+    const raw = Array.isArray(value) ? value : [];
+    const fields = [...new Set(raw
+        .map(item => String(item || '').trim())
+        .filter(Boolean)
+        .map(field => BUNDLE_FIELD_ALIASES[field] || field))];
+    const unsupported = fields.filter(field => !BUNDLE_FIELD_ALLOWLIST.includes(field));
+    if (unsupported.length) {
+        throw bundleCommitError('Bundle task field mask contains unsupported fields.', 400, 'TASK_AI_BUNDLE_FIELD_MASK_INVALID');
+    }
+    return fields;
+}
+
 function normalizeBundleTask(value = {}, index = 0) {
     const task = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const title = compactString(task.title, MAX_BUNDLE_TITLE_CHARS);
@@ -88,6 +112,7 @@ function normalizeBundleTask(value = {}, index = 0) {
         priority: normalizePriority(task.priority),
         scheduleDate: normalizeScheduleDate(task.scheduleDate || task.schedule_date),
         ownerSuggestion: normalizeOwnerSuggestion(task.ownerSuggestion || task.owner_suggestion || {}),
+        acceptedFieldMask: normalizeAcceptedFieldMask(task.acceptedFieldMask || task.accepted_field_mask || task.acceptedFields || task.accepted_fields),
         userEdited: task.userEdited === true || task.user_edited === true
     };
 }
@@ -148,6 +173,25 @@ function validateBundleTasksAgainstRuntime({ tasks, activeImpacts }) {
         const unknownImpactIds = task.impactIds.filter(id => !allowedImpactIds.has(Number(id)));
         if (unknownImpactIds.length) {
             throw bundleCommitError(`Bundle task ${index + 1} contains unavailable impact IDs.`, 422, 'TASK_AI_BUNDLE_UNKNOWN_IMPACT');
+        }
+    }
+}
+
+function validateBundleTaskFieldMasks({ tasks, userId }) {
+    for (const [index, task] of tasks.entries()) {
+        const accepted = new Set(task.acceptedFieldMask || []);
+        if (!accepted.has('title') || !accepted.has('impactIds')) {
+            throw bundleCommitError(`Bundle task ${index + 1} is missing required accepted fields.`, 400, 'TASK_AI_BUNDLE_FIELD_MASK_REQUIRED');
+        }
+        if (task.scheduleDate && !accepted.has('scheduleDate')) {
+            throw bundleCommitError(`Bundle task ${index + 1} schedule requires explicit confirmation.`, 400, 'TASK_AI_BUNDLE_SCHEDULE_UNCONFIRMED');
+        }
+        if (task.priority !== 'normal' && !accepted.has('priority')) {
+            throw bundleCommitError(`Bundle task ${index + 1} priority requires explicit confirmation.`, 400, 'TASK_AI_BUNDLE_PRIORITY_UNCONFIRMED');
+        }
+        const ownerId = Number(task.ownerSuggestion?.userId || 0);
+        if (ownerId > 0 && ownerId !== Number(userId || 0) && !accepted.has('owner')) {
+            throw bundleCommitError(`Bundle task ${index + 1} owner requires explicit confirmation.`, 400, 'TASK_AI_BUNDLE_OWNER_UNCONFIRMED');
         }
     }
 }
@@ -352,6 +396,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw bundleCommitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
+    validateBundleTaskFieldMasks({ tasks, userId });
     validateBundleTasksAgainstRuntime({
         tasks,
         activeImpacts: input.activeImpacts || input.impacts || [],
@@ -524,7 +569,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     bundleId,
                     bundleTaskIndex: index,
                     impactCount: finalTask.impactIds.length,
-                    scheduleWritten: Boolean(finalTask.scheduleDate)
+                    scheduleWritten: Boolean(finalTask.scheduleDate),
+                    changedFields: finalTask.acceptedFieldMask
                 },
                 meta: {
                     idempotencyKey,
@@ -539,6 +585,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
                     provider: 'openai',
                     model: MY_DAY_TASK_AI_MODEL,
+                    acceptedFieldMask: finalTask.acceptedFieldMask,
                     source: AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,
                     rawPromptStored: false,
                     rawProviderResponseStored: false
@@ -560,7 +607,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 taskCount: taskIds.length,
                 acceptedTaskMask,
                 rejectedTaskMask,
-                impactCounts: tasks.map(task => task.impactIds.length)
+                impactCounts: tasks.map(task => task.impactIds.length),
+                acceptedFieldMasks: tasks.map(task => task.acceptedFieldMask)
             },
             meta: {
                 idempotencyKey,
@@ -575,6 +623,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
                 provider: 'openai',
                 model: MY_DAY_TASK_AI_MODEL,
+                acceptedFieldMasks: tasks.map(task => task.acceptedFieldMask),
                 source: AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,
                 rawPromptStored: false,
                 rawProviderResponseStored: false

@@ -1615,13 +1615,75 @@ test('profile My Day keeps existing projection and shows a non-sensitive load no
     const result = await ctx.refreshMyCabinetTab({ silent: true, keepExistingOnError: true });
     const state = vm.runInContext('({ data: myCabinetData, error: myCabinetLoadError })', ctx);
     const html = ctx.renderMyDayTab();
-    const noticeHtml = html.match(/<div class="cabinet-load-notice"[\s\S]*?<\/div>/)?.[0] || '';
 
     assert.equal(result, null);
     assert.equal(state.data.all[0].title, 'Sensitive existing task title');
     assert.match(state.error, /Не вдалося завантажити задачі/);
-    assert.match(noticeHtml, /data-cabinet-refresh/);
-    assert.doesNotMatch(noticeHtml, /Sensitive existing task title/);
+    assert.match(html, /data-cabinet-refresh/);
+    assert.doesNotMatch(html, /Sensitive existing task title[\s\S]*data-cabinet-refresh/);
+});
+
+test('profile My Day renders a loading shell before slow cabinet projection resolves', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = null;
+        myCabinetLoadError = '';
+        myCabinetLoading = true;
+        activeTab = 'myday';
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+    const noticeHtml = html.match(new RegExp('<div class="cabinet-load-notice[\\s\\S]*?</div>'))?.[0] || '';
+    assert.match(noticeHtml, /Завантажую Мій день/);
+    assert.match(noticeHtml, /is-loading/);
+    assert.doesNotMatch(noticeHtml, /data-cabinet-refresh/);
+    assert.match(html, /id="cabinetMyDaySegmentPanel"/);
+});
+
+test('profile My Day surfaces partial planning metadata instead of silently truncating', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        activeTab = 'myday';
+        myCabinetLoadError = '';
+        myCabinetLoading = false;
+        myCabinetData = {
+            all: [],
+            today: [],
+            overdue: [],
+            waiting: [],
+            private: [],
+            deferred: [],
+            completedHistory: [],
+            planning: { all: [], today: [], overdue: [], noDate: [] },
+            meta: { planning: { isPartial: true, rowLimit: 260, returnedRows: 260, hasMore: true } },
+            stats: { taskQuick: { completedToday: 0, activeMyDay: 260 } }
+        };
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+    `, ctx);
+
+    const html = ctx.renderMyDayTab();
+    assert.match(html, /cabinet-load-notice--partial/);
+    assert.match(html, /Показано перші 260 задач/);
+    assert.match(html, /href="\/tasks\?view=my"/);
+});
+
+test('profile My Day tab switch does not wait for cabinet data before rendering shell', () => {
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const switchStart = source.indexOf('async function switchTab');
+    const switchSlice = source.slice(switchStart, switchStart + 2400);
+    const loadStart = source.indexOf('async function loadProfileData');
+    const loadEnd = source.indexOf('function getProfileResourceState', loadStart);
+    const loadSlice = source.slice(loadStart, loadEnd);
+
+    assert.match(source, /const PROFILE_CABINET_API_TIMEOUT_MS = 25_000/);
+    assert.match(source, /function profileFetchWithTimeout/);
+    assert.match(switchSlice, /myCabinetLoading = true;[\s\S]*tabContent\.innerHTML = renderTabContent\(\);[\s\S]*if \(!locked\) await ensureProfileTabData\(tab\);/);
+    assert.match(loadSlice, /if \(isProfileTaskProjectionTab\(activeTab\)\) return;/);
 });
 
 test('profile my day renders unified completion pulse without hover-only history dots', () => {

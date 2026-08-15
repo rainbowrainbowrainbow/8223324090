@@ -135,7 +135,8 @@ test('My Day task impact chips show every selected impact without an overflow co
     assert.doesNotMatch(html, /my-day-task-chip--more/);
     assert.doesNotMatch(html, /data-cabinet-task-action="reveal-impact"/);
     assert.doesNotMatch(html, /\shidden(?:\s|>)/);
-    assert.match(html, /title="Парк"/);
+    assert.match(html, /title="Прибрати вплив Парк"/);
+    assert.match(html, /aria-label="Прибрати вплив Парк"/);
 });
 
 test('My Day task impact chips keep all five allowed impacts visible', () => {
@@ -150,11 +151,12 @@ test('My Day task impact chips keep all five allowed impacts visible', () => {
     }, { taskId: 101 });
 
     assert.equal((html.match(/data-my-day-impact-id="/g) || []).length, 5);
-    assert.equal((html.match(/data-cabinet-task-action="classification"/g) || []).length, 6);
+    assert.equal((html.match(/data-cabinet-task-action="remove-impact"/g) || []).length, 5);
+    assert.equal((html.match(/data-cabinet-task-action="classification"/g) || []).length, 1);
     assert.doesNotMatch(html, /my-day-task-chip--more|reveal-impact|\shidden(?:\s|>)/);
 });
 
-test('My Day task impact chips open the editor with task and impact ids', () => {
+test('My Day task impact chips remove selected impacts while the add chip opens the editor', () => {
     const context = loadClassificationUi();
     const api = context.window.MyDayClassification;
     const html = api.renderTaskBadges({
@@ -166,15 +168,17 @@ test('My Day task impact chips open the editor with task and impact ids', () => 
     }, { taskId: 101 });
 
     assert.match(html, /<button type="button" class="my-day-task-chip my-day-task-chip--impact my-day-task-chip--editable/);
+    assert.match(html, /data-cabinet-task-action="remove-impact"/);
     assert.match(html, /data-cabinet-task-action="classification"/);
-    assert.doesNotMatch(html, /data-cabinet-task-action="remove-impact"/);
     assert.doesNotMatch(html, /data-cabinet-task-action="reveal-impact"/);
     assert.match(html, /data-task-id="101"/);
     assert.match(html, /data-my-day-impact-id="1"/);
     assert.match(html, /data-my-day-impact-name="CRM"/);
-    assert.match(html, /aria-label="Змінити вплив CRM"/);
+    assert.match(html, /aria-label="Прибрати вплив CRM"/);
+    assert.match(html, /my-day-task-chip-remove/);
     assert.match(html, /data-my-day-impact-id="3"/);
     assert.match(html, /my-day-task-chip--add/);
+    assert.match(html, /aria-label="Додати вплив до задачі"/);
     assert.match(html, />\+<\/span>/);
     assert.doesNotMatch(html, />\+ Вплив<\/span>/);
     assert.doesNotMatch(html, /\shidden(?:\s|>)/);
@@ -220,13 +224,15 @@ test('My Day editable impact chips and task editor have compact responsive CSS s
     assert.match(cabinetCss, /\.cabinet-overdue-triage-row \.my-day-task-chip--editable/);
 });
 
-test('Profile My Day shared task handler opens the editor instead of removing chips directly', () => {
+test('Profile My Day shared task handler removes impact chips and keeps the add chip editor path', () => {
     const profile = read('js/profile-page.js');
 
-    assert.match(profile, /action === 'classification' \|\| action === 'remove-impact'/);
+    assert.match(profile, /if \(action === 'remove-impact'\) \{[\s\S]*removeCabinetTaskImpact\(button,\s*taskId\)/);
+    assert.match(profile, /if \(action === 'classification'\) \{/);
     assert.match(profile, /openTaskEditor\?\.\(anchor,\s*findCabinetTask\(taskId\)/);
     assert.match(profile, /cabinetClassificationMutationInFlight/);
     assert.match(profile, /data-cabinet-task-action="classification"/);
+    assert.match(profile, /data-cabinet-task-action="remove-impact"/);
     assert.doesNotMatch(profile, /data-cabinet-task-action="reveal-impact"/);
     assert.match(profile, /refreshCabinetTaskClassificationBadges\(taskId,\s*classification\)/);
     assert.match(profile, /renderTaskBadges\?\.\(task\.myDay,\s*\{ taskId \}\)/);

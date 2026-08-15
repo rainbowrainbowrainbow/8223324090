@@ -607,6 +607,14 @@ function makeBundleToken(secret = 'proposal-secret', proposalValue = bundlePropo
     };
 }
 
+function bundleTaskAcceptedFieldMask(task = {}) {
+    const fields = new Set(['title', 'description', 'impactIds']);
+    if (task.scheduleDate) fields.add('scheduleDate');
+    if (task.priority && task.priority !== 'normal') fields.add('priority');
+    if (task.ownerSuggestion?.userId) fields.add('owner');
+    return Array.from(fields);
+}
+
 function bundleCommitInput(tokenParts, overrides = {}) {
     const proposalValue = tokenParts.proposal || bundleProposal;
     return {
@@ -621,7 +629,8 @@ function bundleCommitInput(tokenParts, overrides = {}) {
             impactIds: task.impactIds,
             priority: task.priority,
             scheduleDate: task.scheduleDate,
-            ownerSuggestion: task.ownerSuggestion
+            ownerSuggestion: task.ownerSuggestion,
+            acceptedFieldMask: bundleTaskAcceptedFieldMask(task)
         })),
         acceptedTaskMask: proposalValue.tasks.map((_, index) => index),
         rejectedTaskMask: [],
@@ -817,7 +826,7 @@ test('AI draft bundle commit rejects invalid task count, schedule, priority, and
         error => error.code === 'TASK_AI_BUNDLE_SCHEDULE_DATE_INVALID'
     );
     await assert.rejects(
-        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], ownerSuggestion: { userId: 999, name: 'Other', reason: 'Unsafe' } }, base.tasks[1]] }, {
+        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], ownerSuggestion: { userId: 999, name: 'Other', reason: 'Unsafe' }, acceptedFieldMask: [...base.tasks[0].acceptedFieldMask, 'owner'] }, base.tasks[1]] }, {
             pool: fakePool,
             proposalSecret: 'proposal-secret',
             now: 2_000,
@@ -834,6 +843,54 @@ test('AI draft bundle commit rejects invalid task count, schedule, priority, and
     assert.equal(fakePool.state.tasks.length, 0);
     assert.equal(fakePool.state.bundles.length, 0);
     assert.equal(fakePool.state.rolledBack, true);
+});
+
+test('AI draft bundle commit requires explicit field masks for schedule, priority, and reviewed owner', async () => {
+    const tokenParts = makeBundleToken();
+    const base = bundleCommitInput(tokenParts);
+    const fakePool = createFakePool();
+
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [{ ...base.tasks[0], acceptedFieldMask: ['title', 'description', 'impactIds', 'priority'] }, base.tasks[1]]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_SCHEDULE_UNCONFIRMED'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [{ ...base.tasks[0], acceptedFieldMask: ['title', 'description', 'impactIds', 'scheduleDate'] }, base.tasks[1]]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_PRIORITY_UNCONFIRMED'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [{
+                ...base.tasks[0],
+                ownerSuggestion: { userId: 9, name: 'Assignable owner', reason: 'Selected by user.' },
+                acceptedFieldMask: ['title', 'description', 'impactIds', 'scheduleDate', 'priority']
+            }, base.tasks[1]]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_OWNER_UNCONFIRMED'
+    );
+    assert.equal(fakePool.state.calls.length, 0);
 });
 
 test('AI draft bundle commit uses reviewed assignable owners and preserves original accept/reject masks', async () => {
@@ -857,9 +914,16 @@ test('AI draft bundle commit uses reviewed assignable owners and preserves origi
         tasks: [
             {
                 ...proposalValue.tasks[0],
-                ownerSuggestion: { userId: 9, name: 'Assignable owner', reason: 'Selected by user.' }
+                ownerSuggestion: { userId: 9, name: 'Assignable owner', reason: 'Selected by user.' },
+                acceptedFieldMask: bundleTaskAcceptedFieldMask({
+                    ...proposalValue.tasks[0],
+                    ownerSuggestion: { userId: 9, name: 'Assignable owner', reason: 'Selected by user.' }
+                })
             },
-            proposalValue.tasks[2]
+            {
+                ...proposalValue.tasks[2],
+                acceptedFieldMask: bundleTaskAcceptedFieldMask(proposalValue.tasks[2])
+            }
         ],
         acceptedTaskMask: [0, 2],
         rejectedTaskMask: [1]

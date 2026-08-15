@@ -10,6 +10,7 @@ const fixture = JSON.parse(fs.readFileSync(
     path.join(root, 'tests', 'fixtures', 'my-day-ai-composer-quality-evals.json'),
     'utf8'
 ));
+const { TASK_AI_DRAFT_PROMPT_VERSION } = require('../services/taskAiDraftPreview');
 
 const ALLOWED_DECISIONS = new Set(['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
 const SIMPLE_CHECKLIST_CATEGORIES = new Set(['simple', 'checklist']);
@@ -74,6 +75,7 @@ function scoreEffort(effort) {
 
 test('AI composer quality eval fixture covers 50-60 anonymized cases and target domains', () => {
     assert.equal(fixture.contractVersion, 'my_day_ai_composer_proposal_v2');
+    assert.equal(fixture.promptVersion, TASK_AI_DRAFT_PROMPT_VERSION);
     assert.equal(fixture.model, 'gpt-5.6-luna');
     assert.equal(fixture.provider, 'openai_responses');
     assert.ok(fixture.evalCases.length >= 50, `expected at least 50 cases, got ${fixture.evalCases.length}`);

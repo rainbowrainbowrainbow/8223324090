@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.156 - My Day Final AI Hardening
+
+### My Day / AI Composer / (15.08.2026) [codex]
+- **Великі акаунти більше не мають мовчазного обрізання My Day** - projection отримав bounded buckets, metadata partial results і дозавантаження великих списків без повторних важких aggregate-запитів.
+- **My Day реагує швидше і стабільніше** - картки показують skeleton/loading/error states, повторні cabinet-запити дедуплікуються, видалення впливів і dependency/time interactions перевірені для today/overdue.
+- **AI bundle commit став жорсткішим** - backend приймає тільки явно review-нуті поля bundle task, не записує неприйняті owner/due/priority і зберігає atomic/idempotent contract.
+- **E2E gate більше не ховає помилки** - actual-app browser smoke проходить реальні Profile/Tasks/Dashboard через Express і disposable PostgreSQL, без generic ignore для My Day/AI `4xx/5xx` і без реальних OpenAI викликів.
+
+---
+
 ## v0.80.155 - My Day Full Completion History
 
 ### My Day / Completion history / (15.08.2026) [codex]

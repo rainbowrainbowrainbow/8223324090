@@ -75,6 +75,10 @@ function loadGlobalTimer(overrides = {}) {
     context.window.fetch = context.fetch;
     context.window.AbortController = context.AbortController;
     context.window.BroadcastChannel = context.BroadcastChannel;
+    context.setTimeout = overrides.setTimeout || context.setTimeout;
+    context.clearTimeout = overrides.clearTimeout || context.clearTimeout;
+    context.window.setTimeout = context.setTimeout;
+    context.window.clearTimeout = context.clearTimeout;
     vm.createContext(context);
     vm.runInContext(read('js/global-task-timer.js'), context);
     return { api: context.window.GlobalTaskTimer, context, listeners, dispatched };
@@ -123,6 +127,38 @@ test('global task timer cross-tab signal hydrates and notifies My Day surfaces',
     assert.equal(event?.detail?.source, 'global');
     assert.equal(event?.detail?.action, 'start');
     assert.equal(event?.detail?.reason, 'signal');
+});
+
+test('global task timer queues a refresh when hydrate is already in flight', async () => {
+    const pendingFetches = [];
+    const fetchCalls = [];
+    const { api, context } = loadGlobalTimer({
+        setTimeout: callback => {
+            callback();
+            return 1;
+        },
+        fetch: async (url) => {
+            fetchCalls.push(String(url));
+            return new Promise(resolve => {
+                pendingFetches.push(resolve);
+            });
+        }
+    });
+    context.window.isAuthenticatedRuntimeReady = () => true;
+
+    const first = api.hydrate({ reason: 'manual' });
+    const second = api.hydrate({ reason: 'event:start' });
+
+    assert.equal(fetchCalls.length, 1);
+    assert.equal(api.state.pendingHydrate, true);
+    pendingFetches.shift()({ ok: true, status: 200, json: async () => ({ success: true, timer: { taskId: 19, durationSeconds: 4, isActive: true } }) });
+    await first;
+    await second;
+    assert.equal(fetchCalls.length, 2);
+    assert.equal(api.state.pendingHydrate, false);
+    pendingFetches.shift()({ ok: true, status: 200, json: async () => ({ success: true, timer: { taskId: 20, durationSeconds: 8, isActive: true } }) });
+    await new Promise(resolve => setImmediate(resolve));
+    assert.equal(api.state.timer.taskId, 20);
 });
 
 test('global task timer normalizes sanitized and full timer payloads', () => {

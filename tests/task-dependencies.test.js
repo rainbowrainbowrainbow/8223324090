@@ -109,6 +109,9 @@ test('My Day dependency manager keeps backend flow while using the styled depend
     assert.match(ui, /let pending = false/);
     assert.match(ui, /root\.setAttribute\('aria-busy', pending \? 'true' : 'false'\)/);
     assert.match(ui, /if \(pending\) return/);
+    assert.match(ui, /const DEPENDENCY_REQUEST_TIMEOUT_MS = 12000/);
+    assert.match(ui, /Запит передумов зайняв забагато часу/);
+    assert.match(ui, /data-dependency-retry/);
     assert.match(ui, /Введіть мінімум 2 символи/);
     assert.match(ui, /🔗/);
     assert.match(ui, /request\(taskSearchPath\(query\), \{ signal: searchAbortController\?\.signal \}\)/);
@@ -131,6 +134,52 @@ test('My Day dependency manager keeps backend flow while using the styled depend
     assert.match(taskUi, /stableActionAnchor/);
     assert.match(taskUi, /MutationObserver/);
     assert.match(taskUi, /task-ui:surface-close/);
+});
+
+test('dependency manager opens immediately with a loading state before current dependencies resolve', async () => {
+    const root = path.resolve(__dirname, '..');
+    const dom = new JSDOM('<!doctype html><body><button id="anchor" data-task-id="10">Deps</button></body>', {
+        pretendToBeVisual: true,
+        url: 'https://crm.test/profile.html'
+    });
+    let resolveDependencies;
+    const context = vm.createContext({
+        console,
+        window: dom.window,
+        document: dom.window.document,
+        AbortController,
+        fetch: async (url, options = {}) => {
+            const method = String(options.method || 'GET').toUpperCase();
+            if (String(url).includes('/api/tasks/10/dependencies') && method === 'GET') {
+                return new Promise(resolve => {
+                    resolveDependencies = () => resolve({ ok: true, json: async () => ({ dependencies: [] }) });
+                });
+            }
+            throw new Error(`Unexpected fetch ${method} ${url}`);
+        }
+    });
+    context.window.setTimeout = () => 1;
+    context.window.clearTimeout = () => {};
+    context.window.TaskUI = {
+        escapeHtml: value => String(value).replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char])),
+        openActionMenu: (anchor, html) => {
+            const rootNode = context.document.createElement('div');
+            rootNode.innerHTML = html;
+            context.document.body.appendChild(rootNode);
+            return rootNode;
+        }
+    };
+    context.window.getAuthHeaders = () => ({ 'Content-Type': 'application/json' });
+    context.window.showNotification = () => {};
+
+    vm.runInContext(fs.readFileSync(path.join(root, 'js', 'my-day-dependencies.js'), 'utf8'), context);
+    const rootNode = await context.window.MyDayDependencies.openManager(context.document.getElementById('anchor'), { id: 10 }, async () => {});
+
+    assert.match(rootNode.innerHTML, /Завантажую передумови/);
+    assert.doesNotMatch(rootNode.innerHTML, /Передумов ще немає/);
+    resolveDependencies();
+    await new Promise(resolve => setImmediate(resolve));
+    assert.match(rootNode.innerHTML, /Передумов ще немає/);
 });
 
 test('TaskUI reanchors submenu surfaces to stable task controls instead of detached menu buttons', async () => {

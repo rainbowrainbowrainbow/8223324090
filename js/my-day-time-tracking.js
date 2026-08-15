@@ -96,7 +96,8 @@
         syncTicker(hasTimerSurface);
         if (hasTimerSurface) updateTimerDom();
     }
-    async function load() {
+    async function load(options = {}) {
+        if (state.loaded && options.force !== true) return state.timer;
         if (timerLoadPromise) return timerLoadPromise;
         state.loading = true;
         timerLoadPromise = (async () => {

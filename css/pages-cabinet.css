@@ -1824,6 +1824,91 @@ body.dark-mode .profile-task-priority--low {
     margin-top: 0;
 }
 
+.cabinet-bucket-more {
+    align-items: center;
+    appearance: none;
+    background: color-mix(in srgb, var(--accent, #14b8a6) 12%, var(--surface-muted, #f1f5f9));
+    border: 1px solid color-mix(in srgb, var(--accent, #14b8a6) 28%, rgba(148, 163, 184, 0.42));
+    border-radius: 999px;
+    color: var(--text-primary, #0f172a);
+    cursor: pointer;
+    display: inline-flex;
+    gap: 8px;
+    font-weight: 800;
+    justify-content: center;
+    margin: 8px auto 0;
+    min-height: 38px;
+    padding: 8px 14px;
+}
+
+.cabinet-bucket-more small {
+    color: inherit;
+    font-size: 0.78rem;
+    font-weight: 800;
+    opacity: 0.72;
+}
+
+.cabinet-bucket-more:hover,
+.cabinet-bucket-more:focus-visible {
+    background: color-mix(in srgb, var(--accent, #14b8a6) 18%, var(--surface-muted, #f1f5f9));
+    outline: 2px solid color-mix(in srgb, var(--accent, #14b8a6) 35%, transparent);
+    outline-offset: 2px;
+}
+
+.cabinet-bucket-more.is-busy {
+    cursor: wait;
+    opacity: 0.74;
+}
+
+.cabinet-task-card--skeleton {
+    pointer-events: none;
+}
+
+.cabinet-task-skeleton-line,
+.cabinet-task-skeleton-row span {
+    animation: cabinetSkeletonPulse 1.15s ease-in-out infinite alternate;
+    background: linear-gradient(90deg, rgba(148, 163, 184, 0.20), rgba(148, 163, 184, 0.36), rgba(148, 163, 184, 0.20));
+    border-radius: 999px;
+    display: block;
+}
+
+.cabinet-task-skeleton-line.is-title {
+    height: 18px;
+    max-width: 360px;
+    width: 72%;
+}
+
+.cabinet-task-skeleton-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 7px;
+    margin-top: 12px;
+}
+
+.cabinet-task-skeleton-row span {
+    height: 28px;
+    width: 96px;
+}
+
+@keyframes cabinetSkeletonPulse {
+    from { opacity: 0.52; }
+    to { opacity: 0.92; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .cabinet-task-skeleton-line,
+    .cabinet-task-skeleton-row span {
+        animation: none;
+    }
+}
+
+body.dark-mode .cabinet-bucket-more,
+html[data-theme="dark"] body .cabinet-bucket-more {
+    background: color-mix(in srgb, var(--accent, #14b8a6) 16%, rgba(15, 23, 42, 0.86));
+    border-color: color-mix(in srgb, var(--accent, #14b8a6) 26%, rgba(148, 163, 184, 0.32));
+    color: rgba(226, 232, 240, 0.94);
+}
+
 .cabinet-task-card .my-day-task-impact-chips,
 .cabinet-overdue-triage-row .my-day-task-impact-chips {
     display: flex;

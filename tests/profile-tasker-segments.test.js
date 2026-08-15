@@ -25,6 +25,14 @@ function loadProfileTaskerContext() {
                     })
                 };
             }
+            if (target.includes('/api/tasks/my-cabinet') && typeof sandbox.apiGet === 'function') {
+                const scopedPath = target.replace(/^.*\/api/, '');
+                return {
+                    ok: true,
+                    status: 200,
+                    json: async () => sandbox.apiGet(scopedPath)
+                };
+            }
             throw new Error(`Unexpected profile tasker fetch in test harness: ${target}`);
         },
         getAuthHeaders: () => ({}),
@@ -690,8 +698,8 @@ test('profile My Day overdue segment renders triage rows with existing task acti
     assert.match(html, /data-cabinet-overdue-triage/);
     assert.match(html, /Прострочено · 1/);
     assert.match(html, /cabinet-overdue-triage-row/);
-    assert.match(html, /cabinet-overdue-triage-row cabinet-task-card is-personal-day-card is-my-day-compact-card/);
-    assert.match(html, /href="\/tasks\?view=my&open=201"/);
+    assert.match(html, /data-cabinet-overdue-triage-row/);
+    assert.match(html, /data-cabinet-task-action="more"/);
     assert.match(html, /data-cabinet-task-action="move-to-today"/);
     assert.match(html, /data-cabinet-task-action="reschedule-overdue"/);
     assert.match(html, /data-reschedule-option="custom"/);
@@ -1443,6 +1451,7 @@ test('profile My Day ignores an older custom-date projection response', async ()
     const olderRequest = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
     controls.get('cabinetTaskDate').value = '2099-05-31';
     const newerRequest = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
+    await new Promise(resolve => setImmediate(resolve));
 
     assert.equal(pending[0].url, '/tasks/my-cabinet?focusDate=2099-05-30');
     assert.equal(pending[1].url, '/tasks/my-cabinet?focusDate=2099-05-31');
@@ -1455,6 +1464,64 @@ test('profile My Day ignores an older custom-date projection response', async ()
     const state = vm.runInContext('({ data: myCabinetData, error: myCabinetLoadError })', ctx);
     assert.equal(state.data.marker, 'newest');
     assert.equal(state.error, '');
+});
+
+test('profile My Day dedupes identical cabinet projection requests without invalidating the active response', async () => {
+    const ctx = loadProfileTaskerContext();
+    const pending = [];
+    ctx.apiGet = url => new Promise(resolve => pending.push({ url, resolve }));
+
+    const first = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
+    const second = ctx.loadMyCabinetProjection({ keepExistingOnError: true });
+    await new Promise(resolve => setImmediate(resolve));
+
+    assert.equal(pending.length, 1);
+    assert.equal(pending[0].url, '/tasks/my-cabinet');
+    pending[0].resolve({ marker: 'loaded-once', all: [], today: [], overdue: [], waiting: [], private: [], completedHistory: [] });
+    await first;
+    await second;
+
+    const state = vm.runInContext('({ data: myCabinetData, error: myCabinetLoadError, loadState: myCabinetLoadState })', ctx);
+    assert.equal(state.data.marker, 'loaded-once');
+    assert.equal(state.error, '');
+    assert.equal(state.loadState, 'loaded');
+});
+
+test('profile My Day renders immediate skeleton and partial bucket controls', () => {
+    const ctx = loadProfileTaskerContext();
+    vm.runInContext(`
+        myCabinetData = null;
+        myCabinetLoadState = 'loading';
+        cabinetTaskComposerExpanded = false;
+        cabinetMyDayListMode = 'focused';
+        cabinetCreateDuePreset = 'today';
+    `, ctx);
+
+    const loadingHtml = ctx.renderMyDayTab();
+    assert.match(loadingHtml, /cabinet-task-card--skeleton/);
+    assert.match(loadingHtml, /Завантажую Мій день/);
+
+    vm.runInContext(`
+        myCabinetData = {
+            all: [],
+            today: [],
+            overdue: [{ id: 91, title: 'Old debt', date: '2026-05-01', status: 'todo', priority: 'normal' }],
+            waiting: [],
+            private: [],
+            completedHistory: [],
+            meta: {
+                buckets: {
+                    overdue: { total: 140, returned: 80, hasMore: true, nextOffset: 80, limit: 80 }
+                }
+            }
+        };
+        myCabinetLoadState = 'loaded';
+    `, ctx);
+    const partialHtml = ctx.renderMyDayTab();
+    assert.match(partialHtml, /data-cabinet-bucket-more="overdue"/);
+    assert.match(partialHtml, /data-cabinet-bucket-offset="80"/);
+    assert.match(partialHtml, /Показати ще прострочені/);
+    assert.match(partialHtml, /Показано 80 із 140/);
 });
 
 test('profile My Day fallback payload leaves no_date unscheduled', async () => {

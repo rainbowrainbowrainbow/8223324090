@@ -3,6 +3,7 @@
 
     const MIN_SEARCH_CHARS = 2;
     const SEARCH_DEBOUNCE_MS = 220;
+    const DEPENDENCY_REQUEST_TIMEOUT_MS = 12000;
 
     function escape(value) {
         return window.TaskUI?.escapeHtml?.(String(value ?? '')) || String(value ?? '').replace(/[&<>"']/g, char => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[char]));
@@ -13,10 +14,52 @@
     }
 
     async function request(path, options = {}) {
-        const response = await fetch('/api/tasks' + path, { ...options, headers: { ...headers(), ...(options.headers || {}) } });
-        const payload = await response.json().catch(() => ({}));
-        if (!response.ok || payload.success === false) throw new Error(payload.error || 'Не вдалося оновити передумови.');
-        return payload;
+        const timeoutMs = Number(options.timeoutMs || DEPENDENCY_REQUEST_TIMEOUT_MS);
+        const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+        const externalSignal = options.signal || null;
+        let timeoutId = null;
+        let timedOut = false;
+        let externallyAborted = false;
+        const abortFromExternal = () => {
+            externallyAborted = true;
+            controller?.abort();
+        };
+        try {
+            if (controller && externalSignal) {
+                if (externalSignal.aborted) abortFromExternal();
+                else externalSignal.addEventListener?.('abort', abortFromExternal, { once: true });
+            }
+            if (controller && timeoutMs > 0) {
+                const timer = typeof window.setTimeout === 'function'
+                    ? window.setTimeout.bind(window)
+                    : (typeof setTimeout === 'function' ? setTimeout : null);
+                if (timer) timeoutId = timer(() => {
+                    timedOut = true;
+                    controller.abort();
+                }, timeoutMs);
+            }
+            const { signal: _signal, timeoutMs: _timeoutMs, ...fetchOptions } = options;
+            const response = await fetch('/api/tasks' + path, {
+                ...fetchOptions,
+                signal: controller?.signal || externalSignal || undefined,
+                headers: { ...headers(), ...(options.headers || {}) }
+            });
+            const payload = await response.json().catch(() => ({}));
+            if (!response.ok || payload.success === false) throw new Error(payload.error || 'Не вдалося оновити передумови.');
+            return payload;
+        } catch (error) {
+            if (error?.name === 'AbortError' && externallyAborted && !timedOut) throw error;
+            if (error?.name === 'AbortError' || timedOut) throw new Error('Запит передумов зайняв забагато часу. Повторіть спробу.');
+            throw error;
+        } finally {
+            if (timeoutId) {
+                const cancelTimer = typeof window.clearTimeout === 'function'
+                    ? window.clearTimeout.bind(window)
+                    : (typeof clearTimeout === 'function' ? clearTimeout : null);
+                cancelTimer?.(timeoutId);
+            }
+            externalSignal?.removeEventListener?.('abort', abortFromExternal);
+        }
     }
 
     function renderTaskBlocker(task = {}) {
@@ -46,8 +89,7 @@
     async function openManager(anchor, task, onChanged) {
         const taskId = Number(task?.id || task?.taskId || task?.task_id || anchor?.dataset?.taskId);
         if (!taskId) return null;
-        let state;
-        try { state = await request('/' + taskId + '/dependencies'); } catch (error) { window.showNotification?.(error.message, 'error'); return null; }
+        let state = { dependencies: [], loading: true, error: '' };
         const root = window.TaskUI?.openActionMenu?.(anchor, `
             <div class="my-day-dependency-manager" data-dependency-manager>
                 <p class="my-day-taxonomy-notice">Задача лишається у «Сьогодні». Передумови лише показують, що варто зробити раніше.</p>
@@ -94,6 +136,14 @@
             });
         };
         const renderCurrent = () => {
+            if (state?.loading) {
+                current.innerHTML = '<p class="my-day-dependency-hint">Завантажую передумови…</p>';
+                return;
+            }
+            if (state?.error) {
+                current.innerHTML = '<p class="my-day-dependency-empty">' + escape(state.error) + '</p><button type="button" class="task-ui-menu-item" data-dependency-retry>Повторити</button>';
+                return;
+            }
             const dependencies = state?.dependencies || [];
             current.innerHTML = dependencies.length ? dependencies.map(item => `<div class="my-day-dependency-row">
                 <span title="${escape(item.title)}">${escape(item.title)}</span>
@@ -175,21 +225,35 @@
             }
         };
         const refresh = async () => {
-            state = await request('/' + taskId + '/dependencies');
+            state = { ...state, loading: true, error: '' };
+            renderCurrent();
+            try {
+                state = await request('/' + taskId + '/dependencies');
+            } catch (error) {
+                state = { dependencies: [], loading: false, error: error?.message || 'Не вдалося завантажити передумови.' };
+                renderCurrent();
+                throw error;
+            }
             renderCurrent();
             await onChanged?.();
         };
         renderCurrent();
         renderCandidates();
         syncCreateButton();
+        refresh().catch(error => window.showNotification?.(error.message, 'error'));
         search?.addEventListener('input', scheduleSearch);
         create?.addEventListener('input', syncCreateButton);
         root.addEventListener('click', async event => {
             const link = event.target.closest('[data-dependency-link]');
             const remove = event.target.closest('[data-dependency-remove]');
             const quickCreate = event.target.closest('[data-dependency-quick-create]');
-            if (!link && !remove && !quickCreate) return;
+            const retry = event.target.closest('[data-dependency-retry]');
+            if (!link && !remove && !quickCreate && !retry) return;
             if (pending) return;
+            if (retry) {
+                refresh().catch(error => window.showNotification?.(error.message, 'error'));
+                return;
+            }
             try {
                 setPending(true);
                 if (link) await request('/' + taskId + '/dependencies', { method: 'POST', body: JSON.stringify({ dependsOnTaskId: Number(link.dataset.dependencyLink) }) });

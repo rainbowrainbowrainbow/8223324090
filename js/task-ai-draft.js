@@ -176,10 +176,10 @@
     function normalizeBundleTask(task = {}, index = 0, preview = {}) {
         const rawOwner = task.ownerSuggestion && typeof task.ownerSuggestion === 'object' ? task.ownerSuggestion : {};
         const owners = bundleOwnerCatalog(preview);
-        const requestedOwnerId = Number(rawOwner.userId || preview.currentUserId || 0);
-        const selectedOwner = owners.find(owner => owner.id === requestedOwnerId)
-            || owners.find(owner => owner.id === Number(preview.currentUserId || 0))
-            || null;
+        const requestedOwnerId = Number(rawOwner.userId || rawOwner.user_id || 0);
+        const selectedOwner = requestedOwnerId > 0
+            ? owners.find(owner => owner.id === requestedOwnerId) || null
+            : null;
         return {
             proposalIndex: index,
             clientId: task.clientId || `bundle_${index}_${randomId('task')}`,
@@ -237,10 +237,10 @@
     function bundleTaskNeedsIndividualReview(task = {}, preview = {}) {
         const editedFields = task.userEditedFields instanceof Set ? task.userEditedFields : new Set();
         const currentUserId = Number(preview.currentUserId || 0);
-        const selectedOwnerId = Number(task.ownerSuggestion?.userId || currentUserId || 0);
+        const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
         return (Boolean(task.scheduleDate) && !editedFields.has('scheduleDate'))
             || (task.priority !== 'normal' && !editedFields.has('priority'))
-            || (currentUserId > 0 && selectedOwnerId !== currentUserId && !editedFields.has('ownerUserId'));
+            || (currentUserId > 0 && selectedOwnerId > 0 && selectedOwnerId !== currentUserId && !editedFields.has('ownerUserId'));
     }
 
     function bundleCountLabel(count) {
@@ -310,9 +310,11 @@
     function renderBundleTaskCard(task = {}, index = 0, preview = {}) {
         const number = index + 1;
         const owners = bundleOwnerCatalog(preview);
-        const ownerOptions = owners.length
-            ? owners.map(owner => `<option value="${owner.id}" ${owner.id === Number(task.ownerSuggestion?.userId || 0) ? 'selected' : ''}>${escapeHtml(owner.label)}${owner.role ? ` (${escapeHtml(owner.role)})` : ''}</option>`).join('')
-            : '<option value="">Собі</option>';
+        const selectedOwnerId = Number(task.ownerSuggestion?.userId || 0);
+        const ownerOptions = [
+            `<option value="" ${selectedOwnerId ? '' : 'selected'}>Собі</option>`,
+            ...owners.map(owner => `<option value="${owner.id}" ${owner.id === selectedOwnerId ? 'selected' : ''}>${escapeHtml(owner.label)}${owner.role ? ` (${escapeHtml(owner.role)})` : ''}</option>`)
+        ].join('');
         return `<article class="task-ai-bundle-card ${task.accepted ? 'is-accepted' : ''} ${task.rejected ? 'is-rejected' : ''} ${task.userEdited ? 'is-user-edited' : ''}" data-task-ai-bundle-card="${escapeHtml(task.clientId)}">
             <header class="task-ai-bundle-card-head">
                 <div>

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.155 - My Day Full Completion History
+
+### My Day / Completion history / (15.08.2026) [codex]
+- **Повна історія виконаних задач у pulse** - вкладка `Історія` більше не обмежена тільки локальними 36 записами: перша сторінка береться з projection, наступні сторінки дозавантажуються cursor pagination.
+- **Безпечний backend contract** - додано additive endpoint для parent task completion history зі stable keyset cursor, owner/business scope, limit cap і backward-compatible projection metadata.
+- **Регресійні перевірки** - тести покривають 0/1/36/37/73/100+ виконань, однакові timestamps, no duplicates/no omissions, invalid cursor, business isolation і compact UI без horizontal overflow.
+
+---
+
 ## v0.80.154 - Trusted QA Suppression Cleanup Guard
 
 ### Release / Versioning / (15.08.2026) [codex]

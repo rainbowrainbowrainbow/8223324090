@@ -120,3 +120,19 @@ test('trusted QA production preflight compares legacy date storage canonically',
     assert.match(source, /LEFT\(date::text, 10\) = \$2/);
     assert.doesNotMatch(source, /date = \$2::date/);
 });
+
+test('trusted QA UI WebSocket smoke passes Date objects to timeline subscriptions', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'live-trusted-qa-ui-ws-smoke.js'), 'utf8');
+    assert.match(source, /const viewDate = new Date\(`\$\{dateText\}T00:00:00`\)/);
+    assert.match(source, /window\.syncTimelineWebSocketDateSubscriptions\?\.\(viewDate\)/);
+    assert.doesNotMatch(source, /syncTimelineWebSocketDateSubscriptions\?\.\(dateText\)/);
+});
+
+test('trusted QA UI WebSocket smoke checks live version before mutation phases', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'live-trusted-qa-ui-ws-smoke.js'), 'utf8');
+    assert.match(source, /async function assertLiveSource\(phase\)/);
+    assert.match(source, /before_activity_cancel/);
+    assert.match(source, /before_group_cancel/);
+    assert.match(source, /LIVE_EXPECTED_VERSION/);
+    assert.match(source, /LIVE_EXPECTED_COMMIT/);
+});

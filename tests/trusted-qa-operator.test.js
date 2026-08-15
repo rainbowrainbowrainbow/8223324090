@@ -24,6 +24,7 @@ function plan(overrides = {}) {
         customerId: 219,
         programId: 'qa-banquet-cancel-v1',
         roomResourceId: 'room-marvel',
+        lineId: 'qa-line-1',
         timeWindow: { date: '2099-08-15', from: '12:00', to: '18:00' },
         ttlMinutes: 30,
         maxEntityCount: 40,
@@ -74,6 +75,14 @@ test('trusted QA operator plan rejects unbounded or incomplete manifests', () =>
         /incomplete or outside bounded limits/
     );
     assert.throws(
+        () => withPlanFile(plan({ lineId: '' }), readPlan),
+        /incomplete or outside bounded limits/
+    );
+    assert.throws(
+        () => withPlanFile(plan({ timeWindow: { date: '2099-08-15', from: '18:00', to: '12:00' } }), readPlan),
+        /time window is invalid/
+    );
+    assert.throws(
         () => withPlanFile(plan({
             qaProduct: {
                 ...plan().qaProduct,
@@ -82,6 +91,14 @@ test('trusted QA operator plan rejects unbounded or incomplete manifests', () =>
         }), readPlan),
         /incompatible with the products schema/
     );
+});
+
+test('trusted QA operator binds line and execution window into the manifest hash', () => {
+    const base = withPlanFile(plan(), readPlan);
+    const otherLine = withPlanFile(plan({ lineId: 'qa-line-2' }), readPlan);
+    const otherDate = withPlanFile(plan({ timeWindow: { date: '2099-08-16', from: '12:00', to: '18:00' } }), readPlan);
+    assert.notEqual(manifestHash(base), manifestHash(otherLine));
+    assert.notEqual(manifestHash(base), manifestHash(otherDate));
 });
 
 test('booking routes suppress persistent side effects and register the QA graph', () => {

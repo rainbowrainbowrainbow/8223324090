@@ -174,6 +174,15 @@ function bookingConstraintValue(booking, camel, snake = null) {
     return cleanText(booking?.[camel] ?? (snake ? booking?.[snake] : undefined), 120);
 }
 
+function timeMinutes(value) {
+    const match = String(value || '').trim().match(/^(\d{2}):(\d{2})/);
+    if (!match) return null;
+    const hours = Number(match[1]);
+    const minutes = Number(match[2]);
+    if (hours > 23 || minutes > 59) return null;
+    return hours * 60 + minutes;
+}
+
 function assertRunMatchesRequest(run, req, booking, businessContext) {
     const normalizedContext = normalizeBusinessContext(businessContext || DEFAULT_BUSINESS_CONTEXT);
     if (normalizeBusinessContext(run.business_context || DEFAULT_BUSINESS_CONTEXT) !== normalizedContext) {
@@ -216,6 +225,22 @@ function assertRunMatchesRequest(run, req, booking, businessContext) {
     if (expectedRoom && cleanId(bookingConstraintValue(booking, 'roomResourceId', 'room_resource_id')) !== expectedRoom) {
         throw new TrustedQaRunError('QA run room mismatch', 'QA_RUN_ROOM_MISMATCH', { entityType: 'booking' });
     }
+    const expectedLine = cleanId(run.required_line_id);
+    if (expectedLine && cleanId(bookingConstraintValue(booking, 'lineId', 'line_id')) !== expectedLine) {
+        throw new TrustedQaRunError('QA run timeline line mismatch', 'QA_RUN_LINE_MISMATCH', { entityType: 'booking' });
+    }
+    const expectedDate = cleanText(run.allowed_date, 10);
+    if (expectedDate && cleanText(bookingConstraintValue(booking, 'date'), 10) !== expectedDate) {
+        throw new TrustedQaRunError('QA run date mismatch', 'QA_RUN_DATE_MISMATCH', { entityType: 'booking' });
+    }
+    const start = timeMinutes(run.allowed_start_time);
+    const end = timeMinutes(run.allowed_end_time);
+    const bookingStart = timeMinutes(bookingConstraintValue(booking, 'time'));
+    const duration = Number.parseInt(booking?.duration, 10) || 0;
+    if (start !== null && end !== null
+        && (bookingStart === null || bookingStart < start || bookingStart + duration > end)) {
+        throw new TrustedQaRunError('QA run time window mismatch', 'QA_RUN_TIME_WINDOW_MISMATCH', { entityType: 'booking' });
+    }
     return { endpointKey };
 }
 
@@ -234,9 +259,10 @@ async function createTrustedQaRun(queryable, options = {}) {
             (run_id, token_hash, source, business_context, operator_user_id, test_customer_marker,
              allowed_endpoints, max_entity_count, state, expires_at,
              required_operator_user_id, required_user_id, required_customer_id,
-             required_program_id, required_product_id, required_room_resource_id)
+             required_program_id, required_product_id, required_room_resource_id,
+             required_line_id, allowed_date, allowed_start_time, allowed_end_time)
          VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8, 'active', NOW() + ($9::int * INTERVAL '1 minute'),
-                 $10, $11, $12, $13, $14, $15)
+                  $10, $11, $12, $13, $14, $15, $16, $17::date, $18::time, $19::time)
          RETURNING *`,
         [
             runId,
@@ -253,7 +279,11 @@ async function createTrustedQaRun(queryable, options = {}) {
             options.requiredCustomerId || null,
             options.requiredProgramId || null,
             options.requiredProductId || null,
-            options.requiredRoomResourceId || null
+            options.requiredRoomResourceId || null,
+            options.requiredLineId || null,
+            options.allowedDate || null,
+            options.allowedStartTime || null,
+            options.allowedEndTime || null
         ]
     );
     return { run: result.rows?.[0] || null, token };

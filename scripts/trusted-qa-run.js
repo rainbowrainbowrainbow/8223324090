@@ -51,6 +51,7 @@ function readPlan(filePath) {
         customerId: Number(parsed.customerId),
         programId: String(parsed.programId || parsed.qaProduct?.id || '').trim(),
         roomResourceId: String(parsed.roomResourceId || '').trim(),
+        lineId: String(parsed.lineId || '').trim(),
         timeWindow: parsed.timeWindow || null,
         ttlMinutes: Number(parsed.ttlMinutes),
         maxEntityCount: Number(parsed.maxEntityCount),
@@ -63,11 +64,25 @@ function readPlan(filePath) {
         || !Number.isInteger(manifest.testAccountId) || manifest.testAccountId <= 0
         || !Number.isInteger(manifest.operatorUserId) || manifest.operatorUserId <= 0
         || !Number.isInteger(manifest.customerId) || manifest.customerId <= 0
-        || !manifest.programId || !manifest.roomResourceId
+        || !manifest.programId || !manifest.roomResourceId || !manifest.lineId
         || !Number.isInteger(manifest.ttlMinutes) || manifest.ttlMinutes < 1 || manifest.ttlMinutes > 240
         || !Number.isInteger(manifest.maxEntityCount) || manifest.maxEntityCount < 1 || manifest.maxEntityCount > 500
         || !manifest.allowedEndpoints.length || !manifest.expectedEntityTypes.length) {
         throw new Error('Trusted QA plan is incomplete or outside bounded limits');
+    }
+    const date = String(manifest.timeWindow?.date || '').trim();
+    const from = String(manifest.timeWindow?.from || '').trim();
+    const to = String(manifest.timeWindow?.to || '').trim();
+    const timeMinutes = value => {
+        const match = value.match(/^(\d{2}):(\d{2})$/);
+        return match ? Number(match[1]) * 60 + Number(match[2]) : NaN;
+    };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)
+        || !/^\d{2}:\d{2}$/.test(from) || !/^\d{2}:\d{2}$/.test(to)
+        || !Number.isFinite(Date.parse(`${date}T00:00:00Z`))
+        || !Number.isFinite(timeMinutes(from)) || !Number.isFinite(timeMinutes(to))
+        || timeMinutes(from) < 0 || timeMinutes(to) > 1440 || timeMinutes(from) >= timeMinutes(to)) {
+        throw new Error('Trusted QA time window is invalid');
     }
     if (manifest.qaProduct?.create === true) {
         const product = manifest.qaProduct;
@@ -119,6 +134,40 @@ async function preflight(client, manifest, { forUpdate = false } = {}) {
         [manifest.businessContext, manifest.roomResourceId]
     );
     if (room.rowCount !== 1) throw new Error('Exact trusted QA room is unavailable');
+    const line = await client.query(
+        `SELECT line_id
+           FROM lines_by_date
+          WHERE business_context = $1
+            AND date = $2::date
+            AND line_id = $3
+            AND (
+                from_sheet IS DISTINCT FROM true
+                OR EXISTS (
+                    SELECT 1
+                      FROM staff_schedule ss
+                      JOIN staff scheduled_staff ON scheduled_staff.id = ss.staff_id
+                     WHERE ss.staff_id::text = lines_by_date.line_id
+                       AND LEFT(ss.date::text, 10) = $2
+                       AND ss.status IN ('working', 'remote')
+                       AND COALESCE(scheduled_staff.is_active, true) = true
+                )
+            )${suffix}`,
+        [manifest.businessContext, manifest.timeWindow.date, manifest.lineId]
+    );
+    if (line.rowCount !== 1) throw new Error('Exact trusted QA timeline line is unavailable');
+    const overlap = await client.query(
+        `SELECT COUNT(*)::int AS count
+           FROM bookings
+          WHERE business_context = $1
+            AND date = $2::date
+            AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) NOT IN ('cancelled', 'canceled')
+            AND (line_id = $3 OR room_resource_id = $4)
+            AND time::time < $6::time
+            AND (time::time + (COALESCE(duration, 0)::text || ' minutes')::interval) > $5::time`,
+        [manifest.businessContext, manifest.timeWindow.date, manifest.lineId, manifest.roomResourceId,
+            manifest.timeWindow.from, manifest.timeWindow.to]
+    );
+    if (Number(overlap.rows?.[0]?.count || 0) > 0) throw new Error('Trusted QA time window is not empty');
     const product = await client.query(
         `SELECT id, is_active,
                 EXISTS (SELECT 1 FROM product_stock_requirements psr WHERE psr.product_id::text = products.id::text) AS has_stock
@@ -145,6 +194,8 @@ async function preflight(client, manifest, { forUpdate = false } = {}) {
         accountReady: true,
         customerReady: true,
         roomReady: true,
+        lineReady: true,
+        timeWindowReady: true,
         productAction: manifest.qaProduct?.create === true ? 'create_registered_qa_product' : 'use_existing_qa_product',
         staleRunCount: 0
     };
@@ -177,6 +228,10 @@ async function createExactRun(manifest, approvedHash, tokenFile) {
             requiredProgramId: manifest.programId,
             requiredProductId: manifest.programId,
             requiredRoomResourceId: manifest.roomResourceId,
+            requiredLineId: manifest.lineId,
+            allowedDate: manifest.timeWindow.date,
+            allowedStartTime: manifest.timeWindow.from,
+            allowedEndTime: manifest.timeWindow.to,
             allowedEndpoints: manifest.allowedEndpoints,
             maxEntityCount: manifest.maxEntityCount,
             ttlMinutes: manifest.ttlMinutes,

@@ -115,6 +115,7 @@ test('trusted QA markers require server token and manifest registration', () => 
     const bookings = read('routes/bookings.js');
     const migration = read('db/migrations/333_trusted_qa_runs.sql');
     const lifecycleMigration = read('db/migrations/334_trusted_qa_lifecycle_hardening.sql');
+    const executionWindowMigration = read('db/migrations/335_trusted_qa_execution_window.sql');
     const scheduler = read('server.js');
     const schedulerSurface = read('config/schedulerSurface.js');
     const schedulerDocs = read('docs/SCHEDULER_SURFACE.md');
@@ -141,6 +142,11 @@ test('trusted QA markers require server token and manifest registration', () => 
     assert.match(migration, /trusted_qa_run_entities/);
     assert.match(lifecycleMigration, /trusted_qa_run_token_uses/);
     assert.match(lifecycleMigration, /cleanup_pending/);
+    assert.match(executionWindowMigration, /required_line_id/);
+    assert.match(executionWindowMigration, /allowed_date/);
+    assert.match(service, /QA_RUN_LINE_MISMATCH/);
+    assert.match(service, /QA_RUN_DATE_MISMATCH/);
+    assert.match(service, /QA_RUN_TIME_WINDOW_MISMATCH/);
     assert.match(scheduler, /runTrustedQaCleanupWatchdog/);
     assert.match(schedulerSurface, /runTrustedQaCleanupWatchdog/);
     assert.match(schedulerDocs, /tests\/trusted-qa-runs\.test\.js/);

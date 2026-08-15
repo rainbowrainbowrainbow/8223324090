@@ -53,6 +53,10 @@ function makeRun(overrides = {}) {
         required_program_id: '501',
         required_product_id: null,
         required_room_resource_id: 'room-qa',
+        required_line_id: 'line-qa',
+        allowed_date: '2026-08-14',
+        allowed_start_time: '12:00:00',
+        allowed_end_time: '18:00:00',
         test_customer_marker: 'qa-test-customer',
         allowed_endpoints: ['POST /api/bookings'],
         max_entity_count: 3,
@@ -69,7 +73,10 @@ function makeBooking(overrides = {}) {
         customerId: 101,
         programId: 501,
         roomResourceId: 'room-qa',
+        lineId: 'line-qa',
         date: '2026-08-14',
+        time: '13:00',
+        duration: 60,
         status: 'confirmed',
         ...overrides
     };
@@ -136,7 +143,11 @@ class FakeTrustedQaDb {
                 required_customer_id: params[11],
                 required_program_id: params[12],
                 required_product_id: params[13],
-                required_room_resource_id: params[14]
+                required_room_resource_id: params[14],
+                required_line_id: params[15],
+                allowed_date: params[16],
+                allowed_start_time: params[17],
+                allowed_end_time: params[18]
             };
             this.run = row;
             return { rows: [row], rowCount: 1 };
@@ -366,6 +377,22 @@ test('child bookings reuse token but still must match exact QA constraints', asy
     assert.equal(db.tokenUses.size, 1);
 });
 
+test('trusted QA token is bound to the exact line, date, and complete time window', async () => {
+    for (const [booking, code] of [
+        [makeBooking({ lineId: 'line-other' }), 'QA_RUN_LINE_MISMATCH'],
+        [makeBooking({ date: '2026-08-15' }), 'QA_RUN_DATE_MISMATCH'],
+        [makeBooking({ time: '11:59' }), 'QA_RUN_TIME_WINDOW_MISMATCH'],
+        [makeBooking({ time: '17:30', duration: 60 }), 'QA_RUN_TIME_WINDOW_MISMATCH']
+    ]) {
+        const db = new FakeTrustedQaDb();
+        await assert.rejects(
+            () => prepareTrustedQaBookingInput(db, makeReq({ token: 'valid-token' }), booking, 'event_genix'),
+            err => err instanceof TrustedQaRunError && err.code === code
+        );
+        assert.equal(db.tokenUses.size, 0);
+    }
+});
+
 test('registered entity IDs are stored atomically and enforce max count', async () => {
     const db = new FakeTrustedQaDb();
     const context = await prepareTrustedQaBookingInput(db, makeReq({ token: 'valid-token', requestId: 'req-register' }), makeBooking(), 'event_genix');
@@ -445,6 +472,10 @@ test('createTrustedQaRun stores only token hash and returns raw token to caller'
         requiredCustomerId: '101',
         requiredProgramId: '501',
         requiredRoomResourceId: 'room-qa',
+        requiredLineId: 'line-qa',
+        allowedDate: '2026-08-14',
+        allowedStartTime: '12:00',
+        allowedEndTime: '18:00',
         allowedEndpoints: ['POST /api/bookings']
     });
 

@@ -181,3 +181,76 @@ Provide one approved production operator credential/path that can perform the tr
 - verify no `cleanup_pending` or `blocked` leftovers.
 
 After that, rerun Task 2 with a fresh manifest and owner approval. Do not use unrelated audit credentials or infer permission from client-supplied QA markers.
+
+## 2026-08-15 update — operator credential verified, old manifest stopped on live drift
+
+The local operator credential was added outside the repository and verified without printing secrets.
+
+Verified database access:
+
+- host class: Railway public proxy
+- database: `railway`
+- current DB user: `postgres`
+- `trusted_qa_runs`: `SELECT`, `INSERT`, `UPDATE`
+- `trusted_qa_run_entities`: `SELECT`, `INSERT`, `UPDATE`
+
+The previously approved manifest stayed stable before mutation:
+
+- Approved manifest: `77b9da99350afe9e85fbe1240706e97b4e37ffc6d85f78f16ce36092edf7093f`
+- Planned run: `qa-banquet-cancellation-20260819-05`
+- Planned product: `qa-banquet-cancel-20260819-05`
+- Trusted QA registry readable: yes
+- Trusted QA entity registry readable: yes
+- Overlap count: 0
+- Zero-mutation preflight proof: matched
+
+The run was created, but the first live API phase stopped before booking mutations because live had drifted:
+
+- Expected by approved manifest: `0.80.148`, commit `cede1f8c0cab181828d753520b0d01ae3cffc8ca`
+- Actual live at API phase: `0.80.149`, commit `5bfe598c231de97a27165209e3ef983cc96bc1ae`
+- Stop condition: live version/commit drift
+
+Recovery cleanup was executed immediately for exact run DB id `5`.
+
+Cleanup result:
+
+- run id: `qa-banquet-cancellation-20260819-05`
+- final run state: `cleaned`
+- registered entities: 1 product
+- cleaned product: `qa-banquet-cancel-20260819-05`
+- created bookings: 0
+- created groups: 0
+- open tasks: 0
+- outbox events: 0
+- event queue rows: 0
+- cleanup side-effect counts: 0
+- repeated cleanup: success no-op
+- local temporary QA token file: removed
+
+The old approval must not be reused because it is bound to the previous live commit.
+
+Fresh manifest for the current live release:
+
+- Live version: `0.80.149`
+- Live commit: `5bfe598c231de97a27165209e3ef983cc96bc1ae`
+- Source branch: `codex/checkbox-hardening-release-v080103`
+- Manifest hash: `aa524854d74bb534b7cb6c0cd70f1171629159ef57e506b5eee56115962d3891`
+- Bundle hash: `ee3b418d851eaa91e618696f6ad0823a2efab7b49aaf5edcc0b7a24c8d5d519d`
+- Planned run: `qa-banquet-cancellation-20260819-06`
+- Planned product: `qa-banquet-cancel-20260819-06`
+- Artifact directory: `output/task2-trusted-qa-plan-live-080149-20260815`
+- Trusted QA registry readable: yes
+- Trusted QA entity registry readable: yes
+- Overlap count: 0
+- Previous readable side-effect counts: 0
+- Zero-mutation proof: matched
+
+New exact approval required:
+
+```text
+APPROVE TRUSTED QA RUN aa524854d74bb534b7cb6c0cd70f1171629159ef57e506b5eee56115962d3891 FOR ACCOUNT 48, CONTEXT event_genix, ROOM room-marvel, LINE 932, DATE 2026-08-19, WINDOW 12:00-18:00, MAX ENTITIES 40, TTL 30.
+```
+
+Current incident status:
+
+`BLOCKED_ON_FRESH_TRUSTED_QA_APPROVAL_AFTER_LIVE_DRIFT`

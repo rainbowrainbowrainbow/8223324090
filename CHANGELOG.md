@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.145 - Trusted QA Production Preflight
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Production schema compatibility** - operator preflight канонічно порівнює legacy text-like booking/line dates через ISO date key замість несумісного `VARCHAR = DATE`.
+- **Fail-closed regression** - focused test забороняє повертати небезпечний `date = $2::date` у trusted QA preflight.
+- **Mutation не відбулася** - помилку виявлено read-only plan до створення нового run/product/bookings.
+
+---
+
 ## v0.80.144 - Trusted QA Execution Window
 
 ### Release / Versioning / (15.08.2026) [codex]

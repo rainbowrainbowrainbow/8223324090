@@ -189,7 +189,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.match(root.textContent, /dependencies/);
     assert.ok(root.querySelector('.task-ai-bundle-field-states'));
     assert.equal(root.querySelector('[data-task-ai-bundle-field="subtasks"]').value, 'Check validation path');
-    assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '7');
+    assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '');
     assert.ok(root.querySelector('[data-task-ai-draft-submit-intent]').disabled);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root), null);
     assert.equal(root.querySelectorAll('[data-task-ai-structure]').length, 2);

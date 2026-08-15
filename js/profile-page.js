@@ -37,10 +37,10 @@ let myCabinetLoadState = 'idle';
 let myCabinetLastLoadedAt = 0;
 let myTasksSegment = 'all';
 let cabinetProjectionRequestSequence = 0;
-let cabinetProjectionLoadPromise = null;
-let cabinetProjectionLoadKey = '';
-let cabinetProjectionAbortController = null;
 let cabinetLiveCounterPromise = null;
+const cabinetProjectionInFlightByPath = new Map();
+let cabinetProjectionRecent = { path: '', at: 0, data: null };
+const CABINET_PROJECTION_RECENT_REUSE_MS = 2500;
 let cabinetCreateDuePreset = 'today';
 let cabinetMyDayListMode = 'focused';
 let cabinetMyDaySegment = 'today';
@@ -1316,25 +1316,32 @@ async function loadMyCabinetProjection(options = {}) {
     const path = focusDate
         ? `/tasks/my-cabinet?focusDate=${encodeURIComponent(focusDate)}`
         : '/tasks/my-cabinet';
-    const loadKey = path;
-    if (cabinetProjectionLoadPromise && cabinetProjectionLoadKey === loadKey && options.force !== true) {
-        return cabinetProjectionLoadPromise;
+    const cacheKey = path;
+    const now = Date.now();
+    if (options.force !== true
+        && cabinetProjectionRecent.path === cacheKey
+        && cabinetProjectionRecent.data
+        && now - cabinetProjectionRecent.at <= CABINET_PROJECTION_RECENT_REUSE_MS) {
+        return setMyCabinetProjectionData(cabinetProjectionRecent.data, {
+            keepExistingOnError: options.keepExistingOnError,
+            message: options.message
+        });
+    }
+    if (options.force !== true && cabinetProjectionInFlightByPath.has(cacheKey)) {
+        return cabinetProjectionInFlightByPath.get(cacheKey);
     }
     const requestSequence = ++cabinetProjectionRequestSequence;
-    if (cabinetProjectionAbortController && cabinetProjectionLoadKey !== loadKey) {
-        cabinetProjectionAbortController.abort?.();
-    }
-    cabinetProjectionLoadKey = loadKey;
-    cabinetProjectionAbortController = typeof AbortController !== 'undefined' ? new AbortController() : null;
     myCabinetLoadState = myCabinetData ? 'refreshing' : 'loading';
     if (!myCabinetData) myCabinetLoadError = '';
-    cabinetProjectionLoadPromise = (async () => {
+    const promise = (async () => {
         try {
             const data = await apiGetScopedJson(path, {
-                signal: cabinetProjectionAbortController?.signal,
                 timeoutMs: options.timeoutMs || CABINET_PROJECTION_TIMEOUT_MS
             });
             if (requestSequence !== cabinetProjectionRequestSequence) return myCabinetData;
+            if (data && typeof data === 'object') {
+                cabinetProjectionRecent = { path: cacheKey, at: Date.now(), data };
+            }
             return setMyCabinetProjectionData(data, {
                 keepExistingOnError: options.keepExistingOnError,
                 message: options.message
@@ -1346,14 +1353,13 @@ async function loadMyCabinetProjection(options = {}) {
                 message: error?.message || options.message
             });
         } finally {
-            if (cabinetProjectionLoadKey === loadKey) {
-                cabinetProjectionLoadPromise = null;
-                cabinetProjectionLoadKey = '';
-                cabinetProjectionAbortController = null;
+            if (cabinetProjectionInFlightByPath.get(cacheKey) === promise) {
+                cabinetProjectionInFlightByPath.delete(cacheKey);
             }
         }
     })();
-    return cabinetProjectionLoadPromise;
+    cabinetProjectionInFlightByPath.set(cacheKey, promise);
+    return promise;
 }
 
 async function apiPost(path, body) {

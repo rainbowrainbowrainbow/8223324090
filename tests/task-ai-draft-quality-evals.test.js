@@ -83,6 +83,20 @@ test('AI composer quality eval fixture covers 50-60 anonymized cases and target 
         ['Робота: CRM', 'Робота: Hermes', 'Робота: Парк'],
         'eval catalog must use the same canonical names and semantic hints as production'
     );
+    assert.equal(fixture.activeImpacts.length, 32, 'quality eval catalog must expose all canonical impacts');
+    const impactNames = new Set(fixture.activeImpacts.map(impact => impact.name));
+    for (const required of [
+        'Люди / HR',
+        'Документи / право',
+        'Закупівлі / постачання',
+        'Партнерства / нетворкінг',
+        'Творчість / самовираження',
+        'Подорожі / враження',
+        'Спільнота / внесок',
+        'Баланс / сенси'
+    ]) {
+        assert.equal(impactNames.has(required), true, `${required} impact must be available in quality eval catalog`);
+    }
 
     const noChange = fixture.evalCases.find(item => item.id === 'decision_001_simple_no_change');
     assert.equal(noChange.input.mode, 'simple');

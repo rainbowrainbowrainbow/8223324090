@@ -186,6 +186,9 @@
             title: String(task.title || '').trim(),
             description: String(task.description || '').trim(),
             impactIds: Array.isArray(task.impactIds) ? task.impactIds.map(Number).filter(Number.isInteger).slice(0, maxImpacts()) : [],
+            subtasks: Array.isArray(task.subtasks)
+                ? task.subtasks.map(item => ({ title: String(item?.title || item?.name || '').trim() })).filter(item => item.title).slice(0, 7)
+                : [],
             priority: ['urgent', 'high', 'normal', 'low'].includes(String(task.priority || '')) ? String(task.priority) : 'normal',
             scheduleDate: normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date),
             ownerSuggestion: {
@@ -255,6 +258,38 @@
         return 'потрібно підтвердити';
     }
 
+    const BUNDLE_REVIEW_FIELDS = Object.freeze(['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
+
+    function canonicalBundleField(field) {
+        return {
+            ownerUserId: 'owner',
+            ownerSuggestion: 'owner',
+            scheduleDate: 'dueDate',
+            dueDate: 'dueDate'
+        }[field] || field;
+    }
+
+    function editedBundleFieldMask(task = {}) {
+        const edited = task.userEditedFields instanceof Set ? Array.from(task.userEditedFields) : [];
+        return [...new Set(edited.map(canonicalBundleField).filter(field => BUNDLE_REVIEW_FIELDS.includes(field)))];
+    }
+
+    function acceptedBundleFieldMask(task = {}) {
+        if (!task.accepted || task.rejected) return [];
+        return [...BUNDLE_REVIEW_FIELDS];
+    }
+
+    function renderBundleFieldStates(task = {}) {
+        const accepted = new Set(acceptedBundleFieldMask(task));
+        const edited = new Set(editedBundleFieldMask(task));
+        return `<div class="task-ai-bundle-field-states" aria-label="Стан полів задачі">
+            ${BUNDLE_REVIEW_FIELDS.map(field => {
+                const state = edited.has(field) ? 'редаговано вручну' : (accepted.has(field) ? 'прийнято' : 'очікує підтвердження');
+                return `<span class="task-ai-bundle-field-state ${edited.has(field) ? 'is-user-edited' : (accepted.has(field) ? 'is-accepted' : '')}" data-task-ai-bundle-field-state="${escapeHtml(field)}">${escapeHtml(fieldLabel(field === 'dueDate' ? 'scheduleDate' : field))}: ${escapeHtml(state)}</span>`;
+            }).join('')}
+        </div>`;
+    }
+
     function renderBundleImpactEditor(task = {}, preview = {}) {
         const catalog = Array.from(impactCatalog(preview).values()).filter(impact => Number.isInteger(Number(impact.id)));
         if (!catalog.length) return '<span class="task-ai-draft-muted">Каталог впливів недоступний</span>';
@@ -299,6 +334,10 @@
                     <span>Опис / деталі</span>
                     <textarea data-task-ai-bundle-field="description" rows="3" ${task.rejected ? 'disabled' : ''}>${escapeHtml(task.description)}</textarea>
                 </label>
+                <label class="task-ai-bundle-field-wide">
+                    <span>Чекліст цієї задачі</span>
+                    <textarea data-task-ai-bundle-field="subtasks" rows="3" ${task.rejected ? 'disabled' : ''}>${escapeHtml((task.subtasks || []).map(item => item.title).join('\n'))}</textarea>
+                </label>
                 <label>
                     <span>Виконавець</span>
                     <select data-task-ai-bundle-field="ownerUserId" ${task.rejected ? 'disabled' : ''}>${ownerOptions}</select>
@@ -318,6 +357,7 @@
                     ${renderBundleImpactEditor(task, preview)}
                 </div>
             </div>
+            ${renderBundleFieldStates(task)}
             <p class="task-ai-bundle-review-note">AI-пропозиція. Виконавець, дата і пріоритет застосуються тільки після явного підтвердження.</p>
         </article>`;
     }
@@ -570,6 +610,12 @@
                 .map(input => Number(input.value))
                 .filter(Number.isInteger)
                 .slice(0, maxImpacts());
+        } else if (field === 'subtasks') {
+            task.subtasks = String(control.value || '')
+                .split(/\r?\n/)
+                .map(title => ({ title: title.trim() }))
+                .filter(item => item.title)
+                .slice(0, 7);
         } else if (field === 'ownerUserId') {
             const ownerId = Number(control.value || 0);
             const owner = bundleOwnerCatalog(state.preview).find(item => item.id === ownerId);
@@ -634,9 +680,11 @@
         if (activeTasks.length < 2) return null;
         const acceptedTasks = acceptedBundleTasks(state);
         const tasks = acceptedTasks.map(task => ({
+            proposalIndex: task.proposalIndex,
             title: task.title,
             description: task.description || null,
             impactIds: task.impactIds || [],
+            subtasks: task.subtasks || [],
             priority: task.priority || 'normal',
             scheduleDate: task.scheduleDate || null,
             ownerSuggestion: {
@@ -657,6 +705,14 @@
             tasks,
             acceptedTaskMask: acceptedTasks.map(task => task.proposalIndex),
             rejectedTaskMask: (state.bundleTasks || []).filter(task => task.rejected).map(task => task.proposalIndex),
+            acceptedFieldMasks: acceptedTasks.map(task => ({
+                proposalIndex: task.proposalIndex,
+                fields: acceptedBundleFieldMask(task)
+            })),
+            editedFieldMasks: acceptedTasks.map(task => ({
+                proposalIndex: task.proposalIndex,
+                fields: editedBundleFieldMask(task)
+            })),
             idempotencyKey: state.idempotencyKey || randomId('bundle_commit'),
             sourceSurface: state.config?.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft',
             commitType: 'bundle'

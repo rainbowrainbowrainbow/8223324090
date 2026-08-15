@@ -183,8 +183,54 @@
         return payload;
     }
 
+    function aiPreviewToDecompositionDraft(payload = {}, fallbackMode = 'ai') {
+        const proposal = payload.proposal || {};
+        const subtasks = normalizeDecompositionItems({
+            subtasks: Array.isArray(proposal.subtasks) ? proposal.subtasks : []
+        });
+        if (!payload?.success || !['single_task', 'checklist'].includes(String(proposal.decision || ''))) {
+            return {
+                success: false,
+                error: payload?.error || proposal.reason || 'AI preview is not directly applicable as a subtask draft.',
+                code: payload?.code || `TASK_AI_DRAFT_${String(proposal.decision || 'NO_CHANGE').toUpperCase()}`,
+                proposal,
+                diff: payload.diff || null,
+                proposalToken: payload.proposalToken || null
+            };
+        }
+        if (!subtasks.length) {
+            return {
+                success: false,
+                error: proposal.reason || 'AI не запропонував чекліст для цієї задачі.',
+                code: 'TASK_AI_DRAFT_NO_SUBTASKS',
+                proposal,
+                diff: payload.diff || null,
+                proposalToken: payload.proposalToken || null
+            };
+        }
+        return {
+            success: true,
+            source: 'ai_preview',
+            mode: fallbackMode,
+            subtasks,
+            proposal,
+            diff: payload.diff || null,
+            proposalToken: payload.proposalToken || null,
+            deprecatedEndpoint: null
+        };
+    }
+
     async function requestDecompositionDraft(context = {}) {
         try {
+            const mode = String(context.mode || context.decompositionMode || context.decomposition_mode || 'ai').trim();
+            if (mode === 'ai' || mode === 'template_ai') {
+                const payload = await requestAiDraftPreview({
+                    currentDraft: context,
+                    structurePreference: 'checklist',
+                    sourceSurface: context.sourceSurface || 'task_decomposition_legacy_ui'
+                });
+                return aiPreviewToDecompositionDraft(payload, mode);
+            }
             const payload = await taskApiRequest('/tasks/decompose-draft', {
                 method: 'POST',
                 body: JSON.stringify(context)

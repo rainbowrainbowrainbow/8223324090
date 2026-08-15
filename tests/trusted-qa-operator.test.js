@@ -114,3 +114,9 @@ test('booking routes suppress persistent side effects and register the QA graph'
     assert.match(source, /'banquet_membership'/);
     assert.match(source, /'booking_banquet_link'/);
 });
+
+test('trusted QA production preflight compares legacy date storage canonically', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'trusted-qa-run.js'), 'utf8');
+    assert.match(source, /LEFT\(date::text, 10\) = \$2/);
+    assert.doesNotMatch(source, /date = \$2::date/);
+});

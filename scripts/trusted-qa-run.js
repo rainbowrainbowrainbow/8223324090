@@ -138,7 +138,7 @@ async function preflight(client, manifest, { forUpdate = false } = {}) {
         `SELECT line_id
            FROM lines_by_date
           WHERE business_context = $1
-            AND date = $2::date
+            AND LEFT(date::text, 10) = $2
             AND line_id = $3
             AND (
                 from_sheet IS DISTINCT FROM true
@@ -159,7 +159,7 @@ async function preflight(client, manifest, { forUpdate = false } = {}) {
         `SELECT COUNT(*)::int AS count
            FROM bookings
           WHERE business_context = $1
-            AND date = $2::date
+            AND LEFT(date::text, 10) = $2
             AND LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) NOT IN ('cancelled', 'canceled')
             AND (line_id = $3 OR room_resource_id = $4)
             AND time::time < $6::time

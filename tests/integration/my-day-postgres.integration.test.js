@@ -372,6 +372,30 @@ function bundleAcceptedFieldMasks(proposal, acceptedTaskMask = []) {
     }));
 }
 
+function bundleCommitTasksFromProposal(proposal, acceptedTaskMask = []) {
+    const tasks = Array.isArray(proposal?.tasks) ? proposal.tasks : [];
+    return acceptedTaskMask
+        .map(index => {
+            const task = tasks[index] || {};
+            return {
+                proposalIndex: index,
+                title: task.title,
+                description: task.description || null,
+                impactIds: Array.isArray(task.impactIds) ? task.impactIds : [],
+                subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
+                priority: task.priority || 'normal',
+                scheduleDate: task.scheduleDate || task.dueDate || task.date || null,
+                ownerSuggestion: {
+                    userId: task.ownerSuggestion?.userId || null,
+                    name: task.ownerSuggestion?.name || null,
+                    reason: task.ownerSuggestion?.reason || null
+                },
+                userEdited: task.userEdited === true
+            };
+        })
+        .filter(task => task.title);
+}
+
 describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, () => {
     before(async () => {
         assert.equal(process.env.REQUIRE_ISOLATED_TEST_TARGET, 'true', 'My Day PostgreSQL tests require isolated disposable target');
@@ -1143,7 +1167,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             draftFingerprint: preview.data.draftFingerprint,
             proposal: preview.data.proposal,
             bundleTitle: preview.data.proposal.bundleTitle,
-            tasks: preview.data.proposal.tasks,
+            tasks: bundleCommitTasksFromProposal(preview.data.proposal, [0, 1, 2]),
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
             acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
@@ -1277,7 +1301,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             draftFingerprint: preview.data.draftFingerprint,
             proposal: preview.data.proposal,
             bundleTitle: preview.data.proposal.bundleTitle,
-            tasks: preview.data.proposal.tasks,
+            tasks: bundleCommitTasksFromProposal(preview.data.proposal, [0, 1, 2]),
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
             acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
@@ -1341,7 +1365,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
             draftFingerprint: preview.data.draftFingerprint,
             proposal: preview.data.proposal,
             bundleTitle: preview.data.proposal.bundleTitle,
-            tasks: preview.data.proposal.tasks,
+            tasks: bundleCommitTasksFromProposal(preview.data.proposal, [0, 1, 2]),
             acceptedTaskMask: [0, 1, 2],
             rejectedTaskMask: [],
             acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),
@@ -1407,7 +1431,7 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
                 draftFingerprint: preview.data.draftFingerprint,
                 proposal: preview.data.proposal,
                 bundleTitle: preview.data.proposal.bundleTitle,
-                tasks: preview.data.proposal.tasks,
+                tasks: bundleCommitTasksFromProposal(preview.data.proposal, [0, 1, 2]),
                 acceptedTaskMask: [0, 1, 2],
                 rejectedTaskMask: [],
                 acceptedFieldMasks: bundleAcceptedFieldMasks(preview.data.proposal, [0, 1, 2]),

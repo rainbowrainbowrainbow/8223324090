@@ -971,7 +971,9 @@ async function main() {
         assert.ok(await page.locator('[data-task-ai-bundle-card]').count() >= 3, 'bundle preview renders at least three task cards for accept/reject coverage');
         await page.locator('[data-task-ai-bundle-accept-all]').click();
         const editedBundleTitle = `Bundle CRM edited actual app ${RUN_ID}`;
-        await page.locator('[data-task-ai-bundle-card]').first().locator('[data-task-ai-bundle-field="title"]').fill(editedBundleTitle);
+        const firstBundleCard = page.locator('[data-task-ai-bundle-card]').first();
+        await firstBundleCard.locator('[data-task-ai-bundle-field="title"]').fill(editedBundleTitle);
+        await firstBundleCard.locator('[data-task-ai-bundle-accept]').click();
         await page.locator('[data-task-ai-bundle-card]').nth(2).locator('[data-task-ai-bundle-reject]').click();
         await page.waitForFunction(() => {
             const composer = document.getElementById('cabinetTaskComposer');

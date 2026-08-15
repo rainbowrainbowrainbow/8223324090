@@ -1108,7 +1108,7 @@ async function main() {
         await page.locator('#taskTitle').fill(`Tasks AI simple source ${RUN_ID}`);
         await page.locator('#taskDescription').fill('Create a simple task through the canonical AI flow.');
         await page.locator('[data-task-ai-draft-preview]').click();
-        await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує оновити задачу' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-task-ai-draft-review]').filter({ hasText: 'AI пропонує зміни' }).waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('[data-task-ai-draft-accept-all]').click();
         const tasksSimpleAiCommitResponse = waitForApiResponse(page, 'POST', '/api/tasks/ai-draft/commit');
         await submitTasksComposer(page);

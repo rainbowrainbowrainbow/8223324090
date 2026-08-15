@@ -248,6 +248,30 @@ function harnessHtml() {
         }
         return;
       }
+      if (action === 'remove-impact') {
+        event.preventDefault();
+        const taskId = Number(actionButton.dataset.taskId);
+        const impactId = Number(actionButton.dataset.myDayImpactId);
+        const currentImpactIds = (state.tasks[taskId]?.myDay?.impacts || [])
+          .map(impact => Number(impact.id))
+          .filter(id => Number.isFinite(id));
+        const nextImpactIds = currentImpactIds.filter(id => id !== impactId);
+        try {
+          const response = await window.fetch('/api/my-day/tasks/' + taskId + '/classification', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ impactIds: nextImpactIds })
+          });
+          const payload = await response.json();
+          if (!response.ok || payload?.success === false) {
+            throw new Error(payload?.error || 'classification failed');
+          }
+          applyClassification(taskId, payload.classification || classificationFromIds(nextImpactIds));
+        } catch (error) {
+          window.showNotification(error.message || String(error), 'error');
+        }
+        return;
+      }
       if (action !== 'classification') return;
       event.preventDefault();
       const taskId = Number(actionButton.dataset.taskId);
@@ -629,12 +653,12 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         });
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Системність'));
-        await page.waitForSelector('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="3"]');
-        const impactButtons = page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id]');
+        await page.waitForSelector('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="3"]');
+        const impactButtons = page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id]');
         assert.equal(await impactButtons.count(), 5);
         assert.equal((await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"].my-day-task-chip--add').textContent())?.trim(), '+');
         assert.equal(await page.locator('[data-cabinet-task-action="reveal-impact"][data-task-id="101"]').count(), 0);
-        assert.equal(await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"]').count(), 0);
+        assert.equal(await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"]').count(), 5);
         const impactVisibility = await impactButtons.evaluateAll(buttons => buttons.map(button => {
           const rect = button.getBoundingClientRect();
           return { hidden: button.hidden, width: rect.width, height: rect.height };
@@ -647,21 +671,19 @@ async function runScenario(browser, fixture, { dark, viewport }) {
           fullPage: true
         });
         const putCountBeforeRemove = await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length);
-        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="1"]').click();
-        await page.locator('[data-my-day-editor-remove-impact="1"]').click();
-        await page.locator('[data-my-day-editor-save]').click();
+        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
         await page.waitForFunction(() => !document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Системність'));
         assert.equal(await page.evaluate(() => window.__MY_DAY_INTERACTIONS__.state.calls.filter(call => call === 'PUT /api/my-day/tasks/101/classification').length), putCountBeforeRemove + 1);
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Операційка/);
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Навчання/);
-        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"]').last().click();
+        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"].my-day-task-chip--add').click();
         await page.locator('[data-my-day-editor-create] summary').click();
         await page.locator('[data-my-day-editor-create-form] input[name="name"]').fill('Custom QA');
         await page.locator('[data-my-day-editor-create-form] button[type="submit"]').click();
         await page.waitForSelector('[data-my-day-editor-impact-chip][value="6"]:checked');
         await page.locator('[data-my-day-editor-save]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-classification-badges="101"]')?.textContent?.includes('Custom QA'));
-        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="6"]').click();
+        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"].my-day-task-chip--add').click();
         await page.locator('[data-my-day-editor-edit-impact="6"]').click();
         await page.locator('[data-my-day-editor-edit-form] input[name="name"]').fill('Custom QA Edited');
         await page.locator('[data-my-day-editor-edit-form] button[type="submit"]').click();
@@ -674,13 +696,9 @@ async function runScenario(browser, fixture, { dark, viewport }) {
           window.__MY_DAY_INTERACTIONS__.state.classificationError = true;
           window.__MY_DAY_INTERACTIONS__.applyClassification(101, { impacts: [{ id: 1, name: 'Системність', color: '#6366F1', icon: 'system', isActive: true }] });
         });
-        await page.locator('[data-cabinet-task-action="classification"][data-task-id="101"][data-my-day-impact-id="1"]').click();
-        await page.locator('[data-my-day-editor-remove-impact="1"]').click();
-        await page.locator('[data-my-day-editor-save]').click();
+        await page.locator('[data-cabinet-task-action="remove-impact"][data-task-id="101"][data-my-day-impact-id="1"]').click();
         await page.waitForFunction(() => window.__MY_DAY_INTERACTIONS__.state.notifications.some(item => item.type === 'error'));
         assert.match(await page.locator('[data-my-day-classification-badges="101"]').textContent(), /Системність/);
-        await page.keyboard.press('Escape');
-        await page.waitForSelector('#taskUiActionSurface', { state: 'detached' });
         await page.evaluate(() => { window.__MY_DAY_INTERACTIONS__.state.classificationError = false; });
         await page.locator('[data-cabinet-task-action="time-menu"][data-task-id="101"]').click();
         await page.waitForFunction(() => document.querySelector('[data-my-day-time-menu]') || window.__MY_DAY_INTERACTIONS__.state.timeMenuError);

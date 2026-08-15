@@ -17,12 +17,14 @@
         mounted: false,
         inFlight: false,
         panelOpen: false,
-        lastSignalId: null
+        lastSignalId: null,
+        pendingHydrate: false
     };
 
     let tickInterval = null;
     let reconcileInterval = null;
     let activeRequest = null;
+    let activeHydratePromise = null;
     let channel = null;
     let initialized = false;
 
@@ -216,6 +218,7 @@
         removeNode('globalTaskTimerRail');
         removeNode('globalTaskTimerHeader');
         state.panelOpen = false;
+        document.body?.classList?.remove('global-task-timer-active');
     }
 
     function renderSidebar(timer) {
@@ -342,11 +345,15 @@
     }
 
     async function hydrate(options = {}) {
-        if (state.loading || !hasRuntimeSession()) return state.timer;
+        if (!hasRuntimeSession()) return state.timer;
+        if (state.loading) {
+            state.pendingHydrate = true;
+            return activeHydratePromise || state.timer;
+        }
         state.loading = true;
         activeRequest?.abort?.();
         activeRequest = typeof AbortController !== 'undefined' ? new AbortController() : null;
-        try {
+        activeHydratePromise = (async () => {
             const response = await fetch(TIMER_ENDPOINT, {
                 headers: getAuthHeaders(false),
                 signal: activeRequest?.signal
@@ -361,6 +368,9 @@
             state.hydrated = true;
             render();
             return state.timer;
+        })();
+        try {
+            return await activeHydratePromise;
         } catch (error) {
             if (error?.name !== 'AbortError') {
                 console.warn('[global-task-timer] hydrate failed', { reason: options.reason || 'manual' });
@@ -369,6 +379,11 @@
         } finally {
             state.loading = false;
             activeRequest = null;
+            activeHydratePromise = null;
+            if (state.pendingHydrate) {
+                state.pendingHydrate = false;
+                setTimeout(() => void hydrate({ reason: 'queued' }), 0);
+            }
         }
     }
 
@@ -413,7 +428,7 @@
         const trigger = document.querySelector('[data-global-task-timer-panel-trigger][aria-expanded="true"]');
         state.panelOpen = false;
         render();
-        if (options.returnFocus !== false) trigger?.focus?.();
+        if (options.returnFocus !== false && trigger?.isConnected && trigger.offsetParent !== null) trigger.focus?.();
     }
 
     function bindDom() {

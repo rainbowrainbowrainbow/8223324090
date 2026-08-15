@@ -299,7 +299,7 @@ test('My Day timer Start and Stop notify the global timer immediately', async ()
     assert.deepEqual(fetchCalls, ['POST /api/my-day/timer/start', 'POST /api/my-day/timer/stop']);
 });
 
-test('My Day time disclosure refreshes stale timer state before opening the TaskUI popover', async () => {
+test('My Day time disclosure reuses current timer state before opening the TaskUI popover', async () => {
     const opened = {};
     const fetchCalls = [];
     const fakeRoot = { querySelectorAll: () => [] };
@@ -334,11 +334,12 @@ test('My Day time disclosure refreshes stale timer state before opening the Task
     };
     await api.handleAction('time-menu', 9, async () => {}, trigger, { id: 9, effortMinutes: 30, actualSeconds: 60 });
 
-    assert.deepEqual(fetchCalls, ['GET /api/my-day/timer'], 'opening always waits for a fresh timer snapshot even after prior hydration');
+    assert.deepEqual(fetchCalls, [], 'opening reuses current timer state when it is already hydrated');
     assert.equal(trigger.disabled, false, 'trigger busy state is restored');
     assert.equal(opened.options.title, 'Час задачі');
     assert.equal(opened.options.surfaceClassName, 'my-day-time-popover my-day-time-menu-popover');
-    assert.match(opened.html, /data-my-day-time-menu-action="timer-start"/);
+    assert.match(opened.html, /data-my-day-time-menu-action="timer-stop"/);
+    assert.doesNotMatch(opened.html, /data-my-day-time-menu-action="timer-start"/);
     assert.match(opened.html, /data-my-day-time-menu-action="time-entry"/);
     assert.match(opened.html, /data-my-day-time-menu-action="time-entries"/);
     assert.match(opened.html, />План</);

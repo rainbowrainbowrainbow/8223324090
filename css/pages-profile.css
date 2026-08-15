@@ -413,6 +413,42 @@ body.dark-mode .profile-avatar-crop-actions .profile-settings-primary {
     overflow-wrap: anywhere;
     white-space: normal;
 }
+
+.my-day-task-chip-remove {
+    align-items: center;
+    background: color-mix(in srgb, var(--my-day-chip-color, #64748b) 18%, rgba(15, 23, 42, 0.06));
+    border-radius: 999px;
+    display: inline-flex;
+    flex: 0 0 auto;
+    font-size: 13px;
+    height: 18px;
+    justify-content: center;
+    line-height: 1;
+    margin-inline-start: 1px;
+    opacity: 0.68;
+    transform: scale(0.94);
+    transition: opacity 160ms ease, transform 160ms ease, background-color 160ms ease;
+    width: 18px;
+}
+
+.my-day-task-chip--removable:hover .my-day-task-chip-remove,
+.my-day-task-chip--removable:focus-visible .my-day-task-chip-remove {
+    opacity: 1;
+    transform: scale(1);
+}
+
+@media (hover: hover) and (pointer: fine) {
+    .my-day-task-chip--removable .my-day-task-chip-remove {
+        opacity: 0;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .my-day-task-chip-remove {
+        transition: none;
+        transform: none;
+    }
+}
 .my-day-task-chip--more { background: var(--surface-muted, #f1f5f9); border-color: transparent; }
 
 .task-ui-action-surface--my-day-impacts.is-dialog .task-ui-action-panel {

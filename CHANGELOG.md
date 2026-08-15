@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.154 - Trusted QA Suppression Cleanup Guard
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Trusted QA cleanup із suppression proof** - cleanup проходить для exact QA bookings лише коли серверний marker, `skip_notification=true` і QA product без stock requirements доводять, що business side effects були вимкнені до запису.
+- **Unsupported side-effect tables не ламають exact recovery** - таблиці без durable attribution columns більше не блокують cleanup для verified zero-side-effect QA flow, але лишаються blocker без suppression proof.
+- **Partial QA run recovery** - якщо live QA зупинився між створенням product/booking і наступними сценаріями, canonical cleanup може безпечно прибрати exact registered entities.
+
+---
+
 ## v0.80.153 - Trusted QA Cleanup Guard
 
 ### Release / Versioning / (15.08.2026) [codex]

@@ -780,13 +780,17 @@ async function trustedQaSideEffectCapabilityInventory(queryable, capability, sco
     }
 }
 
-async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
+async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds, options = {}) {
     const scope = trustedQaSideEffectScope(inventory, bookingIds, groupIds);
     const hasBookingOrGroupScope = scope.bookingIds.length > 0 || scope.groupIds.length > 0;
+    const allowUnsupportedNoAttribution = options.allowUnsupportedNoAttribution === true;
+    const unsupportedNoAttributionReason = cleanText(options.unsupportedNoAttributionReason || (
+        hasBookingOrGroupScope ? '' : 'no_booking_or_group_scope'
+    ), 100);
     const capabilities = [];
     for (const capability of TRUSTED_QA_SIDE_EFFECT_CAPABILITIES) {
         const item = await trustedQaSideEffectCapabilityInventory(queryable, capability, scope);
-        if (!hasBookingOrGroupScope
+        if ((!hasBookingOrGroupScope || allowUnsupportedNoAttribution)
             && item.status === TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED
             && item.error?.code === 'NO_DURABLE_ATTRIBUTION') {
             capabilities.push({
@@ -794,7 +798,7 @@ async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, gr
                 blocking: false,
                 error: {
                     ...item.error,
-                    reason: 'no_booking_or_group_scope'
+                    reason: unsupportedNoAttributionReason || 'trusted_qa_suppression_proof'
                 }
             });
             continue;
@@ -866,7 +870,7 @@ function assertTrustedQaBookingRows(rows, inventory, bookingIds) {
 
 async function loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupIds) {
     const bookings = bookingIds.length ? await queryable.query(
-        `SELECT id, business_context, status, customer_id, extra_data
+        `SELECT id, business_context, status, customer_id, program_id, skip_notification, extra_data
            FROM bookings
           WHERE id = ANY($1::text[])
           ORDER BY id
@@ -891,6 +895,42 @@ async function loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupI
         );
     }
     return { bookings: bookings.rows || [], groups: groups.rows || [] };
+}
+
+function trustedQaBookingRowsSuppressSideEffects(rows = []) {
+    return rows.every(row => row.skip_notification === true || String(row.skip_notification).toLowerCase() === 'true');
+}
+
+async function trustedQaRegisteredProductsHaveNoStockRequirements(queryable, inventory) {
+    const productIds = entityIdsByType(inventory, 'product');
+    if (!productIds.length) return false;
+    const stockRequirementExists = await relationExists(queryable, 'product_stock_requirements');
+    if (!stockRequirementExists) return true;
+    const context = normalizeBusinessContext(inventory.run?.business_context || DEFAULT_BUSINESS_CONTEXT);
+    const result = await queryable.query(
+        `WITH manifest_products AS (
+            SELECT UNNEST($1::text[]) AS product_id
+        )
+        SELECT COUNT(p.id)::int AS product_count,
+               COUNT(psr.product_id)::int AS stock_requirement_count
+          FROM manifest_products mp
+          LEFT JOIN products p
+            ON p.id::text = mp.product_id
+           AND COALESCE(NULLIF(BTRIM(p.business_context), ''), $2) = $2
+          LEFT JOIN product_stock_requirements psr
+            ON psr.product_id::text = mp.product_id`,
+        [productIds, context]
+    );
+    const row = result.rows?.[0] || {};
+    return Number(row.product_count || 0) === productIds.length
+        && Number(row.stock_requirement_count || 0) === 0;
+}
+
+async function trustedQaCleanupHasSuppressionProof(queryable, inventory, cleanupRows) {
+    const bookingRows = cleanupRows?.bookings || [];
+    if (!bookingRows.length) return false;
+    if (!trustedQaBookingRowsSuppressSideEffects(bookingRows)) return false;
+    return trustedQaRegisteredProductsHaveNoStockRequirements(queryable, inventory);
 }
 
 async function cleanupTrustedQaRun(queryable, runId, options = {}) {
@@ -920,7 +960,7 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
     const groupIds = entityIdsByType(inventory, 'banquet_group');
     const productIds = entityIdsByType(inventory, 'product');
     const context = normalizeBusinessContext(inventory.run.business_context || DEFAULT_BUSINESS_CONTEXT);
-    await loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupIds);
+    const cleanupRows = await loadTrustedQaCleanupRows(queryable, inventory, bookingIds, groupIds);
     const openTasks = bookingIds.length ? await queryable.query(
         `SELECT id
            FROM tasks
@@ -940,7 +980,11 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             409
         );
     }
-    const sideEffects = await trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds);
+    const hasSuppressionProof = await trustedQaCleanupHasSuppressionProof(queryable, inventory, cleanupRows);
+    const sideEffects = await trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds, {
+        allowUnsupportedNoAttribution: hasSuppressionProof,
+        unsupportedNoAttributionReason: hasSuppressionProof ? 'trusted_qa_suppression_proof' : ''
+    });
     if (sideEffects.visibilityBlockers?.length) {
         throw new TrustedQaRunError(
             'Trusted QA cleanup could not prove side-effect visibility',

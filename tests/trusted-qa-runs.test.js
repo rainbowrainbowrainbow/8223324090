@@ -139,6 +139,8 @@ class FakeTrustedQaDb {
                 business_context: this.run.business_context,
                 status: 'confirmed',
                 customer_id: this.run.required_customer_id,
+                program_id: this.run.required_product_id,
+                skip_notification: true,
                 extra_data: {
                     disposableQa: {
                         runId: this.run.run_id,
@@ -261,6 +263,17 @@ class FakeTrustedQaDb {
             return {
                 rows: columns.map((column_name, index) => ({ column_name, ordinal_position: index + 1 })),
                 rowCount: columns.length
+            };
+        }
+        if (normalized.includes('WITH manifest_products AS')) {
+            const productIds = params[0] || [];
+            const stockValue = this.sideEffectTables.product_stock_requirements || 0;
+            return {
+                rows: [{
+                    product_count: this.productRows.filter(row => productIds.includes(row.id)).length,
+                    stock_requirement_count: Number(stockValue?.count ?? stockValue ?? 0)
+                }],
+                rowCount: 1
             };
         }
         if (normalized.includes('DELETE FROM event_queue row_value')) {
@@ -576,6 +589,36 @@ test('cleanup supports product-only trusted QA run before bookings are created',
         db.queries.some(entry => /FROM "outbox_events" WHERE/.test(entry.sql) && entry.params.length === 1),
         'structured side-effect query should use compact dynamic params'
     );
+});
+
+test('cleanup allows unsupported no-attribution tables only with trusted QA suppression proof', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'product', entity_id: 'qa-no-stock-product', cleanup_state: 'active' },
+            { id: 2, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: {
+            product_stock_requirements: 0
+        },
+        sideEffectColumns: {
+            ...DEFAULT_SIDE_EFFECT_COLUMNS,
+            warehouse_stock_movements: ['business_context'],
+            notification_outbox: ['status']
+        }
+    });
+
+    const result = await cleanupTrustedQaRun(db, 11);
+    const warehouse = result.sideEffectInventory.find(item => item.tableName === 'warehouse_stock_movements');
+    const notifications = result.sideEffectInventory.find(item => item.tableName === 'notification_outbox');
+
+    assert.equal(result.status, 'cleaned');
+    assert.deepEqual(result.cleanedBookingIds, ['BK-QA-1']);
+    assert.deepEqual(result.cleanedProductIds, ['qa-no-stock-product']);
+    assert.equal(warehouse.status, TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED);
+    assert.equal(warehouse.blocking, false);
+    assert.equal(warehouse.error.reason, 'trusted_qa_suppression_proof');
+    assert.equal(notifications.status, TRUSTED_QA_CAPABILITY_STATUS.UNSUPPORTED);
+    assert.equal(notifications.blocking, false);
 });
 
 test('side-effect inventory separates processed historical evidence from active leftovers', async () => {

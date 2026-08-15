@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.146 - Trusted QA Date Normalization
+
+### Release / Versioning / (15.08.2026) [codex]
+- **PostgreSQL DATE authorization** - trusted QA runtime канонічно нормалізує `DATE`, повернений драйвером як JavaScript `Date`, перед exact-порівнянням із booking date.
+- **Fail-closed recovery підтверджено** - невдалий run зупинився до створення booking; єдиний QA product очищено, persistent side effects дорівнюють нулю, повторний cleanup є no-op.
+- **Regression coverage** - unit fixture тепер відтворює реальне представлення PostgreSQL `DATE`, щоб ця production-only помилка не повернулася.
+
+---
+
 ## v0.80.145 - Trusted QA Production Preflight
 
 ### Release / Versioning / (15.08.2026) [codex]

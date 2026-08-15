@@ -91,35 +91,58 @@ function decodeCompletionHistoryCursor(value) {
 }
 
 function taskCabinetRowSelectSql() {
-    return `SELECT t.*, u.name AS owner_name, u.username AS owner_username,
-                COALESCE(subtask_rows.subtasks, '[]'::json) AS subtasks,
-                COALESCE(st.total, 0)::int AS subtask_count,
-                COALESCE(st.done, 0)::int AS subtask_done_count
+    return `SELECT t.*, u.name AS owner_name, u.username AS owner_username
          FROM tasks t
-         LEFT JOIN users u ON u.id = t.owner_user_id
-         LEFT JOIN (
-            SELECT task_id,
-                   COUNT(*)::int AS total,
-                   COUNT(*) FILTER (WHERE is_done = true)::int AS done
-            FROM task_subtasks
-            GROUP BY task_id
-         ) st ON st.task_id = t.id
-         LEFT JOIN (
-            SELECT task_id,
-                   json_agg(json_build_object(
-                       'id', id,
-                       'task_id', task_id,
-                       'title', title,
-                       'is_done', is_done,
-                       'sort_order', sort_order,
-                       'source_type', COALESCE(source_type, 'manual'),
-                       'created_at', created_at,
-                       'completed_at', completed_at,
-                       'updated_at', updated_at
-                   ) ORDER BY sort_order ASC, id ASC) AS subtasks
-            FROM task_subtasks
-            GROUP BY task_id
-         ) subtask_rows ON subtask_rows.task_id = t.id`;
+         LEFT JOIN users u ON u.id = t.owner_user_id`;
+}
+
+async function loadCompletionHistorySubtasksByTaskId(queryable, taskIds = []) {
+    const ids = [...new Set((Array.isArray(taskIds) ? taskIds : [])
+        .map(Number)
+        .filter(id => Number.isInteger(id) && id > 0))];
+    if (!ids.length) return new Map();
+    const result = await queryable.query(
+        `SELECT task_id,
+                COUNT(*)::int AS subtask_count,
+                COUNT(*) FILTER (WHERE is_done = true)::int AS subtask_done_count,
+                json_agg(json_build_object(
+                    'id', id,
+                    'task_id', task_id,
+                    'title', title,
+                    'is_done', is_done,
+                    'sort_order', sort_order,
+                    'source_type', COALESCE(source_type, 'manual'),
+                    'created_at', created_at,
+                    'completed_at', completed_at,
+                    'updated_at', updated_at
+                ) ORDER BY sort_order ASC, id ASC) AS subtasks
+         FROM task_subtasks
+         WHERE task_id = ANY($1::int[])
+         GROUP BY task_id`,
+        [ids]
+    );
+    return new Map((result.rows || []).map(row => [Number(row.task_id), row]));
+}
+
+function attachCompletionHistorySubtasks(rows = [], subtasksByTaskId = new Map()) {
+    return (Array.isArray(rows) ? rows : []).map(row => {
+        const taskId = Number(row.id || row.task_id || row.taskId);
+        const subtasks = subtasksByTaskId.get(taskId);
+        if (!subtasks) {
+            return {
+                ...row,
+                subtasks: [],
+                subtask_count: 0,
+                subtask_done_count: 0
+            };
+        }
+        return {
+            ...row,
+            subtasks: subtasks.subtasks || [],
+            subtask_count: Number(subtasks.subtask_count || 0),
+            subtask_done_count: Number(subtasks.subtask_done_count || 0)
+        };
+    });
 }
 
 function taskCompletionHistoryScope(user, businessScope) {
@@ -167,7 +190,14 @@ async function queryTaskCompletionHistoryPage(queryable, options = {}) {
         pageParams
     );
     const fetchedRows = Array.isArray(result.rows) ? result.rows : [];
-    const sourceRows = fetchedRows.slice(0, limit);
+    const sourceRowsRaw = fetchedRows.slice(0, limit);
+    const includeSubtasks = options.includeSubtasks !== false;
+    const subtasksByTaskId = includeSubtasks
+        ? await loadCompletionHistorySubtasksByTaskId(queryable, sourceRowsRaw.map(row => row.id || row.task_id || row.taskId))
+        : new Map();
+    const sourceRows = includeSubtasks
+        ? attachCompletionHistorySubtasks(sourceRowsRaw, subtasksByTaskId)
+        : sourceRowsRaw;
     const countResult = await queryable.query(
         `SELECT COUNT(*)::int AS completed_parent_total
          FROM tasks t

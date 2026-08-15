@@ -723,7 +723,8 @@ async function buildTaskCabinetProjection(options = {}) {
     const completedHistoryPage = await queryTaskCompletionHistoryPage(queryable, {
         user,
         businessScope,
-        limit: completedHistoryLimit
+        limit: completedHistoryLimit,
+        includeSubtasks: false
     });
     const completedHistorySourceRowsRaw = Array.isArray(completedHistoryPage.sourceRows)
         ? completedHistoryPage.sourceRows

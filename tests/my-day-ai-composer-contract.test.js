@@ -23,6 +23,23 @@ function expectedDecision(expected = {}) {
     return expected.action;
 }
 
+function assertCanonicalImpactCoverage(activeImpacts = []) {
+    const names = new Set(activeImpacts.map(impact => impact.name));
+    assert.equal(activeImpacts.length, 32, 'AI eval catalog must expose all 32 canonical impacts');
+    for (const required of [
+        'Люди / HR',
+        'Документи / право',
+        'Закупівлі / постачання',
+        'Партнерства / нетворкінг',
+        'Творчість / самовираження',
+        'Подорожі / враження',
+        'Спільнота / внесок',
+        'Баланс / сенси'
+    ]) {
+        assert.equal(names.has(required), true, `${required} impact must be available in eval catalog`);
+    }
+}
+
 test('My Day AI composer proposal contract fixture is strict and impacts-only', () => {
     const fixture = readJson(fixturePath);
     const schema = preview.TASK_AI_DRAFT_PREVIEW_SCHEMA;
@@ -58,6 +75,7 @@ test('My Day AI composer proposal contract fixture is strict and impacts-only', 
         'title',
         'description',
         'impactIds',
+        'subtasks',
         'priority',
         'scheduleDate',
         'ownerSuggestion',
@@ -82,6 +100,7 @@ test('My Day AI composer eval fixture covers target domains and safe action deci
     const activeImpactIds = new Set(fixture.activeImpacts.map(impact => impact.id));
     const domains = new Set(fixture.evalCases.map(item => item.domain));
 
+    assertCanonicalImpactCoverage(fixture.activeImpacts);
     for (const domain of ['CRM', 'Hermes', 'Park', 'AI', 'Content', 'Analytics', 'Team']) {
         assert.equal(domains.has(domain), true, `${domain} eval case is required`);
     }
@@ -111,6 +130,7 @@ test('My Day AI bundle preview eval fixture covers target bundle domains and saf
     const activeImpactIds = new Set(fixture.activeImpacts.map(impact => impact.id));
     const domains = new Set(fixture.evalCases.map(item => item.domain));
 
+    assertCanonicalImpactCoverage(fixture.activeImpacts);
     assert.equal(fixture.contractVersion, preview.TASK_AI_DRAFT_CONTRACT_VERSION);
     assert.deepEqual(fixture.allowedDecisions, ['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
     assert.equal(fixture.limits.minBundleTasks, 2);

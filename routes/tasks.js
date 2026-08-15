@@ -1073,6 +1073,8 @@ async function buildTaskAiDraftBundleCommit(req, res) {
         tasks: taskAiBundleTasksFromBody(body),
         acceptedTaskMask: body.acceptedTaskMask || body.accepted_task_mask || body.acceptedTasks || body.accepted_tasks || [],
         rejectedTaskMask: body.rejectedTaskMask || body.rejected_task_mask || body.rejectedTasks || body.rejected_tasks || [],
+        acceptedFieldMasks: body.acceptedFieldMasks || body.accepted_field_masks || body.acceptedTaskFieldMasks || body.accepted_task_field_masks || [],
+        editedFieldMasks: body.editedFieldMasks || body.edited_field_masks || body.editedTaskFieldMasks || body.edited_task_field_masks || [],
         idempotencyKey: idempotencyKeyFromRequest(req),
         activeImpacts: impacts,
         userId,
@@ -2059,6 +2061,16 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                 });
             }
             if (preview.proposal?.action !== 'apply') {
+                recordTaskAiDraftTelemetry({
+                    type: 'preview',
+                    status: 'success',
+                    model: preview.model || 'gpt-5.6-luna',
+                    provider: preview.provider || 'openai',
+                    contractVersion: preview.contractVersion,
+                    promptVersion: preview.promptVersion,
+                    reasonCode: 'legacy_decompose_wrapper_non_apply',
+                    businessContext: req.businessContext || b.businessContext || ''
+                });
                 return res.status(422).json({
                     success: false,
                     deprecated: true,
@@ -2071,6 +2083,16 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                     proposalToken: preview.proposalToken
                 });
             }
+            recordTaskAiDraftTelemetry({
+                type: 'preview',
+                status: 'success',
+                model: preview.model || 'gpt-5.6-luna',
+                provider: preview.provider || 'openai',
+                contractVersion: preview.contractVersion,
+                promptVersion: preview.promptVersion,
+                reasonCode: 'legacy_decompose_wrapper_used',
+                businessContext: req.businessContext || b.businessContext || ''
+            });
             return res.json(legacyDecompositionResponseFromPreview(preview, mode));
         }
         const result = await generateTaskDecompositionDraft({

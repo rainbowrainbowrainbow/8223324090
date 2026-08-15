@@ -415,6 +415,7 @@ test('task AI draft preview returns task bundle proposals with review-only task 
                         title: 'Fix CRM intake form',
                         description: 'Make CRM booking intake reliable before automation.',
                         impactIds: [101],
+                        subtasks: [],
                         priority: 'high',
                         scheduleDate: '2026-08-20',
                         ownerSuggestion: {
@@ -435,6 +436,7 @@ test('task AI draft preview returns task bundle proposals with review-only task 
                         title: 'Wire Hermes worker to CRM event',
                         description: 'Connect Hermes processing after CRM form validation.',
                         impactIds: [102],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: {
@@ -514,6 +516,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                     title: 'Only one task',
                     description: null,
                     impactIds: [101],
+                    subtasks: [],
                     priority: 'normal',
                     scheduleDate: null,
                     ownerSuggestion: { userId: null, name: null, reason: null },
@@ -548,6 +551,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         title: 'Task one',
                         description: null,
                         impactIds: [101],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
@@ -557,6 +561,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         title: 'Task two',
                         description: null,
                         impactIds: [103],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
@@ -592,6 +597,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         title: 'Task one',
                         description: null,
                         impactIds: [101],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: 'tomorrow',
                         ownerSuggestion: { userId: null, name: null, reason: null },
@@ -601,6 +607,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         title: 'Task two',
                         description: null,
                         impactIds: [102],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
@@ -636,6 +643,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         title: 'Task one',
                         description: null,
                         impactIds: [101],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: { userId: 999, name: 'Invented owner', reason: 'Unsafe.' },
@@ -645,6 +653,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
                         title: 'Task two',
                         description: null,
                         impactIds: [102],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: { userId: null, name: null, reason: null },
@@ -812,6 +821,21 @@ test('tasks route exposes ai-draft preview and keeps decompose-draft as non-Open
     assert.match(route, /hmacSafetyIdentifier\(`task_ai_draft:\$\{userId\}`/);
     assert.match(decomposeBlock, /legacyDecompositionResponseFromPreview/);
     assert.match(decomposeBlock, /deprecatedEndpoint: '\/api\/tasks\/ai-draft\/preview'/);
+    assert.match(decomposeBlock, /legacy_decompose_wrapper_used/);
+    assert.match(decomposeBlock, /legacy_decompose_wrapper_non_apply/);
     assert.match(decomposeBlock, /TASK_AI_DRAFT_\$\{String\(preview\.proposal\?\.action/);
     assert.doesNotMatch(decomposeBlock, /callUnifiedChatCompletion|OPENROUTER_API_KEY|scope: 'chat_ai'/);
+});
+
+test('legacy task-create AI decomposition UI uses canonical ai-draft preview rail for AI modes', () => {
+    const taskCreate = fs.readFileSync(path.join(root, 'js', 'task-create.js'), 'utf8');
+    const requestStart = taskCreate.indexOf('async function requestDecompositionDraft');
+    const requestBlock = taskCreate.slice(requestStart, taskCreate.indexOf('async function requestAiDraftPreview', requestStart));
+
+    assert.match(taskCreate, /function aiPreviewToDecompositionDraft/);
+    assert.match(requestBlock, /requestAiDraftPreview\(\{/);
+    assert.match(requestBlock, /structurePreference: 'checklist'/);
+    assert.match(requestBlock, /sourceSurface: context\.sourceSurface \|\| 'task_decomposition_legacy_ui'/);
+    assert.match(requestBlock, /taskApiRequest\('\/tasks\/decompose-draft'/);
+    assert.ok(requestBlock.indexOf('requestAiDraftPreview({') < requestBlock.indexOf("taskApiRequest('/tasks/decompose-draft'"));
 });

@@ -570,6 +570,7 @@ const bundleProposal = {
             title: 'Audit CRM booking form',
             description: 'Find broken validation path.',
             impactIds: [101],
+            subtasks: [{ title: 'Check CRM validation rules' }],
             priority: 'high',
             scheduleDate: '2026-08-10',
             ownerSuggestion: { userId: null, name: 'Tester', reason: 'Current user should review.' },
@@ -579,6 +580,7 @@ const bundleProposal = {
             title: 'Patch AI automation trigger',
             description: 'Make worker safe.',
             impactIds: [104],
+            subtasks: [],
             priority: 'normal',
             scheduleDate: null,
             ownerSuggestion: { userId: null, name: 'Tester', reason: 'Current user should review.' },
@@ -616,15 +618,25 @@ function bundleCommitInput(tokenParts, overrides = {}) {
         proposal: proposalValue,
         bundleTitle: proposalValue.bundleTitle,
         tasks: proposalValue.tasks.map(task => ({
+            proposalIndex: proposalValue.tasks.indexOf(task),
             title: task.title,
             description: task.description,
             impactIds: task.impactIds,
+            subtasks: task.subtasks || [],
             priority: task.priority,
             scheduleDate: task.scheduleDate,
             ownerSuggestion: task.ownerSuggestion
         })),
         acceptedTaskMask: proposalValue.tasks.map((_, index) => index),
         rejectedTaskMask: [],
+        acceptedFieldMasks: proposalValue.tasks.map((_, index) => ({
+            proposalIndex: index,
+            fields: ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']
+        })),
+        editedFieldMasks: proposalValue.tasks.map((_, index) => ({
+            proposalIndex: index,
+            fields: []
+        })),
         idempotencyKey: 'ai-bundle-key-1',
         activeImpacts: impacts,
         userId: 7,
@@ -652,6 +664,7 @@ test('AI draft bundle commit creates all tasks, impacts, and bundle audit in one
     assert.equal(fakePool.state.rolledBack, false);
     assert.equal(fakePool.state.tasks.length, 2);
     assert.equal(fakePool.state.impacts.length, 2);
+    assert.equal(fakePool.state.subtasks.length, 1);
     assert.equal(fakePool.state.history.length, 3);
     assert.equal(fakePool.state.bundles.length, 1);
     assert.equal(fakePool.state.bundleTasks.length, 2);
@@ -659,6 +672,7 @@ test('AI draft bundle commit creates all tasks, impacts, and bundle audit in one
     assert.deepEqual(fakePool.state.bundleTasks.map(item => item.task_id), [501, 502]);
     assert.ok(fakePool.state.calls.some(call => /pg_advisory_xact_lock/i.test(call.text)));
     assert.equal(fakePool.state.tasks[0].source_type, 'ai_draft_bundle');
+    assert.equal(fakePool.state.tasks[0].task_kind, 'checklist');
     assert.deepEqual(fakePool.state.tasks[0].dependency_ids, []);
 
     const bundleHistory = fakePool.state.history.find(item => item.action_type === TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED);
@@ -668,6 +682,7 @@ test('AI draft bundle commit creates all tasks, impacts, and bundle audit in one
     assert.equal(bundleHistory.meta_json.rawProviderResponseStored, false);
     assert.equal(JSON.stringify(bundleHistory).includes('Find broken validation path'), false);
     assert.equal(JSON.stringify(bundleHistory).includes('Patch AI automation trigger'), false);
+    assert.deepEqual(bundleHistory.meta_json.acceptedFieldMasks[0].fields, ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
 });
 
 test('AI draft bundle commit rolls back every task when any write fails', async () => {
@@ -729,6 +744,10 @@ test('AI draft bundle commit is idempotent and rejects conflicting replay body',
             tasks: [
                 ...input.tasks.slice(0, 1),
                 { ...input.tasks[1], title: 'Different bundle task' }
+            ],
+            editedFieldMasks: [
+                { proposalIndex: 0, fields: [] },
+                { proposalIndex: 1, fields: ['title'] }
             ]
         }), {
             pool: fakePool,
@@ -748,6 +767,10 @@ test('AI draft bundle commit rejects unknown and archived impacts before opening
             tasks: [
                 ...bundleCommitInput(tokenParts).tasks.slice(0, 1),
                 { ...bundleCommitInput(tokenParts).tasks[1], impactIds: [999_999] }
+            ],
+            editedFieldMasks: [
+                { proposalIndex: 0, fields: [] },
+                { proposalIndex: 1, fields: ['impactIds'] }
             ]
         }), {
             pool: fakePool,
@@ -799,7 +822,14 @@ test('AI draft bundle commit rejects invalid task count, schedule, priority, and
         error => error.code === 'TASK_AI_BUNDLE_TOO_LARGE'
     );
     await assert.rejects(
-        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], priority: 'critical' }, base.tasks[1]] }, {
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [{ ...base.tasks[0], priority: 'critical' }, base.tasks[1]],
+            editedFieldMasks: [
+                { proposalIndex: 0, fields: ['priority'] },
+                { proposalIndex: 1, fields: [] }
+            ]
+        }, {
             pool: fakePool,
             proposalSecret: 'proposal-secret',
             now: 2_000,
@@ -808,7 +838,14 @@ test('AI draft bundle commit rejects invalid task count, schedule, priority, and
         error => error.code === 'TASK_AI_BUNDLE_PRIORITY_INVALID'
     );
     await assert.rejects(
-        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], scheduleDate: 'tomorrow' }, base.tasks[1]] }, {
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [{ ...base.tasks[0], scheduleDate: 'tomorrow' }, base.tasks[1]],
+            editedFieldMasks: [
+                { proposalIndex: 0, fields: ['dueDate'] },
+                { proposalIndex: 1, fields: [] }
+            ]
+        }, {
             pool: fakePool,
             proposalSecret: 'proposal-secret',
             now: 2_000,
@@ -817,7 +854,14 @@ test('AI draft bundle commit rejects invalid task count, schedule, priority, and
         error => error.code === 'TASK_AI_BUNDLE_SCHEDULE_DATE_INVALID'
     );
     await assert.rejects(
-        () => bundleCommit.commitTaskAiDraftBundle({ ...base, tasks: [{ ...base.tasks[0], ownerSuggestion: { userId: 999, name: 'Other', reason: 'Unsafe' } }, base.tasks[1]] }, {
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [{ ...base.tasks[0], ownerSuggestion: { userId: 999, name: 'Other', reason: 'Unsafe' } }, base.tasks[1]],
+            editedFieldMasks: [
+                { proposalIndex: 0, fields: ['owner'] },
+                { proposalIndex: 1, fields: [] }
+            ]
+        }, {
             pool: fakePool,
             proposalSecret: 'proposal-secret',
             now: 2_000,
@@ -834,6 +878,127 @@ test('AI draft bundle commit rejects invalid task count, schedule, priority, and
     assert.equal(fakePool.state.tasks.length, 0);
     assert.equal(fakePool.state.bundles.length, 0);
     assert.equal(fakePool.state.rolledBack, true);
+});
+
+test('AI draft bundle commit requires reviewed field masks and rejects unaccepted or unproven fields', async () => {
+    const tokenParts = makeBundleToken();
+    const fakePool = createFakePool();
+    const base = bundleCommitInput(tokenParts);
+    const safeOnlyFields = ['title', 'description', 'impactIds', 'subtasks'];
+
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({ ...base, acceptedFieldMasks: [] }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_FIELD_MASK_REQUIRED'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            acceptedFieldMasks: base.acceptedFieldMasks.map(entry => ({ ...entry, fields: safeOnlyFields }))
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_FIELD_NOT_ACCEPTED'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            acceptedFieldMasks: base.acceptedFieldMasks.map(entry => ({ ...entry, fields: safeOnlyFields })),
+            editedFieldMasks: [
+                { proposalIndex: 0, fields: ['priority'] },
+                { proposalIndex: 1, fields: [] }
+            ]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_FIELD_MASK_INVALID'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [
+                { ...base.tasks[0], title: 'Changed without field provenance' },
+                base.tasks[1]
+            ]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_REVIEW_CONFLICT'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            acceptedFieldMasks: [
+                { proposalIndex: 0, fields: ['title', 'unknownField'] },
+                base.acceptedFieldMasks[1]
+            ]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_FIELD_MASK_INVALID'
+    );
+    await assert.rejects(
+        () => bundleCommit.commitTaskAiDraftBundle({
+            ...base,
+            tasks: [
+                { ...base.tasks[0], dependencyIds: [base.tasks[1].proposalIndex] },
+                base.tasks[1]
+            ]
+        }, {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_BUNDLE_TASK_FIELD_UNSUPPORTED'
+    );
+
+    assert.equal(fakePool.state.calls.length, 0);
+});
+
+test('AI draft bundle commit accepts reviewed user-edited field values and records edited field masks', async () => {
+    const tokenParts = makeBundleToken();
+    const fakePool = createFakePool();
+    const base = bundleCommitInput(tokenParts);
+    const input = {
+        ...base,
+        tasks: [
+            { ...base.tasks[0], title: 'Audit CRM booking form after user review' },
+            base.tasks[1]
+        ],
+        editedFieldMasks: [
+            { proposalIndex: 0, fields: ['title'] },
+            { proposalIndex: 1, fields: [] }
+        ]
+    };
+
+    const result = await bundleCommit.commitTaskAiDraftBundle(input, {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(fakePool.state.tasks[0].title, 'Audit CRM booking form after user review');
+    const bundleHistory = fakePool.state.history.find(item => item.action_type === TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED);
+    assert.deepEqual(bundleHistory.meta_json.editedFieldMasks[0].fields, ['title']);
 });
 
 test('AI draft bundle commit uses reviewed assignable owners and preserves original accept/reject masks', async () => {
@@ -853,16 +1018,21 @@ test('AI draft bundle commit uses reviewed assignable owners and preserves origi
     };
     const tokenParts = makeBundleToken('proposal-secret', proposalValue);
     const fakePool = createFakePool();
+    const base = bundleCommitInput(tokenParts);
     const input = bundleCommitInput(tokenParts, {
         tasks: [
             {
-                ...proposalValue.tasks[0],
+                ...base.tasks[0],
                 ownerSuggestion: { userId: 9, name: 'Assignable owner', reason: 'Selected by user.' }
             },
-            proposalValue.tasks[2]
+            base.tasks[2]
         ],
         acceptedTaskMask: [0, 2],
-        rejectedTaskMask: [1]
+        rejectedTaskMask: [1],
+        editedFieldMasks: [
+            { proposalIndex: 0, fields: ['owner'] },
+            { proposalIndex: 2, fields: [] }
+        ]
     });
     const result = await bundleCommit.commitTaskAiDraftBundle(input, {
         pool: fakePool,

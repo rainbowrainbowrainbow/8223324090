@@ -54,6 +54,7 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-bundle-field="title"/);
     assert.match(aiCode, /data-task-ai-bundle-field="description"/);
     assert.match(aiCode, /data-task-ai-bundle-field="impactIds"/);
+    assert.match(aiCode, /data-task-ai-bundle-field="subtasks"/);
     assert.match(aiCode, /data-task-ai-bundle-field="ownerUserId"/);
     assert.match(aiCode, /data-task-ai-bundle-field="scheduleDate"/);
     assert.match(aiCode, /data-task-ai-bundle-field="priority"/);
@@ -142,6 +143,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
                         title: 'Fix CRM intake',
                         description: 'Make the form safe.',
                         impactIds: [101],
+                        subtasks: [{ title: 'Check validation path' }],
                         priority: 'high',
                         scheduleDate: '2026-08-20',
                         ownerSuggestion: { userId: null, name: 'CRM owner', reason: 'Review owner.' }
@@ -150,6 +152,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
                         title: 'Connect Hermes worker',
                         description: 'Wire the event.',
                         impactIds: [102, 103],
+                        subtasks: [],
                         priority: 'normal',
                         scheduleDate: null,
                         ownerSuggestion: { userId: null, name: '', reason: '' }
@@ -184,6 +187,8 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(root.querySelectorAll('[data-task-ai-bundle-card]').length, 2);
     assert.match(root.textContent, /AI .*2/);
     assert.match(root.textContent, /dependencies/);
+    assert.ok(root.querySelector('.task-ai-bundle-field-states'));
+    assert.equal(root.querySelector('[data-task-ai-bundle-field="subtasks"]').value, 'Check validation path');
     assert.equal(root.querySelector('[data-task-ai-bundle-field="ownerUserId"]').value, '7');
     assert.ok(root.querySelector('[data-task-ai-draft-submit-intent]').disabled);
     assert.equal(window.TaskAiDraft.commitPayloadFor(root), null);
@@ -200,6 +205,8 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(window.TaskAiDraft.commitPayloadFor(root).tasks[1].scheduleDate, '2026-08-18');
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).acceptedTaskMask, [0, 1]);
     assert.deepEqual(window.TaskAiDraft.bundlePayloadFor(root).rejectedTaskMask, []);
+    assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).acceptedFieldMasks[0].fields), ['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
+    assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).editedFieldMasks[0].fields), ['dueDate']);
 
     const firstTitle = root.querySelector('[data-task-ai-bundle-card] [data-task-ai-bundle-field="title"]');
     firstTitle.value = 'Fix CRM intake after review';
@@ -208,6 +215,7 @@ test('AI draft composer renders interactive task bundle review without single-ta
     assert.equal(window.TaskAiDraft.bundlePayloadFor(root), null);
 
     root.querySelector('[data-task-ai-bundle-accept]').click();
+    assert.deepEqual(Array.from(window.TaskAiDraft.bundlePayloadFor(root).editedFieldMasks[0].fields), ['dueDate', 'title']);
     const secondReject = root.querySelectorAll('[data-task-ai-bundle-reject]')[1];
     secondReject.click();
     assert.match(root.querySelector('[data-task-ai-draft-submit-intent]').textContent, /1/);

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.147 - Trusted QA Standalone Cleanup
+
+### Release / Versioning / (15.08.2026) [codex]
+- **Standalone trusted QA cancellation** - generic soft cancellation now suppresses finance cleanup, stock restore, Telegram and event queue publishing when the existing booking row carries a server-issued trusted QA marker.
+- **Exact QA recovery cleanup** - trusted QA cleanup can purge only event_queue rows that match registered QA booking/group IDs or the run marker, then rechecks all side-effect tables before marking the run cleaned.
+- **Regression coverage** - focused tests cover event_queue purge, persistent side-effect blockers and the booking route guard that keeps trusted QA standalone cancellation side-effect-free.
+
+---
+
 ## v0.80.146 - Trusted QA Date Normalization
 
 ### Release / Versioning / (15.08.2026) [codex]

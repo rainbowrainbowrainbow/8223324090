@@ -129,12 +129,16 @@ test('trusted QA markers require server token and manifest registration', () => 
     assert.match(disposableQa, /DISPOSABLE_QA_TRUSTED_SOURCE/);
     assert.match(bookings, /prepareTrustedQaBookingInput/);
     assert.match(bookings, /registerQaEntity/);
+    assert.match(bookings, /hasTrustedQaBookingMarker/);
+    assert.match(bookings, /suppressTrustedQaSideEffects/);
+    assert.match(bookings, /!suppressTrustedQaSideEffects && sideEffectsAllowedForContext/);
     assert.match(bookings, /registerQaEntity\(client, qaContext, 'banquet_group'/);
     assert.match(bookings, /'banquet_membership'/);
     assert.match(bookings, /'booking_banquet_link'/);
     assert.match(bookings, /bookingCreateSideEffectsAllowed\(\)\s*\?\s*await syncManagerDepositForBooking/);
     assert.match(bookings, /if \(bookingCreateSideEffectsAllowed\(\)\) \{\s*await syncBookingLeadHandoff/);
     assert.match(service, /QA_RUN_SIDE_EFFECT_BLOCKER/);
+    assert.match(service, /purgeTrustedQaEventQueueRows/);
     assert.match(service, /TRUSTED_QA_SIDE_EFFECT_TABLES/);
     assert.match(bookings, /bookingCreateSideEffectsAllowed\(\) && b\.secondAnimator && b\.date/);
     assert.match(bookings, /fullCreateSideEffectsAllowed\(\) \? Boolean\(lb\.skipNotification\) : true/);

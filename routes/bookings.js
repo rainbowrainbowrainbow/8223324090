@@ -66,6 +66,10 @@ const {
     qaPublicDetails,
     registerQaEntity
 } = require('../services/trustedQaRuns');
+const {
+    DISPOSABLE_QA_TRUSTED_SOURCE,
+    disposableQaMarkerFrom
+} = require('../services/disposableQa');
 const { broadcastBookingEvent } = require('../services/websocket');
 const { publish: publishEvent, publishInTransaction } = require('../services/eventBus');
 const {
@@ -630,6 +634,15 @@ function parkSideEffectsAllowedForContext(context) {
 
 function sideEffectsAllowedForContext(context) {
     return crmSideEffectsAllowedForContext(context);
+}
+
+function hasTrustedQaBookingMarker(booking = {}) {
+    const marker = disposableQaMarkerFrom(booking);
+    return marker
+        && marker.source === DISPOSABLE_QA_TRUSTED_SOURCE
+        && marker.cleanupExpected === true
+        && Boolean(marker.runId || marker.run_id)
+        && Boolean(marker.testCustomerMarker || marker.test_customer_marker);
 }
 
 function technicalLogToken(value, maxLength = 96) {
@@ -5335,6 +5348,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
             await client.query('ROLLBACK');
             return sendBookingDenied(req, res, booking);
         }
+        const suppressTrustedQaSideEffects = hasTrustedQaBookingMarker(booking);
         const activeBanquetMembership = banquetMembership
             && String(banquetMembership.group_status || 'active').trim().toLowerCase() === 'active';
         let banquetCancellationPreflight = null;
@@ -5391,7 +5405,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         // v19.10: CRM aggregates now handled by DB trigger (trg_booking_customer_aggregates)
 
         // v19.10: Remove auto-recorded finance transaction inside transaction
-        if (parkSideEffectsAllowedForContext(businessContext) && booking.price > 0 && !booking.linked_to) {
+        if (!suppressTrustedQaSideEffects && parkSideEffectsAllowedForContext(businessContext) && booking.price > 0 && !booking.linked_to) {
             try {
                 await client.query(
                     "DELETE FROM finance_transactions WHERE booking_id = $1 AND COALESCE(business_context, 'event_genix') = $2",
@@ -5413,7 +5427,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         await client.query('COMMIT');
 
         // v33.8.0: Restore stock on cancel (fire-and-forget — non-critical)
-        if (parkSideEffectsAllowedForContext(businessContext) && booking.program_id) {
+        if (!suppressTrustedQaSideEffects && parkSideEffectsAllowedForContext(businessContext) && booking.program_id) {
             setImmediate(async () => {
                 try {
                     const reqs = await pool.query(
@@ -5433,7 +5447,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         }
         // v39.9: Certificate restore moved inside transaction (above)
 
-        if (sideEffectsAllowedForContext(businessContext)) {
+        if (!suppressTrustedQaSideEffects && sideEffectsAllowedForContext(businessContext)) {
             getLineName(booking.line_id, booking.date, businessContext).then(lineName =>
                 notifyTelegram('delete', booking, { username: req.user?.username, lineName, businessContext }))
                 .catch(err => log.error(`Telegram notify failed (delete): ${err.message}`));
@@ -5444,7 +5458,7 @@ router.delete('/:id', requireAction('delete_booking'), async (req, res) => {
         _alertPush();
 
         // v19.1: Publish to event queue
-        if (sideEffectsAllowedForContext(businessContext)) {
+        if (!suppressTrustedQaSideEffects && sideEffectsAllowedForContext(businessContext)) {
             publishEvent('booking.cancelled', {
                 booking_id: id,
                 booking_number: booking.booking_number || booking.id,

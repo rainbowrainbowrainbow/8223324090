@@ -98,6 +98,7 @@ class FakeTrustedQaDb {
         this.failBookingCleanup = failBookingCleanup;
         this.sideEffectTables = { ...sideEffectTables };
         this.queries = [];
+        this.deletedEventQueueRows = [];
         this.tokenUses = new Set();
         this.cancelledBookingIds = [];
         this.cancelledGroupIds = [];
@@ -216,8 +217,24 @@ class FakeTrustedQaDb {
                 rowCount: 1
             };
         }
-        if (normalized.includes('FROM finance_transactions row_value')) {
-            return { rows: [{ count: Number(this.sideEffectTables.finance_transactions || 0) }], rowCount: 1 };
+        if (normalized.includes('DELETE FROM event_queue row_value')) {
+            const value = this.sideEffectTables.event_queue || 0;
+            const rows = Array.isArray(value)
+                ? value
+                : Array.from({ length: Number(value || 0) }, (_, index) => ({
+                    id: index + 1,
+                    event_type: 'booking.cancelled',
+                    status: 'processed'
+                }));
+            this.deletedEventQueueRows.push(...rows);
+            this.sideEffectTables.event_queue = 0;
+            return { rows, rowCount: rows.length };
+        }
+        const sideEffectMatch = normalized.match(/FROM ([a-z_]+) row_value/);
+        if (sideEffectMatch) {
+            const value = this.sideEffectTables[sideEffectMatch[1]] || 0;
+            const count = Array.isArray(value) ? value.length : Number(value || 0);
+            return { rows: [{ count }], rowCount: 1 };
         }
         if (normalized.includes('UPDATE bookings SET status =')) {
             if (this.failBookingCleanup) {
@@ -429,6 +446,27 @@ test('cleanup is exact-manifest driven, cancels registered bookings/groups and i
     assert.equal(second.idempotent, true);
 });
 
+test('cleanup purges exact trusted QA event queue rows before side-effect postconditions', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: {
+            event_queue: [
+                { id: 1939, event_type: 'booking.cancelled', status: 'processed' },
+                { id: 1940, event_type: 'booking.cancelled', status: 'processed' }
+            ]
+        }
+    });
+
+    const result = await cleanupTrustedQaRun(db, 11);
+
+    assert.equal(result.status, 'cleaned');
+    assert.deepEqual(result.purgedEventQueueIds, [1939, 1940]);
+    assert.deepEqual(db.deletedEventQueueRows.map(row => row.id), [1939, 1940]);
+    assert.equal(result.sideEffectCounts.event_queue, 0);
+});
+
 test('watchdog retries cleanup_pending and blocks after bounded failures', async () => {
     const db = new FakeTrustedQaDb({
         run: makeRun({ state: 'cleanup_pending', cleanup_attempts: 0 }),
@@ -452,6 +490,22 @@ test('cleanup fails closed when a persistent business side effect exists', async
             { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
         ],
         sideEffectTables: { finance_transactions: 1 }
+    });
+
+    await assert.rejects(
+        () => cleanupTrustedQaRun(db, 11),
+        err => err instanceof TrustedQaRunError && err.code === 'QA_RUN_SIDE_EFFECT_BLOCKER'
+    );
+    assert.deepEqual(db.cancelledBookingIds, []);
+    assert.equal(db.run.state, 'active');
+});
+
+test('cleanup still fails closed when non-queue business side effects persist', async () => {
+    const db = new FakeTrustedQaDb({
+        entities: [
+            { id: 1, run_id: 11, entity_type: 'booking', entity_id: 'BK-QA-1', cleanup_state: 'active' }
+        ],
+        sideEffectTables: { event_queue: 1, finance_transactions: 1 }
     });
 
     await assert.rejects(

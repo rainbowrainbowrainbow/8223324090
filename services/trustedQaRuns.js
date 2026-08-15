@@ -567,13 +567,17 @@ async function countRowsContainingNeedles(queryable, tableName, needles) {
     return Number(result.rows?.[0]?.count || 0);
 }
 
-async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
-    const needles = [...new Set([
+function trustedQaSideEffectNeedles(inventory, bookingIds, groupIds) {
+    return [...new Set([
         ...bookingIds,
         ...groupIds,
         cleanId(inventory?.run?.run_id),
         cleanText(inventory?.run?.test_customer_marker, 200)
     ].filter(Boolean))];
+}
+
+async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds) {
+    const needles = trustedQaSideEffectNeedles(inventory, bookingIds, groupIds);
     const counts = {};
     for (const tableName of TRUSTED_QA_SIDE_EFFECT_TABLES) {
         counts[tableName] = await countRowsContainingNeedles(queryable, tableName, needles);
@@ -582,6 +586,22 @@ async function trustedQaSideEffectInventory(queryable, inventory, bookingIds, gr
         counts,
         total: Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0)
     };
+}
+
+async function purgeTrustedQaEventQueueRows(queryable, inventory, bookingIds, groupIds) {
+    const needles = trustedQaSideEffectNeedles(inventory, bookingIds, groupIds);
+    if (!needles.length || !await relationExists(queryable, 'event_queue')) return [];
+    const result = await queryable.query(
+        `DELETE FROM event_queue row_value
+          WHERE EXISTS (
+                SELECT 1
+                  FROM unnest($1::text[]) needle(value)
+                 WHERE to_jsonb(row_value)::text LIKE ('%' || needle.value || '%')
+          )
+          RETURNING id, event_type, status`,
+        [needles]
+    );
+    return result.rows || [];
 }
 
 function assertTrustedQaBookingRows(rows, inventory, bookingIds) {
@@ -707,6 +727,7 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             409
         );
     }
+    const purgedEventQueueRows = await purgeTrustedQaEventQueueRows(queryable, inventory, bookingIds, groupIds);
     const sideEffects = await trustedQaSideEffectInventory(queryable, inventory, bookingIds, groupIds);
     if (sideEffects.total > 0) {
         throw new TrustedQaRunError(
@@ -809,7 +830,8 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
             booking_count: bookingIds.length,
             group_count: groupIds.length,
             product_count: productIds.length,
-            entity_count: classified.entityCount
+            entity_count: classified.entityCount,
+            purged_event_queue_count: purgedEventQueueRows.length
         }
     });
     return {
@@ -819,7 +841,8 @@ async function cleanupTrustedQaRun(queryable, runId, options = {}) {
         cleanedBookingIds: bookingIds,
         cleanedGroupIds: groupIds,
         cleanedProductIds: productIds,
-        sideEffectCounts: sideEffects.counts
+        sideEffectCounts: sideEffects.counts,
+        purgedEventQueueIds: purgedEventQueueRows.map(row => row.id)
     };
 }
 

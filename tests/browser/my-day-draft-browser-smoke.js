@@ -270,12 +270,12 @@ async function assertFullComposerContract(page, state) {
     const customDate = page.locator('#cabinetTaskDate');
     const customProjection = page.waitForResponse(response => {
         const url = new URL(response.url());
-        return url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('focusDate') === '2099-05-31';
+        return url.pathname === '/api/tasks/my-cabinet' && url.searchParams.get('focusDate') === '2099-06-01';
     });
-    await customDate.fill('2099-05-31');
+    await customDate.fill('2099-06-01');
     await customProjection;
     await assertRetained('custom-date background projection');
-    assert.equal(await customDate.inputValue(), '2099-05-31', 'custom date stays after a background projection');
+    assert.equal(await customDate.inputValue(), '2099-06-01', 'custom date stays after a background projection');
 
     const isTaskCreate = response => {
         const url = new URL(response.url());
@@ -308,7 +308,7 @@ async function assertFullComposerContract(page, state) {
     ]);
     assert.equal(failedCreate.status(), 503, '503 fixture create is delivered to the composer');
     await assertRetained('503 create failure');
-    assert.equal(await customDate.inputValue(), '2099-05-31', '503 create failure keeps custom date');
+    assert.equal(await customDate.inputValue(), '2099-06-01', '503 create failure keeps custom date');
 
     state.createMode = 'success';
     const [successfulCreate] = await Promise.all([
@@ -336,8 +336,8 @@ async function assertFullComposerContract(page, state) {
     assert.equal(payload.visibility, 'me_only', 'payload visibility is exact');
     assert.equal(payload.reportRequired, true, 'payload report requirement is exact');
     assert.equal(payload.allowReschedule, false, 'payload reschedule control is exact');
-    assert.equal(payload.date, '2099-05-31', 'payload custom date is exact');
-    assert.equal(payload.schedule?.date, '2099-05-31', 'payload schedule date is exact');
+    assert.equal(payload.date, '2099-06-01', 'payload custom date is exact');
+    assert.equal(payload.schedule?.date, '2099-06-01', 'payload schedule date is exact');
     assert.equal(payload.schedule?.durationMinutes, 30, 'payload schedule duration is exact');
     assert.deepEqual(payload.subtasks, [{ title: 'Browser checklist child', sort_order: 0, source_type: 'manual', is_done: false }], 'payload subtasks are exact');
 

@@ -254,3 +254,109 @@ APPROVE TRUSTED QA RUN aa524854d74bb534b7cb6c0cd70f1171629159ef57e506b5eee561159
 Current incident status:
 
 `BLOCKED_ON_FRESH_TRUSTED_QA_APPROVAL_AFTER_LIVE_DRIFT`
+
+## 2026-08-15 update — Trusted QA run `-06`
+
+Fresh approval received and executed:
+
+```text
+APPROVE TRUSTED QA RUN aa524854d74bb534b7cb6c0cd70f1171629159ef57e506b5eee56115962d3891 FOR ACCOUNT 48, CONTEXT event_genix, ROOM room-marvel, LINE 932, DATE 2026-08-19, WINDOW 12:00-18:00, MAX ENTITIES 40, TTL 30.
+```
+
+Preflight:
+
+- live version: `0.80.149`
+- live commit: `5bfe598c231de97a27165209e3ef983cc96bc1ae`
+- source branch: `codex/checkbox-hardening-release-v080103`
+- stale trusted QA runs: 0
+- room/line/window ready: yes
+- overlap count: 0
+- manifest hash matched approval: yes
+
+Trusted QA run:
+
+- run DB id: `6`
+- run id: `qa-banquet-cancellation-20260819-06`
+- QA product: `qa-banquet-cancel-20260819-06`
+
+Created exact QA entities:
+
+- standalone booking: `BK-2026-1101`
+- payment-method-only booking: `BK-2026-1102`
+- banquet primary: `BK-2026-1103`
+- banquet activity: `BK-2026-1104`
+- banquet group: `BQ-MSUDG9AG-A7D251B3`
+
+API verification passed:
+
+- fake client marker returned `403` / `QA_MARKER_UNTRUSTED`
+- standalone readiness allowed cancellation
+- standalone cancellation passed
+- standalone repeated cancellation returned success
+- payment-method-only cancellation passed
+- primary readiness returned `banquet_group_cancel`
+- activity readiness returned `banquet_activity_cancel`
+- generic `DELETE /api/bookings/:id` for active banquet primary returned `409` / `BANQUET_ROUTE_REQUIRED`
+- canonical full-group cancellation passed through `POST /api/banquets/:groupId/cancel`
+- repeated full-group cancellation returned `idempotent: true`
+
+Browser/UI verification:
+
+- Headless browser smoke was attempted after installing Playwright into a temporary runtime outside the repository.
+- The smoke reached the activity cancellation phase and `BK-2026-1104` became `cancelled`.
+- The smoke failed while waiting for the second-tab WebSocket event: `page.waitForFunction: Timeout 15000ms exceeded`.
+- Because the WebSocket event was not observed by the automated second tab, the two-tab WebSocket/UI proof is not closed.
+
+Cleanup:
+
+- exact cleanup run `6` completed
+- repeated cleanup completed as no-op
+- local temporary QA token file was removed
+
+Cleanup result:
+
+- registered entities: 9
+- cleaned bookings: `BK-2026-1101`, `BK-2026-1102`, `BK-2026-1103`, `BK-2026-1104`
+- cleaned group: `BQ-MSUDG9AG-A7D251B3`
+- cleaned product: `qa-banquet-cancel-20260819-06`
+- final run state: `cleaned`
+- active / `cleanup_pending` / `blocked` trusted QA runs: 0
+- all registered entities state: `cleaned`
+
+Exact postconditions:
+
+- `BK-2026-1101`: `cancelled`
+- `BK-2026-1102`: `cancelled`
+- `BK-2026-1103`: `cancelled`
+- `BK-2026-1104`: `cancelled`
+- `BQ-MSUDG9AG-A7D251B3`: `cancelled`
+- `qa-banquet-cancel-20260819-06`: inactive
+- open tasks for exact QA booking IDs: 0
+- readable exact side-effect counts: 0 for finance, receipts, banquet deposits, warehouse movements/history, outbox, event queue, rule execution log, notification outbox, chat messages, announcements, and print jobs
+- `loyalty_transactions` and `gamification_events` remain unreadable/unavailable to this audit query
+
+Final inventory after cleanup:
+
+- artifact directory: `output/task3-final-audit-after-trusted-qa-20260815`
+- bundle hash: `73f40a4bf54b42a75b6ab6cfcd81fce55fbd7257340dd3af4ab739f677ee0070`
+- room manifest hash: `72bfdc548845832aa679c80aa498ce4c398b112051d421d3690d964b9e93f8f8`
+- constraints manifest hash: `1c84d71b65aa0cefaa5724a23eeff8bac4bf03e2c5326b4dd0ced827e9e09adf`
+- trusted QA manifest hash: `8aa13bcbe343789bd82b435e2ff42a05d16d588815723e22fca0c8aa19c6d9d6`
+- room invalid active counts: 0
+- constraint invalid active count: 0
+- trusted QA registry inspection blocked: false
+- trusted QA runs: 6, all `cleaned`
+- trusted QA entities: 68, all `cleaned`
+
+Tooling note:
+
+- `production-inventory-manifest.js` still reports `trustedQa.sideEffectLeftovers=1262`.
+- Manual inspection showed this is a broad historical event/outbox inventory, not an exact leftover count for run `-06`.
+- Exact run `-06` postconditions are clean on all readable side-effect surfaces.
+- Classification: `FOLLOW_UP_REQUIRED` for inventory tooling precision.
+
+Current incident status:
+
+`FOLLOW_UP_REQUIRED_ON_TWO_TAB_WEBSOCKET_UI_PROOF`
+
+Backend cancellation, trusted QA authorization, exact cleanup, idempotent cleanup, room integrity, and readable side-effect cleanup are verified. The remaining evidence gap is the automated two-tab WebSocket/UI smoke timeout.

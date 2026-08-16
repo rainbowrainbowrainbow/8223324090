@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.1 - Unified Task Composer Release
+
+### My Day / Task Composer / AI Draft / (16.08.2026) [codex]
+- **Один видимий Task Composer у «Мій день»** - старі конкуруючі entry points зведено до одного auto-growing поля «Що потрібно зробити?» і двох явних дій: «Створити» та «Заповнити з AI».
+- **AI-вхід перенаправлено на production-native review flow** - кнопка «Заповнити з AI» запускає чинний `TaskAiDraft` preview/confirm pipeline, а старий видимий блок «Опиши результат або деталі / Підготувати з AI» прибрано з Profile composer.
+- **Захист від дублів і втрати тексту** - direct create блокує double-click, не очищає composer до підтвердженого success і блокує повтор того самого payload після network/timeout unknown result.
+- **Regression coverage** - оновлено Profile/My Day і AI draft UI тести для одного visible input, єдиного AI trigger, long-text guard і repeat-after-timeout guard.
+
+---
+
 ## v0.81.0 - My Day AI Smoke Harness Release
 
 ### My Day / AI QA / Release metadata / (16.08.2026) [codex]

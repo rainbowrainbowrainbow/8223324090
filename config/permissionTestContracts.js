@@ -233,6 +233,24 @@ const ACTION_PERMISSION_TEST_CONTRACTS = Object.freeze({
         sensitive: true,
         testFiles: ['tests/revenue-access-surface-contract.test.js']
     }),
+    'tasks.create': actionContract('tasks.create', {
+        backendScenario: 'task create and AI task commit route guards',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/task-permissions-parity.test.js']
+    }),
+    'tasks.delete': actionContract('tasks.delete', {
+        backendScenario: 'task delete and duplicate cleanup route guards',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/task-permissions-parity.test.js']
+    }),
+    'tasks.review': actionContract('tasks.review', {
+        backendScenario: 'task review route guard and drawer action contract',
+        mutation: true,
+        sensitive: true,
+        testFiles: ['tests/task-permissions-parity.test.js']
+    }),
     'hermes.staff.manage': actionContract('hermes.staff.manage', {
         backendScenario: 'Hermes staff create/onboarding',
         mutation: true,

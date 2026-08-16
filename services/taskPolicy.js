@@ -1,4 +1,5 @@
 const { getPermissions } = require('../config/roles');
+const { resolveCapability } = require('./accountAccessPolicy');
 
 // These sets mirror the legacy requireRole(...) expansion used by task routes.
 // They describe existing route access for UI contracts; they do not grant access.
@@ -16,6 +17,11 @@ const TASK_ROUTE_CAPABILITY_ROLES = Object.freeze({
         'creator', 'director', 'vice_director', 'senior_manager', 'manager',
         'accountant', 'art_director', 'marketer', 'it_specialist', 'hr', 'admin'
     ])
+});
+const TASK_ROUTE_CAPABILITY_ACTIONS = Object.freeze({
+    create: 'tasks.create',
+    delete: 'tasks.delete',
+    review: 'tasks.review'
 });
 
 const ACTIVE_TASK_STATUS_SQL = "COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')";
@@ -206,16 +212,29 @@ function userRoleValues(user = {}) {
 }
 
 function canUseTaskRouteCapability(user, capability) {
-    const allowedRoles = TASK_ROUTE_CAPABILITY_ROLES[capability];
-    if (!allowedRoles) return false;
-    const roles = userRoleValues(user);
-    return roles.includes('creator') || roles.some(role => allowedRoles.includes(role));
+    return taskRouteCapabilityDecision(user, capability).allowed;
 }
 function taskRouteCapabilityDecision(user, capability) {
-    const allowed = canUseTaskRouteCapability(user, capability);
+    const action = TASK_ROUTE_CAPABILITY_ACTIONS[capability];
+    if (!action) {
+        return {
+            allowed: false,
+            source: 'default_deny',
+            sourceRole: null,
+            reason: 'unknown_capability',
+            capability: `action:${String(capability || '')}`,
+            type: 'action',
+            key: String(capability || ''),
+            requestedKey: String(capability || ''),
+            reasonCode: 'TASK_ACTION_FORBIDDEN'
+        };
+    }
+    const decision = resolveCapability(user, action, { type: 'action' });
     return {
-        allowed,
-        reasonCode: allowed ? null : (TASK_ROUTE_CAPABILITY_REASON_CODES[capability] || 'TASK_ACTION_FORBIDDEN')
+        ...decision,
+        taskCapability: capability,
+        action,
+        reasonCode: decision.allowed ? null : (TASK_ROUTE_CAPABILITY_REASON_CODES[capability] || 'TASK_ACTION_FORBIDDEN')
     };
 }
 function taskControlMeta(task = {}) {

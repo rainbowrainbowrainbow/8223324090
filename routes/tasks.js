@@ -155,6 +155,21 @@ let _triggerAlertBroadcast;
 try { _triggerAlertBroadcast = require('./dashboard').triggerAlertBroadcast; } catch {}
 function _alertPush() { if (_triggerAlertBroadcast) _triggerAlertBroadcast(); }
 
+function requireTaskRouteCapability(capability) {
+    return (req, res, next) => {
+        const decision = taskRouteCapabilityDecision(req.user, capability);
+        if (!decision.allowed) {
+            return res.status(403).json({
+                success: false,
+                error: 'Insufficient permissions',
+                code: decision.reasonCode || 'TASK_ACTION_FORBIDDEN',
+                capability: decision.action || decision.key || capability
+            });
+        }
+        next();
+    };
+}
+
 function emitTaskAssignedToOwner(task, actor, options = {}) {
     return emitCanonicalTaskAssignedToOwner(task, actor, {
         source: 'routes/tasks',
@@ -1629,7 +1644,16 @@ router.get('/team-control', async (req, res) => {
 router.get('/permissions', (req, res) => {
     const perms = getPermissions(req.user?.role);
     const capabilities = Object.fromEntries(
-        ['create', 'delete', 'review'].map(capability => [capability, taskRouteCapabilityDecision(req.user, capability)])
+        ['create', 'delete', 'review'].map(capability => {
+            const decision = taskRouteCapabilityDecision(req.user, capability);
+            return [capability, {
+                allowed: decision.allowed,
+                reasonCode: decision.reasonCode,
+                capability: decision.action,
+                source: decision.source,
+                reason: decision.reason
+            }];
+        })
     );
     res.json({ success: true, permissions: perms, capabilities, role: req.user?.role });
 });
@@ -1717,7 +1741,7 @@ router.get('/dedup-report', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // POST /api/tasks/dedup-cleanup — archive duplicate active records without deleting history
-router.post('/dedup-cleanup', requireRole('admin'), async (req, res) => {
+router.post('/dedup-cleanup', requireTaskRouteCapability('delete'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
@@ -1927,7 +1951,7 @@ router.post('/ai-draft/preview', requireRole('admin', 'user'), async (req, res) 
 });
 
 // POST /api/tasks/ai-draft/commit - atomic AI-assisted task creation from a signed preview.
-router.post('/ai-draft/commit', requireRole('admin', 'user'), async (req, res) => {
+router.post('/ai-draft/commit', requireTaskRouteCapability('create'), async (req, res) => {
     try {
         const result = await buildTaskAiDraftCommit(req, res);
         if (!result) return;
@@ -1969,7 +1993,7 @@ router.post('/ai-draft/commit', requireRole('admin', 'user'), async (req, res) =
 });
 
 // POST /api/tasks/ai-draft/bundle/commit - atomic AI-assisted multi-task creation from a signed preview.
-router.post('/ai-draft/bundle/commit', requireRole('admin', 'user'), async (req, res) => {
+router.post('/ai-draft/bundle/commit', requireTaskRouteCapability('create'), async (req, res) => {
     try {
         const result = await buildTaskAiDraftBundleCommit(req, res);
         if (!result) return;
@@ -2360,7 +2384,7 @@ router.delete('/:id/dependencies/:dependsOnTaskId', requireRole('admin', 'user')
     }
 });
 
-router.post('/:id/dependencies/quick-create', requireRole('admin', 'user'), async (req, res) => {
+router.post('/:id/dependencies/quick-create', requireTaskRouteCapability('create'), async (req, res) => {
     const title = String(req.body?.title || '').trim();
     if (!title) return res.status(400).json({ success: false, error: 'title required', code: 'TASK_DEPENDENCY_VALIDATION_ERROR' });
     try {
@@ -3244,7 +3268,7 @@ router.get('/:id/logs', async (req, res) => {
 });
 
 // POST /api/tasks/operation-pack — create preset-driven checklist bundle
-router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) => {
+router.post('/operation-pack', requireTaskRouteCapability('create'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
@@ -3336,7 +3360,7 @@ router.post('/operation-pack', requireRole('admin', 'user'), async (req, res) =>
 });
 
 // POST /api/tasks — create (via Kleshnya) — admin/user only
-router.post('/', requireRole('admin', 'user'), async (req, res) => {
+router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
@@ -3911,7 +3935,7 @@ router.patch('/:id/status', requireRole('admin', 'user'), async (req, res) => {
 });
 
 // POST /api/tasks/:id/review — review/score a completed task (manager+)
-router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'), async (req, res) => {
+router.post('/:id/review', requireTaskRouteCapability('review'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;
@@ -3973,7 +3997,7 @@ router.post('/:id/review', requireRole('admin', 'creator', 'director', 'manager'
 });
 
 // DELETE /api/tasks/:id — admin only
-router.delete('/:id', requireRole('admin'), async (req, res) => {
+router.delete('/:id', requireTaskRouteCapability('delete'), async (req, res) => {
     try {
         const businessScope = requireTaskWriteScope(req, res);
         if (!businessScope) return;

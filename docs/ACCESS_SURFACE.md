@@ -48,7 +48,7 @@ document in the same pack.
 - every `PAGE_ACCESS` entry resolves to a static page, static alias, or
   hash-modal ownership entry.
 - `npm run check:permission-registry` verifies that the inventory contains
-  exactly the current 42 canonical page keys and 29 action keys, rejects unknown keys,
+  exactly the current 42 canonical page keys and 49 action entries, rejects unknown keys,
   validates default-role parity, resolves aliases, and requires enforcement
   evidence or an explicit deprecated marker.
 
@@ -116,7 +116,7 @@ This pack is considered done when all of these remain true:
 - Any new public page, embedded route, modal bridge, or intentional sidebar role
   mismatch is listed in `config/accessSurface.js` and this document.
 
-## Access-hardening baseline (Tasks 4?8)
+## Access-hardening baseline (Tasks 4-8 and Task 11)
 
 The following capabilities are server-enforced and their UI controls stay
 fail-closed until the authenticated permission catalog is ready:
@@ -127,6 +127,7 @@ fail-closed until the authenticated permission catalog is ready:
 | Subscription, packages, feature flags, catalog settings, lead-assistant settings, and program-icon settings | `manage_settings` | Mutations use canonical action guards; catalog prices remain readable without revenue access. |
 | Payroll, HR reports, attendance artifacts, and staff schedule XLSX | domain view/export capability **and** `export_data` | API guards run before query/workbook generation; UI does not start a forbidden export. |
 | Public webhooks and machine APIs | integration contract owner + signature, secret, or API key | Public allowlisting only reaches a route-level integration guard; no user action allow/deny list is used for machine identity. |
+| Task Center create/delete/review routes | `tasks.create`, `tasks.delete`, and `tasks.review` | Route-level guards use canonical action decisions, explicit deny wins over role defaults, and create controls stay hidden until `/api/tasks/permissions` hydrates. |
 
 `npm run check:action-permissions`, `npm run check:permission-registry`,
 `npm run check:capability-policy`, `npm run check:auth-boundary`, and

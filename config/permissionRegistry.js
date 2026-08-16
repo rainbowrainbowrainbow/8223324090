@@ -859,6 +859,48 @@ const ACTION_PERMISSIONS = Object.freeze([
         notes: 'Generic data exports are authorized before their file/query preparation. Payroll and HR exports require this capability in addition to their granular payroll or HR-report permission.'
     }),
     action({
+        key: 'tasks.create', label: 'Створювати задачі', group: 'tasks',
+        defaultRoles: [...ADMIN_UP, 'senior_instructor', 'instructor'], risk: 'high',
+        backendConsumers: [
+            source('routes/tasks.js', "requireTaskRouteCapability('create')", { enforces: true }),
+            source('services/taskPolicy.js', "create: 'tasks.create'", { enforces: true })
+        ],
+        frontendConsumers: [source('js/tasks-page.js', "taskCapabilityAllowed('create'", { enforces: true })],
+        apiConsumers: [
+            api('routes/tasks.js', 'POST /api/tasks, /api/tasks/operation-pack, task AI commit, and dependency quick-create', null, 'Enforced by requireTaskRouteCapability(create), owned by tasks.create.')
+        ],
+        notes: 'Canonical owner for the existing task create surface. Default roles intentionally mirror the former requireRole(admin,user) expansion.'
+    }),
+    action({
+        key: 'tasks.delete', label: 'Видаляти задачі', group: 'tasks',
+        defaultRoles: ADMIN_UP, risk: 'critical',
+        backendConsumers: [
+            source('routes/tasks.js', "requireTaskRouteCapability('delete')", { enforces: true }),
+            source('services/taskPolicy.js', "delete: 'tasks.delete'", { enforces: true })
+        ],
+        frontendConsumers: [source('js/tasks-page.js', "taskCapabilityDecision('delete'", { enforces: true })],
+        apiConsumers: [
+            api('routes/tasks.js', 'DELETE /api/tasks/:id and POST /api/tasks/dedup-cleanup', null, 'Enforced by requireTaskRouteCapability(delete), owned by tasks.delete.')
+        ],
+        notes: 'Canonical owner for destructive task actions. Default roles intentionally mirror the former requireRole(admin) expansion.'
+    }),
+    action({
+        key: 'tasks.review', label: 'Оцінювати задачі', group: 'tasks',
+        defaultRoles: ADMIN_UP, risk: 'high',
+        backendConsumers: [
+            source('routes/tasks.js', "requireTaskRouteCapability('review')", { enforces: true }),
+            source('services/taskPolicy.js', "review: 'tasks.review'", { enforces: true })
+        ],
+        frontendConsumers: [
+            source('js/tasks-page.js', "data-task-drawer-action=\"review\"", { enforces: true }),
+            source('services/taskDetailContract.js', "taskRouteCapabilityDecision(user, 'review')", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/tasks.js', 'POST /api/tasks/:id/review', null, 'Enforced by requireTaskRouteCapability(review), owned by tasks.review.')
+        ],
+        notes: 'Canonical owner for task review controls. Default roles intentionally mirror the former review route role expansion.'
+    }),
+    action({
         key: 'manage_staff', label: 'Керувати персоналом', group: 'hr',
         defaultRoles: [], risk: 'critical', status: ACTION_STATUS.DEAD, deprecated: true, configurable: false, explicitAllow: false,
         notes: 'Compatibility-only legacy key. Stored allow/deny values are interpreted by the granular capabilities that replaced its former consumers.'

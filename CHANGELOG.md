@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.163 - My Day Overdue Triage Hotfix
+
+### Release / Versioning / (16.08.2026) [codex]
+- **Прострочені задачі My Day мають один набір triage-дій** - overdue row більше не дублює `move-to-today` і custom reschedule між facts/menu та primary command row.
+- **Один primary action для кожної дії** - «На сьогодні» і «Відкласти» залишаються видимими inline, а generic due menu не дублюється всередині overdue triage card.
+- **Регресійне покриття оновлено** - тест перевіряє рівно один `move-to-today`, рівно один custom reschedule і відсутність прихованого duplicated reschedule menu.
+
+---
+
 ## v0.80.162 - My Day Overdue Action Hotfix
 
 ### Release / Versioning / (16.08.2026) [codex]

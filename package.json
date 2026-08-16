@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.162",
+  "version": "0.80.163",
   "eventGenix": {
-    "releaseLabel": "My Day Overdue Action Hotfix"
+    "releaseLabel": "My Day Overdue Triage Hotfix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

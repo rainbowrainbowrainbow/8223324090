@@ -4,6 +4,18 @@
 
 ---
 
+## v0.80.158 - My Day Final AI Hardening
+
+### My Day / AI Composer / (16.08.2026) [codex]
+- **My Day для великих акаунтів** - projection більше не повторює важкі subtask aggregates, повертає partial-list metadata і дозволяє дозавантажувати великі buckets через `Show more` без прихованого обрізання.
+- **Швидкий вхід у My Day** - вкладка одразу показує shell/skeleton/retry/offline states, не чекає повного cabinet projection перед першим render і зменшує ризик blank screen на великих акаунтах.
+- **Стабільні взаємодії карток** - посилено one-click видалення впливів, dependency search, time disclosure, global timer refresh, focus cleanup і today/overdue parity.
+- **AI bundle safety** - bundle commit перевіряє field masks для title/description/impacts/subtasks/owner/due date/priority, не записує неприйняті поля і зберігає atomic/idempotent behavior.
+- **Доказовий AI gate** - actual-app browser → Express → PostgreSQL E2E покриває My Day, Tasks, schedule, bundle, rollback/idempotency і fail-closed OpenAI mock у CI.
+- **Luna eval PASS** - controlled paid eval на анонімізованих fixtures підтвердив `gpt-5.6-luna` із `reasoning.effort: low`; artifact зберігає тільки redacted metrics без task text, prompt, provider response або secrets.
+
+---
+
 ## v0.80.157 - Trusted QA Attribution
 
 ### Release / Versioning / (15.08.2026) [codex]

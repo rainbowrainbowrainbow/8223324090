@@ -7,6 +7,7 @@ const {
     createHermesAuthMiddleware,
     extractHermesCredential,
     parseHermesAllowedBusinessContexts,
+    sanitizeHermesMachineActor,
     timingSafeSecretEqual
 } = require('../middleware/hermesAuth');
 const { createHermesRouter } = require('../routes/hermes');
@@ -139,6 +140,25 @@ describe('Hermes auth helper functions', () => {
         assert.deepEqual(narrowed.businessContextPolicy.allowed, ['event_genix']);
         assert.equal(narrowed.businessContextPolicy.defaultContext, 'event_genix');
     });
+
+    it('removes user action overrides from Hermes machine actors', () => {
+        const actor = sanitizeHermesMachineActor({
+            id: 42,
+            role: 'director',
+            actionAllowlist: ['hermes.staff.manage'],
+            action_allowlist: ['hermes.staff.manage'],
+            actionDenylist: ['view_revenue', 'manage_staff'],
+            action_denylist: ['view_revenue', 'manage_staff'],
+            businessContexts: ['event_genix']
+        });
+
+        assert.deepEqual(actor.actionAllowlist, []);
+        assert.deepEqual(actor.action_allowlist, []);
+        assert.deepEqual(actor.actionDenylist, []);
+        assert.deepEqual(actor.action_denylist, []);
+        assert.equal(actor.role, 'director');
+        assert.deepEqual(actor.businessContexts, ['event_genix']);
+    });
 });
 
 describe('Hermes auth middleware', () => {
@@ -232,7 +252,13 @@ describe('Hermes auth middleware', () => {
     });
 
     it('sets req.user and req.integration for valid x-api-key requests', async () => {
-        await withHermesApp({ env: goodEnv }, async baseUrl => {
+        await withHermesApp({
+            env: goodEnv,
+            row: actorRow({
+                action_allowlist: ['hermes.staff.manage'],
+                action_denylist: ['view_revenue', 'manage_staff']
+            })
+        }, async baseUrl => {
             const res = await request(baseUrl, 'GET', '/probe', undefined, {
                 'x-api-key': 'unit-hermes-key'
             });
@@ -242,6 +268,10 @@ describe('Hermes auth middleware', () => {
             assert.equal(res.data.user.username, 'hermes_bot');
             assert.equal(res.data.user.defaultBusinessContext, 'crm');
             assert.deepEqual(res.data.user.businessContexts, ['event_genix', 'crm']);
+            assert.deepEqual(res.data.user.actionAllowlist, []);
+            assert.deepEqual(res.data.user.action_allowlist, []);
+            assert.deepEqual(res.data.user.actionDenylist, []);
+            assert.deepEqual(res.data.user.action_denylist, []);
             assert.equal(res.data.integration.id, HERMES_INTEGRATION_ID);
             assert.equal(res.data.integration.source, 'hermes');
             assert.equal(res.data.integration.authMode, 'x-api-key');

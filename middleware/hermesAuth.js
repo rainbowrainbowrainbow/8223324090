@@ -110,6 +110,17 @@ function applyHermesBusinessContextAllowlist(actor, allowedBusinessContexts) {
     };
 }
 
+function sanitizeHermesMachineActor(actor) {
+    if (!actor || typeof actor !== 'object') return actor;
+    return {
+        ...actor,
+        actionAllowlist: [],
+        action_allowlist: [],
+        actionDenylist: [],
+        action_denylist: []
+    };
+}
+
 async function loadHermesActor(queryable, actorUserId) {
     const result = await queryable.query(
         `SELECT id, username, role, extra_roles, page_allowlist, action_allowlist, action_denylist,
@@ -132,7 +143,7 @@ async function loadHermesActor(queryable, actorUserId) {
         err.statusCode = 403;
         throw err;
     }
-    return buildAuthUserPayload(actor);
+    return sanitizeHermesMachineActor(buildAuthUserPayload(actor));
 }
 
 function createHermesAuthMiddleware(options = {}) {
@@ -228,5 +239,6 @@ module.exports = {
     hermesAuth,
     loadHermesActor,
     parseHermesAllowedBusinessContexts,
+    sanitizeHermesMachineActor,
     timingSafeSecretEqual
 };

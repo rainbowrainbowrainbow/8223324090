@@ -4,7 +4,8 @@ const express = require('express');
 const { pool } = require('../db');
 const {
     HERMES_INTEGRATION_ID,
-    hermesAuth
+    hermesAuth,
+    sanitizeHermesMachineActor
 } = require('../middleware/hermesAuth');
 const { canUseAction } = require('../middleware/auth');
 const {
@@ -2209,6 +2210,13 @@ function shapeHermesRevenueResponse(req, res, next) {
     );
 }
 
+function normalizeHermesMachineActor(req, _res, next) {
+    if (req.integration?.id === HERMES_INTEGRATION_ID) {
+        req.user = sanitizeHermesMachineActor(req.user);
+    }
+    return next();
+}
+
 function createHermesRouter(options = {}) {
     const router = express.Router();
     const authMiddleware = options.authMiddleware || hermesAuth;
@@ -2227,6 +2235,7 @@ function createHermesRouter(options = {}) {
         router.use(rateLimiter);
     }
     router.use(authMiddleware);
+    router.use(normalizeHermesMachineActor);
     router.use('/', createHermesScheduleRouter({ pool: query }));
 
     router.get('/capabilities', (req, res) => {

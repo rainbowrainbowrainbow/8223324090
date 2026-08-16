@@ -39,7 +39,7 @@ focused tests.
 | `GET /report-bot/summary` | report-bot | Report bot read endpoint is guarded inside the route by bot API key policy. |
 | `GET /report-bot/accounts` | report-bot | Report bot account lookup is guarded inside the route by bot API key policy. |
 | `GET /report-bot/submissions` | report-bot | Report bot submission lookup is guarded inside the route by bot API key policy. |
-| `ANY /hermes/*` | hermes | Hermes integration is public only at the central JWT boundary; `routes/hermes.js` validates `x-api-key` or Bearer secret and loads the configured actor before any response. |
+| `ANY /hermes/*` | hermes | Hermes integration is public only at the central JWT boundary; `routes/hermes.js` validates `x-api-key` or Bearer secret, loads the configured actor, and removes user action overrides from the machine actor before any response. |
 | `POST /personal-accounts/sync` | personal-accounts | Report-bot personal-account sync uses bot/API-key authorization inside the route. |
 | `GET /personal-accounts/my` | personal-accounts | Report-bot personal account lookup uses bot/API-key authorization inside the route. |
 | `POST /personal-accounts/:accountId/grant` | personal-accounts | Report-bot personal-account grant uses bot/API-key authorization inside the route. |
@@ -112,7 +112,7 @@ is not an integration credential.
 | `GET /report-bot/summary` | report-bot | Bot API key, required | Read-only | Configured report bot | Scoped bot payload or 403 |
 | `GET /report-bot/accounts` | report-bot | Bot API key, required | Read-only | Configured report bot | Scoped bot payload or 403 |
 | `GET /report-bot/submissions` | report-bot | Bot API key, required | Read-only | Configured report bot | Scoped bot payload or 403 |
-| `ANY /hermes/*` | hermes | Hermes API key / integration Bearer secret, required | Hermes mutation guard and idempotency keys | Narrowed configured actor scope | Documented scoped payload or generic auth error |
+| `ANY /hermes/*` | hermes | Hermes API key / integration Bearer secret, required | Hermes mutation guard and idempotency keys | Narrowed configured actor role/business-context scope; user `action_allowlist` / `action_denylist` is stripped from the machine actor | Documented scoped payload or generic auth error |
 | `POST /personal-accounts/sync` | personal-accounts | Report-bot API key, required | Account identity key | Personal-account owner scope | Scoped payload or 403 |
 | `GET /personal-accounts/my` | personal-accounts | Report-bot API key or verified owner JWT | Read-only | Personal-account owner scope | Scoped payload or 401/403 |
 | `POST /personal-accounts/:accountId/grant` | personal-accounts | Report-bot API key or verified owner JWT | Account + Telegram identity key | Personal-account owner scope | Scoped acknowledgement or 403 |
@@ -138,11 +138,11 @@ machine business integrations.
 ### Guard and Test Ownership
 
 Route guards: `routes/telegram.js`, `routes/omnichannel.js`,
-`routes/checkbox-webhook.js`, `server.js`, `routes/report-bot.js`, `middleware/hermesAuth.js`, `routes/hermes.js`,
+`routes/checkbox-webhook.js`, `server.js`, `routes/report-bot.js`, `middleware/hermesAuth.js`, `routes/hermes.js`, `routes/hermes-schedule.js`,
 `routes/personal-accounts.js`, `routes/kleshnya.js`, `routes/music.js`, and
 `routes/leads.js`.
 
 Focused coverage: `tests/auth-boundary.test.js`,
-`tests/omni-provider-lifecycle.test.js`, `tests/checkbox-webhook-reconciliation.test.js`, `tests/hermes-auth.test.js`,
+`tests/omni-provider-lifecycle.test.js`, `tests/checkbox-webhook-reconciliation.test.js`, `tests/hermes-auth.test.js`, `tests/hermes-schedule-routes.test.js`,
 `tests/personal-accounts-jwt-telegram.test.js`, `tests/kleshnya.test.js`, and
 `tests/route-smoke.test.js`.

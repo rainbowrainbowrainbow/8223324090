@@ -312,8 +312,9 @@ describe('Hermes staff and schedule read routes', () => {
     it('creates a staff member through Hermes with clear no-schedule side effects', async () => {
         const createPoolWithManageStaff = createPool({
             actor: actorRow({
+                role: 'manager',
                 action_allowlist: ['hermes.staff.manage'],
-                action_denylist: []
+                action_denylist: ['hermes.staff.manage', 'manage_staff']
             }),
             createdStaffRow: {
                 id: 999,
@@ -405,7 +406,7 @@ describe('Hermes staff and schedule read routes', () => {
 
     it('requires Hermes integration id, confirmation, idempotency, and API-key auth for staff create', async () => {
         const guardedPool = createPool({
-            actor: actorRow({ action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
         });
         const { server: guardedServer, baseUrl: guardedBaseUrl } = await listenHermesTestApp(guardedPool, env);
         const body = {
@@ -482,7 +483,7 @@ describe('Hermes staff and schedule read routes', () => {
 
     it('rejects normalized duplicate staff names with a sanitized existing envelope', async () => {
         const duplicatePool = createPool({
-            actor: actorRow({ action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
             duplicateRows: [{
                 id: 321,
                 name: 'Плющкіт',
@@ -533,7 +534,7 @@ describe('Hermes staff and schedule read routes', () => {
 
     it('accepts snake_case profession aliases and strips @ from Telegram username', async () => {
         const aliasPool = createPool({
-            actor: actorRow({ action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
             createdStaffRow: {
                 id: 1000,
                 name: 'Плющкіт Alias',
@@ -577,6 +578,7 @@ describe('Hermes staff and schedule read routes', () => {
     it('keeps staff creation separate from schedule changes', async () => {
         const createPoolWithManageStaff = createPool({
             actor: actorRow({
+                role: 'manager',
                 action_allowlist: ['hermes.staff.manage'],
                 action_denylist: []
             })

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.161 - My Day Overdue Action Hotfix
+
+### My Day / Overdue triage / (16.08.2026) [codex]
+- **Одна дія “На сьогодні” у прострочених задачах** - overdue triage row більше не дублює `move-to-today` action між shared My Day card facts і primary triage commands.
+- **Primary triage залишився канонічним** - у простроченій задачі лишається один головний CTA `На сьогодні`, а fallback/more actions і drag-to-today behavior не змінені.
+- **Regression guard** - My Day tests тепер перевіряють, що overdue triage row має рівно один `data-cabinet-task-action="move-to-today"`.
+
+---
+
 ## v0.80.160 - Task Access Re-baseline
 
 ### Access / Task Center / (16.08.2026) [codex]

@@ -427,6 +427,12 @@ async function assertNoHorizontalOverflow(page, label) {
 }
 
 async function assertComposerFitsViewport(page, label) {
+    await page.waitForFunction(() => {
+        const composer = document.getElementById('quickAdd');
+        if (!composer || composer.hidden) return false;
+        const rect = composer.getBoundingClientRect();
+        return rect.width > 0 && rect.height > 0;
+    }, { timeout: 10000 });
     const result = await page.evaluate(() => {
         const composer = document.getElementById('quickAdd');
         const composerRect = composer?.getBoundingClientRect();

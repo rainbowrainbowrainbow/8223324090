@@ -93,6 +93,26 @@ existing service. Use `RELEASE_RAILWAY_PROJECT` or `--project` only when the
 owner has explicitly approved a Railway project change. Before deployment,
 verify that `railway status --json` resolves project `fortunate-appreciation`,
 environment `production`, service `8223324090`, and the expected live domain.
+
+### Emergency metadata recovery
+
+`--recover-missing-live-metadata-commit <40-char-sha>` is an emergency-only
+escape hatch for the specific case where live `/api/version` has incomplete
+deployment metadata and the operator has independently confirmed the previous
+live/marker SHA. It is not a normal deploy option and must not be baked into npm
+wrappers or routine release commands.
+
+The helper still fails closed on unsafe recovery use:
+
+- recovery is rejected when live deployment metadata is already complete;
+- the recovery SHA must be an exact 40-character commit SHA;
+- same-version recovery deploys are rejected;
+- lower-version deploys are rejected;
+- the local release version must be newer than the live version.
+
+Normal production deploys should run without this flag. If recovery is needed,
+record the confirmed previous live/marker SHA in the release notes or operator
+handoff before running the helper.
 ## Production Branch Rule Exception
 
 Owner decision on 2026-07-19: keep production commit `0658c09c7`

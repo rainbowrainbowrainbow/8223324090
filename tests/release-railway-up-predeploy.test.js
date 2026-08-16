@@ -108,6 +108,15 @@ test('Railway release predeploy guard allows explicit metadata recovery for a ne
 
     assert.throws(() => assertPreDeployLiveSafety({
         live: incompleteLive,
+        localVersion: '0.81.0',
+        head: HEAD,
+        branch: LIVE.sourceBranch,
+        remoteSha: HEAD,
+        recoverMissingLiveMetadataCommit: 'dddddddd'
+    }), /exact 40-character SHA/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        live: incompleteLive,
         localVersion: '0.80.164',
         head: HEAD,
         branch: LIVE.sourceBranch,
@@ -123,6 +132,24 @@ test('Railway release predeploy guard allows explicit metadata recovery for a ne
         remoteSha: HEAD,
         recoverMissingLiveMetadataCommit: RECOVERY_HEAD
     }), /metadata recovery override/);
+});
+
+test('Railway release metadata recovery remains an emergency path, not normal deploy mode', () => {
+    const pkg = require('../package.json');
+    for (const [name, command] of Object.entries(pkg.scripts)) {
+        if (!name.startsWith('release:railway-up')) continue;
+        assert.doesNotMatch(command, /recover-missing-live-metadata-commit/);
+        assert.doesNotMatch(command, /RELEASE_RECOVER_MISSING_LIVE_METADATA_COMMIT/);
+    }
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        live: { ...LIVE, deploymentMetadata: { status: 'manual', complete: false } },
+        localVersion: LIVE.version,
+        head: HEAD,
+        branch: LIVE.sourceBranch,
+        remoteSha: HEAD,
+        recoverMissingLiveMetadataCommit: RECOVERY_HEAD
+    }), /newer than live/);
 });
 
 test('Railway release predeploy guard reads live /api/version without Railway variables or upload', async () => {

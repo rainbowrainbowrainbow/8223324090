@@ -89,6 +89,9 @@ function assertPreDeployLiveSafety({
     const localHead = normalizeCommit(head);
     const metadataComplete = liveDeploymentMetadataIsComplete(live);
     const recoveryCommit = normalizeCommit(recoverMissingLiveMetadataCommit);
+    if (String(recoverMissingLiveMetadataCommit || '').trim() && !recoveryCommit) {
+        throw new Error('Metadata recovery commit must be an exact 40-character SHA');
+    }
     if (!metadataComplete && !recoveryCommit) assertCompleteLiveDeploymentMetadata(live);
     if (metadataComplete && recoveryCommit) {
         throw new Error('Refusing metadata recovery override because live deployment metadata is complete');

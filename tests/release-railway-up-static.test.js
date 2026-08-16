@@ -15,6 +15,11 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(pkg.scripts['release:railway-up'], /scripts\/railway-release-up\.js/);
     assert.match(pkg.scripts['release:railway-up:branch'], /scripts\/railway-release-up\.js --branch$/);
     assert.match(pkg.scripts['release:railway-up:dry-run:branch'], /scripts\/railway-release-up\.js --dry-run --branch$/);
+    for (const [name, command] of Object.entries(pkg.scripts)) {
+        if (!name.startsWith('release:railway-up')) continue;
+        assert.doesNotMatch(command, /recover-missing-live-metadata-commit/);
+        assert.doesNotMatch(command, /RELEASE_RECOVER_MISSING_LIVE_METADATA_COMMIT/);
+    }
     assert.match(script, /git\(\['status', '--porcelain'\]\)/);
     assert.match(script, /git\(\['ls-remote', 'origin'/);
     assert.match(script, /writeDeploymentManifest\(sourceDir/);
@@ -35,6 +40,9 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /Refusing same-version deploy/);
     assert.match(script, /Refusing to deploy v\$\{localVersion\} over newer live/);
     assert.match(script, /Live deployment metadata is not complete/);
+    assert.match(script, /metadataComplete && recoveryCommit/);
+    assert.match(script, /Metadata recovery commit must be an exact 40-character SHA/);
+    assert.match(script, /Refusing metadata recovery override unless local release version is newer than live/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
     assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
     assert.match(script, /git archive/);

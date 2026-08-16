@@ -2338,6 +2338,8 @@ test('HR operational staff scope uses shared scheduleable filters for live route
         "router.get('/today'",
         "router.get('/availability'",
         "router.put('/staff/:id/pool-status'",
+        'hr_pool_status = $1::text',
+        "CASE WHEN $1::text = 'blacklisted'",
         'schedule_cleanup: scheduleCleanup',
         'cleanupFutureStaffOperationalSchedule(client, req.params.id'
     ]) {

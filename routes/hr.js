@@ -5123,9 +5123,9 @@ router.put('/staff/:id/pool-status', requireHrManage, async (req, res) => {
         await client.query('BEGIN');
         const result = await client.query(
             `UPDATE staff SET
-                hr_pool_status = $1,
-                blacklist_reason = CASE WHEN $1 = 'blacklisted' THEN COALESCE($2, blacklist_reason) ELSE NULL END,
-                blacklisted_at = CASE WHEN $1 = 'blacklisted' THEN COALESCE(blacklisted_at, NOW()) ELSE NULL END
+                hr_pool_status = $1::text,
+                blacklist_reason = CASE WHEN $1::text = 'blacklisted' THEN COALESCE($2::text, blacklist_reason) ELSE NULL END,
+                blacklisted_at = CASE WHEN $1::text = 'blacklisted' THEN COALESCE(blacklisted_at, NOW()) ELSE NULL END
              WHERE id = $3
              RETURNING id, name, department, role_type, hr_pool_status, blacklist_reason, blacklisted_at`,
             [status, reason || null, req.params.id]

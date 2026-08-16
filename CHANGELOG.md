@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.159 - HR Pool Status Cast Fix
+
+### HR / Staff pool status / (16.08.2026) [codex]
+- **Pool-status route no longer 500s on typed PostgreSQL params** - `PUT /api/hr/staff/:id/pool-status` now casts status/reason parameters explicitly, preventing the live `inconsistent types deduced for parameter $1` failure when moving staff back to `core`.
+- **Regression guard** - static HR route contracts now require the explicit `$1::text` casts before release.
+- **Release metadata** - cache tags, service worker version and visible CRM release labels were advanced to `v0.80.159`.
+
+---
+
 ## v0.80.158 - My Day Final AI Hardening
 
 ### My Day / AI Composer / (16.08.2026) [codex]

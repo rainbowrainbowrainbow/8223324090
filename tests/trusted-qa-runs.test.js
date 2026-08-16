@@ -219,6 +219,13 @@ class FakeTrustedQaDb {
             return { rows: match ? [{ id: match.id }] : [], rowCount: match ? 1 : 0 };
         }
         if (normalized.includes('INSERT INTO trusted_qa_run_entities')) {
+            const existing = this.entities.find(row => Number(row.run_id) === Number(params[0])
+                && row.entity_type === params[1]
+                && row.entity_id === params[2]);
+            if (existing) {
+                existing.payload = JSON.parse(params[3]);
+                return { rows: [{ id: existing.id }], rowCount: 1 };
+            }
             this.entityCount += 1;
             this.entities.push({
                 id: this.entities.length + 1,
@@ -378,6 +385,7 @@ class FakeTrustedQaDb {
         if (normalized.includes('cleanup_last_error = $2')) {
             this.run.cleanup_last_error = params[1];
             this.run.state = Number(this.run.cleanup_attempts || 0) >= Number(params[2]) ? 'blocked' : 'cleanup_pending';
+            if (this.run.state === 'blocked') this.run.blocked_reason = params[1];
             return { rows: [this.run], rowCount: 1 };
         }
         if (normalized.includes('INSERT INTO history')) {
@@ -413,6 +421,31 @@ test('client-supplied disposable QA marker is rejected before any entity write',
         () => prepareTrustedQaBookingInput(db, req, booking, 'event_genix'),
         err => err instanceof TrustedQaRunError && err.code === 'QA_MARKER_UNTRUSTED'
     );
+    assert.equal(db.queries.length, 0);
+});
+
+test('client-supplied trusted QA attribution marker is rejected without a server token', async () => {
+    const db = new FakeTrustedQaDb();
+    const booking = makeBooking({
+        skipNotification: true,
+        extraData: {
+            disposableQa: {
+                schemaVersion: 1,
+                runId: 'qa-run-attacker',
+                source: 'trusted_qa',
+                cleanupExpected: true,
+                testCustomerMarker: 'qa-test-customer',
+                kind: 'booking',
+                createdAt: new Date().toISOString()
+            }
+        }
+    });
+
+    await assert.rejects(
+        () => prepareTrustedQaBookingInput(db, makeReq(), booking, 'event_genix'),
+        err => err instanceof TrustedQaRunError && err.code === 'QA_MARKER_UNTRUSTED'
+    );
+    assert.equal(booking.skipNotification, true, 'rejected input should not be normalized into an authorized QA write');
     assert.equal(db.queries.length, 0);
 });
 
@@ -516,6 +549,20 @@ test('registered entity IDs are stored atomically and enforce max count', async 
         err => err instanceof TrustedQaRunError && err.code === 'QA_RUN_ENTITY_LIMIT_EXCEEDED'
     );
     assert.deepEqual(db.entities.map(row => row.entity_id), ['BK-QA-1', 'BK-QA-2', 'BK-QA-3']);
+});
+
+test('duplicate or concurrent entity registration is idempotent and does not inflate manifest count', async () => {
+    const db = new FakeTrustedQaDb();
+    const context = await prepareTrustedQaBookingInput(db, makeReq({ token: 'valid-token', requestId: 'req-duplicate-register' }), makeBooking(), 'event_genix');
+
+    const first = await registerQaEntity(db, context, 'booking', 'BK-QA-1', { businessContext: 'event_genix', attempt: 1 });
+    const second = await registerQaEntity(db, context, 'booking', 'BK-QA-1', { businessContext: 'event_genix', attempt: 2 });
+
+    assert.deepEqual(first, { registered: true, entityId: 'BK-QA-1', existed: false });
+    assert.deepEqual(second, { registered: true, entityId: 'BK-QA-1', existed: true });
+    assert.equal(db.entities.length, 1);
+    assert.equal(db.entityCount, 1);
+    assert.equal(db.entities[0].payload.attempt, 2);
 });
 
 test('cleanup is exact-manifest driven, cancels registered bookings/groups and is idempotent', async () => {
@@ -804,6 +851,9 @@ test('watchdog retries cleanup_pending and blocks after bounded failures', async
     assert.equal(result.runs[0].status, 'retry_scheduled');
     assert.equal(db.run.state, 'blocked');
     assert.match(db.run.cleanup_last_error, /simulated cleanup transport failure/);
+    assert.match(db.run.blocked_reason, /simulated cleanup transport failure/);
+    assert.equal(result.runs[0].errorCode, 'SIMULATED_CLEANUP_FAILURE');
+    assert.notEqual(result.runs[0].status, 'cleaned', 'failed cleanup must be visible and never reported as success');
 });
 
 test('cleanup fails closed when a persistent business side effect exists', async () => {

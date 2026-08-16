@@ -1957,6 +1957,9 @@ test('profile My Day overdue triage row exposes a single move-to-today action', 
     assert.equal((html.match(/data-cabinet-task-action="move-to-today"/g) || []).length, 1);
     assert.match(html, /cabinet-overdue-triage-action is-primary"[^>]+data-cabinet-task-action="move-to-today"/);
     assert.doesNotMatch(html, /cabinet-task-move-today/);
+    assert.equal((html.match(/data-cabinet-task-action="reschedule-overdue"[^>]+data-reschedule-option="custom"/g) || []).length, 1);
+    assert.match(html, /cabinet-overdue-triage-action"[^>]+data-cabinet-task-action="reschedule-overdue"[^>]+data-reschedule-option="custom"/);
+    assert.doesNotMatch(html, /cabinet-reschedule-menu/);
 });
 
 test('profile task cards expose move-to-today drag for typed planned tasks', () => {

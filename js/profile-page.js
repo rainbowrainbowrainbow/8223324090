@@ -5708,10 +5708,10 @@ function renderCabinetRescheduleMenu(taskIdAttr) {
         </div>`;
 }
 
-function renderCabinetDueBadge(task = {}, taskIdAttr = '', dueState = {}) {
+function renderCabinetDueBadge(task = {}, taskIdAttr = '', dueState = {}, options = {}) {
     const label = `${dueState.label || ''}${dueState.detail ? ` · ${dueState.detail}` : ''}`;
     const className = `cabinet-task-due-badge cabinet-task-due-badge--${escapeHtml(dueState.key || 'none')}`;
-    if (dueState.key !== 'overdue' || !taskIdAttr) {
+    if (dueState.key !== 'overdue' || !taskIdAttr || options.suppressOverdueRescheduleMenu === true) {
         return `<span class="${className}">${escapeHtml(label)}</span>`;
     }
     const canReschedule = cabinetTaskAllowsReschedule(task);
@@ -6659,6 +6659,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const isDecomposed = cabinetTaskIsDecomposed(task);
     const isMyDayCard = options.surface === 'myday' || activeTab === 'myday';
     const suppressMoveTodayAction = options.suppressMoveTodayAction === true;
+    const suppressOverdueRescheduleMenu = options.suppressOverdueRescheduleMenu === true;
     const inlineContext = {
         activeInlineTaskId: options.activeInlineTaskId ?? activeCabinetInlineTaskId,
         allowInlineChecklist: isMyDayCard && options.allowInlineChecklist !== false
@@ -6670,7 +6671,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const showMyDayDetails = isMyDayCard && (globalViewMode === 'detailed' || cardDetailsExpanded);
     const myDayTimeSummaryHtml = isMyDayCard ? renderCabinetMyDayTimeSummary(task, showMyDayDetails) : '';
     const myDayFactsHtml = isMyDayCard ? [
-        cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
+        cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState, { suppressOverdueRescheduleMenu })),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
         cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task)),
         suppressMoveTodayAction ? null : cabinetTaskVisibleBadge('move-today', renderCabinetMoveTodayAction(task, taskIdAttr, dueState)),
@@ -7309,6 +7310,7 @@ function renderCabinetOverdueTriageRow(task = {}) {
         cardClassName: 'cabinet-overdue-triage-row',
         cardAttrs: 'data-cabinet-overdue-triage-row',
         suppressMoveTodayAction: true,
+        suppressOverdueRescheduleMenu: true,
         extraCommandsHtml: triageActions
     });
 }

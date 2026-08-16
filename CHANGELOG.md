@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.162 - My Day Overdue Action Hotfix
+
+### Release / Versioning / (16.08.2026) [codex]
+- **Одна дія «На сьогодні» у прострочених My Day задачах** - прибрано дубльований `move-to-today` у overdue triage row; залишено один primary action.
+- **Регресійне покриття My Day** - додано тест, який фіксує рівно одну дію перенесення простроченої задачі на сьогодні.
+- **CI smoke стабілізовано без зміни продукту** - Task Center browser smoke тепер чекає hydration permission state перед перевіркою quick-add composer.
+
+---
+
 ## v0.80.161 - Task 12 Machine Auth Hardening
 
 ### Integrations / Authorization / (16.08.2026) [codex]

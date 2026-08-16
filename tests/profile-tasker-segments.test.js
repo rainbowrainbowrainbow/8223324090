@@ -1944,6 +1944,21 @@ test('profile task cards expose overdue reschedule action and inline subtasks by
     assert.match(html, /data-cabinet-subtask-done/);
 });
 
+test('profile My Day overdue triage row exposes a single move-to-today action', () => {
+    const ctx = loadProfileTaskerContext();
+    const html = ctx.renderCabinetOverdueTriageRow({
+        id: 44,
+        title: 'Overdue task',
+        deadline: '2000-01-01T09:00:00.000Z',
+        priority: 'high',
+        controlMeta: { canReschedule: true }
+    });
+
+    assert.equal((html.match(/data-cabinet-task-action="move-to-today"/g) || []).length, 1);
+    assert.match(html, /cabinet-overdue-triage-action is-primary"[^>]+data-cabinet-task-action="move-to-today"/);
+    assert.doesNotMatch(html, /cabinet-task-move-today/);
+});
+
 test('profile task cards expose move-to-today drag for typed planned tasks', () => {
     const ctx = loadProfileTaskerContext();
     const html = ctx.renderCabinetTaskCard({

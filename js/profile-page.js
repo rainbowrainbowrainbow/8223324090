@@ -6658,6 +6658,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
     const doneTitle = doneBlocked ? cabinetSubtaskCompletionTitle(task) : doneActionLabel;
     const isDecomposed = cabinetTaskIsDecomposed(task);
     const isMyDayCard = options.surface === 'myday' || activeTab === 'myday';
+    const suppressMoveTodayAction = options.suppressMoveTodayAction === true;
     const inlineContext = {
         activeInlineTaskId: options.activeInlineTaskId ?? activeCabinetInlineTaskId,
         allowInlineChecklist: isMyDayCard && options.allowInlineChecklist !== false
@@ -6672,7 +6673,7 @@ function renderCabinetTaskCard(task, compact = false, options = {}) {
         cabinetTaskVisibleBadge('due', renderCabinetDueBadge(task, taskIdAttr, dueState)),
         cabinetTaskVisibleBadge('priority', renderCabinetTaskPriorityControl(task, taskIdAttr)),
         cabinetTaskVisibleBadge('postponement', renderCabinetPostponementBadge(task)),
-        cabinetTaskVisibleBadge('move-today', renderCabinetMoveTodayAction(task, taskIdAttr, dueState)),
+        suppressMoveTodayAction ? null : cabinetTaskVisibleBadge('move-today', renderCabinetMoveTodayAction(task, taskIdAttr, dueState)),
         scheduleStatus === 'proposal' ? cabinetTaskVisibleBadge('schedule', '<span>потрібне підтвердження часу</span>') : null,
         scheduleStatus === 'missed' ? cabinetTaskVisibleBadge('schedule', '<span>слот пропущено</span>') : null
     ].filter(Boolean).join('') : '';
@@ -7307,6 +7308,7 @@ function renderCabinetOverdueTriageRow(task = {}) {
         allowInlineChecklist: true,
         cardClassName: 'cabinet-overdue-triage-row',
         cardAttrs: 'data-cabinet-overdue-triage-row',
+        suppressMoveTodayAction: true,
         extraCommandsHtml: triageActions
     });
 }

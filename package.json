@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.159",
+  "version": "0.80.160",
   "eventGenix": {
-    "releaseLabel": "HR Pool Status Cast Fix"
+    "releaseLabel": "Task Access Re-baseline"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

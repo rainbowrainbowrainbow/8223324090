@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.160 - Task Access Re-baseline
+
+### Access / Task Center / (16.08.2026) [codex]
+- **Canonical task action guards** - create/delete/review task routes now use `tasks.create`, `tasks.delete`, and `tasks.review` action capabilities instead of legacy role-only guards.
+- **Explicit deny precedence** - `action_denylist` now revokes task create/delete/review access even when the user's role has default access.
+- **Fail-closed Task Center UI** - create surfaces stay hidden until `/api/tasks/permissions` hydrates, so forbidden controls do not flash before permission state is known.
+
+---
+
 ## v0.80.159 - HR Pool Status Cast Fix
 
 ### HR / Staff pool status / (16.08.2026) [codex]

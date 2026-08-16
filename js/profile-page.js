@@ -80,12 +80,16 @@ let cabinetDecompositionSuggestions = [];
 let cabinetSuggestionTimer = null;
 let lastCabinetSuggestionKey = '';
 let lastCabinetCreatedTaskId = null;
+let cabinetTaskCreatePending = false;
+let cabinetTaskCreateAttempt = null;
 let profileWidgetConfig = [];
 let profileWidgetSettingsOpen = false;
 const expandedCabinetSubtaskIds = new Set();
 const collapsedCabinetSubtaskIds = new Set();
 const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
+const CABINET_TASK_PLAIN_TITLE_MAX_LENGTH = 180;
+const CABINET_TASK_CREATE_UNKNOWN_TTL_MS = 2 * 60 * 1000;
 
 function notifyTaskWidgetsChanged(detail = {}) {
     const payload = { source: 'profile_my_cabinet', ...detail };
@@ -4839,6 +4843,83 @@ function syncCabinetTaskCreateMode() {
     }
 }
 
+function validateCabinetPlainTaskTitle(title = '') {
+    const normalized = String(title || '').trim();
+    if (!normalized) return 'Заповніть назву задачі';
+    if (normalized.length > CABINET_TASK_PLAIN_TITLE_MAX_LENGTH) {
+        return `Для звичайного створення назва має бути до ${CABINET_TASK_PLAIN_TITLE_MAX_LENGTH} символів. Скоротіть текст або натисніть «Заповнити з AI».`;
+    }
+    return '';
+}
+
+function cabinetTaskCreateSignature(draft = {}) {
+    const subtasks = Array.isArray(draft.subtasks) ? draft.subtasks : [];
+    return JSON.stringify({
+        title: String(draft.title || '').trim(),
+        description: String(draft.description || '').trim(),
+        category: String(draft.category || '').trim(),
+        priority: String(draft.priority || '').trim(),
+        mode: String(draft.mode || '').trim(),
+        taskMode: String(draft.taskMode || '').trim(),
+        structuralMode: String(draft.structuralMode || '').trim(),
+        kind: String(draft.kind || '').trim(),
+        visibility: String(draft.visibility || '').trim(),
+        workflowState: String(draft.workflowState || '').trim(),
+        duePreset: String(draft.duePreset || '').trim(),
+        scheduleDate: String(draft.scheduleDate || '').trim(),
+        sourceType: String(draft.sourceType || '').trim(),
+        impactIds: Array.isArray(draft.impactIds) ? draft.impactIds.map(Number).filter(Number.isInteger).sort((a, b) => a - b) : [],
+        reportRequired: draft.reportRequired === true,
+        allowReschedule: draft.allowReschedule !== false,
+        subtasks: subtasks.map(item => ({
+            title: String(item?.title || '').trim(),
+            sourceType: String(item?.sourceType || item?.source_type || '').trim()
+        }))
+    });
+}
+
+function cabinetTaskCreateRetryBlockMessage(signature = '') {
+    if (!cabinetTaskCreateAttempt || cabinetTaskCreateAttempt.signature !== signature) return '';
+    if (cabinetTaskCreateAttempt.status !== 'unknown') return '';
+    const ageMs = Date.now() - Number(cabinetTaskCreateAttempt.createdAt || 0);
+    if (ageMs > CABINET_TASK_CREATE_UNKNOWN_TTL_MS) {
+        cabinetTaskCreateAttempt = null;
+        return '';
+    }
+    return 'Попередній запит із таким самим текстом ще не підтверджено. Щоб уникнути дубля, змініть текст або оновіть список перед повтором.';
+}
+
+function rememberCabinetTaskCreateAttempt(signature = '', status = 'in_flight') {
+    cabinetTaskCreateAttempt = { signature, status, createdAt: Date.now() };
+}
+
+function clearCabinetTaskCreateAttempt(signature = '') {
+    if (!signature || cabinetTaskCreateAttempt?.signature === signature) cabinetTaskCreateAttempt = null;
+}
+
+function setCabinetTaskCreateBusy(busy = false) {
+    const form = document.getElementById('cabinetTaskComposer');
+    if (form) form.dataset.cabinetCreateBusy = busy ? 'true' : 'false';
+    form?.querySelectorAll?.('[data-cabinet-create-action], [data-task-ai-draft-submit-intent]')
+        .forEach(button => {
+            button.disabled = Boolean(busy);
+            button.setAttribute('aria-busy', busy ? 'true' : 'false');
+        });
+}
+
+function setCabinetTaskComposerStatus(message = '', type = '') {
+    const node = document.getElementById('cabinetTaskComposerStatus') || document.querySelector('[data-task-ai-draft-status]');
+    if (!node) return;
+    node.textContent = message;
+    node.className = `task-ai-draft-status cabinet-task-composer-status ${type || ''}`.trim();
+}
+
+function autoGrowCabinetTaskInput(input = document.getElementById('cabinetTaskTitle')) {
+    if (!input || String(input.tagName || '').toLowerCase() !== 'textarea') return;
+    input.style.height = 'auto';
+    input.style.height = `${Math.min(Math.max(input.scrollHeight || 0, 46), 180)}px`;
+}
+
 function cabinetSubtaskRow(value = '', sourceType = 'manual') {
     return `<div class="cabinet-subtask-row" data-cabinet-subtask-row data-subtask-source="${escapeHtml(sourceType || 'manual')}">
         <input type="text" data-cabinet-subtask-title value="${escapeHtml(value)}" placeholder="Назва підзадачі" aria-label="Назва підзадачі">
@@ -5292,7 +5373,12 @@ function bindCabinetSubtasks() {
     document.getElementById('cabinetSaveSubtasksTemplateBtn')?.addEventListener('click', saveCabinetSubtasksAsTemplate);
     document.getElementById('cabinetUpdateSavedTemplateBtn')?.addEventListener('click', updateSelectedCabinetSavedTemplate);
     document.getElementById('cabinetDeleteSavedTemplateBtn')?.addEventListener('click', deleteSelectedCabinetSavedTemplate);
-    document.getElementById('cabinetTaskTitle')?.addEventListener('input', scheduleCabinetDecompositionSuggestions);
+    const cabinetTaskTitle = document.getElementById('cabinetTaskTitle');
+    cabinetTaskTitle?.addEventListener('input', () => {
+        autoGrowCabinetTaskInput(cabinetTaskTitle);
+        scheduleCabinetDecompositionSuggestions();
+    });
+    autoGrowCabinetTaskInput(cabinetTaskTitle);
     document.getElementById('cabinetTaskCategory')?.addEventListener('change', () => {
         refreshCabinetSavedTemplates();
         scheduleCabinetDecompositionSuggestions();
@@ -6863,7 +6949,7 @@ function renderCabinetTaskComposer(options = {}) {
     ).join('');
 
     return `
-        <form class="cabinet-capture cabinet-task-composer ${expanded ? 'is-expanded' : 'is-collapsed'}" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" data-cabinet-composer-state="${expanded ? 'expanded' : 'collapsed'}" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
+        <form class="cabinet-capture cabinet-task-composer ${expanded ? 'is-expanded' : 'is-collapsed'}" id="cabinetTaskComposer" data-source-surface="profile_${escapeHtml(activeTab)}" data-cabinet-composer-state="${expanded ? 'expanded' : 'collapsed'}" aria-describedby="cabinetTaskComposerStatus" onsubmit="createCabinetTask(event, '${escapeHtml(options.mode || '')}')">
             <div class="cabinet-task-composer-head">
                 <div>
                     <span class="cabinet-kicker">Нова задача</span>
@@ -6871,13 +6957,14 @@ function renderCabinetTaskComposer(options = {}) {
                 </div>
                 <div class="cabinet-task-composer-actions">
                     <button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
-                    <button type="submit" class="cabinet-task-create-submit">Створити задачу</button>
+                    <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Створити</button>
+                    <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
                 </div>
             </div>
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
-                    <span>Назва</span>
-                    <input id="cabinetTaskTitle" autocomplete="off" placeholder="${escapeHtml(defaults.placeholder)}" data-task-ai-source-field="title">
+                    <span>Що потрібно зробити?</span>
+                    <textarea id="cabinetTaskTitle" rows="1" autocomplete="off" placeholder="Напишіть коротку назву або опишіть задачу детально" data-task-ai-source-field="title"></textarea>
                 </label>
                 <div class="cabinet-task-composer-main-advanced" id="cabinetTaskComposerAdvanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
                     <label for="cabinetTaskCategory">
@@ -6904,14 +6991,8 @@ function renderCabinetTaskComposer(options = {}) {
                 </div>
             </div>
             <div class="task-ai-draft-panel" data-task-ai-draft-panel>
-                <div class="task-ai-draft-row">
-                    <label class="task-ai-draft-details" for="cabinetTaskDetails">
-                        <span>Опиши результат або деталі</span>
-                        <textarea id="cabinetTaskDetails" data-task-ai-source-field="description" rows="3" placeholder="Наприклад: що має вийти, контекст CRM / Hermes / Парк, критерій готовності"></textarea>
-                    </label>
-                    <button type="button" class="task-ai-draft-trigger" data-task-ai-draft-preview aria-busy="false">✨ Підготувати з AI</button>
-                </div>
-                <p class="task-ai-draft-status" data-task-ai-draft-status aria-live="polite"></p>
+                <textarea id="cabinetTaskDetails" data-task-ai-source-field="description" hidden aria-hidden="true"></textarea>
+                <p id="cabinetTaskComposerStatus" class="task-ai-draft-status cabinet-task-composer-status" data-task-ai-draft-status role="status" aria-live="polite"></p>
                 <div class="task-ai-draft-review-host" data-task-ai-draft-review hidden></div>
             </div>
             <div class="cabinet-task-composer-meta">
@@ -8584,6 +8665,7 @@ async function executeCabinetMoveTarget(taskId, target, options = {}) {
 
 async function createCabinetTask(event, mode) {
     event.preventDefault();
+    if (cabinetTaskCreatePending) return;
     const input = document.getElementById('cabinetTaskTitle');
     let myDayClassification = null;
     try {
@@ -8599,6 +8681,15 @@ async function createCabinetTask(event, mode) {
     const current = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
     const title = String(input?.value || '').trim();
     const subtasks = readCabinetSubtasks();
+    const composer = document.getElementById('cabinetTaskComposer');
+    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
+    const titleError = !aiCommitPayload ? validateCabinetPlainTaskTitle(title) : '';
+    if (titleError) {
+        input?.focus();
+        setCabinetTaskComposerStatus(titleError, 'error');
+        if (typeof showNotification === 'function') showNotification(titleError, 'error');
+        return;
+    }
     const draft = {
         title,
         description: document.getElementById('cabinetTaskDetails')?.value.trim() || '',
@@ -8626,8 +8717,6 @@ async function createCabinetTask(event, mode) {
         allowReschedule: document.getElementById('cabinetTaskAllowReschedule')?.checked !== false,
         captureIntent: { waiting: kind === 'waiting' }
     };
-    const composer = document.getElementById('cabinetTaskComposer');
-    const aiCommitPayload = window.TaskAiDraft?.commitPayloadFor?.(composer);
     if (aiCommitPayload) {
         if (window.TaskAiDraft?.isCommitPending?.(composer)) return;
         if (aiCommitPayload.commitType === 'bundle') {
@@ -8666,11 +8755,6 @@ async function createCabinetTask(event, mode) {
             return;
         }
     }
-    if (!title && !aiCommitPayload) {
-        input?.focus();
-        if (typeof showNotification === 'function') showNotification('Заповніть назву задачі', 'error');
-        return;
-    }
     let payload;
     if (window.TaskCreate?.buildPayload) {
         payload = window.TaskCreate.buildPayload(draft, {
@@ -8708,6 +8792,20 @@ async function createCabinetTask(event, mode) {
             payload.effort_minutes = 30;
         }
     }
+    const createSignature = cabinetTaskCreateSignature(draft);
+    if (!aiCommitPayload) {
+        const retryBlockMessage = cabinetTaskCreateRetryBlockMessage(createSignature);
+        if (retryBlockMessage) {
+            input?.focus();
+            setCabinetTaskComposerStatus(retryBlockMessage, 'warning');
+            if (typeof showNotification === 'function') showNotification(retryBlockMessage, 'warning');
+            return;
+        }
+        cabinetTaskCreatePending = true;
+        rememberCabinetTaskCreateAttempt(createSignature, 'in_flight');
+        setCabinetTaskCreateBusy(true);
+        setCabinetTaskComposerStatus('Створюю задачу...', '');
+    }
     let result;
     if (aiCommitPayload) {
         if (!window.TaskCreate?.commitAiDraft) {
@@ -8731,15 +8829,25 @@ async function createCabinetTask(event, mode) {
             window.TaskAiDraft?.setCommitPending?.(composer, false);
         }
     } else {
-        result = window.TaskCreate?.createTask
-            ? await window.TaskCreate.createTask(payload, {
-                onDuplicate: err => {
-                    if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
-                }
-            })
-            : await apiPost('/tasks', payload);
+        try {
+            result = window.TaskCreate?.createTask
+                ? await window.TaskCreate.createTask(payload, {
+                    onDuplicate: err => {
+                        if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
+                    }
+                })
+                : await apiPost('/tasks', payload);
+        } catch (error) {
+            result = { success: false, networkError: true, error: error?.message || 'Не вдалося створити задачу' };
+        }
     }
     if (!result?.success) {
+        if (!aiCommitPayload) {
+            if (result?.networkError || !result) rememberCabinetTaskCreateAttempt(createSignature, 'unknown');
+            else clearCabinetTaskCreateAttempt(createSignature);
+            cabinetTaskCreatePending = false;
+            setCabinetTaskCreateBusy(false);
+        }
         if (!result?.duplicate && typeof showNotification === 'function') {
             showNotification(result?.error || 'Не вдалося створити задачу', 'error');
         }
@@ -8748,6 +8856,11 @@ async function createCabinetTask(event, mode) {
     const postCreateWarningCount = Array.isArray(result.postCreateWarnings) ? result.postCreateWarnings.length : 0;
     const verification = await verifyCabinetCreatedTask(result);
     if (!verification.ok) {
+        if (!aiCommitPayload) {
+            rememberCabinetTaskCreateAttempt(createSignature, 'unknown');
+            cabinetTaskCreatePending = false;
+            setCabinetTaskCreateBusy(false);
+        }
         if (typeof showNotification === 'function') {
             showNotification(verification.message || 'Створення задачі не підтверджено', 'warning');
         }
@@ -8755,6 +8868,7 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
+    if (!aiCommitPayload) clearCabinetTaskCreateAttempt(createSignature);
     if (aiCommitPayload) {
         window.TaskAiDraft?.markCommittedTaskId?.(verification.taskId);
     }
@@ -8785,7 +8899,13 @@ async function createCabinetTask(event, mode) {
     if (typeof showNotification === 'function') {
         showCabinetTaskCreateSuccessToast(result, draft, verification, postCreateWarningCount);
     }
-    await refreshMyCabinetTab();
+    try {
+        await refreshMyCabinetTab();
+        setCabinetTaskComposerStatus('Задачу створено.', 'success');
+    } finally {
+        cabinetTaskCreatePending = false;
+        setCabinetTaskCreateBusy(false);
+    }
 }
 
 // ==========================================

@@ -848,7 +848,14 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(collapsedHtml, /data-cabinet-composer-state="collapsed"/);
     assert.match(collapsedHtml, /data-cabinet-composer-toggle/);
     assert.match(collapsedHtml, /Більше параметрів/);
-    assert.match(collapsedHtml, /id="cabinetTaskTitle"/);
+    assert.match(collapsedHtml, /<textarea id="cabinetTaskTitle"/);
+    assert.match(collapsedHtml, /Що потрібно зробити\?/);
+    assert.match(collapsedHtml, /Напишіть коротку назву або опишіть задачу детально/);
+    assert.match(collapsedHtml, /data-cabinet-create-action="plain"[^>]*>Створити</);
+    assert.match(collapsedHtml, /id="cabinetTaskAiFillBtn"[^>]*data-cabinet-create-action="ai"[^>]*data-task-ai-draft-preview[^>]*>Заповнити з AI</);
+    assert.doesNotMatch(collapsedHtml, /Підготувати з AI/);
+    assert.doesNotMatch(collapsedHtml, /Опиши результат або деталі/);
+    assert.match(collapsedHtml, /id="cabinetTaskComposerStatus"[^>]*role="status"[^>]*aria-live="polite"/);
     assert.match(collapsedHtml, /class="cabinet-due-presets"/);
     assert.match(collapsedHtml, /data-cabinet-due-preset="today"/);
     assert.match(collapsedHtml, /data-cabinet-due-preset="tomorrow"/);
@@ -1569,6 +1576,7 @@ function installCabinetCreateDom(ctx, title) {
     const elements = new Map();
     const addElement = (id, node) => elements.set(id, node);
     addElement('cabinetTaskTitle', { value: title, focus() {} });
+    addElement('cabinetTaskDetails', { value: '' });
     addElement('cabinetTaskKind', { value: 'action' });
     addElement('cabinetTaskMode', { value: 'personal' });
     addElement('cabinetTaskDate', { value: '2099-05-31' });
@@ -1580,6 +1588,7 @@ function installCabinetCreateDom(ctx, title) {
     addElement('cabinetSubtaskList', { innerHTML: '' });
     addElement('cabinetSubtaskAcceptDraftBtn', { setAttribute() {} });
     addElement('cabinetSubtaskDraftStatus', { textContent: '', className: '' });
+    addElement('cabinetTaskComposerStatus', { textContent: '', className: '' });
     addElement('cabinetDecompositionMode', { value: 'none' });
     addElement('cabinetDecompositionTemplate', { disabled: false });
     addElement('cabinetSubtaskDraftBtn', { disabled: false, textContent: '' });
@@ -1635,6 +1644,66 @@ test('profile My Day create accepts URL-first titles and confirms the refreshed 
     assert.equal(createdPayload.priority, 'normal');
     assert.equal(elements.get('cabinetTaskTitle').value, '');
     assert.equal(notices.at(-1)?.type, 'success');
+});
+
+test('profile My Day plain create rejects long composer text without clearing it', async () => {
+    const ctx = loadProfileTaskerContext();
+    const title = 'Описати дуже довгу задачу '.repeat(12);
+    const elements = installCabinetCreateDom(ctx, title);
+    const notices = [];
+    let createCalls = 0;
+
+    ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    ctx.TaskCreate = {
+        buildPayload(draft) {
+            return { ...draft, title: String(draft.title || '').trim() };
+        },
+        async createTask() {
+            createCalls += 1;
+            return { success: true, task: { id: 510, title } };
+        }
+    };
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createCalls, 0);
+    assert.equal(elements.get('cabinetTaskTitle').value, title);
+    assert.match(elements.get('cabinetTaskComposerStatus').textContent, /до 180 символів/);
+    assert.equal(notices.at(-1)?.type, 'error');
+});
+
+test('profile My Day create blocks the same payload after an unknown network result', async () => {
+    const ctx = loadProfileTaskerContext();
+    const title = 'створити після timeout без дубля';
+    const elements = installCabinetCreateDom(ctx, title);
+    const notices = [];
+    let createCalls = 0;
+
+    ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
+    ctx.showNotification = (message, type) => notices.push({ message, type });
+    ctx.TaskCreate = {
+        buildPayload(draft) {
+            return { ...draft, title: String(draft.title || '').trim() };
+        },
+        async createTask() {
+            createCalls += 1;
+            return { success: false, networkError: true, error: 'timeout' };
+        }
+    };
+
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createCalls, 1);
+    assert.equal(elements.get('cabinetTaskTitle').value, title);
+    assert.match(elements.get('cabinetTaskComposerStatus').textContent, /уникнути дубля/);
+    assert.equal(notices.at(-1)?.type, 'warning');
+
+    elements.get('cabinetTaskTitle').value = `${title} змінено`;
+    await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+
+    assert.equal(createCalls, 2);
 });
 
 test('profile My Day create sends urgent priority from the mini priority selector', async () => {

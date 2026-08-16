@@ -25,8 +25,11 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(profileHtml, /js\/task-ai-draft\.js\?v=/);
     assert.match(tasksHtml, /js\/task-ai-draft\.js\?v=/);
     assert.match(profileCode, /data-task-ai-draft-preview/);
+    assert.match(profileCode, /id="cabinetTaskAiFillBtn"[^>]*data-task-ai-draft-preview/);
     assert.match(tasksHtml, /data-task-ai-draft-preview/);
-    assert.match(profileCode, /Опиши результат або деталі/);
+    assert.doesNotMatch(profileCode, /Опиши результат або деталі/);
+    assert.doesNotMatch(profileCode, /Підготувати з AI/);
+    assert.match(profileCode, /id="cabinetTaskDetails"[^>]*hidden[^>]*aria-hidden="true"/);
     assert.match(tasksHtml, /Опиши результат або деталі/);
     assert.ok(profileCode.indexOf('data-task-ai-draft-panel') < profileCode.indexOf('cabinet-task-composer-meta'));
     assert.ok(tasksHtml.indexOf('data-task-ai-draft-panel') < tasksHtml.indexOf('id="taskComposerDetails"'));

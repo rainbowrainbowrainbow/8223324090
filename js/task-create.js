@@ -494,7 +494,7 @@
             return payload;
         } catch (error) {
             console.error('[TaskCreate] createTask failed', error);
-            return { success: false, error: error?.message || 'Task create failed' };
+            return { success: false, networkError: true, error: error?.message || 'Task create failed' };
         }
     }
 

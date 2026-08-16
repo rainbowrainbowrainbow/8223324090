@@ -33,6 +33,7 @@ const DEFAULT_ALLOWED_BUSINESS_CONTEXTS = Object.freeze(['event_genix']);
 const DEFAULT_TIMEOUT_MS = 45_000;
 const SMOKE_SURFACE = 'live_my_day_ai_mutation_smoke';
 const REDACTED_OUTPUT_ROOT = path.join(ROOT, 'output', 'live-my-day-ai-mutation-smoke');
+const BUNDLE_ACCEPTED_FIELDS = Object.freeze(['title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority']);
 
 function readEnv(env, ...names) {
     for (const name of names) {
@@ -434,6 +435,10 @@ async function commitSingle(ctx, preview, finalDraft, acceptedFieldMask, idempot
 }
 
 async function commitBundle(ctx, preview, finalTasks, acceptedTaskMask, rejectedTaskMask, idempotencyKey, state) {
+    const acceptedFieldMasks = acceptedTaskMask.map(index => ({
+        proposalIndex: index,
+        fields: [...BUNDLE_ACCEPTED_FIELDS]
+    }));
     const body = {
         proposalToken: preview.proposalToken,
         proposalHash: preview.proposalHash,
@@ -443,6 +448,10 @@ async function commitBundle(ctx, preview, finalTasks, acceptedTaskMask, rejected
         tasks: finalTasks,
         acceptedTaskMask,
         rejectedTaskMask,
+        acceptedFieldMasks,
+        editedFieldMasks: finalTasks
+            .map((task, index) => ({ proposalIndex: acceptedTaskMask[index], fields: task?.userEdited ? ['title'] : [] }))
+            .filter(entry => entry.fields.length),
         idempotencyKey,
         sourceSurface: SMOKE_SURFACE
     };
@@ -533,21 +542,28 @@ async function cleanupExactQaTasks(ctx, ids = [], marker, options = {}) {
     if (!exactIds.length) return cleaned;
     const markerText = String(marker || '');
     if (!markerText.startsWith('EGX_MY_DAY_AI_QA_')) throw new Error('Cleanup marker is required.');
+    const guardTokens = [
+        markerText,
+        ...(Array.isArray(options.allowedSearchTokens) ? options.allowedSearchTokens : [])
+    ].map(token => String(token || '').trim()).filter(token => token.length >= 8);
     for (const id of exactIds) {
         const row = { id, status: 'pending' };
         try {
             const task = await loadTaskForCleanup(ctx, id);
-            const searchable = [task?.title, task?.task?.title, task?.description, task?.task?.description].filter(Boolean).join('\n');
-            if (!searchable.includes(markerText)) {
-                throw new Error('Exact QA marker was not found on task; refusing to archive.');
+            const searchable = JSON.stringify(task || {});
+            if (!guardTokens.some(token => searchable.includes(token))) {
+                throw new Error('Exact QA marker or bundle guard was not found on task; refusing to archive.');
             }
             if (!options.dryRun) {
-                await apiRequest(ctx, `/api/tasks/${encodeURIComponent(id)}/status`, {
-                    method: 'PATCH',
+                await apiRequest(ctx, '/api/tasks/bulk', {
+                    method: 'POST',
+                    idempotencyKey: `${markerText}:archive:${id}`,
                     body: {
-                        status: 'archived',
+                        ids: [id],
+                        action: 'archive',
                         sourceSurface: SMOKE_SURFACE,
-                        archiveReason: 'live_my_day_ai_mutation_smoke_cleanup'
+                        archiveReason: 'live_my_day_ai_mutation_smoke_cleanup',
+                        businessContext: ctx.businessContext
                     }
                 });
             }
@@ -721,19 +737,22 @@ async function runMutationSmoke(options = {}, env = process.env) {
         const finalTasks = acceptedTaskMask.map((proposalIndex, index) => {
             const task = proposalTasks[proposalIndex];
             return {
-                title: index === 0 ? `${options.marker} edited bundle task` : `${options.marker} bundle task ${index + 1}`,
-                description: `${options.marker} bundle task description`,
+                title: index === 0 ? `${options.marker} edited bundle task` : task.title,
+                description: task.description || null,
                 impactIds: Array.isArray(task.impactIds) ? task.impactIds.slice(0, 3) : [],
                 priority: task.priority || 'normal',
-                scheduleDate: today,
-                ownerSuggestion: { userId: null, name: null, reason: null },
+                subtasks: Array.isArray(task.subtasks) ? task.subtasks : [],
+                scheduleDate: task.scheduleDate || task.dueDate || task.date || null,
+                ownerSuggestion: task.ownerSuggestion || { userId: null, name: null, reason: null },
                 userEdited: index === 0
             };
         });
         await commitBundle(ctx, bundlePreview, finalTasks, acceptedTaskMask, rejectedTaskMask, `live-my-day-ai-bundle-${options.marker}`, state);
 
         await runGlobalTimerCheck(ctx, simpleTaskId, state);
-        state.cleanup = await cleanupExactQaTasks(ctx, [...state.createdTaskIds], options.marker);
+        state.cleanup = await cleanupExactQaTasks(ctx, [...state.createdTaskIds], options.marker, {
+            allowedSearchTokens: state.bundleIds
+        });
         if (state.cleanup.some(row => row.status === 'failed')) {
             state.status = 'cleanup_failed';
             throw new Error('Live smoke passed but cleanup failed for one or more exact QA task IDs.');
@@ -744,7 +763,9 @@ async function runMutationSmoke(options = {}, env = process.env) {
         state.status = state.status === 'cleanup_failed' ? state.status : 'failed';
         state.error = redactedError(error);
         if (ctx && state.createdTaskIds.size && !state.cleanup.length) {
-            state.cleanup = await cleanupExactQaTasks(ctx, [...state.createdTaskIds], options.marker).catch(cleanupError => ([{
+            state.cleanup = await cleanupExactQaTasks(ctx, [...state.createdTaskIds], options.marker, {
+                allowedSearchTokens: state.bundleIds
+            }).catch(cleanupError => ([{
                 id: null,
                 status: 'failed',
                 error: redactedError(cleanupError)

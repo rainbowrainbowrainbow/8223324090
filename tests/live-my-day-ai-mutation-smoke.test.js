@@ -68,8 +68,11 @@ test('cleanup archives only exact IDs whose task text contains the QA marker', a
         if (path === '/api/tasks/102') {
             return jsonResponse(200, { id: 102, title: 'not a QA task' });
         }
-        if (path === '/api/tasks/101/status') {
-            return jsonResponse(200, { success: true, task: { id: 101, status: 'archived' } });
+        if (path === '/api/tasks/bulk') {
+            const body = JSON.parse(options.body || '{}');
+            assert.deepEqual(body.ids, [101]);
+            assert.equal(body.action, 'archive');
+            return jsonResponse(200, { success: true, count: 1 });
         }
         return jsonResponse(404, { error: 'not found' });
     };
@@ -79,7 +82,50 @@ test('cleanup archives only exact IDs whose task text contains the QA marker', a
             { id: 101, status: 'archived' },
             { id: 102, status: 'failed' }
         ]);
-        assert.deepEqual(calls.filter(call => call.method === 'PATCH').map(call => call.path), ['/api/tasks/101/status']);
+        assert.deepEqual(calls.filter(call => call.method === 'POST').map(call => call.path), ['/api/tasks/bulk']);
+    } finally {
+        global.fetch = originalFetch;
+    }
+});
+
+test('bundle smoke commit sends accepted field masks required by current contract', () => {
+    const source = require('node:fs').readFileSync(require('node:path').join(__dirname, '..', 'scripts', 'live-my-day-ai-mutation-smoke.js'), 'utf8');
+    assert.match(source, /acceptedFieldMasks/);
+    assert.match(source, /BUNDLE_ACCEPTED_FIELDS/);
+    assert.match(source, /'title', 'description', 'impactIds', 'subtasks', 'owner', 'dueDate', 'priority'/);
+});
+
+test('cleanup can use exact bundle guard for generated bundle tasks without marker title', async () => {
+    const calls = [];
+    const marker = 'EGX_MY_DAY_AI_QA_2026-08-12_test';
+    const bundleId = 'bundle_guard_12345';
+    const ctx = {
+        base: 'https://crm.example',
+        token: 'token',
+        businessContext: 'event_genix',
+        timeoutMs: 1000
+    };
+    const originalFetch = global.fetch;
+    global.fetch = async (url, options = {}) => {
+        const path = new URL(url).pathname;
+        calls.push({ path, method: options.method || 'GET' });
+        if (path === '/api/tasks/201') {
+            return jsonResponse(200, { id: 201, title: 'Generated bundle task', bundle: { id: bundleId } });
+        }
+        if (path === '/api/tasks/bulk') {
+            const body = JSON.parse(options.body || '{}');
+            assert.deepEqual(body.ids, [201]);
+            assert.equal(body.action, 'archive');
+            return jsonResponse(200, { success: true, count: 1 });
+        }
+        return jsonResponse(404, { error: 'not found' });
+    };
+    try {
+        const result = await smoke.cleanupExactQaTasks(ctx, [201], marker, { allowedSearchTokens: [bundleId] });
+        assert.deepEqual(result.map(row => ({ id: row.id, status: row.status })), [
+            { id: 201, status: 'archived' }
+        ]);
+        assert.deepEqual(calls.filter(call => call.method === 'POST').map(call => call.path), ['/api/tasks/bulk']);
     } finally {
         global.fetch = originalFetch;
     }

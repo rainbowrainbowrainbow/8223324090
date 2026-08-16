@@ -4,6 +4,15 @@
 
 ---
 
+## v0.80.161 - Task 12 Machine Auth Hardening
+
+### Integrations / Authorization / (16.08.2026) [codex]
+- **Hermes machine actor isolated from user overrides** - Hermes API-key/Bearer requests now strip `action_allowlist` and `action_denylist` from the configured actor before route capability checks, so machine scope is not silently changed by user-specific allow/deny overrides.
+- **Route-tree hardening** - `routes/hermes.js` normalizes the machine actor after auth middleware and before the schedule subrouter, including injected/custom auth middleware used in tests.
+- **Auth-boundary drift guard** - `config/authBoundary.js`, `docs/AUTH_BOUNDARY.md`, and focused Hermes tests now require the sanitizer and schedule integration guard.
+
+---
+
 ## v0.80.160 - Task Access Re-baseline
 
 ### Access / Task Center / (16.08.2026) [codex]

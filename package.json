@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.160",
+  "version": "0.80.161",
   "eventGenix": {
-    "releaseLabel": "Task Access Re-baseline"
+    "releaseLabel": "Task 12 Machine Auth Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

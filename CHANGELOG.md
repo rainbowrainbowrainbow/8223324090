@@ -4,6 +4,16 @@
 
 ---
 
+## v0.80.164 - Staff Registration Account Options
+
+### HR / Staff registration / Account onboarding / (16.08.2026) [codex]
+- **Staff-registration cycle now carries explicit account modes** - Hermes staff onboarding accepts `create`, `link_existing`, `reissue_existing`, and `link_existing_and_reissue` so the photo/questionnaire → approval → roster → account lane can stay one controlled state machine.
+- **Existing-account safety before approval** - preview checks existing account targets, blocks accounts already linked to another staff row, and keeps approval payloads sanitized.
+- **Credential reissue is redacted by contract** - link/reissue execution returns a one-time credential packet only at the handoff boundary while durable approval receipts keep password values `[REDACTED]`.
+- **Regression coverage** - focused tests cover existing-account link, reissue, conflict blocking, and sanitized side-effect counters.
+
+---
+
 ## v0.80.163 - My Day Overdue Triage Hotfix
 
 ### Release / Versioning / (16.08.2026) [codex]

@@ -2020,6 +2020,15 @@ function buildCapabilitiesPayload(env = process.env) {
                 flowVersion: 'EG_STAFF_ACCOUNT_ONBOARDING_APPROVAL_FLOW_V1',
                 businessContext: 'event_genix',
                 requestStatuses: ['pending_approval', 'rejected', 'executing', 'executed', 'failed'],
+                accountModes: ['create', 'link_existing', 'reissue_existing', 'link_existing_and_reissue'],
+                supportedRequestTypes: [
+                    'new_staff_with_account',
+                    'existing_staff_with_account',
+                    'existing_staff_link_existing_account',
+                    'existing_staff_reissue_existing_account',
+                    'existing_staff_link_existing_account_reissue_login'
+                ],
+                rosterBranches: ['new_staff', 'existing_staff_after_roster_readback', 'reactivated_inactive_duplicate'],
                 previewWrites: 0,
                 createRequestStaffWrites: 0,
                 createRequestAccountWrites: 0,

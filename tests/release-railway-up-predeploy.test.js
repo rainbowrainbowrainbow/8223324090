@@ -11,6 +11,7 @@ const {
 } = require('../scripts/railway-release-up');
 
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const RECOVERY_HEAD = 'dddddddddddddddddddddddddddddddddddddddd';
 const LIVE = {
     version: '0.80.124',
     commitSha: HEAD,
@@ -83,6 +84,47 @@ test('Railway release predeploy guard blocks stale, colliding, incomplete, and d
     }), /Remote release branch/);
 });
 
+test('Railway release predeploy guard allows explicit metadata recovery for a newer release only', () => {
+    const incompleteLive = {
+        version: '0.80.164',
+        commitSha: null,
+        sourceBranch: null,
+        deploymentMetadata: {
+            status: 'unavailable',
+            complete: false
+        }
+    };
+    const result = assertPreDeployLiveSafety({
+        live: incompleteLive,
+        localVersion: '0.81.0',
+        head: HEAD,
+        branch: LIVE.sourceBranch,
+        remoteSha: HEAD,
+        recoverMissingLiveMetadataCommit: RECOVERY_HEAD
+    });
+    assert.equal(result.liveCommit, RECOVERY_HEAD);
+    assert.equal(result.liveBranch, LIVE.sourceBranch);
+    assert.equal(result.recoveredMissingLiveMetadata, true);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        live: incompleteLive,
+        localVersion: '0.80.164',
+        head: HEAD,
+        branch: LIVE.sourceBranch,
+        remoteSha: HEAD,
+        recoverMissingLiveMetadataCommit: RECOVERY_HEAD
+    }), /newer than live/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        live: LIVE,
+        localVersion: '0.80.165',
+        head: HEAD,
+        branch: LIVE.sourceBranch,
+        remoteSha: HEAD,
+        recoverMissingLiveMetadataCommit: RECOVERY_HEAD
+    }), /metadata recovery override/);
+});
+
 test('Railway release predeploy guard reads live /api/version without Railway variables or upload', async () => {
     const calls = [];
     const snapshot = await fetchLiveVersionSnapshot('https://crm.example.test', {
@@ -117,10 +159,12 @@ test('Railway release parser accepts npm PowerShell value-forwarding shape', () 
             '--skip-remote-check',
             'codex/forwarding-check',
             HEAD,
+            RECOVERY_HEAD,
             'https://crm.example.test'
         ]);
         assert.equal(parsed.branch, 'codex/forwarding-check');
         assert.equal(parsed.commit, HEAD);
+        assert.equal(parsed.recoverMissingLiveMetadataCommit, RECOVERY_HEAD);
         assert.equal(parsed.liveUrl, 'https://crm.example.test');
         assert.equal(parsed.dryRun, true);
         assert.equal(parsed.skipRemoteCheck, true);
@@ -140,14 +184,18 @@ test('Railway release npm wrapper documents the canonical PowerShell command sha
     const pkg = require('../package.json');
     assert.match(pkg.scripts['release:railway-up'], /node scripts\/railway-release-up\.js/);
     assert.doesNotMatch(pkg.scripts['release:railway-up'], /--branch$/);
-    assert.deepEqual(parseArgs([
+    const parsed = parseArgs([
         '--dry-run',
         '--skip-remote-check',
         '--branch',
         'codex/forwarding-check',
         '--commit',
         HEAD,
+        '--recover-missing-live-metadata-commit',
+        RECOVERY_HEAD,
         '--live-url',
         'https://crm.example.test'
-    ]).branch, 'codex/forwarding-check');
+    ]);
+    assert.equal(parsed.branch, 'codex/forwarding-check');
+    assert.equal(parsed.recoverMissingLiveMetadataCommit, RECOVERY_HEAD);
 });

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.0 - My Day AI Smoke Harness Release
+
+### My Day / AI QA / Release metadata / (16.08.2026) [codex]
+- **Production-write My Day AI smoke оновлено під актуальний bundle contract** - live smoke тепер передає `acceptedFieldMasks` / `editedFieldMasks`, не змінює bundle-поля без provenance і перевіряє simple/checklist/bundle/idempotency/global timer сценарії без task text у artifacts.
+- **Cleanup QA-записів став сумісним із чинним Tasks API** - exact QA IDs архівуються через `/api/tasks/bulk`, з marker guard або exact bundle guard для generated bundle tasks, які не зберігають QA marker у title.
+- **0.81.0 збирає останні production-зміни в канонічний release** - реліз базується на актуальному marker branch, включає `v0.80.164 Staff Registration Account Options` і My Day overdue hotfix, та має відновити deployment manifest metadata через canonical release helper.
+
+---
+
 ## v0.80.164 - Staff Registration Account Options
 
 ### HR / Staff registration / Account onboarding / (16.08.2026) [codex]

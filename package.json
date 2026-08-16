@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.80.164",
+  "version": "0.81.0",
   "eventGenix": {
-    "releaseLabel": "Staff Registration Account Options"
+    "releaseLabel": "My Day AI Smoke Harness Release"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

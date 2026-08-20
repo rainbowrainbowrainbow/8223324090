@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.1",
+  "version": "0.81.2",
   "eventGenix": {
-    "releaseLabel": "Unified Task Composer Release"
+    "releaseLabel": "Sales Funnel Shared Auth Release"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

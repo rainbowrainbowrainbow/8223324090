@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.2 - Sales Funnel Shared Auth Release
+
+### Sales Funnel / Authentication / (20.08.2026) [codex]
+- **Shared auth flow для Sales Funnel** — `/sales-funnel` тепер використовує спільну session bootstrap-перевірку замість legacy-only `pzp_token`.
+- **Відновлення access/refresh token** — access-only і refresh-only сесії проходять перевірку та автоматичне відновлення через canonical auth flow.
+- **Усунено permission hydration redirect race** — сторінка не редиректить користувача під час тимчасового loading/error стану permission catalog.
+- **Контрольований API 403** — permission failure показується як помилка без logout або redirect на `/`.
+
+---
+
 ## v0.81.1 - Unified Task Composer Release
 
 ### My Day / Task Composer / AI Draft / (16.08.2026) [codex]

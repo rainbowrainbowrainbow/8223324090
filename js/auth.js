@@ -3318,6 +3318,9 @@ document.addEventListener('DOMContentLoaded', () => {
                 }
             }
 
+            const permissionState = getPermissionLifecycle().status;
+            const permissionCatalogUnavailable = permissionState === 'loading' || permissionState === 'error';
+            if (hasVerifiedUser && permissionCatalogUnavailable) return;
             if (hasVerifiedUser && !enforceCurrentPageAccess(user)) return;
             window.WorkingRole?.hydrate?.();
 

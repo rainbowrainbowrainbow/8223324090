@@ -13,6 +13,18 @@ const ROOT = path.resolve(__dirname, '..');
 const liveDescribe = TEST_USER && TEST_PASS ? describe : describe.skip;
 
 describe('Sales Funnel deposit_received local regression', () => {
+    it('normalizes the legacy /leads.html path to /sales-funnel', () => {
+        const leadsPage = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
+        const routeStart = leadsPage.indexOf('function normalizeLeadCanonicalRoute()');
+        const routeEnd = leadsPage.indexOf('function syncLeadUrlState(', routeStart);
+        const routeCode = leadsPage.slice(routeStart, routeEnd);
+
+        assert.ok(routeStart >= 0 && routeEnd > routeStart, 'canonical route normalizer is missing');
+        assert.match(routeCode, /if \(currentPath !== '\/leads'\) return;/);
+        assert.match(routeCode, /url\.pathname = '\/sales-funnel';/);
+        assert.match(routeCode, /window\.history\.replaceState\(/);
+    });
+
     it('sales funnel startup does not bounce valid users away on API 403', () => {
         const leadsPage = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
 
@@ -22,12 +34,16 @@ describe('Sales Funnel deposit_received local regression', () => {
         );
         assert.match(
             leadsPage,
-            /if \(res\.status === 401\) \{\s*window\.location\.href = '\/';\s*throw new Error\('Unauthorized'\);\s*\}/
+            /if \(res\.status === 403\) \{[\s\S]*throw new Error\(message\);\s*\}/
         );
         assert.doesNotMatch(
             leadsPage,
-            new RegExp("if \\(res\\.status === 401 \\|\\| res\\.status === 403\\) \\{\\s*window\\.location\\.href = '/'")
+            /if \(res\.status === 403\) \{[^}]*window\.location\.href = '\/'/
         );
+        assert.doesNotMatch(leadsPage, /localStorage\.getItem\(['"]pzp_token['"]\)/);
+        assert.match(leadsPage, /user = await resolveLeadAuthenticatedUser\(\)/);
+        assert.match(leadsPage, /showLeadBootstrapError\(\);\s*return;/);
+        assert.match(leadsPage, /apiFetchWithAuthRetry\(leadApiUrl\(url\)/);
     });
 
     it('deposit_received stage transition is wired to the accountant banquet deposit hook', () => {

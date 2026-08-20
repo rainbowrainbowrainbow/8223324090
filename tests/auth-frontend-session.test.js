@@ -16,6 +16,7 @@ const TASKS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 
 const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 const STAFF_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
+const LEADS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
 
 function response(status, body = {}) {
     return {
@@ -194,7 +195,14 @@ function loadLogoutShellHarness(pathname = '/') {
             documentElement: { classList: htmlClasses.classList },
             getElementById: id => elements[id] || null
         },
+        CustomEvent: class CustomEvent {
+            constructor(type, init = {}) {
+                this.type = type;
+                this.detail = init.detail;
+            }
+        },
         window: {
+            dispatchEvent() {},
             location: {
                 pathname,
                 href: `http://localhost${pathname}`,
@@ -580,6 +588,49 @@ test('auth headers and session detection accept access-only or refresh-only stor
 
     const { context: emptyContext } = loadApi(async () => response(500));
     assert.equal(emptyContext.apiHasStoredAuthSession(), false);
+});
+
+test('apiVerifyToken returns null without stored auth state and avoids network requests', async () => {
+    const { context } = loadApi(async url => {
+        throw new Error(`Unexpected fetch: ${url}`);
+    });
+
+    assert.equal(await context.apiVerifyToken(), null);
+});
+
+test('sales funnel verifies the shared session before protected loaders', () => {
+    const resolverStart = LEADS_PAGE_CODE.indexOf('async function resolveLeadAuthenticatedUser()');
+    const resolverEnd = LEADS_PAGE_CODE.indexOf('function showLeadBootstrapError()', resolverStart);
+    const resolverCode = LEADS_PAGE_CODE.slice(resolverStart, resolverEnd);
+    const initStart = LEADS_PAGE_CODE.indexOf("document.addEventListener('DOMContentLoaded', async () => {");
+    const verifyCall = LEADS_PAGE_CODE.indexOf('user = await resolveLeadAuthenticatedUser()', initStart);
+    const authErrorStart = LEADS_PAGE_CODE.indexOf('} catch (error) {', verifyCall);
+    const missingSessionRedirect = LEADS_PAGE_CODE.indexOf("if (!user) { window.location.href = '/'; return; }", authErrorStart);
+    const authErrorCode = LEADS_PAGE_CODE.slice(authErrorStart, missingSessionRedirect);
+    const autoFillStart = AUTH_CODE.indexOf('function _autoFillUser()');
+    const autoFillEnd = AUTH_CODE.indexOf('setTimeout(_autoFillUser, 200)', autoFillStart);
+    const autoFillCode = AUTH_CODE.slice(autoFillStart, autoFillEnd);
+    const loadUsersCall = LEADS_PAGE_CODE.indexOf('await loadUsers()', initStart);
+    const loadLeadsCall = LEADS_PAGE_CODE.indexOf('await loadLeads()', initStart);
+    const initAuthBlock = LEADS_PAGE_CODE.slice(initStart, verifyCall);
+
+    assert.ok(resolverStart >= 0 && resolverEnd > resolverStart, 'sales funnel auth resolver is missing');
+    assert.ok(initStart >= 0, 'sales funnel bootstrap is missing');
+    assert.ok(verifyCall > initStart, 'sales funnel must verify the shared auth session');
+    assert.ok(authErrorStart > verifyCall && missingSessionRedirect > authErrorStart, 'sales funnel auth failure branches are missing');
+    assert.ok(loadUsersCall > verifyCall, 'users must load after session verification');
+    assert.ok(loadLeadsCall > loadUsersCall, 'leads must load after session verification');
+    assert.doesNotMatch(initAuthBlock, /localStorage\.getItem\(['"]pzp_token['"]\)/);
+    assert.match(resolverCode, /apiHasStoredAuthSession\(\)/);
+    assert.match(resolverCode, /await apiVerifyToken\(\)/);
+    assert.match(resolverCode, /await hydrateActionPermissions\(user\)/);
+    assert.match(resolverCode, /if \(!permissions\) throw new Error\(/);
+    assert.match(resolverCode, /return user;/);
+    assert.match(authErrorCode, /showLeadBootstrapError\(\);\s*return;/);
+    assert.match(LEADS_PAGE_CODE, /apiFetchWithAuthRetry\(leadApiUrl\(url\)/);
+    assert.match(autoFillCode, /permissionCatalogUnavailable = permissionState === 'loading' \|\| permissionState === 'error';/);
+    assert.match(autoFillCode, /hasVerifiedUser && permissionCatalogUnavailable\) return;/);
+    assert.match(autoFillCode, /hasVerifiedUser && !enforceCurrentPageAccess\(user\)/);
 });
 
 test('tasks page lets apiVerifyToken own refresh-token bootstrap instead of prechecking legacy token', () => {

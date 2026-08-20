@@ -294,13 +294,35 @@ const MAYSTERNYA_LEAD_TASK_PRESETS = {
 };
 
 // Auth helpers
-function getToken() { return localStorage.getItem('pzp_token'); }
-function getHeaders(json = true) {
-    const h = {};
-    if (json) h['Content-Type'] = 'application/json';
-    const t = getToken();
-    if (t) h['Authorization'] = `Bearer ${t}`;
-    return h;
+async function resolveLeadAuthenticatedUser() {
+    if (typeof apiHasStoredAuthSession !== 'function'
+        || typeof apiVerifyToken !== 'function'
+        || typeof hydrateActionPermissions !== 'function') {
+        throw new Error('Shared authentication runtime is unavailable');
+    }
+    if (!apiHasStoredAuthSession()) return null;
+    const user = await apiVerifyToken();
+    if (!user) return null;
+    const permissions = await hydrateActionPermissions(user);
+    if (!permissions) throw new Error('Не вдалося завантажити права доступу');
+    return user;
+}
+
+function showLeadBootstrapError() {
+    normalizeLeadCanonicalRoute();
+    const message = 'Не вдалося завантажити права доступу. Оновіть сторінку або спробуйте ще раз.';
+    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    if (typeof renderPermissionBootstrapError === 'function') {
+        renderPermissionBootstrapError({
+            containerId: 'main-content',
+            retry: () => window.location.reload()
+        });
+    } else {
+        const tbody = document.getElementById('leadsTableBody');
+        if (tbody) tbody.innerHTML = `<tr><td colspan="8" class="empty-state">${message}</td></tr>`;
+        if (typeof showNotification === 'function') showNotification(message, 'error');
+    }
 }
 
 function leadBusinessContext() {
@@ -744,26 +766,45 @@ async function apiFetch(url, opts = {}) {
     if (['POST', 'PUT', 'PATCH', 'DELETE'].includes(method) && !guardLeadWrite('змінювати ліди')) {
         throw new Error(leadReadOnlyMessage('змінювати ліди'));
     }
-    opts.headers = { ...getHeaders(!!opts.body), ...opts.headers };
-    const res = await fetch(leadApiUrl(url), opts);
-    if (res.status === 403) {
-        const payload = await res.clone().json().catch(() => ({}));
-        if (payload.code === 'business_scope_read_only') {
-            const message = payload.error || leadReadOnlyMessage('змінювати ліди');
-            if (typeof showNotification === 'function') showNotification(message, 'warning');
-            throw new Error(message);
-        }
+    if (typeof apiFetchWithAuthRetry !== 'function' || typeof getAuthHeaders !== 'function') {
+        throw new Error('Shared authentication runtime is unavailable');
     }
-    if (res.status === 401) {
+    const res = await apiFetchWithAuthRetry(leadApiUrl(url), {
+        ...opts,
+        headers: { ...getAuthHeaders(!!opts.body), ...opts.headers }
+    });
+    if (!res) {
         window.location.href = '/';
         throw new Error('Unauthorized');
+    }
+    if (res.status === 403) {
+        const payload = await res.clone().json().catch(() => ({}));
+        const message = payload.error || (payload.code === 'business_scope_read_only'
+            ? leadReadOnlyMessage('змінювати ліди')
+            : 'Недостатньо прав для цієї дії');
+        if (payload.code === 'business_scope_read_only') {
+            if (typeof showNotification === 'function') {
+                showNotification(message, 'warning');
+            }
+        } else if (typeof showNotification === 'function') {
+            showNotification(message, 'error');
+        }
+        throw new Error(message);
     }
     return res;
 }
 
 // Init
 document.addEventListener('DOMContentLoaded', async () => {
-    if (!getToken()) { window.location.href = '/'; return; }
+    let user = null;
+    try {
+        user = await resolveLeadAuthenticatedUser();
+    } catch (error) {
+        console.warn('[Leads] Auth bootstrap failed:', error?.message || error);
+        showLeadBootstrapError();
+        return;
+    }
+    if (!user) { window.location.href = '/'; return; }
 
     const saved = localStorage.getItem('pzp_dark_mode');
     if (saved !== 'false') {
@@ -775,11 +816,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check TEST_MODE badge
     checkTestMode();
 
-    try {
-        const savedUser = localStorage.getItem('pzp_current_user');
-        if (savedUser && typeof AppState !== 'undefined') AppState.currentUser = JSON.parse(savedUser);
-    } catch {}
-    initLeadBusinessContext(typeof AppState !== 'undefined' ? AppState.currentUser : null);
+    if (typeof AppState !== 'undefined') AppState.currentUser = user;
+    initLeadBusinessContext(user);
     syncLeadRevenueUi();
 
     normalizeLeadCanonicalRoute();

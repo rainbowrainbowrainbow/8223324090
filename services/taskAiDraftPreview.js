@@ -31,12 +31,29 @@ const MAX_SUBTASKS = 7;
 const MIN_BUNDLE_TASKS = 2;
 const MAX_BUNDLE_TASKS = 6;
 const MAX_ACTIVE_IMPACTS_FOR_PROMPT = 80;
+const MIN_HUMAN_DESCRIPTION_CHARS = 12;
 const PREVIEW_DECISIONS = Object.freeze(['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
 const PREVIEW_ACTIONS = Object.freeze(['apply', 'needs_clarification', 'needs_project', 'no_change']);
 const PREVIEW_MODES = Object.freeze(['simple', 'checklist', null]);
 const PREVIEW_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low', null]);
 const TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE = 'task_ai_draft_commit';
 const TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE = 'task_ai_draft_bundle_commit';
+const TECHNICAL_AI_TEXT_PATTERNS = Object.freeze([
+    /```/,
+    /\bTASK_AI_DRAFT_[A-Z0-9_]+\b/,
+    /\bproposalToken\b/i,
+    /\bdraftFingerprint\b/i,
+    /\bacceptedFieldMask\b/i,
+    /\bcontractVersion\b/i,
+    /\bpromptVersion\b/i,
+    /\bimpactIds\b/,
+    /\bsubtasks\b/,
+    /\bconfidence\b/,
+    /\bJSON\s+object\b/i,
+    /^\s*(?:\{|\[).*["'](?:decision|title|description|impactIds|subtasks)["']\s*:/s,
+    /^(?:sure|here(?:'s| is))\b.*\b(?:json|draft|task)\b/i,
+    /^as an ai\b/i
+]);
 
 const CONFIDENCE_SCHEMA = Object.freeze({
     type: 'object',
@@ -176,6 +193,59 @@ function normalizeScheduleDate(value) {
     return scheduleDate;
 }
 
+function textWords(value = '') {
+    return String(value || '').match(/[\p{L}\p{N}]{2,}/gu) || [];
+}
+
+function isTechnicalAiDraftText(value) {
+    const text = String(value || '').trim();
+    if (!text) return false;
+    return TECHNICAL_AI_TEXT_PATTERNS.some(pattern => pattern.test(text));
+}
+
+function isHumanTaskText(value, { minChars = 3, minWords = 1 } = {}) {
+    const text = String(value || '').trim();
+    if (text.length < minChars) return false;
+    if (isTechnicalAiDraftText(text)) return false;
+    return textWords(text).length >= minWords;
+}
+
+function sentenceFromText(value, maxChars = MAX_TITLE_CHARS) {
+    const text = compactString(value, maxChars);
+    if (!text || isTechnicalAiDraftText(text)) return '';
+    const firstSentence = text.split(/(?<=[.!?])\s+/u)[0] || text;
+    return compactString(firstSentence, maxChars);
+}
+
+function normalizeTaskDraftTitle(value, fallbackDraft = {}) {
+    const title = compactString(value, MAX_TITLE_CHARS);
+    if (isHumanTaskText(title, { minChars: 3, minWords: 1 })) return title;
+    const fallbackTitle = compactString(fallbackDraft.title, MAX_TITLE_CHARS);
+    if (isHumanTaskText(fallbackTitle, { minChars: 3, minWords: 1 })) return fallbackTitle;
+    const fromDescription = sentenceFromText(fallbackDraft.description, MAX_TITLE_CHARS);
+    if (isHumanTaskText(fromDescription, { minChars: 3, minWords: 2 })) return fromDescription;
+    return '';
+}
+
+function normalizeTaskDraftDescription(value, fallbackDraft = {}, title = '') {
+    const description = compactString(value, MAX_DESCRIPTION_CHARS);
+    if (isHumanTaskText(description, {
+        minChars: MIN_HUMAN_DESCRIPTION_CHARS,
+        minWords: 2
+    })) {
+        return description;
+    }
+    const fallbackDescription = compactString(fallbackDraft.description, MAX_DESCRIPTION_CHARS);
+    if (isHumanTaskText(fallbackDescription, {
+        minChars: MIN_HUMAN_DESCRIPTION_CHARS,
+        minWords: 2
+    })) {
+        return fallbackDescription;
+    }
+    const safeTitle = normalizeTaskDraftTitle(title || fallbackDraft.title, fallbackDraft);
+    return safeTitle ? compactString(`Потрібно виконати: ${safeTitle}`, MAX_DESCRIPTION_CHARS) : '';
+}
+
 function normalizeDraftSnapshot(value = {}) {
     const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const title = compactString(draft.title, MAX_TITLE_CHARS);
@@ -216,6 +286,7 @@ function activeImpactPayload(impacts = []) {
                 id,
                 name,
                 icon: compactString(impact.icon, 16),
+                color: compactString(impact.color, 16),
                 ...(guidance ? { group: guidance.group, hints: [...guidance.hints] } : {})
             };
         })
@@ -330,7 +401,7 @@ function mergeServerExplicitImpacts(proposal = {}, draft = {}, impacts = []) {
             mode: 'simple',
             title: normalizedDraft.title,
             description: normalizedDraft.description || null,
-            impactIds: mergeExplicitImpactIds(explicitImpactIds, normalizedDraft.impactIds),
+            impactIds: filterKnownActiveImpactIds(mergeExplicitImpactIds(explicitImpactIds, normalizedDraft.impactIds), impacts),
             subtasks: [],
             bundleTitle: null,
             tasks: [],
@@ -353,6 +424,16 @@ function hasActionableDraftContext(draft = {}) {
     const normalized = normalizeDraftSnapshot(draft);
     const words = `${normalized.title} ${normalized.description}`.match(/[\p{L}\p{N}]{2,}/gu) || [];
     return normalized.title.length >= 12 && (words.length >= 4 || normalized.description.length >= 24);
+}
+
+function allowedImpactIdSet(activeImpacts = []) {
+    return new Set(activeImpactPayload(activeImpacts).map(impact => Number(impact.id)));
+}
+
+function filterKnownActiveImpactIds(impactIds = [], activeImpacts = []) {
+    const allowed = allowedImpactIdSet(activeImpacts);
+    return normalizeImpactIds(Array.isArray(impactIds) ? impactIds : [])
+        .filter(id => allowed.has(id));
 }
 
 function assertStrictProposalKeys(payload = {}) {
@@ -424,14 +505,6 @@ function normalizeOwnerSuggestion(value = {}) {
     };
 }
 
-function assertAllowedImpactIds(impactIds = [], activeImpacts = []) {
-    const allowedImpactIds = new Set(activeImpactPayload(activeImpacts).map(impact => impact.id));
-    const unknownIds = impactIds.filter(id => !allowedImpactIds.has(id));
-    if (unknownIds.length) {
-        throw createPreviewError('AI proposed an unavailable impact.', 422, 'TASK_AI_DRAFT_UNKNOWN_IMPACT');
-    }
-}
-
 function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
     const tasks = Array.isArray(rawTasks) ? rawTasks : [];
     if (decision !== 'task_bundle') {
@@ -458,8 +531,7 @@ function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
         if (!title) {
             throw createPreviewError('AI task bundle item is missing title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
         }
-        const impactIds = normalizeImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : null);
-        assertAllowedImpactIds(impactIds, activeImpacts);
+        const impactIds = filterKnownActiveImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : [], activeImpacts);
         const priority = payload.priority === null ? null : compactString(payload.priority, 24);
         if (!PREVIEW_PRIORITIES.includes(priority)) {
             throw createPreviewError('AI task bundle item has invalid priority.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
@@ -474,7 +546,7 @@ function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
         }).map(item => ({ title: item.title }));
         return {
             title,
-            description: payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS),
+            description: normalizeTaskDraftDescription(payload.description, payload, title),
             impactIds,
             subtasks,
             priority,
@@ -499,8 +571,7 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
         throw createPreviewError('AI draft proposal has invalid mode.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
 
-    const impactIds = normalizeImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : null);
-    assertAllowedImpactIds(impactIds, activeImpacts);
+    const impactIds = filterKnownActiveImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : [], activeImpacts);
 
     const title = payload.title === null ? null : compactString(payload.title, MAX_TITLE_CHARS);
     const description = payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS);
@@ -544,6 +615,75 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
         confidence,
         reason
     };
+}
+
+function strengthenProposalTaskText(proposal = {}, draft = {}) {
+    if (!['single_task', 'checklist'].includes(proposal.decision)) return proposal;
+    const title = normalizeTaskDraftTitle(proposal.title, draft);
+    if (!title) {
+        throw createPreviewError('AI draft proposal is missing title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    const description = normalizeTaskDraftDescription(proposal.description, draft, title);
+    if (!description) {
+        throw createPreviewError('AI draft proposal is missing description.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    return {
+        ...proposal,
+        title,
+        description
+    };
+}
+
+function fallbackProposalFromDraft(draft = {}, activeImpacts = [], reasonCode = 'fallback') {
+    const normalizedDraft = normalizeDraftSnapshot(draft);
+    if (!hasActionableDraftContext(normalizedDraft)) return null;
+    const title = normalizeTaskDraftTitle(null, normalizedDraft);
+    const description = normalizeTaskDraftDescription(null, normalizedDraft, title);
+    if (!title || !description) return null;
+    const subtasks = normalizedDraft.subtasks.length >= 2 ? normalizedDraft.subtasks : [];
+    const decision = subtasks.length >= 2 ? 'checklist' : 'single_task';
+    const explicitImpactIds = findExplicitImpactIds(normalizedDraft, activeImpacts);
+    return {
+        decision,
+        action: 'apply',
+        mode: decision === 'checklist' ? 'checklist' : 'simple',
+        title,
+        description,
+        impactIds: filterKnownActiveImpactIds(mergeExplicitImpactIds(explicitImpactIds, normalizedDraft.impactIds), activeImpacts),
+        subtasks,
+        bundleTitle: null,
+        tasks: [],
+        confidence: {
+            overall: 0.62,
+            title: 0.65,
+            description: 0.65,
+            impacts: explicitImpactIds.length ? 0.82 : 0.55,
+            subtasks: subtasks.length ? 0.7 : 0.5,
+            mode: 0.65
+        },
+        reason: `Server fallback from original draft after ${reasonCode}.`
+    };
+}
+
+function strengthenProposalQuality(proposal = {}, draft = {}, activeImpacts = []) {
+    if (proposal.decision === 'task_bundle') {
+        return {
+            ...proposal,
+            tasks: (proposal.tasks || []).map(task => {
+                const title = normalizeTaskDraftTitle(task.title, task);
+                if (!title) {
+                    throw createPreviewError('AI task bundle item is missing title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+                }
+                return {
+                    ...task,
+                    title,
+                    description: normalizeTaskDraftDescription(task.description, task, title),
+                    impactIds: filterKnownActiveImpactIds(task.impactIds || [], activeImpacts)
+                };
+            })
+        };
+    }
+    return strengthenProposalTaskText(proposal, draft);
 }
 
 function buildDraftDiff(currentDraft = {}, proposal = {}) {
@@ -734,7 +874,12 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             impacts
         );
         proposal = mergeServerExplicitImpacts(proposal, draft, impacts);
+        proposal = strengthenProposalQuality(proposal, draft, impacts);
     } catch (error) {
+        const fallbackProposal = fallbackProposalFromDraft(draft, impacts, error.code || 'invalid_response');
+        if (fallbackProposal) {
+            proposal = fallbackProposal;
+        } else {
         const failure = {
             ok: false,
             code: error.code || 'TASK_AI_DRAFT_INVALID_RESPONSE',
@@ -757,6 +902,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             usage: result.usage || {}
         }, options.telemetry);
         return failure;
+        }
     }
 
     const diff = buildDraftDiff(draft, proposal);
@@ -890,7 +1036,10 @@ module.exports = {
     generateTaskAiDraftPreview,
     legacyDecompositionResponseFromPreview,
     hasActionableDraftContext,
+    filterKnownActiveImpactIds,
     mergeServerExplicitImpacts,
+    normalizeTaskDraftDescription,
+    normalizeTaskDraftTitle,
     normalizeDraftSnapshot,
     normalizeProposal,
     normalizeScheduleDate,

@@ -15,6 +15,9 @@ const {
     TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
     activeImpactCatalogVersion,
+    filterKnownActiveImpactIds,
+    normalizeTaskDraftDescription,
+    normalizeTaskDraftTitle,
     normalizeScheduleDate,
     proposalHash,
     stableStringify,
@@ -114,9 +117,9 @@ function normalizeOptionalOwnerUserId(value, { required = false } = {}) {
 function normalizeFinalDraft(value = {}, options = {}) {
     const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
     const acceptedFields = new Set(normalizeAcceptedFieldMask(options.acceptedFieldMask || []));
-    const title = compactString(draft.title, MAX_COMMIT_TITLE_CHARS);
+    const title = normalizeTaskDraftTitle(draft.title, draft);
     if (!title) throw commitError('Task title is required.', 400, 'TASK_AI_DRAFT_TITLE_REQUIRED');
-    const description = compactString(draft.description, MAX_COMMIT_DESCRIPTION_CHARS);
+    const description = normalizeTaskDraftDescription(draft.description, draft, title);
     const mode = normalizeMode(draft.structuralMode || draft.structural_mode || draft.mode || draft.taskKind || draft.task_kind || draft.kind);
     const subtasks = normalizeDraftItems(Array.isArray(draft.subtasks) ? draft.subtasks : [], {
         sourceType: 'ai',
@@ -257,6 +260,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         acceptedFieldMask,
         defaultOwnerUserId: userId
     });
+    finalDraft.impactIds = filterKnownActiveImpactIds(finalDraft.impactIds, input.activeImpacts || input.impacts || []);
 
     const tokenPayload = verifyProposalToken(input.proposalToken || input.proposal_token, {
         secret: options.proposalSecret || options.safetySecret,

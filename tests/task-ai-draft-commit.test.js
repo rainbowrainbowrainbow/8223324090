@@ -360,6 +360,31 @@ test('AI draft commit creates task, subtasks, impacts, and AI history in one tra
     assert.equal(JSON.stringify(telemetryEvents[0].data).includes('Fix CRM booking form'), false);
 });
 
+test('AI draft commit filters unavailable impacts and repairs technical descriptions before writing', async () => {
+    const tokenParts = makeToken();
+    const fakePool = createFakePool();
+    const result = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: '{"impactIds":[101],"proposalToken":"debug"}',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101, 999_999, 104],
+            subtasks: proposal.subtasks
+        }
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(fakePool.state.tasks[0].description, 'Потрібно виконати: Fix CRM booking form');
+    assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101, 104]);
+    assert.equal(result.classification.impacts.length, 2);
+});
+
 test('AI draft commit preserves reviewed schedule and manual fields without hardcoded defaults', async () => {
     const tokenParts = makeScheduledToken();
     const fakePool = createFakePool();
@@ -759,14 +784,13 @@ test('AI draft bundle commit is idempotent and rejects conflicting replay body',
     );
 });
 
-test('AI draft bundle commit rejects unknown and archived impacts before opening a transaction', async () => {
+test('AI draft bundle commit filters unknown impacts and keeps catalog changes fail-closed', async () => {
     const tokenParts = makeBundleToken();
     const fakePool = createFakePool();
-    await assert.rejects(
-        () => bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(tokenParts, {
+    const result = await bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(tokenParts, {
             tasks: [
                 ...bundleCommitInput(tokenParts).tasks.slice(0, 1),
-                { ...bundleCommitInput(tokenParts).tasks[1], impactIds: [999_999] }
+                { ...bundleCommitInput(tokenParts).tasks[1], impactIds: [104, 999_999] }
             ],
             editedFieldMasks: [
                 { proposalIndex: 0, fields: [] },
@@ -777,10 +801,9 @@ test('AI draft bundle commit rejects unknown and archived impacts before opening
             proposalSecret: 'proposal-secret',
             now: 2_000,
             createTaskImpl: fakeCreateTaskImpl(fakePool)
-        }),
-        error => error.code === 'TASK_AI_BUNDLE_UNKNOWN_IMPACT'
-    );
-    assert.equal(fakePool.state.calls.length, 0);
+        });
+    assert.equal(result.ok, true);
+    assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101, 104]);
 
     await assert.rejects(
         () => bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(tokenParts, {
@@ -794,7 +817,7 @@ test('AI draft bundle commit rejects unknown and archived impacts before opening
             now: 2_000,
             createTaskImpl: fakeCreateTaskImpl(fakePool)
         }),
-        error => error.code === 'TASK_AI_BUNDLE_UNKNOWN_IMPACT'
+        error => error.code === 'TASK_AI_DRAFT_CATALOG_CHANGED'
     );
 });
 

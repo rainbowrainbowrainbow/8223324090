@@ -15,6 +15,9 @@ const {
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
     activeImpactCatalogVersion,
+    filterKnownActiveImpactIds,
+    normalizeTaskDraftDescription,
+    normalizeTaskDraftTitle,
     proposalHash,
     stableStringify,
     verifyProposalToken
@@ -250,13 +253,13 @@ function normalizeBundleTask(value = {}, index = 0, options = {}) {
     if (!accepted.has('title')) {
         throw bundleCommitError(`Task ${index + 1} title field must be accepted.`, 400, 'TASK_AI_BUNDLE_TITLE_NOT_ACCEPTED');
     }
-    const title = compactString(task.title, MAX_BUNDLE_TITLE_CHARS);
+    const title = normalizeTaskDraftTitle(task.title, task);
     if (!title) {
         throw bundleCommitError(`Task ${index + 1} title is required.`, 400, 'TASK_AI_BUNDLE_TASK_TITLE_REQUIRED');
     }
     return {
         title,
-        description: accepted.has('description') ? (compactString(task.description, MAX_BUNDLE_DESCRIPTION_CHARS) || null) : null,
+        description: accepted.has('description') ? normalizeTaskDraftDescription(task.description, task, title) : null,
         impactIds: accepted.has('impactIds') ? normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []) : [],
         subtasks: accepted.has('subtasks') ? normalizeBundleSubtasks(task.subtasks) : [],
         priority: accepted.has('priority') ? normalizePriority(task.priority) : 'normal',
@@ -539,18 +542,22 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
         input.editedFieldMasks || input.edited_field_masks || input.editedTaskFieldMasks || input.edited_task_field_masks,
         proposalTaskCount
     );
+    const activeImpacts = input.activeImpacts || input.impacts || [];
     const tasks = normalizeBundleTasks(rawTasks, {
         requireFieldMask: true,
         acceptedFieldMasks,
         editedFieldMasks,
         proposalTasks
-    });
+    }).map(task => ({
+        ...task,
+        impactIds: filterKnownActiveImpactIds(task.impactIds, activeImpacts)
+    }));
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw bundleCommitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
     validateBundleTasksAgainstRuntime({
         tasks,
-        activeImpacts: input.activeImpacts || input.impacts || [],
+        activeImpacts,
     });
     validateTaskMasks({ acceptedTaskMask, rejectedTaskMask, taskCount: tasks.length, proposalTaskCount });
 

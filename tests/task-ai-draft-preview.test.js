@@ -571,8 +571,9 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
             }))
         })
     });
-    assert.equal(archivedTaskImpact.ok, false);
-    assert.equal(archivedTaskImpact.code, 'TASK_AI_DRAFT_UNKNOWN_IMPACT');
+    assert.equal(archivedTaskImpact.ok, true);
+    assert.deepEqual(archivedTaskImpact.proposal.tasks[0].impactIds, [101]);
+    assert.deepEqual(archivedTaskImpact.proposal.tasks[1].impactIds, []);
 
     const invalidDueDate = await preview.generateTaskAiDraftPreview({
         draft: { title: 'Split CRM plan' },
@@ -667,7 +668,7 @@ test('task AI draft preview rejects invalid task bundle shape and unsafe task fi
     assert.equal(inventedOwner.code, 'TASK_AI_DRAFT_INVALID_RESPONSE');
 });
 
-test('task AI draft preview rejects unknown or archived impacts and extra fields', async () => {
+test('task AI draft preview filters unknown or archived impacts and rejects extra fields without actionable fallback', async () => {
     const unknown = await preview.generateTaskAiDraftPreview({
         draft: { title: 'Fix CRM and archived thing' },
         impacts,
@@ -681,8 +682,8 @@ test('task AI draft preview rejects unknown or archived impacts and extra fields
             text: JSON.stringify(validProposal({ impactIds: [101, 103] }))
         })
     });
-    assert.equal(unknown.ok, false);
-    assert.equal(unknown.code, 'TASK_AI_DRAFT_UNKNOWN_IMPACT');
+    assert.equal(unknown.ok, true);
+    assert.deepEqual(unknown.proposal.impactIds, [101]);
 
     const extra = await preview.generateTaskAiDraftPreview({
         draft: { title: 'Fix CRM' },
@@ -699,6 +700,144 @@ test('task AI draft preview rejects unknown or archived impacts and extra fields
     });
     assert.equal(extra.ok, false);
     assert.equal(extra.code, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+});
+
+test('task AI draft preview repairs technical or invalid AI text from the original draft only', async () => {
+    const result = await preview.generateTaskAiDraftPreview({
+        draft: {
+            title: 'Prepare CRM handoff for sales manager',
+            description: 'Summarize open CRM leads, risks, and next actions for the sales manager.',
+            impactIds: [101]
+        },
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify(validProposal({
+                decision: 'single_task',
+                mode: 'simple',
+                title: '{"decision":"single_task","impactIds":[101]}',
+                description: 'TASK_AI_DRAFT_INVALID_RESPONSE proposalToken payload',
+                impactIds: [101, 103],
+                subtasks: [],
+                reason: 'Invalid technical response.'
+            }))
+        })
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.proposal.decision, 'single_task');
+    assert.equal(result.proposal.title, 'Prepare CRM handoff for sales manager');
+    assert.equal(result.proposal.description, 'Summarize open CRM leads, risks, and next actions for the sales manager.');
+    assert.deepEqual(result.proposal.impactIds, [101]);
+});
+
+test('task AI draft preview falls back to original draft when AI returns unsupported fields', async () => {
+    const result = await preview.generateTaskAiDraftPreview({
+        draft: {
+            title: 'Prepare CRM handoff for sales manager',
+            description: 'Summarize open CRM leads, risks, and next actions for the sales manager.',
+            impactIds: []
+        },
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify({ ...validProposal(), tags: ['crm'] })
+        })
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(result.proposal.decision, 'single_task');
+    assert.equal(result.proposal.title, 'Prepare CRM handoff for sales manager');
+    assert.equal(result.proposal.description, 'Summarize open CRM leads, risks, and next actions for the sales manager.');
+    assert.deepEqual(result.proposal.impactIds, [101]);
+    assert.match(result.proposal.reason, /Server fallback/);
+});
+
+test('task AI draft preview covers minimal AI output, malformed JSON fallback, and provider failure contracts', async () => {
+    const minimal = await preview.generateTaskAiDraftPreview({
+        draft: {
+            title: 'Prepare CRM handoff for sales manager',
+            description: 'Summarize open CRM leads, risks, and next actions.',
+            impactIds: [102, 999_999]
+        },
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify(validProposal({
+                decision: 'single_task',
+                mode: 'simple',
+                title: 'CRM handoff',
+                description: '',
+                impactIds: [101, 102, 103, 999_999],
+                subtasks: [],
+                reason: 'Minimal but actionable response.'
+            }))
+        })
+    });
+    assert.equal(minimal.ok, true);
+    assert.equal(minimal.proposal.description, 'Summarize open CRM leads, risks, and next actions.');
+    assert.deepEqual(minimal.proposal.impactIds, [101, 102]);
+    assert.ok(minimal.proposal.description.length > 20);
+
+    const malformed = await preview.generateTaskAiDraftPreview({
+        draft: {
+            title: 'Prepare CRM handoff for sales manager',
+            description: 'Summarize open CRM leads, risks, and next actions.',
+            impactIds: [102, 999_999]
+        },
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: '{"decision":"single_task",'
+        })
+    });
+    assert.equal(malformed.ok, true);
+    assert.equal(malformed.proposal.title, 'Prepare CRM handoff for sales manager');
+    assert.equal(malformed.proposal.description, 'Summarize open CRM leads, risks, and next actions.');
+    assert.deepEqual(malformed.proposal.impactIds, [101, 102]);
+    assert.match(malformed.proposal.reason, /Server fallback/);
+
+    const providerFailure = await preview.generateTaskAiDraftPreview({
+        draft: {
+            title: 'Prepare CRM handoff for sales manager',
+            description: 'Summarize open CRM leads, risks, and next actions.',
+            impactIds: [101]
+        },
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        openAIClient: async () => ({
+            ok: false,
+            reason: 'timeout',
+            statusCode: 504,
+            model: 'gpt-5.6-luna'
+        })
+    });
+    assert.equal(providerFailure.ok, false);
+    assert.equal(providerFailure.code, 'TASK_AI_DRAFT_TIMEOUT');
+    assert.equal(providerFailure.statusCode, 504);
+    assert.equal(providerFailure.proposal, undefined);
 });
 
 test('shared My Day task OpenAI client enforces official production host and sends safe Responses payload', async () => {

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.4 - AI task draft normalization + telemetry
+
+### Release / Versioning / (20.08.2026) [codex]
+- **AI task draft normalization + telemetry** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.3 - AI task draft quality + impacts
 
 ### Release / Versioning / (20.08.2026) [codex]

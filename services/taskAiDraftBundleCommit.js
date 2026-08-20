@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 
 const { pool } = require('../db');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
-const { replaceTaskClassification, normalizeImpactIds } = require('./myDayTaxonomy');
+const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
@@ -15,13 +15,16 @@ const {
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
     activeImpactCatalogVersion,
-    filterKnownActiveImpactIds,
-    normalizeTaskDraftDescription,
-    normalizeTaskDraftTitle,
     proposalHash,
     stableStringify,
     verifyProposalToken
 } = require('./taskAiDraftPreview');
+const {
+    normalizeTaskDraftDescription,
+    normalizeTaskDraftImpactIds,
+    normalizeTaskDraftImpactSelection,
+    normalizeTaskDraftTitle
+} = require('./taskAiDraftNormalization');
 const {
     hashCommitRequest,
     legacyTaskTextRef,
@@ -203,7 +206,7 @@ function normalizeBundleSubtasks(value) {
 function normalizeComparableBundleField(task = {}, field) {
     if (field === 'title') return compactString(task.title, MAX_BUNDLE_TITLE_CHARS);
     if (field === 'description') return compactString(task.description, MAX_BUNDLE_DESCRIPTION_CHARS) || null;
-    if (field === 'impactIds') return normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []);
+    if (field === 'impactIds') return normalizeTaskDraftImpactIds(task.impactIds ?? task.impact_ids ?? []);
     if (field === 'subtasks') return normalizeBundleSubtasks(task.subtasks).map(item => ({ title: item.title }));
     if (field === 'priority') return normalizePriority(task.priority);
     if (field === 'dueDate') return normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date);
@@ -260,7 +263,7 @@ function normalizeBundleTask(value = {}, index = 0, options = {}) {
     return {
         title,
         description: accepted.has('description') ? normalizeTaskDraftDescription(task.description, task, title) : null,
-        impactIds: accepted.has('impactIds') ? normalizeImpactIds(task.impactIds ?? task.impact_ids ?? []) : [],
+        impactIds: accepted.has('impactIds') ? normalizeTaskDraftImpactIds(task.impactIds ?? task.impact_ids ?? []) : [],
         subtasks: accepted.has('subtasks') ? normalizeBundleSubtasks(task.subtasks) : [],
         priority: accepted.has('priority') ? normalizePriority(task.priority) : 'normal',
         scheduleDate: accepted.has('dueDate') ? normalizeScheduleDate(task.scheduleDate || task.schedule_date || task.dueDate || task.due_date || task.date) : null,
@@ -317,23 +320,6 @@ function normalizeSubmittedProposalHash(body = {}) {
 
 function normalizeBundleTitle(value, fallback = 'AI task bundle') {
     return compactString(value, MAX_BUNDLE_TITLE_CHARS) || fallback;
-}
-
-function activeImpactIdSet(impacts = []) {
-    return new Set((Array.isArray(impacts) ? impacts : [])
-        .filter(impact => impact && impact.isActive !== false)
-        .map(impact => Number(impact.id))
-        .filter(id => Number.isInteger(id) && id > 0));
-}
-
-function validateBundleTasksAgainstRuntime({ tasks, activeImpacts }) {
-    const allowedImpactIds = activeImpactIdSet(activeImpacts);
-    for (const [index, task] of tasks.entries()) {
-        const unknownImpactIds = task.impactIds.filter(id => !allowedImpactIds.has(Number(id)));
-        if (unknownImpactIds.length) {
-            throw bundleCommitError(`Bundle task ${index + 1} contains unavailable impact IDs.`, 422, 'TASK_AI_BUNDLE_UNKNOWN_IMPACT');
-        }
-    }
 }
 
 function validateTaskMasks({ acceptedTaskMask, rejectedTaskMask, taskCount, proposalTaskCount }) {
@@ -548,17 +534,19 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
         acceptedFieldMasks,
         editedFieldMasks,
         proposalTasks
-    }).map(task => ({
-        ...task,
-        impactIds: filterKnownActiveImpactIds(task.impactIds, activeImpacts)
-    }));
+    }).map(task => {
+        const impactSelection = normalizeTaskDraftImpactSelection(task.impactIds, activeImpacts);
+        return {
+            ...task,
+            impactIds: impactSelection.impactIds,
+            impactFilterReason: impactSelection.filterReason,
+            filteredImpactCount: impactSelection.filteredImpactCount,
+            rejectedImpactIds: impactSelection.rejectedImpactIds
+        };
+    });
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw bundleCommitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
-    validateBundleTasksAgainstRuntime({
-        tasks,
-        activeImpacts,
-    });
     validateTaskMasks({ acceptedTaskMask, rejectedTaskMask, taskCount: tasks.length, proposalTaskCount });
 
     const tokenPayload = verifyProposalToken(input.proposalToken || input.proposal_token, {
@@ -587,6 +575,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
         rejectedTaskMask,
         acceptedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: acceptedFieldMasks.get(index) || [] })),
         editedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: editedFieldMasks.get(index) || [] })),
+        rejectedImpactIds: tasks.map((task, index) => ({ proposalIndex: index, ids: task.rejectedImpactIds || [] })),
         idempotencyKey,
         proposalHash: submittedProposalHash,
         draftFingerprint: tokenPayload.draftFingerprint,
@@ -732,6 +721,7 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     bundleId,
                     bundleTaskIndex: index,
                     impactCount: finalTask.impactIds.length,
+                    filteredImpactCount: finalTask.filteredImpactCount || 0,
                     subtaskCount: finalTask.subtasks.length,
                     scheduleWritten: Boolean(finalTask.scheduleDate)
                 },
@@ -748,6 +738,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
                     acceptedFieldMask: finalTask.acceptedFieldMask,
                     editedFieldMask: finalTask.editedFieldMask,
+                    impactFilterReason: finalTask.impactFilterReason || '',
+                    filteredImpactCount: finalTask.filteredImpactCount || 0,
                     provider: 'openai',
                     model: MY_DAY_TASK_AI_MODEL,
                     source: AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,
@@ -786,6 +778,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
                 acceptedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: acceptedFieldMasks.get(index) || [] })),
                 editedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: editedFieldMasks.get(index) || [] })),
+                impactFilterReason: tasks.some(task => task.impactFilterReason) ? 'filter_known_active' : '',
+                filteredImpactCount: tasks.reduce((sum, task) => sum + (task.filteredImpactCount || 0), 0),
                 provider: 'openai',
                 model: MY_DAY_TASK_AI_MODEL,
                 source: AI_DRAFT_BUNDLE_COMMIT_SOURCE_SURFACE,
@@ -810,6 +804,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             acceptedTaskCount: acceptedTaskMask.length,
             rejectedTaskCount: rejectedTaskMask.length,
             editedTaskCount: tasks.filter(task => task.userEdited).length,
+            impactFilterReason: tasks.some(task => task.impactFilterReason) ? 'filter_known_active' : '',
+            filteredImpactCount: tasks.reduce((sum, task) => sum + (task.filteredImpactCount || 0), 0),
             replay: false
         }, options.telemetry);
 

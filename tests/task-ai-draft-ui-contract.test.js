@@ -107,4 +107,6 @@ test('My Day AI draft UI carries accepted description and impacts into commit pa
     assert.deepEqual(submittedPayload.finalDraft.impactIds, [101]);
     assert.ok(submittedPayload.acceptedFieldMask.includes('description'));
     assert.ok(submittedPayload.acceptedFieldMask.includes('impactIds'));
+    assert.equal(Array.isArray(submittedPayload.editedFieldMask), true);
+    assert.equal(submittedPayload.editedFieldMask.length, 0);
 });

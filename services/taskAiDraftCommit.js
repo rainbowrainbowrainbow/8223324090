@@ -4,7 +4,7 @@ const crypto = require('node:crypto');
 
 const { pool } = require('../db');
 const { TASK_ACTION_TYPES, logTaskActionEvent } = require('./taskActionHistory');
-const { replaceTaskClassification, normalizeImpactIds } = require('./myDayTaxonomy');
+const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
@@ -15,20 +15,25 @@ const {
     TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
     activeImpactCatalogVersion,
-    filterKnownActiveImpactIds,
-    normalizeTaskDraftDescription,
-    normalizeTaskDraftTitle,
+    normalizeDraftSnapshot,
     normalizeScheduleDate,
     proposalHash,
     stableStringify,
     verifyProposalToken
 } = require('./taskAiDraftPreview');
+const {
+    normalizeTaskDraftDescription,
+    normalizeTaskDraftImpactIds,
+    normalizeTaskDraftImpactSelection,
+    normalizeTaskDraftTitle
+} = require('./taskAiDraftNormalization');
 
 const MAX_COMMIT_TITLE_CHARS = 180;
 const MAX_COMMIT_DESCRIPTION_CHARS = 700;
 const MAX_COMMIT_SUBTASKS = 7;
 const AI_DRAFT_COMMIT_SOURCE_SURFACE = 'task_ai_draft_commit';
 const AI_DRAFT_COMMIT_SOURCE_TYPE = 'ai_draft';
+const REVIEWED_SINGLE_FIELDS = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks']);
 const ACCEPTED_FIELD_ALLOWLIST = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
 const ACCEPTED_FIELD_ALIASES = Object.freeze({
     schedule: 'scheduleDate',
@@ -85,6 +90,10 @@ function normalizeAcceptedFieldMask(value) {
     return fields;
 }
 
+function normalizeEditedFieldMask(value) {
+    return normalizeAcceptedFieldMask(value);
+}
+
 function normalizeMode(value) {
     const raw = String(value || '').trim().toLowerCase();
     if (raw === 'checklist') return 'checklist';
@@ -114,18 +123,55 @@ function normalizeOptionalOwnerUserId(value, { required = false } = {}) {
     return raw;
 }
 
-function normalizeFinalDraft(value = {}, options = {}) {
-    const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
-    const acceptedFields = new Set(normalizeAcceptedFieldMask(options.acceptedFieldMask || []));
-    const title = normalizeTaskDraftTitle(draft.title, draft);
-    if (!title) throw commitError('Task title is required.', 400, 'TASK_AI_DRAFT_TITLE_REQUIRED');
-    const description = normalizeTaskDraftDescription(draft.description, draft, title);
-    const mode = normalizeMode(draft.structuralMode || draft.structural_mode || draft.mode || draft.taskKind || draft.task_kind || draft.kind);
-    const subtasks = normalizeDraftItems(Array.isArray(draft.subtasks) ? draft.subtasks : [], {
+function safeNormalizeSignedDraftSnapshot(value = {}) {
+    try {
+        return normalizeDraftSnapshot(value || {});
+    } catch {
+        return normalizeDraftSnapshot({});
+    }
+}
+
+function hasReviewedField(field, acceptedFields, editedFields) {
+    return acceptedFields.has(field) || editedFields.has(field);
+}
+
+function normalizeReviewedDescription({ draft, signedDraftSnapshot, title, reviewed }) {
+    if (reviewed) return normalizeTaskDraftDescription(draft.description, draft, title);
+    const description = normalizeTaskDraftDescription(signedDraftSnapshot.description, {}, '');
+    return description || null;
+}
+
+function normalizeReviewedSubtasks(value = []) {
+    return normalizeDraftItems(Array.isArray(value) ? value : [], {
         sourceType: 'ai',
         maxItems: MAX_COMMIT_SUBTASKS
     });
-    const impactIds = normalizeImpactIds(draft.impactIds ?? draft.impact_ids ?? []);
+}
+
+function normalizeFinalDraft(value = {}, options = {}) {
+    const draft = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const acceptedFields = new Set(normalizeAcceptedFieldMask(options.acceptedFieldMask || []));
+    const editedFields = new Set(normalizeEditedFieldMask(options.editedFieldMask || []));
+    const signedDraftSnapshot = safeNormalizeSignedDraftSnapshot(options.signedDraftSnapshot || {});
+    const title = hasReviewedField('title', acceptedFields, editedFields)
+        ? normalizeTaskDraftTitle(draft.title, draft)
+        : (normalizeTaskDraftTitle(signedDraftSnapshot.title, signedDraftSnapshot) || normalizeTaskDraftTitle(draft.title, draft));
+    if (!title) throw commitError('Task title is required.', 400, 'TASK_AI_DRAFT_TITLE_REQUIRED');
+    const description = normalizeReviewedDescription({
+        draft,
+        signedDraftSnapshot,
+        title,
+        reviewed: hasReviewedField('description', acceptedFields, editedFields)
+    });
+    const mode = hasReviewedField('mode', acceptedFields, editedFields)
+        ? normalizeMode(draft.structuralMode || draft.structural_mode || draft.mode || draft.taskKind || draft.task_kind || draft.kind)
+        : normalizeMode(signedDraftSnapshot.mode || signedDraftSnapshot.taskKind || signedDraftSnapshot.task_kind || signedDraftSnapshot.kind);
+    const subtasks = hasReviewedField('subtasks', acceptedFields, editedFields)
+        ? normalizeReviewedSubtasks(draft.subtasks)
+        : normalizeReviewedSubtasks(signedDraftSnapshot.subtasks);
+    const impactIds = hasReviewedField('impactIds', acceptedFields, editedFields)
+        ? normalizeTaskDraftImpactIds(draft.impactIds ?? draft.impact_ids ?? [])
+        : normalizeTaskDraftImpactIds(signedDraftSnapshot.impactIds ?? signedDraftSnapshot.impact_ids ?? []);
     const scheduleConfirmed = truthy(draft.scheduleConfirmed ?? draft.schedule_confirmed ?? draft.confirmSchedule ?? draft.confirm_schedule);
     const scheduleDate = acceptedFields.has('scheduleDate') && scheduleConfirmed
         ? normalizeScheduleDate(draft.scheduleDate)
@@ -163,6 +209,14 @@ function normalizeFinalDraft(value = {}, options = {}) {
         visibility,
         workflowState
     };
+}
+
+function assertEditedFieldsAreReviewed(acceptedFieldMask = [], editedFieldMask = []) {
+    const accepted = new Set(acceptedFieldMask);
+    const editedWithoutReview = editedFieldMask.filter(field => REVIEWED_SINGLE_FIELDS.includes(field) && !accepted.has(field));
+    if (editedWithoutReview.length) {
+        throw commitError('Edited AI draft fields must also be accepted.', 400, 'TASK_AI_DRAFT_FIELD_MASK_INVALID');
+    }
 }
 
 function hashCommitRequest(payload = {}) {
@@ -254,14 +308,10 @@ async function commitTaskAiDraft(input = {}, options = {}) {
     const db = options.pool || pool;
     const idempotencyKey = normalizeIdempotencyKey(input.idempotencyKey || input.idempotency_key);
     const acceptedFieldMask = normalizeAcceptedFieldMask(input.acceptedFieldMask || input.accepted_field_mask || input.acceptedFields || input.accepted_fields);
+    const editedFieldMask = normalizeEditedFieldMask(input.editedFieldMask || input.edited_field_mask || input.editedFields || input.edited_fields);
+    assertEditedFieldsAreReviewed(acceptedFieldMask, editedFieldMask);
     const userId = Number(input.userId || input.user?.id || 0);
     if (!Number.isInteger(userId) || userId <= 0) throw commitError('Valid user is required.', 401, 'TASK_AI_DRAFT_USER_REQUIRED');
-    const finalDraft = normalizeFinalDraft(input.finalDraft || input.draft || {}, {
-        acceptedFieldMask,
-        defaultOwnerUserId: userId
-    });
-    finalDraft.impactIds = filterKnownActiveImpactIds(finalDraft.impactIds, input.activeImpacts || input.impacts || []);
-
     const tokenPayload = verifyProposalToken(input.proposalToken || input.proposal_token, {
         secret: options.proposalSecret || options.safetySecret,
         userId,
@@ -270,6 +320,14 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         allowedDecisions: ['single_task', 'checklist'],
         now: options.now
     });
+    const finalDraft = normalizeFinalDraft(input.finalDraft || input.draft || {}, {
+        acceptedFieldMask,
+        editedFieldMask,
+        signedDraftSnapshot: tokenPayload.draftSnapshot,
+        defaultOwnerUserId: userId
+    });
+    const impactSelection = normalizeTaskDraftImpactSelection(finalDraft.impactIds, input.activeImpacts || input.impacts || []);
+    finalDraft.impactIds = impactSelection.impactIds;
     const { submittedProposalHash, catalogVersion } = ensureTokenMatchesRequest({
         tokenPayload,
         userId,
@@ -281,6 +339,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
     const requestHash = hashCommitRequest({
         finalDraft,
         acceptedFieldMask,
+        editedFieldMask,
+        rejectedImpactIds: impactSelection.rejectedImpactIds,
         idempotencyKey,
         proposalHash: submittedProposalHash,
         draftFingerprint: tokenPayload.draftFingerprint,
@@ -315,7 +375,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                     reasonCode: 'idempotent_replay',
                     userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
                     businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
-                    acceptedFieldMask
+                    acceptedFieldMask,
+                    editedFieldMask
                 }, options.telemetry);
                 return replayResponse(existing);
             }
@@ -387,6 +448,7 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                 taskId: Number(task.id),
                 changedFields: acceptedFieldMask,
                 impactCount: finalDraft.impactIds.length,
+                filteredImpactCount: impactSelection.filteredImpactCount,
                 subtaskCount: subtasks.length,
                 scheduleWritten: Boolean(finalDraft.scheduleDate || finalDraft.deadline)
             },
@@ -402,6 +464,9 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                 provider: 'openai',
                 model: MY_DAY_TASK_AI_MODEL,
                 acceptedFieldMask,
+                editedFieldMask,
+                impactFilterReason: impactSelection.filterReason,
+                filteredImpactCount: impactSelection.filteredImpactCount,
                 source: AI_DRAFT_COMMIT_SOURCE_SURFACE,
                 rawPromptStored: false,
                 rawProviderResponseStored: false
@@ -421,7 +486,10 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
             changedFields: acceptedFieldMask,
-            acceptedFieldMask
+            acceptedFieldMask,
+            editedFieldMask,
+            impactFilterReason: impactSelection.filterReason,
+            filteredImpactCount: impactSelection.filteredImpactCount
         }, options.telemetry);
         return {
             ok: true,
@@ -447,7 +515,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
             reasonCode: error?.code || 'TASK_AI_DRAFT_COMMIT_FAILED',
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
-            acceptedFieldMask
+            acceptedFieldMask,
+            editedFieldMask
         }, options.telemetry);
         throw error;
     } finally {
@@ -463,6 +532,7 @@ module.exports = {
     hashCommitRequest,
     legacyTaskTextRef,
     normalizeAcceptedFieldMask,
+    normalizeEditedFieldMask,
     normalizeFinalDraft,
     normalizeIdempotencyKey
 };

@@ -998,6 +998,7 @@
             ...Array.from(state.userEdited),
             ...(finalDraft.scheduleConfirmed && normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date) ? ['scheduleDate'] : [])
         ]));
+        const editedFieldMask = Array.from(state.userEdited);
         if (!acceptedFieldMask.length) return null;
         if (!['single_task', 'checklist'].includes(decision)) return null;
         return {
@@ -1007,6 +1008,7 @@
             proposalHash: state.preview.proposalHash,
             catalogVersion: state.preview.catalogVersion,
             acceptedFieldMask,
+            editedFieldMask,
             finalDraft: {
                 ...finalDraft,
                 scheduleDate: normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date) || null,

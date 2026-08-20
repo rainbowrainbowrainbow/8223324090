@@ -48,6 +48,7 @@ function makeToken(secret = 'proposal-secret') {
             fingerprint: preview.draftFingerprint(draft),
             proposal,
             catalogVersion: preview.activeImpactCatalogVersion(impacts),
+            draftSnapshot: draft,
             now: 1_000,
             secret
         }),
@@ -383,6 +384,83 @@ test('AI draft commit filters unavailable impacts and repairs technical descript
     assert.equal(fakePool.state.tasks[0].description, 'Потрібно виконати: Fix CRM booking form');
     assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101, 104]);
     assert.equal(result.classification.impacts.length, 2);
+    assert.equal(fakePool.state.history[0].meta_json.impactFilterReason, 'filter_known_active');
+    assert.equal(fakePool.state.history[0].meta_json.filteredImpactCount, 1);
+});
+
+test('AI draft commit does not write unaccepted AI description, impacts, or subtasks', async () => {
+    const draft = {
+        title: 'crm form',
+        description: 'Keep the original CRM booking note for manual review.',
+        impactIds: [101],
+        subtasks: [{ title: 'Original manual validation step' }]
+    };
+    const tokenParts = {
+        token: preview.createProposalToken({
+            userId: 7,
+            businessScope: { businessContext: 'event_genix' },
+            fingerprint: preview.draftFingerprint(draft),
+            proposal,
+            catalogVersion: preview.activeImpactCatalogVersion(impacts),
+            draftSnapshot: draft,
+            now: 1_000,
+            secret: 'proposal-secret'
+        }),
+        draftFingerprint: preview.draftFingerprint(draft),
+        proposalHash: preview.proposalHash(proposal)
+    };
+    const fakePool = createFakePool();
+    const result = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: 'Rejected AI description should not be stored.',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [104],
+            subtasks: [{ title: 'Rejected AI subtask' }]
+        },
+        acceptedFieldMask: ['title', 'mode']
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(fakePool.state.tasks[0].description, 'Keep the original CRM booking note for manual review.');
+    assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101]);
+    assert.deepEqual(fakePool.state.subtasks.map(item => item.title), ['Original manual validation step']);
+});
+
+test('AI draft commit accepts reviewed manual edits and filters unknown edited impacts', async () => {
+    const tokenParts = makeToken();
+    const fakePool = createFakePool();
+    const result = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: 'Manual reviewer description with concrete CRM validation scope.',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101, 999_999],
+            subtasks: [{ title: 'Manual reviewer validation step' }]
+        },
+        acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks'],
+        editedFieldMask: ['description', 'impactIds', 'subtasks']
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+
+    assert.equal(result.ok, true);
+    assert.equal(fakePool.state.tasks[0].description, 'Manual reviewer description with concrete CRM validation scope.');
+    assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101]);
+    assert.deepEqual(fakePool.state.subtasks.map(item => item.title), ['Manual reviewer validation step']);
+    assert.deepEqual(fakePool.state.history[0].meta_json.editedFieldMask, ['description', 'impactIds', 'subtasks']);
+    assert.equal(fakePool.state.history[0].meta_json.impactFilterReason, 'filter_known_active');
+    assert.equal(fakePool.state.history[0].meta_json.filteredImpactCount, 1);
 });
 
 test('AI draft commit preserves reviewed schedule and manual fields without hardcoded defaults', async () => {
@@ -804,6 +882,12 @@ test('AI draft bundle commit filters unknown impacts and keeps catalog changes f
         });
     assert.equal(result.ok, true);
     assert.deepEqual(fakePool.state.impacts.map(item => item.impact_id), [101, 104]);
+    const taskHistory = fakePool.state.history.find(item => item.task_id === 502 && item.action_type === TASK_ACTION_TYPES.AI_DRAFT_COMMITTED);
+    const bundleHistory = fakePool.state.history.find(item => item.action_type === TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED);
+    assert.equal(taskHistory.meta_json.impactFilterReason, 'filter_known_active');
+    assert.equal(taskHistory.meta_json.filteredImpactCount, 1);
+    assert.equal(bundleHistory.meta_json.impactFilterReason, 'filter_known_active');
+    assert.equal(bundleHistory.meta_json.filteredImpactCount, 1);
 
     await assert.rejects(
         () => bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(tokenParts, {
@@ -819,6 +903,61 @@ test('AI draft bundle commit filters unknown impacts and keeps catalog changes f
         }),
         error => error.code === 'TASK_AI_DRAFT_CATALOG_CHANGED'
     );
+});
+
+test('AI draft single and bundle commits share description fallback and impact filtering rules', async () => {
+    const singleTokenParts = makeToken();
+    const singlePool = createFakePool();
+    const technicalDescription = '{"impactIds":[101],"proposalToken":"debug"}';
+    await commit.commitTaskAiDraft(commitInput(singleTokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: technicalDescription,
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101, 999_999, 104],
+            subtasks: proposal.subtasks
+        }
+    }), {
+        pool: singlePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(singlePool)
+    });
+
+    const bundleProposalValue = {
+        ...bundleProposal,
+        tasks: [
+            {
+                ...bundleProposal.tasks[0],
+                title: 'Fix CRM booking form',
+                description: technicalDescription,
+                impactIds: [101, 999_999, 104],
+                subtasks: proposal.subtasks,
+                priority: 'normal',
+                scheduleDate: null
+            },
+            bundleProposal.tasks[1]
+        ]
+    };
+    const bundleTokenParts = makeBundleToken('proposal-secret', bundleProposalValue);
+    const bundlePool = createFakePool();
+    await bundleCommit.commitTaskAiDraftBundle(bundleCommitInput(bundleTokenParts, {
+        editedFieldMasks: [
+            { proposalIndex: 0, fields: ['description', 'impactIds', 'subtasks', 'priority', 'dueDate'] },
+            { proposalIndex: 1, fields: [] }
+        ]
+    }), {
+        pool: bundlePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(bundlePool)
+    });
+
+    assert.equal(singlePool.state.tasks[0].description, 'Потрібно виконати: Fix CRM booking form');
+    assert.equal(bundlePool.state.tasks[0].description, singlePool.state.tasks[0].description);
+    assert.deepEqual(singlePool.state.impacts.filter(item => item.task_id === 501).map(item => item.impact_id), [101, 104]);
+    assert.deepEqual(bundlePool.state.impacts.filter(item => item.task_id === 501).map(item => item.impact_id), [101, 104]);
 });
 
 test('AI draft bundle commit rejects invalid task count, schedule, priority, and unavailable reviewed owner', async () => {

@@ -38,6 +38,7 @@ test('task AI rollout report parses sanitized structured and pretty telemetry wi
                 latencyMs: 120,
                 model: 'gpt-5.6-luna',
                 changedFields: ['title'],
+                fallbackReason: 'minimal_content',
                 usage: { total_tokens: 90 },
                 promptText: 'must be ignored because sanitizer rejects unknown sensitive fields only before logging'
             }
@@ -59,6 +60,9 @@ test('task AI rollout report parses sanitized structured and pretty telemetry wi
     const serialized = JSON.stringify(built);
     assert.doesNotMatch(serialized, /OPENAI_API_KEY|proposalToken|provider response|Sensitive CRM|promptText/i);
     assert.equal(built.telemetry.successfulProposals, 1);
+    assert.equal(built.telemetry.fallbackProposalCount, 1);
+    assert.equal(built.telemetry.byFallbackReason.minimal_content, 1);
+    assert.equal(built.telemetry.byOutcome.fallback_proposal, 1);
     assert.equal(built.verdict.status, 'hold');
     assert.ok(built.verdict.missingEvidence.includes('read-only database evidence from TASK_AI_ROLLOUT_DATABASE_URL'));
 });
@@ -262,7 +266,11 @@ test('task AI rollout database evidence uses only read-only queries and never fa
 
 test('task AI rollout report markdown is redacted and operator-readable', () => {
     const built = report.buildReport({
-        logEvents: [previewEvent(0, { acceptedFieldMask: ['title', 'description'], taskCount: 1 })],
+        logEvents: [
+            previewEvent(0, { acceptedFieldMask: ['title', 'description'], taskCount: 1 }),
+            previewEvent(1, { fallbackReason: 'malformed_response' }),
+            previewEvent(2, { fallbackReason: 'invalid_impacts', impactFilterReason: 'filter_known_active', filteredImpactCount: 2 })
+        ],
         dbEvidence: { available: false, events: [], checks: null },
         options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05 }
     });
@@ -271,6 +279,10 @@ test('task AI rollout report markdown is redacted and operator-readable', () => 
     assert.match(markdown, /version\/SHA/);
     assert.match(markdown, /stage/);
     assert.match(markdown, /successful proposals/);
+    assert.match(markdown, /fallback proposals: 1/);
+    assert.match(markdown, /validation-filtered events: 1/);
+    assert.match(markdown, /"malformed_response":1/);
+    assert.match(markdown, /"invalid_impacts":1/);
     assert.match(markdown, /Missing evidence/);
     assert.doesNotMatch(markdown, /title text|description text|OPENAI_API_KEY|proposalToken/i);
 });

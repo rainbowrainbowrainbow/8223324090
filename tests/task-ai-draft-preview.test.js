@@ -7,6 +7,7 @@ const test = require('node:test');
 
 const root = path.resolve(__dirname, '..');
 const preview = require('../services/taskAiDraftPreview');
+const normalization = require('../services/taskAiDraftNormalization');
 const openAIClient = require('../services/myDayTaskOpenAIClient');
 const telemetry = require('../services/taskAiDraftTelemetry');
 
@@ -15,6 +16,21 @@ const impacts = [
     { id: 102, name: 'Work: Hermes', icon: '⚡', isActive: true },
     { id: 103, name: 'Archived impact', icon: 'x', isActive: false }
 ];
+
+test('task AI draft normalization filters against the same top active impact catalog used for AI prompt', () => {
+    const activeImpacts = Array.from({ length: 85 }, (_, index) => ({
+        id: index + 1,
+        name: `Impact ${index + 1}`,
+        isActive: true
+    }));
+    const selection = normalization.normalizeTaskDraftImpactSelection([1, 80, 81, 999_999], activeImpacts);
+
+    assert.deepEqual(selection.impactIds, [1, 80]);
+    assert.deepEqual(selection.rejectedImpactIds, [81, 999_999]);
+    assert.equal(selection.filteredImpactCount, 2);
+    assert.equal(selection.filterReason, 'filter_known_active');
+    assert.equal(preview.activeImpactPayload(activeImpacts).length, normalization.MAX_ACTIVE_IMPACTS_FOR_NORMALIZATION);
+});
 
 function validProposal(overrides = {}) {
     return {
@@ -296,6 +312,27 @@ test('task AI preview telemetry records only metadata and strips task text/provi
         () => telemetry.recordTaskAiDraftTelemetry({ type: 'preview', status: 'success', promptText: 'secret task text' }),
         /sensitive fields/i
     );
+    assert.throws(
+        () => telemetry.recordTaskAiDraftTelemetry({
+            type: 'preview',
+            status: 'success',
+            diagnostics: {
+                providerResponse: {
+                    text: 'secret AI payload'
+                }
+            }
+        }),
+        /sensitive fields/i
+    );
+    const futureEvent = telemetry.recordTaskAiDraftTelemetry({
+        type: 'preview',
+        status: 'success',
+        futureSafeMetric: 'ignored',
+        diagnostics: { count: 1 }
+    }, {
+        logger: { info: () => {} }
+    });
+    assert.equal(Object.hasOwn(futureEvent, 'futureSafeMetric'), false);
 
     const bundleEvent = telemetry.recordTaskAiDraftTelemetry({
         type: 'bundle_commit',
@@ -319,12 +356,134 @@ test('task AI preview telemetry records only metadata and strips task text/provi
 
     const aggregate = telemetry.aggregateTaskAiDraftTelemetry([
         bundleEvent,
-        { type: 'bundle_commit', status: 'replayed', taskCount: 4, acceptedTaskCount: 3, replay: true }
+        { type: 'bundle_commit', status: 'replayed', taskCount: 4, acceptedTaskCount: 3, replay: true },
+        { type: 'preview', status: 'success', fallbackReason: 'minimal_content' },
+        { type: 'preview', status: 'success', fallbackReason: 'invalid_impacts', filteredImpactCount: 2, impactFilterReason: 'filter_known_active' },
+        { type: 'preview', status: 'timeout', fallbackReason: 'provider_failure' }
     ]);
     assert.equal(aggregate.byType.bundle_commit, 2);
     assert.equal(aggregate.taskCount, 8);
     assert.equal(aggregate.acceptedTaskCount, 6);
     assert.equal(aggregate.replayed, 1);
+    assert.equal(aggregate.fallbackCount, 3);
+    assert.equal(aggregate.byOutcome.fallback_proposal, 1);
+    assert.equal(aggregate.byOutcome.validation_filtered, 1);
+    assert.equal(aggregate.byOutcome.provider_error, 1);
+    assert.equal(aggregate.byFallbackReason.minimal_content, 1);
+    assert.equal(aggregate.byFallbackReason.invalid_impacts, 1);
+    assert.equal(aggregate.byFallbackReason.provider_failure, 1);
+    assert.equal(aggregate.filteredImpactCount, 2);
+});
+
+test('task AI draft preview telemetry records safe fallback reason metadata', async () => {
+    const events = [];
+    const telemetryOptions = {
+        logger: {
+            info: (message, data) => events.push({ message, data })
+        }
+    };
+    const draft = {
+        title: 'Sensitive fallback CRM title',
+        description: 'Sensitive fallback description with CRM context and next actions.',
+        impactIds: [101]
+    };
+
+    const minimal = await preview.generateTaskAiDraftPreview({
+        draft,
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        telemetry: telemetryOptions,
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify(validProposal({
+                decision: 'single_task',
+                mode: 'simple',
+                title: 'CRM handoff',
+                description: '',
+                impactIds: [101],
+                subtasks: []
+            }))
+        })
+    });
+    assert.equal(minimal.ok, true);
+
+    const malformed = await preview.generateTaskAiDraftPreview({
+        draft,
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        telemetry: telemetryOptions,
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: '{"decision":"single_task",'
+        })
+    });
+    assert.equal(malformed.ok, true);
+
+    const invalidImpacts = await preview.generateTaskAiDraftPreview({
+        draft,
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        telemetry: telemetryOptions,
+        openAIClient: async () => ({
+            ok: true,
+            provider: 'openai',
+            model: 'gpt-5.6-luna',
+            text: JSON.stringify(validProposal({
+                decision: 'single_task',
+                mode: 'simple',
+                title: 'CRM handoff',
+                description: 'Prepare a safe CRM handoff for the manager.',
+                impactIds: [101, 103, 999_999],
+                subtasks: []
+            }))
+        })
+    });
+    assert.equal(invalidImpacts.ok, true);
+
+    const providerFailure = await preview.generateTaskAiDraftPreview({
+        draft,
+        impacts,
+        userId: 7
+    }, {
+        proposalSecret: 'secret',
+        telemetry: telemetryOptions,
+        openAIClient: async () => ({
+            ok: false,
+            provider: 'openai',
+            reason: 'timeout',
+            statusCode: 504,
+            model: 'gpt-5.6-luna'
+        })
+    });
+    assert.equal(providerFailure.ok, false);
+
+    assert.deepEqual(events.map(event => event.data.fallbackReason), [
+        'minimal_content',
+        'malformed_response',
+        'invalid_impacts',
+        'provider_failure'
+    ]);
+    assert.deepEqual(events.map(event => event.data.outcome), [
+        'fallback_proposal',
+        'fallback_proposal',
+        'validation_filtered',
+        'provider_error'
+    ]);
+    assert.deepEqual(events.map(event => event.data.provider), ['openai', 'openai', 'openai', 'openai']);
+    assert.equal(events[3].data.status, 'timeout');
+
+    const serialized = JSON.stringify(events);
+    assert.doesNotMatch(serialized, /Sensitive fallback CRM title|Sensitive fallback description|\{"decision":"single_task"|OPENAI_API_KEY|Bearer/i);
 });
 
 test('task AI draft preview returns clarification/no-change decisions without inventing subtasks', async () => {

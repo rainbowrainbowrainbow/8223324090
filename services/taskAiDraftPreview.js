@@ -2,7 +2,7 @@
 
 const crypto = require('node:crypto');
 
-const { MAX_IMPACTS_PER_TASK, normalizeImpactIds } = require('./myDayTaxonomy');
+const { MAX_IMPACTS_PER_TASK } = require('./myDayTaxonomy');
 const { guidanceForImpactName } = require('./myDayImpactCatalog');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const {
@@ -16,6 +16,18 @@ const {
 } = require('./myDayTaskOpenAIClient');
 const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
 const { findExplicitImpactIds, mergeExplicitImpactIds } = require('./myDayClassificationAi');
+const {
+    MAX_ACTIVE_IMPACTS_FOR_NORMALIZATION,
+    MAX_TASK_AI_DRAFT_DESCRIPTION_CHARS,
+    MAX_TASK_AI_DRAFT_TITLE_CHARS,
+    MIN_HUMAN_DESCRIPTION_CHARS,
+    filterKnownActiveImpactIds,
+    isHumanTaskText,
+    normalizeTaskDraftDescription,
+    normalizeTaskDraftImpactIds,
+    normalizeTaskDraftImpactSelection,
+    normalizeTaskDraftTitle
+} = require('./taskAiDraftNormalization');
 
 const TASK_AI_DRAFT_CONTRACT_VERSION = 'my_day_ai_composer_proposal_v2';
 const TASK_AI_DRAFT_SCHEMA_NAME = 'my_day_task_draft_preview';
@@ -24,37 +36,31 @@ const TASK_AI_DRAFT_TIMEOUT_MS = 15_000;
 const TASK_AI_DRAFT_MAX_OUTPUT_TOKENS = 1_600;
 const TASK_AI_DRAFT_REASONING_EFFORT = 'low';
 const TASK_AI_DRAFT_TOKEN_TTL_MS = 10 * 60 * 1000;
-const MAX_TITLE_CHARS = 180;
-const MAX_DESCRIPTION_CHARS = 700;
+const MAX_TITLE_CHARS = MAX_TASK_AI_DRAFT_TITLE_CHARS;
+const MAX_DESCRIPTION_CHARS = MAX_TASK_AI_DRAFT_DESCRIPTION_CHARS;
 const MAX_REASON_CHARS = 180;
 const MAX_SUBTASKS = 7;
 const MIN_BUNDLE_TASKS = 2;
 const MAX_BUNDLE_TASKS = 6;
-const MAX_ACTIVE_IMPACTS_FOR_PROMPT = 80;
-const MIN_HUMAN_DESCRIPTION_CHARS = 12;
+const MAX_ACTIVE_IMPACTS_FOR_PROMPT = MAX_ACTIVE_IMPACTS_FOR_NORMALIZATION;
 const PREVIEW_DECISIONS = Object.freeze(['single_task', 'checklist', 'task_bundle', 'needs_clarification', 'no_change']);
 const PREVIEW_ACTIONS = Object.freeze(['apply', 'needs_clarification', 'needs_project', 'no_change']);
 const PREVIEW_MODES = Object.freeze(['simple', 'checklist', null]);
 const PREVIEW_PRIORITIES = Object.freeze(['urgent', 'high', 'normal', 'low', null]);
 const TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE = 'task_ai_draft_commit';
 const TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE = 'task_ai_draft_bundle_commit';
-const TECHNICAL_AI_TEXT_PATTERNS = Object.freeze([
-    /```/,
-    /\bTASK_AI_DRAFT_[A-Z0-9_]+\b/,
-    /\bproposalToken\b/i,
-    /\bdraftFingerprint\b/i,
-    /\bacceptedFieldMask\b/i,
-    /\bcontractVersion\b/i,
-    /\bpromptVersion\b/i,
-    /\bimpactIds\b/,
-    /\bsubtasks\b/,
-    /\bconfidence\b/,
-    /\bJSON\s+object\b/i,
-    /^\s*(?:\{|\[).*["'](?:decision|title|description|impactIds|subtasks)["']\s*:/s,
-    /^(?:sure|here(?:'s| is))\b.*\b(?:json|draft|task)\b/i,
-    /^as an ai\b/i
+const TASK_AI_DRAFT_FALLBACK_REASONS = Object.freeze([
+    'malformed_response',
+    'provider_failure',
+    'minimal_content',
+    'invalid_impacts'
 ]);
-
+const TASK_AI_DRAFT_FALLBACK_REASON_PRIORITY = Object.freeze([
+    'malformed_response',
+    'provider_failure',
+    'minimal_content',
+    'invalid_impacts'
+]);
 const CONFIDENCE_SCHEMA = Object.freeze({
     type: 'object',
     additionalProperties: false,
@@ -193,57 +199,49 @@ function normalizeScheduleDate(value) {
     return scheduleDate;
 }
 
-function textWords(value = '') {
-    return String(value || '').match(/[\p{L}\p{N}]{2,}/gu) || [];
+function addFallbackReason(reasons, reason) {
+    if (!Array.isArray(reasons) || !TASK_AI_DRAFT_FALLBACK_REASONS.includes(reason)) return;
+    if (!reasons.includes(reason)) reasons.push(reason);
 }
 
-function isTechnicalAiDraftText(value) {
-    const text = String(value || '').trim();
-    if (!text) return false;
-    return TECHNICAL_AI_TEXT_PATTERNS.some(pattern => pattern.test(text));
+function primaryFallbackReason(reasons = []) {
+    const set = new Set(Array.isArray(reasons) ? reasons : []);
+    return TASK_AI_DRAFT_FALLBACK_REASON_PRIORITY.find(reason => set.has(reason)) || '';
 }
 
-function isHumanTaskText(value, { minChars = 3, minWords = 1 } = {}) {
-    const text = String(value || '').trim();
-    if (text.length < minChars) return false;
-    if (isTechnicalAiDraftText(text)) return false;
-    return textWords(text).length >= minWords;
+function payloadObject(value = {}) {
+    return value && typeof value === 'object' && !Array.isArray(value) ? value : {};
 }
 
-function sentenceFromText(value, maxChars = MAX_TITLE_CHARS) {
-    const text = compactString(value, maxChars);
-    if (!text || isTechnicalAiDraftText(text)) return '';
-    const firstSentence = text.split(/(?<=[.!?])\s+/u)[0] || text;
-    return compactString(firstSentence, maxChars);
+function hasInvalidImpactIds(rawImpactIds = [], activeImpacts = []) {
+    return normalizeTaskDraftImpactSelection(rawImpactIds, activeImpacts).filteredImpactCount > 0;
 }
 
-function normalizeTaskDraftTitle(value, fallbackDraft = {}) {
-    const title = compactString(value, MAX_TITLE_CHARS);
-    if (isHumanTaskText(title, { minChars: 3, minWords: 1 })) return title;
-    const fallbackTitle = compactString(fallbackDraft.title, MAX_TITLE_CHARS);
-    if (isHumanTaskText(fallbackTitle, { minChars: 3, minWords: 1 })) return fallbackTitle;
-    const fromDescription = sentenceFromText(fallbackDraft.description, MAX_TITLE_CHARS);
-    if (isHumanTaskText(fromDescription, { minChars: 3, minWords: 2 })) return fromDescription;
-    return '';
+function proposalHasInvalidImpacts(raw = {}, activeImpacts = []) {
+    const payload = payloadObject(raw);
+    if (hasInvalidImpactIds(payload.impactIds, activeImpacts)) return true;
+    return (Array.isArray(payload.tasks) ? payload.tasks : [])
+        .some(task => hasInvalidImpactIds(payloadObject(task).impactIds, activeImpacts));
 }
 
-function normalizeTaskDraftDescription(value, fallbackDraft = {}, title = '') {
-    const description = compactString(value, MAX_DESCRIPTION_CHARS);
-    if (isHumanTaskText(description, {
-        minChars: MIN_HUMAN_DESCRIPTION_CHARS,
-        minWords: 2
-    })) {
-        return description;
+function hasMinimalTaskText(title, description) {
+    return !isHumanTaskText(title, { minChars: 3, minWords: 1 })
+        || !isHumanTaskText(description, { minChars: MIN_HUMAN_DESCRIPTION_CHARS, minWords: 2 });
+}
+
+function proposalHasMinimalContent(raw = {}) {
+    const payload = payloadObject(raw);
+    if (['single_task', 'checklist'].includes(String(payload.decision || '').trim())) {
+        return hasMinimalTaskText(payload.title, payload.description);
     }
-    const fallbackDescription = compactString(fallbackDraft.description, MAX_DESCRIPTION_CHARS);
-    if (isHumanTaskText(fallbackDescription, {
-        minChars: MIN_HUMAN_DESCRIPTION_CHARS,
-        minWords: 2
-    })) {
-        return fallbackDescription;
+    if (String(payload.decision || '').trim() === 'task_bundle') {
+        return (Array.isArray(payload.tasks) ? payload.tasks : [])
+            .some(task => {
+                const item = payloadObject(task);
+                return hasMinimalTaskText(item.title, item.description);
+            });
     }
-    const safeTitle = normalizeTaskDraftTitle(title || fallbackDraft.title, fallbackDraft);
-    return safeTitle ? compactString(`Потрібно виконати: ${safeTitle}`, MAX_DESCRIPTION_CHARS) : '';
+    return false;
 }
 
 function normalizeDraftSnapshot(value = {}) {
@@ -257,7 +255,7 @@ function normalizeDraftSnapshot(value = {}) {
     }).map(item => ({ title: item.title }));
     let impactIds = [];
     if (Array.isArray(rawImpacts)) {
-        impactIds = normalizeImpactIds(rawImpacts);
+        impactIds = normalizeTaskDraftImpactIds(rawImpacts);
     }
     return {
         title,
@@ -426,16 +424,6 @@ function hasActionableDraftContext(draft = {}) {
     return normalized.title.length >= 12 && (words.length >= 4 || normalized.description.length >= 24);
 }
 
-function allowedImpactIdSet(activeImpacts = []) {
-    return new Set(activeImpactPayload(activeImpacts).map(impact => Number(impact.id)));
-}
-
-function filterKnownActiveImpactIds(impactIds = [], activeImpacts = []) {
-    const allowed = allowedImpactIdSet(activeImpacts);
-    return normalizeImpactIds(Array.isArray(impactIds) ? impactIds : [])
-        .filter(id => allowed.has(id));
-}
-
 function assertStrictProposalKeys(payload = {}) {
     const allowed = new Set(TASK_AI_DRAFT_PREVIEW_SCHEMA.required);
     const extra = Object.keys(payload).filter(key => !allowed.has(key));
@@ -531,7 +519,7 @@ function normalizeBundleTasks(rawTasks, activeImpacts = [], decision) {
         if (!title) {
             throw createPreviewError('AI task bundle item is missing title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
         }
-        const impactIds = filterKnownActiveImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : [], activeImpacts);
+        const { impactIds } = normalizeTaskDraftImpactSelection(payload.impactIds, activeImpacts);
         const priority = payload.priority === null ? null : compactString(payload.priority, 24);
         if (!PREVIEW_PRIORITIES.includes(priority)) {
             throw createPreviewError('AI task bundle item has invalid priority.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
@@ -571,7 +559,7 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
         throw createPreviewError('AI draft proposal has invalid mode.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
 
-    const impactIds = filterKnownActiveImpactIds(Array.isArray(payload.impactIds) ? payload.impactIds : [], activeImpacts);
+    const { impactIds } = normalizeTaskDraftImpactSelection(payload.impactIds, activeImpacts);
 
     const title = payload.title === null ? null : compactString(payload.title, MAX_TITLE_CHARS);
     const description = payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS);
@@ -741,6 +729,7 @@ function createProposalToken({ userId, businessScope, fingerprint, proposal, cat
         businessContext: businessScope?.businessContext || businessScope?.business_context || null,
         draftFingerprint: fingerprint,
         scheduleDate: normalizeDraftSnapshot(draftSnapshot || {}).scheduleDate,
+        draftSnapshot: normalizeDraftSnapshot(draftSnapshot || {}),
         proposalHash: hash,
         catalogVersion,
         issuedAt: now,
@@ -856,10 +845,12 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             status: previewTelemetryStatus(failure),
             latencyMs: Date.now() - startedAt,
             model: failure.model,
+            provider: failure.provider,
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
             schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
             reasonCode: failure.code,
+            fallbackReason: 'provider_failure',
             userHash: safetyIdentifier,
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
             usage: result?.usage || {}
@@ -868,40 +859,44 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
     }
 
     let proposal;
+    const fallbackReasons = [];
     try {
-        proposal = normalizeProposal(
-            result.payload ? extractOpenAIResponseObject(result.payload) : parseAiJson(result.text),
-            impacts
-        );
+        const rawProposal = result.payload ? extractOpenAIResponseObject(result.payload) : parseAiJson(result.text);
+        if (proposalHasInvalidImpacts(rawProposal, impacts)) addFallbackReason(fallbackReasons, 'invalid_impacts');
+        if (proposalHasMinimalContent(rawProposal)) addFallbackReason(fallbackReasons, 'minimal_content');
+        proposal = normalizeProposal(rawProposal, impacts);
         proposal = mergeServerExplicitImpacts(proposal, draft, impacts);
         proposal = strengthenProposalQuality(proposal, draft, impacts);
     } catch (error) {
+        addFallbackReason(fallbackReasons, 'malformed_response');
         const fallbackProposal = fallbackProposalFromDraft(draft, impacts, error.code || 'invalid_response');
         if (fallbackProposal) {
             proposal = fallbackProposal;
         } else {
-        const failure = {
-            ok: false,
-            code: error.code || 'TASK_AI_DRAFT_INVALID_RESPONSE',
-            statusCode: error.statusCode || 422,
-            reason: error.code || 'invalid_response',
-            provider: 'openai',
-            model: result.model || MY_DAY_TASK_AI_MODEL
-        };
-        safeRecordPreviewTelemetry({
-            type: 'preview',
-            status: 'invalid_response',
-            latencyMs: Date.now() - startedAt,
-            model: failure.model,
-            contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
-            promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
-            schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
-            reasonCode: failure.code,
-            userHash: safetyIdentifier,
-            businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
-            usage: result.usage || {}
-        }, options.telemetry);
-        return failure;
+            const failure = {
+                ok: false,
+                code: error.code || 'TASK_AI_DRAFT_INVALID_RESPONSE',
+                statusCode: error.statusCode || 422,
+                reason: error.code || 'invalid_response',
+                provider: 'openai',
+                model: result.model || MY_DAY_TASK_AI_MODEL
+            };
+            safeRecordPreviewTelemetry({
+                type: 'preview',
+                status: 'invalid_response',
+                latencyMs: Date.now() - startedAt,
+                model: failure.model,
+                provider: failure.provider,
+                contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+                promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                reasonCode: failure.code,
+                fallbackReason: primaryFallbackReason(fallbackReasons),
+                userHash: safetyIdentifier,
+                businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
+                usage: result.usage || {}
+            }, options.telemetry);
+            return failure;
         }
     }
 
@@ -947,10 +942,12 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
         status: 'success',
         latencyMs: Date.now() - startedAt,
         model: result.model || MY_DAY_TASK_AI_MODEL,
+        provider: result.provider || 'openai',
         contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
         promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
         schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
-            reasonCode: proposal.decision || proposal.action,
+        reasonCode: proposal.decision || proposal.action,
+        fallbackReason: primaryFallbackReason(fallbackReasons),
         userHash: safetyIdentifier,
         businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
         changedFields: diff.changedFields,

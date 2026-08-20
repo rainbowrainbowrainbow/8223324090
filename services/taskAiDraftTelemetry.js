@@ -18,10 +18,29 @@ const ALLOWED_STATUSES = Object.freeze([
     'rollback',
     'error'
 ]);
+const ALLOWED_FALLBACK_REASONS = Object.freeze([
+    'malformed_response',
+    'provider_failure',
+    'minimal_content',
+    'invalid_impacts'
+]);
+const ALLOWED_OUTCOMES = Object.freeze([
+    'success',
+    'fallback_proposal',
+    'provider_error',
+    'validation_filtered',
+    'validation_error',
+    'commit_success',
+    'replayed',
+    'conflict',
+    'rollback',
+    'error'
+]);
 const SAFE_FIELD_MASK = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
 const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'type',
     'status',
+    'outcome',
     'latencyMs',
     'model',
     'provider',
@@ -29,6 +48,9 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'promptVersion',
     'schemaName',
     'reasonCode',
+    'fallbackReason',
+    'impactFilterReason',
+    'filteredImpactCount',
     'code',
     'userHash',
     'businessContext',
@@ -65,6 +87,35 @@ function safeFieldMask(value) {
     return [...new Set(raw.map(item => String(item || '').trim()).filter(field => SAFE_FIELD_MASK.includes(field)))];
 }
 
+function safeFallbackReason(value) {
+    const reason = compactString(value, 80);
+    return ALLOWED_FALLBACK_REASONS.includes(reason) ? reason : '';
+}
+
+function safeOutcome(value) {
+    const outcome = compactString(value, 80);
+    return ALLOWED_OUTCOMES.includes(outcome) ? outcome : '';
+}
+
+function derivedOutcome(source = {}, status = 'error', fallbackReason = '') {
+    const explicit = safeOutcome(source.outcome);
+    if (explicit) return explicit;
+    if (status === 'replayed') return 'replayed';
+    if (status === 'conflict') return 'conflict';
+    if (status === 'rollback') return 'rollback';
+    if (fallbackReason === 'provider_failure' || ['provider_unavailable', 'provider_error', 'timeout', 'rate_limited'].includes(status)) {
+        return 'provider_error';
+    }
+    if (fallbackReason === 'malformed_response' || fallbackReason === 'minimal_content') return 'fallback_proposal';
+    if (fallbackReason === 'invalid_impacts' || source.impactFilterReason === 'filter_known_active' || safeInteger(source.filteredImpactCount) > 0) {
+        return 'validation_filtered';
+    }
+    if (status === 'invalid_response') return 'validation_error';
+    if (status === 'success' && (source.type === 'commit' || source.type === 'bundle_commit')) return 'commit_success';
+    if (status === 'success') return 'success';
+    return 'error';
+}
+
 function sanitizeUsage(usage = {}) {
     const source = usage && typeof usage === 'object' && !Array.isArray(usage) ? usage : {};
     return {
@@ -78,9 +129,11 @@ function sanitizeTelemetryEvent(event = {}) {
     const source = event && typeof event === 'object' && !Array.isArray(event) ? event : {};
     const type = ALLOWED_EVENT_TYPES.includes(source.type) ? source.type : 'unknown';
     const status = ALLOWED_STATUSES.includes(source.status) ? source.status : 'error';
+    const fallbackReason = safeFallbackReason(source.fallbackReason);
     return {
         type,
         status,
+        outcome: derivedOutcome(source, status, fallbackReason),
         latencyMs: safeInteger(source.latencyMs),
         model: compactString(source.model, 80),
         provider: compactString(source.provider || 'openai', 40),
@@ -88,6 +141,9 @@ function sanitizeTelemetryEvent(event = {}) {
         promptVersion: compactString(source.promptVersion, 80),
         schemaName: compactString(source.schemaName, 80),
         reasonCode: compactString(source.reasonCode || source.code || '', 80),
+        fallbackReason,
+        impactFilterReason: compactString(source.impactFilterReason || '', 80) === 'filter_known_active' ? 'filter_known_active' : '',
+        filteredImpactCount: safeInteger(source.filteredImpactCount),
         userHash: compactString(source.userHash || '', 80),
         businessContext: compactString(source.businessContext || '', 80),
         changedFields: safeFieldMask(source.changedFields),
@@ -105,7 +161,21 @@ function sanitizeTelemetryEvent(event = {}) {
 }
 
 function assertNoSensitiveTelemetryFields(event = {}) {
-    const forbidden = Object.keys(event || {}).filter(key => !SAFE_TELEMETRY_INPUT_KEYS.has(key) && SENSITIVE_KEY_PATTERN.test(key));
+    const forbidden = [];
+    function visitUnknown(value, path = '') {
+        if (!value || typeof value !== 'object') return;
+        if (Array.isArray(value)) {
+            value.forEach((item, index) => visitUnknown(item, `${path}[${index}]`));
+            return;
+        }
+        for (const [key, child] of Object.entries(value)) {
+            const nextPath = path ? `${path}.${key}` : key;
+            if (!path && SAFE_TELEMETRY_INPUT_KEYS.has(key)) continue;
+            if (SENSITIVE_KEY_PATTERN.test(key)) forbidden.push(nextPath);
+            visitUnknown(child, nextPath);
+        }
+    }
+    visitUnknown(event || {});
     if (forbidden.length) {
         const error = new Error('Task AI telemetry event contains sensitive fields.');
         error.code = 'TASK_AI_TELEMETRY_SENSITIVE_FIELD';
@@ -129,30 +199,47 @@ function aggregateTaskAiDraftTelemetry(events = []) {
     return rows.reduce((summary, event) => {
         const safe = sanitizeTelemetryEvent(event);
         const key = `${safe.type}:${safe.status}`;
+        const outcomeKey = `${safe.type}:${safe.outcome}`;
         summary.total += 1;
         summary.byType[safe.type] = (summary.byType[safe.type] || 0) + 1;
         summary.byStatus[safe.status] = (summary.byStatus[safe.status] || 0) + 1;
+        summary.byOutcome[safe.outcome] = (summary.byOutcome[safe.outcome] || 0) + 1;
         summary.byTypeStatus[key] = (summary.byTypeStatus[key] || 0) + 1;
+        summary.byTypeOutcome[outcomeKey] = (summary.byTypeOutcome[outcomeKey] || 0) + 1;
         summary.taskCount += safe.taskCount;
         summary.acceptedTaskCount += safe.acceptedTaskCount;
         summary.rejectedTaskCount += safe.rejectedTaskCount;
         summary.editedTaskCount += safe.editedTaskCount;
         if (safe.replay) summary.replayed += 1;
+        if (safe.fallbackReason) {
+            summary.fallbackCount += 1;
+            summary.byFallbackReason[safe.fallbackReason] = (summary.byFallbackReason[safe.fallbackReason] || 0) + 1;
+        }
+        if (safe.impactFilterReason || safe.filteredImpactCount) {
+            summary.filteredImpactCount += safe.filteredImpactCount;
+        }
         return summary;
     }, {
         total: 0,
         byType: {},
         byStatus: {},
+        byOutcome: {},
         byTypeStatus: {},
+        byTypeOutcome: {},
         taskCount: 0,
         acceptedTaskCount: 0,
         rejectedTaskCount: 0,
         editedTaskCount: 0,
-        replayed: 0
+        replayed: 0,
+        fallbackCount: 0,
+        filteredImpactCount: 0,
+        byFallbackReason: {}
     });
 }
 
 module.exports = {
+    ALLOWED_FALLBACK_REASONS,
+    ALLOWED_OUTCOMES,
     SAFE_FIELD_MASK,
     aggregateTaskAiDraftTelemetry,
     assertNoSensitiveTelemetryFields,

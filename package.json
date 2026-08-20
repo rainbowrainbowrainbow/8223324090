@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.4",
+  "version": "0.81.5",
   "eventGenix": {
-    "releaseLabel": "AI task draft normalization + telemetry"
+    "releaseLabel": "AI draft deprecation wrapper"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

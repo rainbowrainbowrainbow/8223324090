@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.5 - AI draft deprecation wrapper
+
+### Release / Versioning / (20.08.2026) [codex]
+- **AI draft deprecation wrapper** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.4 - AI task draft normalization + telemetry
 
 ### Release / Versioning / (20.08.2026) [codex]

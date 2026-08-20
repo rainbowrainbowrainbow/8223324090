@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.1",
+  "version": "0.81.2",
   "eventGenix": {
-    "releaseLabel": "Unified Task Composer Release"
+    "releaseLabel": "Sales Funnel Shared Auth Release"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -11,7 +11,7 @@
     "start": "node server.js",
     "dev": "node --watch server.js",
     "test": "npm run verify",
-    "verify": "npm run check:runtime && npm run check:version && npm run test:version-tooling && npm run check:access && npm run check:action-permissions && npm run check:permission-registry && npm run check:permission-contracts:executable && npm run check:capability-policy && npm run test:permission-contracts && npm run test:live-authenticated-qa-contract && npm run check:account-access-surface && npm run check:account-access-editor && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:attendance-plan && npm run test:attendance-datafix && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:payroll-contracts && npm run test:ticket-contract && npm run test:unit:hr-org-tree && npm run test:task-performance-policy && npm run test:task-archive-system-filter && npm run test:task-stale-machine-report && npm run test:task-cleanup-operator && npm run test:unit && npm run test:my-day && npm run test:ui",
+    "verify": "npm run check:runtime && npm run check:version && npm run test:version-tooling && npm run check:access && npm run check:action-permissions && npm run check:permission-registry && npm run check:permission-contracts:executable && npm run check:capability-policy && npm run test:permission-contracts && npm run test:live-authenticated-qa-contract && npm run check:account-access-surface && npm run check:account-access-editor && npm run check:auth-boundary && npm run check:static-surface && npm run check:css-surface && npm run check:theme-surface && npm run check:api-surface && npm run check:storage-surface && npm run check:service-worker-policy && npm run check:scheduler-surface && npm run check:db-startup-surface && npm run check:timeline-protected-surface && npm run check:migrations && npm run check:syntax && npm run test:sales-funnel-auth && npm run test:attendance-plan && npm run test:attendance-datafix && npm run test:staff-shift-preferences && npm run test:banquet-arrival-migrations && npm run test:db-flow-contract && npm run test:backup-recovery && npm run test:hr-release-b && npm run test:payroll-contracts && npm run test:ticket-contract && npm run test:unit:hr-org-tree && npm run test:task-performance-policy && npm run test:task-archive-system-filter && npm run test:task-stale-machine-report && npm run test:task-cleanup-operator && npm run test:unit && npm run test:my-day && npm run test:ui",
     "check:runtime": "node scripts/check-runtime.js",
     "version:current": "node scripts/current-version.js",
     "check:version": "node scripts/version-sync.js",
@@ -72,6 +72,7 @@
     "test:banquet-arrival-migrations": "node --test tests/banquet-guest-arrival-migrations.test.js",
     "test:backup-recovery": "node --test tests/backup-artifact.test.js tests/backup-recovery-contract.test.js tests/backup-inventory-contract.test.js",
     "test:version-tooling": "node --test tests/version-sync-tooling.test.js tests/release-deployment-manifest.test.js tests/release-metadata.test.js tests/release-railway-up-static.test.js tests/release-railway-up-predeploy.test.js",
+    "test:sales-funnel-auth": "node --test tests/auth-frontend-session.test.js tests/sales-funnel.test.js",
     "test:api:account-access": "node --test tests/api-account-access.test.js",
     "test:hr-release-b": "node --test tests/hr-profession-conditions.test.js tests/hr-profession-checklist-migration.test.js tests/hr-profession-checklists.test.js tests/hr-onboarding-checklist-sync.test.js tests/profile-hr-professions-foundation.test.js tests/hr-profession-readiness-static.test.js tests/training-course-progress.test.js tests/payroll-profiles-migration.test.js tests/payroll-installments-foundation.test.js tests/payroll-canonical-calculator.test.js tests/payroll-scheme-history-hardening.test.js tests/hr-payroll-profiles-service.test.js",
     "test:payroll-contracts": "node --test tests/payroll-workflow-contract.test.js tests/payroll-finance-workflow-contract.test.js tests/payroll-permissions-contract.test.js tests/payroll-activation-preflight-contract.test.js tests/payroll-shadow-comparison.test.js tests/payroll-post-release-audit.test.js",

@@ -32,6 +32,42 @@ test('task AI draft normalization filters against the same top active impact cat
     assert.equal(preview.activeImpactPayload(activeImpacts).length, normalization.MAX_ACTIVE_IMPACTS_FOR_NORMALIZATION);
 });
 
+test('legacy decomposition response preserves canonical proposal fallback text and filtered impacts', () => {
+    const result = preview.legacyDecompositionResponseFromPreview({
+        provider: 'openai',
+        model: 'gpt-5.6-luna',
+        contractVersion: preview.TASK_AI_DRAFT_CONTRACT_VERSION,
+        proposalToken: 'token.signature',
+        diff: { changedFields: ['title', 'description', 'impactIds', 'subtasks'] },
+        proposal: {
+            decision: 'checklist',
+            action: 'apply',
+            mode: 'checklist',
+            title: 'Readable CRM handoff',
+            description: 'Prepare a readable CRM lead handoff with owner risks and next actions.',
+            impactIds: [101],
+            subtasks: [
+                { title: 'Check lead card' },
+                { title: 'Write owner risks' }
+            ],
+            confidence: { overall: 0.91 },
+            reason: 'Canonical preview already normalized this proposal.'
+        }
+    }, 'ai');
+
+    assert.equal(result.success, true);
+    assert.equal(result.deprecated, true);
+    assert.equal(result.deprecatedEndpoint, '/api/tasks/ai-draft/preview');
+    assert.equal(result.source, 'ai_draft_preview');
+    assert.equal(result.proposal.title, 'Readable CRM handoff');
+    assert.equal(result.proposal.description, 'Prepare a readable CRM lead handoff with owner risks and next actions.');
+    assert.deepEqual(result.proposal.impactIds, [101]);
+    assert.deepEqual(result.subtasks.map(item => item.title), ['Check lead card', 'Write owner risks']);
+    assert.equal(result.proposalToken, 'token.signature');
+    assert.equal(result.meta.aiUsed, true);
+    assert.equal(result.meta.humanReviewRequired, true);
+});
+
 function validProposal(overrides = {}) {
     return {
         decision: 'checklist',
@@ -350,6 +386,28 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(bundleEvent.acceptedTaskCount, 3);
     assert.equal(bundleEvent.rejectedTaskCount, 1);
     assert.equal(bundleEvent.editedTaskCount, 2);
+
+    const legacyEvent = telemetry.recordTaskAiDraftTelemetry({
+        type: 'deprecation',
+        status: 'success',
+        outcome: 'legacy_wrapper',
+        route: '/api/tasks/decompose-draft',
+        mode: 'ai',
+        clientVersion: 'task-create/v0.81.4',
+        requestId: 'req_legacy_123',
+        canonicalTarget: '/api/tasks/ai-draft/preview',
+        reasonCode: 'legacy_decompose_wrapper_used',
+        provider: 'openai'
+    }, {
+        logger: { info: () => {} }
+    });
+    assert.equal(legacyEvent.type, 'deprecation');
+    assert.equal(legacyEvent.outcome, 'legacy_wrapper');
+    assert.equal(legacyEvent.route, '/api/tasks/decompose-draft');
+    assert.equal(legacyEvent.mode, 'ai');
+    assert.equal(legacyEvent.clientVersion, 'task-create/v0.81.4');
+    assert.equal(legacyEvent.requestId, 'req_legacy_123');
+    assert.equal(legacyEvent.canonicalTarget, '/api/tasks/ai-draft/preview');
 
     const unknownEvent = telemetry.sanitizeTelemetryEvent({ type: 'new_future_type', status: 'success' });
     assert.equal(unknownEvent.type, 'unknown');
@@ -1117,8 +1175,18 @@ test('tasks route exposes ai-draft preview and keeps decompose-draft as non-Open
     assert.match(route, /ownerCatalog: ownerCatalog\.map/);
     assert.match(route, /currentUserId: userId/);
     assert.match(route, /hmacSafetyIdentifier\(`task_ai_draft:\$\{userId\}`/);
+    assert.match(decomposeBlock, /Compatibility wrapper only/);
+    assert.match(decomposeBlock, /zero legacy AI wrapper calls/);
+    assert.match(decomposeBlock, /30 days/);
     assert.match(decomposeBlock, /legacyDecompositionResponseFromPreview/);
     assert.match(decomposeBlock, /deprecatedEndpoint: '\/api\/tasks\/ai-draft\/preview'/);
+    assert.match(decomposeBlock, /type: 'deprecation'/);
+    assert.match(decomposeBlock, /status: 'attempt'/);
+    assert.match(decomposeBlock, /route: '\/api\/tasks\/decompose-draft'/);
+    assert.match(decomposeBlock, /mode,/);
+    assert.match(decomposeBlock, /clientVersion: legacyAiDraftClientVersion\(req, b\)/);
+    assert.match(decomposeBlock, /requestId: taskRequestId\(req, res\)/);
+    assert.match(decomposeBlock, /canonicalTarget: '\/api\/tasks\/ai-draft\/preview'/);
     assert.match(decomposeBlock, /legacy_decompose_wrapper_used/);
     assert.match(decomposeBlock, /legacy_decompose_wrapper_non_apply/);
     assert.match(decomposeBlock, /TASK_AI_DRAFT_\$\{String\(preview\.proposal\?\.action/);

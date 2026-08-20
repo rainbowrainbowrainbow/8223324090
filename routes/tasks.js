@@ -939,6 +939,21 @@ function idempotencyKeyFromRequest(req) {
     return String(req.get('Idempotency-Key') || req.get('idempotency-key') || req.body?.idempotencyKey || req.body?.idempotency_key || '').trim();
 }
 
+function taskRequestId(req, res) {
+    return String(res?.getHeader?.('X-Request-ID') || req?.headers?.['x-request-id'] || '').trim();
+}
+
+function legacyAiDraftClientVersion(req, body = {}) {
+    return String(
+        req?.headers?.['x-client-version']
+        || req?.headers?.['x-eventgenix-version']
+        || body.clientVersion
+        || body.client_version
+        || body.version
+        || ''
+    ).trim().slice(0, 80);
+}
+
 async function buildTaskAiDraftPreview(req, res) {
     const businessScope = requireTaskWriteScope(req, res);
     if (!businessScope) return null;
@@ -2076,6 +2091,22 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
         const b = req.body || {};
         const mode = normalizeDecompositionMode(b.mode || b.decompositionMode || b.decomposition_mode, 'ai');
         if (mode === 'ai' || mode === 'template_ai') {
+            // Compatibility wrapper only: canonical AI task draft generation lives in
+            // taskAiDraftPreview. Removal condition: zero legacy AI wrapper calls for
+            // 30 days plus confirmation that no old UI clients still depend on this shape.
+            recordTaskAiDraftTelemetry({
+                type: 'deprecation',
+                status: 'attempt',
+                outcome: 'legacy_wrapper',
+                route: '/api/tasks/decompose-draft',
+                mode,
+                clientVersion: legacyAiDraftClientVersion(req, b),
+                requestId: taskRequestId(req, res),
+                canonicalTarget: '/api/tasks/ai-draft/preview',
+                provider: 'openai',
+                reasonCode: 'legacy_decompose_wrapper_attempt',
+                businessContext: req.businessContext || b.businessContext || ''
+            });
             const preview = await buildTaskAiDraftPreview(req, res);
             if (!preview) return;
             if (!preview.ok) {
@@ -2091,8 +2122,14 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
             }
             if (preview.proposal?.action !== 'apply') {
                 recordTaskAiDraftTelemetry({
-                    type: 'preview',
+                    type: 'deprecation',
                     status: 'success',
+                    outcome: 'legacy_wrapper',
+                    route: '/api/tasks/decompose-draft',
+                    mode,
+                    clientVersion: legacyAiDraftClientVersion(req, b),
+                    requestId: taskRequestId(req, res),
+                    canonicalTarget: '/api/tasks/ai-draft/preview',
                     model: preview.model || 'gpt-5.6-luna',
                     provider: preview.provider || 'openai',
                     contractVersion: preview.contractVersion,
@@ -2113,8 +2150,14 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                 });
             }
             recordTaskAiDraftTelemetry({
-                type: 'preview',
+                type: 'deprecation',
                 status: 'success',
+                outcome: 'legacy_wrapper',
+                route: '/api/tasks/decompose-draft',
+                mode,
+                clientVersion: legacyAiDraftClientVersion(req, b),
+                requestId: taskRequestId(req, res),
+                canonicalTarget: '/api/tasks/ai-draft/preview',
                 model: preview.model || 'gpt-5.6-luna',
                 provider: preview.provider || 'openai',
                 contractVersion: preview.contractVersion,

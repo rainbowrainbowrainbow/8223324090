@@ -4,7 +4,7 @@ const { createLogger } = require('../utils/logger');
 
 const log = createLogger('TaskAiDraftTelemetry');
 
-const ALLOWED_EVENT_TYPES = Object.freeze(['preview', 'commit', 'bundle_commit']);
+const ALLOWED_EVENT_TYPES = Object.freeze(['preview', 'commit', 'bundle_commit', 'deprecation']);
 const ALLOWED_STATUSES = Object.freeze([
     'attempt',
     'success',
@@ -34,6 +34,7 @@ const ALLOWED_OUTCOMES = Object.freeze([
     'replayed',
     'conflict',
     'rollback',
+    'legacy_wrapper',
     'error'
 ]);
 const SAFE_FIELD_MASK = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
@@ -51,6 +52,11 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'fallbackReason',
     'impactFilterReason',
     'filteredImpactCount',
+    'route',
+    'mode',
+    'clientVersion',
+    'requestId',
+    'canonicalTarget',
     'code',
     'userHash',
     'businessContext',
@@ -112,6 +118,7 @@ function derivedOutcome(source = {}, status = 'error', fallbackReason = '') {
     }
     if (status === 'invalid_response') return 'validation_error';
     if (status === 'success' && (source.type === 'commit' || source.type === 'bundle_commit')) return 'commit_success';
+    if (source.type === 'deprecation' && source.reasonCode === 'legacy_decompose_wrapper_used') return 'legacy_wrapper';
     if (status === 'success') return 'success';
     return 'error';
 }
@@ -144,6 +151,11 @@ function sanitizeTelemetryEvent(event = {}) {
         fallbackReason,
         impactFilterReason: compactString(source.impactFilterReason || '', 80) === 'filter_known_active' ? 'filter_known_active' : '',
         filteredImpactCount: safeInteger(source.filteredImpactCount),
+        route: compactString(source.route || '', 120),
+        mode: compactString(source.mode || '', 40),
+        clientVersion: compactString(source.clientVersion || '', 80),
+        requestId: compactString(source.requestId || '', 120),
+        canonicalTarget: compactString(source.canonicalTarget || '', 120),
         userHash: compactString(source.userHash || '', 80),
         businessContext: compactString(source.businessContext || '', 80),
         changedFields: safeFieldMask(source.changedFields),

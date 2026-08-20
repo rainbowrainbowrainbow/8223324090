@@ -1,5 +1,7 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 const {
     generateTaskDecompositionDraft,
@@ -8,6 +10,8 @@ const {
     parseAiDraftText,
     pickTemplateKey
 } = require('../services/taskDecomposition');
+
+const root = path.resolve(__dirname, '..');
 
 test('exposes real starter templates for common task families', () => {
     const templates = getTaskDecompositionTemplates();
@@ -103,4 +107,12 @@ test('parses fenced or plain AI draft text safely', () => {
         normalizeDraftItems(['Перший крок', 'Перший крок', 'Другий крок'], { sourceType: 'ai' }).map(item => item.title),
         ['Перший крок', 'Другий крок']
     );
+});
+
+test('taskDecomposition stays scoped to subtasks and does not import AI task draft normalization', () => {
+    const source = fs.readFileSync(path.join(root, 'services', 'taskDecomposition.js'), 'utf8');
+
+    assert.doesNotMatch(source, /taskAiDraftNormalization|taskAiDraftPreview|taskAiDraftCommit|impactIds|impact_ids/);
+    assert.match(source, /callUnifiedChatCompletion/);
+    assert.match(source, /normalizeDraftItems/);
 });

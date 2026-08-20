@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.3 - AI task draft quality + impacts
+
+### Release / Versioning / (20.08.2026) [codex]
+- **AI task draft quality + impacts** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.2 - Sales Funnel Shared Auth Release
 
 ### Sales Funnel / Authentication / (20.08.2026) [codex]

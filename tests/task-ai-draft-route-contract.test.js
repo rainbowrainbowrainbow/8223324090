@@ -9,10 +9,18 @@ function installMock(modulePath, exports) {
     require.cache[id] = { id, filename: id, loaded: true, exports };
 }
 
+function stableStringify(value) {
+    if (value === null || typeof value !== 'object') return JSON.stringify(value);
+    if (Array.isArray(value)) return `[${value.map(stableStringify).join(',')}]`;
+    return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableStringify(value[key])}`).join(',')}}`;
+}
+
 function clearRouteModules() {
     [
         '../db',
         '../middleware/auth',
+        '../services/kleshnya',
+        '../services/taskActionHistory',
         '../services/taskDecomposition',
         '../services/taskAiDraftPreview',
         '../services/taskAiDraftCommit',
@@ -20,6 +28,7 @@ function clearRouteModules() {
         '../services/taskAiDraftFeatureGate',
         '../services/taskAiDraftLimiter',
         '../services/taskAiDraftTelemetry',
+        '../services/taskDuplicatePolicy',
         '../services/myDayAiImpactCatalog',
         '../services/myDayTaxonomy',
         '../services/taskPolicy',
@@ -75,7 +84,9 @@ function installBaseRouteMocks({
         canManageTaskObservers: () => true,
         canMutateTask: () => true,
         canReassignTask: () => true,
+        canRescheduleTask: () => true,
         normalizeUserId: user => Number(user?.id || user?.userId || 0),
+        taskOwnerState: () => ({ kind: 'assigned', label: 'Route User' }),
         taskRouteCapabilityDecision: () => ({ allowed: true })
     });
     installMock('../services/taskBusinessScope', {
@@ -120,6 +131,7 @@ function installBaseRouteMocks({
     installMock('../services/taskAiDraftPreview', taskAiDraftPreview || {
         TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE: 'task_ai_draft_commit',
         TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE: 'task_ai_draft_bundle_commit',
+        stableStringify,
         generateTaskAiDraftPreview: async () => {
             throw new Error('taskAiDraftPreview should not be called by this test');
         },
@@ -144,6 +156,180 @@ function installBaseRouteMocks({
         sendTelegramMessage: async () => ({ ok: true })
     });
 }
+
+function createDirectCreateReplayPool(state) {
+    const makeClient = () => ({
+        async query(sql, params = []) {
+            if (/^BEGIN$/i.test(sql)) return { rows: [] };
+            if (/^COMMIT$/i.test(sql)) {
+                if (state.lockHeld) {
+                    state.lockHeld = false;
+                    const waiters = state.lockWaiters.splice(0);
+                    waiters.forEach(resolve => resolve());
+                }
+                return { rows: [] };
+            }
+            if (/^ROLLBACK$/i.test(sql)) {
+                if (state.lockHeld) {
+                    state.lockHeld = false;
+                    const waiters = state.lockWaiters.splice(0);
+                    waiters.forEach(resolve => resolve());
+                }
+                return { rows: [] };
+            }
+            if (/pg_advisory_xact_lock\(hashtext\(\$1\)::bigint\)/i.test(sql)) {
+                if (state.lockHeld) {
+                    await new Promise(resolve => state.lockWaiters.push(resolve));
+                }
+                state.lockHeld = true;
+                state.lockKeys.push(params[0]);
+                return { rows: [] };
+            }
+            if (/FROM task_action_history h\s+JOIN tasks t ON t\.id = h\.task_id/i.test(sql)) {
+                const idempotencyKey = params[2];
+                const history = state.history.find(item => item.meta_json?.idempotencyKey === idempotencyKey);
+                if (!history) return { rows: [] };
+                const task = state.tasks.find(item => Number(item.id) === Number(history.task_id));
+                return {
+                    rows: task ? [{
+                        ...task,
+                        idempotency_history_id: history.id,
+                        idempotency_history_task_id: history.task_id,
+                        idempotency_action_type: history.action_type,
+                        idempotency_meta_json: history.meta_json,
+                        idempotency_created_at: history.created_at
+                    }] : []
+                };
+            }
+            if (/FROM task_subtasks\s+WHERE task_id = \$1/i.test(sql)) {
+                return { rows: [{ total: 0, done: 0 }] };
+            }
+            return { rows: [] };
+        },
+        release() {}
+    });
+    return {
+        async connect() {
+            return makeClient();
+        },
+        async query() {
+            return { rows: [] };
+        }
+    };
+}
+
+test('direct task create route replays simultaneous requests with the same idempotency key', async () => {
+    clearRouteModules();
+    const state = {
+        tasks: [],
+        history: [],
+        lockHeld: false,
+        lockWaiters: [],
+        lockKeys: [],
+        createCalls: 0
+    };
+    const pool = createDirectCreateReplayPool(state);
+    installBaseRouteMocks({
+        taskAiDraftPreview: {
+            TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE: 'task_ai_draft_commit',
+            TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE: 'task_ai_draft_bundle_commit',
+            stableStringify,
+            generateTaskAiDraftPreview: async () => {
+                throw new Error('AI preview is not part of direct create idempotency');
+            },
+            legacyDecompositionResponseFromPreview: () => ({ success: false })
+        }
+    });
+    installMock('../db', { pool });
+    installMock('../services/taskDuplicatePolicy', {
+        TaskDuplicateError: class TaskDuplicateError extends Error {},
+        activeDuplicateCanonicalFilterSql: () => '',
+        canForceTaskDuplicate: () => false,
+        duplicateSignatureSql: () => '',
+        findActiveDuplicateTask: async () => null
+    });
+    installMock('../services/kleshnya', {
+        createTask: async (payload) => {
+            state.createCalls += 1;
+            await new Promise(resolve => setTimeout(resolve, 20));
+            const task = {
+                id: 700 + state.createCalls,
+                title: payload.title,
+                description: payload.description || null,
+                date: payload.date || null,
+                status: 'todo',
+                priority: payload.priority || 'normal',
+                task_mode: payload.task_mode || 'work',
+                task_kind: payload.task_kind || 'action',
+                visibility: payload.visibility || 'team',
+                workflow_state: payload.workflow_state || 'todo',
+                business_context: payload.businessContext || 'event_genix',
+                created_by_user_id: payload.created_by_user_id
+            };
+            state.tasks.push(task);
+            return { ...task, subtask_count: 0, subtask_done_count: 0 };
+        }
+    });
+    installMock('../services/taskActionHistory', {
+        TASK_ACTION_TYPES: { CREATED: 'created' },
+        listTaskActionHistory: async () => [],
+        logTaskActionEvent: async event => {
+            const row = {
+                id: state.history.length + 1,
+                task_id: Number(event.taskId),
+                action_type: event.actionType,
+                actor_user_id: Number(event.actor?.id || 0),
+                meta_json: event.meta || {},
+                created_at: '2026-08-21T10:00:00.000Z'
+            };
+            state.history.push(row);
+            return row;
+        }
+    });
+
+    const router = require('../routes/tasks');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/tasks', router);
+    const { server, baseUrl } = await listen(app);
+    try {
+        const body = JSON.stringify({
+            title: 'Direct idempotency route smoke',
+            priority: 'normal',
+            task_mode: 'private',
+            visibility: 'me_only',
+            sourceSurface: 'profile_my_cabinet'
+        });
+        const headers = {
+            'Content-Type': 'application/json',
+            'Idempotency-Key': 'direct_route_same_key_20260821'
+        };
+        const [first, second] = await Promise.all([
+            fetch(`${baseUrl}/api/tasks`, { method: 'POST', headers, body }),
+            fetch(`${baseUrl}/api/tasks`, { method: 'POST', headers, body })
+        ]);
+        const firstPayload = await first.json();
+        const secondPayload = await second.json();
+
+        assert.equal(first.status, 200, JSON.stringify(firstPayload));
+        assert.equal(second.status, 200, JSON.stringify(secondPayload));
+        assert.equal(state.createCalls, 1, 'server-side idempotency must create only one task');
+        assert.equal(state.tasks.length, 1, 'fake store must contain one task');
+        assert.equal(state.history.length, 1, 'idempotency history is written once');
+        assert.deepEqual(state.lockKeys, [
+            'task_create_idempotency:7:event_genix:direct_route_same_key_20260821',
+            'task_create_idempotency:7:event_genix:direct_route_same_key_20260821'
+        ]);
+        assert.equal(firstPayload.task.id, state.tasks[0].id);
+        assert.equal(secondPayload.task.id, state.tasks[0].id);
+        assert.equal([firstPayload.replayed, secondPayload.replayed].filter(Boolean).length, 1);
+        assert.equal(state.history[0].meta_json.idempotencyKey, 'direct_route_same_key_20260821');
+        assert.equal((firstPayload.replayed ? firstPayload : secondPayload).historyEvent.meta.idempotencyKey, 'direct_route_same_key_20260821');
+    } finally {
+        await close(server);
+        clearRouteModules();
+    }
+});
 
 test('AI draft preview route uses the canonical preview handler and active impact catalog', async () => {
     clearRouteModules();

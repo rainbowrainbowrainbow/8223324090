@@ -79,7 +79,7 @@ function harnessHtml() {
     const state = {
       mode: 'apply',
       calls: [],
-      draft: { title: 'crm hermes ai task', description: 'prepare safer workflow', mode: 'simple', impactIds: [], subtasks: [] },
+      draft: { title: 'crm hermes ai task', description: 'prepare safer workflow', mode: 'simple', impactIds: [], subtasks: [], priority: 'normal', scheduleDate: '', scheduleConfirmed: false },
       created: JSON.parse(localStorage.getItem('ai-composer-created') || 'null'),
       bundleCreated: JSON.parse(localStorage.getItem('ai-composer-bundle-created') || 'null')
     };
@@ -175,6 +175,8 @@ function harnessHtml() {
             title: 'Prepare CRM and Hermes AI workflow',
             description: 'Use AI to prepare a safer CRM and Hermes checklist.',
             impactIds: [101, 102, 104],
+            priority: 'high',
+            scheduleDate: '2099-02-01',
             subtasks: [
               { title: 'Review CRM draft flow' },
               { title: 'Check Hermes notification flow' },
@@ -183,12 +185,14 @@ function harnessHtml() {
             reason: 'Clear mixed task.'
           },
           diff: {
-            changedFields: ['title', 'description', 'mode', 'impactIds', 'subtasks'],
+            changedFields: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'priority', 'scheduleDate'],
             fields: {
               title: { before: state.draft.title, after: 'Prepare CRM and Hermes AI workflow', changed: true },
               description: { before: state.draft.description, after: 'Use AI to prepare a safer CRM and Hermes checklist.', changed: true },
               mode: { before: state.draft.mode, after: 'checklist', changed: true },
               impactIds: { before: state.draft.impactIds, after: [101, 102, 104], changed: true },
+              priority: { before: state.draft.priority, after: 'high', changed: true },
+              scheduleDate: { before: state.draft.scheduleDate || null, after: '2099-02-01', changed: true },
               subtasks: { before: state.draft.subtasks, after: [
                 { title: 'Review CRM draft flow' },
                 { title: 'Check Hermes notification flow' },
@@ -224,6 +228,8 @@ function harnessHtml() {
         else if (field === 'mode') state.draft.mode = value || 'simple';
         else if (field === 'impactIds') { state.draft.impactIds = value || []; renderImpacts(); }
         else if (field === 'subtasks') { state.draft.subtasks = (value || []).map(item => ({ title: item.title, sourceType: 'ai' })); renderSubtasks(); }
+        else if (field === 'priority') state.draft.priority = value || '';
+        else if (field === 'scheduleDate') { state.draft.scheduleDate = value || ''; state.draft.scheduleConfirmed = Boolean(state.draft.scheduleDate); }
       },
       focusField(field) {
         if (field === 'title') title.focus();
@@ -307,19 +313,45 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         if (dark) await page.evaluate(() => document.documentElement.dataset.theme = 'dark');
         await page.click('[data-task-ai-draft-preview]');
         await page.waitForSelector('.task-ai-draft-review');
-        assert.equal(await page.locator('[data-task-ai-draft-field]').count(), 5);
-        await page.click('[data-task-ai-draft-reject="description"]');
-        await page.click('[data-task-ai-draft-accept="title"]');
+        assert.equal(await page.locator('[data-task-ai-draft-field]').count(), 7);
+        await page.click('[data-task-ai-draft-edit="title"]');
+        await page.locator('[data-task-ai-draft-edit-input="title"]').fill('Edited CRM and Hermes AI workflow');
+        await page.click('[data-task-ai-draft-edit-apply="title"]');
+        await page.click('[data-task-ai-draft-edit="description"]');
+        await page.locator('[data-task-ai-draft-edit-input="description"]').fill('Discarded browser smoke details');
+        await page.click('[data-task-ai-draft-edit-cancel="description"]');
+        await page.click('[data-task-ai-draft-edit="description"]');
+        await page.locator('[data-task-ai-draft-edit-input="description"]').fill('Edited browser smoke details');
+        await page.click('[data-task-ai-draft-edit-apply="description"]');
+        await page.click('[data-task-ai-draft-edit="priority"]');
+        await page.locator('[data-task-ai-draft-edit-input="priority"]').selectOption('');
+        await page.click('[data-task-ai-draft-edit-apply="priority"]');
+        await page.click('[data-task-ai-draft-edit="scheduleDate"]');
+        await page.locator('[data-task-ai-draft-edit-input="scheduleDate"]').fill('');
+        await page.click('[data-task-ai-draft-edit-apply="scheduleDate"]');
         await page.click('[data-task-ai-draft-edit="subtasks"]');
         await page.locator('[data-task-subtask-row]').first().fill('User edited AI subtask');
         await page.click('[data-task-ai-draft-accept-all]');
         const payloadBeforeCreate = await page.evaluate(() => window.TaskAiDraft.commitPayloadFor(document.querySelector('[data-task-ai-draft-panel]')));
         assert.ok(payloadBeforeCreate);
-        assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('description'), false);
+        assert.equal(payloadBeforeCreate.finalDraft.title, 'Edited CRM and Hermes AI workflow');
+        assert.equal(payloadBeforeCreate.finalDraft.description, 'Edited browser smoke details');
+        assert.equal(payloadBeforeCreate.finalDraft.priority, '');
+        assert.equal(payloadBeforeCreate.finalDraft.scheduleDate, null);
+        assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('description'), true);
+        assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('priority'), true);
+        assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('scheduleDate'), true);
+        assert.equal(payloadBeforeCreate.editedFieldMask.includes('description'), true);
+        assert.equal(payloadBeforeCreate.editedFieldMask.includes('priority'), true);
+        assert.equal(payloadBeforeCreate.editedFieldMask.includes('scheduleDate'), true);
         assert.equal(payloadBeforeCreate.acceptedFieldMask.includes('subtasks'), true);
         assert.equal(payloadBeforeCreate.finalDraft.subtasks[0].sourceType, 'manual');
         await page.click('#create');
         await page.waitForSelector('[data-ai-created="true"]');
+        const commitCalls = await page.evaluate(() => window.__AI_COMPOSER_SMOKE__.calls.filter(call => call.type === 'commit'));
+        assert.equal(commitCalls.length, 1);
+        assert.equal(commitCalls[0].payload.finalDraft.title, 'Edited CRM and Hermes AI workflow');
+        assert.equal(commitCalls[0].payload.finalDraft.description, 'Edited browser smoke details');
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForSelector('[data-ai-created="true"]');
         await page.click('#clarify');

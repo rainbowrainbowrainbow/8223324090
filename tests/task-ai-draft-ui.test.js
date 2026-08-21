@@ -290,6 +290,27 @@ test('AI draft priority and due date can be edited and cleared before commit', a
     assert.equal(JSON.stringify(payload.editedFieldMask), JSON.stringify(['priority', 'scheduleDate']));
 });
 
+test('AI draft commit payload treats existing confirmed composer date as human-reviewed when AI did not propose a date', async () => {
+    const ctx = createSingleTaskDraftDom({
+        scheduleDate: '2026-08-21',
+        aiDescription: 'AI checklist details without date',
+        aiScheduleDate: null
+    });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+    ctx.root.querySelector('[data-task-ai-draft-accept-all]').click();
+
+    const payload = ctx.window.TaskAiDraft.commitPayloadFor(ctx.root);
+    assert.ok(payload, 'accept-all creates a commit payload');
+    assert.equal(payload.proposal.scheduleDate, null);
+    assert.equal(payload.finalDraft.scheduleDate, '2026-08-21');
+    assert.ok(payload.acceptedFieldMask.includes('scheduleDate'), 'confirmed composer date is included for commit');
+    assert.ok(payload.editedFieldMask.includes('scheduleDate'), 'confirmed composer date is marked as human-reviewed, not AI-proposed');
+});
+
 test('AI draft details edit cancel keeps the original draft untouched', async () => {
     const ctx = createSingleTaskDraftDom({ description: 'Manual details', aiDescription: 'AI details before cancel' });
     await tick();

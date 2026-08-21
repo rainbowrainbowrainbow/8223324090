@@ -1112,12 +1112,18 @@
         if (decision === 'task_bundle') return bundlePayloadFor(root);
         if (!state.preview?.proposalToken) return null;
         const finalDraft = typeof state.config?.readDraft === 'function' ? state.config.readDraft() : {};
+        const finalScheduleDate = normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date);
+        const hasConfirmedScheduleDate = finalDraft.scheduleConfirmed && finalScheduleDate;
+        const scheduleDateWasReviewed = state.accepted.has('scheduleDate') || state.userEdited.has('scheduleDate');
+        const editedFieldMask = Array.from(new Set([
+            ...Array.from(state.userEdited),
+            ...(hasConfirmedScheduleDate && !scheduleDateWasReviewed ? ['scheduleDate'] : [])
+        ]));
         const acceptedFieldMask = Array.from(new Set([
             ...Array.from(state.accepted),
-            ...Array.from(state.userEdited),
-            ...(finalDraft.scheduleConfirmed && normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date) ? ['scheduleDate'] : [])
+            ...editedFieldMask,
+            ...(hasConfirmedScheduleDate ? ['scheduleDate'] : [])
         ]));
-        const editedFieldMask = Array.from(state.userEdited);
         if (!acceptedFieldMask.length) return null;
         if (!['single_task', 'checklist'].includes(decision)) return null;
         return {
@@ -1130,7 +1136,7 @@
             editedFieldMask,
             finalDraft: {
                 ...finalDraft,
-                scheduleDate: normalizeScheduleDate(finalDraft.scheduleDate || finalDraft.dueDate || finalDraft.date) || null,
+                scheduleDate: finalScheduleDate || null,
                 sourceType: 'ai_draft',
                 sourceModule: finalDraft.sourceModule || state.config?.sourceModule || 'tasks',
                 sourceSurface: state.config?.sourceSurface || finalDraft.sourceSurface || root.dataset.sourceSurface || 'task_ai_draft'

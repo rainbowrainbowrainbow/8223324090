@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.9 - Task Composer Accessibility
+
+### My Day / Task Composer / Accessibility / (21.08.2026) [codex]
+- **Правильний keyboard flow** - у «Мій день» фокус тепер іде через Task Composer у робочому порядку: textarea → «Створити» → «Заповнити з AI» → додаткові параметри.
+- **Focus restore після AI preview** - після скасування AI-чернетки фокус повертається на видиму кнопку «Заповнити з AI», а не залишається у прихованій панелі.
+- **Mobile/accessibility guard** - збережено адаптивний layout для 390px і додано regression-покриття для focus order, preview cancel та browser smoke.
+
+---
+
 ## v0.81.8 - Task Composer Commit Guard
 
 ### My Day / Task Composer / AI Draft / (21.08.2026) [codex]

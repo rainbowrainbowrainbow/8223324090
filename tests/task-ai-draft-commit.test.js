@@ -84,6 +84,35 @@ function makeScheduledToken(secret = 'proposal-secret') {
     };
 }
 
+function makeExistingComposerFieldsToken(secret = 'proposal-secret') {
+    const draft = {
+        title: 'crm form',
+        description: 'broken submit',
+        priority: 'high',
+        scheduleDate: '2026-08-10'
+    };
+    const composerProposal = {
+        ...proposal,
+        priority: null,
+        scheduleDate: null
+    };
+    return {
+        token: preview.createProposalToken({
+            userId: 7,
+            businessScope: { businessContext: 'event_genix' },
+            fingerprint: preview.draftFingerprint(draft),
+            proposal: composerProposal,
+            catalogVersion: preview.activeImpactCatalogVersion(impacts),
+            draftSnapshot: draft,
+            now: 1_000,
+            secret
+        }),
+        draftFingerprint: preview.draftFingerprint(draft),
+        proposalHash: preview.proposalHash(composerProposal),
+        proposal: composerProposal
+    };
+}
+
 function createFakePool(options = {}) {
     const state = {
         calls: [],
@@ -508,6 +537,36 @@ test('AI draft commit preserves reviewed schedule and manual fields without hard
     assert.equal(task.assigned_to, 'Owner #9');
     assert.equal(task.visibility, 'private');
     assert.equal(task.workflow_state, 'waiting');
+});
+
+test('AI draft commit accepts unchanged composer priority and schedule when AI did not propose them', async () => {
+    const tokenParts = makeExistingComposerFieldsToken();
+    const fakePool = createFakePool();
+    const result = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: 'Make validation safe.',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101],
+            subtasks: proposal.subtasks,
+            scheduleConfirmed: true,
+            scheduleDate: '2026-08-10',
+            priority: 'high'
+        },
+        acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority'],
+        idempotencyKey: 'ai-commit-existing-composer-fields'
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+
+    assert.equal(result.ok, true);
+    const task = fakePool.state.tasks[0];
+    assert.equal(task.date, '2026-08-10');
+    assert.equal(task.priority, 'high');
 });
 
 test('AI draft commit rejects invalid single-task priority and scheduleDate', async () => {

@@ -272,7 +272,20 @@ function normalizeSubmittedProposalForReviewedFields(body = {}) {
     }
 }
 
-function assertReviewedScheduleAndPriorityMatchProposal({ finalDraft, body, acceptedFieldMask = [], editedFieldMask = [] }) {
+function proposalOrSignedScheduleDate(submittedProposal = {}, signedDraftSnapshot = {}) {
+    const proposedScheduleDate = normalizeScheduleDate(submittedProposal.scheduleDate);
+    if (proposedScheduleDate) return proposedScheduleDate;
+    return normalizeScheduleDate(signedDraftSnapshot.scheduleDate);
+}
+
+function proposalOrSignedPriority(submittedProposal = {}, signedDraftSnapshot = {}) {
+    if (submittedProposal.priority !== null && submittedProposal.priority !== undefined && submittedProposal.priority !== '') {
+        return normalizeEnum(submittedProposal.priority, COMMIT_PRIORITIES, 'normal', 'priority');
+    }
+    return normalizeEnum(signedDraftSnapshot.priority, COMMIT_PRIORITIES, 'normal', 'priority');
+}
+
+function assertReviewedScheduleAndPriorityMatchProposal({ finalDraft, body, acceptedFieldMask = [], editedFieldMask = [], signedDraftSnapshot = {} }) {
     const acceptedFields = new Set(normalizeAcceptedFieldMask(acceptedFieldMask));
     const editedFields = new Set(normalizeEditedFieldMask(editedFieldMask));
     const needsProposal = ['scheduleDate', 'priority'].some(field => acceptedFields.has(field) && !editedFields.has(field));
@@ -282,15 +295,13 @@ function assertReviewedScheduleAndPriorityMatchProposal({ finalDraft, body, acce
         throw commitError('Reviewed AI fields require the signed proposal body.', 400, 'TASK_AI_DRAFT_PROPOSAL_REQUIRED');
     }
     if (acceptedFields.has('scheduleDate') && !editedFields.has('scheduleDate')) {
-        const expectedScheduleDate = normalizeScheduleDate(submittedProposal.scheduleDate);
+        const expectedScheduleDate = proposalOrSignedScheduleDate(submittedProposal, signedDraftSnapshot);
         if (finalDraft.scheduleDate !== expectedScheduleDate) {
             throw commitError('Task schedule changed after AI preview.', 409, 'TASK_AI_DRAFT_SCHEDULE_CONFLICT');
         }
     }
     if (acceptedFields.has('priority') && !editedFields.has('priority')) {
-        const expectedPriority = submittedProposal.priority === null
-            ? 'normal'
-            : normalizeEnum(submittedProposal.priority, COMMIT_PRIORITIES, 'normal', 'priority');
+        const expectedPriority = proposalOrSignedPriority(submittedProposal, signedDraftSnapshot);
         if (finalDraft.priority !== expectedPriority) {
             throw commitError('Task priority changed after AI preview.', 409, 'TASK_AI_DRAFT_PRIORITY_CONFLICT');
         }
@@ -368,7 +379,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         finalDraft,
         body: input,
         acceptedFieldMask,
-        editedFieldMask
+        editedFieldMask,
+        signedDraftSnapshot: tokenPayload.draftSnapshot
     });
     const { submittedProposalHash, catalogVersion } = ensureTokenMatchesRequest({
         tokenPayload,

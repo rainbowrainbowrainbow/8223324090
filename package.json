@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.6",
+  "version": "0.81.7",
   "eventGenix": {
-    "releaseLabel": "Task Composer Completion"
+    "releaseLabel": "Task Composer Schedule Guard"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

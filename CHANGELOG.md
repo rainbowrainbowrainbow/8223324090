@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.7 - Task Composer Schedule Guard
+
+### My Day / Task Composer / AI Draft / (21.08.2026) [codex]
+- **Schedule guard для AI-confirm** - підтверджена дата з Task Composer тепер передається як human-reviewed поле, якщо AI не пропонував власну дату.
+- **Без 409 після accept-all** - checklist/single-task AI commit більше не блокується помилкою `Task schedule changed after AI preview`, коли дата походить із самого composer.
+- **Cache-bust release** - JS asset references піднято до `v0.81.7`, щоб production отримав виправлений `TaskAiDraft` payload builder.
+
+---
+
 ## v0.81.6 - Task Composer Completion
 
 ### My Day / Task Composer / AI Draft / (21.08.2026) [codex]

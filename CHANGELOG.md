@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.11 - Task Composer Review Fields
+
+### My Day / Task Composer / AI Draft / (21.08.2026) [codex]
+- **Редагування review-only полів** - single-task AI preview тепер показує `priority` і `due date` як редаговані поля навіть тоді, коли AI не запропонував власне значення.
+- **Live QA scenario відновлено** - date editor доступний для ручного edit/clear/confirm, тому фінальний AI flow більше не блокується відсутньою кнопкою `scheduleDate`.
+- **Regression coverage** - додано UI-тест для випадку, де AI повертає `priority: null` і `scheduleDate: null`, але користувач усе одно має змогу вручну задати дату перед commit.
+
+---
+
 ## v0.81.10 - Task Composer AI Draft Commit
 
 ### My Day / Task Composer / AI Draft / (21.08.2026) [codex]

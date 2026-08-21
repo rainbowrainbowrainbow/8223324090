@@ -438,7 +438,12 @@ test('task AI preview telemetry records only metadata and strips task text/provi
         requestId: 'req_legacy_123',
         canonicalTarget: '/api/tasks/ai-draft/preview',
         reasonCode: 'legacy_decompose_wrapper_used',
-        provider: 'openai'
+        provider: 'openai',
+        model: 'gpt-5.6-luna',
+        contractVersion: preview.TASK_AI_DRAFT_CONTRACT_VERSION,
+        promptVersion: preview.TASK_AI_DRAFT_PROMPT_VERSION,
+        schemaName: preview.TASK_AI_DRAFT_SCHEMA_NAME,
+        reasoningEffort: preview.TASK_AI_DRAFT_REASONING_EFFORT
     }, {
         logger: { info: () => {} }
     });
@@ -449,6 +454,25 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(legacyEvent.clientVersion, 'task-create/v0.81.4');
     assert.equal(legacyEvent.requestId, 'req_legacy_123');
     assert.equal(legacyEvent.canonicalTarget, '/api/tasks/ai-draft/preview');
+    assert.equal(legacyEvent.model, 'gpt-5.6-luna');
+    assert.equal(legacyEvent.contractVersion, preview.TASK_AI_DRAFT_CONTRACT_VERSION);
+    assert.equal(legacyEvent.promptVersion, '2026-08-13.6');
+    assert.equal(legacyEvent.schemaName, preview.TASK_AI_DRAFT_SCHEMA_NAME);
+    assert.equal(legacyEvent.reasoningEffort, 'low');
+
+    const legacyUsage = telemetry.aggregateLegacyAiDraftDeprecationUsage([
+        { ...legacyEvent, clientVersion: 'task-create/v0.81.4', requestId: 'real-client-1' },
+        { ...legacyEvent, reasonCode: 'legacy_decompose_wrapper_attempt', clientVersion: 'playwright-actual-app-smoke', requestId: 'qa-client-1' },
+        { ...legacyEvent, reasonCode: 'legacy_decompose_wrapper_used', clientVersion: 'task-ai-qa-fixture', requestId: 'qa-client-1' },
+        { ...legacyEvent, route: '/api/tasks/ai-draft/preview', requestId: 'canonical-not-legacy' }
+    ]);
+    assert.equal(legacyUsage.totalEvents, 3);
+    assert.equal(legacyUsage.used, 2);
+    assert.equal(legacyUsage.attempts, 1);
+    assert.equal(legacyUsage.qaEvents, 2);
+    assert.equal(legacyUsage.realUsageEvents, 1);
+    assert.equal(legacyUsage.realUsageRequests, 1);
+    assert.equal(legacyUsage.byClientVersion['task-create/v0.81.4'], 1);
 
     const unknownEvent = telemetry.sanitizeTelemetryEvent({ type: 'new_future_type', status: 'success' });
     assert.equal(unknownEvent.type, 'unknown');
@@ -1228,6 +1252,10 @@ test('tasks route exposes ai-draft preview and keeps decompose-draft as non-Open
     assert.match(decomposeBlock, /clientVersion: legacyAiDraftClientVersion\(req, b\)/);
     assert.match(decomposeBlock, /requestId: taskRequestId\(req, res\)/);
     assert.match(decomposeBlock, /canonicalTarget: '\/api\/tasks\/ai-draft\/preview'/);
+    assert.match(decomposeBlock, /contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION/);
+    assert.match(decomposeBlock, /promptVersion: TASK_AI_DRAFT_PROMPT_VERSION/);
+    assert.match(decomposeBlock, /schemaName: TASK_AI_DRAFT_SCHEMA_NAME/);
+    assert.match(decomposeBlock, /reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT/);
     assert.match(decomposeBlock, /legacy_decompose_wrapper_used/);
     assert.match(decomposeBlock, /legacy_decompose_wrapper_non_apply/);
     assert.match(decomposeBlock, /TASK_AI_DRAFT_\$\{String\(preview\.proposal\?\.action/);

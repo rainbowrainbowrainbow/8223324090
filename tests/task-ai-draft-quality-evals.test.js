@@ -74,6 +74,7 @@ function scoreEffort(effort) {
 
 test('AI composer quality eval fixture covers 50-60 anonymized cases and target domains', () => {
     assert.equal(fixture.contractVersion, 'my_day_ai_composer_proposal_v2');
+    assert.equal(fixture.promptVersion, '2026-08-13.6');
     assert.equal(fixture.model, 'gpt-5.6-luna');
     assert.equal(fixture.provider, 'openai_responses');
     assert.ok(fixture.evalCases.length >= 50, `expected at least 50 cases, got ${fixture.evalCases.length}`);

@@ -48,6 +48,7 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'contractVersion',
     'promptVersion',
     'schemaName',
+    'reasoningEffort',
     'reasonCode',
     'fallbackReason',
     'impactFilterReason',
@@ -73,6 +74,8 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'usage'
 ]);
 const SENSITIVE_KEY_PATTERN = /(title|description|prompt|response|text|body|draft|task|secret|token|key|authorization)/i;
+const LEGACY_DECOMPOSE_ROUTE = '/api/tasks/decompose-draft';
+const LEGACY_AI_DRAFT_QA_CLIENT_PATTERN = /(test|qa|smoke|playwright|actual-app|fixture|codex|local)/i;
 
 function compactString(value, limit = 120) {
     return String(value || '').trim().replace(/\s+/g, ' ').slice(0, limit);
@@ -147,6 +150,7 @@ function sanitizeTelemetryEvent(event = {}) {
         contractVersion: compactString(source.contractVersion, 80),
         promptVersion: compactString(source.promptVersion, 80),
         schemaName: compactString(source.schemaName, 80),
+        reasoningEffort: compactString(source.reasoningEffort || '', 40),
         reasonCode: compactString(source.reasonCode || source.code || '', 80),
         fallbackReason,
         impactFilterReason: compactString(source.impactFilterReason || '', 80) === 'filter_known_active' ? 'filter_known_active' : '',
@@ -170,6 +174,47 @@ function sanitizeTelemetryEvent(event = {}) {
         errorCategory: compactString(source.errorCategory || '', 80),
         usage: sanitizeUsage(source.usage)
     };
+}
+
+function isKnownLegacyAiDraftQaClient(event = {}) {
+    const safe = sanitizeTelemetryEvent(event);
+    const source = `${safe.clientVersion} ${safe.requestId}`.trim();
+    return Boolean(source && LEGACY_AI_DRAFT_QA_CLIENT_PATTERN.test(source));
+}
+
+function aggregateLegacyAiDraftDeprecationUsage(events = []) {
+    const rows = Array.isArray(events) ? events : [];
+    const summary = {
+        totalEvents: 0,
+        attempts: 0,
+        used: 0,
+        nonApply: 0,
+        qaEvents: 0,
+        realUsageEvents: 0,
+        realUsageRequests: 0,
+        byClientVersion: {},
+        byReasonCode: {}
+    };
+    const realRequestKeys = new Set();
+    for (const event of rows) {
+        const safe = sanitizeTelemetryEvent(event);
+        if (safe.type !== 'deprecation' || safe.route !== LEGACY_DECOMPOSE_ROUTE) continue;
+        summary.totalEvents += 1;
+        summary.byReasonCode[safe.reasonCode] = (summary.byReasonCode[safe.reasonCode] || 0) + 1;
+        const clientKey = safe.clientVersion || 'unknown';
+        summary.byClientVersion[clientKey] = (summary.byClientVersion[clientKey] || 0) + 1;
+        if (safe.reasonCode === 'legacy_decompose_wrapper_attempt') summary.attempts += 1;
+        if (safe.reasonCode === 'legacy_decompose_wrapper_used') summary.used += 1;
+        if (safe.reasonCode === 'legacy_decompose_wrapper_non_apply') summary.nonApply += 1;
+        if (isKnownLegacyAiDraftQaClient(safe)) {
+            summary.qaEvents += 1;
+            continue;
+        }
+        summary.realUsageEvents += 1;
+        realRequestKeys.add(safe.requestId || `${clientKey}:${safe.reasonCode}:${summary.totalEvents}`);
+    }
+    summary.realUsageRequests = realRequestKeys.size;
+    return summary;
 }
 
 function assertNoSensitiveTelemetryFields(event = {}) {
@@ -254,7 +299,9 @@ module.exports = {
     ALLOWED_OUTCOMES,
     SAFE_FIELD_MASK,
     aggregateTaskAiDraftTelemetry,
+    aggregateLegacyAiDraftDeprecationUsage,
     assertNoSensitiveTelemetryFields,
+    isKnownLegacyAiDraftQaClient,
     recordTaskAiDraftTelemetry,
     sanitizeTelemetryEvent
 };

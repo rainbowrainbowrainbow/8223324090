@@ -8,6 +8,7 @@ Production impact: yes.
 - Card classification uses direct OpenAI Responses API with `gpt-5.6-luna`, strict structured output, active My Day impacts only, task/classification race checks, and signed undo.
 - Task composer preview uses the same direct OpenAI/Luna transport, strict Structured Outputs, active impacts only, server-computed diff, and signed proposal tokens.
 - The legacy `/api/tasks/decompose-draft` AI path is a compatibility wrapper over `/api/tasks/ai-draft/preview`; it must not call OpenRouter.
+- Current composer prompt version is `2026-08-13.6`; deterministic fixtures and rollout evidence must be tied to that prompt/version pair.
 - Composer AI is guarded by a server-side rollout gate. In production it is disabled unless explicitly enabled for test users or a rollout percentage.
 - Preview throttling uses the durable PostgreSQL `task_ai_rate_limit_buckets` ledger so limits remain consistent across application replicas.
 - Multi-task proposals are committed atomically into first-class `task_bundles` and `task_bundle_tasks` records; dependencies remain blockers only.
@@ -164,6 +165,7 @@ Do not send secrets, full user profile, unrelated task history, or production lo
 - Quality gates: unknown impact IDs = 0, forbidden field changes = 0, partial writes = 0, core impact mapping at least 90%, simple/checklist decision at least 85%.
 - Tests must inject mock OpenAI transport. Real OpenAI calls are blocked in test/CI unless an operator explicitly sets an allow-real-test override outside CI.
 - Telemetry may store only attempt/status, latency, token counts, model, contract/prompt/schema version, and field masks. It must not store prompt text, task title/description, API keys, or full provider response.
+- Legacy `/api/tasks/decompose-draft` telemetry must include caller/clientVersion, request ID, canonical target, model, contract/prompt/schema version, and reasoning effort. Known QA/smoke clients are excluded from the real-usage verdict. Endpoint removal requires a separate commit after a measured zero-real-usage window and explicit approval.
 - The per-user preview limiter is durable and stores only user/context/action bucket counters and timestamps; it stores no prompt or task text.
 
 ## Canonical Bundle Storage

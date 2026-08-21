@@ -129,14 +129,19 @@ function installBaseRouteMocks({
     installMock('../services/myDayTaxonomy', {
         listTaxonomy: async () => activeImpacts
     });
-    installMock('../services/taskAiDraftPreview', taskAiDraftPreview || {
+    installMock('../services/taskAiDraftPreview', {
+        TASK_AI_DRAFT_CONTRACT_VERSION: 'my_day_ai_composer_proposal_v2',
+        TASK_AI_DRAFT_PROMPT_VERSION: '2026-08-13.6',
+        TASK_AI_DRAFT_REASONING_EFFORT: 'low',
+        TASK_AI_DRAFT_SCHEMA_NAME: 'my_day_task_draft_preview',
         TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE: 'task_ai_draft_commit',
         TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE: 'task_ai_draft_bundle_commit',
         stableStringify,
         generateTaskAiDraftPreview: async () => {
             throw new Error('taskAiDraftPreview should not be called by this test');
         },
-        legacyDecompositionResponseFromPreview: () => ({ success: false })
+        legacyDecompositionResponseFromPreview: () => ({ success: false }),
+        ...(taskAiDraftPreview || {})
     });
     installMock('../services/taskAiDraftCommit', taskAiDraftCommit || {
         commitTaskAiDraft: async () => {
@@ -620,7 +625,9 @@ test('legacy decompose-draft AI mode delegates exactly once to canonical preview
                     provider: 'openai',
                     model: 'gpt-5.6-luna',
                     contractVersion: 'my_day_ai_composer_proposal_v2',
-                    promptVersion: '2026-08-13.5',
+                    promptVersion: '2026-08-13.6',
+                    schemaName: 'my_day_task_draft_preview',
+                    reasoningEffort: 'low',
                     proposal: {
                         decision: 'checklist',
                         action: 'apply',
@@ -708,6 +715,12 @@ test('legacy decompose-draft AI mode delegates exactly once to canonical preview
             assert.equal(event.clientVersion, 'task-create/v0.81.4');
             assert.equal(event.requestId, 'legacy-route-test');
             assert.equal(event.canonicalTarget, '/api/tasks/ai-draft/preview');
+            assert.equal(event.model, 'gpt-5.6-luna');
+            assert.equal(event.provider, 'openai');
+            assert.equal(event.contractVersion, 'my_day_ai_composer_proposal_v2');
+            assert.equal(event.promptVersion, '2026-08-13.6');
+            assert.equal(event.schemaName, 'my_day_task_draft_preview');
+            assert.equal(event.reasoningEffort, 'low');
             assert.equal(event.outcome, 'legacy_wrapper');
             assert.doesNotMatch(JSON.stringify(event), /private task|private prompt|private AI payload/i);
             for (const forbiddenKey of ['title', 'description', 'prompt', 'response', 'payload', 'draft']) {

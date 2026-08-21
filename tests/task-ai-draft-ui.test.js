@@ -11,6 +11,86 @@ function tick() {
     return new Promise(resolve => setTimeout(resolve, 0));
 }
 
+function createSingleTaskDraftDom(options = {}) {
+    const dom = new JSDOM(`<!doctype html><body>
+        <form id="composer" data-source-surface="profile_my_cabinet">
+            <textarea id="cabinetTaskTitle" data-task-ai-source-field="title">${options.title || 'Manual task'}</textarea>
+            <button type="submit" data-cabinet-create-action="plain">Створити</button>
+            <button type="button" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview>${options.buttonLabel || 'Заповнити з AI'}</button>
+            <div data-task-ai-draft-status></div>
+            <div data-task-ai-draft-review hidden></div>
+        </form>
+    </body>`, {
+        runScripts: 'outside-only',
+        url: 'https://crm.test/profile?tab=myday'
+    });
+    const { window } = dom;
+    const draft = {
+        title: options.title || 'Manual task',
+        description: options.description || ''
+    };
+    let previewCalls = 0;
+    let createCalls = 0;
+    window.TaskCreate = {
+        requestAiDraftStatus: async () => ({ success: true, feature: { enabled: true } }),
+        requestAiDraftPreview: async () => {
+            previewCalls += 1;
+            if (options.providerError) throw new Error(options.providerError);
+            return {
+                success: true,
+                proposalToken: 'payload.signature',
+                draftFingerprint: 'draft-hash',
+                proposalHash: 'proposal-hash',
+                catalogVersion: 'catalog-hash',
+                proposal: {
+                    decision: 'single_task',
+                    action: 'apply',
+                    title: options.aiTitle || draft.title,
+                    description: options.aiDescription || 'AI prepared details',
+                    impactIds: [],
+                    subtasks: []
+                },
+                diff: {
+                    changedFields: ['description'],
+                    fields: {
+                        description: {
+                            before: draft.description,
+                            after: options.aiDescription || 'AI prepared details',
+                            changed: true
+                        }
+                    }
+                },
+                impactCatalog: []
+            };
+        },
+        createTask: async () => {
+            createCalls += 1;
+            return { success: true, task: { id: 1 } };
+        }
+    };
+    window.eval(read('js/task-ai-draft.js'));
+
+    const root = window.document.getElementById('composer');
+    const input = window.document.getElementById('cabinetTaskTitle');
+    window.TaskAiDraft.bindComposer(root, {
+        readDraft: () => ({ ...draft }),
+        applyField: (field, value) => {
+            draft[field] = String(value || '');
+            if (field === 'title') input.value = draft[field];
+        },
+        focusField: field => {
+            if (field === 'title') input.focus();
+        }
+    });
+    return {
+        window,
+        root,
+        draft,
+        get previewCalls() { return previewCalls; },
+        get createCalls() { return createCalls; }
+    };
+}
+
 test('AI draft composer is visible, shared, reviewable, and not hidden in advanced options', () => {
     const profileHtml = read('profile.html');
     const tasksHtml = read('tasks.html');
@@ -49,6 +129,9 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(aiCode, /data-task-ai-draft-accept=/);
     assert.match(aiCode, /data-task-ai-draft-reject=/);
     assert.match(aiCode, /data-task-ai-draft-edit=/);
+    assert.match(aiCode, /data-task-ai-draft-edit-input=/);
+    assert.match(aiCode, /data-task-ai-draft-edit-apply=/);
+    assert.match(aiCode, /data-task-ai-draft-edit-cancel=/);
     assert.match(aiCode, /data-task-ai-draft-accept-all/);
     assert.match(aiCode, /data-task-ai-draft-cancel/);
     assert.match(aiCode, /acceptedFieldMask/);
@@ -100,6 +183,104 @@ test('AI draft composer is visible, shared, reviewable, and not hidden in advanc
     assert.match(css, /task-ai-bundle-impact-grid/);
     assert.match(css, /task-ai-bundle-counter/);
     assert.match(css, /task-ai-draft-structure/);
+    assert.match(css, /task-ai-draft-inline-editor/);
+});
+
+test('AI draft details edit opens a visible textarea and stores edited text in commit payload', async () => {
+    const ctx = createSingleTaskDraftDom({ description: '', aiDescription: 'AI details before edit' });
+    await tick();
+
+    const aiButton = ctx.root.querySelector('[data-task-ai-draft-preview]');
+    aiButton.click();
+    await tick();
+    await tick();
+
+    assert.equal(aiButton.textContent, 'Заповнити з AI');
+    ctx.root.querySelector('[data-task-ai-draft-edit="description"]').click();
+    const editor = ctx.root.querySelector('[data-task-ai-draft-edit-input="description"]');
+    assert.ok(editor, 'details editor is rendered inline');
+    assert.equal(ctx.window.document.activeElement, editor, 'focus moves into the visible details editor');
+    assert.equal(editor.closest('[hidden]'), null, 'details editor is not inside a hidden element');
+
+    editor.value = 'Edited details from keyboard';
+    ctx.root.querySelector('[data-task-ai-draft-edit-apply="description"]').click();
+
+    const payload = ctx.window.TaskAiDraft.commitPayloadFor(ctx.root);
+    assert.equal(ctx.draft.description, 'Edited details from keyboard');
+    assert.equal(payload.finalDraft.description, 'Edited details from keyboard');
+    assert.equal(JSON.stringify(payload.acceptedFieldMask), JSON.stringify(['description']));
+    assert.equal(JSON.stringify(payload.editedFieldMask), JSON.stringify(['description']));
+});
+
+test('AI draft details can be cleared explicitly', async () => {
+    const ctx = createSingleTaskDraftDom({ description: 'Manual details', aiDescription: 'AI details before clear' });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+    ctx.root.querySelector('[data-task-ai-draft-edit="description"]').click();
+    const editor = ctx.root.querySelector('[data-task-ai-draft-edit-input="description"]');
+    editor.value = '';
+    ctx.root.querySelector('[data-task-ai-draft-edit-apply="description"]').click();
+
+    const payload = ctx.window.TaskAiDraft.commitPayloadFor(ctx.root);
+    assert.equal(ctx.draft.description, '');
+    assert.equal(payload.finalDraft.description, '');
+    assert.equal(JSON.stringify(payload.acceptedFieldMask), JSON.stringify(['description']));
+    assert.equal(JSON.stringify(payload.editedFieldMask), JSON.stringify(['description']));
+});
+
+test('AI draft details edit cancel keeps the original draft untouched', async () => {
+    const ctx = createSingleTaskDraftDom({ description: 'Manual details', aiDescription: 'AI details before cancel' });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+    ctx.root.querySelector('[data-task-ai-draft-edit="description"]').click();
+    const editor = ctx.root.querySelector('[data-task-ai-draft-edit-input="description"]');
+    editor.value = 'Discard this edit';
+    ctx.root.querySelector('[data-task-ai-draft-edit-cancel="description"]').click();
+
+    assert.equal(ctx.draft.description, 'Manual details');
+    assert.equal(ctx.root.querySelector('[data-task-ai-draft-edit-input="description"]'), null);
+    assert.equal(ctx.window.TaskAiDraft.commitPayloadFor(ctx.root), null);
+    assert.equal(ctx.root.querySelector('[data-task-ai-draft-preview]').textContent, 'Заповнити з AI');
+});
+
+test('AI draft provider errors keep text, restore action label, and never auto-create a task', async () => {
+    const ctx = createSingleTaskDraftDom({
+        title: 'Перевірити provider retry для Task Composer',
+        providerError: 'AI provider timeout'
+    });
+    await tick();
+
+    const input = ctx.window.document.getElementById('cabinetTaskTitle');
+    const plainCreate = ctx.root.querySelector('[data-cabinet-create-action="plain"]');
+    const aiButton = ctx.root.querySelector('[data-task-ai-draft-preview]');
+
+    aiButton.click();
+    assert.equal(aiButton.disabled, true, 'AI button is disabled while provider request is pending');
+    await tick();
+    await tick();
+
+    assert.equal(ctx.previewCalls, 1);
+    assert.equal(ctx.createCalls, 0, 'AI preview error must not create a task');
+    assert.equal(input.value, 'Перевірити provider retry для Task Composer', 'AI error keeps typed composer text');
+    assert.equal(plainCreate.disabled, false, 'plain create remains available after AI error');
+    assert.equal(aiButton.disabled, false, 'AI retry is available after provider error');
+    assert.equal(aiButton.textContent, 'Заповнити з AI', 'AI button restores the Profile composer label after error');
+    assert.match(ctx.root.querySelector('[data-task-ai-draft-status]').textContent, /AI provider timeout/);
+    assert.equal(ctx.window.TaskAiDraft.commitPayloadFor(ctx.root), null, 'failed preview leaves no commit payload');
+
+    aiButton.click();
+    await tick();
+    await tick();
+    assert.equal(ctx.previewCalls, 2, 'retry calls preview again');
+    assert.equal(ctx.createCalls, 0, 'retry still does not auto-create a task');
+    assert.equal(input.value, 'Перевірити provider retry для Task Composer', 'retry error still keeps typed text');
+    assert.equal(aiButton.textContent, 'Заповнити з AI', 'AI button label is stable after retry error');
 });
 
 test('AI draft composer renders interactive task bundle review without single-task commit fallback', async () => {

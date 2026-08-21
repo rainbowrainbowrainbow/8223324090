@@ -186,6 +186,36 @@
     letter-spacing: 0.04em;
 }
 
+.task-ai-draft-inline-editor {
+    display: grid;
+    gap: 8px;
+}
+
+.task-ai-draft-inline-editor label {
+    color: #475569;
+    font-size: 12px;
+    font-weight: 900;
+}
+
+.task-ai-draft-inline-editor textarea {
+    width: 100%;
+    min-height: 86px;
+    resize: vertical;
+    border: 1px solid rgba(148, 163, 184, 0.42);
+    border-radius: 12px;
+    padding: 10px 12px;
+    background: rgba(255, 255, 255, 0.92);
+    color: #0f172a;
+    font: inherit;
+    line-height: 1.4;
+}
+
+.task-ai-draft-inline-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
 .task-ai-draft-row-actions,
 .task-ai-draft-actions {
     display: flex;
@@ -469,7 +499,11 @@ body.dark-mode .task-ai-bundle-card-actions button,
 html[data-theme="dark"] .task-ai-draft-row-actions button,
 body.dark-mode .task-ai-draft-row-actions button,
 html[data-theme="dark"] .task-ai-draft-actions button,
-body.dark-mode .task-ai-draft-actions button {
+body.dark-mode .task-ai-draft-actions button,
+html[data-theme="dark"] .task-ai-draft-inline-actions button,
+body.dark-mode .task-ai-draft-inline-actions button,
+html[data-theme="dark"] .task-ai-draft-inline-editor textarea,
+body.dark-mode .task-ai-draft-inline-editor textarea {
     background: rgba(15, 23, 42, 0.78);
     color: #f8fafc;
     border-color: rgba(148, 163, 184, 0.25);

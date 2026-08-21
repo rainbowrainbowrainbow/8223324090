@@ -88,7 +88,9 @@
                 bundleTasks: [],
                 idempotencyKey: '',
                 commitPending: false,
-                structurePreference: ''
+                structurePreference: '',
+                editingField: '',
+                editingOriginalValue: ''
             };
             stateByRoot.set(root, state);
         }
@@ -469,9 +471,12 @@
         root.classList.toggle('is-ai-loading', Boolean(loading));
         root.setAttribute('aria-busy', loading ? 'true' : 'false');
         if (button) {
+            if (!button.dataset.taskAiDraftIdleLabel) {
+                button.dataset.taskAiDraftIdleLabel = button.textContent || 'Заповнити з AI';
+            }
             button.disabled = Boolean(loading);
             button.setAttribute('aria-busy', loading ? 'true' : 'false');
-            button.textContent = loading ? '✨ AI готує…' : '✨ Підготувати з AI';
+            button.textContent = loading ? '✨ AI готує…' : button.dataset.taskAiDraftIdleLabel;
         }
     }
 
@@ -554,19 +559,20 @@
                         const accepted = state.accepted.has(field);
                         const rejected = state.rejected.has(field);
                         const edited = state.userEdited.has(field);
+                        const isEditing = state.editingField === field;
                         return `<article class="task-ai-draft-field ${accepted ? 'is-accepted' : ''} ${rejected ? 'is-rejected' : ''} ${edited ? 'is-user-edited' : ''}" data-task-ai-draft-field="${escapeHtml(field)}">
                             <header>
                                 <strong>${escapeHtml(fieldLabel(field))}</strong>
                                 <span>${edited ? 'відредаговано вручну' : (accepted ? 'прийнято' : (rejected ? 'відхилено' : 'очікує рішення'))}</span>
                             </header>
-                            <div class="task-ai-draft-compare">
+                            ${isEditing ? renderInlineEditor(state, field) : `<div class="task-ai-draft-compare">
                                 <div><small>Було</small><div>${renderValue(field, fieldBeforeValue(state, field), preview)}</div></div>
                                 <div><small>AI пропонує</small><div>${renderValue(field, fieldAfterValue(preview, field), preview)}</div></div>
-                            </div>
+                            </div>`}
                             <div class="task-ai-draft-row-actions">
                                 <button type="button" data-task-ai-draft-accept="${escapeHtml(field)}">Прийняти</button>
                                 <button type="button" data-task-ai-draft-reject="${escapeHtml(field)}">Відхилити</button>
-                                <button type="button" data-task-ai-draft-edit="${escapeHtml(field)}">Редагувати</button>
+                                <button type="button" data-task-ai-draft-edit="${escapeHtml(field)}">${isEditing ? 'Продовжити редагування' : 'Редагувати'}</button>
                             </div>
                         </article>`;
                     }).join('')}
@@ -577,6 +583,37 @@
                 </div>
                 <p class="task-ai-draft-footnote">AI-поля мають текстову мітку, не тільки колір. Після ручного редагування поле вважається вашим.</p>
             </section>`;
+    }
+
+    function editableFieldValue(root, state, field) {
+        const draft = typeof state.config?.readDraft === 'function' ? state.config.readDraft() : {};
+        if (state.accepted.has(field) || state.userEdited.has(field)) {
+            if (field === 'description' || field === 'title') return draft[field] ?? '';
+        }
+        return fieldAfterValue(state.preview, field) ?? '';
+    }
+
+    function renderInlineEditor(state, field) {
+        const value = state.editingOriginalValue ?? '';
+        return `<div class="task-ai-draft-inline-editor" data-task-ai-draft-inline-editor="${escapeHtml(field)}">
+            <label for="taskAiDraftInline_${escapeHtml(field)}">${escapeHtml(fieldLabel(field))}</label>
+            <textarea id="taskAiDraftInline_${escapeHtml(field)}" data-task-ai-draft-edit-input="${escapeHtml(field)}" rows="${field === 'description' ? '4' : '2'}">${escapeHtml(value)}</textarea>
+            <div class="task-ai-draft-inline-actions">
+                <button type="button" class="task-ai-draft-primary" data-task-ai-draft-edit-apply="${escapeHtml(field)}">Застосувати</button>
+                <button type="button" data-task-ai-draft-edit-cancel="${escapeHtml(field)}">Скасувати редагування</button>
+            </div>
+        </div>`;
+    }
+
+    function focusInlineEditor(root, field) {
+        const input = root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
+        if (input && typeof input.focus === 'function') {
+            input.focus();
+            if (typeof input.setSelectionRange === 'function') {
+                const end = String(input.value || '').length;
+                try { input.setSelectionRange(end, end); } catch {}
+            }
+        }
     }
 
     function findBundleTask(state, clientId) {
@@ -768,6 +805,41 @@
         if (focus && typeof state.config?.focusField === 'function') state.config.focusField(field);
     }
 
+    function startFieldEdit(root, field) {
+        const state = rootState(root);
+        if (!state.preview) return;
+        if (!['title', 'description'].includes(String(field || ''))) {
+            acceptField(root, field, true);
+            return;
+        }
+        state.editingField = field;
+        state.editingOriginalValue = String(editableFieldValue(root, state, field) ?? '');
+        renderReview(root, state);
+        focusInlineEditor(root, field);
+    }
+
+    function applyFieldEdit(root, field) {
+        const state = rootState(root);
+        if (!state.preview) return;
+        const input = root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
+        const value = String(input?.value ?? '');
+        applyField(root, state, field, value, 'manual');
+        state.accepted.add(field);
+        state.rejected.delete(field);
+        state.userEdited.add(field);
+        state.editingField = '';
+        state.editingOriginalValue = '';
+        renderReview(root, state);
+    }
+
+    function cancelFieldEdit(root, field) {
+        const state = rootState(root);
+        if (!state.preview || state.editingField !== field) return;
+        state.editingField = '';
+        state.editingOriginalValue = '';
+        renderReview(root, state);
+    }
+
     function rejectField(root, field) {
         const state = rootState(root);
         if (!state.preview) return;
@@ -794,6 +866,8 @@
         state.bundleTasks = [];
         state.idempotencyKey = '';
         state.commitPending = false;
+        state.editingField = '';
+        state.editingOriginalValue = '';
         const host = root.querySelector('[data-task-ai-draft-review]');
         if (host) {
             host.hidden = true;
@@ -912,7 +986,19 @@
             const edit = event.target.closest('[data-task-ai-draft-edit]');
             if (edit) {
                 event.preventDefault();
-                acceptField(root, edit.dataset.taskAiDraftEdit, true);
+                startFieldEdit(root, edit.dataset.taskAiDraftEdit);
+                return;
+            }
+            const editApply = event.target.closest('[data-task-ai-draft-edit-apply]');
+            if (editApply) {
+                event.preventDefault();
+                applyFieldEdit(root, editApply.dataset.taskAiDraftEditApply);
+                return;
+            }
+            const editCancel = event.target.closest('[data-task-ai-draft-edit-cancel]');
+            if (editCancel) {
+                event.preventDefault();
+                cancelFieldEdit(root, editCancel.dataset.taskAiDraftEditCancel);
                 return;
             }
             if (event.target.closest('[data-task-ai-draft-accept-all]')) {

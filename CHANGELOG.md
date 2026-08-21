@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.10 - Task Composer AI Draft Commit
+
+### My Day / Task Composer / AI Draft / (21.08.2026) [codex]
+- **AI-confirm після ручного редагування** - route `/api/tasks/ai-draft/commit` тепер передає `editedFieldMask` у canonical commit service, тому змінені вручну `priority` і `due date` не блокуються помилковим `409`.
+- **Server-side guard збережено** - якщо дата або пріоритет не були відредаговані в preview, commit досі звіряє їх із signed proposal/snapshot і не приймає tampered payload.
+- **Regression coverage** - додано route contract test для всіх aliases `editedFieldMask`, `edited_field_mask`, `editedFields`, `edited_fields`, щоб UI preview edit/clear/confirm більше не ламався на межі route → service.
+
+---
+
 ## v0.81.9 - Task Composer Accessibility
 
 ### My Day / Task Composer / Accessibility / (21.08.2026) [codex]

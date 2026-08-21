@@ -428,7 +428,14 @@
 
     function changedFields(preview = {}) {
         const fromDiff = Array.isArray(preview.diff?.changedFields) ? preview.diff.changedFields : [];
-        return fromDiff.filter(field => ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow'].includes(field));
+        const fields = fromDiff.filter(field => ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow'].includes(field));
+        const decision = proposalDecision(preview);
+        if (decision === 'single_task' || decision === 'checklist') {
+            ['priority', 'scheduleDate'].forEach(field => {
+                if (!fields.includes(field)) fields.push(field);
+            });
+        }
+        return fields;
     }
 
     function safeAutoAcceptFields(preview = {}) {

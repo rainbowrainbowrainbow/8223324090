@@ -290,6 +290,34 @@ test('AI draft priority and due date can be edited and cleared before commit', a
     assert.equal(JSON.stringify(payload.editedFieldMask), JSON.stringify(['priority', 'scheduleDate']));
 });
 
+test('AI draft shows priority and due date editors even when AI does not propose them', async () => {
+    const ctx = createSingleTaskDraftDom({
+        aiPriority: null,
+        aiScheduleDate: null
+    });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+
+    assert.ok(ctx.root.querySelector('[data-task-ai-draft-edit="priority"]'), 'priority remains manually editable for review');
+    assert.ok(ctx.root.querySelector('[data-task-ai-draft-edit="scheduleDate"]'), 'due date remains manually editable for review');
+
+    ctx.root.querySelector('[data-task-ai-draft-edit="scheduleDate"]').click();
+    const dateEditor = ctx.root.querySelector('[data-task-ai-draft-edit-input="scheduleDate"]');
+    assert.equal(dateEditor.type, 'date');
+    assert.equal(ctx.window.document.activeElement, dateEditor);
+    dateEditor.value = '2026-08-28';
+    ctx.root.querySelector('[data-task-ai-draft-edit-apply="scheduleDate"]').click();
+
+    const payload = ctx.window.TaskAiDraft.commitPayloadFor(ctx.root);
+    assert.equal(ctx.draft.scheduleDate, '2026-08-28');
+    assert.equal(payload.finalDraft.scheduleDate, '2026-08-28');
+    assert.ok(payload.acceptedFieldMask.includes('scheduleDate'));
+    assert.ok(payload.editedFieldMask.includes('scheduleDate'));
+});
+
 test('AI draft commit payload treats existing confirmed composer date as human-reviewed when AI did not propose a date', async () => {
     const ctx = createSingleTaskDraftDom({
         scheduleDate: '2026-08-21',

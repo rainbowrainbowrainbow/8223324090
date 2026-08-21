@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.8 - Task Composer Commit Guard
+
+### My Day / Task Composer / AI Draft / (21.08.2026) [codex]
+- **Commit guard для дати й пріоритету** - AI commit тепер приймає незмінені дату та пріоритет із Task Composer, коли AI їх не пропонував окремо.
+- **Без помилкового 409 у checklist confirm** - server-side validation порівнює такі поля із signed draft snapshot, а не з порожнім AI proposal.
+- **Регресійне покриття** - додано backend test для сценарію, де composer мав дату/пріоритет до AI preview, а AI змінив тільки структуру задачі.
+- **Release hygiene** - version metadata, cache tags і service-worker cache піднято до `v0.81.8` для production delivery.
+
+---
+
 ## v0.81.7 - Task Composer Schedule Guard
 
 ### My Day / Task Composer / AI Draft / (21.08.2026) [codex]

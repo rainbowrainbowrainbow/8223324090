@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const fixture = require('./fixtures/my-day-ai-composer-quality-evals.json');
+const packageJson = require('../package.json');
 const {
     MIN_CASES_PER_EFFORT,
     REQUIRED_CONFIRMATION,
@@ -89,7 +90,7 @@ test('controlled eval scores low and none with injected transport and no real Op
 
     assert.equal(calls, MIN_CASES_PER_EFFORT * 2);
     assert.equal(report.summary.releaseSha, '0f0ae742724b36f7e3b0d932911a003fbc963dea');
-    assert.equal(report.summary.releaseVersion, '0.81.11');
+    assert.equal(report.summary.releaseVersion, packageJson.version);
     assert.equal(report.summary.schemaName, 'my_day_task_draft_preview');
     assert.equal(report.summary.promptVersion, fixture.promptVersion);
     assert.equal(report.summary.contractVersion, fixture.contractVersion);

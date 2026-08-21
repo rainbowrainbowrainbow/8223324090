@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.12 - My Day AI Evidence Hardening
+
+### My Day / Task Composer / AI Evidence / (21.08.2026) [codex]
+- **Exact-SHA evidence для rollout** - rollout report і live-eval artifact тепер прив’язані до release version, повного SHA, prompt/schema/contract version і моделі, щоб старі релізи не впливали на рішення.
+- **Canonical Composer contract** - внутрішній `task-create.js` переведено на єдиний `/api/tasks/ai-draft/preview`, а legacy `/api/tasks/decompose-draft` лишився thin wrapper із sanitized usage telemetry та sunset marker.
+- **Redacted paid Luna eval PASS** - для candidate `9b5f0181791509975cbd9c135823b8028039cd80` перевірено 60 анонімізованих fixtures на `gpt-5.6-luna` з efforts `none` і `low`; обидва пройшли gates, default `low` залишено через кращий core impact mapping.
+- **Actual-app E2E збережено в gate** - My Day browser/API/PostgreSQL, bundle field masks, schedule → Today, idempotency і provider fail-closed покриття залишаються частиною CI перед rollout.
+
+---
+
 ## v0.81.11 - Task Composer Review Fields
 
 ### My Day / Task Composer / AI Draft / (21.08.2026) [codex]

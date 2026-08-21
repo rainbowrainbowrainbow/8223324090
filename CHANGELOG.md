@@ -4,6 +4,17 @@
 
 ---
 
+## v0.81.6 - Task Composer Completion
+
+### My Day / Task Composer / AI Draft / (21.08.2026) [codex]
+- **Завершено єдиний Task Composer** - у «Мій день» закріплено один textarea з двома діями: швидке створення без AI та підготовка редагованої AI-чернетки.
+- **AI-чернетка стала повністю редагованою** - title, details, priority і date можна змінити або очистити перед підтвердженням; AI-preview нічого не створює напряму.
+- **Стабілізовано retry/error UX** - помилка AI не очищає введений текст, не блокує direct create і повертає кнопку до «Заповнити з AI».
+- **Захист від дублів** - direct create отримав server-visible idempotency key, а повтор після timeout/retry повертає той самий результат замість створення дубля.
+- **Regression coverage** - додано focused UI/backend/browser перевірки для details edit/clear/cancel, priority/date validation, stale AI response, provider error/retry і double-click.
+
+---
+
 ## v0.81.5 - AI draft deprecation wrapper
 
 ### Release / Versioning / (20.08.2026) [codex]

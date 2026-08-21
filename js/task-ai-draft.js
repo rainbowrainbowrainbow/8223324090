@@ -49,6 +49,7 @@
             title: String(draft.title || '').trim(),
             description: String(draft.description || '').trim(),
             mode: structuralMode,
+            priority: ['urgent', 'high', 'normal', 'low'].includes(String(draft.priority || '').trim()) ? String(draft.priority).trim() : '',
             taskMode: String(draft.taskMode || draft.task_mode || '').trim(),
             kind: String(draft.kind || draft.taskKind || '').trim(),
             category: String(draft.category || '').trim(),
@@ -120,6 +121,11 @@
             normal: 'Звичайний',
             low: 'Низький'
         }[String(value || 'normal')] || 'Звичайний';
+    }
+
+    function normalizePriorityValue(value) {
+        const priority = String(value || '').trim();
+        return ['urgent', 'high', 'normal', 'low'].includes(priority) ? priority : '';
     }
 
     function modeLabel(value) {
@@ -413,7 +419,10 @@
         if (field === 'subtasks') return renderSubtasks(value);
         if (field === 'mode') return escapeHtml(modeLabel(value));
         if (field === 'scheduleDate') return escapeHtml(normalizeScheduleDate(value) || 'Без дати');
-        if (field === 'priority') return escapeHtml(priorityLabel(value));
+        if (field === 'priority') {
+            const priority = normalizePriorityValue(value);
+            return escapeHtml(priority ? priorityLabel(priority) : 'Без пріоритету');
+        }
         return escapeHtml(compactText(value, field === 'description' ? 360 : 180));
     }
 
@@ -588,13 +597,37 @@
     function editableFieldValue(root, state, field) {
         const draft = typeof state.config?.readDraft === 'function' ? state.config.readDraft() : {};
         if (state.accepted.has(field) || state.userEdited.has(field)) {
-            if (field === 'description' || field === 'title') return draft[field] ?? '';
+            if (['description', 'title', 'priority', 'scheduleDate'].includes(field)) return draft[field] ?? '';
         }
         return fieldAfterValue(state.preview, field) ?? '';
     }
 
     function renderInlineEditor(state, field) {
         const value = state.editingOriginalValue ?? '';
+        if (field === 'priority') {
+            const selected = normalizePriorityValue(value);
+            return `<div class="task-ai-draft-inline-editor" data-task-ai-draft-inline-editor="${escapeHtml(field)}">
+                <label for="taskAiDraftInline_${escapeHtml(field)}">${escapeHtml(fieldLabel(field))}</label>
+                <select id="taskAiDraftInline_${escapeHtml(field)}" data-task-ai-draft-edit-input="${escapeHtml(field)}">
+                    <option value="" ${selected ? '' : 'selected'}>Без пріоритету</option>
+                    ${['normal', 'low', 'high', 'urgent'].map(option => `<option value="${option}" ${option === selected ? 'selected' : ''}>${escapeHtml(priorityLabel(option))}</option>`).join('')}
+                </select>
+                <div class="task-ai-draft-inline-actions">
+                    <button type="button" class="task-ai-draft-primary" data-task-ai-draft-edit-apply="${escapeHtml(field)}">Застосувати</button>
+                    <button type="button" data-task-ai-draft-edit-cancel="${escapeHtml(field)}">Скасувати редагування</button>
+                </div>
+            </div>`;
+        }
+        if (field === 'scheduleDate') {
+            return `<div class="task-ai-draft-inline-editor" data-task-ai-draft-inline-editor="${escapeHtml(field)}">
+                <label for="taskAiDraftInline_${escapeHtml(field)}">${escapeHtml(fieldLabel(field))}</label>
+                <input type="date" id="taskAiDraftInline_${escapeHtml(field)}" data-task-ai-draft-edit-input="${escapeHtml(field)}" value="${escapeHtml(normalizeScheduleDate(value))}">
+                <div class="task-ai-draft-inline-actions">
+                    <button type="button" class="task-ai-draft-primary" data-task-ai-draft-edit-apply="${escapeHtml(field)}">Застосувати</button>
+                    <button type="button" data-task-ai-draft-edit-cancel="${escapeHtml(field)}">Скасувати редагування</button>
+                </div>
+            </div>`;
+        }
         return `<div class="task-ai-draft-inline-editor" data-task-ai-draft-inline-editor="${escapeHtml(field)}">
             <label for="taskAiDraftInline_${escapeHtml(field)}">${escapeHtml(fieldLabel(field))}</label>
             <textarea id="taskAiDraftInline_${escapeHtml(field)}" data-task-ai-draft-edit-input="${escapeHtml(field)}" rows="${field === 'description' ? '4' : '2'}">${escapeHtml(value)}</textarea>
@@ -609,7 +642,7 @@
         const input = root.querySelector(`[data-task-ai-draft-edit-input="${field}"]`);
         if (input && typeof input.focus === 'function') {
             input.focus();
-            if (typeof input.setSelectionRange === 'function') {
+            if (typeof input.setSelectionRange === 'function' && input.tagName !== 'SELECT') {
                 const end = String(input.value || '').length;
                 try { input.setSelectionRange(end, end); } catch {}
             }
@@ -808,7 +841,7 @@
     function startFieldEdit(root, field) {
         const state = rootState(root);
         if (!state.preview) return;
-        if (!['title', 'description'].includes(String(field || ''))) {
+        if (!['title', 'description', 'priority', 'scheduleDate'].includes(String(field || ''))) {
             acceptField(root, field, true);
             return;
         }

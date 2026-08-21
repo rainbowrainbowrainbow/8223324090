@@ -33,7 +33,7 @@ const MAX_COMMIT_DESCRIPTION_CHARS = 700;
 const MAX_COMMIT_SUBTASKS = 7;
 const AI_DRAFT_COMMIT_SOURCE_SURFACE = 'task_ai_draft_commit';
 const AI_DRAFT_COMMIT_SOURCE_TYPE = 'ai_draft';
-const REVIEWED_SINGLE_FIELDS = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks']);
+const REVIEWED_SINGLE_FIELDS = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority']);
 const ACCEPTED_FIELD_ALLOWLIST = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
 const ACCEPTED_FIELD_ALIASES = Object.freeze({
     schedule: 'scheduleDate',
@@ -247,9 +247,6 @@ function ensureTokenMatchesRequest({ tokenPayload, userId, businessScope, active
     if (submittedDraftFingerprint !== tokenPayload.draftFingerprint) {
         throw commitError('Draft fingerprint does not match proposal token.', 409, 'TASK_AI_DRAFT_FINGERPRINT_CONFLICT');
     }
-    if (finalDraft?.scheduleDate !== (tokenPayload.scheduleDate || null)) {
-        throw commitError('Task schedule changed after AI preview.', 409, 'TASK_AI_DRAFT_SCHEDULE_CONFLICT');
-    }
     const submittedProposalHash = normalizeSubmittedProposalHash(body);
     if (submittedProposalHash !== tokenPayload.proposalHash) {
         throw commitError('Proposal hash does not match proposal token.', 409, 'TASK_AI_DRAFT_PROPOSAL_CONFLICT');
@@ -259,6 +256,45 @@ function ensureTokenMatchesRequest({ tokenPayload, userId, businessScope, active
         throw commitError('Impact catalog changed after preview.', 409, 'TASK_AI_DRAFT_CATALOG_CHANGED');
     }
     return { submittedProposalHash, catalogVersion };
+}
+
+function normalizeSubmittedProposalForReviewedFields(body = {}) {
+    if (!body.proposal || typeof body.proposal !== 'object' || Array.isArray(body.proposal)) return null;
+    try {
+        return {
+            priority: body.proposal.priority === null || body.proposal.priority === undefined || body.proposal.priority === ''
+                ? null
+                : normalizeEnum(body.proposal.priority, COMMIT_PRIORITIES, 'normal', 'priority'),
+            scheduleDate: normalizeScheduleDate(body.proposal.scheduleDate)
+        };
+    } catch {
+        throw commitError('Submitted proposal is invalid.', 400, 'TASK_AI_DRAFT_PROPOSAL_INVALID');
+    }
+}
+
+function assertReviewedScheduleAndPriorityMatchProposal({ finalDraft, body, acceptedFieldMask = [], editedFieldMask = [] }) {
+    const acceptedFields = new Set(normalizeAcceptedFieldMask(acceptedFieldMask));
+    const editedFields = new Set(normalizeEditedFieldMask(editedFieldMask));
+    const needsProposal = ['scheduleDate', 'priority'].some(field => acceptedFields.has(field) && !editedFields.has(field));
+    if (!needsProposal) return;
+    const submittedProposal = normalizeSubmittedProposalForReviewedFields(body);
+    if (!submittedProposal) {
+        throw commitError('Reviewed AI fields require the signed proposal body.', 400, 'TASK_AI_DRAFT_PROPOSAL_REQUIRED');
+    }
+    if (acceptedFields.has('scheduleDate') && !editedFields.has('scheduleDate')) {
+        const expectedScheduleDate = normalizeScheduleDate(submittedProposal.scheduleDate);
+        if (finalDraft.scheduleDate !== expectedScheduleDate) {
+            throw commitError('Task schedule changed after AI preview.', 409, 'TASK_AI_DRAFT_SCHEDULE_CONFLICT');
+        }
+    }
+    if (acceptedFields.has('priority') && !editedFields.has('priority')) {
+        const expectedPriority = submittedProposal.priority === null
+            ? 'normal'
+            : normalizeEnum(submittedProposal.priority, COMMIT_PRIORITIES, 'normal', 'priority');
+        if (finalDraft.priority !== expectedPriority) {
+            throw commitError('Task priority changed after AI preview.', 409, 'TASK_AI_DRAFT_PRIORITY_CONFLICT');
+        }
+    }
 }
 
 async function findCommittedReplay(client, { userId, idempotencyKey, businessScope }) {
@@ -328,6 +364,12 @@ async function commitTaskAiDraft(input = {}, options = {}) {
     });
     const impactSelection = normalizeTaskDraftImpactSelection(finalDraft.impactIds, input.activeImpacts || input.impacts || []);
     finalDraft.impactIds = impactSelection.impactIds;
+    assertReviewedScheduleAndPriorityMatchProposal({
+        finalDraft,
+        body: input,
+        acceptedFieldMask,
+        editedFieldMask
+    });
     const { submittedProposalHash, catalogVersion } = ensureTokenMatchesRequest({
         tokenPayload,
         userId,

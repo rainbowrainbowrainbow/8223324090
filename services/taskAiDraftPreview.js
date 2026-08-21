@@ -31,7 +31,7 @@ const {
 
 const TASK_AI_DRAFT_CONTRACT_VERSION = 'my_day_ai_composer_proposal_v2';
 const TASK_AI_DRAFT_SCHEMA_NAME = 'my_day_task_draft_preview';
-const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-13.5';
+const TASK_AI_DRAFT_PROMPT_VERSION = '2026-08-13.6';
 const TASK_AI_DRAFT_TIMEOUT_MS = 15_000;
 const TASK_AI_DRAFT_MAX_OUTPUT_TOKENS = 1_600;
 const TASK_AI_DRAFT_REASONING_EFFORT = 'low';
@@ -78,7 +78,7 @@ const CONFIDENCE_SCHEMA = Object.freeze({
 const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
     type: 'object',
     additionalProperties: false,
-    required: ['decision', 'mode', 'title', 'description', 'impactIds', 'subtasks', 'bundleTitle', 'tasks', 'confidence', 'reason'],
+    required: ['decision', 'mode', 'title', 'description', 'impactIds', 'subtasks', 'priority', 'scheduleDate', 'bundleTitle', 'tasks', 'confidence', 'reason'],
     properties: {
         decision: { type: 'string', enum: PREVIEW_DECISIONS },
         mode: { type: ['string', 'null'], enum: PREVIEW_MODES },
@@ -89,6 +89,8 @@ const TASK_AI_DRAFT_PREVIEW_SCHEMA = Object.freeze({
             maxItems: MAX_IMPACTS_PER_TASK,
             items: { type: 'integer' }
         },
+        priority: { type: ['string', 'null'], enum: PREVIEW_PRIORITIES },
+        scheduleDate: { type: ['string', 'null'], maxLength: 32 },
         subtasks: {
             type: 'array',
             maxItems: MAX_SUBTASKS,
@@ -199,6 +201,15 @@ function normalizeScheduleDate(value) {
     return scheduleDate;
 }
 
+function normalizePreviewPriority(value) {
+    if (value === null || value === undefined || value === '') return null;
+    const priority = compactString(value, 24).toLowerCase();
+    if (!PREVIEW_PRIORITIES.includes(priority)) {
+        throw createPreviewError('AI draft proposal has invalid priority.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    return priority;
+}
+
 function addFallbackReason(reasons, reason) {
     if (!Array.isArray(reasons) || !TASK_AI_DRAFT_FALLBACK_REASONS.includes(reason)) return;
     if (!reasons.includes(reason)) reasons.push(reason);
@@ -268,6 +279,7 @@ function normalizeDraftSnapshot(value = {}) {
         sourceType: compactString(draft.sourceType || draft.source_type, 80),
         sourceModule: compactString(draft.sourceModule || draft.source_module, 80),
         scheduleDate: normalizeScheduleDate(draft.scheduleDate),
+        priority: normalizePreviewPriority(draft.priority),
         impactIds,
         subtasks
     };
@@ -343,6 +355,8 @@ function buildSystemPrompt() {
         'serverExplicitImpactIds are deterministic matches from the same active catalog. For single_task/checklist include them before adding other facets. For task_bundle distribute them only to relevant tasks.',
         'When serverExplicitImpactIds is non-empty and the draft contains a concrete action or result, do not return needs_clarification or no_change merely because impact selection is uncertain.',
         'Do not output tags, directions, dependencies, status, permissions, or business scope.',
+        'For single_task/checklist set priority to urgent, high, normal, low, or null. Set it only when currentDraft explicitly states urgency or priority; otherwise return null.',
+        'For single_task/checklist set scheduleDate only as YYYY-MM-DD when currentDraft gives an exact date in that format or an already-resolved currentDraft.scheduleDate. If the date is relative, vague, or ambiguous, return null.',
         'Priority, scheduleDate, and ownerSuggestion are review-only suggestions; the server will not auto-apply them without explicit human confirmation.',
         'For every task_bundle item set ownerSuggestion.userId to null. Missing owner information is not a clarification reason. Use scheduleDate or elevated priority only when explicitly stated in currentDraft; otherwise return null.',
         'The server will compute the diff and validate all IDs; do not include diff fields.',
@@ -401,6 +415,8 @@ function mergeServerExplicitImpacts(proposal = {}, draft = {}, impacts = []) {
             description: normalizedDraft.description || null,
             impactIds: filterKnownActiveImpactIds(mergeExplicitImpactIds(explicitImpactIds, normalizedDraft.impactIds), impacts),
             subtasks: [],
+            priority: null,
+            scheduleDate: null,
             bundleTitle: null,
             tasks: [],
             confidence: {
@@ -563,6 +579,8 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
 
     const title = payload.title === null ? null : compactString(payload.title, MAX_TITLE_CHARS);
     const description = payload.description === null ? null : compactString(payload.description, MAX_DESCRIPTION_CHARS);
+    const priority = normalizePreviewPriority(payload.priority);
+    const scheduleDate = normalizeBundleScheduleDate(payload.scheduleDate);
     const subtasks = normalizeDraftItems(Array.isArray(payload.subtasks) ? payload.subtasks : [], {
         sourceType: 'ai',
         maxItems: MAX_SUBTASKS
@@ -576,6 +594,9 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
     }
     if ((decision === 'needs_clarification' || decision === 'no_change') && subtasks.length) {
         throw createPreviewError('Clarification/no_change proposal must not include subtasks.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
+    }
+    if (!['single_task', 'checklist'].includes(decision) && (priority !== null || scheduleDate !== null)) {
+        throw createPreviewError('Only single task/checklist proposals may include top-level priority or scheduleDate.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
     }
     if ((decision === 'single_task' || decision === 'checklist') && !title) {
         throw createPreviewError('Single task/checklist proposal must include a title.', 422, 'TASK_AI_DRAFT_INVALID_RESPONSE');
@@ -598,6 +619,8 @@ function normalizeProposal(raw = {}, activeImpacts = []) {
         description,
         impactIds,
         subtasks,
+        priority,
+        scheduleDate,
         bundleTitle,
         tasks,
         confidence,
@@ -639,6 +662,8 @@ function fallbackProposalFromDraft(draft = {}, activeImpacts = [], reasonCode = 
         description,
         impactIds: filterKnownActiveImpactIds(mergeExplicitImpactIds(explicitImpactIds, normalizedDraft.impactIds), activeImpacts),
         subtasks,
+        priority: normalizedDraft.priority,
+        scheduleDate: normalizedDraft.scheduleDate,
         bundleTitle: null,
         tasks: [],
         confidence: {
@@ -682,7 +707,8 @@ function buildDraftDiff(currentDraft = {}, proposal = {}) {
         mode: proposal.mode,
         impactIds: proposal.impactIds || [],
         subtasks: proposal.subtasks || [],
-        scheduleDate: before.scheduleDate,
+        priority: proposal.priority === null ? before.priority : proposal.priority,
+        scheduleDate: proposal.scheduleDate === null ? before.scheduleDate : proposal.scheduleDate,
         bundleTitle: proposal.bundleTitle || null,
         tasks: proposal.tasks || []
     };

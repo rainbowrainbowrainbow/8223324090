@@ -75,6 +75,8 @@ function validProposal(overrides = {}) {
         title: 'Fix CRM booking form',
         description: 'Make booking validation clear and safe.',
         impactIds: [101],
+        priority: null,
+        scheduleDate: null,
         subtasks: [
             { title: 'Reproduce invalid booking submit' },
             { title: 'Patch validation handling' },
@@ -119,7 +121,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
                 provider: 'openai',
                 model: request.model,
                 payload: {
-                    output_text: JSON.stringify(validProposal()),
+                    output_text: JSON.stringify(validProposal({ scheduleDate: '2026-08-10' })),
                     usage: { total_tokens: 123 }
                 },
                 usage: { total_tokens: 123 }
@@ -133,6 +135,8 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.equal(result.contractVersion, 'my_day_ai_composer_proposal_v2');
     assert.equal(result.proposal.decision, 'checklist');
     assert.equal(result.proposal.action, 'apply');
+    assert.equal(result.proposal.priority, null);
+    assert.equal(result.proposal.scheduleDate, '2026-08-10');
     assert.deepEqual(result.proposal.impactIds, [101]);
     assert.equal(result.proposal.subtasks.length, 3);
     assert.match(result.proposalToken, /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/);
@@ -161,6 +165,8 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
         'description',
         'impactIds',
         'subtasks',
+        'priority',
+        'scheduleDate',
         'bundleTitle',
         'tasks',
         'confidence',
@@ -174,6 +180,8 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
         'no_change'
     ]);
     assert.equal(request.schema.properties.impactIds.maxItems, 5);
+    assert.deepEqual(request.schema.properties.priority.enum, ['urgent', 'high', 'normal', 'low', null]);
+    assert.equal(request.schema.properties.scheduleDate.maxLength, 32);
     assert.equal(Object.hasOwn(request.schema.properties.impactIds, 'uniqueItems'), false);
     assert.equal(request.schema.properties.tasks.maxItems, 6);
     assert.equal(request.schema.properties.tasks.items.additionalProperties, false);
@@ -191,6 +199,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.match(serializedInput, /serverExplicitImpactIds/);
     assert.deepEqual(userMessage.serverExplicitImpactIds, [101]);
     assert.equal(userMessage.currentDraft.scheduleDate, '2026-08-10');
+    assert.equal(userMessage.currentDraft.priority, null);
     assert.match(serializedInput, /server will compute the diff|server/i);
     assert.match(serializedInput, /Do not output tags, directions/);
     assert.match(serializedInput, /scheduled, assigned, and completed independently/);
@@ -200,6 +209,7 @@ test('task AI draft preview uses one direct Luna Responses call with strict sche
     assert.match(serializedInput, /Do not return only the context/);
     assert.match(serializedInput, /do not clarify merely because more than 5 impacts/i);
     assert.match(serializedInput, /ownerSuggestion\.userId to null/);
+    assert.match(serializedInput, /relative, vague, or ambiguous/);
     assert.doesNotMatch(serializedInput, /OPENAI_API_KEY|OPENROUTER_API_KEY|chat_ai/i);
 
     const token = preview.verifyProposalToken(result.proposalToken, {
@@ -256,6 +266,37 @@ test('task AI preview deterministically preserves explicit active impacts for si
     assert.deepEqual(recovered.impactIds, [104, 105, 106]);
     assert.equal(recovered.confidence.impacts, 0.9);
     assert.match(recovered.reason, /recovered explicit active impacts/);
+});
+
+test('task AI preview validates single-task priority/date and filters unknown impacts', () => {
+    const normalized = preview.normalizeProposal({
+        ...validProposal({
+            decision: 'single_task',
+            mode: 'simple',
+            subtasks: [],
+            impactIds: [101, 103, 999_999],
+            priority: 'urgent',
+            scheduleDate: '2026-08-22'
+        })
+    }, impacts);
+
+    assert.equal(normalized.decision, 'single_task');
+    assert.equal(normalized.priority, 'urgent');
+    assert.equal(normalized.scheduleDate, '2026-08-22');
+    assert.deepEqual(normalized.impactIds, [101]);
+
+    assert.throws(
+        () => preview.normalizeProposal(validProposal({ priority: 'critical' }), impacts),
+        error => error.code === 'TASK_AI_DRAFT_INVALID_RESPONSE'
+    );
+    assert.throws(
+        () => preview.normalizeProposal(validProposal({ scheduleDate: 'tomorrow' }), impacts),
+        error => error.code === 'TASK_AI_DRAFT_INVALID_RESPONSE'
+    );
+    assert.throws(
+        () => preview.normalizeProposal(validProposal({ scheduleDate: 'next week' }), impacts),
+        error => error.code === 'TASK_AI_DRAFT_INVALID_RESPONSE'
+    );
 });
 
 test('task AI preview separates structural mode from taskMode and diffs existing subtasks', () => {

@@ -23,6 +23,8 @@ const proposal = {
     title: 'Fix CRM booking form',
     description: 'Safe validation pass.',
     impactIds: [101, 104],
+    priority: null,
+    scheduleDate: null,
     subtasks: [
         { title: 'Reproduce invalid CRM booking submit' },
         { title: 'Patch booking validation' },
@@ -53,25 +55,32 @@ function makeToken(secret = 'proposal-secret') {
             secret
         }),
         draftFingerprint: preview.draftFingerprint(draft),
-        proposalHash: preview.proposalHash(proposal)
+        proposalHash: preview.proposalHash(proposal),
+        proposal
     };
 }
 
 function makeScheduledToken(secret = 'proposal-secret') {
     const draft = { title: 'crm form', description: 'broken submit', scheduleDate: '2026-08-10' };
+    const scheduledProposal = {
+        ...proposal,
+        priority: 'high',
+        scheduleDate: '2026-08-10'
+    };
     return {
         token: preview.createProposalToken({
             userId: 7,
             businessScope: { businessContext: 'event_genix' },
             fingerprint: preview.draftFingerprint(draft),
-            proposal,
+            proposal: scheduledProposal,
             catalogVersion: preview.activeImpactCatalogVersion(impacts),
             draftSnapshot: draft,
             now: 1_000,
             secret
         }),
         draftFingerprint: preview.draftFingerprint(draft),
-        proposalHash: preview.proposalHash(proposal)
+        proposalHash: preview.proposalHash(scheduledProposal),
+        proposal: scheduledProposal
     };
 }
 
@@ -294,6 +303,7 @@ function commitInput(tokenParts, overrides = {}) {
     return {
         proposalToken: tokenParts.token,
         proposalHash: tokenParts.proposalHash,
+        proposal: tokenParts.proposal || proposal,
         draftFingerprint: tokenParts.draftFingerprint,
         finalDraft: {
             title: 'Fix CRM booking form',
@@ -498,6 +508,113 @@ test('AI draft commit preserves reviewed schedule and manual fields without hard
     assert.equal(task.assigned_to, 'Owner #9');
     assert.equal(task.visibility, 'private');
     assert.equal(task.workflow_state, 'waiting');
+});
+
+test('AI draft commit rejects invalid single-task priority and scheduleDate', async () => {
+    const tokenParts = makeScheduledToken();
+    const fakePool = createFakePool();
+
+    await assert.rejects(
+        () => commit.commitTaskAiDraft(commitInput(tokenParts, {
+            finalDraft: {
+                title: 'Fix CRM booking form',
+                description: 'Make validation safe.',
+                mode: 'checklist',
+                taskMode: 'work',
+                impactIds: [101],
+                subtasks: proposal.subtasks,
+                scheduleConfirmed: true,
+                scheduleDate: '2026-08-10',
+                priority: 'critical'
+            },
+            acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority']
+        }), {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_DRAFT_PRIORITY_INVALID'
+    );
+
+    await assert.rejects(
+        () => commit.commitTaskAiDraft(commitInput(tokenParts, {
+            finalDraft: {
+                title: 'Fix CRM booking form',
+                description: 'Make validation safe.',
+                mode: 'checklist',
+                taskMode: 'work',
+                impactIds: [101],
+                subtasks: proposal.subtasks,
+                scheduleConfirmed: true,
+                scheduleDate: 'tomorrow',
+                priority: 'high'
+            },
+            acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority']
+        }), {
+            pool: fakePool,
+            proposalSecret: 'proposal-secret',
+            now: 2_000,
+            createTaskImpl: fakeCreateTaskImpl(fakePool)
+        }),
+        error => error.code === 'TASK_AI_DRAFT_INVALID_SCHEDULE'
+    );
+
+    assert.equal(fakePool.state.tasks.length, 0);
+});
+
+test('AI draft commit allows reviewed edits to clear or change AI priority and scheduleDate', async () => {
+    const tokenParts = makeScheduledToken();
+    const fakePool = createFakePool();
+    const cleared = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: 'Make validation safe.',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101],
+            subtasks: proposal.subtasks,
+            scheduleConfirmed: false,
+            scheduleDate: '',
+            priority: 'normal'
+        },
+        acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority'],
+        editedFieldMask: ['scheduleDate', 'priority'],
+        idempotencyKey: 'ai-commit-clear-date-priority'
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+    assert.equal(cleared.ok, true);
+    assert.equal(fakePool.state.tasks[0].date, null);
+    assert.equal(fakePool.state.tasks[0].priority, 'normal');
+
+    const changed = await commit.commitTaskAiDraft(commitInput(tokenParts, {
+        finalDraft: {
+            title: 'Fix CRM booking form',
+            description: 'Make validation safe.',
+            mode: 'checklist',
+            taskMode: 'work',
+            impactIds: [101],
+            subtasks: proposal.subtasks,
+            scheduleConfirmed: true,
+            scheduleDate: '2026-08-12',
+            priority: 'urgent'
+        },
+        acceptedFieldMask: ['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority'],
+        editedFieldMask: ['scheduleDate', 'priority'],
+        idempotencyKey: 'ai-commit-change-date-priority'
+    }), {
+        pool: fakePool,
+        proposalSecret: 'proposal-secret',
+        now: 2_000,
+        createTaskImpl: fakeCreateTaskImpl(fakePool)
+    });
+    assert.equal(changed.ok, true);
+    assert.equal(fakePool.state.tasks[1].date, '2026-08-12');
+    assert.equal(fakePool.state.tasks[1].priority, 'urgent');
 });
 
 test('AI draft commit compacts legacy task text references to database-safe length', () => {

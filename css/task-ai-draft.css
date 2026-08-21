@@ -197,10 +197,10 @@
     font-weight: 900;
 }
 
-.task-ai-draft-inline-editor textarea {
+.task-ai-draft-inline-editor textarea,
+.task-ai-draft-inline-editor input,
+.task-ai-draft-inline-editor select {
     width: 100%;
-    min-height: 86px;
-    resize: vertical;
     border: 1px solid rgba(148, 163, 184, 0.42);
     border-radius: 12px;
     padding: 10px 12px;
@@ -208,6 +208,11 @@
     color: #0f172a;
     font: inherit;
     line-height: 1.4;
+}
+
+.task-ai-draft-inline-editor textarea {
+    min-height: 86px;
+    resize: vertical;
 }
 
 .task-ai-draft-inline-actions {
@@ -503,7 +508,11 @@ body.dark-mode .task-ai-draft-actions button,
 html[data-theme="dark"] .task-ai-draft-inline-actions button,
 body.dark-mode .task-ai-draft-inline-actions button,
 html[data-theme="dark"] .task-ai-draft-inline-editor textarea,
-body.dark-mode .task-ai-draft-inline-editor textarea {
+body.dark-mode .task-ai-draft-inline-editor textarea,
+html[data-theme="dark"] .task-ai-draft-inline-editor input,
+body.dark-mode .task-ai-draft-inline-editor input,
+html[data-theme="dark"] .task-ai-draft-inline-editor select,
+body.dark-mode .task-ai-draft-inline-editor select {
     background: rgba(15, 23, 42, 0.78);
     color: #f8fafc;
     border-color: rgba(148, 163, 184, 0.25);

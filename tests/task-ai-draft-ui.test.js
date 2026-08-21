@@ -27,7 +27,10 @@ function createSingleTaskDraftDom(options = {}) {
     const { window } = dom;
     const draft = {
         title: options.title || 'Manual task',
-        description: options.description || ''
+        description: options.description || '',
+        priority: options.priority || 'normal',
+        scheduleDate: options.scheduleDate || '',
+        scheduleConfirmed: Boolean(options.scheduleDate)
     };
     let previewCalls = 0;
     let createCalls = 0;
@@ -48,15 +51,31 @@ function createSingleTaskDraftDom(options = {}) {
                     title: options.aiTitle || draft.title,
                     description: options.aiDescription || 'AI prepared details',
                     impactIds: [],
+                    priority: options.aiPriority ?? null,
+                    scheduleDate: options.aiScheduleDate ?? null,
                     subtasks: []
                 },
                 diff: {
-                    changedFields: ['description'],
+                    changedFields: [
+                        'description',
+                        ...(options.aiPriority ? ['priority'] : []),
+                        ...(options.aiScheduleDate ? ['scheduleDate'] : [])
+                    ],
                     fields: {
                         description: {
                             before: draft.description,
                             after: options.aiDescription || 'AI prepared details',
                             changed: true
+                        },
+                        priority: {
+                            before: draft.priority,
+                            after: options.aiPriority ?? null,
+                            changed: Boolean(options.aiPriority)
+                        },
+                        scheduleDate: {
+                            before: draft.scheduleDate || null,
+                            after: options.aiScheduleDate ?? null,
+                            changed: Boolean(options.aiScheduleDate)
                         }
                     }
                 },
@@ -77,6 +96,7 @@ function createSingleTaskDraftDom(options = {}) {
         applyField: (field, value) => {
             draft[field] = String(value || '');
             if (field === 'title') input.value = draft[field];
+            if (field === 'scheduleDate') draft.scheduleConfirmed = Boolean(draft.scheduleDate);
         },
         focusField: field => {
             if (field === 'title') input.focus();
@@ -229,6 +249,42 @@ test('AI draft details can be cleared explicitly', async () => {
     assert.equal(payload.finalDraft.description, '');
     assert.equal(JSON.stringify(payload.acceptedFieldMask), JSON.stringify(['description']));
     assert.equal(JSON.stringify(payload.editedFieldMask), JSON.stringify(['description']));
+});
+
+test('AI draft priority and due date can be edited and cleared before commit', async () => {
+    const ctx = createSingleTaskDraftDom({
+        aiPriority: 'high',
+        aiScheduleDate: '2026-08-22'
+    });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-edit="priority"]').click();
+    const priorityEditor = ctx.root.querySelector('[data-task-ai-draft-edit-input="priority"]');
+    assert.equal(priorityEditor.tagName, 'SELECT');
+    assert.equal(ctx.window.document.activeElement, priorityEditor);
+    assert.match(priorityEditor.textContent, /Без пріоритету/);
+    priorityEditor.value = '';
+    ctx.root.querySelector('[data-task-ai-draft-edit-apply="priority"]').click();
+
+    ctx.root.querySelector('[data-task-ai-draft-edit="scheduleDate"]').click();
+    const dateEditor = ctx.root.querySelector('[data-task-ai-draft-edit-input="scheduleDate"]');
+    assert.equal(dateEditor.type, 'date');
+    assert.equal(ctx.window.document.activeElement, dateEditor);
+    dateEditor.value = '';
+    ctx.root.querySelector('[data-task-ai-draft-edit-apply="scheduleDate"]').click();
+
+    const payload = ctx.window.TaskAiDraft.commitPayloadFor(ctx.root);
+    assert.equal(ctx.draft.priority, '');
+    assert.equal(ctx.draft.scheduleDate, '');
+    assert.equal(ctx.draft.scheduleConfirmed, false);
+    assert.equal(payload.finalDraft.priority, '');
+    assert.equal(payload.finalDraft.scheduleDate, null);
+    assert.equal(JSON.stringify(payload.acceptedFieldMask), JSON.stringify(['priority', 'scheduleDate']));
+    assert.equal(JSON.stringify(payload.editedFieldMask), JSON.stringify(['priority', 'scheduleDate']));
 });
 
 test('AI draft details edit cancel keeps the original draft untouched', async () => {

@@ -17,6 +17,7 @@ const TASK_ACTION_TYPES = Object.freeze({
     SCHEDULE_PROPOSAL_CREATED: 'task_schedule_proposal_created',
     SLOT_MISSED: 'task_slot_missed',
     DISCIPLINE_PENALTY_APPLIED: 'task_discipline_penalty_applied',
+    CREATED: 'task_created',
     AI_DRAFT_COMMITTED: 'task_ai_draft_committed',
     AI_DRAFT_BUNDLE_COMMITTED: 'task_ai_draft_bundle_committed',
     COMMENTED: 'task_commented'

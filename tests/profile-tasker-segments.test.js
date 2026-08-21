@@ -46,6 +46,20 @@ function loadProfileTaskerContext() {
             setItem() {},
             removeItem() {}
         },
+        sessionStorage: (() => {
+            const state = new Map();
+            return {
+                getItem(key) { return state.has(key) ? state.get(key) : null; },
+                setItem(key, value) { state.set(key, String(value)); },
+                removeItem(key) { state.delete(key); }
+            };
+        })(),
+        crypto: {
+            randomUUID: (() => {
+                let next = 1;
+                return () => `00000000-0000-4000-8000-${String(next++).padStart(12, '0')}`;
+            })()
+        },
         navigator: {},
         window: null
     };
@@ -924,6 +938,35 @@ test('shared TaskCreate adapter resolves extended due presets from Kyiv date con
     assert.equal(ctx.TaskCreate.dateForDuePresetValue('custom', '2026-07-18'), '2026-07-18');
 });
 
+test('shared TaskCreate direct create sends Idempotency-Key header without mutating payload contract', async () => {
+    const calls = [];
+    const ctx = {
+        console,
+        API_BASE: '/api',
+        getAuthHeaders: () => ({ 'Content-Type': 'application/json' }),
+        handleAuthError: () => false,
+        apiFetchWithAuthRetry: async (url, options = {}) => {
+            calls.push({ url, options });
+            return {
+                ok: true,
+                status: 200,
+                json: async () => ({ success: true, task: { id: 701, title: 'Header task' } })
+            };
+        },
+        window: null
+    };
+    ctx.window = ctx;
+    vm.createContext(ctx);
+    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js', 'task-create.js'), 'utf8'), ctx);
+
+    const result = await ctx.TaskCreate.createTask({ title: 'Header task' }, { idempotencyKey: 'direct_test_key_123' });
+
+    assert.equal(result.success, true);
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].options.headers['Idempotency-Key'], 'direct_test_key_123');
+    assert.equal(JSON.parse(calls[0].options.body).idempotencyKey, undefined);
+});
+
 test('profile My Day state keeps list mode separate from due preset', () => {
     const ctx = loadProfileTaskerContext();
     const taskCreateCtx = loadTaskCreateContext();
@@ -1673,12 +1716,14 @@ test('profile My Day plain create rejects long composer text without clearing it
     assert.equal(notices.at(-1)?.type, 'error');
 });
 
-test('profile My Day create blocks the same payload after an unknown network result', async () => {
+test('profile My Day direct create reuses the same idempotency key after timeout and changes key for new text', async () => {
     const ctx = loadProfileTaskerContext();
     const title = 'створити після timeout без дубля';
     const elements = installCabinetCreateDom(ctx, title);
     const notices = [];
     let createCalls = 0;
+    const idempotencyKeys = [];
+    let lastTask = null;
 
     ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
     ctx.showNotification = (message, type) => notices.push({ message, type });
@@ -1686,24 +1731,85 @@ test('profile My Day create blocks the same payload after an unknown network res
         buildPayload(draft) {
             return { ...draft, title: String(draft.title || '').trim() };
         },
-        async createTask() {
+        async createTask(payload, options = {}) {
             createCalls += 1;
-            return { success: false, networkError: true, error: 'timeout' };
+            idempotencyKeys.push(options.idempotencyKey);
+            if (createCalls === 1) return { success: false, networkError: true, error: 'timeout' };
+            lastTask = { id: 511 + createCalls, title: payload.title };
+            return { success: true, task: lastTask };
         }
+    };
+    ctx.apiGet = async (url) => {
+        if (url === '/tasks/my-cabinet') {
+            return {
+                all: [lastTask || { id: 513, title: elements.get('cabinetTaskTitle').value || title }],
+                today: [lastTask || { id: 513, title: elements.get('cabinetTaskTitle').value || title }],
+                overdue: [],
+                waiting: [],
+                private: [],
+                completedHistory: [],
+                stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+            };
+        }
+        return null;
     };
 
     await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
     await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
 
-    assert.equal(createCalls, 1);
-    assert.equal(elements.get('cabinetTaskTitle').value, title);
-    assert.match(elements.get('cabinetTaskComposerStatus').textContent, /уникнути дубля/);
-    assert.equal(notices.at(-1)?.type, 'warning');
+    assert.equal(createCalls, 2);
+    assert.match(idempotencyKeys[0], /^direct_/);
+    assert.equal(idempotencyKeys[1], idempotencyKeys[0]);
 
     elements.get('cabinetTaskTitle').value = `${title} змінено`;
     await ctx.createCabinetTask({ preventDefault() {} }, 'personal');
 
-    assert.equal(createCalls, 2);
+    assert.equal(createCalls, 3);
+    assert.notEqual(idempotencyKeys[2], idempotencyKeys[0]);
+});
+
+test('profile My Day direct create blocks real simultaneous double-click with one pending operation key', async () => {
+    const ctx = loadProfileTaskerContext();
+    const title = 'подвійний клік не створює дубль';
+    installCabinetCreateDom(ctx, title);
+    let releaseCreate;
+    const calls = [];
+
+    ctx.AppState = { currentUser: { id: 7, username: 'serhiy' } };
+    ctx.showNotification = () => {};
+    ctx.TaskCreate = {
+        buildPayload(draft) {
+            return { ...draft, title: String(draft.title || '').trim() };
+        },
+        async createTask(payload, options = {}) {
+            calls.push({ payload, options });
+            await new Promise(resolve => { releaseCreate = resolve; });
+            return { success: true, task: { id: 530, title: payload.title } };
+        }
+    };
+    ctx.apiGet = async (url) => {
+        if (url === '/tasks/my-cabinet') {
+            return {
+                all: [{ id: 530, title }],
+                today: [{ id: 530, title }],
+                overdue: [],
+                waiting: [],
+                private: [],
+                completedHistory: [],
+                stats: { taskQuick: { completedToday: 0, activeMyDay: 1 } }
+            };
+        }
+        return null;
+    };
+
+    const first = ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+    const second = ctx.createCabinetTask({ preventDefault() {} }, 'personal');
+    await Promise.resolve();
+    assert.equal(calls.length, 1);
+    assert.match(calls[0].options.idempotencyKey, /^direct_/);
+    releaseCreate();
+    await Promise.all([first, second]);
+    assert.equal(calls.length, 1);
 });
 
 test('profile My Day create sends urgent priority from the mini priority selector', async () => {

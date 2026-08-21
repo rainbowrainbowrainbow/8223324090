@@ -90,6 +90,7 @@ const cabinetSubtaskCache = new Map();
 const loadingCabinetSubtaskIds = new Set();
 const CABINET_TASK_PLAIN_TITLE_MAX_LENGTH = 180;
 const CABINET_TASK_CREATE_UNKNOWN_TTL_MS = 2 * 60 * 1000;
+const CABINET_TASK_CREATE_IDEMPOTENCY_STORAGE_KEY = 'eventGenix.myDay.directCreate.pending.v1';
 
 function notifyTaskWidgetsChanged(detail = {}) {
     const payload = { source: 'profile_my_cabinet', ...detail };
@@ -4881,6 +4882,7 @@ function cabinetTaskCreateSignature(draft = {}) {
 function cabinetTaskCreateRetryBlockMessage(signature = '') {
     if (!cabinetTaskCreateAttempt || cabinetTaskCreateAttempt.signature !== signature) return '';
     if (cabinetTaskCreateAttempt.status !== 'unknown') return '';
+    if (cabinetTaskCreateAttempt.idempotencyKey) return '';
     const ageMs = Date.now() - Number(cabinetTaskCreateAttempt.createdAt || 0);
     if (ageMs > CABINET_TASK_CREATE_UNKNOWN_TTL_MS) {
         cabinetTaskCreateAttempt = null;
@@ -4889,11 +4891,65 @@ function cabinetTaskCreateRetryBlockMessage(signature = '') {
     return 'Попередній запит із таким самим текстом ще не підтверджено. Щоб уникнути дубля, змініть текст або оновіть список перед повтором.';
 }
 
-function rememberCabinetTaskCreateAttempt(signature = '', status = 'in_flight') {
-    cabinetTaskCreateAttempt = { signature, status, createdAt: Date.now() };
+function readCabinetTaskCreateIdempotencyStore() {
+    try {
+        if (typeof window === 'undefined' || !window.sessionStorage) return {};
+        const parsed = JSON.parse(window.sessionStorage.getItem(CABINET_TASK_CREATE_IDEMPOTENCY_STORAGE_KEY) || '{}');
+        return parsed && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+        return {};
+    }
 }
 
-function clearCabinetTaskCreateAttempt(signature = '') {
+function writeCabinetTaskCreateIdempotencyStore(store = {}) {
+    try {
+        if (typeof window === 'undefined' || !window.sessionStorage) return;
+        window.sessionStorage.setItem(CABINET_TASK_CREATE_IDEMPOTENCY_STORAGE_KEY, JSON.stringify(store || {}));
+    } catch {}
+}
+
+function randomCabinetTaskCreateIdempotencyKey() {
+    if (typeof window !== 'undefined' && window.crypto?.randomUUID) {
+        return `direct_${window.crypto.randomUUID()}`;
+    }
+    return `direct_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 12)}`;
+}
+
+function cabinetTaskCreateIdempotencyKeyForSignature(signature = '') {
+    const normalized = String(signature || '').trim();
+    if (!normalized) return '';
+    if (cabinetTaskCreateAttempt?.signature === normalized && cabinetTaskCreateAttempt.idempotencyKey) {
+        return cabinetTaskCreateAttempt.idempotencyKey;
+    }
+    const store = readCabinetTaskCreateIdempotencyStore();
+    const existing = store[normalized];
+    const ageMs = Date.now() - Number(existing?.createdAt || 0);
+    if (existing?.idempotencyKey && ageMs >= 0 && ageMs <= CABINET_TASK_CREATE_UNKNOWN_TTL_MS) {
+        return String(existing.idempotencyKey);
+    }
+    const idempotencyKey = randomCabinetTaskCreateIdempotencyKey();
+    store[normalized] = { idempotencyKey, createdAt: Date.now() };
+    writeCabinetTaskCreateIdempotencyStore(store);
+    return idempotencyKey;
+}
+
+function rememberCabinetTaskCreateAttempt(signature = '', status = 'in_flight', idempotencyKey = '') {
+    cabinetTaskCreateAttempt = { signature, status, idempotencyKey, createdAt: Date.now() };
+    if (signature && idempotencyKey) {
+        const store = readCabinetTaskCreateIdempotencyStore();
+        store[signature] = { idempotencyKey, createdAt: cabinetTaskCreateAttempt.createdAt };
+        writeCabinetTaskCreateIdempotencyStore(store);
+    }
+}
+
+function clearCabinetTaskCreateAttempt(signature = '', idempotencyKey = '') {
+    if (signature) {
+        const store = readCabinetTaskCreateIdempotencyStore();
+        if (!store[signature] || !idempotencyKey || store[signature].idempotencyKey === idempotencyKey) {
+            delete store[signature];
+            writeCabinetTaskCreateIdempotencyStore(store);
+        }
+    }
     if (!signature || cabinetTaskCreateAttempt?.signature === signature) cabinetTaskCreateAttempt = null;
 }
 
@@ -8793,6 +8849,7 @@ async function createCabinetTask(event, mode) {
         }
     }
     const createSignature = cabinetTaskCreateSignature(draft);
+    const directCreateIdempotencyKey = !aiCommitPayload ? cabinetTaskCreateIdempotencyKeyForSignature(createSignature) : '';
     if (!aiCommitPayload) {
         const retryBlockMessage = cabinetTaskCreateRetryBlockMessage(createSignature);
         if (retryBlockMessage) {
@@ -8802,7 +8859,7 @@ async function createCabinetTask(event, mode) {
             return;
         }
         cabinetTaskCreatePending = true;
-        rememberCabinetTaskCreateAttempt(createSignature, 'in_flight');
+        rememberCabinetTaskCreateAttempt(createSignature, 'in_flight', directCreateIdempotencyKey);
         setCabinetTaskCreateBusy(true);
         setCabinetTaskComposerStatus('Створюю задачу...', '');
     }
@@ -8832,19 +8889,20 @@ async function createCabinetTask(event, mode) {
         try {
             result = window.TaskCreate?.createTask
                 ? await window.TaskCreate.createTask(payload, {
+                    idempotencyKey: directCreateIdempotencyKey,
                     onDuplicate: err => {
                         if (typeof showNotification === 'function') showNotification(err.message || 'Активний дубль не створено', 'warning');
                     }
                 })
-                : await apiPost('/tasks', payload);
+                : await apiPost('/tasks', { ...payload, idempotencyKey: directCreateIdempotencyKey });
         } catch (error) {
             result = { success: false, networkError: true, error: error?.message || 'Не вдалося створити задачу' };
         }
     }
     if (!result?.success) {
         if (!aiCommitPayload) {
-            if (result?.networkError || !result) rememberCabinetTaskCreateAttempt(createSignature, 'unknown');
-            else clearCabinetTaskCreateAttempt(createSignature);
+            if (result?.networkError || !result) rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
+            else clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
             cabinetTaskCreatePending = false;
             setCabinetTaskCreateBusy(false);
         }
@@ -8857,7 +8915,7 @@ async function createCabinetTask(event, mode) {
     const verification = await verifyCabinetCreatedTask(result);
     if (!verification.ok) {
         if (!aiCommitPayload) {
-            rememberCabinetTaskCreateAttempt(createSignature, 'unknown');
+            rememberCabinetTaskCreateAttempt(createSignature, 'unknown', directCreateIdempotencyKey);
             cabinetTaskCreatePending = false;
             setCabinetTaskCreateBusy(false);
         }
@@ -8868,7 +8926,7 @@ async function createCabinetTask(event, mode) {
     }
 
     lastCabinetCreatedTaskId = verification.taskId || lastCabinetCreatedTaskId;
-    if (!aiCommitPayload) clearCabinetTaskCreateAttempt(createSignature);
+    if (!aiCommitPayload) clearCabinetTaskCreateAttempt(createSignature, directCreateIdempotencyKey);
     if (aiCommitPayload) {
         window.TaskAiDraft?.markCommittedTaskId?.(verification.taskId);
     }

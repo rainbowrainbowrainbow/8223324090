@@ -36,8 +36,11 @@ function createSingleTaskDraftDom(options = {}) {
     let createCalls = 0;
     window.TaskCreate = {
         requestAiDraftStatus: async () => ({ success: true, feature: { enabled: true } }),
-        requestAiDraftPreview: async () => {
+        requestAiDraftPreview: async context => {
             previewCalls += 1;
+            if (typeof options.requestAiDraftPreview === 'function') {
+                return options.requestAiDraftPreview(context, { draft, previewCalls });
+            }
             if (options.providerError) throw new Error(options.providerError);
             return {
                 success: true,
@@ -337,6 +340,51 @@ test('AI draft provider errors keep text, restore action label, and never auto-c
     assert.equal(ctx.createCalls, 0, 'retry still does not auto-create a task');
     assert.equal(input.value, 'Перевірити provider retry для Task Composer', 'retry error still keeps typed text');
     assert.equal(aiButton.textContent, 'Заповнити з AI', 'AI button label is stable after retry error');
+});
+
+test('AI draft delayed stale response does not open an old preview after source text changes', async () => {
+    let resolvePreview;
+    const ctx = createSingleTaskDraftDom({
+        title: 'Стара чернетка',
+        requestAiDraftPreview: async () => new Promise(resolve => { resolvePreview = resolve; })
+    });
+    await tick();
+
+    ctx.root.querySelector('[data-task-ai-draft-preview]').click();
+    await tick();
+    ctx.draft.title = 'Нова чернетка після зміни';
+    ctx.root.querySelector('#cabinetTaskTitle').value = ctx.draft.title;
+    resolvePreview({
+        success: true,
+        proposalToken: 'payload.signature',
+        draftFingerprint: 'stale-draft-hash',
+        proposalHash: 'proposal-hash',
+        catalogVersion: 'catalog-hash',
+        proposal: {
+            decision: 'single_task',
+            action: 'apply',
+            title: 'AI для старої чернетки',
+            description: 'Старий AI preview',
+            impactIds: [],
+            priority: null,
+            scheduleDate: null,
+            subtasks: []
+        },
+        diff: {
+            changedFields: ['description'],
+            fields: {
+                description: { before: '', after: 'Старий AI preview', changed: true }
+            }
+        },
+        impactCatalog: []
+    });
+    await tick();
+    await tick();
+
+    assert.equal(ctx.root.querySelector('[data-task-ai-draft-review]').hidden, true);
+    assert.match(ctx.root.querySelector('[data-task-ai-draft-status]').textContent, /Чернетка змінилася/);
+    assert.equal(ctx.draft.description, '');
+    assert.equal(ctx.createCalls, 0);
 });
 
 test('AI draft composer renders interactive task bundle review without single-task commit fallback', async () => {

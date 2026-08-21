@@ -51,6 +51,8 @@ function summaryForAction(actionType) {
             return 'Task slot missed';
         case TASK_ACTION_TYPES.DISCIPLINE_PENALTY_APPLIED:
             return 'Task discipline penalty applied';
+        case TASK_ACTION_TYPES.CREATED:
+            return 'Task created';
         case TASK_ACTION_TYPES.AI_DRAFT_COMMITTED:
             return 'AI-assisted task draft committed';
         case TASK_ACTION_TYPES.AI_DRAFT_BUNDLE_COMMITTED:

@@ -80,7 +80,8 @@ const {
 } = require('../services/taskDecomposition');
 const {
     generateTaskAiDraftPreview,
-    legacyDecompositionResponseFromPreview
+    legacyDecompositionResponseFromPreview,
+    stableStringify
 } = require('../services/taskAiDraftPreview');
 const { commitTaskAiDraft } = require('../services/taskAiDraftCommit');
 const { commitTaskAiDraftBundle, readTaskBundleForUser } = require('../services/taskAiDraftBundleCommit');
@@ -616,20 +617,22 @@ async function replaceTaskObservers(task, observerIds = [], actor) {
     }
 }
 
-async function createTaskDependencyRows(taskId, dependencyIds = []) {
+async function createTaskDependencyRows(taskId, dependencyIds = [], options = {}) {
+    const query = options.pool || pool;
     const ids = normalizeDependencyIds(dependencyIds).filter(id => Number(id) !== Number(taskId));
     const states = [];
     for (const dependsOnTaskId of ids) {
-        states.push(await addTaskDependency(pool, { taskId, dependsOnTaskId }));
+        states.push(await addTaskDependency(query, { taskId, dependsOnTaskId }));
     }
     return states;
 }
 
 async function attachSubtaskSummary(task, options = {}) {
     if (!task?.id) return task;
+    const query = options.pool || pool;
     const hasKnownCounts = Number.isFinite(Number(task.subtask_count)) && Number.isFinite(Number(task.subtask_done_count));
     if (hasKnownCounts && (!options.includeSubtasks || Array.isArray(task.subtasks))) return task;
-    const result = await pool.query(
+    const result = await query.query(
         `SELECT COUNT(*)::int AS total,
                 COUNT(*) FILTER (WHERE is_done = true)::int AS done
          FROM task_subtasks
@@ -639,7 +642,7 @@ async function attachSubtaskSummary(task, options = {}) {
     task.subtask_count = result.rows[0]?.total || 0;
     task.subtask_done_count = result.rows[0]?.done || 0;
     if (options.includeSubtasks) {
-        task.subtasks = await listTaskSubtasks(pool, task.id);
+        task.subtasks = await listTaskSubtasks(query, task.id);
     }
     return task;
 }
@@ -872,6 +875,118 @@ function sourceSurface(body = {}, fallback = 'task_detail') {
         'alerts_panel'
     ].includes(raw)) return raw;
     return fallback;
+}
+
+function normalizeDirectTaskCreateIdempotencyKey(value = '') {
+    const key = String(value || '').trim();
+    if (!key) return '';
+    return /^[A-Za-z0-9._:-]{12,160}$/.test(key) ? key : '';
+}
+
+function hashDirectTaskCreateRequest(payload = {}) {
+    return crypto.createHash('sha256').update(stableStringify(payload)).digest('base64url');
+}
+
+function directTaskCreateRequestHashPayload(fields = {}) {
+    const dependencyIds = normalizeDependencyIds(fields.dependency_ids || fields.dependencyIds || []);
+    return {
+        title: String(fields.title || '').trim(),
+        description: String(fields.description || '').trim(),
+        date: fields.date || null,
+        priority: fields.priority || 'normal',
+        assignedTo: String(fields.assigned_to || fields.assignedTo || '').trim(),
+        ownerUserId: Number(fields.owner_user_id || fields.ownerUserId || 0) || null,
+        owner: String(fields.owner || '').trim(),
+        taskType: fields.task_type || fields.taskType || 'human',
+        deadline: fields.deadline || null,
+        timeWindowStart: fields.time_window_start || fields.timeWindowStart || null,
+        timeWindowEnd: fields.time_window_end || fields.timeWindowEnd || null,
+        dependencyIds,
+        controlPolicy: fields.control_policy || fields.controlPolicy || null,
+        sourceType: fields.source_type || fields.sourceType || 'manual',
+        sourceId: fields.source_id || fields.sourceId || null,
+        category: fields.category || 'admin',
+        subcategory: fields.subcategory || null,
+        checklistTemplateKey: fields.checklist_template_key || fields.checklistTemplateKey || null,
+        sourceEntityType: fields.source_entity_type || fields.sourceEntityType || null,
+        sourceEntityId: fields.source_entity_id || fields.sourceEntityId || null,
+        packId: fields.pack_id || fields.packId || null,
+        packStatus: fields.pack_status || fields.packStatus || null,
+        ownerRole: fields.owner_role || fields.ownerRole || null,
+        slaMinutes: fields.sla_minutes || fields.slaMinutes || null,
+        escalateAfter: fields.escalate_after || fields.escalateAfter || null,
+        templateId: fields.template_id || fields.templateId || null,
+        afishaId: fields.afisha_id || fields.afishaId || null,
+        os: {
+            taskMode: fields.task_mode || fields.taskMode || 'work',
+            taskKind: fields.task_kind || fields.taskKind || 'action',
+            visibility: fields.visibility || 'team',
+            workflowState: fields.workflow_state || fields.workflowState || 'todo',
+            effortMinutes: fields.effort_minutes || fields.effortMinutes || null,
+            sourceModule: fields.source_module || fields.sourceModule || null
+        },
+        schedule: fields.schedule || null,
+        subtasks: Array.isArray(fields.subtasks) ? fields.subtasks.map(item => ({
+            title: String((item && typeof item === 'object' ? item.title || item.name : item) || '').trim(),
+            sourceType: String(item?.sourceType || item?.source_type || 'manual').trim()
+        })).filter(item => item.title) : [],
+        controlMeta: fields.controlMeta || fields.control_meta || null,
+        reportRequired: fields.reportRequired === true || fields.report_required === true,
+        allowReschedule: fields.allowReschedule !== false && fields.allow_reschedule !== false,
+        force: isTruthy(fields.force || fields.forceDuplicate)
+    };
+}
+
+async function findDirectTaskCreateReplay(query, { userId, idempotencyKey, businessContext }) {
+    const params = [
+        TASK_ACTION_TYPES.CREATED,
+        Number(userId),
+        idempotencyKey
+    ];
+    let businessSql = '';
+    if (businessContext) {
+        params.push(activeTaskBusinessContext(businessContext));
+        businessSql = ` AND COALESCE(t.business_context, 'event_genix') = $${params.length}`;
+    }
+    const result = await query.query(
+        `SELECT h.id AS idempotency_history_id,
+                h.task_id AS idempotency_history_task_id,
+                h.action_type AS idempotency_action_type,
+                h.meta_json AS idempotency_meta_json,
+                h.created_at AS idempotency_created_at,
+                t.*
+         FROM task_action_history h
+         JOIN tasks t ON t.id = h.task_id
+         WHERE h.action_type = $1
+           AND h.actor_user_id = $2
+           AND h.meta_json->>'idempotencyKey' = $3
+           ${businessSql}
+         ORDER BY h.created_at DESC, h.id DESC
+         LIMIT 1`,
+        params
+    );
+    return result.rows?.[0] || null;
+}
+
+function directTaskCreateReplayPayload(row = {}) {
+    return {
+        success: true,
+        replayed: true,
+        task: normalizeTaskPayload(row),
+        postCreateWarnings: [],
+        schedule: null,
+        historyEvent: {
+            id: row.idempotency_history_id || null,
+            taskId: row.idempotency_history_task_id || row.id || null,
+            actionType: row.idempotency_action_type || TASK_ACTION_TYPES.CREATED,
+            meta: row.idempotency_meta_json || null,
+            createdAt: row.idempotency_created_at || null
+        },
+        meta: {
+            idempotencyReplay: true,
+            canonicalOwnerField: 'tasks.owner_user_id'
+        }
+    };
 }
 
 function sendTaskActionError(res, err) {
@@ -3455,73 +3570,60 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
         if (force && !canForceTaskDuplicate(req.user)) {
             return res.status(403).json({ error: 'Only managers can force duplicate manual tasks' });
         }
-        const duplicate = await findActiveDuplicateTask(pool, {
-            title,
-            date,
-            deadline,
-            owner_user_id,
-            category: opsFields.category,
-            subcategory: opsFields.subcategory,
-            source_type: srcType,
-            source_id,
-            template_id,
-            source_entity_type: opsFields.source_entity_type,
-            source_entity_id: opsFields.source_entity_id,
-            pack_id: opsFields.pack_id,
-            checklist_template_key: opsFields.checklist_template_key,
-            afisha_id,
-            businessContext
-        });
-        if (duplicate && !force) {
-            return res.status(409).json({
-                error: 'duplicate',
-                code: 'TASK_DUPLICATE_ACTIVE',
-                message: `Задача "${title.trim()}" вже існує`,
-                existingId: duplicate.id,
-                existingStatus: duplicate.status,
-                forceAllowed: srcType === 'manual' && canForceTaskDuplicate(req.user),
-                hint: 'Активний дубль не створено. Відкрий існуючу задачу або завершуй її.'
-            });
-        }
-
         const username = req.user?.username || 'system';
         const kleshnya = getKleshnya();
-
-        const task = await kleshnya.createTask({
-            businessContext,
-            title, description, date,
-            priority: taskPriority,
-            assigned_to: assigned_to || null,
-            owner_user_id,
-            owner: owner || null,
-            task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
-            deadline: deadline || null,
-            time_window_start: time_window_start || null,
-            time_window_end: time_window_end || null,
-            dependency_ids: dependency_ids || [],
-            control_policy: control_policy || undefined,
-            source_type: source_type || 'manual',
-            source_id: source_id || null,
-            category: opsFields.category,
-            subcategory: opsFields.subcategory,
-            checklist_template_key: opsFields.checklist_template_key,
-            source_entity_type: opsFields.source_entity_type,
-            source_entity_id: opsFields.source_entity_id,
-            pack_id: opsFields.pack_id,
-            pack_status: opsFields.pack_status,
-            owner_role: opsFields.owner_role,
-            sla_minutes: opsFields.sla_minutes,
-            escalate_after: opsFields.escalate_after,
-            template_id: template_id || null,
-            afisha_id: afisha_id || null,
-            created_by: username,
-            created_by_user_id: normalizeUserId(req.user),
-            control_meta: controlMeta,
-            forceDuplicate: force,
-            duplicateMode: 'reject',
-            ...osFields
-        });
-        let responseTask = task;
+        const actorUserId = normalizeUserId(req.user);
+        const rawDirectIdempotencyKey = idempotencyKeyFromRequest(req);
+        const directIdempotencyKey = normalizeDirectTaskCreateIdempotencyKey(rawDirectIdempotencyKey);
+        if (rawDirectIdempotencyKey && !directIdempotencyKey) {
+            return res.status(400).json({
+                success: false,
+                error: 'Invalid idempotency key',
+                code: 'TASK_CREATE_IDEMPOTENCY_INVALID'
+            });
+        }
+        const directRequestHash = directIdempotencyKey
+            ? hashDirectTaskCreateRequest(directTaskCreateRequestHashPayload({
+                ...b,
+                title,
+                description,
+                date,
+                priority: taskPriority,
+                assigned_to,
+                owner_user_id,
+                owner,
+                task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
+                deadline,
+                time_window_start,
+                time_window_end,
+                dependency_ids,
+                control_policy,
+                source_type: srcType,
+                source_id,
+                category: opsFields.category,
+                subcategory: opsFields.subcategory,
+                checklist_template_key: opsFields.checklist_template_key,
+                source_entity_type: opsFields.source_entity_type,
+                source_entity_id: opsFields.source_entity_id,
+                pack_id: opsFields.pack_id,
+                pack_status: opsFields.pack_status,
+                owner_role: opsFields.owner_role,
+                sla_minutes: opsFields.sla_minutes,
+                escalate_after: opsFields.escalate_after,
+                template_id,
+                afisha_id,
+                controlMeta,
+                subtasks: manualSubtasks,
+                ...osFields
+            }))
+            : '';
+        const afterCommit = [];
+        let client = null;
+        let query = pool;
+        let transactionStarted = false;
+        let transactionCommitted = false;
+        let task = null;
+        let responseTask = null;
         let scheduleResult = null;
         const postCreateWarnings = [];
         const recordPostCreateWarning = (step, err) => {
@@ -3531,59 +3633,199 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
                 message: err?.message || 'post-create step failed'
             };
             postCreateWarnings.push(warning);
-            log.error(`Task create post-step failed after task #${task.id} [${step}]`, err);
+            log.error(`Task create post-step failed after task #${task?.id || 'unknown'} [${step}]`, err);
         };
-        if (!task.duplicateSkipped && hasSchedulePayload(b)) {
-            try {
-                scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
-                    sourceSurface: sourceSurface(b, 'task_page'),
-                    route: 'tasks_create_schedule',
-                    businessScope
-                });
-                Object.assign(task, scheduleResult.task);
-                responseTask = scheduleResult.task;
-            } catch (err) {
-                recordPostCreateWarning('schedule', err);
-            }
-        }
-        if (hasManualSubtasks && !task.duplicateSkipped) {
-            try {
-                const subtasks = await replaceTaskSubtasks(pool, task.id, manualSubtasks, { sourceType: 'manual' });
-                responseTask.subtask_count = subtasks.length;
-                responseTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
-                responseTask.subtasks = subtasks;
-            } catch (err) {
-                recordPostCreateWarning('subtasks', err);
-            }
-        } else if (task.task_kind === 'checklist' && task.checklist_template_key) {
-            try {
-                const subtasks = await createChecklistSubtasks(pool, task.id, task.checklist_template_key);
-                responseTask.subtask_count = subtasks.length;
-                responseTask.subtask_done_count = 0;
-            } catch (err) {
-                recordPostCreateWarning('checklist_subtasks', err);
-            }
-        } else {
-            responseTask.subtask_count = 0;
-            responseTask.subtask_done_count = 0;
-        }
+        let directCreateHistoryEvent = null;
         try {
-            await createTaskDependencyRows(task.id, dependency_ids);
+            if (directIdempotencyKey) {
+                client = await pool.connect();
+                query = client;
+                await client.query('BEGIN');
+                transactionStarted = true;
+                await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
+                    `task_create_idempotency:${actorUserId}:${businessContext}:${directIdempotencyKey}`
+                ]);
+                const existing = await findDirectTaskCreateReplay(client, {
+                    userId: actorUserId,
+                    idempotencyKey: directIdempotencyKey,
+                    businessContext
+                });
+                if (existing) {
+                    const meta = existing.idempotency_meta_json || {};
+                    if (meta.requestHash && meta.requestHash !== directRequestHash) {
+                        const conflict = new Error('Idempotency key was already used with a different task create request.');
+                        conflict.statusCode = 409;
+                        conflict.code = 'TASK_CREATE_IDEMPOTENCY_CONFLICT';
+                        throw conflict;
+                    }
+                    await client.query('COMMIT');
+                    transactionCommitted = true;
+                    return res.json(directTaskCreateReplayPayload(existing));
+                }
+            }
+
+            const duplicate = await findActiveDuplicateTask(query, {
+                title,
+                date,
+                deadline,
+                owner_user_id,
+                category: opsFields.category,
+                subcategory: opsFields.subcategory,
+                source_type: srcType,
+                source_id,
+                template_id,
+                source_entity_type: opsFields.source_entity_type,
+                source_entity_id: opsFields.source_entity_id,
+                pack_id: opsFields.pack_id,
+                checklist_template_key: opsFields.checklist_template_key,
+                afisha_id,
+                businessContext
+            });
+            if (duplicate && !force) {
+                if (client && transactionStarted && !transactionCommitted) {
+                    await client.query('ROLLBACK');
+                    transactionCommitted = true;
+                }
+                return res.status(409).json({
+                    error: 'duplicate',
+                    code: 'TASK_DUPLICATE_ACTIVE',
+                    message: `Задача "${title.trim()}" вже існує`,
+                    existingId: duplicate.id,
+                    existingStatus: duplicate.status,
+                    forceAllowed: srcType === 'manual' && canForceTaskDuplicate(req.user),
+                    hint: 'Активний дубль не створено. Відкрий існуючу задачу або завершуй її.'
+                });
+            }
+
+            task = await kleshnya.createTask({
+                businessContext,
+                title, description, date,
+                priority: taskPriority,
+                assigned_to: assigned_to || null,
+                owner_user_id,
+                owner: owner || null,
+                task_type: VALID_TASK_TYPES.includes(task_type) ? task_type : 'human',
+                deadline: deadline || null,
+                time_window_start: time_window_start || null,
+                time_window_end: time_window_end || null,
+                dependency_ids: dependency_ids || [],
+                control_policy: control_policy || undefined,
+                source_type: source_type || 'manual',
+                source_id: source_id || null,
+                category: opsFields.category,
+                subcategory: opsFields.subcategory,
+                checklist_template_key: opsFields.checklist_template_key,
+                source_entity_type: opsFields.source_entity_type,
+                source_entity_id: opsFields.source_entity_id,
+                pack_id: opsFields.pack_id,
+                pack_status: opsFields.pack_status,
+                owner_role: opsFields.owner_role,
+                sla_minutes: opsFields.sla_minutes,
+                escalate_after: opsFields.escalate_after,
+                template_id: template_id || null,
+                afisha_id: afisha_id || null,
+                created_by: username,
+                created_by_user_id: actorUserId,
+                control_meta: controlMeta,
+                forceDuplicate: force,
+                duplicateMode: 'reject',
+                ...osFields
+            }, {
+                pool: query,
+                afterCommit: directIdempotencyKey ? afterCommit : undefined
+            });
+            responseTask = task;
+            if (!task.duplicateSkipped && hasSchedulePayload(b)) {
+                try {
+                    scheduleResult = await scheduleTask(task.id, { ...b, date }, req.user, {
+                        pool: query,
+                        sourceSurface: sourceSurface(b, 'task_page'),
+                        route: 'tasks_create_schedule',
+                        businessScope
+                    });
+                    Object.assign(task, scheduleResult.task);
+                    responseTask = scheduleResult.task;
+                } catch (err) {
+                    recordPostCreateWarning('schedule', err);
+                }
+            }
+            if (hasManualSubtasks && !task.duplicateSkipped) {
+                try {
+                    const subtasks = await replaceTaskSubtasks(query, task.id, manualSubtasks, { sourceType: 'manual' });
+                    responseTask.subtask_count = subtasks.length;
+                    responseTask.subtask_done_count = subtasks.filter(item => item.isDone || item.is_done).length;
+                    responseTask.subtasks = subtasks;
+                } catch (err) {
+                    recordPostCreateWarning('subtasks', err);
+                }
+            } else if (task.task_kind === 'checklist' && task.checklist_template_key) {
+                try {
+                    const subtasks = await createChecklistSubtasks(query, task.id, task.checklist_template_key);
+                    responseTask.subtask_count = subtasks.length;
+                    responseTask.subtask_done_count = 0;
+                } catch (err) {
+                    recordPostCreateWarning('checklist_subtasks', err);
+                }
+            } else {
+                responseTask.subtask_count = 0;
+                responseTask.subtask_done_count = 0;
+            }
+            try {
+                await createTaskDependencyRows(task.id, dependency_ids, { pool: query });
+            } catch (err) {
+                recordPostCreateWarning('dependencies', err);
+            }
+            try {
+                responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks, pool: query });
+            } catch (err) {
+                recordPostCreateWarning('subtask_summary', err);
+            }
+            if (directIdempotencyKey) {
+                directCreateHistoryEvent = await logTaskActionEvent({
+                    taskId: task.id,
+                    actionType: TASK_ACTION_TYPES.CREATED,
+                    actor: req.user,
+                    sourceSurface: sourceSurface(b, 'task_page'),
+                    oldValue: null,
+                    newValue: {
+                        taskId: Number(task.id),
+                        scheduleWritten: Boolean(scheduleResult?.task?.date || date || deadline),
+                        subtaskCount: Number(responseTask?.subtask_count || 0),
+                        postCreateWarningCount: postCreateWarnings.length
+                    },
+                    meta: {
+                        idempotencyKey: directIdempotencyKey,
+                        requestHash: directRequestHash,
+                        route: 'tasks_create',
+                        businessScope: taskBusinessScopeMeta(businessScope),
+                        source: 'routes/tasks.create',
+                        rawRequestStored: false
+                    },
+                    summary: 'Task created'
+                }, { pool: query });
+            }
+            if (client && transactionStarted && !transactionCommitted) {
+                await client.query('COMMIT');
+                transactionCommitted = true;
+                afterCommit.forEach(fn => {
+                    try { fn(); } catch (err) { log.error(`Task create after-commit hook failed: ${err.message}`); }
+                });
+            }
         } catch (err) {
-            recordPostCreateWarning('dependencies', err);
+            if (client && transactionStarted && !transactionCommitted) {
+                try { await client.query('ROLLBACK'); } catch {}
+            }
+            throw err;
+        } finally {
+            if (client) client.release();
         }
         if (hasObserverPatch(b)) {
             try {
                 task.observers = await replaceTaskObservers(task, observerIdsFromBody(b), req.user);
                 task.observer_count = task.observers.length;
             } catch (err) {
-                recordPostCreateWarning('observers', err);
+            recordPostCreateWarning('observers', err);
             }
-        }
-        try {
-            responseTask = await attachSubtaskSummary(responseTask, { includeSubtasks: hasManualSubtasks });
-        } catch (err) {
-            recordPostCreateWarning('subtask_summary', err);
         }
         try {
             emitTaskAssignedToOwner(task, req.user, { assignmentEvent: 'created', source: 'routes/tasks.create' });
@@ -3596,6 +3838,7 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
             task: normalizeTaskPayload(responseTask),
             postCreateWarnings,
             schedule: scheduleResult ? { historyEvent: scheduleResult.historyEvent, proposals: scheduleResult.proposals || [] } : null,
+            historyEvent: directCreateHistoryEvent,
             meta: {
                 canonicalOwnerField: 'tasks.owner_user_id',
                 legacyDisplayFields: ['assigned_to', 'owner'],
@@ -3611,6 +3854,13 @@ router.post('/', requireTaskRouteCapability('create'), async (req, res) => {
         });
         _alertPush();
     } catch (err) {
+        if (err.code === 'TASK_CREATE_IDEMPOTENCY_CONFLICT') {
+            return res.status(err.statusCode || 409).json({
+                success: false,
+                error: err.message,
+                code: err.code
+            });
+        }
         if (err instanceof TaskDuplicateError || err.code === 'TASK_DUPLICATE_ACTIVE') {
             return res.status(409).json({
                 error: 'duplicate',

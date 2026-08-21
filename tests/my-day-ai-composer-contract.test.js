@@ -197,3 +197,19 @@ test('My Day AI composer contract documents preview/commit and current rail spli
     assert.match(doc, /Quality gates/);
     assert.doesNotMatch(doc, /OPENAI_API_KEY=.*|OPENROUTER_API_KEY=.*/);
 });
+
+test('My Day direct create idempotency contract replays before duplicate checks', () => {
+    const routeSource = fs.readFileSync(path.join(root, 'routes', 'tasks.js'), 'utf8');
+    const taskCreateSource = fs.readFileSync(path.join(root, 'js', 'task-create.js'), 'utf8');
+    const replayIndex = routeSource.indexOf('findDirectTaskCreateReplay');
+    const duplicateIndex = routeSource.indexOf('findActiveDuplicateTask(query');
+
+    assert.match(taskCreateSource, /headers\['Idempotency-Key'\]\s*=\s*idempotencyKey/);
+    assert.match(routeSource, /normalizeDirectTaskCreateIdempotencyKey/);
+    assert.match(routeSource, /task_create_idempotency:\$\{actorUserId\}:\$\{businessContext\}:\$\{directIdempotencyKey\}/);
+    assert.match(routeSource, /TASK_ACTION_TYPES\.CREATED/);
+    assert.match(routeSource, /meta\.requestHash && meta\.requestHash !== directRequestHash/);
+    assert.ok(replayIndex > 0, 'direct create replay lookup must exist');
+    assert.ok(duplicateIndex > 0, 'direct create duplicate check must still exist');
+    assert.ok(replayIndex < duplicateIndex, 'idempotency replay must run before duplicate rejection');
+});

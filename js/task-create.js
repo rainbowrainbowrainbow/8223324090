@@ -475,6 +475,8 @@
             const headers = typeof getAuthHeaders === 'function'
                 ? getAuthHeaders()
                 : { 'Content-Type': 'application/json' };
+            const idempotencyKey = String(options.idempotencyKey || data.idempotencyKey || data.idempotency_key || '').trim();
+            if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
             const fetchWithAuth = typeof apiFetchWithAuthRetry === 'function' ? apiFetchWithAuthRetry : fetch;
             const response = await fetchWithAuth(scopedTaskApiUrl(`${base}/tasks`), {
                 method: 'POST',

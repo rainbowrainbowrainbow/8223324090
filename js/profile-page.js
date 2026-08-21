@@ -7011,17 +7011,17 @@ function renderCabinetTaskComposer(options = {}) {
                     <span class="cabinet-kicker">Нова задача</span>
                     <h3>Додати в мій робочий простір</h3>
                 </div>
-                <div class="cabinet-task-composer-actions">
-                    <button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
-                    <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Створити</button>
-                    <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
-                </div>
             </div>
             <div class="cabinet-task-composer-main">
                 <label class="cabinet-task-title-field" for="cabinetTaskTitle">
                     <span>Що потрібно зробити?</span>
                     <textarea id="cabinetTaskTitle" rows="1" autocomplete="off" placeholder="Напишіть коротку назву або опишіть задачу детально" data-task-ai-source-field="title"></textarea>
                 </label>
+                <div class="cabinet-task-composer-actions">
+                    <button type="submit" class="cabinet-task-create-submit" data-cabinet-create-action="plain" aria-busy="false">Створити</button>
+                    <button type="button" class="cabinet-task-ai-fill task-ai-draft-trigger" id="cabinetTaskAiFillBtn" data-cabinet-create-action="ai" data-task-ai-draft-preview aria-busy="false">Заповнити з AI</button>
+                    <button type="button" class="cabinet-task-composer-toggle" data-cabinet-composer-toggle aria-expanded="${expanded ? 'true' : 'false'}" aria-controls="cabinetTaskComposerAdvanced">${expanded ? 'Згорнути' : 'Більше параметрів'}</button>
+                </div>
                 <div class="cabinet-task-composer-main-advanced" id="cabinetTaskComposerAdvanced" data-cabinet-composer-advanced aria-hidden="${expanded ? 'false' : 'true'}" ${expanded ? '' : 'hidden'}>
                     <label for="cabinetTaskCategory">
                         <span>Категорія</span>

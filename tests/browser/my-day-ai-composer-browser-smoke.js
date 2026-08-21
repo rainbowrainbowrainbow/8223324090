@@ -357,6 +357,9 @@ async function runScenario(browser, fixture, { dark, viewport }) {
         await page.click('#clarify');
         await page.click('[data-task-ai-draft-preview]');
         await page.waitForSelector('.task-ai-draft-review.is-clarification');
+        await page.click('[data-task-ai-draft-cancel]');
+        assert.equal(await page.evaluate(() => document.activeElement?.matches('[data-task-ai-draft-preview]')), true);
+        assert.equal(await page.locator('[data-task-ai-draft-review]').isHidden(), true);
         await page.keyboard.press('Tab');
         const overflow = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
         assert.ok(overflow <= 1, `AI composer has horizontal overflow: ${overflow}px`);

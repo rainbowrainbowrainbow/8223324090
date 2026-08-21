@@ -506,7 +506,7 @@ body.dark-mode .cabinet-segments button b {
 }
 
 .cabinet-task-composer-head {
-    grid-template-columns: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
     align-items: center;
 }
 
@@ -526,11 +526,12 @@ body.dark-mode .cabinet-segments button b {
 }
 
 .cabinet-task-composer-main {
-    grid-template-columns: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) auto;
     align-items: end;
 }
 
 .cabinet-task-composer-main-advanced {
+    grid-column: 1 / -1;
     display: grid;
     grid-template-columns: repeat(3, minmax(130px, 1fr));
     gap: 10px;

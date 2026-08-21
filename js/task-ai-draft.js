@@ -489,6 +489,13 @@
         }
     }
 
+    function focusPreviewTrigger(root) {
+        const button = root.querySelector('[data-task-ai-draft-preview]');
+        if (button && !button.hidden && button.getAttribute('aria-hidden') !== 'true' && !button.disabled) {
+            button.focus();
+        }
+    }
+
     async function applyFeatureStatus(root) {
         if (!root || typeof window.TaskCreate?.requestAiDraftStatus !== 'function') return;
         const button = root.querySelector('[data-task-ai-draft-preview]');
@@ -907,6 +914,7 @@
             host.innerHTML = '';
         }
         setStatus(root, '');
+        focusPreviewTrigger(root);
     }
 
     function markUserEdited(root, field) {

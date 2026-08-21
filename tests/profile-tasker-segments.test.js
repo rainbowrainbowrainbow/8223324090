@@ -867,6 +867,14 @@ test('profile task composer starts collapsed with advanced fields behind an expl
     assert.match(collapsedHtml, /Напишіть коротку назву або опишіть задачу детально/);
     assert.match(collapsedHtml, /data-cabinet-create-action="plain"[^>]*>Створити</);
     assert.match(collapsedHtml, /id="cabinetTaskAiFillBtn"[^>]*data-cabinet-create-action="ai"[^>]*data-task-ai-draft-preview[^>]*>Заповнити з AI</);
+    const titleIndex = collapsedHtml.indexOf('id="cabinetTaskTitle"');
+    const plainIndex = collapsedHtml.indexOf('data-cabinet-create-action="plain"');
+    const aiIndex = collapsedHtml.indexOf('id="cabinetTaskAiFillBtn"');
+    const advancedToggleIndex = collapsedHtml.indexOf('data-cabinet-composer-toggle');
+    assert.ok(titleIndex > -1 && plainIndex > -1 && aiIndex > -1, 'composer focus targets are rendered');
+    assert.ok(titleIndex < plainIndex, 'keyboard order reaches the textarea before plain create');
+    assert.ok(plainIndex < aiIndex, 'keyboard order reaches plain create before AI fill');
+    assert.ok(aiIndex < advancedToggleIndex, 'secondary advanced toggle follows the primary create actions');
     assert.doesNotMatch(collapsedHtml, /Підготувати з AI/);
     assert.doesNotMatch(collapsedHtml, /Опиши результат або деталі/);
     assert.match(collapsedHtml, /id="cabinetTaskComposerStatus"[^>]*role="status"[^>]*aria-live="polite"/);

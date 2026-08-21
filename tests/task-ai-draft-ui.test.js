@@ -329,6 +329,25 @@ test('AI draft details edit cancel keeps the original draft untouched', async ()
     assert.equal(ctx.root.querySelector('[data-task-ai-draft-preview]').textContent, 'Заповнити з AI');
 });
 
+test('AI draft preview cancel returns focus to the visible AI trigger', async () => {
+    const ctx = createSingleTaskDraftDom({ description: 'Manual details', aiDescription: 'AI details before preview cancel' });
+    await tick();
+
+    const aiButton = ctx.root.querySelector('[data-task-ai-draft-preview]');
+    aiButton.click();
+    await tick();
+    await tick();
+
+    const cancelButton = ctx.root.querySelector('[data-task-ai-draft-cancel]');
+    assert.ok(cancelButton, 'preview cancel button is rendered');
+    cancelButton.click();
+
+    assert.equal(ctx.root.querySelector('[data-task-ai-draft-review]').hidden, true);
+    assert.equal(ctx.window.document.activeElement, aiButton, 'focus returns to the visible AI trigger');
+    assert.equal(ctx.window.document.activeElement.closest('[hidden]'), null, 'focus is not left inside a hidden preview');
+    assert.equal(aiButton.textContent, 'Заповнити з AI');
+});
+
 test('AI draft provider errors keep text, restore action label, and never auto-create a task', async () => {
     const ctx = createSingleTaskDraftDom({
         title: 'Перевірити provider retry для Task Composer',

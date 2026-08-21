@@ -1146,6 +1146,7 @@ async function buildTaskAiDraftCommit(req, res) {
         proposalToken: body.proposalToken || body.proposal_token,
         finalDraft: taskAiFinalDraftFromBody(body),
         acceptedFieldMask: body.acceptedFieldMask || body.accepted_field_mask || body.acceptedFields || body.accepted_fields || [],
+        editedFieldMask: body.editedFieldMask || body.edited_field_mask || body.editedFields || body.edited_fields || [],
         idempotencyKey: idempotencyKeyFromRequest(req),
         proposalHash: body.proposalHash || body.proposal_hash,
         proposal: body.proposal,

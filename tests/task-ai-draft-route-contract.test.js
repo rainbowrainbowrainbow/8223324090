@@ -60,6 +60,7 @@ function installBaseRouteMocks({
     activeImpacts = [],
     taskDecomposition = null,
     taskAiDraftPreview = null,
+    taskAiDraftCommit = null,
     telemetryEvents = []
 } = {}) {
     installMock('../db', {
@@ -137,7 +138,7 @@ function installBaseRouteMocks({
         },
         legacyDecompositionResponseFromPreview: () => ({ success: false })
     });
-    installMock('../services/taskAiDraftCommit', {
+    installMock('../services/taskAiDraftCommit', taskAiDraftCommit || {
         commitTaskAiDraft: async () => {
             throw new Error('commit route is not part of this test');
         }
@@ -325,6 +326,100 @@ test('direct task create route replays simultaneous requests with the same idemp
         assert.equal([firstPayload.replayed, secondPayload.replayed].filter(Boolean).length, 1);
         assert.equal(state.history[0].meta_json.idempotencyKey, 'direct_route_same_key_20260821');
         assert.equal((firstPayload.replayed ? firstPayload : secondPayload).historyEvent.meta.idempotencyKey, 'direct_route_same_key_20260821');
+    } finally {
+        await close(server);
+        clearRouteModules();
+    }
+});
+
+test('AI draft commit route forwards edited field mask aliases to the canonical service', async () => {
+    clearRouteModules();
+    const activeImpacts = [
+        { id: 101, name: 'Work: CRM', icon: 'crm', color: '#2563eb', isActive: true }
+    ];
+    const capturedInputs = [];
+    installBaseRouteMocks({
+        activeImpacts,
+        taskAiDraftCommit: {
+            commitTaskAiDraft: async input => {
+                capturedInputs.push(input);
+                return {
+                    ok: true,
+                    replayed: false,
+                    task: {
+                        id: 900 + capturedInputs.length,
+                        title: input.finalDraft?.title || 'Edited AI draft route task',
+                        description: input.finalDraft?.description || null,
+                        priority: input.finalDraft?.priority || 'normal',
+                        date: input.finalDraft?.scheduleDate || null,
+                        status: 'todo',
+                        workflow_state: 'todo',
+                        business_context: input.businessScope?.businessContext || 'event_genix'
+                    },
+                    subtasks: [],
+                    classification: null,
+                    historyEvent: null
+                };
+            }
+        }
+    });
+
+    const router = require('../routes/tasks');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/tasks', router);
+    const { server, baseUrl } = await listen(app);
+    const aliases = ['editedFieldMask', 'edited_field_mask', 'editedFields', 'edited_fields'];
+    try {
+        for (const alias of aliases) {
+            const response = await fetch(`${baseUrl}/api/tasks/ai-draft/commit`, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Idempotency-Key': `ai-route-edited-mask-${alias}`
+                },
+                body: JSON.stringify({
+                    proposalToken: 'signed-proposal-token',
+                    proposalHash: 'proposal-hash',
+                    draftFingerprint: 'draft-fingerprint',
+                    proposal: {
+                        decision: 'single_task',
+                        mode: 'simple',
+                        title: 'AI proposed task',
+                        description: 'AI proposed details',
+                        priority: 'high',
+                        scheduleDate: '2026-08-10',
+                        impactIds: [101],
+                        subtasks: []
+                    },
+                    finalDraft: {
+                        title: 'User edited AI route task',
+                        description: 'User edited details',
+                        mode: 'simple',
+                        taskMode: 'work',
+                        impactIds: [101],
+                        subtasks: [],
+                        priority: 'urgent',
+                        scheduleDate: '2026-08-12',
+                        scheduleConfirmed: true
+                    },
+                    acceptedFieldMask: ['title', 'description', 'priority', 'scheduleDate'],
+                    [alias]: ['priority', 'scheduleDate'],
+                    sourceSurface: 'profile_my_cabinet'
+                })
+            });
+            const payload = await response.json();
+            assert.equal(response.status, 200, `${alias}: ${JSON.stringify(payload)}`);
+            assert.equal(payload.success, true, `${alias}: route returns success`);
+        }
+
+        assert.equal(capturedInputs.length, aliases.length);
+        assert.deepEqual(
+            capturedInputs.map(input => input.editedFieldMask),
+            aliases.map(() => ['priority', 'scheduleDate'])
+        );
+        assert.ok(capturedInputs.every(input => input.acceptedFieldMask.includes('priority')));
+        assert.ok(capturedInputs.every(input => input.acceptedFieldMask.includes('scheduleDate')));
     } finally {
         await close(server);
         clearRouteModules();

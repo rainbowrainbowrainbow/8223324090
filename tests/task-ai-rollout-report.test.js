@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const report = require('../scripts/task-ai-rollout-report');
+const collector = require('../scripts/collect-task-ai-rollout-logs');
 
 function previewEvent(offsetHours, overrides = {}) {
     const observedAt = new Date(Date.UTC(2026, 7, 10, offsetHours, 0, 0)).toISOString();
@@ -16,8 +17,15 @@ function previewEvent(offsetHours, overrides = {}) {
             latencyMs: 100 + offsetHours,
             model: 'gpt-5.6-luna',
             provider: 'openai',
+            releaseVersion: '0.81.11',
+            releaseSha: '1d563ec90ec8b154d770bdf7e77724f47e702750',
+            deploymentId: 'deployment-current',
+            rolloutStage: '20',
+            expectedRolloutPercent: '20',
             contractVersion: 'my_day_ai_composer_proposal_v2',
             promptVersion: '2026-08-09.4',
+            reasoningEffort: 'low',
+            correlationId: `preview-${offsetHours}`,
             reasonCode: 'checklist',
             changedFields: ['title', 'impactIds', 'subtasks'],
             usage: { input_tokens: 50, output_tokens: 60, total_tokens: 110 },
@@ -59,7 +67,7 @@ test('task AI rollout report parses sanitized structured and pretty telemetry wi
     });
     const serialized = JSON.stringify(built);
     assert.doesNotMatch(serialized, /OPENAI_API_KEY|proposalToken|provider response|Sensitive CRM|promptText/i);
-    assert.equal(built.telemetry.successfulProposals, 1);
+    assert.equal(built.telemetry.successfulProposals, 0);
     assert.equal(built.telemetry.fallbackProposalCount, 1);
     assert.equal(built.telemetry.byFallbackReason.minimal_content, 1);
     assert.equal(built.telemetry.byOutcome.fallback_proposal, 1);
@@ -81,6 +89,22 @@ test('task AI rollout report accepts stdin, release metadata and stage options',
     assert.equal(options.stage, '50');
     assert.equal(options.version, '0.80.128');
     assert.equal(options.expectedRolloutPercent, '50');
+});
+
+test('task AI rollout report supports exact prompt, contract and deployment filters', () => {
+    const options = report.parseArgs([
+        '--stage', '20',
+        '--version', '0.81.11',
+        '--sha', '1d563ec90ec8b154d770bdf7e77724f47e702750',
+        '--prompt-version', '2026-08-09.4',
+        '--contract-version', 'my_day_ai_composer_proposal_v2',
+        '--deployment-id', 'deployment-current',
+        '--expected-rollout-percent', '20'
+    ]);
+
+    assert.equal(options.promptVersion, '2026-08-09.4');
+    assert.equal(options.contractVersion, 'my_day_ai_composer_proposal_v2');
+    assert.equal(options.deploymentId, 'deployment-current');
 });
 
 test('task AI rollout verdict passes with 30 successful proposals and clean database evidence', () => {
@@ -116,6 +140,79 @@ test('task AI rollout verdict passes with 30 successful proposals and clean data
     assert.equal(built.verdict.missingEvidence.length, 0);
 });
 
+test('task AI rollout exact filters exclude older release events', () => {
+    const current = previewEvent(0, { correlationId: 'current' });
+    const old = previewEvent(1, {
+        releaseVersion: '0.81.10',
+        releaseSha: 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+        deploymentId: 'old',
+        correlationId: 'old'
+    });
+
+    const built = report.buildReport({
+        logEvents: [current, old],
+        dbEvidence: {
+            available: true,
+            events: [],
+            checks: {
+                duplicateCommits: 0,
+                partialImpactWrites: 0,
+                partialSubtaskWrites: 0,
+                partialBundleWrites: 0,
+                schedulePlacementFailures: 0
+            }
+        },
+        options: {
+            hours: 24,
+            minProposals: 1,
+            providerErrorRateMax: 0.05,
+            version: '0.81.11',
+            sha: '1d563ec90ec8b154d770bdf7e77724f47e702750',
+            promptVersion: '2026-08-09.4',
+            contractVersion: 'my_day_ai_composer_proposal_v2',
+            deploymentId: 'deployment-current'
+        }
+    });
+
+    assert.equal(built.sources.exactFilteredEvents, 1);
+    assert.equal(built.telemetry.successfulProposals, 1);
+    assert.equal(built.verdict.status, 'pass');
+});
+
+test('task AI rollout deduplicates matching DB and log correlation IDs', () => {
+    const logEvent = previewEvent(0, { correlationId: 'shared-preview' });
+    const commitLog = {
+        observedAt: '2026-08-10T01:00:00.000Z',
+        source: 'logs',
+        event: { type: 'commit', status: 'success', latencyMs: 250, correlationId: 'same-commit', acceptedFieldMask: ['title'] }
+    };
+    const commitDb = {
+        observedAt: '2026-08-10T01:00:00.000Z',
+        source: 'database',
+        event: { type: 'commit', status: 'success', latencyMs: 0, correlationId: 'same-commit', acceptedFieldMask: ['title'] }
+    };
+
+    const built = report.buildReport({
+        logEvents: [logEvent, commitLog],
+        dbEvidence: {
+            available: true,
+            events: [commitDb],
+            checks: {
+                duplicateCommits: 0,
+                partialImpactWrites: 0,
+                partialSubtaskWrites: 0,
+                partialBundleWrites: 0,
+                schedulePlacementFailures: 0
+            }
+        },
+        options: { hours: 24, minProposals: 1, providerErrorRateMax: 0.05 }
+    });
+
+    assert.equal(built.sources.exactFilteredEvents, 3);
+    assert.equal(built.sources.deduplicatedEvents, 2);
+    assert.equal(built.telemetry.latencyMs.commit.p50, 250);
+});
+
 test('task AI rollout verdict also passes with 24h timestamp window and fewer successful proposals', () => {
     const logEvents = [previewEvent(0), previewEvent(24)];
     const dbEvidence = {
@@ -137,14 +234,14 @@ test('task AI rollout verdict also passes with 24h timestamp window and fewer su
     const built = report.buildReport({
         logEvents,
         dbEvidence,
-        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05, version: '0.80.127', sha: '318da0a178b7e4c8a1a89862c2797174223f6944', stage: '20', expectedRolloutPercent: '20' }
+        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05, version: '0.81.11', sha: '1d563ec90ec8b154d770bdf7e77724f47e702750', stage: '20', expectedRolloutPercent: '20' }
     });
 
     assert.equal(built.verdict.status, 'pass');
     assert.equal(built.verdict.gates.enoughSuccessfulProposals, false);
     assert.equal(built.verdict.gates.enoughTimeEvidence, true);
     assert.equal(built.verdict.gates.enoughVolumeOrTimeEvidence, true);
-    assert.equal(built.release.version, '0.80.127');
+    assert.equal(built.release.version, '0.81.11');
     assert.equal(built.release.stage, '20');
 });
 
@@ -174,6 +271,11 @@ test('task AI rollout verdict holds on provider errors, unknown impacts, partial
     const logEvents = Array.from({ length: 30 }, (_, index) => previewEvent(index));
     logEvents.push(previewEvent(30, { status: 'provider_error', reasonCode: 'provider_error' }));
     logEvents.push(previewEvent(31, { status: 'invalid_response', reasonCode: 'TASK_AI_DRAFT_UNKNOWN_IMPACT' }));
+    logEvents.push({
+        observedAt: '2026-08-11T09:00:00.000Z',
+        source: 'logs',
+        event: { type: 'commit', status: 'error', reasonCode: 'commit_error' }
+    });
 
     const built = report.buildReport({
         logEvents,
@@ -197,6 +299,39 @@ test('task AI rollout verdict holds on provider errors, unknown impacts, partial
     assert.equal(built.verdict.gates.partialWrites, false);
     assert.equal(built.verdict.gates.duplicateCommits, false);
     assert.equal(built.verdict.gates.schedulePlacementFailures, false);
+    assert.equal(built.telemetry.providerFailures, 2);
+});
+
+test('task AI rollout provider latency excludes database zero-latency rows', () => {
+    const built = report.buildReport({
+        logEvents: [
+            previewEvent(0, { latencyMs: 400, correlationId: 'provider-1' }),
+            {
+                observedAt: '2026-08-10T02:00:00.000Z',
+                source: 'logs',
+                event: { type: 'commit', status: 'success', latencyMs: 25, correlationId: 'commit-1' }
+            }
+        ],
+        dbEvidence: {
+            available: true,
+            events: [{
+                observedAt: '2026-08-10T02:00:00.000Z',
+                source: 'database',
+                event: { type: 'commit', status: 'success', latencyMs: 0, correlationId: 'commit-db' }
+            }],
+            checks: {
+                duplicateCommits: 0,
+                partialImpactWrites: 0,
+                partialSubtaskWrites: 0,
+                partialBundleWrites: 0,
+                schedulePlacementFailures: 0
+            }
+        },
+        options: { hours: 24, minProposals: 1, providerErrorRateMax: 0.05 }
+    });
+
+    assert.equal(built.telemetry.latencyMs.providerPreview.p50, 400);
+    assert.equal(built.telemetry.latencyMs.commit.p50, 25);
 });
 
 test('task AI rollout database evidence uses only read-only queries and never falls back to DATABASE_URL', async () => {
@@ -262,6 +397,46 @@ test('task AI rollout database evidence uses only read-only queries and never fa
     assert.ok(calls.length >= 5);
     assert.ok(calls.some(call => /BEGIN READ ONLY/.test(call.text)));
     assert.ok(calls.some(call => /SET TRANSACTION READ ONLY/.test(call.text)));
+});
+
+test('task AI rollout parser fails closed on empty or unrecognized operator input', () => {
+    assert.deepEqual(report.parseTelemetryLogText(''), []);
+    assert.deepEqual(report.parseTelemetryLogText('random railway line without telemetry'), []);
+});
+
+test('task AI rollout telemetry sanitizer rejects sensitive fields before logging', () => {
+    const telemetry = require('../services/taskAiDraftTelemetry');
+    assert.throws(
+        () => telemetry.assertNoSensitiveTelemetryFields({
+            type: 'preview',
+            status: 'success',
+            title: 'Sensitive CRM task'
+        }),
+        /sensitive fields/i
+    );
+});
+
+test('task AI rollout Railway collector builds a no-raw-file command', () => {
+    const args = collector.buildRailwayLogsArgs({
+        service: '8223324090',
+        environment: 'production',
+        deploymentId: 'deployment-current',
+        lines: '500',
+        filter: 'task_ai_draft_event'
+    });
+    assert.deepEqual(args, [
+        'logs',
+        '--json',
+        '--service',
+        '8223324090',
+        '--environment',
+        'production',
+        'deployment-current',
+        '--lines',
+        '500',
+        '--filter',
+        'task_ai_draft_event'
+    ]);
 });
 
 test('task AI rollout report markdown is redacted and operator-readable', () => {

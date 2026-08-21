@@ -1,6 +1,8 @@
 'use strict';
 
+const crypto = require('node:crypto');
 const { createLogger } = require('../utils/logger');
+const { getReleaseMetadata } = require('./release');
 
 const log = createLogger('TaskAiDraftTelemetry');
 
@@ -40,14 +42,22 @@ const ALLOWED_OUTCOMES = Object.freeze([
 const SAFE_FIELD_MASK = Object.freeze(['title', 'description', 'mode', 'impactIds', 'subtasks', 'scheduleDate', 'priority', 'owner', 'visibility', 'workflow']);
 const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'type',
+    'eventType',
     'status',
     'outcome',
     'latencyMs',
-    'model',
-    'provider',
-    'contractVersion',
+    'releaseVersion',
+    'releaseSha',
+    'deploymentId',
     'promptVersion',
     'schemaName',
+    'contractVersion',
+    'model',
+    'provider',
+    'reasoningEffort',
+    'rolloutStage',
+    'expectedRolloutPercent',
+    'correlationId',
     'reasonCode',
     'fallbackReason',
     'impactFilterReason',
@@ -86,6 +96,21 @@ function safeInteger(value, fallback = 0) {
 function safeNumber(value) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function safeSha(value) {
+    const sha = compactString(value, 80).toLowerCase();
+    return /^[a-f0-9]{7,40}$/.test(sha) ? sha : '';
+}
+
+function safeIdentifier(value, limit = 120) {
+    return compactString(value, limit).replace(/[^\w:./=@-]/g, '').slice(0, limit);
+}
+
+function safePercent(value) {
+    if (value === undefined || value === null || value === '') return '';
+    const parsed = Number(value);
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? String(parsed) : '';
 }
 
 function safeFieldMask(value) {
@@ -137,16 +162,25 @@ function sanitizeTelemetryEvent(event = {}) {
     const type = ALLOWED_EVENT_TYPES.includes(source.type) ? source.type : 'unknown';
     const status = ALLOWED_STATUSES.includes(source.status) ? source.status : 'error';
     const fallbackReason = safeFallbackReason(source.fallbackReason);
+    const eventType = ALLOWED_EVENT_TYPES.includes(source.eventType) ? source.eventType : type;
     return {
         type,
+        eventType,
         status,
         outcome: derivedOutcome(source, status, fallbackReason),
         latencyMs: safeInteger(source.latencyMs),
+        releaseVersion: compactString(source.releaseVersion, 40),
+        releaseSha: safeSha(source.releaseSha),
+        deploymentId: safeIdentifier(source.deploymentId, 120),
         model: compactString(source.model, 80),
         provider: compactString(source.provider || 'openai', 40),
         contractVersion: compactString(source.contractVersion, 80),
         promptVersion: compactString(source.promptVersion, 80),
         schemaName: compactString(source.schemaName, 80),
+        reasoningEffort: compactString(source.reasoningEffort || '', 40),
+        rolloutStage: compactString(source.rolloutStage || '', 40),
+        expectedRolloutPercent: safePercent(source.expectedRolloutPercent),
+        correlationId: safeIdentifier(source.correlationId, 120),
         reasonCode: compactString(source.reasonCode || source.code || '', 80),
         fallbackReason,
         impactFilterReason: compactString(source.impactFilterReason || '', 80) === 'filter_known_active' ? 'filter_known_active' : '',
@@ -170,6 +204,58 @@ function sanitizeTelemetryEvent(event = {}) {
         errorCategory: compactString(source.errorCategory || '', 80),
         usage: sanitizeUsage(source.usage)
     };
+}
+
+function safeTelemetryCorrelationId(...parts) {
+    const normalized = parts
+        .flat()
+        .map(part => compactString(part, 180))
+        .filter(Boolean)
+        .join('|');
+    if (!normalized) return '';
+    return crypto.createHash('sha256').update(normalized).digest('hex').slice(0, 32);
+}
+
+function releaseTelemetryMetadata(env = process.env) {
+    let release = {};
+    try {
+        release = getReleaseMetadata(env) || {};
+    } catch {
+        release = {};
+    }
+    return {
+        releaseVersion: compactString(release.version || '', 40),
+        releaseSha: safeSha(release.commitSha || env.RELEASE_COMMIT_SHA || env.RAILWAY_GIT_COMMIT_SHA || env.COMMIT_SHA || ''),
+        deploymentId: safeIdentifier(
+            env.RAILWAY_DEPLOYMENT_ID
+                || env.RAILWAY_DEPLOYMENT
+                || env.DEPLOYMENT_ID
+                || '',
+            120
+        ),
+        rolloutStage: compactString(env.TASK_AI_ROLLOUT_STAGE || '', 40),
+        expectedRolloutPercent: safePercent(env.TASK_AI_DRAFT_ROLLOUT_PERCENT)
+    };
+}
+
+function enrichTelemetryEvent(event = {}, options = {}) {
+    const env = options.env || process.env;
+    const base = releaseTelemetryMetadata(env);
+    const enriched = { ...base, ...event };
+    enriched.eventType = enriched.type;
+    if (!enriched.correlationId) {
+        enriched.correlationId = safeTelemetryCorrelationId(
+            enriched.releaseSha,
+            enriched.promptVersion,
+            enriched.contractVersion,
+            enriched.type,
+            enriched.requestId,
+            enriched.userHash,
+            enriched.businessContext,
+            enriched.reasonCode
+        );
+    }
+    return enriched;
 }
 
 function assertNoSensitiveTelemetryFields(event = {}) {
@@ -198,7 +284,7 @@ function assertNoSensitiveTelemetryFields(event = {}) {
 
 function recordTaskAiDraftTelemetry(event = {}, options = {}) {
     assertNoSensitiveTelemetryFields(event);
-    const safe = sanitizeTelemetryEvent(event);
+    const safe = sanitizeTelemetryEvent(enrichTelemetryEvent(event, options));
     const logger = options.logger || log;
     if (typeof logger.info === 'function') {
         logger.info('task_ai_draft_event', safe);
@@ -256,5 +342,7 @@ module.exports = {
     aggregateTaskAiDraftTelemetry,
     assertNoSensitiveTelemetryFields,
     recordTaskAiDraftTelemetry,
+    releaseTelemetryMetadata,
+    safeTelemetryCorrelationId,
     sanitizeTelemetryEvent
 };

@@ -9,11 +9,16 @@ const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
-const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
+const {
+    recordTaskAiDraftTelemetry,
+    releaseTelemetryMetadata,
+    safeTelemetryCorrelationId
+} = require('./taskAiDraftTelemetry');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
+    TASK_AI_DRAFT_REASONING_EFFORT,
     activeImpactCatalogVersion,
     normalizeDraftSnapshot,
     normalizeScheduleDate,
@@ -67,6 +72,10 @@ function safeRecordCommitTelemetry(event = {}, options = {}) {
     } catch {
         return null;
     }
+}
+
+function commitCorrelationId({ userId, businessContext, idempotencyKey, proposalHash: proposalHashValue }) {
+    return safeTelemetryCorrelationId('task_ai_draft_commit', userId, businessContext, idempotencyKey, proposalHashValue);
 }
 
 function normalizeIdempotencyKey(value) {
@@ -403,6 +412,13 @@ async function commitTaskAiDraft(input = {}, options = {}) {
 
     const client = await db.connect();
     const afterCommit = [];
+    const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix';
+    const correlationId = commitCorrelationId({
+        userId,
+        businessContext,
+        idempotencyKey,
+        proposalHash: submittedProposalHash
+    });
     try {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
@@ -411,7 +427,6 @@ async function commitTaskAiDraft(input = {}, options = {}) {
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
             `task_ai_draft_idempotency:${userId}:${input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix'}:${idempotencyKey}`
         ]);
-
         const existing = await findCommittedReplay(client, { userId, idempotencyKey, businessScope: input.businessScope });
             if (existing) {
                 const meta = existing.meta_json || {};
@@ -426,9 +441,11 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                     model: MY_DAY_TASK_AI_MODEL,
                     contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                     promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                    reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
+                    correlationId,
                     reasonCode: 'idempotent_replay',
                     userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
-                    businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
+                    businessContext,
                     acceptedFieldMask,
                     editedFieldMask
                 }, options.telemetry);
@@ -513,8 +530,11 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                 proposalHash: submittedProposalHash,
                 draftFingerprint: tokenPayload.draftFingerprint,
                 catalogVersion,
+                ...releaseTelemetryMetadata(),
+                correlationId,
                 contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
                 provider: 'openai',
                 model: MY_DAY_TASK_AI_MODEL,
                 acceptedFieldMask,
@@ -536,9 +556,11 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             model: MY_DAY_TASK_AI_MODEL,
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+            reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
+            correlationId,
             reasonCode: 'committed',
             userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
-            businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
+            businessContext,
             changedFields: acceptedFieldMask,
             acceptedFieldMask,
             editedFieldMask,
@@ -567,6 +589,8 @@ async function commitTaskAiDraft(input = {}, options = {}) {
             model: MY_DAY_TASK_AI_MODEL,
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+            reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
+            correlationId,
             reasonCode: error?.code || 'TASK_AI_DRAFT_COMMIT_FAILED',
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
             acceptedFieldMask,

@@ -8,12 +8,17 @@ const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
-const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
+const {
+    recordTaskAiDraftTelemetry,
+    releaseTelemetryMetadata,
+    safeTelemetryCorrelationId
+} = require('./taskAiDraftTelemetry');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
+    TASK_AI_DRAFT_REASONING_EFFORT,
     activeImpactCatalogVersion,
     proposalHash,
     stableStringify,
@@ -95,6 +100,10 @@ function safeRecordBundleTelemetry(event = {}, options = {}) {
     } catch {
         return null;
     }
+}
+
+function bundleCorrelationId({ userId, businessContext, idempotencyKey, bundleId, proposalHash: proposalHashValue }) {
+    return safeTelemetryCorrelationId('task_ai_draft_bundle_commit', userId, businessContext, idempotencyKey, bundleId, proposalHashValue);
 }
 
 function normalizePriority(value) {
@@ -584,6 +593,14 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
 
     const client = await db.connect();
     const afterCommit = [];
+    const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix';
+    const correlationId = bundleCorrelationId({
+        userId,
+        businessContext,
+        idempotencyKey,
+        bundleId,
+        proposalHash: submittedProposalHash
+    });
     try {
         await client.query('BEGIN');
         await client.query('SELECT pg_advisory_xact_lock(hashtext($1)::bigint)', [
@@ -607,9 +624,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 model: MY_DAY_TASK_AI_MODEL,
                 contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
+                correlationId,
                 reasonCode: 'idempotent_replay',
                 userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
-                businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
+                businessContext,
                 taskCount: Number(existing.task_count || 0),
                 acceptedTaskCount: Array.isArray(existing.accepted_task_mask) ? existing.accepted_task_mask.length : 0,
                 rejectedTaskCount: Array.isArray(existing.rejected_task_mask) ? existing.rejected_task_mask.length : 0,
@@ -618,7 +637,6 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             return replayed;
         }
 
-        const businessContext = input.businessScope?.businessContext || input.businessScope?.business_context || 'event_genix';
         const canonicalBundle = await insertTaskBundle(client, {
             id: bundleId,
             businessContext,
@@ -734,8 +752,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     proposalHash: submittedProposalHash,
                     draftFingerprint: tokenPayload.draftFingerprint,
                     catalogVersion,
+                    ...releaseTelemetryMetadata(),
+                    correlationId: safeTelemetryCorrelationId(correlationId, 'task', index),
                     contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                     promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                    reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
                     acceptedFieldMask: finalTask.acceptedFieldMask,
                     editedFieldMask: finalTask.editedFieldMask,
                     impactFilterReason: finalTask.impactFilterReason || '',
@@ -774,8 +795,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 proposalHash: submittedProposalHash,
                 draftFingerprint: tokenPayload.draftFingerprint,
                 catalogVersion,
+                ...releaseTelemetryMetadata(),
+                correlationId,
                 contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
                 acceptedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: acceptedFieldMasks.get(index) || [] })),
                 editedFieldMasks: acceptedTaskMask.map(index => ({ proposalIndex: index, fields: editedFieldMasks.get(index) || [] })),
                 impactFilterReason: tasks.some(task => task.impactFilterReason) ? 'filter_known_active' : '',
@@ -797,9 +821,11 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             model: MY_DAY_TASK_AI_MODEL,
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+            reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
+            correlationId,
             reasonCode: 'bundle_committed',
             userHash: tokenPayload.proposalId || tokenPayload.proposalHash,
-            businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
+            businessContext,
             taskCount: taskIds.length,
             acceptedTaskCount: acceptedTaskMask.length,
             rejectedTaskCount: rejectedTaskMask.length,
@@ -834,6 +860,8 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
             model: MY_DAY_TASK_AI_MODEL,
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+            reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
+            correlationId,
             reasonCode: error?.code || 'TASK_AI_BUNDLE_COMMIT_FAILED',
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
             taskCount: tasks.length,

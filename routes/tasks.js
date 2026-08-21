@@ -79,6 +79,10 @@ const {
     normalizeDecompositionMode
 } = require('../services/taskDecomposition');
 const {
+    TASK_AI_DRAFT_CONTRACT_VERSION,
+    TASK_AI_DRAFT_PROMPT_VERSION,
+    TASK_AI_DRAFT_REASONING_EFFORT,
+    TASK_AI_DRAFT_SCHEMA_NAME,
     generateTaskAiDraftPreview,
     legacyDecompositionResponseFromPreview,
     stableStringify
@@ -1084,6 +1088,10 @@ async function buildTaskAiDraftPreview(req, res) {
             latencyMs: 0,
             model: 'gpt-5.6-luna',
             provider: 'openai',
+            contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+            promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+            schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+            reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
             reasonCode: 'TASK_AI_DRAFT_RATE_LIMITED',
             userHash: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET),
             businessContext
@@ -2220,6 +2228,10 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                 requestId: taskRequestId(req, res),
                 canonicalTarget: '/api/tasks/ai-draft/preview',
                 provider: 'openai',
+                contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+                promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
                 reasonCode: 'legacy_decompose_wrapper_attempt',
                 businessContext: req.businessContext || b.businessContext || ''
             });
@@ -2250,6 +2262,8 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                     provider: preview.provider || 'openai',
                     contractVersion: preview.contractVersion,
                     promptVersion: preview.promptVersion,
+                    schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                    reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
                     reasonCode: 'legacy_decompose_wrapper_non_apply',
                     businessContext: req.businessContext || b.businessContext || ''
                 });
@@ -2278,6 +2292,8 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                 provider: preview.provider || 'openai',
                 contractVersion: preview.contractVersion,
                 promptVersion: preview.promptVersion,
+                schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
                 reasonCode: 'legacy_decompose_wrapper_used',
                 businessContext: req.businessContext || b.businessContext || ''
             });

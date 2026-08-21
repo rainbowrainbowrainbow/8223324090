@@ -815,6 +815,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
     const startedAt = Date.now();
     const draft = normalizeDraftSnapshot(input.draft || input.currentDraft || input);
     const env = options.env || process.env;
+    const reasoningEffort = options.reasoningEffort || env.TASK_AI_DRAFT_REASONING_EFFORT || TASK_AI_DRAFT_REASONING_EFFORT;
     if (!draft.title && !draft.description) {
         const failure = {
             ok: false,
@@ -832,6 +833,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
             schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+            reasoningEffort,
             reasonCode: failure.code
         }, options.telemetry);
         return failure;
@@ -849,7 +851,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
         timeoutMs: options.timeoutMs || resolveTimeoutMs(env.TASK_AI_DRAFT_TIMEOUT_MS, TASK_AI_DRAFT_TIMEOUT_MS),
         schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
         schema: TASK_AI_DRAFT_PREVIEW_SCHEMA,
-        reasoningEffort: options.reasoningEffort || env.TASK_AI_DRAFT_REASONING_EFFORT || TASK_AI_DRAFT_REASONING_EFFORT,
+        reasoningEffort,
         maxOutputTokens: TASK_AI_DRAFT_MAX_OUTPUT_TOKENS,
         safetyIdentifier
     }, options);
@@ -875,6 +877,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
             schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+            reasoningEffort,
             reasonCode: failure.code,
             fallbackReason: 'provider_failure',
             userHash: safetyIdentifier,
@@ -916,6 +919,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
                 contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
                 promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
                 schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                reasoningEffort,
                 reasonCode: failure.code,
                 fallbackReason: primaryFallbackReason(fallbackReasons),
                 userHash: safetyIdentifier,
@@ -955,6 +959,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
             contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
             promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
             schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+            reasoningEffort,
             reasonCode: failure.code,
             userHash: safetyIdentifier,
             businessContext: input.businessScope?.businessContext || input.businessScope?.business_context || '',
@@ -972,6 +977,7 @@ async function generateTaskAiDraftPreview(input = {}, options = {}) {
         contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
         promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
         schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+        reasoningEffort,
         reasonCode: proposal.decision || proposal.action,
         fallbackReason: primaryFallbackReason(fallbackReasons),
         userHash: safetyIdentifier,

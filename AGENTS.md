@@ -114,7 +114,8 @@ Preferred workflow for normal product work:
 
 ## Deploy And Branch Boundaries
 
-- Last verified Railway production release branch (2026-08-01): `codex/lead-guest-context-v08018-final`.
+- Last verified Railway production release marker (2026-08-21): `codex/eventgenix-production` at `a990b668f60e6376439e80cef0a3ade7672dfe37` (`v0.81.12`). Use this stable branch for the next canonical release helper run.
+- Historical rollback/reference marker: `codex/checkbox-hardening-release-v080103`, also at `a990b668f60e6376439e80cef0a3ade7672dfe37` as of 2026-08-21. Do not delete it without explicit cleanup approval.
 - Production deployment policy (2026-07-20): Railway GitHub auto-deploy is disabled for the production app service. Production deploy must be promoted manually only after the required GitHub CI checks are green for the exact release SHA.
 - Before every release or rollback, confirm the active Railway source branch read-only, push only to that confirmed branch, and pass it explicitly as `RELEASE_DEPLOY_BRANCH=<branch>` to `release:railway-up` and release-proof notes.
 - Clean/detached worktrees may not have a Railway CLI link. `release:railway-up` must pass the production project ID explicitly; verify `railway status --json` resolves project `fortunate-appreciation`, environment `production`, service `8223324090`, and the live domain before upload. Never run raw `railway up` from an unlinked worktree because the CLI may create a new project.

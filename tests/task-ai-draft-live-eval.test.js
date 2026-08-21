@@ -7,6 +7,7 @@ const fixture = require('./fixtures/my-day-ai-composer-quality-evals.json');
 const {
     MIN_CASES_PER_EFFORT,
     REQUIRED_CONFIRMATION,
+    resolveReleaseSha,
     runControlledEval,
     validateOperatorEnvironment
 } = require('../scripts/task-ai-draft-live-eval');
@@ -63,7 +64,10 @@ test('controlled eval scores low and none with injected transport and no real Op
     const report = await runControlledEval({
         fixture: smallFixture,
         efforts: ['low', 'none'],
-        env: { TASK_AI_LIVE_EVAL_CONCURRENCY: '3' },
+        env: {
+            TASK_AI_LIVE_EVAL_CONCURRENCY: '3',
+            TASK_AI_LIVE_EVAL_RELEASE_SHA: '0f0ae742724b36f7e3b0d932911a003fbc963dea'
+        },
         preview: async (_input, options) => {
             calls += 1;
             const caseNumber = Number(_input.draft.title.match(/\d+$/)?.[0] || 0);
@@ -84,8 +88,31 @@ test('controlled eval scores low and none with injected transport and no real Op
     });
 
     assert.equal(calls, MIN_CASES_PER_EFFORT * 2);
+    assert.equal(report.summary.releaseSha, '0f0ae742724b36f7e3b0d932911a003fbc963dea');
+    assert.equal(report.summary.releaseVersion, '0.81.11');
+    assert.equal(report.summary.schemaName, 'my_day_task_draft_preview');
+    assert.equal(report.summary.promptVersion, fixture.promptVersion);
+    assert.equal(report.summary.contractVersion, fixture.contractVersion);
     assert.equal(report.summary.efforts.low.successfulProposals, MIN_CASES_PER_EFFORT);
     assert.equal(report.summary.efforts.none.tokens.totalTokens, MIN_CASES_PER_EFFORT * 15);
     assert.equal(report.summary.efforts.low.partialWrites, 0);
     assert.equal(report.summary.passed, true);
+
+    const serialized = JSON.stringify(report);
+    assert.doesNotMatch(serialized, /Safe CRM case/);
+    assert.doesNotMatch(serialized, /not-a-real-key|OPENAI_API_KEY|proposalToken|providerResponse|"prompt":|"title":|"description":/i);
+});
+
+test('controlled eval release SHA resolver accepts only exact immutable commit ids', () => {
+    assert.equal(resolveReleaseSha({
+        TASK_AI_LIVE_EVAL_RELEASE_SHA: '0F0AE742724B36F7E3B0D932911A003FBC963DEA'
+    }), '0f0ae742724b36f7e3b0d932911a003fbc963dea');
+    assert.equal(resolveReleaseSha({
+        TASK_AI_LIVE_EVAL_RELEASE_SHA: '0f0ae742',
+        RELEASE_DEPLOY_COMMIT: '236d83dae4612de490a7f36972e2d13737f8bb63'
+    }), '236d83dae4612de490a7f36972e2d13737f8bb63');
+    assert.match(resolveReleaseSha({
+        TASK_AI_LIVE_EVAL_RELEASE_SHA: 'not-a-sha',
+        RELEASE_DEPLOY_COMMIT: 'also-not-a-sha'
+    }), /^[0-9a-f]{40}$/);
 });

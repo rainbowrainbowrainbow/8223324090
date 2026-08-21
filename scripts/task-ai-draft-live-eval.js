@@ -7,9 +7,11 @@ const path = require('node:path');
 
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
+    TASK_AI_DRAFT_SCHEMA_NAME,
     TASK_AI_DRAFT_PROMPT_VERSION,
     generateTaskAiDraftPreview
 } = require('../services/taskAiDraftPreview');
+const packageJson = require('../package.json');
 
 const ROOT = path.resolve(__dirname, '..');
 const FIXTURE_PATH = path.join(ROOT, 'tests', 'fixtures', 'my-day-ai-composer-quality-evals.json');
@@ -19,6 +21,30 @@ const MIN_CASES_PER_EFFORT = 50;
 const DEFAULT_EFFORTS = Object.freeze(['low', 'none']);
 const ALLOWED_EFFORTS = new Set(DEFAULT_EFFORTS);
 const SILENT_LOGGER = Object.freeze({ info() {} });
+const FULL_SHA_PATTERN = /^[0-9a-f]{40}$/i;
+
+function normalizeReleaseSha(value) {
+    const normalized = String(value || '').trim().toLowerCase();
+    return FULL_SHA_PATTERN.test(normalized) ? normalized : null;
+}
+
+function resolveReleaseSha(env = process.env) {
+    return normalizeReleaseSha(env.TASK_AI_LIVE_EVAL_RELEASE_SHA)
+        || normalizeReleaseSha(env.RELEASE_DEPLOY_COMMIT)
+        || normalizeReleaseSha(env.RAILWAY_GIT_COMMIT_SHA)
+        || (() => {
+            try {
+                const { execFileSync } = require('node:child_process');
+                return normalizeReleaseSha(execFileSync('git', ['rev-parse', 'HEAD'], {
+                    cwd: ROOT,
+                    encoding: 'utf8',
+                    stdio: ['ignore', 'pipe', 'ignore']
+                }));
+            } catch {
+                return null;
+            }
+        })();
+}
 
 function normalizeIds(value) {
     return [...new Set((Array.isArray(value) ? value : value == null ? [] : [value])
@@ -256,9 +282,12 @@ async function runControlledEval(options = {}) {
 
     const summary = {
         generatedAt: new Date().toISOString(),
+        releaseVersion: packageJson.version,
+        releaseSha: resolveReleaseSha(env),
         provider: fixture.provider,
         model: fixture.model,
         contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+        schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
         promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
         fixtureCases: fixture.evalCases.length,
         contentPolicy: 'anonymized_fixture_input_and_metadata_only',
@@ -302,6 +331,7 @@ module.exports = {
     normalizeIds,
     parseEfforts,
     proposalImpactIds,
+    resolveReleaseSha,
     runControlledEval,
     scoreResult,
     summarizeEffort,

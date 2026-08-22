@@ -82,13 +82,24 @@ function assertPreDeployLiveSafety({
     head,
     branch,
     remoteSha = null,
-    recoverMissingLiveMetadataCommit = ''
+    recoverMissingLiveMetadataCommit = '',
+    migrateLiveSourceBranchFrom = '',
+    migrateLiveSourceBranchCommit = ''
 }) {
     if (!isPlainObject(live)) throw new Error('Live /api/version did not return an object');
     if (!String(live.version || '').trim()) throw new Error('Live /api/version is missing version');
     const localHead = normalizeCommit(head);
     const metadataComplete = liveDeploymentMetadataIsComplete(live);
     const recoveryCommit = normalizeCommit(recoverMissingLiveMetadataCommit);
+    const migrationFrom = String(migrateLiveSourceBranchFrom || '').trim();
+    const migrationCommit = normalizeCommit(migrateLiveSourceBranchCommit);
+    const migrationRequested = Boolean(migrationFrom || migrateLiveSourceBranchCommit);
+    if (migrationRequested && (!migrationFrom || !migrationCommit)) {
+        throw new Error('Live source branch migration requires both the previous branch and its exact 40-character live commit');
+    }
+    if (migrationRequested && recoveryCommit) {
+        throw new Error('Live source branch migration cannot be combined with missing metadata recovery');
+    }
     if (!metadataComplete && !recoveryCommit) assertCompleteLiveDeploymentMetadata(live);
     if (metadataComplete && recoveryCommit) {
         throw new Error('Refusing metadata recovery override because live deployment metadata is complete');
@@ -99,7 +110,20 @@ function assertPreDeployLiveSafety({
         throw new Error(`Remote release branch is ${shortSha(remoteSha)}, but local HEAD is ${shortSha(localHead)}`);
     }
     const liveBranch = metadataComplete ? String(live.sourceBranch || '').trim() : branch;
-    if (metadataComplete && liveBranch !== branch) {
+    if (migrationRequested) {
+        if (!metadataComplete) {
+            throw new Error('Live source branch migration requires complete live deployment metadata');
+        }
+        if (migrationFrom === branch) {
+            throw new Error('Live source branch migration target must differ from the previous branch');
+        }
+        if (liveBranch !== migrationFrom) {
+            throw new Error(`Live source branch is "${liveBranch}", expected migration source "${migrationFrom}"`);
+        }
+        if (liveCommit !== migrationCommit) {
+            throw new Error(`Live source branch migration commit is ${shortSha(liveCommit)}, expected ${shortSha(migrationCommit)}`);
+        }
+    } else if (metadataComplete && liveBranch !== branch) {
         throw new Error(`Live source branch is "${live.sourceBranch}", expected release branch "${branch}"`);
     }
     const versionComparison = compareVersions(localVersion, live.version);
@@ -108,6 +132,9 @@ function assertPreDeployLiveSafety({
     }
     if (!metadataComplete && versionComparison <= 0) {
         throw new Error('Refusing metadata recovery override unless local release version is newer than live');
+    }
+    if (migrationRequested && versionComparison <= 0) {
+        throw new Error('Refusing live source branch migration unless local release version is newer than live');
     }
     if (versionComparison === 0 && liveCommit !== localHead) {
         throw new Error(`Refusing same-version deploy v${localVersion}: live is ${shortSha(liveCommit)}, release is ${shortSha(localHead)}`);
@@ -119,7 +146,9 @@ function assertPreDeployLiveSafety({
         localVersion,
         head: localHead,
         branch,
-        recoveredMissingLiveMetadata: !metadataComplete
+        recoveredMissingLiveMetadata: !metadataComplete,
+        migratingLiveSourceBranch: migrationRequested,
+        previousLiveBranch: migrationRequested ? migrationFrom : ''
     };
 }
 
@@ -137,7 +166,9 @@ function parseArgs(argv) {
         skipRemoteCheck: envBoolean(process.env.npm_config_skip_remote_check),
         keepExport: process.env.RELEASE_RAILWAY_KEEP_EXPORT === 'true' || envBoolean(process.env.npm_config_keep_export),
         exportRoot: process.env.RELEASE_RAILWAY_EXPORT_ROOT || process.env.npm_config_export_root || '',
-        recoverMissingLiveMetadataCommit: process.env.RELEASE_RECOVER_MISSING_LIVE_METADATA_COMMIT || process.env.npm_config_recover_missing_live_metadata_commit || ''
+        recoverMissingLiveMetadataCommit: process.env.RELEASE_RECOVER_MISSING_LIVE_METADATA_COMMIT || process.env.npm_config_recover_missing_live_metadata_commit || '',
+        migrateLiveSourceBranchFrom: process.env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_FROM || process.env.npm_config_migrate_live_source_branch_from || '',
+        migrateLiveSourceBranchCommit: process.env.RELEASE_MIGRATE_LIVE_SOURCE_BRANCH_COMMIT || process.env.npm_config_migrate_live_source_branch_commit || ''
     };
 
     for (let index = 0; index < argv.length; index += 1) {
@@ -164,6 +195,10 @@ function parseArgs(argv) {
             options.commit = requireValue(argv, index += 1, arg);
         } else if (arg === '--recover-missing-live-metadata-commit') {
             options.recoverMissingLiveMetadataCommit = requireValue(argv, index += 1, arg);
+        } else if (arg === '--migrate-live-source-branch-from') {
+            options.migrateLiveSourceBranchFrom = requireValue(argv, index += 1, arg);
+        } else if (arg === '--migrate-live-source-branch-commit') {
+            options.migrateLiveSourceBranchCommit = requireValue(argv, index += 1, arg);
         } else if (arg === '--message') {
             options.message = requireValue(argv, index += 1, arg);
         } else if (arg === '--live-url') {
@@ -196,7 +231,9 @@ function isForwardedNpmConfigValue(arg, options) {
         options.service,
         options.environment,
         options.exportRoot,
-        options.recoverMissingLiveMetadataCommit
+        options.recoverMissingLiveMetadataCommit,
+        options.migrateLiveSourceBranchFrom,
+        options.migrateLiveSourceBranchCommit
     ].some(optionValue => value === String(optionValue || '').trim());
 }
 
@@ -209,6 +246,19 @@ function applyForwardedNpmRunPositional(arg, options) {
     }
     if (missingOptionValue(options.commit) && FULL_COMMIT_SHA_PATTERN.test(value)) {
         options.commit = value.toLowerCase();
+        return true;
+    }
+    if (missingOptionValue(options.migrateLiveSourceBranchFrom)
+        && !missingOptionValue(options.branch)
+        && /^[A-Za-z0-9._/-]+$/.test(value)
+        && value.includes('/')) {
+        options.migrateLiveSourceBranchFrom = value;
+        return true;
+    }
+    if (!missingOptionValue(options.migrateLiveSourceBranchFrom)
+        && missingOptionValue(options.migrateLiveSourceBranchCommit)
+        && FULL_COMMIT_SHA_PATTERN.test(value)) {
+        options.migrateLiveSourceBranchCommit = value.toLowerCase();
         return true;
     }
     if (missingOptionValue(options.recoverMissingLiveMetadataCommit) && FULL_COMMIT_SHA_PATTERN.test(value)) {
@@ -476,7 +526,9 @@ async function main() {
             project: options.project,
             service: options.service,
             environment: options.environment,
-            recoverMissingLiveMetadataCommit: options.recoverMissingLiveMetadataCommit
+            recoverMissingLiveMetadataCommit: options.recoverMissingLiveMetadataCommit,
+            migrateLiveSourceBranchFrom: options.migrateLiveSourceBranchFrom,
+            migrateLiveSourceBranchCommit: options.migrateLiveSourceBranchCommit
         }));
         return;
     }
@@ -502,7 +554,9 @@ async function main() {
         head,
         branch: options.branch,
         remoteSha,
-        recoverMissingLiveMetadataCommit: options.recoverMissingLiveMetadataCommit
+        recoverMissingLiveMetadataCommit: options.recoverMissingLiveMetadataCommit,
+        migrateLiveSourceBranchFrom: options.migrateLiveSourceBranchFrom,
+        migrateLiveSourceBranchCommit: options.migrateLiveSourceBranchCommit
     });
     assertReleaseDescendsFromLive(preDeploy.liveCommit, head);
 
@@ -516,6 +570,10 @@ async function main() {
     console.log(`[release:railway-up] liveUrl=${liveUrl}`);
     if (preDeploy.recoveredMissingLiveMetadata) {
         console.log(`[release:railway-up] recoveredMissingLiveMetadataFrom=${preDeploy.liveCommit}`);
+    }
+    if (preDeploy.migratingLiveSourceBranch) {
+        console.log(`[release:railway-up] migratingLiveSourceBranch=${preDeploy.previousLiveBranch} -> ${options.branch}`);
+        console.log(`[release:railway-up] migrationLiveCommit=${preDeploy.liveCommit}`);
     }
     console.log(`[release:railway-up] message=${message}`);
 

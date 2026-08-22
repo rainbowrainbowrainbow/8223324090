@@ -35,6 +35,10 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /Refusing same-version deploy/);
     assert.match(script, /Refusing to deploy v\$\{localVersion\} over newer live/);
     assert.match(script, /Live deployment metadata is not complete/);
+    assert.match(script, /--migrate-live-source-branch-from/);
+    assert.match(script, /--migrate-live-source-branch-commit/);
+    assert.match(script, /migration requires both the previous branch and its exact 40-character live commit/);
+    assert.match(script, /unless local release version is newer than live/);
     assert.match(script, /VERSION_SMOKE_EXPECT_COMMIT: head/);
     assert.match(script, /VERSION_SMOKE_EXPECT_BRANCH: branch/);
     assert.match(script, /git archive/);
@@ -46,4 +50,5 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.doesNotMatch(script, /RELEASE_DEPLOY_COMMIT=\$\{head\}/);
     assert.doesNotMatch(script, /RELEASE_DEPLOY_BRANCH=\$\{options\.branch\}/);
     assert.doesNotMatch(script, /--skip-variable-set|--no-clean-export/);
+    assert.doesNotMatch(pkg.scripts['release:railway-up'], /migrate-live-source-branch/);
 });

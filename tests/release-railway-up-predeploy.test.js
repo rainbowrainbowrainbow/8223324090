@@ -11,6 +11,7 @@ const {
 } = require('../scripts/railway-release-up');
 
 const HEAD = 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa';
+const RELEASE_HEAD = 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb';
 const RECOVERY_HEAD = 'dddddddddddddddddddddddddddddddddddddddd';
 const LIVE = {
     version: '0.80.124',
@@ -125,6 +126,76 @@ test('Railway release predeploy guard allows explicit metadata recovery for a ne
     }), /metadata recovery override/);
 });
 
+test('Railway release predeploy guard allows one exact newer-version source branch migration', () => {
+    const targetBranch = 'codex/eventgenix-production';
+    const result = assertPreDeployLiveSafety({
+        live: LIVE,
+        localVersion: '0.80.125',
+        head: RELEASE_HEAD,
+        branch: targetBranch,
+        remoteSha: RELEASE_HEAD,
+        migrateLiveSourceBranchFrom: LIVE.sourceBranch,
+        migrateLiveSourceBranchCommit: HEAD
+    });
+
+    assert.equal(result.liveCommit, HEAD);
+    assert.equal(result.liveBranch, LIVE.sourceBranch);
+    assert.equal(result.migratingLiveSourceBranch, true);
+    assert.equal(result.previousLiveBranch, LIVE.sourceBranch);
+    assert.equal(result.branch, targetBranch);
+});
+
+test('Railway source branch migration fails closed on incomplete, stale, partial, or combined proof', () => {
+    const targetBranch = 'codex/eventgenix-production';
+    const base = {
+        live: LIVE,
+        localVersion: '0.80.125',
+        head: RELEASE_HEAD,
+        branch: targetBranch,
+        remoteSha: RELEASE_HEAD,
+        migrateLiveSourceBranchFrom: LIVE.sourceBranch,
+        migrateLiveSourceBranchCommit: HEAD
+    };
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        migrateLiveSourceBranchCommit: ''
+    }), /requires both the previous branch and its exact 40-character live commit/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        migrateLiveSourceBranchFrom: 'codex/not-the-live-branch'
+    }), /expected migration source/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        migrateLiveSourceBranchCommit: RECOVERY_HEAD
+    }), /migration commit is .* expected/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        localVersion: LIVE.version
+    }), /unless local release version is newer than live/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        branch: LIVE.sourceBranch
+    }), /target must differ from the previous branch/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        recoverMissingLiveMetadataCommit: RECOVERY_HEAD
+    }), /cannot be combined with missing metadata recovery/);
+
+    assert.throws(() => assertPreDeployLiveSafety({
+        ...base,
+        live: {
+            ...LIVE,
+            deploymentMetadata: { ...LIVE.deploymentMetadata, complete: false }
+        }
+    }), /deployment metadata is not complete|requires complete live deployment metadata/);
+});
+
 test('Railway release predeploy guard reads live /api/version without Railway variables or upload', async () => {
     const calls = [];
     const snapshot = await fetchLiveVersionSnapshot('https://crm.example.test', {
@@ -198,4 +269,28 @@ test('Railway release npm wrapper documents the canonical PowerShell command sha
     ]);
     assert.equal(parsed.branch, 'codex/forwarding-check');
     assert.equal(parsed.recoverMissingLiveMetadataCommit, RECOVERY_HEAD);
+});
+
+test('Railway release parser accepts explicit source branch migration proof without making it default', () => {
+    const pkg = require('../package.json');
+    assert.doesNotMatch(pkg.scripts['release:railway-up'], /migrate-live-source-branch/);
+
+    const parsed = parseArgs([
+        '--dry-run',
+        '--skip-remote-check',
+        '--branch',
+        'codex/eventgenix-production',
+        '--commit',
+        RELEASE_HEAD,
+        '--migrate-live-source-branch-from',
+        LIVE.sourceBranch,
+        '--migrate-live-source-branch-commit',
+        HEAD,
+        '--live-url',
+        'https://crm.example.test'
+    ]);
+
+    assert.equal(parsed.migrateLiveSourceBranchFrom, LIVE.sourceBranch);
+    assert.equal(parsed.migrateLiveSourceBranchCommit, HEAD);
+    assert.equal(parsed.recoverMissingLiveMetadataCommit, '');
 });

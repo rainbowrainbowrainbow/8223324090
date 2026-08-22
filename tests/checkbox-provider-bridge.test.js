@@ -11,7 +11,7 @@ const {
     normalizeShiftResponse
 } = require('../services/checkbox/provider');
 const { loadCheckboxRuntimeConfig } = require('../services/checkbox/config');
-const { classifyWorkerError, processPaymentOutboxJobs } = require('../services/payments/paymentOutboxWorker');
+const { classifyWorkerError, processPaymentOutboxJobs, runShiftJob } = require('../services/payments/paymentOutboxWorker');
 
 function listenMock(handler) {
     const calls = [];
@@ -199,6 +199,7 @@ test('runtime provider maps worker DTO to official auth, shift, validate, sell a
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/validate') return { body: { valid: true } };
         if (call.path === '/api/v1/receipts/sell') return { status: 201, body: checkboxReceipt(receiptId) };
         if (call.path === `/api/v1/receipts/${receiptId}`) return { body: checkboxReceipt(receiptId) };
@@ -293,12 +294,382 @@ test('runtime provider readiness fails closed on missing signature, permissions,
     }
 
     await expectReadinessError({ cashier: { is_test: true } }, 'checkbox_cashier_test_mode_mismatch');
-    await expectReadinessError({ cashier: { permissions: { sales: true, cash_payment: true, card_payment: false } } }, 'checkbox_cashier_permissions_missing');
+    await expectReadinessError({ cashier: { permissions: { sales: false, cash_payment: true, card_payment: true } } }, 'checkbox_cashier_permissions_missing');
     await expectReadinessError({ signature: { online: false } }, 'checkbox_signature_offline');
     await expectReadinessError({ register: { is_test: true } }, 'checkbox_register_test_mode_mismatch');
     await expectReadinessError({ register: { offline_mode: true } }, 'checkbox_register_offline');
     await expectReadinessError({ register: { organization_id: 'wrong-org' } }, 'checkbox_register_organization_mismatch');
     await expectReadinessError({ taxes: cashierTaxes({ id: '9', code: 9 }) }, 'checkbox_provider_tax_ids_unavailable');
+});
+
+test('mutation readiness requires a live certificate except for the exact test signature contract', async () => {
+    async function expectCertificateResult({ profileOverrides = {}, signatureOverrides = {}, expectedIsTest = false, errorCode = null }) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile(profileOverrides) };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: expectedIsTest }) };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus(signatureOverrides) };
+            if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig({ ...providerConfig(baseUrl), expectedIsTest });
+            const call = () => provider.verifyReadiness({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest
+            }, { expectedTaxIds: ['7'], requiredTender: 'cash' });
+            if (errorCode) {
+                await assert.rejects(call, error => error instanceof CheckboxClientError && error.code === errorCode);
+                return;
+            }
+            const result = await call();
+            assert.equal(result.certificate.ready, true);
+            assert.equal(result.certificate.testSignature, true);
+        } finally {
+            await close(server);
+        }
+    }
+
+    await expectCertificateResult({
+        profileOverrides: { certificate_end: null },
+        errorCode: 'checkbox_cashier_certificate_required'
+    });
+    await expectCertificateResult({
+        profileOverrides: { certificate_end: new Date(Date.now() - 60_000).toISOString() },
+        errorCode: 'checkbox_cashier_certificate_expired'
+    });
+    await expectCertificateResult({
+        profileOverrides: { is_test: true, signature_type: 'TEST', certificate_end: null },
+        signatureOverrides: { type: 'CLOUD_SIGNATURE_3' },
+        expectedIsTest: true,
+        errorCode: 'checkbox_cashier_certificate_required'
+    });
+    await expectCertificateResult({
+        profileOverrides: { is_test: true, signature_type: 'TEST', certificate_end: null },
+        signatureOverrides: { type: 'TEST' },
+        expectedIsTest: true
+    });
+});
+
+test('runtime provider readiness requires only the permission for the selected tender', async () => {
+    async function verifyFor({ permissions, requiredTender }) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ permissions }) };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+            if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig(providerConfig(baseUrl));
+            return await provider.verifyReadiness({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest: false
+            }, { expectedTaxIds: ['7'], requiredTender });
+        } finally {
+            await close(server);
+        }
+    }
+
+    const cash = await verifyFor({
+        permissions: { sales: true, cash_payment: true, card_payment: false },
+        requiredTender: 'cash'
+    });
+    assert.deepEqual(cash.permissions.required, ['sales', 'cash_payment']);
+    assert.equal(cash.permissions.cardPayment, false);
+
+    const card = await verifyFor({
+        permissions: { sales: true, cash_payment: false, card_payment: true },
+        requiredTender: 'card_terminal_manual'
+    });
+    assert.deepEqual(card.permissions.required, ['sales', 'card_payment']);
+    assert.equal(card.permissions.cashPayment, false);
+
+    const providerCore = await verifyFor({
+        permissions: { sales: true, cash_payment: true, card_payment: false },
+        requiredTender: null
+    });
+    assert.deepEqual(providerCore.permissions.required, ['sales']);
+    assert.equal(providerCore.permissions.cardPayment, false);
+});
+
+test('mutation readiness applies tender permissions only to sale operations', async () => {
+    async function prepare(operationType, permissions) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ permissions }) };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+            if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig(providerConfig(baseUrl));
+            return await provider.prepareMutation({
+                providerOperationId: crypto.randomUUID(),
+                fiscalOperation: {
+                    operation_type: operationType,
+                    provider_register_id: PROVIDER_REGISTER_ID,
+                    provider_cashier_id: PROVIDER_CASHIER_ID,
+                    provider_organization_id: PROVIDER_ORGANIZATION_ID
+                }
+            });
+        } finally {
+            await close(server);
+        }
+    }
+
+    const shiftOpen = await prepare('shift_open', { sales: true, cash_payment: false, card_payment: false });
+    assert.deepEqual(shiftOpen.permissions.required, ['sales']);
+
+    const shiftClose = await prepare('shift_close', { sales: false, cash_payment: false, card_payment: false });
+    assert.deepEqual(shiftClose.permissions.required, []);
+});
+
+test('opened current shift cannot fall back to its sparse response when detailed lookup fails', async () => {
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { status: 404, body: { detail: 'not found' } };
+        return { status: 404, body: { detail: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        await assert.rejects(
+            () => provider.getCurrentShiftStatus({
+                providerOperationId: crypto.randomUUID(),
+                fiscalOperation: {
+                    provider_shift_id: PROVIDER_SHIFT_ID,
+                    provider_register_id: PROVIDER_REGISTER_ID,
+                    provider_cashier_id: PROVIDER_CASHIER_ID,
+                    provider_organization_id: PROVIDER_ORGANIZATION_ID
+                }
+            }),
+            error => error instanceof CheckboxClientError && error.status === 404
+        );
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider permits unreported payment permissions only for explicit test mode', async () => {
+    async function createTestProvider(permissions, { expectedIsTest = true } = {}) {
+        const { server, calls, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') {
+                return {
+                    body: cashierProfile({
+                        is_test: expectedIsTest,
+                        signature_type: expectedIsTest ? 'TEST' : 'CLOUD_SIGNATURE_3',
+                        permissions
+                    })
+                };
+            }
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: expectedIsTest }) };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: expectedIsTest ? 'TEST' : 'CLOUD_SIGNATURE_3' }) };
+            if (call.path === '/api/v1/cashier/tax') return { body: [] };
+            if (call.path === '/api/v1/cashier/shift') return { body: null };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        return {
+            server,
+            calls,
+            provider: createProviderFromConfig({ ...providerConfig(baseUrl), expectedIsTest })
+        };
+    }
+
+    const allowed = await createTestProvider({ sales: true, cash_payment: null });
+    try {
+        const expected = {
+            expectedCashierId: PROVIDER_CASHIER_ID,
+            expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+            expectedRegisterId: PROVIDER_REGISTER_ID,
+            expectedIsTest: true
+        };
+        const readiness = await allowed.provider.verifyReadiness(expected, {
+            expectedTaxIds: [],
+            requiredTender: 'cash',
+            allowUnreportedPaymentPermissions: true
+        });
+        assert.equal(readiness.permissions.cashPayment, null);
+        assert.deepEqual(readiness.permissions.unreported, ['cash_payment']);
+        assert.equal(readiness.permissions.unreportedAllowedForTest, true);
+        assert.equal(readiness.permissions.warning, 'permission_unreported');
+        assert.equal(Object.hasOwn(readiness, 'raw'), false);
+
+        const diagnostics = await allowed.provider.collectReadinessDiagnostics(expected, {
+            expectedTaxIds: [],
+            requiredTender: 'cash',
+            allowUnreportedPaymentPermissions: true
+        });
+        const byCode = new Map(diagnostics.checks.map(check => [check.code, check]));
+        assert.equal(diagnostics.ready, true);
+        assert.equal(byCode.get('cash_permission').status, 'ready');
+        assert.equal(byCode.get('cash_permission').details.state, 'unreported');
+        assert.equal(byCode.get('cash_permission').details.unreportedAllowedForTest, true);
+        assert.equal(byCode.get('card_permission').status, 'not_applicable');
+        assert.equal(Object.hasOwn(diagnostics, 'raw'), false);
+        assert.doesNotMatch(JSON.stringify(diagnostics), /full_name|nin|organization.*title/i);
+    } finally {
+        await close(allowed.server);
+    }
+
+    const defaultClosed = await createTestProvider({ sales: true, cash_payment: null });
+    try {
+        await assert.rejects(
+            () => defaultClosed.provider.verifyReadiness({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest: true
+            }, { expectedTaxIds: [], requiredTender: 'cash' }),
+            error => error instanceof CheckboxClientError
+                && error.code === 'checkbox_cashier_permissions_missing'
+                && error.details?.unreported?.includes('cash_payment')
+        );
+    } finally {
+        await close(defaultClosed.server);
+    }
+
+    const production = await createTestProvider({ sales: true, cash_payment: null }, { expectedIsTest: false });
+    try {
+        await assert.rejects(
+            () => production.provider.verifyReadiness({ expectedIsTest: false }, {
+                requiredTender: 'cash',
+                allowUnreportedPaymentPermissions: true
+            }),
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_unreported_permissions_test_mode_only'
+        );
+        assert.equal(production.calls.length, 0);
+    } finally {
+        await close(production.server);
+    }
+});
+
+test('runtime provider never permits an explicit false permission in test mode', async () => {
+    const { server, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') {
+            return { body: cashierProfile({ is_test: true, signature_type: 'TEST', permissions: { sales: true, cash_payment: false, card_payment: true } }) };
+        }
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: true }) };
+        if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: 'TEST' }) };
+        if (call.path === '/api/v1/cashier/tax') return { body: [] };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig({ ...providerConfig(baseUrl), expectedIsTest: true });
+        await assert.rejects(
+            () => provider.verifyReadiness({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest: true
+            }, {
+                expectedTaxIds: [],
+                requiredTender: 'cash',
+                allowUnreportedPaymentPermissions: true
+            }),
+            error => error instanceof CheckboxClientError
+                && error.code === 'checkbox_cashier_permissions_missing'
+                && error.details?.denied?.includes('cash_payment')
+        );
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider requires sales permission to be true even when test payment permissions may be unreported', async () => {
+    async function expectSalesBlocked(sales) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') {
+                return {
+                    body: cashierProfile({
+                        is_test: true,
+                        signature_type: 'TEST',
+                        permissions: { sales, cash_payment: null, card_payment: null }
+                    })
+                };
+            }
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: true }) };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: 'TEST' }) };
+            if (call.path === '/api/v1/cashier/tax') return { body: [] };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig({ ...providerConfig(baseUrl), expectedIsTest: true });
+            await assert.rejects(
+                () => provider.verifyReadiness({
+                    expectedCashierId: PROVIDER_CASHIER_ID,
+                    expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                    expectedRegisterId: PROVIDER_REGISTER_ID,
+                    expectedIsTest: true
+                }, {
+                    expectedTaxIds: [],
+                    requiredTender: 'cash',
+                    allowUnreportedPaymentPermissions: true
+                }),
+                error => error instanceof CheckboxClientError
+                    && error.code === 'checkbox_cashier_permissions_missing'
+                    && (sales === false
+                        ? error.details?.denied?.includes('sales')
+                        : error.details?.unreportedSales?.includes('sales'))
+            );
+        } finally {
+            await close(server);
+        }
+    }
+
+    await expectSalesBlocked(null);
+    await expectSalesBlocked(false);
+});
+
+test('runtime provider never treats malformed payment permissions as unreported test permissions', async () => {
+    for (const malformedValue of ['false', 0, {}]) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') {
+                return {
+                    body: cashierProfile({
+                        is_test: true,
+                        signature_type: 'TEST',
+                        permissions: { sales: true, cash_payment: malformedValue, card_payment: null }
+                    })
+                };
+            }
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: true }) };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: 'TEST' }) };
+            if (call.path === '/api/v1/cashier/tax') return { body: [] };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig({ ...providerConfig(baseUrl), expectedIsTest: true });
+            await assert.rejects(
+                () => provider.verifyReadiness({
+                    expectedCashierId: PROVIDER_CASHIER_ID,
+                    expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                    expectedRegisterId: PROVIDER_REGISTER_ID,
+                    expectedIsTest: true
+                }, {
+                    expectedTaxIds: [],
+                    requiredTender: 'cash',
+                    allowUnreportedPaymentPermissions: true
+                }),
+                error => error instanceof CheckboxClientError
+                    && error.code === 'checkbox_cashier_permissions_malformed'
+                    && error.details?.malformed?.includes('cash_payment')
+            );
+        } finally {
+            await close(server);
+        }
+    }
 });
 
 test('runtime provider readiness supports fully untaxed admission mappings without provider tax ids', async () => {
@@ -463,6 +834,12 @@ test('runtime provider aggregate readiness distinguishes cash/card permission tr
     assert.equal(checks.get('cash_permission').status, 'blocked');
     assert.equal(checks.get('cash_permission').details.value, null);
     assert.equal(checks.get('card_permission').details.value, null);
+
+    checks = await runPermissions({ sales: true, cash_payment: 'false', card_payment: {} });
+    assert.equal(checks.get('cash_permission').status, 'blocked');
+    assert.equal(checks.get('cash_permission').details.state, 'malformed');
+    assert.equal(checks.get('card_permission').status, 'blocked');
+    assert.equal(checks.get('card_permission').details.state, 'malformed');
 });
 
 test('runtime provider aggregate readiness supports password and PIN auth modes', async () => {
@@ -588,6 +965,7 @@ test('runtime provider maps official service in/out receipts and verifies servic
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/service') {
             return { status: 201, body: serviceReceipt(call.body.id, call.body.payment.operation_type === 'COLLECTION' ? 'SERVICE_OUT' : 'SERVICE_IN') };
         }
@@ -640,6 +1018,7 @@ test('runtime provider maps a full return to the original sale receipt and verif
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') {
             return { status: 201, body: checkboxReceipt(returnId, {
                 type: 'RETURN',
@@ -683,6 +1062,7 @@ test('runtime provider re-authenticates once on 401 and does not leak secrets in
         }
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') {
             const sellCount = allCalls.filter(item => item.path === '/api/v1/receipts/sell').length;
             if (sellCount === 1) return { status: 401, body: { detail: 'expired token access-secret cashier-password' } };
@@ -735,6 +1115,7 @@ test('runtime provider fails closed on cashier, register, UUID, type or amount m
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') return { status: 201, body: checkboxReceipt(crypto.randomUUID()) };
         return { body: { valid: true } };
     }, 'checkbox_receipt_uuid_mismatch');
@@ -743,6 +1124,7 @@ test('runtime provider fails closed on cashier, register, UUID, type or amount m
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') return { status: 201, body: checkboxReceipt(receiptId, { type: 'RETURN' }) };
         return { body: { valid: true } };
     }, 'checkbox_receipt_type_mismatch');
@@ -751,6 +1133,7 @@ test('runtime provider fails closed on cashier, register, UUID, type or amount m
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') return { status: 201, body: checkboxReceipt(receiptId, { total_sum: 999 }) };
         return { body: { valid: true } };
     }, 'checkbox_receipt_total_sum_mismatch');
@@ -784,6 +1167,7 @@ test('runtime provider maps and verifies cash received amount and official chang
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') {
             return {
                 status: 201,
@@ -851,11 +1235,146 @@ test('runtime provider keeps official 202 shift OPENING recoverable without forc
     }
 });
 
+test('shift-open recovery requires two exact UUID 404 observations before retrying the same UUID', async () => {
+    const shiftId = crypto.randomUUID();
+    const calls = [];
+    const stages = [];
+    const provider = {
+        async lookupShift(input) {
+            calls.push({ method: 'lookupShift', input });
+            throw new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 404', {
+                status: 404,
+                retryable: false
+            });
+        },
+        async openShift(input) {
+            calls.push({ method: 'openShift', input });
+            return { id: shiftId, status: 'OPENED' };
+        }
+    };
+
+    await assert.rejects(
+        () => runShiftJob(provider, {
+            job: {
+                job_type: 'shift_open',
+                external_stage: 'shift_request_maybe_submitted',
+                provider_operation_id: shiftId,
+                payload: {}
+            },
+            async recordStage(stage) { stages.push(stage); }
+        }),
+        error => error?.code === 'checkbox_shift_open_lookup_not_found'
+            && error.retryable === true
+            && error.unknown === true
+    );
+
+    assert.deepEqual(stages, ['shift_lookup', 'shift_lookup_not_found']);
+    assert.equal(calls.filter(call => call.method === 'lookupShift').length, 1);
+    assert.equal(calls.filter(call => call.method === 'openShift').length, 0);
+    assert.equal(calls[0].input.providerOperationId, shiftId);
+    assert.equal(calls[0].input.providerRequestUuid, shiftId);
+});
+
+test('confirmed shift lookup 404 retries open with the same durable UUID only', async () => {
+    const shiftId = crypto.randomUUID();
+    const calls = [];
+    const stages = [];
+    const provider = {
+        async lookupShift(input) {
+            calls.push({ method: 'lookupShift', input });
+            throw new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 404', {
+                status: 404,
+                retryable: false
+            });
+        },
+        async prepareMutation(input) {
+            calls.push({ method: 'prepareMutation', input });
+        },
+        async openShift(input) {
+            calls.push({ method: 'openShift', input });
+            return { id: shiftId, status: 'OPENED' };
+        }
+    };
+
+    const result = await runShiftJob(provider, {
+        job: {
+            job_type: 'shift_open',
+            external_stage: 'shift_lookup_not_found',
+            provider_operation_id: shiftId,
+            payload: {}
+        },
+        async recordStage(stage) { stages.push(stage); }
+    });
+
+    assert.equal(result.source, 'shift_open_same_uuid_retry');
+    assert.equal(result.response.id, shiftId);
+    assert.deepEqual(stages, ['readiness', 'shift_request_retry_same_uuid', 'shift_request_maybe_submitted']);
+    assert.deepEqual(calls.map(call => call.method), ['lookupShift', 'prepareMutation', 'openShift']);
+    for (const call of calls) {
+        assert.equal(call.input.providerOperationId, shiftId);
+        assert.equal(call.input.providerRequestUuid, shiftId);
+    }
+});
+
+test('same-UUID shift-open conflict returns to exact lookup instead of creating a new UUID', async () => {
+    const shiftId = crypto.randomUUID();
+    const calls = [];
+    const stages = [];
+    const provider = {
+        async lookupShift(input) {
+            calls.push({ method: 'lookupShift', input });
+            throw new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 404', {
+                status: 404,
+                retryable: false
+            });
+        },
+        async prepareMutation(input) {
+            calls.push({ method: 'prepareMutation', input });
+        },
+        async openShift(input) {
+            calls.push({ method: 'openShift', input });
+            throw new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 409', {
+                status: 409,
+                retryable: false
+            });
+        }
+    };
+
+    await assert.rejects(
+        () => runShiftJob(provider, {
+            job: {
+                job_type: 'shift_open',
+                external_stage: 'shift_lookup_not_found',
+                provider_operation_id: shiftId,
+                payload: {}
+            },
+            async recordStage(stage) { stages.push(stage); }
+        }),
+        error => error?.code === 'checkbox_shift_open_conflict_lookup_required'
+            && error.retryable === true
+            && error.unknown === true
+    );
+
+    assert.deepEqual(stages, [
+        'readiness',
+        'shift_request_retry_same_uuid',
+        'shift_request_maybe_submitted',
+        'shift_lookup'
+    ]);
+    assert.equal(calls.filter(call => call.method === 'openShift').length, 1);
+    assert.equal(calls.find(call => call.method === 'openShift').input.providerRequestUuid, shiftId);
+});
+
 test('runtime provider closes shift with provider generated report payload and waits for CLOSED externally', async () => {
     const operationId = crypto.randomUUID();
     const { server, calls, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cashier/shift') {
+            return { body: openedShift({ cashier: undefined }) };
+        }
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/shifts/close') return { status: 202, body: openedShift({ id: PROVIDER_SHIFT_ID, status: 'CLOSING' }) };
         return { body: {} };
     });
@@ -875,9 +1394,337 @@ test('runtime provider closes shift with provider generated report payload and w
         const closeCall = calls.find(call => call.path === '/api/v1/shifts/close');
         assert.deepEqual(closeCall.body, {});
         assert.equal(response.status, 'CLOSING');
+        assert.equal(response.id, PROVIDER_SHIFT_ID);
+        assert.ok(calls.findIndex(call => call.path === '/api/v1/cashier/shift') < calls.findIndex(call => call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`));
+        assert.ok(calls.findIndex(call => call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) < calls.findIndex(call => call.path === '/api/v1/shifts/close'));
     } finally {
         await close(server);
     }
+});
+
+test('runtime provider blocks shift close before mutation on wrong organization, current shift, or detailed cashier', async () => {
+    const operationId = crypto.randomUUID();
+    const input = {
+        providerOperationId: operationId,
+        fiscalOperation: {
+            operation_type: 'shift_close',
+            provider_operation_id: operationId,
+            provider_shift_id: PROVIDER_SHIFT_ID,
+            provider_register_id: PROVIDER_REGISTER_ID,
+            provider_cashier_id: PROVIDER_CASHIER_ID,
+            provider_organization_id: PROVIDER_ORGANIZATION_ID
+        }
+    };
+    const scenarios = [
+        {
+            name: 'wrong organization',
+            errorCode: 'checkbox_organization_identity_mismatch',
+            profile: cashierProfile({ organization: { id: crypto.randomUUID() } }),
+            current: openedShift(),
+            detailed: openedShift()
+        },
+        {
+            name: 'wrong register organization',
+            errorCode: 'checkbox_register_organization_mismatch',
+            profile: cashierProfile(),
+            register: cashRegisterInfo({ organization_id: crypto.randomUUID() }),
+            current: openedShift(),
+            detailed: openedShift()
+        },
+        {
+            name: 'wrong current shift',
+            errorCode: 'checkbox_shift_id_mismatch',
+            profile: cashierProfile(),
+            current: openedShift({ id: crypto.randomUUID() }),
+            detailed: openedShift()
+        },
+        {
+            name: 'wrong detailed cashier',
+            errorCode: 'checkbox_shift_cashier_mismatch',
+            profile: cashierProfile(),
+            current: openedShift({ cashier: undefined }),
+            detailed: openedShift({ cashier: { id: crypto.randomUUID() } })
+        }
+    ];
+
+    for (const scenario of scenarios) {
+        const { server, calls, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: scenario.profile };
+            if (call.path === '/api/v1/cash-registers/info') return { body: scenario.register || cashRegisterInfo() };
+            if (call.path === '/api/v1/cashier/shift') return { body: scenario.current };
+            if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: scenario.detailed };
+            if (call.path === '/api/v1/shifts/close') return { status: 500, body: { error: 'must not close' } };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig(providerConfig(baseUrl));
+            await assert.rejects(
+                () => provider.closeShift(input),
+                error => error instanceof CheckboxClientError && error.code === scenario.errorCode,
+                scenario.name
+            );
+            assert.equal(calls.some(call => call.path === '/api/v1/shifts/close'), false, scenario.name);
+        } finally {
+            await close(server);
+        }
+    }
+});
+
+test('runtime provider requires complete immutable shift-close identity before any HTTP', async () => {
+    const provider = createProviderFromConfig(providerConfig('http://127.0.0.1:9'));
+    await assert.rejects(
+        () => provider.closeShift({
+            providerOperationId: crypto.randomUUID(),
+            fiscalOperation: {
+                operation_type: 'shift_close',
+                provider_shift_id: PROVIDER_SHIFT_ID
+            }
+        }),
+        error => error instanceof CheckboxClientError
+            && error.code === 'checkbox_shift_close_identity_required'
+            && error.details?.missing?.includes('provider_register_id')
+            && error.details?.missing?.includes('provider_cashier_id')
+            && error.details?.missing?.includes('provider_organization_id')
+    );
+});
+
+test('runtime provider rejects a shift-close response that does not match the immutable shift', async () => {
+    const operationId = crypto.randomUUID();
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ cashier: undefined }) };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
+        if (call.path === '/api/v1/shifts/close') {
+            return { status: 202, body: openedShift({ id: crypto.randomUUID(), status: 'CLOSING' }) };
+        }
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        await assert.rejects(
+            () => provider.closeShift({
+                providerOperationId: operationId,
+                fiscalOperation: {
+                    operation_type: 'shift_close',
+                    provider_operation_id: operationId,
+                    provider_shift_id: PROVIDER_SHIFT_ID,
+                    provider_register_id: PROVIDER_REGISTER_ID,
+                    provider_cashier_id: PROVIDER_CASHIER_ID,
+                    provider_organization_id: PROVIDER_ORGANIZATION_ID
+                }
+            }),
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_shift_id_mismatch'
+        );
+        assert.equal(calls.filter(call => call.path === '/api/v1/shifts/close').length, 1);
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider rechecks worker lease ownership immediately before non-idempotent shift close POST', async () => {
+    const operationId = crypto.randomUUID();
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ cashier: undefined }) };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
+        if (call.path === '/api/v1/shifts/close') return { status: 202, body: openedShift({ status: 'CLOSING' }) };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const ownershipError = new Error('payment outbox lease ownership lost');
+        ownershipError.code = 'payment_outbox_job_ownership_lost';
+        let ownershipChecks = 0;
+        await assert.rejects(
+            () => provider.closeShift({
+                providerOperationId: operationId,
+                fiscalOperation: {
+                    operation_type: 'shift_close',
+                    provider_operation_id: operationId,
+                    provider_shift_id: PROVIDER_SHIFT_ID,
+                    provider_register_id: PROVIDER_REGISTER_ID,
+                    provider_cashier_id: PROVIDER_CASHIER_ID,
+                    provider_organization_id: PROVIDER_ORGANIZATION_ID
+                },
+                async beforeExternalMutation() {
+                    ownershipChecks += 1;
+                    throw ownershipError;
+                }
+            }),
+            error => error === ownershipError
+        );
+        assert.equal(ownershipChecks, 1);
+        assert.equal(calls.filter(call => call.path === '/api/v1/shifts/close').length, 0);
+        assert.equal(calls.some(call => call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`), true);
+    } finally {
+        await close(server);
+    }
+});
+
+test('shift-close timeout recovery looks up the exact immutable shift instead of the current shift', async () => {
+    const calls = [];
+    const provider = {
+        async lookupShift(input, options) {
+            calls.push({ method: 'lookupShift', input, options });
+            return {
+                id: PROVIDER_SHIFT_ID,
+                status: 'CLOSED',
+                registerId: PROVIDER_REGISTER_ID,
+                cashierId: PROVIDER_CASHIER_ID
+            };
+        },
+        async getCurrentShiftStatus() {
+            calls.push({ method: 'getCurrentShiftStatus' });
+            return { id: crypto.randomUUID(), status: 'OPENED' };
+        },
+        async closeShift() {
+            calls.push({ method: 'closeShift' });
+            throw new Error('close must not be repeated during lookup-only recovery');
+        }
+    };
+    const stages = [];
+    const result = await runShiftJob(provider, {
+        job: {
+            job_type: 'shift_close',
+            external_stage: 'shift_close_lookup',
+            provider_operation_id: crypto.randomUUID(),
+            provider_shift_id: PROVIDER_SHIFT_ID,
+            provider_register_id: PROVIDER_REGISTER_ID,
+            provider_cashier_id: PROVIDER_CASHIER_ID,
+            provider_organization_id: PROVIDER_ORGANIZATION_ID,
+            payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+        },
+        async recordStage(stage) { stages.push(stage); }
+    });
+
+    assert.equal(result.source, 'shift_close_lookup');
+    assert.equal(result.response.id, PROVIDER_SHIFT_ID);
+    assert.equal(result.response.status, 'CLOSED');
+    assert.deepEqual(stages, ['shift_close_lookup']);
+    assert.equal(calls.filter(call => call.method === 'lookupShift').length, 1);
+    assert.deepEqual(calls[0].options, { requireOpened: false });
+    assert.equal(calls.some(call => call.method === 'getCurrentShiftStatus'), false);
+    assert.equal(calls.some(call => call.method === 'closeShift'), false);
+});
+
+test('shift-close recovery observes exact OPENED shift twice before retrying close', async () => {
+    const operationId = crypto.randomUUID();
+    const calls = [];
+    const firstStages = [];
+    const provider = {
+        async lookupShift(input, options) {
+            calls.push({ method: 'lookupShift', input, options });
+            return {
+                id: PROVIDER_SHIFT_ID,
+                status: 'OPENED',
+                registerId: PROVIDER_REGISTER_ID,
+                cashierId: PROVIDER_CASHIER_ID
+            };
+        },
+        async prepareMutation(input) {
+            calls.push({ method: 'prepareMutation', input });
+        },
+        async closeShift(input) {
+            calls.push({ method: 'closeShift', input });
+            return {
+                id: PROVIDER_SHIFT_ID,
+                status: 'CLOSED',
+                registerId: PROVIDER_REGISTER_ID,
+                cashierId: PROVIDER_CASHIER_ID
+            };
+        }
+    };
+    const baseJob = {
+        job_type: 'shift_close',
+        provider_operation_id: operationId,
+        provider_shift_id: PROVIDER_SHIFT_ID,
+        provider_register_id: PROVIDER_REGISTER_ID,
+        provider_cashier_id: PROVIDER_CASHIER_ID,
+        provider_organization_id: PROVIDER_ORGANIZATION_ID,
+        payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+    };
+
+    await assert.rejects(
+        () => runShiftJob(provider, {
+            job: { ...baseJob, external_stage: 'shift_close_request_maybe_submitted' },
+            async recordStage(stage) { firstStages.push(stage); }
+        }),
+        error => error?.code === 'checkbox_shift_close_still_open'
+            && error.retryable === true
+            && error.unknown === true
+    );
+    assert.deepEqual(firstStages, ['shift_close_lookup', 'shift_close_lookup_still_open']);
+    assert.equal(calls.filter(call => call.method === 'closeShift').length, 0);
+
+    const secondStages = [];
+    const result = await runShiftJob(provider, {
+        job: { ...baseJob, external_stage: 'shift_close_lookup_still_open' },
+        async recordStage(stage) { secondStages.push(stage); }
+    });
+    assert.equal(result.source, 'shift_close_exact_retry');
+    assert.equal(result.response.id, PROVIDER_SHIFT_ID);
+    assert.equal(result.response.status, 'CLOSED');
+    assert.deepEqual(secondStages, [
+        'readiness',
+        'shift_close_retry_exact_shift',
+        'shift_close_request_maybe_submitted'
+    ]);
+    assert.equal(calls.filter(call => call.method === 'closeShift').length, 1);
+    assert.equal(calls.find(call => call.method === 'closeShift').input.fiscalOperation.provider_shift_id, PROVIDER_SHIFT_ID);
+});
+
+test('shift-close exact lookup 404 remains recoverable and never repeats close', async () => {
+    const calls = [];
+    const stages = [];
+    const provider = {
+        async lookupShift() {
+            calls.push('lookupShift');
+            throw new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 404', {
+                status: 404,
+                retryable: false
+            });
+        },
+        async closeShift() {
+            calls.push('closeShift');
+        }
+    };
+    await assert.rejects(
+        () => runShiftJob(provider, {
+            job: {
+                job_type: 'shift_close',
+                external_stage: 'shift_close_lookup',
+                provider_operation_id: crypto.randomUUID(),
+                provider_shift_id: PROVIDER_SHIFT_ID,
+                payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+            },
+            async recordStage(stage) { stages.push(stage); }
+        }),
+        error => error?.code === 'checkbox_shift_close_lookup_not_found'
+            && error.retryable === true
+            && error.unknown === true
+    );
+    assert.deepEqual(stages, ['shift_close_lookup', 'shift_close_lookup']);
+    assert.deepEqual(calls, ['lookupShift']);
+});
+
+test('shift-close recovery fails closed when exact immutable shift lookup is unavailable', async () => {
+    await assert.rejects(
+        () => runShiftJob({ closeShift() {} }, {
+            job: {
+                job_type: 'shift_close',
+                external_stage: 'shift_close_lookup',
+                provider_operation_id: crypto.randomUUID(),
+                provider_shift_id: PROVIDER_SHIFT_ID,
+                payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+            }
+        }),
+        error => error instanceof Error && error.code === 'checkbox_shift_lookup_unavailable' && error.unknown === true
+    );
 });
 
 test('runtime provider does not inline-open shift on sale validation', async () => {
@@ -909,6 +1756,7 @@ test('runtime provider reuses cached token per credential ref within bounded cac
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/receipts/sell') return { status: 201, body: checkboxReceipt(receiptId) };
         if (call.path === `/api/v1/receipts/${receiptId}`) return { body: checkboxReceipt(receiptId) };
         return { body: { valid: true } };
@@ -1056,6 +1904,17 @@ test('runtime config requires explicit CHECKBOX_EXPECT_IS_TEST before enabling p
     );
     assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'true' } }).expectedIsTest, true);
     assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'false' } }).expectedIsTest, false);
+    const testOverrideConfig = loadCheckboxRuntimeConfig({
+        credentialRef: 'park-middle',
+        licenseRef: 'park-middle',
+        env: {
+            ...env,
+            CHECKBOX_EXPECT_IS_TEST: 'true',
+            CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS: 'true'
+        }
+    });
+    assert.equal(testOverrideConfig.allowUnreportedPaymentPermissions, true);
+    assert.equal(createProviderFromConfig(testOverrideConfig).allowUnreportedPaymentPermissions, true);
 });
 
 test('runtime config supports explicit password and PIN auth and rejects ambiguity', () => {
@@ -1153,6 +2012,21 @@ test('runtime config fails closed for credential ref collisions and non-allowlis
             env: {
                 CHECKBOX_EXPECT_IS_TEST: 'false',
                 CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://evil.example',
+                CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
+                CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
+                CHECKBOX_PARK_MIDDLE_LICENSE_KEY: 'license-secret'
+            }
+        }),
+        error => error instanceof CheckboxClientError && error.code === 'checkbox_runtime_base_url_not_allowed'
+    );
+
+    assert.throws(
+        () => loadCheckboxRuntimeConfig({
+            credentialRef: 'park-middle',
+            licenseRef: 'park-middle',
+            env: {
+                CHECKBOX_EXPECT_IS_TEST: 'false',
+                CHECKBOX_PARK_MIDDLE_BASE_URL: 'https://api.checkbox.in.ua:8443',
                 CHECKBOX_PARK_MIDDLE_LOGIN: 'cashier',
                 CHECKBOX_PARK_MIDDLE_PASSWORD: 'password-secret',
                 CHECKBOX_PARK_MIDDLE_LICENSE_KEY: 'license-secret'

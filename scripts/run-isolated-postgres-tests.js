@@ -319,6 +319,12 @@ async function runSuite(testDb, testFile) {
     }
     if (checkboxBrowserMockPort) {
         const ref = 'PARK_MIDDLE_BROWSER';
+        serverEnv.NODE_OPTIONS = [
+            serverEnv.NODE_OPTIONS || '',
+            '--require=./tests/helpers/checkbox-browser-fetch-shim.js'
+        ].filter(Boolean).join(' ');
+        serverEnv.REQUIRE_ISOLATED_TEST_TARGET = 'true';
+        serverEnv.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER = 'true';
         serverEnv.CHECKBOX_INTEGRATION_ENABLED = 'true';
         serverEnv.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'true';
         serverEnv.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';

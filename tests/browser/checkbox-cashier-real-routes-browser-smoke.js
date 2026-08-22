@@ -413,7 +413,23 @@ async function run() {
         assert.equal(accessibilityContract.globalStatusRole, 'status');
         assert.equal(accessibilityContract.globalStatusLive, 'polite');
         assert.equal(accessibilityContract.unresolvedLive, 'polite');
-        await page.waitForFunction(() => window.CashierPaymentsPage?.state?.registerState);
+        try {
+            await page.waitForFunction(() => window.CashierPaymentsPage?.state?.registerState, null, { timeout: 30_000 });
+        } catch (error) {
+            const bootstrapDiagnostics = await page.evaluate(async () => {
+                const token = localStorage.getItem('pzp_token');
+                const response = await fetch('/api/payments/pilot-register-state?crmProfileKey=event_genix&registerAlias=middle', {
+                    headers: token ? { Authorization: `Bearer ${token}` } : {}
+                });
+                return {
+                    status: response.status,
+                    body: await response.text(),
+                    accessDenied: document.querySelector('#cashierAccessDenied')?.textContent?.trim() || null,
+                    globalStatus: document.querySelector('#cashierGlobalStatus')?.textContent?.trim() || null
+                };
+            });
+            throw new Error(`Cashier page readiness bootstrap failed: ${JSON.stringify(bootstrapDiagnostics)}`, { cause: error });
+        }
         const registerState = await page.evaluate(() => window.CashierPaymentsPage.state.registerState);
         assert.equal(registerState.readinessCode, 'ready', JSON.stringify(registerState));
         assert.equal(registerState.integrationReady, true, JSON.stringify(registerState));

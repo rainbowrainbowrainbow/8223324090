@@ -9,10 +9,60 @@ const { assertSandboxBaseUrl, loadCheckboxSandboxConfig, publicConfigSummary } =
 const { CheckboxClientError, redactCheckboxDiagnostics } = require('../services/checkbox/errors');
 const { mapFullReturnReceipt, mapSaleReceipt, mapServiceReceipt } = require('../services/checkbox/mapper');
 const { WebhookReplayGuard, signCheckboxWebhookBody, verifyCheckboxWebhookSignature } = require('../services/checkbox/signature');
-const { assertOpenApiOperationContract, schemaContainsProperty } = require('../scripts/checkbox-sandbox-smoke');
+const {
+  assertOpenApiOperationContract,
+  assertNoPreexistingSandboxShift,
+  assertSandboxProofMutationGuard,
+  closeOwnedSandboxShift,
+  publicSandboxEvidence,
+  publicReadinessDiagnostics,
+  runSandboxSaleProof,
+  schemaContainsProperty,
+  verifySandboxReceiptProof
+} = require('../scripts/checkbox-sandbox-smoke');
 
 function jsonResponse(body, status = 200) {
   return new Response(JSON.stringify(body), { status, headers: { 'content-type': 'application/json' } });
+}
+
+function proofConfig(overrides = {}) {
+  return {
+    confirmMutations: true,
+    closeShift: true,
+    allowUnreportedPaymentPermissions: true,
+    expectedOrganizationId: 'org-test',
+    expectedRegisterId: 'register-test',
+    expectedCashierId: 'cashier-test',
+    expectedIsTest: true,
+    expectedIsTestExplicit: true,
+    ...overrides
+  };
+}
+
+function proofDiagnostics({ cash = null, card = null, raw = null } = {}) {
+  const ready = code => ({ code, status: 'ready', ready: true, details: {} });
+  return {
+    ready: cash === true && card === true,
+    status: cash === true && card === true ? 'ready' : 'blocked',
+    authMode: 'password',
+    checks: [
+      ready('auth'),
+      ready('cashier_identity'),
+      ready('organization_identity'),
+      ready('register_identity'),
+      ready('register_online'),
+      ready('is_test'),
+      ready('signature'),
+      ready('certificate'),
+      { ...ready('sales_permission'), details: { permission: 'sales', value: true } },
+      { code: 'cash_permission', status: cash === true ? 'ready' : 'blocked', ready: cash === true, details: { permission: 'cash_payment', value: cash } },
+      { code: 'card_permission', status: card === true ? 'ready' : 'blocked', ready: card === true, details: { permission: 'card_payment', value: card } },
+      ready('provider_taxes'),
+      { code: 'current_shift', status: 'not_applicable', ready: true, details: { shiftStatus: 'none' } }
+    ],
+    summary: { readyCount: 10, blockedCount: 2, unavailableCount: 0, notApplicableCount: 1 },
+    raw
+  };
 }
 
 test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', () => {
@@ -35,7 +85,10 @@ test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', 
   const summary = JSON.stringify(publicConfigSummary(config));
   assert.doesNotMatch(summary, /secret-password|license-secret|access-secret/);
   assert.equal(config.expectedIsTest, true);
+  assert.equal(config.expectedIsTestExplicit, false);
   assert.equal(config.includeProOperations, false);
+  assert.equal(config.allowUnreportedPaymentPermissions, false);
+  assert.doesNotMatch(summary, /org-test|register-test|cashier-test/);
 });
 
 test('sandbox config supports a mutation-free PIN readiness mode', () => {
@@ -55,6 +108,384 @@ test('sandbox config supports a mutation-free PIN readiness mode', () => {
   assert.equal(config.confirmMutations, false);
   assert.equal(config.login, '');
   assert.equal(config.password, '');
+});
+
+test('sandbox proof permits only unreported test payment permissions behind every explicit guard', () => {
+  const config = proofConfig();
+  const result = assertSandboxProofMutationGuard(config, proofDiagnostics());
+  assert.equal(result.allowed, true);
+  assert.deepEqual(result.unreportedPaymentPermissions.sort(), ['card_payment', 'cash_payment']);
+
+  assert.throws(
+    () => assertSandboxProofMutationGuard({ ...config, confirmMutations: false }, proofDiagnostics()),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_mutation_confirmation_required'
+  );
+  assert.throws(
+    () => assertSandboxProofMutationGuard({ ...config, expectedIsTestExplicit: false }, proofDiagnostics()),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_test_identity_must_be_explicit'
+  );
+  assert.throws(
+    () => assertSandboxProofMutationGuard({ ...config, expectedRegisterId: null }, proofDiagnostics()),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_expected_identity_missing'
+  );
+  assert.throws(
+    () => assertSandboxProofMutationGuard({ ...config, allowUnreportedPaymentPermissions: false }, proofDiagnostics()),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_proof_readiness_blocked'
+  );
+});
+
+test('sandbox mutation proof requires owned shift cleanup to be enabled', () => {
+  assert.throws(
+    () => assertSandboxProofMutationGuard(
+      proofConfig({ closeShift: false }),
+      proofDiagnostics({ cash: true, card: true })
+    ),
+    error => error instanceof CheckboxClientError
+      && error.code === 'checkbox_sandbox_shift_cleanup_required'
+  );
+});
+
+test('sandbox proof never bypasses an explicit false payment permission', () => {
+  for (const diagnostics of [proofDiagnostics({ cash: false }), proofDiagnostics({ card: false })]) {
+    assert.throws(
+      () => assertSandboxProofMutationGuard(proofConfig(), diagnostics),
+      error => error instanceof CheckboxClientError
+        && error.code === 'checkbox_sandbox_payment_permission_denied'
+        && error.details?.explicitlyDenied === true
+    );
+  }
+});
+
+test('sandbox proof never bypasses malformed payment permissions', () => {
+  const diagnostics = proofDiagnostics();
+  const cash = diagnostics.checks.find(check => check.code === 'cash_permission');
+  cash.details.state = 'malformed';
+  cash.details.value = null;
+  assert.throws(
+    () => assertSandboxProofMutationGuard(proofConfig(), diagnostics),
+    error => error instanceof CheckboxClientError
+      && error.code === 'checkbox_sandbox_payment_permission_malformed'
+      && error.details?.malformed === true
+  );
+});
+
+test('public sandbox readiness output omits raw provider payload and provider identities', () => {
+  const diagnostics = proofDiagnostics({
+    raw: {
+      cashier: { id: 'cashier-private', organization_id: 'org-private', login: 'cashier-login' },
+      register: { id: 'register-private' },
+      provider: { access_token: 'provider-secret-token' }
+    }
+  });
+  diagnostics.checks.find(check => check.code === 'cashier_identity').details = {
+    cashierId: 'cashier-private',
+    organizationId: 'org-private'
+  };
+  const output = JSON.stringify(publicReadinessDiagnostics(diagnostics));
+  assert.doesNotMatch(output, /cashier-private|org-private|register-private|cashier-login|provider-secret-token|\"raw\"/);
+  assert.match(output, /cash_permission/);
+  assert.match(output, /\"reported\":false/);
+});
+
+test('public sandbox evidence removes provider and receipt identities even from mismatch diagnostics', () => {
+  const output = JSON.stringify(publicSandboxEvidence({
+    shiftId: 'shift-private',
+    receipt_id: 'receipt-private',
+    providerCashierId: 'cashier-private',
+    field: 'cash_register.id',
+    expected: 'register-private',
+    actual: 'wrong-register-private',
+    providerStatus: 'DONE',
+    count: 2
+  }));
+  assert.doesNotMatch(output, /shift-private|receipt-private|cashier-private|register-private/);
+  assert.match(output, /\"providerStatus\":\"DONE\"/);
+  assert.match(output, /\"count\":2/);
+});
+
+test('sandbox sale proof creates exact CASH and CASHLESS receipts and verifies official receipt identity', async () => {
+  const validated = [];
+  const created = [];
+  const lookedUp = [];
+  const documents = [];
+  const payloads = new Map();
+  const openedShift = {
+    id: 'shift-test',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  const client = {
+    baseUrl: 'https://api.checkbox.in.ua',
+    async validateSale(payload) {
+      validated.push(payload);
+      return { ok: true };
+    },
+    async createSaleReceipt(payload) {
+      created.push(payload);
+      payloads.set(payload.id, payload);
+      return { id: payload.id, status: 'CREATED' };
+    },
+    async lookupReceipt({ receiptId }) {
+      lookedUp.push(receiptId);
+      const payload = payloads.get(receiptId);
+      const tender = payload.payments[0];
+      return {
+        id: receiptId,
+        status: 'DONE',
+        type: 'SELL',
+        total_sum: 1000,
+        total_payment: 1000,
+        total_rest: 0,
+        cash_register_id: 'register-test',
+        cashier_id: 'cashier-test',
+        shift_id: 'shift-test',
+        payments: [{ type: tender.type, value: tender.value, label: tender.label }],
+        context: payload.context
+      };
+    },
+    async getReceiptDocument({ receiptId, format }) {
+      documents.push({ receiptId, format });
+      return Buffer.from('sandbox-pdf');
+    }
+  };
+  const config = proofConfig({ amountMinor: '1000', taxCode: null });
+  const proofOptions = {
+    openedShift,
+    identityProof: { organizationVerified: true }
+  };
+  const cash = await runSandboxSaleProof(client, config, '20260822010101', 'cash', proofOptions);
+  const cashless = await runSandboxSaleProof(client, config, '20260822010101', 'card_terminal_manual', proofOptions);
+  assert.equal(cash.payload.payments[0].type, 'CASH');
+  assert.equal(cashless.payload.payments[0].type, 'CASHLESS');
+  assert.equal(cash.verified.verified, true);
+  assert.equal(cashless.verified.verified, true);
+  assert.notEqual(cash.receiptId, cashless.receiptId);
+  assert.equal(validated.length, 2);
+  assert.equal(created.length, 2);
+  assert.deepEqual(lookedUp, [cash.receiptId, cashless.receiptId]);
+  assert.deepEqual(documents.map(item => item.format), ['pdf', 'pdf']);
+});
+
+test('sandbox receipt proof fails closed on UUID, amount, type, tender, register, cashier, shift, context or organization proof mismatch', () => {
+  const config = proofConfig({ amountMinor: '1000', taxCode: null });
+  const openedShift = {
+    id: 'shift-test',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  const payload = mapSaleReceipt({
+    providerRequestUuid: 'receipt-test',
+    tender: 'cash',
+    amountMinor: '1000',
+    items: [{ code: 'park', name: 'Park', priceMinor: '1000', quantityMillis: 1000 }],
+    context: {
+      fiscal_profile_id: 'sandbox-profile',
+      fiscal_operation_id: 'sandbox-operation',
+      payment_order_id: 'sandbox-payment'
+    }
+  });
+  const baseReceipt = {
+    id: payload.id,
+    status: 'DONE',
+    type: 'SELL',
+    total_sum: 1000,
+    total_payment: 1000,
+    total_rest: 0,
+    cash_register_id: 'register-test',
+    cashier_id: 'cashier-test',
+    shift_id: 'shift-test',
+    payments: [{ type: 'CASH', value: 1000, label: 'Готівка' }],
+    context: payload.context
+  };
+  const client = { baseUrl: 'https://api.checkbox.in.ua' };
+  const verify = (receipt, identityProof = { organizationVerified: true }) => verifySandboxReceiptProof({
+    client,
+    config,
+    openedShift,
+    payload,
+    receipt,
+    tender: 'cash',
+    identityProof
+  });
+
+  assert.equal(verify(baseReceipt).verified, true);
+  for (const [field, value] of [
+    ['id', 'wrong-receipt'],
+    ['status', 'CREATED'],
+    ['type', 'RETURN'],
+    ['total_sum', 999],
+    ['cash_register_id', 'wrong-register'],
+    ['cashier_id', 'wrong-cashier'],
+    ['shift_id', 'wrong-shift'],
+    ['payments', [{ type: 'CASHLESS', value: 1000 }]],
+    ['payments', [{ type: 'CASH', value: 1000 }, { type: 'CASHLESS', value: 1000 }]],
+    ['context', { ...payload.context, fiscal_operation_id: 'wrong-operation' }]
+  ]) {
+    assert.throws(() => verify({ ...baseReceipt, [field]: value }), CheckboxClientError, field);
+  }
+  assert.throws(() => verify(baseReceipt, { organizationVerified: false }), error => (
+    error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_organization_proof_missing'
+  ));
+});
+
+test('sandbox shift cleanup never closes a pre-existing shift and closes only the exact smoke-owned shift', async () => {
+  const config = proofConfig({ closeShift: true });
+  const shift = {
+    id: 'shift-owned',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  let closeCalls = 0;
+  let lookupCalls = 0;
+  const client = {
+    async getShiftById({ shiftId }) {
+      lookupCalls += 1;
+      assert.equal(shiftId, 'shift-owned');
+      return shift;
+    },
+    async getCurrentShift() { return shift; },
+    async closeShift() {
+      closeCalls += 1;
+      return { ...shift, status: 'CLOSED' };
+    }
+  };
+
+  const preexisting = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke: false });
+  assert.deepEqual(preexisting, { attempted: false, closed: false, reason: 'preexisting_shift' });
+  assert.equal(closeCalls, 0);
+  assert.equal(lookupCalls, 0);
+
+  const owned = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke: true });
+  assert.equal(owned.attempted, true);
+  assert.equal(owned.closed, true);
+  assert.equal(closeCalls, 1);
+  assert.equal(lookupCalls, 1);
+});
+
+test('sandbox mutations fail closed when Checkbox already has a shift not owned by this run', () => {
+  assert.doesNotThrow(() => assertNoPreexistingSandboxShift(null));
+  assert.doesNotThrow(() => assertNoPreexistingSandboxShift({ id: 'old', status: 'CLOSED' }));
+  for (const status of ['CREATED', 'OPENING', 'OPENED', 'CLOSING']) {
+    assert.throws(
+      () => assertNoPreexistingSandboxShift({ id: 'foreign', status }),
+      error => error instanceof CheckboxClientError
+        && error.code === 'checkbox_sandbox_preexisting_shift_requires_manual_resolution'
+        && error.details?.providerStatus === status
+    );
+  }
+});
+
+test('failure cleanup bounded-polls the exact smoke-owned UUID through not-found and opening before close', async () => {
+  const config = proofConfig({ closeShift: false });
+  const states = [
+    new CheckboxClientError('not_found', 'not found', { status: 404 }),
+    { id: 'shift-owned', status: 'CREATED', cash_register: { id: 'register-test' }, cashier: { id: 'cashier-test' } },
+    { id: 'shift-owned', status: 'OPENING', cash_register: { id: 'register-test' }, cashier: { id: 'cashier-test' } },
+    { id: 'shift-owned', status: 'OPENED', cash_register: { id: 'register-test' }, cashier: { id: 'cashier-test' } }
+  ];
+  const lookedUpIds = [];
+  let closeCalls = 0;
+  const client = {
+    async getShiftById({ shiftId }) {
+      lookedUpIds.push(shiftId);
+      const state = states.shift();
+      if (state instanceof Error) throw state;
+      return state;
+    },
+    async getCurrentShift() {
+      return { id: 'shift-owned', status: 'OPENED', cash_register: { id: 'register-test' }, cashier: { id: 'cashier-test' } };
+    },
+    async closeShift() {
+      closeCalls += 1;
+      return { id: 'shift-owned', status: 'CLOSED', cash_register: { id: 'register-test' }, cashier: { id: 'cashier-test' } };
+    }
+  };
+
+  const result = await closeOwnedSandboxShift({
+    client,
+    config,
+    shift: { id: 'shift-owned', status: 'CREATED' },
+    openedBySmoke: true,
+    force: true,
+    pollAttempts: 5,
+    pollDelayMs: 0
+  });
+  assert.equal(result.closed, true);
+  assert.equal(closeCalls, 1);
+  assert.deepEqual(lookedUpIds, ['shift-owned', 'shift-owned', 'shift-owned', 'shift-owned']);
+});
+
+test('failure cleanup times out safely without closing when exact owned shift cannot be proven', async () => {
+  const config = proofConfig({ closeShift: false });
+  let closeCalls = 0;
+  const client = {
+    async getShiftById() {
+      throw new CheckboxClientError('not_found', 'not found', { status: 404 });
+    },
+    async getCurrentShift() { throw new Error('must not inspect a foreign current shift'); },
+    async closeShift() { closeCalls += 1; }
+  };
+  await assert.rejects(
+    closeOwnedSandboxShift({
+      client,
+      config,
+      shift: { id: 'shift-owned', status: 'CREATED' },
+      openedBySmoke: true,
+      force: true,
+      pollAttempts: 3,
+      pollDelayMs: 0
+    }),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_owned_shift_cleanup_timeout'
+  );
+  assert.equal(closeCalls, 0);
+});
+
+test('failure cleanup force-closes a smoke-owned shift even when normal close is disabled', async () => {
+  const config = proofConfig({ closeShift: false });
+  const shift = {
+    id: 'shift-owned',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  let closeCalls = 0;
+  const client = {
+    async getShiftById() { return shift; },
+    async getCurrentShift() { return shift; },
+    async closeShift() {
+      closeCalls += 1;
+      return { ...shift, status: 'CLOSED' };
+    }
+  };
+  const skipped = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke: true });
+  assert.equal(skipped.reason, 'close_disabled');
+  const cleanup = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke: true, force: true });
+  assert.equal(cleanup.closed, true);
+  assert.equal(closeCalls, 1);
+});
+
+test('sandbox cleanup refuses to close when the current provider shift changed', async () => {
+  const config = proofConfig({ closeShift: true });
+  const ownedShift = {
+    id: 'shift-owned',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  let closeCalls = 0;
+  const client = {
+    async getShiftById() { return ownedShift; },
+    async getCurrentShift() { return { ...ownedShift, id: 'shift-other' }; },
+    async closeShift() { closeCalls += 1; }
+  };
+  await assert.rejects(
+    closeOwnedSandboxShift({ client, config, shift: ownedShift, openedBySmoke: true }),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_current_shift_uuid_mismatch'
+  );
+  assert.equal(closeCalls, 0);
 });
 
 test('OpenAPI compatibility resolves referenced and composed receipt payload schemas', () => {
@@ -195,11 +626,16 @@ test('sandbox smoke harness stays Phase 1 test-mode guarded by official contract
   assert.match(script, /assertExpectedSandboxIdentityConfig/);
   assert.match(script, /createProviderFromConfig/);
   assert.match(script, /collectReadinessDiagnostics/);
+  assert.match(script, /allowUnreportedPaymentPermissions:\s*config\.allowUnreportedPaymentPermissions === true/);
   assert.match(script, /cashier-readiness-checklist/);
-  assert.match(script, /provider\.verifyReadiness/);
+  assert.match(script, /assertSandboxProofMutationGuard/);
+  assert.match(script, /allowUnreportedPaymentPermissions/);
   assert.match(script, /expectedIsTest: true/);
   assert.match(script, /waitShiftOpened/);
+  assert.match(script, /waitShiftClosed/);
+  assert.match(script, /shift-cleanup-after-failure/);
   assert.match(script, /waitReceiptDone/);
+  assert.match(script, /card_terminal_manual/);
   assert.match(script, /phase2-operations-skipped/);
   assert.match(script, /checkbox:sandbox:readiness/);
   assert.match(script, /mutations: false/);

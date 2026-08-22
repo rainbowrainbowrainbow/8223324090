@@ -332,8 +332,11 @@ class FakeWorkerDb {
                 payment_order_id: 301 + id,
                 line_number: 1,
                 item_name: 'Park admission',
+                item_code: 'regular_child',
                 unit_price_minor: '10000',
-                quantity_milli: 1000
+                quantity_milli: 1000,
+                tax_mode: 'taxed',
+                provider_tax_id: 'tax-7'
             }]
         });
     }
@@ -563,10 +566,14 @@ class FakeWorkerClient {
     release() {}
 }
 
-function createProvider({ lookupReceipts = new Map(), failValidate = null, timeoutAfterSuccess = false } = {}) {
-    const calls = { lookup: [], validate: [], create: [] };
+function createProvider({ lookupReceipts = new Map(), failPrepare = null, failValidate = null, timeoutAfterSuccess = false } = {}) {
+    const calls = { lookup: [], prepare: [], validate: [], create: [] };
     return {
         calls,
+        async prepareMutation(input, options) {
+            calls.prepare.push({ input, options });
+            if (failPrepare) throw failPrepare;
+        },
         async lookupReceipt({ providerOperationId }) {
             calls.lookup.push(providerOperationId);
             if (lookupReceipts.has(providerOperationId)) return { found: true, receipt: lookupReceipts.get(providerOperationId) };
@@ -654,6 +661,47 @@ describe('payment outbox worker reconciliation', () => {
         assert.equal(dbPool.operations[0].status, 'failed');
     });
 
+    it('rechecks mutation readiness with immutable tax ids and tender before validation or sell', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-readiness' });
+        dbPool.orders[0].payment_method = 'cash';
+        dbPool.orders[0].source_snapshot = { tender: 'cash' };
+        dbPool.items[0].tax_mode = 'taxed';
+        dbPool.items[0].provider_tax_id = 'tax-7';
+        const provider = createProvider();
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-readiness' });
+        assert.equal(result.succeeded, 1);
+        assert.equal(provider.calls.prepare.length, 1);
+        assert.deepEqual(provider.calls.prepare[0].options.expectedTaxIds, ['tax-7']);
+        assert.equal(provider.calls.prepare[0].options.requiredTender, 'cash');
+        assert.equal(provider.calls.prepare[0].input.providerOperationId, 'op-readiness');
+        assert.equal(provider.calls.validate.length, 1);
+        assert.equal(provider.calls.create.length, 1);
+    });
+
+    it('fails before receipt validation when mutation readiness is not confirmed', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-not-ready' });
+        const provider = createProvider({
+            failPrepare: new PaymentOutboxWorkerError('checkbox_cashier_certificate_required', 'Certificate is not ready', { retryable: false })
+        });
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-not-ready' });
+        assert.equal(result.failed, 1);
+        assert.equal(result.results[0].error.code, 'checkbox_cashier_certificate_required');
+        assert.equal(provider.calls.prepare.length, 1);
+        assert.equal(provider.calls.validate.length, 0);
+        assert.equal(provider.calls.create.length, 0);
+    });
+
+    it('fails closed when the runtime provider cannot recheck mutation readiness', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-readiness-missing' });
+        const provider = createProvider();
+        delete provider.prepareMutation;
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-readiness-missing' });
+        assert.equal(result.failed, 1);
+        assert.equal(result.results[0].error.code, 'checkbox_mutation_readiness_unavailable');
+        assert.equal(provider.calls.validate.length, 0);
+        assert.equal(provider.calls.create.length, 0);
+    });
+
     it('does not hold DB transaction while provider HTTP work is running', async () => {
         const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-no-db-tx' });
         const provider = createProvider();
@@ -662,6 +710,11 @@ describe('payment outbox worker reconciliation', () => {
         };
         const originalValidate = provider.validateSale;
         const originalCreate = provider.createSaleReceipt;
+        const originalPrepare = provider.prepareMutation;
+        provider.prepareMutation = async (...args) => {
+            assertNoTransaction();
+            return originalPrepare(...args);
+        };
         provider.validateSale = async input => {
             assertNoTransaction();
             return originalValidate(input);

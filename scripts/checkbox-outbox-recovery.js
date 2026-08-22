@@ -3,7 +3,21 @@
 
 const { pool } = require('../db');
 
-const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation']);
+const PRE_SELL_STAGES = new Set([
+    'auth',
+    'readiness',
+    'shift_request',
+    'shift_request_maybe_submitted',
+    'shift_lookup',
+    'shift_lookup_not_found',
+    'shift_request_retry_same_uuid',
+    'shift_close_request',
+    'shift_close_request_maybe_submitted',
+    'shift_close_lookup',
+    'shift_close_lookup_still_open',
+    'shift_close_retry_exact_shift',
+    'receipt_validation'
+]);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
 const MUTATING_MODES = new Set(['requeue-pre-sell', 'lookup-only']);
 const MODES = new Set(['status', 'dead-letter', ...MUTATING_MODES]);
@@ -257,7 +271,12 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
             `UPDATE fiscal_shifts
                 SET status = CASE WHEN $3 = 'receipt_lookup' THEN status ELSE 'opening' END,
                     lifecycle_stage = CASE
-                        WHEN $3 IN ('shift_request_maybe_submitted', 'shift_lookup') THEN 'OPENING'
+                        WHEN $3 IN (
+                            'shift_request_maybe_submitted',
+                            'shift_lookup',
+                            'shift_lookup_not_found',
+                            'shift_request_retry_same_uuid'
+                        ) THEN 'OPENING'
                         ELSE lifecycle_stage
                     END,
                     updated_at = NOW()

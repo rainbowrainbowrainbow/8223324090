@@ -5,6 +5,16 @@ const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
 
+const {
+    applyPaymentAcceptanceGate,
+    canProbeProviderReadiness,
+    freshShiftContextMatches,
+    loadPaymentOrderTaxContext,
+    resolveProviderShiftReadiness,
+    resolveUnreportedPaymentPermissionPolicy,
+    sanitizePersistedReadinessDetails
+} = require('../services/payments/paymentReadinessService');
+
 const ROOT = path.resolve(__dirname, '..');
 
 function read(relativePath) {
@@ -37,26 +47,199 @@ test('migration 326 adds sanitized Checkbox readiness snapshots and operational 
 
 test('payment create and confirm use the server-side provider readiness gate', () => {
     const service = read('services/payments/paymentService.js');
-    assert.match(service, /const \{ PaymentReadinessError, assertPaymentReadiness \} = require\('\.\/paymentReadinessService'\)/);
+    assert.match(service, /PaymentReadinessError,[\s\S]*assertFreshPaymentReadiness,[\s\S]*assertPaymentReadiness[\s\S]*require\('\.\/paymentReadinessService'\)/);
     assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user,\s*fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?action: 'payments\.create'/);
+    assert.match(service, /fiscalProfileId: mapping\.fiscal_profile_id,[\s\S]*?action: 'payments\.create',\s*tender/);
     assert.match(service, /await assertPaymentReadiness\(\{\s*client,\s*user,\s*fiscalProfileId: order\.fiscal_profile_id,[\s\S]*?action: 'payments\.confirm_received'/);
+    assert.match(service, /await assertFreshPaymentReadiness\(\{[\s\S]*?tender: immutableTender,[\s\S]*?fetchImpl: checkboxFetchImpl/);
+    assert.ok(
+        service.indexOf('await assertFreshPaymentReadiness({') < service.indexOf('const result = await withTransaction(dbPool, async client => {', service.indexOf('async function confirmPaymentOrder')),
+        'Tender-scoped provider HTTP readiness must complete before the locking confirmation transaction'
+    );
     assert.match(service, /error instanceof PaymentReadinessError/);
+});
+
+test('unreported payment permission override is explicit and test-only', () => {
+    assert.deepEqual(resolveUnreportedPaymentPermissionPolicy({ env: {}, expectedIsTest: true }), {
+        requested: false,
+        allowed: false
+    });
+    assert.deepEqual(resolveUnreportedPaymentPermissionPolicy({
+        env: { CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS: 'true' },
+        expectedIsTest: true
+    }), {
+        requested: true,
+        allowed: true
+    });
+    assert.deepEqual(resolveUnreportedPaymentPermissionPolicy({
+        env: { CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS: 'true' },
+        expectedIsTest: false
+    }), {
+        requested: true,
+        allowed: false
+    });
+    assert.deepEqual(resolveUnreportedPaymentPermissionPolicy({
+        env: { CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS: 'yes-please' },
+        expectedIsTest: true
+    }), {
+        requested: false,
+        allowed: false
+    });
+});
+
+test('provider readiness remains probeable while payment acceptance stays fail-closed', () => {
+    assert.equal(canProbeProviderReadiness({ readinessCode: 'ready' }), true);
+    assert.equal(canProbeProviderReadiness({ readinessCode: 'payment_acceptance_disabled' }), true);
+    assert.equal(canProbeProviderReadiness({ readinessCode: 'credentials_missing' }), false);
+
+    const providerState = {
+        checkboxIntegrationEnabled: true,
+        paymentAcceptanceEnabled: false,
+        localMappingReady: true,
+        runtimeSecretsResolvable: true,
+        providerIdentityVerified: true,
+        registerActive: true,
+        cashierReady: true,
+        signatureCertificateReady: true,
+        taxMappingReady: true,
+        providerUnavailable: false,
+        staleReadiness: false,
+        shiftState: 'closed',
+        readinessCode: 'ready'
+    };
+    assert.deepEqual(applyPaymentAcceptanceGate(providerState), {
+        ...providerState,
+        providerReady: true,
+        readinessCode: 'payment_acceptance_disabled',
+        integrationReady: false
+    });
+    assert.equal(applyPaymentAcceptanceGate({ ...providerState, paymentAcceptanceEnabled: true }).integrationReady, true);
+});
+
+test('provider OPENED shift requires the exact durable local provider shift id', () => {
+    const matched = resolveProviderShiftReadiness({
+        providerShift: { id: 'shift-one', status: 'OPENED' },
+        localShift: { provider_shift_id: 'shift-one', status: 'open', lifecycle_stage: 'OPENED' }
+    });
+    assert.equal(matched.shiftState, 'open');
+    assert.equal(matched.readinessCode, 'ready');
+    assert.equal(matched.localShiftMatched, true);
+
+    for (const localShift of [null, {}, { provider_shift_id: 'shift-other', status: 'open', lifecycle_stage: 'OPENED' }]) {
+        const blocked = resolveProviderShiftReadiness({
+            providerShift: { id: 'shift-one', status: 'OPENED' },
+            localShift
+        });
+        assert.equal(blocked.shiftState, 'external_open');
+        assert.equal(blocked.readinessCode, 'external_shift_requires_sync');
+        assert.equal(blocked.localShiftMatched, false);
+    }
+
+    for (const localShift of [
+        { provider_shift_id: 'shift-one', status: 'open', lifecycle_stage: 'OPENED' },
+        { provider_shift_id: 'shift-one', status: 'opening', lifecycle_stage: 'OPENING' },
+        { provider_shift_id: 'shift-one', status: 'closing', lifecycle_stage: 'CLOSING' }
+    ]) {
+        const blocked = resolveProviderShiftReadiness({ providerShift: null, localShift });
+        assert.equal(blocked.shiftState, 'local_stale');
+        assert.equal(blocked.readinessCode, 'local_shift_requires_reconciliation');
+        assert.equal(blocked.localShiftMatched, false);
+    }
+    assert.equal(freshShiftContextMatches(
+        { provider_shift_id: 'shift-one', status: 'open', lifecycle_stage: 'OPENED' },
+        { providerShiftId: 'shift-one', shiftState: 'open' }
+    ), true);
+    assert.equal(freshShiftContextMatches(
+        { provider_shift_id: 'shift-other', status: 'open', lifecycle_stage: 'OPENED' },
+        { providerShiftId: 'shift-one', shiftState: 'open' }
+    ), false);
+});
+
+test('provider OPENED shift requires detailed cashier identity and never trusts a sparse current-shift fallback', () => {
+    const readiness = read('services/payments/paymentReadinessService.js');
+    assert.match(readiness, /getShiftById\(\{ shiftId: current\.id \}\)[\s\S]*requireOpened: true, requireCashier: true/);
+    assert.doesNotMatch(readiness, /normalizeShiftResponse\(current(?:\.raw \|\| current)?[\s\S]*requireCashier: false/);
+});
+
+test('fresh payment tax context uses immutable order items and rejects active mapping drift', async () => {
+    const immutableRows = [
+        { line_number: 1, item_code: 'regular_child', tax_mode: 'taxed', provider_tax_id: 'tax-7' },
+        { line_number: 2, item_code: 'adult_companion', tax_mode: 'untaxed', provider_tax_id: null }
+    ];
+    function clientFor(currentRows) {
+        return {
+            async query(sql) {
+                if (sql.includes('FROM payment_order_items')) return { rows: immutableRows };
+                if (sql.includes('FROM fiscal_item_mappings')) return { rows: currentRows };
+                throw new Error(`Unexpected query: ${sql}`);
+            }
+        };
+    }
+    const exact = await loadPaymentOrderTaxContext(clientFor([
+        { item_code: 'regular_child', tax_mode: 'taxed', provider_tax_id: 'tax-7' },
+        { item_code: 'adult_companion', tax_mode: 'untaxed', provider_tax_id: null }
+    ]), {
+        paymentOrderId: 77,
+        fiscalProfileId: 1,
+        fiscalRegisterId: 2,
+        crmProfileKey: 'event_genix',
+        lockConfiguration: true
+    });
+    assert.deepEqual(exact.providerTaxIds, ['tax-7']);
+    assert.match(exact.fingerprint, /^[a-f0-9]{64}$/);
+
+    await assert.rejects(
+        () => loadPaymentOrderTaxContext(clientFor([
+            { item_code: 'regular_child', tax_mode: 'taxed', provider_tax_id: 'tax-9' },
+            { item_code: 'adult_companion', tax_mode: 'untaxed', provider_tax_id: null }
+        ]), {
+            paymentOrderId: 77,
+            fiscalProfileId: 1,
+            fiscalRegisterId: 2,
+            crmProfileKey: 'event_genix'
+        }),
+        error => error.code === 'payment_fiscal_tax_mapping_changed'
+    );
+});
+
+test('public readiness details never expose provider identity ids', () => {
+    const sanitized = sanitizePersistedReadinessDetails({
+        cashier: { id: 'cashier-secret-id', identityVerified: true, organizationVerified: true, isTest: true },
+        register: { registerId: 'register-secret-id', organizationId: 'org-secret-id', identityVerified: true, organizationVerified: true, online: true },
+        shift: { id: 'shift-secret-id', state: 'open', status: 'OPENED', localShiftMatched: true, providerShiftPresent: true },
+        expected: { expectedCashierId: 'cashier-secret-id', expectedRegisterId: 'register-secret-id' },
+        permissions: { sales: 'allowed', cash: 'allowed', card: 'unreported', unreported: ['card_payment'] },
+        taxes: { expected: ['tax-secret-id'], expectedCount: 1, availableCount: 1, exactPaymentTaxSnapshot: true }
+    });
+    const serialized = JSON.stringify(sanitized);
+    assert.doesNotMatch(serialized, /cashier-secret-id|register-secret-id|org-secret-id|shift-secret-id|tax-secret-id/);
+    assert.equal(sanitized.cashier.identityVerified, true);
+    assert.equal(sanitized.register.online, true);
+    assert.equal(sanitized.shift.localShiftMatched, true);
+    assert.equal(sanitized.taxes.expectedCount, 1);
 });
 
 test('payment readiness service keeps provider HTTP outside DB transactions and blocks stale states', () => {
     const service = read('services/payments/paymentReadinessService.js');
     assert.match(service, /async function prepareReadinessScope/);
-    assert.match(service, /result = await probeProvider\(scope, \{ fetchImpl, now \}\)/);
+    assert.match(service, /result = await probeProvider\(scope, \{ fetchImpl, now, env \}\)/);
+    assert.match(service, /providerResult = await probeProvider\(scope, \{ fetchImpl, now, env, requiredTender \}\)/);
     assert.match(service, /readiness_stale/);
     assert.match(service, /provider_unavailable/);
     assert.match(service, /shift_opening/);
-    assert.match(service, /\['OPENING', 'CREATED'\]\.includes\(current\.status\)/);
-    assert.match(service, /verifyReadiness\(expected, \{ expectedTaxIds: scope\.tax\?\.providerTaxIds \|\| \[\] \}\)/);
+    assert.match(service, /resolveProviderShiftReadiness\(\{ providerShift: current, localShift: scope\.shift \}\)/);
+    assert.match(service, /external_shift_requires_sync/);
+    assert.match(service, /local_shift_requires_reconciliation/);
+    assert.match(service, /verifyReadiness\(expected, \{[\s\S]*expectedTaxIds: scope\.paymentTaxContext\?\.providerTaxIds \|\| scope\.tax\?\.providerTaxIds \|\| \[\],[\s\S]*requiredTender: normalizedTender,[\s\S]*allowUnreportedPaymentPermissions: unreportedPermissionPolicy\.allowed/);
+    assert.match(service, /CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS/);
+    assert.match(service, /expectedIsTest: expected\.expectedIsTest/);
+    assert.match(service, /paymentPermissionWarning/);
     assert.match(service, /checkbox_expected_is_test_mismatch/);
     assert.match(service, /fiscal_context_incomplete/);
     assert.match(service, /tax_mode = 'untaxed'/);
     assert.match(service, /tax_mode = 'taxed'/);
     assert.match(service, /deriveIntegrationReady/);
+    assert.match(service, /providerReady: false/);
     assert.match(service, /syncPortalClosedShift/);
     assert.match(service, /READINESS_PROBE_IN_FLIGHT/);
     assert.match(service, /serializedLatest && serializedLatest\.staleReadiness !== true/);
@@ -103,7 +286,8 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(worker, /payment_outbox_degraded/);
     assert.match(worker, /job\.payload->>'phase' = 'thin_mvp_shift_close'/);
     assert.match(worker, /CASHIER_PRO_JOB_TYPES = new Set\(\['receipt_return', 'service_receipt'\]\)/);
-    assert.match(worker, /getCurrentShiftStatus/);
+    assert.match(worker, /provider\.lookupShift/);
+    assert.match(worker, /checkbox_shift_lookup_unavailable/);
     assert.match(worker, /COALESCE\(job\.heartbeat_at, job\.locked_at\)/);
     assert.match(worker, /shift_request_maybe_submitted/);
     assert.match(worker, /NOT EXISTS \(\s*SELECT 1\s*FROM payment_outbox_jobs active_job/);
@@ -113,6 +297,15 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(worker, /checkbox_shift_open_pending/);
     assert.match(worker, /checkbox_shift_close_pending/);
     assert.match(worker, /SHIFT_OPEN_LOOKUP_STAGES\.has\(stage\)/);
+    assert.match(worker, /shift_lookup_not_found/);
+    assert.match(worker, /shift_request_retry_same_uuid/);
+    assert.match(worker, /two_exact_lookup_404_then_same_uuid_only/);
+    assert.match(worker, /shift_close_request_maybe_submitted/);
+    assert.match(worker, /shift_close_lookup_still_open/);
+    assert.match(worker, /two_exact_lookup_opened_then_close_exact_shift_only/);
+    assert.match(worker, /recordStage\(externalStage\(context\.job\)\)/);
+    assert.match(worker, /assertMutationOwnership = \(\) => recordExternalStage/);
+    assert.doesNotMatch(worker, /recordStage\('auth'\)/, 'Worker must preserve durable recovery stages across restart');
     assert.match(worker, /SHIFT_CLOSE_LOOKUP_STAGES\.has\(stage\)/);
     assert.match(worker, /checkbox_shift_close_identity_mismatch/);
     assert.match(worker, /assertLifecycleTransition/);
@@ -123,9 +316,13 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(provider, /checkbox_shift_explicit_sync_required/);
     assert.match(provider, /expectedShiftId: expected\.expectedShiftId \|\| expected\.providerOperationId/);
     assert.match(provider, /notFound: true/);
+    assert.match(provider, /beforeExternalMutation\?\.\(\{ operation: 'shift_close' \}\)/);
     assert.doesNotMatch(provider, /id: expected\.expectedShiftId \|\| null, status: CLOSED_SHIFT_STATUS/);
     assert.match(client, /async closeShift\(\)[\s\S]*body: \{\}/);
-    assert.match(recovery, /PRE_SELL_STAGES = new Set\(\['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation'\]\)/);
+    assert.match(recovery, /shift_lookup_not_found/);
+    assert.match(recovery, /shift_request_retry_same_uuid/);
+    assert.match(recovery, /shift_close_request_maybe_submitted/);
+    assert.match(recovery, /shift_close_lookup_still_open/);
     assert.match(recovery, /Date\.parse\(row\.heartbeat_at \|\| row\.locked_at\)/);
     assert.match(recovery, /targetStage: stage \|\| 'auth'/);
     assert.doesNotMatch(recovery, /request_snapshot = COALESCE\(request_snapshot/);
@@ -136,6 +333,14 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(cashierOps, /ensureOpenShiftForSale\(client, \{ order, user, fiscalConfig = null \}\)/);
     assert.match(cashierOps, /expected_is_test: normalizeBoolean\(fiscalSnapshot\.expected_is_test \?\? order\.register_expected_is_test\)/);
     assert.match(cashierOps, /register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash/);
+    const phaseOneClose = read('services/payments/paymentReadinessService.js').slice(
+        read('services/payments/paymentReadinessService.js').indexOf('async function requestPhase1ShiftClose'),
+        read('services/payments/paymentReadinessService.js').indexOf('async function runCheckboxReadinessProbeScheduler')
+    );
+    assert.match(phaseOneClose, /external_stage: 'auth'/);
+    assert.match(phaseOneClose, /action: 'fiscal\.shift\.close'/);
+    assert.match(phaseOneClose, /requirePaymentAcceptance: false/);
+    assert.doesNotMatch(phaseOneClose, /VALUES[\s\S]*'shift_close_lookup'\)/, 'A new Phase-1 close job must submit close before entering lookup recovery');
 });
 
 test('scheduler surface documents readiness probe and degraded outbox wrapper', () => {
@@ -319,18 +524,22 @@ test('configuration CLI authorizes mutating actor inside transaction and fails c
 
 test('confirmed payment idempotent replay re-authorizes but does not require new provider readiness', () => {
     const service = read('services/payments/paymentService.js');
-    const replayBlock = service.match(/if \(existingAttempt\) \{[\s\S]*?\r?\n        \}\r?\n\r?\n        if \(requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled/)?.[0] || '';
+    const preflightStart = service.indexOf('const preflight = await withTransaction', service.indexOf('async function confirmPaymentOrder'));
+    const replayStart = service.indexOf('if (existingAttempt)', preflightStart);
+    const replayEnd = service.indexOf('if (!requireCheckboxIntegrationReady)', replayStart);
+    const replayBlock = service.slice(replayStart, replayEnd);
     assert.match(replayBlock, /await authorizeOrderReplay/);
     assert.match(replayBlock, /idempotency_key_conflict/);
     assert.match(replayBlock, /replayed: true/);
     assert.doesNotMatch(replayBlock, /assertPaymentReadiness/);
     assert.doesNotMatch(replayBlock, /assertCheckboxIntegrationReady/);
+    assert.doesNotMatch(replayBlock, /assertFreshPaymentReadiness/);
     const confirmFunction = service.slice(
         service.indexOf('async function confirmPaymentOrder'),
         service.indexOf('async function cancelDraftPaymentOrder')
     );
     assert.ok(
-        confirmFunction.indexOf('if (existingAttempt)') < confirmFunction.indexOf("throw new PaymentServiceError('checkbox_integration_disabled'"),
+        confirmFunction.indexOf('if (existingAttempt)') < confirmFunction.indexOf('await assertFreshPaymentReadiness({'),
         'idempotent replay must be evaluated before global integration-disabled checks'
     );
 });

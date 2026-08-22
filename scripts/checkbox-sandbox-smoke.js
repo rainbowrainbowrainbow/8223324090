@@ -6,7 +6,7 @@ const { CheckboxClient } = require('../services/checkbox/client');
 const { loadCheckboxSandboxConfig, publicConfigSummary } = require('../services/checkbox/config');
 const { CheckboxClientError, redactCheckboxDiagnostics } = require('../services/checkbox/errors');
 const { mapFullReturnReceipt, mapSaleReceipt, mapServiceReceipt } = require('../services/checkbox/mapper');
-const { createProviderFromConfig } = require('../services/checkbox/provider');
+const { createProviderFromConfig, normalizeReceiptArtifacts } = require('../services/checkbox/provider');
 const { WebhookReplayGuard, signCheckboxWebhookBody, verifyCheckboxWebhookSignature } = require('../services/checkbox/signature');
 
 const REQUIRED_OPENAPI_PATHS = Object.freeze({
@@ -27,8 +27,26 @@ const REQUIRED_OPENAPI_PATHS = Object.freeze({
     '/api/v1/receipts/{receipt_id}/qrcode': ['get']
 });
 
+function isProviderIdentityKey(key) {
+    return /^(?:id|receipt_?id|shift_?id|register_?id|cashier_?id|organization_?id|provider_?(?:receipt|shift|register|cashier|organization)_?id|expected_?(?:receipt|shift|register|cashier|organization)_?id)$/i.test(String(key || '').replace(/-/g, '_'));
+}
+
+function publicSandboxEvidence(value) {
+    const redacted = redactCheckboxDiagnostics(value);
+    if (redacted == null || typeof redacted !== 'object') return redacted;
+    if (Array.isArray(redacted)) return redacted.map(publicSandboxEvidence);
+    const output = {};
+    const identityMismatch = /(?:id|register|cashier|organization|shift|receipt)/i.test(String(redacted.field || ''));
+    for (const [key, item] of Object.entries(redacted)) {
+        if (isProviderIdentityKey(key)) continue;
+        if (identityMismatch && /^(?:expected|actual)$/i.test(key)) continue;
+        output[key] = publicSandboxEvidence(item);
+    }
+    return output;
+}
+
 function logStep(name, details = {}) {
-    console.log(JSON.stringify({ step: name, ...redactCheckboxDiagnostics(details) }));
+    console.log(JSON.stringify({ step: name, ...publicSandboxEvidence(details) }));
 }
 
 function fail(error) {
@@ -37,7 +55,7 @@ function fail(error) {
         ok: false,
         code: error?.code || error?.name || 'checkbox_sandbox_smoke_failed',
         message: redactCheckboxDiagnostics(error?.message || 'Checkbox sandbox smoke failed'),
-        details: redactCheckboxDiagnostics(error?.details || {})
+        details: publicSandboxEvidence(error?.details || {})
     }));
     process.exit(status === 2 ? 2 : 1);
 }
@@ -120,20 +138,21 @@ function assertOpenApiGlobalContract(contract) {
     }
 }
 
-function buildSandboxSalePayload(config, runId) {
+function buildSandboxSalePayload(config, runId, tender = 'cash', context = {}) {
     const amountMinor = config.amountMinor;
+    const paymentType = tender === 'cash' ? 'cash' : 'cashless';
     return mapSaleReceipt({
         providerRequestUuid: crypto.randomUUID(),
         amountMinor,
-        tender: 'cash',
+        tender,
         items: [{
-            code: `eventgenix-sandbox-ticket-${runId}`,
-            name: `EventGenix sandbox park ticket ${runId}`,
+            code: `eventgenix-sandbox-${paymentType}-${runId}`,
+            name: `EventGenix sandbox park ${paymentType} ${runId}`,
             priceMinor: amountMinor,
             quantityMillis: 1000,
             tax: config.taxCode ? [config.taxCode] : undefined
         }],
-        context: { run_id: runId, source: 'eventgenix_checkbox_sandbox_smoke' }
+        context: { run_id: runId, payment_type: paymentType, source: 'eventgenix_checkbox_sandbox_smoke', ...context }
     });
 }
 
@@ -142,7 +161,16 @@ async function waitReceiptDone(client, receiptId) {
     for (let attempt = 0; attempt < 10; attempt += 1) {
         latest = await client.lookupReceipt({ receiptId });
         const status = String(latest?.status || '').toUpperCase();
-        if (status === 'DONE') return latest;
+        if (status === 'DONE') {
+            if (String(latest?.id || '') !== String(receiptId)) {
+                throw new CheckboxClientError('checkbox_sandbox_receipt_uuid_mismatch', 'Sandbox receipt lookup returned a different UUID', {
+                    status: 1,
+                    retryable: false,
+                    details: { expectedReceiptId: receiptId, receiptIdSeen: Boolean(latest?.id) }
+                });
+            }
+            return latest;
+        }
         if (status === 'ERROR' || status === 'CANCELLED') {
             throw new CheckboxClientError('checkbox_sandbox_receipt_terminal_failure', `Sandbox receipt ended with ${status}`, { status: 1, details: { receiptId, providerStatus: status } });
         }
@@ -176,13 +204,133 @@ function assertExpectedSandboxIdentityConfig(config) {
     }
 }
 
+function publicReadinessDiagnostics(diagnostics = {}) {
+    const checks = Array.isArray(diagnostics.checks) ? diagnostics.checks.map(check => {
+        const item = {
+            code: check.code,
+            label: check.label,
+            status: check.status,
+            ready: check.ready === true,
+            recommendation: check.recommendation || null
+        };
+        if (['sales_permission', 'cash_permission', 'card_permission'].includes(check.code)) {
+            const value = check?.details?.value;
+            const state = check?.details?.state || (value === true ? 'allowed' : value === false ? 'denied' : value === null ? 'unreported' : 'malformed');
+            item.permission = {
+                reported: value === true || value === false,
+                allowed: value === true ? true : value === false ? false : null,
+                state
+            };
+        } else if (check.code === 'is_test') {
+            item.testIdentityMatched = check.ready === true;
+        } else if (check.code === 'current_shift') {
+            item.shiftStatus = firstText(check?.details?.status, check?.details?.shiftStatus) || null;
+        }
+        return item;
+    }) : [];
+    return redactCheckboxDiagnostics({
+        ready: diagnostics.ready === true,
+        status: diagnostics.status || 'blocked',
+        mutations: false,
+        authMode: diagnostics.authMode || null,
+        checks,
+        summary: diagnostics.summary || null
+    });
+}
+
+function assertSandboxProofMutationGuard(config, diagnostics = {}) {
+    if (!config.confirmMutations) {
+        throw new CheckboxClientError('checkbox_sandbox_mutation_confirmation_required', 'Set CHECKBOX_SANDBOX_CONFIRM_MUTATIONS=sandbox to run real sandbox fiscal operations', { status: 2, retryable: false });
+    }
+    assertExpectedSandboxIdentityConfig(config);
+    if (config.expectedIsTestExplicit !== true || config.expectedIsTest !== true) {
+        throw new CheckboxClientError('checkbox_sandbox_test_identity_must_be_explicit', 'Mutation proof requires CHECKBOX_SANDBOX_EXPECT_IS_TEST=true explicitly', { status: 2, retryable: false });
+    }
+    if (config.closeShift !== true) {
+        throw new CheckboxClientError(
+            'checkbox_sandbox_shift_cleanup_required',
+            'Controlled sandbox mutation proof requires CHECKBOX_SANDBOX_CLOSE_SHIFT=true',
+            { status: 2, retryable: false }
+        );
+    }
+    const checks = new Map((Array.isArray(diagnostics.checks) ? diagnostics.checks : []).map(check => [check.code, check]));
+    const requiredReadyCodes = [
+        'auth',
+        'cashier_identity',
+        'organization_identity',
+        'register_identity',
+        'register_online',
+        'is_test',
+        'signature',
+        'certificate',
+        'sales_permission',
+        'provider_taxes'
+    ];
+    const blocked = [];
+    for (const code of requiredReadyCodes) {
+        const check = checks.get(code);
+        if (!check || check.status !== 'ready' || check.ready !== true) blocked.push(code);
+    }
+
+    const currentShift = checks.get('current_shift');
+    const currentShiftStatus = String(firstText(currentShift?.details?.status, currentShift?.details?.shiftStatus) || '').toUpperCase();
+    const currentShiftRecoverable = currentShift
+        && (currentShift.status === 'ready'
+            || currentShift.status === 'not_applicable'
+            || (currentShift.status === 'blocked' && ['CREATED', 'OPENING'].includes(currentShiftStatus)));
+    if (!currentShiftRecoverable) blocked.push('current_shift');
+
+    const unreported = [];
+    for (const [code, permission] of [['cash_permission', 'cash_payment'], ['card_permission', 'card_payment']]) {
+        const check = checks.get(code);
+        const value = check?.details?.permission === permission ? check.details.value : undefined;
+        const state = check?.details?.state
+            || (value === true ? 'allowed' : value === false ? 'denied' : value === null ? 'unreported' : 'malformed');
+        if (state === 'allowed' && value === true && check.status === 'ready' && check.ready === true) continue;
+        if (state === 'denied' || value === false) {
+            throw new CheckboxClientError('checkbox_sandbox_payment_permission_denied', `Checkbox explicitly denied ${permission}; test proof bypass is forbidden`, {
+                status: 2,
+                retryable: false,
+                details: { permission, explicitlyDenied: true }
+            });
+        }
+        if (state === 'malformed') {
+            throw new CheckboxClientError('checkbox_sandbox_payment_permission_malformed', `Checkbox returned malformed ${permission}; test proof bypass is forbidden`, {
+                status: 2,
+                retryable: false,
+                details: { permission, malformed: true }
+            });
+        }
+        if (state === 'unreported' && value === null && config.allowUnreportedPaymentPermissions === true) {
+            unreported.push(permission);
+            continue;
+        }
+        blocked.push(code);
+    }
+    if (blocked.length) {
+        throw new CheckboxClientError('checkbox_sandbox_proof_readiness_blocked', 'Sandbox proof is blocked by provider readiness checks', {
+            status: 2,
+            retryable: false,
+            details: { blocked: [...new Set(blocked)] }
+        });
+    }
+    return {
+        allowed: true,
+        expectedTestIdentity: true,
+        organizationVerified: checks.get('organization_identity')?.ready === true,
+        registerVerified: checks.get('register_identity')?.ready === true,
+        cashierVerified: checks.get('cashier_identity')?.ready === true,
+        unreportedPaymentPermissions: unreported,
+        permissionOverrideEnabled: config.allowUnreportedPaymentPermissions === true
+    };
+}
+
 function shiftIdentity(shift = {}) {
     return {
         shiftId: firstText(shift.id, shift.shift_id),
         status: String(shift.status || '').toUpperCase(),
         registerId: firstText(shift.cash_register_id, shift.register_id, shift.cash_register?.id, shift.cash_register?.register_id),
-        cashierId: firstText(shift.cashier_id, shift.cashier?.id, shift.cashier?.cashier_id),
-        organizationId: firstText(shift.organization_id, shift.organization?.id, shift.cash_register?.organization_id, shift.cash_register?.organization?.id)
+        cashierId: firstText(shift.cashier_id, shift.cashier?.id, shift.cashier?.cashier_id)
     };
 }
 
@@ -190,14 +338,33 @@ function assertShiftIdentity(shift, config) {
     const identity = shiftIdentity(shift);
     assertSame(identity.registerId, config.expectedRegisterId, 'checkbox_sandbox_shift_register_mismatch', 'shift.cash_register.id');
     assertSame(identity.cashierId, config.expectedCashierId, 'checkbox_sandbox_shift_cashier_mismatch', 'shift.cashier.id');
-    assertSame(identity.organizationId, config.expectedOrganizationId, 'checkbox_sandbox_shift_organization_mismatch', 'shift.organization.id');
     return identity;
+}
+
+function assertNoPreexistingSandboxShift(shift) {
+    if (!shift) return;
+    const identity = shiftIdentity(shift);
+    if (['CLOSED', 'ERROR', 'CANCELLED'].includes(identity.status)) return;
+    throw new CheckboxClientError(
+        'checkbox_sandbox_preexisting_shift_requires_manual_resolution',
+        'Sandbox mutations are blocked because Checkbox already has a shift that was not created by this smoke run',
+        {
+            status: 2,
+            retryable: false,
+            details: { providerStatus: identity.status || 'UNKNOWN' }
+        }
+    );
 }
 
 async function waitShiftOpened(client, shift, config) {
     let current = shift;
+    const expectedShiftId = shiftIdentity(shift).shiftId;
+    if (!expectedShiftId) {
+        throw new CheckboxClientError('checkbox_sandbox_shift_id_missing', 'Cannot poll sandbox shift open without its durable UUID', { status: 1, retryable: false });
+    }
     for (let attempt = 0; attempt < 12; attempt += 1) {
         const identity = assertShiftIdentity(current, config);
+        assertSame(identity.shiftId, expectedShiftId, 'checkbox_sandbox_shift_open_uuid_mismatch', 'shift.id');
         if (identity.status === 'OPENED') return current;
         if (identity.status === 'ERROR' || identity.status === 'CANCELLED' || identity.status === 'CLOSED') {
             throw new CheckboxClientError('checkbox_sandbox_shift_terminal_failure', `Sandbox shift ended with ${identity.status}`, { status: 1, details: identity });
@@ -207,6 +374,193 @@ async function waitShiftOpened(client, shift, config) {
         await new Promise(resolve => setTimeout(resolve, 1200));
     }
     throw new CheckboxClientError('checkbox_sandbox_shift_open_timeout', 'Sandbox shift did not reach OPENED in time', { status: 1, details: shiftIdentity(current) });
+}
+
+async function waitShiftClosed(client, closeResponse, openedShift, config) {
+    const expectedShiftId = shiftIdentity(openedShift).shiftId;
+    if (!expectedShiftId) {
+        throw new CheckboxClientError('checkbox_sandbox_shift_id_missing', 'Cannot poll sandbox shift close without the opened shift UUID', { status: 1, retryable: false });
+    }
+    let current = closeResponse || null;
+    for (let attempt = 0; attempt < 12; attempt += 1) {
+        const observedId = firstText(current?.id, current?.shift_id);
+        if (observedId && observedId !== expectedShiftId) {
+            throw new CheckboxClientError('checkbox_sandbox_shift_close_uuid_mismatch', 'Sandbox shift close returned a different shift UUID', {
+                status: 1,
+                retryable: false,
+                details: { expectedShiftId, shiftIdSeen: true }
+            });
+        }
+        const status = String(current?.status || '').toUpperCase();
+        if (status === 'CLOSED') {
+            assertShiftIdentity(current, config);
+            return current;
+        }
+        if (status === 'ERROR' || status === 'CANCELLED') {
+            throw new CheckboxClientError('checkbox_sandbox_shift_close_terminal_failure', `Sandbox shift close ended with ${status}`, {
+                status: 1,
+                details: { expectedShiftId, providerStatus: status }
+            });
+        }
+        current = await client.getShiftById({ shiftId: expectedShiftId });
+        await new Promise(resolve => setTimeout(resolve, 1200));
+    }
+    throw new CheckboxClientError('checkbox_sandbox_shift_close_timeout', 'Sandbox shift did not reach CLOSED in time', {
+        status: 1,
+        details: { expectedShiftId, lastStatus: current?.status || null }
+    });
+}
+
+function verifySandboxReceiptProof({ client, config, openedShift, payload, receipt, tender, identityProof }) {
+    if (identityProof?.organizationVerified !== true) {
+        throw new CheckboxClientError('checkbox_sandbox_organization_proof_missing', 'Sandbox receipt proof requires a verified provider organization identity', {
+            status: 2,
+            retryable: false
+        });
+    }
+    const shift = assertShiftIdentity(openedShift, config);
+    if (shift.status !== 'OPENED' || !shift.shiftId) {
+        throw new CheckboxClientError('checkbox_sandbox_shift_not_opened', 'Sandbox receipt proof requires the exact OPENED provider shift', {
+            status: 2,
+            retryable: false,
+            details: { providerStatus: shift.status || null }
+        });
+    }
+    const providerPayments = Array.isArray(receipt?.payments) ? receipt.payments : [];
+    const expectedPaymentType = tender === 'cash' ? 'CASH' : 'CASHLESS';
+    if (providerPayments.length !== 1 || String(providerPayments[0]?.type || '').toUpperCase() !== expectedPaymentType) {
+        throw new CheckboxClientError('checkbox_sandbox_receipt_tender_mismatch', 'Sandbox receipt must contain exactly the selected Phase-1 payment tender', {
+            status: 2,
+            retryable: false,
+            details: { expectedPaymentType, paymentCount: providerPayments.length }
+        });
+    }
+    const context = payload?.context || {};
+    return normalizeReceiptArtifacts(receipt, client, {
+        providerOperationId: payload?.id,
+        amountMinor: config.amountMinor,
+        receivedAmountMinor: tender === 'cash' ? config.amountMinor : null,
+        changeAmountMinor: '0',
+        tender,
+        expectedReceiptType: 'SELL',
+        expectedOrganizationId: config.expectedOrganizationId,
+        expectedRegisterId: config.expectedRegisterId,
+        expectedCashierId: config.expectedCashierId,
+        expectedShiftId: shift.shiftId,
+        fiscalOperationId: context.fiscal_operation_id,
+        paymentOrderId: context.payment_order_id,
+        fiscalProfileId: context.fiscal_profile_id
+    });
+}
+
+async function runSandboxSaleProof(client, config, runId, tender, { openedShift, identityProof } = {}) {
+    const paymentType = tender === 'cash' ? 'cash' : 'cashless';
+    const proofKey = `${runId}-${paymentType}`;
+    const salePayload = buildSandboxSalePayload(config, runId, tender, {
+        fiscal_profile_id: `sandbox-${runId}`,
+        fiscal_operation_id: `sandbox-operation-${proofKey}`,
+        payment_order_id: `sandbox-payment-${proofKey}`
+    });
+    await client.validateSale(salePayload);
+    logStep(`${paymentType}-sale-validation-ok`);
+    const sale = await client.createSaleReceipt(salePayload);
+    const saleReceiptId = sale?.id || salePayload.id;
+    if (sale?.id && String(sale.id) !== String(salePayload.id)) {
+        throw new CheckboxClientError('checkbox_sandbox_receipt_uuid_mismatch', 'Checkbox sale response returned a different receipt UUID', {
+            status: 1,
+            retryable: false,
+            details: { expectedReceiptId: salePayload.id, receiptIdSeen: true }
+        });
+    }
+    logStep(`${paymentType}-sale-created`, { status: sale?.status || null });
+    const saleStatus = await waitReceiptDone(client, saleReceiptId);
+    const verified = verifySandboxReceiptProof({
+        client,
+        config,
+        openedShift,
+        payload: salePayload,
+        receipt: saleStatus,
+        tender,
+        identityProof
+    });
+    logStep(`${paymentType}-sale-status-lookup-ok`, { status: verified.status, verified: verified.verified === true });
+    const pdf = await client.getReceiptDocument({ receiptId: saleReceiptId, format: 'pdf' });
+    logStep(`${paymentType}-sale-document-ok`, { documentAvailable: Buffer.isBuffer(pdf) && pdf.length > 0 });
+    return { payload: salePayload, receiptId: saleReceiptId, status: saleStatus, verified };
+}
+
+async function closeOwnedSandboxShift({
+    client,
+    config,
+    shift,
+    openedBySmoke,
+    force = false,
+    pollAttempts = 12,
+    pollDelayMs = 1200
+}) {
+    if (!openedBySmoke) return { attempted: false, closed: false, reason: 'preexisting_shift' };
+    if (!force && config.closeShift !== true) return { attempted: false, closed: false, reason: 'close_disabled' };
+    const expectedShiftId = shiftIdentity(shift).shiftId;
+    if (!expectedShiftId) return { attempted: false, closed: false, reason: 'owned_shift_id_missing' };
+
+    let lastStatus = null;
+    for (let attempt = 0; attempt < pollAttempts; attempt += 1) {
+        let ownedShift;
+        try {
+            ownedShift = await client.getShiftById({ shiftId: expectedShiftId });
+        } catch (error) {
+            if (error?.status === 404 || error?.status === 422) {
+                lastStatus = 'NOT_FOUND';
+                if (attempt + 1 < pollAttempts) {
+                    await new Promise(resolve => setTimeout(resolve, pollDelayMs));
+                    continue;
+                }
+                break;
+            }
+            throw error;
+        }
+        const identity = assertShiftIdentity(ownedShift, config);
+        assertSame(identity.shiftId, expectedShiftId, 'checkbox_sandbox_shift_cleanup_uuid_mismatch', 'shift.id');
+        lastStatus = identity.status;
+        if (identity.status === 'CLOSED') return { attempted: false, closed: true, reason: 'already_closed' };
+        if (identity.status === 'ERROR' || identity.status === 'CANCELLED') {
+            return { attempted: false, closed: false, reason: 'owned_shift_not_closeable', status: identity.status };
+        }
+        if (identity.status === 'CLOSING') {
+            const closedShift = await waitShiftClosed(client, ownedShift, ownedShift, config);
+            return { attempted: false, closed: true, reason: 'already_closing', status: shiftIdentity(closedShift).status };
+        }
+        if (identity.status === 'CREATED' || identity.status === 'OPENING') {
+            if (attempt + 1 < pollAttempts) {
+                await new Promise(resolve => setTimeout(resolve, pollDelayMs));
+                continue;
+            }
+            break;
+        }
+        if (identity.status !== 'OPENED') {
+            return { attempted: false, closed: false, reason: 'owned_shift_not_closeable', status: identity.status };
+        }
+
+        const currentShift = await client.getCurrentShift();
+        const currentIdentity = assertShiftIdentity(currentShift, config);
+        assertSame(currentIdentity.shiftId, expectedShiftId, 'checkbox_sandbox_current_shift_uuid_mismatch', 'current_shift.id');
+        if (currentIdentity.status !== 'OPENED') {
+            throw new CheckboxClientError('checkbox_sandbox_current_shift_not_opened', 'Sandbox cleanup will close only the exact currently OPENED smoke-owned shift', {
+                status: 2,
+                retryable: false,
+                details: { providerStatus: currentIdentity.status || 'UNKNOWN' }
+            });
+        }
+        const closeResponse = await client.closeShift();
+        const closedShift = await waitShiftClosed(client, closeResponse, ownedShift, config);
+        return { attempted: true, closed: true, status: shiftIdentity(closedShift).status };
+    }
+
+    throw new CheckboxClientError('checkbox_sandbox_owned_shift_cleanup_timeout', 'Sandbox cleanup could not prove the smoke-owned shift OPENED before the bounded deadline', {
+        status: 2,
+        retryable: false,
+        details: { providerStatus: lastStatus || 'UNKNOWN' }
+    });
 }
 
 function runWebhookSignatureReplayCheck(config) {
@@ -268,9 +622,6 @@ async function runSandboxSmoke() {
     const contract = await fetchOfficialOpenApi(config.openApiUrl);
     logStep('openapi-contract-ok', contract);
 
-    if (!config.readinessOnly && !config.confirmMutations) {
-        throw new CheckboxClientError('checkbox_sandbox_mutation_confirmation_required', 'Set CHECKBOX_SANDBOX_CONFIRM_MUTATIONS=sandbox to run real sandbox fiscal operations', { status: 2 });
-    }
     assertExpectedSandboxIdentityConfig(config);
 
     const provider = createProviderFromConfig(config);
@@ -280,84 +631,114 @@ async function runSandboxSmoke() {
         expectedCashierId: config.expectedCashierId,
         expectedIsTest: true
     };
-    const expectedTaxes = { expectedTaxIds: config.taxCode ? [config.taxCode] : [] };
+    const readinessOptions = {
+        expectedTaxIds: config.taxCode ? [config.taxCode] : [],
+        allowUnreportedPaymentPermissions: config.allowUnreportedPaymentPermissions === true
+    };
 
     if (config.readinessOnly) {
-        const diagnostics = await provider.collectReadinessDiagnostics(expectedIdentity, expectedTaxes);
-        logStep('cashier-readiness-checklist', diagnostics);
-        console.log(JSON.stringify({ ok: diagnostics.ready, smoke: 'checkbox:sandbox:readiness', mutations: false, readiness: diagnostics }));
+        const diagnostics = await provider.collectReadinessDiagnostics(expectedIdentity, readinessOptions);
+        const publicDiagnostics = publicReadinessDiagnostics(diagnostics);
+        logStep('cashier-readiness-checklist', publicDiagnostics);
+        console.log(JSON.stringify({ ok: diagnostics.ready, smoke: 'checkbox:sandbox:readiness', mutations: false, readiness: publicDiagnostics }));
         if (!diagnostics.ready) process.exit(2);
         return;
     }
 
-    const readiness = await provider.verifyReadiness(expectedIdentity, expectedTaxes);
+    const diagnostics = await provider.collectReadinessDiagnostics(expectedIdentity, readinessOptions);
+    const proofGuard = assertSandboxProofMutationGuard(config, diagnostics);
     const client = provider.client;
     logStep('cashier-readiness-ok', {
-        cashierId: readiness.cashier?.cashierId || null,
-        organizationId: readiness.cashier?.organizationId || null,
-        registerId: readiness.register?.registerId || null,
-        isTest: readiness.register?.isTest === true,
-        signatureAvailable: readiness.signature?.online === true,
-        taxCount: readiness.taxes?.availableCount || 0,
-        authMode: config.authMode
+        expectedIdentityMatched: true,
+        expectedIsTest: true,
+        authMode: config.authMode,
+        permissionProof: proofGuard
     });
 
-    let shift = await client.getCurrentShift().catch(error => {
-        if (error.status === 404 || error.status === 422) return null;
+    let shift = null;
+    let openedBySmoke = false;
+    let shiftClosed = false;
+    try {
+        shift = await client.getCurrentShift().catch(error => {
+            if (error.status === 404 || error.status === 422) return null;
+            throw error;
+        });
+        assertNoPreexistingSandboxShift(shift);
+        const providerShiftUuid = crypto.randomUUID();
+        openedBySmoke = true;
+        shift = { id: providerShiftUuid, status: 'CREATED' };
+        const opened = await client.openShift({ providerRequestUuid: providerShiftUuid });
+        assertSame(shiftIdentity(opened).shiftId, providerShiftUuid, 'checkbox_sandbox_shift_open_uuid_mismatch', 'shift.id');
+        shift = opened;
+        logStep('shift-open-requested', { status: shift?.status || null, openedBySmoke: true });
+        shift = await waitShiftOpened(client, shift, config);
+        logStep('shift-opened-ok', { status: shiftIdentity(shift).status, openedBySmoke });
+
+        const runId = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
+        const proofOptions = { openedShift: shift, identityProof: proofGuard };
+        const cashSale = await runSandboxSaleProof(client, config, runId, 'cash', proofOptions);
+        const cashlessSale = await runSandboxSaleProof(client, config, runId, 'card_terminal_manual', proofOptions);
+
+        if (config.includeProOperations) {
+            const serviceIn = await client.createServiceReceipt(mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_in', amountMinor: config.amountMinor, context: { run_id: runId } }));
+            logStep('service-in-created', { status: serviceIn?.status || null });
+            const serviceOut = await client.createServiceReceipt(mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_out', amountMinor: config.amountMinor, context: { run_id: runId } }));
+            logStep('service-out-created', { status: serviceOut?.status || null });
+
+            const returnPayload = mapFullReturnReceipt({ providerRequestUuid: crypto.randomUUID(), originalReceiptId: cashSale.receiptId, originalSalePayload: cashSale.payload, context: { run_id: runId } });
+            const returned = await client.createReturnReceipt(returnPayload);
+            logStep('full-return-created', { status: returned?.status || null });
+            await waitReceiptDone(client, returned?.id || returnPayload.id);
+            logStep('full-return-status-lookup-ok', { status: 'DONE' });
+        } else {
+            logStep('phase2-operations-skipped', { reason: 'CHECKBOX_SANDBOX_INCLUDE_PRO is not enabled' });
+        }
+
+        runWebhookSignatureReplayCheck(config);
+        await runTimeoutLookupRecoveryCheck(config);
+
+        const closeResult = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke });
+        shiftClosed = closeResult.closed === true;
+        logStep(closeResult.attempted ? 'shift-closed-ok' : 'shift-close-skipped', closeResult);
+        console.log(JSON.stringify({
+            ok: true,
+            smoke: 'checkbox:sandbox',
+            receiptCount: 2,
+            receipts: [
+                { tender: 'CASH', status: cashSale.verified.status, verified: cashSale.verified.verified === true },
+                { tender: 'CASHLESS', status: cashlessSale.verified.status, verified: cashlessSale.verified.verified === true }
+            ],
+            openedBySmoke,
+            shiftClosed
+        }));
+    } catch (error) {
+        if (openedBySmoke && !shiftClosed && shift) {
+            try {
+                const cleanup = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke, force: true });
+                logStep(cleanup.closed ? 'shift-cleanup-after-failure-ok' : 'shift-cleanup-after-failure-skipped', cleanup);
+            } catch (cleanupError) {
+                logStep('shift-cleanup-after-failure-blocked', {
+                    code: cleanupError?.code || cleanupError?.name || 'checkbox_sandbox_cleanup_failed'
+                });
+            }
+        }
         throw error;
-    });
-    if (!shift || !['OPENED', 'OPENING'].includes(String(shift.status || '').toUpperCase())) {
-        shift = await client.openShift({ providerRequestUuid: crypto.randomUUID() });
-        logStep('shift-open-requested', { shiftId: shift?.id || null, status: shift?.status || null });
-    } else {
-        logStep('shift-already-open', { shiftId: shift?.id || null, status: shift?.status || null });
     }
-    shift = await waitShiftOpened(client, shift, config);
-    logStep('shift-opened-ok', shiftIdentity(shift));
-
-    const runId = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
-    const salePayload = buildSandboxSalePayload(config, runId);
-    await client.validateSale(salePayload);
-    logStep('sale-validation-ok', { receiptId: salePayload.id });
-    const sale = await client.createSaleReceipt(salePayload);
-    const saleReceiptId = sale?.id || salePayload.id;
-    logStep('sale-created', { receiptId: saleReceiptId, status: sale?.status || null });
-    const saleStatus = await waitReceiptDone(client, saleReceiptId);
-    logStep('sale-status-lookup-ok', { receiptId: saleReceiptId, status: saleStatus?.status || null });
-    const pdf = await client.getReceiptDocument({ receiptId: saleReceiptId, format: 'pdf' });
-    logStep('sale-document-ok', { receiptId: saleReceiptId, pdfBytes: Buffer.isBuffer(pdf) ? pdf.length : 0 });
-
-    if (config.includeProOperations) {
-        const serviceIn = await client.createServiceReceipt(mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_in', amountMinor: config.amountMinor, context: { run_id: runId } }));
-        logStep('service-in-created', { receiptId: serviceIn?.id || null, status: serviceIn?.status || null });
-        const serviceOut = await client.createServiceReceipt(mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_out', amountMinor: config.amountMinor, context: { run_id: runId } }));
-        logStep('service-out-created', { receiptId: serviceOut?.id || null, status: serviceOut?.status || null });
-
-        const returnPayload = mapFullReturnReceipt({ providerRequestUuid: crypto.randomUUID(), originalReceiptId: saleReceiptId, originalSalePayload: salePayload, context: { run_id: runId } });
-        const returned = await client.createReturnReceipt(returnPayload);
-        logStep('full-return-created', { receiptId: returned?.id || returnPayload.id, originalReceiptId: saleReceiptId, status: returned?.status || null });
-        await waitReceiptDone(client, returned?.id || returnPayload.id);
-        logStep('full-return-status-lookup-ok', { receiptId: returned?.id || returnPayload.id });
-    } else {
-        logStep('phase2-operations-skipped', { reason: 'CHECKBOX_SANDBOX_INCLUDE_PRO is not enabled' });
-    }
-
-    runWebhookSignatureReplayCheck(config);
-    await runTimeoutLookupRecoveryCheck(config);
-
-    if (config.closeShift) {
-        const closed = await client.closeShift({ providerRequestUuid: crypto.randomUUID() });
-        logStep('shift-close-requested', { shiftId: closed?.id || shift?.id || null, status: closed?.status || null });
-    }
-    console.log(JSON.stringify({ ok: true, smoke: 'checkbox:sandbox' }));
 }
 
 if (require.main === module) runSandboxSmoke().catch(fail);
 
 module.exports = {
     assertOpenApiOperationContract,
+    assertNoPreexistingSandboxShift,
+    assertSandboxProofMutationGuard,
+    closeOwnedSandboxShift,
     fetchOfficialOpenApi,
+    publicSandboxEvidence,
+    publicReadinessDiagnostics,
     resolveLocalOpenApiRef,
+    runSandboxSaleProof,
     runSandboxSmoke,
-    schemaContainsProperty
+    schemaContainsProperty,
+    verifySandboxReceiptProof
 };

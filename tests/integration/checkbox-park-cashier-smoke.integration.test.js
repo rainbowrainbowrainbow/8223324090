@@ -26,7 +26,9 @@ const { processPaymentOutboxJobs } = require('../../services/payments/paymentOut
 const { verifyCheckboxWebhookSignature } = require('../../services/checkbox/webhookAuth');
 const {
     listUnresolvedPaymentOrders,
-    loadCheckboxSalesReport
+    loadCheckboxSalesReport,
+    probeCheckboxReadiness,
+    requestPhase1ShiftClose
 } = require('../../services/payments/paymentReadinessService');
 
 const enabled = process.env.RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION === 'true';
@@ -36,7 +38,8 @@ const FISCAL_ACTIONS = Object.freeze([
     'payments.view',
     'payments.create',
     'payments.confirm_received',
-    'fiscal.shift.open'
+    'fiscal.shift.open',
+    'fiscal.shift.close'
 ]);
 const CONFIG_ACTOR_ACTIONS = Object.freeze([
     ...FISCAL_ACTIONS,
@@ -58,6 +61,8 @@ const TEST_TICKET_PRICES_UAH = Object.freeze({
     adult_companion: 10,
     adult_game: 10
 });
+const nativeFetch = globalThis.fetch;
+const OFFICIAL_CHECKBOX_HOSTS = new Set(['api.checkbox.in.ua', 'api.checkbox.ua']);
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION=true');
@@ -265,6 +270,8 @@ function makeQuote({ fingerprint, totalUah, code, name }) {
 async function listenMockCheckbox() {
     const state = {
         shiftOpened: false,
+        shiftExists: false,
+        shiftStatus: null,
         cashierId: null,
         organizationId: null,
         registerId: null,
@@ -352,32 +359,56 @@ async function listenMockCheckbox() {
                     }]);
                 }
                 if (req.url === '/api/v1/cashier/shift' && req.method === 'GET') {
-                    if (!state.shiftOpened) {
+                    if (!state.shiftOpened || state.shiftStatus === 'CLOSED') {
                         return send(404, { error: 'shift_not_opened' });
                     }
                     return send(200, {
                         id: state.shiftId,
-                        status: 'OPENED',
+                        status: state.shiftStatus || 'OPENED',
                         cash_register_id: state.registerId,
                         cashier_id: state.cashierId
                     });
                 }
                 if (req.url.startsWith('/api/v1/shifts/') && req.method === 'GET') {
-                    return send(200, {
+                    const requestedShiftId = decodeURIComponent(req.url.slice('/api/v1/shifts/'.length));
+                    if (!state.shiftExists || requestedShiftId !== state.shiftId) {
+                        return send(404, { error: 'shift_not_found' });
+                    }
+                    const status = state.shiftStatus || (state.shiftOpened ? 'OPENED' : 'CLOSED');
+                    const payload = {
                         id: state.shiftId,
-                        status: state.shiftOpened ? 'OPENED' : 'CLOSED',
+                        status,
                         cash_register: { id: state.registerId, fiscal_number: '4000000000', active: true },
                         cashier: { id: state.cashierId }
-                    });
+                    };
+                    if (status === 'CLOSING') {
+                        state.shiftStatus = 'CLOSED';
+                        state.shiftOpened = false;
+                    }
+                    return send(200, payload);
                 }
                 if (req.url === '/api/v1/shifts' && req.method === 'POST') {
                     state.shiftOpened = true;
+                    state.shiftExists = true;
+                    state.shiftStatus = 'OPENED';
                     state.shiftId = body?.id || state.shiftId || crypto.randomUUID();
                     return send(201, {
                         id: state.shiftId,
                         status: 'OPENED',
                         cash_register_id: state.registerId,
                         cashier_id: state.cashierId
+                    });
+                }
+                if (req.url === '/api/v1/shifts/close' && req.method === 'POST') {
+                    if (!state.shiftOpened || state.shiftStatus !== 'OPENED') {
+                        return send(409, { error: 'shift_not_opened' });
+                    }
+                    state.shiftStatus = 'CLOSING';
+                    return send(202, {
+                        id: state.shiftId,
+                        status: 'CLOSING',
+                        cash_register: { id: state.registerId, fiscal_number: '4000000000' },
+                        cashier: { id: state.cashierId }
                     });
                 }
                 if (req.url === '/api/v1/receipts/validate' && req.method === 'POST') {
@@ -452,6 +483,22 @@ function providerConfig(baseUrl, timeoutMs = 1000, overrides = {}) {
 
 function createHttpProvider(mock, timeoutMs = 1000) {
     return createProviderFromConfig(providerConfig(mock.baseUrl, timeoutMs));
+}
+
+function createOfficialHostMockFetch(mock) {
+    const mockOrigin = new URL(mock.baseUrl);
+    return function officialHostMockFetch(input, init) {
+        const source = input instanceof Request ? input.url : String(input);
+        const url = new URL(source);
+        if (!OFFICIAL_CHECKBOX_HOSTS.has(url.hostname.toLowerCase())) {
+            throw new Error(`Unexpected external host in isolated Checkbox test: ${url.hostname}`);
+        }
+        url.protocol = mockOrigin.protocol;
+        url.hostname = mockOrigin.hostname;
+        url.port = mockOrigin.port;
+        const rewritten = input instanceof Request ? new Request(url, input) : url;
+        return nativeFetch(rewritten, init);
+    };
 }
 
 async function runWorkerUntilIdle(provider = null, maxRounds = 80) {
@@ -550,6 +597,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         requireIsolatedDatabase();
         previousCheckboxEnv = {
             CHECKBOX_INTEGRATION_ENABLED: process.env.CHECKBOX_INTEGRATION_ENABLED,
+            CHECKBOX_ACCEPT_PAYMENTS_ENABLED: process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED,
             CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL,
             CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN,
             CHECKBOX_PARK_MIDDLE_SMOKE_PASSWORD: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_PASSWORD,
@@ -579,7 +627,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         mock.state.organizationId = scope.providerOrganizationId;
         mock.state.registerId = scope.providerRegisterId;
         process.env.CHECKBOX_INTEGRATION_ENABLED = 'true';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL = mock.baseUrl;
+        process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'true';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL = 'https://api.checkbox.in.ua';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN = 'mock-login';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_PASSWORD = 'mock-password';
         process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY = 'mock-license';
@@ -728,6 +777,199 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             mock.state.registerId = original.registerId;
             mock.state.permissions = original.permissions;
             mock.state.unavailablePaths.clear();
+        }
+    });
+
+    test('actual worker preserves shift recovery stage and retries only the same durable UUID after two exact 404 lookups', async () => {
+        assert.equal(mock.state.shiftOpened, false, 'recovery regression must start without a provider shift');
+        const order = await createOrder({
+            user: cashier,
+            key: 'shift-crash-before-http',
+            tender: 'cash',
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
+        });
+        await confirmOrder({
+            user: cashier,
+            order,
+            key: 'shift-crash-before-http',
+            tender: 'cash',
+            amountMinor: '10000'
+        });
+
+        const shiftOperation = await pool.query(
+            `SELECT fo.id AS operation_id,
+                    fo.provider_operation_id,
+                    fo.fiscal_shift_id,
+                    job.id AS job_id
+               FROM fiscal_operations fo
+               JOIN payment_outbox_jobs job
+                 ON job.fiscal_operation_id = fo.id
+                AND job.fiscal_profile_id = fo.fiscal_profile_id
+              WHERE fo.fiscal_profile_id = $1
+                AND fo.fiscal_register_id = $2
+                AND fo.operation_type = 'shift_open'
+              ORDER BY fo.id DESC
+              LIMIT 1`,
+            [scope.fiscalProfileId, scope.fiscalRegisterId]
+        );
+        assert.equal(shiftOperation.rowCount, 1);
+        const shift = shiftOperation.rows[0];
+        const durableUuid = shift.provider_operation_id;
+
+        await pool.query(
+            `UPDATE fiscal_operations
+                SET external_stage = 'shift_request_maybe_submitted'
+              WHERE id = $1`,
+            [shift.operation_id]
+        );
+        await pool.query(
+            `UPDATE payment_outbox_jobs
+                SET external_stage = 'shift_request_maybe_submitted',
+                    payload = payload || '{"external_stage":"shift_request_maybe_submitted"}'::jsonb,
+                    status = 'queued',
+                    next_run_at = NOW()
+              WHERE id = $1`,
+            [shift.job_id]
+        );
+        await pool.query(
+            `UPDATE payment_outbox_jobs
+                SET next_run_at = NOW() + INTERVAL '1 hour'
+              WHERE payment_order_id = $1
+                AND job_type = 'receipt_sell'`,
+            [order.order.id]
+        );
+
+        const first = await processPaymentOutboxJobs({
+            dbPool: pool,
+            provider: createHttpProvider(mock),
+            batchSize: 1,
+            lockedBy: `checkbox-shift-crash-first-${process.pid}`
+        });
+        assert.equal(first.failed, 1);
+        assert.equal(first.results[0].error.code, 'checkbox_shift_open_lookup_not_found');
+        assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/shifts' && call.method === 'POST').length, 0);
+
+        const firstStage = await pool.query(
+            'SELECT external_stage, status FROM payment_outbox_jobs WHERE id = $1',
+            [shift.job_id]
+        );
+        assert.equal(firstStage.rows[0].external_stage, 'shift_lookup_not_found');
+        assert.equal(firstStage.rows[0].status, 'failed');
+        await forceRetryNow(shift.operation_id);
+
+        const second = await processPaymentOutboxJobs({
+            dbPool: pool,
+            provider: createHttpProvider(mock),
+            batchSize: 1,
+            lockedBy: `checkbox-shift-crash-second-${process.pid}`
+        });
+        assert.equal(second.succeeded, 1, JSON.stringify(second));
+        assert.equal(second.results[0].source, 'shift_open_same_uuid_retry');
+        const opens = mock.state.calls.filter(call => call.path === '/api/v1/shifts' && call.method === 'POST');
+        assert.equal(opens.length, 1);
+        assert.equal(opens[0].body.id, durableUuid);
+        assert.equal(mock.state.shiftId, durableUuid);
+
+        const persistedShift = await pool.query(
+            'SELECT provider_shift_id, status, lifecycle_stage FROM fiscal_shifts WHERE id = $1',
+            [shift.fiscal_shift_id]
+        );
+        assert.deepEqual(persistedShift.rows[0], {
+            provider_shift_id: durableUuid,
+            status: 'open',
+            lifecycle_stage: 'OPENED'
+        });
+        assert.equal(
+            await countRows(
+                `SELECT COUNT(*)::integer AS count
+                   FROM fiscal_audit_events
+                  WHERE entity_table = 'payment_outbox_jobs'
+                    AND entity_id = $1
+                    AND event_type = 'checkbox_shift_same_uuid_retry'`,
+                [shift.job_id]
+            ),
+            1
+        );
+
+        await pool.query(
+            `UPDATE payment_outbox_jobs
+                SET next_run_at = NOW()
+              WHERE payment_order_id = $1
+                AND job_type = 'receipt_sell'`,
+            [order.order.id]
+        );
+        await runWorkerUntilIdle(createHttpProvider(mock));
+        const paidState = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [order.order.id]);
+        assert.equal(paidState.rows[0].fiscal_status, 'fiscalized');
+
+        const readiness = await probeCheckboxReadiness({
+            dbPool: pool,
+            user: cashier,
+            crmProfileKey: CRM_PROFILE_KEY,
+            registerAlias: REGISTER_ALIAS,
+            fetchImpl: createOfficialHostMockFetch(mock),
+            force: true
+        });
+        assert.equal(readiness.providerReady, true);
+        const previousAcceptance = process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED;
+        process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'false';
+        try {
+            const closeRequest = await requestPhase1ShiftClose({
+                dbPool: pool,
+                user: cashier,
+                shiftId: shift.fiscal_shift_id,
+                idempotencyKey: `phase1-close-recovery-${process.pid}`
+            });
+            const queuedClose = await pool.query(
+                'SELECT status, external_stage FROM payment_outbox_jobs WHERE id = $1',
+                [closeRequest.outboxJobId]
+            );
+            assert.deepEqual(queuedClose.rows[0], { status: 'queued', external_stage: 'auth' });
+
+            const closeSubmit = await processPaymentOutboxJobs({
+                dbPool: pool,
+                provider: createHttpProvider(mock),
+                batchSize: 1,
+                lockedBy: `checkbox-shift-close-submit-${process.pid}`
+            });
+            assert.equal(closeSubmit.failed, 1);
+            assert.equal(closeSubmit.results[0].error.code, 'checkbox_shift_close_pending');
+            assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/shifts/close' && call.method === 'POST').length, 1);
+
+            await forceRetryNow(closeRequest.fiscalOperationId);
+            const closeLookupPending = await processPaymentOutboxJobs({
+                dbPool: pool,
+                provider: createHttpProvider(mock),
+                batchSize: 1,
+                lockedBy: `checkbox-shift-close-lookup-pending-${process.pid}`
+            });
+            assert.equal(closeLookupPending.failed, 1);
+            assert.equal(closeLookupPending.results[0].error.code, 'checkbox_shift_close_pending');
+            assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/shifts/close' && call.method === 'POST').length, 1);
+
+            await forceRetryNow(closeRequest.fiscalOperationId);
+            const closeFinal = await processPaymentOutboxJobs({
+                dbPool: pool,
+                provider: createHttpProvider(mock),
+                batchSize: 1,
+                lockedBy: `checkbox-shift-close-final-${process.pid}`
+            });
+            assert.equal(closeFinal.succeeded, 1, JSON.stringify(closeFinal));
+            assert.equal(closeFinal.results[0].source, 'shift_close_lookup');
+            assert.equal(mock.state.calls.filter(call => call.path === '/api/v1/shifts/close' && call.method === 'POST').length, 1);
+            const closedShift = await pool.query(
+                'SELECT status, lifecycle_stage, provider_shift_id FROM fiscal_shifts WHERE id = $1',
+                [shift.fiscal_shift_id]
+            );
+            assert.deepEqual(closedShift.rows[0], {
+                status: 'closed',
+                lifecycle_stage: 'CLOSED',
+                provider_shift_id: durableUuid
+            });
+        } finally {
+            if (previousAcceptance === undefined) delete process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED;
+            else process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = previousAcceptance;
         }
     });
 

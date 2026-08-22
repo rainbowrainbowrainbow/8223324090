@@ -189,6 +189,44 @@ function hasTestModeCertificate(profile = {}, cashier = extractCashierReadiness(
     return cashier.isTest === true && String(cashier.signatureType || '').toUpperCase() === 'TEST';
 }
 
+function validateCashierCertificate(profile = {}, cashier = extractCashierReadiness(profile), signature = {}, expected = {}) {
+    const exactTestSignature = expected.expectedIsTest === true
+        && cashier.isTest === true
+        && hasTestModeCertificate(profile, cashier)
+        && upperStatus(signature.type) === 'TEST';
+    if (exactTestSignature) {
+        return {
+            ready: true,
+            testSignature: true,
+            certificateEndConfigured: Boolean(cashier.certificateEnd)
+        };
+    }
+    if (!cashier.certificateEnd) {
+        throw new CheckboxClientError('checkbox_cashier_certificate_required', 'Checkbox cashier certificate end is required', {
+            status: 409,
+            retryable: false
+        });
+    }
+    const certificateEnd = Date.parse(cashier.certificateEnd);
+    if (!Number.isFinite(certificateEnd)) {
+        throw new CheckboxClientError('checkbox_cashier_certificate_malformed', 'Checkbox cashier certificate end is malformed', {
+            status: 409,
+            retryable: false
+        });
+    }
+    if (certificateEnd <= Date.now()) {
+        throw new CheckboxClientError('checkbox_cashier_certificate_expired', 'Checkbox cashier certificate is expired', {
+            status: 409,
+            retryable: false
+        });
+    }
+    return {
+        ready: true,
+        testSignature: false,
+        certificateEndConfigured: true
+    };
+}
+
 function validateCashierReadiness(profile = {}, expected = {}) {
     const readiness = extractCashierReadiness(profile);
     assertSameText(readiness.cashierId, expected.expectedCashierId, 'checkbox_cashier_identity_mismatch', 'cashier_id');
@@ -209,35 +247,88 @@ function validateCashierReadiness(profile = {}, expected = {}) {
             details: { expected: Boolean(expected.expectedIsTest), actual: readiness.isTest }
         });
     }
-    if (readiness.certificateEnd) {
-        const certificateEnd = Date.parse(readiness.certificateEnd);
-        if (Number.isFinite(certificateEnd) && certificateEnd <= Date.now()) {
-            throw new CheckboxClientError('checkbox_cashier_certificate_expired', 'Checkbox cashier certificate is expired', { status: 409, retryable: false });
-        }
-    }
     return readiness;
 }
 
-function validateCashierPermissions(profile = {}, { requireCash = true, requireCard = true } = {}) {
-    const permissions = profile.permissions;
-    if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) {
-        throw new CheckboxClientError('checkbox_cashier_permissions_missing', 'Checkbox cashier permissions are missing', { status: 409, retryable: false });
+function normalizeRequiredTender(value) {
+    const tender = String(value || '').trim().toLowerCase();
+    if (!tender) return null;
+    if (tender === 'cash') return 'cash';
+    if (['card_terminal_manual', 'card_terminal', 'cashless'].includes(tender)) return 'card_terminal_manual';
+    throw new CheckboxClientError('checkbox_payment_tender_unsupported', 'Checkbox readiness received an unsupported payment tender', {
+        status: 422,
+        retryable: false,
+        details: { tender }
+    });
+}
+
+function requiredPermissionKeys(requiredTender = null) {
+    const tender = normalizeRequiredTender(requiredTender);
+    if (tender === 'cash') return ['sales', 'cash_payment'];
+    if (tender === 'card_terminal_manual') return ['sales', 'card_payment'];
+    return ['sales', 'cash_payment', 'card_payment'];
+}
+
+function permissionState(profile, key) {
+    const permissions = profile?.permissions;
+    if (permissions == null) return null;
+    if (typeof permissions !== 'object' || Array.isArray(permissions)) return 'malformed';
+    if (!Object.prototype.hasOwnProperty.call(permissions, key) || permissions[key] == null) return null;
+    if (permissions[key] === true) return true;
+    if (permissions[key] === false) return false;
+    return 'malformed';
+}
+
+function assertUnreportedPermissionPolicy({ allowUnreportedPaymentPermissions = false, expectedIsTest = null } = {}) {
+    if (allowUnreportedPaymentPermissions === true && expectedIsTest !== true) {
+        throw new CheckboxClientError(
+            'checkbox_unreported_permissions_test_mode_only',
+            'Unreported Checkbox payment permissions may be accepted only for an explicitly verified test cashier',
+            { status: 409, retryable: false }
+        );
     }
-    const required = ['sales'];
-    if (requireCash) required.push('cash_payment');
-    if (requireCard) required.push('card_payment');
-    const denied = required.filter(key => permissions[key] !== true);
-    if (denied.length) {
-        throw new CheckboxClientError('checkbox_cashier_permissions_missing', 'Checkbox cashier does not have required payment permissions', {
+}
+
+function validateCashierPermissions(profile = {}, {
+    requiredTender = null,
+    requireSalesPermission = true,
+    allowUnreportedPaymentPermissions = false,
+    expectedIsTest = null
+} = {}) {
+    assertUnreportedPermissionPolicy({ allowUnreportedPaymentPermissions, expectedIsTest });
+    const normalizedTender = normalizeRequiredTender(requiredTender);
+    const required = normalizedTender
+        ? requiredPermissionKeys(normalizedTender)
+        : requireSalesPermission === false ? [] : ['sales'];
+    const states = Object.fromEntries(['sales', 'cash_payment', 'card_payment'].map(key => [key, permissionState(profile, key)]));
+    const malformed = required.filter(key => states[key] === 'malformed');
+    const denied = required.filter(key => states[key] === false);
+    const unreported = required.filter(key => states[key] == null);
+    const unreportedSales = unreported.filter(key => key === 'sales');
+    const unreportedPayment = unreported.filter(key => key !== 'sales');
+    if (malformed.length) {
+        throw new CheckboxClientError('checkbox_cashier_permissions_malformed', 'Checkbox cashier returned malformed payment permissions', {
+            status: 502,
+            retryable: false,
+            details: { malformed, required, requiredTender: normalizedTender }
+        });
+    }
+    if (denied.length || unreportedSales.length || (unreportedPayment.length && allowUnreportedPaymentPermissions !== true)) {
+        throw new CheckboxClientError('checkbox_cashier_permissions_missing', 'Checkbox cashier does not have confirmed required payment permissions', {
             status: 409,
             retryable: false,
-            details: { missing: denied }
+            details: { denied, unreported, unreportedSales, unreportedPayment, required, requiredTender: normalizedTender }
         });
     }
     return {
-        sales: permissions.sales === true,
-        cashPayment: permissions.cash_payment === true,
-        cardPayment: permissions.card_payment === true
+        sales: states.sales,
+        cashPayment: states.cash_payment,
+        cardPayment: states.card_payment,
+        requiredTender: normalizedTender,
+        required,
+        unreported,
+        unreportedAllowedForTest: allowUnreportedPaymentPermissions === true && unreportedPayment.length > 0,
+        warning: unreportedPayment.length > 0 ? 'permission_unreported' : null
     };
 }
 
@@ -296,28 +387,69 @@ function errorCheck(code, label, error) {
         recommendation: readinessRecommendation(code),
         details: {
             errorCode: error?.code || error?.name || 'checkbox_readiness_check_failed',
-            message: error?.message || 'Checkbox readiness check failed',
-            details: error?.details || null
+            status: Number(error?.status || error?.statusCode || 500),
+            retryable: error?.retryable === true,
+            unknown: error?.unknown === true
         }
     });
 }
 
-function permissionValue(profile, key) {
-    const permissions = profile?.permissions;
-    if (!permissions || typeof permissions !== 'object' || Array.isArray(permissions)) return null;
-    return permissions[key] === true ? true : permissions[key] === false ? false : null;
-}
-
-function permissionCheck(profile, key, code, label) {
-    const value = permissionValue(profile, key);
+function permissionCheck(profile, key, code, label, {
+    required = true,
+    allowUnreportedPaymentPermissions = false,
+    expectedIsTest = null
+} = {}) {
+    const value = permissionState(profile, key);
+    const state = value === true ? 'allowed' : value === false ? 'denied' : value === null ? 'unreported' : 'malformed';
+    if (!required) {
+        return readinessCheck({
+            code,
+            label,
+            status: 'not_applicable',
+            ready: true,
+            details: { permission: key, value: typeof value === 'boolean' ? value : null, state, required: false }
+        });
+    }
+    const unreportedAllowedForTest = key !== 'sales'
+        && value === null
+        && allowUnreportedPaymentPermissions === true
+        && expectedIsTest === true;
+    const ready = value === true || unreportedAllowedForTest;
     return readinessCheck({
         code,
         label,
-        status: value === true ? 'ready' : 'blocked',
-        ready: value === true,
-        recommendation: value === true ? null : readinessRecommendation(code),
-        details: { permission: key, value }
+        status: ready ? 'ready' : 'blocked',
+        ready,
+        recommendation: ready ? null : readinessRecommendation(code),
+        details: {
+            permission: key,
+            value: typeof value === 'boolean' ? value : null,
+            state,
+            required: true,
+            unreportedAllowedForTest
+        }
     });
+}
+
+function shiftReadinessSummary(shift = null) {
+    if (!shift) return { shiftStatus: 'none' };
+    return {
+        shiftIdConfigured: Boolean(shift.id),
+        shiftStatus: upperStatus(shift.status),
+        registerIdSeen: Boolean(shift.registerId),
+        cashierIdSeen: Boolean(shift.cashierId)
+    };
+}
+
+function cashierReadinessSummary(cashier = {}) {
+    return {
+        cashierIdSeen: Boolean(cashier.cashierId),
+        organizationIdSeen: Boolean(cashier.organizationId),
+        blocked: cashier.blocked === true,
+        isTest: cashier.isTest,
+        certificateEndConfigured: Boolean(cashier.certificateEnd),
+        signatureType: upperStatus(cashier.signatureType) || null
+    };
 }
 
 async function captureReadinessStep(checks, code, label, fn) {
@@ -681,7 +813,7 @@ function validateSaleResponse(response) {
 }
 
 class CheckboxRuntimeProvider {
-    constructor({ client, authMode = 'password', login, password, pinCode, credentialRef = null, licenseRef = null, expectedIsTest = null, tokenCache = TOKEN_CACHE, tokenTtlMs = 10 * 60 * 1000 } = {}) {
+    constructor({ client, authMode = 'password', login, password, pinCode, credentialRef = null, licenseRef = null, expectedIsTest = null, allowUnreportedPaymentPermissions = false, tokenCache = TOKEN_CACHE, tokenTtlMs = 10 * 60 * 1000 } = {}) {
         if (!client) throw new CheckboxProviderConfigError('checkbox_client_required', 'Checkbox client is required');
         this.client = client;
         this.login = login;
@@ -691,6 +823,7 @@ class CheckboxRuntimeProvider {
         this.credentialRef = credentialRef;
         this.licenseRef = licenseRef;
         this.expectedIsTest = expectedIsTest;
+        this.allowUnreportedPaymentPermissions = allowUnreportedPaymentPermissions === true;
         this.tokenCache = tokenCache;
         this.tokenTtlMs = Math.max(60 * 1000, Math.min(Number(tokenTtlMs || 10 * 60 * 1000), 60 * 60 * 1000));
         this.authenticated = false;
@@ -733,27 +866,36 @@ class CheckboxRuntimeProvider {
         this.readyChecked = true;
     }
 
-    async verifyReadiness(expected = {}, { expectedTaxIds = [] } = {}) {
+    async verifyReadiness(expected = {}, options = {}) {
+        const expectedTaxIds = options.expectedTaxIds || [];
+        const requiredTender = Object.prototype.hasOwnProperty.call(options, 'requiredTender')
+            ? options.requiredTender
+            : expected.requiredTender ?? expected.tender ?? null;
+        const requireSalesPermission = options.requireSalesPermission !== false;
+        const allowUnreportedPaymentPermissions = options.allowUnreportedPaymentPermissions === true
+            || options.allowUnreported === true;
+        const strictExpected = { ...expected, expectedIsTest: expected.expectedIsTest ?? this.expectedIsTest };
+        assertUnreportedPermissionPolicy({ allowUnreportedPaymentPermissions, expectedIsTest: strictExpected.expectedIsTest });
         const run = async () => {
-            const strictExpected = { ...expected, expectedIsTest: expected.expectedIsTest ?? this.expectedIsTest };
             const profile = await this.client.getCashierProfile();
             const cashier = validateCashierReadiness(profile, strictExpected);
-            const permissions = validateCashierPermissions(profile);
+            const permissions = validateCashierPermissions(profile, {
+                requiredTender,
+                requireSalesPermission,
+                allowUnreportedPaymentPermissions,
+                expectedIsTest: strictExpected.expectedIsTest
+            });
             const register = validateCashRegisterInfo(await this.client.getCashRegisterInfo(), strictExpected);
             const signature = validateSignatureStatus(await this.client.checkSignature());
+            const certificate = validateCashierCertificate(profile, cashier, signature, strictExpected);
             const taxes = validateProviderTaxes(await this.client.getCashierTaxes(), expectedTaxIds);
             return {
                 cashier,
                 permissions,
                 register,
                 signature,
-                taxes,
-                raw: {
-                    cashier: redactCheckboxDiagnostics(profile),
-                    register,
-                    signature,
-                    taxes
-                }
+                certificate,
+                taxes
             };
         };
         for (let attempt = 0; attempt < 2; attempt += 1) {
@@ -774,8 +916,16 @@ class CheckboxRuntimeProvider {
         throw new CheckboxClientError('checkbox_auth_retry_exhausted', 'Checkbox readiness authentication retry was exhausted', { status: 401, retryable: true, unknown: true });
     }
 
-    async collectReadinessDiagnostics(expected = {}, { expectedTaxIds = [] } = {}) {
+    async collectReadinessDiagnostics(expected = {}, options = {}) {
+        const expectedTaxIds = options.expectedTaxIds || [];
+        const requiredTender = Object.prototype.hasOwnProperty.call(options, 'requiredTender')
+            ? options.requiredTender
+            : expected.requiredTender ?? expected.tender ?? null;
+        const allowUnreportedPaymentPermissions = options.allowUnreportedPaymentPermissions === true
+            || options.allowUnreported === true;
         const strictExpected = { ...expected, expectedIsTest: expected.expectedIsTest ?? this.expectedIsTest };
+        assertUnreportedPermissionPolicy({ allowUnreportedPaymentPermissions, expectedIsTest: strictExpected.expectedIsTest });
+        const requiredPermissions = new Set(requiredPermissionKeys(requiredTender));
         const checks = [];
         let authOk = false;
         let profile = null;
@@ -805,7 +955,7 @@ class CheckboxRuntimeProvider {
                     code: 'cashier_identity',
                     label: 'Касир Checkbox',
                     status: 'ready',
-                    details: cashier
+                    details: cashierReadinessSummary(cashier)
                 }));
             } catch (error) {
                 checks.push(errorCheck('cashier_identity', 'Касир Checkbox', error));
@@ -813,7 +963,6 @@ class CheckboxRuntimeProvider {
             }
             if (profile) {
                 const cashier = extractCashierReadiness(profile);
-                const certificateReady = Boolean(cashier.certificateEnd) || hasTestModeCertificate(profile, cashier);
                 checks.push(readinessCheck({
                     code: 'organization_identity',
                     label: 'ФОП / organization Checkbox',
@@ -837,28 +986,21 @@ class CheckboxRuntimeProvider {
                     recommendation: cashier.isTest === Boolean(strictExpected.expectedIsTest) ? null : readinessRecommendation('is_test'),
                     details: { expectedIsTest: strictExpected.expectedIsTest, cashierIsTest: cashier.isTest }
                 }));
-                checks.push(permissionCheck(profile, 'sales', 'sales_permission', 'Право продажів'));
-                checks.push(permissionCheck(profile, 'cash_payment', 'cash_permission', 'Право оплати готівкою'));
-                checks.push(permissionCheck(profile, 'card_payment', 'card_permission', 'Право оплати карткою'));
-                checks.push(readinessCheck({
-                    code: 'certificate',
-                    label: 'Сертифікат касира',
-                    status: certificateReady ? 'ready' : 'blocked',
-                    ready: certificateReady,
-                    recommendation: certificateReady ? null : readinessRecommendation('certificate'),
-                    details: {
-                        certificateEndConfigured: Boolean(cashier.certificateEnd),
-                        testSignature: hasTestModeCertificate(profile, cashier)
-                    }
-                }));
+                const permissionOptions = key => ({
+                    required: requiredPermissions.has(key),
+                    allowUnreportedPaymentPermissions,
+                    expectedIsTest: strictExpected.expectedIsTest
+                });
+                checks.push(permissionCheck(profile, 'sales', 'sales_permission', 'Право продажів', permissionOptions('sales')));
+                checks.push(permissionCheck(profile, 'cash_payment', 'cash_permission', 'Право оплати готівкою', permissionOptions('cash_payment')));
+                checks.push(permissionCheck(profile, 'card_payment', 'card_permission', 'Право оплати карткою', permissionOptions('card_payment')));
             } else {
                 for (const [code, label] of [
                     ['organization_identity', 'ФОП / organization Checkbox'],
                     ['is_test', 'Test-mode identity'],
                     ['sales_permission', 'Право продажів'],
                     ['cash_permission', 'Право оплати готівкою'],
-                    ['card_permission', 'Право оплати карткою'],
-                    ['certificate', 'Сертифікат касира']
+                    ['card_permission', 'Право оплати карткою']
                 ]) {
                     checks.push(readinessCheck({ code, label, status: 'unavailable', ready: false, recommendation: readinessRecommendation(code) }));
                 }
@@ -868,9 +1010,37 @@ class CheckboxRuntimeProvider {
                 const value = await this.client.checkSignature();
                 return validateSignatureStatus(value);
             });
+            if (profile) {
+                try {
+                    const cashier = extractCashierReadiness(profile);
+                    const certificate = validateCashierCertificate(profile, cashier, signature || {}, strictExpected);
+                    checks.push(readinessCheck({
+                        code: 'certificate',
+                        label: 'Сертифікат касира',
+                        status: 'ready',
+                        ready: true,
+                        details: certificate
+                    }));
+                } catch (error) {
+                    checks.push(errorCheck('certificate', 'Сертифікат касира', error));
+                }
+            } else {
+                checks.push(readinessCheck({
+                    code: 'certificate',
+                    label: 'Сертифікат касира',
+                    status: 'unavailable',
+                    ready: false,
+                    recommendation: readinessRecommendation('certificate')
+                }));
+            }
             taxes = await captureReadinessStep(checks, 'provider_taxes', 'Податкові групи Checkbox', async () => {
                 const value = await this.client.getCashierTaxes();
-                return validateProviderTaxes(value, expectedTaxIds);
+                const validated = validateProviderTaxes(value, expectedTaxIds);
+                return {
+                    expectedCount: validated.expected.length,
+                    availableCount: validated.availableCount,
+                    allExpectedAvailable: true
+                };
             });
             try {
                 const value = await this.client.getCurrentShift();
@@ -894,7 +1064,7 @@ class CheckboxRuntimeProvider {
                     status: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? 'blocked' : 'ready',
                     ready: !(OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus)),
                     recommendation: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? readinessRecommendation('current_shift') : null,
-                    details: currentShift
+                    details: shiftReadinessSummary(currentShift)
                 }));
                 }
             } catch (error) {
@@ -992,7 +1162,7 @@ class CheckboxRuntimeProvider {
                 details: {
                     offlineMode: registerInfo.offlineMode,
                     stayOffline: registerInfo.stayOffline,
-                    documentsState: registerInfo.documentsState || null
+                    documentsStateAvailable: Boolean(registerInfo.documentsState)
                 }
             }));
         } catch (error) {
@@ -1018,34 +1188,38 @@ class CheckboxRuntimeProvider {
                 blockedCount: checks.filter(check => check.status === 'blocked').length,
                 unavailableCount: checks.filter(check => check.status === 'unavailable').length,
                 notApplicableCount: checks.filter(check => check.status === 'not_applicable').length
-            },
-            raw: redactCheckboxDiagnostics({
-                cashier: profile,
-                register: registerInfo,
-                signature,
-                taxes,
-                currentShift
-            })
+            }
         };
     }
 
-    async prepareMutation(input = {}, { expectedTaxIds = [] } = {}) {
+    async prepareMutation(input = {}, options = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
-        return this.verifyReadiness(expected, { expectedTaxIds });
+        const fiscalOperation = safeJsonObject(input.fiscalOperation);
+        const operationType = String(fiscalOperation.operation_type || input.operationType || '').trim().toLowerCase();
+        const isSale = ['sale', 'sell', 'receipt_sale'].includes(operationType);
+        return this.verifyReadiness(expected, {
+            expectedTaxIds: options.expectedTaxIds || [],
+            requiredTender: options.requiredTender ?? (isSale ? expected.tender : null),
+            requireSalesPermission: options.requireSalesPermission ?? operationType !== 'shift_close',
+            allowUnreportedPaymentPermissions: options.allowUnreportedPaymentPermissions === true
+                || options.allowUnreported === true
+                || this.allowUnreportedPaymentPermissions
+        });
     }
 
     async loadDetailedShift(current, expected) {
-        if (!this.client.getShiftById) {
-            return normalizeShiftResponse(current.raw || current, expected, { requireOpened: true, requireCashier: true });
+        if (typeof this.client.getShiftById !== 'function') {
+            throw new CheckboxClientError('checkbox_shift_detail_unavailable', 'Checkbox detailed shift lookup is required for exact cashier and register verification', {
+                status: 503,
+                retryable: true,
+                unknown: true
+            });
         }
-        try {
-            return normalizeShiftResponse(await this.client.getShiftById({ shiftId: current.id }), expected, { requireOpened: true, requireCashier: true });
-        } catch (error) {
-            if (error instanceof CheckboxClientError && (error.status === 404 || error.code === 'checkbox_shift_response_malformed')) {
-                return normalizeShiftResponse(current.raw || current, expected, { requireOpened: true, requireCashier: true });
-            }
-            throw error;
-        }
+        return normalizeShiftResponse(
+            await this.client.getShiftById({ shiftId: current.id }),
+            expected,
+            { requireOpened: true, requireCashier: true }
+        );
     }
 
     async withAuth(expected, run) {
@@ -1118,9 +1292,11 @@ class CheckboxRuntimeProvider {
         }
         expected.expectedShiftId = shiftId;
         return this.withAuth(expected, async () => {
-            const shift = normalizeShiftResponse(await this.client.getShiftById({ shiftId }), expected, { requireOpened, requireCashier: false });
-            if (shift.status === OPEN_SHIFT_STATUS) return this.loadDetailedShift(shift, expected);
-            return shift;
+            return normalizeShiftResponse(
+                await this.client.getShiftById({ shiftId }),
+                expected,
+                { requireOpened, requireCashier: true }
+            );
         });
     }
 
@@ -1142,6 +1318,7 @@ class CheckboxRuntimeProvider {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
         return this.withAuth(expected, async () => {
             const shift = await this.ensureShiftOpened(input);
+            await input.beforeExternalMutation?.({ operation: 'receipt_validate' });
             const response = await this.client.validateSale(this.toSalePayload(input, { providerShiftId: shift.id }));
             return validateSaleResponse(response);
         });
@@ -1152,6 +1329,7 @@ class CheckboxRuntimeProvider {
         expected.expectedReceiptType = 'SELL';
         return this.withAuth(expected, async () => {
             const shift = await this.ensureShiftOpened(input);
+            await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
             const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
             return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
         });
@@ -1161,6 +1339,7 @@ class CheckboxRuntimeProvider {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
         expected.expectedReceiptType = 'SELL';
         return this.withAuth(expected, async () => {
+            await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
             const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: expected.expectedShiftId }));
             return normalizeReceiptArtifacts(receipt, this.client, expected);
         });
@@ -1172,6 +1351,7 @@ class CheckboxRuntimeProvider {
         return this.withAuth(expected, async () => {
             const shift = await this.ensureShiftOpened(input);
             const payload = this.toReturnPayload(input, { providerShiftId: shift.id });
+            await input.beforeExternalMutation?.({ operation: 'receipt_return' });
             const receipt = await this.client.createReturnReceipt(payload);
             return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
         });
@@ -1183,6 +1363,7 @@ class CheckboxRuntimeProvider {
         return this.withAuth(expected, async () => {
             const shift = await this.ensureShiftOpened(input);
             const payload = this.toServicePayload(input, { providerShiftId: shift.id });
+            await input.beforeExternalMutation?.({ operation: 'service_receipt' });
             const receipt = await this.client.createServiceReceipt(payload);
             return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
         });
@@ -1192,6 +1373,7 @@ class CheckboxRuntimeProvider {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
         const shiftExpected = { ...expected, expectedShiftId: expected.expectedShiftId || expected.providerOperationId };
         return this.withAuth(expected, async () => {
+            await input.beforeExternalMutation?.({ operation: 'shift_open' });
             const response = await this.client.openShift({
                 providerRequestUuid: input.providerOperationId || input.providerRequestUuid || input.fiscalOperation?.provider_operation_id
             });
@@ -1226,9 +1408,45 @@ class CheckboxRuntimeProvider {
 
     async closeShift(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest, allowMissingPayment: true });
+        const missingIdentity = [
+            ['provider_shift_id', expected.expectedShiftId],
+            ['provider_register_id', expected.expectedRegisterId],
+            ['provider_cashier_id', expected.expectedCashierId],
+            ['provider_organization_id', expected.expectedOrganizationId]
+        ].filter(([, value]) => !textOrNull(value)).map(([field]) => field);
+        if (missingIdentity.length) {
+            throw new CheckboxClientError('checkbox_shift_close_identity_required', 'Checkbox shift close requires the complete immutable provider identity', {
+                status: 422,
+                retryable: false,
+                details: { missing: missingIdentity }
+            });
+        }
         return this.withAuth(expected, async () => {
+            // Close is a fiscal mutation without a provider-side idempotency UUID. Re-read and
+            // verify every available immutable identity immediately before issuing the POST.
+            const profile = await this.client.getCashierProfile();
+            validateCashierReadiness(profile, { ...expected, expectedIsTest: expected.expectedIsTest ?? this.expectedIsTest });
+            validateCashRegisterInfo(await this.client.getCashRegisterInfo(), expected);
+
+            const current = normalizeShiftResponse(
+                await this.client.getCurrentShift(),
+                expected,
+                { requireOpened: true, requireCashier: false }
+            );
+            await this.loadDetailedShift(current, expected);
+
+            await input.beforeExternalMutation?.({ operation: 'shift_close' });
             const response = await this.client.closeShift();
-            return normalizeShiftResponse(response, expected, { requireCashier: false });
+            const closed = normalizeShiftResponse(response, expected, { requireCashier: true });
+            if (!CLOSING_SHIFT_STATUSES.has(closed.status) && closed.status !== CLOSED_SHIFT_STATUS) {
+                throw new CheckboxClientError('checkbox_shift_close_unexpected_status', 'Checkbox shift close returned an unexpected status', {
+                    status: 502,
+                    retryable: true,
+                    unknown: true,
+                    details: { providerStatus: closed.status }
+                });
+            }
+            return closed;
         });
     }
 
@@ -1326,6 +1544,7 @@ function createProviderFromConfig(config = {}, { fetchImpl, tokenCache } = {}) {
         credentialRef: config.credentialRef,
         licenseRef: config.licenseRef,
         expectedIsTest: config.expectedIsTest,
+        allowUnreportedPaymentPermissions: config.allowUnreportedPaymentPermissions === true,
         tokenCache
     });
 }

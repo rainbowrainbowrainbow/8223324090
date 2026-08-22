@@ -16,7 +16,11 @@ const {
     normalizeTender
 } = require('./paymentStateMachine');
 const { requestPaymentOutboxWakeup } = require('./paymentOutboxWakeup');
-const { PaymentReadinessError, assertPaymentReadiness } = require('./paymentReadinessService');
+const {
+    PaymentReadinessError,
+    assertFreshPaymentReadiness,
+    assertPaymentReadiness
+} = require('./paymentReadinessService');
 const {
     isCheckboxIntegrationEnabled,
     isCheckboxPaymentAcceptanceEnabled,
@@ -554,7 +558,8 @@ async function createAdmissionTicketPaymentOrder({
                 fiscalProfileId: mapping.fiscal_profile_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 crmProfileKey: mapping.crm_profile_key,
-                action: 'payments.create'
+                action: 'payments.create',
+                tender
             });
         }
 
@@ -707,7 +712,9 @@ async function confirmPaymentOrder({
     body = {},
     idempotencyKey,
     authorizer = authorizeFiscalAction,
-    requireCheckboxIntegrationReady = false
+    requireCheckboxIntegrationReady = false,
+    env = process.env,
+    checkboxFetchImpl
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
     assertNoClientFiscalOverride(body);
@@ -724,6 +731,75 @@ async function confirmPaymentOrder({
         terminalShowedSuccess: Boolean(body.terminalShowedSuccess ?? body.terminal_showed_success),
         terminalReference: sanitizeCardReference(body.terminalReference ?? body.terminal_reference)
     });
+
+    const preflight = await withTransaction(dbPool, async client => {
+        const existingAttempt = await findAttemptByIdempotency(client, key);
+        if (existingAttempt) {
+            const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
+            await authorizeOrderReplay(client, {
+                user,
+                order: existingOrder,
+                action: 'payments.confirm_received',
+                authorizer
+            });
+            if (existingAttempt.request_snapshot?.fingerprint !== requestFingerprint) {
+                throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different confirmation body', { status: 409 });
+            }
+            return {
+                replayed: true,
+                order: normalizePaymentOrder(existingOrder),
+                attemptId: Number(existingAttempt.id)
+            };
+        }
+        if (!requireCheckboxIntegrationReady) return { replayed: false, order: null };
+        if (!isCheckboxIntegrationEnabled(env)) {
+            throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
+        }
+        if (!isCheckboxPaymentAcceptanceEnabled(env)) {
+            throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
+        }
+        const order = await loadOrderSnapshot(client, numericOrderId);
+        if (!order) {
+            throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
+        }
+        await authorizer(client, {
+            user,
+            action: 'payments.confirm_received',
+            fiscalProfileId: order.fiscal_profile_id,
+            crmProfileKey: order.crm_profile_key,
+            fiscalLocationId: order.fiscal_location_id,
+            fiscalRegisterId: order.fiscal_register_id
+        });
+        await assertCheckboxIntegrationReady(client, {
+            env,
+            user,
+            fiscalProfileId: order.fiscal_profile_id,
+            fiscalRegisterId: order.fiscal_register_id,
+            registerStatus: order.fiscal_register_status,
+            registerFeatureEnabled: Boolean(order.feature_enabled),
+            provider: order.provider,
+            providerLicenseRef: order.provider_license_ref
+        });
+        return { replayed: false, order };
+    });
+    if (preflight.replayed) return preflight;
+
+    const immutableTender = preflight.order?.source_snapshot?.tender
+        || (preflight.order?.payment_method === 'card_terminal' ? 'card_terminal_manual' : preflight.order?.payment_method);
+    const freshProviderReadiness = requireCheckboxIntegrationReady
+        ? await assertFreshPaymentReadiness({
+            dbPool,
+            user,
+            fiscalProfileId: preflight.order.fiscal_profile_id,
+            fiscalRegisterId: preflight.order.fiscal_register_id,
+            paymentOrderId: numericOrderId,
+            crmProfileKey: preflight.order.crm_profile_key,
+            action: 'payments.confirm_received',
+            tender: immutableTender,
+            env,
+            fetchImpl: checkboxFetchImpl
+        })
+        : null;
 
     const result = await withTransaction(dbPool, async client => {
         const existingAttempt = await findAttemptByIdempotency(client, key);
@@ -745,10 +821,10 @@ async function confirmPaymentOrder({
             };
         }
 
-        if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(process.env)) {
+        if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(env)) {
             throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
         }
-        if (requireCheckboxIntegrationReady && !isCheckboxPaymentAcceptanceEnabled(process.env)) {
+        if (requireCheckboxIntegrationReady && !isCheckboxPaymentAcceptanceEnabled(env)) {
             throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
         }
 
@@ -793,8 +869,10 @@ async function confirmPaymentOrder({
             fiscalLocationId: order.fiscal_location_id,
             fiscalRegisterId: order.fiscal_register_id
         });
+        let fiscalConfig;
         if (requireCheckboxIntegrationReady) {
-            await assertCheckboxIntegrationReady(client, {
+            const verifiedRuntime = await assertCheckboxIntegrationReady(client, {
+                env,
                 user,
                 fiscalProfileId: order.fiscal_profile_id,
                 fiscalRegisterId: order.fiscal_register_id,
@@ -802,48 +880,60 @@ async function confirmPaymentOrder({
                 registerFeatureEnabled: Boolean(order.feature_enabled),
                 provider: order.provider,
                 providerLicenseRef: order.provider_license_ref
+            });
+            fiscalConfig = buildFiscalConfigurationSnapshot({
+                mapping: {
+                    fiscal_profile_id: order.fiscal_profile_id,
+                    fiscal_location_id: order.fiscal_location_id,
+                    fiscal_register_id: order.fiscal_register_id,
+                    crm_profile_key: order.crm_profile_key,
+                    legal_entity_key: order.legal_entity_key,
+                    provider_organization_id: order.provider_organization_id,
+                    provider_outlet_id: order.provider_outlet_id,
+                    provider_register_id: order.provider_register_id,
+                    provider_license_ref: order.provider_license_ref,
+                    register_expected_is_test: order.register_expected_is_test,
+                    register_alias: order.register_alias
+                },
+                binding: verifiedRuntime.binding,
+                runtimeConfig: verifiedRuntime.runtimeConfig
             });
             await assertPaymentReadiness({
                 client,
                 user,
                 fiscalProfileId: order.fiscal_profile_id,
                 fiscalRegisterId: order.fiscal_register_id,
+                paymentOrderId: order.id,
                 crmProfileKey: order.crm_profile_key,
-                action: 'payments.confirm_received'
+                action: 'payments.confirm_received',
+                tender: immutableTender,
+                freshProviderReadiness,
+                expectedFiscalConfigurationHash: fiscalConfig.hash,
+                env
+            });
+        } else {
+            fiscalConfig = buildFiscalConfigurationSnapshot({
+                mapping: {
+                    fiscal_profile_id: order.fiscal_profile_id,
+                    fiscal_location_id: order.fiscal_location_id,
+                    fiscal_register_id: order.fiscal_register_id,
+                    crm_profile_key: order.crm_profile_key,
+                    legal_entity_key: order.legal_entity_key,
+                    provider_organization_id: order.provider_organization_id,
+                    provider_outlet_id: order.provider_outlet_id,
+                    provider_register_id: order.provider_register_id,
+                    provider_license_ref: order.provider_license_ref,
+                    register_expected_is_test: order.register_expected_is_test,
+                    register_alias: order.register_alias
+                },
+                binding: {},
+                runtimeConfig: {}
             });
         }
 
         const confirmation = assertManualConfirmationBody({ order, body });
         await assertOrderItemsFiscalReady(client, { fiscalProfileId: order.fiscal_profile_id, paymentOrderId: order.id });
         const terminalReference = sanitizeCardReference(body.terminalReference ?? body.terminal_reference);
-        const readiness = requireCheckboxIntegrationReady
-            ? await assertCheckboxIntegrationReady(client, {
-                user,
-                fiscalProfileId: order.fiscal_profile_id,
-                fiscalRegisterId: order.fiscal_register_id,
-                registerStatus: order.fiscal_register_status,
-                registerFeatureEnabled: Boolean(order.feature_enabled),
-                provider: order.provider,
-                providerLicenseRef: order.provider_license_ref
-            })
-            : { binding: {}, runtimeConfig: {} };
-        const fiscalConfig = buildFiscalConfigurationSnapshot({
-            mapping: {
-                fiscal_profile_id: order.fiscal_profile_id,
-                fiscal_location_id: order.fiscal_location_id,
-                fiscal_register_id: order.fiscal_register_id,
-                crm_profile_key: order.crm_profile_key,
-                legal_entity_key: order.legal_entity_key,
-                provider_organization_id: order.provider_organization_id,
-                provider_outlet_id: order.provider_outlet_id,
-                provider_register_id: order.provider_register_id,
-                provider_license_ref: order.provider_license_ref,
-                register_expected_is_test: order.register_expected_is_test,
-                register_alias: order.register_alias
-            },
-            binding: readiness.binding,
-            runtimeConfig: readiness.runtimeConfig
-        });
         const confirmationSnapshot = {
             tender: confirmation.tender,
             amount_minor: confirmation.amountMinor.toString(),

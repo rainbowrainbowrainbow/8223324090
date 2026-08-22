@@ -116,7 +116,9 @@ function assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost = false } = {}) {
     }
     const host = parsed.hostname.toLowerCase();
     const isLocalHttp = allowLocalMockHost === true && parsed.protocol === 'http:' && ['127.0.0.1', 'localhost'].includes(host);
-    const isOfficialHttps = parsed.protocol === 'https:' && OFFICIAL_CHECKBOX_API_HOSTS.includes(host);
+    const isOfficialHttps = parsed.protocol === 'https:'
+        && (!parsed.port || parsed.port === '443')
+        && OFFICIAL_CHECKBOX_API_HOSTS.includes(host);
     if (!isLocalHttp && !isOfficialHttps) {
         throw new CheckboxClientError('checkbox_runtime_base_url_not_allowed', 'Checkbox runtime base URL must be an official HTTPS Checkbox host; local HTTP is allowed only through explicit test injection', {
             status: 503,
@@ -176,7 +178,8 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
         timeoutMs: Math.max(1000, Math.min(Number(env.CHECKBOX_TIMEOUT_MS || 15000), 60000)),
         credentialRef: cashierRef || null,
         licenseRef: registerRef || null,
-        expectedIsTest: parseRequiredBooleanEnv(env, 'CHECKBOX_EXPECT_IS_TEST')
+        expectedIsTest: parseRequiredBooleanEnv(env, 'CHECKBOX_EXPECT_IS_TEST'),
+        allowUnreportedPaymentPermissions: boolEnv(env.CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS)
     };
 }
 
@@ -198,7 +201,7 @@ function assertSandboxBaseUrl(baseUrl) {
         throw new CheckboxClientError('checkbox_sandbox_base_url_not_https', 'CHECKBOX_SANDBOX_BASE_URL must use HTTPS', { status: 2 });
     }
     const host = parsed.hostname.toLowerCase();
-    const isOfficial = OFFICIAL_CHECKBOX_API_HOSTS.includes(host);
+    const isOfficial = (!parsed.port || parsed.port === '443') && OFFICIAL_CHECKBOX_API_HOSTS.includes(host);
     if (!isOfficial) {
         throw new CheckboxClientError('checkbox_sandbox_base_url_not_allowed', 'Refusing Checkbox QA because base URL host is not an exact official Checkbox HTTPS API host', {
             status: 2,
@@ -229,6 +232,13 @@ function loadCheckboxSandboxConfig(env = process.env) {
     if (authMode === 'pin' && !pinCode) {
         throw new CheckboxClientError('checkbox_sandbox_pin_auth_missing', 'PIN auth requires CHECKBOX_SANDBOX_PIN_CODE', { status: 2, retryable: false });
     }
+    const expectedIsTestRaw = String(env.CHECKBOX_SANDBOX_EXPECT_IS_TEST || '').trim().toLowerCase();
+    if (expectedIsTestRaw && !['true', '1', 'yes', 'on', 'false', '0', 'no', 'off'].includes(expectedIsTestRaw)) {
+        throw new CheckboxClientError('checkbox_sandbox_expected_is_test_invalid', 'CHECKBOX_SANDBOX_EXPECT_IS_TEST must be true or false', {
+            status: 2,
+            retryable: false
+        });
+    }
     const config = {
         baseUrl,
         login,
@@ -243,6 +253,7 @@ function loadCheckboxSandboxConfig(env = process.env) {
         openApiUrl: String(env.CHECKBOX_SANDBOX_OPENAPI_URL || DEFAULT_OPENAPI_URL).trim(),
         timeoutMs: Math.max(1000, Math.min(Number(env.CHECKBOX_SANDBOX_TIMEOUT_MS || 15000), 60000)),
         confirmMutations: String(env.CHECKBOX_SANDBOX_CONFIRM_MUTATIONS || '').trim() === 'sandbox',
+        allowUnreportedPaymentPermissions: boolEnv(env.CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS),
         readinessOnly: boolEnv(env.CHECKBOX_SANDBOX_READINESS_ONLY),
         closeShift: boolEnv(env.CHECKBOX_SANDBOX_CLOSE_SHIFT),
         webhookSecret: String(env.CHECKBOX_SANDBOX_WEBHOOK_SECRET || '').trim() || null,
@@ -253,7 +264,8 @@ function loadCheckboxSandboxConfig(env = process.env) {
         expectedOutletId: String(env.CHECKBOX_SANDBOX_EXPECT_OUTLET_ID || '').trim() || null,
         expectedRegisterId: String(env.CHECKBOX_SANDBOX_EXPECT_REGISTER_ID || '').trim() || null,
         expectedCashierId: String(env.CHECKBOX_SANDBOX_EXPECT_CASHIER_ID || '').trim() || null,
-        expectedIsTest: env.CHECKBOX_SANDBOX_EXPECT_IS_TEST == null ? true : boolEnv(env.CHECKBOX_SANDBOX_EXPECT_IS_TEST),
+        expectedIsTest: expectedIsTestRaw ? boolEnv(expectedIsTestRaw) : true,
+        expectedIsTestExplicit: Boolean(expectedIsTestRaw),
         includeProOperations: boolEnv(env.CHECKBOX_SANDBOX_INCLUDE_PRO)
     };
     return config;
@@ -268,13 +280,15 @@ function publicConfigSummary(config = {}) {
         openApiUrl: config.openApiUrl,
         timeoutMs: config.timeoutMs,
         confirmMutations: config.confirmMutations,
+        allowUnreportedPaymentPermissions: config.allowUnreportedPaymentPermissions,
         readinessOnly: config.readinessOnly,
         closeShift: config.closeShift,
-        expectedOrganizationId: config.expectedOrganizationId,
-        expectedOutletId: config.expectedOutletId,
-        expectedRegisterId: config.expectedRegisterId,
-        expectedCashierId: config.expectedCashierId,
+        expectedOrganizationIdConfigured: Boolean(config.expectedOrganizationId),
+        expectedOutletIdConfigured: Boolean(config.expectedOutletId),
+        expectedRegisterIdConfigured: Boolean(config.expectedRegisterId),
+        expectedCashierIdConfigured: Boolean(config.expectedCashierId),
         expectedIsTest: config.expectedIsTest,
+        expectedIsTestExplicit: config.expectedIsTestExplicit,
         authMode: config.authMode,
         includeProOperations: config.includeProOperations,
         hasWebhookSecret: Boolean(config.webhookSecret),
@@ -299,6 +313,5 @@ module.exports = {
     normalizeCredentialRef,
     resolveAuthMode,
     publicConfigSummary,
-    assertSandboxBaseUrl,
-    assertRuntimeBaseUrl
+    assertSandboxBaseUrl
 };

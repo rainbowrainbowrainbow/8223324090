@@ -58,6 +58,46 @@ function normalizeBoolean(value) {
     return null;
 }
 
+function normalizeReadinessTender(value) {
+    const tender = String(value || '').trim().toLowerCase();
+    if (!tender) return null;
+    if (tender === 'cash') return 'cash';
+    if (['card_terminal', 'card_terminal_manual'].includes(tender)) return 'card_terminal_manual';
+    throw new PaymentReadinessError('payment_tender_unsupported', 'Unsupported tender for Checkbox readiness', {
+        status: 422,
+        details: { tender }
+    });
+}
+
+function resolveUnreportedPaymentPermissionPolicy({ env = process.env, expectedIsTest = null } = {}) {
+    const requested = normalizeBoolean(env?.CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS) === true;
+    return {
+        requested,
+        allowed: requested && expectedIsTest === true
+    };
+}
+
+function paymentPermissionSnapshotDetails(result = {}, requiredTender = null) {
+    const permissions = result?.permissions && typeof result.permissions === 'object'
+        ? result.permissions
+        : {};
+    const unreported = Array.isArray(permissions.unreported)
+        ? permissions.unreported.map(value => String(value || '').trim()).filter(Boolean)
+        : [];
+    const permissionKey = normalizeReadinessTender(requiredTender) === 'cash'
+        ? 'cash_payment'
+        : normalizeReadinessTender(requiredTender) === 'card_terminal_manual'
+            ? 'card_payment'
+            : null;
+    const relevantUnreported = permissionKey
+        ? unreported.filter(value => value === permissionKey)
+        : unreported;
+    return {
+        warning: relevantUnreported.length ? String(permissions.warning || 'permission_unreported') : null,
+        unreported: relevantUnreported
+    };
+}
+
 function nowIso(now = new Date()) {
     return now instanceof Date ? now.toISOString() : new Date(now).toISOString();
 }
@@ -165,7 +205,12 @@ async function withTransaction(dbPool, run) {
     }
 }
 
-async function loadPilotMapping(client, { crmProfileKey = PILOT_CRM_PROFILE_KEY, registerAlias = PILOT_REGISTER_ALIAS } = {}) {
+async function loadPilotMapping(client, {
+    crmProfileKey = PILOT_CRM_PROFILE_KEY,
+    registerAlias = PILOT_REGISTER_ALIAS,
+    lockConfiguration = false
+} = {}) {
+    const lockClause = lockConfiguration ? ' FOR UPDATE OF fp, fl, fr' : '';
     const result = await client.query(
         `SELECT
              fp.id AS fiscal_profile_id,
@@ -199,7 +244,7 @@ async function loadPilotMapping(client, { crmProfileKey = PILOT_CRM_PROFILE_KEY,
             AND fr.register_alias = $2
             AND fr.status = 'active'
           WHERE fp.crm_profile_key = $1
-            AND fp.status = 'active'`,
+            AND fp.status = 'active'${lockClause}`,
         [String(crmProfileKey || '').trim(), String(registerAlias || '').trim()]
     );
     if (result.rows.length !== 1) {
@@ -254,16 +299,125 @@ async function loadTaxMappingReadiness(client, mapping) {
     return { ready: missingCodes.length === 0, activeCodes, mappedCodes, missingCodes, providerTaxIds };
 }
 
-async function loadLatestLocalShift(client, mapping) {
+function normalizePaymentTaxRows(rows = []) {
+    if (!Array.isArray(rows) || !rows.length) {
+        throw new PaymentReadinessError('payment_order_items_missing', 'Payment order has no immutable fiscal items', { status: 409 });
+    }
+    return rows.map(row => {
+        const lineNumber = Number(row.line_number);
+        const itemCode = String(row.item_code || '').trim();
+        const taxMode = String(row.tax_mode || 'taxed').trim().toLowerCase();
+        const providerTaxId = String(row.provider_tax_id || '').trim() || null;
+        const valid = Number.isSafeInteger(lineNumber)
+            && lineNumber > 0
+            && Boolean(itemCode)
+            && (taxMode === 'untaxed'
+                ? providerTaxId == null
+                : taxMode === 'taxed' && Boolean(providerTaxId) && !/^admission_tariff:/i.test(providerTaxId));
+        if (!valid) {
+            throw new PaymentReadinessError('payment_order_fiscal_item_not_ready', 'Immutable payment item tax mapping is incomplete', {
+                status: 409,
+                details: { lineNumber: Number.isSafeInteger(lineNumber) ? lineNumber : null }
+            });
+        }
+        return {
+            lineNumber,
+            itemCode,
+            taxMode,
+            providerTaxId
+        };
+    }).sort((a, b) => a.lineNumber - b.lineNumber);
+}
+
+function paymentTaxContext(rows = []) {
+    const items = normalizePaymentTaxRows(rows);
+    return {
+        items,
+        providerTaxIds: [...new Set(items.map(item => item.providerTaxId).filter(Boolean))].sort(),
+        fingerprint: fingerprint(items)
+    };
+}
+
+async function loadPaymentOrderTaxContext(client, {
+    paymentOrderId,
+    fiscalProfileId,
+    fiscalRegisterId,
+    crmProfileKey,
+    lockConfiguration = false
+} = {}) {
+    const immutable = await client.query(
+        `SELECT line_number, item_code, provider_tax_id, COALESCE(tax_mode, 'taxed') AS tax_mode
+           FROM payment_order_items
+          WHERE fiscal_profile_id = $1
+            AND payment_order_id = $2
+          ORDER BY line_number ASC`,
+        [fiscalProfileId, paymentOrderId]
+    );
+    const immutableContext = paymentTaxContext(immutable.rows);
+    const itemCodes = [...new Set(immutableContext.items.map(item => item.itemCode))];
+    const lockClause = lockConfiguration ? ' FOR UPDATE' : '';
+    const current = await client.query(
+        `SELECT item_code, provider_tax_id, COALESCE(tax_mode, 'taxed') AS tax_mode
+           FROM fiscal_item_mappings
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND crm_profile_key = $3
+            AND source_type = 'admission_ticket'
+            AND item_type = 'admission_ticket'
+            AND provider = 'checkbox'
+            AND status = 'active'
+            AND item_code = ANY($4::text[])${lockClause}`,
+        [fiscalProfileId, fiscalRegisterId, crmProfileKey, itemCodes]
+    );
+    const currentByCode = new Map();
+    for (const row of current.rows) {
+        const itemCode = String(row.item_code || '').trim();
+        if (!itemCode || currentByCode.has(itemCode)) {
+            throw new PaymentReadinessError('payment_fiscal_tax_mapping_changed', 'Active fiscal tax mapping is missing or ambiguous for this payment', {
+                status: 409
+            });
+        }
+        currentByCode.set(itemCode, row);
+    }
+    const projected = immutableContext.items.map(item => {
+        const currentRow = currentByCode.get(item.itemCode);
+        return {
+            line_number: item.lineNumber,
+            item_code: item.itemCode,
+            tax_mode: currentRow?.tax_mode,
+            provider_tax_id: currentRow?.provider_tax_id
+        };
+    });
+    let currentContext;
+    try {
+        currentContext = paymentTaxContext(projected);
+    } catch (error) {
+        if (error instanceof PaymentReadinessError) {
+            throw new PaymentReadinessError('payment_fiscal_tax_mapping_changed', 'Active fiscal tax mapping no longer matches this payment', {
+                status: 409
+            });
+        }
+        throw error;
+    }
+    if (currentContext.fingerprint !== immutableContext.fingerprint) {
+        throw new PaymentReadinessError('payment_fiscal_tax_mapping_changed', 'Active fiscal tax mapping changed after payment order creation', {
+            status: 409
+        });
+    }
+    return immutableContext;
+}
+
+async function loadLatestLocalShift(client, mapping, { lockConfiguration = false } = {}) {
     if (!mapping) return null;
+    const lockClause = lockConfiguration ? ' FOR UPDATE' : '';
     const result = await client.query(
         `SELECT *
            FROM fiscal_shifts
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
             AND status IN ('opening', 'open', 'closing')
-          ORDER BY opened_at DESC NULLS LAST, id DESC
-          LIMIT 1`,
+           ORDER BY opened_at DESC NULLS LAST, id DESC
+           LIMIT 1${lockClause}`,
         [mapping.fiscal_profile_id, mapping.fiscal_register_id]
     );
     return result.rows[0] || null;
@@ -282,9 +436,10 @@ async function loadScope(client, {
     crmProfileKey = PILOT_CRM_PROFILE_KEY,
     registerAlias = PILOT_REGISTER_ALIAS,
     action = 'payments.view',
-    requireUserAuthorization = true
+    requireUserAuthorization = true,
+    lockConfiguration = false
 } = {}) {
-    const { mapping, matches } = await loadPilotMapping(client, { crmProfileKey, registerAlias });
+    const { mapping, matches } = await loadPilotMapping(client, { crmProfileKey, registerAlias, lockConfiguration });
     if (!mapping) return { mapping: null, binding: null, matches, tax: { ready: false, missingCodes: [] }, shift: null, runtimeConfig: null, configHash: null };
     let binding = null;
     if (requireUserAuthorization) {
@@ -301,9 +456,26 @@ async function loadScope(client, {
             fiscalProfileId: mapping.fiscal_profile_id,
             fiscalRegisterId: mapping.fiscal_register_id
         });
+        if (lockConfiguration) {
+            const lockedBinding = await client.query(
+                `SELECT id
+                   FROM fiscal_cashier_bindings
+                  WHERE id = $1
+                    AND fiscal_profile_id = $2
+                    AND fiscal_register_id = $3
+                    AND status = 'active'
+                  FOR UPDATE`,
+                [binding.id, mapping.fiscal_profile_id, mapping.fiscal_register_id]
+            );
+            if (lockedBinding.rows.length !== 1) {
+                throw new PaymentReadinessError('binding_changed_during_readiness', 'Fiscal cashier binding changed during payment readiness', {
+                    status: 409
+                });
+            }
+        }
     }
     const tax = await loadTaxMappingReadiness(client, mapping);
-    const shift = await loadLatestLocalShift(client, mapping);
+    const shift = await loadLatestLocalShift(client, mapping, { lockConfiguration });
     return { mapping, binding, matches, tax, shift, runtimeConfig: null, configHash: null };
 }
 
@@ -361,6 +533,7 @@ function baseReadiness({
         staleReadiness: true,
         shiftState,
         readinessCode,
+        providerReady: false,
         integrationReady: false,
         checkedAt: nowIso(now),
         expiresAt: readinessExpiresAt(now).toISOString(),
@@ -398,8 +571,99 @@ function deriveIntegrationReady(state = {}) {
     );
 }
 
+function canProbeProviderReadiness(state = {}) {
+    return ['ready', 'payment_acceptance_disabled'].includes(String(state.readinessCode || ''));
+}
+
+function applyPaymentAcceptanceGate(state = {}, { providerReady = deriveIntegrationReady(state) } = {}) {
+    const paymentAcceptanceEnabled = state.paymentAcceptanceEnabled === true;
+    const normalizedProviderReady = providerReady === true;
+    return {
+        ...state,
+        paymentAcceptanceEnabled,
+        providerReady: normalizedProviderReady,
+        readinessCode: normalizedProviderReady && !paymentAcceptanceEnabled
+            ? 'payment_acceptance_disabled'
+            : state.readinessCode,
+        integrationReady: normalizedProviderReady && paymentAcceptanceEnabled
+    };
+}
+
+function sanitizePersistedReadinessDetails(result = {}) {
+    const source = result && typeof result === 'object' && !Array.isArray(result) ? result : {};
+    const permissionDetails = paymentPermissionSnapshotDetails(source);
+    const requiredTender = ['cash', 'card_terminal_manual'].includes(source.requiredTender)
+        ? source.requiredTender
+        : null;
+    return {
+        ...(source.error ? {
+            error: {
+                code: String(source.error.code || 'checkbox_readiness_error').slice(0, 80),
+                status: Number(source.error.status || 503),
+                retryable: source.error.retryable === true,
+                unknown: source.error.unknown === true
+            }
+        } : {}),
+        ...(source.cashier ? {
+            cashier: {
+                identityVerified: source.cashier.identityVerified === true,
+                organizationVerified: source.cashier.organizationVerified === true,
+                blocked: source.cashier.blocked === true,
+                isTest: typeof source.cashier.isTest === 'boolean' ? source.cashier.isTest : null,
+                certificateReady: source.cashier.certificateReady === true,
+                testSignature: source.cashier.testSignature === true
+            }
+        } : {}),
+        ...(source.register ? {
+            register: {
+                identityVerified: source.register.identityVerified === true,
+                organizationVerified: source.register.organizationVerified === true,
+                isTest: typeof source.register.isTest === 'boolean' ? source.register.isTest : null,
+                online: source.register.online === true,
+                documentsStateAvailable: source.register.documentsStateAvailable === true
+            }
+        } : {}),
+        ...(source.permissions ? {
+            permissions: {
+                sales: ['allowed', 'denied', 'unreported'].includes(source.permissions.sales) ? source.permissions.sales : null,
+                cash: ['allowed', 'denied', 'unreported'].includes(source.permissions.cash) ? source.permissions.cash : null,
+                card: ['allowed', 'denied', 'unreported'].includes(source.permissions.card) ? source.permissions.card : null,
+                warning: permissionDetails.warning,
+                unreported: permissionDetails.unreported
+            }
+        } : {}),
+        requiredTender,
+        unreportedPaymentPermissionOverrideRequested: source.unreportedPaymentPermissionOverrideRequested === true,
+        unreportedPaymentPermissionOverrideApplied: source.unreportedPaymentPermissionOverrideApplied === true,
+        ...(source.signature ? {
+            signature: {
+                online: source.signature.online === true,
+                type: String(source.signature.type || '').trim().toUpperCase() || null,
+                shiftOpenPossible: source.signature.shiftOpenPossible === true
+            }
+        } : {}),
+        ...(source.taxes ? {
+            taxes: {
+                expectedCount: Number(source.taxes.expectedCount || 0),
+                availableCount: Number(source.taxes.availableCount || 0),
+                exactPaymentTaxSnapshot: source.taxes.exactPaymentTaxSnapshot === true
+            }
+        } : {}),
+        ...(source.shift ? {
+            shift: {
+                state: String(source.shift.state || 'unknown').slice(0, 40),
+                status: source.shift.status == null ? null : String(source.shift.status).slice(0, 40),
+                localShiftMatched: source.shift.localShiftMatched === true,
+                providerShiftPresent: source.shift.providerShiftPresent === true
+            }
+        } : {})
+    };
+}
+
 function serializeReadinessSnapshot(row = {}) {
     if (!row) return null;
+    const result = sanitizePersistedReadinessDetails(row.result_snapshot || {});
+    const permissionDetails = paymentPermissionSnapshotDetails(result);
     return {
         id: Number(row.id),
         readinessCode: row.readiness_code,
@@ -417,9 +681,11 @@ function serializeReadinessSnapshot(row = {}) {
         checkedAt: row.checked_at || null,
         expiresAt: row.expires_at || null,
         latencyMs: row.latency_ms == null ? null : Number(row.latency_ms),
-        providerShiftId: row.provider_shift_id || null,
+        providerShiftPresent: Boolean(row.provider_shift_id),
         expectedIsTest: typeof row.expected_is_test === 'boolean' ? row.expected_is_test : null,
-        result: row.result_snapshot || {}
+        paymentPermissionWarning: permissionDetails.warning,
+        unreportedPaymentPermissions: permissionDetails.unreported,
+        result
     };
 }
 
@@ -492,7 +758,7 @@ async function insertReadinessSnapshot(client, scope, state, details = {}) {
             normalizeBoolean(scope.runtimeConfig?.expectedIsTest),
             expiresAt,
             state.latencyMs == null ? null : Number(state.latencyMs),
-            JSON.stringify(redactCheckboxDiagnostics(details))
+            JSON.stringify(sanitizePersistedReadinessDetails(details))
         ]
     );
     return row.rows[0];
@@ -505,13 +771,22 @@ async function prepareReadinessScope({
     registerAlias = PILOT_REGISTER_ALIAS,
     action = 'payments.view',
     requireUserAuthorization = true,
+    paymentOrderId = null,
+    lockConfiguration = false,
     env = process.env,
     now = new Date()
 } = {}) {
     return withTransaction(dbPool, async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(env);
         const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env);
-        const scope = await loadScope(client, { user, crmProfileKey, registerAlias, action, requireUserAuthorization });
+        const scope = await loadScope(client, {
+            user,
+            crmProfileKey,
+            registerAlias,
+            action,
+            requireUserAuthorization,
+            lockConfiguration
+        });
         let runtimeConfig = null;
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
@@ -528,6 +803,15 @@ async function prepareReadinessScope({
         }
         scope.runtimeConfig = runtimeConfig;
         scope.configHash = runtimeConfig ? buildFiscalConfigurationSnapshot({ mapping: scope.mapping, binding: scope.binding, runtimeConfig }).hash : null;
+        scope.paymentTaxContext = scope.mapping && paymentOrderId
+            ? await loadPaymentOrderTaxContext(client, {
+                paymentOrderId,
+                fiscalProfileId: scope.mapping.fiscal_profile_id,
+                fiscalRegisterId: scope.mapping.fiscal_register_id,
+                crmProfileKey: scope.mapping.crm_profile_key,
+                lockConfiguration
+            })
+            : null;
         const local = baseReadiness({
             checkboxIntegrationEnabled,
             paymentAcceptanceEnabled,
@@ -569,48 +853,176 @@ async function syncPortalClosedShift(client, scope, providerShiftState) {
     return result.rows[0] || null;
 }
 
-async function probeProvider(scope, { fetchImpl, now = new Date(), timeoutMs = PROBE_TIMEOUT_MS } = {}) {
+function resolveProviderShiftReadiness({ providerShift = null, localShift = null } = {}) {
+    if (!providerShift) {
+        const localState = localShiftState(localShift);
+        if (['open', 'opening', 'closing'].includes(localState)) {
+            return {
+                shiftState: 'local_stale',
+                readinessCode: 'local_shift_requires_reconciliation',
+                providerShiftId: null,
+                localShiftMatched: false
+            };
+        }
+        return { shiftState: 'closed', readinessCode: 'ready', providerShiftId: null, localShiftMatched: true };
+    }
+    const providerStatus = String(providerShift.status || '').trim().toUpperCase();
+    const providerShiftId = String(providerShift.id || '').trim() || null;
+    if (providerStatus === OPEN_SHIFT_STATUS) {
+        const localProviderShiftId = String(localShift?.provider_shift_id || '').trim() || null;
+        const localShiftMatched = Boolean(providerShiftId && localProviderShiftId && providerShiftId === localProviderShiftId);
+        return {
+            shiftState: localShiftMatched ? 'open' : 'external_open',
+            readinessCode: localShiftMatched ? 'ready' : 'external_shift_requires_sync',
+            providerShiftId,
+            localShiftMatched
+        };
+    }
+    if (['OPENING', 'CREATED'].includes(providerStatus)) {
+        return { shiftState: 'opening', readinessCode: 'shift_opening', providerShiftId, localShiftMatched: false };
+    }
+    if (providerStatus === 'CLOSING') {
+        return { shiftState: 'closing', readinessCode: 'shift_closing', providerShiftId, localShiftMatched: false };
+    }
+    const closed = resolveProviderShiftReadiness({ providerShift: null, localShift });
+    return { ...closed, providerShiftId };
+}
+
+function freshShiftContextMatches(localShift, freshProviderReadiness = {}) {
+    const freshShiftState = String(freshProviderReadiness.shiftState || '').trim();
+    if (freshShiftState === 'open') {
+        const providerShiftId = String(freshProviderReadiness.providerShiftId || '').trim();
+        return Boolean(
+            providerShiftId
+            && localShiftState(localShift) === 'open'
+            && String(localShift?.provider_shift_id || '').trim() === providerShiftId
+        );
+    }
+    if (freshShiftState === 'closed') {
+        return localShiftState(localShift) === 'closed';
+    }
+    return false;
+}
+
+function sanitizedProviderReadinessDetails({
+    providerReadiness = {},
+    permissionDetails = {},
+    normalizedTender = null,
+    unreportedPermissionPolicy = {},
+    shiftResolution = {},
+    paymentTaxContext = null
+} = {}) {
+    const permissions = providerReadiness.permissions || {};
+    return {
+        cashier: {
+            identityVerified: true,
+            organizationVerified: true,
+            blocked: providerReadiness.cashier?.blocked === true,
+            isTest: providerReadiness.cashier?.isTest ?? null,
+            certificateReady: providerReadiness.certificate?.ready === true,
+            testSignature: providerReadiness.certificate?.testSignature === true
+        },
+        register: {
+            identityVerified: true,
+            organizationVerified: true,
+            isTest: providerReadiness.register?.isTest ?? null,
+            online: providerReadiness.register?.offlineMode !== true && providerReadiness.register?.stayOffline !== true,
+            documentsStateAvailable: Boolean(providerReadiness.register?.documentsState)
+        },
+        permissions: {
+            sales: permissions.sales === true ? 'allowed' : permissions.sales === false ? 'denied' : 'unreported',
+            cash: permissions.cashPayment === true ? 'allowed' : permissions.cashPayment === false ? 'denied' : 'unreported',
+            card: permissions.cardPayment === true ? 'allowed' : permissions.cardPayment === false ? 'denied' : 'unreported',
+            warning: permissionDetails.warning || null,
+            unreported: permissionDetails.unreported || []
+        },
+        requiredTender: normalizedTender,
+        unreportedPaymentPermissionOverrideRequested: unreportedPermissionPolicy.requested === true,
+        unreportedPaymentPermissionOverrideApplied: unreportedPermissionPolicy.allowed === true,
+        signature: {
+            online: providerReadiness.signature?.online === true,
+            type: String(providerReadiness.signature?.type || '').trim().toUpperCase() || null,
+            shiftOpenPossible: providerReadiness.signature?.shiftOpenPossibility === true
+        },
+        taxes: {
+            expectedCount: paymentTaxContext
+                ? paymentTaxContext.providerTaxIds.length
+                : Array.isArray(providerReadiness.taxes?.expected) ? providerReadiness.taxes.expected.length : 0,
+            availableCount: Number(providerReadiness.taxes?.availableCount || 0),
+            exactPaymentTaxSnapshot: Boolean(paymentTaxContext)
+        },
+        shift: {
+            state: shiftResolution.shiftState || 'unknown',
+            status: shiftResolution.providerStatus || null,
+            localShiftMatched: shiftResolution.localShiftMatched === true,
+            providerShiftPresent: Boolean(shiftResolution.providerShiftId)
+        }
+    };
+}
+
+async function probeProvider(scope, {
+    fetchImpl,
+    now = new Date(),
+    timeoutMs = PROBE_TIMEOUT_MS,
+    env = process.env,
+    requiredTender = null
+} = {}) {
+    const normalizedTender = normalizeReadinessTender(requiredTender);
     const expected = {
         expectedCashierId: scope.binding?.provider_cashier_id || null,
         expectedOrganizationId: scope.mapping?.provider_organization_id || null,
         expectedRegisterId: scope.mapping?.provider_register_id || null,
         expectedIsTest: scope.runtimeConfig?.expectedIsTest
     };
+    const unreportedPermissionPolicy = resolveUnreportedPaymentPermissionPolicy({
+        env,
+        expectedIsTest: expected.expectedIsTest
+    });
     const provider = createProviderFromConfig(
         { ...scope.runtimeConfig, timeoutMs: Math.max(1000, Math.min(Number(timeoutMs || PROBE_TIMEOUT_MS), 30_000)) },
         { fetchImpl }
     );
     const startedAt = new Date(now).getTime();
-    const providerReadiness = await provider.verifyReadiness(expected, { expectedTaxIds: scope.tax?.providerTaxIds || [] });
-    let shiftState = 'closed';
-    let providerShiftId = null;
-    let shift = null;
+    const providerReadiness = await provider.verifyReadiness(expected, {
+        expectedTaxIds: scope.paymentTaxContext?.providerTaxIds || scope.tax?.providerTaxIds || [],
+        requiredTender: normalizedTender,
+        allowUnreportedPaymentPermissions: unreportedPermissionPolicy.allowed
+    });
+    let shiftResolution = resolveProviderShiftReadiness({ providerShift: null, localShift: scope.shift });
+    let current = null;
     try {
-        const current = normalizeShiftResponse(await provider.client.getCurrentShift(), expected, { requireCashier: false });
-        if (current.status === OPEN_SHIFT_STATUS) {
-            shift = current;
-            try {
-                shift = normalizeShiftResponse(await provider.client.getShiftById({ shiftId: current.id }), expected, { requireOpened: true, requireCashier: true });
-            } catch (error) {
-                if (!(error instanceof CheckboxClientError && error.status === 404)) throw error;
-                shift = normalizeShiftResponse(current.raw || current, expected, { requireOpened: true, requireCashier: false });
-            }
-            shiftState = 'open';
-            providerShiftId = shift.id;
-        } else {
-            if (['OPENING', 'CREATED'].includes(current.status)) shiftState = 'opening';
-            else if (current.status === 'CLOSING') shiftState = 'closing';
-            else shiftState = 'closed';
-            providerShiftId = current.id || null;
-        }
+        current = normalizeShiftResponse(await provider.client.getCurrentShift(), expected, { requireCashier: false });
     } catch (error) {
         if (error instanceof CheckboxClientError && error.status === 404) {
-            shiftState = 'closed';
+            current = null;
         } else {
             throw error;
         }
     }
+    if (current?.status === OPEN_SHIFT_STATUS) {
+        // The sparse current-shift response cannot prove cashier ownership. A missing
+        // detailed shift is therefore an identity failure, never evidence that no shift exists.
+        const shift = normalizeShiftResponse(
+            await provider.client.getShiftById({ shiftId: current.id }),
+            expected,
+            { requireOpened: true, requireCashier: true }
+        );
+        shiftResolution = {
+            ...resolveProviderShiftReadiness({ providerShift: shift, localShift: scope.shift }),
+            providerStatus: shift.status
+        };
+    } else if (current) {
+        shiftResolution = {
+            ...resolveProviderShiftReadiness({ providerShift: current, localShift: scope.shift }),
+            providerStatus: current.status
+        };
+    } else {
+        shiftResolution = resolveProviderShiftReadiness({ providerShift: null, localShift: scope.shift });
+    }
     const latencyMs = millisBetween(startedAt, Date.now());
+    const permissionDetails = paymentPermissionSnapshotDetails({ permissions: providerReadiness.permissions }, normalizedTender);
+    const shiftState = shiftResolution.shiftState;
+    const providerShiftId = shiftResolution.providerShiftId;
     const state = {
         checkboxIntegrationEnabled: true,
         localMappingReady: true,
@@ -619,28 +1031,30 @@ async function probeProvider(scope, { fetchImpl, now = new Date(), timeoutMs = P
         registerActive: true,
         cashierReady: true,
         signatureCertificateReady: true,
-        taxMappingReady: scope.tax?.ready === true,
+        taxMappingReady: scope.paymentTaxContext ? true : scope.tax?.ready === true,
         providerUnavailable: false,
         staleReadiness: false,
         shiftState,
-        readinessCode: shiftState === 'opening' ? 'shift_opening' : 'ready',
+        readinessCode: shiftResolution.readinessCode,
         providerShiftId,
         checkedAt: nowIso(now),
         expiresAt: readinessExpiresAt(now).toISOString(),
-        latencyMs
+        latencyMs,
+        paymentPermissionWarning: permissionDetails.warning,
+        unreportedPaymentPermissions: permissionDetails.unreported,
+        requiredTender: normalizedTender
     };
     state.integrationReady = deriveIntegrationReady(state);
     return {
         state,
-        details: {
-            cashier: providerReadiness.cashier,
-            register: providerReadiness.register,
-            permissions: providerReadiness.permissions,
-            signature: providerReadiness.signature,
-            taxes: providerReadiness.taxes,
-            shift: shift ? { id: shift.id, status: shift.status, registerId: shift.registerId, cashierId: shift.cashierId } : { state: shiftState },
-            expected
-        }
+        details: sanitizedProviderReadinessDetails({
+            providerReadiness,
+            permissionDetails,
+            normalizedTender,
+            unreportedPermissionPolicy,
+            shiftResolution,
+            paymentTaxContext: scope.paymentTaxContext
+        })
     };
 }
 
@@ -683,7 +1097,7 @@ async function loadReadinessState({
             runtimeConfig,
             runtimeConfigError
         });
-        if (!scope.mapping || !runtimeConfig || local.readinessCode !== 'ready') {
+        if (!scope.mapping || !runtimeConfig || !canProbeProviderReadiness(local)) {
             return {
                 ...local,
                 fiscalProfileId: scope.mapping ? Number(scope.mapping.fiscal_profile_id) : null,
@@ -698,6 +1112,12 @@ async function loadReadinessState({
         }
         const staleReadiness = serialized.staleReadiness === true;
         const testModeMismatch = serialized.expectedIsTest !== runtimeConfig.expectedIsTest;
+        const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
+            env,
+            expectedIsTest: runtimeConfig.expectedIsTest
+        });
+        const permissionDetails = paymentPermissionSnapshotDetails(serialized.result);
+        const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
         const merged = {
             ...local,
             ...serialized,
@@ -708,14 +1128,23 @@ async function loadReadinessState({
             registerActive: local.registerActive,
             taxMappingReady: local.taxMappingReady,
             staleReadiness,
-            readinessCode: testModeMismatch ? 'checkbox_expected_is_test_mismatch' : staleReadiness ? 'readiness_stale' : serialized.readinessCode,
+            readinessCode: testModeMismatch
+                ? 'checkbox_expected_is_test_mismatch'
+                : staleReadiness
+                    ? 'readiness_stale'
+                    : unreportedPermissionBlocked
+                        ? 'checkbox_payment_permission_unreported'
+                        : serialized.readinessCode,
+            paymentPermissionWarning: permissionDetails.warning,
+            unreportedPaymentPermissions: permissionDetails.unreported,
             integrationReady: false,
             fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
             fiscalRegisterId: Number(scope.mapping.fiscal_register_id),
             readinessSnapshot: serialized
         };
-        merged.integrationReady = testModeMismatch ? false : deriveIntegrationReady(merged);
-        return merged;
+        return applyPaymentAcceptanceGate(merged, {
+            providerReady: !testModeMismatch && !unreportedPermissionBlocked && deriveIntegrationReady(merged)
+        });
     });
 }
 
@@ -739,7 +1168,7 @@ async function probeCheckboxReadiness({
         env,
         now
     });
-    if (!scope.mapping || !scope.runtimeConfig || local.readinessCode !== 'ready') {
+    if (!scope.mapping || !scope.runtimeConfig || !canProbeProviderReadiness(local)) {
         return withTransaction(dbPool, async client => {
             const inserted = scope.mapping ? await insertReadinessSnapshot(client, scope, local, { reason: local.readinessCode }) : null;
             return { ...local, readinessSnapshot: serializeReadinessSnapshot(inserted) };
@@ -748,7 +1177,13 @@ async function probeCheckboxReadiness({
     const latest = await withTransaction(dbPool, async client => loadLatestReadinessSnapshot(client, scope));
     const serializedLatest = serializeReadinessSnapshot(latest);
     if (!force && serializedLatest && serializedLatest.staleReadiness !== true) {
-        return {
+        const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
+            env,
+            expectedIsTest: scope.runtimeConfig.expectedIsTest
+        });
+        const permissionDetails = paymentPermissionSnapshotDetails(serializedLatest.result);
+        const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
+        return applyPaymentAcceptanceGate({
             ...local,
             ...serializedLatest,
             checkboxIntegrationEnabled: local.checkboxIntegrationEnabled,
@@ -757,10 +1192,14 @@ async function probeCheckboxReadiness({
             runtimeSecretsResolvable: local.runtimeSecretsResolvable,
             registerActive: local.registerActive,
             taxMappingReady: local.taxMappingReady,
-            integrationReady: deriveIntegrationReady({ ...local, ...serializedLatest }),
+            readinessCode: unreportedPermissionBlocked ? 'checkbox_payment_permission_unreported' : serializedLatest.readinessCode,
+            paymentPermissionWarning: permissionDetails.warning,
+            unreportedPaymentPermissions: permissionDetails.unreported,
             readinessSnapshot: serializedLatest,
             cached: true
-        };
+        }, {
+            providerReady: !unreportedPermissionBlocked && deriveIntegrationReady({ ...local, ...serializedLatest })
+        });
     }
     const singleFlightKey = [
         scope.mapping.fiscal_profile_id,
@@ -773,7 +1212,7 @@ async function probeCheckboxReadiness({
     const runProbe = (async () => {
     let result;
     try {
-        result = await probeProvider(scope, { fetchImpl, now });
+        result = await probeProvider(scope, { fetchImpl, now, env });
     } catch (error) {
         const info = publicError(error);
         const providerUnavailable = info.retryable === true || info.unknown === true || info.status >= 500 || /timeout|network|fetch|aborted/i.test(info.message);
@@ -809,7 +1248,11 @@ async function probeCheckboxReadiness({
                 details: { readiness_code: result.state.readinessCode, sanitized: true }
             });
         }
-        return { ...result.state, readinessSnapshot: serializeReadinessSnapshot(inserted) };
+        return applyPaymentAcceptanceGate({
+            ...result.state,
+            paymentAcceptanceEnabled: local.paymentAcceptanceEnabled,
+            readinessSnapshot: serializeReadinessSnapshot(inserted)
+        });
     });
     })();
     READINESS_PROBE_IN_FLIGHT.set(singleFlightKey, runProbe);
@@ -820,20 +1263,128 @@ async function probeCheckboxReadiness({
     }
 }
 
+function readinessFailureStatus(readinessCode) {
+    return [
+        'global_integration_disabled',
+        'credentials_missing',
+        'provider_unavailable',
+        'readiness_stale',
+        'readiness_missing',
+        'checkbox_expected_is_test_mismatch'
+    ].includes(readinessCode) ? 503 : 409;
+}
+
+function throwPaymentReadinessError(state = {}) {
+    throw new PaymentReadinessError(state.readinessCode || 'checkbox_not_ready', 'Checkbox is not ready for payment confirmation', {
+        status: readinessFailureStatus(state.readinessCode),
+        details: {
+            readinessCode: state.readinessCode,
+            shiftState: state.shiftState,
+            staleReadiness: state.staleReadiness,
+            providerUnavailable: state.providerUnavailable
+        }
+    });
+}
+
+async function assertFreshPaymentReadiness({
+    dbPool = pool,
+    user,
+    fiscalProfileId,
+    fiscalRegisterId,
+    paymentOrderId,
+    crmProfileKey = PILOT_CRM_PROFILE_KEY,
+    action = 'payments.confirm_received',
+    tender,
+    env = process.env,
+    fetchImpl,
+    now = new Date()
+} = {}) {
+    const requiredTender = normalizeReadinessTender(tender);
+    if (!requiredTender) {
+        throw new PaymentReadinessError('payment_tender_required', 'Tender is required for payment readiness', { status: 422 });
+    }
+    const { scope, local } = await prepareReadinessScope({
+        dbPool,
+        user,
+        crmProfileKey,
+        registerAlias: PILOT_REGISTER_ALIAS,
+        action,
+        requireUserAuthorization: true,
+        paymentOrderId,
+        env,
+        now
+    });
+    if (fiscalProfileId && Number(scope.mapping?.fiscal_profile_id || 0) !== Number(fiscalProfileId)) {
+        throw new PaymentReadinessError('readiness_wrong_fiscal_profile', 'Checkbox readiness is not scoped to the payment fiscal profile', { status: 409 });
+    }
+    if (fiscalRegisterId && Number(scope.mapping?.fiscal_register_id || 0) !== Number(fiscalRegisterId)) {
+        throw new PaymentReadinessError('readiness_wrong_fiscal_register', 'Checkbox readiness is not scoped to the payment fiscal register', { status: 409 });
+    }
+    if (!scope.mapping || !scope.runtimeConfig || !canProbeProviderReadiness(local)) {
+        throwPaymentReadinessError(local);
+    }
+
+    let providerResult;
+    try {
+        providerResult = await probeProvider(scope, { fetchImpl, now, env, requiredTender });
+    } catch (error) {
+        const info = publicError(error);
+        const providerUnavailable = info.retryable === true
+            || info.unknown === true
+            || info.status >= 500
+            || /timeout|network|fetch|aborted/i.test(info.message);
+        throwPaymentReadinessError({
+            ...local,
+            readinessCode: providerUnavailable ? 'provider_unavailable' : info.code,
+            providerUnavailable,
+            staleReadiness: false
+        });
+    }
+    const state = {
+        ...local,
+        ...providerResult.state,
+        fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
+        fiscalRegisterId: Number(scope.mapping.fiscal_register_id),
+        fiscalConfigurationHash: scope.configHash,
+        fiscalTaxFingerprint: scope.paymentTaxContext?.fingerprint || null,
+        expectedIsTest: scope.runtimeConfig.expectedIsTest,
+        requiredTender,
+        details: providerResult.details
+    };
+    state.integrationReady = deriveIntegrationReady(state);
+    if (!state.integrationReady) throwPaymentReadinessError(state);
+    return state;
+}
+
 async function assertPaymentReadiness({
     dbPool = pool,
     client = null,
     user,
     fiscalProfileId,
     fiscalRegisterId,
+    paymentOrderId = null,
     crmProfileKey = PILOT_CRM_PROFILE_KEY,
     action = 'payments.confirm_received',
-    env = process.env
+    env = process.env,
+    tender = null,
+    freshProviderReadiness = null,
+    expectedFiscalConfigurationHash = null,
+    requirePaymentAcceptance = true
 } = {}) {
     const run = async queryable => {
+        const requiredTender = normalizeReadinessTender(tender);
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(env);
         const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env);
-        const scope = await loadScope(queryable, { user, crmProfileKey, registerAlias: PILOT_REGISTER_ALIAS, action, requireUserAuthorization: true });
+        const readinessPaymentAcceptanceEnabled = requirePaymentAcceptance ? paymentAcceptanceEnabled : true;
+        const lockConfiguration = Boolean(client && freshProviderReadiness);
+        const scope = await loadScope(queryable, {
+            user,
+            crmProfileKey,
+            registerAlias: PILOT_REGISTER_ALIAS,
+            action,
+            requireUserAuthorization: true,
+            lockConfiguration
+        });
         let runtimeConfig = null;
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
@@ -850,9 +1401,18 @@ async function assertPaymentReadiness({
         }
         scope.runtimeConfig = runtimeConfig;
         scope.configHash = runtimeConfig ? buildFiscalConfigurationSnapshot({ mapping: scope.mapping, binding: scope.binding, runtimeConfig }).hash : null;
+        scope.paymentTaxContext = scope.mapping && paymentOrderId
+            ? await loadPaymentOrderTaxContext(queryable, {
+                paymentOrderId,
+                fiscalProfileId: scope.mapping.fiscal_profile_id,
+                fiscalRegisterId: scope.mapping.fiscal_register_id,
+                crmProfileKey: scope.mapping.crm_profile_key,
+                lockConfiguration
+            })
+            : null;
         const local = baseReadiness({
             checkboxIntegrationEnabled,
-            paymentAcceptanceEnabled,
+            paymentAcceptanceEnabled: readinessPaymentAcceptanceEnabled,
             mapping: scope.mapping,
             matches: scope.matches,
             binding: scope.binding,
@@ -869,7 +1429,55 @@ async function assertPaymentReadiness({
                 fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
             };
         }
-        if (scope.mapping && runtimeConfig && local.readinessCode === 'ready') {
+        if (scope.mapping && runtimeConfig && local.readinessCode === 'ready' && freshProviderReadiness) {
+            const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
+                env,
+                expectedIsTest: runtimeConfig.expectedIsTest
+            });
+            const permissionDetails = paymentPermissionSnapshotDetails(
+                { permissions: freshProviderReadiness.details?.permissions },
+                requiredTender
+            );
+            const staleReadiness = freshProviderReadiness.staleReadiness === true
+                || !freshProviderReadiness.expiresAt
+                || Date.parse(freshProviderReadiness.expiresAt) <= Date.now();
+            const contextMismatch = Number(freshProviderReadiness.fiscalProfileId || 0) !== Number(scope.mapping.fiscal_profile_id)
+                || Number(freshProviderReadiness.fiscalRegisterId || 0) !== Number(scope.mapping.fiscal_register_id)
+                || String(freshProviderReadiness.fiscalConfigurationHash || '') !== String(scope.configHash || '')
+                || (expectedFiscalConfigurationHash != null
+                    && String(expectedFiscalConfigurationHash) !== String(scope.configHash || ''))
+                || String(freshProviderReadiness.fiscalTaxFingerprint || '') !== String(scope.paymentTaxContext?.fingerprint || '')
+                || !freshShiftContextMatches(scope.shift, freshProviderReadiness)
+                || freshProviderReadiness.expectedIsTest !== runtimeConfig.expectedIsTest
+                || normalizeReadinessTender(freshProviderReadiness.requiredTender) !== requiredTender;
+            const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
+            state = {
+                ...local,
+                ...freshProviderReadiness,
+                checkboxIntegrationEnabled,
+                paymentAcceptanceEnabled,
+                localMappingReady: local.localMappingReady,
+                runtimeSecretsResolvable: local.runtimeSecretsResolvable,
+                registerActive: local.registerActive,
+                taxMappingReady: local.taxMappingReady,
+                staleReadiness,
+                readinessCode: contextMismatch
+                    ? 'readiness_context_changed'
+                    : staleReadiness
+                        ? 'readiness_stale'
+                        : unreportedPermissionBlocked
+                            ? 'checkbox_payment_permission_unreported'
+                            : freshProviderReadiness.readinessCode,
+                paymentPermissionWarning: permissionDetails.warning,
+                unreportedPaymentPermissions: permissionDetails.unreported,
+                integrationReady: false,
+                fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
+                fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
+            };
+            state.integrationReady = contextMismatch || staleReadiness || unreportedPermissionBlocked
+                ? false
+                : deriveIntegrationReady(state);
+        } else if (scope.mapping && runtimeConfig && local.readinessCode === 'ready') {
             const latest = await loadLatestReadinessSnapshot(queryable, scope);
             const serialized = serializeReadinessSnapshot(latest);
             if (!serialized) {
@@ -886,6 +1494,12 @@ async function assertPaymentReadiness({
                         fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
                     };
                 } else {
+                    const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
+                        env,
+                        expectedIsTest: runtimeConfig.expectedIsTest
+                    });
+                    const permissionDetails = paymentPermissionSnapshotDetails(serialized.result, requiredTender);
+                    const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
                     state = {
                         ...local,
                         ...serialized,
@@ -895,12 +1509,18 @@ async function assertPaymentReadiness({
                         registerActive: local.registerActive,
                         taxMappingReady: local.taxMappingReady,
                         staleReadiness,
-                        readinessCode: staleReadiness ? 'readiness_stale' : serialized.readinessCode,
+                        readinessCode: staleReadiness
+                            ? 'readiness_stale'
+                            : unreportedPermissionBlocked
+                                ? 'checkbox_payment_permission_unreported'
+                                : serialized.readinessCode,
+                        paymentPermissionWarning: permissionDetails.warning,
+                        unreportedPaymentPermissions: permissionDetails.unreported,
                         integrationReady: false,
                         fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
                         fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
                     };
-                    state.integrationReady = deriveIntegrationReady(state);
+                    state.integrationReady = unreportedPermissionBlocked ? false : deriveIntegrationReady(state);
                 }
             }
         }
@@ -910,16 +1530,15 @@ async function assertPaymentReadiness({
         if (fiscalRegisterId && Number(state.fiscalRegisterId || 0) !== Number(fiscalRegisterId)) {
             throw new PaymentReadinessError('readiness_wrong_fiscal_register', 'Checkbox readiness is not scoped to the payment fiscal register', { status: 409 });
         }
-        if (!state.integrationReady) {
-            throw new PaymentReadinessError(state.readinessCode || 'checkbox_not_ready', 'Checkbox is not ready for payment confirmation', {
-                status: ['global_integration_disabled', 'credentials_missing', 'provider_unavailable', 'readiness_stale', 'readiness_missing', 'checkbox_expected_is_test_mismatch'].includes(state.readinessCode) ? 503 : 409,
-                details: {
-                    readinessCode: state.readinessCode,
-                    shiftState: state.shiftState,
-                    staleReadiness: state.staleReadiness,
-                    providerUnavailable: state.providerUnavailable
-                }
-            });
+        const providerReady = state.integrationReady === true;
+        if (!providerReady) throwPaymentReadinessError(state);
+        if (!requirePaymentAcceptance) {
+            return {
+                ...state,
+                paymentAcceptanceEnabled,
+                providerReady,
+                integrationReady: providerReady && paymentAcceptanceEnabled
+            };
         }
         return state;
     };
@@ -1590,6 +2209,8 @@ async function requestPhase1ShiftClose({
             fiscalProfileId: shift.fiscal_profile_id,
             fiscalRegisterId: shift.fiscal_register_id,
             crmProfileKey: shift.crm_profile_key,
+            action: 'fiscal.shift.close',
+            requirePaymentAcceptance: false,
             env
         });
         const binding = await loadFiscalCashierBinding(client, {
@@ -1614,7 +2235,7 @@ async function requestPhase1ShiftClose({
                      fiscal_location_id, external_stage
              )
              VALUES ($1, $2, $3, 'shift_close', 'pending', FALSE, 'not_required', $4, 'checkbox', $5,
-                     'UAH', $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'shift_close_lookup')
+                     'UAH', $6::jsonb, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16, 'auth')
              ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
@@ -1629,7 +2250,7 @@ async function requestPhase1ShiftClose({
                     provider_shift_id: shift.provider_shift_id,
                     fiscal_configuration_hash: fiscalConfig.hash,
                     provider_context: fiscalConfig.snapshot,
-                    external_stage: 'shift_close_lookup'
+                    external_stage: 'auth'
                 }),
                 user?.id || null,
                 fiscalConfig.snapshot.provider_organization_id,
@@ -1668,7 +2289,7 @@ async function requestPhase1ShiftClose({
                  fiscal_profile_id, fiscal_operation_id, payment_order_id, job_type,
                  status, idempotency_key, payload, external_stage
              )
-             VALUES ($1, $2, NULL, 'shift_close', 'queued', $3, $4::jsonb, 'shift_close_lookup')
+             VALUES ($1, $2, NULL, 'shift_close', 'queued', $3, $4::jsonb, 'auth')
              ON CONFLICT (idempotency_key) DO UPDATE
                  SET next_run_at = LEAST(payment_outbox_jobs.next_run_at, NOW()),
                      updated_at = NOW()
@@ -1677,7 +2298,7 @@ async function requestPhase1ShiftClose({
                 shift.fiscal_profile_id,
                 closeOperation.id,
                 `payment_outbox:phase1_shift_close:${closeOperation.id}`,
-                JSON.stringify({ provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.id), phase: 'thin_mvp_shift_close', external_stage: 'shift_close_lookup' })
+                JSON.stringify({ provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.id), phase: 'thin_mvp_shift_close', external_stage: 'auth' })
             ]
         );
         return {
@@ -1742,10 +2363,10 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
                 });
                 if (!prepared) continue;
                 let resultState;
-                if (prepared.local.readinessCode !== 'ready') {
+                if (!canProbeProviderReadiness(prepared.local)) {
                     resultState = { state: prepared.local, details: { reason: prepared.local.readinessCode } };
                 } else {
-                    resultState = await probeProvider(prepared.scope, { fetchImpl });
+                        resultState = await probeProvider(prepared.scope, { fetchImpl, env });
                 }
                 await withTransaction(dbPool, async tx => {
                     await syncPortalClosedShift(tx, prepared.scope, resultState.state.shiftState);
@@ -1816,6 +2437,7 @@ function readinessErrorResponse(error) {
 
 module.exports = {
     PaymentReadinessError,
+    assertFreshPaymentReadiness,
     assertPaymentReadiness,
     buildFiscalConfigurationSnapshot,
     loadOperationalHealth,
@@ -1823,8 +2445,16 @@ module.exports = {
     loadReadinessState,
     listOperationalIncidents,
     listUnresolvedPaymentOrders,
+    loadPaymentOrderTaxContext,
+    paymentTaxContext,
     probeCheckboxReadiness,
     readinessErrorResponse,
+    applyPaymentAcceptanceGate,
+    canProbeProviderReadiness,
+    resolveUnreportedPaymentPermissionPolicy,
+    resolveProviderShiftReadiness,
+    freshShiftContextMatches,
+    sanitizePersistedReadinessDetails,
     requestPhase1ShiftClose,
     runCheckboxReadinessProbeScheduler,
     updateOperationalIncidentStatus

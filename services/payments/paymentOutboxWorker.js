@@ -20,10 +20,34 @@ const RETRYABLE_JOB_TYPES = Object.freeze([
     'shift_open',
     'shift_close'
 ]);
-const PRE_SELL_STAGES = new Set(['auth', 'readiness', 'shift_request', 'shift_request_maybe_submitted', 'shift_lookup', 'receipt_validation']);
+const PRE_SELL_STAGES = new Set([
+    'auth',
+    'readiness',
+    'shift_request',
+    'shift_request_maybe_submitted',
+    'shift_lookup',
+    'shift_lookup_not_found',
+    'shift_request_retry_same_uuid',
+    'shift_close_request',
+    'shift_close_request_maybe_submitted',
+    'shift_close_lookup',
+    'shift_close_lookup_still_open',
+    'shift_close_retry_exact_shift',
+    'receipt_validation'
+]);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
-const SHIFT_OPEN_LOOKUP_STAGES = new Set(['shift_request_maybe_submitted', 'shift_lookup']);
-const SHIFT_CLOSE_LOOKUP_STAGES = new Set(['shift_close_request', 'shift_close_lookup']);
+const SHIFT_OPEN_LOOKUP_STAGES = new Set([
+    'shift_request_maybe_submitted',
+    'shift_lookup',
+    'shift_lookup_not_found',
+    'shift_request_retry_same_uuid'
+]);
+const SHIFT_CLOSE_LOOKUP_STAGES = new Set([
+    'shift_close_request_maybe_submitted',
+    'shift_close_lookup',
+    'shift_close_lookup_still_open',
+    'shift_close_retry_exact_shift'
+]);
 const SHIFT_LIFECYCLE_TRANSITIONS = Object.freeze({
     CREATED: ['OPENING'],
     OPENING: ['OPENED', 'CLOSED'],
@@ -424,7 +448,14 @@ async function recordExternalStage(dbPool, context, stage) {
                 ]
             );
         }
-        if ((safeStage === 'shift_request' || safeStage === 'shift_request_maybe_submitted') && context.job.fiscal_shift_id) {
+        if (
+            (
+                safeStage === 'shift_request'
+                || safeStage === 'shift_request_maybe_submitted'
+                || safeStage === 'shift_request_retry_same_uuid'
+            )
+            && context.job.fiscal_shift_id
+        ) {
             await client.query(
                 `UPDATE fiscal_shifts
                     SET lifecycle_stage = 'OPENING',
@@ -437,6 +468,33 @@ async function recordExternalStage(dbPool, context, stage) {
                     context.job.fiscal_shift_id,
                     context.job.fiscal_profile_id,
                     JSON.stringify({ lifecycle_stage: 'OPENING', external_stage: safeStage })
+                ]
+            );
+        }
+        if (safeStage === 'shift_request_retry_same_uuid' || safeStage === 'shift_close_retry_exact_shift') {
+            const isShiftOpenRetry = safeStage === 'shift_request_retry_same_uuid';
+            await client.query(
+                `INSERT INTO fiscal_audit_events (
+                    fiscal_profile_id,
+                    actor_user_id,
+                    event_type,
+                    entity_table,
+                    entity_id,
+                    idempotency_key,
+                    metadata
+                ) VALUES ($1, NULL, $5, 'payment_outbox_jobs', $2, $3, $4::jsonb)`,
+                [
+                    context.job.fiscal_profile_id,
+                    context.job.id,
+                    `${isShiftOpenRetry ? 'checkbox-shift-same-uuid-retry' : 'checkbox-shift-close-exact-retry'}:${context.job.id}:${context.job.attempts || 0}`,
+                    JSON.stringify({
+                        fiscal_operation_id: context.job.fiscal_operation_id || null,
+                        fiscal_shift_id: context.job.fiscal_shift_id || null,
+                        retry_policy: isShiftOpenRetry
+                            ? 'two_exact_lookup_404_then_same_uuid_only'
+                            : 'two_exact_lookup_opened_then_close_exact_shift_only'
+                    }),
+                    isShiftOpenRetry ? 'checkbox_shift_same_uuid_retry' : 'checkbox_shift_close_exact_retry'
                 ]
             );
         }
@@ -1030,14 +1088,28 @@ async function runReceiptReturnJob(provider, context) {
     if (!provider.createReturnReceipt) {
         throw new PaymentOutboxWorkerError('checkbox_return_not_supported', 'Checkbox return receipt operation is not configured', { retryable: false });
     }
-    return { receipt: await provider.createReturnReceipt({ fiscalOperation: context.job, paymentOrder: context.job, items: context.items }), source: 'return' };
+    return {
+        receipt: await provider.createReturnReceipt({
+            fiscalOperation: context.job,
+            paymentOrder: context.job,
+            items: context.items,
+            beforeExternalMutation: context.assertMutationOwnership
+        }),
+        source: 'return'
+    };
 }
 
 async function runServiceReceiptJob(provider, context) {
     if (!provider.createServiceReceipt) {
         throw new PaymentOutboxWorkerError('checkbox_service_receipt_not_supported', 'Checkbox service receipt operation is not configured', { retryable: false });
     }
-    return { receipt: await provider.createServiceReceipt({ fiscalOperation: context.job }), source: 'service' };
+    return {
+        receipt: await provider.createServiceReceipt({
+            fiscalOperation: context.job,
+            beforeExternalMutation: context.assertMutationOwnership
+        }),
+        source: 'service'
+    };
 }
 
 async function markShiftJobSucceeded(client, context, result) {
@@ -1168,26 +1240,97 @@ async function runShiftJob(provider, context) {
     }
     const stage = externalStage(context.job);
     if (context.job.job_type === 'shift_open' && SHIFT_OPEN_LOOKUP_STAGES.has(stage) && (provider.lookupShift || provider.ensureShiftOpened)) {
-        await context.recordStage?.('shift_lookup');
         const lookupInput = {
             providerOperationId: context.job.provider_operation_id,
             providerRequestUuid: context.job.provider_operation_id,
             fiscalOperation: context.job,
-            payload: context.job.payload || {}
+            payload: context.job.payload || {},
+            beforeExternalMutation: context.assertMutationOwnership
         };
-        const response = provider.lookupShift
-            ? await provider.lookupShift(lookupInput)
-            : await provider.ensureShiftOpened(lookupInput, { allowOpenRequest: false });
-        return { response, source: 'shift_lookup' };
+        const confirmedNotFoundStage = stage === 'shift_lookup_not_found' || stage === 'shift_request_retry_same_uuid';
+        if (!confirmedNotFoundStage) {
+            await context.recordStage?.('shift_lookup');
+        }
+        try {
+            const response = provider.lookupShift
+                ? await provider.lookupShift(lookupInput)
+                : await provider.ensureShiftOpened(lookupInput, { allowOpenRequest: false });
+            return { response, source: 'shift_lookup' };
+        } catch (error) {
+            const exactShiftNotFound = error instanceof CheckboxClientError && error.status === 404;
+            if (!exactShiftNotFound) throw error;
+            if (!confirmedNotFoundStage) {
+                await context.recordStage?.('shift_lookup_not_found');
+                throw new PaymentOutboxWorkerError(
+                    'checkbox_shift_open_lookup_not_found',
+                    'Durable Checkbox shift UUID was not found; a second exact lookup is required before a same-UUID retry',
+                    { retryable: true, unknown: true }
+                );
+            }
+
+            await context.recordStage?.('readiness');
+            if (provider.prepareMutation) {
+                await provider.prepareMutation(lookupInput);
+            }
+            await context.recordStage?.('shift_request_retry_same_uuid');
+            await context.recordStage?.('shift_request_maybe_submitted');
+            try {
+                const response = await provider.openShift(lookupInput);
+                const providerStatus = String(response?.status || '').trim().toUpperCase();
+                if (providerStatus !== 'OPENED') {
+                    await context.recordStage?.('shift_lookup');
+                    throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Checkbox shift open has not reached OPENED status', {
+                        retryable: true,
+                        unknown: true,
+                        details: { providerStatus: providerStatus || null }
+                    });
+                }
+                return { response, source: 'shift_open_same_uuid_retry' };
+            } catch (error) {
+                if (error instanceof PaymentOutboxWorkerError) throw error;
+                if (error instanceof CheckboxClientError && error.status === 409) {
+                    await context.recordStage?.('shift_lookup');
+                    throw new PaymentOutboxWorkerError(
+                        'checkbox_shift_open_conflict_lookup_required',
+                        'Checkbox shift open conflict must converge through exact lookup of the same durable UUID',
+                        { retryable: true, unknown: true }
+                    );
+                }
+                throw error;
+            }
+        }
     }
-    if (context.job.job_type === 'shift_close' && SHIFT_CLOSE_LOOKUP_STAGES.has(stage) && provider.getCurrentShiftStatus) {
-        await context.recordStage?.('shift_close_lookup');
-        const response = await provider.getCurrentShiftStatus({
+    if (context.job.job_type === 'shift_close' && SHIFT_CLOSE_LOOKUP_STAGES.has(stage)) {
+        if (typeof provider.lookupShift !== 'function') {
+            throw new PaymentOutboxWorkerError('checkbox_shift_lookup_unavailable', 'Exact Checkbox shift lookup is required to recover a possibly submitted close operation', {
+                retryable: true,
+                unknown: true
+            });
+        }
+        const confirmedStillOpenStage = stage === 'shift_close_lookup_still_open' || stage === 'shift_close_retry_exact_shift';
+        if (!confirmedStillOpenStage) {
+            await context.recordStage?.('shift_close_lookup');
+        }
+        const lookupInput = {
             providerOperationId: context.job.provider_operation_id,
             providerRequestUuid: context.job.provider_operation_id,
             fiscalOperation: context.job,
-            payload: context.job.payload || {}
-        });
+            payload: context.job.payload || {},
+            beforeExternalMutation: context.assertMutationOwnership
+        };
+        let response;
+        try {
+            response = await provider.lookupShift(lookupInput, { requireOpened: false });
+        } catch (error) {
+            if (error instanceof CheckboxClientError && error.status === 404) {
+                await context.recordStage?.('shift_close_lookup');
+                throw new PaymentOutboxWorkerError('checkbox_shift_close_lookup_not_found', 'Exact Checkbox shift is not visible yet after a possibly submitted close', {
+                    retryable: true,
+                    unknown: true
+                });
+            }
+            throw error;
+        }
         const expectedShiftId = String(context.job.provider_shift_id || context.job.payload?.provider_shift_id || '').trim();
         const actualShiftId = String(response?.id || '').trim();
         if (!expectedShiftId || !actualShiftId || actualShiftId !== expectedShiftId) {
@@ -1198,6 +1341,44 @@ async function runShiftJob(provider, context) {
         }
         if (String(response?.status || '').toUpperCase() === 'CLOSED') {
             return { response: { ...response, status: 'CLOSED', id: actualShiftId }, source: 'shift_close_lookup' };
+        }
+        if (String(response?.status || '').toUpperCase() === 'OPENED') {
+            if (!confirmedStillOpenStage) {
+                await context.recordStage?.('shift_close_lookup_still_open');
+                throw new PaymentOutboxWorkerError('checkbox_shift_close_still_open', 'Exact Checkbox shift is still OPENED; a second exact lookup is required before close retry', {
+                    retryable: true,
+                    unknown: true
+                });
+            }
+            await context.recordStage?.('readiness');
+            if (provider.prepareMutation) {
+                await provider.prepareMutation(lookupInput);
+            }
+            await context.recordStage?.('shift_close_retry_exact_shift');
+            await context.recordStage?.('shift_close_request_maybe_submitted');
+            try {
+                const closeResponse = await provider.closeShift(lookupInput);
+                const closeStatus = String(closeResponse?.status || '').trim().toUpperCase();
+                if (closeStatus === 'CLOSED') {
+                    return { response: closeResponse, source: 'shift_close_exact_retry' };
+                }
+                await context.recordStage?.('shift_close_lookup');
+                throw new PaymentOutboxWorkerError('checkbox_shift_close_pending', 'Checkbox shift close has not reached CLOSED status', {
+                    retryable: true,
+                    unknown: true,
+                    details: { providerStatus: closeStatus || null }
+                });
+            } catch (error) {
+                if (error instanceof PaymentOutboxWorkerError) throw error;
+                if (error instanceof CheckboxClientError && error.status === 409) {
+                    await context.recordStage?.('shift_close_lookup');
+                    throw new PaymentOutboxWorkerError('checkbox_shift_close_conflict_lookup_required', 'Checkbox shift close conflict must converge through exact shift lookup', {
+                        retryable: true,
+                        unknown: true
+                    });
+                }
+                throw error;
+            }
         }
         throw new PaymentOutboxWorkerError('checkbox_shift_close_pending', 'Checkbox shift close is still pending', {
             retryable: true,
@@ -1217,13 +1398,31 @@ async function runShiftJob(provider, context) {
     await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request' : 'shift_close_request');
     if (context.job.job_type === 'shift_open') {
         await context.recordStage?.('shift_request_maybe_submitted');
+    } else {
+        await context.recordStage?.('shift_close_request_maybe_submitted');
     }
-    const response = await method.call(provider, {
-        providerOperationId: context.job.provider_operation_id,
-        providerRequestUuid: context.job.provider_operation_id,
-        fiscalOperation: context.job,
-        payload: context.job.payload || {}
-    });
+    let response;
+    try {
+        response = await method.call(provider, {
+            providerOperationId: context.job.provider_operation_id,
+            providerRequestUuid: context.job.provider_operation_id,
+            fiscalOperation: context.job,
+            payload: context.job.payload || {},
+            beforeExternalMutation: context.assertMutationOwnership
+        });
+    } catch (error) {
+        if (error instanceof CheckboxClientError && error.status === 409) {
+            await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_lookup' : 'shift_close_lookup');
+            throw new PaymentOutboxWorkerError(
+                context.job.job_type === 'shift_open'
+                    ? 'checkbox_shift_open_conflict_lookup_required'
+                    : 'checkbox_shift_close_conflict_lookup_required',
+                'Checkbox shift conflict must converge through exact lookup',
+                { retryable: true, unknown: true }
+            );
+        }
+        throw error;
+    }
     const providerStatus = String(response?.status || '').trim().toUpperCase();
     if (context.job.job_type === 'shift_open' && providerStatus !== 'OPENED') {
         await context.recordStage?.('shift_lookup');
@@ -1272,13 +1471,50 @@ async function runReceiptSaleJob(provider, context) {
         throw new PaymentOutboxWorkerError('receipt_not_found_for_status_lookup', 'Provider receipt was not found during status lookup', { retryable: true, unknown: true });
     }
 
+    const expectedTaxIds = [];
+    for (const item of context.items || []) {
+        const taxMode = String(item.tax_mode || item.item_snapshot?.fiscal_tax_mode || 'taxed').trim().toLowerCase();
+        const providerTaxId = String(item.provider_tax_id || '').trim();
+        if (taxMode === 'untaxed') {
+            if (providerTaxId) {
+                throw new PaymentOutboxWorkerError('checkbox_untaxed_provider_tax_forbidden', 'Immutable untaxed item unexpectedly contains a provider tax id', { retryable: false });
+            }
+            continue;
+        }
+        if (taxMode !== 'taxed' || !providerTaxId || /^admission_tariff:/i.test(providerTaxId)) {
+            throw new PaymentOutboxWorkerError('checkbox_provider_tax_id_missing', 'Immutable taxed item is missing its Checkbox provider tax id', { retryable: false });
+        }
+        expectedTaxIds.push(providerTaxId);
+    }
+    const requiredTender = context.job.source_snapshot?.tender
+        || (context.job.payment_method === 'card_terminal' ? 'card_terminal_manual' : context.job.payment_method);
+    await context.recordStage?.('readiness');
+    if (typeof provider.prepareMutation !== 'function') {
+        throw new PaymentOutboxWorkerError(
+            'checkbox_mutation_readiness_unavailable',
+            'Checkbox provider cannot verify mutation readiness',
+            { retryable: false }
+        );
+    }
+    await provider.prepareMutation({
+        providerOperationId: context.job.provider_operation_id,
+        providerRequestUuid: context.job.provider_operation_id,
+        fiscalOperation: context.job,
+        paymentOrder: context.job,
+        items: context.items,
+        beforeExternalMutation: context.assertMutationOwnership
+    }, {
+        expectedTaxIds: [...new Set(expectedTaxIds)].sort(),
+        requiredTender
+    });
     await context.recordStage?.('receipt_validation');
     await provider.validateSale({
         providerOperationId: context.job.provider_operation_id,
         providerRequestUuid: context.job.provider_operation_id,
         fiscalOperation: context.job,
         paymentOrder: context.job,
-        items: context.items
+        items: context.items,
+        beforeExternalMutation: context.assertMutationOwnership
     });
     await context.recordStage?.('sale_submit');
     const submitSale = provider.submitSaleReceipt || provider.createSaleReceipt;
@@ -1287,7 +1523,8 @@ async function runReceiptSaleJob(provider, context) {
         providerRequestUuid: context.job.provider_operation_id,
         fiscalOperation: context.job,
         paymentOrder: context.job,
-        items: context.items
+        items: context.items,
+        beforeExternalMutation: context.assertMutationOwnership
     });
     return { receipt, source: 'sale' };
 }
@@ -1385,10 +1622,11 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
     try {
         context = await loadProcessingContext(dbPool, job);
         context.recordStage = stage => recordExternalStage(dbPool, context, stage);
+        context.assertMutationOwnership = () => recordExternalStage(dbPool, context, externalStage(context.job));
         try {
             assertImmutableProviderContext(context);
             if (!saleStageRequiresLookup(externalStage(context.job))) {
-                await context.recordStage('auth');
+                await context.recordStage(externalStage(context.job));
             }
             const effectiveProvider = provider?.createForContext ? provider.createForContext(context) : provider;
             let result;
@@ -1495,6 +1733,7 @@ module.exports = {
     createUnavailableCheckboxProvider,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs,
+    runShiftJob,
     sanitizeError,
     shouldLookupBeforeSale
 };

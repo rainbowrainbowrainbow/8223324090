@@ -1,6 +1,7 @@
 'use strict';
 
 const { createLogger } = require('../utils/logger');
+const { getReleaseMetadata } = require('./release');
 
 const log = createLogger('TaskAiDraftTelemetry');
 
@@ -49,6 +50,10 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'promptVersion',
     'schemaName',
     'reasoningEffort',
+    'releaseVersion',
+    'releaseSha',
+    'deploymentId',
+    'timestampBucket',
     'reasonCode',
     'fallbackReason',
     'impactFilterReason',
@@ -89,6 +94,28 @@ function safeInteger(value, fallback = 0) {
 function safeNumber(value) {
     const parsed = Number(value);
     return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+}
+
+function hourlyTimestampBucket(value = new Date()) {
+    const date = value instanceof Date ? value : new Date(value);
+    if (Number.isNaN(date.getTime())) return '';
+    return date.toISOString().replace(/:\d{2}:\d{2}\.\d{3}Z$/, ':00:00.000Z');
+}
+
+function runtimeTelemetryMetadata(event = {}, options = {}) {
+    const env = options.env || process.env;
+    let release = null;
+    try {
+        release = getReleaseMetadata(env, options.releaseOptions || {});
+    } catch {
+        release = null;
+    }
+    return {
+        releaseVersion: compactString(release?.version || event.releaseVersion || '', 40),
+        releaseSha: compactString(release?.commitSha || event.releaseSha || '', 40),
+        deploymentId: compactString(env.RAILWAY_DEPLOYMENT_ID || event.deploymentId || '', 80),
+        timestampBucket: hourlyTimestampBucket(options.now || event.timestampBucket || new Date())
+    };
 }
 
 function safeFieldMask(value) {
@@ -151,6 +178,10 @@ function sanitizeTelemetryEvent(event = {}) {
         promptVersion: compactString(source.promptVersion, 80),
         schemaName: compactString(source.schemaName, 80),
         reasoningEffort: compactString(source.reasoningEffort || '', 40),
+        releaseVersion: compactString(source.releaseVersion || '', 40),
+        releaseSha: compactString(source.releaseSha || '', 40),
+        deploymentId: compactString(source.deploymentId || '', 80),
+        timestampBucket: hourlyTimestampBucket(source.timestampBucket),
         reasonCode: compactString(source.reasonCode || source.code || '', 80),
         fallbackReason,
         impactFilterReason: compactString(source.impactFilterReason || '', 80) === 'filter_known_active' ? 'filter_known_active' : '',
@@ -193,7 +224,9 @@ function aggregateLegacyAiDraftDeprecationUsage(events = []) {
         realUsageEvents: 0,
         realUsageRequests: 0,
         byClientVersion: {},
-        byReasonCode: {}
+        byReasonCode: {},
+        byReleaseSha: {},
+        byTimestampBucket: {}
     };
     const realRequestKeys = new Set();
     for (const event of rows) {
@@ -203,6 +236,10 @@ function aggregateLegacyAiDraftDeprecationUsage(events = []) {
         summary.byReasonCode[safe.reasonCode] = (summary.byReasonCode[safe.reasonCode] || 0) + 1;
         const clientKey = safe.clientVersion || 'unknown';
         summary.byClientVersion[clientKey] = (summary.byClientVersion[clientKey] || 0) + 1;
+        const releaseKey = safe.releaseSha || 'unknown';
+        summary.byReleaseSha[releaseKey] = (summary.byReleaseSha[releaseKey] || 0) + 1;
+        const timestampKey = safe.timestampBucket || 'unknown';
+        summary.byTimestampBucket[timestampKey] = (summary.byTimestampBucket[timestampKey] || 0) + 1;
         if (safe.reasonCode === 'legacy_decompose_wrapper_attempt') summary.attempts += 1;
         if (safe.reasonCode === 'legacy_decompose_wrapper_used') summary.used += 1;
         if (safe.reasonCode === 'legacy_decompose_wrapper_non_apply') summary.nonApply += 1;
@@ -242,13 +279,40 @@ function assertNoSensitiveTelemetryFields(event = {}) {
 }
 
 function recordTaskAiDraftTelemetry(event = {}, options = {}) {
+    const defaults = options.defaults && typeof options.defaults === 'object' && !Array.isArray(options.defaults)
+        ? options.defaults
+        : {};
+    assertNoSensitiveTelemetryFields(defaults);
     assertNoSensitiveTelemetryFields(event);
-    const safe = sanitizeTelemetryEvent(event);
+    const safe = sanitizeTelemetryEvent({
+        ...defaults,
+        ...event,
+        ...runtimeTelemetryMetadata(event, options)
+    });
     const logger = options.logger || log;
     if (typeof logger.info === 'function') {
         logger.info('task_ai_draft_event', safe);
     }
     return safe;
+}
+
+function taskAiHistoryTelemetryMetadata(event = {}, options = {}) {
+    const safe = sanitizeTelemetryEvent({
+        ...(options.defaults || {}),
+        ...event,
+        ...runtimeTelemetryMetadata(event, options)
+    });
+    return {
+        releaseVersion: safe.releaseVersion,
+        releaseSha: safe.releaseSha,
+        deploymentId: safe.deploymentId,
+        promptVersion: safe.promptVersion,
+        contractVersion: safe.contractVersion,
+        schemaName: safe.schemaName,
+        model: safe.model,
+        reasoningEffort: safe.reasoningEffort,
+        requestId: safe.requestId
+    };
 }
 
 function aggregateTaskAiDraftTelemetry(events = []) {
@@ -301,7 +365,10 @@ module.exports = {
     aggregateTaskAiDraftTelemetry,
     aggregateLegacyAiDraftDeprecationUsage,
     assertNoSensitiveTelemetryFields,
+    hourlyTimestampBucket,
     isKnownLegacyAiDraftQaClient,
     recordTaskAiDraftTelemetry,
-    sanitizeTelemetryEvent
+    runtimeTelemetryMetadata,
+    sanitizeTelemetryEvent,
+    taskAiHistoryTelemetryMetadata
 };

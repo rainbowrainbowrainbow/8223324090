@@ -9,11 +9,13 @@ const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
-const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
+const { recordTaskAiDraftTelemetry, taskAiHistoryTelemetryMetadata } = require('./taskAiDraftTelemetry');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
+    TASK_AI_DRAFT_REASONING_EFFORT,
+    TASK_AI_DRAFT_SCHEMA_NAME,
     activeImpactCatalogVersion,
     normalizeDraftSnapshot,
     normalizeScheduleDate,
@@ -507,6 +509,15 @@ async function commitTaskAiDraft(input = {}, options = {}) {
                 scheduleWritten: Boolean(finalDraft.scheduleDate || finalDraft.deadline)
             },
             meta: {
+                ...taskAiHistoryTelemetryMetadata({
+                    requestId: input.requestId,
+                    model: MY_DAY_TASK_AI_MODEL,
+                    provider: 'openai',
+                    contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+                    promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                    schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                    reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT
+                }),
                 idempotencyKey,
                 requestHash,
                 proposalId: tokenPayload.proposalId || null,

@@ -8,12 +8,14 @@ const { replaceTaskClassification } = require('./myDayTaxonomy');
 const { replaceTaskSubtasks } = require('./taskSubtasks');
 const { MY_DAY_TASK_AI_MODEL, compactString } = require('./myDayTaskOpenAIClient');
 const { getAssignableTaskOwner } = require('./taskExecution');
-const { recordTaskAiDraftTelemetry } = require('./taskAiDraftTelemetry');
+const { recordTaskAiDraftTelemetry, taskAiHistoryTelemetryMetadata } = require('./taskAiDraftTelemetry');
 const { normalizeDraftItems } = require('./taskDecomposition');
 const {
     TASK_AI_DRAFT_CONTRACT_VERSION,
     TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE,
     TASK_AI_DRAFT_PROMPT_VERSION,
+    TASK_AI_DRAFT_REASONING_EFFORT,
+    TASK_AI_DRAFT_SCHEMA_NAME,
     activeImpactCatalogVersion,
     proposalHash,
     stableStringify,
@@ -726,6 +728,15 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                     scheduleWritten: Boolean(finalTask.scheduleDate)
                 },
                 meta: {
+                    ...taskAiHistoryTelemetryMetadata({
+                        requestId: input.requestId,
+                        model: MY_DAY_TASK_AI_MODEL,
+                        provider: 'openai',
+                        contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+                        promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                        schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                        reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT
+                    }),
                     idempotencyKey,
                     requestHash,
                     bundleId,
@@ -766,6 +777,15 @@ async function commitTaskAiDraftBundle(input = {}, options = {}) {
                 impactCounts: tasks.map(task => task.impactIds.length)
             },
             meta: {
+                ...taskAiHistoryTelemetryMetadata({
+                    requestId: input.requestId,
+                    model: MY_DAY_TASK_AI_MODEL,
+                    provider: 'openai',
+                    contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
+                    promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
+                    schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
+                    reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT
+                }),
                 idempotencyKey,
                 requestHash,
                 bundleId,

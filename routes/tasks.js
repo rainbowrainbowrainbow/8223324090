@@ -1073,6 +1073,52 @@ function legacyAiDraftClientVersion(req, body = {}) {
     ).trim().slice(0, 80);
 }
 
+function taskDecompositionContextFromBody(body = {}, mode = 'manual') {
+    return {
+        title: body.title,
+        description: body.description,
+        category: body.category,
+        subcategory: body.subcategory,
+        taskKind: body.taskKind || body.task_kind,
+        taskMode: body.taskMode || body.task_mode,
+        taskType: body.taskType || body.task_type,
+        sourceType: body.sourceType || body.source_type,
+        sourceModule: body.sourceModule || body.source_module,
+        mode,
+        templateKey: body.templateKey || body.template_key
+    };
+}
+
+function legacyDecompositionTarget(mode) {
+    return mode === 'ai' || mode === 'template_ai'
+        ? '/api/tasks/ai-draft/preview'
+        : '/api/tasks/decomposition-draft';
+}
+
+function recordLegacyDecompositionTelemetry(req, res, body, mode, status, reasonCode, details = {}) {
+    const aiMode = mode === 'ai' || mode === 'template_ai';
+    recordTaskAiDraftTelemetry({
+        type: 'deprecation',
+        status,
+        outcome: 'legacy_wrapper',
+        route: '/api/tasks/decompose-draft',
+        mode,
+        clientVersion: legacyAiDraftClientVersion(req, body),
+        requestId: taskRequestId(req, res),
+        canonicalTarget: legacyDecompositionTarget(mode),
+        provider: aiMode ? (details.provider || 'openai') : 'deterministic',
+        model: aiMode ? (details.model || 'gpt-5.6-luna') : '',
+        contractVersion: aiMode
+            ? (details.contractVersion || TASK_AI_DRAFT_CONTRACT_VERSION)
+            : 'task_decomposition_template_v1',
+        promptVersion: aiMode ? (details.promptVersion || TASK_AI_DRAFT_PROMPT_VERSION) : '',
+        schemaName: aiMode ? (details.schemaName || TASK_AI_DRAFT_SCHEMA_NAME) : 'task_decomposition_draft',
+        reasoningEffort: aiMode ? (details.reasoningEffort || TASK_AI_DRAFT_REASONING_EFFORT) : '',
+        reasonCode,
+        businessContext: req.businessContext || body.businessContext || ''
+    });
+}
+
 async function buildTaskAiDraftPreview(req, res) {
     const businessScope = requireTaskWriteScope(req, res);
     if (!businessScope) return null;
@@ -1089,6 +1135,8 @@ async function buildTaskAiDraftPreview(req, res) {
             model: 'gpt-5.6-luna',
             provider: 'openai',
             reasonCode: 'TASK_AI_DRAFT_RATE_LIMITED',
+            route: '/api/tasks/ai-draft/preview',
+            requestId: taskRequestId(req, res),
             userHash: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET),
             businessContext
         });
@@ -1111,7 +1159,13 @@ async function buildTaskAiDraftPreview(req, res) {
     }, {
         proposalSecret: JWT_SECRET,
         safetySecret: JWT_SECRET,
-        safetyIdentifier: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET)
+        safetyIdentifier: hmacSafetyIdentifier(`task_ai_draft:${userId}`, JWT_SECRET),
+        telemetry: {
+            defaults: {
+                requestId: taskRequestId(req, res),
+                route: '/api/tasks/ai-draft/preview'
+            }
+        }
     });
     if (!result?.ok || result.proposal?.decision !== 'task_bundle') return result;
     try {
@@ -1160,10 +1214,17 @@ async function buildTaskAiDraftCommit(req, res) {
         userId,
         user: req.user,
         businessScope,
+        requestId: taskRequestId(req, res),
         sourceSurface: sourceSurface(body, 'task_ai_draft_commit')
     }, {
         proposalSecret: JWT_SECRET,
-        safetySecret: JWT_SECRET
+        safetySecret: JWT_SECRET,
+        telemetry: {
+            defaults: {
+                requestId: taskRequestId(req, res),
+                route: '/api/tasks/ai-draft/commit'
+            }
+        }
     });
 }
 
@@ -1235,10 +1296,17 @@ async function buildTaskAiDraftBundleCommit(req, res) {
         userId,
         user: req.user,
         businessScope,
+        requestId: taskRequestId(req, res),
         sourceSurface: sourceSurface(body, 'task_ai_draft_bundle_commit')
     }, {
         proposalSecret: JWT_SECRET,
-        safetySecret: JWT_SECRET
+        safetySecret: JWT_SECRET,
+        telemetry: {
+            defaults: {
+                requestId: taskRequestId(req, res),
+                route: '/api/tasks/ai-draft/bundle/commit'
+            }
+        }
     });
 }
 
@@ -2205,33 +2273,50 @@ router.get('/ai-draft/bundles/:bundleId', requireRole('admin', 'user'), async (r
     }
 });
 
-// POST /api/tasks/decompose-draft - draft-only AI/template subtask suggestions.
+// POST /api/tasks/decomposition-draft - deterministic/manual/template subtask draft only.
+// AI modes must use the canonical signed preview/commit flow.
+router.post('/decomposition-draft', requireRole('admin', 'user'), async (req, res) => {
+    try {
+        const body = req.body || {};
+        const mode = normalizeDecompositionMode(body.mode || body.decompositionMode || body.decomposition_mode, 'manual');
+        if (mode === 'ai' || mode === 'template_ai') {
+            return res.status(409).json({
+                success: false,
+                code: 'TASK_DECOMPOSITION_AI_MODE_REQUIRES_CANONICAL_PREVIEW',
+                error: 'AI decomposition must use the canonical AI draft preview.',
+                canonicalEndpoint: '/api/tasks/ai-draft/preview'
+            });
+        }
+        const result = await generateTaskDecompositionDraft(taskDecompositionContextFromBody(body, mode));
+        if (!result.success) return res.status(result.status || 400).json(result);
+        return res.json(result);
+    } catch (err) {
+        log.error('Deterministic task decomposition draft error', err);
+        return res.status(500).json({
+            success: false,
+            code: 'TASK_DECOMPOSITION_DRAFT_FAILED',
+            error: 'Не вдалося підготувати чернетку підзадач. Нічого не збережено.'
+        });
+    }
+});
+
+// POST /api/tasks/decompose-draft - deprecated compatibility wrapper only.
 router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) => {
     try {
         const b = req.body || {};
         const mode = normalizeDecompositionMode(b.mode || b.decompositionMode || b.decomposition_mode, 'ai');
+        recordLegacyDecompositionTelemetry(
+            req,
+            res,
+            b,
+            mode,
+            'attempt',
+            'legacy_decompose_wrapper_attempt'
+        );
         if (mode === 'ai' || mode === 'template_ai') {
             // Compatibility wrapper only: canonical AI task draft generation lives in
             // taskAiDraftPreview. Removal condition: zero legacy AI wrapper calls for
             // 30 days plus confirmation that no old UI clients still depend on this shape.
-            recordTaskAiDraftTelemetry({
-                type: 'deprecation',
-                status: 'attempt',
-                outcome: 'legacy_wrapper',
-                route: '/api/tasks/decompose-draft',
-                mode,
-                clientVersion: legacyAiDraftClientVersion(req, b),
-                requestId: taskRequestId(req, res),
-                canonicalTarget: '/api/tasks/ai-draft/preview',
-                provider: 'openai',
-                model: 'gpt-5.6-luna',
-                contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION,
-                promptVersion: TASK_AI_DRAFT_PROMPT_VERSION,
-                schemaName: TASK_AI_DRAFT_SCHEMA_NAME,
-                reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT,
-                reasonCode: 'legacy_decompose_wrapper_attempt',
-                businessContext: req.businessContext || b.businessContext || ''
-            });
             const preview = await buildTaskAiDraftPreview(req, res);
             if (!preview) return;
             if (!preview.ok) {
@@ -2246,24 +2331,15 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                 });
             }
             if (preview.proposal?.action !== 'apply') {
-                recordTaskAiDraftTelemetry({
-                    type: 'deprecation',
-                    status: 'success',
-                    outcome: 'legacy_wrapper',
-                    route: '/api/tasks/decompose-draft',
+                recordLegacyDecompositionTelemetry(
+                    req,
+                    res,
+                    b,
                     mode,
-                    clientVersion: legacyAiDraftClientVersion(req, b),
-                    requestId: taskRequestId(req, res),
-                    canonicalTarget: '/api/tasks/ai-draft/preview',
-                    model: preview.model || 'gpt-5.6-luna',
-                    provider: preview.provider || 'openai',
-                    contractVersion: preview.contractVersion,
-                    promptVersion: preview.promptVersion,
-                    schemaName: preview.schemaName || TASK_AI_DRAFT_SCHEMA_NAME,
-                    reasoningEffort: preview.reasoningEffort || TASK_AI_DRAFT_REASONING_EFFORT,
-                    reasonCode: 'legacy_decompose_wrapper_non_apply',
-                    businessContext: req.businessContext || b.businessContext || ''
-                });
+                    'success',
+                    'legacy_decompose_wrapper_non_apply',
+                    preview
+                );
                 return res.status(422).json({
                     success: false,
                     deprecated: true,
@@ -2276,43 +2352,34 @@ router.post('/decompose-draft', requireRole('admin', 'user'), async (req, res) =
                     proposalToken: preview.proposalToken
                 });
             }
-            recordTaskAiDraftTelemetry({
-                type: 'deprecation',
-                status: 'success',
-                outcome: 'legacy_wrapper',
-                route: '/api/tasks/decompose-draft',
+            recordLegacyDecompositionTelemetry(
+                req,
+                res,
+                b,
                 mode,
-                clientVersion: legacyAiDraftClientVersion(req, b),
-                requestId: taskRequestId(req, res),
-                canonicalTarget: '/api/tasks/ai-draft/preview',
-                model: preview.model || 'gpt-5.6-luna',
-                provider: preview.provider || 'openai',
-                contractVersion: preview.contractVersion,
-                promptVersion: preview.promptVersion,
-                schemaName: preview.schemaName || TASK_AI_DRAFT_SCHEMA_NAME,
-                reasoningEffort: preview.reasoningEffort || TASK_AI_DRAFT_REASONING_EFFORT,
-                reasonCode: 'legacy_decompose_wrapper_used',
-                businessContext: req.businessContext || b.businessContext || ''
-            });
+                'success',
+                'legacy_decompose_wrapper_used',
+                preview
+            );
             return res.json(legacyDecompositionResponseFromPreview(preview, mode));
         }
-        const result = await generateTaskDecompositionDraft({
-            title: b.title,
-            description: b.description,
-            category: b.category,
-            subcategory: b.subcategory,
-            taskKind: b.taskKind || b.task_kind,
-            taskMode: b.taskMode || b.task_mode,
-            taskType: b.taskType || b.task_type,
-            sourceType: b.sourceType || b.source_type,
-            sourceModule: b.sourceModule || b.source_module,
-            mode,
-            templateKey: b.templateKey || b.template_key
-        });
+        const result = await generateTaskDecompositionDraft(taskDecompositionContextFromBody(b, mode));
         if (!result.success) {
             return res.status(result.status || 400).json(result);
         }
-        res.json(result);
+        recordLegacyDecompositionTelemetry(
+            req,
+            res,
+            b,
+            mode,
+            'success',
+            'legacy_decompose_wrapper_used'
+        );
+        return res.json({
+            ...result,
+            deprecated: true,
+            deprecatedEndpoint: '/api/tasks/decomposition-draft'
+        });
     } catch (err) {
         log.error('Task decomposition draft error', err);
         res.status(500).json({

@@ -227,15 +227,15 @@
                 const payload = await requestAiDraftPreview({
                     currentDraft: context,
                     structurePreference: 'checklist',
-                    sourceSurface: context.sourceSurface || 'task_decomposition_legacy_ui'
+                    sourceSurface: context.sourceSurface || 'task_decomposition_checklist_ui'
                 });
                 return aiPreviewToDecompositionDraft(payload, mode);
             }
-            const payload = await taskApiRequest('/tasks/decompose-draft', {
+            const payload = await taskApiRequest('/tasks/decomposition-draft', {
                 method: 'POST',
                 body: JSON.stringify(context)
             });
-            if (!payload?.success) return payload || { success: false, error: 'AI draft failed' };
+            if (!payload?.success) return payload || { success: false, error: 'Decomposition draft failed' };
             return {
                 ...payload,
                 subtasks: normalizeDecompositionItems(payload)

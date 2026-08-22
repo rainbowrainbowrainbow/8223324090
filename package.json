@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.15",
+  "version": "0.81.16",
   "eventGenix": {
-    "releaseLabel": "Hermes Staff Registration Hardening"
+    "releaseLabel": "Checkbox Test Readiness Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

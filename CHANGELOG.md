@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.16 - Checkbox Test Readiness Hardening
+
+### Checkbox / Payments / (22.08.2026) [codex]
+- **Точна test-mode readiness** - EventGenix звіряє касира, ФОП, касу, тестовий режим, підпис, дозволи й податкове налаштування за офіційним Checkbox contract; неповні або некоректні відповіді блокують оплату.
+- **Безпечне відновлення без дублів** - shift open/close та продаж зберігають один durable UUID, а timeout, restart і lease expiry переходять у lookup того самого об'єкта замість повторної фіскальної mutation.
+- **Окремі gates приймання грошей і recovery** - вимкнений acceptance блокує нові оплати, але не заважає read-only readiness і завершенню вже підтверджених операцій; emergency integration switch лишається повним стопом provider HTTP.
+- **Production залишається вимкненим** - release не містить Checkbox secrets або реальних mapping IDs, не активує register/webhook/Cashier PRO і покривається fresh PostgreSQL + local HTTP Checkbox regression suite.
+
+---
+
 ## v0.81.15 - Hermes Staff Registration Hardening
 
 ### Hermes / Staff Registration / (22.08.2026) [codex]

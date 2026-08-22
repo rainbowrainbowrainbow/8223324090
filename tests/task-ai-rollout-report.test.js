@@ -4,6 +4,7 @@ const assert = require('node:assert/strict');
 const test = require('node:test');
 
 const report = require('../scripts/task-ai-rollout-report');
+const collector = require('../scripts/task-ai-rollout-collect');
 
 function previewEvent(offsetHours, overrides = {}) {
     const observedAt = new Date(Date.UTC(2026, 7, 10, offsetHours, 0, 0)).toISOString();
@@ -23,6 +24,33 @@ function previewEvent(offsetHours, overrides = {}) {
             usage: { input_tokens: 50, output_tokens: 60, total_tokens: 110 },
             ...overrides
         }
+    };
+}
+
+function cleanDbEvidence(events = []) {
+    return {
+        available: true,
+        events,
+        checks: {
+            duplicateCommits: 0,
+            partialImpactWrites: 0,
+            partialSubtaskWrites: 0,
+            partialBundleWrites: 0,
+            schedulePlacementFailures: 0
+        }
+    };
+}
+
+function httpRequest(path, overrides = {}) {
+    return {
+        observedAt: '2026-08-10T00:00:00.000Z',
+        source: 'http',
+        requestId: 'request-http-1',
+        deploymentId: 'deployment-1',
+        method: 'POST',
+        path,
+        status: 200,
+        ...overrides
     };
 }
 
@@ -59,7 +87,7 @@ test('task AI rollout report parses sanitized structured and pretty telemetry wi
     });
     const serialized = JSON.stringify(built);
     assert.doesNotMatch(serialized, /OPENAI_API_KEY|proposalToken|provider response|Sensitive CRM|promptText/i);
-    assert.equal(built.telemetry.successfulProposals, 1);
+    assert.equal(built.telemetry.successfulProposals, 0);
     assert.equal(built.telemetry.fallbackProposalCount, 1);
     assert.equal(built.telemetry.byFallbackReason.minimal_content, 1);
     assert.equal(built.telemetry.byOutcome.fallback_proposal, 1);
@@ -81,6 +109,128 @@ test('task AI rollout report accepts stdin, release metadata and stage options',
     assert.equal(options.stage, '50');
     assert.equal(options.version, '0.80.128');
     assert.equal(options.expectedRolloutPercent, '50');
+});
+
+test('task AI rollout parser reads nested Railway envelopes and preserves sanitized correlation metadata', () => {
+    const text = JSON.stringify({
+        timestamp: '2026-08-10T00:00:00.000Z',
+        deploymentId: 'deployment-1',
+        message: JSON.stringify({
+            ts: '2026-08-10T00:00:00.000Z',
+            reqId: 'request-1',
+            msg: 'task_ai_draft_event',
+            data: {
+                type: 'preview',
+                status: 'success',
+                reasonCode: 'checklist',
+                model: 'gpt-5.6-luna'
+            }
+        })
+    });
+    const parsed = report.parseRolloutLogText(text, {
+        releaseVersion: '0.81.12',
+        releaseSha: 'a'.repeat(40)
+    });
+    assert.equal(parsed.recognizedLines, 1);
+    assert.equal(parsed.telemetryEvents.length, 1);
+    assert.equal(parsed.telemetryEvents[0].event.requestId, 'request-1');
+    assert.equal(parsed.telemetryEvents[0].event.deploymentId, 'deployment-1');
+    assert.equal(parsed.telemetryEvents[0].event.releaseSha, 'a'.repeat(40));
+});
+
+test('task AI rollout parser recognizes Railway HTTP rows without retaining request payload data', () => {
+    const parsed = report.parseRolloutLogText(JSON.stringify({
+        timestamp: '2026-08-10T00:00:00.000Z',
+        deploymentId: 'deployment-1',
+        requestId: 'request-1',
+        method: 'POST',
+        path: '/api/tasks/ai-draft/preview?source=profile',
+        httpStatus: 200,
+        srcIp: '203.0.113.10',
+        clientUa: 'sensitive-user-agent'
+    }));
+    assert.equal(parsed.httpRequests.length, 1);
+    assert.deepEqual(Object.keys(parsed.httpRequests[0]).sort(), [
+        'deploymentId', 'method', 'observedAt', 'path', 'requestId', 'source', 'status'
+    ]);
+    assert.doesNotMatch(JSON.stringify(parsed), /203\.0\.113\.10|sensitive-user-agent/);
+});
+
+test('task AI rollout distinguishes true zero traffic from a telemetry gap', () => {
+    const noTraffic = report.buildReport({
+        logEvents: [],
+        httpRequests: [],
+        dbEvidence: cleanDbEvidence(),
+        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05, httpEvidenceAvailable: true }
+    });
+    assert.equal(noTraffic.verdict.reason, report.VERDICT_REASONS.HOLD_INSUFFICIENT_TRAFFIC);
+
+    const gap = report.buildReport({
+        logEvents: [],
+        httpRequests: [httpRequest('/api/tasks/ai-draft/preview')],
+        dbEvidence: cleanDbEvidence(),
+        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05, httpEvidenceAvailable: true }
+    });
+    assert.equal(gap.verdict.reason, report.VERDICT_REASONS.TELEMETRY_GAP);
+    assert.equal(gap.verdict.telemetryGap, true);
+});
+
+test('task AI rollout exact SHA filter excludes old release telemetry', () => {
+    const currentSha = 'a'.repeat(40);
+    const events = [
+        previewEvent(0, { releaseSha: currentSha, releaseVersion: '0.81.12' }),
+        previewEvent(1, { releaseSha: 'b'.repeat(40), releaseVersion: '0.81.11' })
+    ];
+    const built = report.buildReport({
+        logEvents: events,
+        dbEvidence: cleanDbEvidence(),
+        options: { sha: currentSha, version: '0.81.12', hours: 24, minProposals: 30, providerErrorRateMax: 0.05 }
+    });
+    assert.equal(built.telemetry.previewAttempts, 1);
+});
+
+test('task AI rollout deduplicates matching log and DB events by sanitized request ID', () => {
+    const duplicate = previewEvent(0, { requestId: 'same-request' });
+    const built = report.buildReport({
+        logEvents: [duplicate],
+        dbEvidence: cleanDbEvidence([{ ...duplicate, source: 'database' }]),
+        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05 }
+    });
+    assert.equal(built.telemetry.previewAttempts, 1);
+});
+
+test('provider error denominator includes preview attempts only', () => {
+    const built = report.buildReport({
+        logEvents: [
+            previewEvent(0),
+            { observedAt: '2026-08-10T01:00:00.000Z', source: 'logs', event: { type: 'commit', status: 'error', latencyMs: 5 } }
+        ],
+        dbEvidence: cleanDbEvidence(),
+        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05 }
+    });
+    assert.equal(built.telemetry.providerFailures, 0);
+    assert.equal(built.verdict.providerErrorRate, 0);
+});
+
+test('unrecognized non-empty operator input fails closed', () => {
+    const parsed = report.parseRolloutLogText('{"message":"some unrelated log"}');
+    assert.throws(() => report.assertRecognizedInput(parsed), /Refusing a false zero report/);
+});
+
+test('Railway collector keeps logs in memory and fails closed on an unrecognized CLI shape', () => {
+    const options = collector.parseCollectorArgs([
+        '--service', 'crm',
+        '--deployment-id', 'deployment-1',
+        '--version', '0.81.12',
+        '--sha', 'a'.repeat(40),
+        '--stage', '20',
+        '--scope', 'single'
+    ]);
+    const runner = () => ({ status: 0, stdout: '{"message":"unexpected railway output"}\n' });
+    assert.throws(
+        () => collector.collectRailwayEvidence(options, runner),
+        /Refusing a false zero report/
+    );
 });
 
 test('task AI rollout verdict passes with 30 successful proposals and clean database evidence', () => {
@@ -117,7 +267,11 @@ test('task AI rollout verdict passes with 30 successful proposals and clean data
 });
 
 test('task AI rollout verdict also passes with 24h timestamp window and fewer successful proposals', () => {
-    const logEvents = [previewEvent(0), previewEvent(24)];
+    const exactSha = '318da0a178b7e4c8a1a89862c2797174223f6944';
+    const logEvents = [
+        previewEvent(0, { releaseSha: exactSha, releaseVersion: '0.80.127' }),
+        previewEvent(24, { releaseSha: exactSha, releaseVersion: '0.80.127' })
+    ];
     const dbEvidence = {
         available: true,
         events: [{
@@ -137,7 +291,7 @@ test('task AI rollout verdict also passes with 24h timestamp window and fewer su
     const built = report.buildReport({
         logEvents,
         dbEvidence,
-        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05, version: '0.80.127', sha: '318da0a178b7e4c8a1a89862c2797174223f6944', stage: '20', expectedRolloutPercent: '20' }
+        options: { hours: 24, minProposals: 30, providerErrorRateMax: 0.05, version: '0.80.127', sha: exactSha, stage: '20', expectedRolloutPercent: '20' }
     });
 
     assert.equal(built.verdict.status, 'pass');

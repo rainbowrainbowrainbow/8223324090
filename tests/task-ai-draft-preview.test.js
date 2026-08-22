@@ -445,7 +445,18 @@ test('task AI preview telemetry records only metadata and strips task text/provi
         schemaName: preview.TASK_AI_DRAFT_SCHEMA_NAME,
         reasoningEffort: preview.TASK_AI_DRAFT_REASONING_EFFORT
     }, {
-        logger: { info: () => {} }
+        logger: { info: () => {} },
+        now: new Date('2026-08-22T09:37:15.000Z'),
+        env: { RAILWAY_DEPLOYMENT_ID: 'deployment-legacy-test' },
+        releaseOptions: {
+            deploymentManifest: {
+                format: 'eventgenix.release-deployment',
+                schemaVersion: 1,
+                applicationVersion: '0.81.12',
+                commitSha: 'a990b668f60e6376439e80cef0a3ade7672dfe37',
+                sourceBranch: 'codex/eventgenix-production'
+            }
+        }
     });
     assert.equal(legacyEvent.type, 'deprecation');
     assert.equal(legacyEvent.outcome, 'legacy_wrapper');
@@ -459,6 +470,10 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(legacyEvent.promptVersion, '2026-08-13.6');
     assert.equal(legacyEvent.schemaName, preview.TASK_AI_DRAFT_SCHEMA_NAME);
     assert.equal(legacyEvent.reasoningEffort, 'low');
+    assert.equal(legacyEvent.releaseVersion, '0.81.12');
+    assert.equal(legacyEvent.releaseSha, 'a990b668f60e6376439e80cef0a3ade7672dfe37');
+    assert.equal(legacyEvent.deploymentId, 'deployment-legacy-test');
+    assert.equal(legacyEvent.timestampBucket, '2026-08-22T09:00:00.000Z');
 
     const legacyUsage = telemetry.aggregateLegacyAiDraftDeprecationUsage([
         { ...legacyEvent, clientVersion: 'task-create/v0.81.4', requestId: 'real-client-1' },
@@ -473,6 +488,8 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(legacyUsage.realUsageEvents, 1);
     assert.equal(legacyUsage.realUsageRequests, 1);
     assert.equal(legacyUsage.byClientVersion['task-create/v0.81.4'], 1);
+    assert.equal(legacyUsage.byReleaseSha.a990b668f60e6376439e80cef0a3ade7672dfe37, 3);
+    assert.equal(legacyUsage.byTimestampBucket['2026-08-22T09:00:00.000Z'], 3);
 
     const unknownEvent = telemetry.sanitizeTelemetryEvent({ type: 'new_future_type', status: 'success' });
     assert.equal(unknownEvent.type, 'unknown');
@@ -1229,8 +1246,10 @@ test('shared My Day task OpenAI client allows loopback OpenAI mock in test runti
     assert.equal(requests[0].body.store, false);
 });
 
-test('tasks route exposes ai-draft preview and keeps decompose-draft as non-OpenRouter compatibility wrapper for AI mode', () => {
+test('tasks route exposes one canonical AI preview and isolates deterministic decomposition from the legacy wrapper', () => {
     const route = fs.readFileSync(path.join(root, 'routes', 'tasks.js'), 'utf8');
+    const helperBlock = route.slice(route.indexOf('function legacyDecompositionTarget'), route.indexOf('async function buildTaskAiDraftPreview'));
+    const deterministicBlock = route.slice(route.indexOf("router.post('/decomposition-draft'"), route.indexOf("router.post('/decompose-draft'"));
     const decomposeBlock = route.slice(route.indexOf("router.post('/decompose-draft'"), route.indexOf("router.get('/decomposition-saved-templates'"));
 
     assert.match(route, /router\.post\('\/ai-draft\/preview'/);
@@ -1240,29 +1259,28 @@ test('tasks route exposes ai-draft preview and keeps decompose-draft as non-Open
     assert.match(route, /ownerCatalog: ownerCatalog\.map/);
     assert.match(route, /currentUserId: userId/);
     assert.match(route, /hmacSafetyIdentifier\(`task_ai_draft:\$\{userId\}`/);
+    assert.match(deterministicBlock, /TASK_DECOMPOSITION_AI_MODE_REQUIRES_CANONICAL_PREVIEW/);
+    assert.match(deterministicBlock, /canonicalEndpoint: '\/api\/tasks\/ai-draft\/preview'/);
+    assert.match(deterministicBlock, /generateTaskDecompositionDraft\(taskDecompositionContextFromBody\(body, mode\)\)/);
     assert.match(decomposeBlock, /Compatibility wrapper only/);
     assert.match(decomposeBlock, /zero legacy AI wrapper calls/);
     assert.match(decomposeBlock, /30 days/);
     assert.match(decomposeBlock, /legacyDecompositionResponseFromPreview/);
     assert.match(decomposeBlock, /deprecatedEndpoint: '\/api\/tasks\/ai-draft\/preview'/);
-    assert.match(decomposeBlock, /type: 'deprecation'/);
-    assert.match(decomposeBlock, /status: 'attempt'/);
-    assert.match(decomposeBlock, /route: '\/api\/tasks\/decompose-draft'/);
-    assert.match(decomposeBlock, /mode,/);
-    assert.match(decomposeBlock, /clientVersion: legacyAiDraftClientVersion\(req, b\)/);
-    assert.match(decomposeBlock, /requestId: taskRequestId\(req, res\)/);
-    assert.match(decomposeBlock, /canonicalTarget: '\/api\/tasks\/ai-draft\/preview'/);
-    assert.match(decomposeBlock, /contractVersion: TASK_AI_DRAFT_CONTRACT_VERSION/);
-    assert.match(decomposeBlock, /promptVersion: TASK_AI_DRAFT_PROMPT_VERSION/);
-    assert.match(decomposeBlock, /schemaName: TASK_AI_DRAFT_SCHEMA_NAME/);
-    assert.match(decomposeBlock, /reasoningEffort: TASK_AI_DRAFT_REASONING_EFFORT/);
+    assert.match(decomposeBlock, /recordLegacyDecompositionTelemetry/);
+    assert.match(helperBlock, /type: 'deprecation'/);
+    assert.match(helperBlock, /route: '\/api\/tasks\/decompose-draft'/);
+    assert.match(helperBlock, /clientVersion: legacyAiDraftClientVersion\(req, body\)/);
+    assert.match(helperBlock, /requestId: taskRequestId\(req, res\)/);
+    assert.match(helperBlock, /canonicalTarget: legacyDecompositionTarget\(mode\)/);
+    assert.match(helperBlock, /task_decomposition_template_v1/);
     assert.match(decomposeBlock, /legacy_decompose_wrapper_used/);
     assert.match(decomposeBlock, /legacy_decompose_wrapper_non_apply/);
     assert.match(decomposeBlock, /TASK_AI_DRAFT_\$\{String\(preview\.proposal\?\.action/);
     assert.doesNotMatch(decomposeBlock, /callUnifiedChatCompletion|OPENROUTER_API_KEY|scope: 'chat_ai'/);
 });
 
-test('legacy task-create AI decomposition UI uses canonical ai-draft preview rail for AI modes', () => {
+test('task-create uses canonical AI preview and a separate deterministic decomposition endpoint', () => {
     const taskCreate = fs.readFileSync(path.join(root, 'js', 'task-create.js'), 'utf8');
     const requestStart = taskCreate.indexOf('async function requestDecompositionDraft');
     const requestBlock = taskCreate.slice(requestStart, taskCreate.indexOf('async function requestAiDraftPreview', requestStart));
@@ -1270,7 +1288,27 @@ test('legacy task-create AI decomposition UI uses canonical ai-draft preview rai
     assert.match(taskCreate, /function aiPreviewToDecompositionDraft/);
     assert.match(requestBlock, /requestAiDraftPreview\(\{/);
     assert.match(requestBlock, /structurePreference: 'checklist'/);
-    assert.match(requestBlock, /sourceSurface: context\.sourceSurface \|\| 'task_decomposition_legacy_ui'/);
-    assert.match(requestBlock, /taskApiRequest\('\/tasks\/decompose-draft'/);
-    assert.ok(requestBlock.indexOf('requestAiDraftPreview({') < requestBlock.indexOf("taskApiRequest('/tasks/decompose-draft'"));
+    assert.match(requestBlock, /sourceSurface: context\.sourceSurface \|\| 'task_decomposition_checklist_ui'/);
+    assert.match(requestBlock, /taskApiRequest\('\/tasks\/decomposition-draft'/);
+    assert.doesNotMatch(requestBlock, /taskApiRequest\('\/tasks\/decompose-draft'/);
+    assert.ok(requestBlock.indexOf('requestAiDraftPreview({') < requestBlock.indexOf("taskApiRequest('/tasks/decomposition-draft'"));
+});
+
+test('runtime frontend has no caller for the legacy decompose-draft endpoint', () => {
+    const pendingDirectories = [path.join(root, 'js')];
+    const runtimeFiles = [];
+    while (pendingDirectories.length) {
+        const currentDirectory = pendingDirectories.pop();
+        for (const entry of fs.readdirSync(currentDirectory, { withFileTypes: true })) {
+            const absolutePath = path.join(currentDirectory, entry.name);
+            if (entry.isDirectory()) pendingDirectories.push(absolutePath);
+            if (entry.isFile() && entry.name.endsWith('.js')) runtimeFiles.push(absolutePath);
+        }
+    }
+    assert.ok(runtimeFiles.length > 20, 'runtime frontend inventory should cover the complete js tree');
+    for (const file of runtimeFiles) {
+        const source = fs.readFileSync(file, 'utf8');
+        assert.doesNotMatch(source, /['"`]\/tasks\/decompose-draft/,
+            `${path.relative(root, file)} must not call the legacy decomposition endpoint`);
+    }
 });

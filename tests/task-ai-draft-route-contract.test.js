@@ -735,11 +735,13 @@ test('legacy decompose-draft AI mode delegates exactly once to canonical preview
 
 test('legacy decompose-draft template mode stays in taskDecomposition without canonical AI preview', async () => {
     clearRouteModules();
+    const telemetryEvents = [];
     let previewCalls = 0;
     let decompositionCalls = 0;
     let capturedContext = null;
 
     installBaseRouteMocks({
+        telemetryEvents,
         taskDecomposition: {
             generateTaskDecompositionDraft: async context => {
                 decompositionCalls += 1;
@@ -800,6 +802,8 @@ test('legacy decompose-draft template mode stays in taskDecomposition without ca
         assert.equal(previewCalls, 0);
         assert.equal(decompositionCalls, 1);
         assert.equal(payload.success, true);
+        assert.equal(payload.deprecated, true);
+        assert.equal(payload.deprecatedEndpoint, '/api/tasks/decomposition-draft');
         assert.equal(payload.source, 'template');
         assert.equal(payload.meta.aiUsed, false);
         assert.deepEqual(payload.subtasks.map(item => item.title), ['Confirm event format', 'Prepare the room']);
@@ -808,6 +812,90 @@ test('legacy decompose-draft template mode stays in taskDecomposition without ca
         assert.equal(capturedContext.mode, 'template');
         assert.equal(capturedContext.templateKey, 'event_preparation');
         assert.equal(Object.hasOwn(capturedContext, 'impactIds'), false);
+        assert.equal(telemetryEvents.length, 2);
+        assert.deepEqual(telemetryEvents.map(event => event.reasonCode), [
+            'legacy_decompose_wrapper_attempt',
+            'legacy_decompose_wrapper_used'
+        ]);
+        for (const event of telemetryEvents) {
+            assert.equal(event.route, '/api/tasks/decompose-draft');
+            assert.equal(event.mode, 'template');
+            assert.equal(event.canonicalTarget, '/api/tasks/decomposition-draft');
+            assert.equal(event.provider, 'deterministic');
+            assert.equal(event.model, '');
+            assert.equal(event.contractVersion, 'task_decomposition_template_v1');
+            assert.equal(event.schemaName, 'task_decomposition_draft');
+            assert.equal(event.promptVersion, '');
+            assert.equal(event.reasoningEffort, '');
+        }
+    } finally {
+        await close(server);
+        clearRouteModules();
+    }
+});
+
+test('deterministic decomposition endpoint handles templates and rejects AI modes', async () => {
+    clearRouteModules();
+    let previewCalls = 0;
+    let decompositionCalls = 0;
+
+    installBaseRouteMocks({
+        taskDecomposition: {
+            generateTaskDecompositionDraft: async context => {
+                decompositionCalls += 1;
+                return {
+                    success: true,
+                    mode: context.mode,
+                    source: 'template',
+                    subtasks: [{ title: 'Prepare room', source_type: 'template', sort_order: 0 }],
+                    draftItems: [{ title: 'Prepare room', source_type: 'template', sort_order: 0 }]
+                };
+            },
+            getTaskDecompositionTemplates: () => [],
+            normalizeDecompositionMode: (value, fallback = 'manual') => {
+                const raw = String(value || '').trim();
+                return ['none', 'manual', 'template', 'ai', 'template_ai'].includes(raw) ? raw : fallback;
+            }
+        },
+        taskAiDraftPreview: {
+            TASK_AI_DRAFT_SINGLE_COMMIT_AUDIENCE: 'task_ai_draft_commit',
+            TASK_AI_DRAFT_BUNDLE_COMMIT_AUDIENCE: 'task_ai_draft_bundle_commit',
+            generateTaskAiDraftPreview: async () => {
+                previewCalls += 1;
+                return { ok: false };
+            },
+            legacyDecompositionResponseFromPreview: () => ({ success: false })
+        }
+    });
+
+    const router = require('../routes/tasks');
+    const app = express();
+    app.use(express.json());
+    app.use('/api/tasks', router);
+    const { server, baseUrl } = await listen(app);
+    try {
+        const templateResponse = await fetch(`${baseUrl}/api/tasks/decomposition-draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'template', title: 'Prepare event' })
+        });
+        const templatePayload = await templateResponse.json();
+        assert.equal(templateResponse.status, 200, JSON.stringify(templatePayload));
+        assert.equal(templatePayload.success, true);
+        assert.equal(decompositionCalls, 1);
+        assert.equal(previewCalls, 0);
+
+        const aiResponse = await fetch(`${baseUrl}/api/tasks/decomposition-draft`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ mode: 'ai', title: 'Prepare event' })
+        });
+        const aiPayload = await aiResponse.json();
+        assert.equal(aiResponse.status, 409, JSON.stringify(aiPayload));
+        assert.equal(aiPayload.code, 'TASK_DECOMPOSITION_AI_MODE_REQUIRES_CANONICAL_PREVIEW');
+        assert.equal(aiPayload.canonicalEndpoint, '/api/tasks/ai-draft/preview');
+        assert.equal(decompositionCalls, 1);
+        assert.equal(previewCalls, 0);
     } finally {
         await close(server);
         clearRouteModules();

@@ -10,6 +10,7 @@ const preview = require('../services/taskAiDraftPreview');
 const normalization = require('../services/taskAiDraftNormalization');
 const openAIClient = require('../services/myDayTaskOpenAIClient');
 const telemetry = require('../services/taskAiDraftTelemetry');
+const packageMetadata = require('../package.json');
 
 const impacts = [
     { id: 101, name: 'Work: CRM', icon: '🗂️', isActive: true },
@@ -452,7 +453,7 @@ test('task AI preview telemetry records only metadata and strips task text/provi
             deploymentManifest: {
                 format: 'eventgenix.release-deployment',
                 schemaVersion: 1,
-                applicationVersion: '0.81.12',
+                applicationVersion: packageMetadata.version,
                 commitSha: 'a990b668f60e6376439e80cef0a3ade7672dfe37',
                 sourceBranch: 'codex/eventgenix-production'
             }
@@ -470,7 +471,7 @@ test('task AI preview telemetry records only metadata and strips task text/provi
     assert.equal(legacyEvent.promptVersion, '2026-08-13.6');
     assert.equal(legacyEvent.schemaName, preview.TASK_AI_DRAFT_SCHEMA_NAME);
     assert.equal(legacyEvent.reasoningEffort, 'low');
-    assert.equal(legacyEvent.releaseVersion, '0.81.12');
+    assert.equal(legacyEvent.releaseVersion, packageMetadata.version);
     assert.equal(legacyEvent.releaseSha, 'a990b668f60e6376439e80cef0a3ade7672dfe37');
     assert.equal(legacyEvent.deploymentId, 'deployment-legacy-test');
     assert.equal(legacyEvent.timestampBucket, '2026-08-22T09:00:00.000Z');

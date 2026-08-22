@@ -4,6 +4,17 @@
 
 ---
 
+## v0.81.13 - My Day AI Final Closure
+
+### My Day / Task Composer / AI Evidence / (22.08.2026) [codex]
+- **Один внутрішній AI Composer flow** - runtime frontend більше не викликає legacy `/api/tasks/decompose-draft`: AI використовує canonical preview/commit, а deterministic templates мають окремий non-AI endpoint.
+- **Чесний rollout verdict** - collector розрізняє реальну відсутність AI-трафіку, provider failures, safety gate failures і telemetry gaps; невідомий log input завершується fail-closed.
+- **Exact deployment evidence** - telemetry та action history отримали sanitized version/SHA/deployment/prompt/schema/model/effort correlation без текстів задач, prompt, response або credentials.
+- **Production marker hygiene** - canonical release branch зафіксовано як `codex/eventgenix-production`, а старий Checkbox marker збережено як rollback reference.
+- **Rollout без змін** - single/checklist лишається на 20%, bundle на 10% до окремих PASS artifacts.
+
+---
+
 ## v0.81.12 - My Day AI Evidence Hardening
 
 ### My Day / Task Composer / AI Evidence / (21.08.2026) [codex]

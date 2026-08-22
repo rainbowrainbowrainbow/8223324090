@@ -1,24 +1,71 @@
-# My Day AI final closure — v0.81.13 candidate
+# My Day AI closure — v0.81.14 evidence
 
-Production impact: yes after deploy.
+Status: reconciled into production source after the `v0.81.15` Hermes release.
+This is an evidence-only closeout; it does not change rollout values or require a
+separate runtime deployment.
 
-## Closed in this patch
+## Live baseline before this closure
+
+- Live version: `0.81.13`.
+- Live SHA: `d10a1c548c9b3e7473e058b9c8b1ece74f70eff6`.
+- Source branch: `codex/eventgenix-production`.
+- Rollback marker: `codex/checkbox-hardening-release-v080103` at `a990b668f60e6376439e80cef0a3ade7672dfe37`.
+- Deployment manifest: complete.
+- Health/deep: ok.
+- Single/checklist rollout: 20%.
+- Bundle rollout: 10%.
+- Provider/model: OpenAI `gpt-5.6-luna`.
+- Reasoning effort: `low`.
+- Prompt version: `2026-08-13.6`.
+- Contract version: `my_day_ai_composer_proposal_v2`.
+
+## Closed
 
 - Internal runtime callers use the canonical AI preview/commit contract.
 - Deterministic task decomposition is isolated from the legacy AI compatibility route.
-- Rollout evidence is exact-SHA/deployment scoped, deduplicated, redacted, and fail-closed for unknown input.
-- `TELEMETRY_GAP` is distinct from genuine zero traffic.
-- Existing action-history JSONB carries sanitized release/prompt/schema/model/effort correlation without a migration.
+- Production marker migration to `codex/eventgenix-production` is live and proven by `/api/version`.
+- Exact-SHA production mutation smoke passed for `v0.81.13`:
+  - Luna preview and commit;
+  - simple task;
+  - checklist;
+  - bundle;
+  - schedule to My Day projection;
+  - idempotent replay;
+  - rapid bundle commit replay;
+  - global timer start/hydrate/stop;
+  - exact QA task IDs archived after the run.
+- Rollout evidence tooling distinguishes insufficient traffic from telemetry gaps.
+- Legacy `/api/tasks/decompose-draft` usage evidence is redacted and measured.
 
-## Operational state before deploy
+## Evidence artifacts
 
-- Live baseline: `0.81.12` / `a990b668f60e6376439e80cef0a3ade7672dfe37`.
-- Single/checklist rollout: 20%.
-- Bundle rollout: 10%.
-- Latest exact-deployment evidence: `HOLD_INSUFFICIENT_TRAFFIC` for both scopes; HTTP and structured preview attempts were zero while DB safety checks were clean.
-- Rollout must not increase until independent PASS artifacts exist.
-- Legacy route removal remains separately gated by a redacted no-non-QA-usage window and explicit operator confirmation.
+- Baseline: `output/my-day-ai-baseline-v08113-2026-08-22.md`.
+- Production mutation smoke PASS: `output/live-my-day-ai-mutation-smoke/EGX_MY_DAY_AI_QA_v08113_20260822T151956.json`.
+- Single/checklist rollout 20%: `output/task-ai-rollout/2026-08-22T12-21-53-418Z.md`.
+- Bundle rollout 10%: `output/task-ai-bundle-rollout/2026-08-22T12-23-08-661Z.md`.
+- Legacy route sunset evidence: `output/task-ai-legacy-decompose-sunset-v08113-2026-08-22.md`.
+
+## Current HOLD items
+
+- Single/checklist rollout remains `HOLD_INSUFFICIENT_TRAFFIC`.
+  - The exact-SHA report saw real preview traffic, but only 4 preview attempts and 3 successful actionable proposals.
+  - Rollout must stay at 20% until an independent PASS artifact exists.
+- Bundle rollout remains `HOLD_INSUFFICIENT_TRAFFIC`.
+  - The exact-SHA report saw one bundle preview attempt and one successful proposal.
+  - Bundle rollout must stay at 10% until an independent PASS artifact exists.
+- Legacy `/api/tasks/decompose-draft` remains `HOLD_REMOVAL`.
+  - Internal runtime callers are gone.
+  - Observed legacy usage is zero in the checked logs.
+  - Removal still requires a complete agreed no-usage window and explicit operator confirmation.
 
 ## Data safety
 
-No task title, description, prompt, provider response, credentials, API key, or proposal token belongs in release or evidence artifacts. Production mutation smoke and paid OpenAI eval are not part of this patch.
+No task title, description, prompt body, provider response, credentials, API key,
+bearer token, signed proposal token, or raw production logs belongs in release
+or evidence artifacts.
+
+## Next allowed actions
+
+- Repeat rollout evidence after enough real AI Composer traffic or a 24h exact-deployment window with real preview attempts.
+- Request a specific Railway rollout confirmation only after a PASS artifact.
+- Remove the legacy route only after the no-usage gate and explicit removal confirmation.

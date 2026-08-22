@@ -199,6 +199,13 @@ function normalizeMutationResult(result) {
     };
 }
 
+function notifyHermesIdempotencyResult(options, result) {
+    if (typeof options.onResult !== 'function') return;
+    try {
+        options.onResult(result);
+    } catch {}
+}
+
 function sendHermesIdempotencyError(res, err) {
     return res.status(err.statusCode || 500).json(hermesIdempotencyErrorBody(err));
 }
@@ -272,6 +279,11 @@ async function runHermesIdempotency(req, res, work, options = {}) {
         });
 
         if (claim.state === 'replay') {
+            notifyHermesIdempotencyResult(options, {
+                state: 'replay',
+                status: claim.record.response_status,
+                body: claim.record.response_body
+            });
             return res.status(claim.record.response_status).json(claim.record.response_body);
         }
 
@@ -299,6 +311,12 @@ async function runHermesIdempotency(req, res, work, options = {}) {
             requestHash,
             responseStatus: mutationResult.status,
             responseBody: mutationResult.body
+        });
+
+        notifyHermesIdempotencyResult(options, {
+            state: 'new',
+            status: mutationResult.status,
+            body: mutationResult.body
         });
 
         return res.status(mutationResult.status).json(mutationResult.body);

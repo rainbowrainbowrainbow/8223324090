@@ -138,7 +138,7 @@ Mutation idempotency rules:
 | `POST` | `/api/hermes/jobs/:id/result` | Post worker result and assets. | Yes |
 | `POST` | `/api/hermes/jobs/:id/decision` | Record a human or operator decision. | Yes |
 | `GET` | `/api/hermes/staff` | Read sanitized scheduleable staff. | No |
-| `POST` | `/api/hermes/staff` | Create one staff record. Schedule remains untouched. | Yes, plus exact integration id and `manage_staff` |
+| `POST` | `/api/hermes/staff` | Create one staff record. Account, schedule, attendance, and payroll remain untouched. | Yes, plus exact integration id, `hermes.staff.manage`, idempotency, and packet-bound `approvalContext` |
 | `GET` | `/api/hermes/staff-schedule` | Read current schedule cells for at most 31 days. | No |
 | `POST` | `/api/hermes/staff-schedule/preview` | Validate OCR rows and create an immutable 30-minute preview. | No schedule writes |
 | `POST` | `/api/hermes/staff-schedule/apply` | Apply selected preview rows atomically. | Yes, plus exact integration id and `manage_staff` |
@@ -163,14 +163,51 @@ Idempotency-Key: <fresh-key-for-this-create>
   "position": "Аніматор",
   "roleType": "animator",
   "hireDate": "2026-07-15",
-  "color": "#8B5CF6"
+  "color": "#8B5CF6",
+  "approvalContext": {
+    "sourceContext": "staff_registration",
+    "packetId": "<packet-id>",
+    "chatId": "<chat-id>",
+    "messageId": "<message-id>",
+    "approvalType": "STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE",
+    "approvalAction": "APPROVE_CANDIDATE",
+    "crmWriteApproval": "APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_<packet-id>_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE"
+  }
 }
 ```
 
 The endpoint may also receive `role_type`, `secondaryProfessions` or
 `secondary_professions`, and optional `telegramUsername` without retaining its
 leading `@`. It must return the sanitized staff envelope and
-`staffWrites: 1`, `scheduleWrites: 0`, `scheduleTouched: false`.
+`staffWrites: 1`, `accountWrites: 0`, `scheduleWrites: 0`,
+`attendanceWrites: 0`, `payrollWrites: 0`, and `scheduleTouched: false`.
+
+Before sending the request, Hermes must verify the exact group ledger tuple and
+the separate CRM-write approval. CRM requires the approval string to equal
+`APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_<packetId>_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE`.
+Missing or mismatched approval returns
+`HERMES_STAFF_REGISTRATION_CRM_WRITE_APPROVAL_REQUIRED` and `outcome: NO_CREATE`.
+The approval value is not a signed proof and must not be logged raw.
+
+An existing active exact-name match is a terminal no-retry result: HTTP `409`,
+`code: HERMES_STAFF_ALREADY_EXISTS`, `outcome: ALREADY_EXISTS_NO_CREATE`, the
+existing `staffId`, and zero business-write counters. Multiple, inactive,
+reserve, or blacklisted matches return
+`STAFF_DUPLICATE_AMBIGUOUS_REVIEW_REQUIRED` for manual review. Account,
+username, password, payroll, attendance, and KPI fields are rejected with
+`FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE`. Schedule fields preserve the legacy
+`HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED` code and also expose
+`policyCode: FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE`. Consumers should read
+`policyCode ?? code`.
+Any other unrecognized top-level field is rejected by the same strict allowlist
+instead of being silently ignored.
+`dryRun` and `dry_run` are also rejected: this endpoint has no production
+dry-run mode; Hermes dry-run scenarios belong only to the local test harness.
+
+For a waiter registration Hermes sends the complete canonical triple
+`department=cafe`, `position=Офіціант`, `roleType=waiter`. CRM validates the
+active catalog mapping and returns `INCONSISTENT_STAFF_ROLE_MAPPING` on a
+conflict; it does not derive or silently correct the fields.
 
 Hermes owner-facing messages for natural commands must be short and explicit:
 

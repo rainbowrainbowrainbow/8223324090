@@ -44,7 +44,15 @@ test('Hermes staff schedule capabilities expose the complete public worker contr
         createRequiresConfirmation: true,
         createRequiresIdempotencyKey: true,
         createRequiredCapability: 'hermes.staff.manage',
-        createScheduleWrites: 0
+        createRequiresApprovalContext: true,
+        createApprovalSourceContext: 'staff_registration',
+        createApprovalType: 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+        createApprovalAction: 'APPROVE_CANDIDATE',
+        createCrmWriteApprovalTemplate: 'APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_<packetId>_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+        createAccountWrites: 0,
+        createScheduleWrites: 0,
+        createAttendanceWrites: 0,
+        createPayrollWrites: 0
     });
     assert.deepEqual(capabilities.endpoints.staffSchedule, {
         list: 'GET /api/hermes/staff-schedule',
@@ -155,7 +163,10 @@ test('worker-facing docs contain schedule endpoints, mandatory apply headers, an
         'Плющкіт вже є в CRM (#<staffId>). Нічого не дублюю.',
         'Плющкіт створено у списку персоналу. Графік не змінювався.',
         'Для графіка не вистачає дати/часу. Напиши, наприклад: сьогодні 10:00–20:00.',
+        'HERMES_STAFF_REGISTRATION_CRM_WRITE_APPROVAL_REQUIRED',
         'HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED',
+        'FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE',
+        'ALREADY_EXISTS_NO_CREATE',
         'HERMES_SCHEDULE_APPLY_STALE'
     ]) {
         assert.match(combined, new RegExp(needle.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));

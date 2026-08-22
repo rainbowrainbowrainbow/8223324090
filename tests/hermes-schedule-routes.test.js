@@ -52,6 +52,56 @@ function actorRow(overrides = {}) {
     };
 }
 
+function staffRegistrationApprovalContext(overrides = {}) {
+    const packetId = overrides.packetId || 'EG_STAFF_REG_PDF_FINISH_WAITER_20260819';
+    return {
+        sourceContext: 'staff_registration',
+        packetId,
+        chatId: '-1003979718101',
+        messageId: '23',
+        approvalType: 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+        approvalAction: 'APPROVE_CANDIDATE',
+        crmWriteApproval: `APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_${packetId}_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE`,
+        ...overrides
+    };
+}
+
+function staffCreateBody(overrides = {}) {
+    return {
+        name: 'Плющкіт',
+        department: 'animators',
+        position: 'Аніматор',
+        roleType: 'animator',
+        approvalContext: staffRegistrationApprovalContext(),
+        ...overrides
+    };
+}
+
+function staffCreateHeaders(apiKey, idempotencyKey) {
+    return {
+        'x-api-key': apiKey,
+        'X-Integration-Id': 'hermes-event-genix-crm',
+        'X-Hermes-User-Confirmed': 'true',
+        'Idempotency-Key': idempotencyKey
+    };
+}
+
+function assertBusinessWrites(body, staffWrites = 0) {
+    assert.deepEqual({
+        staffWrites: body.staffWrites,
+        accountWrites: body.accountWrites,
+        scheduleWrites: body.scheduleWrites,
+        attendanceWrites: body.attendanceWrites,
+        payrollWrites: body.payrollWrites
+    }, {
+        staffWrites,
+        accountWrites: 0,
+        scheduleWrites: 0,
+        attendanceWrites: 0,
+        payrollWrites: 0
+    });
+}
+
 function createPool(options = {}) {
     const calls = [];
     const actor = options.actor || actorRow();
@@ -86,27 +136,59 @@ function createPool(options = {}) {
         secondary_professions: [],
         scheduleable: true
     };
-    const idempotencyRecord = {
-        id: 1,
-        integration_id: 'hermes-event-genix-crm',
-        idempotency_key: 'unit-key',
-        request_hash: 'unit-hash',
-        response_status: null,
-        response_body: null,
-        created_at: new Date(),
-        expires_at: new Date(Date.now() + 86400000)
-    };
+    const professionRows = options.professionRows === undefined
+        ? [{ profession_key: 'waiter', title: 'Офіціант' }]
+        : options.professionRows;
+    const duplicateRows = [...(options.duplicateRows || [])];
+    const idempotencyRecords = new Map();
+    let nextIdempotencyId = 1;
 
     const query = async (sql, params = []) => {
         calls.push({ sql, params });
         if (/^(BEGIN|COMMIT|ROLLBACK)$/.test(String(sql).trim())) return { rows: [] };
         if (/FROM users[\s\S]*WHERE id = \$1/.test(sql)) return { rows: [actor] };
         if (/DELETE FROM integration_idempotency_keys/.test(sql)) return { rows: [] };
-        if (/INSERT INTO integration_idempotency_keys/.test(sql)) return { rows: [idempotencyRecord] };
-        if (/UPDATE integration_idempotency_keys/.test(sql)) return { rows: [{ ...idempotencyRecord, response_status: params[3], response_body: params[4] }] };
+        if (/INSERT INTO integration_idempotency_keys/.test(sql)) {
+            const recordKey = `${params[0]}:${params[1]}`;
+            if (idempotencyRecords.has(recordKey)) return { rows: [] };
+            const record = {
+                id: nextIdempotencyId++,
+                integration_id: params[0],
+                idempotency_key: params[1],
+                request_hash: params[2],
+                response_status: null,
+                response_body: null,
+                created_at: new Date(),
+                expires_at: new Date(Date.now() + 86400000)
+            };
+            idempotencyRecords.set(recordKey, record);
+            return { rows: [record] };
+        }
+        if (/SELECT id, integration_id, idempotency_key[\s\S]*FROM integration_idempotency_keys/.test(sql)) {
+            const record = idempotencyRecords.get(`${params[0]}:${params[1]}`);
+            return { rows: record ? [record] : [] };
+        }
+        if (/UPDATE integration_idempotency_keys/.test(sql)) {
+            const recordKey = `${params[0]}:${params[1]}`;
+            const record = idempotencyRecords.get(recordKey);
+            if (!record || record.request_hash !== params[2] || record.response_status !== null) return { rows: [] };
+            record.response_status = params[3];
+            record.response_body = JSON.parse(params[4]);
+            return { rows: [record] };
+        }
         if (/pg_advisory_xact_lock/.test(sql)) return { rows: [{ pg_advisory_xact_lock: null }] };
-        if (/FROM staff s[\s\S]*LIMIT 5/.test(sql)) return { rows: options.duplicateRows || [] };
-        if (/WITH inserted AS \([\s\S]*INSERT INTO staff/.test(sql)) return { rows: [createdStaffRow] };
+        if (/FROM hr_professions/.test(sql)) return { rows: professionRows };
+        if (/FROM staff s[\s\S]*LIMIT 5/.test(sql)) return { rows: duplicateRows };
+        if (/WITH inserted AS \([\s\S]*INSERT INTO staff/.test(sql)) {
+            duplicateRows.push({
+                ...createdStaffRow,
+                is_active: true,
+                hr_pool_status: 'core',
+                termination_date: null,
+                is_freelance: false
+            });
+            return { rows: [createdStaffRow] };
+        }
         if (/FROM staff s[\s\S]*ORDER BY s\.id ASC/.test(sql)) return { rows: staffRows };
         if (/FROM staff_schedule ss/.test(sql)) return { rows: scheduleRows };
         throw new Error(`Unexpected SQL: ${sql}`);
@@ -124,9 +206,15 @@ function createPool(options = {}) {
     };
 }
 
-async function listenHermesTestApp(pool, env) {
+async function listenHermesTestApp(pool, env, options = {}) {
     const app = express();
     app.use(express.json());
+    if (Array.isArray(options.auditReceipts)) {
+        app.use('/api/hermes', (req, res, next) => {
+            res.on('finish', () => options.auditReceipts.push(req.hermesMutation?.auditReceipt || null));
+            next();
+        });
+    }
     app.use('/api/hermes', createHermesRouter({
         pool,
         env,
@@ -202,6 +290,7 @@ describe('Hermes staff and schedule read routes', () => {
             'name',
             'position',
             'professions',
+            'roleType',
             'scheduleable',
             'staffId'
         ]);
@@ -289,7 +378,18 @@ describe('Hermes staff and schedule read routes', () => {
         assert.equal(response.data.endpoints.staff.createRequiresConfirmation, true);
         assert.equal(response.data.endpoints.staff.createRequiresIdempotencyKey, true);
         assert.equal(response.data.endpoints.staff.createRequiredCapability, 'hermes.staff.manage');
+        assert.equal(response.data.endpoints.staff.createRequiresApprovalContext, true);
+        assert.equal(response.data.endpoints.staff.createApprovalSourceContext, 'staff_registration');
+        assert.equal(response.data.endpoints.staff.createApprovalType, 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE');
+        assert.equal(response.data.endpoints.staff.createApprovalAction, 'APPROVE_CANDIDATE');
+        assert.equal(
+            response.data.endpoints.staff.createCrmWriteApprovalTemplate,
+            'APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_<packetId>_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE'
+        );
+        assert.equal(response.data.endpoints.staff.createAccountWrites, 0);
         assert.equal(response.data.endpoints.staff.createScheduleWrites, 0);
+        assert.equal(response.data.endpoints.staff.createAttendanceWrites, 0);
+        assert.equal(response.data.endpoints.staff.createPayrollWrites, 0);
         assert.equal(response.data.endpoints.staffSchedule.maxDateRangeDays, 31);
         assert.equal(response.data.endpoints.staffSchedule.preview, 'POST /api/hermes/staff-schedule/preview');
         assert.equal(response.data.endpoints.staffSchedule.previewScheduleWrites, 0);
@@ -348,26 +448,40 @@ describe('Hermes staff and schedule read routes', () => {
                 },
                 {
                     method: 'POST',
-                    body: {
+                    body: staffCreateBody({
                         name: '  Плющкіт  ',
-                        department: 'animators',
-                        position: 'Аніматор',
-                        roleType: 'animator',
                         secondaryProfessions: ['party_host'],
                         telegramUsername: '@plushkit_bot',
                         hireDate: '2026-07-15',
                         color: '#8B5CF6'
-                    }
+                    })
                 }
             );
 
             assert.equal(response.status, 201, JSON.stringify(response.data));
+            assert.equal(response.data.ok, true);
+            assert.equal(response.data.outcome, 'CREATED_STAFF_ONLY');
+            assert.equal(response.data.staffId, 999);
+            assert.deepEqual({
+                staffWrites: response.data.staffWrites,
+                accountWrites: response.data.accountWrites,
+                scheduleWrites: response.data.scheduleWrites,
+                attendanceWrites: response.data.attendanceWrites,
+                payrollWrites: response.data.payrollWrites
+            }, {
+                staffWrites: 1,
+                accountWrites: 0,
+                scheduleWrites: 0,
+                attendanceWrites: 0,
+                payrollWrites: 0
+            });
             assert.deepEqual(response.data.data, {
                 staffId: 999,
                 name: 'Плющкіт',
                 displayName: 'Плющкіт',
                 department: 'animators',
                 position: 'Аніматор',
+                roleType: 'animator',
                 professions: ['animator', 'party_host'],
                 scheduleable: true
             });
@@ -378,8 +492,24 @@ describe('Hermes staff and schedule read routes', () => {
                 scheduleTouched: false,
                 applyRequiresSeparateScheduleApproval: true,
                 sanitized: true,
+                approvalContext: {
+                    sourceContext: 'staff_registration',
+                    packetId: 'EG_STAFF_REG_PDF_FINISH_WAITER_20260819',
+                    chatId: '-1003979718101',
+                    messageId: '23',
+                    approvalType: 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+                    approvalAction: 'APPROVE_CANDIDATE',
+                    crmWriteApprovalPresent: true,
+                    crmWriteApprovalMatchesPacket: true
+                },
                 userMessage: 'Плющкіт створено у списку персоналу. Графік не змінювався.'
             });
+            assert.equal(
+                JSON.stringify(response.data).includes(
+                    'APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_EG_STAFF_REG_PDF_FINISH_WAITER_20260819_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE'
+                ),
+                false
+            );
             const insertCall = createPoolWithManageStaff.calls.find(call => /INSERT INTO staff/.test(call.sql));
             assert.ok(insertCall);
             assert.deepEqual(insertCall.params, [
@@ -404,17 +534,100 @@ describe('Hermes staff and schedule read routes', () => {
         }
     });
 
+    it('replays the same idempotency key without a second insert and still blocks a fresh-key duplicate', async () => {
+        const idempotentPool = createPool({
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
+            createdStaffRow: {
+                id: 1001,
+                name: 'Ідемпотентний Працівник',
+                display_name: 'Ідемпотентний Працівник',
+                department: 'animators',
+                position: 'Аніматор',
+                role_type: 'animator',
+                secondary_professions: [],
+                scheduleable: true
+            }
+        });
+        const auditReceipts = [];
+        const { server: idempotentServer, baseUrl: idempotentBaseUrl } = await listenHermesTestApp(
+            idempotentPool,
+            env,
+            { auditReceipts }
+        );
+        const body = staffCreateBody({ name: 'Ідемпотентний Працівник' });
+        try {
+            const first = await request(
+                idempotentBaseUrl,
+                '/api/hermes/staff',
+                staffCreateHeaders(env.HERMES_API_KEY, 'staff-create-idempotent-repeat'),
+                { method: 'POST', body }
+            );
+            const replay = await request(
+                idempotentBaseUrl,
+                '/api/hermes/staff',
+                staffCreateHeaders(env.HERMES_API_KEY, 'staff-create-idempotent-repeat'),
+                { method: 'POST', body }
+            );
+            const freshKey = await request(
+                idempotentBaseUrl,
+                '/api/hermes/staff',
+                staffCreateHeaders(env.HERMES_API_KEY, 'staff-create-idempotent-fresh-key'),
+                { method: 'POST', body }
+            );
+
+            assert.equal(first.status, 201, JSON.stringify(first.data));
+            assert.deepEqual(replay, first);
+            assert.equal(freshKey.status, 409, JSON.stringify(freshKey.data));
+            assert.equal(freshKey.data.code, 'HERMES_STAFF_ALREADY_EXISTS');
+            assert.equal(freshKey.data.outcome, 'ALREADY_EXISTS_NO_CREATE');
+            assert.equal(freshKey.data.staffId, 1001);
+            assertBusinessWrites(freshKey.data, 0);
+            assert.equal(
+                idempotentPool.calls.filter(call => /WITH inserted AS \([\s\S]*INSERT INTO staff/.test(call.sql)).length,
+                1
+            );
+            assert.equal(auditReceipts.length, 3);
+            assert.deepEqual(auditReceipts.map(receipt => ({
+                outcome: receipt.outcome,
+                staffId: receipt.staffId,
+                idempotencyReplay: receipt.idempotencyReplay,
+                staffWrites: receipt.businessWrites.staffWrites
+            })), [
+                {
+                    outcome: 'CREATED_STAFF_ONLY',
+                    staffId: 1001,
+                    idempotencyReplay: false,
+                    staffWrites: 1
+                },
+                {
+                    outcome: 'CREATED_STAFF_ONLY',
+                    staffId: 1001,
+                    idempotencyReplay: true,
+                    staffWrites: 0
+                },
+                {
+                    outcome: 'ALREADY_EXISTS_NO_CREATE',
+                    staffId: 1001,
+                    idempotencyReplay: false,
+                    staffWrites: 0
+                }
+            ]);
+        } finally {
+            await close(idempotentServer);
+        }
+    });
+
     it('requires Hermes integration id, confirmation, idempotency, and API-key auth for staff create', async () => {
         const guardedPool = createPool({
             actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
         });
-        const { server: guardedServer, baseUrl: guardedBaseUrl } = await listenHermesTestApp(guardedPool, env);
-        const body = {
-            name: 'Плющкіт',
-            department: 'animators',
-            position: 'Аніматор',
-            roleType: 'animator'
-        };
+        const auditReceipts = [];
+        const { server: guardedServer, baseUrl: guardedBaseUrl } = await listenHermesTestApp(
+            guardedPool,
+            env,
+            { auditReceipts }
+        );
+        const body = staffCreateBody();
         try {
             const missingIntegration = await request(guardedBaseUrl, '/api/hermes/staff', {
                 'x-api-key': env.HERMES_API_KEY,
@@ -450,14 +663,117 @@ describe('Hermes staff and schedule read routes', () => {
             assert.equal(crmSessionOnly.status, 401);
             assert.equal(crmSessionOnly.data.code, 'HERMES_AUTH_INVALID');
             assert.equal(guardedPool.calls.some(call => /INSERT INTO staff/.test(call.sql)), false);
+            assert.equal(auditReceipts.length, 4);
+            for (const receipt of auditReceipts.slice(0, 3)) {
+                assert.equal(receipt.outcome, 'NO_CREATE');
+                assert.equal(receipt.approvalContext.packetId, 'EG_STAFF_REG_PDF_FINISH_WAITER_20260819');
+                assert.equal(receipt.businessWrites.staffWrites, 0);
+            }
+            assert.equal(auditReceipts[3], null);
         } finally {
             await close(guardedServer);
         }
     });
 
+    it('requires the exact packet-bound CRM write approval before any staff or idempotency write', async () => {
+        const approvalPool = createPool({
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
+        });
+        const auditReceipts = [];
+        const { server: approvalServer, baseUrl: approvalBaseUrl } = await listenHermesTestApp(
+            approvalPool,
+            env,
+            { auditReceipts }
+        );
+        try {
+            const cases = [
+                {
+                    key: 'missing',
+                    approvalContext: undefined
+                },
+                {
+                    key: 'mismatch',
+                    approvalContext: staffRegistrationApprovalContext({
+                        crmWriteApproval: 'APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_WRONG_PACKET_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE'
+                    })
+                },
+                {
+                    key: 'wrong-action',
+                    approvalContext: staffRegistrationApprovalContext({ approvalAction: 'APPROVE_SCHEDULE' })
+                },
+                {
+                    key: 'private-allowlisted-values',
+                    approvalContext: {
+                        sourceContext: 'Private Candidate Name',
+                        packetId: 'private phone +380001112233',
+                        chatId: 'raw-private-chat-text',
+                        messageId: 'raw-private-message-text',
+                        approvalType: 'raw-private-approval-type',
+                        approvalAction: 'raw-private-approval-action',
+                        crmWriteApproval: 'raw-private-crm-write-approval'
+                    }
+                }
+            ];
+
+            for (const scenario of cases) {
+                const response = await request(
+                    approvalBaseUrl,
+                    '/api/hermes/staff',
+                    staffCreateHeaders(env.HERMES_API_KEY, `staff-create-approval-${scenario.key}`),
+                    {
+                        method: 'POST',
+                        body: staffCreateBody({ approvalContext: scenario.approvalContext })
+                    }
+                );
+                assert.equal(response.status, 400, `${scenario.key}: ${JSON.stringify(response.data)}`);
+                assert.equal(response.data.success, false);
+                assert.equal(response.data.ok, false);
+                assert.equal(
+                    response.data.code,
+                    'HERMES_STAFF_REGISTRATION_CRM_WRITE_APPROVAL_REQUIRED'
+                );
+                assert.equal(response.data.outcome, 'NO_CREATE');
+                assertBusinessWrites(response.data, 0);
+            }
+
+            assert.equal(approvalPool.calls.some(call => /integration_idempotency_keys/.test(call.sql)), false);
+            assert.equal(approvalPool.calls.some(call => /FROM staff|INSERT INTO staff/.test(call.sql)), false);
+            assert.equal(auditReceipts.length, cases.length);
+            const serializedReceipts = JSON.stringify(auditReceipts);
+            for (const privateValue of [
+                'Private Candidate Name',
+                'private phone +380001112233',
+                'raw-private-chat-text',
+                'raw-private-message-text',
+                'raw-private-approval-type',
+                'raw-private-approval-action',
+                'raw-private-crm-write-approval'
+            ]) {
+                assert.equal(serializedReceipts.includes(privateValue), false);
+            }
+            assert.deepEqual(auditReceipts.at(-1).approvalContext, {
+                sourceContext: '',
+                packetId: '',
+                chatId: '',
+                messageId: '',
+                approvalType: '',
+                approvalAction: '',
+                crmWriteApprovalPresent: true,
+                crmWriteApprovalMatchesPacket: false
+            });
+        } finally {
+            await close(approvalServer);
+        }
+    });
+
     it('rejects a Hermes actor without hermes.staff.manage before staff queries', async () => {
         const deniedPool = createPool();
-        const { server: deniedServer, baseUrl: deniedBaseUrl } = await listenHermesTestApp(deniedPool, env);
+        const auditReceipts = [];
+        const { server: deniedServer, baseUrl: deniedBaseUrl } = await listenHermesTestApp(
+            deniedPool,
+            env,
+            { auditReceipts }
+        );
         try {
             const response = await request(deniedBaseUrl, '/api/hermes/staff', {
                 'x-api-key': env.HERMES_API_KEY,
@@ -466,16 +782,15 @@ describe('Hermes staff and schedule read routes', () => {
                 'Idempotency-Key': 'staff-create-permission-denied'
             }, {
                 method: 'POST',
-                body: {
-                    name: 'Плющкіт',
-                    department: 'animators',
-                    position: 'Аніматор',
-                    roleType: 'animator'
-                }
+                body: staffCreateBody()
             });
             assert.equal(response.status, 403);
             assert.equal(response.data.code, 'HERMES_CAPABILITY_REQUIRED');
             assert.equal(deniedPool.calls.some(call => /FROM staff|INSERT INTO staff/.test(call.sql)), false);
+            assert.equal(auditReceipts.length, 1);
+            assert.equal(auditReceipts[0].outcome, 'NO_CREATE');
+            assert.equal(auditReceipts[0].approvalContext.crmWriteApprovalMatchesPacket, true);
+            assertBusinessWrites(auditReceipts[0].businessWrites, 0);
         } finally {
             await close(deniedServer);
         }
@@ -506,21 +821,35 @@ describe('Hermes staff and schedule read routes', () => {
                 'Idempotency-Key': 'staff-create-normalized-duplicate'
             }, {
                 method: 'POST',
-                body: {
+                body: staffCreateBody({
                     name: '  ПЛЮЩКІТ  ',
-                    department: 'animators',
-                    position: 'Аніматор',
-                    roleType: 'animator'
-                }
+                })
             });
             assert.equal(response.status, 409, JSON.stringify(response.data));
             assert.equal(response.data.code, 'HERMES_STAFF_ALREADY_EXISTS');
+            assert.equal(response.data.ok, false);
+            assert.equal(response.data.outcome, 'ALREADY_EXISTS_NO_CREATE');
+            assert.equal(response.data.staffId, 321);
+            assert.deepEqual({
+                staffWrites: response.data.staffWrites,
+                accountWrites: response.data.accountWrites,
+                scheduleWrites: response.data.scheduleWrites,
+                attendanceWrites: response.data.attendanceWrites,
+                payrollWrites: response.data.payrollWrites
+            }, {
+                staffWrites: 0,
+                accountWrites: 0,
+                scheduleWrites: 0,
+                attendanceWrites: 0,
+                payrollWrites: 0
+            });
             assert.deepEqual(response.data.meta.existing, [{
                 staffId: 321,
                 name: 'Плющкіт',
                 displayName: 'Плющкіт',
                 department: 'animators',
                 position: 'Аніматор',
+                roleType: 'animator',
                 professions: ['animator'],
                 scheduleable: true
             }]);
@@ -529,6 +858,148 @@ describe('Hermes staff and schedule read routes', () => {
             assert.equal(duplicatePool.calls.some(call => /INSERT INTO staff/.test(call.sql)), false);
         } finally {
             await close(duplicateServer);
+        }
+    });
+
+    it('returns the approved waiter fixture as a safe terminal existing record without writes', async () => {
+        const fixturePool = createPool({
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
+            duplicateRows: [{
+                id: 937,
+                name: 'Тарілкін Левко Підносович',
+                display_name: 'Тарілкін Левко Підносович',
+                department: 'cafe',
+                position: 'Офіціант',
+                role_type: 'waiter',
+                secondary_professions: [],
+                is_active: true,
+                hr_pool_status: 'core',
+                termination_date: null,
+                is_freelance: false,
+                scheduleable: true
+            }]
+        });
+        const { server: fixtureServer, baseUrl: fixtureBaseUrl } = await listenHermesTestApp(fixturePool, env);
+        try {
+            const response = await request(
+                fixtureBaseUrl,
+                '/api/hermes/staff',
+                staffCreateHeaders(env.HERMES_API_KEY, 'staff-create-waiter-fixture-937'),
+                {
+                    method: 'POST',
+                    body: staffCreateBody({
+                        name: 'Тарілкін Левко Підносович',
+                        department: 'cafe',
+                        position: 'Офіціант',
+                        roleType: 'waiter'
+                    })
+                }
+            );
+
+            assert.equal(response.status, 409, JSON.stringify(response.data));
+            assert.equal(response.data.code, 'HERMES_STAFF_ALREADY_EXISTS');
+            assert.equal(response.data.outcome, 'ALREADY_EXISTS_NO_CREATE');
+            assert.equal(response.data.staffId, 937);
+            assertBusinessWrites(response.data, 0);
+            assert.deepEqual(response.data.meta.existing, [{
+                staffId: 937,
+                name: 'Тарілкін Левко Підносович',
+                displayName: 'Тарілкін Левко Підносович',
+                department: 'cafe',
+                position: 'Офіціант',
+                roleType: 'waiter',
+                professions: ['waiter'],
+                scheduleable: true
+            }]);
+            assert.equal(Object.hasOwn(response.data.meta.existing[0], 'is_active'), false);
+            assert.equal(Object.hasOwn(response.data.meta.existing[0], 'hr_pool_status'), false);
+            const professionCall = fixturePool.calls.find(call => /FROM hr_professions/.test(call.sql));
+            assert.ok(professionCall);
+            assert.match(professionCall.sql, /SELECT key AS profession_key, title/);
+            assert.match(professionCall.sql, /WHERE key = \$1/);
+            assert.equal(fixturePool.calls.some(call => /INSERT INTO staff/.test(call.sql)), false);
+        } finally {
+            await close(fixtureServer);
+        }
+    });
+
+    it('fails closed for inactive or multiple normalized staff matches', async () => {
+        const scenarios = [
+            {
+                key: 'inactive',
+                duplicateRows: [{
+                    id: 401,
+                    name: 'Неоднозначний Працівник',
+                    display_name: 'Неоднозначний Працівник',
+                    department: 'animators',
+                    position: 'Аніматор',
+                    role_type: 'animator',
+                    secondary_professions: [],
+                    is_active: false,
+                    hr_pool_status: 'core',
+                    scheduleable: false
+                }]
+            },
+            {
+                key: 'multiple',
+                duplicateRows: [401, 402].map(id => ({
+                    id,
+                    name: 'Неоднозначний Працівник',
+                    display_name: 'Неоднозначний Працівник',
+                    department: 'animators',
+                    position: 'Аніматор',
+                    role_type: 'animator',
+                    secondary_professions: [],
+                    is_active: true,
+                    hr_pool_status: 'core',
+                    scheduleable: true
+                }))
+            },
+            {
+                key: 'active-mapping-mismatch',
+                duplicateRows: [{
+                    id: 403,
+                    name: 'Неоднозначний Працівник',
+                    display_name: 'Неоднозначний Працівник',
+                    department: 'cafe',
+                    position: 'Офіціант',
+                    role_type: 'waiter',
+                    secondary_professions: [],
+                    is_active: true,
+                    hr_pool_status: 'core',
+                    scheduleable: true
+                }]
+            }
+        ];
+
+        for (const scenario of scenarios) {
+            const ambiguousPool = createPool({
+                actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] }),
+                duplicateRows: scenario.duplicateRows
+            });
+            const { server: ambiguousServer, baseUrl: ambiguousBaseUrl } = await listenHermesTestApp(ambiguousPool, env);
+            try {
+                const response = await request(
+                    ambiguousBaseUrl,
+                    '/api/hermes/staff',
+                    staffCreateHeaders(env.HERMES_API_KEY, `staff-create-ambiguous-${scenario.key}`),
+                    {
+                        method: 'POST',
+                        body: staffCreateBody({ name: 'Неоднозначний Працівник' })
+                    }
+                );
+                assert.equal(response.status, 409, `${scenario.key}: ${JSON.stringify(response.data)}`);
+                assert.equal(response.data.code, 'STAFF_DUPLICATE_AMBIGUOUS_REVIEW_REQUIRED');
+                assert.equal(response.data.outcome, 'NO_CREATE_REVIEW_REQUIRED');
+                assertBusinessWrites(response.data, 0);
+                assert.deepEqual(response.data.matches, response.data.meta.matches);
+                assert.equal(response.data.meta.matches.length, scenario.duplicateRows.length);
+                assert.equal(Object.hasOwn(response.data.meta.matches[0], 'is_active'), false);
+                assert.equal(Object.hasOwn(response.data.meta.matches[0], 'hr_pool_status'), false);
+                assert.equal(ambiguousPool.calls.some(call => /INSERT INTO staff/.test(call.sql)), false);
+            } finally {
+                await close(ambiguousServer);
+            }
         }
     });
 
@@ -555,14 +1026,13 @@ describe('Hermes staff and schedule read routes', () => {
                 'Idempotency-Key': 'staff-create-snake-aliases'
             }, {
                 method: 'POST',
-                body: {
+                body: staffCreateBody({
                     name: 'Плющкіт Alias',
-                    department: 'animators',
-                    position: 'Аніматор',
+                    roleType: undefined,
                     role_type: 'animator',
                     secondary_professions: ['party_host'],
                     telegramUsername: '@plushkit_alias'
-                }
+                })
             });
             assert.equal(response.status, 201, JSON.stringify(response.data));
             assert.deepEqual(response.data.data.professions, ['animator', 'party_host']);
@@ -572,6 +1042,113 @@ describe('Hermes staff and schedule read routes', () => {
             assert.equal(insertCall.params[9], '["party_host"]');
         } finally {
             await close(aliasServer);
+        }
+    });
+
+    it('rejects an inconsistent waiter department/position/role mapping without correction', async () => {
+        const mappingPool = createPool({
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
+        });
+        const { server: mappingServer, baseUrl: mappingBaseUrl } = await listenHermesTestApp(mappingPool, env);
+        try {
+            const response = await request(
+                mappingBaseUrl,
+                '/api/hermes/staff',
+                staffCreateHeaders(env.HERMES_API_KEY, 'staff-create-inconsistent-waiter'),
+                {
+                    method: 'POST',
+                    body: staffCreateBody({
+                        name: 'Некоректний Офіціант',
+                        department: 'cafe',
+                        position: 'Бариста',
+                        roleType: 'waiter'
+                    })
+                }
+            );
+
+            assert.equal(response.status, 409, JSON.stringify(response.data));
+            assert.equal(response.data.code, 'INCONSISTENT_STAFF_ROLE_MAPPING');
+            assert.equal(response.data.outcome, 'NO_CREATE');
+            assertBusinessWrites(response.data, 0);
+            assert.deepEqual(response.data.meta.expected, {
+                department: 'cafe',
+                position: 'Офіціант',
+                roleType: 'waiter'
+            });
+            assert.deepEqual(response.data.meta.received, {
+                department: 'cafe',
+                position: 'Бариста',
+                roleType: 'waiter'
+            });
+            assert.equal(mappingPool.calls.some(call => /FROM staff s[\s\S]*LIMIT 5/.test(call.sql)), false);
+            assert.equal(mappingPool.calls.some(call => /INSERT INTO staff/.test(call.sql)), false);
+        } finally {
+            await close(mappingServer);
+        }
+    });
+
+    it('rejects account, credential, dry-run, payroll, attendance, and KPI fields without writes', async () => {
+        const policyPool = createPool({
+            actor: actorRow({ role: 'manager', action_allowlist: ['hermes.staff.manage'], action_denylist: [] })
+        });
+        const { server: policyServer, baseUrl: policyBaseUrl } = await listenHermesTestApp(policyPool, env);
+        try {
+            const forbiddenFields = [
+                'account',
+                'accountPayload',
+                'accountSettings',
+                'username',
+                'login',
+                'password',
+                'passwordConfirmation',
+                'dryRun',
+                'dry_run',
+                'payroll',
+                'payrollPayload',
+                'attendance',
+                'attendanceData',
+                'kpi',
+                'kpiWrites',
+                'unknownMetadata'
+            ];
+            for (const field of forbiddenFields) {
+                const response = await request(
+                    policyBaseUrl,
+                    '/api/hermes/staff',
+                    staffCreateHeaders(env.HERMES_API_KEY, `staff-create-cross-lane-${field}`),
+                    {
+                        method: 'POST',
+                        body: staffCreateBody({ [field]: field === 'username' ? 'candidate.login' : {} })
+                    }
+                );
+                assert.equal(response.status, 400, `${field}: ${JSON.stringify(response.data)}`);
+                assert.equal(response.data.code, 'FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE');
+                assert.equal(response.data.policyCode, 'FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE');
+                assert.equal(response.data.outcome, 'NO_CREATE');
+                assert.deepEqual(response.data.forbiddenFields, [field]);
+                assertBusinessWrites(response.data, 0);
+            }
+            const missingRole = await request(
+                policyBaseUrl,
+                '/api/hermes/staff',
+                staffCreateHeaders(env.HERMES_API_KEY, 'staff-create-missing-role-type'),
+                {
+                    method: 'POST',
+                    body: staffCreateBody({
+                        department: 'cafe',
+                        position: 'Офіціант',
+                        roleType: undefined
+                    })
+                }
+            );
+            assert.equal(missingRole.status, 400, JSON.stringify(missingRole.data));
+            assert.equal(missingRole.data.code, 'HERMES_STAFF_CREATE_INVALID_PAYLOAD');
+            assert.equal(missingRole.data.outcome, 'NO_CREATE');
+            assertBusinessWrites(missingRole.data, 0);
+            assert.equal(policyPool.calls.some(call => /integration_idempotency_keys/.test(call.sql)), false);
+            assert.equal(policyPool.calls.some(call => /FROM staff|INSERT INTO staff/.test(call.sql)), false);
+        } finally {
+            await close(policyServer);
         }
     });
 
@@ -594,6 +1171,7 @@ describe('Hermes staff and schedule read routes', () => {
                 'shiftStart',
                 'shiftEnd',
                 'schedule',
+                'schedulePayload',
                 'scheduleRows',
                 'staffSchedule',
                 'status'
@@ -606,16 +1184,20 @@ describe('Hermes staff and schedule read routes', () => {
                     'Idempotency-Key': `staff-create-schedule-field-${field}`
                 }, {
                     method: 'POST',
-                    body: {
-                        name: 'Плющкіт',
-                        department: 'animators',
-                        position: 'Аніматор',
-                        roleType: 'animator',
+                    body: staffCreateBody({
                         [field]: null
-                    }
+                    })
                 });
                 assert.equal(response.status, 400, `${field}: ${JSON.stringify(response.data)}`);
                 assert.equal(response.data.code, 'HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED');
+                assert.equal(response.data.policyCode, 'FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE');
+                assert.equal(response.data.outcome, 'NO_CREATE');
+                assert.deepEqual(response.data.forbiddenFields, [field]);
+                assert.equal(response.data.staffWrites, 0);
+                assert.equal(response.data.accountWrites, 0);
+                assert.equal(response.data.scheduleWrites, 0);
+                assert.equal(response.data.attendanceWrites, 0);
+                assert.equal(response.data.payrollWrites, 0);
                 assert.deepEqual(response.data.meta.fields, [field]);
             }
             assert.equal(createPoolWithManageStaff.calls.some(call => /INSERT INTO staff/.test(call.sql)), false);

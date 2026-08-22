@@ -9,9 +9,11 @@ const {
     scheduleableStaffWhere
 } = require('../services/staffOperationalFilters');
 const {
+    normalizeRequestedProfessionKey,
     normalizeSecondaryProfessions,
     staffProfessionKeys
 } = require('../services/professions');
+const { staffProfessionCategoryRule } = require('../services/staffDisplayGroups');
 const {
     applyHermesScheduleImport,
     buildScheduleCellStateHash,
@@ -33,6 +35,232 @@ const MAX_STAFF_LIMIT = 50;
 const MAX_SCHEDULE_DAYS = 31;
 const MAX_STAFF_IDS = 50;
 const HERMES_SCHEDULE_BUSINESS_CONTEXT = DEFAULT_BUSINESS_CONTEXT;
+const HERMES_STAFF_APPROVAL_SOURCE_CONTEXT = 'staff_registration';
+const HERMES_STAFF_APPROVAL_TYPE = 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE';
+const HERMES_STAFF_APPROVAL_ACTION = 'APPROVE_CANDIDATE';
+const HERMES_STAFF_CRM_WRITE_APPROVAL_PREFIX = 'APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_';
+const HERMES_STAFF_CRM_WRITE_APPROVAL_SUFFIX = '_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE';
+const HERMES_STAFF_CRM_WRITE_APPROVAL_REQUIRED = 'HERMES_STAFF_REGISTRATION_CRM_WRITE_APPROVAL_REQUIRED';
+const HERMES_STAFF_FORBIDDEN_POLICY_CODE = 'FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE';
+const HERMES_STAFF_SCHEDULE_APPROVAL_CODE = 'HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED';
+const HERMES_STAFF_SCHEDULE_FIELD_KEYS = new Set([
+    'schedule',
+    'scheduledata',
+    'schedulepayload',
+    'schedulerows',
+    'schedulewrites',
+    'staffschedule',
+    'staffscheduledata',
+    'staffschedulepayload',
+    'date',
+    'datefrom',
+    'dateto',
+    'starttime',
+    'endtime',
+    'shiftstart',
+    'shiftend',
+    'status'
+]);
+const HERMES_STAFF_CROSS_LANE_FIELD_KEYS = new Set([
+    'account',
+    'accounts',
+    'accountid',
+    'accountdata',
+    'accountpayload',
+    'accountprofile',
+    'accountwrites',
+    'createaccount',
+    'useraccount',
+    'username',
+    'login',
+    'loginname',
+    'password',
+    'passwordconfirm',
+    'passwordconfirmation',
+    'passwordhash',
+    'passwordpayload',
+    'credentials',
+    'dryrun',
+    'payroll',
+    'payrolldata',
+    'payrollpayload',
+    'payrollprofile',
+    'payrollwrites',
+    'salary',
+    'hourlyrate',
+    'rateunit',
+    'attendance',
+    'attendancerows',
+    'attendancedata',
+    'attendancepayload',
+    'attendancewrites',
+    'kpi',
+    'kpis',
+    'kpidata',
+    'kpipayload',
+    'kpiwrites',
+    'kpiprofile'
+]);
+const HERMES_STAFF_ALLOWED_FIELD_KEYS = new Set([
+    'name',
+    'department',
+    'position',
+    'roletype',
+    'phone',
+    'color',
+    'telegramusername',
+    'address',
+    'hiredate',
+    'secondaryprofessions',
+    'businesscontext',
+    'approvalcontext'
+]);
+
+function hermesStaffBusinessWrites(staffWrites = 0) {
+    return {
+        staffWrites,
+        accountWrites: 0,
+        scheduleWrites: 0,
+        attendanceWrites: 0,
+        payrollWrites: 0
+    };
+}
+
+function normalizeHermesStaffFieldKey(value) {
+    return String(value || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+
+function expectedHermesStaffCrmWriteApproval(packetId) {
+    return `${HERMES_STAFF_CRM_WRITE_APPROVAL_PREFIX}${packetId}${HERMES_STAFF_CRM_WRITE_APPROVAL_SUFFIX}`;
+}
+
+function sanitizeHermesStaffApprovalContext(value) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : {};
+    const rawSourceContext = typeof source.sourceContext === 'string' ? source.sourceContext.trim() : '';
+    const rawPacketId = typeof source.packetId === 'string' ? source.packetId.trim() : '';
+    const rawChatId = typeof source.chatId === 'string' ? source.chatId.trim() : '';
+    const rawMessageId = typeof source.messageId === 'string' ? source.messageId.trim() : '';
+    const rawApprovalType = typeof source.approvalType === 'string' ? source.approvalType.trim() : '';
+    const rawApprovalAction = typeof source.approvalAction === 'string' ? source.approvalAction.trim() : '';
+    const packetId = /^[A-Z0-9][A-Z0-9_-]{0,159}$/.test(rawPacketId) ? rawPacketId : '';
+    const crmWriteApproval = source.crmWriteApproval;
+    return {
+        sourceContext: rawSourceContext === HERMES_STAFF_APPROVAL_SOURCE_CONTEXT ? rawSourceContext : '',
+        packetId,
+        chatId: /^-?\d{1,30}$/.test(rawChatId) ? rawChatId : '',
+        messageId: /^[1-9]\d{0,29}$/.test(rawMessageId) ? rawMessageId : '',
+        approvalType: rawApprovalType === HERMES_STAFF_APPROVAL_TYPE ? rawApprovalType : '',
+        approvalAction: rawApprovalAction === HERMES_STAFF_APPROVAL_ACTION ? rawApprovalAction : '',
+        crmWriteApprovalPresent: typeof crmWriteApproval === 'string' && crmWriteApproval.length > 0,
+        crmWriteApprovalMatchesPacket: typeof crmWriteApproval === 'string'
+            && packetId.length > 0
+            && crmWriteApproval === expectedHermesStaffCrmWriteApproval(packetId)
+    };
+}
+
+function normalizeHermesStaffApprovalContext(value, receipt) {
+    const source = value && typeof value === 'object' && !Array.isArray(value) ? value : null;
+    const exactStrings = source
+        && source.sourceContext === receipt.sourceContext
+        && source.packetId === receipt.packetId
+        && source.chatId === receipt.chatId
+        && source.messageId === receipt.messageId
+        && source.approvalType === receipt.approvalType
+        && source.approvalAction === receipt.approvalAction;
+    const valid = exactStrings
+        && receipt.sourceContext === HERMES_STAFF_APPROVAL_SOURCE_CONTEXT
+        && /^[A-Z0-9][A-Z0-9_-]{0,159}$/.test(receipt.packetId)
+        && /^-?\d{1,30}$/.test(receipt.chatId)
+        && /^[1-9]\d{0,29}$/.test(receipt.messageId)
+        && receipt.approvalType === HERMES_STAFF_APPROVAL_TYPE
+        && receipt.approvalAction === HERMES_STAFF_APPROVAL_ACTION
+        && receipt.crmWriteApprovalMatchesPacket;
+
+    if (!valid) {
+        throw hermesScheduleError(
+            400,
+            HERMES_STAFF_CRM_WRITE_APPROVAL_REQUIRED,
+            'Exact CRM staff-registration write approval is required'
+        );
+    }
+
+    return {
+        sourceContext: receipt.sourceContext,
+        packetId: receipt.packetId,
+        chatId: receipt.chatId,
+        messageId: receipt.messageId,
+        approvalType: receipt.approvalType,
+        approvalAction: receipt.approvalAction
+    };
+}
+
+function setHermesStaffAuditReceipt(req, approvalContext, options = {}) {
+    const businessWrites = options.businessWrites || hermesStaffBusinessWrites(0);
+    req.hermesMutation = {
+        ...(req.hermesMutation || {}),
+        auditReceipt: {
+            approvalContext,
+            outcome: options.outcome || 'NO_CREATE',
+            ...(Number.isSafeInteger(options.staffId) && options.staffId > 0
+                ? { staffId: options.staffId }
+                : {}),
+            ...(typeof options.idempotencyReplay === 'boolean'
+                ? { idempotencyReplay: options.idempotencyReplay }
+                : {}),
+            businessWrites: { ...businessWrites }
+        }
+    };
+}
+
+function syncHermesStaffAuditReceiptFromIdempotency(req, approvalContext, result = {}) {
+    const body = result.body && typeof result.body === 'object' ? result.body : {};
+    const isReplay = result.state === 'replay';
+    const businessWrites = isReplay
+        ? hermesStaffBusinessWrites(0)
+        : {
+            staffWrites: Number.isSafeInteger(body.staffWrites) && body.staffWrites >= 0 ? body.staffWrites : 0,
+            accountWrites: Number.isSafeInteger(body.accountWrites) && body.accountWrites >= 0 ? body.accountWrites : 0,
+            scheduleWrites: Number.isSafeInteger(body.scheduleWrites) && body.scheduleWrites >= 0 ? body.scheduleWrites : 0,
+            attendanceWrites: Number.isSafeInteger(body.attendanceWrites) && body.attendanceWrites >= 0 ? body.attendanceWrites : 0,
+            payrollWrites: Number.isSafeInteger(body.payrollWrites) && body.payrollWrites >= 0 ? body.payrollWrites : 0
+        };
+    const staffId = Number(body.staffId ?? body.data?.staffId);
+    const outcome = typeof body.outcome === 'string' && body.outcome
+        ? body.outcome
+        : (body.success === true ? 'CREATED_STAFF_ONLY' : 'NO_CREATE');
+
+    setHermesStaffAuditReceipt(req, approvalContext, {
+        outcome,
+        staffId,
+        idempotencyReplay: isReplay,
+        businessWrites
+    });
+}
+
+function hermesStaffCreateErrorBody(error) {
+    const details = error.details && typeof error.details === 'object' ? error.details : {};
+    const businessWrites = details.businessWrites || hermesStaffBusinessWrites(0);
+    const body = {
+        success: false,
+        ok: false,
+        error: error.message,
+        code: error.code || 'HERMES_STAFF_CREATE_INVALID_PAYLOAD',
+        outcome: details.outcome || 'NO_CREATE',
+        ...businessWrites
+    };
+    if (details.policyCode) body.policyCode = details.policyCode;
+    if (Array.isArray(details.forbiddenFields)) body.forbiddenFields = details.forbiddenFields;
+    if (Array.isArray(details.matches)) body.matches = details.matches;
+    if (Number.isSafeInteger(details.staffId) && details.staffId > 0) body.staffId = details.staffId;
+    if (details.meta && typeof details.meta === 'object' && Object.keys(details.meta).length) {
+        body.meta = details.meta;
+    }
+    return body;
+}
+
+function sendHermesStaffCreateError(res, error) {
+    return res.status(error.statusCode || 400).json(hermesStaffCreateErrorBody(error));
+}
 
 function sendHermesScheduleError(res, status, code, error, meta = undefined) {
     const body = { success: false, error, code };
@@ -184,6 +412,7 @@ function mapHermesStaff(row = {}) {
         displayName: row.display_name || row.name || '',
         department: row.department || null,
         position: row.position || null,
+        roleType: row.role_type || null,
         professions: staffProfessionKeys(row),
         scheduleable: row.scheduleable === true
     };
@@ -219,38 +448,53 @@ function normalizeHermesStaffCreateDate(value) {
 }
 
 function normalizeHermesStaffCreatePayload(body = {}) {
-    const forbiddenScheduleFields = [
-        'schedule',
-        'scheduleRows',
-        'staffSchedule',
-        'date',
-        'dateFrom',
-        'dateTo',
-        'startTime',
-        'endTime',
-        'shiftStart',
-        'shiftEnd',
-        'status'
-    ];
-    const attemptedScheduleFields = forbiddenScheduleFields.filter(field =>
-        Object.prototype.hasOwnProperty.call(body, field)
-    );
-    if (attemptedScheduleFields.length) {
+    if (!body || typeof body !== 'object' || Array.isArray(body)) {
+        throw hermesScheduleError(400, 'HERMES_STAFF_CREATE_INVALID_PAYLOAD', 'Request body must be an object');
+    }
+
+    const attemptedScheduleFields = [];
+    const attemptedCrossLaneFields = [];
+    for (const field of Object.keys(body)) {
+        const normalizedField = normalizeHermesStaffFieldKey(field);
+        if (HERMES_STAFF_SCHEDULE_FIELD_KEYS.has(normalizedField)) {
+            attemptedScheduleFields.push(field);
+        } else if (HERMES_STAFF_CROSS_LANE_FIELD_KEYS.has(normalizedField)
+            || !HERMES_STAFF_ALLOWED_FIELD_KEYS.has(normalizedField)) {
+            attemptedCrossLaneFields.push(field);
+        }
+    }
+
+    const forbiddenFields = [...attemptedScheduleFields, ...attemptedCrossLaneFields];
+    if (forbiddenFields.length) {
+        const legacyScheduleCode = attemptedScheduleFields.length > 0;
         throw hermesScheduleError(
             400,
-            'HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED',
-            'Staff creation cannot change schedule cells. Use staff_schedule.preview/apply as a separate approved step.',
-            { fields: attemptedScheduleFields }
+            legacyScheduleCode ? HERMES_STAFF_SCHEDULE_APPROVAL_CODE : HERMES_STAFF_FORBIDDEN_POLICY_CODE,
+            'Staff-only creation payload contains fields owned by a separate business lane',
+            {
+                policyCode: HERMES_STAFF_FORBIDDEN_POLICY_CODE,
+                forbiddenFields,
+                outcome: 'NO_CREATE',
+                businessWrites: hermesStaffBusinessWrites(0),
+                meta: { fields: forbiddenFields }
+            }
         );
     }
 
     const name = normalizeHermesStaffText(body.name, 'name', { maxLength: 160 });
     const department = normalizeHermesStaffText(body.department, 'department', { maxLength: 80 });
     const position = normalizeHermesStaffText(body.position, 'position', { maxLength: 120 });
-    const primaryRole = normalizeHermesStaffText(body.role_type ?? body.roleType, 'role_type', {
-        required: false,
+    const primaryRoleInput = normalizeHermesStaffText(body.role_type ?? body.roleType, 'role_type', {
         maxLength: 80
     });
+    const primaryRole = normalizeRequestedProfessionKey(primaryRoleInput);
+    if (!primaryRole) {
+        throw hermesScheduleError(
+            400,
+            'HERMES_STAFF_CREATE_INVALID_PAYLOAD',
+            'role_type must be a canonical profession key'
+        );
+    }
     const phone = normalizeHermesStaffText(body.phone, 'phone', { required: false, maxLength: 40 });
     const color = normalizeHermesStaffText(body.color, 'color', { required: false, maxLength: 20 });
     if (color && !/^#[0-9a-fA-F]{6}$/.test(color)) {
@@ -285,7 +529,11 @@ function normalizeHermesStaffCreatePayload(body = {}) {
     };
 }
 
-async function assertHermesStaffCreateUnique(query, normalizedName) {
+function normalizeHermesStaffComparisonText(value) {
+    return String(value ?? '').normalize('NFKC').trim().replace(/\s+/g, ' ').toLocaleLowerCase('uk-UA');
+}
+
+async function assertHermesStaffCreateUnique(query, payload) {
     const scheduleableSql = scheduleableStaffWhere('s', {
         dateExpression: 'CURRENT_DATE',
         includeFreelance: true
@@ -298,24 +546,101 @@ async function assertHermesStaffCreateUnique(query, normalizedName) {
                 s.position,
                 s.role_type,
                 COALESCE(s.secondary_professions, '[]'::jsonb) AS secondary_professions,
+                s.is_active,
+                COALESCE(s.hr_pool_status, 'core') AS hr_pool_status,
+                s.termination_date,
+                COALESCE(s.is_freelance, false) AS is_freelance,
                 (${scheduleableSql}) AS scheduleable
          FROM staff s
          WHERE LOWER(REGEXP_REPLACE(BTRIM(s.name), '\\s+', ' ', 'g')) = $1
             OR LOWER(REGEXP_REPLACE(BTRIM(COALESCE(NULLIF(s.display_name, ''), s.name)), '\\s+', ' ', 'g')) = $1
          ORDER BY s.id ASC
          LIMIT 5`,
-        [normalizedName]
+        [payload.normalizedName]
     );
     if (existing.rows.length) {
         const sanitizedExisting = existing.rows.map(mapHermesStaff);
         const firstExisting = sanitizedExisting[0];
+        const firstRow = existing.rows[0];
+        const mappingMismatch = existing.rows.length === 1 && (
+            normalizeHermesStaffComparisonText(firstRow.department)
+                !== normalizeHermesStaffComparisonText(payload.department)
+            || normalizeHermesStaffComparisonText(firstRow.position)
+                !== normalizeHermesStaffComparisonText(payload.position)
+            || normalizeRequestedProfessionKey(firstRow.role_type) !== payload.primaryRole
+        );
+        const ambiguous = existing.rows.length > 1
+            || existing.rows.some(row => row.scheduleable !== true)
+            || mappingMismatch;
+        if (ambiguous) {
+            throw hermesScheduleError(
+                409,
+                'STAFF_DUPLICATE_AMBIGUOUS_REVIEW_REQUIRED',
+                'Matching staff records require manual review before any create',
+                {
+                    outcome: 'NO_CREATE_REVIEW_REQUIRED',
+                    businessWrites: hermesStaffBusinessWrites(0),
+                    matches: sanitizedExisting,
+                    meta: {
+                        matches: sanitizedExisting,
+                        userMessage: 'У CRM є неоднозначні збіги за ПІБ. Створення зупинено для ручної перевірки.'
+                    }
+                }
+            );
+        }
         throw hermesScheduleError(
             409,
             'HERMES_STAFF_ALREADY_EXISTS',
             'Staff member with this normalized name already exists',
             {
-                existing: sanitizedExisting,
-                userMessage: `${firstExisting.displayName} вже є в CRM (#${firstExisting.staffId}). Нічого не дублюю.`
+                outcome: 'ALREADY_EXISTS_NO_CREATE',
+                staffId: firstExisting.staffId,
+                businessWrites: hermesStaffBusinessWrites(0),
+                meta: {
+                    existing: sanitizedExisting,
+                    userMessage: `${firstExisting.displayName} вже є в CRM (#${firstExisting.staffId}). Нічого не дублюю.`
+                }
+            }
+        );
+    }
+}
+
+async function assertHermesStaffRoleMapping(query, payload) {
+    if (payload.primaryRole !== 'waiter') return;
+
+    const categoryRule = staffProfessionCategoryRule(payload.primaryRole);
+    const profession = await query.query(
+        `SELECT key AS profession_key, title
+         FROM hr_professions
+         WHERE key = $1
+           AND is_active = true
+         LIMIT 1`,
+        [payload.primaryRole]
+    );
+    const catalogRow = profession.rows[0] || null;
+    const expected = {
+        department: categoryRule?.displayGroup || null,
+        position: catalogRow?.title || null,
+        roleType: payload.primaryRole
+    };
+    const received = {
+        department: payload.department,
+        position: payload.position,
+        roleType: payload.primaryRole
+    };
+    const consistent = expected.department === received.department
+        && expected.position === received.position
+        && catalogRow?.profession_key === received.roleType;
+
+    if (!consistent) {
+        throw hermesScheduleError(
+            409,
+            'INCONSISTENT_STAFF_ROLE_MAPPING',
+            'Staff department, position, and roleType do not match the active waiter catalog mapping',
+            {
+                outcome: 'NO_CREATE',
+                businessWrites: hermesStaffBusinessWrites(0),
+                meta: { expected, received }
             }
         );
     }
@@ -486,8 +811,22 @@ function createHermesScheduleRouter(options = {}) {
     router.post(
         '/staff',
         requireHermesScheduleAccess,
+        (req, res, next) => {
+            const approvalReceipt = sanitizeHermesStaffApprovalContext(req.body?.approvalContext);
+            res.locals.hermesStaffApprovalReceipt = approvalReceipt;
+            setHermesStaffAuditReceipt(req, approvalReceipt, {
+                outcome: 'NO_CREATE',
+                businessWrites: hermesStaffBusinessWrites(0)
+            });
+            next();
+        },
         applyMutationGuard,
         (req, res, next) => {
+            const approvalReceipt = res.locals.hermesStaffApprovalReceipt;
+            setHermesStaffAuditReceipt(req, approvalReceipt, {
+                outcome: 'NO_CREATE',
+                businessWrites: hermesStaffBusinessWrites(0)
+            });
             if (!canUseAction(req.user, 'hermes.staff.manage')) {
                 return sendHermesScheduleError(
                     res,
@@ -507,30 +846,38 @@ function createHermesScheduleRouter(options = {}) {
                     'Hermes staff create requires a transactional database pool'
                 );
             }
+            const approvalReceipt = res.locals.hermesStaffApprovalReceipt;
             try {
+                normalizeHermesStaffApprovalContext(req.body?.approvalContext, approvalReceipt);
                 const payload = normalizeHermesStaffCreatePayload(req.body || {});
                 return await runWithIdempotency(req, res, async context => {
                     await lockHermesStaffCreateName(context.pool, payload.normalizedName);
                     try {
-                        await assertHermesStaffCreateUnique(context.pool, payload.normalizedName);
+                        await assertHermesStaffRoleMapping(context.pool, payload);
+                        await assertHermesStaffCreateUnique(context.pool, payload);
                     } catch (error) {
-                        if (error.code !== 'HERMES_STAFF_ALREADY_EXISTS') throw error;
+                        if (!error.statusCode || error.statusCode >= 500) throw error;
+                        const body = hermesStaffCreateErrorBody(error);
+                        body.meta = {
+                            ...(body.meta || {}),
+                            approvalContext: approvalReceipt
+                        };
                         return {
                             status: error.statusCode || 409,
-                            body: {
-                                success: false,
-                                error: error.message,
-                                code: error.code,
-                                meta: error.details
-                            }
+                            body
                         };
                     }
                     const created = await createHermesStaffRecord(context.pool, payload);
                     const data = mapHermesStaff(created);
+                    const businessWrites = hermesStaffBusinessWrites(1);
                     return {
                         status: 201,
                         body: {
                             success: true,
+                            ok: true,
+                            outcome: 'CREATED_STAFF_ONLY',
+                            staffId: data.staffId,
+                            ...businessWrites,
                             data,
                             meta: {
                                 businessContext: HERMES_SCHEDULE_BUSINESS_CONTEXT,
@@ -539,6 +886,7 @@ function createHermesScheduleRouter(options = {}) {
                                 scheduleTouched: false,
                                 applyRequiresSeparateScheduleApproval: true,
                                 sanitized: true,
+                                approvalContext: approvalReceipt,
                                 userMessage: `${data.displayName} створено у списку персоналу. Графік не змінювався.`
                             }
                         }
@@ -546,17 +894,20 @@ function createHermesScheduleRouter(options = {}) {
                 }, {
                     pool: db,
                     transactional: true,
-                    requestPath: '/api/hermes/staff'
+                    requestPath: '/api/hermes/staff',
+                    onResult: result => syncHermesStaffAuditReceiptFromIdempotency(
+                        req,
+                        approvalReceipt,
+                        result
+                    )
                 });
             } catch (error) {
+                setHermesStaffAuditReceipt(req, approvalReceipt, {
+                    outcome: 'NO_CREATE',
+                    businessWrites: hermesStaffBusinessWrites(0)
+                });
                 if (error.statusCode && error.statusCode < 500) {
-                    return sendHermesScheduleError(
-                        res,
-                        error.statusCode,
-                        error.code || 'HERMES_STAFF_CREATE_INVALID_PAYLOAD',
-                        error.message,
-                        error.details
-                    );
+                    return sendHermesStaffCreateError(res, error);
                 }
                 log.error('POST /api/hermes/staff failed', error);
                 return sendHermesScheduleError(

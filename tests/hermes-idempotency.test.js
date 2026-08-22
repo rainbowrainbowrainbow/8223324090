@@ -112,7 +112,7 @@ class FakeIdempotencyPool {
 }
 
 async function withHermesTestServer(testFn) {
-    const state = { createCalls: 0 };
+    const state = { createCalls: 0, idempotencyResults: [] };
     const idempotencyPool = new FakeIdempotencyPool();
     const app = express();
 
@@ -133,7 +133,8 @@ async function withHermesTestServer(testFn) {
                 };
             }, {
                 pool: idempotencyPool,
-                requestPath: '/api/hermes/tasks'
+                requestPath: '/api/hermes/tasks',
+                onResult: result => state.idempotencyResults.push(result)
             });
         } catch (err) {
             return next(err);
@@ -195,6 +196,8 @@ describe('Hermes idempotency', () => {
             assert.deepEqual(retry.data, first.data);
             assert.equal(first.data.task.id, 'task-1');
             assert.equal(state.createCalls, 1);
+            assert.deepEqual(state.idempotencyResults.map(result => result.state), ['new', 'replay']);
+            assert.deepEqual(state.idempotencyResults.map(result => result.body), [first.data, first.data]);
         });
     });
 

@@ -128,6 +128,126 @@ test('apiAudit writes safe Hermes mutation metadata without raw secrets or PII',
     }
 });
 
+test('apiAudit stores only the sanitized Hermes staff approval receipt', async () => {
+    const originalQuery = pool.query;
+    const writes = [];
+    pool.query = async (text, params = []) => {
+        if (/INSERT INTO user_action_log/i.test(text)) {
+            writes.push({ text, params });
+            return { rows: [], rowCount: 1 };
+        }
+        return originalQuery.call(pool, text, params);
+    };
+
+    const app = express();
+    app.use(express.json());
+    app.use('/api', apiAudit);
+    app.post('/api/hermes/staff', (req, res) => {
+        req.user = {
+            id: 77,
+            username: 'hermes_bot'
+        };
+        req.integration = {
+            id: 'hermes-event-genix-crm',
+            source: 'hermes',
+            authMode: 'x-api-key',
+            actorUserId: 77
+        };
+        req.hermesMutation = {
+            idempotencyKey: 'raw-staff-idempotency-key',
+            auditReceipt: {
+                approvalContext: {
+                    sourceContext: 'staff_registration',
+                    packetId: 'EG_STAFF_REG_PDF_FINISH_WAITER_20260819',
+                    chatId: '-1003979718101',
+                    messageId: '23',
+                    approvalType: 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+                    approvalAction: 'APPROVE_CANDIDATE',
+                    crmWriteApprovalPresent: true,
+                    crmWriteApprovalMatchesPacket: true,
+                    crmWriteApproval: 'raw-crm-write-approval-token',
+                    approvedByTelegramUserId: 'raw-telegram-user-id',
+                    privateForm: { phone: '+380009998877' }
+                },
+                outcome: 'ALREADY_EXISTS_NO_CREATE',
+                staffId: 937,
+                idempotencyReplay: true,
+                businessWrites: {
+                    staffWrites: 0,
+                    accountWrites: 0,
+                    scheduleWrites: 0,
+                    attendanceWrites: 0,
+                    payrollWrites: 0,
+                    auditWrites: 1,
+                    privateCounter: 'raw-private-counter'
+                },
+                rawPayload: req.body,
+                rawHeaders: req.headers
+            }
+        };
+        res.status(409).json({ ok: false });
+    });
+
+    const { server, baseUrl } = await listen(app);
+    try {
+        const res = await request(baseUrl, 'POST', '/api/hermes/staff', {
+            name: 'Private Candidate Name',
+            phone: '+380001112233',
+            password: 'raw-account-password'
+        }, {
+            'x-api-key': 'raw-hermes-api-key',
+            Authorization: 'Bearer raw-bearer-token'
+        });
+
+        assert.equal(res.status, 409, res.text);
+        await waitFor(() => writes.length === 1);
+
+        const meta = JSON.parse(writes[0].params[3]);
+        const serialized = JSON.stringify(writes);
+
+        assert.equal(meta.actionType, 'staff.create');
+        assert.deepEqual(meta.approvalContext, {
+            sourceContext: 'staff_registration',
+            packetId: 'EG_STAFF_REG_PDF_FINISH_WAITER_20260819',
+            chatId: '-1003979718101',
+            messageId: '23',
+            approvalType: 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+            approvalAction: 'APPROVE_CANDIDATE',
+            crmWriteApprovalPresent: true,
+            crmWriteApprovalMatchesPacket: true
+        });
+        assert.equal(meta.outcome, 'ALREADY_EXISTS_NO_CREATE');
+        assert.equal(meta.staffId, 937);
+        assert.equal(meta.idempotencyReplay, true);
+        assert.deepEqual(meta.businessWrites, {
+            staffWrites: 0,
+            accountWrites: 0,
+            scheduleWrites: 0,
+            attendanceWrites: 0,
+            payrollWrites: 0
+        });
+
+        for (const forbidden of [
+            'raw-crm-write-approval-token',
+            'raw-telegram-user-id',
+            'raw-private-counter',
+            'Private Candidate Name',
+            '+380001112233',
+            '+380009998877',
+            'raw-account-password',
+            'raw-staff-idempotency-key',
+            'raw-hermes-api-key',
+            'raw-bearer-token'
+        ]) {
+            assert.equal(serialized.includes(forbidden), false, `audit must not contain ${forbidden}`);
+        }
+        assert.equal(Object.hasOwn(meta.businessWrites, 'auditWrites'), false);
+    } finally {
+        await close(server);
+        pool.query = originalQuery;
+    }
+});
+
 test('Hermes audit redaction helpers hide sensitive headers and classify write actions', () => {
     assert.deepEqual(redactAuditHeaders({
         'x-api-key': 'secret',
@@ -142,6 +262,7 @@ test('Hermes audit redaction helpers hide sensitive headers and classify write a
     });
 
     assert.equal(hermesActionType({ method: 'POST', path: '/hermes/tasks' }), 'tasks.create');
+    assert.equal(hermesActionType({ method: 'POST', originalUrl: '/api/hermes/staff?source=registration' }), 'staff.create');
     assert.equal(hermesActionType({ method: 'POST', originalUrl: '/api/hermes/tasks/1/reassign?x=1' }), 'tasks.reassign');
     assert.equal(hermesActionType({ method: 'POST', path: '/tasks/1/reassign', originalUrl: '/api/hermes/tasks/1/reassign?x=1' }), 'tasks.reassign');
     assert.equal(hermesActionType({ method: 'POST', path: '/hermes/tasks/1/reschedule' }), 'tasks.reschedule');

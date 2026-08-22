@@ -535,6 +535,7 @@ Only these staff fields are returned:
   "displayName": "Славицька Анна",
   "department": "admin",
   "position": "Адміністратор",
+  "roleType": "administrator",
   "professions": ["administrator"],
   "scheduleable": true
 }
@@ -561,13 +562,28 @@ Idempotency-Key: <fresh-unique-key>
   "position": "Аніматор",
   "roleType": "animator",
   "hireDate": "2026-07-15",
-  "color": "#8B5CF6"
+  "color": "#8B5CF6",
+  "approvalContext": {
+    "sourceContext": "staff_registration",
+    "packetId": "EG_STAFF_REG_PDF_FINISH_WAITER_20260819",
+    "chatId": "-1003979718101",
+    "messageId": "23",
+    "approvalType": "STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE",
+    "approvalAction": "APPROVE_CANDIDATE",
+    "crmWriteApproval": "APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_EG_STAFF_REG_PDF_FINISH_WAITER_20260819_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE"
+  }
 }
 ```
 
 `role_type` is accepted as an alias for `roleType`;
 `secondary_professions` is accepted as an alias for `secondaryProfessions`.
 Optional `telegramUsername` is stored without a leading `@`.
+`roleType` is required. The CRM write approval must exactly equal
+`APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_<packetId>_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE`.
+Missing, malformed, or non-matching approval context returns
+`HERMES_STAFF_REGISTRATION_CRM_WRITE_APPROVAL_REQUIRED` with `outcome: NO_CREATE`
+and all business-write counters set to zero. Hermes remains responsible for
+checking its ledger before making the request; this value is not a signed proof.
 
 Successful response data is deliberately limited to the sanitized staff
 envelope:
@@ -575,12 +591,21 @@ envelope:
 ```json
 {
   "success": true,
+  "ok": true,
+  "outcome": "CREATED_STAFF_ONLY",
+  "staffId": 999,
+  "staffWrites": 1,
+  "accountWrites": 0,
+  "scheduleWrites": 0,
+  "attendanceWrites": 0,
+  "payrollWrites": 0,
   "data": {
     "staffId": 999,
     "name": "Плющкіт",
     "displayName": "Плющкіт",
     "department": "animators",
     "position": "Аніматор",
+    "roleType": "animator",
     "professions": ["animator"],
     "scheduleable": true
   },
@@ -597,12 +622,36 @@ envelope:
 ```
 
 The endpoint creates exactly one `staff` record, requires the configured Hermes
-actor to have `manage_staff`, rejects normalized duplicate names, and returns
+actor to have `hermes.staff.manage`, rejects normalized duplicate names, and returns
 only the sanitized staff envelope. It never writes `staff_schedule`/`hr_shifts`;
 if the body contains schedule fields such as `date`, `startTime`, or `endTime`,
-it returns `HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED`. Putting the
+it preserves `HERMES_STAFF_CREATE_SCHEDULE_SEPARATE_APPROVAL_REQUIRED` in `code`
+and also returns `policyCode: FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE`. Account,
+username, password, payroll, attendance, and KPI fields return
+`FORBIDDEN_FIELDS_FOR_STAFF_ONLY_CREATE`. Every policy rejection has
+`outcome: NO_CREATE` and zero business-write counters. Putting the
 person into a schedule must use `staff_schedule.preview` and `staff_schedule.apply`
 as a separate approved step.
+Unrecognized top-level fields are rejected by the same allowlist policy instead
+of being silently ignored.
+The endpoint has no production `dryRun` mode; `dryRun`/`dry_run` fields are
+rejected by the same fail-closed policy. Dry-run coverage exists only in local
+fake-DB and test-harness scenarios.
+
+A single active exact-name match returns HTTP `409` with
+`code: HERMES_STAFF_ALREADY_EXISTS`, `outcome: ALREADY_EXISTS_NO_CREATE`, the
+existing `staffId`, and zero business-write counters. Multiple matches or an
+inactive, reserve, or blacklisted match return
+`STAFF_DUPLICATE_AMBIGUOUS_REVIEW_REQUIRED` and require manual review. The
+`waiter` role is accepted only with the active catalog mapping
+`department=cafe`, `position=Офіціант`, `roleType=waiter`; inconsistent input
+returns `INCONSISTENT_STAFF_ROLE_MAPPING` without correcting or creating it.
+
+Audit metadata stores only the sanitized approval receipt and business outcome.
+The raw CRM-write approval, headers, full request payload, account/password
+fields, and private questionnaire data are not copied into `user_action_log.meta`.
+An idempotency replay is marked with `idempotencyReplay: true`; its per-request
+business-write counters remain zero while the cached API response stays unchanged.
 
 Bounded schedule read:
 

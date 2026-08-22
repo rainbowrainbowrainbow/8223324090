@@ -2009,7 +2009,15 @@ function buildCapabilitiesPayload(env = process.env) {
                 createRequiresConfirmation: true,
                 createRequiresIdempotencyKey: true,
                 createRequiredCapability: 'hermes.staff.manage',
-                createScheduleWrites: 0
+                createRequiresApprovalContext: true,
+                createApprovalSourceContext: 'staff_registration',
+                createApprovalType: 'STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+                createApprovalAction: 'APPROVE_CANDIDATE',
+                createCrmWriteApprovalTemplate: 'APPROVE_EG_STAFF_REGISTRATION_CRM_ROSTER_CREATE_<packetId>_STAFF_ONLY_NO_ACCOUNT_NO_SCHEDULE',
+                createAccountWrites: 0,
+                createScheduleWrites: 0,
+                createAttendanceWrites: 0,
+                createPayrollWrites: 0
             },
             staffAccountOnboarding: {
                 preview: 'POST /api/hermes/staff-account-onboarding/preview',

@@ -34,6 +34,7 @@ function isHermesAuditRequest(req = {}) {
 function hermesActionType(req = {}) {
     const path = String(req.originalUrl || req.path || '').split('?')[0].replace(/^\/api(?=\/)/, '');
     if (req.method === 'POST' && /^\/hermes\/tasks\/?$/.test(path)) return 'tasks.create';
+    if (req.method === 'POST' && /^\/hermes\/staff\/?$/.test(path)) return 'staff.create';
     if (req.method === 'POST' && /^\/hermes\/tasks\/[^/]+\/complete\/?$/.test(path)) return 'tasks.complete';
     if (req.method === 'POST' && /^\/hermes\/tasks\/[^/]+\/reassign\/?$/.test(path)) return 'tasks.reassign';
     if (req.method === 'POST' && /^\/hermes\/tasks\/[^/]+\/reschedule\/?$/.test(path)) return 'tasks.reschedule';
@@ -61,6 +62,73 @@ function auditUsername(req = {}) {
     return req.user?.username;
 }
 
+function sanitizedText(value, maxLength = 200) {
+    if (typeof value !== 'string') return undefined;
+    const text = value.trim();
+    return text ? text.substring(0, maxLength) : undefined;
+}
+
+function sanitizeHermesApprovalContext(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+    const approvalContext = {};
+    const textFields = {
+        sourceContext: 80,
+        packetId: 200,
+        chatId: 80,
+        messageId: 80,
+        approvalType: 120,
+        approvalAction: 120
+    };
+
+    for (const [field, maxLength] of Object.entries(textFields)) {
+        const sanitized = sanitizedText(value[field], maxLength);
+        if (sanitized !== undefined) approvalContext[field] = sanitized;
+    }
+
+    for (const field of ['crmWriteApprovalPresent', 'crmWriteApprovalMatchesPacket']) {
+        if (typeof value[field] === 'boolean') approvalContext[field] = value[field];
+    }
+
+    return Object.keys(approvalContext).length ? approvalContext : undefined;
+}
+
+function sanitizeHermesBusinessWrites(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+    const businessWrites = {};
+    for (const field of [
+        'staffWrites',
+        'accountWrites',
+        'scheduleWrites',
+        'attendanceWrites',
+        'payrollWrites'
+    ]) {
+        if (Number.isSafeInteger(value[field]) && value[field] >= 0) {
+            businessWrites[field] = value[field];
+        }
+    }
+
+    return Object.keys(businessWrites).length ? businessWrites : undefined;
+}
+
+function sanitizeHermesAuditReceipt(value) {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) return undefined;
+
+    const receipt = {};
+    const approvalContext = sanitizeHermesApprovalContext(value.approvalContext);
+    const outcome = sanitizedText(value.outcome, 120);
+    const businessWrites = sanitizeHermesBusinessWrites(value.businessWrites);
+
+    if (approvalContext) receipt.approvalContext = approvalContext;
+    if (outcome !== undefined) receipt.outcome = outcome;
+    if (Number.isSafeInteger(value.staffId) && value.staffId > 0) receipt.staffId = value.staffId;
+    if (typeof value.idempotencyReplay === 'boolean') receipt.idempotencyReplay = value.idempotencyReplay;
+    if (businessWrites) receipt.businessWrites = businessWrites;
+
+    return Object.keys(receipt).length ? receipt : undefined;
+}
+
 function buildAuditMeta(req, res, options = {}) {
     const meta = {
         status: res.statusCode,
@@ -77,6 +145,9 @@ function buildAuditMeta(req, res, options = {}) {
         meta.authMode = req.integration?.authMode || undefined;
         meta.actorUserId = req.integration?.actorUserId || req.user?.id || req.user?.userId || undefined;
         meta.idempotencyKeyFingerprint = fingerprint(req.hermesMutation?.idempotencyKey);
+
+        const auditReceipt = sanitizeHermesAuditReceipt(req.hermesMutation?.auditReceipt);
+        if (auditReceipt) Object.assign(meta, auditReceipt);
     }
 
     return meta;

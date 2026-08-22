@@ -193,6 +193,60 @@ function saleInput(receiptId = crypto.randomUUID(), overrides = {}) {
     };
 }
 
+test('receipt verification allows omitted context but validates any echoed EventGenix context fail closed', () => {
+    const receiptId = crypto.randomUUID();
+    const expected = {
+        providerOperationId: receiptId,
+        amountMinor: '12345',
+        receivedAmountMinor: null,
+        changeAmountMinor: '0',
+        tender: 'card_terminal_manual',
+        expectedReceiptType: 'SELL',
+        expectedRegisterId: PROVIDER_REGISTER_ID,
+        expectedCashierId: PROVIDER_CASHIER_ID,
+        expectedShiftId: PROVIDER_SHIFT_ID,
+        fiscalOperationId: '501',
+        paymentOrderId: '301',
+        fiscalProfileId: '7'
+    };
+    const client = { baseUrl: 'https://api.checkbox.in.ua' };
+    const verify = receipt => normalizeReceiptArtifacts(receipt, client, expected);
+    const withoutContext = checkboxReceipt(receiptId);
+    delete withoutContext.context;
+
+    for (const context of [undefined, null, {}, '', '   ', { provider_note: 'not EventGenix context' }]) {
+        const receipt = { ...withoutContext };
+        if (context !== undefined) receipt.context = context;
+        assert.equal(verify(receipt).verified, true);
+    }
+
+    assert.equal(verify({
+        ...withoutContext,
+        context: JSON.stringify({
+            eventgenix: 'True',
+            fiscal_profile_id: 7,
+            fiscal_operation_id: 501,
+            payment_order_id: 301
+        })
+    }).verified, true);
+
+    for (const [context, code] of [
+        ['not-json', 'checkbox_receipt_context_malformed'],
+        [[], 'checkbox_receipt_context_malformed'],
+        [{ eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: 501 }, 'checkbox_receipt_context_incomplete'],
+        [{ eventgenix: false, fiscal_profile_id: 7, fiscal_operation_id: 501, payment_order_id: 301 }, 'checkbox_receipt_context_incomplete'],
+        [{ eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: 999, payment_order_id: 301 }, 'checkbox_receipt_context_operation_mismatch'],
+        [{ eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: 501, payment_order_id: 999 }, 'checkbox_receipt_context_payment_order_mismatch'],
+        [{ eventgenix: true, fiscal_profile_id: 999, fiscal_operation_id: 501, payment_order_id: 301 }, 'checkbox_receipt_context_profile_mismatch']
+    ]) {
+        assert.throws(
+            () => verify({ ...withoutContext, context }),
+            error => error instanceof CheckboxClientError && error.code === code && error.status === 409,
+            code
+        );
+    }
+});
+
 test('runtime provider maps worker DTO to official auth, shift, validate, sell and lookup calls', async () => {
     const receiptId = crypto.randomUUID();
     const { server, calls, baseUrl } = await listenMock(call => {
@@ -959,7 +1013,7 @@ test('runtime provider maps official service in/out receipts and verifies servic
         total_sum: 5000,
         total_payment: 5000,
         payments: [],
-        context: { eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: type === 'SERVICE_IN' ? 701 : 702 }
+        context: undefined
     });
     const { server, calls, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };

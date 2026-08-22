@@ -2,14 +2,14 @@
 
 Status: implementation contract for a disabled production MVP. Production Checkbox activation is out of scope.
 
-Last reviewed: 2026-08-11.
+Last reviewed: 2026-08-22.
 
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live package baseline checked for this handoff: `0.80.120` (`Checkbox Shift Recovery`).
-- Live commit checked for this handoff: `24c18183731cb12903c7d13920889483a07335e8`.
-- Live source branch checked for this handoff: `codex/checkbox-hardening-release-v080103`.
+- Live package baseline checked before this hardening release: `0.81.16` (`Checkbox Test Readiness Hardening`).
+- Live commit checked before this hardening release: `e2ebbe944a3fa87d5ca92414447e62fc03b48885`.
+- Live source branch checked before this hardening release: `codex/eventgenix-production`.
 - This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 
 All follow-up implementation or release tasks must start from the newest live source confirmed by the release staleness guard, not from stale chat history, stale docs, or a dirty `.codex-temp` branch.
@@ -20,7 +20,7 @@ All follow-up implementation or release tasks must start from the newest live so
 - ReDoc UI: `https://api.checkbox.in.ua/api/redoc`.
 - Swagger UI: `https://api.checkbox.in.ua/api/docs`.
 - OpenAPI JSON: `https://api.checkbox.in.ua/api/openapi.json`.
-- OpenAPI version reviewed during this task: `2.104.1+7f81a60c`, OpenAPI `3.1.0`.
+- OpenAPI version reviewed during this task: `2.105.1+62034299`, OpenAPI `3.1.0`.
 
 Relevant capabilities confirmed in the current OpenAPI contract:
 
@@ -90,7 +90,7 @@ Required logical gates for follow-up tasks:
 | Permissions | Narrow capabilities, user/profile/location/register bindings, and `capability_scope` enforcement exist | Production bindings require separate operator configuration | Supervisor PIN approval workflows |
 | Configuration | Operator CLI supports dry-run/preflight/apply/status/diff, explicit change commands, and local non-secret config files | Production legal/tax/provider/user values still require explicit activation input | Multi-FOP production rollout |
 | Webhook | Route-specific raw body and official `x-request-signature` Base64 HMAC verification exist | Production webhook configuration remains disabled and out of scope | Provider webhook activation/configuration |
-| Sandbox QA | Sandbox smoke script and local mock HTTP/PostgreSQL integration tests exist | Real sandbox run requires local `CHECKBOX_SANDBOX_*` secrets and `is_test=true` proof before mutation | Extended scenarios after MVP sale succeeds |
+| Sandbox QA | Local mock/PG tests plus a real configured test-register proof completed on 2026-08-22: exact test identity, one CASH and one CASHLESS receipt reached `DONE`, and only smoke-owned shifts were closed | Keep a stable local device ID and never reuse the test-only unreported-permission exception in production | Extended scenarios after MVP sale succeeds |
 | Production activation | Not active | Separate activation task required | Preschool/day-care separate profile/FOP/register |
 
 ## MVP Mapping

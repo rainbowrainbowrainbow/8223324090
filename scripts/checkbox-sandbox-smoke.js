@@ -12,6 +12,7 @@ const { WebhookReplayGuard, signCheckboxWebhookBody, verifyCheckboxWebhookSignat
 const REQUIRED_OPENAPI_PATHS = Object.freeze({
     '/api/v1/cashier/signin': ['post'],
     '/api/v1/cashier/signinPinCode': ['post'],
+    '/api/v1/cashier/signout': ['post'],
     '/api/v1/cashier/me': ['get'],
     '/api/v1/cash-registers/info': ['get'],
     '/api/v1/cashier/check-signature': ['get'],
@@ -280,9 +281,22 @@ function assertSandboxProofMutationGuard(config, diagnostics = {}) {
             || (currentShift.status === 'blocked' && ['CREATED', 'OPENING'].includes(currentShiftStatus)));
     if (!currentShiftRecoverable) blocked.push('current_shift');
 
+    const requestedTenders = Array.isArray(config.tenders) && config.tenders.length
+        ? config.tenders
+        : ['cash', 'card_terminal_manual'];
+    const requestedPermissions = requestedTenders.includes('cash')
+        ? [['cash_permission', 'cash_payment']]
+        : [];
+    if (requestedTenders.includes('card_terminal_manual')) {
+        requestedPermissions.push(['card_permission', 'card_payment']);
+    }
     const unreported = [];
-    for (const [code, permission] of [['cash_permission', 'cash_payment'], ['card_permission', 'card_payment']]) {
+    for (const [code, permission] of requestedPermissions) {
         const check = checks.get(code);
+        if (!check || check.status === 'unavailable') {
+            blocked.push(code);
+            continue;
+        }
         const value = check?.details?.permission === permission ? check.details.value : undefined;
         const state = check?.details?.state
             || (value === true ? 'allowed' : value === false ? 'denied' : value === null ? 'unreported' : 'malformed');
@@ -334,10 +348,12 @@ function shiftIdentity(shift = {}) {
     };
 }
 
-function assertShiftIdentity(shift, config) {
+function assertShiftIdentity(shift, config, { requireCashier = true } = {}) {
     const identity = shiftIdentity(shift);
     assertSame(identity.registerId, config.expectedRegisterId, 'checkbox_sandbox_shift_register_mismatch', 'shift.cash_register.id');
-    assertSame(identity.cashierId, config.expectedCashierId, 'checkbox_sandbox_shift_cashier_mismatch', 'shift.cashier.id');
+    if (requireCashier || identity.cashierId) {
+        assertSame(identity.cashierId, config.expectedCashierId, 'checkbox_sandbox_shift_cashier_mismatch', 'shift.cashier.id');
+    }
     return identity;
 }
 
@@ -542,7 +558,7 @@ async function closeOwnedSandboxShift({
         }
 
         const currentShift = await client.getCurrentShift();
-        const currentIdentity = assertShiftIdentity(currentShift, config);
+        const currentIdentity = assertShiftIdentity(currentShift, config, { requireCashier: false });
         assertSame(currentIdentity.shiftId, expectedShiftId, 'checkbox_sandbox_current_shift_uuid_mismatch', 'current_shift.id');
         if (currentIdentity.status !== 'OPENED') {
             throw new CheckboxClientError('checkbox_sandbox_current_shift_not_opened', 'Sandbox cleanup will close only the exact currently OPENED smoke-owned shift', {
@@ -676,10 +692,20 @@ async function runSandboxSmoke() {
 
         const runId = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
         const proofOptions = { openedShift: shift, identityProof: proofGuard };
-        const cashSale = await runSandboxSaleProof(client, config, runId, 'cash', proofOptions);
-        const cashlessSale = await runSandboxSaleProof(client, config, runId, 'card_terminal_manual', proofOptions);
+        const sales = [];
+        for (const tender of config.tenders) {
+            sales.push(await runSandboxSaleProof(client, config, runId, tender, proofOptions));
+        }
+        const cashSale = sales.find(sale => sale.payload?.payments?.[0]?.type === 'CASH') || null;
 
         if (config.includeProOperations) {
+            if (!cashSale) {
+                throw new CheckboxClientError(
+                    'checkbox_sandbox_pro_requires_cash_sale',
+                    'Phase 2 sandbox proof requires the cash tender to create a linked return',
+                    { status: 2, retryable: false }
+                );
+            }
             const serviceIn = await client.createServiceReceipt(mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_in', amountMinor: config.amountMinor, context: { run_id: runId } }));
             logStep('service-in-created', { status: serviceIn?.status || null });
             const serviceOut = await client.createServiceReceipt(mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_out', amountMinor: config.amountMinor, context: { run_id: runId } }));
@@ -700,14 +726,17 @@ async function runSandboxSmoke() {
         const closeResult = await closeOwnedSandboxShift({ client, config, shift, openedBySmoke });
         shiftClosed = closeResult.closed === true;
         logStep(closeResult.attempted ? 'shift-closed-ok' : 'shift-close-skipped', closeResult);
+        await client.signOut();
+        logStep('cashier-signout-ok');
         console.log(JSON.stringify({
             ok: true,
             smoke: 'checkbox:sandbox',
-            receiptCount: 2,
-            receipts: [
-                { tender: 'CASH', status: cashSale.verified.status, verified: cashSale.verified.verified === true },
-                { tender: 'CASHLESS', status: cashlessSale.verified.status, verified: cashlessSale.verified.verified === true }
-            ],
+            receiptCount: sales.length,
+            receipts: sales.map(sale => ({
+                tender: sale.verified.paymentType,
+                status: sale.verified.status,
+                verified: sale.verified.verified === true
+            })),
             openedBySmoke,
             shiftClosed
         }));
@@ -719,6 +748,16 @@ async function runSandboxSmoke() {
             } catch (cleanupError) {
                 logStep('shift-cleanup-after-failure-blocked', {
                     code: cleanupError?.code || cleanupError?.name || 'checkbox_sandbox_cleanup_failed'
+                });
+            }
+        }
+        if (shiftClosed || !openedBySmoke) {
+            try {
+                await client.signOut();
+                logStep('cashier-signout-after-failure-ok');
+            } catch (signOutError) {
+                logStep('cashier-signout-after-failure-blocked', {
+                    code: signOutError?.code || signOutError?.name || 'checkbox_sandbox_signout_failed'
                 });
             }
         }

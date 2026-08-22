@@ -78,6 +78,7 @@ test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', 
     CHECKBOX_SANDBOX_PASSWORD: 'secret-password',
     CHECKBOX_SANDBOX_LICENSE_KEY: 'license-secret',
     CHECKBOX_SANDBOX_ACCESS_KEY: 'access-secret',
+    CHECKBOX_SANDBOX_DEVICE_ID: 'eventgenix-test-device',
     CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID: 'org-test',
     CHECKBOX_SANDBOX_EXPECT_REGISTER_ID: 'register-test',
     CHECKBOX_SANDBOX_EXPECT_CASHIER_ID: 'cashier-test'
@@ -87,6 +88,7 @@ test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', 
   assert.equal(config.expectedIsTest, true);
   assert.equal(config.expectedIsTestExplicit, false);
   assert.equal(config.includeProOperations, false);
+  assert.deepEqual(config.tenders, ['cash', 'card_terminal_manual']);
   assert.equal(config.allowUnreportedPaymentPermissions, false);
   assert.doesNotMatch(summary, /org-test|register-test|cashier-test/);
 });
@@ -98,6 +100,7 @@ test('sandbox config supports a mutation-free PIN readiness mode', () => {
     CHECKBOX_SANDBOX_AUTH_MODE: 'pin',
     CHECKBOX_SANDBOX_PIN_CODE: pinCode,
     CHECKBOX_SANDBOX_LICENSE_KEY: 'license-secret',
+    CHECKBOX_SANDBOX_DEVICE_ID: 'eventgenix-test-device',
     CHECKBOX_SANDBOX_READINESS_ONLY: 'true',
     CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID: 'org-test',
     CHECKBOX_SANDBOX_EXPECT_REGISTER_ID: 'register-test',
@@ -108,6 +111,58 @@ test('sandbox config supports a mutation-free PIN readiness mode', () => {
   assert.equal(config.confirmMutations, false);
   assert.equal(config.login, '');
   assert.equal(config.password, '');
+});
+
+test('sandbox config requires an explicit stable device identity across process restarts', () => {
+  const shared = {
+    CHECKBOX_SANDBOX_BASE_URL: 'https://api.checkbox.in.ua',
+    CHECKBOX_SANDBOX_LOGIN: 'cashier',
+    CHECKBOX_SANDBOX_PASSWORD: 'secret-password',
+    CHECKBOX_SANDBOX_LICENSE_KEY: 'license-secret',
+    CHECKBOX_SANDBOX_DEVICE_ID: 'eventgenix-explicit-test-device',
+    CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID: 'org-test',
+    CHECKBOX_SANDBOX_EXPECT_REGISTER_ID: 'register-test',
+    CHECKBOX_SANDBOX_EXPECT_CASHIER_ID: 'cashier-test'
+  };
+  const first = loadCheckboxSandboxConfig(shared);
+  const second = loadCheckboxSandboxConfig(shared);
+  assert.equal(first.deviceId, second.deviceId);
+  assert.equal(first.deviceId, 'eventgenix-explicit-test-device');
+  const { CHECKBOX_SANDBOX_DEVICE_ID, ...withoutDevice } = shared;
+  assert.throws(
+    () => loadCheckboxSandboxConfig(withoutDevice),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_env_missing'
+  );
+});
+
+test('sandbox config supports a card-only recovery proof and rejects unknown tenders', () => {
+  const shared = {
+    CHECKBOX_SANDBOX_BASE_URL: 'https://api.checkbox.in.ua',
+    CHECKBOX_SANDBOX_LOGIN: 'cashier',
+    CHECKBOX_SANDBOX_PASSWORD: 'secret-password',
+    CHECKBOX_SANDBOX_LICENSE_KEY: 'license-secret',
+    CHECKBOX_SANDBOX_DEVICE_ID: 'eventgenix-test-device',
+    CHECKBOX_SANDBOX_EXPECT_REGISTER_ID: 'register-test'
+  };
+  const cardOnly = loadCheckboxSandboxConfig({
+    ...shared,
+    CHECKBOX_SANDBOX_TENDERS: 'card'
+  });
+  assert.deepEqual(cardOnly.tenders, ['card_terminal_manual']);
+  assert.throws(
+    () => loadCheckboxSandboxConfig({ ...shared, CHECKBOX_SANDBOX_TENDERS: 'crypto' }),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_tenders_invalid'
+  );
+});
+
+test('card-only proof does not require an unrelated cash permission', () => {
+  const diagnostics = proofDiagnostics({ cash: false, card: true });
+  const result = assertSandboxProofMutationGuard(
+    proofConfig({ tenders: ['card_terminal_manual'] }),
+    diagnostics
+  );
+  assert.equal(result.allowed, true);
+  assert.deepEqual(result.unreportedPaymentPermissions, []);
 });
 
 test('sandbox proof permits only unreported test payment permissions behind every explicit guard', () => {
@@ -166,6 +221,28 @@ test('sandbox proof never bypasses malformed payment permissions', () => {
     error => error instanceof CheckboxClientError
       && error.code === 'checkbox_sandbox_payment_permission_malformed'
       && error.details?.malformed === true
+  );
+});
+
+test('sandbox proof reports provider-unavailable readiness without misclassifying permissions', () => {
+  const diagnostics = proofDiagnostics({ card: null });
+  const auth = diagnostics.checks.find(check => check.code === 'auth');
+  auth.status = 'blocked';
+  auth.ready = false;
+  const card = diagnostics.checks.find(check => check.code === 'card_permission');
+  card.status = 'unavailable';
+  card.ready = false;
+  card.details.state = 'malformed';
+
+  assert.throws(
+    () => assertSandboxProofMutationGuard(
+      proofConfig({ tenders: ['card_terminal_manual'] }),
+      diagnostics
+    ),
+    error => error instanceof CheckboxClientError
+      && error.code === 'checkbox_sandbox_proof_readiness_blocked'
+      && error.details?.blocked?.includes('auth')
+      && error.details?.blocked?.includes('card_permission')
   );
 });
 
@@ -363,6 +440,63 @@ test('sandbox shift cleanup never closes a pre-existing shift and closes only th
   assert.equal(owned.closed, true);
   assert.equal(closeCalls, 1);
   assert.equal(lookupCalls, 1);
+});
+
+test('sandbox shift cleanup accepts official short current-shift without cashier after detailed ownership proof', async () => {
+  const config = proofConfig({ closeShift: true });
+  const detailedShift = {
+    id: 'shift-owned',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  const shortCurrentShift = {
+    id: 'shift-owned',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' }
+  };
+  let closeCalls = 0;
+  const client = {
+    async getShiftById() { return detailedShift; },
+    async getCurrentShift() { return shortCurrentShift; },
+    async closeShift() {
+      closeCalls += 1;
+      return { ...detailedShift, status: 'CLOSED' };
+    }
+  };
+
+  const result = await closeOwnedSandboxShift({ client, config, shift: detailedShift, openedBySmoke: true });
+  assert.equal(result.closed, true);
+  assert.equal(closeCalls, 1);
+});
+
+test('sandbox shift cleanup rejects a cashier mismatch when short current-shift includes cashier', async () => {
+  const config = proofConfig({ closeShift: true });
+  const detailedShift = {
+    id: 'shift-owned',
+    status: 'OPENED',
+    cash_register: { id: 'register-test' },
+    cashier: { id: 'cashier-test' }
+  };
+  let closeCalls = 0;
+  const client = {
+    async getShiftById() { return detailedShift; },
+    async getCurrentShift() {
+      return {
+        id: 'shift-owned',
+        status: 'OPENED',
+        cash_register: { id: 'register-test' },
+        cashier: { id: 'cashier-other' }
+      };
+    },
+    async closeShift() { closeCalls += 1; }
+  };
+
+  await assert.rejects(
+    closeOwnedSandboxShift({ client, config, shift: detailedShift, openedBySmoke: true }),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_sandbox_shift_cashier_mismatch'
+  );
+  assert.equal(closeCalls, 0);
 });
 
 test('sandbox mutations fail closed when Checkbox already has a shift not owned by this run', () => {
@@ -592,6 +726,25 @@ test('client maps official license-bound PIN signin without login or password fi
   assert.equal(calls[0].headers.Authorization, undefined);
   assert.equal(Object.hasOwn(calls[0].body, 'login'), false);
   assert.equal(Object.hasOwn(calls[0].body, 'password'), false);
+});
+
+test('client signs out the authenticated cashier and clears the cached token', async () => {
+  const calls = [];
+  const fetchImpl = async (url, options = {}) => {
+    calls.push({ url, options });
+    return new Response(null, { status: 204 });
+  };
+  const client = new CheckboxClient({
+    baseUrl: 'https://api.checkbox.in.ua',
+    fetchImpl
+  });
+  client.setAccessToken('test-token');
+  await client.signOut();
+  assert.equal(calls.length, 1);
+  assert.equal(new URL(calls[0].url).pathname, '/api/v1/cashier/signout');
+  assert.equal(calls[0].options.method, 'POST');
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer test-token');
+  assert.equal(client.accessToken, null);
 });
 
 test('webhook signature and replay helper accepts first event, flags replay and rejects conflict', () => {

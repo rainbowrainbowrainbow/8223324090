@@ -646,8 +646,30 @@ function receiptArtifactUrl(client, receiptId, format) {
     return safeCheckboxArtifactUrl(client.baseUrl, `/api/v1/receipts/${encodeURIComponent(receiptId)}/${format}`);
 }
 
+function parseOptionalReceiptContext(receipt = {}) {
+    if (!Object.prototype.hasOwnProperty.call(receipt, 'context') || receipt.context == null) {
+        return { value: {}, malformed: false };
+    }
+    if (receipt.context && typeof receipt.context === 'object' && !Array.isArray(receipt.context)) {
+        return { value: receipt.context, malformed: false };
+    }
+    if (typeof receipt.context === 'string') {
+        if (!receipt.context.trim()) return { value: {}, malformed: false };
+        try {
+            const parsed = JSON.parse(receipt.context);
+            if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+                return { value: parsed, malformed: false };
+            }
+        } catch {
+            // A non-empty, non-JSON context violates the official object schema.
+        }
+    }
+    return { value: {}, malformed: true };
+}
+
 function extractReceiptIdentity(receipt = {}) {
     const payments = Array.isArray(receipt.payments) ? receipt.payments : [];
+    const context = parseOptionalReceiptContext(receipt);
     return {
         id: textOrNull(receipt.id || receipt.receipt_id),
         status: upperStatus(receipt.status),
@@ -659,8 +681,36 @@ function extractReceiptIdentity(receipt = {}) {
         registerId: textOrNull(receipt.cash_register_id || receipt.cash_register?.id || receipt.shift?.cash_register?.id),
         shiftId: textOrNull(receipt.shift_id || receipt.shift?.id),
         payments,
-        context: safeJsonObject(receipt.context)
+        context: context.value,
+        contextMalformed: context.malformed
     };
+}
+
+function validateEchoedEventGenixContext(identity = {}, expected = {}) {
+    if (identity.contextMalformed) {
+        throw new CheckboxClientError('checkbox_receipt_context_malformed', 'Checkbox receipt context does not match the official object schema', {
+            status: 409,
+            retryable: false
+        });
+    }
+
+    const context = identity.context || {};
+    const keys = ['eventgenix', 'fiscal_operation_id', 'payment_order_id', 'fiscal_profile_id'];
+    if (!keys.some(key => Object.prototype.hasOwnProperty.call(context, key))) return;
+
+    const missing = keys.filter(key => !Object.prototype.hasOwnProperty.call(context, key));
+    const markerValid = context.eventgenix === true || context.eventgenix === 'True';
+    if (missing.length || !markerValid) {
+        throw new CheckboxClientError('checkbox_receipt_context_incomplete', 'Checkbox receipt returned incomplete EventGenix context', {
+            status: 409,
+            retryable: false,
+            details: { missing, markerValid }
+        });
+    }
+
+    assertSameText(String(context.fiscal_operation_id ?? ''), expected.fiscalOperationId, 'checkbox_receipt_context_operation_mismatch', 'context.fiscal_operation_id');
+    assertSameText(String(context.payment_order_id ?? ''), expected.paymentOrderId, 'checkbox_receipt_context_payment_order_mismatch', 'context.payment_order_id');
+    assertSameText(String(context.fiscal_profile_id ?? ''), expected.fiscalProfileId, 'checkbox_receipt_context_profile_mismatch', 'context.fiscal_profile_id');
 }
 
 function expectedPaymentType(tender) {
@@ -731,12 +781,7 @@ function validateReceiptIdentity(receipt = {}, expected = {}) {
     assertSameText(identity.registerId, expected.expectedRegisterId, 'checkbox_receipt_register_mismatch', 'receipt.cash_register_id');
     assertSameText(identity.cashierId, expected.expectedCashierId, 'checkbox_receipt_cashier_mismatch', 'receipt.cashier_id');
     assertSameText(identity.shiftId, expected.expectedShiftId, 'checkbox_receipt_shift_mismatch', 'receipt.shift_id');
-    if (!identity.context || identity.context.eventgenix !== true) {
-        throw new CheckboxClientError('checkbox_receipt_context_missing', 'Checkbox receipt did not echo EventGenix context', { status: 409, retryable: false });
-    }
-    assertSameText(String(identity.context.fiscal_operation_id ?? ''), expected.fiscalOperationId, 'checkbox_receipt_context_operation_mismatch', 'context.fiscal_operation_id');
-    assertSameText(String(identity.context.payment_order_id ?? ''), expected.paymentOrderId, 'checkbox_receipt_context_payment_order_mismatch', 'context.payment_order_id');
-    assertSameText(String(identity.context.fiscal_profile_id ?? ''), expected.fiscalProfileId, 'checkbox_receipt_context_profile_mismatch', 'context.fiscal_profile_id');
+    validateEchoedEventGenixContext(identity, expected);
     validateReceiptPayment(identity, expected);
     return identity;
 }

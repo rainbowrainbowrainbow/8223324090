@@ -66,7 +66,7 @@ class CheckboxClient {
         return headers;
     }
 
-    async request(path, { method = 'GET', headers = {}, body = undefined, auth = true, license = false, accessKey = false, device = false, expectBinary = false, timeoutMs = this.timeoutMs } = {}) {
+    async request(path, { method = 'GET', headers = {}, body = undefined, auth = true, license = false, accessKey = false, device = false, expectBinary = false, expectEmpty = false, timeoutMs = this.timeoutMs } = {}) {
         const controller = new AbortController();
         const timer = setTimeout(() => controller.abort(), Math.max(1000, timeoutMs));
         const hasBody = body !== undefined;
@@ -82,11 +82,17 @@ class CheckboxClient {
                 signal: controller.signal
             });
             const contentType = response.headers?.get?.('content-type') || '';
-            const payload = expectBinary
-                ? Buffer.from(await response.arrayBuffer())
-                : contentType.includes('application/json')
+            let payload;
+            if (expectBinary) {
+                payload = Buffer.from(await response.arrayBuffer());
+            } else if (expectEmpty && response.ok) {
+                await response.arrayBuffer();
+                payload = null;
+            } else {
+                payload = contentType.includes('application/json')
                     ? await response.json()
                     : await response.text();
+            }
             if (!response.ok) {
                 const status = response.status || 500;
                 const retryable = status >= 500 || status === 408 || status === 429;
@@ -125,6 +131,15 @@ class CheckboxClient {
             body: { pin_code: pinCode }
         });
         this.setAccessToken(normalizeToken(payload));
+        return payload;
+    }
+
+    async signOut() {
+        const payload = await this.request('/api/v1/cashier/signout', {
+            method: 'POST',
+            expectEmpty: true
+        });
+        this.setAccessToken(null);
         return payload;
     }
 

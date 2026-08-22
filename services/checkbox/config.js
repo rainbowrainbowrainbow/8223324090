@@ -211,6 +211,28 @@ function assertSandboxBaseUrl(baseUrl) {
     return parsed.origin;
 }
 
+function sandboxTenders(value) {
+    const aliases = new Map([
+        ['cash', 'cash'],
+        ['card', 'card_terminal_manual'],
+        ['cashless', 'card_terminal_manual'],
+        ['card_terminal_manual', 'card_terminal_manual']
+    ]);
+    const requested = String(value || 'cash,card_terminal_manual')
+        .split(',')
+        .map(item => item.trim().toLowerCase())
+        .filter(Boolean);
+    const invalid = requested.filter(item => !aliases.has(item));
+    if (!requested.length || invalid.length) {
+        throw new CheckboxClientError(
+            'checkbox_sandbox_tenders_invalid',
+            'CHECKBOX_SANDBOX_TENDERS must contain cash and/or card_terminal_manual',
+            { status: 2, retryable: false, details: { invalid } }
+        );
+    }
+    return [...new Set(requested.map(item => aliases.get(item)))];
+}
+
 function loadCheckboxSandboxConfig(env = process.env) {
     const baseUrl = assertSandboxBaseUrl(requireEnv(env, 'CHECKBOX_SANDBOX_BASE_URL'));
     const login = String(env.CHECKBOX_SANDBOX_LOGIN || '').trim();
@@ -239,6 +261,7 @@ function loadCheckboxSandboxConfig(env = process.env) {
             retryable: false
         });
     }
+    const expectedRegisterId = String(env.CHECKBOX_SANDBOX_EXPECT_REGISTER_ID || '').trim() || null;
     const config = {
         baseUrl,
         login,
@@ -247,7 +270,7 @@ function loadCheckboxSandboxConfig(env = process.env) {
         authMode,
         licenseKey: requireEnv(env, 'CHECKBOX_SANDBOX_LICENSE_KEY'),
         accessKey: String(env.CHECKBOX_SANDBOX_ACCESS_KEY || '').trim() || null,
-        deviceId: String(env.CHECKBOX_SANDBOX_DEVICE_ID || '').trim() || `eventgenix-sandbox-${process.pid}`,
+        deviceId: requireEnv(env, 'CHECKBOX_SANDBOX_DEVICE_ID'),
         clientName: String(env.CHECKBOX_SANDBOX_CLIENT_NAME || DEFAULT_CLIENT_NAME).trim(),
         clientVersion: String(env.CHECKBOX_SANDBOX_CLIENT_VERSION || DEFAULT_CLIENT_VERSION).trim(),
         openApiUrl: String(env.CHECKBOX_SANDBOX_OPENAPI_URL || DEFAULT_OPENAPI_URL).trim(),
@@ -259,10 +282,11 @@ function loadCheckboxSandboxConfig(env = process.env) {
         webhookSecret: String(env.CHECKBOX_SANDBOX_WEBHOOK_SECRET || '').trim() || null,
         taxCode: String(env.CHECKBOX_SANDBOX_TAX_CODE || '').trim() || null,
         amountMinor: String(env.CHECKBOX_SANDBOX_AMOUNT_MINOR || '1000').trim(),
+        tenders: sandboxTenders(env.CHECKBOX_SANDBOX_TENDERS),
         returnAmountMinor: String(env.CHECKBOX_SANDBOX_RETURN_AMOUNT_MINOR || env.CHECKBOX_SANDBOX_AMOUNT_MINOR || '1000').trim(),
         expectedOrganizationId: String(env.CHECKBOX_SANDBOX_EXPECT_ORGANIZATION_ID || '').trim() || null,
         expectedOutletId: String(env.CHECKBOX_SANDBOX_EXPECT_OUTLET_ID || '').trim() || null,
-        expectedRegisterId: String(env.CHECKBOX_SANDBOX_EXPECT_REGISTER_ID || '').trim() || null,
+        expectedRegisterId,
         expectedCashierId: String(env.CHECKBOX_SANDBOX_EXPECT_CASHIER_ID || '').trim() || null,
         expectedIsTest: expectedIsTestRaw ? boolEnv(expectedIsTestRaw) : true,
         expectedIsTestExplicit: Boolean(expectedIsTestRaw),
@@ -291,6 +315,7 @@ function publicConfigSummary(config = {}) {
         expectedIsTestExplicit: config.expectedIsTestExplicit,
         authMode: config.authMode,
         includeProOperations: config.includeProOperations,
+        tenders: config.tenders,
         hasWebhookSecret: Boolean(config.webhookSecret),
         hasTaxCode: Boolean(config.taxCode)
     });

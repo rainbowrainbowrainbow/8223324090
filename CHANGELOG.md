@@ -14,6 +14,16 @@
 
 ---
 
+## v0.81.14 - My Day AI Closure
+
+### Release / Versioning / (22.08.2026) [codex]
+- **Фінальний closure report для My Day AI** - зафіксовано live `v0.81.13` / `d10a1c548c9b3e7473e058b9c8b1ece74f70eff6`, production marker `codex/eventgenix-production`, rollback SHA та фактичні rollout values.
+- **Production mutation proof PASS** - guarded My Day AI smoke підтвердив Luna preview/commit, checklist, bundle, schedule → My Day, idempotency/double click і global timer на test account; QA records заархівовано за exact IDs.
+- **Rollout HOLD без прихованого PASS** - single/checklist 20% і bundle 10% лишаються на місці, бо exact-SHA reports мають реальний, але недостатній traffic для підняття stage.
+- **Legacy route sunset HOLD_REMOVAL** - внутрішніх caller-ів `/api/tasks/decompose-draft` немає, але compatibility wrapper не видалено без повного no-usage window і окремого підтвердження.
+
+---
+
 ## v0.81.13 - My Day AI Final Closure
 
 ### My Day / Task Composer / AI Evidence / (22.08.2026) [codex]

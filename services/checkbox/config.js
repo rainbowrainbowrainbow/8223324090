@@ -298,7 +298,6 @@ function loadCheckboxSandboxConfig(env = process.env) {
 function publicConfigSummary(config = {}) {
     return redactCheckboxDiagnostics({
         baseUrl: config.baseUrl,
-        deviceId: config.deviceId,
         clientName: config.clientName,
         clientVersion: config.clientVersion,
         openApiUrl: config.openApiUrl,

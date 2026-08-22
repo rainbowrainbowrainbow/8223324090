@@ -84,7 +84,7 @@ test('sandbox config allows official Checkbox HTTPS hosts and redacts secrets', 
     CHECKBOX_SANDBOX_EXPECT_CASHIER_ID: 'cashier-test'
   });
   const summary = JSON.stringify(publicConfigSummary(config));
-  assert.doesNotMatch(summary, /secret-password|license-secret|access-secret/);
+  assert.doesNotMatch(summary, /secret-password|license-secret|access-secret|eventgenix-test-device/);
   assert.equal(config.expectedIsTest, true);
   assert.equal(config.expectedIsTestExplicit, false);
   assert.equal(config.includeProOperations, false);
@@ -762,14 +762,16 @@ test('webhook signature and replay helper accepts first event, flags replay and 
 
 test('diagnostic redaction removes token, PIN, password and authorization material', () => {
   const generatedPin = [1, 2, 3, 4].join('');
+  const deviceId = 'stable-test-device-identity';
   const output = JSON.stringify(redactCheckboxDiagnostics({
     authorization: 'Bearer abc.def.ghi',
     password: 'cashier-password',
     pin: generatedPin,
+    deviceId,
     nested: { access_key: 'access-key' },
-    text: 'token=abc123 and password: qwerty'
+    text: `token=abc123 and password: qwerty device_id=${deviceId}`
   }));
-  assert.doesNotMatch(output, new RegExp(`abc\\.def|cashier-password|${generatedPin}|access-key|abc123|qwerty`));
+  assert.doesNotMatch(output, new RegExp(`abc\\.def|cashier-password|${generatedPin}|access-key|abc123|qwerty|${deviceId}`));
 });
 
 test('sandbox smoke harness stays Phase 1 test-mode guarded by official contract checks', () => {

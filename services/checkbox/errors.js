@@ -1,6 +1,6 @@
 'use strict';
 
-const SECRET_PATTERN = /(Bearer\s+)[A-Za-z0-9._~+/-]+|(token|secret|password|pin|api[_-]?key|authorization|license[_-]?key|access[_-]?key)(["'\s:=]+)([^"'\s,}]+)/gi;
+const SECRET_PATTERN = /(Bearer\s+)[A-Za-z0-9._~+/-]+|(token|secret|password|pin|api[_-]?key|authorization|license[_-]?key|access[_-]?key|device[_-]?id)(["'\s:=]+)([^"'\s,}]+)/gi;
 
 class CheckboxClientError extends Error {
     constructor(code, message, { status = 500, retryable = false, unknown = false, details = null, cause = null } = {}) {
@@ -28,7 +28,7 @@ function redactCheckboxDiagnostics(value) {
     if (typeof value === 'object') {
         const output = {};
         for (const [key, item] of Object.entries(value)) {
-            if (/token|secret|password|pin|api[_-]?key|authorization|license[_-]?key|access[_-]?key/i.test(key)) {
+            if (/token|secret|password|pin|api[_-]?key|authorization|license[_-]?key|access[_-]?key|device[_-]?id/i.test(key)) {
                 output[key] = '[redacted]';
             } else {
                 output[key] = redactCheckboxDiagnostics(item);

@@ -398,7 +398,7 @@ test('Checkbox operations docs contain activation, rollback, and source-of-truth
     const currentVersion = JSON.parse(read('package.json')).version;
     assert.match(status, new RegExp(currentVersion.replaceAll('.', '\\.')));
     assert.match(status, /not any long-lived `\.codex-temp` worktree/i);
-    assert.match(status, /migrations `316` through `331`/);
+    assert.match(status, /migrations `316` through `337`/);
     assert.match(contract, /not from stale chat history, stale docs, or a dirty `\.codex-temp` branch/);
     assert.match(envTemplate, /CHECKBOX_WEBHOOK_SIGNING_SECRET=/);
     assert.match(runbook, /Stop new payments/);

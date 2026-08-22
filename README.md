@@ -241,10 +241,10 @@ If `package.json`, `index.html`, `CHANGELOG.md`, archived snapshots, standalone 
 
 ## Deploy And Branch Policy
 
-The last verified production release branch for Railway (2026-07-28) is
-`codex/zrs-financial-integrity`. Confirm the active Railway release branch before
-every release or rollback because the attachment can change independently of
-the repository.
+The canonical production release branch is `codex/eventgenix-production` from
+the v0.81.13 marker-hygiene release. Confirm the live `/api/version` branch and
+exact SHA before every release or rollback. Keep
+`codex/checkbox-hardening-release-v080103` as the pre-v0.81.13 rollback marker.
 
 - Do not deploy unless explicitly asked.
 - Railway GitHub auto-deploy is disabled for the production app service.

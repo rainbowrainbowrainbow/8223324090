@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.17 - Checkbox Test Receipt Contract
+
+### Release / Versioning / (22.08.2026) [codex]
+- **Реальний test-mode доказ** - один готівковий і один картковий тестовий чек пройшли до `DONE` із точним збігом тестового ФОП, каси, касира та зміни; створені запуском зміни закриті.
+- **Контракт відповіді Checkbox** - optional receipt context і коротка відповідь current shift обробляються за фактичною official API shape без послаблення перевірок UUID, суми, tender та provider identity.
+- **Безпечне повторне тестування** - sandbox harness використовує стабільний explicit device ID, підтримує окремий tender recovery і коректно обробляє official empty-body signout.
+- **Production не активовано** - integration, acceptance, webhook і Cashier PRO залишаються вимкненими; release не містить Checkbox secrets або реальних provider IDs.
+
+---
+
 ## v0.81.16 - Checkbox Test Readiness Hardening
 
 ### Checkbox / Payments / (22.08.2026) [codex]

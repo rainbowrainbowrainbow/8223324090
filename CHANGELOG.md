@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.15 - Hermes Staff Registration Hardening
+
+### Hermes / Staff Registration / (22.08.2026) [codex]
+- **Explicit CRM write approval** - `POST /api/hermes/staff` тепер приймає тільки exact `crmWriteApproval`, прив’язаний до `packetId`, і fail-closed повертає нульові business counters.
+- **Staff-only boundary** - account, password, schedule, payroll, attendance, KPI, dry-run та невідомі поля заборонені; старий schedule error code збережено разом із canonical `policyCode`.
+- **Safe duplicate handling** - active exact duplicate повертає `ALREADY_EXISTS_NO_CREATE`, а неоднозначні, inactive, reserve та blacklisted збіги переходять у manual review без CRM-запису.
+- **Sanitized audit receipt** - audit зберігає лише безпечний approval receipt, outcome та business counters без raw token, headers, анкети чи приватних полів.
+
+---
+
 ## v0.81.13 - My Day AI Final Closure
 
 ### My Day / Task Composer / AI Evidence / (22.08.2026) [codex]

@@ -5,6 +5,7 @@ const test = require('node:test');
 
 const report = require('../scripts/task-ai-rollout-report');
 const collector = require('../scripts/task-ai-rollout-collect');
+const telemetry = require('../services/taskAiDraftTelemetry');
 
 function previewEvent(offsetHours, overrides = {}) {
     const observedAt = new Date(Date.UTC(2026, 7, 10, offsetHours, 0, 0)).toISOString();
@@ -324,6 +325,28 @@ test('task AI rollout verdict holds when neither proposal volume nor time window
     assert.ok(built.verdict.missingEvidence.some(item => /successful proposals or 24h/.test(item)));
 });
 
+test('task AI rollout verdict rejects operator artifacts without exact metadata', () => {
+    const built = report.buildReport({
+        logEvents: [previewEvent(0)],
+        dbEvidence: cleanDbEvidence(),
+        options: {
+            hours: 24,
+            minProposals: 30,
+            providerErrorRateMax: 0.05,
+            requireExactMetadata: true,
+            version: '0.81.18',
+            sha: 'a'.repeat(40),
+            stage: '20',
+            scope: 'single'
+        }
+    });
+
+    assert.equal(built.verdict.status, 'hold');
+    assert.equal(built.verdict.reason, report.VERDICT_REASONS.INVALID_ARTIFACT_METADATA);
+    assert.equal(built.verdict.invalidMetadata, true);
+    assert.ok(built.verdict.metadataIssues.includes('missing deployment ID'));
+});
+
 test('task AI rollout verdict holds on provider errors, unknown impacts, partial writes, duplicates, or schedule failures', () => {
     const logEvents = Array.from({ length: 30 }, (_, index) => previewEvent(index));
     logEvents.push(previewEvent(30, { status: 'provider_error', reasonCode: 'provider_error' }));
@@ -416,6 +439,37 @@ test('task AI rollout database evidence uses only read-only queries and never fa
     assert.ok(calls.length >= 5);
     assert.ok(calls.some(call => /BEGIN READ ONLY/.test(call.text)));
     assert.ok(calls.some(call => /SET TRANSACTION READ ONLY/.test(call.text)));
+});
+
+test('Task AI telemetry and action-history metadata include sanitized rollout stage', () => {
+    const env = {
+        RAILWAY_GIT_COMMIT_SHA: 'a'.repeat(40),
+        RAILWAY_GIT_BRANCH: 'codex/eventgenix-production',
+        RAILWAY_DEPLOYMENT_ID: 'deployment-1',
+        TASK_AI_DRAFT_ROLLOUT_PERCENT: '20',
+        TASK_AI_DRAFT_BUNDLE_ROLLOUT_PERCENT: '10'
+    };
+    const releaseOptions = {
+        deploymentManifest: {
+            version: require('../package.json').version,
+            commitSha: 'a'.repeat(40),
+            sourceBranch: 'codex/eventgenix-production'
+        }
+    };
+    const logged = telemetry.recordTaskAiDraftTelemetry(
+        { type: 'preview', status: 'success', reasonCode: 'checklist' },
+        { env, releaseOptions, logger: { info() {} } }
+    );
+    const bundleHistory = telemetry.taskAiHistoryTelemetryMetadata(
+        { type: 'bundle_commit', status: 'success', reasoningEffort: 'low' },
+        { env, releaseOptions }
+    );
+
+    assert.equal(logged.rolloutStage, '20');
+    assert.equal(logged.releaseSha, 'a'.repeat(40));
+    assert.equal(logged.deploymentId, 'deployment-1');
+    assert.equal(bundleHistory.rolloutStage, '10');
+    assert.equal(bundleHistory.reasoningEffort, 'low');
 });
 
 test('task AI rollout report markdown is redacted and operator-readable', () => {

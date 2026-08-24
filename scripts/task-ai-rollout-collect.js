@@ -140,7 +140,7 @@ async function run(options, dependencies = {}) {
         logEvents: collected.telemetryEvents,
         httpRequests: collected.httpRequests,
         dbEvidence,
-        options: { ...options, httpEvidenceAvailable: true }
+        options: { ...options, httpEvidenceAvailable: true, requireExactMetadata: true }
     });
     const paths = artifactPaths(options);
     report.writeReportArtifact(built, { ...options, output: paths.json, format: 'json' });

@@ -24,7 +24,8 @@ const VERDICT_REASONS = Object.freeze({
     HOLD_INSUFFICIENT_TRAFFIC: 'HOLD_INSUFFICIENT_TRAFFIC',
     HOLD_PROVIDER_ERRORS: 'HOLD_PROVIDER_ERRORS',
     TELEMETRY_GAP: 'TELEMETRY_GAP',
-    SAFETY_GATE_FAILURE: 'SAFETY_GATE_FAILURE'
+    SAFETY_GATE_FAILURE: 'SAFETY_GATE_FAILURE',
+    INVALID_ARTIFACT_METADATA: 'INVALID_ARTIFACT_METADATA'
 });
 const ACTIONABLE_PREVIEW_DECISIONS = new Set(['single_task', 'checklist', 'task_bundle']);
 const AI_HTTP_ROUTES = Object.freeze({
@@ -327,6 +328,25 @@ function eventMatchesExactMetadata(item = {}, options = {}) {
     if (options.deploymentId && !event.deploymentId && !event.releaseSha && !start) return false;
     if (options.sha && !event.releaseSha && !event.deploymentId && !start) return false;
     return true;
+}
+
+function exactArtifactMetadataIssues(options = {}) {
+    if (options.requireExactMetadata !== true) return [];
+    const issues = [];
+    const required = [
+        ['version', 'release version'],
+        ['sha', 'release SHA'],
+        ['stage', 'rollout stage'],
+        ['scope', 'rollout scope'],
+        ['deploymentId', 'deployment ID']
+    ];
+    for (const [key, label] of required) {
+        if (!String(options[key] || '').trim()) issues.push(`missing ${label}`);
+    }
+    if (options.sha && !/^[a-f0-9]{40}$/i.test(String(options.sha))) {
+        issues.push('release SHA must be an exact 40-character commit SHA');
+    }
+    return issues;
 }
 
 function previewBelongsToScope(event = {}, scope = 'single') {
@@ -660,7 +680,7 @@ async function collectDatabaseEvidence(options = {}, env = process.env) {
     }
 }
 
-function buildVerdict({ telemetry, telemetryCoverage = telemetry, window, http = {}, dbEvidence = {}, thresholds = {} }) {
+function buildVerdict({ telemetry, telemetryCoverage = telemetry, window, http = {}, dbEvidence = {}, thresholds = {}, metadataIssues = [] }) {
     const providerErrorRate = telemetry.previewAttempts
         ? telemetry.providerFailures / telemetry.previewAttempts
         : null;
@@ -685,12 +705,15 @@ function buildVerdict({ telemetry, telemetryCoverage = telemetry, window, http =
     const httpPreviewCount = Number(http.byRoute?.[`POST ${AI_HTTP_ROUTES.preview}`] || 0);
     const telemetryGap = httpPreviewCount > 0 && Number(telemetryCoverage.previewAttempts || 0) === 0;
     const missingEvidence = [];
+    for (const issue of metadataIssues) missingEvidence.push(issue);
     if (!telemetry.previewAttempts) missingEvidence.push('structured telemetry logs with preview events');
     if (!window.hasTimestamps) missingEvidence.push('timestamped telemetry window');
     if (dbEvidence.available !== true) missingEvidence.push('read-only database evidence from TASK_AI_ROLLOUT_DATABASE_URL');
     if (!gates.enoughVolumeOrTimeEvidence) missingEvidence.push(`at least ${thresholds.minProposals} successful proposals or ${thresholds.hours}h of timestamped evidence`);
     if (telemetryGap) missingEvidence.push('HTTP AI requests exist but matching structured preview telemetry is missing');
-    const passed = !telemetryGap
+    const invalidMetadata = metadataIssues.length > 0;
+    const passed = !invalidMetadata
+        && !telemetryGap
         && gates.enoughVolumeOrTimeEvidence
             && gates.providerErrorRate
             && gates.partialWrites
@@ -708,7 +731,8 @@ function buildVerdict({ telemetry, telemetryCoverage = telemetry, window, http =
             || Number(checks.duplicateBundleCommits || 0) > 0
             || Number(checks.schedulePlacementFailures || 0) > 0
         )) || !gates.unknownImpactIds || !gates.unacceptedFieldWrites;
-        if (telemetryGap) reason = VERDICT_REASONS.TELEMETRY_GAP;
+        if (invalidMetadata) reason = VERDICT_REASONS.INVALID_ARTIFACT_METADATA;
+        else if (telemetryGap) reason = VERDICT_REASONS.TELEMETRY_GAP;
         else if (safetyGateFailed) {
             reason = VERDICT_REASONS.SAFETY_GATE_FAILURE;
         } else if (telemetry.previewAttempts > 0 && !gates.providerErrorRate) {
@@ -724,6 +748,8 @@ function buildVerdict({ telemetry, telemetryCoverage = telemetry, window, http =
         thresholds,
         providerErrorRate,
         telemetryGap,
+        invalidMetadata,
+        metadataIssues,
         missingEvidence
     };
 }
@@ -759,6 +785,7 @@ function buildReport({ logEvents = [], httpRequests = [], dbEvidence = {}, optio
         minProposals: Number(options.minProposals || DEFAULTS.minProposals),
         providerErrorRateMax: Number(options.providerErrorRateMax ?? DEFAULTS.providerErrorRateMax)
     };
+    const metadataIssues = exactArtifactMetadataIssues(options);
     return {
         generatedAt: new Date().toISOString(),
         report: 'task_ai_rollout_gate',
@@ -792,7 +819,7 @@ function buildReport({ logEvents = [], httpRequests = [], dbEvidence = {}, optio
         window,
         telemetry,
         databaseChecks: dbEvidence.checks || null,
-        verdict: buildVerdict({ telemetry, telemetryCoverage, window, http, dbEvidence, thresholds })
+        verdict: buildVerdict({ telemetry, telemetryCoverage, window, http, dbEvidence, thresholds, metadataIssues })
     };
 }
 
@@ -889,7 +916,8 @@ async function main() {
         dbEvidence,
         options: {
             ...options,
-            httpEvidenceAvailable: options.stdin || Boolean(options.eventsFile)
+            httpEvidenceAvailable: options.stdin || Boolean(options.eventsFile),
+            requireExactMetadata: true
         }
     });
     const artifactPath = writeReportArtifact(report, options);
@@ -928,6 +956,7 @@ module.exports = {
     parseTelemetryLogText,
     poolFromEnv,
     reportMarkdown,
+    exactArtifactMetadataIssues,
     summarizeRolloutTelemetry,
     writeReportArtifact
 };

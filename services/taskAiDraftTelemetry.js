@@ -53,6 +53,7 @@ const SAFE_TELEMETRY_INPUT_KEYS = new Set([
     'releaseVersion',
     'releaseSha',
     'deploymentId',
+    'rolloutStage',
     'timestampBucket',
     'reasonCode',
     'fallbackReason',
@@ -114,8 +115,24 @@ function runtimeTelemetryMetadata(event = {}, options = {}) {
         releaseVersion: compactString(release?.version || event.releaseVersion || '', 40),
         releaseSha: compactString(release?.commitSha || event.releaseSha || '', 40),
         deploymentId: compactString(env.RAILWAY_DEPLOYMENT_ID || event.deploymentId || '', 80),
+        rolloutStage: rolloutStageForEvent(event, env),
         timestampBucket: hourlyTimestampBucket(options.now || event.timestampBucket || new Date())
     };
+}
+
+function rolloutStageForEvent(event = {}, env = process.env) {
+    if (event.rolloutStage !== undefined && event.rolloutStage !== null && event.rolloutStage !== '') {
+        return compactString(event.rolloutStage, 40);
+    }
+    const type = compactString(event.type, 40);
+    const marker = compactString(event.reasonCode || event.mode || '', 80);
+    if (type === 'bundle_commit' || marker === 'task_bundle') {
+        return compactString(env.TASK_AI_DRAFT_BUNDLE_ROLLOUT_PERCENT || '', 40);
+    }
+    if (type === 'preview' || type === 'commit') {
+        return compactString(env.TASK_AI_DRAFT_ROLLOUT_PERCENT || '', 40);
+    }
+    return '';
 }
 
 function safeFieldMask(value) {
@@ -181,6 +198,7 @@ function sanitizeTelemetryEvent(event = {}) {
         releaseVersion: compactString(source.releaseVersion || '', 40),
         releaseSha: compactString(source.releaseSha || '', 40),
         deploymentId: compactString(source.deploymentId || '', 80),
+        rolloutStage: compactString(source.rolloutStage || '', 40),
         timestampBucket: hourlyTimestampBucket(source.timestampBucket),
         reasonCode: compactString(source.reasonCode || source.code || '', 80),
         fallbackReason,
@@ -306,6 +324,7 @@ function taskAiHistoryTelemetryMetadata(event = {}, options = {}) {
         releaseVersion: safe.releaseVersion,
         releaseSha: safe.releaseSha,
         deploymentId: safe.deploymentId,
+        rolloutStage: safe.rolloutStage,
         promptVersion: safe.promptVersion,
         contractVersion: safe.contractVersion,
         schemaName: safe.schemaName,

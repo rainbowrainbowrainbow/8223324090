@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.20 - My Day AI Closure
+
+### Release / Versioning / (24.08.2026) [codex]
+- **Closure report актуалізовано** - production status прив’язано до live `v0.81.19`, exact SHA, deployment ID, mutation-smoke PASS artifact і свіжих rollout/legacy evidence artifacts.
+- **Rollout HOLD без штучного PASS** - single/checklist лишається `20%`, bundle лишається `10%`; обидва stages мають `HOLD_INSUFFICIENT_TRAFFIC`, а Railway variables у цьому patch не змінюються.
+- **Legacy endpoint sunset задокументовано** - `/api/tasks/decompose-draft` має `0` observed real usage у поточному window, але removal лишається `HOLD_REMOVAL` до повного no-usage window і окремого confirmation.
+- **Без runtime/prompt змін** - patch оновлює release/cache/changelog/docs metadata; AI model, prompt, schema, secrets, Railway config і database schema не змінюються.
+
+---
+
 ## v0.81.19 - My Day AI Final Closure
 
 ### My Day / AI Evidence / Legacy Sunset / (24.08.2026) [codex]

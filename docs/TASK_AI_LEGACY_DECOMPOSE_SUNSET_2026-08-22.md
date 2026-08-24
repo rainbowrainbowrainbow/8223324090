@@ -1,7 +1,7 @@
 # Legacy task decomposition sunset audit — 2026-08-22
 
 Status: `HOLD_REMOVAL`  
-Production impact: no changes made by this audit.
+Production impact: no endpoint removal has been performed.
 
 ## Scope
 
@@ -18,15 +18,21 @@ No runtime frontend file calls the deprecated endpoint. It remains a thin compat
 
 ## Evidence snapshot
 
-- observed live version: `0.81.12`;
-- observed live SHA: `a990b668f60e6376439e80cef0a3ade7672dfe37`;
-- deployment start: `2026-08-22T06:24:45Z`;
+- observed live version: `0.81.19`;
+- observed live SHA: `c47ca4cacebb9553b020c6e159ae1ad881a2bced`;
+- source branch: `codex/eventgenix-production`;
+- deployment ID: `03e61828-2c5c-4333-b8a4-e6227500dfac`;
+- deployment start: `2026-08-24T11:10:01.873Z`;
 - sanitized Railway log checks requested for `24h`, `7d`, and `30d`;
 - recognized HTTP calls to the legacy route: `0`;
 - recognized legacy telemetry events: `0`;
+- recognized non-QA real usage requests: `0`;
+- latest artifact: `output/task-ai-legacy-decompose/2026-08-24T12-44-23-888Z.md`;
 - raw logs and task text were not stored.
 
-These zero counts are not a complete 30-day proof because the current deployment and available log window are newer than 30 days. They cannot justify endpoint removal yet.
+These zero counts are not a complete 30-day proof because the current deployment
+window is only about `1.6h` in the latest report. They cannot justify endpoint
+removal yet.
 
 ## Removal gate
 

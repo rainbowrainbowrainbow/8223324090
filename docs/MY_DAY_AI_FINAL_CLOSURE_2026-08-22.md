@@ -1,33 +1,60 @@
-# My Day AI closure — v0.81.14 evidence
+# My Day AI closure — current evidence
 
-## Current production closeout candidate — v0.81.19
+## Current production closeout — v0.81.19
 
-Status: prepared as a final closure patch after `v0.81.18` with no rollout
-variable changes.
+Status: `MONITORING_HOLD`.
 
-- Candidate branch: `codex/my-day-ai-final-closure-0.81.19`.
+- Live version/SHA: `0.81.19` / `c47ca4cacebb9553b020c6e159ae1ad881a2bced`.
+- Source branch: `codex/eventgenix-production`.
+- Deployment ID: `03e61828-2c5c-4333-b8a4-e6227500dfac`.
+- Deployment start: `2026-08-24T11:10:01.873Z`.
+- Release branch used for v0.81.19: `codex/my-day-ai-final-closure-0.81.19`.
 - Previous live version/SHA: `0.81.18` / `bb272963291d71b64a27c93758fee900c7b657d6`.
-- Source branch remains: `codex/eventgenix-production`.
-- Included candidate commits:
-  - rollout telemetry evidence hardening;
-  - legacy `/api/tasks/decompose-draft` sunset evidence tooling;
-  - CI guard against runtime frontend legacy callers;
-  - updated operator documentation.
-- Legacy endpoint status: `HOLD_REMOVAL`; no internal runtime caller exists, but
-  removal still requires a complete no-usage evidence window and explicit
-  operator confirmation.
-- Rollout status: unchanged by this release. Single/checklist and bundle stages
-  require independent PASS artifacts before any Railway variable change.
-- Latest legacy usage artifact: `output/task-ai-legacy-decompose/2026-08-24T10-legacy-decompose-v08118.md`.
+- Rollout unchanged:
+  - single/checklist: `20%`;
+  - bundle: `10%`.
+- Production mutation smoke for exact live `v0.81.19` passed:
+  - simple/checklist flow;
+  - bundle test-user flow;
+  - schedule to My Day projection;
+  - idempotent replay;
+  - global timer start/hydrate/stop;
+  - exact QA IDs archived after the run.
+- Rollout evidence is not PASS:
+  - single/checklist latest report has `2` preview attempts and remains `HOLD_INSUFFICIENT_TRAFFIC`;
+  - bundle latest report has `1` preview attempt and remains `HOLD_INSUFFICIENT_TRAFFIC`.
+- Legacy endpoint status: `HOLD_REMOVAL`; internal runtime callers are absent,
+  observed real usage is `0`, but removal still requires a complete no-usage
+  evidence window and explicit operator confirmation.
 
-This patch does not change prompt, schema, model, reasoning effort, Railway
-variables, secrets, or database schema.
+The closure patch does not change prompt, schema, model, reasoning effort,
+Railway variables, secrets, or database schema.
+
+## Current v0.81.19 evidence artifacts
+
+- Final closure report:
+  - `output/my-day-ai-final-closure-v08119-2026-08-24.md`;
+  - `output/my-day-ai-final-closure-v08119-2026-08-24.json`.
+- Production mutation smoke PASS:
+  - `output/live-my-day-ai-mutation-smoke/EGX_MY_DAY_AI_QA_v08119_20260824T153010.json`.
+- Single/checklist rollout 20%:
+  - `output/task-ai-rollout/2026-08-24T12-40-31-391Z.md`;
+  - verdict: `HOLD_INSUFFICIENT_TRAFFIC`.
+- Bundle rollout 10%:
+  - `output/task-ai-bundle-rollout/2026-08-24T12-40-50-760Z.md`;
+  - verdict: `HOLD_INSUFFICIENT_TRAFFIC`.
+- Legacy route sunset evidence:
+  - `output/task-ai-legacy-decompose/2026-08-24T12-44-23-888Z.md`;
+  - verdict: `HOLD_REMOVAL`.
+
+These artifacts are redacted. They must not contain task text, prompts, provider
+responses, credentials, proposal tokens, API keys, bearer tokens, or raw Railway
+logs.
 
 ---
 
-Status: reconciled into production source after the `v0.81.15` Hermes release.
-This is an evidence-only closeout; it does not change rollout values or require a
-separate runtime deployment.
+Historical section below documents the earlier `v0.81.13` reconciliation. It is
+kept as release history, not as the current production source of truth.
 
 ## Live baseline before this closure
 

@@ -125,6 +125,9 @@ Mutation idempotency rules:
 - Schedule and attendance preview are metadata-only and do not require
   confirmation or an idempotency key; staff create, schedule apply, and
   attendance apply require both.
+- Transactional mutations send HTTP responses only after the final database
+  `COMMIT` succeeds. If final `COMMIT` fails, CRM must not cache or replay a
+  success response for that idempotency key.
 
 ## Endpoints
 

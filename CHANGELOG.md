@@ -4,6 +4,17 @@
 
 ---
 
+## v0.81.18 - Hermes Transactional Idempotency
+
+### Hermes / Idempotency / (24.08.2026) [codex]
+- **HTTP response після COMMIT** - shared `withHermesIdempotency` більше не відправляє new/replay/error envelope із transactional mutation до успішного final `COMMIT`.
+- **Без cached success при commit failure** - якщо final `COMMIT` падає, transaction rollback не залишає збережену success response в `integration_idempotency_keys`.
+- **Replay contract збережено** - stored response replay, request hash mismatch і контрольовані business rollback відповіді лишаються backward-compatible.
+- **Regression coverage** - додано commit-failure тест, який перевіряє, що success не потрапляє в HTTP response і `onResult`/audit receipt не flush-иться до commit.
+- **Rollback note** - відкат release не потребує DB migration; достатньо повернути v0.81.17 code path і повторити Hermes idempotency/schedule tests.
+
+---
+
 ## v0.81.17 - Checkbox Test Receipt Contract
 
 ### Release / Versioning / (22.08.2026) [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.17",
+  "version": "0.81.18",
   "eventGenix": {
-    "releaseLabel": "Checkbox Test Receipt Contract"
+    "releaseLabel": "Hermes Transactional Idempotency"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

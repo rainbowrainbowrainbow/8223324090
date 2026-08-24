@@ -111,6 +111,94 @@ class FakeIdempotencyPool {
     }
 }
 
+class FailingCommitIdempotencyPool {
+    constructor() {
+        this.records = new Map();
+        this.pendingRecords = null;
+        this.nextId = 1;
+        this.queries = [];
+        this.businessCalls = 0;
+    }
+
+    cloneRecords(records) {
+        return new Map(Array.from(records.entries()).map(([key, value]) => [key, cloneRecord(value)]));
+    }
+
+    async queryAgainst(records, sql, params = []) {
+        const compactSql = sql.replace(/\s+/g, ' ').trim();
+        this.queries.push({ sql: compactSql, params });
+
+        if (compactSql.startsWith('DELETE FROM integration_idempotency_keys')) {
+            const key = recordKey(params[0], params[1]);
+            const record = records.get(key);
+            if (record && new Date(record.expires_at).getTime() < Date.now()) {
+                records.delete(key);
+                return { rows: [], rowCount: 1 };
+            }
+            return { rows: [], rowCount: 0 };
+        }
+
+        if (compactSql.startsWith('INSERT INTO integration_idempotency_keys')) {
+            const key = recordKey(params[0], params[1]);
+            if (records.has(key)) {
+                return { rows: [], rowCount: 0 };
+            }
+            const createdAt = new Date();
+            const record = {
+                id: this.nextId++,
+                integration_id: params[0],
+                idempotency_key: params[1],
+                request_hash: params[2],
+                response_status: null,
+                response_body: null,
+                created_at: createdAt.toISOString(),
+                expires_at: new Date(createdAt.getTime() + Number(params[3]) * 60 * 60 * 1000).toISOString()
+            };
+            records.set(key, record);
+            return { rows: [cloneRecord(record)], rowCount: 1 };
+        }
+
+        if (compactSql.startsWith('SELECT id, integration_id, idempotency_key')) {
+            const record = records.get(recordKey(params[0], params[1]));
+            return { rows: record ? [cloneRecord(record)] : [], rowCount: record ? 1 : 0 };
+        }
+
+        if (compactSql.startsWith('UPDATE integration_idempotency_keys')) {
+            const record = records.get(recordKey(params[0], params[1]));
+            if (!record || record.request_hash !== params[2] || record.response_status !== null) {
+                return { rows: [], rowCount: 0 };
+            }
+            record.response_status = params[3];
+            record.response_body = typeof params[4] === 'string' ? JSON.parse(params[4]) : params[4];
+            return { rows: [cloneRecord(record)], rowCount: 1 };
+        }
+
+        throw new Error(`Unexpected fake query: ${compactSql}`);
+    }
+
+    async connect() {
+        return {
+            query: async (sql, params = []) => {
+                const compactSql = sql.replace(/\s+/g, ' ').trim();
+                this.queries.push({ sql: compactSql, params });
+                if (compactSql === 'BEGIN') {
+                    this.pendingRecords = this.cloneRecords(this.records);
+                    return { rows: [], rowCount: 0 };
+                }
+                if (compactSql === 'COMMIT') {
+                    throw new Error('Simulated final COMMIT failure');
+                }
+                if (compactSql === 'ROLLBACK') {
+                    this.pendingRecords = null;
+                    return { rows: [], rowCount: 0 };
+                }
+                return this.queryAgainst(this.pendingRecords || this.records, sql, params);
+            },
+            release() {}
+        };
+    }
+}
+
 async function withHermesTestServer(testFn) {
     const state = { createCalls: 0, idempotencyResults: [] };
     const idempotencyPool = new FakeIdempotencyPool();
@@ -233,5 +321,66 @@ describe('Hermes idempotency', () => {
             assert.equal(stored.includes('authorization'), false);
             assert.equal(stored.includes('x-api-key'), false);
         });
+    });
+});
+
+describe('Hermes transactional idempotency', () => {
+    it('does not send or cache a success response when the final COMMIT fails', async () => {
+        const state = { idempotencyResults: [] };
+        const idempotencyPool = new FailingCommitIdempotencyPool();
+        const app = express();
+
+        app.use(express.json());
+        app.post('/api/hermes/tasks', createHermesMutationGuard(), async (req, res, next) => {
+            try {
+                return await withHermesIdempotency(req, res, async () => {
+                    idempotencyPool.businessCalls += 1;
+                    return {
+                        status: 201,
+                        body: {
+                            success: true,
+                            task: {
+                                id: 'task-before-commit',
+                                title: req.body.title
+                            }
+                        }
+                    };
+                }, {
+                    pool: idempotencyPool,
+                    requestPath: '/api/hermes/tasks',
+                    transactional: true,
+                    onResult: result => state.idempotencyResults.push(result)
+                });
+            } catch (err) {
+                return next(err);
+            }
+        });
+        app.use((err, req, res, next) => {
+            if (res.headersSent) return next(err);
+            return res.status(503).json({
+                success: false,
+                error: err.message,
+                code: 'TEST_COMMIT_FAILED'
+            });
+        });
+
+        const { server, baseUrl } = await listen(app);
+        try {
+            const res = await request(baseUrl, 'POST', '/api/hermes/tasks', {
+                title: 'Commit after response regression'
+            }, mutationHeaders('create-task-commit-failure'));
+
+            assert.equal(res.status, 503, res.text);
+            assert.equal(res.data.code, 'TEST_COMMIT_FAILED');
+            assert.equal(idempotencyPool.businessCalls, 1);
+            assert.equal(idempotencyPool.records.size, 0);
+            assert.equal(state.idempotencyResults.length, 0);
+            assert.deepEqual(
+                idempotencyPool.queries.map(item => item.sql).filter(sql => ['BEGIN', 'COMMIT', 'ROLLBACK'].includes(sql)),
+                ['BEGIN', 'COMMIT', 'ROLLBACK']
+            );
+        } finally {
+            await close(server);
+        }
     });
 });

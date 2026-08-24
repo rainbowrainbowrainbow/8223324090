@@ -206,10 +206,6 @@ function notifyHermesIdempotencyResult(options, result) {
     } catch {}
 }
 
-function sendHermesIdempotencyError(res, err) {
-    return res.status(err.statusCode || 500).json(hermesIdempotencyErrorBody(err));
-}
-
 function hermesIdempotencyErrorBody(err) {
     const body = {
         success: false,
@@ -225,6 +221,18 @@ function hermesIdempotencyErrorBody(err) {
     return body;
 }
 
+function hermesIdempotencyErrorEnvelope(err) {
+    return {
+        status: err.statusCode || 500,
+        body: hermesIdempotencyErrorBody(err),
+        idempotencyResult: null
+    };
+}
+
+function sendHermesIdempotencyEnvelope(res, envelope = {}) {
+    return res.status(envelope.status || 200).json(envelope.body ?? {});
+}
+
 async function withHermesIdempotency(req, res, work, options = {}) {
     const baseQuery = options.pool || defaultPool;
 
@@ -233,7 +241,7 @@ async function withHermesIdempotency(req, res, work, options = {}) {
         const afterCommit = [];
         try {
             await client.query('BEGIN');
-            const result = await runHermesIdempotency(req, res, work, {
+            const envelope = await runHermesIdempotency(req, res, work, {
                 ...options,
                 pool: client,
                 afterCommit
@@ -244,7 +252,10 @@ async function withHermesIdempotency(req, res, work, options = {}) {
                     callback();
                 } catch {}
             });
-            return result;
+            if (envelope.idempotencyResult) {
+                notifyHermesIdempotencyResult(options, envelope.idempotencyResult);
+            }
+            return sendHermesIdempotencyEnvelope(res, envelope);
         } catch (err) {
             try {
                 await client.query('ROLLBACK');
@@ -255,10 +266,14 @@ async function withHermesIdempotency(req, res, work, options = {}) {
         }
     }
 
-    return runHermesIdempotency(req, res, work, {
+    const envelope = await runHermesIdempotency(req, res, work, {
         ...options,
         pool: baseQuery
     });
+    if (envelope.idempotencyResult) {
+        notifyHermesIdempotencyResult(options, envelope.idempotencyResult);
+    }
+    return sendHermesIdempotencyEnvelope(res, envelope);
 }
 
 async function runHermesIdempotency(req, res, work, options = {}) {
@@ -279,12 +294,16 @@ async function runHermesIdempotency(req, res, work, options = {}) {
         });
 
         if (claim.state === 'replay') {
-            notifyHermesIdempotencyResult(options, {
+            const idempotencyResult = {
                 state: 'replay',
                 status: claim.record.response_status,
                 body: claim.record.response_body
-            });
-            return res.status(claim.record.response_status).json(claim.record.response_body);
+            };
+            return {
+                status: claim.record.response_status,
+                body: claim.record.response_body,
+                idempotencyResult
+            };
         }
 
         let mutationResult;
@@ -313,16 +332,20 @@ async function runHermesIdempotency(req, res, work, options = {}) {
             responseBody: mutationResult.body
         });
 
-        notifyHermesIdempotencyResult(options, {
+        const idempotencyResult = {
             state: 'new',
             status: mutationResult.status,
             body: mutationResult.body
-        });
+        };
 
-        return res.status(mutationResult.status).json(mutationResult.body);
+        return {
+            status: mutationResult.status,
+            body: mutationResult.body,
+            idempotencyResult
+        };
     } catch (err) {
         if (err.statusCode && err.statusCode < 500) {
-            return sendHermesIdempotencyError(res, err);
+            return hermesIdempotencyErrorEnvelope(err);
         }
         throw err;
     }

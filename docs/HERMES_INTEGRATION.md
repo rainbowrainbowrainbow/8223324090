@@ -1530,6 +1530,10 @@ Rules:
 - Stored idempotency records should expire after a bounded period, for example
   24 to 72 hours.
 - Do not store secrets or raw auth headers in idempotency records.
+- For transactional Hermes mutations, CRM must persist the idempotency response
+  inside the same transaction as the business mutation and flush the HTTP
+  response only after final `COMMIT`. A final `COMMIT` failure must not leave a
+  cached success response.
 
 If implementation requires a new table, it must use a governed SQL migration
 and follow `DB_MIGRATION_GOVERNANCE.md`.

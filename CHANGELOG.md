@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.19 - My Day AI Final Closure
+
+### My Day / AI Evidence / Legacy Sunset / (24.08.2026) [codex]
+- **Exact evidence tooling** - rollout і legacy reports тепер мають окремі fail-closed операторські команди, exact version/SHA/deployment metadata та redacted JSON/Markdown artifacts без raw logs або текстів задач.
+- **Legacy endpoint sunset без ризику** - `/api/tasks/decompose-draft` лишається compatibility wrapper: внутрішніх runtime caller-ів немає, а removal заблоковано до повного no-usage window і окремого підтвердження.
+- **Canonical AI flow зафіксовано** - AI Composer продовжує використовувати `/api/tasks/ai-draft/preview` та signed commit endpoints; deterministic decomposition лишається окремим non-AI шляхом.
+- **Rollout без змін** - single/checklist і bundle rollout не змінювались у цьому patch; підняття stage можливе лише після окремих PASS artifacts.
+
+---
+
 ## v0.81.18 - Hermes Transactional Idempotency
 
 ### Hermes / Idempotency / (24.08.2026) [codex]

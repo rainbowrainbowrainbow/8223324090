@@ -1,5 +1,30 @@
 # My Day AI closure — v0.81.14 evidence
 
+## Current production closeout candidate — v0.81.19
+
+Status: prepared as a final closure patch after `v0.81.18` with no rollout
+variable changes.
+
+- Candidate branch: `codex/my-day-ai-final-closure-0.81.19`.
+- Previous live version/SHA: `0.81.18` / `bb272963291d71b64a27c93758fee900c7b657d6`.
+- Source branch remains: `codex/eventgenix-production`.
+- Included candidate commits:
+  - rollout telemetry evidence hardening;
+  - legacy `/api/tasks/decompose-draft` sunset evidence tooling;
+  - CI guard against runtime frontend legacy callers;
+  - updated operator documentation.
+- Legacy endpoint status: `HOLD_REMOVAL`; no internal runtime caller exists, but
+  removal still requires a complete no-usage evidence window and explicit
+  operator confirmation.
+- Rollout status: unchanged by this release. Single/checklist and bundle stages
+  require independent PASS artifacts before any Railway variable change.
+- Latest legacy usage artifact: `output/task-ai-legacy-decompose/2026-08-24T10-legacy-decompose-v08118.md`.
+
+This patch does not change prompt, schema, model, reasoning effort, Railway
+variables, secrets, or database schema.
+
+---
+
 Status: reconciled into production source after the `v0.81.15` Hermes release.
 This is an evidence-only closeout; it does not change rollout values or require a
 separate runtime deployment.

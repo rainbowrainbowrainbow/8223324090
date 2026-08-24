@@ -38,3 +38,28 @@ Removal requires all of the following:
 4. full AI/My Day CI after removal.
 
 Until then the wrapper remains deprecated, measured, and excluded from internal frontend usage.
+
+## Current operator command
+
+Use the dedicated legacy usage report instead of a raw Railway pipe:
+
+```bash
+npm run task-ai-legacy-decompose-usage-report -- \
+  --service 8223324090 \
+  --deployment-id <deployment-id> \
+  --version <version> \
+  --sha <40-char-sha> \
+  --source-branch codex/eventgenix-production \
+  --deployment-start <deployment-start-iso> \
+  --output-prefix output/task-ai-legacy-decompose/<timestamp>-legacy-decompose-<version>
+```
+
+The command reads Railway telemetry and HTTP logs in memory and writes only redacted JSON/Markdown artifacts. It intentionally exits non-zero for `HOLD_REMOVAL`, `DOCUMENTED_CONSUMER`, `TELEMETRY_GAP`, or invalid metadata.
+
+Artifact verdicts:
+
+- `READY_FOR_REMOVAL_CONFIRMATION`: complete 30-day window, zero non-QA usage, removal still requires explicit operator confirmation;
+- `HOLD_REMOVAL`: the evidence window is incomplete or not enough for removal;
+- `DOCUMENTED_CONSUMER`: non-QA usage exists, keep the compatibility wrapper and document the consumer;
+- `TELEMETRY_GAP`: HTTP calls exist without matching legacy telemetry, fix collector/instrumentation before any sunset decision;
+- `INVALID_ARTIFACT_METADATA`: report is not tied to exact release/deployment metadata and cannot be used as proof.

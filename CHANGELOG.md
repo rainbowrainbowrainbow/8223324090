@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.22 - DB Startup Cleanup Wave 1
+
+### Database startup ownership / (26.08.2026) [codex]
+- **Зменшено startup schema surface** — `initDatabase()` більше не дублює schema compatibility SQL для user action overrides, banquet groups і Postgres profile avatar blobs; ці контракти тепер owned durable migrations `244`, `265` і `266`.
+- **Startup guardrails оновлено** — `check:db-startup-surface` тепер фіксує 39 tables, 50 compatibility columns, 82 indexes і 10 startup data hooks, а wave-1 contract test забороняє повернення доведених shims у `db/index.js`.
+- **Fresh/restart/concurrent DB coverage посилено** — disposable PostgreSQL startup test перевіряє наявність wave-1 schema після migrations, idempotent fenced startup і preservation sentinel data без зміни migration history або startup seed hooks.
+
+---
+
 ## v0.81.21 - Park Logo Asset
 
 ### Release / Versioning / (26.08.2026) [codex]

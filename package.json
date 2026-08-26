@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.21",
+  "version": "0.81.22",
   "eventGenix": {
-    "releaseLabel": "Park Logo Asset"
+    "releaseLabel": "DB Startup Cleanup Wave 1"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

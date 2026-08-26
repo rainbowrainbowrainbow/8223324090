@@ -15,6 +15,9 @@ const {
     STARTUP_SCHEMA_INDEXES,
     STARTUP_SCHEMA_FUNCTIONS,
     STARTUP_SCHEMA_TRIGGERS,
+    TASK22_BASELINE_STARTUP_SCHEMA,
+    DB_STARTUP_SCHEMA_OWNERSHIP_MATRIX,
+    DB_STARTUP_VERDICTS,
     STARTUP_DATA_BOOTSTRAPS,
     STARTUP_DATA_BOOTSTRAP_MODES,
     DB_STARTUP_SURFACE_DOC
@@ -25,6 +28,7 @@ const DB_INDEX = path.join(ROOT, 'db', 'index.js');
 const SERVER = path.join(ROOT, 'server.js');
 const PACKAGE = path.join(ROOT, 'package.json');
 const GOVERNANCE = path.join(ROOT, 'DB_MIGRATION_GOVERNANCE.md');
+const TASK22_MIGRATION = 'db/migrations/340_db_startup_schema_ownership.sql';
 const failures = [];
 
 function fail(message) {
@@ -64,6 +68,99 @@ function assertDocMentionsMode(doc, value, label) {
     if (!doc.includes(`\`${value}\``) && !doc.includes(`| ${value} |`)) {
         fail(`${DB_STARTUP_SURFACE_DOC}: missing ${label} ${value}`);
     }
+}
+
+function assertDocMentionsPlain(doc, value, label) {
+    if (!doc.includes(value)) {
+        fail(`${DB_STARTUP_SURFACE_DOC}: missing ${label} ${value}`);
+    }
+}
+
+function currentObjectSet() {
+    return new Set([
+        ...STARTUP_SCHEMA_TABLES.map(object => `table:${object}`),
+        ...STARTUP_SCHEMA_COLUMNS.map(object => `column:${object}`),
+        ...STARTUP_SCHEMA_INDEXES.map(object => `index:${object}`),
+        ...STARTUP_SCHEMA_FUNCTIONS.map(object => `function:${object}`),
+        ...STARTUP_SCHEMA_TRIGGERS.map(object => `trigger:${object}`)
+    ]);
+}
+
+function baselineObjectSet() {
+    return new Set([
+        ...TASK22_BASELINE_STARTUP_SCHEMA.tables.map(object => `table:${object}`),
+        ...TASK22_BASELINE_STARTUP_SCHEMA.columns.map(object => `column:${object}`),
+        ...TASK22_BASELINE_STARTUP_SCHEMA.indexes.map(object => `index:${object}`),
+        ...TASK22_BASELINE_STARTUP_SCHEMA.functions.map(object => `function:${object}`),
+        ...TASK22_BASELINE_STARTUP_SCHEMA.triggers.map(object => `trigger:${object}`)
+    ]);
+}
+
+function checkOwnershipMatrix(doc) {
+    const baseline = baselineObjectSet();
+    const current = currentObjectSet();
+    const seen = new Map();
+    const validKinds = new Set(['table', 'column', 'index', 'function', 'trigger']);
+    const validVerdicts = new Set(DB_STARTUP_VERDICTS);
+    const task22Migration = read(TASK22_MIGRATION);
+
+    if (baseline.size !== 173) {
+        fail(`Task 22 baseline matrix expected 173 startup schema objects, got ${baseline.size}`);
+    }
+    if (DB_STARTUP_SCHEMA_OWNERSHIP_MATRIX.length !== baseline.size) {
+        fail(`DB_STARTUP_SCHEMA_OWNERSHIP_MATRIX expected ${baseline.size} entries, got ${DB_STARTUP_SCHEMA_OWNERSHIP_MATRIX.length}`);
+    }
+
+    for (const entry of DB_STARTUP_SCHEMA_OWNERSHIP_MATRIX) {
+        if (!validKinds.has(entry.kind)) {
+            fail(`${entry.object}: unsupported ownership kind "${entry.kind}"`);
+            continue;
+        }
+        const key = `${entry.kind}:${entry.object}`;
+        seen.set(key, (seen.get(key) || 0) + 1);
+
+        if (!baseline.has(key)) {
+            fail(`${key}: matrix entry is not in Task 22 baseline startup schema`);
+        }
+        if (!validVerdicts.has(entry.verdict)) {
+            fail(`${key}: unsupported verdict "${entry.verdict}"`);
+        }
+        for (const field of ['startupLocation', 'migrationOwner', 'freshDbDependency', 'preMigrationReadDependency', 'upgradeDependency']) {
+            if (!entry[field]) {
+                fail(`${key}: missing ${field}`);
+            }
+        }
+
+        if (current.has(key) && entry.verdict !== 'KEEP_PRE_MIGRATION_DEPENDENCY') {
+            fail(`${key}: retained in startup but verdict is ${entry.verdict}`);
+        }
+        if (!current.has(key) && entry.verdict === 'KEEP_PRE_MIGRATION_DEPENDENCY') {
+            fail(`${key}: KEEP_PRE_MIGRATION_DEPENDENCY must remain in initDatabase startup surface`);
+        }
+        if (entry.verdict === 'ADD_ADDITIVE_OWNERSHIP_MIGRATION') {
+            if (current.has(key)) {
+                fail(`${key}: ADD_ADDITIVE_OWNERSHIP_MIGRATION objects must be removed from startup compatibility SQL`);
+            }
+            if (!entry.migrationOwner.includes('340_db_startup_schema_ownership.sql')) {
+                fail(`${key}: additive Task 22 owner must be ${TASK22_MIGRATION}`);
+            }
+            if (!task22Migration.includes(entry.object.replace(/^.*\./, ''))) {
+                fail(`${key}: object name is not visible in ${TASK22_MIGRATION}`);
+            }
+        }
+    }
+
+    for (const key of baseline) {
+        const count = seen.get(key) || 0;
+        if (count !== 1) {
+            fail(`${key}: expected exactly one ownership matrix verdict, got ${count}`);
+        }
+    }
+
+    for (const verdict of DB_STARTUP_VERDICTS) {
+        assertDocMentionsPlain(doc, verdict, 'Task 22 verdict');
+    }
+    assertDocMentions(doc, '340_db_startup_schema_ownership.sql', 'Task 22 ownership migration');
 }
 
 function extractInitDatabaseBody(code) {
@@ -159,6 +256,8 @@ compareSets('initDatabase ADD COLUMN surface', columns, STARTUP_SCHEMA_COLUMNS);
 compareSets('initDatabase CREATE INDEX surface', indexes, STARTUP_SCHEMA_INDEXES);
 compareSets('initDatabase function surface', functions, STARTUP_SCHEMA_FUNCTIONS);
 compareSets('initDatabase trigger surface', triggers, STARTUP_SCHEMA_TRIGGERS);
+
+checkOwnershipMatrix(doc);
 
 if (!initBody.includes('CREATE TABLE IF NOT EXISTS schema_migrations')) {
     fail('initDatabase must keep schema_migrations bootstrap while two-phase startup remains');

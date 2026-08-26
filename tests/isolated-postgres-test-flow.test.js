@@ -155,6 +155,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const runner = fs.readFileSync(path.join(root, 'scripts', 'run-isolated-postgres-tests.js'), 'utf8');
         const dbInit = fs.readFileSync(path.join(root, 'db', 'index.js'), 'utf8');
         const migrationRunner = fs.readFileSync(path.join(root, 'db', 'migrate.js'), 'utf8');
+        const migration009 = fs.readFileSync(path.join(root, 'db', 'migrations', '009_budget_and_procurement.sql'), 'utf8');
         const hrSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'hr-disposable.integration.test.js'), 'utf8');
         const permissionSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'permission-capabilities.integration.test.js'), 'utf8');
         const freshDbSuite = fs.readFileSync(path.join(root, 'tests', 'integration', 'fresh-db-startup.integration.test.js'), 'utf8');
@@ -291,8 +292,11 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.match(freshDbSuite, /RUN_FRESH_DB_STARTUP_INTEGRATION/);
         assert.match(freshDbSuite, /261_leads_customer_card_canonical_customers/);
         assert.match(freshDbSuite, /idx_procurement_items_stock/);
-        assert.match(dbInit, /const procurementListsReady = await safeQuery/);
-        assert.match(dbInit, /const procurementItemsReady = await safeQuery/);
+        assert.match(migration009, /CREATE TABLE IF NOT EXISTS procurement_lists/);
+        assert.match(migration009, /CREATE TABLE IF NOT EXISTS procurement_items/);
+        assert.match(migration009, /CREATE INDEX IF NOT EXISTS idx_procurement_items_stock/);
+        assert.doesNotMatch(dbInit, /const procurementListsReady = await safeQuery/);
+        assert.doesNotMatch(dbInit, /const procurementItemsReady = await safeQuery/);
         assert.doesNotMatch(dbInit, /Database init partial \(will retry after migrations\)/);
         assert.match(migrationRunner, /migrationPreflights = new Map/);
         assert.match(migrationRunner, /ALTER TABLE IF EXISTS leads/);

@@ -18,76 +18,109 @@ around this complete flow. Backup export and structured restore use the
 matching shared transaction lock.
 
 `DB_MIGRATION_GOVERNANCE.md` remains the authority for migration rules.
-`db/migrations/` is the durable schema history. `db/index.js` still owns legacy
-compatibility schema and startup data hooks, so this map freezes the current
-surface before we migrate one small responsibility at a time.
+`db/migrations/` is the durable schema history. `db/index.js` now keeps only
+the minimum compatibility schema needed before old migrations and startup
+data hooks can run.
 
 The rule going forward: do not add product tables, columns, indexes, triggers,
 or one-off data fixes to `db/index.js`. Add durable schema work to
 `db/migrations/`, with the required migration headers, and run `npm run
 check:migrations`.
 
-## Startup Schema Tables
+## Current Startup Schema Tables
 
 `initDatabase()` currently creates these compatibility tables:
 
-`afisha`, `afisha_templates`, `automation_rules`, `booking_counter`,
-`bookings`, `budget_plans`, `certificate_counter`, `certificates`,
-`contractor_notifications`, `contractors`, `customers`, `design_collections`,
-`design_tags`, `designs`, `finance_categories`, `finance_transactions`,
-`history`, `kleshnya_chat`, `kleshnya_messages`, `lines_by_date`,
-`pending_animators`, `point_transactions`, `procurement_items`,
-`procurement_lists`, `products`, `schema_migrations`, `scheduled_deletions`,
-`settings`, `staff`, `staff_schedule`, `task_logs`, `task_templates`, `tasks`,
-`telegram_known_chats`, `telegram_known_threads`, `user_action_log`,
-`user_points`, `user_streaks`, `users`.
+Current count: 14 tables.
+
+`automation_rules`, `bookings`, `certificates`, `contractors`, `customers`,
+`finance_categories`, `finance_transactions`, `products`, `schema_migrations`,
+`settings`, `staff`, `staff_schedule`, `tasks`, `users`.
 
 `schema_migrations` is intentionally present in both `db/index.js` and
 `db/migrate.js` while the two-phase startup flow remains.
 
-## Startup Compatibility Columns
+## Current Startup Compatibility Columns
 
 `initDatabase()` currently keeps these `ADD COLUMN IF NOT EXISTS` shims:
 
-`afisha.description`, `afisha.line_id`, `afisha.original_time`,
-`afisha.template_id`, `afisha.type`, `bookings.banquet_adults`,
-`bookings.costume`, `bookings.customer_id`, `bookings.extra_data`,
-`bookings.group_name`, `bookings.kids_count`, `bookings.payment_method`,
-`bookings.skip_notification`,
-`bookings.status`, `bookings.telegram_message_id`, `bookings.updated_at`,
-`certificates.customer_id`, `certificates.season`, `certificates.value_uah`,
-`customer_cards.business_context`, `customers.business_context`,
-`leads.business_context`, `mailing_list.business_context`,
-`products.business_context`, `staff.rate_unit`, `staff.telegram_username`,
-`task_templates.business_context`, `task_templates.category`, `tasks.afisha_id`, `tasks.archive_reason`,
-`tasks.archived_at`, `tasks.business_context`, `tasks.category`, `tasks.control_policy`,
-`tasks.deadline`, `tasks.dependency_ids`, `tasks.duplicate_of_task_id`,
-`tasks.escalation_level`, `tasks.last_reminded_at`, `tasks.owner`,
-`tasks.source_id`, `tasks.source_type`, `tasks.task_type`,
-`tasks.template_id`, `tasks.time_window_end`, `tasks.time_window_start`,
-`tasks.type`, `tasks.version`, `users.telegram_chat_id`,
-`users.telegram_username`.
+Current count: 7 columns.
 
-## Startup Indexes And Triggers
+`bookings.payment_method`, `certificates.customer_id`,
+`staff.telegram_username`, `tasks.deadline`, `tasks.dependency_ids`,
+`tasks.source_id`, `tasks.source_type`.
 
-The guard tracks 82 startup indexes in `config/dbStartupSurface.js`. The current
-startup trigger/function pair is `update_updated_at_column` and
-`trg_bookings_updated_at`.
+These columns remain only because historical migrations read them before the
+new Task 22 ownership migration can run:
 
-Task lifecycle compatibility also keeps `idx_tasks_completed_at`,
-`idx_tasks_duplicate_of_task_id`, `idx_tasks_business_status_date`,
-`idx_tasks_business_owner_active`, `idx_tasks_business_completed_at` and
-`idx_tasks_business_source` while older production databases catch up to the
-durable SQL migration history.
+- `bookings.payment_method`: `071_sales_funnel.sql` creates
+  `idx_bookings_payment`.
+- `certificates.customer_id`: `018_backend_hardening.sql` creates
+  `idx_certificates_customer_id`.
+- `tasks.source_type` and `tasks.source_id`: migrations `171`, `185`, `203`,
+  and `237` create indexes or data-fix queries that read them.
+- `tasks.deadline`: migration `243` uses it in workload indexes.
+- `tasks.dependency_ids`: migration `313` reads it for the canonical task
+  dependency backfill.
+- `staff.telegram_username`: `seedStaff()` inserts it during the first
+  startup pass before migrations.
 
-Multi-business compatibility keeps `idx_customers_business_phone`,
-`idx_leads_business_status_created`, `idx_products_business_active`,
-`idx_products_business_code`, and `idx_products_business_domain_category` while
-older production databases catch up to the durable `business_context`
-migrations.
+## Current Startup Indexes, Functions And Triggers
+
+No startup indexes remain. No startup functions or triggers remain.
+
+The old startup trigger/function pair `update_updated_at_column` and
+`trg_bookings_updated_at` is owned by `002_add_updated_at.sql` and no longer
+belongs in `initDatabase()`.
 
 Do not add a new startup index as a convenience shortcut. New durable indexes
 belong in SQL migrations.
+
+## Task 22 Ownership Matrix
+
+Before Task 22, the post-wave-1 startup surface still contained 39 tables,
+50 columns, 82 indexes, 1 function, and 1 trigger. The full machine-readable
+matrix for those objects is `DB_STARTUP_SCHEMA_OWNERSHIP_MATRIX` in
+`config/dbStartupSurface.js`.
+
+Each object has one of these verdicts:
+
+- `REMOVE_DUPLICATE`: removed from startup because an existing durable
+  migration fully owns it.
+- `KEEP_PRE_MIGRATION_DEPENDENCY`: kept in startup because an old migration or
+  first-pass startup hook needs it before later migrations can run.
+- `ADD_ADDITIVE_OWNERSHIP_MIGRATION`: removed from startup and now owned by
+  the additive/idempotent migration `340_db_startup_schema_ownership.sql`.
+- `BLOCKED_WITH_EVIDENCE`: reserved for future waves; Task 22 leaves no object
+  in this state.
+
+`340_db_startup_schema_ownership.sql` owns the remaining legacy objects that
+previously had no durable migration owner and no pre-migration dependency:
+
+- tables: `contractor_notifications`, `design_tags`, `kleshnya_messages`,
+  `point_transactions`, `task_logs`, `user_action_log`, `user_points`,
+  `user_streaks`;
+- task/user/booking/certificate columns: `bookings.skip_notification`,
+  `certificates.value_uah`, `tasks.control_policy`,
+  `tasks.escalation_level`, `tasks.last_reminded_at`, `tasks.owner`,
+  `tasks.task_type`, `tasks.time_window_end`, `tasks.time_window_start`,
+  `users.telegram_chat_id`, `users.telegram_username`;
+- indexes: `idx_contractor_notif_contractor`,
+  `idx_contractor_notif_status`, `idx_contractors_active`,
+  `idx_contractors_invite`, `idx_customers_child_name`,
+  `idx_design_tags_tag`, `idx_designs_collection`, `idx_designs_pinned`,
+  `idx_designs_publish_date`, `idx_finance_categories_type`,
+  `idx_finance_transactions_type`, `idx_kleshnya_messages_expires`,
+  `idx_kleshnya_messages_scope`, `idx_point_transactions_username`,
+  `idx_task_logs_created_at`, `idx_task_logs_task_id`,
+  `idx_tasks_deadline`, `idx_tasks_escalation`, `idx_tasks_owner`,
+  `idx_tasks_task_type`, `idx_user_action_log_created_at`,
+  `idx_user_action_log_username`, `idx_user_points_username`.
+
+Retained `KEEP_PRE_MIGRATION_DEPENDENCY` objects are not a template for new
+startup schema. They are compatibility bootstraps for the historical migration
+order. Removing them requires either a separately approved migration-order
+strategy or a proven historical dependency cleanup.
 
 ## Wave 1 Ownership Removed From Startup
 
@@ -131,7 +164,7 @@ work belongs in migrations with the governance metadata from
 
 ## Done Marker
 
-This pack is considered done when all of these remain true:
+This surface is considered controlled when all of these remain true:
 
 - `npm run check:db-startup-surface` passes.
 - `npm test` includes `npm run check:db-startup-surface`.

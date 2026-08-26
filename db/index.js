@@ -123,133 +123,12 @@ async function initDatabase() {
                 linked_to VARCHAR(50)
             )
         `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS lines_by_date (
-                id SERIAL PRIMARY KEY,
-                date VARCHAR(20) NOT NULL,
-                line_id VARCHAR(100) NOT NULL,
-                name VARCHAR(100) NOT NULL,
-                color VARCHAR(20),
-                from_sheet BOOLEAN DEFAULT FALSE,
-                UNIQUE(date, line_id)
-            )
-        `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS history (
-                id SERIAL PRIMARY KEY,
-                business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
-                action VARCHAR(64) NOT NULL,
-                username VARCHAR(50),
-                data JSONB,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS status VARCHAR(20) DEFAULT 'confirmed'`);
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS kids_count INTEGER`);
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS costume VARCHAR(100)`);
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW()`);
-
-        // Optimistic locking: backfill NULL updated_at with created_at
-        await pool.query(`UPDATE bookings SET updated_at = created_at WHERE updated_at IS NULL`);
-
-        // Optimistic locking: auto-update trigger for updated_at
-        await pool.query(`
-            CREATE OR REPLACE FUNCTION update_updated_at_column()
-            RETURNS TRIGGER AS $$
-            BEGIN
-                NEW.updated_at = NOW();
-                RETURN NEW;
-            END;
-            $$ LANGUAGE plpgsql
-        `);
-        await pool.query(`DROP TRIGGER IF EXISTS trg_bookings_updated_at ON bookings`);
-        await pool.query(`
-            CREATE TRIGGER trg_bookings_updated_at
-                BEFORE UPDATE ON bookings
-                FOR EACH ROW
-                EXECUTE FUNCTION update_updated_at_column()
-        `);
-
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS group_name VARCHAR(100)`);
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS telegram_message_id INTEGER`);
+        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
 
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS settings (
                 key VARCHAR(100) PRIMARY KEY,
                 value TEXT
-            )
-        `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS pending_animators (
-                id SERIAL PRIMARY KEY,
-                date VARCHAR(20) NOT NULL,
-                note TEXT,
-                status VARCHAR(20) DEFAULT 'pending',
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS afisha (
-                id SERIAL PRIMARY KEY,
-                date VARCHAR(20) NOT NULL,
-                time VARCHAR(10) NOT NULL,
-                title VARCHAR(200) NOT NULL,
-                duration INTEGER DEFAULT 60,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_afisha_date ON afisha(date)');
-
-        // v7.4: Event type (event/birthday/regular)
-        await safeQuery(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'event'`);
-        // v8.0: Afisha description
-        await safeQuery(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS description TEXT`);
-        // v8.0: Source template for recurring afisha
-        await safeQuery(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS template_id INTEGER`);
-        // v8.3: Original time anchor for drag constraints
-        await safeQuery(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS original_time VARCHAR(10)`);
-        // v8.6: Assigned animator line for auto-distribution
-        await safeQuery(`ALTER TABLE afisha ADD COLUMN IF NOT EXISTS line_id VARCHAR(100)`);
-
-        // v8.0: Recurring afisha templates
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS afisha_templates (
-                id SERIAL PRIMARY KEY,
-                title VARCHAR(200) NOT NULL,
-                time VARCHAR(10) NOT NULL,
-                duration INTEGER DEFAULT 60,
-                type VARCHAR(20) DEFAULT 'event',
-                description TEXT,
-                recurrence_pattern VARCHAR(20) NOT NULL DEFAULT 'weekly',
-                recurrence_days VARCHAR(50),
-                date_from VARCHAR(20),
-                date_to VARCHAR(20),
-                is_active BOOLEAN DEFAULT true,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS telegram_known_chats (
-                chat_id BIGINT PRIMARY KEY,
-                title VARCHAR(200),
-                type VARCHAR(50),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS telegram_known_threads (
-                thread_id INTEGER NOT NULL,
-                chat_id BIGINT NOT NULL,
-                title VARCHAR(200),
-                updated_at TIMESTAMP DEFAULT NOW(),
-                PRIMARY KEY (chat_id, thread_id)
             )
         `);
 
@@ -264,8 +143,6 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)');
         // v12.3: schema_migrations table
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -295,13 +172,6 @@ async function initDatabase() {
         if (newUsersCheck.rows.length === 0) {
             await skipLegacyCredentialMigration(newUsersVersion, 'Anna/Artem seed');
         }
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS booking_counter (
-                year INTEGER PRIMARY KEY,
-                counter INTEGER NOT NULL DEFAULT 0
-            )
-        `);
 
         // v7.0: Products catalog table
         await safeQuery(`
@@ -349,18 +219,8 @@ async function initDatabase() {
             log.info('Products catalog seeded (40 products)');
         }
 
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_category ON products(category)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_active ON products(is_active)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_domain ON products(domain)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_kitchen_type ON products(kitchen_type)');
-        await safeQuery("CREATE INDEX IF NOT EXISTS idx_products_menu_section ON products(menu_section) WHERE COALESCE(domain, 'program') = 'kitchen' AND kitchen_type = 'menu'");
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_availability_status ON products(availability_status)');
-        await safeQuery(`ALTER TABLE products ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_business_active ON products(business_context, is_active)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_business_domain_category ON products(business_context, domain, category, sort_order)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_products_business_code ON products(business_context, code)');
-
-        // v7.5: Tasks table
+        // v7.5/v10 compatibility: legacy migrations before the current
+        // ownership baseline read these task columns before later migrations run.
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS tasks (
                 id SERIAL PRIMARY KEY,
@@ -376,127 +236,10 @@ async function initDatabase() {
                 completed_at TIMESTAMP
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_date ON tasks(date)');
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_business_status_date ON tasks(business_context, status, date)');
-        await safeQuery("CREATE INDEX IF NOT EXISTS idx_tasks_business_owner_active ON tasks(business_context, owner_user_id, status, deadline) WHERE COALESCE(status, 'todo') NOT IN ('done','cancelled','archived')");
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_business_completed_at ON tasks(business_context, completed_at) WHERE completed_at IS NOT NULL');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_business_source ON tasks(business_context, source_type, source_id) WHERE source_type IS NOT NULL OR source_id IS NOT NULL');
-
-        // v7.6: Link tasks to afisha events
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS afisha_id INTEGER`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_afisha_id ON tasks(afisha_id)');
-
-        // v7.8: Task types + recurring templates
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS type VARCHAR(20) DEFAULT 'manual'`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS template_id INTEGER`);
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS task_templates (
-                id SERIAL PRIMARY KEY,
-                title VARCHAR(200) NOT NULL,
-                description TEXT,
-                priority VARCHAR(20) DEFAULT 'normal',
-                assigned_to VARCHAR(50),
-                recurrence_pattern VARCHAR(20) NOT NULL,
-                recurrence_days VARCHAR(20),
-                is_active BOOLEAN DEFAULT TRUE,
-                created_by VARCHAR(50),
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_type ON tasks(type)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_template_id ON tasks(template_id)');
-
-        // v7.9: Task categories for children's center
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_category ON tasks(category)');
-        // Also add category to templates
-        await safeQuery(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS category VARCHAR(20) DEFAULT 'admin'`);
-        await safeQuery(`ALTER TABLE task_templates ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_task_templates_business_active_created ON task_templates(business_context, is_active, created_at DESC)');
-
-        // v10.0: Tasker — extended task fields
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS task_type VARCHAR(10) DEFAULT 'human'`); // 'human' or 'bot'
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS owner VARCHAR(50)`); // manager/responsible (escalation target)
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS deadline TIMESTAMP`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_window_start VARCHAR(10)`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS time_window_end VARCHAR(10)`);
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS dependency_ids INTEGER[] DEFAULT '{}'`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS control_policy JSONB DEFAULT '{"reminder_minutes":[60,30,10],"escalation_after_minutes":120}'`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS escalation_level INTEGER DEFAULT 0`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(30) DEFAULT 'manual'`); // 'booking','trigger','manual','recurring','kleshnya'
+        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_type VARCHAR(30) DEFAULT 'manual'`);
         await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS source_id VARCHAR(50)`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS last_reminded_at TIMESTAMP`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS archive_reason VARCHAR(80)`);
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS duplicate_of_task_id INTEGER`);
-        // v10.1: Optimistic locking version column
-        await safeQuery(`ALTER TABLE tasks ADD COLUMN IF NOT EXISTS version INTEGER DEFAULT 1`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_task_type ON tasks(task_type)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_owner ON tasks(owner)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_deadline ON tasks(deadline)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_escalation ON tasks(escalation_level)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_completed_at ON tasks(completed_at)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_duplicate_of_task_id ON tasks(duplicate_of_task_id)');
-
-        // v10.0: Task change log
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS task_logs (
-                id SERIAL PRIMARY KEY,
-                task_id INTEGER NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
-                action VARCHAR(30) NOT NULL,
-                old_value TEXT,
-                new_value TEXT,
-                actor VARCHAR(50) DEFAULT 'system',
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_task_logs_task_id ON task_logs(task_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_task_logs_created_at ON task_logs(created_at)');
-
-        // v10.0: Points system
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS user_points (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                permanent_points INTEGER DEFAULT 0,
-                monthly_points INTEGER DEFAULT 0,
-                month VARCHAR(7) NOT NULL,
-                updated_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE(username, month)
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_user_points_username ON user_points(username)');
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS point_transactions (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                points INTEGER NOT NULL,
-                type VARCHAR(10) NOT NULL DEFAULT 'monthly',
-                reason VARCHAR(200),
-                task_id INTEGER,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_point_transactions_username ON point_transactions(username)');
-
-        // v10.0: Telegram chat_id mapping for personal notifications
-        await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_chat_id BIGINT`);
-        await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
-
-        // v7.10: Scheduled Telegram message deletions (replaces setTimeout)
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS scheduled_deletions (
-                id SERIAL PRIMARY KEY,
-                chat_id BIGINT NOT NULL,
-                message_id INTEGER NOT NULL,
-                delete_at TIMESTAMP NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_scheduled_deletions_delete_at ON scheduled_deletions(delete_at)');
 
         // v7.10: Staff schedule
         await safeQuery(`
@@ -524,28 +267,8 @@ async function initDatabase() {
                 UNIQUE(staff_id, date)
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_staff_department ON staff(department)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_staff_active ON staff(is_active)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_staff_schedule_date ON staff_schedule(date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_staff_schedule_staff ON staff_schedule(staff_id)');
-
         // v7.10.1: Telegram username for staff notifications
         await safeQuery(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS telegram_username VARCHAR(100)`);
-        await safeQuery(`ALTER TABLE staff ADD COLUMN IF NOT EXISTS rate_unit VARCHAR(10) DEFAULT 'hour'`);
-        await safeQuery(`UPDATE staff SET rate_unit = 'hour' WHERE rate_unit IS NULL OR rate_unit NOT IN ('hour', 'day', 'month')`);
-        await safeQuery(`DO $$
-        BEGIN
-            IF NOT EXISTS (
-                SELECT 1
-                  FROM pg_constraint
-                 WHERE conname = 'chk_staff_rate_unit'
-                   AND pg_get_constraintdef(oid) LIKE '%month%'
-            ) THEN
-                ALTER TABLE staff DROP CONSTRAINT IF EXISTS chk_staff_rate_unit;
-                ALTER TABLE staff
-                    ADD CONSTRAINT chk_staff_rate_unit CHECK (rate_unit IN ('hour', 'day', 'month'));
-            END IF;
-        END $$;`);
 
         // Seed staff if table is empty
         const staffCount = await pool.query('SELECT COUNT(*) FROM staff');
@@ -553,19 +276,6 @@ async function initDatabase() {
             await seedStaff();
             log.info('Staff seeded (30 employees)');
         }
-
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_date ON bookings(date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_date_status ON bookings(date, status)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_line_date ON bookings(line_id, date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_linked_to ON bookings(linked_to)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_lines_by_date_date ON lines_by_date(date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_history_created_at ON history(created_at)');
-
-        // v20.9.26: Performance indexes
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_program_id ON bookings(program_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_history_action ON history(action)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_tasks_created_by ON tasks(created_by)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_lines_by_date_line_date ON lines_by_date(line_id, date)');
 
         // v8.3: Booking automation rules
         await safeQuery(`
@@ -580,8 +290,6 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        // v8.3: Extra data for bookings (t-shirt sizes, etc.)
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS extra_data JSONB`);
 
         // Seed default automation rules if empty
         const rulesCount = await pool.query('SELECT COUNT(*) FROM automation_rules');
@@ -615,7 +323,8 @@ async function initDatabase() {
             log.info('Automation rules seeded (3 rules)');
         }
 
-        // v8.4: Certificates system
+        // v8.4/v15.1 compatibility: migration 018 indexes certificates.customer_id
+        // before any later ownership migration can add it.
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS certificates (
                 id SERIAL PRIMARY KEY,
@@ -637,14 +346,6 @@ async function initDatabase() {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_certificates_status ON certificates(status)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_certificates_cert_code ON certificates(cert_code)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_certificates_valid_until ON certificates(valid_until)');
-
-        // v8.7: Season column for seasonal certificate backgrounds
-        await safeQuery(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS season VARCHAR(10) DEFAULT 'winter'`);
-
-        // v15.1: CRM — customers table (created early because certificates references it)
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS customers (
                 id SERIAL PRIMARY KEY,
@@ -663,115 +364,7 @@ async function initDatabase() {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
-
-        // v15.1: Link certificates to customers
         await safeQuery(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_certificates_customer_id ON certificates(customer_id)');
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS certificate_counter (
-                year INTEGER PRIMARY KEY,
-                counter INTEGER NOT NULL DEFAULT 0
-            )
-        `);
-
-        // v10.6: User action log (who clicked what where)
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS user_action_log (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                action VARCHAR(50) NOT NULL,
-                target VARCHAR(100),
-                meta JSONB,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_user_action_log_username ON user_action_log(username)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_user_action_log_created_at ON user_action_log(created_at)');
-
-        // v10.6→v22.4: Achievements system (table managed by migration 032)
-
-        // v10.6: User streaks
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS user_streaks (
-                username VARCHAR(50) PRIMARY KEY,
-                current_streak INTEGER DEFAULT 0,
-                longest_streak INTEGER DEFAULT 0,
-                last_active_date VARCHAR(20),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-
-        // v11.0: Kleshnya messages cache (rate-limit AI generation)
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS kleshnya_messages (
-                id SERIAL PRIMARY KEY,
-                scope VARCHAR(30) NOT NULL DEFAULT 'daily_greeting',
-                target_date VARCHAR(20),
-                target_user VARCHAR(50),
-                message TEXT NOT NULL,
-                context JSONB,
-                source VARCHAR(20) DEFAULT 'template',
-                created_at TIMESTAMP DEFAULT NOW(),
-                expires_at TIMESTAMP NOT NULL
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_kleshnya_messages_scope ON kleshnya_messages(scope, target_date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_kleshnya_messages_expires ON kleshnya_messages(expires_at)');
-
-        // v11.0: Kleshnya chat history
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS kleshnya_chat (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                role VARCHAR(10) NOT NULL DEFAULT 'assistant',
-                message TEXT NOT NULL,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_kleshnya_chat_username ON kleshnya_chat(username, created_at)');
-
-        // v12.0: Design board — collections, designs, tags
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS design_collections (
-                id SERIAL PRIMARY KEY,
-                name VARCHAR(100) NOT NULL,
-                color VARCHAR(20) DEFAULT '#6366F1',
-                sort_order INTEGER DEFAULT 0,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS designs (
-                id SERIAL PRIMARY KEY,
-                filename VARCHAR(255) NOT NULL,
-                original_name VARCHAR(255) NOT NULL,
-                mime_type VARCHAR(100) NOT NULL,
-                file_size INTEGER NOT NULL,
-                width INTEGER,
-                height INTEGER,
-                title VARCHAR(200),
-                description TEXT,
-                is_pinned BOOLEAN DEFAULT FALSE,
-                collection_id INTEGER REFERENCES design_collections(id) ON DELETE SET NULL,
-                publish_date VARCHAR(20),
-                created_by VARCHAR(50),
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_designs_collection ON designs(collection_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_designs_pinned ON designs(is_pinned)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_designs_publish_date ON designs(publish_date)');
-
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS design_tags (
-                design_id INTEGER NOT NULL REFERENCES designs(id) ON DELETE CASCADE,
-                tag VARCHAR(50) NOT NULL,
-                PRIMARY KEY (design_id, tag)
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_design_tags_tag ON design_tags(tag)');
 
         // v12.6: Contractors table
         await safeQuery(`
@@ -788,43 +381,6 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_contractors_active ON contractors(is_active)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_contractors_invite ON contractors(invite_token)');
-
-        // v12.6: Contractor notification log
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS contractor_notifications (
-                id SERIAL PRIMARY KEY,
-                contractor_id INTEGER NOT NULL REFERENCES contractors(id) ON DELETE CASCADE,
-                booking_id VARCHAR(50),
-                rule_id INTEGER,
-                message_id INTEGER,
-                status VARCHAR(20) DEFAULT 'sent',
-                responded_at TIMESTAMP,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_contractor_notif_contractor ON contractor_notifications(contractor_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_contractor_notif_status ON contractor_notifications(status)');
-
-        // v12.6: skip_notification flag for bookings
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS skip_notification BOOLEAN DEFAULT false`);
-
-        // v15.1: CRM — customers indexes (table created earlier near certificates)
-        await safeQuery(`ALTER TABLE customers ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery(`ALTER TABLE leads ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery(`ALTER TABLE customer_cards ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery(`ALTER TABLE mailing_list ADD COLUMN IF NOT EXISTS business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix'`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_phone ON customers(phone)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_name ON customers(name)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_instagram ON customers(instagram)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_child_name ON customers(child_name)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_customers_business_phone ON customers(business_context, phone) WHERE phone IS NOT NULL');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_leads_business_status_created ON leads(business_context, status, created_at DESC)');
-
-        // v15.1: CRM — link bookings to customers
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_customer_id ON bookings(customer_id)');
 
         // v12.6: Seed test contractor (Женя / Євгенія)
         const contractorSeedVersion = '008_seed_contractor_zhenya';
@@ -877,9 +433,9 @@ async function initDatabase() {
                 created_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_finance_categories_type ON finance_categories(type)');
 
-        // v16.0: Finance module — transactions
+        // v16 compatibility: finance_transactions was historically startup-owned;
+        // early finance/payroll migrations reference it before the Task 22 baseline.
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS finance_transactions (
                 id SERIAL PRIMARY KEY,
@@ -897,17 +453,6 @@ async function initDatabase() {
                 updated_at TIMESTAMP DEFAULT NOW()
             )
         `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_finance_transactions_date ON finance_transactions(date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_finance_transactions_type ON finance_transactions(type)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_finance_transactions_category ON finance_transactions(category_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_finance_transactions_booking ON finance_transactions(booking_id)');
-
-        // v16.0: Add payment_method to bookings
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS payment_method VARCHAR(30)`);
-        await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS banquet_adults INTEGER`);
-
-        // v16.0: Add value_uah to certificates
-        await safeQuery(`ALTER TABLE certificates ADD COLUMN IF NOT EXISTS value_uah INTEGER DEFAULT 0`);
 
         // v16.0: Seed finance categories if empty
         const finCatCount = await pool.query('SELECT COUNT(*) FROM finance_categories');
@@ -928,66 +473,6 @@ async function initDatabase() {
                 ('Інші витрати', 'expense', '📋', '#78716C', false, 7)`
             );
             log.info('Finance categories seeded (12 categories)');
-        }
-
-        // v17.0: Budget planning
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS budget_plans (
-                id SERIAL PRIMARY KEY,
-                year INTEGER NOT NULL,
-                month INTEGER NOT NULL CHECK (month >= 1 AND month <= 12),
-                category_id INTEGER REFERENCES finance_categories(id) ON DELETE CASCADE,
-                planned_amount INTEGER NOT NULL DEFAULT 0,
-                notes TEXT,
-                created_by VARCHAR(100),
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW(),
-                UNIQUE(year, month, category_id)
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_budget_plans_year_month ON budget_plans(year, month)');
-
-        // v17.0: Procurement lists
-        const procurementListsReady = await safeQuery(`
-            CREATE TABLE IF NOT EXISTS procurement_lists (
-                id SERIAL PRIMARY KEY,
-                title VARCHAR(255) NOT NULL,
-                department VARCHAR(50) NOT NULL DEFAULT 'admin',
-                status VARCHAR(30) NOT NULL DEFAULT 'draft',
-                planned_date VARCHAR(20),
-                total_estimated INTEGER DEFAULT 0,
-                total_actual INTEGER DEFAULT 0,
-                assigned_to INTEGER REFERENCES staff(id) ON DELETE SET NULL,
-                notes TEXT,
-                created_by VARCHAR(100),
-                created_at TIMESTAMP DEFAULT NOW(),
-                updated_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        if (procurementListsReady) {
-            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_lists_status ON procurement_lists(status)');
-            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_lists_department ON procurement_lists(department)');
-        }
-
-        // v17.0: Procurement items
-        const procurementItemsReady = await safeQuery(`
-            CREATE TABLE IF NOT EXISTS procurement_items (
-                id SERIAL PRIMARY KEY,
-                list_id INTEGER NOT NULL REFERENCES procurement_lists(id) ON DELETE CASCADE,
-                stock_id INTEGER REFERENCES warehouse_stock(id) ON DELETE SET NULL,
-                name VARCHAR(255) NOT NULL,
-                quantity INTEGER NOT NULL DEFAULT 1,
-                unit VARCHAR(30) DEFAULT 'шт',
-                estimated_price INTEGER DEFAULT 0,
-                actual_price INTEGER,
-                is_purchased BOOLEAN DEFAULT FALSE,
-                notes TEXT,
-                created_at TIMESTAMP DEFAULT NOW()
-            )
-        `);
-        if (procurementItemsReady) {
-            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_items_list ON procurement_items(list_id)');
-            await safeQuery('CREATE INDEX IF NOT EXISTS idx_procurement_items_stock ON procurement_items(stock_id)');
         }
 
         log.info('Database initialized');

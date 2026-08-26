@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.23 - Chat Upload Postgres Durability
+
+### Chat / Storage / (26.08.2026) [codex]
+- **Postgres-primary chat uploads** — нові chat attachments тепер зберігають binary content у `chat_upload_blobs`, а `chat_messages.metadata.file` лишається сумісним з поточним UI contract.
+- **Public URL contract збережено** — `/uploads/chat/*` не змінюється: runtime спочатку читає Postgres blob, потім legacy local file fallback.
+- **Без HTML fallback для missing asset** — відсутній chat upload повертає стабільний JSON 404 замість випадкового CRM HTML.
+- **Regression coverage** — додано focused tests для auth/member guard-before-storage, Postgres round-trip, legacy fallback, MIME/size policy і rollback при blob/message failure.
+
+---
+
 ## v0.81.22 - DB Startup Cleanup Wave 1
 
 ### Database startup ownership / (26.08.2026) [codex]

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.24",
+  "version": "0.81.25",
   "eventGenix": {
-    "releaseLabel": "Sound Upload Postgres Durability"
+    "releaseLabel": "Scheduler Direct Behavior Closure"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

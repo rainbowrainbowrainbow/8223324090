@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.25 - Scheduler Direct Behavior Closure
+
+### Release / Versioning / (26.08.2026) [codex]
+- **Scheduler Direct Behavior Closure** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.24 - Sound Upload Postgres Durability
 
 ### Sound / Storage / (26.08.2026) [codex]

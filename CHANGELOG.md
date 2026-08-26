@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.21 - Park Logo Asset
+
+### Release / Versioning / (26.08.2026) [codex]
+- **Park Logo Asset** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.20 - My Day AI Closure
 
 ### Release / Versioning / (24.08.2026) [codex]

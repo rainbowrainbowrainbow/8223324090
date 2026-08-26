@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.27 - Legacy Upload Backfill Recovery
+
+### Storage / Recovery / (26.08.2026) [codex]
+- **Checksum backfill tooling** — додано dry-run-first operator script для legacy chat, sound, profile avatar, catalog image і design upload blobs із manifest hash, expected count, explicit confirmation і checksum-conflict fail-closed поведінкою.
+- **Redacted recovery evidence** — production dry-run формує тільки counts, opaque IDs, checksums, sizes і verdicts; filenames, customer/chat content, raw URLs, binary bytes і secrets не потрапляють в output.
+- **Design missing-asset boundary fixed** — `/uploads/designs/*` тепер, як chat/sounds, проходить Postgres blob, legacy local fallback і стабільний JSON 404 замість випадкового CRM HTML.
+
+---
+
 ## v0.81.26 - DB Startup Ownership Matrix
 
 ### Database startup ownership / (26.08.2026) [codex]

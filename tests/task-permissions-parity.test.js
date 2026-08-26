@@ -99,6 +99,20 @@ test('bulk route checks each visible target for mutation authority before any up
     assert.match(bulk, /TASK_BULK_REASSIGN_FORBIDDEN/);
 });
 
+test('task permission audit document records current bulk baseline without stale P0 wording', () => {
+    const doc = fs.readFileSync(path.join(ROOT, 'docs', 'TASK_PERMISSIONS_AND_LEGACY_AUDIT.md'), 'utf8');
+
+    assert.match(doc, /Task 15 re-baseline/);
+    assert.match(doc, /older P0 bulk mutation finding is \*\*closed in the current runtime\*\*/);
+    assert.match(doc, /TASK_BULK_MUTATION_FORBIDDEN/);
+    assert.match(doc, /TASK_BULK_REASSIGN_FORBIDDEN/);
+    assert.match(doc, /DATA_AUDIT_DEFERRED_NO_READONLY_CREDENTIAL/);
+    assert.match(doc, /Counts are intentionally not represented as zero/);
+    assert.doesNotMatch(doc, /Gap P0/i);
+    assert.doesNotMatch(doc, /Remaining risk:.*P0 bulk mutation/is);
+    assert.doesNotMatch(doc, /counts? (?:are|=) zero/i);
+});
+
 test('Task Center consumes capability decisions and explains disabled drawer actions', () => {
     const page = fs.readFileSync(path.join(ROOT, 'js', 'tasks-page.js'), 'utf8');
 

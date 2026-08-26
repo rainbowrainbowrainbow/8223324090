@@ -1,52 +1,60 @@
 # Task permissions and legacy-data audit
 
-Date: 2026-07-31Scope: static code audit plus attempted read-only PostgreSQL aggregate audit.Status: **decision document; no roles, permissions, auth, database schema, or production data changed.**
+Date: 2026-08-26
+Scope: static code audit, focused task-permission tests, and documentation re-baseline.
+Status: **Task 15 re-baseline; no runtime authorization gap found; no roles, permissions, auth runtime, database schema, migrations, or production data changed.**
 
 ## Evidence sources
 
-- `config/roles.js`: the legacy task flags are `taskVisibility`, `canCreateTasks`, `canDeleteTasks`, and `canAssignAnyone`.
-- `middleware/auth.js`: `requireRole('admin')` and `requireRole('user')` expand through `LEGACY_ROLE_MAP`; this is not the same contract as `config/roles.js` flags.
-- `services/taskPolicy.js`: per-record read/mutate/reassign/reschedule/observer policy.
-- `services/taskDetailContract.js` and `services/taskContract.js`: drawer and card action contracts.
-- `routes/tasks.js`: route-level enforcement.
-- `js/tasks-page.js` and `js/profile-page.js`: currently rendered controls.
+- `config/roles.js`: legacy task flags are `taskVisibility`, `canCreateTasks`, `canDeleteTasks`, and `canAssignAnyone`.
+- `middleware/auth.js`: request authentication and legacy route role expansion.
+- `config/permissionRegistry.js`: canonical action permissions for task route capabilities.
+- `services/taskPolicy.js`: per-record read/mutate/reassign/reschedule/observer policy and explicit action allow/deny resolution.
+- `services/taskExecution.js` and `services/taskReschedule.js`: mutation services used by direct task action routes.
+- `services/taskDetailContract.js` and `services/taskContract.js`: server-derived drawer/card action contracts.
+- `routes/tasks.js`: task route enforcement, bulk mutation ordering, and action capability guards.
+- `js/tasks-page.js` and `js/profile-page.js`: frontend permission hydration and task action visibility.
+- `tests/task-permissions-parity.test.js`: focused regression coverage for canonical task capabilities, explicit deny, drawer parity, hydration, and bulk guard ordering.
+
+## Task 15 re-baseline result
+
+The older P0 bulk mutation finding is **closed in the current runtime**.
+
+Current `routes/tasks.js` bulk flow:
+
+1. authenticates the request through the router;
+2. validates action and target ids;
+3. loads all requested target rows using task visibility and business-scope SQL;
+4. rejects missing or invisible targets before mutation;
+5. rejects any target that fails `canMutateTask(req.user, task)` with `TASK_BULK_MUTATION_FORBIDDEN`;
+6. for `assign`, rejects any target that fails `canReassignTask(req.user, task)` with `TASK_BULK_REASSIGN_FORBIDDEN`;
+7. performs the first `UPDATE tasks t` only after those checks pass.
+
+`tests/task-permissions-parity.test.js` statically asserts this ordering so the route cannot drift back to visibility-only bulk mutation without failing tests.
 
 ## Current effective permission matrix
 
-| Action | Backend enforcement | Task policy | Current UI | Parity result / required reason |
+| Action | Backend enforcement | Record-level policy | Frontend contract | Re-baseline result |
 |---|---|---|---|---|
-| Read/list/detail/history/logs | authenticated request + business scope + `buildTaskVisibilityScope` | private tasks require owner or observer; own roles only own/observed tasks | visible tasks only; no explicit denial state | Mostly aligned. Hidden/404 is correct for unavailable records. |
-| Create | `POST /api/tasks` and related task creation endpoints use canonical `tasks.create` action capability + writable business scope | no per-record policy | composer, templates, and operation-pack controls stay hidden until `/api/tasks/permissions` hydrates and `create.allowed === true` | Closed by Task 11. Default roles intentionally mirror the former route access; explicit `action_denylist` wins. |
-| Edit/priority/subtasks/focus | generic role guard on some routes, then `loadMutableTask` / `canMutateTask` | owner for own roles; department/all roles; private only owner | detail contract disables edit, card actions are partially local | Mostly aligned where drawer contract is used. Non-drawer cards need the server `actionPermissions` contract, not local inference. |
-| Reassign | `POST /:id/reassign` + writable scope; `taskExecution.reassignTaskOwner` | `canReassignTask` for department/all or `canAssignAnyone` | drawer currently requires `canEdit && canReassignTask` | **Gap P2:** drawer can hide reassignment for a permitted department/all actor when the record-level edit condition differs. Show disabled with `task.reassign` reason. |
-| Reschedule/schedule/snooze | writable scope + scheduling service | `canRescheduleTask`; explicit `control_meta.canReschedule=false` blocks | My Day and cards infer the same control meta; drawer uses contract | Partial alignment. UI must use `drawer.actions.reschedule` / `actionPermissions.canReschedule` everywhere and show the policy reason. |
-| Complete | writable scope + `completeTask` | mutation policy plus completion-report requirement | drawer and My Day action controls | Partial alignment. A report-required denial needs a distinct reason, not a generic disabled state. |
-| Archive | bulk route only; `POST /bulk` uses generic role guard and visibility SQL | no per-task mutation check inside bulk route | postponed-task UI derives `canArchive`; bulk controls are selection-driven | **Gap P0:** an observer can be visible through `buildTaskVisibilityScope` but is not allowed by `canMutateTask`; bulk archive/restore/done/priority can currently rely on visibility rather than per-task mutation. Authorization fix requires explicit approval. |
-| Delete | `DELETE /:id` and duplicate cleanup use canonical `tasks.delete` action capability + business scope | no per-record task-policy selector beyond the route capability | UI consumes `/api/tasks/permissions.capabilities.delete` and drawer reasons | Closed by Task 11. Default roles intentionally mirror the former route access; explicit `action_denylist` wins. |
-| Observers | writable scope + `loadMutableTask` + `canManageTaskObservers` | mutate **or** reassign authority | drawer action contract uses `canManageTaskObservers` | Aligned in the canonical drawer. Other renderers must not recreate this check. |
-| Completion report | writable scope + `loadMutableTask` | mutation policy | drawer shows report requirement | Partial: submit/complete reasons are not consistently shown in all cards. |
-| Review | `POST /:id/review` uses canonical `tasks.review` action capability + visibility/business scope | completion-state check still applies before review writes | drawer contract exposes review denial reasons from the server policy | Closed by Task 11. Default roles intentionally mirror the former route access; explicit `action_denylist` wins. |
-| Bulk | `POST /bulk` generic legacy role guard + visibility/business scope | missing per-row mutation check | selection UI; no server-provided capability reason | **Gap P0:** see Archive. Bulk reassign has additional owner validation, but the other mutations remain affected. |
+| Read/list/detail/history/logs | authenticated request + business scope + `buildTaskVisibilityScope` | private tasks require owner or observer; own roles only own/observed tasks | visible tasks are rendered from API payloads; unavailable records are hidden or reported as missing | Aligned. Hidden/404 remains the expected result for records outside scope. |
+| Create | task creation endpoints use `requireTaskRouteCapability('create')`, canonical `tasks.create`, and writable business scope | no existing record | create/composer/template/operation-pack controls stay hidden until `/api/tasks/permissions` hydrates and `create.allowed === true` | Aligned. Explicit `action_denylist` wins over role defaults. |
+| Edit/priority/subtasks/focus/commitment/observers/completion report | mutable routes use `loadMutableTask` or equivalent visible-row load before write | `canMutateTask`; private tasks are owner-only for mutation; department/all roles follow their configured scope | canonical drawer uses server `actions`/`reasons`; local quick controls remain backend-authoritative | Aligned for security. UI must not be treated as the authorization boundary. |
+| Reassign | direct reassign route uses `taskExecution.reassignTaskOwner`; full edit checks owner changes; bulk assign checks every target | `canReassignTask` for department/all scope or `canAssignAnyone`; bulk also requires `canMutateTask` for every target | drawer uses `actions.reassign` directly, not `canEdit && canReassignTask` | Aligned. The older drawer P2 is closed. |
+| Reschedule/schedule/snooze | reschedule service loads a visible task and checks `canRescheduleTask` before update; related writable routes use mutable-task guards | `canRescheduleTask`; explicit `control_meta.canReschedule=false` blocks | drawer uses `actions.reschedule`; other controls remain backend-authoritative | Aligned for security. Drawer parity is covered by the server-derived contract. |
+| Complete/status done | `completeTask` and status-update routes load visible task, then check `canMutateTask` before write | mutation policy plus completion-report/subtask requirements where applicable | drawer/My Day controls use action state and backend responses | Aligned for authorization. Business-rule denial reasons can still differ by surface but do not create a permission bypass. |
+| Archive/restore/done/priority bulk | `POST /api/tasks/bulk` loads all targets, checks target count, then checks every row before first `UPDATE` | every target must pass `canMutateTask`; `assign` additionally requires `canReassignTask` | selection toolbar is convenience UI; server is authoritative | **Closed.** The older P0 bulk mutation gap is not present in current code. |
+| Delete | delete and duplicate-cleanup routes use `requireTaskRouteCapability('delete')`, canonical `tasks.delete`, and business scope | route capability owns this action; no separate per-record task-policy selector is currently part of the contract | UI consumes `/api/tasks/permissions.capabilities.delete` and drawer delete reasons | Aligned with the current canonical action-capability contract. Explicit deny wins. |
+| Review | review route uses `requireTaskRouteCapability('review')`, canonical `tasks.review`, and visibility/business scope | task completion/review state still applies before writes | drawer exposes review denial reasons from the server policy | Aligned. Explicit deny wins. |
 
-### Meaning of severity
+## Canonical task route capabilities
 
-- **P0** — possible authorization parity/security boundary; requires explicit approval before code changes.
-- **P1** — backend/UI contract inconsistency; can hide allowed work or show a misleading control.
+| Capability | Owner | Backend consumers | Frontend consumers | Explicit deny behavior |
+|---|---|---|---|---|
+| `tasks.create` | task creation actions | `routes/tasks.js` creation, operation-pack, dependency quick-create, AI-draft commit routes | Task Center create controls after permission hydration | `action_denylist: ['tasks.create']` blocks even if the role has default access. |
+| `tasks.delete` | task deletion and duplicate cleanup | `routes/tasks.js` delete and dedup cleanup routes | drawer delete action and Task Center delete controls | `action_denylist: ['tasks.delete']` blocks even if the role has default access. |
+| `tasks.review` | task review submission | `routes/tasks.js` review route | drawer review action and reasons | `action_denylist: ['tasks.review']` blocks even if the role has default access. |
 
-## Proposed capability matrix (before -> after)
-
-This is a proposal only; it is **not** implemented.
-
-| Capability | Current source of truth | Proposed source of truth |
-|---|---|---|
-| `task.read` | business scope + visibility SQL | same backend policy, exposed as a reasoned read decision |
-| `task.create` | legacy `requireRole('admin','user')` plus coarse config flag | one backend capability returned by `/permissions` |
-| `task.edit`, `task.complete`, `task.reschedule` | `canMutateTask` / `canRescheduleTask`, with route variation | per-task action contract with `allowed` and `reasonCode` |
-| `task.reassign`, `task.observers` | `canReassignTask` / `canManageTaskObservers` | same policy, consumed directly by every UI surface |
-| `task.archive`, `task.bulk` | mixed UI contract and bulk visibility SQL | explicit per-task mutation enforcement; bulk is allowed only when every target passes the required action |
-| `task.delete`, `task.review` | legacy role expansion differs from config flags | explicit capability decisions, separately tested |
-
-No default access should be broadened. The proposed matrix is intended to make current backend enforcement visible and to close accidental differences, not to grant new power.
+These capabilities intentionally mirror the existing role defaults where applicable. The re-baseline did not broaden default access.
 
 ## Legacy task-data audit rules
 
@@ -66,74 +74,43 @@ The following queries are designed to run inside `BEGIN READ ONLY` and return ag
 
 ## Exact count status
 
-**Not executed — counts are intentionally not represented as zero.**
+`DATA_AUDIT_DEFERRED_NO_READONLY_CREDENTIAL`
 
-The repository has no `.env` and the permitted local CRM secrets file contains test-login data but no `DATABASE_URL`, `PRODUCTION_READONLY_DATABASE_URL`, `TASK_AUDIT_DATABASE_URL`, or `PG*` connection components. Therefore no PostgreSQL connection was available to perform the requested `BEGIN READ ONLY` aggregate audit.
+Counts are intentionally not represented as zero.
 
-To complete this section, provide one operator-controlled read-only connection string through `PRODUCTION_READONLY_DATABASE_URL` (or an equivalent read-only audit variable). The audit must:
+No operator-controlled read-only PostgreSQL audit URL was provided for this Task 15 re-baseline. The audit must not use a production `DATABASE_URL` or any writable credential as a substitute.
+
+To complete this section later, provide one read-only connection string through `PRODUCTION_READONLY_DATABASE_URL`, `TASK_AUDIT_DATABASE_URL`, or another explicitly read-only audit variable. The audit must:
 
 1. start `BEGIN READ ONLY`;
 2. verify `SHOW transaction_read_only = on`;
 3. execute aggregate `SELECT` statements only;
 4. record only counts and no customer/task text in this document;
-5. roll back and close the connection.
+5. finish with `ROLLBACK`;
+6. close the connection.
 
-## Required decisions before implementation
+## Historical implementation decisions
 
-1. Approve or reject an authorization fix for **P0 bulk mutation enforcement**.
-2. Choose which P1 UI parity gaps to fix: create, reassign, delete, review, and denial reasons.
-3. Approve or amend the proposed capability names and `before -> after` matrix.
-4. Provide a read-only DB audit connection to obtain exact counts.
-5. After counts are available, choose which deterministic rules may appear in a migration. A migration file must not be created before that separate approval.
+The 2026-07-31 approval allowed the following task-permission parity work:
 
-## Draft rollback approach (no migration exists)
+- every bulk target must pass the existing `canMutateTask` policy before any bulk mutation;
+- bulk reassignment also requires the existing `canReassignTask` policy for every target;
+- create, delete, and review use canonical task action capabilities;
+- drawer reassignment uses the canonical server-derived action contract;
+- no role definitions, role expansion, backend access broadening, database change, production migration, deploy, or production data mutation were part of that scope.
 
-If a later approved migration writes normalized fields, it must be idempotent, snapshot each affected row's old values into a migration-owned audit table or approved backup artifact, skip ambiguous records, and have a tested reverse SQL path. No task deletion is permitted.
+The current code and focused regression tests confirm those authorization items are implemented.
 
-## Approved implementation scope (2026-07-31)
+## Access-system baseline after Tasks 4-8
 
-The product owner approved only the following permissions-parity work:
+- `view_revenue` protects financial fields in booking/banquet and subscription responses; financial-only deposit operations deny before business services.
+- `manage_settings` governs subscription/package/feature-flag administration and system configuration mutations such as catalog settings, lead-assistant settings, and program-icon settings.
+- `export_data` is additive: payroll, HR report, attendance PDF, and schedule XLSX exports require both their relevant domain capability and this export capability. A payroll or HR view alone is insufficient.
+- Public integration exceptions are owned by explicit integration contracts with an owner, authentication mechanism, source guard, and focused tests.
+- The registry, route guards, and frontend visibility are checked together by access, action-permission, permission-registry, capability-policy, auth-boundary, and API-surface checks.
 
-- P0: every bulk target must pass the existing canMutateTask policy before any bulk mutation; bulk reassignment also requires the existing canReassignTask policy for every target.
-- P1: surface the current route capabilities for create, delete, and review; use the canonical drawer contract for reassign and display a reason for disabled actions.
-- No role definitions, role expansion, or backend access broadening.
-- No legacy-data migration file, database change, production migration, deploy, or production data mutation.
+## Remaining risks
 
-The legacy-data counts and normalization rules remain blocked on an operator-provided read-only database audit.
-
-## Access-system baseline after Tasks 4-8 (2026-08-02)
-
-This section records the completed access-system work and does not change the
-separate legacy task-data decision above.
-
-- `view_revenue` protects financial fields in booking/banquet and subscription
-  responses; financial-only deposit operations deny before business services.
-- `manage_settings` governs subscription/package/feature-flag administration
-  and the remaining system configuration mutations: catalog settings,
-  lead-assistant settings, and program-icon settings.
-- `export_data` is additive: payroll, HR report, attendance PDF, and schedule
-  XLSX exports require both their relevant domain capability and this export
-  capability. A payroll or HR view alone is insufficient.
-- Public integration exceptions are owned by explicit integration contracts
-  with an owner, authentication mechanism, source guard, and focused tests.
-- The registry, route guards, and frontend visibility are checked together by
-  the access, action-permission, permission-registry, capability-policy,
-  auth-boundary, and API-surface checks.
-
-## Task 11 re-baseline (2026-08-16)
-
-Task create/delete/review route capabilities are now canonical action
-permissions:
-
-- `tasks.create` owns `POST /api/tasks`, operation-pack creation, dependency
-  quick-create, and AI-draft commit routes.
-- `tasks.delete` owns `DELETE /api/tasks/:id` and duplicate cleanup.
-- `tasks.review` owns task review submission and drawer review visibility.
-
-These actions use `resolveCapability`, so explicit `action_denylist` overrides
-role defaults. The Task Center create surfaces are hidden in the static DOM and
-are only enabled after `/api/tasks/permissions` hydrates.
-
-Remaining risk: this document's older P0 bulk mutation finding and the
-legacy-data audit are not part of Task 11. They remain subject to their own
-approved implementation scope and a separate read-only database audit.
+- Legacy task-data aggregate counts remain deferred until an operator provides a read-only database credential. Unknown counts must not be documented as zero.
+- Non-drawer Task Center quick actions may still choose how much disabled-state explanation to show, but backend route/service guards remain authoritative and covered by tests.
+- No runtime authorization gap was found during Task 15, so this re-baseline requires no patch release or Railway deploy.

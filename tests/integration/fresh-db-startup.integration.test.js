@@ -40,6 +40,7 @@ async function insertWave1SentinelData(pool) {
     const username = `user_${suffix}`;
     const bookingId = `BK-${suffix}`;
     const groupId = `BQ-${suffix}`;
+    const roomResourceId = `room-${suffix}`;
     const storageKey = `profile-avatars/${username}.png`;
 
     await pool.query(
@@ -47,21 +48,28 @@ async function insertWave1SentinelData(pool) {
          VALUES ($1, $2, $3, $4, $5::text[], $6::text[])`,
         [username, 'test-hash', 'manager', 'Wave 1 User', ['tasks.create'], ['export_data']]
     );
-    await pool.query(
-        `INSERT INTO bookings (id, date, time, line_id, program_id, label, program_name, category, duration, price, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11)`,
-        [bookingId, '2099-01-01', '10:00', 'wave1-line', null, 'Wave 1', 'Wave 1', 'banquet', 60, 0, 'wave1']
-    );
-    await pool.query(
-        `INSERT INTO banquet_groups (id, business_context, primary_booking_id, date, room, group_name, status, source, meta, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9::jsonb, $10)`,
-        [groupId, 'event_genix', bookingId, '2099-01-01', 'Wave Room', 'Wave 1 Group', 'active', 'test', '{"sentinel":true}', 'wave1']
-    );
-    await pool.query(
-        `INSERT INTO banquet_group_bookings (group_id, business_context, booking_id, role, sort_order, created_by)
-         VALUES ($1, $2, $3, $4, $5, $6)`,
-        [groupId, 'event_genix', bookingId, 'primary', 10, 'wave1']
-    );
+    await pool.query('BEGIN');
+    try {
+        await pool.query(
+            `INSERT INTO bookings (id, date, time, line_id, room, room_resource_id, program_id, label, program_name, category, duration, price, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
+            [bookingId, '2099-01-01', '10:00', 'wave1-line', 'Wave Room', roomResourceId, null, 'Wave 1', 'Wave 1', 'banquet', 60, 0, 'wave1']
+        );
+        await pool.query(
+            `INSERT INTO banquet_groups (id, business_context, primary_booking_id, date, room, room_resource_id, group_name, status, source, meta, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
+            [groupId, 'event_genix', bookingId, '2099-01-01', 'Wave Room', roomResourceId, 'Wave 1 Group', 'active', 'test', '{"sentinel":true}', 'wave1']
+        );
+        await pool.query(
+            `INSERT INTO banquet_group_bookings (group_id, business_context, booking_id, role, sort_order, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6)`,
+            [groupId, 'event_genix', bookingId, 'primary', 10, 'wave1']
+        );
+        await pool.query('COMMIT');
+    } catch (error) {
+        await pool.query('ROLLBACK').catch(() => {});
+        throw error;
+    }
     await pool.query(
         `INSERT INTO profile_avatar_blobs (username, storage_key, original_name, content_type, file_size, data, checksum_sha256)
          VALUES ($1, $2, $3, $4, $5, decode($6, 'hex'), $7)`,

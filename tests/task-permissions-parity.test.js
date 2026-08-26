@@ -106,8 +106,12 @@ test('task permission audit document records current bulk baseline without stale
     assert.match(doc, /older P0 bulk mutation finding is \*\*closed in the current runtime\*\*/);
     assert.match(doc, /TASK_BULK_MUTATION_FORBIDDEN/);
     assert.match(doc, /TASK_BULK_REASSIGN_FORBIDDEN/);
-    assert.match(doc, /DATA_AUDIT_DEFERRED_NO_READONLY_CREDENTIAL/);
-    assert.match(doc, /Counts are intentionally not represented as zero/);
+    assert.match(doc, /Task 25 completed the aggregate-only production legacy-data audit/);
+    assert.match(doc, /verified `transaction_read_only=on`/);
+    assert.match(doc, /persistent CRM table write grants for the audit role: `0`/);
+    assert.match(doc, /active duplicate signature groups/);
+    assert.match(doc, /requires a separate\s+explicit data-fix task/);
+    assert.doesNotMatch(doc, /DATA_AUDIT_DEFERRED_NO_READONLY_CREDENTIAL/);
     assert.doesNotMatch(doc, /Gap P0/i);
     assert.doesNotMatch(doc, /Remaining risk:.*P0 bulk mutation/is);
     assert.doesNotMatch(doc, /counts? (?:are|=) zero/i);

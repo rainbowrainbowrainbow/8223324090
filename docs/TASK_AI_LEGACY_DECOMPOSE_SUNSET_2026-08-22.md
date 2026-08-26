@@ -18,20 +18,20 @@ No runtime frontend file calls the deprecated endpoint. It remains a thin compat
 
 ## Evidence snapshot
 
-- observed live version: `0.81.24`;
-- observed live SHA: `4734838db3b0c05923669b6381f9a7159e4e6f3e`;
+- observed live version: `0.81.27`;
+- observed live SHA: `88138e98fa31411923e6ec387af7aa155d25b711`;
 - source branch: `codex/eventgenix-production`;
-- deployment ID: `dca62851-2c49-4a9e-8690-63acbcb1ddd7`;
-- deployment start: `2026-08-26T10:57:16.621Z`;
+- deployment ID: `80613a91-b3ac-446c-9b66-aa5823559f83`;
+- deployment start: `2026-08-26T13:57:25.311Z`;
 - sanitized Railway log checks requested for `24h`, `7d`, and `30d`;
 - recognized HTTP calls to the legacy route: `0`;
 - recognized legacy telemetry events: `0`;
 - recognized non-QA real usage requests: `0`;
-- latest artifact: `output/task-ai-legacy-decompose/2026-08-26T11-02-50-557Z-legacy-decompose-v08124.md`;
+- latest artifact: `output/task-ai-legacy-decompose/task25-v08127-legacy-decompose.md`;
 - raw logs and task text were not stored.
 
 These zero counts are not a complete 30-day proof because the current deployment
-window is only about `0.1h` in the latest report. They cannot justify endpoint
+window is only about `0.6h` in the latest report. They cannot justify endpoint
 removal yet.
 
 ## Removal gate

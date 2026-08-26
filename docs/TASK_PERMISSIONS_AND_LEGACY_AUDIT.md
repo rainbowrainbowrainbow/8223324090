@@ -2,7 +2,7 @@
 
 Date: 2026-08-26
 Scope: static code audit, focused task-permission tests, and documentation re-baseline.
-Status: **Task 15 re-baseline; no runtime authorization gap found; no roles, permissions, auth runtime, database schema, migrations, or production data changed.**
+Status: **Task 25 evidence refresh; no runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, migrations, or production task data changed. The existing read-only PostgreSQL audit role was hardened for this audit.**
 
 ## Evidence sources
 
@@ -74,20 +74,48 @@ The following queries are designed to run inside `BEGIN READ ONLY` and return ag
 
 ## Exact count status
 
-`DATA_AUDIT_DEFERRED_NO_READONLY_CREDENTIAL`
+Task 25 completed the aggregate-only production legacy-data audit with a
+dedicated read-only PostgreSQL credential exposed locally as
+`TASK_AI_ROLLOUT_DATABASE_URL`.
 
-Counts are intentionally not represented as zero.
+Read-only safety proof:
 
-No operator-controlled read-only PostgreSQL audit URL was provided for this Task 15 re-baseline. The audit must not use a production `DATABASE_URL` or any writable credential as a substitute.
+- transaction mode: `BEGIN READ ONLY`;
+- verified `transaction_read_only=on`;
+- verified `default_transaction_read_only=on`;
+- persistent CRM table write grants for the audit role: `0`;
+- output policy: aggregate counts only; no task/customer text, prompts,
+  filenames, raw logs, URLs, passwords, tokens, or provider responses.
 
-To complete this section later, provide one read-only connection string through `PRODUCTION_READONLY_DATABASE_URL`, `TASK_AUDIT_DATABASE_URL`, or another explicitly read-only audit variable. The audit must:
+Latest aggregate-only artifact:
+`.codex-temp/task25-task-legacy-audit.json`.
 
-1. start `BEGIN READ ONLY`;
-2. verify `SHOW transaction_read_only = on`;
-3. execute aggregate `SELECT` statements only;
-4. record only counts and no customer/task text in this document;
-5. finish with `ROLLBACK`;
-6. close the connection.
+Production aggregate counts from 2026-08-26:
+
+| Counter | Count | Classification |
+|---|---:|---|
+| total tasks | 2926 | baseline only |
+| missing `owner_user_id` | 1819 | legacy ownership compatibility population |
+| owner token single active user candidates | 0 | no deterministic typed-owner backfill candidate found by this audit |
+| owner token manual review | 9 | manual review only; no automatic production write |
+| terminal status/workflow mismatch | 925 | legacy compatibility/manual review bucket; not a permission bypass |
+| active task with `completed_at` | 0 | no active completed-at inconsistency found |
+| `date`/`deadline` disagreement | 1 | manual review; schedule and deadline can intentionally differ |
+| `date`/`scheduled_start_at` disagreement | 0 | no mismatch found |
+| `deadline`/`scheduled_start_at` disagreement | 0 | no mismatch found |
+| missing/blank business context | 0 | no missing business-context rows found |
+| partial source reference | 1061 | manual review/legacy source-reference bucket |
+| active duplicate signature input rows | 464 | duplicate analysis input only |
+| active duplicate signature groups | 40 | manual review only; no automatic archive/delete |
+| task action history rows | 1849 | related-table aggregate |
+| task subtask rows | 239 | related-table aggregate |
+| task dependency rows | 8 | related-table aggregate |
+| My Day task impact rows | 372 | related-table aggregate |
+
+These counts are intentionally not interpreted as zero-risk cleanup approval.
+They identify legacy/manual-review buckets only. Any production backfill,
+delete, archive, duplicate cleanup, or canonicalization requires a separate
+explicit data-fix task with its own read-only preflight and approval.
 
 ## Historical implementation decisions
 
@@ -111,6 +139,8 @@ The current code and focused regression tests confirm those authorization items 
 
 ## Remaining risks
 
-- Legacy task-data aggregate counts remain deferred until an operator provides a read-only database credential. Unknown counts must not be documented as zero.
+- Legacy task-data aggregate counts are no longer credential-deferred, but the
+  non-zero legacy/manual-review buckets above are not approved for automatic
+  data cleanup.
 - Non-drawer Task Center quick actions may still choose how much disabled-state explanation to show, but backend route/service guards remain authoritative and covered by tests.
 - No runtime authorization gap was found during Task 15, so this re-baseline requires no patch release or Railway deploy.

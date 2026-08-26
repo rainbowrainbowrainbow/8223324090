@@ -38,11 +38,11 @@ const LOCAL_UPLOAD_SURFACE = [
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
-            type: 'local-filesystem-primary',
-            durableSource: 'sounds metadata',
+            type: 'postgres-blob-primary-local-legacy',
+            durableSource: 'sound_upload_blobs',
             reviewBeforeDelete: true
         },
-        reason: 'Manual and generated sounds are stored under /uploads/sounds with metadata persisted in the Postgres sounds table.'
+        reason: 'New manual and generated sounds store binary content in Postgres sound_upload_blobs while /uploads/sounds remains the public URL and legacy local fallback.'
     },
     {
         urlPrefix: '/uploads/profile-avatars',

@@ -26,8 +26,9 @@ describe('Sound AI generation contract', () => {
         const route = read('routes/music.js');
         const storage = read('services/audioStorage.js');
 
-        assert.match(storage, /uploadAudioFromUrlWithMetadata/);
-        assert.match(route, /uploadAudioFromUrlWithMetadata/);
+        assert.match(storage, /SOUND_STORAGE_BUCKET = 'sound_upload_blobs'/);
+        assert.match(route, /downloadAudioFromUrlWithMetadata/);
+        assert.match(route, /storeSoundUploadBlob/);
         assert.match(route, /storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at/);
         assert.match(route, /folder:\s*'sounds\/generated'/);
     });

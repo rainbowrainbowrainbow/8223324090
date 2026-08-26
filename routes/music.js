@@ -13,8 +13,9 @@ const { createLogger } = require('../utils/logger');
 const { deliverAnnouncement } = require('../services/music-delivery');
 const { authenticateToken, requireRole } = require('../middleware/auth');
 const {
-    uploadAudioFromUrlWithMetadata,
-    uploadAudioBufferWithMetadata,
+    downloadAudioFromUrlWithMetadata,
+    prepareSoundUploadBlob,
+    storeSoundUploadBlob,
     removeAudioObject,
     makeAudioFilename
 } = require('../services/audioStorage');
@@ -60,6 +61,21 @@ async function _cleanupStoredSound(stored) {
         }
     } catch (err) {
         log.warn('Sound upload cleanup failed', err.message);
+    }
+}
+
+async function _withSoundStorageTransaction(work) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const result = await work(client);
+        await client.query('COMMIT');
+        return result;
+    } catch (err) {
+        await client.query('ROLLBACK').catch(rollbackErr => log.warn('Sound transaction rollback failed', rollbackErr.message));
+        throw err;
+    } finally {
+        client.release();
     }
 }
 
@@ -166,41 +182,54 @@ function _parseSunoRecord(record = {}) {
 }
 
 async function _storeGeneratedAudio({ audioUrl, filename, name, category, uploadedBy, provider }) {
-    const stored = await uploadAudioFromUrlWithMetadata(audioUrl, filename, { folder: 'sounds/generated' });
-    if (!stored?.publicUrl) {
-        const err = new Error('Generated audio could not be saved to CRM uploads');
-        err.status = 502;
-        throw err;
+    let prepared;
+    try {
+        const downloaded = await downloadAudioFromUrlWithMetadata(audioUrl, { folder: 'sounds/generated' });
+        prepared = prepareSoundUploadBlob(downloaded.buffer, filename, {
+            contentType: downloaded.contentType,
+            folder: 'sounds/generated'
+        });
+    } catch (err) {
+        const wrapped = new Error('Generated audio could not be saved to CRM uploads');
+        wrapped.status = err.status || 502;
+        wrapped.cause = err;
+        throw wrapped;
     }
 
-    const finalUrl = stored.publicUrl;
-    const result = await pool.query(
-        `INSERT INTO sounds (
-            name, filename, file_path, url, category, uploaded_by,
-            storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
-         )
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
-         RETURNING id`,
-        [
-            name || 'AI Generated',
-            stored.filename || filename,
-            finalUrl,
-            finalUrl,
-            category || 'music',
-            uploadedBy || null,
-            stored.provider || 'local',
-            stored.bucket || null,
-            stored.path || stored.key || null,
-            stored.publicUrl || null
-        ]
-    );
-    await pool.query(`INSERT INTO music_log (action, details) VALUES ($1, $2)`,
-        [provider === 'elevenlabs' ? 'tts' : 'upload', JSON.stringify({
-            sound_id: result.rows[0].id,
-            provider: provider || 'ai',
-            stored: true
-        })]);
-    return { id: result.rows[0].id, url: finalUrl, storage: stored };
+    return _withSoundStorageTransaction(async client => {
+        const finalUrl = prepared.publicUrl;
+        const result = await client.query(
+            `INSERT INTO sounds (
+                name, filename, file_path, url, category, uploaded_by,
+                storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
+             )
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+             RETURNING id`,
+            [
+                name || 'AI Generated',
+                prepared.filename || filename,
+                finalUrl,
+                finalUrl,
+                category || 'music',
+                uploadedBy || null,
+                prepared.provider,
+                prepared.bucket,
+                prepared.key,
+                prepared.publicUrl
+            ]
+        );
+        const stored = await storeSoundUploadBlob(client, prepared, filename, {
+            soundId: result.rows[0].id,
+            uploadedBy
+        });
+        await client.query(`INSERT INTO music_log (action, details) VALUES ($1, $2)`,
+            [provider === 'elevenlabs' ? 'tts' : 'upload', JSON.stringify({
+                sound_id: result.rows[0].id,
+                provider: provider || 'ai',
+                stored: true
+            })]);
+        return { id: result.rows[0].id, url: finalUrl, storage: stored };
+    });
 }
 
 router.post('/library/generate-music/callback', express.json({ limit: '256kb' }), async (req, res) => {
@@ -531,53 +560,47 @@ router.post('/library/upload', uploadSound.single('file'), async (req, res) => {
         const category = req.body.category || 'general';
         const displayName = (req.body.name || req.file.originalname || 'Sound').trim();
         const filename = makeAudioFilename(category, displayName || _soundBaseName(req.file.originalname), _safeSoundExt(req.file.originalname));
-        const remote = await uploadAudioBufferWithMetadata(req.file.buffer, filename, {
+        const prepared = prepareSoundUploadBlob(req.file.buffer, filename, {
             contentType: req.file.mimetype,
             folder: 'sounds/manual'
         });
 
-        if (remote) {
-            stored = {
-                provider: remote.provider || 'local',
-                filename: remote.filename || filename,
-                filePath: remote.publicUrl,
-                publicUrl: remote.publicUrl,
-                storageBucket: remote.bucket,
-                storageKey: remote.path
-            };
-        } else {
-            stored = _writeLegacySoundFile(filename, req.file.buffer);
-        }
-
-        const r = await pool.query(
-            `INSERT INTO sounds (
-                name, filename, file_path, url, category, file_size, uploaded_by,
-                storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
-             )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, CASE WHEN $8 IN ('local', 'external') THEN NOW() ELSE NULL END)
-             RETURNING id`,
-            [
-                displayName,
-                stored.filename,
-                stored.filePath,
-                stored.publicUrl || null,
-                category,
-                req.file.size,
-                req.user?.username || null,
-                stored.provider,
-                stored.storageBucket || null,
-                stored.storageKey || null,
-                stored.publicUrl || null
-            ]
-        );
+        const r = await _withSoundStorageTransaction(async client => {
+            const sound = await client.query(
+                `INSERT INTO sounds (
+                    name, filename, file_path, url, category, file_size, uploaded_by,
+                    storage_provider, storage_bucket, storage_key, storage_url, storage_migrated_at
+                 )
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
+                 RETURNING id`,
+                [
+                    displayName,
+                    prepared.filename,
+                    prepared.publicUrl,
+                    prepared.publicUrl,
+                    category,
+                    req.file.size,
+                    req.user?.username || null,
+                    prepared.provider,
+                    prepared.bucket,
+                    prepared.key,
+                    prepared.publicUrl
+                ]
+            );
+            stored = await storeSoundUploadBlob(client, prepared, filename, {
+                soundId: sound.rows[0].id,
+                uploadedBy: req.user?.username || null
+            });
+            return sound;
+        });
         res.json({
             success: true,
             ok: true,
             id: r.rows[0].id,
             filename: stored.filename,
-            filePath: stored.filePath,
+            filePath: stored.publicUrl,
             storageProvider: stored.provider,
-            storageKey: stored.storageKey || null
+            storageKey: stored.key || null
         });
     } catch (err) {
         await _cleanupStoredSound(stored);
@@ -591,8 +614,8 @@ router.delete('/library/:id', requireRole('admin', 'director'), async (req, res)
         const r = await pool.query('SELECT * FROM sounds WHERE id=$1', [req.params.id]);
         if (!r.rows.length) return res.status(404).json({ error: 'Не знайдено' });
         const sound = r.rows[0];
-        if (sound.storage_provider === 'local' && sound.storage_key) {
-            await removeAudioObject(sound.storage_key);
+        if ((sound.storage_provider === 'local' || sound.storage_provider === 'postgres') && sound.storage_key) {
+            await removeAudioObject(sound.storage_key, { query: pool });
         } else if (sound.filename && sound.file_path?.startsWith('/uploads/sounds/')) {
             const fp = path.join(__dirname, '../uploads/sounds', sound.filename);
             if (fs.existsSync(fp)) fs.unlinkSync(fp);

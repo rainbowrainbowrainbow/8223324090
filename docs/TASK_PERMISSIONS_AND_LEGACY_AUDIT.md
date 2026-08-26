@@ -1,8 +1,8 @@
 # Task permissions and legacy-data audit
 
 Date: 2026-08-26
-Scope: static code audit, focused task-permission tests, and documentation re-baseline.
-Status: **Task 25 evidence refresh; no runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, migrations, or production task data changed. The existing read-only PostgreSQL audit role was hardened for this audit.**
+Scope: static code audit, focused task-permission tests, aggregate-only legacy-data audit, and controlled remediation tooling.
+Status: **Task 28 controlled remediation dry-run completed. No runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, migrations, or production task data changed. Production UPDATE was not executed because the required exact-SHA CI run for the pushed remediation tooling commit did not exist, and no dedicated local write credential was present.**
 
 ## Evidence sources
 
@@ -15,6 +15,7 @@ Status: **Task 25 evidence refresh; no runtime authorization gap found; no appli
 - `routes/tasks.js`: task route enforcement, bulk mutation ordering, and action capability guards.
 - `js/tasks-page.js` and `js/profile-page.js`: frontend permission hydration and task action visibility.
 - `tests/task-permissions-parity.test.js`: focused regression coverage for canonical task capabilities, explicit deny, drawer parity, hydration, and bulk guard ordering.
+- `scripts/task-legacy-data-remediation.js` and `tests/task-legacy-data-remediation.test.js`: dry-run-first legacy task-data remediation tooling, redacted manifests, apply gates, and aggregate-only audit coverage.
 
 ## Task 15 re-baseline result
 
@@ -74,7 +75,7 @@ The following queries are designed to run inside `BEGIN READ ONLY` and return ag
 
 ## Exact count status
 
-Task 25 completed the aggregate-only production legacy-data audit with a
+Task 28 repeated the aggregate-only production legacy-data audit with a
 dedicated read-only PostgreSQL credential exposed locally as
 `TASK_AI_ROLLOUT_DATABASE_URL`.
 
@@ -88,16 +89,16 @@ Read-only safety proof:
   filenames, raw logs, URLs, passwords, tokens, or provider responses.
 
 Latest aggregate-only artifact:
-`.codex-temp/task25-task-legacy-audit.json`.
+`.codex-temp/_preserved-artifacts/task28-legacy-remediation/task28-legacy-remediation-2026-08-26T16-12-58-337Z.json`.
 
-Production aggregate counts from 2026-08-26:
+Production aggregate counts from 2026-08-26 Task 28 dry-run:
 
 | Counter | Count | Classification |
 |---|---:|---|
 | total tasks | 2926 | baseline only |
 | missing `owner_user_id` | 1819 | legacy ownership compatibility population |
-| owner token single active user candidates | 0 | no deterministic typed-owner backfill candidate found by this audit |
-| owner token manual review | 9 | manual review only; no automatic production write |
+| owner token single active user candidates | 2 | `AUTO_FIX_SAFE_AVAILABLE`; typed-owner backfill is deterministic only for this cohort |
+| owner token manual review | 7 | manual review only; no automatic production write |
 | terminal status/workflow mismatch | 925 | legacy compatibility/manual review bucket; not a permission bypass |
 | active task with `completed_at` | 0 | no active completed-at inconsistency found |
 | `date`/`deadline` disagreement | 1 | manual review; schedule and deadline can intentionally differ |
@@ -105,17 +106,25 @@ Production aggregate counts from 2026-08-26:
 | `deadline`/`scheduled_start_at` disagreement | 0 | no mismatch found |
 | missing/blank business context | 0 | no missing business-context rows found |
 | partial source reference | 1061 | manual review/legacy source-reference bucket |
-| active duplicate signature input rows | 464 | duplicate analysis input only |
-| active duplicate signature groups | 40 | manual review only; no automatic archive/delete |
+| active duplicate signature input rows | 0 | current canonical duplicate signature found no active duplicate groups |
+| active duplicate signature groups | 0 | current canonical duplicate signature found no active duplicate groups |
 | task action history rows | 1849 | related-table aggregate |
 | task subtask rows | 239 | related-table aggregate |
 | task dependency rows | 8 | related-table aggregate |
 | My Day task impact rows | 372 | related-table aggregate |
 
-These counts are intentionally not interpreted as zero-risk cleanup approval.
-They identify legacy/manual-review buckets only. Any production backfill,
-delete, archive, duplicate cleanup, or canonicalization requires a separate
-explicit data-fix task with its own read-only preflight and approval.
+Task 28 tooling produced these redacted remediation artifacts:
+
+- safe cohort: `typed-owner-single-active-user`, candidate count `2`, manifest hash `fa015fcc8d555b46786a6af0194071d46025ded9d97c5a8ef40c798fa5257aa4`;
+- manual-review manifest: record count `1994`, manifest hash `4aed3ef1a7cc7af4bd54f7b7e9ae0f0368b620ca285e71d2a2c18a639a8e7c71`;
+- output policy: opaque task IDs, reason codes, affected field names, categorical old/new values only.
+
+Production UPDATE was not executed in this pass. The safe cohort can be
+applied only after an exact-SHA CI run exists for the remediation tooling
+commit and a process-local write credential is supplied as
+`TASK_LEGACY_REMEDIATION_DATABASE_URL` or an equivalent operator-run
+environment variable mapping that does not print secrets. Ambiguous rows stay
+unchanged and remain `MANUAL_REVIEW_REQUIRED` or legacy-preserved records.
 
 ## Historical implementation decisions
 
@@ -139,8 +148,10 @@ The current code and focused regression tests confirm those authorization items 
 
 ## Remaining risks
 
-- Legacy task-data aggregate counts are no longer credential-deferred, but the
-  non-zero legacy/manual-review buckets above are not approved for automatic
-  data cleanup.
+- Task 28 found `2` deterministic typed-owner backfill candidates, but they
+  were not updated because the required exact-SHA CI gate for the new tooling
+  commit was absent and no dedicated local write credential was present.
+- The non-zero legacy/manual-review buckets above are intentionally not
+  approved for automatic cleanup.
 - Non-drawer Task Center quick actions may still choose how much disabled-state explanation to show, but backend route/service guards remain authoritative and covered by tests.
 - No runtime authorization gap was found during Task 15, so this re-baseline requires no patch release or Railway deploy.

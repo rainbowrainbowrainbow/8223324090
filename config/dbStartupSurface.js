@@ -8,8 +8,6 @@ const STARTUP_SCHEMA_TABLES = [
     'afisha',
     'afisha_templates',
     'automation_rules',
-    'banquet_group_bookings',
-    'banquet_groups',
     'booking_counter',
     'bookings',
     'budget_plans',
@@ -29,7 +27,6 @@ const STARTUP_SCHEMA_TABLES = [
     'lines_by_date',
     'pending_animators',
     'point_transactions',
-    'profile_avatar_blobs',
     'procurement_items',
     'procurement_lists',
     'products',
@@ -98,18 +95,12 @@ const STARTUP_SCHEMA_COLUMNS = [
     'tasks.time_window_start',
     'tasks.type',
     'tasks.version',
-    'users.action_allowlist',
-    'users.action_denylist',
     'users.telegram_chat_id',
     'users.telegram_username'
 ];
 
 const STARTUP_SCHEMA_INDEXES = [
     'idx_afisha_date',
-    'idx_banquet_group_bookings_booking',
-    'idx_banquet_group_bookings_group',
-    'idx_banquet_groups_business_date',
-    'idx_banquet_groups_primary_booking',
     'idx_bookings_customer_id',
     'idx_bookings_date',
     'idx_bookings_date_status',
@@ -148,8 +139,6 @@ const STARTUP_SCHEMA_INDEXES = [
     'idx_lines_by_date_date',
     'idx_lines_by_date_line_date',
     'idx_point_transactions_username',
-    'idx_profile_avatar_blobs_created_at_desc',
-    'idx_profile_avatar_blobs_username',
     'idx_procurement_items_list',
     'idx_procurement_items_stock',
     'idx_procurement_lists_department',
@@ -191,8 +180,6 @@ const STARTUP_SCHEMA_INDEXES = [
     'idx_user_action_log_created_at',
     'idx_user_action_log_username',
     'idx_user_points_username',
-    'idx_users_action_allowlist_gin',
-    'idx_users_action_denylist_gin',
     'idx_users_is_active',
     'idx_users_role'
 ];

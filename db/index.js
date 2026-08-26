@@ -266,11 +266,6 @@ async function initDatabase() {
         `);
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_role ON users(role)');
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_is_active ON users(is_active)');
-        await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS action_allowlist TEXT[] NOT NULL DEFAULT '{}'::text[]`);
-        await safeQuery(`ALTER TABLE users ADD COLUMN IF NOT EXISTS action_denylist TEXT[] NOT NULL DEFAULT '{}'::text[]`);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_action_allowlist_gin ON users USING GIN (action_allowlist)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_users_action_denylist_gin ON users USING GIN (action_denylist)');
-
         // v12.3: schema_migrations table
         await safeQuery(`
             CREATE TABLE IF NOT EXISTS schema_migrations (
@@ -831,72 +826,7 @@ async function initDatabase() {
         await safeQuery(`ALTER TABLE bookings ADD COLUMN IF NOT EXISTS customer_id INTEGER REFERENCES customers(id)`);
         await safeQuery('CREATE INDEX IF NOT EXISTS idx_bookings_customer_id ON bookings(customer_id)');
 
-        // v0.76.x: Banquet groups are a separate layer over bookings; no booking rows are rewritten.
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS banquet_groups (
-                id VARCHAR(50) PRIMARY KEY,
-                business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
-                primary_booking_id VARCHAR(50) REFERENCES bookings(id) ON DELETE SET NULL,
-                customer_id INTEGER REFERENCES customers(id) ON DELETE SET NULL,
-                date VARCHAR(20) NOT NULL,
-                room VARCHAR(100),
-                group_name VARCHAR(200),
-                status VARCHAR(20) NOT NULL DEFAULT 'active',
-                source VARCHAR(64) DEFAULT 'manual',
-                meta JSONB DEFAULT '{}'::jsonb,
-                created_by_user_id INTEGER,
-                created_by VARCHAR(100),
-                updated_by VARCHAR(100),
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
-                CONSTRAINT banquet_groups_status_check
-                    CHECK (status IN ('active', 'closed', 'cancelled'))
-            )
-        `);
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS banquet_group_bookings (
-                id SERIAL PRIMARY KEY,
-                group_id VARCHAR(50) NOT NULL REFERENCES banquet_groups(id) ON DELETE CASCADE,
-                business_context VARCHAR(64) NOT NULL DEFAULT 'event_genix',
-                booking_id VARCHAR(50) NOT NULL REFERENCES bookings(id) ON DELETE CASCADE,
-                role VARCHAR(32) NOT NULL DEFAULT 'manual',
-                sort_order INTEGER DEFAULT 100,
-                created_by_user_id INTEGER,
-                created_by VARCHAR(100),
-                created_at TIMESTAMPTZ DEFAULT NOW(),
-                updated_at TIMESTAMPTZ DEFAULT NOW(),
-                CONSTRAINT banquet_group_bookings_role_check
-                    CHECK (role IN ('primary', 'kitchen', 'activity', 'service', 'manual')),
-                CONSTRAINT banquet_group_bookings_booking_unique
-                    UNIQUE (booking_id),
-                CONSTRAINT banquet_group_bookings_group_booking_unique
-                    UNIQUE (group_id, booking_id)
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_banquet_groups_business_date ON banquet_groups(business_context, date)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_banquet_groups_primary_booking ON banquet_groups(primary_booking_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_banquet_group_bookings_group ON banquet_group_bookings(group_id)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_banquet_group_bookings_booking ON banquet_group_bookings(booking_id)');
-
         // v12.6: Seed test contractor (Женя / Євгенія)
-        await safeQuery(`
-            CREATE TABLE IF NOT EXISTS profile_avatar_blobs (
-                id SERIAL PRIMARY KEY,
-                username VARCHAR(50) NOT NULL,
-                storage_key TEXT NOT NULL UNIQUE,
-                original_name TEXT,
-                content_type TEXT NOT NULL,
-                file_size INTEGER NOT NULL,
-                data BYTEA NOT NULL,
-                checksum_sha256 TEXT NOT NULL,
-                created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-                updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
-            )
-        `);
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_profile_avatar_blobs_username ON profile_avatar_blobs(username)');
-        await safeQuery('CREATE INDEX IF NOT EXISTS idx_profile_avatar_blobs_created_at_desc ON profile_avatar_blobs(created_at DESC)');
-
-        // v0.76.13: Compatibility bootstrap for Postgres-backed profile avatar blobs
         const contractorSeedVersion = '008_seed_contractor_zhenya';
         const contractorSeedCheck = await pool.query(
             'SELECT 1 FROM schema_migrations WHERE version = $1', [contractorSeedVersion]

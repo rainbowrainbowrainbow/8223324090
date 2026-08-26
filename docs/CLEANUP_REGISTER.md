@@ -444,7 +444,7 @@ Status: governance exists; gradual migration ownership cleanup remains open.
 - Added `docs/DB_STARTUP_SURFACE.md`, `config/dbStartupSurface.js`, and
   `npm run check:db-startup-surface`.
 - Current `initDatabase()` compatibility surface is now explicit: 39 startup
-  tables, 38 compatibility columns, 66 indexes, the bookings updated-at
+  tables, 50 compatibility columns, 82 indexes, the bookings updated-at
   trigger/function pair, and 10 startup data hooks.
 - Future DB work should add durable schema through `db/migrations/`; changing
   the startup surface now requires updating the manifest and docs in the same

@@ -11,11 +11,11 @@ The current startup flow is still split:
 
 ```text
 initDatabase() -> runMigrations(pool) -> initDatabase()
+```
 
 `server.js` holds the exclusive Event Genix schema-maintenance advisory lock
 around this complete flow. Backup export and structured restore use the
 matching shared transaction lock.
-```
 
 `DB_MIGRATION_GOVERNANCE.md` remains the authority for migration rules.
 `db/migrations/` is the durable schema history. `db/index.js` still owns legacy
@@ -31,13 +31,12 @@ check:migrations`.
 
 `initDatabase()` currently creates these compatibility tables:
 
-`afisha`, `afisha_templates`, `automation_rules`, `banquet_group_bookings`,
-`banquet_groups`, `booking_counter`, `bookings`, `budget_plans`,
-`certificate_counter`, `certificates`, `contractor_notifications`,
-`contractors`, `customers`, `design_collections`, `design_tags`, `designs`,
-`finance_categories`, `finance_transactions`, `history`, `kleshnya_chat`,
-`kleshnya_messages`, `lines_by_date`,
-`pending_animators`, `point_transactions`, `profile_avatar_blobs`, `procurement_items`,
+`afisha`, `afisha_templates`, `automation_rules`, `booking_counter`,
+`bookings`, `budget_plans`, `certificate_counter`, `certificates`,
+`contractor_notifications`, `contractors`, `customers`, `design_collections`,
+`design_tags`, `designs`, `finance_categories`, `finance_transactions`,
+`history`, `kleshnya_chat`, `kleshnya_messages`, `lines_by_date`,
+`pending_animators`, `point_transactions`, `procurement_items`,
 `procurement_lists`, `products`, `schema_migrations`, `scheduled_deletions`,
 `settings`, `staff`, `staff_schedule`, `task_logs`, `task_templates`, `tasks`,
 `telegram_known_chats`, `telegram_known_threads`, `user_action_log`,
@@ -51,9 +50,10 @@ check:migrations`.
 `initDatabase()` currently keeps these `ADD COLUMN IF NOT EXISTS` shims:
 
 `afisha.description`, `afisha.line_id`, `afisha.original_time`,
-`afisha.template_id`, `afisha.type`, `bookings.costume`,
-`bookings.banquet_adults`, `bookings.customer_id`, `bookings.extra_data`,
-`bookings.group_name`, `bookings.kids_count`, `bookings.payment_method`, `bookings.skip_notification`,
+`afisha.template_id`, `afisha.type`, `bookings.banquet_adults`,
+`bookings.costume`, `bookings.customer_id`, `bookings.extra_data`,
+`bookings.group_name`, `bookings.kids_count`, `bookings.payment_method`,
+`bookings.skip_notification`,
 `bookings.status`, `bookings.telegram_message_id`, `bookings.updated_at`,
 `certificates.customer_id`, `certificates.season`, `certificates.value_uah`,
 `customer_cards.business_context`, `customers.business_context`,
@@ -65,19 +65,14 @@ check:migrations`.
 `tasks.escalation_level`, `tasks.last_reminded_at`, `tasks.owner`,
 `tasks.source_id`, `tasks.source_type`, `tasks.task_type`,
 `tasks.template_id`, `tasks.time_window_end`, `tasks.time_window_start`,
-`tasks.type`, `tasks.version`, `users.action_allowlist`,
-`users.action_denylist`, `users.telegram_chat_id`, `users.telegram_username`.
+`tasks.type`, `tasks.version`, `users.telegram_chat_id`,
+`users.telegram_username`.
 
 ## Startup Indexes And Triggers
 
-The guard tracks 90 startup indexes in `config/dbStartupSurface.js`. The current
+The guard tracks 82 startup indexes in `config/dbStartupSurface.js`. The current
 startup trigger/function pair is `update_updated_at_column` and
 `trg_bookings_updated_at`.
-
-Banquet group compatibility keeps `idx_banquet_groups_business_date`,
-`idx_banquet_groups_primary_booking`, `idx_banquet_group_bookings_group` and
-`idx_banquet_group_bookings_booking` while older production databases catch up
-to migration `265_banquet_groups.sql`.
 
 Task lifecycle compatibility also keeps `idx_tasks_completed_at`,
 `idx_tasks_duplicate_of_task_id`, `idx_tasks_business_status_date`,
@@ -91,17 +86,29 @@ Multi-business compatibility keeps `idx_customers_business_phone`,
 older production databases catch up to the durable `business_context`
 migrations.
 
-Account action override compatibility keeps `idx_users_action_allowlist_gin`
-and `idx_users_action_denylist_gin` while older production databases catch up
-to migration `244_user_action_permission_overrides.sql`.
-
-Profile avatar durability compatibility keeps
-`idx_profile_avatar_blobs_username` and
-`idx_profile_avatar_blobs_created_at_desc` while older production databases
-catch up to migration `266_profile_avatar_postgres_storage.sql`.
-
 Do not add a new startup index as a convenience shortcut. New durable indexes
 belong in SQL migrations.
+
+## Wave 1 Ownership Removed From Startup
+
+On 2026-08-26, the first startup-surface reduction removed only compatibility
+SQL whose complete durable schema already exists in migrations:
+
+- `244_user_action_permission_overrides.sql` owns `users.action_allowlist`,
+  `users.action_denylist`, `idx_users_action_allowlist_gin`, and
+  `idx_users_action_denylist_gin`.
+- `265_banquet_groups.sql` owns `banquet_groups`,
+  `banquet_group_bookings`, `idx_banquet_groups_business_date`,
+  `idx_banquet_groups_primary_booking`, `idx_banquet_group_bookings_group`,
+  and `idx_banquet_group_bookings_booking`.
+- `266_profile_avatar_postgres_storage.sql` owns
+  `profile_avatar_blobs`, `idx_profile_avatar_blobs_username`, and
+  `idx_profile_avatar_blobs_created_at_desc`.
+
+These objects must not be re-added to `initDatabase()` as startup compatibility
+shims. The first `initDatabase()` pass does not read these objects before
+`runMigrations(pool)`, and the migration runner applies them before Express
+starts serving authenticated routes.
 
 ## Startup Data Hooks
 

@@ -3734,8 +3734,8 @@ check('Banquet groups schema stays isolated from bookings and legacy visual link
     && htmlContains('db/migrations/265_banquet_groups.sql', "CHECK (role IN ('primary', 'kitchen', 'activity', 'service', 'manual'))")
     && htmlContains('db/migrations/265_banquet_groups.sql', 'UNIQUE (booking_id)')
     && htmlContains('db/migrations/265_banquet_groups.sql', 'idx_banquet_groups_business_date')
-    && htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_groups')
-    && htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_group_bookings')
+    && !htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_groups')
+    && !htmlContains('db/index.js', 'CREATE TABLE IF NOT EXISTS banquet_group_bookings')
     && !htmlContains('db/migrations/265_banquet_groups.sql', 'ALTER TABLE bookings ADD COLUMN')
     && !htmlContains('db/index.js', 'banquet_group_id'));
 check('Timeline booking API failures render an explicit error state instead of an empty day', apiCode.includes('throwOnError') && timelineCode.includes('function renderTimelineDataError') && timelineCode.includes('Не вдалося завантажити бронювання') && !timelineCode.includes("getBookingsForDate(selectedDate).catch(e => { console.error('[Timeline] getBookingsForDate error:', e); return []; })"));

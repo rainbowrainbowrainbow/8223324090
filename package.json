@@ -34,7 +34,7 @@
     "check:scheduler-surface": "node scripts/check-scheduler-surface.js",
     "check:checkbox-openapi": "node scripts/check-checkbox-openapi-compatibility.js",
     "check:checkbox-safety": "node scripts/check-checkbox-source-safety.js",
-    "check:db-startup-surface": "node scripts/check-db-startup-surface.js",
+    "check:db-startup-surface": "node scripts/check-db-startup-surface.js && node --test tests/db-startup-wave1-contract.test.js",
     "check:timeline-protected-surface": "node scripts/check-timeline-protected-surface.js",
     "check:migrations": "node scripts/check-migrations.js",
     "check:syntax": "node scripts/check-js-syntax.js",

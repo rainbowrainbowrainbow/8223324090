@@ -1,6 +1,54 @@
 # My Day AI closure — current evidence
 
-## Current production closeout — v0.81.19
+## Current production evidence refresh — v0.81.24
+
+Status: `MONITORING_HOLD`.
+
+- Live version/SHA: `0.81.24` / `4734838db3b0c05923669b6381f9a7159e4e6f3e`.
+- Source branch: `codex/eventgenix-production`.
+- Deployment ID: `dca62851-2c49-4a9e-8690-63acbcb1ddd7`.
+- Deployment start: `2026-08-26T10:57:16.621Z`.
+- Rollout unchanged:
+  - single/checklist: `20%`;
+  - bundle: `10%`.
+- Rollout evidence is not PASS:
+  - single/checklist latest report has `0` preview attempts and remains `HOLD_INSUFFICIENT_TRAFFIC`;
+  - bundle latest report has `0` preview attempts and remains `HOLD_INSUFFICIENT_TRAFFIC`.
+- The collectors did not classify the current evidence as `TELEMETRY_GAP`:
+  - HTTP evidence was available and showed `0` matching requests for both scopes;
+  - structured preview logs were absent for the current exact deployment because no preview traffic was observed.
+- Read-only database rollout evidence was not included because `TASK_AI_ROLLOUT_DATABASE_URL`
+  was not present in the process environment or the local operator secrets file. `DATABASE_URL`
+  was intentionally not used as a fallback.
+- Legacy endpoint status: `HOLD_REMOVAL`; internal runtime callers are absent,
+  observed real usage is `0`, but removal still requires a complete no-usage
+  evidence window and explicit operator confirmation.
+
+This evidence refresh does not change prompt, schema, model, reasoning effort,
+Railway variables, secrets, rollout percentages, legacy endpoint code, or database schema.
+
+## Current v0.81.24 evidence artifacts
+
+- Single/checklist rollout 20%:
+  - `output/task-ai-rollout/2026-08-26T11-02-50-557Z-single-v08124.md`;
+  - verdict: `HOLD_INSUFFICIENT_TRAFFIC`.
+- Bundle rollout 10%:
+  - `output/task-ai-bundle-rollout/2026-08-26T11-02-50-557Z-bundle-v08124.md`;
+  - verdict: `HOLD_INSUFFICIENT_TRAFFIC`.
+- Legacy route sunset evidence:
+  - `output/task-ai-legacy-decompose/2026-08-26T11-02-50-557Z-legacy-decompose-v08124.md`;
+  - verdict: `HOLD_REMOVAL`.
+
+These artifacts are redacted. They must not contain task text, prompts, provider
+responses, credentials, proposal tokens, API keys, bearer tokens, or raw Railway
+logs.
+
+---
+
+Historical section below documents the earlier `v0.81.19` closure refresh. It is
+kept as release history, not as the current production source of truth.
+
+## Production closeout — v0.81.19
 
 Status: `MONITORING_HOLD`.
 

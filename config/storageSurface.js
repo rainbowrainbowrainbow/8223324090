@@ -20,11 +20,11 @@ const LOCAL_UPLOAD_SURFACE = [
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
-            type: 'local-filesystem-primary',
-            durableSource: 'chat_messages metadata',
+            type: 'postgres-blob-primary-local-legacy',
+            durableSource: 'chat_upload_blobs',
             reviewBeforeDelete: true
         },
-        reason: 'Chat attachments are stored under /uploads/chat with file metadata persisted on chat messages in Postgres.'
+        reason: 'New chat attachments store binary content in Postgres chat_upload_blobs while /uploads/chat remains the public URL and legacy local fallback.'
     },
     {
         urlPrefix: '/uploads/sounds',

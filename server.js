@@ -28,6 +28,7 @@ const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-
 const { readDesignBlobByFilename } = require('./services/designStorage');
 const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAvatarStorage');
 const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorage');
+const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
 const { checkAutoDigest, checkAutoReminder, checkAutoBackup, checkRecurringTasks, checkScheduledDeletions, checkRecurringAfisha, checkCertificateExpiry, checkTaskReminders, checkReplyAutoEscalations, checkWorkDayTriggers, checkMonthlyPointsReset, checkStreakUpdates, checkBirthdayGreetings, checkBirthdayReminders, checkDormantCustomers, checkUpcomingBookings, checkEventQueue, checkSLABreach, checkScheduledAnnouncements, checkTaskOverdue, checkCustomerRetention, checkAutoReport, checkHotLeads, checkScheduledChatMessages, checkExpiredChatMessages, checkAutoReviewRequests, checkTeamPulseReminder, checkAutoOrdering, checkBookingPushReminders, checkCertExpiryReminders, checkStaleCatalogImages, checkChatDailyDigest, checkRecurringAnnouncements, checkEventPipeline, checkNpsFollowUp, checkCleaningTasks, checkGraduationOpsAutomation, checkAttendanceReviewTasks, checkHrAttendancePrintAutomations, checkBirthdayTagSync } = require('./services/scheduler');
 const { checkHrAutoClose, checkHrNoShow } = require('./services/hr');
 const { sendWeeklyTrainingPrompts, sendWeeklySummaryToDirector } = require('./services/training');
@@ -191,6 +192,12 @@ app.get('/uploads/designs/:filename', async (req, res, next) => {
     }
 });
 app.get('/uploads/profile-avatars/*', buildProfileAvatarBlobFallbackHandler(pool, log));
+app.get('/uploads/chat/*', buildChatUploadBlobFallbackHandler(pool, log));
+app.use('/uploads/chat', express.static(path.join(__dirname, 'uploads', 'chat')));
+app.use('/uploads/chat', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    return res.status(404).json({ error: 'chat_upload_not_found' });
+});
 app.use(express.static(path.join(__dirname)));
 app.use('/uploads', express.static(path.join(__dirname, 'uploads')));
 

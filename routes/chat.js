@@ -7,7 +7,7 @@ const multer = require('multer');
 const chat = require('../services/chatService');
 const { broadcastToChannel, sendToUser } = require('../services/websocket');
 const {
-    uploadChatFileWithFallback,
+    prepareChatUploadBlob,
     validateChatUploadFile
 } = require('../services/chatUploadStorage');
 const { processMessage: processBotMessage } = require('../services/chat-bot');
@@ -617,7 +617,7 @@ router.post('/channels/:id/upload', requireChannelMember, handleChatUpload, asyn
         }
 
         const file = req.file;
-        const stored = await uploadChatFileWithFallback(file, { channelId });
+        const stored = prepareChatUploadBlob(file, { channelId });
         const fileUrl = stored.publicUrl;
         const contentType = stored.kind;
         const isImage = contentType === 'image';
@@ -642,7 +642,11 @@ router.post('/channels/:id/upload', requireChannelMember, handleChatUpload, asyn
 
         // Send as message with file metadata
         const content = caption || (isImage ? '📷 Фото' : '📎 ' + file.originalname);
-        const { message, mentionedUserIds } = await chat.sendFileMessage(channelId, userId, content, contentType, metadata);
+        const sendFile = typeof chat.sendFileMessageWithUpload === 'function'
+            ? chat.sendFileMessageWithUpload.bind(chat)
+            : chat.sendFileMessage.bind(chat);
+        const result = await sendFile(channelId, userId, content, contentType, metadata, { file, storage: stored });
+        const { message, mentionedUserIds } = result;
 
         broadcastToChannel(channelId, 'chat:message', { channelId, message }, String(userId));
 

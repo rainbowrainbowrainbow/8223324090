@@ -6,7 +6,8 @@ const crypto = require('crypto');
 const { createLogger } = require('../utils/logger');
 const {
     removeChatUploadObject,
-    removeLegacyLocalChatFile
+    removeLegacyLocalChatFile,
+    storeChatUploadBlob
 } = require('./chatUploadStorage');
 
 const log = createLogger('Chat');
@@ -317,6 +318,81 @@ async function sendFileMessage(channelId, userId, content, contentType, metadata
         await client.query('ROLLBACK');
         if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
             return sendFileMessage(channelId, userId, content, contentType, metadata);
+        }
+        throw err;
+    } finally {
+        client.release();
+    }
+}
+
+/**
+ * Send a file message and persist the upload blob in the same transaction.
+ */
+async function sendFileMessageWithUpload(channelId, userId, content, contentType, metadata, upload = {}) {
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+
+        const seqResult = await client.query('SELECT next_chat_seq($1) AS seq', [channelId]);
+        const seq = seqResult.rows[0].seq;
+
+        const msgResult = await client.query(`
+            INSERT INTO chat_messages (channel_id, user_id, seq, content, content_type, metadata)
+            VALUES ($1, $2, $3, $4, $5, $6)
+            RETURNING *
+        `, [channelId, userId, seq, content, contentType, JSON.stringify(metadata)]);
+        const msg = msgResult.rows[0];
+
+        let stored = upload.storage || null;
+        if (upload.file) {
+            stored = await storeChatUploadBlob(client, upload.file, upload.storage || {}, {
+                channelId,
+                userId,
+                messageId: msg.id
+            });
+            const nextMetadata = {
+                ...metadata,
+                file: {
+                    ...(metadata?.file || {}),
+                    url: stored.publicUrl,
+                    mimeType: stored.contentType || metadata?.file?.mimeType,
+                    storageProvider: stored.provider,
+                    storageBucket: stored.bucket,
+                    storageKey: stored.key,
+                    storagePath: stored.path,
+                    storageUrl: stored.publicUrl
+                }
+            };
+            await client.query(
+                'UPDATE chat_messages SET metadata = $1 WHERE id = $2',
+                [JSON.stringify(nextMetadata), msg.id]
+            );
+        }
+
+        await client.query(
+            'UPDATE chat_channel_members SET last_read_seq = $1 WHERE channel_id = $2 AND user_id = $3',
+            [seq, channelId, userId]
+        );
+
+        await client.query('COMMIT');
+
+        const fullMsg = await pool.query(`
+            SELECT cm.*, u.username, u.name AS display_name
+            FROM chat_messages cm
+            JOIN users u ON u.id = cm.user_id
+            WHERE cm.id = $1
+        `, [msg.id]);
+
+        _channelsCache.clear();
+        return {
+            message: mapMessageRow(fullMsg.rows[0]),
+            mentionedUserIds: [],
+            storage: stored
+        };
+    } catch (err) {
+        await client.query('ROLLBACK');
+        if (err.code === '23505' && err.constraint === 'chat_messages_channel_id_seq_key') {
+            return sendFileMessageWithUpload(channelId, userId, content, contentType, metadata, upload);
         }
         throw err;
     } finally {
@@ -668,7 +744,9 @@ async function deleteMessage(messageId, userId, isAdmin) {
     const deleted = result.rows[0] || null;
     // v38.4.0: Clean up uploaded file on message delete
     const file = deleted?.metadata?.file;
-    if (file?.storageProvider === 'local' && file?.storageKey) {
+    if (file?.storageProvider === 'postgres' && file?.storageKey) {
+        await removeChatUploadObject(file.storageKey, { query: pool });
+    } else if (file?.storageProvider === 'local' && file?.storageKey) {
         await removeChatUploadObject(file.storageKey);
     } else if (file?.url) {
         try {
@@ -1169,6 +1247,7 @@ module.exports = {
     createBookingChannel,
     getReadReceipts,
     sendFileMessage,
+    sendFileMessageWithUpload,
     updateActivityStats,
     getChatActivityStats,
     getChatActivityLeaderboard

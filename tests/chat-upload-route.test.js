@@ -70,6 +70,19 @@ async function upload(pathname, filename, mimeType, content = 'file-bytes') {
     return { status: res.status, data };
 }
 
+async function uploadWithoutAuth(pathname, filename, mimeType, content = 'file-bytes') {
+    const body = new FormData();
+    body.append('file', new Blob([Buffer.from(content)], { type: mimeType }), filename);
+    const res = await fetch(`${baseUrl}${pathname}`, {
+        method: 'POST',
+        body
+    });
+    const text = await res.text();
+    let data = null;
+    try { data = text ? JSON.parse(text) : null; } catch { data = text; }
+    return { status: res.status, data };
+}
+
 function resetState() {
     state = {
         memberships: new Set(['1:1']),
@@ -97,6 +110,21 @@ function fakeChatService() {
                 },
                 mentionedUserIds: []
             };
+        },
+        sendFileMessageWithUpload: async (channelId, userId, content, contentType, metadata, upload) => {
+            state.sentFiles.push({ channelId, userId, content, contentType, metadata, upload });
+            return {
+                message: {
+                    id: 501,
+                    channelId,
+                    userId,
+                    content,
+                    contentType,
+                    metadata
+                },
+                mentionedUserIds: [],
+                storage: upload.storage
+            };
         }
     };
 }
@@ -117,11 +145,11 @@ function fakeChatUploadStorage() {
             }
             return { kind: 'image', contentType: 'image/png' };
         },
-        async uploadChatFileWithFallback(file, options) {
+        prepareChatUploadBlob(file, options) {
             state.uploads.push({ originalname: file.originalname, mimetype: file.mimetype, channelId: options.channelId });
             return {
-                provider: 'local',
-                bucket: null,
+                provider: 'postgres',
+                bucket: 'chat_upload_blobs',
                 key: `channels/${options.channelId}/photo.png`,
                 path: `channels/${options.channelId}/photo.png`,
                 publicUrl: `/uploads/chat/channels/${options.channelId}/photo.png`,
@@ -178,11 +206,21 @@ describe('chat upload route storage and safety', () => {
         assert.equal(state.uploads.length, 1);
         assert.equal(state.uploads[0].channelId, 1);
         assert.equal(state.sentFiles.length, 1);
-        assert.equal(state.sentFiles[0].metadata.file.storageProvider, 'local');
-        assert.equal(state.sentFiles[0].metadata.file.storageBucket, null);
+        assert.equal(state.sentFiles[0].metadata.file.storageProvider, 'postgres');
+        assert.equal(state.sentFiles[0].metadata.file.storageBucket, 'chat_upload_blobs');
         assert.equal(state.sentFiles[0].metadata.file.storageKey, 'channels/1/photo.png');
         assert.equal(state.sentFiles[0].metadata.file.url, '/uploads/chat/channels/1/photo.png');
+        assert.equal(state.sentFiles[0].upload.file.originalname, 'photo.png');
+        assert.equal(state.sentFiles[0].upload.storage.provider, 'postgres');
         assert.equal(state.broadcasts[0][1], 'chat:message');
+    });
+
+    it('denies unauthenticated upload before storage is attempted', async () => {
+        const res = await uploadWithoutAuth('/api/chat/channels/1/upload', 'photo.png', 'image/png');
+
+        assert.equal(res.status, 401);
+        assert.deepEqual(state.uploads, []);
+        assert.deepEqual(state.sentFiles, []);
     });
 
     it('rejects SVG uploads before storage or message creation', async () => {

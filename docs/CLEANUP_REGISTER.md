@@ -56,7 +56,57 @@ Do not treat aggregate CSS entrypoints such as `css/assistant-rail.css`,
 `css/pages.css` as large-file targets by filename alone. Their payload now
 lives in ordered modules listed in `docs/CSS_SURFACE.md`.
 
-2026-08-26 Task 17 repository/worktree hygiene snapshot:
+2026-08-26 Task 24 repository/worktree hygiene wave 2 snapshot:
+
+- Live production source was confirmed through `/api/version` before cleanup:
+  version `0.81.27`, source branch `codex/eventgenix-production`, commit
+  `88138e98fa31411923e6ec387af7aa155d25b711`. Local production branch was
+  synchronized with `origin/codex/eventgenix-production` at `ahead=0`,
+  `behind=0`.
+- Artifact root:
+  `.codex-temp/_preserved-artifacts/repo-hygiene-20260826-170241`.
+- Worktree counts moved from 86 registered worktrees to 75. Dirty worktrees
+  stayed at 38 and conflicted worktrees stayed at 2; they were intentionally
+  not removed.
+- Clean obsolete worktrees classified as `ARCHIVE_AND_REMOVE` moved from 11 to
+  0. Each removed worktree has a git bundle, tracked diff against production,
+  staged diff, untracked manifest, metadata, bundle verification output, and a
+  SHA256 manifest under the artifact root.
+- `.codex-temp` top-level directories moved from 71 to 63. Existing
+  `.codex-temp/_preserved-artifacts` contents were not deleted; this wave only
+  added the new `repo-hygiene-20260826-170241` archive.
+- Gone-upstream local branches moved from 3 to 1. Removed after archive:
+  `codex/legacy-permission-compat-v08085` and
+  `codex/live-qa-training-manage-v08086`.
+- Remaining gone-upstream branch:
+  `codex/attendance-kpi-overtime-guard-v3`, kept as
+  `SALVAGE_BRANCH_REQUIRED` because it has unique commits and is neither an
+  ancestor nor patch-equivalent to production.
+- Protected branch `codex/checkbox-hardening-release-v080103` was not touched.
+- Open PRs stayed at 7. No PR was closed because every open PR still has a
+  unique commit or patch delta against current production.
+
+Current PR review status:
+
+| PR | Head | Status | Current action |
+| --- | --- | --- | --- |
+| #25 | `codex/attendance-audit-role-lifecycle` | draft, unique diff | `PR_REVIEW`; attendance audit role lifecycle salvage decision needed |
+| #24 | `codex/attendance-anomaly-audit` | draft, unique diff | `PR_REVIEW`; attendance anomaly audit salvage decision needed |
+| #9 | `codex/reduce-information-on-landing-page` | unique landing rewrite | `PR_REVIEW`; product-owner decision needed |
+| #5 | `claude/youthful-feynman-ku9oB` | broad legacy Claude diff | `PR_REVIEW`; do not close without owner review |
+| #4 | `claude/update-project-info-SagnQ` | legacy project info/assets diff | `PR_REVIEW`; do not close without owner review |
+| #2 | `claude/fix-clear-booking-sizes-FZlVY` | broad legacy Claude diff | `PR_REVIEW`; do not close without owner review |
+| #1 | `codex/create-a-surprising-but-safe-script` | old README/spec/scripts diff | `PR_REVIEW`; do not close without owner review |
+
+Current machine-readable manifests:
+
+- `worktree-inventory.final.json` and `worktree-inventory.final.csv`
+- `open-prs.classification.json` and `open-prs.diff-summary.json`
+- `gone-upstream-branches.final.json`
+
+Historical baseline retained for comparison: 2026-08-26 Task 17
+repository/worktree hygiene snapshot. The Task 24 snapshot above supersedes
+these counts for current cleanup decisions:
 
 - Production branch after `git fetch origin --prune`:
   `codex/eventgenix-production` at
@@ -297,7 +347,8 @@ What to do:
 - Keep `npm run check:api-surface` as the ownership guard for backend route
   files, broad `/api` route mounts, and server-level API routes.
 - Keep `npm run check:storage-surface` as the ownership guard for local
-  `/uploads` paths, Supabase Storage buckets, tests, docs, and ignore rules.
+  `/uploads` compatibility paths, Postgres blob storage segments, tests, docs,
+  and ignore rules.
 - Keep `npm run check:service-worker-policy` as the ownership guard for
   Service Worker API cache allowlists, sensitive API prefixes, private cache
   cleanup messages, and disabled offline mutation replay.
@@ -395,16 +446,16 @@ is now guarded, while broader endpoint rate-limit review remains open.
   `routes/graduation.js`; query-token auth now has one implementation point in
   `middleware/apiAuthBoundary.js`.
 
-Previous 2026-05-12 storage update:
+Previous 2026-05-12 storage update, superseded by the current Postgres blob
+primary plus local legacy fallback architecture:
 
 - Added `docs/STORAGE_SURFACE.md`, `config/storageSurface.js`, and
   `npm run check:storage-surface`.
-- Current local upload paths are now explicit: `/uploads/chat`,
-  `/uploads/sounds`, and `/uploads/designs`.
-- Current Supabase Storage buckets are now explicit: `chat-uploads`,
-  `audio-library`, and `catalog-images`.
-- `/uploads/designs` is documented as the main local-only legacy storage risk
-  and a later migration candidate.
+- Current upload storage is Postgres blob primary for chat uploads, sounds,
+  profile avatars, catalog images, and design files, with local legacy fallback
+  kept for old files and recovery.
+- Local `/uploads/*` paths remain documented compatibility fallbacks, not the
+  primary durability layer for new writes.
 
 2026-05-12 Service Worker cache update:
 
@@ -878,7 +929,8 @@ Status: active rule for all packs.
 
 ## Open Questions To Resolve Before Destructive Cleanup
 
-- Which Railway branch/environment is the production deploy source?
+- Which Task 24 `PR_REVIEW` heads are still product-relevant, and which can be
+  closed after owner review?
 - Which root HTML pages are intentionally public entrypoints?
 - Which `UNRECOVERABLE_SOURCE_MISSING` upload records, if any, have recoverable
   bytes in an external backup outside the current Railway/local filesystem?

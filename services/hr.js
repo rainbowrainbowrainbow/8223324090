@@ -17,45 +17,70 @@ const log = createLogger('HR');
 
 let autoCloseSentToday = null;
 let noShowSentToday = null;
+let autoCloseRunning = false;
+let noShowRunning = false;
 
-async function getLastSent(key) {
+function buildHrSchedulerContext(options = {}) {
+    return {
+        db: options.db || options.pool || pool,
+        getKyivDate: options.getKyivDate || getKyivDate,
+        getKyivDateStr: options.getKyivDateStr || getKyivDateStr,
+        getKyivTimeStr: options.getKyivTimeStr || getKyivTimeStr,
+        getConfiguredChatId: options.getConfiguredChatId || getConfiguredChatId,
+        sendTelegramMessage: options.sendTelegramMessage || sendTelegramMessage,
+        lockAttendanceWriteTarget: options.lockAttendanceWriteTarget || lockAttendanceWriteTarget,
+        recordAttendanceClockOut: options.recordAttendanceClockOut || recordAttendanceClockOut,
+        recordAttendanceStatus: options.recordAttendanceStatus || recordAttendanceStatus
+    };
+}
+
+async function getLastSent(key, db = pool) {
     try {
-        const r = await pool.query("SELECT value FROM settings WHERE key = $1", [`last_hr_${key}`]);
+        const r = await db.query("SELECT value FROM settings WHERE key = $1", [`last_hr_${key}`]);
         return r.rows[0]?.value || null;
     } catch { return null; }
 }
 
-async function setLastSent(key, dateStr) {
+async function setLastSent(key, dateStr, db = pool) {
     try {
-        await pool.query(
+        await db.query(
             "INSERT INTO settings (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = $2",
             [`last_hr_${key}`, dateStr]
         );
-    } catch (err) { log.error(`setLastSent(${key}) error`, err); }
+        return true;
+    } catch (err) {
+        log.error(`setLastSent(${key}) error`, err);
+        return false;
+    }
 }
 
 /**
  * Cron 1: Auto-close open shifts at 23:55 Kyiv
  * Runs every 60s, triggers once per day
  */
-async function checkHrAutoClose() {
+async function checkHrAutoClose(options = {}) {
+    if (autoCloseRunning) {
+        return { skipped: true, reason: 'already_running' };
+    }
+    autoCloseRunning = true;
     try {
-        const todayStr = getKyivDateStr();
-        const nowTime = getKyivTimeStr();
+        const context = buildHrSchedulerContext(options);
+        const todayStr = context.getKyivDateStr();
+        const nowTime = context.getKyivTimeStr();
 
-        if (autoCloseSentToday === todayStr) return;
-        if (nowTime !== '23:55') return;
+        if (autoCloseSentToday === todayStr) return { skipped: true, reason: 'memory_dedup', date: todayStr };
+        if (nowTime !== '23:55') return { skipped: true, reason: 'outside_window', date: todayStr, time: nowTime };
 
-        const dbLast = await getLastSent('auto_close');
-        if (dbLast === todayStr) { autoCloseSentToday = todayStr; return; }
-
-        autoCloseSentToday = todayStr;
-        await setLastSent('auto_close', todayStr);
+        const dbLast = await getLastSent('auto_close', context.db);
+        if (dbLast === todayStr) {
+            autoCloseSentToday = todayStr;
+            return { skipped: true, reason: 'db_dedup', date: todayStr };
+        }
 
         log.info(`Running HR auto-close for ${todayStr}`);
 
         // Find open records (clock_in set but clock_out missing)
-        const open = await pool.query(
+        const open = await context.db.query(
             `SELECT tr.id, tr.staff_id, tr.clock_in, tr.planned_end,
                     s.name AS staff_name
              FROM hr_time_records tr
@@ -67,15 +92,14 @@ async function checkHrAutoClose() {
             [todayStr, DEFAULT_BUSINESS_CONTEXT]
         );
 
-        if (open.rows.length === 0) return;
-
+        let errors = 0;
         const names = [];
         for (const rec of open.rows) {
             let client;
             try {
-                client = await pool.connect();
+                client = await context.db.connect();
                 await client.query('BEGIN');
-                await lockAttendanceWriteTarget(client, { staffId: rec.staff_id, date: todayStr });
+                await context.lockAttendanceWriteTarget(client, { staffId: rec.staff_id, date: todayStr });
 
                 const currentResult = await client.query(
                     `SELECT id, staff_id, clock_in, clock_out, planned_end,
@@ -110,7 +134,7 @@ async function checkHrAutoClose() {
                     closeTime = ci.toISOString();
                 }
 
-                const clockOutResult = await recordAttendanceClockOut(client, {
+                const clockOutResult = await context.recordAttendanceClockOut(client, {
                     staffId: rec.staff_id,
                     recordDate: todayStr,
                     now: closeTime,
@@ -156,6 +180,7 @@ async function checkHrAutoClose() {
                 await client.query('COMMIT');
                 names.push(rec.staff_name);
             } catch (err) {
+                errors++;
                 if (client) {
                     await client.query('ROLLBACK').catch(rollbackErr => {
                         log.error(`checkHrAutoClose rollback error for record ${rec.id}`, rollbackErr);
@@ -168,15 +193,42 @@ async function checkHrAutoClose() {
         }
 
         // Telegram alert
-        const chatId = await getConfiguredChatId();
+        const chatId = await context.getConfiguredChatId();
         if (chatId && names.length > 0) {
             const text = `⚠️ <b>HR: Авто-закриття змін</b>\n\n${names.map(n => `• ${n} — не натиснув ВИХІД`).join('\n')}`;
-            sendTelegramMessage(chatId, text).catch(err => log.error('Auto-close telegram error', err));
+            context.sendTelegramMessage(chatId, text).catch(err => log.error('Auto-close telegram error', err));
         }
 
         log.info(`HR auto-close: ${names.length} records closed`);
+        if (errors > 0) {
+            const failure = new Error(`checkHrAutoClose failed for ${errors} record(s)`);
+            failure.result = {
+                date: todayStr,
+                processed: open.rows.length,
+                closed: names.length,
+                errors,
+                markerSaved: false
+            };
+            throw failure;
+        }
+        const markerSaved = await setLastSent('auto_close', todayStr, context.db);
+        if (!markerSaved) {
+            throw new Error('checkHrAutoClose failed to save daily success marker');
+        }
+        if (markerSaved) autoCloseSentToday = todayStr;
+        return {
+            date: todayStr,
+            processed: open.rows.length,
+            closed: names.length,
+            errors,
+            markerSaved
+        };
     } catch (err) {
         log.error('checkHrAutoClose error', err);
+        if (options.throwOnError === false) return { failed: true, error: err.message, result: err.result };
+        throw err;
+    } finally {
+        autoCloseRunning = false;
     }
 }
 
@@ -184,27 +236,32 @@ async function checkHrAutoClose() {
  * Cron 2: No-show detector at 13:00 Kyiv
  * Marks staff who have shifts but haven't clocked in
  */
-async function checkHrNoShow() {
+async function checkHrNoShow(options = {}) {
+    if (noShowRunning) {
+        return { skipped: true, reason: 'already_running' };
+    }
+    noShowRunning = true;
     try {
-        const todayStr = getKyivDateStr();
-        const nowTime = getKyivTimeStr();
+        const context = buildHrSchedulerContext(options);
+        const todayStr = context.getKyivDateStr();
+        const nowTime = context.getKyivTimeStr();
 
-        if (noShowSentToday === todayStr) return;
-        if (nowTime !== '13:00') return;
+        if (noShowSentToday === todayStr) return { skipped: true, reason: 'memory_dedup', date: todayStr };
+        if (nowTime !== '13:00') return { skipped: true, reason: 'outside_window', date: todayStr, time: nowTime };
 
-        const dbLast = await getLastSent('no_show');
-        if (dbLast === todayStr) { noShowSentToday = todayStr; return; }
-
-        noShowSentToday = todayStr;
-        await setLastSent('no_show', todayStr);
+        const dbLast = await getLastSent('no_show', context.db);
+        if (dbLast === todayStr) {
+            noShowSentToday = todayStr;
+            return { skipped: true, reason: 'db_dedup', date: todayStr };
+        }
 
         log.info(`Running HR no-show check for ${todayStr}`);
 
-        const kyiv = getKyivDate();
+        const kyiv = context.getKyivDate();
         const nowMin = kyiv.getHours() * 60 + kyiv.getMinutes();
 
         // Find staff with shifts but no time record (or no clock_in)
-        const noShows = await pool.query(
+        const noShows = await context.db.query(
             `SELECT hs.staff_id, hs.planned_start, s.name AS staff_name
              FROM hr_shifts hs
              JOIN staff s ON s.id = hs.staff_id AND s.is_active = true
@@ -216,6 +273,7 @@ async function checkHrNoShow() {
         );
 
         const alerts = [];
+        let errors = 0;
         for (const row of noShows.rows) {
             const [h, m] = row.planned_start.split(':').map(Number);
             const shiftMin = h * 60 + m;
@@ -225,9 +283,9 @@ async function checkHrNoShow() {
 
             let client;
             try {
-                client = await pool.connect();
+                client = await context.db.connect();
                 await client.query('BEGIN');
-                await lockAttendanceWriteTarget(client, { staffId: row.staff_id, date: todayStr });
+                await context.lockAttendanceWriteTarget(client, { staffId: row.staff_id, date: todayStr });
 
                 const currentResult = await client.query(
                     `SELECT id, clock_in, status,
@@ -251,7 +309,7 @@ async function checkHrNoShow() {
                     continue;
                 }
 
-                await recordAttendanceStatus(client, {
+                await context.recordAttendanceStatus(client, {
                     staffId: row.staff_id,
                     recordDate: todayStr,
                     status: 'no_show',
@@ -268,6 +326,7 @@ async function checkHrNoShow() {
                 await client.query('COMMIT');
                 alerts.push(`• ${row.staff_name} — зміна з ${row.planned_start}`);
             } catch (err) {
+                errors++;
                 if (client) {
                     await client.query('ROLLBACK').catch(rollbackErr => {
                         log.error(`checkHrNoShow rollback error for staff ${row.staff_id}`, rollbackErr);
@@ -280,16 +339,50 @@ async function checkHrNoShow() {
         }
 
         if (alerts.length > 0) {
-            const chatId = await getConfiguredChatId();
+            const chatId = await context.getConfiguredChatId();
             if (chatId) {
                 const text = `⚠️ <b>HR: Не відмітились на роботі</b>\n\n${alerts.join('\n')}`;
-                sendTelegramMessage(chatId, text).catch(err => log.error('No-show telegram error', err));
+                context.sendTelegramMessage(chatId, text).catch(err => log.error('No-show telegram error', err));
             }
             log.info(`HR no-show: ${alerts.length} alerts`);
         }
+        if (errors > 0) {
+            const failure = new Error(`checkHrNoShow failed for ${errors} record(s)`);
+            failure.result = {
+                date: todayStr,
+                processed: noShows.rows.length,
+                marked: alerts.length,
+                errors,
+                markerSaved: false
+            };
+            throw failure;
+        }
+        const markerSaved = await setLastSent('no_show', todayStr, context.db);
+        if (!markerSaved) {
+            throw new Error('checkHrNoShow failed to save daily success marker');
+        }
+        if (markerSaved) noShowSentToday = todayStr;
+        return {
+            date: todayStr,
+            processed: noShows.rows.length,
+            marked: alerts.length,
+            errors,
+            markerSaved
+        };
     } catch (err) {
         log.error('checkHrNoShow error', err);
+        if (options.throwOnError === false) return { failed: true, error: err.message, result: err.result };
+        throw err;
+    } finally {
+        noShowRunning = false;
     }
 }
 
-module.exports = { checkHrAutoClose, checkHrNoShow };
+function __resetHrSchedulerStateForTests() {
+    autoCloseSentToday = null;
+    noShowSentToday = null;
+    autoCloseRunning = false;
+    noShowRunning = false;
+}
+
+module.exports = { checkHrAutoClose, checkHrNoShow, __resetHrSchedulerStateForTests };

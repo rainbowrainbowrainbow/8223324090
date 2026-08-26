@@ -788,6 +788,22 @@ remains open.
 - `guardScheduler` remains the dedup owner for these jobs. This task did not
   add job-internal dedup or durable multi-instance locks.
 
+2026-08-26 scheduler direct behavior closure:
+
+- Added disposable PostgreSQL behavior coverage for `checkHrAutoClose` and
+  `checkHrNoShow`, including empty windows, eligible mutations, same-process
+  overlap skips, PostgreSQL attendance write-lock blocking, service failures
+  propagating to `guardScheduler`, and terminal compensation snapshot
+  idempotency.
+- Extracted the `syncAgentActivities` scheduler wrapper from inline `server.js`
+  into `services/agentTracker.js` without changing the 30 minute schedule or
+  hourly `guardScheduler` dedup. The wrapper now has direct behavior coverage
+  for empty scans, successful scans, repeated windows, overlap skips, parser/DB
+  failure propagation to `guardScheduler`, and finally cleanup.
+- `STATIC_ONLY_SCHEDULER_JOBS` is now empty. New scheduler jobs still need a
+  concrete direct test anchor or an explicit blocker entry in
+  `docs/SCHEDULER_SURFACE.md`.
+
 ### 9. Documentation Cleanup
 
 Goal: make active docs trustworthy and old docs clearly historical.

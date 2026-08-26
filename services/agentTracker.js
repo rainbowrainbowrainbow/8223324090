@@ -11,6 +11,7 @@ const { callUnifiedChatCompletion, hasAnySharedAIKey } = require('./ai-config');
 const { execSync } = require('child_process');
 
 const log = createLogger('AgentTracker');
+let syncAgentActivitiesRunning = false;
 
 // Agent tag patterns in commit messages
 const AGENT_TAG_PATTERNS = [
@@ -123,6 +124,31 @@ async function parseGitLog(sinceHours = 24) {
         log.error('parseGitLog failed', err.message);
         return 0;
     }
+}
+
+async function syncAgentActivities(options = {}) {
+    const sinceHours = Number(options.sinceHours ?? 24);
+    const parse = options.parseGitLog || parseGitLog;
+    const logger = options.logger || log;
+
+    if (syncAgentActivitiesRunning) {
+        return { skipped: true, reason: 'already_running' };
+    }
+    syncAgentActivitiesRunning = true;
+    try {
+        const added = await parse(Number.isFinite(sinceHours) && sinceHours > 0 ? sinceHours : 24);
+        return { synced: true, added: Number(added) || 0 };
+    } catch (err) {
+        logger.error('syncAgentActivities failed', err.message);
+        if (options.throwOnError === false) return { synced: false, error: err.message };
+        throw err;
+    } finally {
+        syncAgentActivitiesRunning = false;
+    }
+}
+
+function __resetAgentTrackerSchedulerStateForTests() {
+    syncAgentActivitiesRunning = false;
 }
 
 /**
@@ -315,8 +341,10 @@ async function getLastSummary(period = 'daily', agentTag = null) {
 module.exports = {
     logActivity,
     parseGitLog,
+    syncAgentActivities,
     getActivityFeed,
     getAgentStatus,
     generateSummary,
-    getLastSummary
+    getLastSummary,
+    __resetAgentTrackerSchedulerStateForTests
 };

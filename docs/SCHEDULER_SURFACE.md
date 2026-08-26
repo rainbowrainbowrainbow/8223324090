@@ -71,7 +71,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 | `checkTrainingSummary` | `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
 | `checkGuardianReports` | `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
 | `flushGuardianLearn` | `flushGuardianLearn` | `server.js:inline` | guardian | `5 * 60 * 1000` | none |
-| `syncAgentActivities` | `syncAgentActivities` | `server.js:inline` | agent-tracker | `30 * 60 * 1000` | `hourly` |
+| `syncAgentActivities` | `syncAgentActivities` | `services/agentTracker.js` | agent-tracker | `30 * 60 * 1000` | `hourly` |
 | `runCheckboxReadinessProbeScheduler` | `runCheckboxReadinessProbeScheduler` | `services/payments/paymentReadinessService.js` | payments | `60000` | none |
 | `processPaymentOutboxJobs` | `processPaymentOutboxJobs` | `services/payments/paymentOutboxWorker.js` | payments | `30000` | none |
 | `runTrustedQaCleanupWatchdog` | `runTrustedQaCleanupWatchdog` | `services/trustedQaRuns.js` | trusted-qa | `60000` | `5min` |
@@ -274,25 +274,28 @@ shape. It covers time-gated no-op behavior, duplicate in-process ticks,
 database-backed idempotency keys, failure-as-failed announcement recording, and
 DB/WebSocket/Telegram side effects only after eligibility checks pass.
 
+`tests/integration/hr-scheduler-jobs.integration.test.js` closes disposable
+PostgreSQL behavior coverage for `checkHrAutoClose` and `checkHrNoShow`:
+empty windows, eligible mutations, duplicate tick suppression, row-lock
+blocking, overlapping tick skips, failure rollback, and terminal compensation
+snapshot idempotency.
+
+`tests/scheduler-static-jobs-behavior.test.js` also covers the extracted
+`syncAgentActivities` scheduler wrapper with mocked parser/filesystem/database
+boundaries: empty scans, successful syncs, repeated windows, overlap skips,
+parse/DB failure propagation to `guardScheduler`, and finally cleanup.
+
 Add direct tests before changing timing, idempotency, retry behavior, or
 notification targets.
 
 ## Static-Only Coverage Debt
 
-These jobs remain intentionally registered as static-only coverage debt in
-`config/schedulerSurface.js`. They have source/interval/dedup ownership guards,
-but no direct behavior test in the self-contained local baseline yet:
+`STATIC_ONLY_SCHEDULER_JOBS` is intentionally empty. Every guarded scheduler job
+and raw interval/starter in `config/schedulerSurface.js` has at least one direct
+behavior test anchor.
 
-| Job | Side effects | Dedup owner | Retry policy | Idempotency key | Failure behavior | Blocker |
-| --- | --- | --- | --- | --- | --- | --- |
-| `checkHrAutoClose` | `database` | `guardScheduler` daily + attendance write locks | next daily guarded run after contained service failure | attendance row id/date through canonical attendance writer | transactional rollback/logging in `services/hr.js`; static lock coverage in `tests/hr-attendance-lock.test.js` | Needs a disposable PostgreSQL HR attendance fixture to prove row locks and no duplicate auto-close. Do not replace with source regex. |
-| `checkHrNoShow` | `database` | `guardScheduler` daily + attendance write locks | next daily guarded run after contained service failure | attendance row id/date through canonical attendance writer | transactional rollback/logging in `services/hr.js`; static lock coverage in `tests/hr-attendance-lock.test.js` | Needs a disposable PostgreSQL HR attendance fixture to prove terminal snapshot idempotency and no duplicate no-show. Do not replace with source regex. |
-| `syncAgentActivities` | `filesystem`, `database` | `guardScheduler` hourly | startup call logs failure; guarded hourly interval records guard failure | agent activity parser/window inside `services/agentTracker.js` | startup call catches and logs; guarded interval uses scheduler execution failure accounting | Function is inline inside `server.js`. Direct behavior coverage requires extracting it to a testable module or booting `server.js`; both are runtime-shape changes and are out of scope for this test-only task. |
-
-If one of these jobs gets direct tests, remove it from
-`STATIC_ONLY_SCHEDULER_JOBS` in the same change. If a new scheduler job is added
-without tests, it must appear here with a concrete blocker so the production risk
-remains visible.
+If a future scheduler job is added without direct behavior tests, it must appear
+here with a concrete blocker so the production risk remains visible.
 
 ## Done Marker
 

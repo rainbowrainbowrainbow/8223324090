@@ -21,6 +21,7 @@ const MODES = {
     api: ['tests/api.test.js'],
     attendance: [
         'tests/integration/attendance-lock-concurrency.integration.test.js',
+        'tests/integration/hr-scheduler-jobs.integration.test.js',
         'tests/integration/hr-attendance-compensation-snapshot.integration.test.js',
         'tests/integration/hr-attendance-document-automation-concurrency.integration.test.js',
         'tests/integration/attendance-historical-grace-datafix.integration.test.js',
@@ -348,6 +349,7 @@ async function runSuite(testDb, testFile) {
         RUN_HR_DISPOSABLE_INTEGRATION: testFile.includes('hr-disposable') ? 'true' : 'false',
         RUN_PERMISSION_CAPABILITIES_INTEGRATION: testFile.includes('permission-capabilities') ? 'true' : 'false',
         RUN_ATTENDANCE_LOCK_INTEGRATION: testFile.includes('attendance-lock-concurrency') ? 'true' : 'false',
+        RUN_HR_SCHEDULER_JOBS_INTEGRATION: testFile.includes('hr-scheduler-jobs') ? 'true' : 'false',
         RUN_ATTENDANCE_DATAFIX_INTEGRATION: testFile.includes('attendance-historical-grace-datafix') ? 'true' : 'false',
         RUN_HR_ATTENDANCE_COMPENSATION_INTEGRATION: testFile.includes('hr-attendance-compensation-snapshot') ? 'true' : 'false',
         RUN_HR_ATTENDANCE_DOCUMENT_AUTOMATION_INTEGRATION: testFile.includes('hr-attendance-document-automation-concurrency') ? 'true' : 'false',

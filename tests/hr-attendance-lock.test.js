@@ -242,8 +242,8 @@ test('HR auto-close finalizes attendance through the canonical compensation snap
     assert.match(source, /require\('\.\/hrAttendance'\)/);
     assertInOrder(source, [
         /await client\.query\('BEGIN'\)/,
-        /await lockAttendanceWriteTarget\(client,/,
-        /recordAttendanceClockOut\(client,/,
+        /await context\.lockAttendanceWriteTarget\(client,/,
+        /context\.recordAttendanceClockOut\(client,/,
         /auto_closed = TRUE/,
         /VALUES \('auto_close'/,
         /await client\.query\('COMMIT'\)/
@@ -268,8 +268,8 @@ test('leave approval and no-show use the canonical terminal-status snapshot writ
     ], 'PUT /api/hr/leave-requests/:id/review');
     assertInOrder(schedulerSource, [
         /await client\.query\('BEGIN'\)/,
-        /await lockAttendanceWriteTarget\(client/,
-        /recordAttendanceStatus\(client/,
+        /await context\.lockAttendanceWriteTarget\(client/,
+        /context\.recordAttendanceStatus\(client/,
         /VALUES \('no_show'/,
         /await client\.query\('COMMIT'\)/
     ], 'services/hr.js no-show');
@@ -307,15 +307,15 @@ test('approved leave and HR scheduler writers share the transaction-scoped day l
     assert.match(serviceSource, /require\('\.\/attendanceWriteLock'\)/);
     assertInOrder(namedFunctionBlock(serviceSource, 'checkHrAutoClose'), [
         /await client\.query\('BEGIN'\)/,
-        /await lockAttendanceWriteTarget\(client,/,
+        /await context\.lockAttendanceWriteTarget\(client,/,
         /UPDATE hr_time_records SET/,
         /INSERT INTO hr_audit_log/,
         /await client\.query\('COMMIT'\)/
     ], 'checkHrAutoClose');
     assertInOrder(namedFunctionBlock(serviceSource, 'checkHrNoShow'), [
         /await client\.query\('BEGIN'\)/,
-        /await lockAttendanceWriteTarget\(client,/,
-        /recordAttendanceStatus\(client/,
+        /await context\.lockAttendanceWriteTarget\(client,/,
+        /context\.recordAttendanceStatus\(client/,
         /INSERT INTO hr_audit_log/,
         /await client\.query\('COMMIT'\)/
     ], 'checkHrNoShow');

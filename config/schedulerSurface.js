@@ -10,8 +10,8 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkReplyAutoEscalations', functionName: 'checkReplyAutoEscalations', sourceFile: 'services/scheduler.js', owner: 'tasks', interval: '60000', dedup: 'hourly', sideEffects: ['database'], tests: ['tests/reply-escalation.test.js'] },
     { name: 'checkWorkDayTriggers', functionName: 'checkWorkDayTriggers', sourceFile: 'services/scheduler.js', owner: 'staff', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'checkMonthlyPointsReset', functionName: 'checkMonthlyPointsReset', sourceFile: 'services/scheduler.js', owner: 'gamification', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
-    { name: 'checkHrAutoClose', functionName: 'checkHrAutoClose', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
-    { name: 'checkHrNoShow', functionName: 'checkHrNoShow', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'] },
+    { name: 'checkHrAutoClose', functionName: 'checkHrAutoClose', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/integration/hr-scheduler-jobs.integration.test.js'] },
+    { name: 'checkHrNoShow', functionName: 'checkHrNoShow', sourceFile: 'services/hr.js', owner: 'hr', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/integration/hr-scheduler-jobs.integration.test.js'] },
     { name: 'checkStreakUpdates', functionName: 'checkStreakUpdates', sourceFile: 'services/scheduler.js', owner: 'gamification', interval: '60000', dedup: 'daily', sideEffects: ['database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'checkBirthdayGreetings', functionName: 'checkBirthdayGreetings', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'checkBirthdayReminders', functionName: 'checkBirthdayReminders', sourceFile: 'services/scheduler.js', owner: 'customers', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
@@ -46,7 +46,7 @@ const GUARDED_SCHEDULER_JOBS = [
     { name: 'checkTrainingSummary', functionName: 'checkTrainingSummary', sourceFile: 'server.js:inline', owner: 'training', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/training.test.js'] },
     { name: 'checkGuardianReports', functionName: 'checkGuardianReports', sourceFile: 'server.js:inline', owner: 'guardian', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'database'], tests: ['tests/guardian-ops.test.js'] },
     { name: 'flushGuardianLearn', functionName: 'flushGuardianLearn', sourceFile: 'server.js:inline', owner: 'guardian', interval: '5 * 60 * 1000', dedup: null, sideEffects: ['database', 'ai'], tests: ['tests/guardian-convergence.test.js'] },
-    { name: 'syncAgentActivities', functionName: 'syncAgentActivities', sourceFile: 'server.js:inline', owner: 'agent-tracker', interval: '30 * 60 * 1000', dedup: 'hourly', sideEffects: ['filesystem', 'database'] },
+    { name: 'syncAgentActivities', functionName: 'syncAgentActivities', sourceFile: 'services/agentTracker.js', owner: 'agent-tracker', interval: '30 * 60 * 1000', dedup: 'hourly', sideEffects: ['filesystem', 'database'], tests: ['tests/scheduler-static-jobs-behavior.test.js'] },
     { name: 'runCheckboxReadinessProbeScheduler', functionName: 'runCheckboxReadinessProbeScheduler', sourceFile: 'services/payments/paymentReadinessService.js', owner: 'payments', interval: '60000', dedup: null, sideEffects: ['database', 'checkbox'], tests: ['tests/payment-readiness.test.js'] },
     { name: 'processPaymentOutboxJobs', functionName: 'processPaymentOutboxJobs', sourceFile: 'services/payments/paymentOutboxWorker.js', owner: 'payments', interval: '30000', dedup: null, sideEffects: ['database', 'checkbox'], tests: ['tests/checkbox-webhook-reconciliation.test.js'] },
     { name: 'runTrustedQaCleanupWatchdog', functionName: 'runTrustedQaCleanupWatchdog', sourceFile: 'services/trustedQaRuns.js', owner: 'trusted-qa', interval: '60000', dedup: '5min', sideEffects: ['database', 'bookings', 'tasks', 'history'], tests: ['tests/trusted-qa-runs.test.js'] },
@@ -65,11 +65,7 @@ const RAW_SCHEDULER_INTERVALS = [
     { name: 'taskLifecycleStartup', kind: 'setTimeout', sourceFile: 'server.js', functionName: 'guardedTaskLifecycle', interval: '30000', owner: 'tasks', fragment: 'setTimeout(() => guardedTaskLifecycle().catch(() => {}), 30000)', tests: ['tests/task-lifecycle-scheduler-hardening.test.js'] }
 ];
 
-const STATIC_ONLY_SCHEDULER_JOBS = [
-    'checkHrAutoClose',
-    'checkHrNoShow',
-    'syncAgentActivities'
-];
+const STATIC_ONLY_SCHEDULER_JOBS = [];
 
 const SCHEDULER_SURFACE_DOC = 'docs/SCHEDULER_SURFACE.md';
 

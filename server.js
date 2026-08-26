@@ -41,6 +41,7 @@ const { initWebSocket, getWSS } = require('./services/websocket');
 const { runMigrations } = require('./db/migrate');
 const { apiAudit } = require('./middleware/apiAudit');
 const { guardScheduler } = require('./services/schedulerGuard');
+const { syncAgentActivities } = require('./services/agentTracker');
 const { processPaymentOutboxJobs: processPaymentOutboxJobsBase } = require('./services/payments/paymentOutboxWorker');
 const { runCheckboxReadinessProbeScheduler } = require('./services/payments/paymentReadinessService');
 
@@ -889,10 +890,6 @@ initializeDatabaseWithSchemaFence().catch(err => {
         schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn, { dedup: null }), 5 * 60 * 1000));
 
         // Contour 2: Agent activity tracking — parse git log every 30 min
-        async function syncAgentActivities() {
-            const { parseGitLog } = require('./services/agentTracker');
-            await parseGitLog(24);
-        }
         schedulerIntervals.push(setInterval(guardScheduler('syncAgentActivities', syncAgentActivities, { dedup: 'hourly' }), 30 * 60 * 1000));
         // Run initial sync on startup
         syncAgentActivities().catch(err => log.error('Initial agent sync error', err.message));

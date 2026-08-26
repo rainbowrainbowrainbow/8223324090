@@ -454,3 +454,102 @@ describe('auth scheduler cleanup behavior', () => {
         assert.equal(state.queries.length, 1);
     });
 });
+
+describe('agent activity scheduler wrapper behavior', () => {
+    afterEach(() => {
+        try { delete require.cache[require.resolve('../services/agentTracker')]; } catch {}
+    });
+
+    function loadAgentTracker() {
+        try { delete require.cache[require.resolve('../services/agentTracker')]; } catch {}
+        return require('../services/agentTracker');
+    }
+
+    it('syncAgentActivities scans the default 24 hour window and reports empty or successful syncs', async () => {
+        const tracker = loadAgentTracker();
+        const windows = [];
+
+        const empty = await tracker.syncAgentActivities({
+            parseGitLog: async hours => {
+                windows.push(hours);
+                return 0;
+            }
+        });
+        const success = await tracker.syncAgentActivities({
+            parseGitLog: async hours => {
+                windows.push(hours);
+                return 3;
+            }
+        });
+
+        assert.deepEqual(empty, { synced: true, added: 0 });
+        assert.deepEqual(success, { synced: true, added: 3 });
+        assert.deepEqual(windows, [24, 24]);
+    });
+
+    it('syncAgentActivities keeps repeated windows explicit without changing parser semantics', async () => {
+        const tracker = loadAgentTracker();
+        const windows = [];
+
+        await tracker.syncAgentActivities({
+            sinceHours: 6,
+            parseGitLog: async hours => {
+                windows.push(hours);
+                return 1;
+            }
+        });
+        await tracker.syncAgentActivities({
+            sinceHours: 6,
+            parseGitLog: async hours => {
+                windows.push(hours);
+                return 0;
+            }
+        });
+
+        assert.deepEqual(windows, [6, 6]);
+    });
+
+    it('syncAgentActivities skips same-process overlap and releases the guard in finally after success', async () => {
+        const tracker = loadAgentTracker();
+        let release;
+        const first = tracker.syncAgentActivities({
+            parseGitLog: async () => {
+                await new Promise(resolve => { release = resolve; });
+                return 1;
+            }
+        });
+
+        const overlap = await tracker.syncAgentActivities({
+            parseGitLog: async () => {
+                throw new Error('overlap parser must not run');
+            }
+        });
+        release();
+        const completed = await first;
+        const afterFinally = await tracker.syncAgentActivities({
+            parseGitLog: async () => 2
+        });
+
+        assert.deepEqual(overlap, { skipped: true, reason: 'already_running' });
+        assert.deepEqual(completed, { synced: true, added: 1 });
+        assert.deepEqual(afterFinally, { synced: true, added: 2 });
+    });
+
+    it('syncAgentActivities propagates parser or DB failures to the scheduler guard and releases the guard in finally', async () => {
+        const tracker = loadAgentTracker();
+        const logs = [];
+        await assert.rejects(() => tracker.syncAgentActivities({
+            logger: { error: (...args) => logs.push(args) },
+            parseGitLog: async () => {
+                throw new Error('planned parser db failure');
+            }
+        }), /planned parser db failure/);
+        const recovered = await tracker.syncAgentActivities({
+            parseGitLog: async () => 1
+        });
+
+        assert.deepEqual(recovered, { synced: true, added: 1 });
+        assert.equal(logs.length, 1);
+        assert.match(String(logs[0][0]), /syncAgentActivities failed/);
+    });
+});

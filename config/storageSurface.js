@@ -16,7 +16,7 @@ const LOCAL_UPLOAD_SURFACE = [
         routeFile: 'routes/chat.js',
         serviceFile: 'services/chatUploadStorage.js',
         frontendFiles: ['js/chat-page.js'],
-        tests: ['tests/chat-upload-storage.test.js', 'tests/chat-upload-route.test.js'],
+        tests: ['tests/chat-upload-storage.test.js', 'tests/chat-upload-route.test.js', 'tests/legacy-upload-backfill.test.js'],
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
@@ -34,7 +34,7 @@ const LOCAL_UPLOAD_SURFACE = [
         routeFile: 'routes/music.js',
         serviceFile: 'services/audioStorage.js',
         frontendFiles: ['js/sound-page.js'],
-        tests: ['tests/audio-storage.test.js'],
+        tests: ['tests/audio-storage.test.js', 'tests/legacy-upload-backfill.test.js'],
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
@@ -52,7 +52,7 @@ const LOCAL_UPLOAD_SURFACE = [
         routeFile: 'routes/auth.js',
         serviceFile: 'services/profileAvatarStorage.js',
         frontendFiles: ['profile.html', 'js/profile-page.js'],
-        tests: ['tests/profile-avatar-storage.test.js', 'tests/route-smoke.test.js'],
+        tests: ['tests/profile-avatar-storage.test.js', 'tests/route-smoke.test.js', 'tests/legacy-upload-backfill.test.js'],
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
@@ -70,7 +70,7 @@ const LOCAL_UPLOAD_SURFACE = [
         routeFile: 'routes/catalogs.js',
         serviceFile: 'services/imageStorage.js',
         frontendFiles: ['js/art-director-page.js'],
-        tests: ['tests/image-storage.test.js'],
+        tests: ['tests/image-storage.test.js', 'tests/legacy-upload-backfill.test.js'],
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {
@@ -88,7 +88,7 @@ const LOCAL_UPLOAD_SURFACE = [
         routeFile: 'routes/designs.js',
         serviceFile: 'services/designStorage.js',
         frontendFiles: ['designs.html', 'js/designs-page.js'],
-        tests: ['tests/designs.test.js', 'tests/design-storage.test.js'],
+        tests: ['tests/designs.test.js', 'tests/design-storage.test.js', 'tests/legacy-upload-backfill.test.js'],
         remoteBucket: null,
         envBucket: null,
         fallbackPolicy: {

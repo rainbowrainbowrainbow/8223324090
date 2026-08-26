@@ -863,7 +863,7 @@ Status: active rule for all packs.
 | Priority | Pack | Why It Matters | Suggested First Check |
 | --- | --- | --- | --- |
 | Done | Query-token auth restriction | Reduces JWT leakage through URLs | `npm run check:auth-boundary`, `tests/auth-boundary.test.js`, `tests/route-smoke.test.js` |
-| Done | Upload storage inventory | Clarifies Railway persistence risk | `npm run check:storage-surface`, `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js`, `tests/image-storage.test.js` |
+| Done | Upload storage inventory and checksum backfill tooling | Clarifies Railway persistence risk and gives operators a safe manifest-driven path to copy available legacy binaries into Postgres blob tables | `npm run check:storage-surface`, `npm run test:legacy-upload-backfill`, `tests/chat-upload-storage.test.js`, `tests/audio-storage.test.js`, `tests/image-storage.test.js` |
 | Done | Root HTML ownership map | Prevents accidental live page deletion | `npm run check:static-surface`, `npm run test:ui` |
 | Done | API route ownership guard | Prevents orphan route files and undocumented broad mounts | `npm run check:api-surface`, `tests/route-smoke.test.js` |
 | Done | Access/sidebar drift expansion | Keeps UI and backend permission rules aligned | `npm run check:access` |
@@ -880,8 +880,8 @@ Status: active rule for all packs.
 
 - Which Railway branch/environment is the production deploy source?
 - Which root HTML pages are intentionally public entrypoints?
-- Which legacy design upload files should be migrated from local disk to
-  Supabase Storage first?
+- Which `UNRECOVERABLE_SOURCE_MISSING` upload records, if any, have recoverable
+  bytes in an external backup outside the current Railway/local filesystem?
 - Which historical planning docs should remain at repo root for humans?
 - Which DB seed/bootstrap responsibilities are still required for fresh
   customer environments?

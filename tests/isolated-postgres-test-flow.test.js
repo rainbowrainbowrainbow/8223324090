@@ -244,6 +244,8 @@ describe('isolated PostgreSQL test flow safety', () => {
         assert.doesNotMatch(hrSuite, /copied\.length, 2/);
         assert.match(runner, /onboarding:\s*\[\s*'tests\/integration\/fresh-db-startup\.integration\.test\.js',\s*'tests\/integration\/hr-onboarding-hire\.integration\.test\.js',\s*'tests\/integration\/account-onboarding\.integration\.test\.js'\s*\]/);
         assert.match(runner, /backfill:\s*\[\s*'tests\/integration\/hr-legacy-hire-backfill\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /'upload-backfill':\s*\[\s*'tests\/integration\/legacy-upload-backfill\.integration\.test\.js'\s*\]/);
+        assert.match(runner, /RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION/);
         assert.match(runner, /fullstack:\s*\[\s*'tests\/browser\/hr-onboarding-fullstack-browser-smoke\.js'\s*\]/);
         assert.match(onboardingSuite, /RUN_HR_ONBOARDING_INTEGRATION/);
         assert.match(runner, /RUN_ACCOUNT_ONBOARDING_INTEGRATION/);

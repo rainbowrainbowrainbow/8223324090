@@ -69,6 +69,7 @@ const MODES = {
         'tests/integration/account-onboarding.integration.test.js'
     ],
     backfill: ['tests/integration/hr-legacy-hire-backfill.integration.test.js'],
+    'upload-backfill': ['tests/integration/legacy-upload-backfill.integration.test.js'],
     fullstack: ['tests/browser/hr-onboarding-fullstack-browser-smoke.js'],
     qa: [
         'tests/integration/live-multi-segment-qa.integration.test.js',
@@ -77,7 +78,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|my-day-browser|cashier-smoke|checkbox-config|checkbox-ui-real|onboarding|backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|my-day-browser|cashier-smoke|checkbox-config|checkbox-ui-real|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function createPool(testDb) {
@@ -286,7 +287,8 @@ async function runBrowserScript(testFile, env) {
 
 function runsAgainstDatabaseOnly(testFile) {
     return testFile.includes('checkbox-park-cashier-smoke.integration')
-        || testFile.includes('checkbox-park-config.integration');
+        || testFile.includes('checkbox-park-config.integration')
+        || testFile.includes('legacy-upload-backfill.integration');
 }
 
 async function runSuite(testDb, testFile) {
@@ -369,6 +371,7 @@ async function runSuite(testDb, testFile) {
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
         RUN_ACCOUNT_ONBOARDING_INTEGRATION: testFile.includes('account-onboarding.integration') ? 'true' : 'false',
         RUN_HR_LEGACY_BACKFILL_INTEGRATION: testFile.includes('hr-legacy-hire-backfill') ? 'true' : 'false',
+        RUN_LEGACY_UPLOAD_BACKFILL_INTEGRATION: testFile.includes('legacy-upload-backfill.integration') ? 'true' : 'false',
         RUN_HR_ONBOARDING_FULLSTACK_BROWSER: testFile.includes('hr-onboarding-fullstack-browser-smoke') ? 'true' : 'false',
         RUN_FRESH_DB_STARTUP_INTEGRATION: testFile.includes('fresh-db-startup') ? 'true' : 'false',
         RUN_LIVE_MULTI_SEGMENT_QA_INTEGRATION: testFile.includes('live-multi-segment') ? 'true' : 'false'
@@ -449,10 +452,10 @@ async function runSuite(testDb, testFile) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'my-day-browser', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'onboarding', 'backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'my-day-browser', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill]
+        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
         : MODES[mode];
 
     for (const testFile of files) {

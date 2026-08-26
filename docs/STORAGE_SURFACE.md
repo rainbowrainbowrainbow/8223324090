@@ -89,6 +89,54 @@ Profile avatar uploads are now different: new writes store binary content in
 before falling back to local disk for legacy files. Existing old local avatar
 URLs remain compatible, but missing legacy files are not backfilled.
 
+## Legacy Upload Backfill
+
+Task 23 adds a checksum-based operator backfill for existing local upload
+fallback files. The script is intentionally not part of normal runtime startup.
+
+Operator command:
+
+```bash
+npm run backfill:legacy-uploads -- --segment chat --json
+```
+
+Supported segments:
+
+- `chat` -> `chat_upload_blobs`
+- `sounds` -> `sound_upload_blobs`
+- `profile-avatars` -> `profile_avatar_blobs`
+- `catalog-images` -> `catalog_image_blobs`
+- `designs` -> `design_file_blobs`
+
+The script is dry-run by default and emits only redacted metadata: counts,
+opaque source IDs, storage-key SHA256, byte length, checksums, and verdicts. It
+must not print filenames, customer text, chat content, binary bytes, secrets, or
+raw upload URLs.
+
+Apply mode requires all three operator gates:
+
+```bash
+npm run backfill:legacy-uploads:apply -- \
+  --segment chat \
+  --expected-count <dry-run writeCandidates> \
+  --manifest-hash <dry-run manifestHash> \
+  --confirm=BACKFILL_LEGACY_UPLOAD_BLOBS
+```
+
+Backfill rules:
+
+- exact existing Postgres blob -> skip;
+- missing legacy source bytes -> `UNRECOVERABLE_SOURCE_MISSING`;
+- different existing checksum -> `CHECKSUM_CONFLICT` and no overwrite;
+- metadata/blob failure -> transaction rollback for that record;
+- local fallback files remain in place;
+- metadata rows and public URLs are not changed by the backfill.
+
+Run apply one segment at a time, then rerun dry-run for that same segment. A
+completed segment should show zero `WRITE_CANDIDATE` rows. If old Railway local
+filesystem bytes are already gone, the script cannot reconstruct them; keep the
+redacted missing-source manifest for backup search or manual recovery.
+
 ## What This Gives
 
 - Clarifies which uploaded files are expected to survive redeploys.

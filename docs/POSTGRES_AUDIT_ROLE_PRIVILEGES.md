@@ -44,11 +44,15 @@ Before the grant change:
 - source of `TEMPORARY`: `PUBLIC_DATABASE_TEMPORARY`;
 - direct audit-role `TEMPORARY` grant: `false`.
 
+Pre-change evidence timestamp: `2026-08-26T16:33:36.053Z`.
+
 Database grant change applied:
 
 - `REVOKE TEMPORARY ON DATABASE ... FROM PUBLIC`;
 - `GRANT TEMPORARY ON DATABASE ... TO <application/operator role>`;
 - rollback SQL was written locally before commit.
+
+Grant-change evidence timestamp: `2026-08-26T16:35:39.834Z`.
 
 After the grant change:
 
@@ -60,6 +64,9 @@ After the grant change:
 - persistent public DDL under audit role is denied with SQLSTATE class `42`;
 - application/operator role keeps direct `TEMPORARY=true`;
 - live `/api/health` and `/api/health/deep` are `ok`.
+
+Post-change audit-role evidence timestamp: `2026-08-26T16:36:28.223Z`.
+Post-change application/operator-role evidence timestamp: `2026-08-26T16:36:46.853Z`.
 
 ## Evidence artifacts
 

@@ -22,61 +22,61 @@ Do not remove retry or fallback paths until failure semantics are documented.
 These jobs are wrapped with `guardScheduler` and are tracked in
 `scheduler_executions`.
 
-| Job | Source | Owner | Interval | Dedup |
-| --- | --- | --- | --- | --- |
-| `checkAutoDigest` | `services/scheduler.js` | bookings | `60000` | `daily` |
-| `checkAutoReminder` | `services/scheduler.js` | bookings | `60000` | `daily` |
-| `checkAutoBackup` | `services/scheduler.js` | backup | `60000` | `daily` |
-| `checkRecurringTasks` | `services/scheduler.js` | tasks | `60000` | `daily` |
-| `checkRecurringAfisha` | `services/scheduler.js` | afisha | `60000` | `daily` |
-| `checkScheduledDeletions` | `services/scheduler.js` | telegram | `60000` | `daily` |
-| `checkCertificateExpiry` | `services/scheduler.js` | certificates | `60000` | `daily` |
-| `checkTaskReminders` | `services/scheduler.js` | tasks | `60000` | `hourly` |
-| `checkReplyAutoEscalations` | `services/scheduler.js` | tasks | `60000` | `hourly` |
-| `checkWorkDayTriggers` | `services/scheduler.js` | staff | `60000` | `daily` |
-| `checkMonthlyPointsReset` | `services/scheduler.js` | gamification | `60000` | `daily` |
-| `checkHrAutoClose` | `services/hr.js` | hr | `60000` | `daily` |
-| `checkHrNoShow` | `services/hr.js` | hr | `60000` | `daily` |
-| `checkStreakUpdates` | `services/scheduler.js` | gamification | `60000` | `daily` |
-| `checkBirthdayGreetings` | `services/scheduler.js` | customers | `60000` | `daily` |
-| `checkBirthdayReminders` | `services/scheduler.js` | customers | `60000` | `daily` |
-| `checkBirthdayTagSync` | `services/scheduler.js` | customers | `60000` | `daily` |
-| `checkDormantCustomers` | `services/scheduler.js` | customers | `60000` | `daily` |
-| `checkUpcomingBookings` | `services/scheduler.js` | bookings | `60000` | `daily` |
-| `checkEventQueue` | `services/scheduler.js` | event-queue | `60000` | none |
-| `checkSLABreach` | `services/scheduler.js` | sla | `60000` | `hourly` |
-| `checkScheduledAnnouncements` | `services/scheduler.js` | announcements | `60000` | `hourly` |
-| `checkTaskOverdue` | `services/scheduler.js` | tasks | `60000` | `hourly` |
-| `runTaskLifecycle` | `services/taskLifecycle.js` | tasks | `60 * 1000` | `daily` |
-| `checkCustomerRetention` | `services/scheduler.js` | customers | `60000` | `daily` |
-| `checkAutoReport` | `services/scheduler.js` | reports | `60000` | `daily` |
-| `checkHotLeads` | `services/scheduler.js` | leads | `60000` | `hourly` |
-| `checkScheduledChatMessages` | `services/scheduler.js` | chat | `30000` | none |
-| `checkExpiredChatMessages` | `services/scheduler.js` | chat | `60000` | none |
-| `checkAutoReviewRequests` | `services/scheduler.js` | reviews | `60000` | `hourly` |
-| `checkTeamPulseReminder` | `services/scheduler.js` | team-pulse | `60000` | `daily` |
-| `checkAutoOrdering` | `services/scheduler.js` | warehouse | `60000` | `hourly` |
-| `checkBookingPushReminders` | `services/scheduler.js` | bookings | `60000` | none |
-| `checkCertExpiryReminders` | `services/scheduler.js` | staff | `60000` | `daily` |
-| `checkStaleCatalogImages` | `services/scheduler.js` | catalogs | `60000` | `daily` |
-| `checkChatDailyDigest` | `services/scheduler.js` | chat | `60000` | `daily` |
-| `checkRecurringAnnouncements` | `services/scheduler.js` | announcements | `60000` | none |
-| `checkEventPipeline` | `services/scheduler.js` | events | `60000` | `5min` |
-| `checkNpsFollowUp` | `services/scheduler.js` | customers | `60000` | `hourly` |
-| `checkCleaningTasks` | `services/scheduler.js` | tasks | `60000` | `5min` |
-| `checkGraduationOpsAutomation` | `services/scheduler.js` | graduation | `60000` | `hourly` |
-| `checkAttendanceReviewTasks` | `services/scheduler.js` | hr | `60000` | none |
-| `checkHrAttendancePrintAutomations` | `services/scheduler.js` | hr | `60000` | none |
-| `checkTrainingPrompts` | `server.js:inline` | training | `60000` | `daily` |
-| `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
-| `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
-| `flushGuardianLearn` | `server.js:inline` | guardian | `5 * 60 * 1000` | none |
-| `syncAgentActivities` | `server.js:inline` | agent-tracker | `30 * 60 * 1000` | `hourly` |
-| `runCheckboxReadinessProbeScheduler` | `services/payments/paymentReadinessService.js` | payments | `60000` | none |
-| `processPaymentOutboxJobs` | `services/payments/paymentOutboxWorker.js` | payments | `30000` | none |
-| `runTrustedQaCleanupWatchdog` | `services/trustedQaRuns.js` | trusted-qa | `60000` | `5min` |
-| `cleanupOutbox` | `services/eventBus.js` | event-bus | `60000` | `daily` |
-| `cleanupRefreshTokens` | `middleware/auth.js` | auth | `60000` | `daily` |
+| Job | Function | Source | Owner | Interval | Dedup |
+| --- | --- | --- | --- | --- | --- |
+| `checkAutoDigest` | `checkAutoDigest` | `services/scheduler.js` | bookings | `60000` | `daily` |
+| `checkAutoReminder` | `checkAutoReminder` | `services/scheduler.js` | bookings | `60000` | `daily` |
+| `checkAutoBackup` | `checkAutoBackup` | `services/scheduler.js` | backup | `60000` | none |
+| `checkRecurringTasks` | `checkRecurringTasks` | `services/scheduler.js` | tasks | `60000` | `daily` |
+| `checkRecurringAfisha` | `checkRecurringAfisha` | `services/scheduler.js` | afisha | `60000` | `daily` |
+| `checkScheduledDeletions` | `checkScheduledDeletions` | `services/scheduler.js` | telegram | `60000` | `daily` |
+| `checkCertificateExpiry` | `checkCertificateExpiry` | `services/scheduler.js` | certificates | `60000` | `daily` |
+| `checkTaskReminders` | `checkTaskReminders` | `services/scheduler.js` | tasks | `60000` | `5min` |
+| `checkReplyAutoEscalations` | `checkReplyAutoEscalations` | `services/scheduler.js` | tasks | `60000` | `hourly` |
+| `checkWorkDayTriggers` | `checkWorkDayTriggers` | `services/scheduler.js` | staff | `60000` | `daily` |
+| `checkMonthlyPointsReset` | `checkMonthlyPointsReset` | `services/scheduler.js` | gamification | `60000` | `daily` |
+| `checkHrAutoClose` | `checkHrAutoClose` | `services/hr.js` | hr | `60000` | `daily` |
+| `checkHrNoShow` | `checkHrNoShow` | `services/hr.js` | hr | `60000` | `daily` |
+| `checkStreakUpdates` | `checkStreakUpdates` | `services/scheduler.js` | gamification | `60000` | `daily` |
+| `checkBirthdayGreetings` | `checkBirthdayGreetings` | `services/scheduler.js` | customers | `60000` | `daily` |
+| `checkBirthdayReminders` | `checkBirthdayReminders` | `services/scheduler.js` | customers | `60000` | `daily` |
+| `checkBirthdayTagSync` | `checkBirthdayTagSync` | `services/scheduler.js` | customers | `60000` | `daily` |
+| `checkDormantCustomers` | `checkDormantCustomers` | `services/scheduler.js` | customers | `60000` | `daily` |
+| `checkUpcomingBookings` | `checkUpcomingBookings` | `services/scheduler.js` | bookings | `60000` | `daily` |
+| `checkEventQueue` | `checkEventQueue` | `services/scheduler.js` | event-queue | `60000` | none |
+| `checkSLABreach` | `checkSLABreach` | `services/scheduler.js` | sla | `60000` | `hourly` |
+| `checkScheduledAnnouncements` | `checkScheduledAnnouncements` | `services/scheduler.js` | announcements | `60000` | `hourly` |
+| `checkTaskOverdue` | `checkTaskOverdue` | `services/scheduler.js` | tasks | `60000` | `hourly` |
+| `runTaskLifecycle` | `runTaskLifecycle` | `services/taskLifecycle.js` | tasks | `60 * 1000` | `daily` |
+| `checkCustomerRetention` | `checkCustomerRetention` | `services/scheduler.js` | customers | `60000` | `daily` |
+| `checkAutoReport` | `checkAutoReport` | `services/scheduler.js` | reports | `60000` | `daily` |
+| `checkHotLeads` | `checkHotLeads` | `services/scheduler.js` | leads | `60000` | `hourly` |
+| `checkScheduledChatMessages` | `checkScheduledChatMessages` | `services/scheduler.js` | chat | `30000` | none |
+| `checkExpiredChatMessages` | `checkExpiredChatMessages` | `services/scheduler.js` | chat | `60000` | none |
+| `checkAutoReviewRequests` | `checkAutoReviewRequests` | `services/scheduler.js` | reviews | `60000` | `hourly` |
+| `checkTeamPulseReminder` | `checkTeamPulseReminder` | `services/scheduler.js` | team-pulse | `60000` | `daily` |
+| `checkAutoOrdering` | `checkAutoOrdering` | `services/scheduler.js` | warehouse | `60000` | `hourly` |
+| `checkBookingPushReminders` | `checkBookingPushReminders` | `services/scheduler.js` | bookings | `60000` | none |
+| `checkCertExpiryReminders` | `checkCertExpiryReminders` | `services/scheduler.js` | staff | `60000` | `daily` |
+| `checkStaleCatalogImages` | `checkStaleCatalogImages` | `services/scheduler.js` | catalogs | `60000` | `daily` |
+| `checkChatDailyDigest` | `checkChatDailyDigest` | `services/scheduler.js` | chat | `60000` | `daily` |
+| `checkRecurringAnnouncements` | `checkRecurringAnnouncements` | `services/scheduler.js` | announcements | `60000` | none |
+| `checkEventPipeline` | `checkEventPipeline` | `services/scheduler.js` | events | `60000` | `5min` |
+| `checkNpsFollowUp` | `checkNpsFollowUp` | `services/scheduler.js` | customers | `60000` | `hourly` |
+| `checkCleaningTasks` | `checkCleaningTasks` | `services/scheduler.js` | tasks | `60000` | `5min` |
+| `checkGraduationOpsAutomation` | `checkGraduationOpsAutomation` | `services/scheduler.js` | graduation | `60000` | `hourly` |
+| `checkAttendanceReviewTasks` | `checkAttendanceReviewTasks` | `services/scheduler.js` | hr | `60000` | none |
+| `checkHrAttendancePrintAutomations` | `checkHrAttendancePrintAutomations` | `services/scheduler.js` | hr | `60000` | none |
+| `checkTrainingPrompts` | `checkTrainingPrompts` | `server.js:inline` | training | `60000` | `daily` |
+| `checkTrainingSummary` | `checkTrainingSummary` | `server.js:inline` | training | `60000` | `daily` |
+| `checkGuardianReports` | `checkGuardianReports` | `server.js:inline` | guardian | `60000` | `daily` |
+| `flushGuardianLearn` | `flushGuardianLearn` | `server.js:inline` | guardian | `5 * 60 * 1000` | none |
+| `syncAgentActivities` | `syncAgentActivities` | `server.js:inline` | agent-tracker | `30 * 60 * 1000` | `hourly` |
+| `runCheckboxReadinessProbeScheduler` | `runCheckboxReadinessProbeScheduler` | `services/payments/paymentReadinessService.js` | payments | `60000` | none |
+| `processPaymentOutboxJobs` | `processPaymentOutboxJobs` | `services/payments/paymentOutboxWorker.js` | payments | `30000` | none |
+| `runTrustedQaCleanupWatchdog` | `runTrustedQaCleanupWatchdog` | `services/trustedQaRuns.js` | trusted-qa | `60000` | `5min` |
+| `cleanupOutbox` | `cleanupOutbox` | `services/eventBus.js` | event-bus | `60000` | `daily` |
+| `cleanupRefreshTokens` | `cleanupRefreshTokens` | `middleware/auth.js` | auth | `60000` | `daily` |
 
 All guarded jobs must pass an explicit `dedup` option. Do not rely on the
 `guardScheduler` default because the default is daily and can silently change a
@@ -156,16 +156,16 @@ existing customer birthday tags and then writes the marker after a clean sync.
 
 These background jobs are not tracked through `scheduler_executions`.
 
-| Name | Source | Owner | Interval | Notes |
-| --- | --- | --- | --- | --- |
-| `openclawBridgeStaleMessages` | `server.js` | kleshnya | `30000` | Conditional on `OPENCLAW_BRIDGE`; calls `processStaleMessages` with an in-process overlap guard. |
-| `cleanupKleshnyaMessages` | `server.js` | kleshnya | `30 * 60 * 1000` | Local greeting cache cleanup with an in-process overlap guard. |
-| `telegramRetryQueue` | `server.js` | telegram | `30000` | Calls `processRetryQueue`. |
-| `eventBusProcessOutbox` | `server.js` | event-bus | `5000` | Calls `processOutbox`; fast transactional outbox relay. |
-| `marketingPublishScheduled` | `server.js` | marketing | `5 * 60 * 1000` | Calls `publishScheduled`. |
-| `marketingWeeklyPlan` | `server.js` | marketing | `60 * 1000` | Checks for Wednesday 08:00 UTC before `generateWeeklyPlan`. |
-| `dashboardAlertBroadcaster` | `server.js` | dashboard | `60000` | Starts `startAlertBroadcaster(60000)`. |
-| `taskLifecycleStartup` | `server.js` | tasks | `30000` | One startup delay before `guardedTaskLifecycle`. |
+| Name | Kind | Function | Source | Owner | Interval | Notes |
+| --- | --- | --- | --- | --- | --- | --- |
+| `openclawBridgeStaleMessages` | `setInterval` | `processStaleMessages` | `server.js` | kleshnya | `30000` | Conditional on `OPENCLAW_BRIDGE`; calls `processStaleMessages` with an in-process overlap guard. |
+| `cleanupKleshnyaMessages` | `setInterval` | `cleanupKleshnyaMessages` | `server.js` | kleshnya | `30 * 60 * 1000` | Local greeting cache cleanup with an in-process overlap guard. |
+| `telegramRetryQueue` | `setInterval` | `processRetryQueue` | `server.js` | telegram | `30000` | Calls `processRetryQueue`. |
+| `eventBusProcessOutbox` | `setInterval` | `processOutbox` | `server.js` | event-bus | `5000` | Calls `processOutbox`; fast transactional outbox relay. |
+| `marketingPublishScheduled` | `setInterval` | `runMarketingScheduledPublish` | `server.js` | marketing | `5 * 60 * 1000` | Calls `publishScheduled`. |
+| `marketingWeeklyPlan` | `setInterval` | `runMarketingWeeklyPlanScheduler` | `server.js` | marketing | `60 * 1000` | Checks for Wednesday 08:00 UTC before `generateWeeklyPlan`. |
+| `dashboardAlertBroadcaster` | `starter` | `startAlertBroadcaster` | `server.js` | dashboard | `60000` | Starts `startAlertBroadcaster(60000)`. |
+| `taskLifecycleStartup` | `setTimeout` | `guardedTaskLifecycle` | `server.js` | tasks | `30000` | One startup delay before `guardedTaskLifecycle`. |
 
 Raw intervals need extra care before refactoring because they do not have the
 pause/dedup/error accounting from `guardScheduler`.
@@ -255,6 +255,7 @@ The manifest records test files where direct coverage exists:
 - `tests/marketing-scheduler-hardening.test.js`
 - `tests/dashboard-alert-broadcaster-hardening.test.js`
 - `tests/task-lifecycle-scheduler-hardening.test.js`
+- `tests/scheduler-static-jobs-behavior.test.js`
 - `tests/telegram-callbacks.test.js`
 - `tests/graduation-ops-automation.test.js`
 - `tests/hr-attendance-document-automation.test.js`
@@ -265,29 +266,33 @@ The manifest records test files where direct coverage exists:
 
 `tests/event-queue.test.js` is a live API suite and requires the configured app
 credentials/env described in `README.md`; it is not part of the self-contained
-`npm test` baseline. Many legacy jobs are still only statically mapped. Add
-direct tests before changing their timing, idempotency, retry behavior, or
-notification target.
+`npm test` baseline.
+
+`tests/scheduler-static-jobs-behavior.test.js` closes direct behavior coverage
+for the legacy scheduler exports that can be called without changing runtime
+shape. It covers time-gated no-op behavior, duplicate in-process ticks,
+database-backed idempotency keys, failure-as-failed announcement recording, and
+DB/WebSocket/Telegram side effects only after eligibility checks pass.
+
+Add direct tests before changing timing, idempotency, retry behavior, or
+notification targets.
 
 ## Static-Only Coverage Debt
 
-These jobs are intentionally registered as static-only coverage debt in
+These jobs remain intentionally registered as static-only coverage debt in
 `config/schedulerSurface.js`. They have source/interval/dedup ownership guards,
-but no direct behavior test in the local baseline yet:
+but no direct behavior test in the self-contained local baseline yet:
 
-`checkRecurringTasks`, `checkRecurringAfisha`, `checkWorkDayTriggers`,
-`checkMonthlyPointsReset`, `checkHrAutoClose`, `checkHrNoShow`,
-`checkStreakUpdates`, `checkBirthdayGreetings`, `checkBirthdayReminders`,
-`checkDormantCustomers`, `checkTaskOverdue`, `checkCustomerRetention`,
-`checkAutoReport`, `checkHotLeads`, `checkExpiredChatMessages`,
-`checkAutoReviewRequests`, `checkTeamPulseReminder`,
-`checkStaleCatalogImages`, `checkChatDailyDigest`,
-`checkRecurringAnnouncements`, `checkEventPipeline`, `checkNpsFollowUp`,
-`checkCleaningTasks`, `syncAgentActivities`, and `cleanupRefreshTokens`.
+| Job | Side effects | Dedup owner | Retry policy | Idempotency key | Failure behavior | Blocker |
+| --- | --- | --- | --- | --- | --- | --- |
+| `checkHrAutoClose` | `database` | `guardScheduler` daily + attendance write locks | next daily guarded run after contained service failure | attendance row id/date through canonical attendance writer | transactional rollback/logging in `services/hr.js`; static lock coverage in `tests/hr-attendance-lock.test.js` | Needs a disposable PostgreSQL HR attendance fixture to prove row locks and no duplicate auto-close. Do not replace with source regex. |
+| `checkHrNoShow` | `database` | `guardScheduler` daily + attendance write locks | next daily guarded run after contained service failure | attendance row id/date through canonical attendance writer | transactional rollback/logging in `services/hr.js`; static lock coverage in `tests/hr-attendance-lock.test.js` | Needs a disposable PostgreSQL HR attendance fixture to prove terminal snapshot idempotency and no duplicate no-show. Do not replace with source regex. |
+| `syncAgentActivities` | `filesystem`, `database` | `guardScheduler` hourly | startup call logs failure; guarded hourly interval records guard failure | agent activity parser/window inside `services/agentTracker.js` | startup call catches and logs; guarded interval uses scheduler execution failure accounting | Function is inline inside `server.js`. Direct behavior coverage requires extracting it to a testable module or booting `server.js`; both are runtime-shape changes and are out of scope for this test-only task. |
 
 If one of these jobs gets direct tests, remove it from
 `STATIC_ONLY_SCHEDULER_JOBS` in the same change. If a new scheduler job is added
-without tests, it must appear here so the production risk remains visible.
+without tests, it must appear here with a concrete blocker so the production risk
+remains visible.
 
 ## Done Marker
 

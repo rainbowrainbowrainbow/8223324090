@@ -141,6 +141,27 @@ function assertDocMentions(doc, value, label) {
     }
 }
 
+function parseMarkdownTable(section) {
+    const rows = [];
+    const tableLines = section
+        .split(/\r?\n/)
+        .map(line => line.trim())
+        .filter(line => line.startsWith('|') && line.endsWith('|'));
+    if (tableLines.length < 2) return rows;
+
+    const headers = tableLines[0].split('|').slice(1, -1).map(cell => cell.trim());
+    for (const line of tableLines.slice(2)) {
+        const cells = line.split('|').slice(1, -1).map(cell => cell.trim());
+        if (cells.length !== headers.length) continue;
+        const row = {};
+        headers.forEach((header, index) => {
+            row[header] = cells[index].replace(/^`|`$/g, '');
+        });
+        rows.push(row);
+    }
+    return rows;
+}
+
 function extractDocSection(doc, heading) {
     const start = doc.indexOf(heading);
     if (start === -1) return '';
@@ -184,6 +205,10 @@ ensureUnique('raw scheduler intervals', RAW_SCHEDULER_INTERVALS, 'name');
 
 const actualGuardedJobs = parseGuardedJobs(server);
 const actualByName = new Map(actualGuardedJobs.map(job => [job.name, job]));
+const guardedDocRows = parseMarkdownTable(extractDocSection(doc, '## Guarded Jobs'));
+const guardedDocByName = new Map(guardedDocRows.map(row => [row.Job, row]));
+const rawDocRows = parseMarkdownTable(extractDocSection(doc, '## Raw Intervals And Starters'));
+const rawDocByName = new Map(rawDocRows.map(row => [row.Name, row]));
 
 compareSets(
     'server.js guardScheduler names',
@@ -205,6 +230,25 @@ for (const job of GUARDED_SCHEDULER_JOBS) {
     assertDocMentions(doc, job.name, 'guarded job');
     assertDocMentions(doc, job.sourceFile, 'source file');
     assertSourceHasFunction(job);
+
+    const docRow = guardedDocByName.get(job.name);
+    if (!docRow) {
+        fail(`${SCHEDULER_SURFACE_DOC}: guarded table missing row for ${job.name}`);
+    } else {
+        const expectedDedup = job.dedup === null ? 'none' : job.dedup;
+        const docChecks = [
+            ['Function', job.functionName],
+            ['Source', job.sourceFile],
+            ['Owner', job.owner],
+            ['Interval', normalizeWhitespace(job.interval)],
+            ['Dedup', expectedDedup]
+        ];
+        for (const [field, expected] of docChecks) {
+            if (normalizeWhitespace(docRow[field]) !== normalizeWhitespace(expected)) {
+                fail(`${SCHEDULER_SURFACE_DOC}: ${job.name} ${field} ${docRow[field] || '<missing>'} does not match manifest ${expected}`);
+            }
+        }
+    }
 
     for (const testPath of job.tests || []) {
         if (!fs.existsSync(path.join(ROOT, testPath))) {
@@ -257,6 +301,29 @@ for (const job of RAW_SCHEDULER_INTERVALS) {
     }
     if (job.interval && !server.includes(job.interval)) {
         fail(`${job.name}: interval ${job.interval} not found in server.js`);
+    }
+    const docRow = rawDocByName.get(job.name);
+    if (!docRow) {
+        fail(`${SCHEDULER_SURFACE_DOC}: raw scheduler table missing row for ${job.name}`);
+    } else {
+        const docChecks = [
+            ['Kind', job.kind],
+            ['Function', job.functionName],
+            ['Source', job.sourceFile],
+            ['Owner', job.owner],
+            ['Interval', normalizeWhitespace(job.interval || 'n/a')]
+        ];
+        for (const [field, expected] of docChecks) {
+            if (normalizeWhitespace(docRow[field]) !== normalizeWhitespace(expected)) {
+                fail(`${SCHEDULER_SURFACE_DOC}: ${job.name} ${field} ${docRow[field] || '<missing>'} does not match manifest ${expected}`);
+            }
+        }
+    }
+    for (const testPath of job.tests || []) {
+        if (!fs.existsSync(path.join(ROOT, testPath))) {
+            fail(`${job.name}: test anchor ${testPath} does not exist`);
+        }
+        assertDocMentions(doc, testPath, 'test anchor');
     }
 }
 

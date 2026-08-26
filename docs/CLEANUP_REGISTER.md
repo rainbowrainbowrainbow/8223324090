@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-06-24
+Last refreshed: 2026-08-26
 Current product version source: `package.json`
 
 ## Operating Model
@@ -27,12 +27,12 @@ Use `npm run cleanup:inventory` for the current generated view.
 
 Known high-change areas from the latest inventory snapshot:
 
-- `routes/`: 81 files, API ownership and auth boundaries.
-- `services/`: 104 files, business logic and scheduler side effects.
-- `js/`: 67 files, large vanilla frontend modules.
-- `css/`: 74 files, shared UI and page-specific styling.
-- `tests/`: 159 files, mixed unit, route smoke, UI smoke, and live API tests.
-- `db/migrations/`: 249 migrations, with documented legacy duplicate/gap debt.
+- `routes/`: 90 files, API ownership and auth boundaries.
+- `services/`: 210 files, business logic and scheduler side effects.
+- `js/`: 100 files, large vanilla frontend modules.
+- `css/`: 91 files, shared UI and page-specific styling.
+- `tests/`: 384 files, mixed unit, route smoke, UI smoke, and live API tests.
+- `db/migrations/`: 329 migrations, with documented legacy duplicate/gap debt.
 - `landing/`: 12 public landing materials and static assets.
 
 Large files that should not be casually reformatted:
@@ -55,6 +55,135 @@ Do not treat aggregate CSS entrypoints such as `css/assistant-rail.css`,
 `css/chat.css`, `css/sidebar-aurora.css`, `css/dashboard.css`, or
 `css/pages.css` as large-file targets by filename alone. Their payload now
 lives in ordered modules listed in `docs/CSS_SURFACE.md`.
+
+2026-08-26 Task 17 repository/worktree hygiene snapshot:
+
+- Production branch after `git fetch origin --prune`:
+  `codex/eventgenix-production` at
+  `1e3d543e1f4802600c3c22f5a5a90cd30b439509`, `ahead=0`, `behind=0`.
+- Safe cleanup completed: 138 registered worktrees removed with
+  `git worktree remove`; every removed worktree was clean and its `HEAD` was an
+  ancestor of `origin/codex/eventgenix-production`.
+- Branches were not deleted. `codex/checkbox-hardening-release-v080103` and
+  `.codex-temp/_preserved-artifacts` were not touched.
+- Remaining registered worktrees: 86 total:
+  2 protected/main, 36 dirty, 1 conflicted worktree, 47 clean worktrees with
+  unique commits not contained in production, 0 clean+ancestor candidates.
+- `.codex-temp` top-level directories after cleanup: 71.
+- Local branches after prune: 253. Branches with `[gone]` upstream: 0.
+- Root workspace size after cleanup: approximately 10.84 GB across 127,589
+  readable files; 4 filesystem entries returned access errors during the scan.
+- `npm run cleanup:inventory` is not a reliable source on this checkout yet:
+  sandboxed execution fails on `tmp/pymupdf/bin` with `EPERM`, and the
+  unsandboxed read-only scan was manually stopped after it did not complete in
+  a useful time window. The counts above come from direct git/worktree and
+  shallow filesystem inventory.
+
+Open PR hygiene on 2026-08-26:
+
+- Closed as fully subsumed by production: #35, #15, #11, #10, #8.
+- Left open because their heads still contain unique commits:
+
+| PR | Head | Unique commits | Status | Short diff summary |
+| --- | --- | ---: | --- | --- |
+| #25 | `codex/attendance-audit-role-lifecycle` | 2 | draft, clean | 10 files, attendance audit runbook/scripts/tests |
+| #24 | `codex/attendance-anomaly-audit` | 1 | draft, behind | 5 files, attendance anomaly audit command/docs/tests |
+| #9 | `codex/reduce-information-on-landing-page` | 2 | clean | 3 landing files, large landing rewrite |
+| #5 | `claude/youthful-feynman-ku9oB` | 150 | dirty | 140 files, old broad Claude branch |
+| #4 | `claude/update-project-info-SagnQ` | 14 | dirty | 17 files, old project info/assets branch |
+| #2 | `claude/fix-clear-booking-sizes-FZlVY` | 102 | dirty | 93 files, old broad Claude branch |
+| #1 | `codex/create-a-surprising-but-safe-script` | 1 | clean | 4 files, README/spec/scripts |
+
+Remaining registered worktree manifest:
+
+| Reason | Path | Branch | Head | Dirty | Conflicts | Ahead/Behind | Ancestor | Last Modified |
+| --- | --- | --- | --- | ---: | ---: | --- | --- | --- |
+| KEEP_PROTECTED_OR_MAIN | `C:/Users/Plotva/OneDrive/Документи/EventGenix` | `codex/eventgenix-production` | `1e3d543e1` | 0 | 0 | +0/-0 | true | 2026-08-26 12:00 |
+| KEEP_PROTECTED_OR_MAIN | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-hardening-release-v080103` | `codex/checkbox-hardening-release-v080103` | `4ee0a66be` | 79 | 5 | +0/-231 | true | 2026-08-10 19:23 |
+| REVIEW_CONFLICTED | `C:/tmp/EventGenix-production-830test` | `codex/production-task356-full-smoke` | `fda715add` | 2 | 1 | +0/-159 | true | 2026-07-19 20:38 |
+| REVIEW_DIRTY | `C:/tmp/EventGenix-banquet-recovery-production-merge` | `codex/banquet-recovery-production-merge` | `2cb294048` | 52 | 0 | +2/-185 | false | 2026-07-19 16:00 |
+| REVIEW_DIRTY | `C:/tmp/EventGenix-banquet-recovery-production-merge-v2` | `codex/release-reliability-runbook-hardening` | `231850935` | 1 | 0 | +0/-178 | true | 2026-07-19 16:32 |
+| REVIEW_DIRTY | `C:/tmp/EventGenix-lead-guest-8018` | `codex/lead-guest-context-v08018` | `799ca6649` | 4 | 0 | +0/-0 | true | 2026-07-28 21:26 |
+| REVIEW_DIRTY | `C:/tmp/EventGenix-production-attendance-kpi-overtime-guard-v2` | `codex/production-attendance-kpi-overtime-guard-v2` | `92bcb051d` | 52 | 0 | +1/-182 | false | 2026-07-19 17:04 |
+| REVIEW_DIRTY | `C:/tmp/EventGenix-staff-schedule-category-fix` | `codex/staff-schedule-category-fix` | `d2f6ed9d8` | 3 | 0 | +0/-114 | true | 2026-07-29 19:36 |
+| REVIEW_DIRTY | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/workspace/event_genix/prod_activation_staff_onboarding_20260731` | `deploy/eg-bot-onboarding-prod-v1-20260731` | `87fd0363c` | 54 | 0 | +0/-58 | true | 2026-07-31 17:26 |
+| REVIEW_DIRTY | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/worktrees/eg_staff_reg_bot_operator_safe_local_20260816` | `codex/staff-reg-bot-operator-safe-local-20260816` | `9188e6b6a` | 4 | 0 | +0/-31 | true | 2026-08-16 14:19 |
+| REVIEW_DIRTY | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/worktrees/eg_staff_registration_cycle_account_options_20260816` | `(detached)` | `7d2069d7b` | 1 | 0 | +0/-0 | true | 2026-08-16 12:58 |
+| REVIEW_DIRTY | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/worktrees/eventgenix-schedule-attendance-visible-20260728` | `(detached)` | `6f5e9eb63` | 3 | 0 | +0/-0 | true | 2026-07-28 18:28 |
+| REVIEW_DIRTY | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/worktrees/eventgenix-staff-node-dropdown-full-list-native-20260721-152432` | `deploy/staff-node-dropdown-full-list-native-20260721-152432` | `186894e6f` | 2 | 0 | +0/-105 | true | 2026-07-21 15:58 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix-customers-profile-async` | `codex/customers-profile-async-hardening` | `73ac5acb0` | 5 | 0 | +0/-0 | true | 2026-07-12 21:19 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix-leads-tasks-pagination-regressions` | `codex/leads-tasks-pagination-regressions` | `73ac5acb0` | 3 | 0 | +0/-0 | true | 2026-07-12 21:31 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix-task42-isolation` | `codex/task42-banquet-recovery-isolation` | `e518f2cc4` | 26 | 0 | +0/-0 | true | 2026-07-19 09:42 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/banquet-deposit-revenue-v08067` | `codex/banquet-deposit-revenue-v08067` | `7de60e2bf` | 8 | 0 | +0/-11 | true | 2026-08-02 18:07 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/booking-hours-current-audit-20260728` | `codex/booking-hours-current-audit-20260728` | `cbb7e11a0` | 2 | 0 | +0/-6 | true | 2026-07-28 17:55 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-activation-readiness` | `codex/checkbox-activation-readiness` | `d37683e44` | 26 | 0 | +0/-0 | true | 2026-08-09 17:19 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-final-software-hardening` | `codex/checkbox-final-software-hardening` | `65b28271c` | 39 | 0 | +0/-266 | true | 2026-08-09 21:04 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-fiscal-readiness` | `codex/checkbox-fiscal-readiness` | `68d00b326` | 40 | 0 | +0/-10 | true | 2026-08-09 15:15 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-fullstack-testmode-v08117` | `codex/checkbox-fullstack-testmode-v08117` | `c527d2358` | 12 | 0 | +0/-9 | true | 2026-08-23 13:31 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-park-pilot` | `codex/checkbox-park-pilot` | `910d37f56` | 28 | 0 | +0/-0 | true | 2026-08-08 15:26 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-thin-mvp-current-v08091` | `codex/checkbox-thin-mvp-current-v08091` | `c01224030` | 29 | 0 | +0/-0 | true | 2026-08-08 22:26 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-thin-mvp-hardening` | `codex/checkbox-thin-mvp-hardening` | `15ec27c22` | 10 | 0 | +0/-0 | true | 2026-08-08 19:10 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-thin-mvp-hardening-v08089` | `codex/checkbox-thin-mvp-hardening-v08089` | `4a44ee8ce` | 28 | 0 | +0/-9 | true | 2026-08-08 19:41 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/current-production-20260729` | `codex/lead-guest-context-v08018-final` | `d2f6ed9d8` | 13 | 0 | +0/-114 | true | 2026-07-29 20:35 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/global-task-timer-v080124` | `codex/global-task-timer-v080124` | `17367d272` | 9 | 0 | +0/-0 | true | 2026-08-12 00:04 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/legacy-permission-compat-v08066` | `codex/legacy-permission-compat-v08066` | `1dd1dc766` | 13 | 0 | +0/-14 | true | 2026-08-02 11:11 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-ai-composer-v08093` | `codex/my-day-ai-composer-v08094` | `a467fa434` | 10 | 0 | +0/-5 | true | 2026-08-09 00:32 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-card-time-v080124` | `codex/my-day-card-time-v080124` | `17367d272` | 12 | 0 | +0/-0 | true | 2026-08-12 00:04 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-compact-pulse-v080147` | `codex/my-day-compact-pulse-v080147` | `4f97c24e2` | 2 | 0 | +0/-0 | false | 2026-08-15 13:07 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-completion-qa-release-v080151` | `codex/my-day-completion-qa-release-v080151` | `a79b79702` | 56 | 0 | +1/-72 | false | 2026-08-15 17:05 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-impacts-ui-v080129` | `codex/my-day-v080138-release` | `3ee8f78ce` | 5 | 0 | +0/-101 | true | 2026-08-13 18:25 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-release-gate-v080124` | `codex/my-day-release-gate-v080124` | `17367d272` | 7 | 0 | +0/-0 | true | 2026-08-12 00:05 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-ui-compact-v080100` | `(detached)` | `a467fa434` | 9 | 0 | +0/-0 | true | 2026-08-09 17:09 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-ai-composer-ui-v080124` | `codex/task-ai-composer-ui-v080124` | `17367d272` | 6 | 0 | +0/-0 | true | 2026-08-12 00:04 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-ai-contract-v080124` | `codex/task-ai-contract-v080124` | `17367d272` | 13 | 0 | +0/-0 | true | 2026-08-12 00:04 |
+| REVIEW_DIRTY | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-composer-unified-release-v08101` | `codex/task-composer-unified-release-v08101` | `8cdf10f9d` | 2 | 0 | +0/-28 | true | 2026-08-16 17:36 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-attendance-anomaly-audit` | `codex/attendance-anomaly-audit` | `31b5db6ac` | 0 | 0 | +0/-0 | false | 2026-07-19 23:19 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-attendance-datafix-noop-closure` | `codex/attendance-datafix-noop-closure` | `b91fb59d4` | 0 | 0 | +0/-0 | false | 2026-07-19 20:36 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-attendance-kpi-overtime-guard` | `codex/attendance-kpi-overtime-guard-v3` | `397da9d46` | 0 | 0 | +0/-0 | false | 2026-07-19 13:53 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-attendance-role-lifecycle` | `codex/attendance-audit-role-lifecycle` | `ad30324cf` | 0 | 0 | +0/-0 | false | 2026-07-19 23:48 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-cancel-priced-empty-stale-group` | `codex/cancel-priced-empty-stale-group` | `29372f9b4` | 0 | 0 | +0/-0 | false | 2026-07-20 17:01 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-historical-datafix` | `codex/historical-attendance-datafix` | `fd4c92768` | 0 | 0 | +0/-0 | false | 2026-07-19 10:28 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-historical-datafix-v2` | `codex/historical-attendance-datafix-v3` | `68d5885ec` | 0 | 0 | +0/-0 | false | 2026-07-19 14:11 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-payroll-bulk-release` | `(detached)` | `927c96dd2` | 0 | 0 | +0/-0 | false | 2026-07-18 19:05 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-performance-ci-fix` | `codex/performance-task356-ci` | `4c7b2202e` | 0 | 0 | +0/-4 | false | 2026-07-19 19:11 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-production-attendance-kpi-overtime-guard` | `codex/production-attendance-kpi-overtime-guard` | `dbd4aac8d` | 0 | 0 | +2/-183 | false | 2026-07-19 16:11 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-production-historical-attendance-datafix` | `codex/production-historical-attendance-datafix` | `5f1d0a212` | 0 | 0 | +4/-183 | false | 2026-07-19 16:23 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-production-historical-attendance-datafix-v2` | `codex/production-historical-attendance-datafix-v2` | `65e01d76f` | 0 | 0 | +4/-182 | false | 2026-07-19 16:36 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-production-historical-attendance-datafix-v3` | `codex/production-historical-attendance-datafix-v3` | `5c608019c` | 0 | 0 | +0/-0 | false | 2026-07-19 17:45 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-production-task356` | `codex/production-task356` | `c10a6a5ca` | 0 | 0 | +2/-163 | false | 2026-07-19 19:40 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/tmp/EventGenix-task41-isolation` | `codex/task41-professions-load-order` | `2fa2b5c3e` | 0 | 0 | +1/-9 | false | 2026-07-20 16:09 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/worktrees/eg-tasker-outbox-worker-readonly-20260802` | `deploy/eg-tasker-batch-prod-hardening-readonly-20260803` | `bac980a44` | 0 | 0 | +0/-0 | false | 2026-08-03 16:41 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/AppData/Local/hermes/profiles/main-agent/worktrees/event-genix-outbox-clean-20260630` | `main` | `03041e1c7` | 0 | 0 | +0/-0 | false | 2026-06-30 10:40 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/auth-session-test-hardening` | `codex/auth-session-test-hardening` | `81ac45e29` | 0 | 0 | +0/-0 | false | 2026-08-01 16:20 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/checkbox-test-config-prep-v080113` | `codex/checkbox-test-config-prep-v080113` | `64819afd6` | 0 | 0 | +2/-232 | false | 2026-08-10 17:44 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/fix-banquet-ws-two-tab-sync` | `codex/fix-banquet-ws-two-tab-sync` | `4d8c9b746` | 0 | 0 | +1/-72 | false | 2026-08-15 16:26 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/fix-trusted-qa-inventory-attribution` | `codex/fix-trusted-qa-inventory-attribution` | `9aa71f12a` | 0 | 0 | +0/-0 | false | 2026-08-15 16:42 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/hr-structure-production` | `codex/hr-structure-tree-polish-prod` | `e48896fb5` | 0 | 0 | +0/-0 | false | 2026-07-20 00:22 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/lead-guest-8018` | `codex/hr-resource-history-v08020` | `098b1761e` | 0 | 0 | +0/-0 | false | 2026-07-28 23:01 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-closure` | `codex/my-day-closure` | `21f348b59` | 0 | 0 | +0/-0 | false | 2026-08-01 14:23 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-compact-v080101` | `codex/my-day-time-disclosure-v080102` | `6075af7c9` | 0 | 0 | +0/-0 | false | 2026-08-09 19:14 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-e2e-v080151` | `codex/my-day-e2e-v080151` | `950f90c3a` | 0 | 0 | +0/-0 | false | 2026-08-15 17:22 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-e2e-v080155` | `codex/my-day-e2e-v080155` | `776a6a9f4` | 0 | 0 | +0/-0 | false | 2026-08-15 19:35 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-final-release-v080151` | `codex/my-day-final-release-v080151` | `590cfbf42` | 0 | 0 | +0/-0 | false | 2026-08-15 17:45 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-final-v080155` | `codex/my-day-final-v080155` | `96a883075` | 0 | 0 | +0/-0 | false | 2026-08-15 21:00 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-overdue-action-hotfix-v080160` | `codex/release-v0810-my-day-ai-smoke-harness` | `76134f4f9` | 0 | 0 | +0/-0 | false | 2026-08-16 13:22 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-projection-v080153` | `codex/my-day-projection-v080153` | `a5e559ef3` | 0 | 0 | +0/-0 | false | 2026-08-15 18:22 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/my-day-ui-hardening-v080153` | `codex/my-day-ui-hardening-v080153` | `7800dc473` | 0 | 0 | +0/-0 | false | 2026-08-15 18:57 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/release-metadata-integrity` | `codex/release-metadata-integrity` | `fcb0ed000` | 0 | 0 | +0/-0 | false | 2026-08-01 14:39 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-ai-current-contract-v08111` | `codex/task-ai-current-contract-v08111` | `311fe1398` | 0 | 0 | +0/-0 | false | 2026-08-21 20:31 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-ai-evidence-v08111` | `codex/task-ai-evidence-v08111` | `840226f00` | 0 | 0 | +0/-0 | false | 2026-08-21 19:42 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-ai-rollout-evidence-v080151` | `codex/task-ai-rollout-evidence-v080151` | `32be098fd` | 0 | 0 | +0/-0 | false | 2026-08-15 17:22 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-ai-safety-v080154` | `codex/task-ai-safety-v080154` | `ed12b77a6` | 0 | 0 | +0/-0 | false | 2026-08-15 19:01 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-center-contract` | `codex/task-center-contract` | `13c7fcb2d` | 0 | 0 | +0/-0 | false | 2026-07-31 13:59 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task-postponement-explanation` | `codex/task-postponement-explanation` | `ced23f396` | 0 | 0 | +3/-96 | false | 2026-07-30 02:32 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task1-trusted-qa-manifest` | `codex/task1-trusted-qa-manifest` | `f42e9a5dc` | 0 | 0 | +0/-0 | false | 2026-08-15 14:15 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix/.codex-temp/task4-overview` | `codex/task4-overview` | `5bbd4cbea` | 0 | 0 | +0/-0 | false | 2026-07-31 15:43 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix-attendance-techdebt` | `codex/attendance-techdebt-isolation` | `94a0b22a6` | 0 | 0 | +0/-1 | false | 2026-07-20 01:12 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix-banquet-state-audit` | `codex/banquet-state-audit` | `6d909eebd` | 0 | 0 | +0/-0 | false | 2026-07-19 13:17 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix-clean` | `codex/historical-attendance-decision-note` | `8d57c1455` | 0 | 0 | +0/-0 | false | 2026-07-18 18:59 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix-hermes-deploy-388e723c` | `(detached)` | `388e723c7` | 0 | 0 | +0/-0 | false | 2026-07-05 23:38 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix-monthly-timesheet-numeric` | `codex/monthly-timesheet-numeric-entry` | `bbc7f087e` | 0 | 0 | +0/-0 | false | 2026-07-17 00:25 |
+| REVIEW_UNMERGED_UNIQUE_COMMITS | `C:/Users/Plotva/OneDrive/Документи/EventGenix-qa-cleanup-isolation` | `codex/qa-cleanup-isolation` | `d07171088` | 0 | 0 | +1/-9 | false | 2026-07-19 15:10 |
 
 ## Cleanup Tracks
 

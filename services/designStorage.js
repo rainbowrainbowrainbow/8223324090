@@ -98,6 +98,27 @@ async function readDesignBlobByFilename(query, filename) {
     return result.rows[0] || null;
 }
 
+function buildDesignBlobFallbackHandler(query, logger = null) {
+    return async (req, res, next) => {
+        try {
+            const row = await readDesignBlobByFilename(query, req.params?.filename);
+            if (!row?.data) return next();
+            const data = Buffer.isBuffer(row.data) ? row.data : Buffer.from(row.data);
+            const inlineName = safeFilename(row.original_name || row.filename || 'design-file');
+            res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
+            res.setHeader('Content-Length', String(data.length));
+            res.setHeader('Content-Disposition', `inline; filename="${inlineName}"`);
+            res.setHeader('Cache-Control', 'public, max-age=300, stale-while-revalidate=86400');
+            return res.send(data);
+        } catch (err) {
+            if (logger && typeof logger.warn === 'function') {
+                logger.warn(`Design Postgres upload fallback skipped: ${err.message}`);
+            }
+            return next();
+        }
+    };
+}
+
 async function deleteDesignBlob(query, designId) {
     await query.query('DELETE FROM design_file_blobs WHERE design_id = $1', [designId]);
 }
@@ -105,6 +126,7 @@ async function deleteDesignBlob(query, designId) {
 module.exports = {
     DESIGN_STORAGE_PROVIDER,
     PUBLIC_PREFIX,
+    buildDesignBlobFallbackHandler,
     checksumSha256,
     designStorageKey,
     deleteDesignBlob,

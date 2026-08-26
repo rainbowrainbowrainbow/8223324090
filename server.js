@@ -25,7 +25,7 @@ const { apiVersionRewrite } = require('./middleware/apiVersioning');
 const { staticDocGuard } = require('./middleware/staticDocGuard');
 const { ensureWebhook, getConfiguredChatId, TELEGRAM_BOT_TOKEN, TELEGRAM_DEFAULT_CHAT_ID, drainTelegramRequests, getInFlightCount, processRetryQueue } = require('./services/telegram');
 const { ensureReportBotWebhook, REPORT_BOT_TOKEN } = require('./services/report-bot');
-const { readDesignBlobByFilename } = require('./services/designStorage');
+const { buildDesignBlobFallbackHandler } = require('./services/designStorage');
 const { buildProfileAvatarBlobFallbackHandler } = require('./services/profileAvatarStorage');
 const { buildCatalogImageBlobFallbackHandler } = require('./services/imageStorage');
 const { buildChatUploadBlobFallbackHandler } = require('./services/chatUploadStorage');
@@ -181,17 +181,13 @@ app.use('/uploads/catalog-images/items', (req, res, next) => {
     if (req.method !== 'GET' && req.method !== 'HEAD') return next();
     return res.status(404).json({ error: 'image_not_found' });
 });
-app.get('/uploads/designs/:filename', async (req, res, next) => {
-    try {
-        const row = await readDesignBlobByFilename(pool, req.params.filename);
-        if (!row?.data) return next();
-        res.setHeader('Content-Type', row.mime_type || 'application/octet-stream');
-        res.setHeader('Content-Disposition', 'inline');
-        return res.send(Buffer.isBuffer(row.data) ? row.data : Buffer.from(row.data));
-    } catch (err) {
-        log.warn(`Design Postgres upload fallback skipped: ${err.message}`);
-        return next();
-    }
+const designBlobHandler = buildDesignBlobFallbackHandler(pool, log);
+app.get('/uploads/designs/:filename', designBlobHandler);
+app.head('/uploads/designs/:filename', designBlobHandler);
+app.use('/uploads/designs', express.static(path.join(__dirname, 'uploads', 'designs')));
+app.use('/uploads/designs', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    return res.status(404).json({ error: 'design_upload_not_found' });
 });
 app.get('/uploads/profile-avatars/*', buildProfileAvatarBlobFallbackHandler(pool, log));
 app.get('/uploads/chat/*', buildChatUploadBlobFallbackHandler(pool, log));

@@ -1,5 +1,32 @@
 # My Day AI closure — current evidence
 
+## Task 27 legacy endpoint sunset refresh — v0.81.27
+
+Status: `HOLD_INSUFFICIENT_OBSERVATION`.
+
+- Endpoint: `POST /api/tasks/decompose-draft`.
+- Live version/SHA: `0.81.27` / `88138e98fa31411923e6ec387af7aa155d25b711`.
+- Source branch: `codex/eventgenix-production`.
+- Deployment ID: `80613a91-b3ac-446c-9b66-aa5823559f83`.
+- Deployment start: `2026-08-26T13:57:25.311Z`.
+- Evidence generated: `2026-08-26T15:56:16.593Z`.
+- Latest artifact:
+  - `output/task-ai-legacy-decompose/task27-v08127-legacy-decompose.md`;
+  - verdict: `HOLD_REMOVAL`.
+- Recognized legacy HTTP calls: `0`.
+- Recognized legacy telemetry events: `0`.
+- Recognized non-QA real usage requests: `0`.
+- Window completeness:
+  - `24h`: incomplete, observed `2h / 24h`;
+  - `7d`: incomplete, observed `2h / 168h`;
+  - `30d`: incomplete, observed `2h / 720h`.
+- Runtime frontend consumers remain absent; active frontend code uses
+  `/api/tasks/ai-draft/preview` and `/api/tasks/decomposition-draft`.
+- Endpoint removal was not performed because the observation window is too short.
+
+No prompts, task business logic, rollout variables, route code, Railway settings,
+or database schema changed in Task 27.
+
 ## Task 26 rollout gate refresh — v0.81.27
 
 Status: `MONITORING_HOLD`.

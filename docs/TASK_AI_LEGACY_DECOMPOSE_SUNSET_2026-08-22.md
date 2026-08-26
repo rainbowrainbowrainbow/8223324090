@@ -3,6 +3,37 @@
 Status: `HOLD_REMOVAL`  
 Production impact: no endpoint removal has been performed.
 
+## Task 27 evidence refresh — 2026-08-26
+
+- classification: `HOLD_INSUFFICIENT_OBSERVATION`;
+- observed live version: `0.81.27`;
+- observed live SHA: `88138e98fa31411923e6ec387af7aa155d25b711`;
+- source branch: `codex/eventgenix-production`;
+- deployment ID: `80613a91-b3ac-446c-9b66-aa5823559f83`;
+- deployment start: `2026-08-26T13:57:25.311Z`;
+- evidence generated: `2026-08-26T15:56:16.593Z`;
+- latest artifact: `output/task-ai-legacy-decompose/task27-v08127-legacy-decompose.md`;
+- recognized HTTP calls to the legacy route: `0`;
+- recognized legacy telemetry events: `0`;
+- recognized non-QA real usage requests: `0`;
+- telemetry gap: not indicated by the collector because there were no matching
+  HTTP calls without matching telemetry;
+- active runtime frontend consumers: none found. `js/task-create.js` uses
+  `/api/tasks/ai-draft/preview` for AI and `/api/tasks/decomposition-draft` for
+  deterministic/template decomposition;
+- active server consumer: the deprecated Express compatibility wrapper itself;
+- tests still cover the wrapper because removal is blocked.
+
+Window completeness from the Task 27 artifact:
+
+- `24h`: incomplete, observed `2h / 24h`;
+- `7d`: incomplete, observed `2h / 168h`;
+- `30d`: incomplete, observed `2h / 720h`.
+
+Endpoint removal was not performed. The earliest useful 24h recheck is
+`2026-08-27T13:57:25.311Z`; the earliest 30d removal-gate recheck is
+`2026-09-25T13:57:25.311Z`, assuming zero non-QA usage and no telemetry gap.
+
 ## Scope
 
 The deprecated endpoint is `POST /api/tasks/decompose-draft`.
@@ -27,11 +58,11 @@ No runtime frontend file calls the deprecated endpoint. It remains a thin compat
 - recognized HTTP calls to the legacy route: `0`;
 - recognized legacy telemetry events: `0`;
 - recognized non-QA real usage requests: `0`;
-- latest artifact: `output/task-ai-legacy-decompose/task25-v08127-legacy-decompose.md`;
+- latest artifact: `output/task-ai-legacy-decompose/task27-v08127-legacy-decompose.md`;
 - raw logs and task text were not stored.
 
 These zero counts are not a complete 30-day proof because the current deployment
-window is only about `0.6h` in the latest report. They cannot justify endpoint
+window is only about `2h` in the latest report. They cannot justify endpoint
 removal yet.
 
 ## Removal gate

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.24 - Sound Upload Postgres Durability
+
+### Sound / Storage / (26.08.2026) [codex]
+- **Postgres-primary sound uploads** — нові manual і generated sound binaries тепер зберігаються у `sound_upload_blobs`, а `sounds.storage_*` metadata вказує на durable blob.
+- **Public URL contract збережено** — `/uploads/sounds/*` не змінюється: runtime спочатку читає Postgres blob, потім legacy local file fallback.
+- **Atomic metadata + blob write** — manual upload і generated apply/tts paths комітять `sounds` row тільки разом із blob; blob failure робить rollback.
+- **Без HTML fallback для missing asset** — відсутній sound upload повертає стабільний JSON 404 замість CRM HTML.
+
+---
+
 ## v0.81.23 - Chat Upload Postgres Durability
 
 ### Chat / Storage / (26.08.2026) [codex]

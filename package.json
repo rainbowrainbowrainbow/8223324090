@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.25",
+  "version": "0.81.26",
   "eventGenix": {
-    "releaseLabel": "Scheduler Direct Behavior Closure"
+    "releaseLabel": "DB Startup Ownership Matrix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.26 - DB Startup Ownership Matrix
+
+### Database startup ownership / (26.08.2026) [codex]
+- **Startup schema surface reduced** — `initDatabase()` now keeps only 14 compatibility tables, 7 pre-migration columns, and zero startup indexes/functions/triggers.
+- **Durable ownership migration** — added additive/idempotent `340_db_startup_schema_ownership.sql` for legacy task logs, points, Kleshnya cache, design tags, contractor notifications, and related indexes/columns previously carried only by startup SQL.
+- **Machine-readable matrix** — `config/dbStartupSurface.js` now records the full Task 22 39/50/82/1/1 baseline with per-object verdicts: remove duplicate, keep pre-migration dependency, or additive ownership migration.
+- **Fresh/upgrade guardrails** — DB startup checks and isolated PostgreSQL startup coverage now verify the ownership matrix, double startup, concurrent startup, and preserved sentinel data without rewriting historical migrations.
+
+---
+
 ## v0.81.25 - Scheduler Direct Behavior Closure
 
 ### Release / Versioning / (26.08.2026) [codex]

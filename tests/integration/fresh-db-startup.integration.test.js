@@ -48,27 +48,30 @@ async function insertWave1SentinelData(pool) {
          VALUES ($1, $2, $3, $4, $5::text[], $6::text[])`,
         [username, 'test-hash', 'manager', 'Wave 1 User', ['tasks.create'], ['export_data']]
     );
-    await pool.query('BEGIN');
+    const client = await pool.connect();
     try {
-        await pool.query(
+        await client.query('BEGIN');
+        await client.query(
             `INSERT INTO bookings (id, date, time, line_id, room, room_resource_id, program_id, label, program_name, category, duration, price, created_by)
              VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13)`,
             [bookingId, '2099-01-01', '10:00', 'wave1-line', 'Wave Room', roomResourceId, null, 'Wave 1', 'Wave 1', 'banquet', 60, 0, 'wave1']
         );
-        await pool.query(
-            `INSERT INTO banquet_groups (id, business_context, primary_booking_id, date, room, room_resource_id, group_name, status, source, meta, created_by)
-             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10::jsonb, $11)`,
-            [groupId, 'event_genix', bookingId, '2099-01-01', 'Wave Room', roomResourceId, 'Wave 1 Group', 'active', 'test', '{"sentinel":true}', 'wave1']
+        await client.query(
+            `INSERT INTO banquet_groups (id, business_context, primary_booking_id, date, room, room_resource_id, guest_arrival_time, group_name, status, source, meta, created_by)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11::jsonb, $12)`,
+            [groupId, 'event_genix', bookingId, '2099-01-01', 'Wave Room', roomResourceId, '10:00', 'Wave 1 Group', 'active', 'test', '{"sentinel":true}', 'wave1']
         );
-        await pool.query(
+        await client.query(
             `INSERT INTO banquet_group_bookings (group_id, business_context, booking_id, role, sort_order, created_by)
              VALUES ($1, $2, $3, $4, $5, $6)`,
             [groupId, 'event_genix', bookingId, 'primary', 10, 'wave1']
         );
-        await pool.query('COMMIT');
+        await client.query('COMMIT');
     } catch (error) {
-        await pool.query('ROLLBACK').catch(() => {});
+        await client.query('ROLLBACK').catch(() => {});
         throw error;
+    } finally {
+        client.release();
     }
     await pool.query(
         `INSERT INTO profile_avatar_blobs (username, storage_key, original_name, content_type, file_size, data, checksum_sha256)

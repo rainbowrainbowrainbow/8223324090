@@ -1,5 +1,63 @@
 # My Day AI closure — current evidence
 
+## Task 32 rollout gate refresh — v0.81.28
+
+Status: `MONITORING_HOLD`.
+
+- Live version/SHA: `0.81.28` / `890e431cc00c0ebfc241882ca18a18d63930abd2`.
+- Source branch: `codex/eventgenix-production`.
+- Deployment ID: `b955abc7-d5e3-4bb3-a41e-90505aa121ae`.
+- Deployment start: `2026-08-27T14:59:48.195Z`.
+- Evidence generated:
+  - single/checklist: `2026-08-27T15:20:49.282Z`;
+  - bundle: `2026-08-27T15:21:00.128Z`.
+- Rollout unchanged:
+  - single/checklist: `20%`;
+  - bundle: `10%`.
+- Single/checklist latest report has `0` matching HTTP requests, `0` preview
+  attempts, `0` successful proposals, and remains
+  `HOLD_INSUFFICIENT_TRAFFIC`.
+- Bundle latest report has `0` matching HTTP requests, `0` preview attempts,
+  `0` successful proposals, and remains `HOLD_INSUFFICIENT_TRAFFIC`.
+- The collectors did not classify the evidence as `TELEMETRY_GAP`:
+  - HTTP evidence was available and showed `0` matching preview traffic;
+  - read-only database evidence was available and showed `0` duplicate
+    commits, `0` partial writes, and `0` schedule placement failures;
+  - telemetry gap flag: `false`.
+- Missing gate evidence for both scopes:
+  - structured telemetry logs with preview events;
+  - timestamped telemetry window;
+  - at least `30` successful proposals or `24h` of timestamped evidence.
+- The historical `v0.81.27` recheck time had elapsed, but Task 30 deployed
+  `v0.81.28` at `2026-08-27T14:59:48.195Z`; therefore the current exact live
+  deployment window is new and cannot satisfy the 24h gate without real preview
+  attempts.
+- Earliest useful recheck for the current exact live deployment is after real
+  preview traffic exists and either `30` successful proposals are observed or
+  `2026-08-28T14:59:48.195Z` passes with timestamped preview attempts.
+
+Task 32 did not change Railway variables, rollout percentages, prompts, task
+business logic, provider/model settings, legacy endpoint code, database schema,
+or production task records. No patch release or deploy was performed.
+
+## Task 32 evidence artifacts
+
+- Single/checklist rollout 20%:
+  - `output/task-ai-rollout/task32-v08128-single.md`;
+  - verdict: `HOLD_INSUFFICIENT_TRAFFIC`.
+- Bundle rollout 10%:
+  - `output/task-ai-bundle-rollout/task32-v08128-bundle.md`;
+  - verdict: `HOLD_INSUFFICIENT_TRAFFIC`.
+
+These artifacts are redacted and generated under the ignored `output/`
+directory. They must not contain task text, prompts, provider responses,
+credentials, proposal tokens, API keys, bearer tokens, or raw Railway logs.
+
+---
+
+Historical sections below document earlier production evidence refreshes. They
+are kept as release history, not as the current production source of truth.
+
 ## Task 27 legacy endpoint sunset refresh — v0.81.27
 
 Status: `HOLD_INSUFFICIENT_OBSERVATION`.

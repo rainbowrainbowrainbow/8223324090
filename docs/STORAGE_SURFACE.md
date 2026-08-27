@@ -87,7 +87,8 @@ not fall through to CRM HTML.
 Profile avatar uploads are now different: new writes store binary content in
 `profile_avatar_blobs`, and `/uploads/profile-avatars/*` first checks Postgres
 before falling back to local disk for legacy files. Existing old local avatar
-URLs remain compatible, but missing legacy files are not backfilled.
+URLs remain compatible, but missing profile avatar upload URLs must return 404
+and must not fall through to CRM HTML.
 
 ## Legacy Upload Backfill
 
@@ -136,6 +137,28 @@ Run apply one segment at a time, then rerun dry-run for that same segment. A
 completed segment should show zero `WRITE_CANDIDATE` rows. If old Railway local
 filesystem bytes are already gone, the script cannot reconstruct them; keep the
 redacted missing-source manifest for backup search or manual recovery.
+
+### Task 30 production proof
+
+Task 30 refreshed the production backfill evidence on 2026-08-27 against live
+`v0.81.27` (`88138e98fa31411923e6ec387af7aa155d25b711`) and current source
+branch `codex/eventgenix-production`. The operator tooling used for the audit
+had green exact-SHA CI at `2b81ffc562dab95702cfabbf8262888c98a1380c`.
+
+Final per-segment dry-run verdicts:
+
+| Segment | Scanned | Write candidates | Existing exact/missing source | Unrecoverable source missing | Conflicts | Blocked | Manifest hash |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: | --- |
+| `chat` | 6 | 0 | 0 | 6 | 0 | 0 | `2204c01d968e4e1e2d05066cc1f88bdf0fb2e9d54741ea4b7116895ec8385a10` |
+| `sounds` | 0 | 0 | 0 | 0 | 0 | 0 | `f84519c6381f8f2b3088080174ca48a0502d33fe293bf402e16692cab7ef32d5` |
+| `profile-avatars` | 2 | 0 | 2 | 0 | 0 | 0 | `d387bcd8459461712104c47cf31d56c204c605353bb31111f87fc0cd13999a48` |
+| `catalog-images` | 18 | 0 | 18 | 0 | 0 | 0 | `54f1744efc4ed95a895b43c9e9d7247b429c85420ed88251c2fb869b98f8a7f8` |
+| `designs` | 3 | 0 | 0 | 3 | 0 | 0 | `9372b4b6e1bc9b06bd16ff1ac2970dd64ba86ce45b39404fcfc752d2b0078f64` |
+
+No production backfill `INSERT` was needed in Task 30 because every segment had
+`WRITE_CANDIDATE=0`. The unavailable chat and design source bytes are retained
+as redacted `UNRECOVERABLE_SOURCE_MISSING` manifest entries for external backup
+recovery; do not infer that they can be reconstructed from metadata.
 
 ## What This Gives
 

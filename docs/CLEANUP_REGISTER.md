@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-08-26
+Last refreshed: 2026-08-27
 Current product version source: `package.json`
 
 ## Operating Model
@@ -55,6 +55,21 @@ Do not treat aggregate CSS entrypoints such as `css/assistant-rail.css`,
 `css/chat.css`, `css/sidebar-aurora.css`, `css/dashboard.css`, or
 `css/pages.css` as large-file targets by filename alone. Their payload now
 lives in ordered modules listed in `docs/CSS_SURFACE.md`.
+
+2026-08-27 Task 30 legacy upload backfill proof:
+
+- Artifact root:
+  `.codex-temp/_preserved-artifacts/task30-legacy-upload-backfill-final`.
+- Production dry-run scanned the five legacy upload segments separately:
+  `chat`, `sounds`, `profile-avatars`, `catalog-images`, and `designs`.
+- All segments finished with `WRITE_CANDIDATE=0`, so no blob backfill `INSERT`
+  was executed. Profile avatar and catalog image candidates already had exact
+  Postgres blobs; unavailable chat and design source bytes were recorded as
+  redacted `UNRECOVERABLE_SOURCE_MISSING` manifest entries.
+- A runtime fallback gap was found for missing profile avatar uploads: the path
+  could fall through to CRM HTML after Postgres/local fallback miss. The server
+  now keeps profile avatars aligned with the other upload paths by returning a
+  controlled 404 after the Postgres and legacy local checks miss.
 
 2026-08-26 Task 24 repository/worktree hygiene wave 2 snapshot:
 

@@ -190,6 +190,11 @@ app.use('/uploads/designs', (req, res, next) => {
     return res.status(404).json({ error: 'design_upload_not_found' });
 });
 app.get('/uploads/profile-avatars/*', buildProfileAvatarBlobFallbackHandler(pool, log));
+app.use('/uploads/profile-avatars', express.static(path.join(__dirname, 'uploads', 'profile-avatars')));
+app.use('/uploads/profile-avatars', (req, res, next) => {
+    if (req.method !== 'GET' && req.method !== 'HEAD') return next();
+    return res.status(404).json({ error: 'profile_avatar_not_found' });
+});
 app.get('/uploads/chat/*', buildChatUploadBlobFallbackHandler(pool, log));
 app.use('/uploads/chat', express.static(path.join(__dirname, 'uploads', 'chat')));
 app.use('/uploads/chat', (req, res, next) => {

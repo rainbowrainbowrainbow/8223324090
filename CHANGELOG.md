@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.28 - Profile avatar upload fallback 404
+
+### Storage / Recovery / (27.08.2026) [codex]
+- **Legacy upload backfill proof** — production dry-run по `chat`, `sounds`, `profile-avatars`, `catalog-images` і `designs` підтвердив `WRITE_CANDIDATE=0`; доступні blobs уже в Postgres, а недоступні source bytes зафіксовані redacted recovery manifest.
+- **Profile avatar missing-asset boundary** — `/uploads/profile-avatars/*` тепер, як інші upload paths, проходить Postgres blob, legacy local fallback і стабільний JSON 404 замість CRM HTML fallback.
+
+---
+
 ## v0.81.27 - Legacy Upload Backfill Recovery
 
 ### Storage / Recovery / (26.08.2026) [codex]

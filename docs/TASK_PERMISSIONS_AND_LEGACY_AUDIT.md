@@ -1,8 +1,8 @@
 # Task permissions and legacy-data audit
 
-Date: 2026-08-26
+Date: 2026-08-27
 Scope: static code audit, focused task-permission tests, aggregate-only legacy-data audit, and controlled remediation tooling.
-Status: **Task 28 controlled remediation dry-run completed. No runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, migrations, or production task data changed. Production UPDATE was not executed because the required exact-SHA CI run for the pushed remediation tooling commit did not exist, and no dedicated local write credential was present.**
+Status: **Task 31 controlled typed-owner remediation completed. No runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, or migrations changed. Production task-data changes were limited to the deterministic `typed-owner-single-active-user` cohort: 2 rows had `owner_user_id` populated from a uniquely matched active user under the current business-context policy. Ambiguous/manual-review rows were not changed.**
 
 ## Evidence sources
 
@@ -75,7 +75,7 @@ The following queries are designed to run inside `BEGIN READ ONLY` and return ag
 
 ## Exact count status
 
-Task 28 repeated the aggregate-only production legacy-data audit with a
+Task 31 repeated the aggregate-only production legacy-data audit with a
 dedicated read-only PostgreSQL credential exposed locally as
 `TASK_AI_ROLLOUT_DATABASE_URL`.
 
@@ -89,15 +89,27 @@ Read-only safety proof:
   filenames, raw logs, URLs, passwords, tokens, or provider responses.
 
 Latest aggregate-only artifact:
-`.codex-temp/_preserved-artifacts/task28-legacy-remediation/task28-legacy-remediation-2026-08-26T16-12-58-337Z.json`.
+`.codex-temp/_preserved-artifacts/task31-typed-owner-remediation/task28-legacy-remediation-2026-08-27T15-09-18-093Z.json`.
 
-Production aggregate counts from 2026-08-26 Task 28 dry-run:
+Task 31 production remediation evidence:
+
+- live baseline before apply: `v0.81.28`, commit `890e431cc00c0ebfc241882ca18a18d63930abd2`, branch `codex/eventgenix-production`;
+- exact-SHA CI for the remediation tooling baseline: GitHub Actions run `33084814129`, conclusion `success`;
+- pre-apply dry-run: candidate count `2`, manifest hash `fa015fcc8d555b46786a6af0194071d46025ded9d97c5a8ef40c798fa5257aa4`;
+- apply guard: cohort `typed-owner-single-active-user`, expected count `2`, exact manifest hash above, explicit confirmation token, transaction with row locks;
+- applied rows: `2`;
+- post-apply dry-run: candidate count `0`, manifest hash `1633902c6cbba5e7770dbed172df754a25078bb76efe1f23474edc87f1a47655`;
+- idempotency proof: second guarded apply with expected count `0` applied `0` rows;
+- rollback/evidence artifacts: `.codex-temp/_preserved-artifacts/task31-typed-owner-remediation/`;
+- output policy: opaque task IDs, categorical old/new values, reason codes, counts, hashes, and timestamps only.
+
+Production aggregate counts from the 2026-08-27 Task 31 post-apply read-only audit:
 
 | Counter | Count | Classification |
 |---|---:|---|
-| total tasks | 2926 | baseline only |
-| missing `owner_user_id` | 1819 | legacy ownership compatibility population |
-| owner token single active user candidates | 2 | `AUTO_FIX_SAFE_AVAILABLE`; typed-owner backfill is deterministic only for this cohort |
+| total tasks | 2928 | baseline only |
+| missing `owner_user_id` | 1817 | legacy ownership compatibility population after the deterministic typed-owner cohort was applied |
+| owner token single active user candidates | 0 | `NO_AUTO_FIX_SAFE_RECORDS`; Task 31 closed the deterministic typed-owner cohort |
 | owner token manual review | 7 | manual review only; no automatic production write |
 | terminal status/workflow mismatch | 925 | legacy compatibility/manual review bucket; not a permission bypass |
 | active task with `completed_at` | 0 | no active completed-at inconsistency found |
@@ -105,7 +117,7 @@ Production aggregate counts from 2026-08-26 Task 28 dry-run:
 | `date`/`scheduled_start_at` disagreement | 0 | no mismatch found |
 | `deadline`/`scheduled_start_at` disagreement | 0 | no mismatch found |
 | missing/blank business context | 0 | no missing business-context rows found |
-| partial source reference | 1061 | manual review/legacy source-reference bucket |
+| partial source reference | 1062 | manual review/legacy source-reference bucket |
 | active duplicate signature input rows | 0 | current canonical duplicate signature found no active duplicate groups |
 | active duplicate signature groups | 0 | current canonical duplicate signature found no active duplicate groups |
 | task action history rows | 1849 | related-table aggregate |
@@ -113,17 +125,15 @@ Production aggregate counts from 2026-08-26 Task 28 dry-run:
 | task dependency rows | 8 | related-table aggregate |
 | My Day task impact rows | 372 | related-table aggregate |
 
-Task 28 tooling produced these redacted remediation artifacts:
+Task 31 tooling produced these redacted remediation artifacts:
 
-- safe cohort: `typed-owner-single-active-user`, candidate count `2`, manifest hash `fa015fcc8d555b46786a6af0194071d46025ded9d97c5a8ef40c798fa5257aa4`;
-- manual-review manifest: record count `1994`, manifest hash `4aed3ef1a7cc7af4bd54f7b7e9ae0f0368b620ca285e71d2a2c18a639a8e7c71`;
+- pre-apply safe cohort: `typed-owner-single-active-user`, candidate count `2`, manifest hash `fa015fcc8d555b46786a6af0194071d46025ded9d97c5a8ef40c798fa5257aa4`;
+- post-apply safe cohort: `typed-owner-single-active-user`, candidate count `0`, manifest hash `1633902c6cbba5e7770dbed172df754a25078bb76efe1f23474edc87f1a47655`;
+- manual-review manifest: record count `1995`, manifest hash `49c493288e63e0ac74ab7dc1d20d8263164ee62379a12b349799a597e2b23b4e`;
 - output policy: opaque task IDs, reason codes, affected field names, categorical old/new values only.
 
-Production UPDATE was not executed in this pass. The safe cohort can be
-applied only after an exact-SHA CI run exists for the remediation tooling
-commit and a process-local write credential is supplied as
-`TASK_LEGACY_REMEDIATION_DATABASE_URL` or an equivalent operator-run
-environment variable mapping that does not print secrets. Ambiguous rows stay
+Production UPDATE was executed only for the safe cohort after the exact-SHA CI
+gate and process-local operator credential were available. Ambiguous rows stay
 unchanged and remain `MANUAL_REVIEW_REQUIRED` or legacy-preserved records.
 
 ## Historical implementation decisions
@@ -148,9 +158,8 @@ The current code and focused regression tests confirm those authorization items 
 
 ## Remaining risks
 
-- Task 28 found `2` deterministic typed-owner backfill candidates, but they
-  were not updated because the required exact-SHA CI gate for the new tooling
-  commit was absent and no dedicated local write credential was present.
+- The deterministic typed-owner cohort is closed; repeated dry-run no longer
+  finds auto-fix-safe records for this cohort.
 - The non-zero legacy/manual-review buckets above are intentionally not
   approved for automatic cleanup.
 - Non-drawer Task Center quick actions may still choose how much disabled-state explanation to show, but backend route/service guards remain authoritative and covered by tests.

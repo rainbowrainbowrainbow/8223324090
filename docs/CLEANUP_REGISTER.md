@@ -88,6 +88,56 @@ lives in ordered modules listed in `docs/CSS_SURFACE.md`.
   Status: `EXTERNAL_BACKUP_ROOT_NOT_PROVIDED`, not
   `EXTERNAL_BACKUP_NOT_FOUND`.
 
+2026-08-28 Task 37 repository salvage and PR decision closure wave 3:
+
+- Repository source was refreshed with `git fetch origin --prune` before
+  cleanup. Local production branch `codex/eventgenix-production` was
+  synchronized with `origin/codex/eventgenix-production` at commit
+  `995247fc30e8b3b9f264721f695aa47799b52d7b`, `ahead=0`, `behind=0`.
+- Artifact root:
+  `.codex-temp/repo-hygiene-wave3-20260828-111831`.
+  This wave intentionally did not write to or delete from
+  `.codex-temp/_preserved-artifacts`.
+- Worktree counts moved from 75 registered worktrees to 74. Dirty worktrees
+  stayed at 38 and conflicted worktrees stayed at 2; they were intentionally
+  kept because the task only allowed removal after verified archive and
+  obsolete proof.
+- The only gone-upstream branch,
+  `codex/attendance-kpi-overtime-guard-v3`, was archived and removed locally.
+  Evidence: `git cherry` showed the runtime fix commit
+  `faa0f80d5716978fa85aadb5e402f34dcf4bf875` as patch-equivalent to current
+  production; the only remaining unique commit was obsolete release/cache churn
+  `397da9d4658f5df134aaae5295ec5ea845eb5a61`. Before removal, the branch had
+  a verified git bundle, current-production patch, empty tracked/staged diffs,
+  empty worktree status, untracked manifest, and SHA256 manifest under the
+  Task 37 artifact root.
+- Gone-upstream local branches moved from 1 to 0. No remote branch was deleted.
+- Protected branch `codex/checkbox-hardening-release-v080103` and its worktree
+  were not touched.
+- Open PRs stayed at 7. No PR was closed because no PR had enough evidence for
+  `CLOSE_OBSOLETE`; each still has unique patch delta or requires an explicit
+  product-owner decision. Salvage bundles and current-production patches were
+  created locally under the Task 37 artifact root.
+
+Current PR review status after Task 37:
+
+| PR | Head | Evidence | Decision |
+| --- | --- | --- | --- |
+| #25 | `codex/attendance-audit-role-lifecycle` | draft; 2 unique patch commits; 10 files, attendance audit role lifecycle scripts/tests/docs | `KEEP_PR_REVIEW`; salvage/rebase decision needed |
+| #24 | `codex/attendance-anomaly-audit` | draft, behind; 1 unique patch commit; 5 files, attendance anomaly audit command/docs/tests | `KEEP_PR_REVIEW`; can be reviewed together with #25 |
+| #9 | `codex/reduce-information-on-landing-page` | 2 unique patch commits; 3 landing files; large product copy/assets rewrite | `KEEP_PRODUCT_DECISION_REQUIRED`; do not close without landing/product decision |
+| #5 | `claude/youthful-feynman-ku9oB` | 150 head-only commits, 146 patch-equivalent, 3 unique patch commits; 140-file legacy diff; GitHub merge state dirty | `KEEP_SALVAGE_REVIEW`; high conflict risk |
+| #4 | `claude/update-project-info-SagnQ` | 14 head-only commits, 13 patch-equivalent, 1 unique patch commit; project info/assets/CSS/DB startup touchpoints; GitHub merge state dirty | `KEEP_SALVAGE_REVIEW`; high conflict risk |
+| #2 | `claude/fix-clear-booking-sizes-FZlVY` | 102 unique patch commits; 93-file broad legacy branch; GitHub merge state dirty | `KEEP_SALVAGE_REVIEW`; high conflict risk |
+| #1 | `codex/create-a-surprising-but-safe-script` | 1 unique patch commit; README/spec/scripts only | `KEEP_OWNER_DECISION_REQUIRED`; old but not proven obsolete |
+
+Current machine-readable manifests after Task 37:
+
+- `worktrees.json` and `worktrees-after.json`
+- `summary.json` and `summary-after.json`
+- `pr-analysis.json`
+- `sha256-manifest.json` and `sha256-manifest.txt`
+
 2026-08-26 Task 24 repository/worktree hygiene wave 2 snapshot:
 
 - Live production source was confirmed through `/api/version` before cleanup:

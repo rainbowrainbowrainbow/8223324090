@@ -33,6 +33,7 @@ const {
     activeTaskBusinessContext,
     pushTaskBusinessScopeCondition
 } = require('./taskBusinessScope');
+const { trustedQaRegisteredBookingExclusionSql } = require('./trustedQaSchedulerGuard');
 
 // Lazy require to avoid circular dependency at load time
 function getRecurringService() {
@@ -70,6 +71,7 @@ const SYSTEM_BOOKING_NOTIFICATION_ACTOR = Object.freeze({
     name: 'System Notification',
     role: 'creator'
 });
+const TRUSTED_QA_BOOKING_EXCLUSION = trustedQaRegisteredBookingExclusionSql('b');
 
 function notificationActor(actor) {
     return actor || SYSTEM_BOOKING_NOTIFICATION_ACTOR;
@@ -194,6 +196,7 @@ async function buildAndSendDigest(date, actor = null) {
          FROM bookings b
          WHERE b.date = $1
            AND b.status != 'cancelled'
+           AND ${TRUSTED_QA_BOOKING_EXCLUSION}
            AND ${bookingBusinessScope}
            ${bookingVisibility.sql}
          ORDER BY b.time LIMIT 500`, bookingParams);
@@ -329,6 +332,7 @@ async function sendTomorrowReminder(todayStr, actor = null) {
              FROM bookings b
              WHERE b.date = $1
                AND b.status != 'cancelled'
+               AND ${TRUSTED_QA_BOOKING_EXCLUSION}
                AND ${bookingBusinessScope}
                ${bookingVisibility.sql}
              ORDER BY b.time LIMIT 500`,
@@ -886,6 +890,7 @@ async function checkWorkDayTriggers() {
             `SELECT b.*, p.has_filler FROM bookings b
              JOIN products p ON b.program_id = p.id
              WHERE b.date = $1
+               AND ${TRUSTED_QA_BOOKING_EXCLUSION}
                AND ${pinataBusinessScope}
                AND p.has_filler = true
                AND COALESCE(b.pinata_mode, 'park') = 'park'
@@ -932,6 +937,7 @@ async function checkWorkDayTriggers() {
         const tshirtBookings = await pool.query(
             `SELECT b.* FROM bookings b
              WHERE b.date = $1 AND b.program_id = 'mk_tshirt' AND b.status != 'cancelled'
+             AND ${TRUSTED_QA_BOOKING_EXCLUSION}
              AND ${tshirtBusinessScope}
              AND (b.extra_data IS NULL OR b.extra_data->>'tshirtSizes' IS NULL)`,
             tshirtParams
@@ -1361,6 +1367,7 @@ async function checkUpcomingBookings() {
             WHERE b.date = to_char(CURRENT_DATE + INTERVAL '3 days', 'YYYY-MM-DD')
               AND b.status IN ('confirmed', 'pending')
               AND b.linked_to IS NULL
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
         `, bookingParams);
@@ -1428,6 +1435,7 @@ async function checkDebtNotifications() {
               AND (b.payment_status IS NULL OR b.payment_status != 'paid')
               AND COALESCE(b.paid_amount, 0) < COALESCE(b.price, 0)
               AND b.date::date <= CURRENT_DATE
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
             ORDER BY debt DESC LIMIT 20
@@ -1733,7 +1741,7 @@ async function checkAutoReport() {
         const bookingsResult = await pool.query(
             "SELECT COUNT(*)::int AS total, SUM(CASE WHEN status='confirmed' THEN 1 ELSE 0 END)::int AS confirmed, " +
             "COALESCE(SUM(price),0)::numeric AS revenue, COALESCE(AVG(price),0)::numeric AS avg_check " +
-            `FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' AND ${reportBookingBusinessScope} ${reportBookingVisibility.sql}`,
+            `FROM bookings b WHERE b.date = $1 AND b.status != 'cancelled' AND ${TRUSTED_QA_BOOKING_EXCLUSION} AND ${reportBookingBusinessScope} ${reportBookingVisibility.sql}`,
             reportBookingParams
         );
         const stats = bookingsResult.rows[0];
@@ -1754,6 +1762,7 @@ async function checkAutoReport() {
             `SELECT b.program_name AS program, COUNT(*)::int AS cnt
              FROM bookings b
              WHERE b.date = $1 AND b.status != 'cancelled'
+               AND ${TRUSTED_QA_BOOKING_EXCLUSION}
                AND ${topProgramBusinessScope}
                ${topProgramVisibility.sql}
              GROUP BY b.program_name
@@ -1988,6 +1997,7 @@ async function checkAutoReviewRequests() {
               AND b.nps_sent_at IS NULL
               AND b.customer_id IS NOT NULL
               AND tg.telegram_chat_id IS NOT NULL
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time + (b.duration || ' minutes')::interval) < NOW() - ($1 || ' hours')::interval
@@ -2228,6 +2238,7 @@ async function checkEventPipeline() {
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 't24_sent'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${t24BusinessScope}
               ${t24Visibility.sql}
             LIMIT 20
@@ -2255,6 +2266,7 @@ async function checkEventPipeline() {
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'day_of_prep'
             WHERE b.date = $1 AND b.status IN ('confirmed', 'preliminary')
               AND bp.id IS NULL
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${dayOfBusinessScope}
               ${dayOfVisibility.sql}
             LIMIT 20
@@ -2281,6 +2293,7 @@ async function checkEventPipeline() {
             LEFT JOIN booking_pipeline bp ON bp.booking_id = b.id AND bp.stage = 'completed'
             WHERE b.date = $1 AND b.status = 'confirmed'
               AND bp.id IS NULL
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${completedBusinessScope}
               ${completedVisibility.sql}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
@@ -2393,6 +2406,7 @@ async function checkCleaningTasks() {
             WHERE b.date = $1 AND b.status = 'confirmed'
               AND b.room IS NOT NULL AND b.room != ''
               AND ct.id IS NULL
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${cleaningBusinessScope}
               AND (b.date::date + (SUBSTRING(b.time FROM 1 FOR 2) || ':' || SUBSTRING(b.time FROM 4 FOR 2))::time
                    + (COALESCE(b.duration, 120) || ' minutes')::interval) < NOW()
@@ -2645,6 +2659,7 @@ async function checkBookingPushReminders() {
               AND b.status IN ('confirmed', 'pending')
               AND b.time = $2
               AND b.hosts IS NOT NULL AND b.hosts > 0
+              AND ${TRUSTED_QA_BOOKING_EXCLUSION}
               AND ${bookingBusinessScope}
               ${bookingVisibility.sql}
         `, bookingParams);

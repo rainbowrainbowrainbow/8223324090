@@ -110,6 +110,8 @@ test('booking routes suppress persistent side effects and register the QA graph'
     assert.match(source, /if \(bookingCreateSideEffectsAllowed\(\)\) \{\s*await reconcileBookingBanquetGroupsSafely/);
     assert.match(source, /fullCreateSideEffectsAllowed\(\)\s*\?\s*await syncManagerDepositForBooking/);
     assert.match(source, /if \(fullCreateSideEffectsAllowed\(\)\) \{\s*await reconcileBookingBanquetGroupsSafely/);
+    assert.match(source, /if \(bookingCreateSideEffectsAllowed\(\) && !b\.linkedTo\) \{\s*processBookingAutomation\(b\)/);
+    assert.match(source, /if \(fullCreateSideEffectsAllowed\(\)\) \{\s*processBookingAutomation\(main\)/);
     assert.match(source, /registerQaEntity\(client, qaContext, 'banquet_group'/);
     assert.match(source, /'banquet_membership'/);
     assert.match(source, /'booking_banquet_link'/);

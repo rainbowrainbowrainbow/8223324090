@@ -1,5 +1,7 @@
 const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const path = require('node:path');
 
 let state;
 
@@ -404,6 +406,19 @@ describe('static-only scheduler job behavior coverage', () => {
         assert.equal(state.publishedEvents[0].eventName, 'booking.t24');
         assert.match(state.publishedEvents[0].idempotencyKey, /^t24_301_/);
         assert.equal(state.queries.filter(query => query.text.includes('INSERT INTO booking_pipeline')).length, 1);
+    });
+
+    it('every scheduler booking selector excludes entities registered to an active trusted QA run', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'scheduler.js'), 'utf8');
+        const bookingQuerySegments = source.split('FROM bookings b').slice(1);
+
+        assert.ok(bookingQuerySegments.length > 0, 'expected scheduler booking selectors');
+        for (const segment of bookingQuerySegments) {
+            const closingTemplateLiteral = segment.indexOf('`');
+            assert.notEqual(closingTemplateLiteral, -1, 'booking selector must remain in a template literal');
+            const selector = segment.slice(0, closingTemplateLiteral);
+            assert.match(selector, /\$\{TRUSTED_QA_BOOKING_EXCLUSION\}/);
+        }
     });
 
     it('recurring announcement delivery failure is persisted as failed, not success', async () => {

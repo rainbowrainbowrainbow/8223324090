@@ -90,6 +90,7 @@ function makeBooking(overrides = {}) {
 describe('booking automation create_task owner forwarding', () => {
     let restoreDb;
     let restoreTelegram;
+    let dbCalls;
     let kleshnya;
     let bookingAutomation;
 
@@ -97,6 +98,7 @@ describe('booking automation create_task owner forwarding', () => {
         installDbMock.rules = [];
         const db = installDbMock();
         restoreDb = db.restore;
+        dbCalls = db.calls;
         restoreTelegram = installTelegramMock();
         kleshnya = installKleshnyaMock();
         bookingAutomation = loadBookingAutomation();
@@ -151,6 +153,19 @@ describe('booking automation create_task owner forwarding', () => {
             },
             duplicateMode: 'skip'
         });
+    });
+
+    it('does not read rules or create tasks for either notification suppression alias', async () => {
+        installDbMock.rules = [makeRule({
+            type: 'create_task',
+            title: 'Must not be created'
+        })];
+
+        await bookingAutomation.processBookingAutomation(makeBooking({ skipNotification: true }));
+        await bookingAutomation.processBookingAutomation(makeBooking({ id: 502, skip_notification: true }));
+
+        assert.equal(dbCalls.length, 0);
+        assert.equal(kleshnya.calls.length, 0);
     });
 
     it('passes typed owner and business fields for Maysternya/Oleksandr actions', async () => {

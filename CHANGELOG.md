@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.29 - Trusted Timeline Showcase Runner
+
+### Timeline / Trusted QA / (28.08.2026) [codex]
+- **Безпечний production showcase** — додано bounded `prepare → plan → apply/verify → cleanup` runner для точного розкладу 29.08.2026: 22 активності, 25 booking entities і лише лінії «Аніматор 1–3» з carrier «На виніс».
+- **Exact fixture authorization** — кожен booking прив’язаний до approved request ID, продукту, часу, тривалості, аніматорів, display snapshot і дозволеного payload; повтори, підміни та зайві поля відхиляються fail-closed.
+- **Cleanup без сиріт** — token consumption і cleanup серіалізовані в одній транзакційній межі, усі створені ID реєструються для точного скасування, а expired active runs підбирає watchdog із bounded retry/blocked станом.
+
+---
+
 ## v0.81.28 - Profile avatar upload fallback 404
 
 ### Storage / Recovery / (27.08.2026) [codex]

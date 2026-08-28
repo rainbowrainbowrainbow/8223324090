@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.28",
+  "version": "0.81.29",
   "eventGenix": {
-    "releaseLabel": "Profile avatar upload fallback 404"
+    "releaseLabel": "Trusted Timeline Showcase Runner"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

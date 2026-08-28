@@ -1,20 +1,20 @@
 /* pages.css - aggregate entrypoint for shared static CRM page styles. */
 
-@import url("./pages-core.css?v=0.81.28");
-@import url("./pages-tasks.css?v=0.81.28");
-@import url("./pages-cabinet.css?v=0.81.28");
-@import url("./pages-task-taxonomy.css?v=0.81.28");
-@import url("./pages-certificates.css?v=0.81.28");
-@import url("./pages-customers.css?v=0.81.28");
-@import url("./pages-leads.css?v=0.81.28");
-@import url("./pages-art.css?v=0.81.28");
-@import url("./pages-afisha.css?v=0.81.28");
-@import url("./pages-hr-staff.css?v=0.81.28");
-@import url("./pages-hr-foundation.css?v=0.81.28");
-@import url("./pages-analytics-vacancy.css?v=0.81.28");
-@import url("./pages-profile.css?v=0.81.28");
-@import url("./pages-reports.css?v=0.81.28");
-@import url("./pages-center-operations.css?v=0.81.28");
+@import url("./pages-core.css?v=0.81.29");
+@import url("./pages-tasks.css?v=0.81.29");
+@import url("./pages-cabinet.css?v=0.81.29");
+@import url("./pages-task-taxonomy.css?v=0.81.29");
+@import url("./pages-certificates.css?v=0.81.29");
+@import url("./pages-customers.css?v=0.81.29");
+@import url("./pages-leads.css?v=0.81.29");
+@import url("./pages-art.css?v=0.81.29");
+@import url("./pages-afisha.css?v=0.81.29");
+@import url("./pages-hr-staff.css?v=0.81.29");
+@import url("./pages-hr-foundation.css?v=0.81.29");
+@import url("./pages-analytics-vacancy.css?v=0.81.29");
+@import url("./pages-profile.css?v=0.81.29");
+@import url("./pages-reports.css?v=0.81.29");
+@import url("./pages-center-operations.css?v=0.81.29");
 
 .event-card-visual {
     position: relative;

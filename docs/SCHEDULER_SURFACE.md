@@ -98,12 +98,13 @@ Unsupported dedup values are rejected before the scheduler function can run.
 `processPaymentOutboxJobs` runs every 30 seconds without guard-level dedup because durable locking is owned by `payment_outbox_jobs`. It claims bounded batches with `FOR UPDATE SKIP LOCKED`, recovers expired locks, applies exponential backoff, moves exhausted jobs to dead-letter status, and performs receipt status lookup before retrying any sale after unknown provider responses. Direct coverage lives in `tests/checkbox-webhook-reconciliation.test.js`.
 
 `runTrustedQaCleanupWatchdog` runs every minute with a `5min` guard-level dedup.
-It only processes server-authorized trusted QA runs in `cleanup_pending`, claims
-bounded batches with `FOR UPDATE SKIP LOCKED`, retries with capped backoff, and
-marks exhausted runs `blocked` instead of hiding cleanup failures. Cleanup is
-strictly ID-manifest driven from `trusted_qa_run_entities`; client-supplied
-`disposableQa` or `skipNotification` fields are not treated as authorization.
-Direct coverage lives in `tests/trusted-qa-runs.test.js`.
+It atomically claims bounded batches of expired `active` runs and ready
+`cleanup_pending` retries with `FOR UPDATE SKIP LOCKED`, retries with capped
+backoff, and marks exhausted runs `blocked` instead of hiding cleanup failures.
+Cleanup fails closed and is strictly driven by the exact server-issued ID
+manifest in `trusted_qa_run_entities`; client-supplied `disposableQa` or
+`skipNotification` fields are not treated as authorization. Direct coverage
+lives in `tests/trusted-qa-runs.test.js`.
 
 `checkHrAttendancePrintAutomations` runs every minute without guard-level dedup.
 Its durable deduplication is owned by `hr_attendance_document_jobs`: the unique

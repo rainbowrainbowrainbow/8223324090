@@ -23,8 +23,52 @@ const TRUSTED_QA_ENTITY_STATES = Object.freeze({
 });
 const DEFAULT_MAX_ENTITY_COUNT = 25;
 const DEFAULT_TTL_MINUTES = 30;
+const MAX_TRUSTED_QA_BOOKING_FIXTURES = 100;
 const WATCHDOG_BATCH_LIMIT = 10;
 const WATCHDOG_MAX_ATTEMPTS = 5;
+const TRUSTED_QA_BOOKING_FIXTURE_KEYS = new Set([
+    'requestId',
+    'programId',
+    'productId',
+    'lineId',
+    'secondAnimatorLineId',
+    'secondAnimator',
+    'roomResourceId',
+    'room',
+    'date',
+    'time',
+    'duration',
+    'status',
+    'programCode',
+    'programName',
+    'label',
+    'category',
+    'hosts',
+    'pinataMode',
+    'pinataNumber'
+]);
+const TRUSTED_QA_FIXTURE_PAYLOAD_KEYS = new Set([
+    'businessContext',
+    'date',
+    'time',
+    'duration',
+    'lineId',
+    'programId',
+    'productId',
+    'programCode',
+    'programName',
+    'label',
+    'category',
+    'roomResourceId',
+    'room',
+    'customerId',
+    'status',
+    'hosts',
+    'pinataMode',
+    'pinataNumber',
+    'secondAnimatorLineId',
+    'secondAnimator'
+]);
 const TRUSTED_QA_ENTITY_TYPES = new Set([
     'booking',
     'banquet_group',
@@ -150,8 +194,24 @@ function requestEndpointKey(req) {
     return `${method} ${normalizedPath}`;
 }
 
+function parseJsonContainer(value) {
+    if (typeof value !== 'string') return value;
+    try {
+        return JSON.parse(value);
+    } catch {
+        return null;
+    }
+}
+
+function requestHeaderText(req, name) {
+    return String(req?.get?.(name) || '').trim();
+}
+
 function normalizeAllowedEndpoints(value) {
-    const raw = Array.isArray(value) ? value : safeJsonObject(value);
+    const parsed = parseJsonContainer(value);
+    const raw = Array.isArray(parsed)
+        ? parsed
+        : (parsed && typeof parsed === 'object' ? parsed : {});
     const list = Array.isArray(raw) ? raw : (Array.isArray(raw.endpoints) ? raw.endpoints : []);
     return list.map(item => {
         if (typeof item === 'string') return cleanText(item, 260);
@@ -162,6 +222,197 @@ function normalizeAllowedEndpoints(value) {
         }
         return '';
     }).filter(Boolean);
+}
+
+function trustedQaFixtureManifestError(message, details = {}, statusCode = 400) {
+    return new TrustedQaRunError(
+        message,
+        'QA_RUN_FIXTURE_MANIFEST_INVALID',
+        details,
+        statusCode
+    );
+}
+
+function normalizeFixtureText(value, field, max, { required = true, statusCode = 400 } = {}) {
+    const scalar = typeof value === 'string'
+        || (typeof value === 'number' && Number.isFinite(value));
+    if (!scalar) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture is malformed',
+            { field },
+            statusCode
+        );
+    }
+    const normalized = String(value ?? '').trim();
+    if ((!normalized && required) || normalized.length > max) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture is malformed',
+            { field },
+            statusCode
+        );
+    }
+    return normalized;
+}
+
+function normalizeTrustedQaBookingFixture(value, index = 0, options = {}) {
+    const statusCode = options.statusCode || 400;
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture must be an object',
+            { fixtureIndex: index },
+            statusCode
+        );
+    }
+    const unknownKeys = Object.keys(value).filter(key => !TRUSTED_QA_BOOKING_FIXTURE_KEYS.has(key));
+    if (unknownKeys.length) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture contains unsupported fields',
+            { fixtureIndex: index, fields: unknownKeys.sort() },
+            statusCode
+        );
+    }
+
+    const requestId = normalizeFixtureText(value.requestId, 'requestId', 160, { statusCode });
+    const programId = normalizeFixtureText(value.programId, 'programId', 120, { statusCode });
+    const lineId = normalizeFixtureText(value.lineId, 'lineId', 120, { statusCode });
+    const roomResourceId = normalizeFixtureText(value.roomResourceId, 'roomResourceId', 120, { statusCode });
+    const room = normalizeFixtureText(value.room, 'room', 100, { statusCode });
+    const date = normalizeFixtureText(value.date, 'date', 10, { statusCode });
+    const time = normalizeFixtureText(value.time, 'time', 5, { statusCode });
+    const duration = Number(value.duration);
+    const parsedDate = Date.parse(`${date}T00:00:00.000Z`);
+    const timeMatch = time.match(/^(\d{2}):(\d{2})$/);
+
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)
+        || !Number.isFinite(parsedDate)
+        || new Date(parsedDate).toISOString().slice(0, 10) !== date) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture date is invalid',
+            { fixtureIndex: index, field: 'date' },
+            statusCode
+        );
+    }
+    if (!timeMatch || Number(timeMatch[1]) > 23 || Number(timeMatch[2]) > 59) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture time is invalid',
+            { fixtureIndex: index, field: 'time' },
+            statusCode
+        );
+    }
+    if (!Number.isInteger(duration) || duration < 1 || duration > 1440) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture duration is invalid',
+            { fixtureIndex: index, field: 'duration' },
+            statusCode
+        );
+    }
+
+    const fixture = {
+        requestId,
+        programId,
+        lineId,
+        roomResourceId,
+        room,
+        date,
+        time,
+        duration
+    };
+    for (const [field, max] of [
+        ['productId', 120],
+        ['secondAnimatorLineId', 120],
+        ['secondAnimator', 100],
+        ['status', 32],
+        ['programCode', 20],
+        ['programName', 100],
+        ['label', 100],
+        ['category', 50],
+        ['pinataNumber', 120]
+    ]) {
+        if (value[field] === undefined || value[field] === null || value[field] === '') continue;
+        fixture[field] = normalizeFixtureText(value[field], field, max, { statusCode });
+    }
+    if (value.hosts !== undefined && value.hosts !== null && value.hosts !== '') {
+        const hosts = Number(value.hosts);
+        if (!Number.isInteger(hosts) || hosts < 1 || hosts > 20) {
+            throw trustedQaFixtureManifestError(
+                'Trusted QA booking fixture hosts is invalid',
+                { fixtureIndex: index, field: 'hosts' },
+                statusCode
+            );
+        }
+        fixture.hosts = hosts;
+    }
+    if (value.pinataMode !== undefined && value.pinataMode !== null && value.pinataMode !== '') {
+        const pinataMode = normalizeFixtureText(value.pinataMode, 'pinataMode', 20, { statusCode });
+        if (!['none', 'park', 'client'].includes(pinataMode)) {
+            throw trustedQaFixtureManifestError(
+                'Trusted QA booking fixture pinataMode is invalid',
+                { fixtureIndex: index, field: 'pinataMode' },
+                statusCode
+            );
+        }
+        fixture.pinataMode = pinataMode;
+    }
+    return fixture;
+}
+
+function normalizeTrustedQaBookingFixtures(value, options = {}) {
+    const statusCode = options.statusCode || 400;
+    const configuredMax = Number.parseInt(options.maxFixtures, 10);
+    const maxFixtures = Number.isFinite(configuredMax)
+        ? Math.max(1, Math.min(MAX_TRUSTED_QA_BOOKING_FIXTURES, configuredMax))
+        : MAX_TRUSTED_QA_BOOKING_FIXTURES;
+    if (!Array.isArray(value) || value.length < 1 || value.length > maxFixtures) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixture manifest is outside bounded limits',
+            { maxFixtures },
+            statusCode
+        );
+    }
+    const normalized = value.map((fixture, index) => (
+        normalizeTrustedQaBookingFixture(fixture, index, { statusCode })
+    ));
+    const seenRequestIds = new Set();
+    for (const fixture of normalized) {
+        if (seenRequestIds.has(fixture.requestId)) {
+            throw trustedQaFixtureManifestError(
+                'Trusted QA booking fixture requestId must be unique',
+                { requestId: fixture.requestId },
+                statusCode
+            );
+        }
+        seenRequestIds.add(fixture.requestId);
+    }
+    return normalized.sort((left, right) => left.requestId.localeCompare(right.requestId));
+}
+
+function normalizeTrustedQaAuthorizationManifest(value, options = {}) {
+    const parsed = parseJsonContainer(value);
+    const endpoints = normalizeAllowedEndpoints(parsed);
+    if (Array.isArray(parsed)) return { endpoints, bookingFixtures: [] };
+    if (!parsed || typeof parsed !== 'object') return { endpoints, bookingFixtures: [] };
+    if (!Object.prototype.hasOwnProperty.call(parsed, 'bookingFixtures')) {
+        return { endpoints, bookingFixtures: [] };
+    }
+    const unknownKeys = Object.keys(parsed).filter(key => !['endpoints', 'bookingFixtures'].includes(key));
+    if (unknownKeys.length) {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA authorization manifest contains unsupported fields',
+            { fields: unknownKeys.sort() },
+            options.statusCode || 400
+        );
+    }
+    if (endpoints.length !== 1 || endpoints[0] !== 'POST /api/bookings') {
+        throw trustedQaFixtureManifestError(
+            'Trusted QA booking fixtures require the exact booking-create endpoint',
+            { endpoints },
+            options.statusCode || 400
+        );
+    }
+    return {
+        endpoints,
+        bookingFixtures: normalizeTrustedQaBookingFixtures(parsed.bookingFixtures, options)
+    };
 }
 
 function endpointAllowed(endpointKey, allowedEndpoints) {
@@ -194,6 +445,24 @@ function bookingConstraintValue(booking, camel, snake = null) {
     return cleanText(booking?.[camel] ?? (snake ? booking?.[snake] : undefined), 120);
 }
 
+function bookingFixtureConstraintValue(booking, camel, snake = null) {
+    return String(booking?.[camel] ?? (snake ? booking?.[snake] : undefined) ?? '').trim();
+}
+
+function bookingSecondAnimatorLineConstraintValue(booking = {}) {
+    const extra = booking?.extraData && typeof booking.extraData === 'object' && !Array.isArray(booking.extraData)
+        ? booking.extraData
+        : safeJsonObject(booking?.extra_data);
+    const workspace = extra.bookingWorkspace || extra.booking_workspace || {};
+    return String(
+        booking?.secondAnimatorLineId
+        ?? booking?.second_animator_line_id
+        ?? workspace.secondAnimatorLineId
+        ?? workspace.second_animator_line_id
+        ?? ''
+    ).trim();
+}
+
 function timeMinutes(value) {
     const match = String(value || '').trim().match(/^(\d{2}):(\d{2})/);
     if (!match) return null;
@@ -201,6 +470,122 @@ function timeMinutes(value) {
     const minutes = Number(match[2]);
     if (hours > 23 || minutes > 59) return null;
     return hours * 60 + minutes;
+}
+
+function trustedQaFixtureMismatch(fixture, field, code = 'QA_RUN_FIXTURE_MISMATCH') {
+    throw new TrustedQaRunError(
+        'QA run booking fixture mismatch',
+        code,
+        { entityType: 'booking', fixtureRequestId: fixture.requestId, field }
+    );
+}
+
+function assertTrustedQaFixtureSafePayload(req, booking) {
+    const unsupportedFields = new Set();
+    for (const payload of [req?.body, booking]) {
+        if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue;
+        for (const key of Object.keys(payload)) {
+            if (!TRUSTED_QA_FIXTURE_PAYLOAD_KEYS.has(key)) unsupportedFields.add(key);
+        }
+    }
+    if (unsupportedFields.size) {
+        throw new TrustedQaRunError(
+            'QA run booking fixture payload contains unsafe fields',
+            'QA_RUN_FIXTURE_UNSAFE_PAYLOAD',
+            { fields: [...unsupportedFields].sort() }
+        );
+    }
+}
+
+function trustedQaFixtureAuthorizationHeaders(run, req) {
+    const token = requestHeaderText(req, 'X-QA-Run-Token');
+    const requestId = requestHeaderText(req, 'X-QA-Run-Request-Id');
+    const missingHeaders = [];
+    if (!token || token.length > 512) missingHeaders.push('X-QA-Run-Token');
+    if (!requestId || requestId.length > 160) missingHeaders.push('X-QA-Run-Request-Id');
+    if (missingHeaders.length) {
+        throw new TrustedQaRunError(
+            'QA run booking fixtures require authorization headers',
+            'QA_RUN_FIXTURE_HEADERS_REQUIRED',
+            { missingHeaders }
+        );
+    }
+    if (!run?.token_hash || sha256(token) !== String(run.token_hash)) {
+        throw new TrustedQaRunError(
+            'QA run booking fixture token header mismatch',
+            'QA_RUN_FIXTURE_TOKEN_MISMATCH',
+            {}
+        );
+    }
+    return { requestId };
+}
+
+function canonicalFixtureBookingTime(value) {
+    const match = String(value || '').trim().match(/^(\d{2}):(\d{2})(?::(\d{2})(?:\.\d+)?)?$/);
+    if (!match || Number(match[1]) > 23 || Number(match[2]) > 59 || Number(match[3] || 0) !== 0) return '';
+    return `${match[1]}:${match[2]}`;
+}
+
+function assertBookingMatchesTrustedQaFixture(booking, fixture) {
+    const bookingProgram = bookingFixtureConstraintValue(booking, 'programId', 'program_id');
+    if (bookingProgram !== fixture.programId) {
+        trustedQaFixtureMismatch(fixture, 'programId', 'QA_RUN_PROGRAM_MISMATCH');
+    }
+    const bookingProduct = (
+        bookingFixtureConstraintValue(booking, 'productId', 'product_id')
+        || bookingProgram
+    );
+    if (bookingProduct !== (fixture.productId || fixture.programId)) {
+        trustedQaFixtureMismatch(fixture, 'productId', 'QA_RUN_PRODUCT_MISMATCH');
+    }
+    if (bookingFixtureConstraintValue(booking, 'lineId', 'line_id') !== fixture.lineId) {
+        trustedQaFixtureMismatch(fixture, 'lineId', 'QA_RUN_LINE_MISMATCH');
+    }
+    if (bookingFixtureConstraintValue(booking, 'roomResourceId', 'room_resource_id') !== fixture.roomResourceId) {
+        trustedQaFixtureMismatch(fixture, 'roomResourceId', 'QA_RUN_ROOM_MISMATCH');
+    }
+    if (bookingFixtureConstraintValue(booking, 'room') !== fixture.room) {
+        trustedQaFixtureMismatch(fixture, 'room');
+    }
+    const bookingSecondAnimatorLineId = bookingSecondAnimatorLineConstraintValue(booking);
+    if (bookingSecondAnimatorLineId !== (fixture.secondAnimatorLineId || '')) {
+        trustedQaFixtureMismatch(
+            fixture,
+            'secondAnimatorLineId',
+            'QA_RUN_SECOND_ANIMATOR_LINE_MISMATCH'
+        );
+    }
+    if (dateOnly(bookingConstraintValue(booking, 'date')) !== fixture.date) {
+        trustedQaFixtureMismatch(fixture, 'date', 'QA_RUN_DATE_MISMATCH');
+    }
+    if (canonicalFixtureBookingTime(bookingFixtureConstraintValue(booking, 'time')) !== fixture.time) {
+        trustedQaFixtureMismatch(fixture, 'time');
+    }
+    if (!Number.isInteger(Number(booking?.duration)) || Number(booking?.duration) !== fixture.duration) {
+        trustedQaFixtureMismatch(fixture, 'duration');
+    }
+    if (String(booking?.status ?? '').trim() !== (fixture.status || '')) {
+        trustedQaFixtureMismatch(fixture, 'status');
+    }
+    for (const [field, camel, snake] of [
+        ['programCode', 'programCode', 'program_code'],
+        ['programName', 'programName', 'program_name'],
+        ['label', 'label', null],
+        ['category', 'category', null],
+        ['secondAnimator', 'secondAnimator', null],
+        ['pinataMode', 'pinataMode', 'pinata_mode'],
+        ['pinataNumber', 'pinataNumber', 'pinata_number']
+    ]) {
+        if (bookingFixtureConstraintValue(booking, camel, snake) !== (fixture[field] || '')) {
+            trustedQaFixtureMismatch(fixture, field);
+        }
+    }
+    const bookingHasHosts = booking?.hosts !== undefined && booking?.hosts !== null && booking?.hosts !== '';
+    if ((fixture.hosts === undefined && bookingHasHosts)
+        || (fixture.hosts !== undefined
+            && (!Number.isInteger(Number(booking?.hosts)) || Number(booking.hosts) !== fixture.hosts))) {
+        trustedQaFixtureMismatch(fixture, 'hosts');
+    }
 }
 
 function assertRunMatchesRequest(run, req, booking, businessContext) {
@@ -224,28 +609,46 @@ function assertRunMatchesRequest(run, req, booking, businessContext) {
     if (Number.isFinite(requiredUserId) && userId !== requiredUserId) {
         throw new TrustedQaRunError('QA run user mismatch', 'QA_RUN_USER_MISMATCH', { userId });
     }
+    const authorization = normalizeTrustedQaAuthorizationManifest(run.allowed_endpoints, {
+        maxFixtures: run.max_entity_count,
+        statusCode: 500
+    });
     const endpointKey = requestEndpointKey(req);
-    if (!endpointAllowed(endpointKey, run.allowed_endpoints)) {
+    if (!endpointAllowed(endpointKey, authorization.endpoints)) {
         throw new TrustedQaRunError('QA run endpoint is not allowed', 'QA_RUN_ENDPOINT_NOT_ALLOWED', { endpoint: endpointKey });
+    }
+    let bookingFixture = null;
+    if (authorization.bookingFixtures.length) {
+        const { requestId } = trustedQaFixtureAuthorizationHeaders(run, req);
+        bookingFixture = authorization.bookingFixtures.find(fixture => fixture.requestId === requestId) || null;
+        if (!bookingFixture) {
+            throw new TrustedQaRunError(
+                'QA run request is absent from the exact booking fixture manifest',
+                'QA_RUN_FIXTURE_NOT_ALLOWED',
+                { requestId }
+            );
+        }
+        assertTrustedQaFixtureSafePayload(req, booking);
+        assertBookingMatchesTrustedQaFixture(booking, bookingFixture);
     }
     const expectedCustomer = cleanId(run.required_customer_id);
     if (expectedCustomer && cleanId(bookingConstraintValue(booking, 'customerId', 'customer_id')) !== expectedCustomer) {
         throw new TrustedQaRunError('QA run customer mismatch', 'QA_RUN_CUSTOMER_MISMATCH', { entityType: 'booking' });
     }
-    const expectedProgram = cleanId(run.required_program_id);
+    const expectedProgram = bookingFixture ? '' : cleanId(run.required_program_id);
     if (expectedProgram && cleanId(bookingConstraintValue(booking, 'programId', 'program_id')) !== expectedProgram) {
         throw new TrustedQaRunError('QA run program mismatch', 'QA_RUN_PROGRAM_MISMATCH', { entityType: 'booking' });
     }
-    const expectedProduct = cleanId(run.required_product_id);
+    const expectedProduct = bookingFixture ? '' : cleanId(run.required_product_id);
     const bookingProduct = cleanId(bookingConstraintValue(booking, 'productId', 'product_id') || bookingConstraintValue(booking, 'programId', 'program_id'));
     if (expectedProduct && bookingProduct !== expectedProduct) {
         throw new TrustedQaRunError('QA run product mismatch', 'QA_RUN_PRODUCT_MISMATCH', { entityType: 'booking' });
     }
-    const expectedRoom = cleanId(run.required_room_resource_id);
+    const expectedRoom = bookingFixture ? '' : cleanId(run.required_room_resource_id);
     if (expectedRoom && cleanId(bookingConstraintValue(booking, 'roomResourceId', 'room_resource_id')) !== expectedRoom) {
         throw new TrustedQaRunError('QA run room mismatch', 'QA_RUN_ROOM_MISMATCH', { entityType: 'booking' });
     }
-    const expectedLine = cleanId(run.required_line_id);
+    const expectedLine = bookingFixture ? '' : cleanId(run.required_line_id);
     if (expectedLine && cleanId(bookingConstraintValue(booking, 'lineId', 'line_id')) !== expectedLine) {
         throw new TrustedQaRunError('QA run timeline line mismatch', 'QA_RUN_LINE_MISMATCH', { entityType: 'booking' });
     }
@@ -261,7 +664,9 @@ function assertRunMatchesRequest(run, req, booking, businessContext) {
         && (bookingStart === null || bookingStart < start || bookingStart + duration > end)) {
         throw new TrustedQaRunError('QA run time window mismatch', 'QA_RUN_TIME_WINDOW_MISMATCH', { entityType: 'booking' });
     }
-    return { endpointKey };
+    return bookingFixture
+        ? { endpointKey, bookingFixtureKey: bookingFixture.requestId }
+        : { endpointKey };
 }
 
 async function createTrustedQaRun(queryable, options = {}) {
@@ -269,10 +674,20 @@ async function createTrustedQaRun(queryable, options = {}) {
     const ttlMinutes = boundedNumber(options.ttlMinutes, DEFAULT_TTL_MINUTES, 1, 240);
     const maxEntityCount = boundedNumber(options.maxEntityCount, DEFAULT_MAX_ENTITY_COUNT, 1, 500);
     const businessContext = normalizeBusinessContext(options.businessContext || DEFAULT_BUSINESS_CONTEXT);
-    const allowedEndpoints = normalizeAllowedEndpoints(options.allowedEndpoints);
+    const authorizationInput = options.bookingFixtures === undefined
+        ? options.allowedEndpoints
+        : { endpoints: normalizeAllowedEndpoints(options.allowedEndpoints), bookingFixtures: options.bookingFixtures };
+    const authorization = normalizeTrustedQaAuthorizationManifest(authorizationInput, {
+        maxFixtures: maxEntityCount,
+        statusCode: 400
+    });
+    const allowedEndpoints = authorization.endpoints;
     if (!allowedEndpoints.length) {
         throw new TrustedQaRunError('QA run requires allowed endpoints', 'QA_RUN_ENDPOINTS_REQUIRED', {}, 400);
     }
+    const storedAuthorization = authorization.bookingFixtures.length
+        ? authorization
+        : allowedEndpoints;
     const runId = cleanText(options.runId || `qa-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`, 100);
     const result = await queryable.query(
         `INSERT INTO trusted_qa_runs
@@ -291,7 +706,7 @@ async function createTrustedQaRun(queryable, options = {}) {
             businessContext,
             options.operatorUserId || options.requiredOperatorUserId || null,
             cleanText(options.testCustomerMarker || `${runId}:test_customer`, 200),
-            JSON.stringify(allowedEndpoints),
+            JSON.stringify(storedAuthorization),
             maxEntityCount,
             ttlMinutes,
             options.requiredOperatorUserId || options.operatorUserId || null,
@@ -317,6 +732,7 @@ async function loadTrustedQaRun(queryable, token, businessContext) {
           WHERE token_hash = $1
             AND business_context = $2
             AND state = 'active'
+            AND expires_at > NOW()
           ORDER BY id DESC
           LIMIT 1`,
         [sha256(token), normalizeBusinessContext(businessContext || DEFAULT_BUSINESS_CONTEXT)]
@@ -330,6 +746,26 @@ async function consumeTrustedQaToken(queryable, run, req, endpointKey) {
         throw new TrustedQaRunError('QA run request id is required', 'QA_RUN_REQUEST_ID_REQUIRED', { endpoint: endpointKey });
     }
     try {
+        // This lifecycle claim holds the run row lock inside the caller's
+        // booking transaction until its exact entity manifest is registered.
+        const lifecycleClaim = await queryable.query(
+            `UPDATE trusted_qa_runs
+                SET token_use_count = COALESCE(token_use_count, 0) + 1,
+                    updated_at = NOW()
+              WHERE id = $1
+                AND state = 'active'
+                AND expires_at > NOW()
+              RETURNING id`,
+            [run.id]
+        );
+        if (!lifecycleClaim.rowCount) {
+            throw new TrustedQaRunError(
+                'QA run is no longer active',
+                'QA_RUN_NOT_ACTIVE',
+                {},
+                409
+            );
+        }
         const result = await queryable.query(
             `INSERT INTO trusted_qa_run_token_uses (run_id, request_key, endpoint)
              VALUES ($1, $2, $3)
@@ -340,13 +776,6 @@ async function consumeTrustedQaToken(queryable, run, req, endpointKey) {
         if (!result.rowCount) {
             throw new TrustedQaRunError('QA run token request was already used', 'QA_RUN_TOKEN_REPLAYED', { requestKey });
         }
-        await queryable.query(
-            `UPDATE trusted_qa_runs
-                SET token_use_count = COALESCE(token_use_count, 0) + 1,
-                    updated_at = NOW()
-              WHERE id = $1`,
-            [run.id]
-        );
     } catch (err) {
         if (err instanceof TrustedQaRunError) throw err;
         if (/does not exist|undefined_table|undefined_column/i.test(String(err.message || err.code || ''))) {
@@ -356,7 +785,7 @@ async function consumeTrustedQaToken(queryable, run, req, endpointKey) {
     }
 }
 
-function attachServerQaMarker(booking, run) {
+function attachServerQaMarker(booking, run, bookingFixtureKey = '') {
     const marker = createDisposableQaMarker({
         runId: run.run_id,
         source: run.source,
@@ -364,6 +793,8 @@ function attachServerQaMarker(booking, run) {
         kind: 'booking',
         createdAt: new Date().toISOString()
     });
+    const normalizedFixtureKey = cleanText(bookingFixtureKey, 160);
+    if (normalizedFixtureKey) marker.bookingFixtureKey = normalizedFixtureKey;
     const extra = booking.extraData && typeof booking.extraData === 'object' && !Array.isArray(booking.extraData)
         ? { ...booking.extraData }
         : safeJsonObject(booking.extra_data);
@@ -398,9 +829,13 @@ async function prepareTrustedQaBookingInput(queryable, req, booking = {}, busine
         };
     }
     if (req.__trustedQaContext?.trusted) {
-        assertRunMatchesRequest(req.__trustedQaContext.run, req, booking, businessContext);
-        const marker = attachServerQaMarker(booking, req.__trustedQaContext.run);
-        return { ...req.__trustedQaContext, marker };
+        const match = assertRunMatchesRequest(req.__trustedQaContext.run, req, booking, businessContext);
+        const marker = attachServerQaMarker(
+            booking,
+            req.__trustedQaContext.run,
+            match.bookingFixtureKey
+        );
+        return { ...req.__trustedQaContext, ...match, marker };
     }
     const run = await loadTrustedQaRun(queryable, token, businessContext);
     if (!run) {
@@ -410,15 +845,16 @@ async function prepareTrustedQaBookingInput(queryable, req, booking = {}, busine
             { businessContext: normalizeBusinessContext(businessContext || DEFAULT_BUSINESS_CONTEXT) }
         );
     }
-    const { endpointKey } = assertRunMatchesRequest(run, req, booking, businessContext);
+    const match = assertRunMatchesRequest(run, req, booking, businessContext);
+    const { endpointKey, bookingFixtureKey } = match;
     await consumeTrustedQaToken(queryable, run, req, endpointKey);
-    const marker = attachServerQaMarker(booking, run);
+    const marker = attachServerQaMarker(booking, run, bookingFixtureKey);
     const context = {
         trusted: true,
         suppressSideEffects: true,
         run,
         marker,
-        endpointKey
+        ...match
     };
     req.__trustedQaContext = context;
     return context;
@@ -1145,15 +1581,23 @@ async function runTrustedQaCleanupWatchdog(options = {}) {
         const result = await client.query(
             `SELECT *
                FROM trusted_qa_runs
-              WHERE state = 'cleanup_pending'
-                AND COALESCE(cleanup_attempts, 0) < $1
-                AND (next_cleanup_at IS NULL OR next_cleanup_at <= NOW())
-              ORDER BY updated_at ASC
+              WHERE COALESCE(cleanup_attempts, 0) < $1
+                AND (
+                    (state = 'cleanup_pending'
+                        AND (next_cleanup_at IS NULL OR next_cleanup_at <= NOW()))
+                    OR (state = 'active' AND expires_at <= NOW())
+                )
+              ORDER BY CASE
+                    WHEN state = 'active' THEN expires_at
+                    ELSE COALESCE(next_cleanup_at, updated_at)
+                END ASC,
+                updated_at ASC
               LIMIT $2
               FOR UPDATE SKIP LOCKED`,
             [maxAttempts, batchLimit]
         );
         for (const run of result.rows || []) {
+            await client.query('SAVEPOINT trusted_qa_cleanup_run');
             try {
                 await client.query(
                     `UPDATE trusted_qa_runs
@@ -1164,19 +1608,24 @@ async function runTrustedQaCleanupWatchdog(options = {}) {
                     [run.id]
                 );
                 const cleanup = await cleanupTrustedQaRun(client, run.id, { forUpdate: true });
+                await client.query('RELEASE SAVEPOINT trusted_qa_cleanup_run');
                 processed.push({ runId: run.run_id, status: cleanup.status, state: cleanup.state });
             } catch (err) {
+                await client.query('ROLLBACK TO SAVEPOINT trusted_qa_cleanup_run');
                 const nextDelay = Math.min(60, Math.pow(2, Number(run.cleanup_attempts || 0)));
                 await client.query(
                     `UPDATE trusted_qa_runs
-                        SET state = CASE WHEN COALESCE(cleanup_attempts, 0) >= $3 THEN 'blocked' ELSE 'cleanup_pending' END,
+                        SET cleanup_attempts = COALESCE(cleanup_attempts, 0) + 1,
+                            cleanup_last_attempt_at = NOW(),
+                            state = CASE WHEN COALESCE(cleanup_attempts, 0) + 1 >= $3 THEN 'blocked' ELSE 'cleanup_pending' END,
                             cleanup_last_error = $2,
-                            blocked_reason = CASE WHEN COALESCE(cleanup_attempts, 0) >= $3 THEN $2 ELSE blocked_reason END,
+                            blocked_reason = CASE WHEN COALESCE(cleanup_attempts, 0) + 1 >= $3 THEN $2 ELSE blocked_reason END,
                             next_cleanup_at = NOW() + ($4::int * INTERVAL '1 minute'),
                             updated_at = NOW()
                       WHERE id = $1`,
                     [run.id, cleanText(err.message, 500), maxAttempts, nextDelay]
                 );
+                await client.query('RELEASE SAVEPOINT trusted_qa_cleanup_run');
                 processed.push({ runId: run.run_id, status: 'retry_scheduled', errorCode: err.code || 'cleanup_failed' });
             }
         }
@@ -1192,13 +1641,16 @@ async function runTrustedQaCleanupWatchdog(options = {}) {
 
 module.exports = {
     DEFAULT_MAX_ENTITY_COUNT,
+    MAX_TRUSTED_QA_BOOKING_FIXTURES,
     TRUSTED_QA_CAPABILITY_STATUS,
     TRUSTED_QA_ENTITY_STATES,
     TRUSTED_QA_SIDE_EFFECT_CAPABILITIES,
     TRUSTED_QA_SIDE_EFFECT_TABLES,
     TRUSTED_QA_STATES,
     TrustedQaRunError,
+    assertBookingMatchesTrustedQaFixture,
     assertRunMatchesRequest,
+    assertTrustedQaFixtureSafePayload,
     classifyCleanupInventory,
     cleanupTrustedQaRun,
     createTrustedQaRun,
@@ -1208,6 +1660,9 @@ module.exports = {
     loadTrustedQaRun,
     markTrustedQaRunCleanupPending,
     normalizeAllowedEndpoints,
+    normalizeTrustedQaAuthorizationManifest,
+    normalizeTrustedQaBookingFixture,
+    normalizeTrustedQaBookingFixtures,
     prepareTrustedQaBookingInput,
     qaPublicDetails,
     registerQaEntity,

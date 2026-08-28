@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.34 - Trusted QA Scheduler Suppression
+
+### Scheduler / Trusted QA / (28.08.2026) [codex]
+- **Безпечний production showcase** — усі 14 scheduler-вибірок бронювань виключають записи, зареєстровані в активному, cleanup-pending або blocked Trusted QA run; тестові активності більше не потрапляють у T‑24/day-of/completed events, Telegram-дайджести, нагадування, NPS, звіти, задачі піньят/футболок та прибирання.
+- **Авторитетна межа** — suppression спирається на серверний реєстр `trusted_qa_runs` / `trusted_qa_run_entities`, а не на клієнтський marker або загальний `skip_notification`; звичайні бізнес-бронювання зберігають попередню поведінку.
+- **Регресійний захист** — додано contract-тести для всіх scheduler booking selectors, активних QA-станів, безпечного SQL alias та обох notification-suppression aliases у booking automation.
+
+---
+
 ## v0.81.33 - Trusted QA Canonical Room Payload
 
 ### Timeline / Trusted QA / (28.08.2026) [codex]

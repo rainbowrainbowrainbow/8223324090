@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.32 - Trusted QA PostgreSQL Date Compatibility
+
+### Timeline / Trusted QA / (28.08.2026) [codex]
+- **PostgreSQL date compatibility** — exact QA-run envelope тепер коректно нормалізує як API-рядки `YYYY-MM-DD`, так і реальні `Date`-об’єкти з `pg RETURNING`, не послаблюючи перевірку дозволеної дати.
+- **Регресійний захист** — focused test відтворює production `SHOWCASE_RUN_WINDOW_BOUNDARY_MISMATCH` на PG `Date` і підтверджує, що валідний exact run проходить boundary check.
+
+---
+
 ## v0.81.31 - Timeline Showcase Collision-Free Schedule
 
 ### Timeline / Trusted QA / (28.08.2026) [codex]

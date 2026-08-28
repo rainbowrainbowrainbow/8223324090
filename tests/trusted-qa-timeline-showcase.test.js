@@ -565,6 +565,7 @@ test('exact authorization envelope includes display snapshot and readback requir
     const run = fakeRun(manifest);
     run.allowed_endpoints.bookingFixtures.reverse();
     assertRunEnvelope(run, manifest);
+    assertRunEnvelope({ ...run, allowed_date: new Date(2026, 7, 29) }, manifest);
     assert.throws(
         () => assertRunEnvelope({ ...run, required_customer_id: null }, manifest),
         error => error.code === 'SHOWCASE_RUN_ACCOUNT_BOUNDARY_MISMATCH'

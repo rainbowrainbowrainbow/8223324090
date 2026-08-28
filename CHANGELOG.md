@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.31 - Timeline Showcase Collision-Free Schedule
+
+### Timeline / Trusted QA / (28.08.2026) [codex]
+- **Collision-free showcase schedule** — фінальні блоки «Аніматора 1» переставлено на `піньята 18:00 → термомозаїка 18:15 → Legendary Trend 19:00`, тому park/client варіанти `pinata` більше не перетинаються та не спрацьовує production duplicate guard.
+- **Покриття збережено** — approved blueprint як і раніше без розривів заповнює 12:00–20:00, містить 22 активності та рівно 25 booking entities на «Аніматор 1–3».
+
+---
+
 ## v0.81.30 - Timeline Showcase Catalog Alignment
 
 ### Timeline / Trusted QA / (28.08.2026) [codex]

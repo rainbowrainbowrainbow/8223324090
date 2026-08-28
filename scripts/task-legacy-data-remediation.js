@@ -265,6 +265,129 @@ function buildManualReviewSql() {
     `;
 }
 
+function buildReviewClassificationSql() {
+    const terminalMismatch = buildTerminalWorkflowMismatchSql('t');
+    const signature = duplicateSignatureSql('t');
+    return `
+        WITH legacy_tokens AS (
+            SELECT t.id AS task_id,
+                   COALESCE(NULLIF(BTRIM(t.business_context), ''), '${DEFAULT_BUSINESS_CONTEXT}') AS business_context,
+                   token.value AS token
+            FROM tasks t
+            CROSS JOIN LATERAL (
+                VALUES (NULLIF(BTRIM(t.assigned_to), '')),
+                       (NULLIF(BTRIM(t.owner), ''))
+            ) AS token(value)
+            WHERE t.owner_user_id IS NULL
+              AND token.value IS NOT NULL
+        ),
+        owner_token_presence AS (
+            SELECT task_id,
+                   COUNT(*) > 0 AS has_owner_token
+            FROM legacy_tokens
+            GROUP BY task_id
+        ),
+        owner_matches AS (
+            SELECT lt.task_id,
+                   COUNT(DISTINCT u.id) AS matched_user_count
+            FROM legacy_tokens lt
+            LEFT JOIN users u
+              ON COALESCE(u.is_active, true) IS TRUE
+             AND (
+                    LOWER(BTRIM(u.username)) = LOWER(lt.token)
+                 OR LOWER(BTRIM(COALESCE(u.name, ''))) = LOWER(lt.token)
+             )
+             AND (
+                    COALESCE(u.business_contexts, ARRAY['${DEFAULT_BUSINESS_CONTEXT}']::text[]) @> ARRAY[lt.business_context]::text[]
+                 OR cardinality(COALESCE(u.business_contexts, ARRAY[]::text[])) = 0
+             )
+            GROUP BY lt.task_id
+        ),
+        active_duplicate_groups AS (
+            SELECT duplicate_signature
+            FROM (
+                SELECT t.id, ${signature} AS duplicate_signature
+                FROM tasks t
+                WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
+                  AND NULLIF(BTRIM(COALESCE(t.title, '')), '') IS NOT NULL
+            ) input
+            GROUP BY duplicate_signature
+            HAVING COUNT(*) > 1
+        ),
+        active_duplicate_members AS (
+            SELECT t.id AS task_id
+            FROM tasks t
+            JOIN active_duplicate_groups g
+              ON g.duplicate_signature = ${signature}
+            WHERE COALESCE(t.status, 'todo') NOT IN ('done','archived','cancelled')
+              AND NULLIF(BTRIM(COALESCE(t.title, '')), '') IS NOT NULL
+        )
+        SELECT task_id, reason_code, affected_fields, evidence_status, classification
+        FROM (
+            SELECT om.task_id,
+                   'OWNER_TOKEN_SINGLE_ACTIVE_USER' AS reason_code,
+                   ARRAY['owner_user_id', 'assigned_to', 'owner']::text[] AS affected_fields,
+                   'UNIQUE_ACTIVE_USER_MATCH_UNDER_CURRENT_BUSINESS_CONTEXT' AS evidence_status,
+                   'AUTO_FIX_SAFE' AS classification
+            FROM owner_matches om
+            WHERE om.matched_user_count = 1
+            UNION ALL
+            SELECT om.task_id,
+                   'OWNER_TOKEN_MANUAL_REVIEW' AS reason_code,
+                   ARRAY['owner_user_id', 'assigned_to', 'owner']::text[] AS affected_fields,
+                   'NO_UNIQUE_ACTIVE_USER_MATCH' AS evidence_status,
+                   'BUSINESS_OWNER_DECISION_REQUIRED' AS classification
+            FROM owner_matches om
+            WHERE om.matched_user_count <> 1
+            UNION ALL
+            SELECT t.id AS task_id,
+                   'MISSING_OWNER_WITHOUT_LEGACY_TOKEN' AS reason_code,
+                   ARRAY['owner_user_id', 'assigned_to', 'owner']::text[] AS affected_fields,
+                   'NO_LEGACY_OWNER_TOKEN_TO_PROVE_CANONICAL_OWNER' AS evidence_status,
+                   'BLOCKED_MISSING_SOURCE_EVIDENCE' AS classification
+            FROM tasks t
+            LEFT JOIN owner_token_presence otp ON otp.task_id = t.id
+            WHERE t.owner_user_id IS NULL
+              AND COALESCE(otp.has_owner_token, false) IS FALSE
+            UNION ALL
+            SELECT t.id AS task_id,
+                   'TERMINAL_STATUS_WORKFLOW_MISMATCH' AS reason_code,
+                   ARRAY['status', 'workflow_state']::text[] AS affected_fields,
+                   'NO_APPROVED_CANONICAL_MAPPING_FOR_LEGACY_ROWS' AS evidence_status,
+                   'BUSINESS_OWNER_DECISION_REQUIRED' AS classification
+            FROM tasks t
+            WHERE ${terminalMismatch}
+            UNION ALL
+            SELECT t.id AS task_id,
+                   'DATE_DEADLINE_DISAGREEMENT' AS reason_code,
+                   ARRAY['date', 'deadline']::text[] AS affected_fields,
+                   'SCHEDULE_AND_DEADLINE_CAN_INTENTIONALLY_DIFFER' AS evidence_status,
+                   'PRESERVE_VALID_LEGACY' AS classification
+            FROM tasks t
+            WHERE t.date IS NOT NULL
+              AND t.deadline IS NOT NULL
+              AND t.date::date <> t.deadline::date
+            UNION ALL
+            SELECT t.id AS task_id,
+                   'PARTIAL_SOURCE_REFERENCE' AS reason_code,
+                   ARRAY['source_type', 'source_id']::text[] AS affected_fields,
+                   'MISSING_SOURCE_COUNTERPART_OR_EXTERNAL_LEGACY_SOURCE' AS evidence_status,
+                   'BLOCKED_MISSING_SOURCE_EVIDENCE' AS classification
+            FROM tasks t
+            WHERE (NULLIF(BTRIM(COALESCE(t.source_type, '')), '') IS NULL)
+               <> (NULLIF(BTRIM(COALESCE(t.source_id::text, '')), '') IS NULL)
+            UNION ALL
+            SELECT adm.task_id,
+                   'ACTIVE_DUPLICATE_SIGNATURE_GROUP' AS reason_code,
+                   ARRAY['title', 'date', 'deadline', 'owner_user_id', 'business_context']::text[] AS affected_fields,
+                   'DUPLICATE_SIGNATURE_REQUIRES_BUSINESS_OWNER_REVIEW' AS evidence_status,
+                   'BUSINESS_OWNER_DECISION_REQUIRED' AS classification
+            FROM active_duplicate_members adm
+        ) classified
+        ORDER BY task_id, reason_code
+    `;
+}
+
 function buildRedactedCandidateManifest(rows, salt) {
     return rows.map(row => ({
         opaqueTaskId: redactedTaskId(row.task_id, salt),
@@ -283,6 +406,66 @@ function buildRedactedManualReviewManifest(rows, salt) {
         affectedFields: row.affected_fields,
         evidenceStatus: row.evidence_status
     }));
+}
+
+function buildRedactedReviewClassificationManifest(rows, salt) {
+    const byTask = new Map();
+    const priority = {
+        AUTO_FIX_SAFE: 0,
+        BLOCKED_MISSING_SOURCE_EVIDENCE: 1,
+        BUSINESS_OWNER_DECISION_REQUIRED: 2,
+        PRESERVE_VALID_LEGACY: 3
+    };
+    const ownerPath = {
+        AUTO_FIX_SAFE: 'operator_deterministic_cohort',
+        BLOCKED_MISSING_SOURCE_EVIDENCE: 'source_evidence_recovery',
+        BUSINESS_OWNER_DECISION_REQUIRED: 'business_owner_review',
+        PRESERVE_VALID_LEGACY: 'documented_legacy_state'
+    };
+
+    for (const row of rows) {
+        const taskId = row.task_id;
+        if (!byTask.has(taskId)) {
+            byTask.set(taskId, {
+                opaqueTaskId: redactedTaskId(taskId, salt),
+                classification: row.classification,
+                reasonCodes: new Set(),
+                affectedFields: new Set(),
+                evidenceStatuses: new Set()
+            });
+        }
+        const entry = byTask.get(taskId);
+        if ((priority[row.classification] ?? 99) < (priority[entry.classification] ?? 99)) {
+            entry.classification = row.classification;
+        }
+        entry.reasonCodes.add(row.reason_code);
+        for (const field of row.affected_fields || []) entry.affectedFields.add(field);
+        entry.evidenceStatuses.add(row.evidence_status);
+    }
+
+    return [...byTask.values()]
+        .map(entry => ({
+            opaqueTaskId: entry.opaqueTaskId,
+            classification: entry.classification,
+            reviewOwnerPath: ownerPath[entry.classification] || 'business_owner_review',
+            reasonCodes: [...entry.reasonCodes].sort(),
+            affectedFields: [...entry.affectedFields].sort(),
+            evidenceStatuses: [...entry.evidenceStatuses].sort()
+        }))
+        .sort((a, b) => a.opaqueTaskId.localeCompare(b.opaqueTaskId));
+}
+
+function summarizeReviewClassification(manifest) {
+    const counts = {
+        PRESERVE_VALID_LEGACY: 0,
+        AUTO_FIX_SAFE: 0,
+        BUSINESS_OWNER_DECISION_REQUIRED: 0,
+        BLOCKED_MISSING_SOURCE_EVIDENCE: 0
+    };
+    for (const entry of manifest) {
+        counts[entry.classification] = (counts[entry.classification] || 0) + 1;
+    }
+    return counts;
 }
 
 function manifestHash(manifest) {
@@ -338,10 +521,13 @@ async function runAudit(options = parseArgs()) {
             const audit = (await client.query(buildAggregateAuditSql())).rows[0];
             const candidateRows = (await client.query(buildSafeOwnerCandidateSql({ forUpdate: options.mode === 'apply' }))).rows;
             const manualReviewRows = (await client.query(buildManualReviewSql())).rows;
+            const reviewClassificationRows = (await client.query(buildReviewClassificationSql())).rows;
             const manifest = buildRedactedCandidateManifest(candidateRows, salt);
             const hash = manifestHash(manifest);
             const manualReviewManifest = buildRedactedManualReviewManifest(manualReviewRows, salt);
             const manualReviewHash = manifestHash(manualReviewManifest);
+            const reviewClassificationManifest = buildRedactedReviewClassificationManifest(reviewClassificationRows, salt);
+            const reviewClassificationHash = manifestHash(reviewClassificationManifest);
 
             let appliedRows = 0;
             if (options.mode === 'apply') {
@@ -405,6 +591,12 @@ async function runAudit(options = parseArgs()) {
                     manifestHash: manualReviewHash,
                     redactedManifest: manualReviewManifest
                 },
+                reviewClassification: {
+                    recordCount: reviewClassificationManifest.length,
+                    byClassification: summarizeReviewClassification(reviewClassificationManifest),
+                    manifestHash: reviewClassificationHash,
+                    redactedManifest: reviewClassificationManifest
+                },
                 verdict: candidateRows.length > 0 ? 'AUTO_FIX_SAFE_AVAILABLE' : 'NO_AUTO_FIX_SAFE_RECORDS',
                 appliedRows
             };
@@ -439,6 +631,11 @@ if (require.main === module) {
                     recordCount: result.manualReview.recordCount,
                     manifestHash: result.manualReview.manifestHash
                 },
+                reviewClassification: {
+                    recordCount: result.reviewClassification.recordCount,
+                    byClassification: result.reviewClassification.byClassification,
+                    manifestHash: result.reviewClassification.manifestHash
+                },
                 verdict: result.verdict,
                 appliedRows: result.appliedRows,
                 artifactPath: result.artifactPath
@@ -458,7 +655,9 @@ module.exports = {
     buildAggregateAuditSql,
     buildRedactedCandidateManifest,
     buildRedactedManualReviewManifest,
+    buildRedactedReviewClassificationManifest,
     buildManualReviewSql,
+    buildReviewClassificationSql,
     buildSafeOwnerCandidateSql,
     buildTerminalWorkflowMismatchSql,
     manifestHash,

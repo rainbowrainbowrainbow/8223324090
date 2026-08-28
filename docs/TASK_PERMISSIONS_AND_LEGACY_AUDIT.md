@@ -1,8 +1,8 @@
 # Task permissions and legacy-data audit
 
-Date: 2026-08-27
+Date: 2026-08-28
 Scope: static code audit, focused task-permission tests, aggregate-only legacy-data audit, and controlled remediation tooling.
-Status: **Task 31 controlled typed-owner remediation completed. No runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, or migrations changed. Production task-data changes were limited to the deterministic `typed-owner-single-active-user` cohort: 2 rows had `owner_user_id` populated from a uniquely matched active user under the current business-context policy. Ambiguous/manual-review rows were not changed.**
+Status: **Task 36 final legacy task-data classification completed. No runtime authorization gap found; no application roles, application permissions, auth runtime, database schema, or migrations changed. Production task-data changes remain limited to the Task 31 deterministic `typed-owner-single-active-user` cohort: 2 rows had `owner_user_id` populated from a uniquely matched active user under the current business-context policy. Task 36 found no new `AUTO_FIX_SAFE` cohort and made no production task-data writes.**
 
 ## Evidence sources
 
@@ -16,6 +16,7 @@ Status: **Task 31 controlled typed-owner remediation completed. No runtime autho
 - `js/tasks-page.js` and `js/profile-page.js`: frontend permission hydration and task action visibility.
 - `tests/task-permissions-parity.test.js`: focused regression coverage for canonical task capabilities, explicit deny, drawer parity, hydration, and bulk guard ordering.
 - `scripts/task-legacy-data-remediation.js` and `tests/task-legacy-data-remediation.test.js`: dry-run-first legacy task-data remediation tooling, redacted manifests, apply gates, and aggregate-only audit coverage.
+- Task 36 redacted union classification manifest: one row per affected task, reason codes, affected field names, evidence status, and review owner path without raw task IDs or task/customer text.
 
 ## Task 15 re-baseline result
 
@@ -75,7 +76,7 @@ The following queries are designed to run inside `BEGIN READ ONLY` and return ag
 
 ## Exact count status
 
-Task 31 repeated the aggregate-only production legacy-data audit with a
+Task 36 repeated the aggregate-only production legacy-data audit with a
 dedicated read-only PostgreSQL credential exposed locally as
 `TASK_AI_ROLLOUT_DATABASE_URL`.
 
@@ -89,7 +90,7 @@ Read-only safety proof:
   filenames, raw logs, URLs, passwords, tokens, or provider responses.
 
 Latest aggregate-only artifact:
-`.codex-temp/_preserved-artifacts/task31-typed-owner-remediation/task28-legacy-remediation-2026-08-27T15-09-18-093Z.json`.
+`.codex-temp/_preserved-artifacts/task36-legacy-task-data-classification/task28-legacy-remediation-2026-08-28T08-06-07-028Z.json`.
 
 Task 31 production remediation evidence:
 
@@ -103,12 +104,12 @@ Task 31 production remediation evidence:
 - rollback/evidence artifacts: `.codex-temp/_preserved-artifacts/task31-typed-owner-remediation/`;
 - output policy: opaque task IDs, categorical old/new values, reason codes, counts, hashes, and timestamps only.
 
-Production aggregate counts from the 2026-08-27 Task 31 post-apply read-only audit:
+Production aggregate counts from the 2026-08-28 Task 36 read-only audit:
 
 | Counter | Count | Classification |
 |---|---:|---|
-| total tasks | 2928 | baseline only |
-| missing `owner_user_id` | 1817 | legacy ownership compatibility population after the deterministic typed-owner cohort was applied |
+| total tasks | 2937 | baseline only |
+| missing `owner_user_id` | 1819 | legacy ownership compatibility population after the deterministic typed-owner cohort was applied |
 | owner token single active user candidates | 0 | `NO_AUTO_FIX_SAFE_RECORDS`; Task 31 closed the deterministic typed-owner cohort |
 | owner token manual review | 7 | manual review only; no automatic production write |
 | terminal status/workflow mismatch | 925 | legacy compatibility/manual review bucket; not a permission bypass |
@@ -117,13 +118,30 @@ Production aggregate counts from the 2026-08-27 Task 31 post-apply read-only aud
 | `date`/`scheduled_start_at` disagreement | 0 | no mismatch found |
 | `deadline`/`scheduled_start_at` disagreement | 0 | no mismatch found |
 | missing/blank business context | 0 | no missing business-context rows found |
-| partial source reference | 1062 | manual review/legacy source-reference bucket |
+| partial source reference | 1068 | manual review/legacy source-reference bucket |
 | active duplicate signature input rows | 0 | current canonical duplicate signature found no active duplicate groups |
 | active duplicate signature groups | 0 | current canonical duplicate signature found no active duplicate groups |
-| task action history rows | 1849 | related-table aggregate |
+| task action history rows | 1862 | related-table aggregate |
 | task subtask rows | 239 | related-table aggregate |
 | task dependency rows | 8 | related-table aggregate |
 | My Day task impact rows | 372 | related-table aggregate |
+
+Task 36 union classification result:
+
+| Classification | Unique task records | Review owner/path |
+|---|---:|---|
+| `AUTO_FIX_SAFE` | 0 | no deterministic cohort available |
+| `PRESERVE_VALID_LEGACY` | 0 | no remaining record is only a benign date/deadline disagreement after overlap precedence |
+| `BUSINESS_OWNER_DECISION_REQUIRED` | 16 | business owner review before any status/workflow or owner-token remediation |
+| `BLOCKED_MISSING_SOURCE_EVIDENCE` | 2631 | source/owner evidence recovery required before any data write |
+| total unique classified records | 2647 | buckets are overlapping; this is the deduplicated union count |
+
+Task 36 hashes:
+
+- typed-owner safe cohort: candidate count `0`, manifest hash `1633902c6cbba5e7770dbed172df754a25078bb76efe1f23474edc87f1a47655`;
+- manual-review reason rows: record count `2001`, manifest hash `af631437752807a59bc71603c86046ad091ca943355c081e0294bea5a45f87d4`;
+- redacted union classification: unique record count `2647`, manifest hash `afa78a7fa57a6fb7adfa2c99e451bef3fd27e77c87bfa01b8048a95ae093bec3`;
+- output policy: opaque task IDs, classifications, review owner paths, reason codes, affected field names, and evidence statuses only.
 
 Task 31 tooling produced these redacted remediation artifacts:
 
@@ -135,6 +153,11 @@ Task 31 tooling produced these redacted remediation artifacts:
 Production UPDATE was executed only for the safe cohort after the exact-SHA CI
 gate and process-local operator credential were available. Ambiguous rows stay
 unchanged and remain `MANUAL_REVIEW_REQUIRED` or legacy-preserved records.
+
+Task 36 did not run apply mode and did not mutate task records. The remaining
+non-zero buckets are either blocked by missing source evidence or require a
+business-owner decision before any deterministic remediation rule can be
+approved.
 
 ## Historical implementation decisions
 
@@ -160,7 +183,7 @@ The current code and focused regression tests confirm those authorization items 
 
 - The deterministic typed-owner cohort is closed; repeated dry-run no longer
   finds auto-fix-safe records for this cohort.
-- The non-zero legacy/manual-review buckets above are intentionally not
-  approved for automatic cleanup.
+- The non-zero legacy/manual-review buckets above are classified in the Task 36
+  union manifest and are intentionally not approved for automatic cleanup.
 - Non-drawer Task Center quick actions may still choose how much disabled-state explanation to show, but backend route/service guards remain authoritative and covered by tests.
 - No runtime authorization gap was found during Task 15, so this re-baseline requires no patch release or Railway deploy.

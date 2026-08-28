@@ -7,7 +7,9 @@ const {
     buildAggregateAuditSql,
     buildRedactedCandidateManifest,
     buildRedactedManualReviewManifest,
+    buildRedactedReviewClassificationManifest,
     buildManualReviewSql,
+    buildReviewClassificationSql,
     buildSafeOwnerCandidateSql,
     buildTerminalWorkflowMismatchSql,
     manifestHash,
@@ -57,6 +59,8 @@ test('task legacy remediation SQL uses canonical duplicate signature and read-sa
     assert.match(manualReviewSql, /TERMINAL_STATUS_WORKFLOW_MISMATCH/);
     assert.match(manualReviewSql, /DATE_DEADLINE_DISAGREEMENT/);
     assert.match(manualReviewSql, /PARTIAL_SOURCE_REFERENCE/);
+    assert.match(buildReviewClassificationSql(), /MISSING_OWNER_WITHOUT_LEGACY_TOKEN/);
+    assert.match(buildReviewClassificationSql(), /ACTIVE_DUPLICATE_SIGNATURE_GROUP/);
     assert.match(terminalSql, /workflow_state/);
 });
 
@@ -113,4 +117,41 @@ test('task legacy remediation manual-review manifest contains only redacted clas
     assert.deepEqual(manifest[0].affectedFields, ['source_type', 'source_id']);
     assert.doesNotMatch(encoded, /555/);
     assert.doesNotMatch(encoded, /SHOULD_NOT_APPEAR/);
+});
+
+test('task legacy remediation review classification manifest deduplicates overlapping buckets', () => {
+    const manifest = buildRedactedReviewClassificationManifest([
+        {
+            task_id: 777,
+            reason_code: 'DATE_DEADLINE_DISAGREEMENT',
+            affected_fields: ['date', 'deadline'],
+            evidence_status: 'SCHEDULE_AND_DEADLINE_CAN_INTENTIONALLY_DIFFER',
+            classification: 'PRESERVE_VALID_LEGACY',
+            title: 'SHOULD_NOT_APPEAR'
+        },
+        {
+            task_id: 777,
+            reason_code: 'PARTIAL_SOURCE_REFERENCE',
+            affected_fields: ['source_type', 'source_id'],
+            evidence_status: 'MISSING_SOURCE_COUNTERPART_OR_EXTERNAL_LEGACY_SOURCE',
+            classification: 'BLOCKED_MISSING_SOURCE_EVIDENCE',
+            title: 'SHOULD_NOT_APPEAR'
+        },
+        {
+            task_id: 888,
+            reason_code: 'OWNER_TOKEN_MANUAL_REVIEW',
+            affected_fields: ['owner_user_id', 'assigned_to', 'owner'],
+            evidence_status: 'NO_UNIQUE_ACTIVE_USER_MATCH',
+            classification: 'BUSINESS_OWNER_DECISION_REQUIRED'
+        }
+    ], 'classification-salt');
+    const encoded = JSON.stringify(manifest);
+
+    assert.equal(manifest.length, 2);
+    assert.equal(manifest[0].opaqueTaskId.startsWith('task_'), true);
+    const overlapped = manifest.find(entry => entry.reasonCodes.includes('PARTIAL_SOURCE_REFERENCE'));
+    assert.equal(overlapped.classification, 'BLOCKED_MISSING_SOURCE_EVIDENCE');
+    assert.equal(overlapped.reviewOwnerPath, 'source_evidence_recovery');
+    assert.deepEqual(overlapped.reasonCodes, ['DATE_DEADLINE_DISAGREEMENT', 'PARTIAL_SOURCE_REFERENCE']);
+    assert.doesNotMatch(encoded, /777|888|SHOULD_NOT_APPEAR/);
 });

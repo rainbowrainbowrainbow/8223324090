@@ -106,11 +106,13 @@ test('task permission audit document records current bulk baseline without stale
     assert.match(doc, /older P0 bulk mutation finding is \*\*closed in the current runtime\*\*/);
     assert.match(doc, /TASK_BULK_MUTATION_FORBIDDEN/);
     assert.match(doc, /TASK_BULK_REASSIGN_FORBIDDEN/);
-    assert.match(doc, /Task 31 repeated the aggregate-only production legacy-data audit/);
-    assert.match(doc, /Task 31 controlled typed-owner remediation completed/);
+    assert.match(doc, /Task 36 repeated the aggregate-only production legacy-data audit/);
+    assert.match(doc, /Task 36 final legacy task-data classification completed/);
     assert.match(doc, /typed-owner-single-active-user/);
     assert.match(doc, /Production UPDATE was executed only for the safe cohort/);
     assert.match(doc, /owner token single active user candidates \| 0/);
+    assert.match(doc, /total unique classified records \| 2647/);
+    assert.match(doc, /redacted union classification/);
     assert.match(doc, /verified `transaction_read_only=on`/);
     assert.match(doc, /persistent CRM table write grants for the audit role: `0`/);
     assert.match(doc, /active duplicate signature groups/);

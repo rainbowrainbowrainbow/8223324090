@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-08-27
+Last refreshed: 2026-08-28
 Current product version source: `package.json`
 
 ## Operating Model
@@ -70,6 +70,23 @@ lives in ordered modules listed in `docs/CSS_SURFACE.md`.
   could fall through to CRM HTML after Postgres/local fallback miss. The server
   now keeps profile avatars aligned with the other upload paths by returning a
   controlled 404 after the Postgres and legacy local checks miss.
+
+2026-08-28 Task 35 external backup recovery status:
+
+- Artifact root:
+  `.codex-temp/_preserved-artifacts/task35-external-backup-recovery-20260828`.
+- Live production source was confirmed through `/api/version`: version
+  `0.81.28`, source branch `codex/eventgenix-production`, commit
+  `890e431cc00c0ebfc241882ca18a18d63930abd2`. Local production branch was
+  synchronized with `origin/codex/eventgenix-production` at `ahead=0`,
+  `behind=0`.
+- Task 30 manifest SHA256 values were rechecked before recovery classification.
+- No operator backup directory or archive was provided as an explicit argument.
+  Because broad disk scans are prohibited, no external backup search was run and
+  no production blob `INSERT` was executed.
+- Current external recovery-needed records remain: `chat=6`, `designs=3`.
+  Status: `EXTERNAL_BACKUP_ROOT_NOT_PROVIDED`, not
+  `EXTERNAL_BACKUP_NOT_FOUND`.
 
 2026-08-26 Task 24 repository/worktree hygiene wave 2 snapshot:
 

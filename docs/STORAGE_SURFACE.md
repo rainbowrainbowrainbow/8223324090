@@ -160,6 +160,29 @@ No production backfill `INSERT` was needed in Task 30 because every segment had
 as redacted `UNRECOVERABLE_SOURCE_MISSING` manifest entries for external backup
 recovery; do not infer that they can be reconstructed from metadata.
 
+### Task 35 external backup recovery status
+
+Task 35 was started on 2026-08-28 against live `v0.81.28`
+(`890e431cc00c0ebfc241882ca18a18d63930abd2`) and current source branch
+`codex/eventgenix-production`. The Task 30 recovery manifests were verified by
+SHA256 before any recovery decision.
+
+No external backup directory or archive was provided as an explicit operator
+argument. Because broad disk scans are not allowed, no external backup search
+was performed and no production blob `INSERT` was executed.
+
+Current recovery-needed records remain:
+
+| Segment | External recovery records | Status |
+| --- | ---: | --- |
+| `chat` | 6 | `EXTERNAL_BACKUP_ROOT_NOT_PROVIDED` |
+| `designs` | 3 | `EXTERNAL_BACKUP_ROOT_NOT_PROVIDED` |
+
+The next recovery attempt must receive explicit backup roots or archives and
+must inspect only those operator-provided locations. Do not relabel these
+records as `EXTERNAL_BACKUP_NOT_FOUND` until a provided backup source has been
+checked.
+
 ## What This Gives
 
 - Clarifies which uploaded files are expected to survive redeploys.

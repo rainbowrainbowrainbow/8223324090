@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.30 - Timeline Showcase Catalog Alignment
+
+### Timeline / Trusted QA / (28.08.2026) [codex]
+- **Production catalog alignment** — сценарій «піñята клієнта» тепер використовує реальний canonical product `pinata` з окремим `pinataMode=client`; неіснуючий у live-каталозі `pinata_own` прибрано з approved blueprint.
+- **Fail-closed preflight підтверджено** — runner зупинив застарілий product ID ще в read-only `prepare`, до створення QA-run або будь-якого booking.
+
+---
+
 ## v0.81.29 - Trusted Timeline Showcase Runner
 
 ### Timeline / Trusted QA / (28.08.2026) [codex]

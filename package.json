@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.29",
+  "version": "0.81.30",
   "eventGenix": {
-    "releaseLabel": "Trusted Timeline Showcase Runner"
+    "releaseLabel": "Timeline Showcase Catalog Alignment"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

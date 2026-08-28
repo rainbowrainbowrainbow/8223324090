@@ -480,12 +480,25 @@ function trustedQaFixtureMismatch(fixture, field, code = 'QA_RUN_FIXTURE_MISMATC
     );
 }
 
+function trustedQaCanonicalRoomFieldIsSafe(payload, key) {
+    const canonicalRoomId = cleanId(payload?.roomResourceId);
+    if (!canonicalRoomId) return false;
+    if (key === 'room_resource_id') {
+        return cleanId(payload.room_resource_id) === canonicalRoomId;
+    }
+    if (key === 'roomResourceType') {
+        return cleanText(payload.roomResourceType, 20).toLowerCase() === 'room';
+    }
+    return false;
+}
+
 function assertTrustedQaFixtureSafePayload(req, booking) {
     const unsupportedFields = new Set();
     for (const payload of [req?.body, booking]) {
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) continue;
         for (const key of Object.keys(payload)) {
-            if (!TRUSTED_QA_FIXTURE_PAYLOAD_KEYS.has(key)) unsupportedFields.add(key);
+            if (!TRUSTED_QA_FIXTURE_PAYLOAD_KEYS.has(key)
+                && !trustedQaCanonicalRoomFieldIsSafe(payload, key)) unsupportedFields.add(key);
         }
     }
     if (unsupportedFields.size) {

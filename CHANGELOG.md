@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.33 - Trusted QA Canonical Room Payload
+
+### Timeline / Trusted QA / (28.08.2026) [codex]
+- **Canonical room payload** — trusted-QA guard тепер приймає лише ті `room_resource_id` / `roomResourceType`, які сервер сам канонізував до точного approved room ID і типу `room`.
+- **Fail-closed не послаблено** — підмінений room alias/type та всі попередньо заборонені booking, finance, package й client-marker поля як і раніше блокуються до створення booking.
+
+---
+
 ## v0.81.32 - Trusted QA PostgreSQL Date Compatibility
 
 ### Timeline / Trusted QA / (28.08.2026) [codex]

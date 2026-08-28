@@ -219,6 +219,41 @@ test('fixture envelope rejects cross-combinations, unknown request ids, and seco
     );
 });
 
+test('fixture envelope permits only exact server-canonicalized room aliases', () => {
+    const canonicalized = booking({
+        room_resource_id: 'takeaway-1',
+        roomResourceType: 'room'
+    });
+    assert.deepEqual(
+        assertRunMatchesRequest(
+            run(),
+            req('fixture-request-1', { body: canonicalized }),
+            canonicalized,
+            'event_genix'
+        ),
+        {
+            endpointKey: 'POST /api/bookings',
+            bookingFixtureKey: 'fixture-request-1'
+        }
+    );
+    for (const unsafeCanonicalization of [
+        { room_resource_id: 'room-real-customer' },
+        { roomResourceType: 'specialist' }
+    ]) {
+        const tampered = booking(unsafeCanonicalization);
+        assert.throws(
+            () => assertRunMatchesRequest(
+                run(),
+                req('fixture-request-1', { body: tampered }),
+                tampered,
+                'event_genix'
+            ),
+            error => error instanceof TrustedQaRunError
+                && error.code === 'QA_RUN_FIXTURE_UNSAFE_PAYLOAD'
+        );
+    }
+});
+
 test('fixture envelope rejects tampered display snapshots and unsafe booking payload extras', () => {
     assert.throws(
         () => assertRunMatchesRequest(

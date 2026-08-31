@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.38 - Timeline Fit Calibration
+
+### Release / Versioning / (31.08.2026) [codex]
+- **Production-калібрування** — fit-оцінку уточнено за реальним DOM-виміром 30-хвилинного масштабу: довгий `МКФ` тепер переходить у short до появи overflow.
+- **Точний regression case** — тест відтворює картку шириною 236 px, назву «МК Розпис футболок» і тривалість 90 хв.
+- **Без побічних змін** — геометрія, tooltip/ARIA, короткі коди та protected booking-detail контракти залишилися незмінними.
+
+---
+
 ## v0.81.37 - Timeline Card Fit Guard
 
 ### Release / Versioning / (31.08.2026) [codex]

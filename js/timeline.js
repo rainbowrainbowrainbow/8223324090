@@ -1652,7 +1652,7 @@ function timelineActivityBookingBlockDensity(width, baseDensity, presentation, d
     if (!Number.isFinite(safeWidth) || !fullTitle) return 'short';
 
     const estimatedTitleWidth = Array.from(fullTitle).reduce((total, character) => {
-        return total + (/\s|[.,:;|]/u.test(character) ? 4 : 8);
+        return total + (/\s|[.,:;|]/u.test(character) ? 4 : 9);
     }, 0);
     const safeDuration = Number(duration);
     const estimatedDurationBadgeWidth = Number.isFinite(safeDuration) && safeDuration > 0

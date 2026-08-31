@@ -3873,7 +3873,7 @@ test('pinata compact labels preserve operational numbers without using duration 
         'short'
     );
     assert.equal(
-        hooks.timelineActivityBookingBlockDensity(176, 'medium', { fullTitle: 'МКФ: МК Розпис футболок' }, 60),
+        hooks.timelineActivityBookingBlockDensity(236, 'wide', { fullTitle: 'МКФ: МК Розпис футболок' }, 90),
         'short'
     );
     assert.equal(

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.35 - Five-Animator Timeline Showcase
+
+### Release / Versioning / (31.08.2026) [codex]
+- **Повна UI-матриця таймлайна** — додано точний production QA-профіль на 02.09.2026 для «Аніматор 1–5»: 28 активностей, 36 booking entities, усі 9 квестів, основні display-класи шоу, анімацій, фото, майстер-класів, піньят і custom.
+- **Fail-closed межа** — runner приймає лише явно дозволені профілі дати/ліній, перевіряє malformed date, topology, повне вікно 12:00–20:00, live-каталог, реальні line IDs і колізії до будь-якого production-запису.
+- **Безпечне ручне QA** — набір має 60-хвилинний TTL, exact entity bound і штатне watchdog-прибирання; стандартна піньята з номером `501` окремо перевіряє compact-відображення номера та типу.
+
+---
+
 ## v0.81.34 - Trusted QA Scheduler Suppression
 
 ### Scheduler / Trusted QA / (28.08.2026) [codex]

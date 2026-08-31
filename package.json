@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.34",
+  "version": "0.81.35",
   "eventGenix": {
-    "releaseLabel": "Trusted QA Scheduler Suppression"
+    "releaseLabel": "Five-Animator Timeline Showcase"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

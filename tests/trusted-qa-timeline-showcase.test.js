@@ -109,7 +109,9 @@ function preparationCatalog(overrides = {}) {
         lineByName: {
             'Аніматор 1': { id: 'animator-1', name: 'Аніматор 1', assignmentAllowed: true },
             'Аніматор 2': { id: 'animator-2', name: 'Аніматор 2', assignmentAllowed: true },
-            'Аніматор 3': { id: 'animator-3', name: 'Аніматор 3', assignmentAllowed: true }
+            'Аніматор 3': { id: 'animator-3', name: 'Аніматор 3', assignmentAllowed: true },
+            'Аніматор 4': { id: 'animator-4', name: 'Аніматор 4', assignmentAllowed: true },
+            'Аніматор 5': { id: 'animator-5', name: 'Аніматор 5', assignmentAllowed: true }
         },
         productById: {
             'quest-1': { id: 'quest-1', code: 'Q1', name: 'Quest One', label: 'Quest One', category: 'quest', duration: 60, hosts: 1, isActive: true },
@@ -404,6 +406,21 @@ test('prepare compiler derives exact live snapshots and fails on missing line or
     assert.equal(manifest.bookingFixtures[0].booking.hosts, 1);
     assert.equal(manifest.bookingFixtures[0].booking.programName, 'Quest One');
 
+    const datedBlueprint = normalizePreparationBlueprint(rawBlueprint({
+        date: '2026-09-02',
+        timeWindow: { date: '2026-09-02', from: '12:00', to: '20:00' },
+        bookingBlueprints: [
+            { key: 'quest-five', productId: 'quest-1', lineName: 'Аніматор 5', time: '12:00' }
+        ]
+    }));
+    const datedManifest = compilePreparedManifest(datedBlueprint, preparationCatalog(), {
+        testAccountId: 48,
+        customerId: 219
+    });
+    assert.equal(datedManifest.timeWindow.date, '2026-09-02');
+    assert.equal(datedManifest.bookingFixtures[0].date, '2026-09-02');
+    assert.equal(datedManifest.bookingFixtures[0].lineName, 'Аніматор 5');
+
     const missingLineCatalog = preparationCatalog();
     delete missingLineCatalog.lineByName['Аніматор 1'];
     assert.throws(
@@ -433,6 +450,134 @@ test('approved 2026-08-29 blueprint normalizes to the exact 22-slot / 25-entity 
     assert.deepEqual(
         [...new Set(blueprint.bookingBlueprints.flatMap(fixture => [fixture.lineName, fixture.secondAnimatorLineName].filter(Boolean)))].sort(),
         ['Аніматор 1', 'Аніматор 2', 'Аніматор 3']
+    );
+});
+
+test('approved 2026-09-02 blueprint covers all quest SKUs and five animator lines within the exact graph bound', () => {
+    const blueprintPath = path.join(__dirname, '..', 'config', 'trusted-qa-timeline-showcase-2026-09-02.json');
+    const blueprint = normalizePreparationBlueprint(JSON.parse(fs.readFileSync(blueprintPath, 'utf8')));
+    assert.equal(blueprint.date, '2026-09-02');
+    assert.deepEqual(blueprint.timeWindow, { date: '2026-09-02', from: '12:00', to: '20:00' });
+    assert.equal(blueprint.ttlMinutes, 60);
+    assert.equal(blueprint.bookingBlueprints.length, 28);
+    assert.equal(blueprint.maxEntityCount, 36);
+    assert.equal(blueprint.bookingBlueprints.filter(fixture => fixture.secondAnimatorLineName).length, 8);
+    assert.equal(blueprint.bookingBlueprints.length
+        + blueprint.bookingBlueprints.filter(fixture => fixture.secondAnimatorLineName).length, 36);
+    assert.deepEqual(
+        [...new Set(blueprint.bookingBlueprints.flatMap(fixture => [fixture.lineName, fixture.secondAnimatorLineName].filter(Boolean)))].sort(),
+        ['Аніматор 1', 'Аніматор 2', 'Аніматор 3', 'Аніматор 4', 'Аніматор 5']
+    );
+    assert.deepEqual(
+        blueprint.bookingBlueprints
+            .map(fixture => fixture.productId)
+            .filter(productId => /^kv\d+$/.test(productId))
+            .sort((left, right) => Number(left.slice(2)) - Number(right.slice(2))),
+        ['kv1', 'kv4', 'kv5', 'kv6', 'kv7', 'kv8', 'kv9', 'kv10', 'kv11']
+    );
+    const productIds = blueprint.bookingBlueprints.map(fixture => fixture.productId);
+    for (const expectedProductSet of [
+        ['bubble', 'dry_ice', 'football', 'mafia', 'neon_bubble', 'paper'],
+        ['anim60', 'anim120'],
+        ['photo60', 'photo_magnets'],
+        ['mk_cookie', 'mk_cupcake', 'mk_ecobag', 'mk_thermomosaic', 'mk_tshirt'],
+        ['custom']
+    ]) {
+        assert.deepEqual(
+            expectedProductSet.filter(productId => productIds.includes(productId)).sort(),
+            expectedProductSet.slice().sort()
+        );
+    }
+    assert.deepEqual(
+        [...new Set(blueprint.bookingBlueprints.map(fixture => fixture.duration))].sort((left, right) => left - right),
+        [15, 30, 40, 45, 60, 75, 90, 120]
+    );
+    assert.deepEqual(
+        blueprint.bookingBlueprints
+            .filter(fixture => fixture.productId === 'pinata' || fixture.productId === 'pinata_custom')
+            .map(fixture => ({
+                key: fixture.key,
+                productId: fixture.productId,
+                pinataMode: fixture.pinataMode,
+                pinataNumber: fixture.pinataNumber || null
+            })),
+        [
+            { key: 'a2-client-pinata', productId: 'pinata', pinataMode: 'client', pinataNumber: null },
+            { key: 'a4-park-pinata', productId: 'pinata', pinataMode: 'park', pinataNumber: '501' },
+            { key: 'a4-custom-pinata', productId: 'pinata_custom', pinataMode: 'park', pinataNumber: null }
+        ]
+    );
+
+    const intervalsByLine = new Map();
+    const minutes = value => {
+        const [hours, mins] = value.split(':').map(Number);
+        return (hours * 60) + mins;
+    };
+    for (const fixture of blueprint.bookingBlueprints) {
+        const interval = {
+            key: fixture.key,
+            start: minutes(fixture.time),
+            end: minutes(fixture.time) + fixture.duration
+        };
+        assert.ok(interval.start >= minutes(blueprint.timeWindow.from));
+        assert.ok(interval.end <= minutes(blueprint.timeWindow.to));
+        for (const lineName of [fixture.lineName, fixture.secondAnimatorLineName].filter(Boolean)) {
+            if (!intervalsByLine.has(lineName)) intervalsByLine.set(lineName, []);
+            intervalsByLine.get(lineName).push(interval);
+        }
+    }
+    for (const intervals of intervalsByLine.values()) {
+        intervals.sort((left, right) => left.start - right.start);
+        for (let index = 1; index < intervals.length; index += 1) {
+            assert.ok(intervals[index - 1].end <= intervals[index].start,
+                `${intervals[index - 1].key} overlaps ${intervals[index].key}`);
+        }
+    }
+});
+
+test('prepare accepts only consistent approved date/line profiles within the 12:00-20:00 safety window', () => {
+    assert.throws(
+        () => normalizePreparationBlueprint(rawBlueprint({
+            date: '2026-09-02',
+            timeWindow: { date: '2026-09-03', from: '12:00', to: '20:00' }
+        })),
+        error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
+    );
+    assert.throws(
+        () => normalizePreparationBlueprint(rawBlueprint({
+            date: '2026-09-02',
+            timeWindow: { date: '2026-09-02', from: '11:00', to: '20:00' }
+        })),
+        error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
+    );
+    assert.throws(
+        () => normalizePreparationBlueprint(rawBlueprint({
+            date: '2026-09-03',
+            timeWindow: { date: '2026-09-03', from: '12:00', to: '20:00' }
+        })),
+        error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
+    );
+    assert.throws(
+        () => normalizePreparationBlueprint(rawBlueprint({
+            date: 'not-a-date',
+            timeWindow: { date: '2026-09-02', from: '12:00', to: '20:00' }
+        })),
+        error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
+    );
+    assert.throws(
+        () => normalizePreparationBlueprint(rawBlueprint({
+            date: '2026-09-02',
+            timeWindow: { date: 'not-a-date', from: '12:00', to: '20:00' }
+        })),
+        error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
+    );
+    assert.throws(
+        () => normalizePreparationBlueprint(rawBlueprint({
+            bookingBlueprints: [
+                { key: 'old-profile-line-four', productId: 'quest-1', lineName: 'Аніматор 4', time: '12:00' }
+            ]
+        })),
+        error => error.code === 'SHOWCASE_PREPARE_LINE_PROFILE_INVALID'
     );
 });
 
@@ -835,6 +980,7 @@ test('showcase source sends token only by header with one request and idempotenc
     assert.match(source, /'X-QA-Run-Token': options\.qaToken/);
     assert.match(source, /'X-QA-Run-Request-Id': options\.requestId/);
     assert.match(source, /'Idempotency-Key': options\.requestId/);
+    assert.match(source, /scopedRoute\(`\/api\/lines\/\$\{encodeURIComponent\(blueprint\.date\)\}`/);
     assert.match(source, /const attempts = method === 'GET' \? MAX_HTTP_READ_RETRIES : 1/);
     assert.match(source, /state IN \('active', 'cleanup_pending', 'blocked'\)/);
     assert.match(source, /SHOWCASE_DB_CUSTOMER_ACTIVE_BOOKING_BLOCKER/);

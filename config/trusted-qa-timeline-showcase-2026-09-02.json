@@ -1,0 +1,305 @@
+{
+  "liveUrl": "https://8223324090-production.up.railway.app",
+  "runId": "timeline-showcase-20260902-v1",
+  "businessContext": "event_genix",
+  "testAccountId": 4,
+  "customerId": 219,
+  "timeWindow": {
+    "date": "2026-09-02",
+    "from": "12:00",
+    "to": "20:00"
+  },
+  "ttlMinutes": 60,
+  "maxEntityCount": 36,
+  "bookingBlueprints": [
+    {
+      "key": "a12-squid-game",
+      "productId": "kv7",
+      "lineName": "Аніматор 1",
+      "secondAnimatorLineName": "Аніматор 2",
+      "time": "12:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a12-paw-patrol",
+      "productId": "kv5",
+      "lineName": "Аніматор 1",
+      "secondAnimatorLineName": "Аніматор 2",
+      "time": "13:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a12-minecraft",
+      "productId": "kv8",
+      "lineName": "Аніматор 1",
+      "secondAnimatorLineName": "Аніматор 2",
+      "time": "14:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a12-secret-treasures",
+      "productId": "kv11",
+      "lineName": "Аніматор 1",
+      "secondAnimatorLineName": "Аніматор 2",
+      "time": "15:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a1-animation-120",
+      "productId": "anim120",
+      "lineName": "Аніматор 1",
+      "time": "16:00",
+      "duration": 120,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a1-photo-60",
+      "productId": "photo60",
+      "lineName": "Аніматор 1",
+      "time": "18:00",
+      "duration": 60,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a2-cupcake-120",
+      "productId": "mk_cupcake",
+      "lineName": "Аніматор 2",
+      "time": "16:00",
+      "duration": 120,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a2-tshirt-90",
+      "productId": "mk_tshirt",
+      "lineName": "Аніматор 2",
+      "time": "18:00",
+      "duration": 90,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a2-client-pinata",
+      "productId": "pinata",
+      "lineName": "Аніматор 2",
+      "time": "19:30",
+      "duration": 15,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "client"
+    },
+    {
+      "key": "a3-legendary-trend",
+      "productId": "kv1",
+      "lineName": "Аніматор 3",
+      "time": "12:00",
+      "duration": 60,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a34-magic-library",
+      "productId": "kv10",
+      "lineName": "Аніматор 3",
+      "secondAnimatorLineName": "Аніматор 4",
+      "time": "13:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a34-light-league",
+      "productId": "kv9",
+      "lineName": "Аніматор 3",
+      "secondAnimatorLineName": "Аніматор 4",
+      "time": "14:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a3-mafia-90",
+      "productId": "mafia",
+      "lineName": "Аніматор 3",
+      "time": "15:00",
+      "duration": 90,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a3-animation-60",
+      "productId": "anim60",
+      "lineName": "Аніматор 3",
+      "time": "16:30",
+      "duration": 60,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a3-photo-magnets",
+      "productId": "photo_magnets",
+      "lineName": "Аніматор 3",
+      "time": "17:30",
+      "duration": 60,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a3-dry-ice",
+      "productId": "dry_ice",
+      "lineName": "Аніматор 3",
+      "time": "18:30",
+      "duration": 40,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a45-spy-story",
+      "productId": "kv4",
+      "lineName": "Аніматор 4",
+      "secondAnimatorLineName": "Аніматор 5",
+      "time": "12:00",
+      "duration": 60,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a45-paper-neon-show",
+      "productId": "paper",
+      "lineName": "Аніматор 4",
+      "secondAnimatorLineName": "Аніматор 5",
+      "time": "15:00",
+      "duration": 30,
+      "hosts": 2,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a4-football-90",
+      "productId": "football",
+      "lineName": "Аніматор 4",
+      "time": "15:30",
+      "duration": 90,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a4-park-pinata",
+      "productId": "pinata",
+      "lineName": "Аніматор 4",
+      "time": "17:00",
+      "duration": 15,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "park",
+      "pinataNumber": "501"
+    },
+    {
+      "key": "a4-custom-pinata",
+      "productId": "pinata_custom",
+      "lineName": "Аніматор 4",
+      "time": "17:15",
+      "duration": 15,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "park"
+    },
+    {
+      "key": "a4-forest-academy",
+      "productId": "kv6",
+      "lineName": "Аніматор 4",
+      "time": "17:30",
+      "duration": 90,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a5-ecobag-75",
+      "productId": "mk_ecobag",
+      "lineName": "Аніматор 5",
+      "time": "13:00",
+      "duration": 75,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a5-thermomosaic-45",
+      "productId": "mk_thermomosaic",
+      "lineName": "Аніматор 5",
+      "time": "14:15",
+      "duration": 45,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a5-cookie-60",
+      "productId": "mk_cookie",
+      "lineName": "Аніматор 5",
+      "time": "15:30",
+      "duration": 60,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a5-bubble-show",
+      "productId": "bubble",
+      "lineName": "Аніматор 5",
+      "time": "16:30",
+      "duration": 30,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a5-neon-bubble",
+      "productId": "neon_bubble",
+      "lineName": "Аніматор 5",
+      "time": "17:00",
+      "duration": 30,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    },
+    {
+      "key": "a5-custom",
+      "productId": "custom",
+      "lineName": "Аніматор 5",
+      "time": "17:30",
+      "duration": 30,
+      "hosts": 1,
+      "status": "confirmed",
+      "pinataMode": "none"
+    }
+  ]
+}

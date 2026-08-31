@@ -34,10 +34,27 @@ const MAX_FIXTURES = 60;
 const MAX_FIXTURE_DURATION = 8 * 60;
 const MAX_HTTP_READ_RETRIES = 3;
 const HTTP_TIMEOUT_MS = 30_000;
-const PREPARE_DATE = '2026-08-29';
 const PREPARE_FROM = '12:00';
 const PREPARE_TO = '20:00';
-const PREPARE_LINE_NAMES = Object.freeze(['Аніматор 1', 'Аніматор 2', 'Аніматор 3']);
+const PREPARE_PROFILES = Object.freeze({
+    '2026-08-29': Object.freeze({
+        from: PREPARE_FROM,
+        to: PREPARE_TO,
+        lineNames: Object.freeze(['Аніматор 1', 'Аніматор 2', 'Аніматор 3'])
+    }),
+    '2026-09-02': Object.freeze({
+        from: PREPARE_FROM,
+        to: PREPARE_TO,
+        lineNames: Object.freeze(['Аніматор 1', 'Аніматор 2', 'Аніматор 3', 'Аніматор 4', 'Аніматор 5'])
+    })
+});
+const PREPARE_LINE_NAMES = Object.freeze([
+    'Аніматор 1',
+    'Аніматор 2',
+    'Аніматор 3',
+    'Аніматор 4',
+    'Аніматор 5'
+]);
 const OPERATOR_ROLES = new Set(['creator', 'director', 'senior_manager']);
 const FIXTURE_STATUSES = new Set(['confirmed', 'preliminary']);
 const SAFE_PINATA_MODES = new Set(['none', 'park', 'client']);
@@ -545,9 +562,16 @@ function normalizePreparationBlueprint(parsed) {
     }
     const runId = cleanId(parsed.runId || parsed.run_id, 100);
     const timeWindow = parsed.timeWindow || parsed.time_window || {};
-    const date = dateOnly(parsed.date || timeWindow.date || PREPARE_DATE);
+    const hasExplicitDate = Object.prototype.hasOwnProperty.call(parsed, 'date');
+    const hasWindowDate = Object.prototype.hasOwnProperty.call(timeWindow, 'date');
+    const explicitDateText = String(parsed.date ?? '').trim();
+    const windowDateText = String(timeWindow.date ?? '').trim();
+    const explicitDate = dateOnly(parsed.date);
+    const windowDate = dateOnly(timeWindow.date);
+    const date = explicitDate || windowDate;
     const from = timeOnly(timeWindow.from || parsed.from || PREPARE_FROM);
     const to = timeOnly(timeWindow.to || parsed.to || PREPARE_TO);
+    const preparationProfile = PREPARE_PROFILES[date] || null;
     const businessContext = cleanText(parsed.businessContext || parsed.business_context || 'event_genix', 80);
     const rawFixtures = parsed.bookingBlueprints
         || parsed.booking_blueprints
@@ -557,8 +581,14 @@ function normalizePreparationBlueprint(parsed) {
         || parsed.fixtures;
     fail(Boolean(runId) && /^[A-Za-z0-9][A-Za-z0-9_-]{7,99}$/.test(runId),
         'Preparation runId must be 8-100 safe characters', 'SHOWCASE_PREPARE_RUN_ID_INVALID');
-    fail(date === PREPARE_DATE && from === PREPARE_FROM && to === PREPARE_TO,
-        `Preparation is bounded to ${PREPARE_DATE} ${PREPARE_FROM}-${PREPARE_TO}`,
+    fail((!hasExplicitDate || validIsoDate(explicitDateText))
+        && (!hasWindowDate || validIsoDate(windowDateText))
+        && Boolean(preparationProfile)
+        && validIsoDate(date)
+        && (!explicitDate || !windowDate || explicitDate === windowDate)
+        && from === preparationProfile.from
+        && to === preparationProfile.to,
+        `Preparation requires an exact approved date profile bounded to ${PREPARE_FROM}-${PREPARE_TO}`,
         'SHOWCASE_PREPARE_WINDOW_INVALID');
     fail(businessContext === 'event_genix',
         'Preparation is limited to event_genix', 'SHOWCASE_PREPARE_CONTEXT_INVALID');
@@ -567,6 +597,12 @@ function normalizePreparationBlueprint(parsed) {
         'SHOWCASE_PREPARE_FIXTURE_COUNT_INVALID');
 
     const bookingBlueprints = rawFixtures.map(normalizePreparationFixture);
+    for (const fixture of bookingBlueprints) {
+        fail(preparationProfile.lineNames.includes(fixture.lineName)
+            && (!fixture.secondAnimatorLineName || preparationProfile.lineNames.includes(fixture.secondAnimatorLineName)),
+        'Preparation animator names exceed the exact approved date profile',
+        'SHOWCASE_PREPARE_LINE_PROFILE_INVALID', { key: fixture.key, date });
+    }
     const keys = bookingBlueprints.map(fixture => fixture.key);
     fail(new Set(keys).size === keys.length,
         'Preparation fixture keys must be unique', 'SHOWCASE_PREPARE_FIXTURE_KEY_DUPLICATE');
@@ -898,11 +934,15 @@ function exactDisplayName(row = {}) {
 }
 
 async function readPreparationCatalog(blueprint, session) {
+    const requiredLineNames = [...new Set(blueprint.bookingBlueprints.flatMap(item => [
+        item.lineName,
+        item.secondAnimatorLineName
+    ].filter(Boolean)))];
     const [version, animatorLines, productsPayload] = await Promise.all([
         fetchJson(blueprint.liveUrl, '/api/version'),
         fetchJson(
             blueprint.liveUrl,
-            scopedRoute(`/api/lines/${encodeURIComponent(PREPARE_DATE)}`, blueprint, { timelineView: 'animators' }),
+            scopedRoute(`/api/lines/${encodeURIComponent(blueprint.date)}`, blueprint, { timelineView: 'animators' }),
             { accessToken: session.accessToken }
         ),
         fetchJson(
@@ -918,7 +958,7 @@ async function readPreparationCatalog(blueprint, session) {
     fail(Array.isArray(animatorLines),
         'Preparation animator line catalog is invalid', 'SHOWCASE_PREPARE_LINES_INVALID');
     const lineByName = {};
-    for (const name of PREPARE_LINE_NAMES) {
+    for (const name of requiredLineNames) {
         const matches = animatorLines.filter(line => exactDisplayName(line) === name);
         fail(matches.length === 1,
             matches.length ? 'Preparation animator display name is ambiguous' : 'Preparation animator display name is missing',
@@ -929,7 +969,7 @@ async function readPreparationCatalog(blueprint, session) {
             'Preparation animator line is unavailable', 'SHOWCASE_PREPARE_LINE_UNAVAILABLE', { lineName: name });
         lineByName[name] = line;
     }
-    fail(new Set(Object.values(lineByName).map(lineIdentity)).size === PREPARE_LINE_NAMES.length,
+    fail(new Set(Object.values(lineByName).map(lineIdentity)).size === requiredLineNames.length,
         'Preparation animator display names do not resolve to distinct line IDs',
         'SHOWCASE_PREPARE_LINE_ID_COLLISION');
 
@@ -1058,7 +1098,7 @@ function compilePreparedManifest(blueprint, catalog, identity) {
             } : {}),
             roomResourceId: TAKEAWAY_ROOM_ID,
             room: TAKEAWAY_ROOM_LABEL,
-            date: PREPARE_DATE,
+            date: blueprint.date,
             time: item.time,
             duration,
             status: item.status,

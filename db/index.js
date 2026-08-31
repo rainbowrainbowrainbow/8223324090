@@ -513,6 +513,24 @@ async function generateCertCode(client) {
 
 // v7.0: Seed products catalog from hardcoded PROGRAMS data
 async function seedProducts() {
+    const timelineCodes = {
+        kv1: 'КВ 1', kv4: 'КВ 4', kv5: 'КВ 5', kv6: 'КВ 6', kv7: 'КВ 7', kv8: 'КВ 8', kv9: 'КВ 9', kv10: 'КВ 10', kv11: 'КВ 11',
+        anim60: 'АН 60', anim120: 'АН120', bubble: 'Бульб', neon_bubble: 'Неон', paper: 'Папір', dry_ice: 'Лід', football: 'Футб', mafia: 'Мафія',
+        photo60: 'Фото', photo_magnets: 'Фото+', photo_magnet_extra: 'Магн', video: 'Відео',
+        mk_candy: 'МКЦ', mk_thermomosaic: 'МКТ', mk_slime: 'МКС', mk_tshirt: 'МКФ', mk_cookie: 'МКП', mk_ecobag: 'МКЕ',
+        mk_pizza_classic: 'МКПК', mk_pizza_custom: 'МКП+', mk_cakepops: 'МККП', mk_cupcake: 'МККА', mk_soap: 'МКМ',
+        pinata: 'ПІН', pinata_custom: 'П PRO', custom: 'Інше'
+    };
+    const timelineColumnResult = await pool.query(`
+        SELECT EXISTS (
+            SELECT 1
+            FROM information_schema.columns
+            WHERE table_schema = 'public'
+              AND table_name = 'products'
+              AND column_name = 'timeline_code'
+        ) AS exists
+    `);
+    const hasTimelineCodeColumn = timelineColumnResult.rows[0]?.exists === true;
     const products = [
         // Квести
         { id: 'kv1', code: 'КВ1', label: 'КВ1(60)', name: 'Легендарний тренд', icon: '🎭', category: 'quest', duration: 60, price: 2200, hosts: 1, age_range: '5-10р', kids_capacity: '4-10', is_per_child: false, has_filler: false, is_custom: false, sort_order: 1 },
@@ -559,6 +577,15 @@ async function seedProducts() {
     ];
 
     for (const p of products) {
+        if (hasTimelineCodeColumn) {
+            await pool.query(
+                `INSERT INTO products (id, code, timeline_code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, is_per_child, has_filler, is_custom, sort_order, updated_by)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,'system')
+                 ON CONFLICT (id) DO NOTHING`,
+                [p.id, p.code, timelineCodes[p.id], p.label, p.name, p.icon, p.category, p.duration, p.price, p.hosts, p.age_range, p.kids_capacity, p.is_per_child, p.has_filler, p.is_custom, p.sort_order]
+            );
+            continue;
+        }
         await pool.query(
             `INSERT INTO products (id, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, is_per_child, has_filler, is_custom, sort_order, updated_by)
              VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,'system')

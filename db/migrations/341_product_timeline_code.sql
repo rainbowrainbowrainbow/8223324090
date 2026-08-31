@@ -78,25 +78,55 @@ END
 FROM source_values s
 WHERE p.id = s.id;
 
-WITH ranked AS (
-    SELECT id,
-           ROW_NUMBER() OVER (
-               PARTITION BY COALESCE(business_context, 'event_genix'), COALESCE(domain, 'program'), LOWER(BTRIM(timeline_code))
-               ORDER BY id
-           ) AS duplicate_rank
-    FROM products
-    WHERE COALESCE(is_active, TRUE) = TRUE
-), collisions AS (
-    SELECT p.id,
-           LEFT(p.timeline_code, 2) || LPAD(r.duplicate_rank::text, 4, '0') AS replacement
-    FROM products p
-    JOIN ranked r ON r.id = p.id
-    WHERE r.duplicate_rank > 1
-)
-UPDATE products p
-SET timeline_code = c.replacement
-FROM collisions c
-WHERE p.id = c.id;
+DO $$
+DECLARE
+    collision RECORD;
+    suffix_counter INTEGER;
+    replacement TEXT;
+BEGIN
+    FOR collision IN
+        SELECT ranked.id,
+               ranked.business_context,
+               ranked.domain,
+               ranked.timeline_code
+        FROM (
+            SELECT id,
+                   COALESCE(business_context, 'event_genix') AS business_context,
+                   COALESCE(domain, 'program') AS domain,
+                   timeline_code,
+                   ROW_NUMBER() OVER (
+                       PARTITION BY COALESCE(business_context, 'event_genix'), COALESCE(domain, 'program'), LOWER(BTRIM(timeline_code))
+                       ORDER BY id
+                   ) AS duplicate_rank
+            FROM products
+            WHERE COALESCE(is_active, TRUE) = TRUE
+        ) ranked
+        WHERE ranked.duplicate_rank > 1
+        ORDER BY ranked.business_context, ranked.domain, LOWER(BTRIM(ranked.timeline_code)), ranked.id
+    LOOP
+        suffix_counter := 2;
+        LOOP
+            replacement := LEFT(BTRIM(collision.timeline_code), 2) || LPAD(suffix_counter::text, 4, '0');
+            EXIT WHEN NOT EXISTS (
+                SELECT 1
+                FROM products candidate
+                WHERE candidate.id <> collision.id
+                  AND COALESCE(candidate.business_context, 'event_genix') = collision.business_context
+                  AND COALESCE(candidate.domain, 'program') = collision.domain
+                  AND COALESCE(candidate.is_active, TRUE) = TRUE
+                  AND LOWER(BTRIM(candidate.timeline_code)) = LOWER(replacement)
+            );
+            suffix_counter := suffix_counter + 1;
+            IF suffix_counter > 9999 THEN
+                RAISE EXCEPTION 'migration 341: timeline_code suffix space exhausted for product %', collision.id;
+            END IF;
+        END LOOP;
+
+        UPDATE products
+        SET timeline_code = replacement
+        WHERE id = collision.id;
+    END LOOP;
+END $$;
 
 DO $$
 BEGIN

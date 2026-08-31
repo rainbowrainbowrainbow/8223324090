@@ -156,6 +156,7 @@ test('products API reuses existing catalog engine and validates source documents
     const menuMigration = read('db/migrations/200_products_menu_structure_fields.sql');
     const businessMigration = read('db/migrations/209_products_business_context_scope.sql');
     const timelineCodeMigration = read('db/migrations/341_product_timeline_code.sql');
+    const dbStartup = read('db/index.js');
     const bookingsRoute = read('routes/bookings.js');
 
     assert.match(productsRoute, /router\.get\('\/catalogs'/);
@@ -170,8 +171,12 @@ test('products API reuses existing catalog engine and validates source documents
     assert.match(timelineCodeMigration, /ADD COLUMN IF NOT EXISTS timeline_code VARCHAR\(6\)/);
     assert.match(timelineCodeMigration, /ALTER COLUMN timeline_code SET NOT NULL/);
     assert.match(timelineCodeMigration, /idx_products_active_timeline_code_v341/);
+    assert.match(timelineCodeMigration, /FOR collision IN[\s\S]*suffix_counter := 2[\s\S]*EXIT WHEN NOT EXISTS/);
+    assert.match(timelineCodeMigration, /suffix space exhausted for product/);
     assert.match(timelineCodeMigration, /WHEN 'kv7' THEN 'КВ 7'/);
     assert.match(timelineCodeMigration, /WHEN 'mk_tshirt' THEN 'МКФ'/);
+    assert.match(dbStartup, /const hasTimelineCodeColumn = timelineColumnResult\.rows\[0\]\?\.exists === true/);
+    assert.match(dbStartup, /INSERT INTO products \(id, code, timeline_code,[\s\S]*timelineCodes\[p\.id\]/);
     assert.match(bookingsRoute, /SELECT p\.timeline_code[\s\S]*p\.id = b\.program_id/);
     assert.match(bookingsRoute, /timelineCode: row\.timeline_code \|\| null/);
     assert.match(productsRoute, /FROM catalog_definitions cd/);

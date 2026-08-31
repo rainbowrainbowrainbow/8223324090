@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.42 - Room Timeline Content Standard
+
+### Release / Versioning / (31.08.2026) [codex]
+- **Room-картка без повторів** — main-row показує час, короткий код і одну тривалість; повна назва продукту показується один раз у detail-row.
+- **Повна назва без кліпінгу** — довгі `МКФ`, `МККА`, анімації та фото більше не конкурують за один рядок із часом і duration badge.
+
+---
+
 ## v0.81.41 - Room Timeline Title Fit
 
 ### Release / Versioning / (31.08.2026) [codex]

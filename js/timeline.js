@@ -7591,6 +7591,7 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const miniTitleParts = [b.time, miniPresentation.fullTitle, b.duration > 0 ? `${b.duration} хв` : '', b.room, miniPresentation.pinataDetail].filter(Boolean);
         if (costumeLabel) miniTitleParts.push(costumeLabel);
         if (boundaryStatus.overrun) miniTitleParts.push(boundaryStatus.message);
+        const miniAccessibilityLabel = miniTitleParts.join(' · ');
         html += `
             <div class="${classes}"
                  style="left: ${left}px; width: ${width}px;"
@@ -7601,7 +7602,8 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
                  data-timeline-boundary-end="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.boundary?.endLabel || '') : ''}"
                  data-timeline-boundary-overrun-min="${boundaryStatus.overrun ? escapeHtml(String(boundaryStatus.overrunMin || 0)) : ''}"
                  data-timeline-boundary-message="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.message || '') : ''}"
-                 title="${escapeHtml(miniTitleParts.join(' · '))}">
+                 title="${escapeHtml(miniAccessibilityLabel)}"
+                 aria-label="${escapeHtml(miniAccessibilityLabel)}">
                 <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentation.code.length))}">${escapeHtml(miniPresentation.code)}</span>
                 ${miniCostumeText}
             </div>

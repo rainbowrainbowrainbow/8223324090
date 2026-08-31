@@ -4032,6 +4032,7 @@ test('micro, short and tiny timeline activity blocks have dedicated compact CSS 
     assert.doesNotMatch(css, /min-width:\s*124px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--micro \.timeline-room-activity-title\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*5px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--micro \.timeline-room-activity-title\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*4px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--medium \.timeline-room-activity-title,[\s\S]*booking-block--wide \.timeline-room-activity-title\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*width:\s*0/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.quest\s*\{[\s\S]*--timeline-room-card-accent:\s*#A78BFA/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.masterclass\s*\{[\s\S]*--timeline-room-card-accent:\s*#84CC16/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.pinata\s*\{[\s\S]*--timeline-room-card-accent:\s*#F472B6/);

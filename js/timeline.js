@@ -5009,9 +5009,10 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         block.setAttribute('aria-label', fullBookingLabel);
         block.setAttribute('title', fullBookingLabel);
     }
-    const roomActivityDetailParts = (isCompactActivityBlock && roomActivityDisplayLabel !== compactActivityLabel)
-        ? [costumeLabel].filter(Boolean)
-        : [bookingTitleTail, costumeLabel].filter(Boolean);
+    const roomActivityCanShowDetail = bookingBlockDensity !== 'micro' && bookingBlockDensity !== 'tiny';
+    const roomActivityDetailParts = roomActivityCanShowDetail
+        ? [bookingTitleTail, costumeLabel].filter(Boolean)
+        : [];
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
     const roomActivityHtml = `
         ${bookingBlockDensity === 'short' || !isCompactActivityBlock ? `<div class="user-letter">${badge}</div>` : ''}

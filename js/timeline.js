@@ -4986,6 +4986,9 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     const compactActivityLabel = activityPresentation.code;
     const microActivityLabel = timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail);
     const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
+    const roomActivityMainLabel = !isCompactActivityBlock && bookingTitleTail
+        ? compactActivityLabel
+        : roomActivityDisplayLabel;
     const linkedAccessibilityLabel = isLinked ? `Повʼязано з ${renderBooking.linkedTo}` : '';
     const fullBookingLabel = [
         renderBooking.time,
@@ -5012,7 +5015,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         ${bookingBlockDensity === 'short' || !isCompactActivityBlock ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-room-activity-main">
             ${!isCompactActivityBlock || bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
-            <span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityDisplayLabel.length))}">${escapeHtml(roomActivityDisplayLabel)}</span>
+            <span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityMainLabel.length))}">${escapeHtml(roomActivityMainLabel)}</span>
             ${isCompactActivityBlock ? '' : durationBadge}
         </div>
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}

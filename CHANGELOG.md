@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.43 - Timeline Accessibility Completion
+
+### Release / Versioning / (31.08.2026) [codex]
+- **Повний контекст для screen reader** — кожна картка багатоденного mini-timeline тепер має `aria-label` з повною назвою, часом, тривалістю, кімнатою та linked-контекстом.
+- **Видимий короткий код збережено** — accessibility-атрибут не змінює геометрію картки, її короткий код або tooltip.
+
+---
+
 ## v0.81.42 - Room Timeline Content Standard
 
 ### Release / Versioning / (31.08.2026) [codex]

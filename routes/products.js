@@ -210,6 +210,10 @@ function normalizeProductIdentity(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function normalizeProductTimelineCode(value) {
+    return String(value ?? '').trim().replace(/[\t ]+/g, ' ');
+}
+
 function productDuplicateScope(product, businessContext) {
     return {
         businessContext: businessContext || DEFAULT_BUSINESS_CONTEXT,
@@ -260,6 +264,67 @@ async function findActiveProductDuplicate(client, product, businessContext, opti
         params
     );
     return result.rows[0] || null;
+}
+
+function productTimelineCodeScope(product, businessContext) {
+    return {
+        businessContext: businessContext || DEFAULT_BUSINESS_CONTEXT,
+        domain: product.domain || 'program',
+        timelineCodeKey: normalizeProductTimelineCode(product.timelineCode).toLocaleLowerCase('uk-UA')
+    };
+}
+
+function productTimelineCodeLockKey(scope) {
+    return [
+        'products.active-timeline-code',
+        scope.businessContext,
+        scope.domain,
+        scope.timelineCodeKey
+    ].join('|');
+}
+
+async function lockProductTimelineCodeScope(client, scope) {
+    if (!scope.timelineCodeKey) return;
+    await client.query('SELECT pg_advisory_xact_lock(hashtext($1))', [productTimelineCodeLockKey(scope)]);
+}
+
+async function findActiveProductTimelineCodeConflict(client, product, businessContext, options = {}) {
+    if (product.isActive === false || product.is_active === false) return null;
+    const scope = productTimelineCodeScope(product, businessContext);
+    if (!scope.timelineCodeKey) return null;
+    const params = [scope.businessContext, scope.domain, scope.timelineCodeKey];
+    const where = [
+        `COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+        "COALESCE(domain, 'program') = $2",
+        'LOWER(TRIM(timeline_code)) = $3',
+        'COALESCE(is_active, true) = true'
+    ];
+    if (options.excludeId) {
+        params.push(options.excludeId);
+        where.push(`id <> $${params.length}`);
+    }
+    const result = await client.query(
+        `SELECT id, code, timeline_code, name, category, domain
+         FROM products
+         WHERE ${where.join(' AND ')}
+         ORDER BY created_at NULLS LAST, id
+         LIMIT 1`,
+        params
+    );
+    return result.rows[0] || null;
+}
+
+function timelineCodeConflictPayload(conflict) {
+    return {
+        success: false,
+        code: 'PRODUCT_TIMELINE_CODE_CONFLICT',
+        conflictingProductId: conflict?.id || null,
+        error: `Короткий код таймлайна вже використовується активним продуктом "${conflict?.name || conflict?.code || conflict?.id || ''}".`
+    };
+}
+
+function isTimelineCodeUniqueViolation(err) {
+    return err?.code === '23505' && err?.constraint === 'idx_products_active_timeline_code_v341';
 }
 
 function duplicateProductError(duplicate) {
@@ -864,6 +929,7 @@ function normalizeProductPayload(body = {}) {
         domain,
         kitchenType,
         category: domain === 'kitchen' ? kitchenType : body.category,
+        timelineCode: normalizeProductTimelineCode(pickField(body, 'timelineCode', 'timeline_code', '')),
         shortDescription: cleanNullableString(pickField(body, 'shortDescription', 'short_description', null), 1200),
         promoDescription: cleanNullableString(pickField(body, 'promoDescription', 'promo_description', null), 3000),
         ingredients: cleanNullableString(pickField(body, 'ingredients', 'ingredients', null), 4000),
@@ -1041,6 +1107,7 @@ function mapProductRow(row, options = {}) {
         id: row.id,
         businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         code: row.code,
+        timelineCode: row.timeline_code,
         label: row.label,
         name: row.name,
         icon: row.icon,
@@ -1125,6 +1192,15 @@ function validateProduct(body) {
     const errors = [];
     if (!body.code || typeof body.code !== 'string' || body.code.length > 20) {
         errors.push('code is required (max 20 chars)');
+    }
+    const timelineCode = normalizeProductTimelineCode(body.timelineCode);
+    const timelineCodeLength = Array.from(timelineCode).length;
+    if (timelineCodeLength < 2 || timelineCodeLength > 6) {
+        errors.push('timelineCode is required (2-6 chars)');
+    } else if (/[\r\n]/.test(timelineCode)) {
+        errors.push('timelineCode must be one line');
+    } else if (/\(\s*\d+\s*(?:\u0445\u0432\.?|min)?\s*\)/iu.test(timelineCode) || /\d+\s*(?:\u0445\u0432\.?|min)(?=\s|$)/iu.test(timelineCode)) {
+        errors.push('timelineCode must not contain duration');
     }
     if (!body.label || typeof body.label !== 'string' || body.label.length > 100) {
         errors.push('label is required (max 100 chars)');
@@ -2345,7 +2421,7 @@ router.post('/', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
         }
 
         const {
-            code, label, name, icon, category, duration,
+            code, timelineCode, label, name, icon, category, duration,
             price = 0, hosts = 1, ageRange, kidsCapacity,
             description, isPerChild = false, hasFiller = false,
             isCustom = false, sortOrder = 0, domain, kitchenType,
@@ -2371,12 +2447,19 @@ router.post('/', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
                 error: duplicateProductError(duplicate)
             });
         }
+        const timelineCodeScope = productTimelineCodeScope(payload, businessContext);
+        await lockProductTimelineCodeScope(client, timelineCodeScope);
+        const timelineCodeConflict = await findActiveProductTimelineCodeConflict(client, payload, businessContext);
+        if (timelineCodeConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json(timelineCodeConflictPayload(timelineCodeConflict));
+        }
 
         const result = await client.query(
-            `INSERT INTO products (id, business_context, code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, tech_card_mode, allergens, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21::jsonb,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32)
+            `INSERT INTO products (id, business_context, code, timeline_code, label, name, icon, category, duration, price, hosts, age_range, kids_capacity, description, domain, kitchen_type, short_description, promo_description, ingredients, tech_card, tech_card_mode, allergens, menu_section, serving_unit, weight_value, price_variant_note, availability_status, cake_decoration, is_per_child, has_filler, is_custom, sort_order, updated_by)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22::jsonb,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33)
              RETURNING *`,
-            [id, businessContext, code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, JSON.stringify(allergens || []), menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
+            [id, businessContext, code, timelineCode, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, JSON.stringify(allergens || []), menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, sortOrder, req.user.username]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id, businessContext);
@@ -2386,6 +2469,9 @@ router.post('/', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
         res.status(201).json(mapProductRow(product));
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (isTimelineCodeUniqueViolation(err)) {
+            return res.status(409).json(timelineCodeConflictPayload());
+        }
         log.error('Create product error', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
@@ -2423,7 +2509,7 @@ router.put('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
         }
 
         const {
-            code, label, name, icon, category, duration,
+            code, timelineCode, label, name, icon, category, duration,
             price = 0, hosts = 1, ageRange, kidsCapacity,
             description, isPerChild = false, hasFiller = false,
             isCustom = false, isActive = true, sortOrder = 0, domain, kitchenType,
@@ -2445,18 +2531,25 @@ router.put('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
                 error: duplicateProductError(duplicate)
             });
         }
+        const timelineCodeScope = productTimelineCodeScope(payload, businessContext);
+        await lockProductTimelineCodeScope(client, timelineCodeScope);
+        const timelineCodeConflict = await findActiveProductTimelineCodeConflict(client, payload, businessContext, { excludeId: id });
+        if (timelineCodeConflict) {
+            await client.query('ROLLBACK');
+            return res.status(409).json(timelineCodeConflictPayload(timelineCodeConflict));
+        }
 
         const result = await client.query(
             `UPDATE products SET
-                code=$1, label=$2, name=$3, icon=$4, category=$5, duration=$6,
-                price=$7, hosts=$8, age_range=$9, kids_capacity=$10, description=$11,
-                domain=$12, kitchen_type=$13, short_description=$14, promo_description=$15,
-                ingredients=$16, tech_card=$17, tech_card_mode=$18, allergens=$19::jsonb, menu_section=$20, serving_unit=$21,
-                weight_value=$22, price_variant_note=$23, availability_status=$24,
-                cake_decoration=$25, is_per_child=$26, has_filler=$27, is_custom=$28,
-                is_active=$29, sort_order=$30, updated_at=NOW(), updated_by=$31
-             WHERE id=$32 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $33 RETURNING *`,
-            [code, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, JSON.stringify(allergens || []), menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
+                code=$1, timeline_code=$2, label=$3, name=$4, icon=$5, category=$6, duration=$7,
+                price=$8, hosts=$9, age_range=$10, kids_capacity=$11, description=$12,
+                domain=$13, kitchen_type=$14, short_description=$15, promo_description=$16,
+                ingredients=$17, tech_card=$18, tech_card_mode=$19, allergens=$20::jsonb, menu_section=$21, serving_unit=$22,
+                weight_value=$23, price_variant_note=$24, availability_status=$25,
+                cake_decoration=$26, is_per_child=$27, has_filler=$28, is_custom=$29,
+                is_active=$30, sort_order=$31, updated_at=NOW(), updated_by=$32
+             WHERE id=$33 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $34 RETURNING *`,
+            [code, timelineCode, label, name, icon || '', category, duration, price, hosts, ageRange || null, kidsCapacity || null, description || null, domain, kitchenType, shortDescription, promoDescription, ingredients, techCard, techCardMode, JSON.stringify(allergens || []), menuSection, servingUnit, weightValue, priceVariantNote, availabilityStatus, cakeDecoration, isPerChild, hasFiller, isCustom, isActive, sortOrder, req.user.username, id, businessContext]
         );
         await upsertProductPriceRule(client, result.rows[0], req.user.username);
         const product = await getProductWithPriceRule(client, id, businessContext);
@@ -2466,6 +2559,9 @@ router.put('/:id', requireRole(...PRODUCT_MUTATION_ROLES), async (req, res) => {
         res.json(mapProductRow(product));
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
+        if (isTimelineCodeUniqueViolation(err)) {
+            return res.status(409).json(timelineCodeConflictPayload());
+        }
         log.error('Update product error', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {

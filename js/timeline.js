@@ -1527,18 +1527,18 @@ function timelineBookingBlockDensity(width) {
     return 'wide';
 }
 
-function timelineCompactLabelCandidate(value, maxLength = 10) {
-    const raw = String(value || '').trim();
-    if (!raw) return '';
-    const withoutDuration = raw
+function timelineStripDurationText(value) {
+    return String(value || '').trim()
         .replace(/\(\s*\d+\s*(?:хв|хв\.|min|m)?\s*\)/gi, '')
-        .replace(/\b\d+\s*(?:хв|хв\.|min|m)\b/gi, '')
+        .replace(/\d+\s*(?:хв\.?|min|m)(?=\s|$)/giu, '')
+        .replace(/\s*[:–—-]\s*$/u, '')
         .replace(/\s+/g, ' ')
         .trim();
-    const firstWord = withoutDuration.split(/[\s:·\-–—|/]+/).find(Boolean) || withoutDuration;
-    if (!firstWord) return '';
-    if (firstWord.length <= maxLength) return firstWord;
-    return `${firstWord.slice(0, Math.max(1, maxLength - 1))}.`;
+}
+
+function timelineBoundedActivityCode(value) {
+    const normalized = timelineStripDurationText(value).replace(/[\r\n\t]/g, '').trim();
+    return Array.from(normalized).slice(0, 6).join('');
 }
 
 function timelinePinataNumbersHelper() {
@@ -1568,83 +1568,95 @@ function timelineIsPinataActivity(source, booking, haystack = '') {
     return category === 'pinata' || String(haystack || '').toLocaleLowerCase('uk-UA').includes('пін');
 }
 
-function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail, density = 'medium') {
+function timelineFallbackActivityCode(booking, renderBooking, bookingTitle, bookingTitleTail) {
     const source = renderBooking || booking || {};
     const category = String(source.category || booking?.category || '').trim().toLowerCase();
     const code = String(source.programCode || source.program_code || booking?.programCode || booking?.program_code || '').trim();
     const label = String(source.label || bookingTitle || booking?.label || '').trim();
     const name = String(source.programName || source.program_name || bookingTitleTail || booking?.programName || booking?.program_name || '').trim();
-    const codeLower = code.toLocaleLowerCase('uk-UA');
-    const labelLower = label.toLocaleLowerCase('uk-UA');
     const haystack = `${category} ${code} ${label} ${name}`.toLocaleLowerCase('uk-UA');
+    const codeWithoutDuration = timelineStripDurationText(code || label);
 
-    if (timelineIsPinataActivity(source, booking, haystack)) {
-        const pinataNumber = timelinePinataNumberValue(booking, source, bookingTitle, bookingTitleTail, label, name, code);
-        if (pinataNumber) return `ПІН ${timelinePinataNumberDisplay(pinataNumber)}`;
-        return 'ПІН';
+    if (category === 'quest' || haystack.includes('квест')) {
+        const questNumber = (codeWithoutDuration.match(/\d+/) || label.match(/\d+/) || [])[0];
+        return questNumber ? timelineBoundedActivityCode(`КВ ${questNumber}`) : 'КВ';
     }
-    if (category === 'animation' || codeLower.startsWith('ан') || labelLower.startsWith('ан') || haystack.includes('анімац')) return 'АН';
-    if (haystack.includes('бульб')) return 'Бульб.';
-    if (category === 'masterclass' || haystack.includes('майстер')) return 'МК';
-    if (category === 'quest' || haystack.includes('квест')) return 'КВ';
-    if (category === 'show' || haystack.includes('шоу')) return 'ШОУ';
-    if (category === 'photo' || haystack.includes('фото')) return 'ФОТО';
-
-    return timelineCompactLabelCandidate(code)
-        || timelineCompactLabelCandidate(label)
-        || timelineCompactLabelCandidate(name)
+    if (category === 'animation' || haystack.includes('анімац')) {
+        const duration = Number(source.duration || booking?.duration || 0);
+        return timelineBoundedActivityCode(duration ? `АН${duration}` : 'АН');
+    }
+    if (category === 'masterclass' || haystack.includes('майстер')) {
+        const labelStem = timelineBoundedActivityCode(label);
+        return labelStem && labelStem.toLocaleLowerCase('uk-UA') !== 'мк'
+            ? labelStem
+            : 'МК';
+    }
+    if (timelineIsPinataActivity(source, booking, haystack)) return 'ПІН';
+    return timelineBoundedActivityCode(codeWithoutDuration)
+        || timelineBoundedActivityCode(label)
+        || timelineBoundedActivityCode(name)
         || 'Подія';
 }
 
-function timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle = '', bookingTitleTail = '') {
+function timelineActivityPresentation(booking, renderBooking, bookingTitle = '', bookingTitleTail = '') {
     const source = renderBooking || booking || {};
     const category = String(source.category || booking?.category || '').trim().toLowerCase();
-    const code = String(source.programCode || source.program_code || booking?.programCode || booking?.program_code || '').trim();
+    const configuredCode = timelineBoundedActivityCode(
+        source.timelineCode || source.timeline_code || booking?.timelineCode || booking?.timeline_code
+    );
+    const programCode = String(source.programCode || source.program_code || booking?.programCode || booking?.program_code || '').trim();
     const label = String(source.label || bookingTitle || booking?.label || '').trim();
-    const name = String(source.programName || source.program_name || bookingTitleTail || booking?.programName || booking?.program_name || '').trim();
-    const haystack = `${category} ${code} ${label} ${name}`.toLocaleLowerCase('uk-UA');
-    if (!timelineIsPinataActivity(source, booking, haystack)) return compactActivityLabel;
-    const pinataNumber = timelinePinataNumberValue(booking, source, bookingTitle, bookingTitleTail, label, name, code);
-    return pinataNumber ? timelinePinataNumberDisplay(pinataNumber) : compactActivityLabel;
+    const rawName = String(source.programName || source.program_name || bookingTitleTail || booking?.programName || booking?.program_name || '').trim();
+    const haystack = `${category} ${programCode} ${label} ${rawName}`.toLocaleLowerCase('uk-UA');
+    const isPinata = timelineIsPinataActivity(source, booking, haystack);
+    const pinataMode = String(source.pinataMode || source.pinata_mode || booking?.pinataMode || booking?.pinata_mode || '').trim().toLowerCase();
+    const pinataNumber = isPinata
+        ? timelinePinataNumberValue(booking, source, bookingTitle, bookingTitleTail, label, rawName, programCode)
+        : '';
+
+    let code = configuredCode || timelineFallbackActivityCode(booking, source, bookingTitle, bookingTitleTail);
+    if (isPinata && pinataMode === 'client') {
+        code = 'П КЛ';
+    } else if (isPinata && pinataNumber) {
+        code = timelineBoundedActivityCode(`П ${timelineNormalizePinataNumber(pinataNumber)}`);
+    }
+
+    const name = timelineStripDurationText(rawName || bookingTitleTail || label || programCode);
+    const comparableCode = code.toLocaleLowerCase('uk-UA');
+    const comparableName = name.toLocaleLowerCase('uk-UA');
+    const nameAlreadyOwnsCode = comparableName === comparableCode
+        || comparableName.startsWith(`${comparableCode} `)
+        || comparableName.startsWith(`${comparableCode}(`);
+    const fullTitle = name && !nameAlreadyOwnsCode ? `${code}: ${name}` : (name || code);
+    const pinataDetail = isPinata
+        ? (pinataMode === 'client'
+            ? 'Клієнтська піньята'
+            : (pinataNumber
+                ? `Піньята парку ${timelinePinataNumberDisplay(pinataNumber)}`
+                : (configuredCode === 'П PRO' ? 'Піньята PRO' : 'Піньята парку')))
+        : '';
+
+    return {
+        code: timelineBoundedActivityCode(code) || 'Подія',
+        name,
+        fullTitle,
+        pinataDetail
+    };
 }
 
-function timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compactActivityLabel) {
-    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
-    const compact = clean(compactActivityLabel).toLocaleLowerCase('uk-UA');
-    const candidates = [bookingTitleTail, bookingTitle]
-        .map(clean)
-        .filter(Boolean)
-        .filter(value => value.toLocaleLowerCase('uk-UA') !== compact);
-    const candidate = candidates[0] || '';
-    return candidate ? timelineCompactLabelCandidate(candidate, 14) : '';
+function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail) {
+    return timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).code;
+}
+
+function timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle = '', bookingTitleTail = '') {
+    return compactActivityLabel || timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).code;
 }
 
 function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium') {
-    const source = renderBooking || booking || {};
-    const clean = value => String(value || '').replace(/\s+/g, ' ').trim();
-    const category = clean(source.category || booking?.category).toLowerCase();
-    const programName = clean(source.programName || source.program_name || booking?.programName || booking?.program_name);
-    const groupName = clean(source.groupName || source.group_name || booking?.groupName || booking?.group_name);
-    const title = clean(bookingTitle || source.label || source.programCode || source.program_code || booking?.label || booking?.programCode || booking?.program_code);
-    const tail = clean(bookingTitleTail);
-    const compact = clean(compactActivityLabel);
-    const code = clean(source.programCode || source.program_code || booking?.programCode || booking?.program_code);
-    const label = clean(source.label || booking?.label);
-    const haystack = `${category} ${code} ${label} ${programName} ${title} ${tail}`.toLocaleLowerCase('uk-UA');
-    const maxTinyNameLength = 24;
-    const tightDensity = density === 'micro' || density === 'tiny';
-    const pinataNumber = timelinePinataNumberValue(booking, source, title, tail, programName, label, code);
-
-    if (pinataNumber && timelineIsPinataActivity(source, booking, haystack)) {
-        return `ПІН ${timelinePinataNumberDisplay(pinataNumber)}`;
-    }
-
-    if (programName && (!tightDensity || programName.length <= maxTinyNameLength)) return programName;
-    if (!tightDensity && programName) return programName;
-    if (title && title.length <= maxTinyNameLength && title !== compact) return title;
-    if (tail && tail !== groupName && tail !== title && tail !== compact && (!tightDensity || tail.length <= maxTinyNameLength)) return tail;
-    if (programName) return compact || timelineCompactLabelCandidate(programName, 10) || programName;
-    return compact || timelineCompactLabelCandidate(code) || timelineCompactLabelCandidate(label) || title || tail;
+    const presentation = timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail);
+    return density === 'micro' || density === 'tiny' || density === 'short'
+        ? (compactActivityLabel || presentation.code)
+        : presentation.fullTitle;
 }
 
 function getTimelineLineGrid(lineId) {
@@ -4925,21 +4937,32 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
             ? (educationLessonExtra.title || renderBooking.programName || renderBooking.label || 'Заняття')
             : (renderBooking.label || renderBooking.programCode));
     const bookingTitleText = bookingTitleTail ? `${bookingTitle}${lessonSeriesBadge}: ${bookingTitleTail}` : `${bookingTitle}${lessonSeriesBadge}`;
+    const activityPresentation = timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail);
+    const normalizedBookingTitleText = !isMaysternyaSlotClosed
+        && !isEducationLessonBlock
+        && renderBooking.category !== 'banquet'
+        && renderBooking.category !== 'graduation'
+        ? activityPresentation.fullTitle
+        : bookingTitleText;
     const studentSuffix = renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} учн.)` : '';
     const bookingRoomMeta = shouldShowBookingRoomMeta
         ? `<span class="booking-block-room" title="${escapeHtml(bookingRoomName)}">${escapeHtml(bookingRoomName)}</span>`
         : '';
     const bookingKidsMeta = isEducationLessonBlock ? studentSuffix : (renderBooking.kidsCount ? ` (${escapeHtml(String(renderBooking.kidsCount))} діт)` : '');
-    const compactActivityLabel = timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail, bookingBlockDensity);
+    const compactActivityLabel = activityPresentation.code;
     const microActivityLabel = timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail);
-    const compactActivityTail = bookingBlockDensity === 'short'
-        ? timelineCompactActivityTailLabel(bookingTitleTail, bookingTitle, compactActivityLabel)
-        : '';
     const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
-    const pinataNumberLabel = timelinePinataNumberValue(booking, renderBooking, bookingTitle, bookingTitleTail, bookingTitle, bookingTitleText);
-    const pinataFullLabel = pinataNumberLabel ? `Піньята ${timelinePinataNumberDisplay(pinataNumberLabel)}` : '';
-    const fullBookingLabel = [renderBooking.time, bookingTitleText, bookingRoomName || renderBooking.room, costumeLabel, boundaryStatus.overrun ? boundaryStatus.message : '']
-        .concat(pinataFullLabel ? [pinataFullLabel] : [])
+    const linkedAccessibilityLabel = isLinked ? `Повʼязано з ${renderBooking.linkedTo}` : '';
+    const fullBookingLabel = [
+        renderBooking.time,
+        normalizedBookingTitleText,
+        effectiveDuration > 0 ? `${effectiveDuration} хв` : '',
+        bookingRoomName || renderBooking.room,
+        activityPresentation.pinataDetail,
+        costumeLabel,
+        linkedAccessibilityLabel,
+        boundaryStatus.overrun ? boundaryStatus.message : ''
+    ]
         .filter(Boolean)
         .join(' ')
         .trim();
@@ -4952,10 +4975,10 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         : [bookingTitleTail, costumeLabel].filter(Boolean);
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
     const roomActivityHtml = `
-        <div class="user-letter">${badge}</div>
+        ${bookingBlockDensity === 'short' || !isCompactActivityBlock ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-room-activity-main">
-            <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
-            <span class="timeline-room-activity-title">${escapeHtml(isCompactActivityBlock ? roomActivityDisplayLabel : (bookingTitle || renderBooking.programCode || renderBooking.category || 'Подія'))}</span>
+            ${!isCompactActivityBlock || bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
+            <span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityDisplayLabel.length))}">${escapeHtml(roomActivityDisplayLabel)}</span>
             ${isCompactActivityBlock ? '' : durationBadge}
         </div>
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}
@@ -4967,9 +4990,8 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     const compactBookingHtml = `
         ${bookingBlockDensity === 'short' ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-compact-booking-main">
-            <span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>
-            <span class="timeline-compact-booking-label">${escapeHtml(compactActivityLabel)}</span>
-            ${compactActivityTail ? `<span class="timeline-compact-booking-tail">${escapeHtml(compactActivityTail)}</span>` : ''}
+            ${bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
+            <span class="timeline-compact-booking-label" data-code-length="${escapeHtml(String(compactActivityLabel.length))}">${escapeHtml(compactActivityLabel)}</span>
         </div>
         ${bookingBlockDensity === 'short' && (bookingRoomMeta || bookingKidsMeta) ? `<div class="subtitle timeline-compact-booking-meta">${bookingRoomMeta}${bookingKidsMeta}</div>` : ''}
         ${costumeText}
@@ -4977,7 +4999,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     `;
     const defaultBookingHtml = `
         <div class="user-letter">${badge}</div>
-        <div class="title">${escapeHtml(bookingTitleText)}${durationBadge}</div>
+        <div class="title">${escapeHtml(normalizedBookingTitleText)}${durationBadge}</div>
         <div class="subtitle"><span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>${bookingRoomMeta}${bookingKidsMeta}</div>
         ${costumeText}
         ${graduationItemsHtml}
@@ -7528,7 +7550,8 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const bookingIdentity = timelineBookingResourceIdentity(b);
         const costumeLabel = bookingCostumeLabel(b);
         const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
-        const miniTitleParts = [`${b.label || b.programCode}: ${b.room} (${b.time})`];
+        const miniPresentation = timelineActivityPresentation(b, b, b.label || b.programCode, b.programName || '');
+        const miniTitleParts = [b.time, miniPresentation.fullTitle, b.duration > 0 ? `${b.duration} хв` : '', b.room, miniPresentation.pinataDetail].filter(Boolean);
         if (costumeLabel) miniTitleParts.push(costumeLabel);
         if (boundaryStatus.overrun) miniTitleParts.push(boundaryStatus.message);
         html += `
@@ -7542,7 +7565,7 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
                  data-timeline-boundary-overrun-min="${boundaryStatus.overrun ? escapeHtml(String(boundaryStatus.overrunMin || 0)) : ''}"
                  data-timeline-boundary-message="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.message || '') : ''}"
                  title="${escapeHtml(miniTitleParts.join(' · '))}">
-                <span class="mini-booking-text">${escapeHtml(b.label || b.programCode)}</span>
+                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentation.code.length))}">${escapeHtml(miniPresentation.code)}</span>
                 ${miniCostumeText}
             </div>
         `;

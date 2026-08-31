@@ -29,6 +29,8 @@ test('products compatibility page keeps business-aware products IA with restored
     assert.match(html, /id="menuSectionFilter"/);
     assert.match(html, /id="kitchenGrid"/);
     assert.match(html, /id="pf-menu-section"/);
+    assert.match(html, /id="pf-timeline-code"/);
+    assert.match(html, /id="pf-timeline-code-count"/);
     assert.match(html, /id="pf-weight-value"/);
     assert.match(html, /id="pf-serving-unit"/);
     assert.match(html, /id="pf-price-variant-note"/);
@@ -74,6 +76,8 @@ test('products frontend wires document linkage and catalog entry points', () => 
     assert.match(pageJs, /currentCategory = readInitialCategory\(\)/);
     assert.match(pageJs, /getProductApiBusinessContext/);
     assert.match(pageJs, /businessContext: getProductApiBusinessContext\(\)/);
+    assert.match(pageJs, /timelineCode: normalizeTimelineCodeInput/);
+    assert.match(pageJs, /findActiveTimelineCodeConflictInState/);
     assert.match(pageJs, /renderMaysternyaProducts/);
     assert.doesNotMatch(pageJs, /PRODUCT_BUSINESS_STORAGE_KEY/);
     assert.match(pageJs, /renderKitchenProducts/);
@@ -151,12 +155,25 @@ test('products API reuses existing catalog engine and validates source documents
     const kitchenMigration = read('db/migrations/199_products_kitchen_fields.sql');
     const menuMigration = read('db/migrations/200_products_menu_structure_fields.sql');
     const businessMigration = read('db/migrations/209_products_business_context_scope.sql');
+    const timelineCodeMigration = read('db/migrations/341_product_timeline_code.sql');
+    const bookingsRoute = read('routes/bookings.js');
 
     assert.match(productsRoute, /router\.get\('\/catalogs'/);
     assert.match(productsRoute, /businessContextFromRequest/);
     assert.match(productsRoute, /pushBusinessContextCondition/);
     assert.match(productsRoute, /businessContext: row\.business_context/);
     assert.match(productsRoute, /INSERT INTO products \(id, business_context/);
+    assert.match(productsRoute, /timelineCode: row\.timeline_code/);
+    assert.match(productsRoute, /PRODUCT_TIMELINE_CODE_CONFLICT/);
+    assert.match(productsRoute, /findActiveProductTimelineCodeConflict/);
+    assert.match(productsRoute, /timelineCode is required \(2-6 chars\)/);
+    assert.match(timelineCodeMigration, /ADD COLUMN IF NOT EXISTS timeline_code VARCHAR\(6\)/);
+    assert.match(timelineCodeMigration, /ALTER COLUMN timeline_code SET NOT NULL/);
+    assert.match(timelineCodeMigration, /idx_products_active_timeline_code_v341/);
+    assert.match(timelineCodeMigration, /WHEN 'kv7' THEN 'КВ 7'/);
+    assert.match(timelineCodeMigration, /WHEN 'mk_tshirt' THEN 'МКФ'/);
+    assert.match(bookingsRoute, /SELECT p\.timeline_code[\s\S]*p\.id = b\.program_id/);
+    assert.match(bookingsRoute, /timelineCode: row\.timeline_code \|\| null/);
     assert.match(productsRoute, /FROM catalog_definitions cd/);
     assert.match(productsRoute, /href: row\.id === 'graduation' \? '\/designs#catalog-graduation'/);
     assert.match(productsRoute, /secondaryHref: row\.id === 'graduation' \? null : '\/designs#catalogs'/);

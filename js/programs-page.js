@@ -86,6 +86,17 @@ function normalizeProductIdentity(value) {
     return String(value || '').trim().replace(/\s+/g, ' ').toLowerCase();
 }
 
+function normalizeTimelineCodeInput(value) {
+    return String(value || '').trim().replace(/[\t ]+/g, ' ');
+}
+
+function updateTimelineCodeCounter() {
+    const input = document.getElementById('pf-timeline-code');
+    const counter = document.getElementById('pf-timeline-code-count');
+    if (!input || !counter) return;
+    counter.textContent = String(Array.from(normalizeTimelineCodeInput(input.value)).length);
+}
+
 function isActiveProduct(product = {}) {
     return product.isActive !== false && product.availabilityStatus !== 'hidden';
 }
@@ -103,6 +114,20 @@ function findActiveProductDuplicateInState(product, excludeId = '') {
         && getProductDomain(item) === domain
         && (item.category || '') === category
         && normalizeProductIdentity(item.name) === nameKey
+    )) || null;
+}
+
+function findActiveTimelineCodeConflictInState(product, excludeId = '') {
+    const timelineCode = normalizeTimelineCodeInput(product.timelineCode).toLocaleLowerCase('uk-UA');
+    if (!timelineCode || product.isActive === false) return null;
+    const businessContext = product.businessContext || getProductApiBusinessContext();
+    const domain = getProductDomain(product);
+    return allProducts.find(item => (
+        item.id !== excludeId
+        && isActiveProduct(item)
+        && (item.businessContext || getProductApiBusinessContext()) === businessContext
+        && getProductDomain(item) === domain
+        && normalizeTimelineCodeInput(item.timelineCode).toLocaleLowerCase('uk-UA') === timelineCode
     )) || null;
 }
 
@@ -183,6 +208,7 @@ async function initPage() {
     document.getElementById('saveProductNextBtn')?.addEventListener('click', () => saveProduct({ addNext: true }));
     document.getElementById('cancelProductBtn')?.addEventListener('click', closeProductForm);
     document.getElementById('pf-category')?.addEventListener('change', syncKitchenSubtypeFromForm);
+    document.getElementById('pf-timeline-code')?.addEventListener('input', updateTimelineCodeCounter);
     document.getElementById('pf-tech-card-detailed')?.addEventListener('change', syncTechCardModePanel);
     document.getElementById('pf-allergens')?.addEventListener('input', renderAllergenChipsFromForm);
     document.getElementById('addTechCardIngredientBtn')?.addEventListener('click', () => addTechCardIngredientRow());
@@ -2997,6 +3023,7 @@ async function openProductForm(productId = null, options = {}) {
         techCardIngredientDrafts = [];
         document.getElementById('pf-id').value = p.id;
         document.getElementById('pf-code').value = p.code || '';
+        document.getElementById('pf-timeline-code').value = p.timelineCode || '';
         document.getElementById('pf-name').value = p.name || '';
         document.getElementById('pf-label').value = p.label || '';
         document.getElementById('pf-icon').value = p.icon || '';
@@ -3036,6 +3063,7 @@ async function openProductForm(productId = null, options = {}) {
         techCardIngredientDrafts = [];
         document.getElementById('pf-id').value = '';
         document.getElementById('pf-code').value = '';
+        document.getElementById('pf-timeline-code').value = '';
         document.getElementById('pf-name').value = '';
         document.getElementById('pf-label').value = '';
         document.getElementById('pf-icon').value = isKitchen ? (kitchenType === 'cake' ? '🎂' : '🍽️') : '';
@@ -3071,6 +3099,8 @@ async function openProductForm(productId = null, options = {}) {
         renderProductFormIconGeneration(null, isKitchen ? 'kitchen' : 'program');
     }
 
+    updateTimelineCodeCounter();
+
     form.scrollIntoView({ behavior: 'smooth' });
 }
 
@@ -3090,6 +3120,7 @@ async function saveProduct(options = {}) {
     const product = {
         businessContext: getProductApiBusinessContext(),
         code: document.getElementById('pf-code')?.value.trim(),
+        timelineCode: normalizeTimelineCodeInput(document.getElementById('pf-timeline-code')?.value),
         name: document.getElementById('pf-name')?.value.trim(),
         label: document.getElementById('pf-label')?.value.trim(),
         icon: document.getElementById('pf-icon')?.value.trim(),
@@ -3135,6 +3166,17 @@ async function saveProduct(options = {}) {
         return { success: false, error: 'code_and_name_required' };
     }
 
+    const timelineCodeLength = Array.from(product.timelineCode).length;
+    if (timelineCodeLength < 2 || timelineCodeLength > 6 || /[\r\n]/.test(product.timelineCode)) {
+        showNotification('Короткий код таймлайна має містити 2–6 символів в одному рядку', 'error');
+        return { success: false, error: 'timeline_code_invalid' };
+    }
+
+    if (/\(\s*\d+\s*(?:хв\.?|min)?\s*\)/iu.test(product.timelineCode) || /\d+\s*(?:хв\.?|min)(?=\s|$)/iu.test(product.timelineCode)) {
+        showNotification('Не додавайте тривалість до короткого коду таймлайна', 'error');
+        return { success: false, error: 'timeline_code_duration' };
+    }
+
     if (!product.label) {
         product.label = domain === 'kitchen' ? product.name : `${product.code}(${product.duration})`;
     }
@@ -3143,6 +3185,12 @@ async function saveProduct(options = {}) {
     if (duplicate) {
         showNotification(duplicateProductMessage(duplicate), 'error');
         return { success: false, error: 'duplicate_product' };
+    }
+
+    const timelineCodeConflict = findActiveTimelineCodeConflictInState(product, id);
+    if (timelineCodeConflict) {
+        showNotification(`Короткий код вже використовує "${timelineCodeConflict.name}"`, 'error');
+        return { success: false, error: 'timeline_code_conflict' };
     }
 
     if (productSaveInFlight) return { success: false, error: 'save_in_flight' };

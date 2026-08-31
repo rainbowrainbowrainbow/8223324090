@@ -3363,14 +3363,24 @@ router.get('/:date', async (req, res) => {
                     room, room_resource_id, notes, created_by, created_at, linked_to, status, kids_count,
                     updated_at, group_name, extra_data, skip_notification, customer_id, payment_method, certificate_id,
                     confirmed_at, confirmed_by, confirmation_note, confirmation_source,
-                    banquet_guests, banquet_adults, banquet_tables, banquet_menu
+                    banquet_guests, banquet_adults, banquet_tables, banquet_menu,
+                    (
+                        SELECT p.timeline_code
+                        FROM products p
+                        WHERE p.id = b.program_id
+                          AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(b.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+                        LIMIT 1
+                    ) AS timeline_code
              FROM bookings b
              WHERE b.date = $1 AND ${bookingContextSql('b', '$2')} AND ${bookingActiveStatusSql('b')}
                ${visibility}
              ORDER BY time`,
             params
         );
-        const sourceBookings = result.rows.map(mapBookingRow);
+        const sourceBookings = result.rows.map(row => ({
+            ...mapBookingRow(row),
+            timelineCode: row.timeline_code || null
+        }));
         const resolvedBookings = timelineView === 'rooms'
             ? await attachRoomTimelineResourceResolution(pool, sourceBookings, businessContext)
             : sourceBookings;

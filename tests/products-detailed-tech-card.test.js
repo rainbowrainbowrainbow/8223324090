@@ -38,7 +38,7 @@ test('products API exposes detailed tech-card persistence and explicit warehouse
 
     assert.match(productsRoute, /PRODUCT_TECH_CARD_MODES/);
     assert.match(productsRoute, /techCardMode: normalizeTechCardMode/);
-    assert.match(productsRoute, /tech_card_mode=\$18/);
+    assert.match(productsRoute, /tech_card_mode=\$19/);
     assert.match(productsRoute, /router\.get\('\/:id\/tech-card'/);
     assert.match(productsRoute, /router\.put\('\/:id\/tech-card'/);
     assert.match(productsRoute, /router\.post\('\/:id\/tech-card\/write-off'/);

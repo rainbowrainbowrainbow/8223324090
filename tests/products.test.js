@@ -17,6 +17,7 @@ describe('Products', () => {
     it('POST /api/products — create product', async () => {
         const res = await authRequest('POST', '/api/products', {
             code: 'SMOKE',
+            timelineCode: 'SMK01',
             label: 'Smoke Test',
             name: 'Smoke Test Program',
             category: 'test',
@@ -26,6 +27,7 @@ describe('Products', () => {
         });
         assert.equal(res.status, 201, `Expected 201, got ${res.status}: ${JSON.stringify(res.data)}`);
         assert.ok(res.data.id, 'Should return product with id');
+        assert.equal(res.data.timelineCode, 'SMK01');
         createdProductId = res.data.id;
     });
 
@@ -72,6 +74,7 @@ describe('Products', () => {
         assert.ok(createdProductId, 'Need created product id');
         const res = await authRequest('PUT', `/api/products/${createdProductId}`, {
             code: 'SMOKE',
+            timelineCode: 'SMK01',
             label: 'Updated Smoke',
             name: 'Updated Smoke Program',
             category: 'test',
@@ -81,6 +84,105 @@ describe('Products', () => {
         });
         assert.equal(res.status, 200);
         assert.ok(res.data.id);
+        assert.equal(res.data.timelineCode, 'SMK01');
+    });
+
+    it('POST /api/products — rejects a timeline code containing duration', async () => {
+        const res = await authRequest('POST', '/api/products', {
+            code: 'SMOKEDURATION',
+            timelineCode: '60хв',
+            label: 'Smoke Duration Code',
+            name: 'Smoke Duration Code Program',
+            category: 'test',
+            duration: 60,
+            price: 1000,
+            hosts: 1
+        });
+        assert.equal(res.status, 400);
+        assert.match(String(res.data?.error || ''), /timelineCode must not contain duration/);
+    });
+
+    it('GET /api/bookings/:date — resolves current catalog timeline code for old bookings and null for missing products', async () => {
+        const date = '2099-12-02';
+        const lineId = 'timeline_code_product_test';
+        const bookingIds = [];
+
+        await authRequest('POST', `/api/lines/${date}`, [
+            { id: lineId, name: 'Timeline Code Product Test', color: '#6D28D9' }
+        ]);
+
+        try {
+            const catalogBooking = await authRequest('POST', '/api/bookings', {
+                date,
+                time: '12:00',
+                lineId,
+                room: 'Марвел',
+                programId: createdProductId,
+                programCode: 'SMOKE',
+                programName: 'Updated Smoke Program',
+                label: 'Updated Smoke',
+                duration: 60,
+                price: 1500,
+                category: 'test',
+                status: 'confirmed'
+            });
+            assert.equal(catalogBooking.status, 200, JSON.stringify(catalogBooking.data));
+            bookingIds.push(catalogBooking.data.booking.id);
+
+            const missingProductBooking = await authRequest('POST', '/api/bookings', {
+                date,
+                time: '13:30',
+                lineId,
+                room: 'Марвел',
+                programCode: 'LEGACY',
+                programName: 'Legacy Product Missing',
+                label: 'Legacy Product',
+                duration: 30,
+                price: 0,
+                category: 'custom',
+                status: 'confirmed'
+            });
+            assert.equal(missingProductBooking.status, 200, JSON.stringify(missingProductBooking.data));
+            bookingIds.push(missingProductBooking.data.booking.id);
+
+            const catalogUpdate = await authRequest('PUT', `/api/products/${createdProductId}`, {
+                code: 'SMOKE',
+                timelineCode: 'SMK02',
+                label: 'Updated Smoke',
+                name: 'Updated Smoke Program',
+                category: 'test',
+                duration: 90,
+                price: 1500,
+                hosts: 2
+            });
+            assert.equal(catalogUpdate.status, 200, JSON.stringify(catalogUpdate.data));
+
+            const day = await authRequest('GET', `/api/bookings/${date}`);
+            assert.equal(day.status, 200, JSON.stringify(day.data));
+            const oldBooking = day.data.find(item => item.id === catalogBooking.data.booking.id);
+            const fallbackBooking = day.data.find(item => item.id === missingProductBooking.data.booking.id);
+            assert.equal(oldBooking?.timelineCode, 'SMK02');
+            assert.equal(fallbackBooking?.timelineCode, null);
+        } finally {
+            for (const bookingId of bookingIds) {
+                await authRequest('DELETE', `/api/bookings/${bookingId}?permanent=true`);
+            }
+        }
+    });
+
+    it('POST /api/products — rejects duplicate active timeline code in a domain', async () => {
+        const res = await authRequest('POST', '/api/products', {
+            code: 'SMOKE2',
+            timelineCode: 'SMK02',
+            label: 'Smoke Conflict',
+            name: 'Different Smoke Program',
+            category: 'test',
+            duration: 60,
+            price: 1000,
+            hosts: 1
+        });
+        assert.equal(res.status, 409);
+        assert.equal(res.data.code, 'PRODUCT_TIMELINE_CODE_CONFLICT');
     });
 
     // ==========================================

@@ -3381,7 +3381,7 @@ test('timeline booking blocks expose width-based density display modes', () => {
     const css = read('css/timeline.css');
 
     assert.match(timeline, /function timelineBookingBlockDensity\(width\) \{[\s\S]*if \(!Number\.isFinite\(safeWidth\) \|\| safeWidth < 44\) return 'micro';[\s\S]*if \(safeWidth < 90\) return 'tiny';[\s\S]*if \(safeWidth < 140\) return 'short';[\s\S]*if \(safeWidth < 220\) return 'medium';[\s\S]*return 'wide';/);
-    assert.match(timeline, /const width = Math\.max\(18, timelineDurationWidth\(effectiveDuration, anchor\)\);[\s\S]*const bookingBlockDensity = timelineBookingBlockDensity\(width\);/);
+    assert.match(timeline, /const width = Math\.max\(18, timelineDurationWidth\(effectiveDuration, anchor\)\);[\s\S]*let bookingBlockDensity = timelineBookingBlockDensity\(width\);/);
     assert.match(timeline, /block\.classList\.add\(`booking-block--\$\{bookingBlockDensity\}`\);/);
     assert.match(css, /\.booking-block--micro,\s*\.booking-block--tiny,\s*\.booking-block--short,\s*\.booking-block--medium,\s*\.booking-block--wide\s*\{[\s\S]*min-width:\s*0/);
     assert.match(css, /\.booking-block--micro\s*\{\s*--timeline-booking-density:\s*micro;\s*\}/);
@@ -3396,13 +3396,15 @@ test('timeline activity blocks use catalog timeline codes without truncated name
     const css = read('css/timeline.css');
 
     assert.match(timeline, /function timelineActivityPresentation\(booking, renderBooking, bookingTitle = '', bookingTitleTail = ''\) \{/);
+    assert.match(timeline, /function timelineActivityBookingBlockDensity\(width, baseDensity, presentation, duration\) \{[\s\S]*estimatedTitleWidth[\s\S]*estimatedDurationBadgeWidth[\s\S]*availableContentWidth[\s\S]*: 'short';/);
     assert.match(timeline, /source\.timelineCode \|\| source\.timeline_code \|\| booking\?\.timelineCode \|\| booking\?\.timeline_code/);
     assert.match(timeline, /function timelineFallbackActivityCode\(booking, renderBooking, bookingTitle, bookingTitleTail\) \{/);
     assert.match(timeline, /function timelinePinataNumberValue\(booking, renderBooking,[\s\S]*function timelinePinataNumberDisplay\(value\)/);
     assert.match(timeline, /questNumber \? timelineBoundedActivityCode\(`КВ \$\{questNumber\}`\) : 'КВ'/);
     assert.match(timeline, /pinataMode === 'client'[\s\S]*code = 'П КЛ'/);
     assert.match(timeline, /pinataNumber[\s\S]*timelineBoundedActivityCode\(`П \$\{timelineNormalizePinataNumber\(pinataNumber\)\}`\)/);
-    assert.match(timeline, /const isCompactActivityBlock = \(bookingBlockDensity === 'micro' \|\| bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
+    assert.match(timeline, /let isCompactActivityBlock = \(bookingBlockDensity === 'micro' \|\| bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
+    assert.match(timeline, /const fittedBookingBlockDensity = isStandardActivityBlock[\s\S]*timelineActivityBookingBlockDensity\(width, bookingBlockDensity, activityPresentation, effectiveDuration\)[\s\S]*block\.classList\.remove\(`booking-block--\$\{bookingBlockDensity\}`\);[\s\S]*isCompactActivityBlock = true;/);
     assert.match(timeline, /const compactActivityLabel = activityPresentation\.code;/);
     assert.match(timeline, /const microActivityLabel = timelineMicroActivityLabel\(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail\);/);
     assert.match(timeline, /function timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium'\) \{/);
@@ -3794,6 +3796,7 @@ test('pinata compact labels preserve operational numbers without using duration 
         ${timeline.slice(start, end)}
         this.__pinataTimeline = {
             timelineActivityPresentation,
+            timelineActivityBookingBlockDensity,
             timelineCompactActivityLabel,
             timelineMicroActivityLabel,
             timelineRoomActivityDisplayLabel
@@ -3864,6 +3867,22 @@ test('pinata compact labels preserve operational numbers without using duration 
     assert.equal(
         hooks.timelineActivityPresentation({ category: 'custom', timelineCode: 'Інше', programName: 'Інше (вкажіть)' }).fullTitle,
         'Інше (вкажіть)'
+    );
+    assert.equal(
+        hooks.timelineActivityBookingBlockDensity(156, 'medium', { fullTitle: 'КВ 7: Гра в Кальмара' }, 60),
+        'short'
+    );
+    assert.equal(
+        hooks.timelineActivityBookingBlockDensity(176, 'medium', { fullTitle: 'МКФ: МК Розпис футболок' }, 60),
+        'short'
+    );
+    assert.equal(
+        hooks.timelineActivityBookingBlockDensity(236, 'wide', { fullTitle: 'МККА: МК Капкейки' }, 120),
+        'wide'
+    );
+    assert.equal(
+        hooks.timelineActivityBookingBlockDensity(36, 'micro', { fullTitle: 'П 501: Піньята парку' }, 15),
+        'micro'
     );
 });
 

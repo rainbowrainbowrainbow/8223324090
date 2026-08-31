@@ -1644,6 +1644,27 @@ function timelineActivityPresentation(booking, renderBooking, bookingTitle = '',
     };
 }
 
+function timelineActivityBookingBlockDensity(width, baseDensity, presentation, duration) {
+    if (baseDensity !== 'medium' && baseDensity !== 'wide') return baseDensity;
+
+    const safeWidth = Number(width);
+    const fullTitle = String(presentation?.fullTitle || presentation?.code || '').trim();
+    if (!Number.isFinite(safeWidth) || !fullTitle) return 'short';
+
+    const estimatedTitleWidth = Array.from(fullTitle).reduce((total, character) => {
+        return total + (/\s|[.,:;|]/u.test(character) ? 4 : 8);
+    }, 0);
+    const safeDuration = Number(duration);
+    const estimatedDurationBadgeWidth = Number.isFinite(safeDuration) && safeDuration > 0
+        ? (Array.from(`${safeDuration}хв`).length * 7) + 14
+        : 0;
+    const availableContentWidth = Math.max(0, safeWidth - 24);
+
+    return estimatedTitleWidth + estimatedDurationBadgeWidth <= availableContentWidth
+        ? baseDensity
+        : 'short';
+}
+
 function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, bookingTitleTail) {
     return timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).code;
 }
@@ -4842,7 +4863,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     const startMin = timeToMinutes(booking.time) - timeToMinutes(`${startHour}:00`);
     const left = timelineMinutesToPixels(startMin, anchor);
     const width = Math.max(18, timelineDurationWidth(effectiveDuration, anchor));
-    const bookingBlockDensity = timelineBookingBlockDensity(width);
+    let bookingBlockDensity = timelineBookingBlockDensity(width);
 
     const isPreliminary = renderBooking.status === 'preliminary';
     const isLinked = !!renderBooking.linkedTo;
@@ -4866,7 +4887,7 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         block.dataset.timelineBoundaryOverrunMin = String(boundaryStatus.overrunMin || 0);
         block.dataset.timelineBoundaryMessage = boundaryStatus.message || '';
     }
-    const isCompactActivityBlock = (bookingBlockDensity === 'micro' || bookingBlockDensity === 'tiny' || bookingBlockDensity === 'short')
+    let isCompactActivityBlock = (bookingBlockDensity === 'micro' || bookingBlockDensity === 'tiny' || bookingBlockDensity === 'short')
         && !isMaysternyaSlotClosed
         && !isEducationLessonBlock
         && renderBooking.category !== 'banquet'
@@ -4938,6 +4959,19 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
             : (renderBooking.label || renderBooking.programCode));
     const bookingTitleText = bookingTitleTail ? `${bookingTitle}${lessonSeriesBadge}: ${bookingTitleTail}` : `${bookingTitle}${lessonSeriesBadge}`;
     const activityPresentation = timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail);
+    const isStandardActivityBlock = !isMaysternyaSlotClosed
+        && !isEducationLessonBlock
+        && renderBooking.category !== 'banquet'
+        && renderBooking.category !== 'graduation';
+    const fittedBookingBlockDensity = isStandardActivityBlock
+        ? timelineActivityBookingBlockDensity(width, bookingBlockDensity, activityPresentation, effectiveDuration)
+        : bookingBlockDensity;
+    if (fittedBookingBlockDensity !== bookingBlockDensity) {
+        block.classList.remove(`booking-block--${bookingBlockDensity}`);
+        bookingBlockDensity = fittedBookingBlockDensity;
+        block.classList.add(`booking-block--${bookingBlockDensity}`);
+        isCompactActivityBlock = true;
+    }
     const normalizedBookingTitleText = !isMaysternyaSlotClosed
         && !isEducationLessonBlock
         && renderBooking.category !== 'banquet'

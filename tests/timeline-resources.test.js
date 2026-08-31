@@ -4012,6 +4012,13 @@ test('micro, short and tiny timeline activity blocks have dedicated compact CSS 
     assert.match(css, /\.booking-block\.booking-block--micro \.timeline-compact-booking-main,[\s\S]*?\.booking-block\.booking-block--micro \.booking-banquet-link-handle\s*\{[\s\S]*display:\s*none/);
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-main\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*max-width:\s*calc\(100% - 18px\)/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-main\s*\{[\s\S]*flex-direction:\s*column;[\s\S]*max-width:\s*100%/);
+    assert.match(css, /body\.timeline-dashboard-page \.booking-block\.booking-block--tiny\s*\{[\s\S]*padding:\s*5px 3px/);
+    const tinyPaddingOverride = css.indexOf('body.timeline-dashboard-page .booking-block.booking-block--tiny {');
+    const tinyBaseTypography = css.indexOf('.booking-block.booking-block--tiny .timeline-compact-booking-label {', tinyPaddingOverride);
+    const tinyFiveCharacterTypography = css.indexOf('.booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="5"] {', tinyBaseTypography);
+    const tinySixCharacterTypography = css.indexOf('.booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="6"] {', tinyBaseTypography);
+    assert.ok(tinyFiveCharacterTypography > tinyBaseTypography, 'five-character tiny code override follows base typography');
+    assert.ok(tinySixCharacterTypography > tinyBaseTypography, 'six-character tiny code override follows base typography');
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-main \.booking-block-time,\s*\.booking-block\.booking-block--tiny \.timeline-compact-booking-main \.booking-block-time\s*\{[\s\S]*font-size:\s*11px;[\s\S]*font-weight:\s*950/);
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label,\s*\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\s*\{[\s\S]*font-size:\s*12px;[\s\S]*letter-spacing:\s*0/);
     assert.doesNotMatch(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-tail/);

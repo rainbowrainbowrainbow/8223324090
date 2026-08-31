@@ -4986,8 +4986,13 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
     const compactActivityLabel = activityPresentation.code;
     const microActivityLabel = timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail);
     const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity);
-    const roomActivityCodeRepeatsTitle = Boolean(bookingTitleTail)
-        && compactActivityLabel.trim().toLocaleLowerCase('uk-UA') === timelineStripDurationText(bookingTitleTail).trim().toLocaleLowerCase('uk-UA');
+    const comparableRoomActivityCode = compactActivityLabel.trim().toLocaleLowerCase('uk-UA');
+    const comparableRoomActivityTitle = timelineStripDurationText(bookingTitleTail).trim().toLocaleLowerCase('uk-UA');
+    const roomActivityCodeRepeatsTitle = Boolean(bookingTitleTail) && (
+        comparableRoomActivityTitle === comparableRoomActivityCode
+        || comparableRoomActivityTitle.startsWith(`${comparableRoomActivityCode} `)
+        || comparableRoomActivityTitle.startsWith(`${comparableRoomActivityCode}(`)
+    );
     const roomActivityMainLabel = !isCompactActivityBlock && bookingTitleTail && !roomActivityCodeRepeatsTitle
         ? compactActivityLabel
         : (roomActivityCodeRepeatsTitle && !isCompactActivityBlock ? '' : roomActivityDisplayLabel);
@@ -5010,8 +5015,9 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         block.setAttribute('title', fullBookingLabel);
     }
     const roomActivityCanShowDetail = bookingBlockDensity !== 'micro' && bookingBlockDensity !== 'tiny';
+    const roomActivityDetailLabel = roomActivityCodeRepeatsTitle && isCompactActivityBlock ? '' : bookingTitleTail;
     const roomActivityDetailParts = roomActivityCanShowDetail
-        ? [bookingTitleTail, costumeLabel].filter(Boolean)
+        ? [roomActivityDetailLabel, costumeLabel].filter(Boolean)
         : [];
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
     const roomActivityHtml = `

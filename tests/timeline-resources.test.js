@@ -3351,7 +3351,7 @@ test('room timeline activity cards share marker visual language without global a
     assert.match(css, /body\.timeline-view-rooms \.timeline-room-service-marker\s*\{[\s\S]*border-radius:\s*8px;[\s\S]*box-shadow:\s*0 10px 24px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\s*\{[\s\S]*--timeline-room-card-accent:[\s\S]*border-left:\s*4px solid var\(--timeline-room-card-accent\)/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.animation/);
-    assert.match(timeline, /<div class="timeline-room-activity-main">\s*\$\{!isCompactActivityBlock \|\| bookingBlockDensity === 'short' \? `<span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>` : ''\}\s*<span class="timeline-room-activity-title" data-code-length=/);
+    assert.match(timeline, /<div class="timeline-room-activity-main">\s*\$\{!isCompactActivityBlock \|\| bookingBlockDensity === 'short' \? `<span class="booking-block-time">\$\{escapeHtml\(renderBooking\.time\)\}<\/span>` : ''\}\s*\$\{roomActivityMainLabel \? `<span class="timeline-room-activity-title" data-code-length=/);
     assert.match(timeline, /class="timeline-room-activity-detail" title="\$\{escapeHtml\(roomActivityDetail\)\}"/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.timeline-room-activity-main\s*\{[\s\S]*font-size:\s*13px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card \.timeline-room-activity-title\s*\{[\s\S]*text-overflow:\s*ellipsis/);
@@ -3409,8 +3409,9 @@ test('timeline activity blocks use catalog timeline codes without truncated name
     assert.match(timeline, /const microActivityLabel = timelineMicroActivityLabel\(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail\);/);
     assert.match(timeline, /function timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium'\) \{/);
     assert.match(timeline, /const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity\);/);
-    assert.match(timeline, /const roomActivityMainLabel = !isCompactActivityBlock && bookingTitleTail\s*\? compactActivityLabel\s*:\s*roomActivityDisplayLabel;/);
-    assert.match(timeline, /data-code-length="\$\{escapeHtml\(String\(roomActivityMainLabel\.length\)\)\}">\$\{escapeHtml\(roomActivityMainLabel\)\}/);
+    assert.match(timeline, /const roomActivityCodeRepeatsTitle = Boolean\(bookingTitleTail\)[\s\S]*compactActivityLabel\.trim\(\)\.toLocaleLowerCase\('uk-UA'\)[\s\S]*timelineStripDurationText\(bookingTitleTail\)\.trim\(\)\.toLocaleLowerCase\('uk-UA'\)/);
+    assert.match(timeline, /const roomActivityMainLabel = !isCompactActivityBlock && bookingTitleTail && !roomActivityCodeRepeatsTitle[\s\S]*roomActivityCodeRepeatsTitle && !isCompactActivityBlock \? '' : roomActivityDisplayLabel/);
+    assert.match(timeline, /roomActivityMainLabel \? `<span class="timeline-room-activity-title"[\s\S]*data-code-length="\$\{escapeHtml\(String\(roomActivityMainLabel\.length\)\)\}">\$\{escapeHtml\(roomActivityMainLabel\)\}<\/span>` : ''/);
     assert.match(timeline, /const miniAccessibilityLabel = miniTitleParts\.join\(' · '\);/);
     assert.match(timeline, /title="\$\{escapeHtml\(miniAccessibilityLabel\)\}"\s*aria-label="\$\{escapeHtml\(miniAccessibilityLabel\)\}"/);
     assert.match(timeline, /block\.setAttribute\('title', fullBookingLabel\);/);

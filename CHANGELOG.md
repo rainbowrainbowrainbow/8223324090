@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.44 - Room Timeline Identity Completion
+
+### Release / Versioning / (31.08.2026) [codex]
+- **Одна назва замість дубля** — якщо короткий код продукту збігається з повною назвою, room-картка показує її один раз у detail-row; кейс `Мафія / Мафія` прибрано.
+- **Без зміни геометрії** — час, duration badge, tooltip, `aria-label` і ширина бронювання залишаються за єдиним renderer-контрактом.
+
+---
+
 ## v0.81.43 - Timeline Accessibility Completion
 
 ### Release / Versioning / (31.08.2026) [codex]

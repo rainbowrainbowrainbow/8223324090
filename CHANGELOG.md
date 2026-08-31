@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.41 - Room Timeline Title Fit
+
+### Release / Versioning / (31.08.2026) [codex]
+- **Повні назви у кімнатах** — medium/wide room-картки віддають заголовку всю доступну ширину замість випадкового 100 px flex-обмеження.
+- **Без зміни геометрії** — виправлено лише внутрішній flex-розподіл; часова ширина, рядки кімнат і booking contracts не змінювалися.
+
+---
+
 ## v0.81.40 - Micro Timeline Code Fit
 
 ### Release / Versioning / (31.08.2026) [codex]

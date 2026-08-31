@@ -5,7 +5,7 @@ Last updated: 2026-08-22.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Release package baseline prepared for this handoff: `0.81.38` (`Timeline Fit Calibration`).
+- Release package baseline prepared for this handoff: `0.81.39` (`Tiny Timeline Code Fit`).
 - Live commit before this hardening release: `e2ebbe944a3fa87d5ca92414447e62fc03b48885`.
 - Live source branch: `codex/eventgenix-production`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
@@ -48,7 +48,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Sandbox mutation runs require an explicit stable `CHECKBOX_SANDBOX_DEVICE_ID`; PID-derived device identities are no longer allowed. Official empty-body HTTP 205 signout is handled explicitly.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
 - CI hardening gates now include value-free Checkbox OpenAPI compatibility checks, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
-- Release `0.81.38` is the package baseline prepared in this handoff.
+- Release `0.81.39` is the package baseline prepared in this handoff.
 - The confirmed live baseline before deployment remains `0.81.16`; reconfirm live version/commit after delivery and before future activation.
 - Provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization are part of the released baseline.
 

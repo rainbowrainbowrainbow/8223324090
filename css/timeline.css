@@ -1075,18 +1075,22 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card .booking-
 }
 
 .booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="4"] {
-    font-size: 7px;
-    font-weight: 900;
-}
-
-.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="5"],
-.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="6"] {
     font-size: 6px;
     font-weight: 900;
 }
 
+.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="5"] {
+    font-size: 5px;
+    font-weight: 900;
+}
+
+.booking-block.booking-block--micro .timeline-micro-booking-code[data-code-length="6"] {
+    font-size: 4px;
+    font-weight: 900;
+}
+
 body.timeline-dashboard-page .booking-block.booking-block--micro {
-    padding: 0 2px !important;
+    padding: 0 !important;
     border-left-width: 2px;
 }
 
@@ -1252,7 +1256,7 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-b
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny,
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--micro {
     gap: 0;
-    padding: 0 2px;
+    padding: 0;
 }
 
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .timeline-room-activity-main,
@@ -1274,12 +1278,15 @@ body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-b
 }
 
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--micro .timeline-room-activity-title[data-code-length="4"] {
-    font-size: 7px;
+    font-size: 6px;
 }
 
-body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--micro .timeline-room-activity-title[data-code-length="5"],
+body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--micro .timeline-room-activity-title[data-code-length="5"] {
+    font-size: 5px;
+}
+
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--micro .timeline-room-activity-title[data-code-length="6"] {
-    font-size: 6px;
+    font-size: 4px;
 }
 
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--tiny .timeline-room-activity-detail,

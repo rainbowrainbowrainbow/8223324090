@@ -206,6 +206,7 @@ The normal delivery path is:
 
 - Run the smallest targeted checks first; use broader checks proportional to risk.
 - CI is the normal automated gate after push. Local API/integration tests require a running PostgreSQL-backed app and are diagnostic tools, not automatic substitutes for live QA.
+- CI keeps separate disposable PostgreSQL/browser jobs for HR/payroll and My Day, including the payroll profile/simultaneous-pay gate and `test:browser:my-day-actual-app:isolated`.
 - After code changes, report:
   - implementation/root-cause decision;
   - changed files;

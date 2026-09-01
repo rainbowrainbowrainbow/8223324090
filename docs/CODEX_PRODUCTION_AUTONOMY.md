@@ -238,6 +238,30 @@ If CI fails:
 
 ## 10. Railway Deployment
 
+The canonical bounded release controller is:
+
+```powershell
+npm run codex:production-block -- prepare [options]
+npm run codex:production-block -- status --block-file <path>
+npm run codex:production-block -- execute --block-file <path> --confirmation <exact-value>
+```
+
+`prepare` is read-only against production and writes a sanitized, hash-bound
+manifest under the operating-system temporary directory. It records the exact
+live/candidate SHAs, fixed branch and Railway target, migration classifications,
+QA scope, rollback reference, six-hour maximum lifetime, and three-attempt
+maximum. It prints one authorization warning and the exact controller
+confirmation. `execute` rejects expired manifests, target/SHA/migration drift,
+Red paths, unknown/cleanup/mixed migrations, attempt exhaustion, and any
+confirmation mismatch. `--dry-run` validates the full envelope and prints only
+the fixed orchestration plan; it performs no push, deploy, migration, or QA
+write.
+
+The controller never accepts arbitrary commands or Railway settings. Its fixed
+sequence is local validation, release artifact commit, exact-SHA push and CI,
+the repository Railway helper, exact live version/release proof, and optional
+trusted QA limited to `allowedQaScope`.
+
 Production GitHub auto-deploy is disabled. Deploy manually only after exact-SHA CI
 is green.
 

@@ -181,6 +181,7 @@
     "release:timeline-proof": "node scripts/timeline-release-proof.js",
     "health": "curl -s http://localhost:3000/api/health | node -e \"process.stdin.on('data',d=>{const h=JSON.parse(d);console.log(h.status==='ok'?'✅ OK':'❌ '+h.status,h.version,'DB:'+h.database)})\"",
     "release:railway-up": "node scripts/railway-release-up.js",
+    "codex:production-block": "node scripts/production-block-controller.js",
     "release:railway-up:branch": "node scripts/railway-release-up.js --branch",
     "release:railway-up:dry-run:branch": "node scripts/railway-release-up.js --dry-run --branch",
     "smoke:zrs:write": "node scripts/live-zrs-write-smoke.js",

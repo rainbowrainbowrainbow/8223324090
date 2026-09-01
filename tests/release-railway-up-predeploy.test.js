@@ -294,3 +294,5 @@ test('Railway release parser accepts explicit source branch migration proof with
     assert.equal(parsed.migrateLiveSourceBranchCommit, HEAD);
     assert.equal(parsed.recoverMissingLiveMetadataCommit, '');
 });
+
+require('./production-block-controller.test');

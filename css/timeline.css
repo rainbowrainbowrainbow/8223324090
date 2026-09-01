@@ -1158,6 +1158,18 @@ body.timeline-dashboard-page .booking-block.booking-block--micro {
     white-space: nowrap;
 }
 
+.booking-block.booking-block--short .timeline-compact-booking-label[data-code-length="6"] {
+    font-size: 10.5px;
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-label[data-code-length="7"] {
+    font-size: 9.5px;
+}
+
+.booking-block.booking-block--short .timeline-compact-booking-label[data-code-length="8"] {
+    font-size: 8.5px;
+}
+
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--medium .timeline-room-activity-title,
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--wide .timeline-room-activity-title {
     flex: 1 1 auto;
@@ -1198,12 +1210,16 @@ body.timeline-dashboard-page .booking-block.booking-block--tiny {
     font-size: 11px;
 }
 
+.booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="4"] {
+    font-size: 8.5px;
+}
+
 .booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="5"] {
-    font-size: 10px;
+    font-size: 7.5px;
 }
 
 .booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="6"] {
-    font-size: 9px;
+    font-size: 7px;
 }
 
 .booking-block.booking-block--tiny .timeline-compact-booking-meta,

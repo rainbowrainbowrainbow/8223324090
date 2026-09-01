@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.50 - Timeline Long Label Width Hotfix
+
+### Release / Versioning / (01.09.2026) [codex]
+- **Довгі short-коди отримали повну ширину** - для 7-8 символних labels у 72px картках creator badge більше не забирає 18px, тому `ШОУ Пап`, `ШОУ Бул` і `ШОУ Нео` не обрізаються на mobile zoom.
+- **Guard на реальну причину overflow** - regression checks тепер фіксують не лише font floors, а й full-width layout для довгих short labels.
+
+---
+
 ## v0.81.49 - Timeline Short Label Zoom Hotfix
 
 ### Release / Versioning / (01.09.2026) [codex]

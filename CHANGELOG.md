@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.49 - Timeline Short Label Zoom Hotfix
+
+### Release / Versioning / (01.09.2026) [codex]
+- **Short-коди витримують 390px / zoom 1.5** - 72px картки для `ШОУ Пап`, `ШОУ Бул`, `ШОУ Нео` та `ІНШ ІН` отримали жорсткіші typography thresholds без падіння нижче 7px.
+- **Live QA regression закрито** - visual smoke тепер перевіряє сценарій mobile 390px із масштабом 1.5, де попередній v0.81.48 ще ловив overflow.
+
+---
+
 ## v0.81.48 - Timeline Presentation Label Hotfix
 
 ### Release / Versioning / (01.09.2026) [codex]

@@ -6,9 +6,11 @@ const {
     DISPOSABLE_QA_MARKER_MAX_AGE_MS,
     DISPOSABLE_QA_SCHEMA_VERSION,
     DISPOSABLE_QA_SOURCE,
+    DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE,
     attachDisposableQaMarker,
     createDisposableQaMarker,
-    inspectDisposableQaMarker
+    inspectDisposableQaMarker,
+    isTrustedDisposableQaSource
 } = require('../services/disposableQa');
 
 const RUN_ID = 'task37-marker-contract';
@@ -47,6 +49,28 @@ test('shared disposable QA marker builder produces the canonical contract', () =
     );
     assert.equal(inspection.ok, true);
     assert.deepEqual(inspection.reasons, []);
+});
+
+test('trusted timeline showcase uses the shared marker and trusted attribution contract', () => {
+    const runId = 'timeline-showcase-contract';
+    const testCustomerMarker = `${DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE}:${runId}:test_customer`;
+    const marker = createDisposableQaMarker({
+        runId,
+        source: DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE,
+        testCustomerMarker,
+        kind: 'booking',
+        createdAt: CREATED_AT
+    });
+
+    assert.equal(marker.source, DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE);
+    assert.equal(isTrustedDisposableQaSource(marker.source), true);
+    assert.equal(isTrustedDisposableQaSource('trusted_qa'), true);
+    assert.equal(isTrustedDisposableQaSource('timeline_browser_smoke'), false);
+    assert.equal(inspectDisposableQaMarker(
+        { disposableQa: marker },
+        { runId, source: DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE, testCustomerMarker },
+        { nowMs: NOW_MS }
+    ).ok, true);
 });
 
 test('shared disposable QA marker validator fails closed for mismatch, missing fields, and expiry', () => {

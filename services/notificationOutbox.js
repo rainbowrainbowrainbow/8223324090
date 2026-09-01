@@ -2,6 +2,7 @@
 
 const crypto = require('crypto');
 const { pool: defaultPool } = require('../db');
+const { isTrustedDisposableQaSource } = require('./disposableQa');
 
 const NOTIFICATION_OUTBOX_STATUSES = Object.freeze([
     'pending',
@@ -122,7 +123,7 @@ function trustedQaRunPublicIdFromNotificationPayload(...values) {
             || value.extraData?.disposableQa
             || value.extra_data?.disposableQa;
         const runId = safeTextOrNull(disposableQa?.runId || disposableQa?.run_id, 100);
-        if (runId && safeTextOrNull(disposableQa?.source, 100) === 'trusted_qa') return runId;
+        if (runId && isTrustedDisposableQaSource(disposableQa?.source)) return runId;
     }
     return null;
 }

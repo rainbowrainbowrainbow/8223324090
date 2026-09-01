@@ -26,6 +26,7 @@
  */
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
+const { isTrustedDisposableQaSource } = require('./disposableQa');
 const {
     MACHINE_AUTO_ARCHIVE_POLICY_CANCELLED_BOOKING,
     buildMachineTaskControlMetaPatch
@@ -41,7 +42,7 @@ function trustedQaRunPublicIdFromPayload(payload = {}) {
         || payload.disposable_qa
         || payload.extraData?.disposableQa
         || payload.extra_data?.disposableQa;
-    if (!disposableQa || disposableQa.source !== 'trusted_qa') return null;
+    if (!disposableQa || !isTrustedDisposableQaSource(disposableQa.source)) return null;
     const runId = String(disposableQa.runId || disposableQa.run_id || '').trim();
     return runId ? runId.slice(0, 100) : null;
 }

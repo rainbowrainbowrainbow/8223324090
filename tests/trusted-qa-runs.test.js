@@ -869,10 +869,12 @@ test('trusted QA side-effect writers preserve public attribution when a row is e
     const bookingRoutes = fs.readFileSync(path.join(__dirname, '..', 'routes', 'bookings.js'), 'utf8');
 
     assert.match(eventBus, /trustedQaRunPublicIdFromPayload/);
+    assert.match(eventBus, /isTrustedDisposableQaSource\(disposableQa\.source\)/);
     assert.match(eventBus, /INSERT INTO rule_execution_log[\s\S]*trusted_qa_run_public_id/);
     assert.match(eventBus, /INSERT INTO chat_messages[\s\S]*trusted_qa_run_public_id/);
     assert.match(notificationOutbox, /trustedQaRunPublicIdFromNotificationPayload/);
     assert.match(notificationOutbox, /INSERT INTO notification_outbox[\s\S]*trusted_qa_run_public_id/);
+    assert.match(notificationOutbox, /isTrustedDisposableQaSource\(disposableQa\?\.source\)/);
     assert.match(bookingRoutes, /trustedQaRunPublicIdFromBooking/);
     assert.match(bookingRoutes, /INSERT INTO warehouse_history[\s\S]*trusted_qa_run_public_id/);
     assert.match(bookingRoutes, /INSERT INTO announcements[\s\S]*trusted_qa_run_public_id/);

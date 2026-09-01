@@ -4,12 +4,17 @@ const DISPOSABLE_QA_SCHEMA_VERSION = 1;
 const DISPOSABLE_QA_SOURCE = 'timeline_browser_smoke';
 const DISPOSABLE_QA_CAKE_DECORATIONS_SOURCE = 'live_cake_decorations_smoke';
 const DISPOSABLE_QA_TRUSTED_SOURCE = 'trusted_qa';
+const DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE = 'trusted_timeline_showcase';
 const DISPOSABLE_QA_MARKER_MAX_AGE_MS = 24 * 60 * 60 * 1000;
 const DISPOSABLE_QA_FUTURE_SKEW_MS = 5 * 60 * 1000;
+const DISPOSABLE_QA_TRUSTED_SOURCES = Object.freeze([
+    DISPOSABLE_QA_TRUSTED_SOURCE,
+    DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE
+]);
 const DISPOSABLE_QA_SUPPORTED_SOURCES = Object.freeze([
     DISPOSABLE_QA_SOURCE,
     DISPOSABLE_QA_CAKE_DECORATIONS_SOURCE,
-    DISPOSABLE_QA_TRUSTED_SOURCE
+    ...DISPOSABLE_QA_TRUSTED_SOURCES
 ]);
 
 function safeJsonObject(value) {
@@ -40,6 +45,10 @@ function disposableQaMarkerFrom(value = {}) {
 
 function cleanMarkerText(value) {
     return String(value || '').trim();
+}
+
+function isTrustedDisposableQaSource(value) {
+    return DISPOSABLE_QA_TRUSTED_SOURCES.includes(cleanMarkerText(value));
 }
 
 function normalizeMarker(marker = {}) {
@@ -151,11 +160,14 @@ module.exports = {
     DISPOSABLE_QA_SCHEMA_VERSION,
     DISPOSABLE_QA_SOURCE,
     DISPOSABLE_QA_SUPPORTED_SOURCES,
+    DISPOSABLE_QA_TIMELINE_SHOWCASE_SOURCE,
     DISPOSABLE_QA_TRUSTED_SOURCE,
+    DISPOSABLE_QA_TRUSTED_SOURCES,
     attachDisposableQaMarker,
     createDisposableQaMarker,
     disposableQaMarkerFrom,
     inspectDisposableQaMarker,
+    isTrustedDisposableQaSource,
     normalizeMarker,
     safeJsonObject
 };

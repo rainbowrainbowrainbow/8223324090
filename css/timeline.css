@@ -1242,6 +1242,16 @@ body.timeline-dashboard-page .booking-block.booking-block--tiny {
     font-size: 7px;
 }
 
+.booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="7"],
+.booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="8"] {
+    font-size: 7px;
+}
+
+.booking-block.booking-block--tiny:has(.timeline-compact-booking-label[data-code-length="7"]) .user-letter,
+.booking-block.booking-block--tiny:has(.timeline-compact-booking-label[data-code-length="8"]) .user-letter {
+    display: none;
+}
+
 .booking-block.booking-block--tiny .timeline-compact-booking-meta,
 .booking-block.booking-block--tiny .costume-text,
 .booking-block.booking-block--tiny .note-text,

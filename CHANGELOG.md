@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.51 - Timeline Tiny Label Zoom Hotfix
+
+### Release / Versioning / (01.09.2026) [codex]
+- **Tiny-коди на 50px більше не переповнюються** - для 7-8 символних labels у `booking-block--tiny` font floor знижено до 7px, щоб `ШОУ Пап`, `ШОУ Бул` і `ШОУ Нео` вміщалися на mobile 390 із browser zoom 30%.
+- **Guard на tiny 7-8 labels** - regression checks тепер окремо фіксують typography floor і прихований creator badge для найвужчих timeline activity cards.
+
+---
+
 ## v0.81.50 - Timeline Long Label Width Hotfix
 
 ### Release / Versioning / (01.09.2026) [codex]

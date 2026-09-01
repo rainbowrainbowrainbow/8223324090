@@ -18,6 +18,7 @@ const {
 
 const ROOT = path.resolve(__dirname, '..');
 const SHA_PATTERN = /^[a-f0-9]{40}$/;
+const TRUSTED_QA_CONTROLLER = path.join(ROOT, 'scripts', 'trusted-qa-timeline-controller.js');
 
 function fail(condition, message, code, details = {}) {
     if (!condition) throw new ProductionBlockError(message, code, details);
@@ -125,7 +126,7 @@ async function liveVersion(url = TARGET.liveUrl) {
 }
 
 function defaultRuntime() {
-    return {
+    const runtime = {
         async facts() {
             fail(!git(['status', '--porcelain']), 'Prepare requires a clean worktree', 'PRODUCTION_BLOCK_DIRTY_WORKTREE');
             const head = git(['rev-parse', 'HEAD']).toLowerCase();
@@ -155,6 +156,9 @@ function defaultRuntime() {
         },
         plan(manifest) {
             return releaseCommandPlan(manifest);
+        },
+        async resumeQa(manifest, releaseSha) {
+            return resumeAuthorizedQa(manifest, releaseSha);
         },
         async execute(manifest, blockFile) {
             commandResult('npm', ['test'], { inherit: true });
@@ -196,34 +200,118 @@ function defaultRuntime() {
                 env: { VERSION_SMOKE_EXPECT_COMMIT: releaseSha, VERSION_SMOKE_EXPECT_BRANCH: manifest.allowedBranch }
             });
             commandResult('npm', ['run', 'release:timeline-proof', '--', manifest.liveUrl], { inherit: true });
+            manifest.runtimeState.releaseSha = releaseSha;
+            manifest.runtimeState.releaseCompletedAt = new Date().toISOString();
+            manifest.runtimeState.lastFailureCode = null;
+            writeBlockFile(blockFile, manifest);
             let qa = null;
             if (manifest.allowedQaScope?.enabled) {
-                const qaScope = manifest.allowedQaScope;
-                const args = ['run', 'qa:timeline:controller', '--', '--action', 'run',
-                    '--date', qaScope.date,
-                    '--ttl-minutes', String(qaScope.ttlMinutes),
-                    '--animators', String(qaScope.animators || '1,2,3,4,5'),
-                    '--release-sha', releaseSha,
-                    '--release-branch', manifest.allowedBranch,
-                    '--live-url', manifest.liveUrl
-                ];
-                if (qaScope.kind === 'canary') args.push('--fixture-limit', '1');
-                commandResult('npm', args, { inherit: true });
-                qa = { executed: true, kind: qaScope.kind, ttlMinutes: qaScope.ttlMinutes };
+                qa = await runtime.resumeQa(manifest, releaseSha);
+                manifest.runtimeState.qa = qa;
+                writeBlockFile(blockFile, manifest);
             }
             return { releaseSha, ciUrl: exact.url, qa, blockFile };
         }
     };
+    return runtime;
 }
 
 function isReleaseArtifact(file) {
     const normalized = String(file || '').replaceAll('\\', '/');
-    return normalized === 'package.json'
-        || normalized === 'package-lock.json'
-        || normalized === 'CHANGELOG.md'
-        || normalized === 'sw.js'
-        || normalized === 'index.html'
-        || /^[^/]+\.html$/.test(normalized);
+    const exactPaths = new Set([
+        'package.json',
+        'package-lock.json',
+        'CHANGELOG.md',
+        'sw.js',
+        'landing/index.html',
+        'css/assistant-rail.css',
+        'css/pages.css',
+        'css/pages-shell.css',
+        'css/sidebar-aurora.css',
+        'js/designs-page.js',
+        'server.js',
+        'tests/ui-check.js',
+        'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md'
+    ]);
+    return exactPaths.has(normalized) || /^[^/]+\.html$/.test(normalized);
+}
+
+function parseControllerJson(output, code) {
+    try {
+        return JSON.parse(String(output || ''));
+    } catch {
+        throw new ProductionBlockError('Trusted QA controller returned malformed JSON', code);
+    }
+}
+
+function trustedQaStatus() {
+    return parseControllerJson(
+        commandResult(process.execPath, [TRUSTED_QA_CONTROLLER, '--action', 'status']),
+        'PRODUCTION_BLOCK_QA_STATUS_INVALID'
+    );
+}
+
+function findUnexpiredQaBlocker(status, now = new Date()) {
+    return (status?.runs || []).find(run => run?.state === 'active'
+        && Number.isFinite(Date.parse(String(run.expiresAt || '')))
+        && Date.parse(String(run.expiresAt)) > now.valueOf()) || null;
+}
+
+function qaRunArgs(manifest, releaseSha) {
+    const qaScope = manifest.allowedQaScope;
+    const args = [TRUSTED_QA_CONTROLLER,
+        '--action', 'run',
+        '--date', qaScope.date,
+        '--ttl-minutes', String(qaScope.ttlMinutes),
+        '--animators', String(qaScope.animators),
+        '--release-sha', releaseSha,
+        '--release-branch', manifest.allowedBranch,
+        '--live-url', manifest.liveUrl
+    ];
+    if (qaScope.kind === 'canary') args.push('--fixture-limit', '1');
+    return args;
+}
+
+function runAuthorizedQa(manifest, releaseSha) {
+    const report = parseControllerJson(
+        commandResult(process.execPath, qaRunArgs(manifest, releaseSha)),
+        'PRODUCTION_BLOCK_QA_REPORT_INVALID'
+    );
+    fail(report.success === true && report.action === 'run',
+        'Trusted QA controller did not confirm a successful run', 'PRODUCTION_BLOCK_QA_RUN_FAILED');
+    return sanitize({
+        status: 'active',
+        kind: manifest.allowedQaScope.kind,
+        ttlMinutes: manifest.allowedQaScope.ttlMinutes,
+        runId: report.runId,
+        expiresAt: report.expiresAt,
+        reportFile: report.reportFile
+    });
+}
+
+async function resumeAuthorizedQa(manifest, releaseSha, dependencies = {}) {
+    fail(manifest.allowedQaScope?.enabled === true,
+        'Production block does not authorize QA', 'PRODUCTION_BLOCK_QA_NOT_AUTHORIZED');
+    fail(SHA_PATTERN.test(String(releaseSha || '').toLowerCase()),
+        'QA resume requires a recorded exact release SHA', 'PRODUCTION_BLOCK_RELEASE_SHA_MISSING');
+    const readLiveVersion = dependencies.liveVersion || liveVersion;
+    const readQaStatus = dependencies.qaStatus || trustedQaStatus;
+    const executeQa = dependencies.qaRun || runAuthorizedQa;
+    const live = await readLiveVersion(manifest.liveUrl);
+    fail(String(live.commitSha || '').toLowerCase() === releaseSha
+        && live.sourceBranch === manifest.allowedBranch,
+    'Live release identity differs from the block release SHA/branch', 'PRODUCTION_BLOCK_QA_LIVE_DRIFT');
+    const blocker = findUnexpiredQaBlocker(await readQaStatus(), dependencies.now || new Date());
+    if (blocker) {
+        return sanitize({
+            status: 'deferred',
+            reason: 'unexpired_trusted_qa_run',
+            blockerRunId: blocker.runId,
+            retryAfter: blocker.expiresAt,
+            exactEntityCount: blocker.exactEntityCount
+        });
+    }
+    return executeQa(manifest, releaseSha);
 }
 
 function findExactCiRun(releaseSha, options = {}) {
@@ -307,6 +395,11 @@ async function executeAction(options, runtime) {
     writeBlockFile(options.blockFile, manifest);
     try {
         const result = await runtime.execute(manifest, options.blockFile);
+        manifest.runtimeState.releaseSha = result.releaseSha;
+        manifest.runtimeState.releaseCompletedAt = manifest.runtimeState.releaseCompletedAt || new Date().toISOString();
+        manifest.runtimeState.qa = result.qa || null;
+        manifest.runtimeState.lastFailureCode = null;
+        writeBlockFile(options.blockFile, manifest);
         return sanitize({ success: true, action: 'execute', blockId: manifest.blockId, attempt: attempts + 1, result });
     } catch (error) {
         manifest.runtimeState.lastFailureCode = error.code || 'PRODUCTION_BLOCK_EXECUTE_FAILED';
@@ -315,10 +408,26 @@ async function executeAction(options, runtime) {
     }
 }
 
+async function qaResumeAction(options, runtime) {
+    const manifest = readBlockFile(options.blockFile);
+    fail(options.confirmation === confirmationValue(manifest),
+        'QA resume requires the exact block confirmation', 'PRODUCTION_BLOCK_CONFIRMATION_INVALID');
+    fail(manifest.allowedQaScope?.enabled === true,
+        'Production block does not authorize QA', 'PRODUCTION_BLOCK_QA_NOT_AUTHORIZED');
+    const releaseSha = String(manifest.runtimeState?.releaseSha || '').toLowerCase();
+    fail(SHA_PATTERN.test(releaseSha),
+        'QA resume requires a completed release with an exact SHA', 'PRODUCTION_BLOCK_RELEASE_SHA_MISSING');
+    const result = await runtime.resumeQa(manifest, releaseSha);
+    manifest.runtimeState.qa = result;
+    manifest.runtimeState.qaLastAttemptAt = new Date().toISOString();
+    writeBlockFile(options.blockFile, manifest);
+    return sanitize({ success: true, action: 'qa-resume', blockId: manifest.blockId, releaseSha, result });
+}
+
 function parseOptions(argv) {
     const args = [...argv];
     const action = cleanText(args[0] && !args[0].startsWith('-') ? args[0] : argValue(args, '--action', 'status'), 20).toLowerCase();
-    fail(['prepare', 'status', 'execute'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
+    fail(['prepare', 'status', 'execute', 'qa-resume'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
     const blockFileValue = argValue(args, '--block-file');
     if (action !== 'prepare') fail(Boolean(blockFileValue), `${action} requires --block-file`, 'PRODUCTION_BLOCK_FILE_REQUIRED');
     const qaScopeBase64 = argValue(args, '--qa-scope-base64');
@@ -338,6 +447,7 @@ function parseOptions(argv) {
 async function execute(options, runtime = defaultRuntime()) {
     if (options.action === 'prepare') return prepareAction(options, runtime);
     if (options.action === 'status') return statusAction(options);
+    if (options.action === 'qa-resume') return qaResumeAction(options, runtime);
     return executeAction(options, runtime);
 }
 
@@ -365,13 +475,17 @@ module.exports = {
     execute,
     executeAction,
     findExactCiRun,
+    findUnexpiredQaBlocker,
     isReleaseArtifact,
     parseOptions,
     parseQaScope,
     prepareAction,
     publicError,
+    qaResumeAction,
+    qaRunArgs,
     readBlockFile,
     releaseCommandPlan,
+    resumeAuthorizedQa,
     statusAction,
     writeBlockFile
 };

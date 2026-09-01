@@ -244,6 +244,7 @@ The canonical bounded release controller is:
 npm run codex:production-block -- prepare [options]
 npm run codex:production-block -- status --block-file <path>
 npm run codex:production-block -- execute --block-file <path> --confirmation <exact-value>
+npm run codex:production-block -- qa-resume --block-file <path> --confirmation <exact-value>
 ```
 
 `prepare` is read-only against production and writes a sanitized, hash-bound
@@ -256,6 +257,13 @@ Red paths, unknown/cleanup/mixed migrations, attempt exhaustion, and any
 confirmation mismatch. `--dry-run` validates the full envelope and prints only
 the fixed orchestration plan; it performs no push, deploy, migration, or QA
 write.
+
+If an already authorized, unexpired Trusted QA run is active after deploy,
+`execute` records the exact release SHA and returns the canary as `deferred`.
+It never cleans that run early. After the blocker TTL, `qa-resume` revalidates
+the same unexpired block confirmation, exact live SHA/branch, and signed QA
+scope, then runs only that QA scope. It cannot push, deploy, change settings,
+accept booking IDs, or invoke cleanup.
 
 On Windows/PowerShell, pass structured QA scope through
 `--qa-scope-base64 <base64url-json>` so npm cannot strip JSON quotes. The

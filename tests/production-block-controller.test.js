@@ -11,15 +11,20 @@ const {
     confirmationValue,
     manifestHash,
     sanitize,
-    validateManifest
+    validateManifest,
+    warningText
 } = require('../scripts/production-block-policy');
 const {
     executeAction,
+    findUnexpiredQaBlocker,
     parseOptions,
     isReleaseArtifact,
     prepareAction,
+    qaResumeAction,
+    qaRunArgs,
     readBlockFile,
     releaseCommandPlan,
+    resumeAuthorizedQa,
     writeBlockFile
 } = require('../scripts/production-block-controller');
 
@@ -203,10 +208,37 @@ test('release plan requires exact-SHA CI, helper deploy, version proof, and no r
 });
 
 test('release artifact allowlist accepts version/cache files only', () => {
-    assert.equal(isReleaseArtifact('package.json'), true);
-    assert.equal(isReleaseArtifact('timeline.html'), true);
-    assert.equal(isReleaseArtifact('scripts/production-block-controller.js'), false);
-    assert.equal(isReleaseArtifact('.github/workflows/ci.yml'), false);
+    const accepted = [
+        'package.json',
+        'package-lock.json',
+        'CHANGELOG.md',
+        'sw.js',
+        'timeline.html',
+        'landing/index.html',
+        'css/assistant-rail.css',
+        'css/pages.css',
+        'css/pages-shell.css',
+        'css/sidebar-aurora.css',
+        'js/designs-page.js',
+        'server.js',
+        'tests/ui-check.js',
+        'docs/integrations/checkbox/IMPLEMENTATION_STATUS.md'
+    ];
+    accepted.forEach(file => assert.equal(isReleaseArtifact(file), true, file));
+    const rejected = [
+        ['css', 'arbitrary.css'].join('/'),
+        ['js', 'arbitrary.js'].join('/'),
+        ['docs', 'arbitrary.md'].join('/'),
+        'scripts/production-block-controller.js',
+        '.github/workflows/ci.yml'
+    ];
+    rejected.forEach(file => assert.equal(isReleaseArtifact(file), false, file));
+});
+
+test('warning describes a descendant release commit instead of promising the candidate SHA itself', () => {
+    const text = warningText(manifest());
+    assert.match(text, new RegExp(`Release commit.+candidate SHA ${HEAD_SHA}`));
+    assert.doesNotMatch(text, new RegExp(`Push SHA ${HEAD_SHA}`));
 });
 
 test('QA controller receives only the explicitly authorized scope', () => {
@@ -239,6 +271,124 @@ test('PowerShell-safe base64url QA scope preserves the same strict validation', 
     assert.deepEqual(parseOptions(['prepare', '--qa-scope-base64', encoded]).qaScope, scope);
     assert.throws(() => parseOptions(['prepare', '--qa-scope-base64', '%%%']),
         error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+});
+
+test('unexpired active Trusted QA run is identified as a deferral blocker', () => {
+    const now = new Date('2026-09-01T18:00:00.000Z');
+    const blocker = findUnexpiredQaBlocker({ runs: [
+        { runId: 'cleaned', state: 'cleaned', expiresAt: '2026-09-01T20:00:00.000Z' },
+        { runId: 'expired', state: 'active', expiresAt: '2026-09-01T17:00:00.000Z' },
+        { runId: 'manual-review', state: 'active', expiresAt: '2026-09-01T19:53:24.913Z', exactEntityCount: 36 }
+    ] }, now);
+    assert.equal(blocker.runId, 'manual-review');
+});
+
+test('authorized QA defers without invoking the write runner while another run is active', async () => {
+    const value = manifest({
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    });
+    let qaRuns = 0;
+    const result = await resumeAuthorizedQa(value, RELEASE_SHA, {
+        now: new Date('2026-09-01T18:00:00.000Z'),
+        async liveVersion() { return { commitSha: RELEASE_SHA, sourceBranch: value.allowedBranch }; },
+        async qaStatus() {
+            return { runs: [{
+                runId: 'manual-review', state: 'active', expiresAt: '2026-09-01T19:53:24.913Z', exactEntityCount: 36
+            }] };
+        },
+        async qaRun() { qaRuns += 1; }
+    });
+    assert.equal(result.status, 'deferred');
+    assert.equal(result.blockerRunId, 'manual-review');
+    assert.equal(qaRuns, 0);
+});
+
+test('authorized QA rejects live release drift', async () => {
+    const value = manifest({
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    });
+    await assert.rejects(
+        resumeAuthorizedQa(value, RELEASE_SHA, {
+            async liveVersion() { return { commitSha: HEAD_SHA, sourceBranch: value.allowedBranch }; }
+        }),
+        error => error.code === 'PRODUCTION_BLOCK_QA_LIVE_DRIFT'
+    );
+});
+
+test('authorized QA runner receives only the manifest-bound canary scope', async () => {
+    const value = manifest({
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    });
+    let captured = null;
+    const result = await resumeAuthorizedQa(value, RELEASE_SHA, {
+        async liveVersion() { return { commitSha: RELEASE_SHA, sourceBranch: value.allowedBranch }; },
+        async qaStatus() { return { runs: [] }; },
+        async qaRun(receivedManifest, receivedSha) {
+            captured = { scope: receivedManifest.allowedQaScope, sha: receivedSha };
+            return { status: 'active', runId: 'canary-run', ttlMinutes: 15 };
+        }
+    });
+    assert.equal(result.runId, 'canary-run');
+    assert.deepEqual(captured, { scope: value.allowedQaScope, sha: RELEASE_SHA });
+    const args = qaRunArgs(value, RELEASE_SHA);
+    assert.deepEqual(args.slice(1), [
+        '--action', 'run',
+        '--date', '2026-09-03',
+        '--ttl-minutes', '15',
+        '--animators', '1',
+        '--release-sha', RELEASE_SHA,
+        '--release-branch', value.allowedBranch,
+        '--live-url', value.liveUrl,
+        '--fixture-limit', '1'
+    ]);
+    assert.equal(args.some(arg => /cleanup|booking/i.test(arg)), false);
+});
+
+test('QA resume requires exact confirmation and a recorded release SHA', async t => {
+    const value = manifest({
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    });
+    const file = blockFile(t, value);
+    const runtime = { async resumeQa() { throw new Error('must not run'); } };
+    await assert.rejects(
+        qaResumeAction({ blockFile: file, confirmation: 'wrong' }, runtime),
+        error => error.code === 'PRODUCTION_BLOCK_CONFIRMATION_INVALID'
+    );
+    await assert.rejects(
+        qaResumeAction({ blockFile: file, confirmation: confirmationValue(value) }, runtime),
+        error => error.code === 'PRODUCTION_BLOCK_RELEASE_SHA_MISSING'
+    );
+});
+
+test('QA resume rejects an expired production block', async t => {
+    const value = buildManifest(facts(), {
+        now: new Date(Date.now() - (10 * 60_000)),
+        validityMinutes: 5,
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    });
+    value.runtimeState.releaseSha = RELEASE_SHA;
+    const file = blockFile(t, value);
+    await assert.rejects(
+        qaResumeAction({ blockFile: file, confirmation: confirmationValue(value) }, { async resumeQa() {} }),
+        error => error.code === 'PRODUCTION_BLOCK_EXPIRED'
+    );
+});
+
+test('QA resume persists only the result returned for the signed QA scope', async t => {
+    const value = manifest({
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    });
+    value.runtimeState.releaseSha = RELEASE_SHA;
+    const file = blockFile(t, value);
+    const result = await qaResumeAction({ blockFile: file, confirmation: confirmationValue(value) }, {
+        async resumeQa(received, sha) {
+            assert.deepEqual(received.allowedQaScope, value.allowedQaScope);
+            assert.equal(sha, RELEASE_SHA);
+            return { status: 'active', runId: 'canary-run', ttlMinutes: 15 };
+        }
+    });
+    assert.equal(result.result.runId, 'canary-run');
+    assert.equal(readBlockFile(file).runtimeState.qa.runId, 'canary-run');
 });
 
 test('runtime state can be updated without weakening the signed authorization envelope', t => {

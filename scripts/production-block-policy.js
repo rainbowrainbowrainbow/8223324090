@@ -205,7 +205,14 @@ function buildManifest(facts, options = {}) {
             migrations: Object.fromEntries(migrations.map(item => [item.file, item.rollback || 'No automatic rollback documented']))
         },
         changedPaths: [...new Set((facts.changedPaths || []).map(file => file.replaceAll('\\', '/')))].sort(),
-        runtimeState: { releaseAttempts: 0, lastAttemptAt: null, lastFailureCode: null }
+        runtimeState: {
+            releaseAttempts: 0,
+            lastAttemptAt: null,
+            lastFailureCode: null,
+            releaseSha: null,
+            releaseCompletedAt: null,
+            qa: null
+        }
     };
     fail(Number.isInteger(manifest.maxReleaseAttempts) && manifest.maxReleaseAttempts >= 1 && manifest.maxReleaseAttempts <= 3,
         'Release attempt budget must be 1-3', 'PRODUCTION_BLOCK_ATTEMPTS_INVALID');
@@ -259,7 +266,7 @@ function warningText(manifest) {
         `Дія: випуск ${manifest.releaseLabel}.`,
         '',
         'Наслідки:',
-        `1. Push SHA ${manifest.initialHeadSha} у ${manifest.allowedBranch}.`,
+        `1. Release commit — descendant candidate SHA ${manifest.initialHeadSha} — буде запушено у ${manifest.allowedBranch}.`,
         '2. Запуск exact-SHA GitHub CI.',
         `3. Deploy у Railway service ${manifest.railwayServiceId}.`,
         `4. Застосування migrations: ${migrations}.`,

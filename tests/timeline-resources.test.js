@@ -4042,7 +4042,10 @@ test('micro, short and tiny timeline activity blocks have dedicated compact CSS 
     const tinySixCharacterTypography = css.indexOf('.booking-block.booking-block--tiny .timeline-compact-booking-label[data-code-length="6"] {', tinyBaseTypography);
     assert.ok(tinyFiveCharacterTypography > tinyBaseTypography, 'five-character tiny code override follows base typography');
     assert.ok(tinySixCharacterTypography > tinyBaseTypography, 'six-character tiny code override follows base typography');
-    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="7"\]\s*\{[\s\S]*font-size:\s*9\.5px/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*9\.5px/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*8\.5px/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="7"\]\s*\{[\s\S]*font-size:\s*7\.5px/);
+    assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="8"\]\s*\{[\s\S]*font-size:\s*7px/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\[data-code-length="4"\]\s*\{[\s\S]*font-size:\s*8\.5px/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*7\.5px/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*7px/);

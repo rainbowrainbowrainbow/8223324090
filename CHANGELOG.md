@@ -4,6 +4,14 @@
 
 ---
 
+## v0.81.48 - Timeline Presentation Label Hotfix
+
+### Release / Versioning / (01.09.2026) [codex]
+- **Вузькі картки більше не обрізають коди** - short/tiny labels для `П 501`, `П PRO`, `ШОУ Пап`, `ШОУ Бул` і `ІНШ ІН` отримали окремі readable typography floors без зменшення нижче 7px.
+- **Regression guard для mobile zoom** - static checks тепер фіксують довші short-коди й 4-6 символні tiny-коди, щоб 390px / 15 хв не повернув overflow.
+
+---
+
 ## v0.81.47 - Timeline Presentation System v2
 
 ### Release / Versioning / (01.09.2026) [codex]

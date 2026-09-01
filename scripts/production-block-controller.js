@@ -173,6 +173,9 @@ function defaultRuntime() {
         async resumeQa(manifest, releaseSha) {
             return resumeAuthorizedQa(manifest, releaseSha);
         },
+        async preflightQa(scope, live) {
+            return trustedQaPreflight(scope, live);
+        },
         async execute(manifest, blockFile) {
             commandResult('npm', ['test'], { inherit: true });
             commandResult('npm', ['run', 'version:bump', '--', 'patch', '--label', manifest.releaseLabel], { inherit: true });
@@ -265,6 +268,28 @@ function trustedQaStatus() {
         commandResult(process.execPath, [TRUSTED_QA_CONTROLLER, '--action', 'status']),
         'PRODUCTION_BLOCK_QA_STATUS_INVALID'
     );
+}
+
+function trustedQaPreflight(scope, live) {
+    const args = [
+        TRUSTED_QA_CONTROLLER,
+        '--action', 'preflight',
+        '--date', scope.date,
+        '--ttl-minutes', String(scope.ttlMinutes),
+        '--animators', String(scope.animators),
+        '--release-sha', String(live.commitSha || '').toLowerCase(),
+        '--release-branch', live.sourceBranch,
+        '--live-url', TARGET.liveUrl
+    ];
+    if (scope.kind === 'canary' || scope.fixtureLimit === 1) args.push('--fixture-limit', '1');
+    const report = parseControllerJson(
+        commandResult(process.execPath, args),
+        'PRODUCTION_BLOCK_QA_PREFLIGHT_MALFORMED'
+    );
+    fail(report.success === true && report.action === 'preflight' && report.collisionFree === true,
+        'Trusted QA preflight did not confirm an available collision-free scope',
+        'PRODUCTION_BLOCK_QA_PREFLIGHT_FAILED', sanitize(report));
+    return report;
 }
 
 function findUnexpiredQaBlocker(status, now = new Date()) {
@@ -363,6 +388,10 @@ function releaseCommandPlan(manifest) {
 async function prepareAction(options, runtime) {
     const facts = await runtime.facts();
     const manifest = buildManifest(facts, options);
+    if (manifest.allowedQaScope?.enabled === true) {
+        const qaPreflight = await runtime.preflightQa(manifest.allowedQaScope, facts.live);
+        manifest.runtimeState.qaPreflight = sanitize(qaPreflight);
+    }
     const blockFile = writeBlockFile(options.blockFile || defaultBlockFile(manifest.blockId), manifest);
     return sanitize({ success: true, action: 'prepare', blockFile, manifest, confirmation: confirmationValue(manifest), warning: warningText(manifest) });
 }
@@ -504,5 +533,6 @@ module.exports = {
     resolveSpawnCommand,
     resumeAuthorizedQa,
     statusAction,
+    trustedQaPreflight,
     writeBlockFile
 };

@@ -14,6 +14,7 @@ const {
     execute,
     normalizeAuditRow,
     parseOptions,
+    preflightAction,
     publicError,
     recoverExpiredRuns,
     sanitize,
@@ -201,6 +202,58 @@ test('one-fixture canary deterministically selects one unlinked booking entity',
     assert.equal(first.maxEntityCount, 1);
     assert.equal(first.bookingBlueprints.length, 1);
     assert.equal(first.bookingBlueprints[0].secondAnimatorLineName, undefined);
+});
+
+test('preflight is read-only and validates one available canary fixture', async () => {
+    let applyCalls = 0;
+    const options = {
+        liveUrl: 'https://8223324090-production.up.railway.app',
+        runId: 'timeline-canary-preflight-1',
+        date: '2026-09-02',
+        ttlMinutes: 15,
+        animators: ['1'],
+        fixtureLimit: 1,
+        releaseSha: 'a'.repeat(40),
+        releaseBranch: 'codex/eventgenix-production',
+        blueprintFile: path.join(__dirname, '..', 'config', 'trusted-qa-timeline-showcase-2026-09-02.json'),
+        secretFile: 'unused-in-test'
+    };
+    const result = await preflightAction(options, {
+        async audit() { return []; },
+        readBlueprint(file) { return JSON.parse(fs.readFileSync(file, 'utf8')); },
+        async prepare(_blueprint, prepareOptions) {
+            fs.writeFileSync(prepareOptions.outputFile, '{}');
+            return { fixtureCount: 1, expectedEntityCount: 1, lineCount: 5, productCount: 27, collisionFree: true };
+        },
+        readManifest() { return { sourceCommit: options.releaseSha, sourceBranch: options.releaseBranch }; },
+        async apply() { applyCalls += 1; }
+    });
+    assert.equal(result.success, true);
+    assert.equal(result.action, 'preflight');
+    assert.equal(result.expectedEntityCount, 1);
+    assert.equal(applyCalls, 0);
+});
+
+test('preflight fails closed on any non-cleaned registry run without recovering it', async () => {
+    let recoveryCalls = 0;
+    const options = {
+        runId: 'timeline-canary-preflight-blocked',
+        date: '2026-09-02',
+        ttlMinutes: 15,
+        animators: ['1'],
+        fixtureLimit: 1,
+        releaseSha: 'a'.repeat(40),
+        releaseBranch: 'codex/eventgenix-production',
+        blueprintFile: path.join(__dirname, '..', 'config', 'trusted-qa-timeline-showcase-2026-09-02.json')
+    };
+    await assert.rejects(
+        preflightAction(options, {
+            async audit() { return [auditRun({ state: 'active' })]; },
+            async recover() { recoveryCalls += 1; }
+        }),
+        error => error.code === 'TIMELINE_CONTROLLER_PREFLIGHT_BLOCKED'
+    );
+    assert.equal(recoveryCalls, 0);
 });
 
 test('browser reports stay sanitized when written to disk', () => {

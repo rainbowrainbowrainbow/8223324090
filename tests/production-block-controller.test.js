@@ -100,6 +100,30 @@ test('prepare is read-only apart from its local block manifest', async t => {
     assert.equal(readBlockFile(file).initialHeadSha, HEAD_SHA);
 });
 
+test('prepare validates an enabled QA scope before writing its authorization manifest', async t => {
+    const file = blockFile(t);
+    fs.rmSync(file);
+    let preflightCalls = 0;
+    const result = await prepareAction({
+        blockFile: file,
+        now: new Date(Date.now() - 1_000),
+        validityMinutes: 60,
+        releaseLabel: 'Autonomy Hardening',
+        qaScope: { enabled: true, kind: 'canary', date: '2026-09-02', ttlMinutes: 15, animators: '1', fixtureLimit: 1 }
+    }, {
+        async facts() { return facts(); },
+        async preflightQa(scope, live) {
+            preflightCalls += 1;
+            assert.equal(scope.date, '2026-09-02');
+            assert.equal(live.commitSha, LIVE_SHA);
+            return { success: true, action: 'preflight', collisionFree: true, expectedEntityCount: 1 };
+        }
+    });
+    assert.equal(result.success, true);
+    assert.equal(preflightCalls, 1);
+    assert.equal(readBlockFile(file).runtimeState.qaPreflight.expectedEntityCount, 1);
+});
+
 test('wrong confirmation is rejected before production execution', async t => {
     const file = blockFile(t);
     await assert.rejects(

@@ -347,6 +347,51 @@ async function recoverExpiredRuns(runtime, now = new Date()) {
     }
 }
 
+async function preflightAction(options, runtime) {
+    const runs = await runtime.audit(null);
+    const blocker = runs.find(run => run.state !== 'cleaned');
+    fail(!blocker, 'Trusted QA preflight requires an empty cleaned registry state',
+        'TIMELINE_CONTROLLER_PREFLIGHT_BLOCKED', blocker ? publicRunStatus(blocker) : {});
+    const template = JSON.parse(fs.readFileSync(options.blueprintFile, 'utf8'));
+    const blueprint = buildBlueprint(template, options);
+    assertStableBlueprint(blueprint, buildBlueprint(template, options));
+    const tempDirectory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-timeline-preflight-'));
+    const blueprintFile = path.join(tempDirectory, 'blueprint.json');
+    const manifestFile = path.join(tempDirectory, 'manifest.json');
+    fs.writeFileSync(blueprintFile, stableJson(blueprint), { encoding: 'utf8', flag: 'wx' });
+    try {
+        const normalizedBlueprint = runtime.readBlueprint(blueprintFile);
+        const prepared = await runtime.prepare(normalizedBlueprint, {
+            outputFile: manifestFile,
+            secretFile: options.secretFile
+        });
+        const manifest = runtime.readManifest(manifestFile);
+        fail(manifest.sourceCommit === options.releaseSha && manifest.sourceBranch === options.releaseBranch,
+            'Preflight manifest release identity differs from the requested exact SHA/branch',
+            'TIMELINE_CONTROLLER_RELEASE_IDENTITY_MISMATCH', {
+                expectedCommit: options.releaseSha,
+                expectedBranch: options.releaseBranch,
+                actualCommit: manifest.sourceCommit,
+                actualBranch: manifest.sourceBranch
+            });
+        return sanitize({
+            success: true,
+            action: 'preflight',
+            date: options.date,
+            animators: options.animators,
+            fixtureCount: prepared.fixtureCount,
+            expectedEntityCount: prepared.expectedEntityCount,
+            lineCount: prepared.lineCount,
+            productCount: prepared.productCount,
+            collisionFree: prepared.collisionFree === true,
+            releaseSha: options.releaseSha,
+            releaseBranch: options.releaseBranch
+        });
+    } finally {
+        fs.rmSync(tempDirectory, { recursive: true, force: true });
+    }
+}
+
 async function runAction(options, runtime) {
     await recoverExpiredRuns(runtime);
     const template = JSON.parse(fs.readFileSync(options.blueprintFile, 'utf8'));
@@ -458,16 +503,16 @@ function parseOptions(argv) {
     const args = [...argv];
     const positionalAction = args[0] && !args[0].startsWith('-') ? args[0] : null;
     const action = cleanText(argValue(args, '--action', positionalAction || 'status'), 20).toLowerCase();
-    fail(['status', 'run', 'verify', 'cleanup'].includes(action), 'Unsupported controller action', 'TIMELINE_CONTROLLER_ACTION_INVALID');
+    fail(['status', 'preflight', 'run', 'verify', 'cleanup'].includes(action), 'Unsupported controller action', 'TIMELINE_CONTROLLER_ACTION_INVALID');
     const dateValue = argValue(args, '--date');
     const date = dateValue ? validateDate(dateValue) : null;
     const releaseBranch = cleanText(argValue(args, '--release-branch', ALLOWED_BRANCH), 200);
     fail(releaseBranch === ALLOWED_BRANCH, 'Release branch must be codex/eventgenix-production', 'TIMELINE_CONTROLLER_BRANCH_INVALID');
     const releaseSha = cleanText(argValue(args, '--release-sha'), 40).toLowerCase();
-    if (action === 'run') fail(SHA_PATTERN.test(releaseSha), 'Run requires an exact 40-character release SHA', 'TIMELINE_CONTROLLER_SHA_INVALID');
-    if (action === 'run') fail(Boolean(date), 'Run requires --date YYYY-MM-DD', 'TIMELINE_CONTROLLER_DATE_REQUIRED');
+    if (['preflight', 'run'].includes(action)) fail(SHA_PATTERN.test(releaseSha), `${action} requires an exact 40-character release SHA`, 'TIMELINE_CONTROLLER_SHA_INVALID');
+    if (['preflight', 'run'].includes(action)) fail(Boolean(date), `${action} requires --date YYYY-MM-DD`, 'TIMELINE_CONTROLLER_DATE_REQUIRED');
     const runIdValue = argValue(args, '--run-id');
-    const runId = action === 'run' ? safeRunId(runIdValue, date) : cleanText(runIdValue, 100);
+    const runId = ['preflight', 'run'].includes(action) ? safeRunId(runIdValue, date) : cleanText(runIdValue, 100);
     if (['verify', 'cleanup'].includes(action)) fail(Boolean(runId), `${action} requires --run-id`, 'TIMELINE_CONTROLLER_RUN_ID_REQUIRED');
     const liveValue = argValue(args, '--live-url', 'https://8223324090-production.up.railway.app');
     const fixtureLimitValue = argValue(args, '--fixture-limit');
@@ -477,7 +522,7 @@ function parseOptions(argv) {
     return {
         action,
         date,
-        ttlMinutes: action === 'run' ? validateTtl(argValue(args, '--ttl-minutes', '60')) : null,
+        ttlMinutes: ['preflight', 'run'].includes(action) ? validateTtl(argValue(args, '--ttl-minutes', '60')) : null,
         animators: parseAnimators(argValue(args, '--animators', '1,2,3,4,5')),
         fixtureLimit,
         releaseSha,
@@ -498,6 +543,7 @@ async function execute(options, runtime = null) {
     const activeRuntime = runtime || defaultRuntime();
     try {
         if (options.action === 'status') return await statusAction(options, activeRuntime);
+        if (options.action === 'preflight') return await preflightAction(options, activeRuntime);
         if (options.action === 'run') return await runAction(options, activeRuntime);
         if (options.action === 'verify') return await verifyAction(options, activeRuntime);
         return await cleanupAction(options, activeRuntime);
@@ -544,6 +590,7 @@ module.exports = {
     normalizeAuditRow,
     parseAnimators,
     parseOptions,
+    preflightAction,
     publicError,
     publicRunStatus,
     recoverExpiredRuns,

@@ -270,6 +270,7 @@ function productTimelineCodeScope(product, businessContext) {
     return {
         businessContext: businessContext || DEFAULT_BUSINESS_CONTEXT,
         domain: product.domain || 'program',
+        category: String(product.category || '').trim().toLowerCase(),
         timelineCodeKey: normalizeProductTimelineCode(product.timelineCode).toLocaleLowerCase('uk-UA')
     };
 }
@@ -279,6 +280,7 @@ function productTimelineCodeLockKey(scope) {
         'products.active-timeline-code',
         scope.businessContext,
         scope.domain,
+        scope.category,
         scope.timelineCodeKey
     ].join('|');
 }
@@ -292,11 +294,12 @@ async function findActiveProductTimelineCodeConflict(client, product, businessCo
     if (product.isActive === false || product.is_active === false) return null;
     const scope = productTimelineCodeScope(product, businessContext);
     if (!scope.timelineCodeKey) return null;
-    const params = [scope.businessContext, scope.domain, scope.timelineCodeKey];
+    const params = [scope.businessContext, scope.domain, scope.category, scope.timelineCodeKey];
     const where = [
         `COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
         "COALESCE(domain, 'program') = $2",
-        'LOWER(TRIM(timeline_code)) = $3',
+        'LOWER(TRIM(category)) = $3',
+        'LOWER(TRIM(timeline_code)) = $4',
         'COALESCE(is_active, true) = true'
     ];
     if (options.excludeId) {
@@ -324,7 +327,10 @@ function timelineCodeConflictPayload(conflict) {
 }
 
 function isTimelineCodeUniqueViolation(err) {
-    return err?.code === '23505' && err?.constraint === 'idx_products_active_timeline_code_v341';
+    return err?.code === '23505' && (
+        err?.constraint === 'idx_products_active_timeline_code_v342'
+        || err?.constraint === 'idx_products_active_timeline_code_v341'
+    );
 }
 
 function duplicateProductError(duplicate) {
@@ -1195,12 +1201,37 @@ function validateProduct(body) {
     }
     const timelineCode = normalizeProductTimelineCode(body.timelineCode);
     const timelineCodeLength = Array.from(timelineCode).length;
-    if (timelineCodeLength < 2 || timelineCodeLength > 6) {
-        errors.push('timelineCode is required (2-6 chars)');
+    const categoryCodePrefixes = {
+        quest: 'КВ',
+        animation: 'АН',
+        show: 'ШОУ',
+        masterclass: 'МК',
+        photo: 'ФОТО',
+        pinata: 'П',
+        custom: 'ІНШ'
+    };
+    const categoryKey = String(body.category || '').trim().toLowerCase();
+    const categoryPrefix = categoryCodePrefixes[categoryKey] || '';
+    const lowerTimelineCode = timelineCode.toLocaleLowerCase('uk-UA');
+    const lowerCategoryPrefix = categoryPrefix.toLocaleLowerCase('uk-UA');
+    if (timelineCodeLength < 1 || timelineCodeLength > 6) {
+        errors.push('timelineCode is required (1-6 chars)');
     } else if (/[\r\n]/.test(timelineCode)) {
         errors.push('timelineCode must be one line');
     } else if (/\(\s*\d+\s*(?:\u0445\u0432\.?|min)?\s*\)/iu.test(timelineCode) || /\d+\s*(?:\u0445\u0432\.?|min)(?=\s|$)/iu.test(timelineCode)) {
         errors.push('timelineCode must not contain duration');
+    } else if (
+        categoryPrefix
+        && (
+            lowerTimelineCode === lowerCategoryPrefix
+            || lowerTimelineCode.startsWith(`${lowerCategoryPrefix} `)
+            || lowerTimelineCode.startsWith(`${lowerCategoryPrefix}-`)
+            || (categoryKey === 'masterclass' && /^мк[^\s-]/iu.test(timelineCode))
+            || (categoryKey === 'quest' && /^кв\s*\d+/iu.test(timelineCode))
+            || (categoryKey === 'show' && /^шоу\s+/iu.test(timelineCode))
+        )
+    ) {
+        errors.push('timelineCode must be a product code without category prefix');
     }
     if (!body.label || typeof body.label !== 'string' || body.label.length > 100) {
         errors.push('label is required (max 100 chars)');

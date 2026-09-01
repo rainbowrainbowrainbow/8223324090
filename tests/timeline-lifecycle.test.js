@@ -7,6 +7,7 @@ const { JSDOM } = require('jsdom');
 
 const ROOT = path.join(__dirname, '..');
 const timelineCacheCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-cache.js'), 'utf8');
+const timelinePresentationCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-presentation.js'), 'utf8');
 const timelineResourceIdentityCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-resource-identity.js'), 'utf8');
 const timelineBanquetInspectorHelpersCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-banquet-inspector-helpers.js'), 'utf8');
 const timelineCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline.js'), 'utf8');
@@ -161,6 +162,7 @@ function createHarness(options = {}) {
     window.clearInterval = () => {};
 
     const exposedCode = `${timelineCacheCode}
+        ${timelinePresentationCode}
         ${timelineResourceIdentityCode}
         ${timelineBanquetInspectorHelpersCode}
         ${timelineCode}
@@ -212,6 +214,8 @@ function createHarness(options = {}) {
             timelineTimeToPixel,
             timelineWorkdayBoundaryForLine,
             timelineBookingBoundaryStatus,
+            timelineActivityPresentation,
+            timelineBookingBlockDensity,
             createBookingBlock,
             ensureTimelineBookingTooltip,
             showAfishaTooltip,
@@ -310,6 +314,71 @@ function parkTimelineContext(storagePrefix = 'test') {
         storageKey: name => `${storagePrefix}_${name}`
     };
 }
+
+function timelineBlockLabelText(block) {
+    return block.querySelector('.timeline-micro-booking-code, .timeline-compact-booking-label, .timeline-room-activity-title')?.textContent || '';
+}
+
+test('timeline activity presentation renders category plus product code in animator cards', () => {
+    const { window, api } = createHarness();
+    window.PinataNumbers = {
+        normalize: value => String(value || '').replace(/^P-/i, '').replace(/^0+/, '') || String(value || ''),
+        display: value => String(value || '').replace(/^P-/i, '').replace(/^0+/, '') || String(value || ''),
+        valueFromBooking: booking => booking.pinataNumber || booking.pinata_number || '',
+        isPinataBooking: booking => booking.category === 'pinata'
+    };
+    const grid = window.document.createElement('div');
+    grid.className = 'line-grid';
+    grid.getBoundingClientRect = () => ({ width: 600, left: 0, right: 600 });
+    grid.dataset.cellWidth = '30';
+    grid.dataset.cellMinutes = '15';
+    window.document.body.appendChild(grid);
+
+    const show = api.createBookingBlock({
+        id: 'show-mafia',
+        category: 'show',
+        timelineCode: 'Маф',
+        label: 'Мафія(90)',
+        programName: 'Мафія',
+        time: '12:00',
+        duration: 15,
+        room: 'Марвел',
+        status: 'confirmed'
+    }, 12, grid, { id: 'line-1' });
+
+    const masterclass = api.createBookingBlock({
+        id: 'mk-bag',
+        category: 'masterclass',
+        timelineCode: 'РЕС',
+        label: 'Сумки(75)',
+        programName: 'МК Розпис еко-сумок',
+        time: '12:15',
+        duration: 30,
+        room: 'Джунглі',
+        status: 'confirmed'
+    }, 12, grid, { id: 'line-1' });
+
+    const pinata = api.createBookingBlock({
+        id: 'pinata-501',
+        category: 'pinata',
+        timelineCode: 'STD',
+        label: 'Пін(15)',
+        programName: 'Піньята',
+        pinataMode: 'park',
+        pinataNumber: 'P-501',
+        time: '12:45',
+        duration: 15,
+        room: 'Марвел',
+        status: 'preliminary'
+    }, 12, grid, { id: 'line-1' });
+
+    assert.equal(timelineBlockLabelText(show).replace(/\s+/g, ''), 'ШОУМаф');
+    assert.equal(show.getAttribute('data-timeline-category-code'), 'ШОУ');
+    assert.equal(timelineBlockLabelText(masterclass), 'МК РЕС');
+    assert.equal(timelineBlockLabelText(pinata).replace(/\s+/g, ''), 'П501');
+    assert.match(pinata.getAttribute('aria-label'), /Піньята парку 501/);
+    assert.doesNotMatch(masterclass.textContent, /МК\s*МК/u);
+});
 
 test('timelineView deep link is bootstrap-only and user switches replace the URL', async () => {
     const context = parkTimelineContext('deep');

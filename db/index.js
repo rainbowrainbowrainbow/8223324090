@@ -514,12 +514,12 @@ async function generateCertCode(client) {
 // v7.0: Seed products catalog from hardcoded PROGRAMS data
 async function seedProducts() {
     const timelineCodes = {
-        kv1: 'КВ 1', kv4: 'КВ 4', kv5: 'КВ 5', kv6: 'КВ 6', kv7: 'КВ 7', kv8: 'КВ 8', kv9: 'КВ 9', kv10: 'КВ 10', kv11: 'КВ 11',
-        anim60: 'АН 60', anim120: 'АН120', bubble: 'Бульб', neon_bubble: 'Неон', paper: 'Папір', dry_ice: 'Лід', football: 'Футб', mafia: 'Мафія',
-        photo60: 'Фото', photo_magnets: 'Фото+', photo_magnet_extra: 'Магн', video: 'Відео',
-        mk_candy: 'МКЦ', mk_thermomosaic: 'МКТ', mk_slime: 'МКС', mk_tshirt: 'МКФ', mk_cookie: 'МКП', mk_ecobag: 'МКЕ',
-        mk_pizza_classic: 'МКПК', mk_pizza_custom: 'МКП+', mk_cakepops: 'МККП', mk_cupcake: 'МККА', mk_soap: 'МКМ',
-        pinata: 'ПІН', pinata_custom: 'П PRO', custom: 'Інше'
+        kv1: '1', kv4: '4', kv5: '5', kv6: '6', kv7: '7', kv8: '8', kv9: '9', kv10: '10', kv11: '11',
+        anim60: '60', anim120: '120', bubble: 'Бул', neon_bubble: 'Нео', paper: 'Пап', dry_ice: 'Лід', football: 'Фут', mafia: 'Маф',
+        photo60: '60', photo_magnets: 'Маг', photo_magnet_extra: 'ДМ', video: 'Від',
+        mk_candy: 'ЦУК', mk_thermomosaic: 'ТЕР', mk_slime: 'СЛМ', mk_tshirt: 'РФУ', mk_cookie: 'РПР', mk_ecobag: 'РЕС',
+        mk_pizza_classic: 'КПЦ', mk_pizza_custom: 'КП+', mk_cakepops: 'КЕЙ', mk_cupcake: 'КАП', mk_soap: 'МИЛ',
+        pinata: 'STD', pinata_custom: 'PRO', custom: 'ІН'
     };
     const timelineColumnResult = await pool.query(`
         SELECT EXISTS (

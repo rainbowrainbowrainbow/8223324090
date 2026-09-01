@@ -3378,9 +3378,11 @@ test('room timeline activity cards use solid category surfaces instead of transp
 
 test('timeline booking blocks expose width-based density display modes', () => {
     const timeline = read('js/timeline.js');
+    const timelinePresentation = read('js/timeline-presentation.js');
     const css = read('css/timeline.css');
 
-    assert.match(timeline, /function timelineBookingBlockDensity\(width\) \{[\s\S]*if \(!Number\.isFinite\(safeWidth\) \|\| safeWidth < 44\) return 'micro';[\s\S]*if \(safeWidth < 90\) return 'tiny';[\s\S]*if \(safeWidth < 140\) return 'short';[\s\S]*if \(safeWidth < 220\) return 'medium';[\s\S]*return 'wide';/);
+    assert.match(timeline, /function timelineBookingBlockDensity\(width\) \{[\s\S]*TimelinePresentation\.timelineBookingBlockDensity\(width\)/);
+    assert.match(timelinePresentation, /function timelineBookingBlockDensity\(width\) \{[\s\S]*if \(!Number\.isFinite\(safeWidth\) \|\| safeWidth < 34\) return 'micro';[\s\S]*if \(safeWidth < 72\) return 'tiny';[\s\S]*if \(safeWidth < 132\) return 'short';[\s\S]*if \(safeWidth < 220\) return 'medium';[\s\S]*return 'wide';/);
     assert.match(timeline, /const width = Math\.max\(18, timelineDurationWidth\(effectiveDuration, anchor\)\);[\s\S]*let bookingBlockDensity = timelineBookingBlockDensity\(width\);/);
     assert.match(timeline, /block\.classList\.add\(`booking-block--\$\{bookingBlockDensity\}`\);/);
     assert.match(css, /\.booking-block--micro,\s*\.booking-block--tiny,\s*\.booking-block--short,\s*\.booking-block--medium,\s*\.booking-block--wide\s*\{[\s\S]*min-width:\s*0/);
@@ -3393,19 +3395,28 @@ test('timeline booking blocks expose width-based density display modes', () => {
 
 test('timeline activity blocks use catalog timeline codes without truncated name fragments', () => {
     const timeline = read('js/timeline.js');
+    const timelinePresentation = read('js/timeline-presentation.js');
     const css = read('css/timeline.css');
 
     assert.match(timeline, /function timelineActivityPresentation\(booking, renderBooking, bookingTitle = '', bookingTitleTail = ''\) \{/);
-    assert.match(timeline, /function timelineActivityBookingBlockDensity\(width, baseDensity, presentation, duration\) \{[\s\S]*estimatedTitleWidth[\s\S]*estimatedDurationBadgeWidth[\s\S]*availableContentWidth[\s\S]*: 'short';/);
-    assert.match(timeline, /source\.timelineCode \|\| source\.timeline_code \|\| booking\?\.timelineCode \|\| booking\?\.timeline_code/);
+    assert.match(timeline, /TimelinePresentation\.resolveTimelineActivityPresentation\(booking, renderBooking, bookingTitle, bookingTitleTail\)/);
+    assert.match(timeline, /function timelineActivityBookingBlockDensity\(width, baseDensity, presentation, duration\) \{[\s\S]*TimelinePresentation\.timelineActivityBookingBlockDensity\(width, baseDensity, presentation, duration\)/);
+    assert.match(timelinePresentation, /function resolveTimelineActivityPresentation\(booking = \{\}, renderBooking = null, bookingTitle = '', bookingTitleTail = '', options = \{\}\) \{/);
+    assert.match(timelinePresentation, /source\.timelineCode \|\| source\.timeline_code \|\| booking\?\.timelineCode \|\| booking\?\.timeline_code/);
+    assert.match(timelinePresentation, /function timelineActivityBookingBlockDensity\(width, baseDensity, presentation, duration\) \{[\s\S]*estimateTextWidth\(fullTitle\)[\s\S]*durationBadgeWidth[\s\S]*availableContentWidth[\s\S]*: 'short';/);
     assert.match(timeline, /function timelineFallbackActivityCode\(booking, renderBooking, bookingTitle, bookingTitleTail\) \{/);
     assert.match(timeline, /function timelinePinataNumberValue\(booking, renderBooking,[\s\S]*function timelinePinataNumberDisplay\(value\)/);
-    assert.match(timeline, /questNumber \? timelineBoundedActivityCode\(`КВ \$\{questNumber\}`\) : 'КВ'/);
-    assert.match(timeline, /pinataMode === 'client'[\s\S]*code = 'П КЛ'/);
-    assert.match(timeline, /pinataNumber[\s\S]*timelineBoundedActivityCode\(`П \$\{timelineNormalizePinataNumber\(pinataNumber\)\}`\)/);
+    assert.match(timelinePresentation, /const categoryCode = isPinata \? CATEGORY_CODES\.pinata : categoryCodeFor\(category, haystack\)/);
+    assert.match(timelinePresentation, /pinataMode === 'client'[\s\S]*productCode = 'КЛ'/);
+    assert.match(timelinePresentation, /pinataNumber[\s\S]*productCode = normalizePinataNumber\(pinataNumber, options\)/);
+    assert.match(timelinePresentation, /categoryCode/);
+    assert.match(timelinePresentation, /productCode/);
+    assert.match(timelinePresentation, /compactLabel/);
+    assert.match(timelinePresentation, /fullLabel/);
+    assert.match(timelinePresentation, /ariaLabel/);
     assert.match(timeline, /let isCompactActivityBlock = \(bookingBlockDensity === 'micro' \|\| bookingBlockDensity === 'tiny' \|\| bookingBlockDensity === 'short'\)[\s\S]*renderBooking\.category !== 'banquet'[\s\S]*renderBooking\.category !== 'graduation'/);
     assert.match(timeline, /const fittedBookingBlockDensity = isStandardActivityBlock[\s\S]*timelineActivityBookingBlockDensity\(width, bookingBlockDensity, activityPresentation, effectiveDuration\)[\s\S]*block\.classList\.remove\(`booking-block--\$\{bookingBlockDensity\}`\);[\s\S]*isCompactActivityBlock = true;/);
-    assert.match(timeline, /const compactActivityLabel = activityPresentation\.code;/);
+    assert.match(timeline, /const compactActivityLabel = activityPresentation\.compactLabel \|\| activityPresentation\.code;/);
     assert.match(timeline, /const microActivityLabel = timelineMicroActivityLabel\(booking, renderBooking, compactActivityLabel, bookingTitle, bookingTitleTail\);/);
     assert.match(timeline, /function timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium'\) \{/);
     assert.match(timeline, /const roomActivityDisplayLabel = timelineRoomActivityDisplayLabel\(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, bookingBlockDensity\);/);
@@ -3416,7 +3427,7 @@ test('timeline activity blocks use catalog timeline codes without truncated name
     assert.match(timeline, /const miniAccessibilityLabel = miniTitleParts\.join\(' · '\);/);
     assert.match(timeline, /title="\$\{escapeHtml\(miniAccessibilityLabel\)\}"\s*aria-label="\$\{escapeHtml\(miniAccessibilityLabel\)\}"/);
     assert.match(timeline, /block\.setAttribute\('title', fullBookingLabel\);/);
-    assert.match(timeline, /<div class="timeline-micro-booking-code" data-code-length="\$\{escapeHtml\(String\(microActivityLabel\.length\)\)\}">\$\{escapeHtml\(microActivityLabel\)\}<\/div>/);
+    assert.match(timeline, /<div class="timeline-micro-booking-code" data-code-length="\$\{escapeHtml\(String\(microActivityLabel\.length\)\)\}">\$\{microLabelHtml\}<\/div>/);
     assert.match(timeline, /<span class="timeline-compact-booking-label" data-code-length="\$\{escapeHtml\(String\(compactActivityLabel\.length\)\)\}">\$\{escapeHtml\(compactActivityLabel\)\}<\/span>/);
     assert.match(timeline, /block\.innerHTML = isRoomTimelineActivityCard[\s\S]*bookingBlockDensity === 'micro' \? microBookingHtml : compactBookingHtml/);
     assert.doesNotMatch(timeline, /timeline-compact-booking-tail/);
@@ -3792,6 +3803,7 @@ test('shared PinataNumbers helper owns operational number normalization', () => 
 });
 
 test('pinata compact labels preserve operational numbers without using duration as a fallback', () => {
+    const presentation = read('js/timeline-presentation.js');
     const timeline = read('js/timeline.js');
     const start = timeline.indexOf('function timelineStripDurationText');
     const end = timeline.indexOf('function getTimelineLineGrid');
@@ -3799,6 +3811,7 @@ test('pinata compact labels preserve operational numbers without using duration 
     const context = { console, PinataNumbers: pinataNumbersHarness() };
     vm.createContext(context);
     vm.runInContext(`
+        ${presentation}
         ${timeline.slice(start, end)}
         this.__pinataTimeline = {
             timelineActivityPresentation,
@@ -3828,7 +3841,7 @@ test('pinata compact labels preserve operational numbers without using duration 
     );
     assert.equal(
         hooks.timelineCompactActivityLabel({ category: 'pinata', label: 'Пін(15)' }, null, 'Пін(15)', 'Піньята', 'tiny'),
-        'ПІН'
+        'П Пін'
     );
     assert.equal(
         hooks.timelineRoomActivityDisplayLabel({ category: 'pinata', pinata_number: '501' }, null, 'Пін(15)', 'Піньята', 'П 501', 'tiny'),
@@ -3872,7 +3885,7 @@ test('pinata compact labels preserve operational numbers without using duration 
     );
     assert.equal(
         hooks.timelineActivityPresentation({ category: 'custom', timelineCode: 'Інше', programName: 'Інше (вкажіть)' }).fullTitle,
-        'Інше (вкажіть)'
+        'ІНШ Інше: Інше (вкажіть)'
     );
     assert.equal(
         hooks.timelineActivityBookingBlockDensity(156, 'medium', { fullTitle: 'КВ 7: Гра в Кальмара' }, 60),
@@ -4012,10 +4025,11 @@ test('micro, short and tiny timeline activity blocks have dedicated compact CSS 
     const css = read('css/timeline.css');
 
     assert.match(css, /\.booking-block\.booking-block--micro,\s*\.booking-block\.booking-block--short,\s*\.booking-block\.booking-block--tiny\s*\{[\s\S]*justify-content:\s*center;[\s\S]*gap:\s*2px;[\s\S]*padding:\s*5px 8px;/);
-    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\s*\{[\s\S]*flex:\s*0 0 100%;[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*box-sizing:\s*border-box;[\s\S]*font-size:\s*9px;[\s\S]*text-align:\s*center;[\s\S]*text-overflow:\s*clip/);
-    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="4"\]\s*\{[\s\S]*font-size:\s*6px/);
-    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*5px/);
-    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*4px/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\s*\{[\s\S]*display:\s*flex;[\s\S]*flex-direction:\s*column;[\s\S]*flex:\s*0 0 100%;[\s\S]*width:\s*100%;[\s\S]*min-width:\s*0;[\s\S]*box-sizing:\s*border-box;[\s\S]*font-size:\s*8px;[\s\S]*text-align:\s*center;[\s\S]*text-overflow:\s*clip/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code span\s*\{[\s\S]*display:\s*block;[\s\S]*white-space:\s*nowrap/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="4"\]\s*\{[\s\S]*font-size:\s*7\.5px/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*7px/);
+    assert.match(css, /\.booking-block\.booking-block--micro \.timeline-micro-booking-code\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*7px/);
     assert.match(css, /body\.timeline-dashboard-page \.booking-block\.booking-block--micro\s*\{[\s\S]*padding:\s*0 !important/);
     assert.match(css, /body\.timeline-dashboard-page \.booking-block\.booking-block--micro\s*\{[\s\S]*padding:\s*0 !important;[\s\S]*border-left-width:\s*2px/);
     assert.match(css, /\.booking-block\.booking-block--micro \.timeline-compact-booking-main,[\s\S]*?\.booking-block\.booking-block--micro \.booking-banquet-link-handle\s*\{[\s\S]*display:\s*none/);
@@ -4036,8 +4050,9 @@ test('micro, short and tiny timeline activity blocks have dedicated compact CSS 
     assert.match(css, /\.booking-block\.booking-block--short \.booking-block-room\s*\{[\s\S]*max-width:\s*72px;[\s\S]*margin-left:\s*0/);
     assert.match(css, /\.booking-block\.booking-block--short\.has-booking-room-meta \.timeline-compact-booking-meta \.booking-block-room\s*\{[\s\S]*max-width:\s*min\(72px, 100%\)/);
     assert.doesNotMatch(css, /min-width:\s*124px/);
-    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--micro \.timeline-room-activity-title\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*5px/);
-    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--micro \.timeline-room-activity-title\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*4px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--micro \.timeline-room-activity-title\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*7px/);
+    assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--micro \.timeline-room-activity-title\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*7px/);
+    assert.doesNotMatch(css, /font-size:\s*[456]px/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.booking-block--medium \.timeline-room-activity-title,[\s\S]*booking-block--wide \.timeline-room-activity-title\s*\{[\s\S]*flex:\s*1 1 auto;[\s\S]*width:\s*0/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.quest\s*\{[\s\S]*--timeline-room-card-accent:\s*#A78BFA/);
     assert.match(css, /body\.timeline-view-rooms \.booking-block\.is-room-timeline-activity-card\.masterclass\s*\{[\s\S]*--timeline-room-card-accent:\s*#84CC16/);

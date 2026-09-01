@@ -102,6 +102,37 @@ describe('Products', () => {
         assert.match(String(res.data?.error || ''), /timelineCode must not contain duration/);
     });
 
+    it('POST /api/products — rejects category-prefixed timeline code', async () => {
+        const res = await authRequest('POST', '/api/products', {
+            code: 'SMOKEPREFIX',
+            timelineCode: 'МК РЕС',
+            label: 'Smoke Prefix Code',
+            name: 'Smoke Prefix Code Program',
+            category: 'masterclass',
+            duration: 60,
+            price: 1000,
+            hosts: 1
+        });
+        assert.equal(res.status, 400);
+        assert.match(String(res.data?.error || ''), /without category prefix/);
+    });
+
+    it('POST /api/products — accepts one-character product timeline code', async () => {
+        const res = await authRequest('POST', '/api/products', {
+            code: 'SMOKEONE',
+            timelineCode: '7',
+            label: 'Smoke One Code',
+            name: 'Smoke One Code Program',
+            category: 'test',
+            duration: 60,
+            price: 1000,
+            hosts: 1
+        });
+        assert.equal(res.status, 201, `Expected 201, got ${res.status}: ${JSON.stringify(res.data)}`);
+        assert.equal(res.data.timelineCode, '7');
+        await authRequest('DELETE', `/api/products/${res.data.id}`);
+    });
+
     it('GET /api/bookings/:date — resolves current catalog timeline code for old bookings and null for missing products', async () => {
         const date = '2099-12-02';
         const lineId = 'timeline_code_product_test';

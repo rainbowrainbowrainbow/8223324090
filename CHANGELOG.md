@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.53 - Autonomy Hardening
+
+### Release / Versioning / (01.09.2026) [codex]
+- **Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.52 - Autonomy Hardening
 
 ### Release / Versioning / (01.09.2026) [codex]

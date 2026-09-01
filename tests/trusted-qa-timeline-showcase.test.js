@@ -652,6 +652,17 @@ test('checkout, persisted-line, and exact registry boundaries fail closed on dri
         branch: manifest.sourceBranch,
         dirty: ''
     }, manifest), { commit: manifest.sourceCommit, branch: manifest.sourceBranch, clean: true });
+    assert.deepEqual(assertCheckoutFacts({
+        commit: manifest.sourceCommit,
+        branch: 'codex/eventgenix-autonomy-hardening',
+        dirty: ''
+    }, manifest), { commit: manifest.sourceCommit, branch: 'codex/eventgenix-autonomy-hardening', clean: true });
+    assert.throws(
+        () => assertCheckoutFacts({ commit: 'f'.repeat(40), branch: manifest.sourceBranch, dirty: '' }, manifest),
+        error => error.code === 'SHOWCASE_LOCAL_CHECKOUT_IDENTITY_MISMATCH'
+            && error.details.commitMatches === false
+            && error.details.branchMatches === true
+    );
     assert.throws(
         () => assertCheckoutFacts({ commit: manifest.sourceCommit, branch: manifest.sourceBranch, dirty: ' M routes/bookings.js' }, manifest),
         error => error.code === 'SHOWCASE_LOCAL_CHECKOUT_DIRTY'

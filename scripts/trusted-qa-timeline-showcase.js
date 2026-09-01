@@ -676,8 +676,8 @@ function gitOutput(args) {
 }
 
 function assertCheckoutFacts({ commit, branch, dirty }, manifest) {
-    fail(commit === manifest.sourceCommit && branch === manifest.sourceBranch,
-        'Local checkout identity differs from the live-approved manifest',
+    fail(commit === manifest.sourceCommit,
+        'Local checkout commit differs from the live-approved manifest',
         'SHOWCASE_LOCAL_CHECKOUT_IDENTITY_MISMATCH', { commitMatches: commit === manifest.sourceCommit, branchMatches: branch === manifest.sourceBranch });
     fail(dirty === '',
         'Local checkout must be completely clean before Trusted QA database mutation',

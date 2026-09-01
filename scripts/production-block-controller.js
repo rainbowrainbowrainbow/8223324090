@@ -212,7 +212,10 @@ function defaultRuntime() {
                 inherit: true,
                 env: { VERSION_SMOKE_EXPECT_COMMIT: releaseSha, VERSION_SMOKE_EXPECT_BRANCH: manifest.allowedBranch }
             });
-            commandResult('npm', ['run', 'release:timeline-proof', '--', manifest.liveUrl], { inherit: true });
+            commandResult('npm', ['run', 'release:timeline-proof', '--', manifest.liveUrl], {
+                inherit: true,
+                env: { RELEASE_DEPLOY_BRANCH: manifest.allowedBranch }
+            });
             manifest.runtimeState.releaseSha = releaseSha;
             manifest.runtimeState.releaseCompletedAt = new Date().toISOString();
             manifest.runtimeState.lastFailureCode = null;

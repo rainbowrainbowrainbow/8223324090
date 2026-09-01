@@ -208,6 +208,11 @@ test('release plan requires exact-SHA CI, helper deploy, version proof, and no r
     assert.doesNotMatch(plan, /(^|\n)railway\s+up\b/);
 });
 
+test('production controller passes the authorized branch to timeline proof', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'production-block-controller.js'), 'utf8');
+    assert.match(source, /release:timeline-proof[\s\S]{0,300}RELEASE_DEPLOY_BRANCH:\s*manifest\.allowedBranch/);
+});
+
 test('Windows npm commands use the bundled JS CLI instead of an unspawnable cmd shim', () => {
     const execPath = path.join('C:', 'portable-node', 'node.exe');
     const resolved = resolveSpawnCommand('npm', ['test'], {

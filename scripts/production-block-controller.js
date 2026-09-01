@@ -47,6 +47,17 @@ function parseQaScope(value) {
     return sanitize(validateQaScope(parsed));
 }
 
+function decodeQaScope(value) {
+    const encoded = String(value || '').trim();
+    fail(/^[A-Za-z0-9_-]+={0,2}$/.test(encoded),
+        '--qa-scope-base64 must be canonical base64url', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    const decoded = Buffer.from(encoded, 'base64url').toString('utf8');
+    const canonical = Buffer.from(decoded, 'utf8').toString('base64url');
+    fail(canonical === encoded.replace(/=+$/, ''),
+        '--qa-scope-base64 is malformed', 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+    return decoded;
+}
+
 function defaultBlockFile(blockId) {
     return path.join(os.tmpdir(), 'eventgenix-production-blocks', `${blockId}.json`);
 }
@@ -310,6 +321,8 @@ function parseOptions(argv) {
     fail(['prepare', 'status', 'execute'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
     const blockFileValue = argValue(args, '--block-file');
     if (action !== 'prepare') fail(Boolean(blockFileValue), `${action} requires --block-file`, 'PRODUCTION_BLOCK_FILE_REQUIRED');
+    const qaScopeBase64 = argValue(args, '--qa-scope-base64');
+    const qaScopeValue = qaScopeBase64 ? decodeQaScope(qaScopeBase64) : argValue(args, '--qa-scope', 'none');
     return {
         action,
         blockFile: blockFileValue ? path.resolve(blockFileValue) : null,
@@ -317,7 +330,7 @@ function parseOptions(argv) {
         validityMinutes: Number(argValue(args, '--validity-minutes', '360')),
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),
-        qaScope: parseQaScope(argValue(args, '--qa-scope', 'none')),
+        qaScope: parseQaScope(qaScopeValue),
         dryRun: argPresent(args, '--dry-run')
     };
 }
@@ -348,6 +361,7 @@ if (require.main === module) {
 module.exports = {
     assertExecuteDrift,
     defaultBlockFile,
+    decodeQaScope,
     execute,
     executeAction,
     findExactCiRun,

@@ -257,6 +257,11 @@ confirmation mismatch. `--dry-run` validates the full envelope and prints only
 the fixed orchestration plan; it performs no push, deploy, migration, or QA
 write.
 
+On Windows/PowerShell, pass structured QA scope through
+`--qa-scope-base64 <base64url-json>` so npm cannot strip JSON quotes. The
+controller decodes it and applies the same strict QA schema; malformed or
+non-canonical input fails closed.
+
 The controller never accepts arbitrary commands or Railway settings. Its fixed
 sequence is local validation, release artifact commit, exact-SHA push and CI,
 the repository Railway helper, exact live version/release proof, and optional

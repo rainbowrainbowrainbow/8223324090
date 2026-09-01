@@ -15,6 +15,7 @@ const {
 } = require('../scripts/production-block-policy');
 const {
     executeAction,
+    parseOptions,
     isReleaseArtifact,
     prepareAction,
     readBlockFile,
@@ -230,6 +231,14 @@ test('canary QA scope is fail-closed at exactly one fixture', () => {
     assert.throws(() => manifest({
         qaScope: { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 2 }
     }), error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
+});
+
+test('PowerShell-safe base64url QA scope preserves the same strict validation', () => {
+    const scope = { enabled: true, kind: 'canary', date: '2026-09-03', ttlMinutes: 15, animators: '1', fixtureLimit: 1 };
+    const encoded = Buffer.from(JSON.stringify(scope), 'utf8').toString('base64url');
+    assert.deepEqual(parseOptions(['prepare', '--qa-scope-base64', encoded]).qaScope, scope);
+    assert.throws(() => parseOptions(['prepare', '--qa-scope-base64', '%%%']),
+        error => error.code === 'PRODUCTION_BLOCK_QA_SCOPE_INVALID');
 });
 
 test('runtime state can be updated without weakening the signed authorization envelope', t => {

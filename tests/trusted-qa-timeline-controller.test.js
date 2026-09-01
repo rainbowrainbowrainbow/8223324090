@@ -273,6 +273,18 @@ test('browser reports stay sanitized when written to disk', () => {
     }
 });
 
+test('responsive browser matrix changes zoom without requiring a visible desktop control', () => {
+    const source = fs.readFileSync(
+        path.join(__dirname, '..', 'scripts', 'trusted-qa-timeline-browser-matrix.js'),
+        'utf8'
+    );
+    assert.match(source, /page\.evaluate\(expected => \{/);
+    assert.match(source, /button\.click\(\)/);
+    assert.doesNotMatch(source, /locator\(`\.zoom-btn\[data-zoom=/);
+    assert.match(source, /requestUrl\.origin !== base/);
+    assert.match(source, /suppressedExternalWriteCount/);
+});
+
 test('status serializes PostgreSQL timestamp objects as ISO strings', () => {
     const run = normalizeAuditRow({
         databaseId: 31,

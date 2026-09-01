@@ -120,7 +120,11 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
         document.body.dataset.theme = nextTheme;
         localStorage.setItem('pzp_dark_mode', nextTheme === 'dark' ? 'true' : 'false');
     }, theme);
-    await page.locator(`.zoom-btn[data-zoom="${zoom}"]`).click();
+    await page.evaluate(expected => {
+        const button = document.querySelector(`.zoom-btn[data-zoom="${expected}"]`);
+        if (!(button instanceof HTMLButtonElement)) throw new Error(`Zoom control ${expected} is unavailable`);
+        button.click();
+    }, zoom);
     await page.waitForFunction(expected => document.querySelector(`.zoom-btn[data-zoom="${expected}"]`)?.getAttribute('aria-pressed') === 'true', zoom);
     await page.waitForTimeout(150);
     const metrics = await page.evaluate(ids => {
@@ -166,12 +170,19 @@ async function run(options = {}) {
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: true });
     const blockedWrites = [];
+    const suppressedExternalWrites = [];
     const context = await browser.newContext({ serviceWorkers: 'block' });
     await context.route('**/*', async route => {
         const request = route.request();
         const method = request.method().toUpperCase();
-        const pathname = new URL(request.url()).pathname;
-        if (!WRITE_METHODS.has(method) || (method === 'POST' && ALLOWED_POST_PATHS.has(pathname))) return route.continue();
+        const requestUrl = new URL(request.url());
+        const pathname = requestUrl.pathname;
+        if (!WRITE_METHODS.has(method)) return route.continue();
+        if (requestUrl.origin === base && method === 'POST' && ALLOWED_POST_PATHS.has(pathname)) return route.continue();
+        if (requestUrl.origin !== base) {
+            suppressedExternalWrites.push(`${method} ${pathname}`);
+            return route.abort('blockedbyclient');
+        }
         blockedWrites.push(`${method} ${pathname}`);
         return route.abort('blockedbyclient');
     });
@@ -195,13 +206,17 @@ async function run(options = {}) {
             for (const zoom of ZOOMS) cases.push(await captureCase(page, options.outputDirectory, bookingIds, viewport, zoom, 'dark'));
         }
         cases.push(await captureCase(page, options.outputDirectory, bookingIds, VIEWPORTS[0], 30, 'light'));
-        fail(blockedWrites.length === 0, 'Browser matrix attempted a write request', 'TIMELINE_BROWSER_MATRIX_WRITE_ATTEMPTED');
+        const blockedWriteInventory = [...new Set(blockedWrites)].sort();
+        fail(blockedWriteInventory.length === 0,
+            `Browser matrix attempted a write request: ${blockedWriteInventory.join(', ')}`,
+            'TIMELINE_BROWSER_MATRIX_WRITE_ATTEMPTED');
         return {
             success: true,
             runId: options.runId,
             bookingCount: bookingIds.length,
             cases,
-            blockedWriteCount: blockedWrites.length
+            blockedWriteCount: blockedWrites.length,
+            suppressedExternalWriteCount: suppressedExternalWrites.length
         };
     } finally {
         await context.close().catch(() => {});

@@ -132,6 +132,11 @@ The normal delivery path is:
 
 `implement -> commit -> push -> exact-SHA CI -> deploy -> live-site QA`
 
+- For a long unattended EventGenix task explicitly launched with
+  `$eventgenix-production-autopilot`, use the Goal and heartbeat templates in
+  `docs/templates/`. The skill coordinates existing policy; it grants no new
+  production permission.
+
 - If the user explicitly asks to deliver/release/deploy/ship end-to-end, proceed through the authorized stages without repeated confirmation.
 - Production-write stages still require a valid Yellow envelope; Red actions are never implied.
 - Diagnose failed CI before deployment.

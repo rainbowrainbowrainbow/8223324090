@@ -410,7 +410,22 @@ The production report should contain:
 
 Never include tokens, passwords, database URLs, environment values, or customer PII.
 
-## 16. Instruction Discovery And Restart
+## 16. EventGenix Autopilot
+
+Long EventGenix work may be launched explicitly with
+`$eventgenix-production-autopilot`. Start it as one Goal using
+`docs/templates/CODEX_EVENTGENIX_AUTOPILOT_GOAL.md`. If the work must survive an
+idle turn, attach one same-task, 15-minute bounded heartbeat using
+`docs/templates/CODEX_EVENTGENIX_HEARTBEAT.md`.
+
+The heartbeat observes active work, resumes only idle incomplete Green work,
+waits for in-flight commands, continues an already-authorized Yellow envelope,
+and stops on a new Red requirement. It must be disabled when acceptance is
+complete or the Goal is stopped. Reconnect by reopening the same task and
+auditing Goal/worktree/block/CI/QA state before resuming; never start a second
+writer on the same branch/worktree.
+
+## 17. Instruction Discovery And Restart
 
 Codex loads global instructions first and repository instructions from the project
 root toward the working directory; more specific instructions appear later and

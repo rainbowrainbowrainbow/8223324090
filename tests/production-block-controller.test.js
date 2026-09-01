@@ -242,3 +242,5 @@ test('runtime state can be updated without weakening the signed authorization en
     assert.equal(restored.manifestHash, originalHash);
     assert.equal(restored.runtimeState.releaseAttempts, 1);
 });
+
+require('./codex-autopilot-policy.test');

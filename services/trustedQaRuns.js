@@ -962,6 +962,21 @@ async function markTrustedQaRunCleanupPending(queryable, runId, reason = 'transp
     return result.rows?.[0] || null;
 }
 
+async function markTrustedQaRunBlocked(queryable, runId, reason = 'trusted_qa_ownership_mismatch') {
+    const result = await queryable.query(
+        `UPDATE trusted_qa_runs
+            SET state = CASE WHEN state = 'cleaned' THEN state ELSE 'blocked' END,
+                blocked_reason = $2,
+                cleanup_last_error = $2,
+                next_cleanup_at = NULL,
+                updated_at = NOW()
+          WHERE id = $1
+          RETURNING *`,
+        [runId, cleanText(reason, 500)]
+    );
+    return result.rows?.[0] || null;
+}
+
 async function loadTrustedQaCleanupInventory(queryable, runId, { forUpdate = false } = {}) {
     const runResult = await queryable.query(
         `SELECT *
@@ -1591,10 +1606,21 @@ async function runTrustedQaCleanupWatchdog(options = {}) {
     const processed = [];
     try {
         await client.query('BEGIN');
+        const exactRunDatabaseId = options.runDatabaseId === undefined || options.runDatabaseId === null
+            ? null
+            : Number(options.runDatabaseId);
+        if (exactRunDatabaseId !== null && (!Number.isInteger(exactRunDatabaseId) || exactRunDatabaseId <= 0)) {
+            throw new TrustedQaRunError('Trusted QA watchdog run ID is invalid', 'QA_RUN_WATCHDOG_RUN_ID_INVALID', {}, 400);
+        }
+        const allowedSources = Array.isArray(options.allowedSources)
+            ? [...new Set(options.allowedSources.map(value => cleanText(value, 100)).filter(Boolean))]
+            : [];
         const result = await client.query(
             `SELECT *
                FROM trusted_qa_runs
               WHERE COALESCE(cleanup_attempts, 0) < $1
+                AND ($3::bigint IS NULL OR id = $3)
+                AND (CARDINALITY($4::text[]) = 0 OR source = ANY($4::text[]))
                 AND (
                     (state = 'cleanup_pending'
                         AND (next_cleanup_at IS NULL OR next_cleanup_at <= NOW()))
@@ -1607,7 +1633,7 @@ async function runTrustedQaCleanupWatchdog(options = {}) {
                 updated_at ASC
               LIMIT $2
               FOR UPDATE SKIP LOCKED`,
-            [maxAttempts, batchLimit]
+            [maxAttempts, batchLimit, exactRunDatabaseId, allowedSources]
         );
         for (const run of result.rows || []) {
             await client.query('SAVEPOINT trusted_qa_cleanup_run');
@@ -1671,6 +1697,7 @@ module.exports = {
     hasClientDisposableQaMarker,
     loadTrustedQaCleanupInventory,
     loadTrustedQaRun,
+    markTrustedQaRunBlocked,
     markTrustedQaRunCleanupPending,
     normalizeAllowedEndpoints,
     normalizeTrustedQaAuthorizationManifest,

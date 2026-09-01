@@ -26,7 +26,7 @@ const {
 
 const APPLY_CONFIRMATION = 'CREATE_EXACT_TIMELINE_SHOWCASE';
 const CLEANUP_CONFIRMATION = 'CLEANUP_EXACT_TIMELINE_SHOWCASE';
-const SHOWCASE_SOURCE = 'trusted_qa';
+const SHOWCASE_SOURCE = 'trusted_timeline_showcase';
 const SHOWCASE_ENDPOINT = 'POST /api/bookings';
 const STATE_SCHEMA_VERSION = 1;
 const MANIFEST_SCHEMA_VERSION = 1;
@@ -36,18 +36,6 @@ const MAX_HTTP_READ_RETRIES = 3;
 const HTTP_TIMEOUT_MS = 30_000;
 const PREPARE_FROM = '12:00';
 const PREPARE_TO = '20:00';
-const PREPARE_PROFILES = Object.freeze({
-    '2026-08-29': Object.freeze({
-        from: PREPARE_FROM,
-        to: PREPARE_TO,
-        lineNames: Object.freeze(['Аніматор 1', 'Аніматор 2', 'Аніматор 3'])
-    }),
-    '2026-09-02': Object.freeze({
-        from: PREPARE_FROM,
-        to: PREPARE_TO,
-        lineNames: Object.freeze(['Аніматор 1', 'Аніматор 2', 'Аніматор 3', 'Аніматор 4', 'Аніматор 5'])
-    })
-});
 const PREPARE_LINE_NAMES = Object.freeze([
     'Аніматор 1',
     'Аніматор 2',
@@ -571,7 +559,6 @@ function normalizePreparationBlueprint(parsed) {
     const date = explicitDate || windowDate;
     const from = timeOnly(timeWindow.from || parsed.from || PREPARE_FROM);
     const to = timeOnly(timeWindow.to || parsed.to || PREPARE_TO);
-    const preparationProfile = PREPARE_PROFILES[date] || null;
     const businessContext = cleanText(parsed.businessContext || parsed.business_context || 'event_genix', 80);
     const rawFixtures = parsed.bookingBlueprints
         || parsed.booking_blueprints
@@ -583,12 +570,11 @@ function normalizePreparationBlueprint(parsed) {
         'Preparation runId must be 8-100 safe characters', 'SHOWCASE_PREPARE_RUN_ID_INVALID');
     fail((!hasExplicitDate || validIsoDate(explicitDateText))
         && (!hasWindowDate || validIsoDate(windowDateText))
-        && Boolean(preparationProfile)
         && validIsoDate(date)
         && (!explicitDate || !windowDate || explicitDate === windowDate)
-        && from === preparationProfile.from
-        && to === preparationProfile.to,
-        `Preparation requires an exact approved date profile bounded to ${PREPARE_FROM}-${PREPARE_TO}`,
+        && from === PREPARE_FROM
+        && to === PREPARE_TO,
+        `Preparation requires an exact date bounded to ${PREPARE_FROM}-${PREPARE_TO}`,
         'SHOWCASE_PREPARE_WINDOW_INVALID');
     fail(businessContext === 'event_genix',
         'Preparation is limited to event_genix', 'SHOWCASE_PREPARE_CONTEXT_INVALID');
@@ -598,9 +584,9 @@ function normalizePreparationBlueprint(parsed) {
 
     const bookingBlueprints = rawFixtures.map(normalizePreparationFixture);
     for (const fixture of bookingBlueprints) {
-        fail(preparationProfile.lineNames.includes(fixture.lineName)
-            && (!fixture.secondAnimatorLineName || preparationProfile.lineNames.includes(fixture.secondAnimatorLineName)),
-        'Preparation animator names exceed the exact approved date profile',
+        fail(PREPARE_LINE_NAMES.includes(fixture.lineName)
+            && (!fixture.secondAnimatorLineName || PREPARE_LINE_NAMES.includes(fixture.secondAnimatorLineName)),
+        'Preparation animator names exceed the trusted animator allowlist',
         'SHOWCASE_PREPARE_LINE_PROFILE_INVALID', { key: fixture.key, date });
     }
     const keys = bookingBlueprints.map(fixture => fixture.key);

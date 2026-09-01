@@ -173,6 +173,8 @@
     "qa:live:multi-segment": "node scripts/live-multi-segment-qa.js",
     "qa:trusted-run": "node scripts/trusted-qa-run.js",
     "qa:trusted-timeline-showcase": "node scripts/trusted-qa-timeline-showcase.js",
+    "qa:timeline:controller": "node scripts/trusted-qa-timeline-controller.js",
+    "qa:timeline:controller:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/trusted-qa-timeline-controller.ps1",
     "qa:live:tickets": "npx --yes --package playwright node scripts/live-ticket-release-gate.js",
     "smoke:hr-team:write": "npm exec --yes --package=playwright -c \"node scripts/live-hr-staff-profile-write-smoke.js\"",
     "smoke:timeline-detail": "node scripts/live-timeline-detail-smoke.js",

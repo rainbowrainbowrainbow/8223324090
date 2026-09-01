@@ -1,0 +1,215 @@
+'use strict';
+
+const assert = require('node:assert/strict');
+const fs = require('node:fs');
+const os = require('node:os');
+const path = require('node:path');
+const test = require('node:test');
+
+const {
+    TimelineControllerError,
+    assertStableBlueprint,
+    buildBlueprint,
+    cleanupConfirmation,
+    execute,
+    normalizeAuditRow,
+    parseOptions,
+    publicError,
+    recoverExpiredRuns,
+    sanitize,
+    stableJson,
+    writeSanitizedReport
+} = require('../scripts/trusted-qa-timeline-controller');
+
+function auditRun(overrides = {}) {
+    return normalizeAuditRow({
+        databaseId: 28,
+        runId: 'timeline-showcase-20260902-v1',
+        state: 'active',
+        source: 'trusted_timeline_showcase',
+        expiresAt: new Date(Date.now() - 60_000).toISOString(),
+        cleanupAttempts: 0,
+        exactEntityCount: 2,
+        registeredBookingIds: ['qa-1', 'qa-2'],
+        markedBookingIds: ['qa-1', 'qa-2'],
+        ...overrides
+    });
+}
+
+function recoveryRuntime(runs) {
+    const calls = [];
+    return {
+        calls,
+        async audit() { return runs; },
+        async markBlocked(run, reason) { calls.push(['blocked', run.runId, reason]); },
+        async recover(run) {
+            calls.push(['recover', run.runId]);
+            return { processed: 1, runs: [{ runId: run.runId, status: 'cleaned', state: 'cleaned' }] };
+        }
+    };
+}
+
+test('expired active timeline showcase enters exact watchdog cleanup flow', async () => {
+    const runtime = recoveryRuntime([auditRun()]);
+    await recoverExpiredRuns(runtime);
+    assert.deepEqual(runtime.calls, [['recover', 'timeline-showcase-20260902-v1']]);
+});
+
+test('cleaned run does not block the next controller run', async () => {
+    const runtime = recoveryRuntime([auditRun({ state: 'cleaned' })]);
+    await recoverExpiredRuns(runtime);
+    assert.deepEqual(runtime.calls, []);
+});
+
+test('unexpired active run blocks the singleton controller with exact evidence', async () => {
+    const runtime = recoveryRuntime([auditRun({ expiresAt: new Date(Date.now() + 60_000).toISOString() })]);
+    await assert.rejects(
+        recoverExpiredRuns(runtime),
+        error => error instanceof TimelineControllerError
+            && error.code === 'TIMELINE_CONTROLLER_ACTIVE_RUN'
+            && error.details.runId === 'timeline-showcase-20260902-v1'
+            && error.details.bookingIds.join(',') === 'qa-1,qa-2'
+    );
+});
+
+test('blocked run reports the exact run, entities, and safe recovery command', async () => {
+    const runtime = recoveryRuntime([auditRun({ state: 'blocked', blockerReason: 'marker drift qa-2' })]);
+    await assert.rejects(
+        recoverExpiredRuns(runtime),
+        error => error.code === 'TIMELINE_CONTROLLER_BLOCKED_RUN'
+            && error.details.runId === 'timeline-showcase-20260902-v1'
+            && error.details.recoveryCommand.includes('--action status --run-id timeline-showcase-20260902-v1')
+    );
+});
+
+test('registry mismatch marks the run blocked and never invokes cleanup', async () => {
+    const runtime = recoveryRuntime([auditRun({ markedBookingIds: ['qa-1', 'unregistered-9'] })]);
+    await assert.rejects(recoverExpiredRuns(runtime), error => error.code === 'TIMELINE_CONTROLLER_REGISTRY_MISMATCH');
+    assert.equal(runtime.calls.some(call => call[0] === 'recover'), false);
+    assert.equal(runtime.calls[0][0], 'blocked');
+    assert.match(runtime.calls[0][2], /qa-2,unregistered-9|unregistered-9,qa-2/);
+});
+
+test('cleanup refuses an unregistered booking before the cleanup service can mutate it', async () => {
+    const manifest = { runId: 'timeline-showcase-20260902-v1' };
+    const runtime = {
+        readManifest() { return manifest; },
+        manifestHash() { return 'a'.repeat(64); },
+        async audit() { return [auditRun({ markedBookingIds: ['qa-1', 'unregistered-9'] })]; },
+        async cleanup() { throw new Error('cleanup must not be reached'); }
+    };
+    await assert.rejects(
+        execute({
+            action: 'cleanup',
+            runId: manifest.runId,
+            manifestFile: 'manifest.json',
+            stateFile: 'state.json',
+            tokenFile: 'token.txt',
+            confirmation: cleanupConfirmation(manifest.runId, 'a'.repeat(64))
+        }, runtime),
+        error => error.code === 'TIMELINE_CONTROLLER_REGISTRY_MISMATCH'
+    );
+});
+
+test('repeat cleanup is idempotent for the same exact registry-owned run', async () => {
+    const manifest = { runId: 'timeline-showcase-20260902-v1' };
+    let cleanupCalls = 0;
+    const runtime = {
+        cleanupConfirmation: 'CLEANUP_EXACT_TIMELINE_SHOWCASE',
+        readManifest() { return manifest; },
+        manifestHash() { return 'b'.repeat(64); },
+        async audit() { return [auditRun({ state: cleanupCalls ? 'cleaned' : 'active' })]; },
+        async cleanup() {
+            cleanupCalls += 1;
+            return { status: 'cleaned', idempotent: cleanupCalls > 1 };
+        }
+    };
+    const options = {
+        action: 'cleanup', runId: manifest.runId, manifestFile: 'manifest.json', stateFile: 'state.json', tokenFile: 'token.txt',
+        confirmation: cleanupConfirmation(manifest.runId, 'b'.repeat(64))
+    };
+    assert.equal((await execute(options, runtime)).result.status, 'cleaned');
+    assert.equal((await execute(options, runtime)).result.idempotent, true);
+    assert.equal(cleanupCalls, 2);
+});
+
+test('controller enforces TTL 5-240 minutes', () => {
+    const common = ['--action', 'run', '--date', '2026-09-02', '--release-sha', 'a'.repeat(40)];
+    assert.equal(parseOptions([...common, '--ttl-minutes', '5']).ttlMinutes, 5);
+    assert.equal(parseOptions([...common, '--ttl-minutes', '240']).ttlMinutes, 240);
+    assert.throws(() => parseOptions([...common, '--ttl-minutes', '241']), error => error.code === 'TIMELINE_CONTROLLER_TTL_INVALID');
+    assert.throws(() => parseOptions([...common, '--ttl-minutes', '4']), error => error.code === 'TIMELINE_CONTROLLER_TTL_INVALID');
+});
+
+test('sanitized stdout/report removes secrets, tokens, and database URLs', () => {
+    const raw = {
+        password: 'never-print',
+        nested: { accessToken: 'secret-token', note: 'Bearer abc.def.ghi' },
+        error: 'connect postgres://operator:password@db.internal/eventgenix'
+    };
+    const output = stableJson(sanitize(raw));
+    assert.doesNotMatch(output, /never-print|secret-token|operator:password|abc\.def\.ghi/);
+    assert.match(output, /\[redacted\]/);
+});
+
+test('Windows wrapper forces UTF-8 for Ukrainian controller arguments', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'scripts', 'trusted-qa-timeline-controller.ps1'), 'utf8');
+    assert.match(source, /UTF8Encoding/);
+    assert.match(source, /Console\]::OutputEncoding/);
+    assert.match(source, /@ControllerArguments/);
+    assert.match(source, /trusted-qa-timeline-controller\.js/);
+});
+
+test('controller produces a stable bounded blueprint for the same matrix', () => {
+    const template = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'trusted-qa-timeline-showcase-2026-09-02.json'), 'utf8'));
+    const options = {
+        liveUrl: 'https://8223324090-production.up.railway.app',
+        runId: 'timeline-showcase-stable-1',
+        date: '2026-09-02',
+        ttlMinutes: 60,
+        animators: ['1', '2', '3', '4', '5']
+    };
+    const first = buildBlueprint(template, options);
+    const second = buildBlueprint(template, options);
+    assert.equal(assertStableBlueprint(first, second).length, 64);
+    assert.equal(first.maxEntityCount, 36);
+    assert.equal(first.bookingBlueprints.length, 28);
+});
+
+test('browser reports stay sanitized when written to disk', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-controller-report-'));
+    try {
+        const file = writeSanitizedReport(directory, 'report.json', {
+            browser: { cases: [{ viewport: 'mobile', screenshot: 'timeline-mobile.png' }] },
+            token: 'must-not-appear',
+            databaseUrl: 'postgres://must-not-appear'
+        });
+        const output = fs.readFileSync(file, 'utf8');
+        assert.match(output, /timeline-mobile\.png/);
+        assert.doesNotMatch(output, /must-not-appear/);
+        assert.doesNotMatch(output, /postgres:/);
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
+test('status serializes PostgreSQL timestamp objects as ISO strings', () => {
+    const run = normalizeAuditRow({
+        databaseId: 31,
+        runId: 'timeline-showcase-date-serialization',
+        state: 'active',
+        source: 'trusted_timeline_showcase',
+        expiresAt: new Date('2026-09-01T20:00:00.000Z'),
+        registeredBookingIds: [],
+        markedBookingIds: []
+    });
+    assert.equal(run.expiresAt, '2026-09-01T20:00:00.000Z');
+    assert.match(stableJson(run), /2026-09-01T20:00:00\.000Z/);
+});
+
+test('public errors never echo a protected value from details', () => {
+    const error = new TimelineControllerError('safe failure', 'SAFE_FAILURE', { password: 'unsafe', bookingIds: ['qa-1'] });
+    const output = JSON.stringify(publicError(error));
+    assert.doesNotMatch(output, /unsafe/);
+    assert.match(output, /qa-1/);
+});

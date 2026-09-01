@@ -168,7 +168,7 @@ function fakeRun(manifest, token = 'server-issued-token-value-for-unit-test') {
         id: 901,
         run_id: manifest.runId,
         token_hash: crypto.createHash('sha256').update(token).digest('hex'),
-        source: 'trusted_qa',
+        source: 'trusted_timeline_showcase',
         business_context: manifest.businessContext,
         operator_user_id: manifest.operatorUserId,
         required_operator_user_id: manifest.operatorUserId,
@@ -535,7 +535,7 @@ test('approved 2026-09-02 blueprint covers all quest SKUs and five animator line
     }
 });
 
-test('prepare accepts only consistent approved date/line profiles within the 12:00-20:00 safety window', () => {
+test('prepare accepts any exact date but keeps the trusted line allowlist and 12:00-20:00 safety window', () => {
     assert.throws(
         () => normalizePreparationBlueprint(rawBlueprint({
             date: '2026-09-02',
@@ -550,13 +550,10 @@ test('prepare accepts only consistent approved date/line profiles within the 12:
         })),
         error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
     );
-    assert.throws(
-        () => normalizePreparationBlueprint(rawBlueprint({
-            date: '2026-09-03',
-            timeWindow: { date: '2026-09-03', from: '12:00', to: '20:00' }
-        })),
-        error => error.code === 'SHOWCASE_PREPARE_WINDOW_INVALID'
-    );
+    assert.equal(normalizePreparationBlueprint(rawBlueprint({
+        date: '2026-09-03',
+        timeWindow: { date: '2026-09-03', from: '12:00', to: '20:00' }
+    })).date, '2026-09-03');
     assert.throws(
         () => normalizePreparationBlueprint(rawBlueprint({
             date: 'not-a-date',
@@ -574,10 +571,10 @@ test('prepare accepts only consistent approved date/line profiles within the 12:
     assert.throws(
         () => normalizePreparationBlueprint(rawBlueprint({
             bookingBlueprints: [
-                { key: 'old-profile-line-four', productId: 'quest-1', lineName: 'Аніматор 4', time: '12:00' }
+                { key: 'outside-trusted-line-six', productId: 'quest-1', lineName: 'Аніматор 6', time: '12:00' }
             ]
         })),
-        error => error.code === 'SHOWCASE_PREPARE_LINE_PROFILE_INVALID'
+        error => error.code === 'SHOWCASE_PREPARE_LINE_NAME_INVALID'
     );
 });
 
@@ -738,7 +735,7 @@ test('exact authorization envelope includes display snapshot and readback requir
         status: fixture.status,
         extraData: {
             disposableQa: {
-                source: 'trusted_qa',
+                source: 'trusted_timeline_showcase',
                 runId: manifest.runId,
                 bookingFixtureKey: fixture.requestId
             }
@@ -798,7 +795,7 @@ test('linked readback must match the exact second line and the complete fixture 
         status: fixture.status,
         extraData: {
             disposableQa: {
-                source: 'trusted_qa',
+                source: 'trusted_timeline_showcase',
                 runId: manifest.runId,
                 bookingFixtureKey: fixture.requestId
             }
@@ -993,3 +990,7 @@ test('showcase source sends token only by header with one request and idempotenc
     assert.ok(createRunSource.indexOf("await client.query('COMMIT')")
         < createRunSource.indexOf('fs.writeFileSync(tokenFile, created.token'));
 });
+
+// Keep controller lifecycle contracts in the default unit baseline without
+// duplicating the repository's intentionally explicit test:unit file list.
+require('./trusted-qa-timeline-controller.test');

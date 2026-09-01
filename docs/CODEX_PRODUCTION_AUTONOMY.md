@@ -312,6 +312,23 @@ Every writable production QA run must have:
 - suppressed external side effects where supported;
 - cleanup strategy before apply.
 
+The canonical timeline lifecycle command is:
+
+```powershell
+npm run qa:timeline:controller -- --action <status|run|verify|cleanup> [options]
+```
+
+Use `status` for a sanitized read-only registry audit. `run` requires an exact
+date, release SHA, production branch, allowlisted live URL, animator subset, and
+TTL of 5-240 minutes. It performs stale-run recovery, prepare, apply, registry
+and API verification, then a read-only browser matrix. Successful fixtures stay
+active until TTL; the controller does not clean them early.
+
+`cleanup` requires the exact run ID, manifest/state/token paths, and the
+run-bound confirmation emitted by the controller. It does not accept wildcards
+or arbitrary booking IDs. On Windows, `qa:timeline:controller:windows` provides
+an explicit UTF-8 PowerShell wrapper.
+
 Cleanup rules:
 
 - exact registered entities only;

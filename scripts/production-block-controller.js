@@ -76,9 +76,22 @@ function readBlockFile(file, options = {}) {
     return validateManifest(manifest, options);
 }
 
+function resolveSpawnCommand(command, args, options = {}) {
+    const platform = options.platform || process.platform;
+    const execPath = options.execPath || process.execPath;
+    const existsSync = options.existsSync || fs.existsSync;
+    if (platform === 'win32' && command === 'npm') {
+        const npmCli = path.join(path.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+        fail(existsSync(npmCli), 'Bundled npm CLI is unavailable beside the active Node runtime',
+            'PRODUCTION_BLOCK_NPM_CLI_MISSING');
+        return { executable: execPath, args: [npmCli, ...args] };
+    }
+    return { executable: command, args };
+}
+
 function commandResult(command, args, options = {}) {
-    const executable = process.platform === 'win32' && command === 'npm' ? 'npm.cmd' : command;
-    const result = childProcess.spawnSync(executable, args, {
+    const resolved = resolveSpawnCommand(command, args);
+    const result = childProcess.spawnSync(resolved.executable, resolved.args, {
         cwd: ROOT,
         encoding: 'utf8',
         windowsHide: true,
@@ -485,6 +498,7 @@ module.exports = {
     qaRunArgs,
     readBlockFile,
     releaseCommandPlan,
+    resolveSpawnCommand,
     resumeAuthorizedQa,
     statusAction,
     writeBlockFile

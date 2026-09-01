@@ -24,6 +24,7 @@ const {
     qaRunArgs,
     readBlockFile,
     releaseCommandPlan,
+    resolveSpawnCommand,
     resumeAuthorizedQa,
     writeBlockFile
 } = require('../scripts/production-block-controller');
@@ -205,6 +206,19 @@ test('release plan requires exact-SHA CI, helper deploy, version proof, and no r
     assert.match(plan, /npm run version:smoke/);
     assert.match(plan, /npm run release:timeline-proof/);
     assert.doesNotMatch(plan, /(^|\n)railway\s+up\b/);
+});
+
+test('Windows npm commands use the bundled JS CLI instead of an unspawnable cmd shim', () => {
+    const execPath = path.join('C:', 'portable-node', 'node.exe');
+    const resolved = resolveSpawnCommand('npm', ['test'], {
+        platform: 'win32',
+        execPath,
+        existsSync: file => file.endsWith(path.join('npm', 'bin', 'npm-cli.js'))
+    });
+    assert.equal(resolved.executable, execPath);
+    assert.equal(resolved.args.at(-1), 'test');
+    assert.match(resolved.args[0], /node_modules[\\/]npm[\\/]bin[\\/]npm-cli\.js$/);
+    assert.doesNotMatch(resolved.executable, /npm\.cmd$/i);
 });
 
 test('release artifact allowlist accepts version/cache files only', () => {

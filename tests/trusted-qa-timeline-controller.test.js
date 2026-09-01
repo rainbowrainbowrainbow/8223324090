@@ -141,6 +141,15 @@ test('controller enforces TTL 5-240 minutes', () => {
     assert.throws(() => parseOptions([...common, '--ttl-minutes', '4']), error => error.code === 'TIMELINE_CONTROLLER_TTL_INVALID');
 });
 
+test('controller accepts only an exact one-fixture canary limit', () => {
+    const common = ['--action', 'run', '--date', '2026-09-03', '--release-sha', 'a'.repeat(40), '--animators', '1'];
+    assert.equal(parseOptions([...common, '--fixture-limit', '1']).fixtureLimit, 1);
+    assert.throws(() => parseOptions([...common, '--fixture-limit', '2']),
+        error => error.code === 'TIMELINE_CONTROLLER_FIXTURE_LIMIT_INVALID');
+    assert.throws(() => parseOptions([...common, '--fixture-limit', 'all']),
+        error => error.code === 'TIMELINE_CONTROLLER_FIXTURE_LIMIT_INVALID');
+});
+
 test('sanitized stdout/report removes secrets, tokens, and database URLs', () => {
     const raw = {
         password: 'never-print',
@@ -174,6 +183,24 @@ test('controller produces a stable bounded blueprint for the same matrix', () =>
     assert.equal(assertStableBlueprint(first, second).length, 64);
     assert.equal(first.maxEntityCount, 36);
     assert.equal(first.bookingBlueprints.length, 28);
+});
+
+test('one-fixture canary deterministically selects one unlinked booking entity', () => {
+    const template = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config', 'trusted-qa-timeline-showcase-2026-09-02.json'), 'utf8'));
+    const options = {
+        liveUrl: 'https://8223324090-production.up.railway.app',
+        runId: 'timeline-canary-stable-1',
+        date: '2026-09-03',
+        ttlMinutes: 15,
+        animators: ['1'],
+        fixtureLimit: 1
+    };
+    const first = buildBlueprint(template, options);
+    const second = buildBlueprint(template, options);
+    assert.equal(assertStableBlueprint(first, second).length, 64);
+    assert.equal(first.maxEntityCount, 1);
+    assert.equal(first.bookingBlueprints.length, 1);
+    assert.equal(first.bookingBlueprints[0].secondAnimatorLineName, undefined);
 });
 
 test('browser reports stay sanitized when written to disk', () => {

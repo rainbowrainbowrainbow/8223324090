@@ -123,11 +123,16 @@ function cleanupConfirmation(runId, manifestHash) {
 
 function buildBlueprint(template, options) {
     const animatorNames = new Set(options.animators.map(number => `Аніматор ${number}`));
-    const fixtures = (template.bookingBlueprints || []).filter(fixture => (
+    let fixtures = (template.bookingBlueprints || []).filter(fixture => (
         animatorNames.has(fixture.lineName)
         && (!fixture.secondAnimatorLineName || animatorNames.has(fixture.secondAnimatorLineName))
     ));
     fail(fixtures.length > 0, 'Animator selection produced an empty fixture set', 'TIMELINE_CONTROLLER_FIXTURES_EMPTY');
+    if (options.fixtureLimit === 1) {
+        const fixture = fixtures.find(candidate => !candidate.secondAnimatorLineName);
+        fail(Boolean(fixture), 'Canary selection requires one unlinked fixture', 'TIMELINE_CONTROLLER_CANARY_FIXTURE_UNAVAILABLE');
+        fixtures = [fixture];
+    }
     const entityCount = fixtures.length + fixtures.filter(fixture => fixture.secondAnimatorLineName).length;
     return {
         liveUrl: options.liveUrl,
@@ -465,11 +470,16 @@ function parseOptions(argv) {
     const runId = action === 'run' ? safeRunId(runIdValue, date) : cleanText(runIdValue, 100);
     if (['verify', 'cleanup'].includes(action)) fail(Boolean(runId), `${action} requires --run-id`, 'TIMELINE_CONTROLLER_RUN_ID_REQUIRED');
     const liveValue = argValue(args, '--live-url', 'https://8223324090-production.up.railway.app');
+    const fixtureLimitValue = argValue(args, '--fixture-limit');
+    const fixtureLimit = fixtureLimitValue === null ? null : Number(fixtureLimitValue);
+    fail(fixtureLimit === null || fixtureLimit === 1,
+        'Fixture limit is reserved for an exact one-booking canary', 'TIMELINE_CONTROLLER_FIXTURE_LIMIT_INVALID');
     return {
         action,
         date,
         ttlMinutes: action === 'run' ? validateTtl(argValue(args, '--ttl-minutes', '60')) : null,
         animators: parseAnimators(argValue(args, '--animators', '1,2,3,4,5')),
+        fixtureLimit,
         releaseSha,
         releaseBranch,
         liveUrl: normalizeLiveUrl(liveValue),

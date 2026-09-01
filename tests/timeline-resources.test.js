@@ -4046,6 +4046,8 @@ test('micro, short and tiny timeline activity blocks have dedicated compact CSS 
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*8\.5px/);
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="7"\]\s*\{[\s\S]*font-size:\s*7\.5px/);
     assert.match(css, /\.booking-block\.booking-block--short \.timeline-compact-booking-label\[data-code-length="8"\]\s*\{[\s\S]*font-size:\s*7px/);
+    assert.match(css, /\.booking-block\.booking-block--short:has\(\.timeline-compact-booking-label\[data-code-length="7"\]\) \.timeline-compact-booking-main,[\s\S]*\.booking-block\.booking-block--short:has\(\.timeline-compact-booking-label\[data-code-length="8"\]\) \.timeline-compact-booking-main\s*\{[\s\S]*max-width:\s*100%/);
+    assert.match(css, /\.booking-block\.booking-block--short:has\(\.timeline-compact-booking-label\[data-code-length="7"\]\) \.user-letter,[\s\S]*\.booking-block\.booking-block--short:has\(\.timeline-compact-booking-label\[data-code-length="8"\]\) \.user-letter\s*\{[\s\S]*display:\s*none/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\[data-code-length="4"\]\s*\{[\s\S]*font-size:\s*8\.5px/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\[data-code-length="5"\]\s*\{[\s\S]*font-size:\s*7\.5px/);
     assert.match(css, /\.booking-block\.booking-block--tiny \.timeline-compact-booking-label\[data-code-length="6"\]\s*\{[\s\S]*font-size:\s*7px/);

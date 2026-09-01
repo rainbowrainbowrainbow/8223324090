@@ -1174,6 +1174,22 @@ body.timeline-dashboard-page .booking-block.booking-block--micro {
     font-size: 7px;
 }
 
+.booking-block.booking-block--short:has(.timeline-compact-booking-label[data-code-length="7"]) .timeline-compact-booking-main,
+.booking-block.booking-block--short:has(.timeline-compact-booking-label[data-code-length="8"]) .timeline-compact-booking-main {
+    max-width: 100%;
+}
+
+.booking-block.booking-block--short:has(.timeline-compact-booking-label[data-code-length="7"]) .timeline-compact-booking-meta,
+.booking-block.booking-block--short:has(.timeline-compact-booking-label[data-code-length="8"]) .timeline-compact-booking-meta {
+    width: 100%;
+    max-width: 100%;
+}
+
+.booking-block.booking-block--short:has(.timeline-compact-booking-label[data-code-length="7"]) .user-letter,
+.booking-block.booking-block--short:has(.timeline-compact-booking-label[data-code-length="8"]) .user-letter {
+    display: none;
+}
+
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--medium .timeline-room-activity-title,
 body.timeline-view-rooms .booking-block.is-room-timeline-activity-card.booking-block--wide .timeline-room-activity-title {
     flex: 1 1 auto;

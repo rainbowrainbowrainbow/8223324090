@@ -23,10 +23,13 @@ const {
 } = require('../scripts/trusted-qa-timeline-controller');
 const {
     MIN_COMPACT_IDENTITY_FONT_PX,
+    REPORT_FILE,
     THEMES,
     VIEWPORTS,
     ZOOMS,
-    caseAcceptanceFailures
+    buildSuccessReport,
+    caseAcceptanceFailures,
+    writeSanitizedReport: writeBrowserSanitizedReport
 } = require('../scripts/trusted-qa-timeline-browser-matrix');
 
 function auditRun(overrides = {}) {
@@ -281,6 +284,73 @@ test('browser reports stay sanitized when written to disk', () => {
     }
 });
 
+test('browser matrix separates content overflow from viewport clipping', () => {
+    assert.deepEqual(caseAcceptanceFailures({
+        cardContentOverflowBookingIds: ['qa-overflow'],
+        identityOverflowBookingIds: ['qa-identity'],
+        viewportClippedBookingIds: ['qa-clipped']
+    }), [
+        'cardContentOverflowBookingIds:qa-overflow',
+        'identityOverflowBookingIds:qa-identity'
+    ]);
+});
+
+test('browser success report has stable sanitized release and PNG evidence', () => {
+    const report = buildSuccessReport({
+        runId: 'timeline-showcase-report-1',
+        release: {
+            version: '0.81.66',
+            releaseLabel: 'Timeline Narrow Identity Fix',
+            commitSha: 'a'.repeat(40),
+            sourceBranch: 'codex/eventgenix-production'
+        },
+        bookingCount: 36,
+        fixtureCount: 36,
+        blockedWriteCount: 0,
+        suppressedExternalWriteCount: 4,
+        password: 'must-not-appear',
+        cases: [{
+            viewport: 'mobile',
+            theme: 'dark',
+            zoom: 30,
+            screenshot: 'timeline-mobile-dark-30.png',
+            endScreenshot: 'timeline-mobile-dark-30-end.png',
+            cardContentOverflowBookingIds: [],
+            identityOverflowBookingIds: [],
+            viewportClippedBookingIds: ['BK-2026-1709']
+        }]
+    });
+    assert.equal(report.caseCount, 1);
+    assert.equal(report.expectedCaseCount, VIEWPORTS.length * ZOOMS.length * THEMES.length);
+    assert.equal(report.release.version, '0.81.66');
+    assert.deepEqual(report.criticalDefects.cardContentOverflowBookingIds, []);
+    assert.deepEqual(report.viewportClippedBookingIds, ['BK-2026-1709']);
+    assert.deepEqual(report.pngFiles, ['timeline-mobile-dark-30-end.png', 'timeline-mobile-dark-30.png']);
+    assert.doesNotMatch(JSON.stringify(report), /must-not-appear/);
+});
+
+test('browser success report is written as deterministic sanitized JSON', () => {
+    const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'eventgenix-browser-report-'));
+    try {
+        const payload = buildSuccessReport({
+            runId: 'timeline-showcase-report-2',
+            release: { version: '0.81.66', commitSha: 'b'.repeat(40) },
+            bookingCount: 1,
+            cases: [{ screenshot: 'timeline-desktop-dark-15.png', cookie: 'must-not-appear' }],
+            blockedWriteCount: 0,
+            suppressedExternalWriteCount: 0
+        });
+        const file = writeBrowserSanitizedReport(directory, REPORT_FILE, payload);
+        assert.equal(path.basename(file), REPORT_FILE);
+        const output = fs.readFileSync(file, 'utf8');
+        assert.match(output, /timeline-desktop-dark-15\.png/);
+        assert.doesNotMatch(output, /must-not-appear/);
+        assert.equal(output, fs.readFileSync(file, 'utf8'));
+    } finally {
+        fs.rmSync(directory, { recursive: true, force: true });
+    }
+});
+
 test('responsive browser matrix changes zoom without requiring a visible desktop control', () => {
     const source = fs.readFileSync(
         path.join(__dirname, '..', 'scripts', 'trusted-qa-timeline-browser-matrix.js'),
@@ -297,18 +367,24 @@ test('responsive browser matrix changes zoom without requiring a visible desktop
     assert.match(source, /pinataCharacterStackRequired = narrowPinata && zoomLevel >= 30/);
     assert.match(source, /pinataCharacterStackForbidden = narrowPinata && zoomLevel === 15/);
     assert.match(source, /\{ ids: bookingIds, zoomLevel: zoom \}/);
+    assert.match(source, /cardContentOverflowBookingIds/);
+    assert.match(source, /viewportClippedBookingIds/);
+    assert.doesNotMatch(source, /overflowBookingIds/);
 });
 
 test('responsive browser matrix fails closed on unreadable or generic timeline identities', () => {
     assert.equal(MIN_COMPACT_IDENTITY_FONT_PX, 9);
     assert.deepEqual(caseAcceptanceFailures({
+        cardContentOverflowBookingIds: ['qa-content'],
         tinyFontBookingIds: ['qa-pinata'],
         genericOnlyBookingIds: ['qa-show'],
         invalidPinataStackBookingIds: ['qa-pinata'],
+        viewportClippedBookingIds: ['qa-clipped'],
         ambiguousCustomIdentityBookingIds: ['qa-custom'],
         categoryMismatchBookingIds: [],
         missingBookingIds: []
     }), [
+        'cardContentOverflowBookingIds:qa-content',
         'tinyFontBookingIds:qa-pinata',
         'genericOnlyBookingIds:qa-show',
         'invalidPinataStackBookingIds:qa-pinata',

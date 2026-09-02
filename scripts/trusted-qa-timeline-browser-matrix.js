@@ -15,6 +15,8 @@ const VIEWPORTS = Object.freeze([
 const ZOOMS = Object.freeze([15, 30, 60]);
 const THEMES = Object.freeze(['dark', 'light']);
 const MIN_COMPACT_IDENTITY_FONT_PX = 9;
+const SENSITIVE_KEY = /(password|pass|secret|token|credential|database.?url|authorization|cookie)/i;
+const REPORT_FILE = 'timeline-qa-report.json';
 
 function argValue(args, name, fallback = null) {
     const inline = args.find(arg => arg.startsWith(`${name}=`));
@@ -29,6 +31,40 @@ function fail(condition, message, code = 'TIMELINE_BROWSER_MATRIX_FAILED') {
         error.code = code;
         throw error;
     }
+}
+
+function sanitize(value, key = '') {
+    if (SENSITIVE_KEY.test(key)) return '[redacted]';
+    if (Array.isArray(value)) return value.map(item => sanitize(item));
+    if (value && typeof value === 'object') {
+        return Object.fromEntries(Object.entries(value).map(([entryKey, entryValue]) => [
+            entryKey,
+            sanitize(entryValue, entryKey)
+        ]));
+    }
+    if (typeof value === 'string') {
+        return value
+            .replace(/Bearer\s+[A-Za-z0-9._~-]+/gi, 'Bearer [redacted]')
+            .replace(/postgres(?:ql)?:\/\/[^\s"']+/gi, '[redacted-database-url]')
+            .replace(/(pzp_(?:access_)?token=)[^;&\s]+/gi, '$1[redacted]');
+    }
+    return value;
+}
+
+function stableValue(value) {
+    if (Array.isArray(value)) return value.map(stableValue);
+    if (!value || typeof value !== 'object') return value;
+    return Object.fromEntries(Object.keys(value).sort().map(key => [key, stableValue(value[key])]));
+}
+
+function stableJson(value) {
+    return `${JSON.stringify(stableValue(sanitize(value)), null, 2)}\n`;
+}
+
+function writeSanitizedReport(outputDirectory, name, report) {
+    const file = path.join(outputDirectory, name);
+    fs.writeFileSync(file, stableJson(report), { encoding: 'utf8', flag: 'w' });
+    return file;
 }
 
 function requirePlaywright() {
@@ -90,6 +126,20 @@ async function login(base, credentials) {
     };
 }
 
+async function fetchReleaseInfo(base) {
+    const response = await fetch(`${base}/api/version`, {
+        headers: { Accept: 'application/json' }
+    });
+    fail(response.ok, `Live /api/version returned HTTP ${response.status}`, 'TIMELINE_BROWSER_MATRIX_VERSION_FAILED');
+    const body = await response.json();
+    return sanitize({
+        version: body.version || null,
+        releaseLabel: body.releaseLabel || null,
+        commitSha: body.commitSha || null,
+        sourceBranch: body.sourceBranch || null
+    });
+}
+
 function readBookingIds(stateFile) {
     fail(fs.existsSync(stateFile), 'Controller state file is unavailable', 'TIMELINE_BROWSER_MATRIX_STATE_MISSING');
     const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
@@ -140,6 +190,37 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
             pinata: 'П',
             custom: 'ІНШ'
         };
+        const scroll = document.getElementById('timelineScroll');
+        const scrollRect = scroll?.getBoundingClientRect?.() || null;
+        const contentSelector = [
+            '.timeline-micro-booking-code',
+            '.timeline-compact-booking-main',
+            '.timeline-compact-booking-label',
+            '.timeline-compact-booking-meta',
+            '.timeline-room-activity-main',
+            '.timeline-room-activity-title',
+            '.timeline-room-activity-detail',
+            '.timeline-activity-identity',
+            '.title',
+            '.subtitle',
+            '.booking-block-time',
+            '.booking-block-room',
+            '.duration-badge'
+        ].join(',');
+        const isContentOverflowing = (node, rect) => [...node.querySelectorAll(contentSelector)]
+            .filter(child => {
+                const childStyle = getComputedStyle(child);
+                return childStyle.display !== 'none' && childStyle.visibility !== 'hidden';
+            })
+            .some(child => {
+                const childRect = child.getBoundingClientRect();
+                return child.scrollWidth > child.clientWidth + 1
+                    || child.scrollHeight > child.clientHeight + 1
+                    || childRect.left < rect.left - 1
+                    || childRect.right > rect.right + 1
+                    || childRect.top < rect.top - 1
+                    || childRect.bottom > rect.bottom + 1;
+            });
         return [...document.querySelectorAll('.booking-block[data-booking-id]')]
             .filter(node => wanted.has(String(node.dataset.bookingId)))
             .map(node => {
@@ -199,8 +280,13 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                     ),
                     ambiguousCustomIdentity: Boolean(category === 'custom' && /^ІНШ\s+ІН$/iu.test(identityText)),
                     duplicateDurationBadge: node.querySelectorAll('.duration-badge').length > 1,
-                    overflowX: node.scrollWidth > node.clientWidth + 1,
-                    overflowY: node.scrollHeight > node.clientHeight + 1,
+                    cardContentOverflow: isContentOverflowing(node, rect),
+                    viewportClipped: Boolean(scrollRect && (
+                        rect.left < scrollRect.left - 1
+                        || rect.right > scrollRect.right + 1
+                        || rect.top < scrollRect.top - 1
+                        || rect.bottom > scrollRect.bottom + 1
+                    )),
                     ariaLabelPresent: Boolean(node.getAttribute('aria-label') || node.getAttribute('title'))
                 };
             });
@@ -236,8 +322,9 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
         zoom,
         visibleBookingCount: metrics.length,
         missingBookingIds,
-        overflowBookingIds: metrics.filter(item => item.overflowX || item.overflowY).map(item => item.bookingId),
+        cardContentOverflowBookingIds: metrics.filter(item => item.cardContentOverflow).map(item => item.bookingId),
         identityOverflowBookingIds: metrics.filter(item => item.identityOverflow || item.identityOutsideCard).map(item => item.bookingId),
+        viewportClippedBookingIds: metrics.filter(item => item.viewportClipped).map(item => item.bookingId),
         tinyFontBookingIds: compactMetrics.filter(item => item.identityFontPx < MIN_COMPACT_IDENTITY_FONT_PX).map(item => item.bookingId),
         offCenterStackedBookingIds: compactMetrics.filter(item => ['micro', 'tiny'].includes(item.density) && item.stackedCenterOffsetPx > 8).map(item => item.bookingId),
         missingIdentityBookingIds: metrics.filter(item => item.identityMissing).map(item => item.bookingId),
@@ -257,6 +344,7 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
 function caseAcceptanceFailures(result) {
     return [
         'missingBookingIds',
+        'cardContentOverflowBookingIds',
         'identityOverflowBookingIds',
         'tinyFontBookingIds',
         'offCenterStackedBookingIds',
@@ -271,12 +359,62 @@ function caseAcceptanceFailures(result) {
     ].flatMap(key => (result[key] || []).map(bookingId => `${key}:${bookingId}`));
 }
 
+function uniqueSorted(items) {
+    return [...new Set((items || []).filter(Boolean).map(String))].sort();
+}
+
+function aggregateCaseIds(cases, key) {
+    return uniqueSorted((cases || []).flatMap(item => item[key] || []));
+}
+
+function pngFiles(cases) {
+    return uniqueSorted((cases || []).flatMap(item => [item.screenshot, item.endScreenshot].filter(Boolean)));
+}
+
+function criticalDefects(cases) {
+    const keys = [
+        'missingBookingIds',
+        'cardContentOverflowBookingIds',
+        'identityOverflowBookingIds',
+        'tinyFontBookingIds',
+        'offCenterStackedBookingIds',
+        'missingIdentityBookingIds',
+        'genericOnlyBookingIds',
+        'categoryMismatchBookingIds',
+        'duplicatedCategoryBookingIds',
+        'invalidPinataStackBookingIds',
+        'ambiguousCustomIdentityBookingIds',
+        'duplicateDurationBookingIds',
+        'missingAccessibleNameBookingIds'
+    ];
+    return Object.fromEntries(keys.map(key => [key, aggregateCaseIds(cases, key)]));
+}
+
+function buildSuccessReport(result) {
+    return sanitize({
+        success: true,
+        runId: result.runId,
+        release: result.release,
+        caseCount: (result.cases || []).length,
+        expectedCaseCount: VIEWPORTS.length * ZOOMS.length * THEMES.length,
+        bookingCount: result.bookingCount,
+        fixtureCount: result.fixtureCount || result.bookingCount,
+        criticalDefects: criticalDefects(result.cases),
+        viewportClippedBookingIds: aggregateCaseIds(result.cases, 'viewportClippedBookingIds'),
+        blockedWriteCount: result.blockedWriteCount,
+        suppressedExternalWriteCount: result.suppressedExternalWriteCount,
+        pngFiles: pngFiles(result.cases),
+        cases: result.cases
+    });
+}
+
 async function run(options = {}) {
     const base = new URL(options.liveUrl).origin;
     const credentials = parseSecrets(options.secretFile || DEFAULT_SECRET_FILE);
     const bookingIds = readBookingIds(options.stateFile);
     fail(bookingIds.length > 0, 'Controller state has no registered booking IDs', 'TIMELINE_BROWSER_MATRIX_EMPTY_STATE');
     fs.mkdirSync(options.outputDirectory, { recursive: true });
+    const release = await fetchReleaseInfo(base);
     const session = await login(base, credentials);
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: true });
@@ -329,14 +467,18 @@ async function run(options = {}) {
         fail(blockedWriteInventory.length === 0,
             `Browser matrix attempted a write request: ${blockedWriteInventory.join(', ')}`,
             'TIMELINE_BROWSER_MATRIX_WRITE_ATTEMPTED');
-        return {
+        const result = {
             success: true,
             runId: options.runId,
+            release,
             bookingCount: bookingIds.length,
+            fixtureCount: bookingIds.length,
             cases,
             blockedWriteCount: blockedWrites.length,
             suppressedExternalWriteCount: suppressedExternalWrites.length
         };
+        result.reportFile = writeSanitizedReport(options.outputDirectory, REPORT_FILE, buildSuccessReport(result));
+        return result;
     } finally {
         await context.close().catch(() => {});
         await browser.close().catch(() => {});
@@ -344,11 +486,11 @@ async function run(options = {}) {
 }
 
 function publicError(error) {
-    return {
+    return sanitize({
         success: false,
         code: error?.code || 'TIMELINE_BROWSER_MATRIX_FAILED',
         message: String(error?.message || 'Browser matrix failed').slice(0, 500)
-    };
+    });
 }
 
 async function main() {
@@ -376,11 +518,17 @@ if (require.main === module) {
 module.exports = {
     ALLOWED_POST_PATHS,
     MIN_COMPACT_IDENTITY_FONT_PX,
+    REPORT_FILE,
     THEMES,
     VIEWPORTS,
     ZOOMS,
+    buildSuccessReport,
     caseAcceptanceFailures,
+    criticalDefects,
     publicError,
     readBookingIds,
-    run
+    run,
+    sanitize,
+    stableJson,
+    writeSanitizedReport
 };

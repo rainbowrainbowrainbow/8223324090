@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.56",
+  "version": "0.81.57",
   "eventGenix": {
-    "releaseLabel": "Autonomy Hardening QA Preflight"
+    "releaseLabel": "Autonomy Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -238,12 +238,12 @@ test('production controller passes the authorized branch to timeline proof', () 
 });
 
 test('Windows npm commands use the bundled JS CLI instead of an unspawnable cmd shim', () => {
-    const execPath = path.join('C:', 'portable-node', 'node.exe');
+    const execPath = path.win32.join('C:\\', 'portable-node', 'node.exe');
     const resolved = resolveSpawnCommand('npm', ['test'], {
         platform: 'win32',
         execPath,
         env: {},
-        existsSync: file => file.endsWith(path.join('npm', 'bin', 'npm-cli.js'))
+        existsSync: file => file.endsWith(path.win32.join('npm', 'bin', 'npm-cli.js'))
     });
     assert.equal(resolved.executable, execPath);
     assert.equal(resolved.args.at(-1), 'test');
@@ -252,8 +252,8 @@ test('Windows npm commands use the bundled JS CLI instead of an unspawnable cmd 
 });
 
 test('Windows npm commands fall back to the canonical inherited npm CLI', () => {
-    const execPath = path.resolve('C:', 'system-node', 'node.exe');
-    const inheritedNpmCli = path.resolve('C:', 'portable-node', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    const execPath = path.win32.resolve('C:\\system-node', 'node.exe');
+    const inheritedNpmCli = path.win32.resolve('C:\\portable-node', 'node_modules', 'npm', 'bin', 'npm-cli.js');
     const resolved = resolveSpawnCommand('npm', ['run', 'verify'], {
         platform: 'win32',
         execPath,
@@ -265,10 +265,10 @@ test('Windows npm commands fall back to the canonical inherited npm CLI', () => 
 });
 
 test('Windows npm commands reject an arbitrary inherited executable', () => {
-    const arbitraryNpmExecPath = path.resolve('C:', 'temp', 'npm-wrapper.js');
+    const arbitraryNpmExecPath = path.win32.resolve('C:\\temp', 'npm-wrapper.js');
     assert.throws(() => resolveSpawnCommand('npm', ['test'], {
         platform: 'win32',
-        execPath: path.resolve('C:', 'system-node', 'node.exe'),
+        execPath: path.win32.resolve('C:\\system-node', 'node.exe'),
         env: { npm_execpath: arbitraryNpmExecPath },
         existsSync: file => file === arbitraryNpmExecPath
     }), error => error?.code === 'PRODUCTION_BLOCK_NPM_CLI_MISSING');

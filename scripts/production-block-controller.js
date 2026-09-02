@@ -82,15 +82,22 @@ function resolveSpawnCommand(command, args, options = {}) {
     const existsSync = options.existsSync || fs.existsSync;
     const env = options.env || process.env;
     if (platform === 'win32' && command === 'npm') {
-        const bundledNpmCli = path.join(path.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+        const windowsPath = path.win32;
+        const bundledNpmCli = windowsPath.join(
+            windowsPath.dirname(execPath),
+            'node_modules',
+            'npm',
+            'bin',
+            'npm-cli.js'
+        );
         const inheritedNpmCli = cleanText(env.npm_execpath, 1000);
         const isCanonicalNpmCli = file => {
-            if (!file || !path.isAbsolute(file)) return false;
-            const binDirectory = path.dirname(file);
-            const npmDirectory = path.dirname(binDirectory);
-            return path.basename(file).toLowerCase() === 'npm-cli.js'
-                && path.basename(binDirectory).toLowerCase() === 'bin'
-                && path.basename(npmDirectory).toLowerCase() === 'npm';
+            if (!file || !windowsPath.isAbsolute(file)) return false;
+            const binDirectory = windowsPath.dirname(file);
+            const npmDirectory = windowsPath.dirname(binDirectory);
+            return windowsPath.basename(file).toLowerCase() === 'npm-cli.js'
+                && windowsPath.basename(binDirectory).toLowerCase() === 'bin'
+                && windowsPath.basename(npmDirectory).toLowerCase() === 'npm';
         };
         const npmCli = [bundledNpmCli, inheritedNpmCli]
             .find(file => isCanonicalNpmCli(file) && existsSync(file));

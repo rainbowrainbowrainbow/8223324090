@@ -80,9 +80,21 @@ function resolveSpawnCommand(command, args, options = {}) {
     const platform = options.platform || process.platform;
     const execPath = options.execPath || process.execPath;
     const existsSync = options.existsSync || fs.existsSync;
+    const env = options.env || process.env;
     if (platform === 'win32' && command === 'npm') {
-        const npmCli = path.join(path.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
-        fail(existsSync(npmCli), 'Bundled npm CLI is unavailable beside the active Node runtime',
+        const bundledNpmCli = path.join(path.dirname(execPath), 'node_modules', 'npm', 'bin', 'npm-cli.js');
+        const inheritedNpmCli = cleanText(env.npm_execpath, 1000);
+        const isCanonicalNpmCli = file => {
+            if (!file || !path.isAbsolute(file)) return false;
+            const binDirectory = path.dirname(file);
+            const npmDirectory = path.dirname(binDirectory);
+            return path.basename(file).toLowerCase() === 'npm-cli.js'
+                && path.basename(binDirectory).toLowerCase() === 'bin'
+                && path.basename(npmDirectory).toLowerCase() === 'npm';
+        };
+        const npmCli = [bundledNpmCli, inheritedNpmCli]
+            .find(file => isCanonicalNpmCli(file) && existsSync(file));
+        fail(Boolean(npmCli), 'Bundled or inherited npm CLI is unavailable for the active Node runtime',
             'PRODUCTION_BLOCK_NPM_CLI_MISSING');
         return { executable: execPath, args: [npmCli, ...args] };
     }

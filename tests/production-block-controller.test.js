@@ -242,12 +242,36 @@ test('Windows npm commands use the bundled JS CLI instead of an unspawnable cmd 
     const resolved = resolveSpawnCommand('npm', ['test'], {
         platform: 'win32',
         execPath,
+        env: {},
         existsSync: file => file.endsWith(path.join('npm', 'bin', 'npm-cli.js'))
     });
     assert.equal(resolved.executable, execPath);
     assert.equal(resolved.args.at(-1), 'test');
     assert.match(resolved.args[0], /node_modules[\\/]npm[\\/]bin[\\/]npm-cli\.js$/);
     assert.doesNotMatch(resolved.executable, /npm\.cmd$/i);
+});
+
+test('Windows npm commands fall back to the canonical inherited npm CLI', () => {
+    const execPath = path.resolve('C:', 'system-node', 'node.exe');
+    const inheritedNpmCli = path.resolve('C:', 'portable-node', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    const resolved = resolveSpawnCommand('npm', ['run', 'verify'], {
+        platform: 'win32',
+        execPath,
+        env: { npm_execpath: inheritedNpmCli },
+        existsSync: file => file === inheritedNpmCli
+    });
+    assert.equal(resolved.executable, execPath);
+    assert.deepEqual(resolved.args, [inheritedNpmCli, 'run', 'verify']);
+});
+
+test('Windows npm commands reject an arbitrary inherited executable', () => {
+    const arbitraryNpmExecPath = path.resolve('C:', 'temp', 'npm-wrapper.js');
+    assert.throws(() => resolveSpawnCommand('npm', ['test'], {
+        platform: 'win32',
+        execPath: path.resolve('C:', 'system-node', 'node.exe'),
+        env: { npm_execpath: arbitraryNpmExecPath },
+        existsSync: file => file === arbitraryNpmExecPath
+    }), error => error?.code === 'PRODUCTION_BLOCK_NPM_CLI_MISSING');
 });
 
 test('release artifact allowlist accepts version/cache files only', () => {

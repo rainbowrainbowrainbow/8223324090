@@ -13,6 +13,7 @@ const VIEWPORTS = Object.freeze([
     { name: 'mobile', width: 390, height: 844 }
 ]);
 const ZOOMS = Object.freeze([15, 30, 60]);
+const MIN_COMPACT_IDENTITY_FONT_PX = 9;
 
 function argValue(args, name, fallback = null) {
     const inline = args.find(arg => arg.startsWith(`${name}=`));
@@ -129,35 +130,123 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
     await page.waitForTimeout(150);
     const metrics = await page.evaluate(ids => {
         const wanted = new Set(ids.map(String));
+        const categoryPrefixes = {
+            quest: 'КВ',
+            animation: 'АН',
+            show: 'ШОУ',
+            masterclass: 'МК',
+            photo: 'ФОТО',
+            pinata: 'П',
+            custom: 'ІНШ'
+        };
         return [...document.querySelectorAll('.booking-block[data-booking-id]')]
             .filter(node => wanted.has(String(node.dataset.bookingId)))
             .map(node => {
                 const rect = node.getBoundingClientRect();
                 const style = getComputedStyle(node);
+                const identity = node.querySelector('.timeline-micro-booking-code, .timeline-compact-booking-label, .timeline-room-activity-title, .title');
+                const identityRect = identity?.getBoundingClientRect?.() || null;
+                const identityStyle = identity ? getComputedStyle(identity) : null;
+                const density = ['micro', 'tiny', 'short', 'medium', 'wide']
+                    .find(value => node.classList.contains(`booking-block--${value}`)) || '';
+                const category = Object.keys(categoryPrefixes).find(value => node.classList.contains(value)) || '';
+                const expectedPrefix = categoryPrefixes[category] || '';
+                const identityText = String(identity?.textContent || '').replace(/\s+/g, ' ').trim();
+                const escapedPrefix = expectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+                const duplicateCategoryPattern = expectedPrefix
+                    ? new RegExp(`^${escapedPrefix}\\s*(?:[|:]\\s*)?${escapedPrefix}(?:\\s|$)`, 'iu')
+                    : null;
                 return {
                     bookingId: String(node.dataset.bookingId),
                     width: Math.round(rect.width * 100) / 100,
                     height: Math.round(rect.height * 100) / 100,
                     fontSize: style.fontSize,
+                    density,
+                    category,
+                    expectedPrefix,
+                    identityText,
+                    identityFontPx: Number.parseFloat(identityStyle?.fontSize || '0') || 0,
+                    identityMissing: !identity,
+                    identityOverflow: Boolean(identity && (identity.scrollWidth > identity.clientWidth + 1 || identity.scrollHeight > identity.clientHeight + 1)),
+                    identityOutsideCard: Boolean(identityRect && (
+                        identityRect.left < rect.left - 1
+                        || identityRect.right > rect.right + 1
+                        || identityRect.top < rect.top - 1
+                        || identityRect.bottom > rect.bottom + 1
+                    )),
+                    stackedCenterOffsetPx: identityRect && (density === 'micro' || density === 'tiny')
+                        ? Math.round(Math.abs((identityRect.top + identityRect.height / 2) - (rect.top + rect.height / 2)) * 100) / 100
+                        : 0,
+                    genericOnly: Boolean(expectedPrefix && identityText.toLocaleUpperCase('uk-UA') === expectedPrefix),
+                    categoryMismatch: Boolean(expectedPrefix && !identityText.toLocaleUpperCase('uk-UA').startsWith(expectedPrefix)),
+                    duplicatedCategory: Boolean(duplicateCategoryPattern?.test(identityText)),
+                    duplicateDurationBadge: node.querySelectorAll('.duration-badge').length > 1,
                     overflowX: node.scrollWidth > node.clientWidth + 1,
                     overflowY: node.scrollHeight > node.clientHeight + 1,
                     ariaLabelPresent: Boolean(node.getAttribute('aria-label') || node.getAttribute('title'))
                 };
             });
     }, bookingIds);
-    fail(metrics.length > 0, `No registered QA cards were visible for ${viewport.name}/${zoom}`,
-        'TIMELINE_BROWSER_MATRIX_FIXTURES_NOT_VISIBLE');
+    const metricIds = new Set(metrics.map(item => item.bookingId));
+    const missingBookingIds = bookingIds.filter(id => !metricIds.has(String(id)));
     const file = path.join(outputDirectory, `timeline-${viewport.name}-${theme}-${zoom}.png`);
     await page.screenshot({ path: file, fullPage: true });
+    const scrollState = await page.evaluate(() => {
+        const scroll = document.getElementById('timelineScroll');
+        if (!scroll) return { maxScrollLeft: 0, previousScrollLeft: 0 };
+        const state = {
+            maxScrollLeft: Math.max(0, scroll.scrollWidth - scroll.clientWidth),
+            previousScrollLeft: scroll.scrollLeft
+        };
+        scroll.scrollLeft = state.maxScrollLeft;
+        return state;
+    });
+    let endScreenshot = null;
+    if (scrollState.maxScrollLeft > 1) {
+        await page.waitForTimeout(80);
+        endScreenshot = path.join(outputDirectory, `timeline-${viewport.name}-${theme}-${zoom}-end.png`);
+        await page.screenshot({ path: endScreenshot, fullPage: true });
+        await page.evaluate(previous => {
+            const scroll = document.getElementById('timelineScroll');
+            if (scroll) scroll.scrollLeft = previous;
+        }, scrollState.previousScrollLeft);
+    }
+    const compactMetrics = metrics.filter(item => ['micro', 'tiny', 'short'].includes(item.density));
     return {
         viewport: viewport.name,
         theme,
         zoom,
         visibleBookingCount: metrics.length,
+        missingBookingIds,
         overflowBookingIds: metrics.filter(item => item.overflowX || item.overflowY).map(item => item.bookingId),
+        identityOverflowBookingIds: metrics.filter(item => item.identityOverflow || item.identityOutsideCard).map(item => item.bookingId),
+        tinyFontBookingIds: compactMetrics.filter(item => item.identityFontPx < MIN_COMPACT_IDENTITY_FONT_PX).map(item => item.bookingId),
+        offCenterStackedBookingIds: compactMetrics.filter(item => ['micro', 'tiny'].includes(item.density) && item.stackedCenterOffsetPx > 8).map(item => item.bookingId),
+        missingIdentityBookingIds: metrics.filter(item => item.identityMissing).map(item => item.bookingId),
+        genericOnlyBookingIds: metrics.filter(item => item.genericOnly).map(item => item.bookingId),
+        categoryMismatchBookingIds: metrics.filter(item => item.categoryMismatch).map(item => item.bookingId),
+        duplicatedCategoryBookingIds: metrics.filter(item => item.duplicatedCategory).map(item => item.bookingId),
+        duplicateDurationBookingIds: metrics.filter(item => item.duplicateDurationBadge).map(item => item.bookingId),
         missingAccessibleNameBookingIds: metrics.filter(item => !item.ariaLabelPresent).map(item => item.bookingId),
-        screenshot: file
+        horizontalScrollAvailable: scrollState.maxScrollLeft > 1,
+        screenshot: file,
+        endScreenshot
     };
+}
+
+function caseAcceptanceFailures(result) {
+    return [
+        'missingBookingIds',
+        'identityOverflowBookingIds',
+        'tinyFontBookingIds',
+        'offCenterStackedBookingIds',
+        'missingIdentityBookingIds',
+        'genericOnlyBookingIds',
+        'categoryMismatchBookingIds',
+        'duplicatedCategoryBookingIds',
+        'duplicateDurationBookingIds',
+        'missingAccessibleNameBookingIds'
+    ].flatMap(key => (result[key] || []).map(bookingId => `${key}:${bookingId}`));
 }
 
 async function run(options = {}) {
@@ -206,6 +295,11 @@ async function run(options = {}) {
             for (const zoom of ZOOMS) cases.push(await captureCase(page, options.outputDirectory, bookingIds, viewport, zoom, 'dark'));
         }
         cases.push(await captureCase(page, options.outputDirectory, bookingIds, VIEWPORTS[0], 30, 'light'));
+        const acceptanceFailures = cases.flatMap(result => caseAcceptanceFailures(result)
+            .map(failure => `${result.viewport}/${result.theme}/${result.zoom}:${failure}`));
+        fail(acceptanceFailures.length === 0,
+            `Timeline presentation matrix failed: ${acceptanceFailures.slice(0, 30).join(', ')}`,
+            'TIMELINE_BROWSER_MATRIX_PRESENTATION_FAILED');
         const blockedWriteInventory = [...new Set(blockedWrites)].sort();
         fail(blockedWriteInventory.length === 0,
             `Browser matrix attempted a write request: ${blockedWriteInventory.join(', ')}`,
@@ -256,8 +350,10 @@ if (require.main === module) {
 
 module.exports = {
     ALLOWED_POST_PATHS,
+    MIN_COMPACT_IDENTITY_FONT_PX,
     VIEWPORTS,
     ZOOMS,
+    caseAcceptanceFailures,
     publicError,
     readBookingIds,
     run

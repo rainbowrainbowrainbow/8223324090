@@ -21,6 +21,10 @@ const {
     stableJson,
     writeSanitizedReport
 } = require('../scripts/trusted-qa-timeline-controller');
+const {
+    MIN_COMPACT_IDENTITY_FONT_PX,
+    caseAcceptanceFailures
+} = require('../scripts/trusted-qa-timeline-browser-matrix');
 
 function auditRun(overrides = {}) {
     return normalizeAuditRow({
@@ -283,6 +287,20 @@ test('responsive browser matrix changes zoom without requiring a visible desktop
     assert.doesNotMatch(source, /locator\(`\.zoom-btn\[data-zoom=/);
     assert.match(source, /requestUrl\.origin !== base/);
     assert.match(source, /suppressedExternalWriteCount/);
+});
+
+test('responsive browser matrix fails closed on unreadable or generic timeline identities', () => {
+    assert.equal(MIN_COMPACT_IDENTITY_FONT_PX, 9);
+    assert.deepEqual(caseAcceptanceFailures({
+        tinyFontBookingIds: ['qa-pinata'],
+        genericOnlyBookingIds: ['qa-show'],
+        categoryMismatchBookingIds: [],
+        missingBookingIds: []
+    }), [
+        'tinyFontBookingIds:qa-pinata',
+        'genericOnlyBookingIds:qa-show'
+    ]);
+    assert.deepEqual(caseAcceptanceFailures({}), []);
 });
 
 test('status serializes PostgreSQL timestamp objects as ISO strings', () => {

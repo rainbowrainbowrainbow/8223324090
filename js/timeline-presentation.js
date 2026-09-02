@@ -138,6 +138,19 @@
         return product ? `${category} ${product}` : category;
     }
 
+    function timelineCompactLabelMetrics(value) {
+        const label = cleanText(value);
+        const tokens = label.split(/\s+/u).filter(Boolean).slice(0, 3);
+        const tokenLengths = tokens.map(token => Array.from(token).length);
+        return {
+            label,
+            tokens,
+            characterCount: Array.from(label).length,
+            tokenCount: tokens.length,
+            maxTokenLength: tokenLengths.length ? Math.max(...tokenLengths) : 0
+        };
+    }
+
     function resolveTimelineActivityPresentation(booking = {}, renderBooking = null, bookingTitle = '', bookingTitleTail = '', options = {}) {
         const source = renderBooking || booking || {};
         const category = cleanText(source.category || booking?.category).toLowerCase();
@@ -171,6 +184,7 @@
         productCode = sliceGraphemes(productCode || productCodeFromName(categoryCode, fullName || label, strippedProgram || configuredCode), 6);
 
         const compactLabel = composeCompactLabel(categoryCode, productCode);
+        const compactMetrics = timelineCompactLabelMetrics(compactLabel);
         const fullLabel = fullName
             ? `${compactLabel}: ${fullName}`
             : compactLabel;
@@ -200,6 +214,9 @@
             productCode,
             fullName,
             compactLabel,
+            compactTokens: compactMetrics.tokens,
+            compactCharacterCount: compactMetrics.characterCount,
+            compactMaxTokenLength: compactMetrics.maxTokenLength,
             fullLabel,
             tooltip: detailParts.join(' · '),
             ariaLabel: detailParts.join(' · '),
@@ -242,6 +259,7 @@
         CATEGORY_CODES,
         stripDurationText,
         removeCategoryPrefix,
+        timelineCompactLabelMetrics,
         resolveTimelineActivityPresentation,
         timelineBookingBlockDensity,
         timelineActivityBookingBlockDensity

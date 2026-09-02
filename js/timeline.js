@@ -1604,6 +1604,22 @@ function timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel
     return compactActivityLabel || timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).compactLabel;
 }
 
+function timelineCompactLabelMetrics(value) {
+    if (typeof TimelinePresentation !== 'undefined' && typeof TimelinePresentation.timelineCompactLabelMetrics === 'function') {
+        return TimelinePresentation.timelineCompactLabelMetrics(value);
+    }
+    const label = String(value || '').replace(/\s+/g, ' ').trim();
+    const tokens = label.split(/\s+/u).filter(Boolean).slice(0, 3);
+    const tokenLengths = tokens.map(token => Array.from(token).length);
+    return {
+        label,
+        tokens,
+        characterCount: Array.from(label).length,
+        tokenCount: tokens.length,
+        maxTokenLength: tokenLengths.length ? Math.max(...tokenLengths) : 0
+    };
+}
+
 function timelineRoomActivityDisplayLabel(booking, renderBooking, bookingTitle, bookingTitleTail, compactActivityLabel, density = 'medium') {
     const presentation = timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail);
     return density === 'micro' || density === 'tiny' || density === 'short'
@@ -4955,32 +4971,37 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         ? [roomActivityDetailLabel, costumeLabel].filter(Boolean)
         : [];
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
-    const microLabelParts = String(microActivityLabel || '')
-        .split(/\s+/)
-        .filter(Boolean)
-        .slice(0, 3);
-    const microLabelHtml = (microLabelParts.length > 1 ? microLabelParts : [microActivityLabel])
-        .filter(Boolean)
+    const compactLabelMetrics = timelineCompactLabelMetrics(compactActivityLabel);
+    const microLabelMetrics = timelineCompactLabelMetrics(microActivityLabel);
+    const roomActivityLabelMetrics = timelineCompactLabelMetrics(roomActivityMainLabel);
+    const microLabelHtml = microLabelMetrics.tokens
         .map(part => `<span>${escapeHtml(part)}</span>`)
-        .join('');
+        .join(' ');
+    const compactLabelHtml = compactLabelMetrics.tokens
+        .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
+        .join(' ');
+    const roomActivityLabelHtml = roomActivityLabelMetrics.tokens
+        .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
+        .join(' ');
+    const compactLayout = bookingBlockDensity === 'micro' || bookingBlockDensity === 'tiny' ? 'stacked' : 'inline';
     const roomActivityHtml = `
         ${bookingBlockDensity === 'short' || !isCompactActivityBlock ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-room-activity-main">
             ${!isCompactActivityBlock || bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
-            ${roomActivityMainLabel ? `<span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityMainLabel.length))}">${escapeHtml(roomActivityMainLabel)}</span>` : ''}
+            ${roomActivityMainLabel ? `<span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(roomActivityLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(roomActivityLabelMetrics.maxTokenLength))}" data-layout="${compactLayout}">${roomActivityLabelHtml}</span>` : ''}
             ${isCompactActivityBlock ? '' : durationBadge}
         </div>
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}
         ${noteText}
     `;
     const microBookingHtml = `
-        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(microActivityLabel.length))}">${microLabelHtml}</div>
+        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(microLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(microLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(microLabelMetrics.maxTokenLength))}" data-layout="stacked">${microLabelHtml}</div>
     `;
     const compactBookingHtml = `
         ${bookingBlockDensity === 'short' ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-compact-booking-main">
             ${bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
-            <span class="timeline-compact-booking-label" data-code-length="${escapeHtml(String(compactActivityLabel.length))}">${escapeHtml(compactActivityLabel)}</span>
+            <span class="timeline-compact-booking-label" data-code-length="${escapeHtml(String(compactLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(compactLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(compactLabelMetrics.maxTokenLength))}" data-layout="${compactLayout}">${compactLabelHtml}</span>
         </div>
         ${bookingBlockDensity === 'short' && (bookingRoomMeta || bookingKidsMeta) ? `<div class="subtitle timeline-compact-booking-meta">${bookingRoomMeta}${bookingKidsMeta}</div>` : ''}
         ${costumeText}
@@ -7540,23 +7561,31 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const costumeLabel = bookingCostumeLabel(b);
         const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
         const miniPresentation = timelineActivityPresentation(b, b, b.label || b.programCode, b.programName || '');
+        const miniPresentationMetrics = timelineCompactLabelMetrics(miniPresentation.code);
+        const miniDensity = timelineBookingBlockDensity(width);
+        const miniLabelHtml = miniPresentationMetrics.tokens
+            .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
+            .join(' ');
+        const miniLayout = miniDensity === 'micro' || miniDensity === 'tiny' ? 'stacked' : 'inline';
         const miniTitleParts = [b.time, miniPresentation.fullTitle, b.duration > 0 ? `${b.duration} хв` : '', b.room, miniPresentation.pinataDetail].filter(Boolean);
         if (costumeLabel) miniTitleParts.push(costumeLabel);
         if (boundaryStatus.overrun) miniTitleParts.push(boundaryStatus.message);
         const miniAccessibilityLabel = miniTitleParts.join(' · ');
         html += `
-            <div class="${classes}"
+            <div class="${classes} mini-booking-block--${escapeHtml(miniDensity)}"
                  style="left: ${left}px; width: ${width}px;"
                  data-booking-id="${escapeHtml(b.id)}"
                  data-resource-id="${escapeHtml(bookingIdentity.resourceId)}"
                  data-resource-type="${escapeHtml(bookingIdentity.resourceType)}"
+                 data-timeline-category-code="${escapeHtml(miniPresentation.categoryCode || '')}"
+                 data-timeline-product-code="${escapeHtml(miniPresentation.productCode || '')}"
                  data-timeline-boundary="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.type) : ''}"
                  data-timeline-boundary-end="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.boundary?.endLabel || '') : ''}"
                  data-timeline-boundary-overrun-min="${boundaryStatus.overrun ? escapeHtml(String(boundaryStatus.overrunMin || 0)) : ''}"
                  data-timeline-boundary-message="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.message || '') : ''}"
                  title="${escapeHtml(miniAccessibilityLabel)}"
                  aria-label="${escapeHtml(miniAccessibilityLabel)}">
-                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentation.code.length))}">${escapeHtml(miniPresentation.code)}</span>
+                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentationMetrics.characterCount))}" data-token-count="${escapeHtml(String(miniPresentationMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(miniPresentationMetrics.maxTokenLength))}" data-layout="${miniLayout}">${miniLabelHtml}</span>
                 ${miniCostumeText}
             </div>
         `;

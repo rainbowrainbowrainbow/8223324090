@@ -97,3 +97,15 @@ test('timeline density avoids the old abrupt 44px micro breakpoint', () => {
     assert.equal(presentation.timelineBookingBlockDensity(132), 'medium');
     assert.equal(presentation.timelineBookingBlockDensity(220), 'wide');
 });
+
+test('compact label metrics size typography by the longest token instead of total label length', () => {
+    assert.deepEqual(presentation.timelineCompactLabelMetrics('П 501'), {
+        label: 'П 501',
+        tokens: ['П', '501'],
+        characterCount: 5,
+        tokenCount: 2,
+        maxTokenLength: 3
+    });
+    assert.equal(presentation.timelineCompactLabelMetrics('ШОУ Маф').maxTokenLength, 3);
+    assert.equal(presentation.timelineCompactLabelMetrics('МК РЕС').maxTokenLength, 3);
+});

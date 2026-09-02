@@ -512,4 +512,11 @@ test('runtime state can be updated without weakening the signed authorization en
     assert.equal(restored.runtimeState.releaseAttempts, 1);
 });
 
+test('production autonomy runbook documents npm-safe Windows argument boundaries', () => {
+    const runbook = fs.readFileSync(path.join(__dirname, '..', 'docs', 'CODEX_PRODUCTION_AUTONOMY.md'), 'utf8');
+    assert.match(runbook, /codex:production-block -- prepare -- \[options\]/);
+    assert.match(runbook, /codex:production-block -- execute -- --block-file <path> --confirmation <exact-value>/);
+    assert.match(runbook, /portable Windows PowerShell shim/);
+});
+
 require('./codex-autopilot-policy.test');

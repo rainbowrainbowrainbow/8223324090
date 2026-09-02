@@ -241,11 +241,18 @@ If CI fails:
 The canonical bounded release controller is:
 
 ```powershell
-npm run codex:production-block -- prepare [options]
-npm run codex:production-block -- status --block-file <path>
-npm run codex:production-block -- execute --block-file <path> --confirmation <exact-value>
-npm run codex:production-block -- qa-resume --block-file <path> --confirmation <exact-value>
+npm run codex:production-block -- prepare -- [options]
+npm run codex:production-block -- status -- --block-file <path>
+npm run codex:production-block -- execute -- --block-file <path> --confirmation <exact-value>
+npm run codex:production-block -- qa-resume -- --block-file <path> --confirmation <exact-value>
 ```
+
+The second `--` is required before controller flags. It keeps npm 10 and the
+portable Windows PowerShell shim from consuming `--block-file`,
+`--confirmation`, and prepare options as npm configuration. The controller also
+accepts the legacy stripped positional form for `status`, `execute`, and
+`qa-resume`, but new automation and operator commands must use the explicit
+double-boundary form above.
 
 `prepare` is read-only against production and writes a sanitized, hash-bound
 manifest under the operating-system temporary directory. It records the exact

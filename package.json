@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.66",
+  "version": "0.81.67",
   "eventGenix": {
-    "releaseLabel": "Timeline Narrow Identity Fix"
+    "releaseLabel": "Checkbox Fiscal Safety Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -5,7 +5,7 @@ Last updated: 2026-09-03.
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
-- Release package baseline prepared for this handoff: `0.81.66` (`Timeline Narrow Identity Fix`).
+- Release package baseline prepared for this handoff: `0.81.67` (`Checkbox Fiscal Safety Hardening`).
 - Confirmed live commit at the start of this release preparation: `a43a2eaef5120580aa624f33655a388ae6f79acd`.
 - Live source branch: `codex/eventgenix-production`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
@@ -50,7 +50,7 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
 - CI hardening gates now include a deterministic value-free semantic Checkbox OpenAPI projection, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
 - `config/checkboxOpenApiContract.js` pins the reviewed public API operations, response codes, required fields, enums, headers, and money/quantity units without provider IDs or examples. `check:checkbox-openapi:official` compares it read-only with the current official contract before release or activation.
-- Release `0.81.66` is the package baseline prepared in this handoff.
+- Release `0.81.67` is the package baseline prepared in this handoff.
 - The same `0.81.66` package is the confirmed live baseline before the pending test-mode harness hardening is released.
 - Provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization are part of the released baseline.
 

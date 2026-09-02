@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.67 - Checkbox Fiscal Safety Hardening
+
+### Release / Versioning / (03.09.2026) [codex]
+- **Безпечна readiness-перевірка Checkbox** — касир не може підтвердити оплату без точної тестової/production identity, підпису, дозволів, каси, касира, ФОП, податкового mapping та свіжого стану зміни.
+- **Відновлення без дублів** — shift і receipt використовують незмінні UUID; timeout, restart і повторний клік сходяться через lookup, а не повторний продаж.
+- **Незавершені чеки та Phase-1 close** — каса бачить register-wide pending/unknown операції, блокує небезпечне закриття та підтримує контрольоване асинхронне закриття зміни.
+- **OpenAPI та CI guardrails** — додано semantic contract gate, PostgreSQL + local HTTP Checkbox acceptance і browser flow через реальні EventGenix routes. Усі production fiscal flags залишаються вимкненими.
+
+---
+
 ## v0.81.66 - Timeline Narrow Identity Fix
 
 ### Release / Versioning / (02.09.2026) [codex]

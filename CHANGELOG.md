@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.62 - Timeline Presentation System v2 + Autonomy Hardening
+
+### Release / Versioning / (02.09.2026) [codex]
+- **Timeline Presentation System v2 + Autonomy Hardening** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.61 - Timeline Presentation System v2
 
 ### Release / Versioning / (02.09.2026) [codex]

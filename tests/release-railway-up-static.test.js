@@ -44,7 +44,8 @@ test('Railway release helper deploys a pushed clean artifact with manifest and m
     assert.match(script, /git archive/);
     assert.match(script, /createCleanExport/);
     assert.match(script, /validateExport/);
-    assert.match(script, /'up',\s*\n\s*exportInfo\.sourceDir,\s*\n\s*'--path-as-root',\s*\n\s*'--project',\s*\n\s*options\.project/);
+    assert.match(script, /'up',\s*\n\s*exportInfo\.sourceDir,\s*\n\s*'--ci',\s*\n\s*'--path-as-root',\s*\n\s*'--project',\s*\n\s*options\.project/);
+    assert.match(script, /dry-run > railway up <clean-export> --ci --path-as-root/);
     assert.match(script, /shell:\s*false/);
     assert.doesNotMatch(script, /'variable',\s*\n\s*'set'/);
     assert.doesNotMatch(script, /RELEASE_DEPLOY_COMMIT=\$\{head\}/);

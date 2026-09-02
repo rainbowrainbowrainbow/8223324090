@@ -579,7 +579,7 @@ async function main() {
 
     if (options.dryRun) {
         console.log('[release:railway-up] dry-run > git archive --format=tar HEAD + deployment manifest');
-        console.log(`[release:railway-up] dry-run > railway up <clean-export> --path-as-root --project ${options.project} --service ${options.service} --environment ${options.environment}`);
+        console.log(`[release:railway-up] dry-run > railway up <clean-export> --ci --path-as-root --project ${options.project} --service ${options.service} --environment ${options.environment}`);
         console.log(`[release:railway-up] dry-run > VERSION_SMOKE_EXPECT_COMMIT=${head} VERSION_SMOKE_EXPECT_BRANCH=${options.branch} npm run version:smoke -- ${liveUrl}`);
         return;
     }
@@ -591,6 +591,7 @@ async function main() {
         run('railway', [
             'up',
             exportInfo.sourceDir,
+            '--ci',
             '--path-as-root',
             '--project',
             options.project,

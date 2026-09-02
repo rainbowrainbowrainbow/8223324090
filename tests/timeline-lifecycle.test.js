@@ -372,12 +372,26 @@ test('timeline activity presentation renders category plus product code in anima
         status: 'preliminary'
     }, 12, grid, { id: 'line-1' });
 
+    const wideAnimation = api.createBookingBlock({
+        id: 'animation-120',
+        category: 'animation',
+        timelineCode: 'АН 120',
+        label: 'АН 120(120)',
+        programName: 'Анімація 120хв',
+        time: '13:00',
+        duration: 120,
+        room: 'Марвел',
+        status: 'confirmed'
+    }, 12, grid, { id: 'line-1' });
+
     assert.equal(timelineBlockLabelText(show).replace(/\s+/g, ''), 'ШОУМаф');
     assert.equal(show.getAttribute('data-timeline-category-code'), 'ШОУ');
     assert.equal(timelineBlockLabelText(masterclass), 'МК РЕС');
     assert.equal(timelineBlockLabelText(pinata).replace(/\s+/g, ''), 'П501');
     assert.match(pinata.getAttribute('aria-label'), /Піньята парку 501/);
     assert.doesNotMatch(masterclass.textContent, /МК\s*МК/u);
+    assert.equal(wideAnimation.querySelector('.timeline-activity-identity')?.textContent, 'АН 120: Анімація');
+    assert.equal(wideAnimation.querySelector('.timeline-activity-title > .duration-badge')?.textContent, '120хв');
 });
 
 test('timelineView deep link is bootstrap-only and user switches replace the URL', async () => {

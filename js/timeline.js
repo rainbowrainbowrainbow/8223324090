@@ -5007,9 +5007,12 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         ${costumeText}
         ${noteText}
     `;
+    const defaultBookingIdentityHtml = isStandardActivityBlock
+        ? `<span class="timeline-activity-identity">${escapeHtml(normalizedBookingTitleText)}</span>`
+        : escapeHtml(normalizedBookingTitleText);
     const defaultBookingHtml = `
         <div class="user-letter">${badge}</div>
-        <div class="title">${escapeHtml(normalizedBookingTitleText)}${durationBadge}</div>
+        <div class="title${isStandardActivityBlock ? ' timeline-activity-title' : ''}">${defaultBookingIdentityHtml}${durationBadge}</div>
         <div class="subtitle"><span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>${bookingRoomMeta}${bookingKidsMeta}</div>
         ${costumeText}
         ${graduationItemsHtml}

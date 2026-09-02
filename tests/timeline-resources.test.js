@@ -3430,10 +3430,14 @@ test('timeline activity blocks use catalog timeline codes without truncated name
     assert.match(timeline, /<div class="timeline-micro-booking-code"[\s\S]*data-token-count="\$\{escapeHtml\(String\(microLabelMetrics\.tokenCount\)\)\}"[\s\S]*data-max-token-length="\$\{escapeHtml\(String\(microLabelMetrics\.maxTokenLength\)\)\}"[\s\S]*data-layout="stacked">\$\{microLabelHtml\}<\/div>/);
     assert.match(timeline, /<span class="timeline-compact-booking-label"[\s\S]*data-token-count="\$\{escapeHtml\(String\(compactLabelMetrics\.tokenCount\)\)\}"[\s\S]*data-max-token-length="\$\{escapeHtml\(String\(compactLabelMetrics\.maxTokenLength\)\)\}"[\s\S]*data-layout="\$\{compactLayout\}">\$\{compactLabelHtml\}<\/span>/);
     assert.match(timeline, /class="timeline-code-token"/);
+    assert.match(timeline, /const defaultBookingIdentityHtml = isStandardActivityBlock[\s\S]*class="timeline-activity-identity"[\s\S]*timeline-activity-title/);
     assert.match(timeline, /block\.innerHTML = isRoomTimelineActivityCard[\s\S]*bookingBlockDensity === 'micro' \? microBookingHtml : compactBookingHtml/);
     assert.doesNotMatch(timeline, /timeline-compact-booking-tail/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-main\s*\{[\s\S]*display:\s*flex/);
     assert.match(css, /\.booking-block \.timeline-compact-booking-label\s*\{[\s\S]*text-overflow:\s*ellipsis/);
+    assert.match(css, /\.booking-block \.title\.timeline-activity-title\s*\{[\s\S]*display:\s*flex;[\s\S]*white-space:\s*normal;/);
+    assert.match(css, /\.booking-block \.timeline-activity-identity\s*\{[\s\S]*overflow-wrap:\s*anywhere;[\s\S]*white-space:\s*normal;/);
+    assert.match(css, /\.booking-block \.timeline-activity-title \.duration-badge\s*\{[\s\S]*flex:\s*0 0 auto;[\s\S]*margin-left:\s*0;/);
 });
 
 test('room timeline matches quarantined booking only to quarantine and keeps diagnostic reason', () => {

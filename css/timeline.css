@@ -3368,6 +3368,30 @@ body.dark-mode .booking-banquet-candidate-role {
     font-size: 12px;
 }
 
+.booking-block .title.timeline-activity-title {
+    display: flex;
+    align-items: center;
+    min-width: 0;
+    gap: 4px;
+    overflow: visible;
+    white-space: normal;
+    text-overflow: clip;
+}
+
+.booking-block .timeline-activity-identity {
+    flex: 1 1 auto;
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+    white-space: normal;
+    line-height: 1.12;
+}
+
+.booking-block .timeline-activity-title .duration-badge {
+    flex: 0 0 auto;
+    margin-left: 0;
+}
+
 .booking-block .subtitle {
     font-size: 10px;
     opacity: 0.85;

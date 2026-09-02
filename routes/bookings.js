@@ -3583,11 +3583,6 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
             error: 'Ticket snapshot can be saved only on the canonical package owner booking'
         });
     }
-    if (!b.linkedTo) {
-        const pastValidationError = bookingPastValidationError(b);
-        if (pastValidationError) return res.status(400).json({ success: false, error: pastValidationError });
-    }
-
     let qaContext = { trusted: false, suppressSideEffects: false };
     const bookingCreateSideEffectsAllowed = () => sideEffectsAllowedForContext(businessContext) && !qaContext.suppressSideEffects;
     const parkBookingCreateSideEffectsAllowed = () => parkSideEffectsAllowedForContext(businessContext) && !qaContext.suppressSideEffects;
@@ -3596,6 +3591,13 @@ router.post('/', requireAction('create_booking'), async (req, res) => {
     try {
         await client.query('BEGIN');
         qaContext = await prepareTrustedQaBookingInput(client, req, b, businessContext);
+        if (!qaContext.trusted && !b.linkedTo) {
+            const pastValidationError = bookingPastValidationError(b);
+            if (pastValidationError) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: pastValidationError });
+            }
+        }
 
         const pinataFields = applyPinataNormalization(b);
         if (pinataFields.error) {
@@ -4509,8 +4511,6 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         if (rejectBookingOutsideWorkingHours(res, main, { businessContext })) return;
         const mainPinataFields = applyPinataNormalization(main);
         if (mainPinataFields.error) return res.status(400).json({ success: false, error: mainPinataFields.error });
-        const mainPastValidationError = bookingPastValidationError(main);
-        if (mainPastValidationError) return res.status(400).json({ success: false, error: mainPastValidationError });
         normalizeBookingSecondAnimatorFields(main);
         if (applyBookingStatusForCreate(main) === 'invalid') {
             return res.status(400).json({ success: false, error: 'Invalid booking status' });
@@ -4571,8 +4571,6 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
             const activityPinataFields = applyPinataNormalization(activity);
             if (activityPinataFields.error) return res.status(400).json({ success: false, error: activityPinataFields.error });
             applyBookingPackage(activity);
-            const activityPastValidationError = bookingPastValidationError(activity);
-            if (activityPastValidationError) return res.status(400).json({ success: false, error: activityPastValidationError });
             normalizeBookingSecondAnimatorFields(activity);
             if (applyBookingStatusForCreate(activity, main.status) === 'invalid') {
                 return res.status(400).json({ success: false, error: 'Invalid activity booking status' });
@@ -4594,6 +4592,17 @@ router.post('/full', requireAction('create_booking'), async (req, res) => {
         for (const qaCandidate of [...linked, ...banquetActivities]) {
             const childQaContext = await prepareTrustedQaBookingInput(client, req, qaCandidate, businessContext);
             if (childQaContext.trusted) qaContext = childQaContext;
+        }
+        if (!qaContext.trusted) {
+            const mainPastValidationError = bookingPastValidationError(main);
+            const activityPastValidationError = banquetActivities
+                .map(activity => bookingPastValidationError(activity))
+                .find(Boolean);
+            const pastValidationError = mainPastValidationError || activityPastValidationError;
+            if (pastValidationError) {
+                await client.query('ROLLBACK');
+                return res.status(400).json({ success: false, error: pastValidationError });
+            }
         }
         const activitySecondAnimatorLines = new Map();
 

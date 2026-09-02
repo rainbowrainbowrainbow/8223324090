@@ -1112,3 +1112,31 @@ test('qaPublicDetails strips empty values from route-safe error payloads', () =>
         { code: 'x', ok: 'yes' }
     );
 });
+
+test('booking create routes validate trusted QA before allowing historical disposable fixtures', () => {
+    const source = fs.readFileSync(path.join(__dirname, '..', 'routes', 'bookings.js'), 'utf8');
+    const singleStart = source.indexOf("router.post('/', requireAction('create_booking')");
+    const fullStart = source.indexOf("router.post('/full', requireAction('create_booking')");
+    const singleRoute = source.slice(singleStart, fullStart);
+    const fullRoute = source.slice(fullStart, source.indexOf("router.put('/", fullStart));
+
+    assert.ok(singleStart >= 0 && fullStart > singleStart, 'booking create route boundaries are present');
+    assert.ok(
+        singleRoute.indexOf('prepareTrustedQaBookingInput(client, req, b, businessContext)')
+            < singleRoute.indexOf('const pastValidationError = bookingPastValidationError(b)'),
+        'single create verifies the server-issued trusted QA token before the past-time decision'
+    );
+    assert.match(
+        singleRoute,
+        /if \(!qaContext\.trusted && !b\.linkedTo\)[\s\S]*await client\.query\('ROLLBACK'\);[\s\S]*pastValidationError/
+    );
+    assert.ok(
+        fullRoute.indexOf('prepareTrustedQaBookingInput(client, req, main, businessContext)')
+            < fullRoute.indexOf('const mainPastValidationError = bookingPastValidationError(main)'),
+        'full create verifies every trusted QA fixture before the past-time decision'
+    );
+    assert.match(
+        fullRoute,
+        /if \(!qaContext\.trusted\)[\s\S]*bookingPastValidationError\(main\)[\s\S]*bookingPastValidationError\(activity\)[\s\S]*await client\.query\('ROLLBACK'\)/
+    );
+});

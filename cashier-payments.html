@@ -43,18 +43,24 @@
                 </div>
                 <div class="cashier-scope-card" aria-label="Пілотний профіль">
                     <span>CRM профіль</span><strong>парк</strong>
-                    <span>Каса</span><strong>middle</strong>
+                    <span>Каса</span><strong>середня (middle)</strong>
                 </div>
             </section>
             <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Немає доступу до оплати або фіскалізації.</div>
             <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
-            <div id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite"></div>
-            <div class="cashier-toolbar-row" aria-label="Керування готовністю Checkbox">
-                <button type="button" id="refreshReadinessBtn" class="btn btn-secondary" aria-describedby="cashierReadinessStatus">Оновити готовність Checkbox</button>
-            </div>
+            <section id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning cashier-readiness-card hidden" role="region" aria-labelledby="cashierReadinessSummary">
+                <div id="cashierReadinessSummary" class="cashier-readiness-summary" role="status" aria-live="polite">Перевіряємо готовність каси…</div>
+                <details id="cashierReadinessDetails" class="cashier-readiness-details">
+                    <summary>Деталі для адміністратора</summary>
+                    <ul id="cashierReadinessTechnicalList"></ul>
+                </details>
+                <div class="cashier-toolbar-row" aria-label="Керування готовністю Checkbox">
+                    <button type="button" id="refreshReadinessBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="cashierReadinessSummary" aria-controls="cashierReadinessDetails">Оновити готовність Checkbox</button>
+                </div>
+            </section>
 
             <section class="cashier-grid">
-                <form id="paymentOrderForm" class="cashier-card cashier-form" aria-labelledby="paymentOrderFormTitle" aria-describedby="createPaymentDisabledReason">
+                <form id="paymentOrderForm" class="cashier-card cashier-form cashier-step is-active" data-payment-step="1" aria-current="step" aria-labelledby="paymentOrderFormTitle" aria-describedby="createPaymentDisabledReason">
                     <div class="cashier-card-head">
                         <div><p class="cashier-kicker">Крок 1</p><h2 id="paymentOrderFormTitle">Створити оплату</h2></div>
                         <span class="cashier-pill">ціна і ФОП визначаються сервером</span>
@@ -69,13 +75,13 @@
                         <label><input type="radio" name="paymentTender" value="cash" checked> Готівка</label>
                         <label><input type="radio" name="paymentTender" value="card_terminal_manual"> Термінал</label>
                     </fieldset>
-                    <button type="submit" id="createPaymentOrderBtn" class="btn btn-primary cashier-primary-action" aria-describedby="createPaymentDisabledReason">Створити оплату</button>
-                    <button type="button" id="startNextOrderBtn" class="btn btn-secondary cashier-primary-action hidden">Нова оплата</button>
-                    <button type="button" id="cancelDraftOrderBtn" class="btn btn-secondary cashier-primary-action hidden" disabled>Скасувати чернетку</button>
+                    <button type="submit" id="createPaymentOrderBtn" class="btn-page-primary cashier-primary-action" aria-describedby="createPaymentDisabledReason">Створити оплату</button>
+                    <button type="button" id="startNextOrderBtn" class="btn-page-secondary cashier-primary-action hidden" aria-describedby="createPaymentDisabledReason">Нова оплата</button>
+                    <button type="button" id="cancelDraftOrderBtn" class="btn-page-secondary cashier-primary-action hidden" disabled aria-describedby="createPaymentDisabledReason">Скасувати чернетку</button>
                     <p id="createPaymentDisabledReason" class="cashier-help" aria-live="polite">Касир не може змінити ціну, ФОП, профіль або касу. Позиції фіксуються під час створення оплати.</p>
                 </form>
 
-                <section class="cashier-card cashier-order-card" aria-labelledby="paymentSnapshotTitle">
+                <section class="cashier-card cashier-order-card cashier-step is-inactive" data-payment-step="2" aria-disabled="true" aria-labelledby="paymentSnapshotTitle">
                     <div class="cashier-card-head">
                         <div><p class="cashier-kicker">Крок 2</p><h2 id="paymentSnapshotTitle">Підтвердити оплату</h2></div>
                         <span id="internalReceiptLabel" class="cashier-pill">RCP-* — внутрішня квитанція</span>
@@ -98,66 +104,76 @@
                         <h3>Готівка</h3>
                         <label class="cashier-field"><span>Отримано від клієнта</span><input id="cashReceivedAmount" type="number" min="0" step="0.01" inputmode="decimal" disabled aria-describedby="confirmDisabledReason"></label>
                         <div class="cashier-change" aria-live="polite">Решта: <strong id="cashChangeAmount">0,00 ₴</strong></div>
-                        <button type="button" id="confirmCashBtn" class="btn btn-primary cashier-primary-action" disabled aria-describedby="confirmDisabledReason">Готівку отримано — створити чек</button>
+                        <button type="button" id="confirmCashBtn" class="btn-page-primary cashier-primary-action" disabled aria-describedby="confirmDisabledReason">Готівку отримано — створити чек</button>
                     </div>
                     <div id="cardConfirmationPanel" class="cashier-confirm-panel hidden">
                         <h3>Термінал</h3>
                         <p class="cashier-exact-amount">Сума на терміналі: <strong id="cardExactAmount">0,00 ₴</strong></p>
                         <label class="cashier-checkbox-row"><input id="terminalSuccessCheckbox" type="checkbox" disabled aria-describedby="confirmDisabledReason"><span>Термінал показав успішну оплату</span></label>
                         <label class="cashier-field"><span>Номер транзакції / звіту (необов’язково)</span><input id="terminalReference" type="text" maxlength="160" autocomplete="off" disabled aria-describedby="confirmDisabledReason"></label>
-                        <button type="button" id="confirmCardBtn" class="btn btn-primary cashier-primary-action" disabled aria-describedby="confirmDisabledReason">Підтвердити оплату терміналом і створити чек</button>
+                        <button type="button" id="confirmCardBtn" class="btn-page-primary cashier-primary-action" disabled aria-describedby="confirmDisabledReason">Підтвердити оплату терміналом і створити чек</button>
                     </div>
                 </section>
             </section>
 
-            <section id="fiscalResultPanel" class="cashier-card cashier-result-card" aria-labelledby="fiscalResultTitle">
+            <section id="fiscalResultPanel" class="cashier-card cashier-result-card cashier-step is-inactive" data-payment-step="3" aria-disabled="true" aria-labelledby="fiscalResultTitle">
                 <div class="cashier-card-head"><div><p class="cashier-kicker">Крок 3</p><h2 id="fiscalResultTitle">Фіскальний чек</h2></div><span id="fiscalReceiptBadge" class="cashier-pill">очікує</span></div>
                 <p id="fiscalPendingMessage" class="cashier-muted">Після підтвердження оплати сервер створить одну надійну задачу фіскалізації. Якщо Checkbox тимчасово недоступний, оплата лишається підтвердженою, а чек — у статусі очікування.</p>
                 <div id="pendingReceiptNotice" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite"></div>
                 <div id="providerReceiptLinks" class="cashier-provider-links hidden" aria-live="polite">
-                    <a id="providerTaxUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">Відкрити чек Checkbox</a>
-                    <a id="providerPdfUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">PDF чека</a>
-                    <a id="providerQrUrl" class="btn btn-secondary" href="#" target="_blank" rel="noopener">QR чека</a>
+                    <a id="providerTaxUrl" class="btn-page-secondary" href="#" target="_blank" rel="noopener">Відкрити чек Checkbox</a>
+                    <a id="providerPdfUrl" class="btn-page-secondary" href="#" target="_blank" rel="noopener">PDF чека</a>
+                    <a id="providerQrUrl" class="btn-page-secondary" href="#" target="_blank" rel="noopener">QR чека</a>
                 </div>
             </section>
 
-            <section id="unresolvedOrdersPanel" class="cashier-card cashier-result-card" aria-labelledby="unresolvedOrdersTitle">
-                <div class="cashier-card-head">
-                    <div><p class="cashier-kicker">Контроль</p><h2 id="unresolvedOrdersTitle">Незавершені чеки</h2></div>
-                    <button type="button" id="refreshUnresolvedOrdersBtn" class="btn btn-secondary">Оновити</button>
+            <details id="unresolvedOrdersPanel" class="cashier-card cashier-result-card cashier-secondary-disclosure" aria-labelledby="unresolvedOrdersTitle">
+                <summary class="cashier-card-head cashier-disclosure-summary">
+                    <span class="cashier-disclosure-heading"><span class="cashier-kicker">Контроль</span><span id="unresolvedOrdersTitle" role="heading" aria-level="2">Незавершені чеки</span></span>
+                    <span id="unresolvedOrdersSummaryBadge" class="cashier-pill">перевіряємо</span>
+                </summary>
+                <div class="cashier-disclosure-body">
+                    <p id="unresolvedOrdersHelp" class="cashier-muted">Тут зберігаються всі оплачені чеки цієї каси, які ще очікують завершення, перевірки або ручного втручання.</p>
+                    <div class="cashier-toolbar-row">
+                        <button type="button" id="refreshUnresolvedOrdersBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="unresolvedOrdersHelp" aria-controls="unresolvedOrdersBody">Оновити список</button>
+                    </div>
+                    <div id="unresolvedOrdersBody" class="cashier-report-body" aria-live="polite">Незавершених чеків не завантажено.</div>
+                    <div class="cashier-unresolved-actions">
+                        <button type="button" id="loadMoreUnresolvedOrdersBtn" class="btn-page-secondary hidden" aria-describedby="unresolvedOrdersHelp">Показати ще</button>
+                    </div>
                 </div>
-                <p id="unresolvedOrdersHelp" class="cashier-muted">Оплачені orders зі статусом pending / unknown / retryable / dead залишаються тут, навіть якщо наступний касир працює з цією касою.</p>
-                <div id="unresolvedOrdersBody" class="cashier-report-body" aria-live="polite">Незавершених чеків не завантажено.</div>
-                <div class="cashier-unresolved-actions">
-                    <button type="button" id="loadMoreUnresolvedOrdersBtn" class="btn btn-secondary hidden" aria-describedby="unresolvedOrdersHelp">Показати ще</button>
-                </div>
-            </section>
+            </details>
 
             <section id="phase1ShiftPanel" class="cashier-card cashier-result-card hidden" aria-labelledby="phase1ShiftTitle" aria-hidden="true">
                 <div class="cashier-card-head">
                     <div><p class="cashier-kicker">Завершення дня</p><h2 id="phase1ShiftTitle">Зміна Checkbox</h2></div>
                     <span id="phase1ShiftStatus" class="cashier-status">—</span>
                 </div>
-                <p class="cashier-muted">Безпечне закриття поточної зміни Checkbox без Cashier PRO. Закриття недоступне, доки є незавершені чеки або стан каси не підтверджено сервером.</p>
+                <p class="cashier-muted">Безпечне закриття поточної зміни Checkbox без розширених касових функцій. Закриття недоступне, доки є незавершені чеки або стан каси не підтверджено сервером.</p>
                 <p id="phase1ShiftCloseNotice" class="cashier-help" role="status" aria-live="polite">Стан зміни ще не завантажено.</p>
-                <button type="button" id="phase1CloseShiftBtn" class="btn btn-secondary cashier-primary-action" disabled aria-describedby="phase1ShiftCloseNotice">Закрити зміну Checkbox</button>
+                <button type="button" id="phase1CloseShiftBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="phase1ShiftCloseNotice">Закрити зміну Checkbox</button>
             </section>
 
-            <section id="checkboxSalesReportPanel" class="cashier-card cashier-result-card" aria-labelledby="checkboxSalesReportTitle">
-                <div class="cashier-card-head">
-                    <div><p class="cashier-kicker">Звіт</p><h2 id="checkboxSalesReportTitle">Продажі Checkbox</h2></div>
-                    <button type="button" id="loadCheckboxSalesReportBtn" class="btn btn-secondary">Завантажити</button>
+            <details id="checkboxSalesReportPanel" class="cashier-card cashier-result-card cashier-secondary-disclosure" aria-labelledby="checkboxSalesReportTitle">
+                <summary class="cashier-card-head cashier-disclosure-summary">
+                    <span class="cashier-disclosure-heading"><span class="cashier-kicker">Звіт</span><span id="checkboxSalesReportTitle" role="heading" aria-level="2">Продажі Checkbox</span></span>
+                    <span class="cashier-pill">лише перегляд</span>
+                </summary>
+                <div class="cashier-disclosure-body">
+                    <p class="cashier-muted">Внутрішній звіт Event Genix лише для перегляду. Це не офіційний Z-звіт і він не створює фінансових операцій.</p>
+                    <div class="cashier-report-filters" aria-label="Фільтри продажів Checkbox">
+                        <label class="cashier-field"><span>Дата від</span><input id="checkboxReportDateFrom" type="date"></label>
+                        <label class="cashier-field"><span>Дата до</span><input id="checkboxReportDateTo" type="date"></label>
+                        <label class="cashier-field"><span>ID зміни</span><input id="checkboxReportShiftId" type="number" min="1" step="1" inputmode="numeric"></label>
+                        <label class="cashier-field"><span>Касир</span><input id="checkboxReportCashierUserId" type="text" inputmode="numeric" placeholder="мій або ID"></label>
+                        <label class="cashier-field"><span>Сторінка</span><input id="checkboxReportPage" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
+                    </div>
+                    <div class="cashier-toolbar-row">
+                        <button type="button" id="loadCheckboxSalesReportBtn" class="btn-page-secondary btn-page-toolbar" aria-controls="checkboxSalesReportBody">Показати звіт</button>
+                    </div>
+                    <div id="checkboxSalesReportBody" class="cashier-report-body" aria-live="polite">Звіт не завантажено.</div>
                 </div>
-                <p class="cashier-muted">Внутрішній read-only звіт Event Genix. Це не офіційний Z-звіт і не створює finance_transaction.</p>
-                <div class="cashier-report-filters" aria-label="Фільтри продажів Checkbox">
-                    <label class="cashier-field"><span>Дата від</span><input id="checkboxReportDateFrom" type="date"></label>
-                    <label class="cashier-field"><span>Дата до</span><input id="checkboxReportDateTo" type="date"></label>
-                    <label class="cashier-field"><span>ID зміни</span><input id="checkboxReportShiftId" type="number" min="1" step="1" inputmode="numeric"></label>
-                    <label class="cashier-field"><span>Касир</span><input id="checkboxReportCashierUserId" type="text" inputmode="numeric" placeholder="mine або ID"></label>
-                    <label class="cashier-field"><span>Сторінка</span><input id="checkboxReportPage" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
-                </div>
-                <div id="checkboxSalesReportBody" class="cashier-report-body" aria-live="polite">Звіт не завантажено.</div>
-            </section>
+            </details>
         </main>
     </div>
     <div id="notification" class="notification hidden"><span id="notificationText"></span></div>

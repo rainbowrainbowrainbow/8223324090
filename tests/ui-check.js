@@ -7213,6 +7213,16 @@ check('Timeline product sales separates revenue viewing from data export while p
 const cashierPaymentsHtml = fileText('cashier-payments.html');
 const cashierPaymentsJs = fileText('js/cashier-payments-page.js');
 const cashierPaymentsCss = fileText('css/cashier-payments.css');
+const cashierCanonicalButtonIds = [
+    'refreshReadinessBtn', 'createPaymentOrderBtn', 'startNextOrderBtn', 'cancelDraftOrderBtn',
+    'confirmCashBtn', 'confirmCardBtn', 'providerTaxUrl', 'providerPdfUrl', 'providerQrUrl',
+    'refreshUnresolvedOrdersBtn', 'loadMoreUnresolvedOrdersBtn', 'phase1CloseShiftBtn',
+    'loadCheckboxSalesReportBtn'
+];
+const cashierButtonUsesCanonicalClass = id => {
+    const tag = cashierPaymentsHtml.match(new RegExp(`<[^>]+id=["']${id}["'][^>]*>`, 'i'))?.[0] || '';
+    return /class=["'][^"']*\bbtn-page-(?:primary|secondary|toolbar)\b/i.test(tag);
+};
 check('Cashier payments pilot UI is scoped to park middle register and shows immutable fiscal/payment snapshot',
     cashierPaymentsHtml.includes('data-pilot-scope="event_genix:middle"')
     && cashierPaymentsHtml.includes('id="cashierFiscalProfile"')
@@ -7302,9 +7312,34 @@ check('Cashier payments page stays isolated from protected booking and timeline 
     && !cashierPaymentsHtml.includes('js/timeline.js'));
 check('Cashier payments UI keeps keyboard focus and responsive layout coverage',
     cashierPaymentsCss.includes(':focus-visible')
-    && cashierPaymentsCss.includes('@media (max-width: 960px)')
+    && cashierPaymentsCss.includes('@media (max-width: 1023px)')
     && cashierPaymentsHtml.includes('aria-live="polite"')
     && cashierPaymentsHtml.includes('aria-label="Позиції оплати"'));
+check('Cashier payments uses the canonical page-button contract for every static action and receipt link',
+    pagesShellCss.includes('pages-core.css')
+    && pagesCoreCssForContract.includes('.btn-page-primary,')
+    && cashierCanonicalButtonIds.every(cashierButtonUsesCanonicalClass));
+check('Cashier payments exposes concise readiness, semantic steps, and compact native disclosures',
+    cashierPaymentsHtml.includes('id="cashierReadinessSummary"')
+    && cashierPaymentsHtml.includes('<details id="cashierReadinessDetails"')
+    && cashierPaymentsHtml.includes('Деталі для адміністратора')
+    && cashierPaymentsHtml.includes('id="cashierReadinessTechnicalList"')
+    && ['1', '2', '3'].every(step => cashierPaymentsHtml.includes(`data-payment-step="${step}"`))
+    && cashierPaymentsJs.includes('function syncPaymentStepState()')
+    && cashierPaymentsJs.includes("setAttribute('aria-current', 'step')")
+    && cashierPaymentsJs.includes("setAttribute('aria-disabled', 'true')")
+    && cashierPaymentsHtml.includes('<details id="unresolvedOrdersPanel"')
+    && cashierPaymentsHtml.includes('<details id="checkboxSalesReportPanel"')
+    && cashierPaymentsHtml.includes('Тут зберігаються всі оплачені чеки цієї каси')
+    && cashierPaymentsHtml.includes('Внутрішній звіт Event Genix лише для перегляду')
+    && !/Оплачені orders|pending \/ unknown|read-only|finance_transaction|placeholder="mine/i.test(cashierPaymentsHtml));
+check('Cashier payments defines accessible dark warning and overflow containment surfaces',
+    cashierPaymentsCss.includes('body.dark-mode .cashier-alert-warning')
+    && cashierPaymentsCss.includes('color: #fde68a')
+    && cashierPaymentsCss.includes('.cashier-grid > *')
+    && cashierPaymentsCss.includes('min-width: 0')
+    && cashierPaymentsCss.includes('max-width: 100%')
+    && cashierPaymentsCss.includes('.cashier-secondary-disclosure > summary:focus-visible'));
 
 // RESULTS
 // ═══════════════════════════════════════════════════

@@ -334,6 +334,187 @@ async function startServer() {
     return new Promise(resolve => server.listen(0, '127.0.0.1', () => resolve(server)));
 }
 
+async function assertCanonicalCashierButtons(page) {
+    const contract = await page.evaluate(() => {
+        const ids = [
+            'refreshReadinessBtn',
+            'createPaymentOrderBtn',
+            'startNextOrderBtn',
+            'cancelDraftOrderBtn',
+            'confirmCashBtn',
+            'confirmCardBtn',
+            'providerTaxUrl',
+            'providerPdfUrl',
+            'providerQrUrl',
+            'refreshUnresolvedOrdersBtn',
+            'loadMoreUnresolvedOrdersBtn',
+            'phase1CloseShiftBtn',
+            'loadCheckboxSalesReportBtn'
+        ];
+        const bodyFont = getComputedStyle(document.body).fontFamily;
+        return ids.map(id => {
+            const element = document.getElementById(id);
+            const style = element ? getComputedStyle(element) : null;
+            return {
+                id,
+                exists: Boolean(element),
+                visible: Boolean(element && element.getClientRects().length),
+                display: style?.display || '',
+                alignItems: style?.alignItems || '',
+                justifyContent: style?.justifyContent || '',
+                boxSizing: style?.boxSizing || '',
+                minHeight: Number.parseFloat(style?.minHeight || '0'),
+                paddingInline: Number.parseFloat(style?.paddingLeft || '0') + Number.parseFloat(style?.paddingRight || '0'),
+                borderRadius: Number.parseFloat(style?.borderRadius || '0'),
+                borderWidth: Number.parseFloat(style?.borderTopWidth || '0'),
+                backgroundColor: style?.backgroundColor || '',
+                backgroundImage: style?.backgroundImage || '',
+                color: style?.color || '',
+                fontFamily: style?.fontFamily || '',
+                bodyFont,
+                textDecoration: style?.textDecorationLine || '',
+                cursor: style?.cursor || '',
+                opacity: Number.parseFloat(style?.opacity || '1'),
+                disabled: Boolean(element?.disabled || element?.getAttribute('aria-disabled') === 'true')
+            };
+        });
+    });
+
+    for (const item of contract) {
+        assert.equal(item.exists, true, `${item.id} exists`);
+        assert.ok(item.minHeight >= 40, `${item.id} has a canonical >=40px minimum height: ${JSON.stringify(item)}`);
+        assert.ok(item.paddingInline >= 24, `${item.id} has canonical horizontal padding: ${JSON.stringify(item)}`);
+        assert.ok(item.borderRadius >= 10, `${item.id} has a canonical rounded shape: ${JSON.stringify(item)}`);
+        if (['createPaymentOrderBtn', 'confirmCashBtn', 'confirmCardBtn'].includes(item.id)) {
+            assert.notEqual(item.backgroundImage, 'none', `${item.id} keeps a visible primary background`);
+            assert.equal(item.color, 'rgb(255, 255, 255)', `${item.id} keeps readable primary text`);
+        } else {
+            assert.ok(item.borderWidth >= 1, `${item.id} keeps a visible secondary border: ${JSON.stringify(item)}`);
+            assert.doesNotMatch(item.backgroundColor, /^rgba?\(0, 0, 0, 0\)$/, `${item.id} keeps a visible secondary surface`);
+        }
+        assert.equal(item.boxSizing, 'border-box', `${item.id} uses border-box sizing`);
+        assert.equal(item.fontFamily, item.bodyFont, `${item.id} inherits the page font`);
+        if (item.visible) {
+            assert.match(item.display, /^(inline-)?flex$/, `${item.id} renders as a flex control`);
+            assert.equal(item.alignItems, 'center', `${item.id} centers its label vertically`);
+            assert.equal(item.justifyContent, 'center', `${item.id} centers its label horizontally`);
+        }
+        if (item.id.startsWith('provider')) assert.equal(item.textDecoration, 'none', `${item.id} looks like a button, not a raw link`);
+        if (item.disabled) {
+            assert.equal(item.cursor, 'not-allowed', `${item.id} explains its disabled state with the pointer`);
+            assert.ok(item.opacity <= 0.65, `${item.id} has a visible disabled treatment`);
+        }
+    }
+}
+
+async function assertPaymentStepState(page, expected) {
+    const steps = await page.evaluate(() => [...document.querySelectorAll('.cashier-step[data-payment-step]')].map(step => ({
+        step: step.getAttribute('data-payment-step'),
+        state: ['active', 'complete', 'inactive'].find(value => step.classList.contains(`is-${value}`)) || null,
+        current: step.getAttribute('aria-current'),
+        disabled: step.getAttribute('aria-disabled')
+    })));
+    assert.equal(steps.length, 3, 'the payment flow exposes exactly three semantic steps');
+    assert.equal(steps.filter(step => step.current === 'step').length, 1, 'exactly one payment step is current');
+    for (const [step, stateName] of Object.entries(expected)) {
+        const actual = steps.find(item => item.step === step);
+        assert.ok(actual, `payment step ${step} exists`);
+        assert.equal(actual.state, stateName, `payment step ${step} is ${stateName}`);
+        assert.equal(actual.current, stateName === 'active' ? 'step' : null, `payment step ${step} aria-current matches visual state`);
+        assert.equal(actual.disabled, stateName === 'inactive' ? 'true' : null, `payment step ${step} aria-disabled matches visual state`);
+    }
+}
+
+async function refreshUnresolvedOrders(page) {
+    await page.locator('#unresolvedOrdersPanel').evaluate(panel => { panel.open = true; });
+    await page.click('#refreshUnresolvedOrdersBtn');
+}
+
+async function assertNoCashierPageOverflow(page) {
+    const widths = [360, 390, 640, 800, 961, 1023, 1024, 1440];
+    const originalDisclosureState = await page.evaluate(() => [...document.querySelectorAll('.cashier-secondary-disclosure')].map(item => item.open));
+    await page.evaluate(() => document.querySelectorAll('.cashier-secondary-disclosure').forEach(item => { item.open = true; }));
+    for (const width of widths) {
+        await page.setViewportSize({ width, height: 900 });
+        await page.waitForTimeout(500);
+        const layout = await page.evaluate(() => {
+            const viewportWidth = document.documentElement.clientWidth;
+            const selector = [
+                '.cashier-payments-page',
+                '.cashier-hero',
+                '.cashier-grid',
+                '.cashier-card',
+                '.cashier-card-head',
+                '.cashier-toolbar-row',
+                '.cashier-report-filters'
+            ].join(',');
+            const offenders = [...document.querySelectorAll(selector)]
+                .filter(element => element.getClientRects().length)
+                .map(element => ({
+                    name: element.id || element.className,
+                    left: element.getBoundingClientRect().left,
+                    right: element.getBoundingClientRect().right
+                }))
+                .filter(rect => rect.left < -1 || rect.right > viewportWidth + 1);
+            return {
+                viewportWidth,
+                documentScrollWidth: document.documentElement.scrollWidth,
+                bodyScrollWidth: document.body.scrollWidth,
+                offenders
+            };
+        });
+        assert.ok(layout.documentScrollWidth <= layout.viewportWidth + 1, `document does not overflow at ${width}px: ${JSON.stringify(layout)}`);
+        assert.ok(layout.bodyScrollWidth <= layout.viewportWidth + 1, `body does not overflow at ${width}px: ${JSON.stringify(layout)}`);
+        assert.deepEqual(layout.offenders, [], `cashier cards stay inside the viewport at ${width}px`);
+    }
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await page.evaluate(states => {
+        [...document.querySelectorAll('.cashier-secondary-disclosure')].forEach((item, index) => { item.open = Boolean(states[index]); });
+    }, originalDisclosureState);
+}
+
+async function darkWarningContrast(page) {
+    return page.evaluate(() => {
+        const parse = value => {
+            const match = String(value || '').match(/rgba?\(([^)]+)\)/i);
+            if (!match) return null;
+            const parts = match[1].split(/[\s,\/]+/).filter(Boolean).map(Number);
+            return { r: parts[0], g: parts[1], b: parts[2], a: Number.isFinite(parts[3]) ? parts[3] : 1 };
+        };
+        const composite = (top, bottom) => {
+            const alpha = top.a + bottom.a * (1 - top.a);
+            if (!alpha) return { r: 0, g: 0, b: 0, a: 0 };
+            return {
+                r: (top.r * top.a + bottom.r * bottom.a * (1 - top.a)) / alpha,
+                g: (top.g * top.a + bottom.g * bottom.a * (1 - top.a)) / alpha,
+                b: (top.b * top.a + bottom.b * bottom.a * (1 - top.a)) / alpha,
+                a: alpha
+            };
+        };
+        const linear = value => {
+            const channel = value / 255;
+            return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
+        };
+        const luminance = color => 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b);
+        const panel = document.getElementById('cashierReadinessStatus');
+        const chain = [];
+        for (let node = panel; node; node = node.parentElement) chain.push(node);
+        let background = { r: 255, g: 255, b: 255, a: 1 };
+        for (const node of chain.reverse()) {
+            const layer = parse(getComputedStyle(node).backgroundColor);
+            if (layer) background = composite(layer, background);
+        }
+        const foreground = composite(parse(getComputedStyle(panel).color), background);
+        const light = Math.max(luminance(foreground), luminance(background));
+        const dark = Math.min(luminance(foreground), luminance(background));
+        return {
+            ratio: (light + 0.05) / (dark + 0.05),
+            foreground: getComputedStyle(panel).color,
+            background: getComputedStyle(panel).backgroundColor
+        };
+    });
+}
+
 async function run() {
     const { chromium } = requirePlaywright();
     const server = await startServer();
@@ -346,12 +527,39 @@ async function run() {
         await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedQueueState === 'available');
+        await assertPaymentStepState(page, { 1: 'active', 2: 'inactive', 3: 'inactive' });
+
+        assert.equal(await page.evaluate(() => document.getElementById('unresolvedOrdersPanel') instanceof HTMLDetailsElement), true, 'unresolved receipts use a native disclosure');
+        assert.equal(await page.evaluate(() => document.getElementById('checkboxSalesReportPanel') instanceof HTMLDetailsElement), true, 'sales report uses a native disclosure');
+        assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), null, 'empty unresolved disclosure starts collapsed');
+        assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), null, 'sales report starts collapsed');
+        await page.focus('#unresolvedOrdersPanel > summary');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), '', 'unresolved disclosure opens from the keyboard');
+        assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#unresolvedOrdersPanel > summary')), true, 'unresolved disclosure keeps focus on its summary');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), null, 'unresolved disclosure closes from the keyboard');
+        await page.focus('#checkboxSalesReportPanel > summary');
+        await page.keyboard.press('Enter');
+        assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), '', 'sales report opens from the keyboard');
+        assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#checkboxSalesReportPanel > summary')), true, 'sales report keeps focus on its summary');
+        await assertCanonicalCashierButtons(page);
+        await assertNoCashierPageOverflow(page);
+        await page.keyboard.press('Enter');
+        assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), null, 'sales report closes from the keyboard');
+
         await page.fill('#paymentKidsCount', '1');
         await page.click('#createPaymentOrderBtn');
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
+        await assertPaymentStepState(page, { 1: 'complete', 2: 'active', 3: 'inactive' });
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount', 'creating a cash draft focuses the received amount');
         await page.fill('#cashReceivedAmount', '600');
         await page.click('#confirmCashBtn');
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
+        await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'fiscalResultPanel', 'payment confirmation focuses the fiscal result');
+        assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), '', 'a paid unresolved receipt opens the safety disclosure');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'cash repeat submit is blocked after fiscal pending');
         assert.equal(state.confirmKeys.length, 1, 'cash confirmation should submit once after double-click guard');
         await context.close();
@@ -374,7 +582,7 @@ async function run() {
         const currentOrderId = state.nextOrderId;
         await page.waitForSelector('#startNextOrderBtn:not(.hidden):not([disabled])');
         state.unresolvedDelayMs = 500;
-        await page.click('#refreshUnresolvedOrdersBtn');
+        await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
         assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'checking retains the last known unresolved receipt');
         assert.equal(await page.getAttribute('#unresolvedOrdersBody', 'aria-busy'), 'true', 'checking exposes an accessible busy state');
@@ -396,13 +604,14 @@ async function run() {
         const current = state.orders.get(currentOrderId);
         await page.goto(`${base}/cashier-payments?orderId=${currentOrderId}`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#providerReceiptLinks:not(.hidden)');
+        await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
         assert.match(await page.getAttribute('#providerTaxUrl', 'href'), /api\.checkbox\.ua\/check/);
         assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /api\.checkbox\.ua\/check\.pdf/);
         assert.match(await page.getAttribute('#providerQrUrl', 'href'), /api\.checkbox\.ua\/qr/);
         await page.waitForSelector('#startNextOrderBtn:not(.hidden)');
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
         state.unresolvedDelayMs = 500;
-        await page.click('#refreshUnresolvedOrdersBtn');
+        await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
         assert.equal(await page.isDisabled('#startNextOrderBtn'), true, 'checking blocks the next-customer transition');
         assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'checking blocks Phase-1 shift close');
@@ -413,7 +622,7 @@ async function run() {
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         state.unresolvedDelayMs = 500;
-        await page.click('#refreshUnresolvedOrdersBtn');
+        await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
         assert.equal(await page.isDisabled('#createPaymentOrderBtn'), true, 'checking blocks creating a new payment order');
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
@@ -426,7 +635,7 @@ async function run() {
         assert.equal(state.nextOrderId, currentOrderId + 1, 'new payment can start after fiscalized receipt');
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
         state.unresolvedDelayMs = 500;
-        await page.click('#refreshUnresolvedOrdersBtn');
+        await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
         assert.equal(await page.isDisabled('#cashReceivedAmount'), true, 'checking blocks received-cash input on an unpaid draft');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'checking blocks payment confirmation on an unpaid draft');
@@ -437,11 +646,11 @@ async function run() {
         await page.waitForSelector('#phase1ShiftPanel:not(.hidden)');
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
         state.unresolvedAvailable = false;
-        await page.click('#refreshUnresolvedOrdersBtn');
+        await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
         assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'Phase-1 close is blocked when the unresolved queue is unavailable');
         state.unresolvedAvailable = true;
-        await page.click('#refreshUnresolvedOrdersBtn');
+        await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
         await page.evaluate(() => {
@@ -471,6 +680,50 @@ async function run() {
         assert.equal(state.phase1CloseKeys.length, 1, 'Phase-1 close double click sends one request');
         assert.ok(state.phase1CloseKeys[0], 'Phase-1 close uses a stable Idempotency-Key');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'phase1ShiftStatus', 'focus moves to the confirmed CLOSED status');
+
+        const disabledContext = await browser.newContext();
+        await disabledContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'true'); });
+        await disabledContext.route('**/api/payments/pilot-register-state*', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({
+                ...registerStatePayload(),
+                checkboxIntegrationEnabled: false,
+                paymentAcceptanceEnabled: false,
+                mappingExists: false,
+                featureEnabled: false,
+                registerFeatureEnabled: false,
+                runtimeConfigResolvable: false,
+                integrationReady: false,
+                readinessCode: 'global_integration_disabled',
+                shift: null,
+                phase1Close: null,
+                checklist: null
+            })
+        }));
+        await disabledContext.route('**/api/payments/unresolved-orders*', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ success: true, page: 1, pageSize: 50, totalCount: 0, registerCount: 0, myCount: 0, hasMore: false, orders: [] })
+        }));
+        const disabledPage = await disabledContext.newPage();
+        await disabledPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await disabledPage.waitForFunction(() => document.querySelector('#cashierReadinessSummary')?.textContent?.includes('лише для перегляду'));
+        const readinessSummary = (await disabledPage.textContent('#cashierReadinessSummary')).trim();
+        assert.equal(readinessSummary, 'Оплати поки вимкнені — сторінка працює лише для перегляду.');
+        assert.ok(readinessSummary.length < 90, 'cashier-facing readiness remains concise');
+        assert.doesNotMatch(readinessSummary, /CHECKBOX_|mapping|credential|provider|runtime|register|pending|unknown/i, 'cashier-facing readiness hides raw technical language');
+        assert.equal(await disabledPage.isDisabled('#createPaymentOrderBtn'), true, 'disabled integration keeps payment creation fail closed');
+        assert.equal(await disabledPage.getAttribute('#cashierReadinessDetails', 'open'), null, 'administrator details start collapsed');
+        await disabledPage.focus('#cashierReadinessDetails > summary');
+        await disabledPage.keyboard.press('Enter');
+        assert.equal(await disabledPage.getAttribute('#cashierReadinessDetails', 'open'), '', 'administrator details open from the keyboard');
+        assert.equal(await disabledPage.evaluate(() => document.activeElement === document.querySelector('#cashierReadinessDetails > summary')), true, 'administrator disclosure keeps keyboard focus');
+        const technicalReadiness = (await disabledPage.textContent('#cashierReadinessTechnicalList')).trim();
+        assert.match(technicalReadiness, /Інтеграція Checkbox вимкнена|Глобальна інтеграція Checkbox вимкнена/, 'technical reasons remain available to an administrator');
+        const contrast = await darkWarningContrast(disabledPage);
+        assert.ok(contrast.ratio >= 4.5, `dark warning contrast is WCAG AA: ${JSON.stringify(contrast)}`);
+        await disabledContext.close();
 
         const deniedContext = await browser.newContext();
         await deniedContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });

@@ -85,10 +85,10 @@
     function formatStatus(value) {
         const status = normalizeStatus(value);
         const labels = {
-            draft: 'чернетка', unpaid: 'не оплачено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита',
+            draft: 'чернетка', unpaid: 'не оплачено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита', blocked: 'заблоковано',
             payment_recorded: 'оплату зафіксовано', fiscalized: 'чек створено', failed: 'помилка з повтором', failed_retryable: 'помилка, буде повтор', failed_terminal: 'помилка без автоповтору', dead: 'потрібна ручна перевірка', cancelled: 'скасовано',
-            validation_failed: 'помилка перевірки', ready_to_send: 'готово до відправки', sending: 'відправляється', validating: 'перевіряється', not_open: 'не відкрита',
-            mapping_missing: 'mapping відсутній', credentials_missing: 'credentials відсутні', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', ready: 'готово'
+            validation_failed: 'помилка перевірки', ready_to_send: 'готово до відправки', sending: 'відправляється', validating: 'перевіряється', not_open: 'не відкрита', not_required: 'не потрібен',
+            mapping_missing: 'налаштування каси відсутнє', credentials_missing: 'доступи не налаштовані', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', ready: 'готово'
         };
         return labels[status] || status;
     }
@@ -99,6 +99,19 @@
         if (['pending', 'unknown', 'ready_to_send', 'sending', 'validating', 'opening', 'closing', 'failed', 'failed_retryable'].includes(status)) return 'is-warn';
         if (['failed_terminal', 'dead', 'validation_failed', 'blocked', 'cancelled'].includes(status)) return 'is-danger';
         return '';
+    }
+
+    function formatCrmProfile(value) {
+        const profile = String(value || '').trim();
+        return profile === 'event_genix' ? 'парк' : (profile || '—');
+    }
+
+    function formatLocationRegister(locationValue, registerValue) {
+        const location = String(locationValue || '').trim();
+        const register = String(registerValue || '').trim();
+        const locationLabel = location === 'park' ? 'парк' : (location || '—');
+        const registerLabel = register === 'middle' ? 'середня каса' : (register || '—');
+        return `${locationLabel} / ${registerLabel}`;
     }
 
     function effectiveFiscalStatus(order = state.orderDetails?.order) {
@@ -311,7 +324,7 @@
             if (!orderId) throw new Error('payment_order_missing_in_response');
             storageSet('lastOrderId', orderId);
             await loadPaymentOrder(orderId, { silent: true });
-            notify(result.replayed ? 'Оплату відкрито повторно з тим самим Idempotency-Key.' : 'Оплату створено. Перевірте позиції та підтвердьте отримання грошей.', 'success');
+            notify(result.replayed ? 'Цю саму оплату безпечно відкрито повторно.' : 'Оплату створено. Перевірте позиції та підтвердьте отримання грошей.', 'success');
             focusFirstConfirmationControl();
         } catch (error) {
             if (button) button.disabled = false;
@@ -483,18 +496,18 @@
             cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
             cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
             payment_date_required: 'Вкажіть дату квитка.',
-            checkbox_integration_not_ready: 'Інтеграція Checkbox або mapping каси не готові. Підтвердження грошей заблоковано.',
+            checkbox_integration_not_ready: 'Інтеграція Checkbox або налаштування каси не готові. Підтвердження грошей заблоковано.',
             kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
             adults_count_invalid: 'Кількість дорослих не може бути від’ємною.',
             card_terminal_success_required: 'Перед підтвердженням поставте позначку: термінал показав успішну оплату.',
             payment_repeat_blocked: 'Повторна оплата заблокована: оплата вже підтверджена або чек очікує фіскалізації.',
             payment_order_cancel_denied: 'Скасувати можна тільки неоплачену чернетку.',
-            fiscal_mapping_ambiguous_or_missing: 'Пілотна каса park / middle не налаштована або mapping неоднозначний.',
+            fiscal_mapping_ambiguous_or_missing: 'Парк і середня каса не налаштовані або мають неоднозначну відповідність.',
             forbidden: 'Немає доступу до цієї каси або CRM профілю.',
-            idempotency_key_required: 'Idempotency-Key обов’язковий для безпечного повтору запиту.',
+            idempotency_key_required: 'Не вдалося створити ключ безпечного повтору запиту.',
             queue_unavailable: 'Черга незавершених чеків недоступна. Підтвердження грошей заблоковано.',
             provider_unavailable: 'Checkbox тимчасово недоступний. Нові оплати заблоковано.',
-            payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Recovery вже оплачених чеків дозволений.',
+            payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Уже оплачені чеки продовжують безпечно відновлюватися.',
             phase1_shift_identity_mismatch: 'Сервер повернув іншу зміну. Закриття зупинено без повторного запиту.',
             phase1_close_confirmation_unavailable: 'Безпечне підтвердження тимчасово недоступне. Запит на закриття не надіслано.'
         };
@@ -503,23 +516,23 @@
             cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
             cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
             payment_date_required: 'Вкажіть дату квитка.',
-            checkbox_integration_not_ready: 'Інтеграція Checkbox або mapping каси не готові. Підтвердження грошей заблоковане.',
+            checkbox_integration_not_ready: 'Інтеграція Checkbox або налаштування каси не готові. Підтвердження грошей заблоковане.',
             kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
             adults_count_invalid: 'Кількість дорослих не може бути відʼємною.',
             card_terminal_success_required: 'Перед підтвердженням поставте позначку: термінал показав успішну оплату.',
             payment_repeat_blocked: 'Повторна оплата заблокована: оплата вже підтверджена або чек очікує фіскалізації.',
             payment_order_cancel_denied: 'Скасувати можна тільки неоплачену чернетку.',
-            fiscal_mapping_ambiguous_or_missing: 'Пілотна каса park / middle не налаштована або mapping неоднозначний.',
+            fiscal_mapping_ambiguous_or_missing: 'Парк і середня каса не налаштовані або мають неоднозначну відповідність.',
             forbidden: 'Немає доступу до цієї каси або CRM профілю.',
             service_in_amount_required: 'Сума службового внесення має бути більшою за нуль.',
             service_out_amount_required: 'Сума службової видачі має бути більшою за нуль.',
             service_out_reason_required: 'Вкажіть причину службової видачі.',
             shift_not_open: 'Для цієї операції потрібна відкрита зміна.',
-            shift_close_blocked: 'Закриття заблоковане, поки є pending/unknown фіскальні операції.',
+            shift_close_blocked: 'Закриття заблоковане, поки є чеки, що очікують завершення або перевірки.',
             close_actual_totals_required: 'Вкажіть фактичну готівку та суму звіту термінала.',
             refund_order_required: 'Вкажіть ID оплати для повернення.',
             refund_reason_required: 'Вкажіть причину повернення.',
-            idempotency_key_required: 'Idempotency-Key обов’язковий для безпечного повтору запиту.'
+            idempotency_key_required: 'Не вдалося створити ключ безпечного повтору запиту.'
         };
         return messages[code] || error?.message || '\u0414\u0456\u044f \u043a\u0430\u0441\u0438\u0440\u0430 \u043d\u0435 \u0432\u0438\u043a\u043e\u043d\u0430\u043d\u0430.';
     }
@@ -528,8 +541,8 @@
         const order = details?.order || null;
         const items = Array.isArray(details?.items) ? details.items : [];
         if (!order) return;
-        setText('cashierFiscalProfile', `${order.crmProfileKey || '?'} / ${order.legalEntityName || order.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
-        setText('cashierRegister', `${order.sourceSnapshot?.location_alias || 'park'} / ${order.registerDisplayName || order.registerAlias || 'middle'}`);
+        setText('cashierFiscalProfile', `${formatCrmProfile(order.crmProfileKey)} / ${order.legalEntityName || order.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
+        setText('cashierRegister', formatLocationRegister(order.sourceSnapshot?.location_alias, order.registerDisplayName || order.registerAlias));
         setStatus('cashierPaymentStatus', order.paymentStatus || order.status);
         setStatus('cashierFiscalStatus', effectiveFiscalStatus(order));
         setText('internalReceiptLabel', `RCP-${order.id} \u2014 ${INTERNAL_RECEIPT_TEXT}`);
@@ -547,12 +560,12 @@
         const body = $('paymentItemsBody');
         if (!body) return;
         if (!items.length) {
-            body.innerHTML = '<tr><td colspan="4" class="cashier-empty">\u0423 snapshot \u043d\u0435\u043c\u0430\u0454 \u043f\u043e\u0437\u0438\u0446\u0456\u0439.</td></tr>';
+            body.innerHTML = '<tr><td colspan="4" class="cashier-empty">У зафіксованій оплаті немає позицій.</td></tr>';
             return;
         }
         body.innerHTML = items.map(item => `
             <tr>
-                <td><strong>${escapeHtml(item.itemName)}</strong><div class="cashier-muted">${escapeHtml(item.itemCode || '')} \u00b7 ${escapeHtml(item.taxReference || 'tax mapping')}</div></td>
+                <td><strong>${escapeHtml(item.itemName)}</strong><div class="cashier-muted">${escapeHtml(item.itemCode || '')} \u00b7 ${escapeHtml(item.taxReference || 'податкове налаштування')}</div></td>
                 <td>${escapeHtml(formatQuantity(item.quantityMillis))}</td>
                 <td>${escapeHtml(formatMoneyMinor(item.unitPriceMinor))}</td>
                 <td>${escapeHtml(formatMoneyMinor(item.totalAmountMinor))}</td>
@@ -646,11 +659,39 @@
         }
     }
 
+    function syncUnresolvedDisclosure() {
+        const panel = $('unresolvedOrdersPanel');
+        const badge = $('unresolvedOrdersSummaryBadge');
+        if (!panel || !badge) return;
+        const queueState = state.unresolvedQueueState;
+        const count = queueState === 'available'
+            ? Number(state.unresolvedRegisterCount || 0)
+            : Number(state.unresolvedLastKnownSummary.registerCount || 0);
+        const labels = {
+            checking: 'перевіряємо',
+            unavailable: 'список недоступний',
+            unknown: 'не перевірено'
+        };
+        badge.textContent = queueState === 'available'
+            ? (count > 0 ? `${count} незавершених` : 'немає')
+            : (labels[queueState] || 'не перевірено');
+        const needsAttention = queueState !== 'available' || count > 0;
+        panel.classList.toggle('has-warning', needsAttention);
+        if (needsAttention) {
+            if (!panel.open) panel.dataset.safetyOpened = 'true';
+            panel.open = true;
+        } else if (panel.dataset.safetyOpened === 'true') {
+            panel.open = false;
+            delete panel.dataset.safetyOpened;
+        }
+    }
+
     function renderUnresolvedOrders() {
         const body = $('unresolvedOrdersBody');
         if (!body) return;
         const orders = Array.isArray(state.unresolvedOrders) ? state.unresolvedOrders : [];
         const isChecking = state.unresolvedQueueState === 'checking';
+        syncUnresolvedDisclosure();
         body.setAttribute('aria-busy', isChecking ? 'true' : 'false');
         if (isChecking || state.unresolvedQueueState === 'unavailable') {
             const lastKnown = Array.isArray(state.unresolvedLastKnownOrders) ? state.unresolvedLastKnownOrders : [];
@@ -798,7 +839,7 @@
                         <span>${escapeHtml(order.paymentMethod === 'card_terminal' ? 'термінал' : 'готівка')}</span>
                         <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
                         <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
-                        ${isTrustedCheckboxUrl(order.providerTaxUrl) ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${escapeAttribute(order.providerTaxUrl)}">Чек</a>` : '<span></span>'}
+                        ${isTrustedCheckboxUrl(order.providerTaxUrl) ? `<a class="btn-page-secondary" target="_blank" rel="noopener" href="${escapeAttribute(order.providerTaxUrl)}">Відкрити чек</a>` : '<span></span>'}
                     </div>
                 `).join('') || '<p class="cashier-empty">Оплачених продажів ще немає.</p>'}
             </div>`;
@@ -881,11 +922,11 @@
         }
         state.cashierProEnabled = Boolean(result.cashierProEnabled);
         if (!state.orderDetails?.order) {
-            setText('cashierFiscalProfile', `${result.crmProfileKey || 'event_genix'} / ${result.legalEntityName || result.legalEntityKey || 'ФОП не налаштовано'}`);
-            setText('cashierRegister', `${result.locationAlias || 'park'} / ${result.registerDisplayName || result.registerAlias || 'middle'}`);
+            setText('cashierFiscalProfile', `${formatCrmProfile(result.crmProfileKey)} / ${result.legalEntityName || result.legalEntityKey || 'ФОП не налаштовано'}`);
+            setText('cashierRegister', formatLocationRegister(result.locationAlias, result.registerDisplayName || result.registerAlias));
         }
-        setText('opsFiscalProfile', `${result.crmProfileKey || '?'} / ${result.legalEntityName || result.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
-        setText('opsRegister', `${result.locationAlias || 'park'} / ${result.registerDisplayName || result.registerAlias || 'middle'}`);
+        setText('opsFiscalProfile', `${formatCrmProfile(result.crmProfileKey)} / ${result.legalEntityName || result.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
+        setText('opsRegister', formatLocationRegister(result.locationAlias, result.registerDisplayName || result.registerAlias));
         setStatus('activeShiftStatus', result.shift?.status || 'not_open');
         setText('activeShiftId', result.shift?.id || '?');
         setText('shiftExpectedCash', formatMoneyMinor(result.checklist?.cashExpectedMinor || 0));
@@ -930,7 +971,7 @@
                 <div><dt>\u0421\u043b\u0443\u0436\u0431\u043e\u0432\u0435 \u0432\u043d\u0435\u0441\u0435\u043d\u043d\u044f</dt><dd>${escapeHtml(formatMoneyMinor(checklist.serviceInMinor || 0))}</dd></div>
                 <div><dt>\u0421\u043b\u0443\u0436\u0431\u043e\u0432\u0430 \u0432\u0438\u0434\u0430\u0447\u0430</dt><dd>${escapeHtml(formatMoneyMinor(checklist.serviceOutMinor || 0))}</dd></div>
             </dl>
-            ${report.checkboxZDocumentUrl ? `<a class="btn btn-secondary" target="_blank" rel="noopener" href="${escapeAttribute(report.checkboxZDocumentUrl)}">\u0412\u0456\u0434\u043a\u0440\u0438\u0442\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 Checkbox</a>` : '<p class="cashier-muted">\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043d\u0430 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 Checkbox \u0449\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435.</p>'}
+            ${report.checkboxZDocumentUrl ? `<a class="btn-page-secondary" target="_blank" rel="noopener" href="${escapeAttribute(report.checkboxZDocumentUrl)}">\u0412\u0456\u0434\u043a\u0440\u0438\u0442\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 Checkbox</a>` : '<p class="cashier-muted">\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043d\u0430 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 Checkbox \u0449\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435.</p>'}
         `;
     }
 
@@ -985,29 +1026,57 @@
         return normalizeStatus(order.paymentStatus) === 'confirmed';
     }
 
+    function setPaymentStepState(stepNumber, stepState) {
+        const step = document.querySelector(`[data-payment-step="${stepNumber}"]`);
+        if (!step) return;
+        step.classList.remove('is-active', 'is-complete', 'is-inactive');
+        step.classList.add(`is-${stepState}`);
+        if (stepState === 'active') step.setAttribute('aria-current', 'step');
+        else step.removeAttribute('aria-current');
+        if (stepState === 'inactive') step.setAttribute('aria-disabled', 'true');
+        else step.removeAttribute('aria-disabled');
+    }
+
+    function syncPaymentStepState() {
+        const order = state.orderDetails?.order;
+        const hasOrder = Boolean(order?.id);
+        const paymentConfirmed = hasOrder && (
+            normalizeStatus(order.paymentStatus) === 'confirmed'
+            || normalizeStatus(order.status) === 'payment_recorded'
+        );
+        const cancelled = hasOrder && normalizeStatus(order.status) === 'cancelled';
+
+        setPaymentStepState(1, !hasOrder || cancelled ? 'active' : 'complete');
+        setPaymentStepState(2, !hasOrder || cancelled ? 'inactive' : (paymentConfirmed ? 'complete' : 'active'));
+        setPaymentStepState(3, paymentConfirmed ? 'active' : 'inactive');
+    }
+
     function renderReadinessState() {
         const panel = $('cashierReadinessStatus');
         if (!panel) return;
+        const summary = $('cashierReadinessSummary');
+        const details = $('cashierReadinessDetails');
+        const technicalList = $('cashierReadinessTechnicalList');
         const messages = [];
         if (!state.registerState) {
             messages.push('Не вдалося прочитати стан пілотної каси.');
         } else {
             const code = state.registerState.readinessCode || 'unknown';
-            const readableLabels = {
-                mapping_missing: 'Налаштування park / middle відсутнє.',
-                mapping_ambiguous: 'Налаштування park / middle неоднозначне.',
+            const labels = {
+                mapping_missing: 'Немає налаштування відповідності для парку та середньої каси.',
+                mapping_ambiguous: 'Налаштування парку та середньої каси неоднозначне.',
                 binding_missing: 'Користувач не прив’язаний до цієї каси.',
-                fiscal_context_incomplete: 'Фіскальний контекст неповний: бракує ФОП, каси, касира або credential refs.',
-                register_disabled: 'Пілотний register вимкнений.',
+                fiscal_context_incomplete: 'Бракує реквізитів ФОП, каси, касира або посилань на локальні доступи.',
+                register_disabled: 'Середню касу вимкнено в налаштуваннях інтеграції.',
                 global_integration_disabled: 'Інтеграція Checkbox вимкнена через CHECKBOX_INTEGRATION_ENABLED=false.',
                 payment_acceptance_disabled: 'Приймання нових оплат вимкнене через CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false.',
-                credentials_missing: 'Runtime-доступи для Checkbox не налаштовані.',
-                runtime_config_missing: 'Runtime config Checkbox відсутній.',
-                runtime_config_invalid: 'Runtime config Checkbox невалідний.',
-                provider_unavailable: 'Provider Checkbox тимчасово недоступний.',
+                credentials_missing: 'Локальні доступи до Checkbox не налаштовані.',
+                runtime_config_missing: 'Налаштування підключення Checkbox відсутні.',
+                runtime_config_invalid: 'Налаштування підключення Checkbox некоректні.',
+                provider_unavailable: 'Сервіс Checkbox тимчасово недоступний.',
                 identity_mismatch: 'Checkbox повернув іншу організацію, касира або касу.',
-                checkbox_cashier_test_mode_mismatch: 'Касир Checkbox не підтверджений як test-mode для пілоту.',
-                checkbox_expected_is_test_mismatch: 'Очікуваний test/prod mode не збігається між DB mapping, env і provider.',
+                checkbox_cashier_test_mode_mismatch: 'Касир Checkbox не підтверджений як тестовий.',
+                checkbox_expected_is_test_mismatch: 'Очікуваний режим каси не збігається між збереженим налаштуванням, локальними доступами та Checkbox.',
                 shift_opening: 'Зміна відкривається у Checkbox.',
                 shift_closing: 'Зміна закривається у Checkbox.',
                 readiness_stale: 'Готовність застаріла, потрібна свіжа перевірка.',
@@ -1016,42 +1085,41 @@
                 ready: '',
                 unknown: 'Стан готовності каси невідомий.'
             };
-            const labels = {
-                mapping_missing: 'Налаштування park / middle відсутнє.',
-                mapping_ambiguous: 'Налаштування park / middle неоднозначне.',
-                binding_missing: 'Користувач не прив’язаний до цієї каси.',
-                register_disabled: 'Пілотний register вимкнений.',
-                global_integration_disabled: 'Інтеграція Checkbox вимкнена через CHECKBOX_INTEGRATION_ENABLED=false.',
-                credentials_missing: 'Runtime-доступи для Checkbox не налаштовані.',
-                runtime_config_missing: 'Runtime config Checkbox відсутній.',
-                runtime_config_invalid: 'Runtime config Checkbox невалідний.',
-                provider_unavailable: 'Provider Checkbox тимчасово недоступний.',
-                identity_mismatch: 'Checkbox повернув іншу організацію, касира або касу.',
-                checkbox_cashier_test_mode_mismatch: 'Касир Checkbox не підтверджений як test-mode для пілоту.',
-                shift_opening: 'Зміна відкривається у Checkbox.',
-                shift_closing: 'Зміна закривається у Checkbox.',
-                readiness_stale: 'Готовність застаріла, потрібна свіжа перевірка.',
-                readiness_missing: 'Готовність ще не перевірена.',
-                tax_mapping_missing: 'Фіскальні назви/податки для квитків не налаштовані.',
-                ready: '',
-                unknown: 'Стан готовності каси невідомий.'
-            };
-            if (readableLabels[code]) messages.push(readableLabels[code]);
-            else if (labels[code]) messages.push(labels[code]);
+            if (labels[code]) messages.push(labels[code]);
             if (state.registerState.shift && normalizeStatus(state.registerState.shift.status) === 'opening') {
-                messages.push('Зміна відкривається у Checkbox; підтвердження грошей буде доступне після готовності provider.');
+                messages.push('Зміна відкривається у Checkbox; приймання грошей стане доступним після підтвердження готовності.');
             }
-            if (!state.registerState.mappingExists) messages.push('Немає однозначного fiscal profile/register mapping.');
-            if (!(state.registerState.featureEnabled || state.registerState.registerFeatureEnabled)) messages.push('Register feature flag вимкнений.');
+            if (!state.registerState.mappingExists) messages.push('Не знайдено однозначної відповідності між профілем, локацією та касою.');
+            if (!(state.registerState.featureEnabled || state.registerState.registerFeatureEnabled)) messages.push('Інтеграцію для середньої каси вимкнено.');
             if (state.registerState.checkboxIntegrationEnabled === false) messages.push('Глобальна інтеграція Checkbox вимкнена.');
-            if (state.registerState.runtimeConfigResolvable === false) messages.push('Credential refs не резолвляться у environment.');
+            if (state.registerState.runtimeConfigResolvable === false) messages.push('Посилання на локальні доступи Checkbox не вдалося знайти в середовищі сервера.');
         }
         const queueReason = queueUnavailableReason();
         if (queueReason) messages.push(queueReason);
-        panel.textContent = messages.length
-            ? `${messages.join(' ')} Підтвердження грошей заблоковане.`
-            : 'Пілотна каса готова до тестової оплати.';
-        panel.classList.toggle('hidden', messages.length === 0);
+        const ready = integrationReady() && messages.length === 0;
+        const viewOnly = state.registerState?.checkboxIntegrationEnabled === false
+            || state.registerState?.paymentAcceptanceEnabled === false
+            || state.registerState?.readinessCode === 'global_integration_disabled'
+            || state.registerState?.readinessCode === 'payment_acceptance_disabled';
+        const summaryText = ready
+            ? 'Каса готова — можна приймати оплату.'
+            : (viewOnly
+                ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
+                : 'Каса ще не готова — приймання оплат заблоковано.');
+        if (summary) summary.textContent = summaryText;
+        if (technicalList) {
+            technicalList.innerHTML = messages.length
+                ? [...new Set(messages)].map(message => `<li>${escapeHtml(message)}</li>`).join('')
+                : '<li>Усі перевірки готовності пройдено.</li>';
+        }
+        if (details) {
+            details.hidden = ready;
+            if (ready) details.open = false;
+        }
+        panel.classList.remove('hidden');
+        panel.classList.toggle('is-ready', ready);
+        panel.classList.toggle('is-blocked', !ready);
+        panel.classList.toggle('cashier-alert-warning', !ready);
     }
 
     function setDisabledReason(el, disabled, reason) {
@@ -1063,6 +1131,7 @@
     }
 
     function syncCreateAvailability() {
+        syncPaymentStepState();
         const ready = integrationReady();
         const active = activeUnfinishedOrder();
         const order = state.orderDetails?.order;
@@ -1070,7 +1139,7 @@
         const hasCurrentOrder = Boolean(order?.id);
         const disabled = !ready || active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
         const reason = !ready
-            ? 'Каса не готова: перевірте readiness block.'
+            ? 'Каса не готова: перегляньте повідомлення про готовність вище.'
             : (active ? 'Спершу підтвердьте або скасуйте поточну чернетку.' : (hasCurrentOrder ? 'Натисніть “Нова оплата” для наступного клієнта.' : ''));
         const form = $('paymentOrderForm');
         if (form) {
@@ -1155,14 +1224,14 @@
                 readiness_missing: 'Готовність Checkbox ще не підтверджена.',
                 global_integration_disabled: 'Інтеграція Checkbox вимкнена.',
                 register_disabled: 'Цю касу вимкнено в налаштуваннях інтеграції.',
-                credentials_missing: 'Runtime-доступи Checkbox не налаштовані.',
+                credentials_missing: 'Доступи Checkbox не налаштовані на сервері.',
                 integration_owner_missing: 'Для каси не призначено відповідального за інтеграцію.',
                 integration_owner_only: 'Закрити зміну може лише відповідальний за інтеграцію.',
                 capability_denied: 'Немає системного дозволу на закриття зміни.',
                 binding_capability_denied: 'Прив’язка користувача до каси не дозволяє закриття зміни.',
                 no_open_shift: 'Відкритої зміни Checkbox немає.',
-                shift_not_provider_open: 'Checkbox не підтвердив зміну як OPENED.',
-                provider_shift_not_open: 'Checkbox не підтвердив зміну як OPENED.',
+                shift_not_provider_open: 'Checkbox не підтвердив, що зміну відкрито.',
+                provider_shift_not_open: 'Checkbox не підтвердив, що зміну відкрито.',
                 provider_not_ready: 'Checkbox не готовий до безпечного закриття зміни.'
             };
             return reasonMessages[context.reasonCode] || 'Сервер не дозволив закриття цієї зміни.';
@@ -1191,11 +1260,11 @@
         const busyReason = state.phase1CloseConfirmationInFlight
             ? 'Очікуємо вашого фінального підтвердження.'
             : state.phase1CloseInFlight
-            ? 'Запит на закриття прийнято. Очікуємо підтвердження CLOSED від Checkbox.'
+            ? 'Запит на закриття прийнято. Очікуємо підтвердження Checkbox.'
             : reason;
         setDisabledReason(button, disabled, busyReason);
         if (notice) {
-            notice.textContent = busyReason || 'Зміна OPENED, незавершених чеків немає. Можна безпечно надіслати запит на закриття.';
+            notice.textContent = busyReason || 'Зміну відкрито, незавершених чеків немає. Можна безпечно надіслати запит на закриття.';
         }
         if (context.status === 'closing'
             && context.shiftId
@@ -1306,7 +1375,7 @@
                 state.phase1ClosePollingPaused = true;
                 clearPhase1ClosePolling({ preserveTarget: true });
                 renderPhase1ShiftState();
-                notify('Сервер повернув іншу зміну. Закриття зупинено без повторного POST.', 'error');
+                notify('Сервер повернув іншу зміну. Закриття зупинено без повторного запиту.', 'error');
                 $('refreshReadinessBtn')?.focus?.({ preventScroll: false });
                 return;
             }
@@ -1361,7 +1430,7 @@
             });
             const returnedShiftId = result.fiscalShiftId ?? result.shiftId ?? shiftId;
             if (String(returnedShiftId) !== String(shiftId)) throw new Error('phase1_shift_identity_mismatch');
-            notify(result.replayed ? 'Запит на закриття зміни вже прийнято. Очікуємо CLOSED.' : 'Закриття зміни надіслано. Очікуємо CLOSED від Checkbox.', 'success');
+            notify(result.replayed ? 'Запит на закриття зміни вже прийнято. Очікуємо підтвердження.' : 'Закриття зміни надіслано. Очікуємо підтвердження Checkbox.', 'success');
             startPhase1ClosePolling(shiftId);
         } catch (error) {
             state.phase1CloseInFlight = false;
@@ -1465,7 +1534,7 @@
             if (result.order?.id) storageSet('lastOrderId', result.order.id);
             await loadPaymentOrder(result.order?.id || orderId, { silent: true });
             await loadUnresolvedOrders({ silent: true });
-            notify(result.replayed ? '\u041f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043f\u043e\u0432\u0442\u043e\u0440\u0435\u043d\u043e \u0437 \u0442\u0438\u043c \u0441\u0430\u043c\u0438\u043c Idempotency-Key.' : '\u041e\u043f\u043b\u0430\u0442\u0443 \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043e. \u0427\u0435\u043a \u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0447\u0435\u0440\u0433\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.', 'success');
+            notify(result.replayed ? 'Це саме підтвердження безпечно оброблено повторно.' : '\u041e\u043f\u043b\u0430\u0442\u0443 \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043e. \u0427\u0435\u043a \u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0447\u0435\u0440\u0433\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.', 'success');
             syncOrderPolling(state.orderDetails?.order);
             focusFiscalResult();
         } catch (error) {
@@ -1498,7 +1567,7 @@
     async function submitServiceIn(event) {
         event?.preventDefault?.();
         if (!$('serviceInFinalCheck')?.checked) {
-            notify('Confirm final service-in text before submitting.', 'error');
+            notify('Підтвердьте службове внесення перед відправленням.', 'error');
             return;
         }
         await runOperation('serviceInBtn', 'service-in', 'current', async idempotencyKey => {
@@ -1507,7 +1576,7 @@
                 headers: apiHeaders(idempotencyKey),
                 body: JSON.stringify({ ...baseScopePayload(), amountMinor: parseAmountInput('serviceInAmount', 'service_in_amount_required'), reason: $('serviceInReason')?.value?.trim() || null, finalConfirmation: SERVICE_IN_FINAL_CONFIRMATION })
             });
-            notify(result.replayed ? 'Service-in replayed with the same key.' : 'Service-in queued for Checkbox.', 'success');
+            notify(result.replayed ? 'Службове внесення безпечно оброблено повторно.' : 'Службове внесення поставлено в чергу Checkbox.', 'success');
             $('serviceInAmount').value = '';
             $('serviceInReason').value = '';
             $('serviceInFinalCheck').checked = false;
@@ -1527,7 +1596,7 @@
                 state.lastServiceOutOperationId = result.operationId;
                 setText('serviceOutApprovalOperationId', result.operationId);
             }
-            notify(result.replayed ? 'Service-out request replayed with the same key.' : 'Service-out request created. Use separate approval.', 'success');
+            notify(result.replayed ? 'Запит на службову видачу безпечно оброблено повторно.' : 'Запит на службову видачу створено. Потрібне окреме підтвердження.', 'success');
             syncOperationalAvailability();
             return result;
         });
@@ -1537,7 +1606,7 @@
         event?.preventDefault?.();
         const operationId = state.lastServiceOutOperationId || $('serviceOutApprovalOperationId')?.textContent?.trim();
         if (!operationId || operationId === '?') {
-            notify('No service-out operation selected for approval.', 'error');
+            notify('Не вибрано службову видачу для підтвердження.', 'error');
             return;
         }
         await runOperation('serviceOutApproveBtn', 'service-out-approve', operationId, async idempotencyKey => {
@@ -1549,7 +1618,7 @@
             $('serviceOutApprovalPin').value = '';
             state.lastServiceOutOperationId = null;
             setText('serviceOutApprovalOperationId', '?');
-            notify(result.replayed ? 'Service-out approval replayed with the same key.' : 'Service-out approved and queued.', 'success');
+            notify(result.replayed ? 'Підтвердження службової видачі безпечно оброблено повторно.' : 'Службову видачу підтверджено та поставлено в чергу.', 'success');
             return result;
         });
     }
@@ -1573,7 +1642,7 @@
                 })
             });
             $('refundPin').value = '';
-            notify(result.replayed ? 'Refund replayed with the same key.' : 'Full refund queued. Original receipt remains immutable.', 'success');
+            notify(result.replayed ? 'Повернення безпечно оброблено повторно.' : 'Повне повернення поставлено в чергу. Оригінальний чек не змінюється.', 'success');
             return result;
         });
     }
@@ -1591,7 +1660,7 @@
         event?.preventDefault?.();
         const shiftId = state.registerState?.shift?.id;
         if (!shiftId) {
-            notify('Open shift is required for reconciliation.', 'error');
+            notify('Для звірки потрібна відкрита зміна.', 'error');
             return;
         }
         await runOperation('reconcileShiftBtn', 'reconcile-shift', shiftId, async idempotencyKey => {
@@ -1601,7 +1670,7 @@
                 body: JSON.stringify(reconciliationPayload())
             });
             $('reconciliationPin').value = '';
-            notify(result.replayed ? 'Reconciliation replayed with the same key.' : 'Reconciliation revision saved.', 'success');
+            notify(result.replayed ? 'Звірку безпечно оброблено повторно.' : 'Нову версію звірки збережено.', 'success');
             return result;
         });
     }
@@ -1609,7 +1678,7 @@
     async function closeShift() {
         const shiftId = state.registerState?.shift?.id;
         if (!shiftId) {
-            notify('Open shift is required for close.', 'error');
+            notify('Для закриття потрібна відкрита зміна.', 'error');
             return;
         }
         if (hasCloseBlockers()) {
@@ -1623,7 +1692,7 @@
                 body: JSON.stringify(reconciliationPayload())
             });
             $('reconciliationPin').value = '';
-            notify(result.replayed ? 'Shift close replayed with the same key.' : 'Shift close queued.', 'success');
+            notify(result.replayed ? 'Закриття зміни безпечно оброблено повторно.' : 'Закриття зміни поставлено в чергу.', 'success');
             return result;
         });
     }
@@ -1631,7 +1700,7 @@
     async function loadOperationalReport() {
         const shiftId = state.registerState?.shift?.id;
         if (!shiftId) {
-            notify('Open or recent shift is required for operational report.', 'error');
+            notify('Для внутрішнього звіту потрібна відкрита або нещодавня зміна.', 'error');
             return;
         }
         await runOperation('loadOperationalReportBtn', 'load-report', shiftId, async () => {
@@ -1640,7 +1709,7 @@
                 headers: apiHeaders()
             });
             renderReportBody(result);
-            notify('Operational report loaded.', 'success');
+            notify('Внутрішній звіт завантажено.', 'success');
             return result;
         });
     }
@@ -1785,7 +1854,7 @@
             setText('currentUser', user.name || user.username || '');
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             if (!canAccessPage('/cashier-payments') || !canAccess('payments.view') || !canAccess('payments.create') || !canAccess('payments.confirm_received')) {
-                setDenied('Немає доступу до park cashier або потрібних payment capabilities. Касиру не потрібен finance.manage.');
+                setDenied('Немає доступу до сторінки оплати або потрібних касових дозволів. Розширений доступ до фінансів для цієї сторінки не потрібен.');
                 return;
             }
             await loadPilotRegisterState({ silent: true });

@@ -5432,6 +5432,32 @@ test('timeline dynamic width contract derives surfaces from range and cell geome
     );
 });
 
+test('timeline resource headers wrap at word boundaries and keep full names accessible', () => {
+    const timeline = read('js/timeline.js');
+    const css = read('css/timeline.css');
+    const responsiveCss = read('css/responsive.css');
+    const baseRule = cssRule(css, '.line-header--title-only .line-name');
+    const responsiveRule = cssRuleIncludingSelector(
+        responsiveCss.replace(/\/\*[\s\S]*?\*\//g, ''),
+        'body.timeline-dashboard-page .line-header--title-only .line-name'
+    );
+    const sampleNames = ['Аніматор 1', 'Пасенко Женя', 'Дуже довга синтетична назва ресурсу'];
+
+    assert.equal(cssDeclaration(baseRule, 'overflow-wrap'), 'normal');
+    assert.equal(cssDeclaration(baseRule, 'word-break'), 'normal');
+    assert.equal(cssDeclaration(baseRule, 'hyphens'), 'none');
+    assert.equal(cssDeclaration(baseRule, '-webkit-line-clamp'), '2');
+    assert.equal(cssDeclaration(baseRule, 'text-overflow'), 'ellipsis');
+    assert.equal(cssDeclaration(responsiveRule, 'overflow-wrap'), 'normal !important');
+    assert.equal(cssDeclaration(responsiveRule, 'word-break'), 'normal !important');
+    assert.equal(cssDeclaration(responsiveRule, 'hyphens'), 'none !important');
+    assert.equal(cssDeclaration(responsiveRule, '-webkit-line-clamp'), '2 !important');
+    assert.doesNotMatch(baseRule, /overflow-wrap:\s*anywhere/);
+    assert.doesNotMatch(responsiveRule, /overflow-wrap:\s*anywhere/);
+    assert.match(timeline, /title="\$\{escapeHtml\(headerTitle\)\}" aria-label="\$\{escapeHtml\(headerTitle\)\}"/);
+    assert.equal(sampleNames.every(name => /\s/.test(name) || name.length > 0), true);
+});
+
 test('timeline time marker placement clamps start label without overlapping the first interval mark', () => {
     const timeline = read('js/timeline.js');
     const helperStart = timeline.indexOf('function getTimelineCellWidth');

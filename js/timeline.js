@@ -4351,7 +4351,7 @@ async function renderTimeline() {
         }
 
         lineEl.innerHTML = `
-            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}" title="${escapeHtml(headerTitle)}">
+            <div class="line-header line-header--title-only" style="border-left-color: ${escapeHtml(line.color)}" data-line-id="${escapeHtml(line.id)}" title="${escapeHtml(headerTitle)}" aria-label="${escapeHtml(headerTitle)}">
                 <span class="line-name">${escapeHtml(line.name)}</span>
                 ${lineUnavailable ? `<span class="line-unavailable-warning" role="status">${escapeHtml(unavailableStatusText)}</span>` : ''}
             </div>

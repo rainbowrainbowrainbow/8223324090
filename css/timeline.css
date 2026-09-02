@@ -453,9 +453,17 @@ body.timeline-dashboard-page {
 }
 
 .line-header--title-only .line-name {
-    display: block;
     line-height: 1.12;
-    overflow-wrap: anywhere;
+    max-width: 100%;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: normal;
+    word-break: normal;
+    hyphens: none;
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
 }
 
 .timeline-line--unavailable .line-header {

@@ -186,6 +186,7 @@ checkPage('index.html', (doc, html) => {
     const timelineBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'timeline-browser-smoke.js'), 'utf8');
     const timelineVisibilityCode = fs.readFileSync(path.join(ROOT, 'js', 'timeline-visibility.js'), 'utf8');
     const productPricingCode = fs.readFileSync(path.join(ROOT, 'services', 'productPricing.js'), 'utf8');
+    const timelineCss = cssTextWithImports('css/timeline.css');
     const responsiveCss = cssTextWithImports('css/responsive.css');
     const timelineVisualHierarchyCss = darkModeCss.slice(Math.max(0, darkModeCss.indexOf('/* Task 5: timeline visual hierarchy')));
     const timelineToolbarHierarchyCss = responsiveCss.slice(Math.max(0, responsiveCss.indexOf('/* Task 5: keep cyan')));
@@ -213,6 +214,12 @@ checkPage('index.html', (doc, html) => {
     const timelineViewPanelRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-view-panel');
     const timelineInlineViewPanelRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .schedule-command-center.toolbarContainer > .timeline-view-panel');
     const timelineViewPanelHiddenRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .timeline-view-panel[hidden]');
+    const timelineResourceHeaderRule = cssRuleText(timelineCss, '.line-header--title-only .line-name');
+    const timelineResourceHeaderResponsiveRule = sourceBlock(
+        responsiveCss,
+        '/* v0.81.67: resource headers wrap only at word boundaries and ellipsize long names. */',
+        'body.timeline-dashboard-page .schedule-command-center :where(.segmentedItem.active'
+    );
     const assistantTopbarActionsRule = cssRuleText(assistantTopbarCss, '.timeline-dashboard-page .header .timeline-header-actions');
     const timelineWideDesktopHeaderRule = cssRuleText(timelineHeaderWideDesktopCss, 'body.timeline-dashboard-page .header .header-content');
     const timelineHeaderActionsRule = cssRuleText(responsiveCss, 'body.timeline-dashboard-page .header .timeline-header-actions');
@@ -323,9 +330,22 @@ checkPage('index.html', (doc, html) => {
         && bookingCode.includes('openRoomBookingAnimationBridge'));
     check('Timeline regular line headers render title-only resource names',
         htmlContains('js/timeline.js', 'line-header line-header--title-only')
+        && htmlContains('js/timeline.js', 'aria-label="${escapeHtml(headerTitle)}"')
         && htmlContains('js/timeline.js', '<span class="line-name">${escapeHtml(line.name)}</span>')
         && !htmlContains('js/timeline.js', 'getLineSubtitle(lineForHeader)')
         && htmlContains('css/timeline.css', '.line-header--title-only .line-name'));
+    check('Timeline resource headers avoid mid-word breaks on narrow screens',
+        timelineResourceHeaderRule.includes('overflow-wrap: normal')
+        && timelineResourceHeaderRule.includes('word-break: normal')
+        && timelineResourceHeaderRule.includes('hyphens: none')
+        && timelineResourceHeaderRule.includes('-webkit-line-clamp: 2')
+        && timelineResourceHeaderResponsiveRule.includes('body.timeline-dashboard-page .line-header--title-only .line-name')
+        && timelineResourceHeaderResponsiveRule.includes('body.timeline-dashboard-page.timeline-compact-mode .line-header--title-only .line-name')
+        && timelineResourceHeaderResponsiveRule.includes('overflow-wrap: normal !important')
+        && timelineResourceHeaderResponsiveRule.includes('word-break: normal !important')
+        && timelineResourceHeaderResponsiveRule.includes('hyphens: none !important')
+        && timelineResourceHeaderResponsiveRule.includes('text-overflow: ellipsis !important')
+        && !timelineResourceHeaderRule.includes('overflow-wrap: anywhere'));
     check('Timeline room preview state only top-aligns headers with a rendered preview card',
         htmlContains('js/timeline.js', 'function clearTimelineBanquetRoomHeaderPreviewState(header)')
         && htmlContains('js/timeline.js', 'return false;')

@@ -180,6 +180,8 @@ function normalizeAuditRow(row = {}) {
     const registeredSource = Array.isArray(row.registeredBookingIds) ? row.registeredBookingIds : row.bookingIds;
     const registered = Array.isArray(registeredSource) ? registeredSource.map(String).sort() : [];
     const marked = Array.isArray(row.markedBookingIds) ? row.markedBookingIds.map(String).sort() : [];
+    const activeMarkedSource = Array.isArray(row.activeMarkedBookingIds) ? row.activeMarkedBookingIds : marked;
+    const activeMarked = Array.isArray(activeMarkedSource) ? activeMarkedSource.map(String).sort() : [];
     const mismatchIds = [...new Set([...registered.filter(id => !marked.includes(id)), ...marked.filter(id => !registered.includes(id))])].sort();
     const rawExpiresAt = row.expiresAt ?? row.expires_at ?? null;
     const expiresAt = rawExpiresAt instanceof Date
@@ -193,8 +195,10 @@ function normalizeAuditRow(row = {}) {
         expiresAt,
         cleanupAttempts: Number(row.cleanupAttempts ?? row.cleanup_attempts ?? 0),
         exactEntityCount: Number(row.exactEntityCount ?? row.entity_count ?? registered.length),
+        activeBookingCount: activeMarked.length,
         bookingIds: registered,
         markedBookingIds: marked,
+        activeMarkedBookingIds: activeMarked,
         ownershipComplete: mismatchIds.length === 0,
         mismatchEntityIds: mismatchIds,
         blockerReason: cleanText(row.blockerReason ?? row.blocked_reason ?? row.cleanup_last_error, 500) || null
@@ -214,6 +218,7 @@ function publicRunStatus(row) {
         expiresAt: run.expiresAt,
         cleanupAttempts: run.cleanupAttempts,
         exactEntityCount: run.exactEntityCount,
+        activeBookingCount: run.activeBookingCount,
         bookingIds: run.bookingIds,
         blockerReason: run.blockerReason,
         ownershipComplete: run.ownershipComplete,
@@ -263,14 +268,20 @@ function defaultRuntime() {
             const runs = [];
             for (const row of result.rows || []) {
                 const marked = await pool.query(
-                    `SELECT id::text
+                    `SELECT id::text, LOWER(COALESCE(NULLIF(BTRIM(status), ''), 'confirmed')) AS normalized_status
                        FROM bookings
                       WHERE COALESCE(extra_data #>> '{disposableQa,runId}', '') = $1
                         AND COALESCE(NULLIF(BTRIM(business_context), ''), 'event_genix') = 'event_genix'
                       ORDER BY id::text`,
                     [row.runId]
                 );
-                runs.push(normalizeAuditRow({ ...row, markedBookingIds: marked.rows.map(item => String(item.id)) }));
+                runs.push(normalizeAuditRow({
+                    ...row,
+                    markedBookingIds: marked.rows.map(item => String(item.id)),
+                    activeMarkedBookingIds: marked.rows
+                        .filter(item => item.normalized_status !== 'cancelled')
+                        .map(item => String(item.id))
+                }));
             }
             return runs;
         },

@@ -37,6 +37,7 @@ function auditRun(overrides = {}) {
         exactEntityCount: 2,
         registeredBookingIds: ['qa-1', 'qa-2'],
         markedBookingIds: ['qa-1', 'qa-2'],
+        activeMarkedBookingIds: ['qa-1', 'qa-2'],
         ...overrides
     });
 }
@@ -315,6 +316,32 @@ test('status serializes PostgreSQL timestamp objects as ISO strings', () => {
     });
     assert.equal(run.expiresAt, '2026-09-01T20:00:00.000Z');
     assert.match(stableJson(run), /2026-09-01T20:00:00\.000Z/);
+});
+
+test('status separates immutable registry inventory from active booking postcondition', () => {
+    const cleaned = normalizeAuditRow({
+        databaseId: 34,
+        runId: 'timeline-showcase-cleaned',
+        state: 'cleaned',
+        exactEntityCount: 1,
+        registeredBookingIds: ['BK-QA-1'],
+        markedBookingIds: ['BK-QA-1'],
+        activeMarkedBookingIds: []
+    });
+    assert.equal(cleaned.exactEntityCount, 1);
+    assert.equal(cleaned.activeBookingCount, 0);
+    assert.equal(cleaned.ownershipComplete, true);
+
+    const active = normalizeAuditRow({
+        databaseId: 35,
+        runId: 'timeline-showcase-active',
+        state: 'active',
+        exactEntityCount: 1,
+        registeredBookingIds: ['BK-QA-2'],
+        markedBookingIds: ['BK-QA-2'],
+        activeMarkedBookingIds: ['BK-QA-2']
+    });
+    assert.equal(active.activeBookingCount, 1);
 });
 
 test('public errors never echo a protected value from details', () => {

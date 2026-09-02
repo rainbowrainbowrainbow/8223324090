@@ -388,6 +388,12 @@ test('timeline activity presentation renders category plus product code in anima
     assert.equal(show.getAttribute('data-timeline-category-code'), 'ШОУ');
     assert.equal(timelineBlockLabelText(masterclass), 'МК РЕС');
     assert.equal(timelineBlockLabelText(pinata).replace(/\s+/g, ''), 'П501');
+    const pinataCompactCode = pinata.querySelector('.timeline-micro-booking-code, .timeline-compact-booking-label');
+    assert.equal(pinataCompactCode?.dataset.layout, 'characters');
+    assert.deepEqual(
+        Array.from(pinataCompactCode?.querySelectorAll(':scope > span') || []).map(node => node.textContent),
+        ['П', '5', '0', '1']
+    );
     assert.match(pinata.getAttribute('aria-label'), /Піньята парку 501/);
     assert.doesNotMatch(masterclass.textContent, /МК\s*МК/u);
     assert.equal(wideAnimation.querySelector('.timeline-activity-identity')?.textContent, 'АН 120: Анімація');

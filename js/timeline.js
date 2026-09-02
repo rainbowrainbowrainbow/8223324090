@@ -1600,6 +1600,22 @@ function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, book
     return timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).compactLabel;
 }
 
+function timelineCompactLabelRenderModel(presentation, density, labelOverride = '') {
+    if (typeof TimelinePresentation !== 'undefined' && typeof TimelinePresentation.timelineCompactLabelRenderModel === 'function') {
+        return TimelinePresentation.timelineCompactLabelRenderModel(presentation, density, labelOverride);
+    }
+    const metrics = timelineCompactLabelMetrics(labelOverride || presentation?.compactLabel || presentation?.code || '');
+    const isNarrow = density === 'micro' || density === 'tiny';
+    const stackCharacters = isNarrow && presentation?.verticalCompactCode === true;
+    return {
+        ...metrics,
+        segments: stackCharacters
+            ? Array.from(metrics.label).filter(character => !/\s/u.test(character))
+            : metrics.tokens,
+        layout: stackCharacters ? 'characters' : (isNarrow ? 'stacked' : 'inline')
+    };
+}
+
 function timelineMicroActivityLabel(booking, renderBooking, compactActivityLabel, bookingTitle = '', bookingTitleTail = '') {
     return compactActivityLabel || timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).compactLabel;
 }
@@ -4971,37 +4987,36 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         ? [roomActivityDetailLabel, costumeLabel].filter(Boolean)
         : [];
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
-    const compactLabelMetrics = timelineCompactLabelMetrics(compactActivityLabel);
-    const microLabelMetrics = timelineCompactLabelMetrics(microActivityLabel);
-    const roomActivityLabelMetrics = timelineCompactLabelMetrics(roomActivityMainLabel);
-    const microLabelHtml = microLabelMetrics.tokens
+    const compactLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, bookingBlockDensity, compactActivityLabel);
+    const microLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, 'micro', microActivityLabel);
+    const roomActivityLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, bookingBlockDensity, roomActivityMainLabel);
+    const microLabelHtml = microLabelMetrics.segments
         .map(part => `<span>${escapeHtml(part)}</span>`)
         .join(' ');
-    const compactLabelHtml = compactLabelMetrics.tokens
+    const compactLabelHtml = compactLabelMetrics.segments
         .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
         .join(' ');
-    const roomActivityLabelHtml = roomActivityLabelMetrics.tokens
+    const roomActivityLabelHtml = roomActivityLabelMetrics.segments
         .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
         .join(' ');
-    const compactLayout = bookingBlockDensity === 'micro' || bookingBlockDensity === 'tiny' ? 'stacked' : 'inline';
     const roomActivityHtml = `
         ${bookingBlockDensity === 'short' || !isCompactActivityBlock ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-room-activity-main">
             ${!isCompactActivityBlock || bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
-            ${roomActivityMainLabel ? `<span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(roomActivityLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(roomActivityLabelMetrics.maxTokenLength))}" data-layout="${compactLayout}">${roomActivityLabelHtml}</span>` : ''}
+            ${roomActivityMainLabel ? `<span class="timeline-room-activity-title" data-code-length="${escapeHtml(String(roomActivityLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(roomActivityLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(roomActivityLabelMetrics.maxTokenLength))}" data-layout="${escapeHtml(roomActivityLabelMetrics.layout)}">${roomActivityLabelHtml}</span>` : ''}
             ${isCompactActivityBlock ? '' : durationBadge}
         </div>
         ${roomActivityDetail ? `<div class="timeline-room-activity-detail" title="${escapeHtml(roomActivityDetail)}">${escapeHtml(roomActivityDetail)}</div>` : ''}
         ${noteText}
     `;
     const microBookingHtml = `
-        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(microLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(microLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(microLabelMetrics.maxTokenLength))}" data-layout="stacked">${microLabelHtml}</div>
+        <div class="timeline-micro-booking-code" data-code-length="${escapeHtml(String(microLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(microLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(microLabelMetrics.maxTokenLength))}" data-layout="${escapeHtml(microLabelMetrics.layout)}">${microLabelHtml}</div>
     `;
     const compactBookingHtml = `
         ${bookingBlockDensity === 'short' ? `<div class="user-letter">${badge}</div>` : ''}
         <div class="timeline-compact-booking-main">
             ${bookingBlockDensity === 'short' ? `<span class="booking-block-time">${escapeHtml(renderBooking.time)}</span>` : ''}
-            <span class="timeline-compact-booking-label" data-code-length="${escapeHtml(String(compactLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(compactLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(compactLabelMetrics.maxTokenLength))}" data-layout="${compactLayout}">${compactLabelHtml}</span>
+            <span class="timeline-compact-booking-label" data-code-length="${escapeHtml(String(compactLabelMetrics.characterCount))}" data-token-count="${escapeHtml(String(compactLabelMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(compactLabelMetrics.maxTokenLength))}" data-layout="${escapeHtml(compactLabelMetrics.layout)}">${compactLabelHtml}</span>
         </div>
         ${bookingBlockDensity === 'short' && (bookingRoomMeta || bookingKidsMeta) ? `<div class="subtitle timeline-compact-booking-meta">${bookingRoomMeta}${bookingKidsMeta}</div>` : ''}
         ${costumeText}
@@ -7564,12 +7579,11 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const costumeLabel = bookingCostumeLabel(b);
         const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
         const miniPresentation = timelineActivityPresentation(b, b, b.label || b.programCode, b.programName || '');
-        const miniPresentationMetrics = timelineCompactLabelMetrics(miniPresentation.code);
         const miniDensity = timelineBookingBlockDensity(width);
-        const miniLabelHtml = miniPresentationMetrics.tokens
+        const miniPresentationMetrics = timelineCompactLabelRenderModel(miniPresentation, miniDensity, miniPresentation.code);
+        const miniLabelHtml = miniPresentationMetrics.segments
             .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
             .join(' ');
-        const miniLayout = miniDensity === 'micro' || miniDensity === 'tiny' ? 'stacked' : 'inline';
         const miniTitleParts = [b.time, miniPresentation.fullTitle, b.duration > 0 ? `${b.duration} хв` : '', b.room, miniPresentation.pinataDetail].filter(Boolean);
         if (costumeLabel) miniTitleParts.push(costumeLabel);
         if (boundaryStatus.overrun) miniTitleParts.push(boundaryStatus.message);
@@ -7588,7 +7602,7 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
                  data-timeline-boundary-message="${boundaryStatus.overrun ? escapeHtml(boundaryStatus.message || '') : ''}"
                  title="${escapeHtml(miniAccessibilityLabel)}"
                  aria-label="${escapeHtml(miniAccessibilityLabel)}">
-                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentationMetrics.characterCount))}" data-token-count="${escapeHtml(String(miniPresentationMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(miniPresentationMetrics.maxTokenLength))}" data-layout="${miniLayout}">${miniLabelHtml}</span>
+                <span class="mini-booking-text" data-code-length="${escapeHtml(String(miniPresentationMetrics.characterCount))}" data-token-count="${escapeHtml(String(miniPresentationMetrics.tokenCount))}" data-max-token-length="${escapeHtml(String(miniPresentationMetrics.maxTokenLength))}" data-layout="${escapeHtml(miniPresentationMetrics.layout)}">${miniLabelHtml}</span>
                 ${miniCostumeText}
             </div>
         `;

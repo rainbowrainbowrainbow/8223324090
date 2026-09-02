@@ -301,11 +301,15 @@ test('responsive browser matrix fails closed on unreadable or generic timeline i
     assert.deepEqual(caseAcceptanceFailures({
         tinyFontBookingIds: ['qa-pinata'],
         genericOnlyBookingIds: ['qa-show'],
+        invalidPinataStackBookingIds: ['qa-pinata'],
+        ambiguousCustomIdentityBookingIds: ['qa-custom'],
         categoryMismatchBookingIds: [],
         missingBookingIds: []
     }), [
         'tinyFontBookingIds:qa-pinata',
-        'genericOnlyBookingIds:qa-show'
+        'genericOnlyBookingIds:qa-show',
+        'invalidPinataStackBookingIds:qa-pinata',
+        'ambiguousCustomIdentityBookingIds:qa-custom'
     ]);
     assert.deepEqual(caseAcceptanceFailures({}), []);
 });

@@ -20,6 +20,7 @@
     });
 
     const GENERIC_CATEGORY_CODES = new Set(Object.values(CATEGORY_CODES).map(value => value.toLocaleLowerCase('uk-UA')));
+    const GENERIC_CUSTOM_CODES = new Set(['ін', 'інш', 'інше']);
 
     function cleanText(value) {
         return String(value ?? '').replace(/[\r\n\t]/g, ' ').replace(/\s+/g, ' ').trim();
@@ -151,6 +152,23 @@
         };
     }
 
+    function timelineCompactLabelRenderModel(presentation = {}, density = 'medium', labelOverride = '') {
+        const label = cleanText(labelOverride || presentation.compactLabel || presentation.code);
+        const metrics = timelineCompactLabelMetrics(label);
+        const isNarrow = density === 'micro' || density === 'tiny';
+        const stackCharacters = isNarrow && presentation.verticalCompactCode === true;
+        const segments = stackCharacters
+            ? Array.from(label).filter(character => !/\s/u.test(character))
+            : metrics.tokens;
+
+        return {
+            ...metrics,
+            segments,
+            segmentCount: segments.length,
+            layout: stackCharacters ? 'characters' : (isNarrow ? 'stacked' : 'inline')
+        };
+    }
+
     function resolveTimelineActivityPresentation(booking = {}, renderBooking = null, bookingTitle = '', bookingTitleTail = '', options = {}) {
         const source = renderBooking || booking || {};
         const category = cleanText(source.category || booking?.category).toLowerCase();
@@ -183,9 +201,17 @@
         }
         productCode = sliceGraphemes(productCode || productCodeFromName(categoryCode, fullName || label, strippedProgram || configuredCode), 6);
 
-        const compactLabel = composeCompactLabel(categoryCode, productCode);
+        const genericCustomIdentity = categoryCode === CATEGORY_CODES.custom
+            && GENERIC_CUSTOM_CODES.has(cleanText(productCode || fullName || label).toLocaleLowerCase('uk-UA'));
+        if (genericCustomIdentity) productCode = 'ІНШЕ';
+
+        const compactLabel = genericCustomIdentity
+            ? 'ІНШЕ'
+            : composeCompactLabel(categoryCode, productCode);
         const compactMetrics = timelineCompactLabelMetrics(compactLabel);
-        const fullLabel = fullName
+        const fullNameRepeatsCompactLabel = genericCustomIdentity
+            && GENERIC_CUSTOM_CODES.has(cleanText(fullName).toLocaleLowerCase('uk-UA'));
+        const fullLabel = fullName && !fullNameRepeatsCompactLabel
             ? `${compactLabel}: ${fullName}`
             : compactLabel;
         const pinataDetail = isPinata
@@ -217,6 +243,7 @@
             compactTokens: compactMetrics.tokens,
             compactCharacterCount: compactMetrics.characterCount,
             compactMaxTokenLength: compactMetrics.maxTokenLength,
+            verticalCompactCode: isPinata,
             fullLabel,
             tooltip: detailParts.join(' · '),
             ariaLabel: detailParts.join(' · '),
@@ -260,6 +287,7 @@
         stripDurationText,
         removeCategoryPrefix,
         timelineCompactLabelMetrics,
+        timelineCompactLabelRenderModel,
         resolveTimelineActivityPresentation,
         timelineBookingBlockDensity,
         timelineActivityBookingBlockDensity

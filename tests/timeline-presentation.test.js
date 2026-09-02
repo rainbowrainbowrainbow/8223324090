@@ -88,6 +88,45 @@ test('timeline presentation uses pinata number dynamically for micro labels', ()
     assert.equal(row.productCode, '501');
     assert.equal(row.compactLabel, 'П 501');
     assert.match(row.pinataDetail, /501/);
+    assert.equal(row.verticalCompactCode, true);
+
+    assert.deepEqual(presentation.timelineCompactLabelRenderModel(row, 'tiny'), {
+        label: 'П 501',
+        tokens: ['П', '501'],
+        characterCount: 5,
+        tokenCount: 2,
+        maxTokenLength: 3,
+        segments: ['П', '5', '0', '1'],
+        segmentCount: 4,
+        layout: 'characters'
+    });
+    assert.deepEqual(presentation.timelineCompactLabelRenderModel(row, 'short').segments, ['П', '501']);
+    assert.equal(presentation.timelineCompactLabelRenderModel(row, 'short').layout, 'inline');
+
+    const client = presentation.resolveTimelineActivityPresentation({
+        category: 'pinata',
+        timelineCode: 'STD',
+        programName: 'Піньята',
+        pinataMode: 'client'
+    }, null, '', '', { pinataNumbers });
+    assert.equal(client.compactLabel, 'П КЛ');
+    assert.deepEqual(presentation.timelineCompactLabelRenderModel(client, 'micro').segments, ['П', 'К', 'Л']);
+});
+
+test('timeline presentation collapses the generic custom product to one clear identity', () => {
+    const row = presentation.resolveTimelineActivityPresentation({
+        category: 'custom',
+        timelineCode: 'ІН',
+        label: 'Інше(30)',
+        programName: 'Інше',
+        duration: 30
+    });
+
+    assert.equal(row.categoryCode, 'ІНШ');
+    assert.equal(row.productCode, 'ІНШЕ');
+    assert.equal(row.compactLabel, 'ІНШЕ');
+    assert.equal(row.fullLabel, 'ІНШЕ');
+    assert.doesNotMatch(row.compactLabel, /ІНШ\s+ІН/u);
 });
 
 test('timeline density avoids the old abrupt 44px micro breakpoint', () => {

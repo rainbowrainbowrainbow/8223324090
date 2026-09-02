@@ -217,6 +217,30 @@ body.timeline-dashboard-page {
     white-space: nowrap;
 }
 
+.timeline-micro-booking-code[data-layout="characters"],
+.timeline-compact-booking-label[data-layout="characters"],
+.timeline-room-activity-title[data-layout="characters"],
+.mini-booking-text[data-layout="characters"] {
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    line-height: 0.92;
+}
+
+.timeline-micro-booking-code[data-layout="characters"] > span,
+.timeline-compact-booking-label[data-layout="characters"] > span,
+.timeline-room-activity-title[data-layout="characters"] > span,
+.mini-booking-text[data-layout="characters"] > span {
+    flex: 0 0 auto;
+    width: 1em;
+    min-width: 0;
+    overflow: visible;
+    font-size: 12px;
+    line-height: 0.92;
+    text-align: center;
+}
+
 .mini-booking-costume {
     display: block;
     max-width: 100%;

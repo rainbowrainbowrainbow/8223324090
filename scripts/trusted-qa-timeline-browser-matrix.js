@@ -153,6 +153,11 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                 const category = Object.keys(categoryPrefixes).find(value => node.classList.contains(value)) || '';
                 const expectedPrefix = categoryPrefixes[category] || '';
                 const identityText = String(identity?.textContent || '').replace(/\s+/g, ' ').trim();
+                const identitySegments = identity
+                    ? [...identity.children].map(child => String(child.textContent || '').trim()).filter(Boolean)
+                    : [];
+                const identityLayout = String(identity?.dataset?.layout || '');
+                const narrowPinata = category === 'pinata' && (density === 'micro' || density === 'tiny');
                 const escapedPrefix = expectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const duplicateCategoryPattern = expectedPrefix
                     ? new RegExp(`^${escapedPrefix}\\s*(?:[|:]\\s*)?${escapedPrefix}(?:\\s|$)`, 'iu')
@@ -166,6 +171,7 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                     category,
                     expectedPrefix,
                     identityText,
+                    identityLayout,
                     identityFontPx: Number.parseFloat(identityStyle?.fontSize || '0') || 0,
                     identityMissing: !identity,
                     identityOverflow: Boolean(identity && (identity.scrollWidth > identity.clientWidth + 1 || identity.scrollHeight > identity.clientHeight + 1)),
@@ -181,6 +187,12 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                     genericOnly: Boolean(expectedPrefix && identityText.toLocaleUpperCase('uk-UA') === expectedPrefix),
                     categoryMismatch: Boolean(expectedPrefix && !identityText.toLocaleUpperCase('uk-UA').startsWith(expectedPrefix)),
                     duplicatedCategory: Boolean(duplicateCategoryPattern?.test(identityText)),
+                    invalidPinataStack: Boolean(narrowPinata && (
+                        identityLayout !== 'characters'
+                        || identitySegments.length < 2
+                        || identitySegments.some(segment => Array.from(segment).length !== 1)
+                    )),
+                    ambiguousCustomIdentity: Boolean(category === 'custom' && /^ІНШ\s+ІН$/iu.test(identityText)),
                     duplicateDurationBadge: node.querySelectorAll('.duration-badge').length > 1,
                     overflowX: node.scrollWidth > node.clientWidth + 1,
                     overflowY: node.scrollHeight > node.clientHeight + 1,
@@ -227,6 +239,8 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
         genericOnlyBookingIds: metrics.filter(item => item.genericOnly).map(item => item.bookingId),
         categoryMismatchBookingIds: metrics.filter(item => item.categoryMismatch).map(item => item.bookingId),
         duplicatedCategoryBookingIds: metrics.filter(item => item.duplicatedCategory).map(item => item.bookingId),
+        invalidPinataStackBookingIds: metrics.filter(item => item.invalidPinataStack).map(item => item.bookingId),
+        ambiguousCustomIdentityBookingIds: metrics.filter(item => item.ambiguousCustomIdentity).map(item => item.bookingId),
         duplicateDurationBookingIds: metrics.filter(item => item.duplicateDurationBadge).map(item => item.bookingId),
         missingAccessibleNameBookingIds: metrics.filter(item => !item.ariaLabelPresent).map(item => item.bookingId),
         horizontalScrollAvailable: scrollState.maxScrollLeft > 1,
@@ -245,6 +259,8 @@ function caseAcceptanceFailures(result) {
         'genericOnlyBookingIds',
         'categoryMismatchBookingIds',
         'duplicatedCategoryBookingIds',
+        'invalidPinataStackBookingIds',
+        'ambiguousCustomIdentityBookingIds',
         'duplicateDurationBookingIds',
         'missingAccessibleNameBookingIds'
     ].flatMap(key => (result[key] || []).map(bookingId => `${key}:${bookingId}`));

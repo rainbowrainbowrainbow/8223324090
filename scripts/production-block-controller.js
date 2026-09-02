@@ -83,13 +83,11 @@ function resolveSpawnCommand(command, args, options = {}) {
     const env = options.env || process.env;
     if (platform === 'win32' && command === 'npm') {
         const windowsPath = path.win32;
-        const bundledNpmCli = windowsPath.join(
-            windowsPath.dirname(execPath),
-            'node_modules',
-            'npm',
-            'bin',
-            'npm-cli.js'
-        );
+        const executableDirectory = windowsPath.dirname(execPath);
+        const bundledNpmCandidates = [
+            windowsPath.join(executableDirectory, 'node_modules', 'npm', 'bin', 'npm-cli.js'),
+            windowsPath.resolve(executableDirectory, '..', '..', 'npm', 'bin', 'npm-cli.js')
+        ];
         const inheritedNpmCli = cleanText(env.npm_execpath, 1000);
         const isCanonicalNpmCli = file => {
             if (!file || !windowsPath.isAbsolute(file)) return false;
@@ -99,7 +97,7 @@ function resolveSpawnCommand(command, args, options = {}) {
                 && windowsPath.basename(binDirectory).toLowerCase() === 'bin'
                 && windowsPath.basename(npmDirectory).toLowerCase() === 'npm';
         };
-        const npmCli = [bundledNpmCli, inheritedNpmCli]
+        const npmCli = [...bundledNpmCandidates, inheritedNpmCli]
             .find(file => isCanonicalNpmCli(file) && existsSync(file));
         fail(Boolean(npmCli), 'Bundled or inherited npm CLI is unavailable for the active Node runtime',
             'PRODUCTION_BLOCK_NPM_CLI_MISSING');
@@ -188,6 +186,9 @@ function defaultRuntime() {
         },
         plan(manifest) {
             return releaseCommandPlan(manifest);
+        },
+        async preflightExecution() {
+            resolveSpawnCommand('npm', ['test']);
         },
         async resumeQa(manifest, releaseSha) {
             return resumeAuthorizedQa(manifest, releaseSha);
@@ -444,6 +445,7 @@ async function executeAction(options, runtime) {
     const attempts = Number(manifest.runtimeState?.releaseAttempts || 0);
     fail(attempts < manifest.maxReleaseAttempts, 'Production block attempt budget is exhausted', 'PRODUCTION_BLOCK_ATTEMPT_BUDGET_EXHAUSTED');
     await assertExecuteDrift(manifest, runtime);
+    if (typeof runtime.preflightExecution === 'function') await runtime.preflightExecution(manifest);
     if (options.dryRun) return sanitize({
         success: true,
         action: 'execute',
@@ -492,14 +494,28 @@ function parseOptions(argv) {
     const args = [...argv];
     const action = cleanText(args[0] && !args[0].startsWith('-') ? args[0] : argValue(args, '--action', 'status'), 20).toLowerCase();
     fail(['prepare', 'status', 'execute', 'qa-resume'].includes(action), 'Unsupported production block action', 'PRODUCTION_BLOCK_ACTION_INVALID');
-    const blockFileValue = argValue(args, '--block-file');
+    const actionOffset = args[0] && !args[0].startsWith('-') ? 1 : 0;
+    const actionArgs = args.slice(actionOffset);
+    const knownValueFlags = new Set([
+        '--action',
+        '--block-file',
+        '--confirmation',
+        '--validity-minutes',
+        '--max-release-attempts',
+        '--release-label',
+        '--qa-scope',
+        '--qa-scope-base64'
+    ]);
+    const hasKnownValueFlag = actionArgs.some(arg => knownValueFlags.has(arg) || [...knownValueFlags].some(flag => arg.startsWith(`${flag}=`)));
+    const positionalArgs = hasKnownValueFlag ? [] : actionArgs.filter(arg => arg !== '--' && !arg.startsWith('-'));
+    const blockFileValue = argValue(args, '--block-file') || (action === 'prepare' ? null : positionalArgs[0]);
     if (action !== 'prepare') fail(Boolean(blockFileValue), `${action} requires --block-file`, 'PRODUCTION_BLOCK_FILE_REQUIRED');
     const qaScopeBase64 = argValue(args, '--qa-scope-base64');
     const qaScopeValue = qaScopeBase64 ? decodeQaScope(qaScopeBase64) : argValue(args, '--qa-scope', 'none');
     return {
         action,
         blockFile: blockFileValue ? path.resolve(blockFileValue) : null,
-        confirmation: argValue(args, '--confirmation'),
+        confirmation: argValue(args, '--confirmation') || (action === 'execute' || action === 'qa-resume' ? positionalArgs[1] : null),
         validityMinutes: Number(argValue(args, '--validity-minutes', '360')),
         maxReleaseAttempts: Number(argValue(args, '--max-release-attempts', '3')),
         releaseLabel: cleanText(argValue(args, '--release-label', 'Autonomy Hardening'), 120),

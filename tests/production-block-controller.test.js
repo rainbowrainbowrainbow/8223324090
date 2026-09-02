@@ -214,6 +214,35 @@ test('attempt budget stops execution before orchestration', async t => {
     );
 });
 
+test('tooling preflight fails before consuming a release attempt', async t => {
+    const value = manifest({ maxReleaseAttempts: 1 });
+    const file = blockFile(t, value);
+    await assert.rejects(
+        executeAction({ blockFile: file, confirmation: confirmationValue(value), dryRun: false }, dryRuntime({
+            async preflightExecution() {
+                const error = new Error('npm unavailable');
+                error.code = 'PRODUCTION_BLOCK_NPM_CLI_MISSING';
+                throw error;
+            }
+        })),
+        error => error.code === 'PRODUCTION_BLOCK_NPM_CLI_MISSING'
+    );
+    assert.equal(readBlockFile(file).runtimeState.releaseAttempts, 0);
+});
+
+test('npm-stripped Windows execute arguments use strict positional block file and confirmation fallback', () => {
+    const options = parseOptions(['execute', 'C:\\temp\\block.json', 'ALLOW_PRODUCTION_BLOCK:block:hash']);
+    assert.equal(options.action, 'execute');
+    assert.equal(options.blockFile, path.resolve('C:\\temp\\block.json'));
+    assert.equal(options.confirmation, 'ALLOW_PRODUCTION_BLOCK:block:hash');
+});
+
+test('explicit production controller flags remain authoritative over positional fallback', () => {
+    const options = parseOptions(['execute', '--block-file', 'explicit.json', '--confirmation', 'exact']);
+    assert.equal(options.blockFile, path.resolve('explicit.json'));
+    assert.equal(options.confirmation, 'exact');
+});
+
 test('manifest and reports redact secrets and database URLs', () => {
     const output = JSON.stringify(sanitize({
         password: 'do-not-print',
@@ -249,6 +278,20 @@ test('Windows npm commands use the bundled JS CLI instead of an unspawnable cmd 
     assert.equal(resolved.args.at(-1), 'test');
     assert.match(resolved.args[0], /node_modules[\\/]npm[\\/]bin[\\/]npm-cli\.js$/);
     assert.doesNotMatch(resolved.executable, /npm\.cmd$/i);
+});
+
+test('Windows portable node resolves npm from the sibling node_modules package', () => {
+    const execPath = path.win32.join('C:\\', 'portable', 'node_modules', 'node', 'bin', 'node.exe');
+    const siblingNpmCli = path.win32.join('C:\\', 'portable', 'node_modules', 'npm', 'bin', 'npm-cli.js');
+    const resolved = resolveSpawnCommand('npm', ['test'], {
+        platform: 'win32',
+        execPath,
+        env: {},
+        existsSync: file => file === siblingNpmCli
+    });
+    assert.equal(resolved.executable, execPath);
+    assert.equal(resolved.args[0], siblingNpmCli);
+    assert.deepEqual(resolved.args.slice(1), ['test']);
 });
 
 test('Windows npm commands fall back to the canonical inherited npm CLI', () => {

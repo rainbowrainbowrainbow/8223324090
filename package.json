@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.59",
+  "version": "0.81.60",
   "eventGenix": {
-    "releaseLabel": "Autonomy Hardening Windows Controller"
+    "releaseLabel": "Timeline Presentation System v2"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

@@ -31,6 +31,7 @@ const state = {
     phase1CloseKeys: [],
     unresolvedAvailable: true,
     unresolvedDelayMs: 0,
+    nextPilotRegisterStateDelayMs: 0,
     shift: null,
     serviceOutOperations: new Map(),
     operationCalls: [],
@@ -169,7 +170,12 @@ function registerStatePayload() {
 async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') return json(res, 200, { user: { id: 50, name: 'Smoke Cashier', role: 'administrator', roles: ['reception', 'administrator'], businessProfile: 'event_genix' } });
     if (url.pathname === '/api/auth/permissions') return json(res, 200, permissionPayload(url.searchParams.get('deny') !== '1' && req.headers['x-smoke-deny'] !== '1'));
-    if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') return json(res, 200, registerStatePayload());
+    if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') {
+        const delayMs = Math.max(0, Number(state.nextPilotRegisterStateDelayMs || 0));
+        state.nextPilotRegisterStateDelayMs = 0;
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
+        return json(res, 200, registerStatePayload());
+    }
     if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
         const delayMs = Math.max(0, Number(state.unresolvedDelayMs || 0));
@@ -550,7 +556,12 @@ async function run() {
         assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), null, 'sales report closes from the keyboard');
 
         await page.fill('#paymentKidsCount', '1');
+        state.nextPilotRegisterStateDelayMs = 400;
         await page.click('#createPaymentOrderBtn');
+        await page.waitForSelector('#cancelDraftOrderBtn:not(.hidden)');
+        assert.equal(await page.isDisabled('#cashReceivedAmount'), true, 'a newly rendered draft stays fail-closed until its register queue refresh completes');
+        assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'confirmation stays fail-closed while the refreshed register state is pending');
+        assert.equal(await page.locator('#unresolvedOrdersBody [data-queue-state="checking"]').count(), 1, 'the visible queue state immediately explains the temporary block');
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
         await assertPaymentStepState(page, { 1: 'complete', 2: 'active', 3: 'inactive' });
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount', 'creating a cash draft focuses the received amount');

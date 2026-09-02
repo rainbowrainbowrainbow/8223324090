@@ -343,6 +343,12 @@
         state.orderDetails = result;
         state.tender = result.order?.sourceSnapshot?.tender || (result.order?.paymentMethod === 'card_terminal' ? 'card_terminal_manual' : 'cash');
         state.confirmSubmitted = orderBlocksPayment(result.order);
+        // Keep confirmation fail-closed while the order's register-wide safety context is refreshed.
+        // Rendering the draft before this transition creates a brief false-ready focus window.
+        state.unresolvedQueueState = 'checking';
+        state.unresolvedLastError = null;
+        renderUnresolvedOrders();
+        renderReadinessState();
         syncTenderControls();
         renderOrder(result);
         await loadPilotRegisterState({ silent: true });

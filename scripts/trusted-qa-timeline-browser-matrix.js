@@ -129,7 +129,7 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
     }, zoom);
     await page.waitForFunction(expected => document.querySelector(`.zoom-btn[data-zoom="${expected}"]`)?.getAttribute('aria-pressed') === 'true', zoom);
     await page.waitForTimeout(150);
-    const metrics = await page.evaluate(ids => {
+    const metrics = await page.evaluate(({ ids, zoomLevel }) => {
         const wanted = new Set(ids.map(String));
         const categoryPrefixes = {
             quest: 'КВ',
@@ -158,6 +158,8 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                     : [];
                 const identityLayout = String(identity?.dataset?.layout || '');
                 const narrowPinata = category === 'pinata' && (density === 'micro' || density === 'tiny');
+                const pinataCharacterStackRequired = narrowPinata && zoomLevel >= 30;
+                const pinataCharacterStackForbidden = narrowPinata && zoomLevel === 15;
                 const escapedPrefix = expectedPrefix.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
                 const duplicateCategoryPattern = expectedPrefix
                     ? new RegExp(`^${escapedPrefix}\\s*(?:[|:]\\s*)?${escapedPrefix}(?:\\s|$)`, 'iu')
@@ -187,11 +189,14 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                     genericOnly: Boolean(expectedPrefix && identityText.toLocaleUpperCase('uk-UA') === expectedPrefix),
                     categoryMismatch: Boolean(expectedPrefix && !identityText.toLocaleUpperCase('uk-UA').startsWith(expectedPrefix)),
                     duplicatedCategory: Boolean(duplicateCategoryPattern?.test(identityText)),
-                    invalidPinataStack: Boolean(narrowPinata && (
-                        identityLayout !== 'characters'
-                        || identitySegments.length < 2
-                        || identitySegments.some(segment => Array.from(segment).length !== 1)
-                    )),
+                    invalidPinataStack: Boolean(
+                        (pinataCharacterStackRequired && (
+                            identityLayout !== 'characters'
+                            || identitySegments.length < 2
+                            || identitySegments.some(segment => Array.from(segment).length !== 1)
+                        ))
+                        || (pinataCharacterStackForbidden && identityLayout === 'characters')
+                    ),
                     ambiguousCustomIdentity: Boolean(category === 'custom' && /^ІНШ\s+ІН$/iu.test(identityText)),
                     duplicateDurationBadge: node.querySelectorAll('.duration-badge').length > 1,
                     overflowX: node.scrollWidth > node.clientWidth + 1,
@@ -199,7 +204,7 @@ async function captureCase(page, outputDirectory, bookingIds, viewport, zoom, th
                     ariaLabelPresent: Boolean(node.getAttribute('aria-label') || node.getAttribute('title'))
                 };
             });
-    }, bookingIds);
+    }, { ids: bookingIds, zoomLevel: zoom });
     const metricIds = new Set(metrics.map(item => item.bookingId));
     const missingBookingIds = bookingIds.filter(id => !metricIds.has(String(id)));
     const file = path.join(outputDirectory, `timeline-${viewport.name}-${theme}-${zoom}.png`);

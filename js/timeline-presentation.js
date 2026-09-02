@@ -152,11 +152,15 @@
         };
     }
 
-    function timelineCompactLabelRenderModel(presentation = {}, density = 'medium', labelOverride = '') {
+    function timelineCompactLabelRenderModel(presentation = {}, density = 'medium', labelOverride = '', options = {}) {
         const label = cleanText(labelOverride || presentation.compactLabel || presentation.code);
         const metrics = timelineCompactLabelMetrics(label);
         const isNarrow = density === 'micro' || density === 'tiny';
-        const stackCharacters = isNarrow && presentation.verticalCompactCode === true;
+        const zoomLevel = Number.parseInt(options.zoomLevel, 10);
+        const characterStackAllowed = !Number.isFinite(zoomLevel) || zoomLevel >= 30;
+        const stackCharacters = isNarrow
+            && presentation.verticalCompactCode === true
+            && characterStackAllowed;
         const segments = stackCharacters
             ? Array.from(label).filter(character => !/\s/u.test(character))
             : metrics.tokens;

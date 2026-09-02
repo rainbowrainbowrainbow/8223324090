@@ -294,6 +294,9 @@ test('responsive browser matrix changes zoom without requiring a visible desktop
     assert.deepEqual(THEMES, ['dark', 'light']);
     assert.equal(VIEWPORTS.length * ZOOMS.length * THEMES.length, 18);
     assert.match(source, /for \(const theme of THEMES\)/);
+    assert.match(source, /pinataCharacterStackRequired = narrowPinata && zoomLevel >= 30/);
+    assert.match(source, /pinataCharacterStackForbidden = narrowPinata && zoomLevel === 15/);
+    assert.match(source, /\{ ids: bookingIds, zoomLevel: zoom \}/);
 });
 
 test('responsive browser matrix fails closed on unreadable or generic timeline identities', () => {

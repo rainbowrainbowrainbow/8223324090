@@ -90,7 +90,7 @@ test('timeline presentation uses pinata number dynamically for micro labels', ()
     assert.match(row.pinataDetail, /501/);
     assert.equal(row.verticalCompactCode, true);
 
-    assert.deepEqual(presentation.timelineCompactLabelRenderModel(row, 'tiny'), {
+    assert.deepEqual(presentation.timelineCompactLabelRenderModel(row, 'tiny', '', { zoomLevel: 30 }), {
         label: 'П 501',
         tokens: ['П', '501'],
         characterCount: 5,
@@ -100,6 +100,14 @@ test('timeline presentation uses pinata number dynamically for micro labels', ()
         segmentCount: 4,
         layout: 'characters'
     });
+    assert.deepEqual(
+        presentation.timelineCompactLabelRenderModel(row, 'tiny', '', { zoomLevel: 15 }).segments,
+        ['П', '501']
+    );
+    assert.equal(
+        presentation.timelineCompactLabelRenderModel(row, 'tiny', '', { zoomLevel: 15 }).layout,
+        'stacked'
+    );
     assert.deepEqual(presentation.timelineCompactLabelRenderModel(row, 'short').segments, ['П', '501']);
     assert.equal(presentation.timelineCompactLabelRenderModel(row, 'short').layout, 'inline');
 
@@ -110,7 +118,10 @@ test('timeline presentation uses pinata number dynamically for micro labels', ()
         pinataMode: 'client'
     }, null, '', '', { pinataNumbers });
     assert.equal(client.compactLabel, 'П КЛ');
-    assert.deepEqual(presentation.timelineCompactLabelRenderModel(client, 'micro').segments, ['П', 'К', 'Л']);
+    assert.deepEqual(
+        presentation.timelineCompactLabelRenderModel(client, 'micro', '', { zoomLevel: 60 }).segments,
+        ['П', 'К', 'Л']
+    );
 });
 
 test('timeline presentation collapses the generic custom product to one clear identity', () => {

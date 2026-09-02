@@ -1600,13 +1600,17 @@ function timelineCompactActivityLabel(booking, renderBooking, bookingTitle, book
     return timelineActivityPresentation(booking, renderBooking, bookingTitle, bookingTitleTail).compactLabel;
 }
 
-function timelineCompactLabelRenderModel(presentation, density, labelOverride = '') {
+function timelineCompactLabelRenderModel(presentation, density, labelOverride = '', options = {}) {
     if (typeof TimelinePresentation !== 'undefined' && typeof TimelinePresentation.timelineCompactLabelRenderModel === 'function') {
-        return TimelinePresentation.timelineCompactLabelRenderModel(presentation, density, labelOverride);
+        return TimelinePresentation.timelineCompactLabelRenderModel(presentation, density, labelOverride, options);
     }
     const metrics = timelineCompactLabelMetrics(labelOverride || presentation?.compactLabel || presentation?.code || '');
     const isNarrow = density === 'micro' || density === 'tiny';
-    const stackCharacters = isNarrow && presentation?.verticalCompactCode === true;
+    const zoomLevel = Number.parseInt(options.zoomLevel, 10);
+    const characterStackAllowed = !Number.isFinite(zoomLevel) || zoomLevel >= 30;
+    const stackCharacters = isNarrow
+        && presentation?.verticalCompactCode === true
+        && characterStackAllowed;
     return {
         ...metrics,
         segments: stackCharacters
@@ -4987,9 +4991,12 @@ function createBookingBlock(booking, startHour, anchor, line = null) {
         ? [roomActivityDetailLabel, costumeLabel].filter(Boolean)
         : [];
     const roomActivityDetail = roomActivityDetailParts.join(' · ');
-    const compactLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, bookingBlockDensity, compactActivityLabel);
-    const microLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, 'micro', microActivityLabel);
-    const roomActivityLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, bookingBlockDensity, roomActivityMainLabel);
+    const compactRenderOptions = {
+        zoomLevel: AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES
+    };
+    const compactLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, bookingBlockDensity, compactActivityLabel, compactRenderOptions);
+    const microLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, 'micro', microActivityLabel, compactRenderOptions);
+    const roomActivityLabelMetrics = timelineCompactLabelRenderModel(activityPresentation, bookingBlockDensity, roomActivityMainLabel, compactRenderOptions);
     const microLabelHtml = microLabelMetrics.segments
         .map(part => `<span>${escapeHtml(part)}</span>`)
         .join(' ');
@@ -7580,7 +7587,9 @@ function renderMiniLineHtml(line, lineBookings, start, end, cellWidth) {
         const miniCostumeText = costumeLabel ? `<span class="mini-booking-costume">${escapeHtml(costumeLabel)}</span>` : '';
         const miniPresentation = timelineActivityPresentation(b, b, b.label || b.programCode, b.programName || '');
         const miniDensity = timelineBookingBlockDensity(width);
-        const miniPresentationMetrics = timelineCompactLabelRenderModel(miniPresentation, miniDensity, miniPresentation.code);
+        const miniPresentationMetrics = timelineCompactLabelRenderModel(miniPresentation, miniDensity, miniPresentation.code, {
+            zoomLevel: AppState.zoomLevel || CONFIG.TIMELINE.CELL_MINUTES
+        });
         const miniLabelHtml = miniPresentationMetrics.segments
             .map(part => `<span class="timeline-code-token">${escapeHtml(part)}</span>`)
             .join(' ');

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.59 - Autonomy Hardening Windows Controller
+
+### Release / Versioning / (02.09.2026) [codex]
+- **Autonomy Hardening Windows Controller** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.58 - Autonomy Hardening Windows Controller
 
 ### Release / Versioning / (02.09.2026) [codex]

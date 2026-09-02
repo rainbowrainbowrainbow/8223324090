@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.65 - Timeline Narrow Identity Fix
+
+### Release / Versioning / (02.09.2026) [codex]
+- **Timeline Narrow Identity Fix** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.64 - Timeline Presentation System v2 + Autonomy Hardening
 
 ### Release / Versioning / (02.09.2026) [codex]

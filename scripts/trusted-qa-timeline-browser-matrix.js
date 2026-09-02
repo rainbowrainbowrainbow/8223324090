@@ -13,6 +13,7 @@ const VIEWPORTS = Object.freeze([
     { name: 'mobile', width: 390, height: 844 }
 ]);
 const ZOOMS = Object.freeze([15, 30, 60]);
+const THEMES = Object.freeze(['dark', 'light']);
 const MIN_COMPACT_IDENTITY_FONT_PX = 9;
 
 function argValue(args, name, fallback = null) {
@@ -292,9 +293,12 @@ async function run(options = {}) {
         await waitForTimeline(page, options.date);
         const cases = [];
         for (const viewport of VIEWPORTS) {
-            for (const zoom of ZOOMS) cases.push(await captureCase(page, options.outputDirectory, bookingIds, viewport, zoom, 'dark'));
+            for (const zoom of ZOOMS) {
+                for (const theme of THEMES) {
+                    cases.push(await captureCase(page, options.outputDirectory, bookingIds, viewport, zoom, theme));
+                }
+            }
         }
-        cases.push(await captureCase(page, options.outputDirectory, bookingIds, VIEWPORTS[0], 30, 'light'));
         const acceptanceFailures = cases.flatMap(result => caseAcceptanceFailures(result)
             .map(failure => `${result.viewport}/${result.theme}/${result.zoom}:${failure}`));
         fail(acceptanceFailures.length === 0,
@@ -351,6 +355,7 @@ if (require.main === module) {
 module.exports = {
     ALLOWED_POST_PATHS,
     MIN_COMPACT_IDENTITY_FONT_PX,
+    THEMES,
     VIEWPORTS,
     ZOOMS,
     caseAcceptanceFailures,

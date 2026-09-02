@@ -23,6 +23,9 @@ const {
 } = require('../scripts/trusted-qa-timeline-controller');
 const {
     MIN_COMPACT_IDENTITY_FONT_PX,
+    THEMES,
+    VIEWPORTS,
+    ZOOMS,
     caseAcceptanceFailures
 } = require('../scripts/trusted-qa-timeline-browser-matrix');
 
@@ -288,6 +291,9 @@ test('responsive browser matrix changes zoom without requiring a visible desktop
     assert.doesNotMatch(source, /locator\(`\.zoom-btn\[data-zoom=/);
     assert.match(source, /requestUrl\.origin !== base/);
     assert.match(source, /suppressedExternalWriteCount/);
+    assert.deepEqual(THEMES, ['dark', 'light']);
+    assert.equal(VIEWPORTS.length * ZOOMS.length * THEMES.length, 18);
+    assert.match(source, /for \(const theme of THEMES\)/);
 });
 
 test('responsive browser matrix fails closed on unreadable or generic timeline identities', () => {

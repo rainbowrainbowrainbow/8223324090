@@ -20,7 +20,8 @@ const {
     createServiceOutRequest,
     enrollFiscalActionPin,
     getOperationalReport,
-    loadPilotRegisterState
+    loadPilotRegisterState,
+    applyPhase1CloseReadiness
 } = require('../services/payments/cashierOperationsService');
 const {
     loadCheckboxSalesReport,
@@ -28,6 +29,7 @@ const {
     loadOperationalHealth,
     loadReadinessState,
     listOperationalIncidents,
+    normalizeUnresolvedPagination,
     probeCheckboxReadiness,
     readinessErrorResponse,
     requestPhase1ShiftClose,
@@ -132,7 +134,15 @@ router.get('/pilot-register-state', requireAction('payments.view'), async (req, 
                 registerAlias
             })
         ]);
-        return res.status(200).json({ success: true, ...localState, readiness, readinessCode: readiness.readinessCode, integrationReady: readiness.integrationReady });
+        const phase1Close = applyPhase1CloseReadiness(localState.phase1Close, readiness);
+        return res.status(200).json({
+            success: true,
+            ...localState,
+            phase1Close,
+            readiness,
+            readinessCode: readiness.readinessCode,
+            integrationReady: readiness.integrationReady
+        });
     } catch (error) {
         const response = readinessErrorResponse(error);
         return res.status(response.status).json(response.body);
@@ -156,10 +166,15 @@ router.post('/readiness/probe', requireAction('payments.view'), async (req, res)
 
 router.get('/unresolved-orders', requireAction('payments.view'), async (req, res) => {
     try {
+        const pagination = normalizeUnresolvedPagination({
+            page: req.query.page,
+            pageSize: req.query.pageSize ?? req.query.page_size
+        });
         const result = await listUnresolvedPaymentOrders({
             user: req.user,
             crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
+            ...pagination
         });
         return res.status(200).json({ success: true, ...result });
     } catch (error) {
@@ -256,7 +271,8 @@ router.post('/shifts/:shiftId/phase1-close', requireAction('fiscal.shift.close')
         const result = await requestPhase1ShiftClose({
             user: req.user,
             shiftId: req.params.shiftId,
-            idempotencyKey: idempotencyKeyFromRequest(req)
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            body: req.body || {}
         });
         return res.status(202).json({ success: true, ...result });
     } catch (error) {

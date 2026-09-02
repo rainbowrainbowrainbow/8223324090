@@ -2,13 +2,13 @@
 
 Status: implementation contract for a disabled production MVP. Production Checkbox activation is out of scope.
 
-Last reviewed: 2026-08-22.
+Last reviewed: 2026-09-03.
 
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live package baseline checked before this hardening release: `0.81.16` (`Checkbox Test Readiness Hardening`).
-- Live commit checked before this hardening release: `e2ebbe944a3fa87d5ca92414447e62fc03b48885`.
+- Live package baseline checked before this hardening release: `0.81.66` (`Timeline Narrow Identity Fix`).
+- Live commit checked before this hardening release: `a43a2eaef5120580aa624f33655a388ae6f79acd`.
 - Live source branch checked before this hardening release: `codex/eventgenix-production`.
 - This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 
@@ -20,18 +20,19 @@ All follow-up implementation or release tasks must start from the newest live so
 - ReDoc UI: `https://api.checkbox.in.ua/api/redoc`.
 - Swagger UI: `https://api.checkbox.in.ua/api/docs`.
 - OpenAPI JSON: `https://api.checkbox.in.ua/api/openapi.json`.
-- OpenAPI version reviewed during this task: `2.105.1+62034299`, OpenAPI `3.1.0`.
+- OpenAPI version reviewed during this task: `2.106.4+47dcea49`, OpenAPI `3.1.0`.
+- The deterministic value-free projection is stored in `config/checkboxOpenApiContract.js`. `npm run check:checkbox-openapi` validates the local adapter and fixtures against it without network access; `npm run check:checkbox-openapi:official` additionally compares the projection with the current public OpenAPI before release or activation.
 
 Relevant capabilities confirmed in the current OpenAPI contract:
 
 - Cashier authentication and readiness: `POST /api/v1/cashier/signin`, `POST /api/v1/cashier/signinPinCode`, `GET /api/v1/cashier/me`, `GET /api/v1/cashier/shift`.
-- Shifts: `GET /api/v1/shifts`, `POST /api/v1/shifts`, `POST /api/v1/shifts/close`, `POST /api/v1/shifts/{shift_id}/close`.
+- Shifts: `GET /api/v1/shifts`, `POST /api/v1/shifts`, `GET /api/v1/shifts/{shift_id}`, `POST /api/v1/shifts/close`.
 - Receipt validation and sale: `POST /api/v1/receipts/validate`, `POST /api/v1/receipts/sell`.
 - Receipt lookup and artifacts: `GET /api/v1/receipts/{receipt_id}`, `html`, `pdf`, `png`, `qrcode`, `text`, and `xml` artifact routes.
 - Service receipts: `POST /api/v1/receipts/service`.
 - Webhook configuration: `GET /api/v1/webhook`, `POST /api/v1/webhook`, `DELETE /api/v1/webhook`.
 
-Webhook signature contract confirmed from OpenAPI: Checkbox callback uses `x-request-signature`, calculated as Base64 HMAC-SHA256 over the exact UTF-8 raw request body with the webhook secret key. EventGenix verifies that format route-locally, but production webhook configuration remains out of scope until a separate activation task.
+The inbound webhook signature is not described by the OpenAPI schema itself. The separate official webhook integration contract uses `x-request-signature`, calculated as Base64 HMAC-SHA256 over the exact UTF-8 raw request body with the webhook secret key. EventGenix verifies that format route-locally and tests it separately; production webhook configuration remains out of scope until a dedicated activation task.
 
 ## Product Boundary
 
@@ -45,6 +46,7 @@ Phase 1 exists to prove one controlled path:
 - Payment methods: cash and manually confirmed card terminal.
 - Fiscal result: one durable Checkbox sale receipt, with official URL/QR/PDF shown only after fiscalization.
 - Recovery: polling/status lookup for pending or unknown provider states.
+- End of day: one narrow, owner-only Phase-1 close action that blocks on every unresolved receipt and polls the exact provider shift to `CLOSED`.
 
 Cashier PRO is Phase 2 and must stay disabled separately. Phase 2 includes service in/out, supervisor approval PIN, reconciliation, shift close checklist, refunds, operational reports, auto-close, and preschool/day-care activation.
 
@@ -86,11 +88,11 @@ Required logical gates for follow-up tasks:
 | Payment workflow | Server-side order preview, cash/card manual confirmation, received/change snapshot, one local fiscal operation and outbox job | Real admission source activation and accountant-approved mapping data | Split/partial/prepayment not in scope |
 | Checkbox adapter | Runtime provider factory, worker-client DTO bridge, receipt UUID lookup, status/error normalization, sandbox harness, exact official API host allowlist | Real Checkbox sandbox/prod credentials are not configured in repository | Broader provider operations after MVP sale path |
 | Outbox/recovery | Worker skips claiming when disabled/unconfigured, uses locks/batches/retry/backoff/dead letter, and lookup-before-resale | Production integration gate remains disabled | Manual reconciliation UI and operations |
-| UI | `/cashier-payments` thin page and menu exist; creator and art director access exists; Phase 2 UI is gated | Live production QA must stay read-only while integration is disabled | Service in/out, close checklist, refunds, reports |
+| UI | `/cashier-payments` thin page and menu exist; creator and art director access exists; an owner-only Phase-1 shift close is separate from Cashier PRO; Phase 2 UI is gated | Live production QA must stay read-only while integration is disabled | Service in/out, close checklist, refunds, reports |
 | Permissions | Narrow capabilities, user/profile/location/register bindings, and `capability_scope` enforcement exist | Production bindings require separate operator configuration | Supervisor PIN approval workflows |
 | Configuration | Operator CLI supports dry-run/preflight/apply/status/diff, explicit change commands, and local non-secret config files | Production legal/tax/provider/user values still require explicit activation input | Multi-FOP production rollout |
 | Webhook | Route-specific raw body and official `x-request-signature` Base64 HMAC verification exist | Production webhook configuration remains disabled and out of scope | Provider webhook activation/configuration |
-| Sandbox QA | Local mock/PG tests plus a real configured test-register proof completed on 2026-08-22: exact test identity, one CASH and one CASHLESS receipt reached `DONE`, and only smoke-owned shifts were closed | Keep a stable local device ID and never reuse the test-only unreported-permission exception in production | Extended scenarios after MVP sale succeeds |
+| Sandbox QA | Local mock/PG tests plus real configured test-register proofs: the 2026-08-22 CASH/CASHLESS receipts reached `DONE`; on 2026-09-02 a separate one-card browser-to-EventGenix proof reached `DONE` and the exact shift reached `CLOSED` through the canonical Phase-1 close route, with zero unresolved jobs/orders | Keep a stable local device ID and never reuse the test-only unreported-permission exception in production | Extended scenarios after MVP sale succeeds |
 | Production activation | Not active | Separate activation task required | Preschool/day-care separate profile/FOP/register |
 
 ## MVP Mapping

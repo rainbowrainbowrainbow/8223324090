@@ -1,6 +1,10 @@
 'use strict';
 
-const SECRET_PATTERN = /(Bearer\s+)[A-Za-z0-9._~+/-]+|(token|secret|password|pin|api[_-]?key|authorization|license[_-]?key|access[_-]?key|device[_-]?id)(["'\s:=]+)([^"'\s,}]+)/gi;
+const SECRET_KEY_PATTERN = /token|secret|password|passcode|pin(?:[\s_-]?code)?|api[\s_-]?key|authorization|license[\s_-]?key|access[\s_-]?key|device[\s_-]?id|login|username/i;
+const SECRET_PATTERN = new RegExp(
+    `(Bearer\\s+)[A-Za-z0-9._~+/-]+|(${SECRET_KEY_PATTERN.source})(["'\\s:=]+)([^"'\\s,}]+)`,
+    'gi'
+);
 
 class CheckboxClientError extends Error {
     constructor(code, message, { status = 500, retryable = false, unknown = false, details = null, cause = null } = {}) {
@@ -27,8 +31,14 @@ function redactCheckboxDiagnostics(value) {
     if (Array.isArray(value)) return value.map(redactCheckboxDiagnostics);
     if (typeof value === 'object') {
         const output = {};
+        const sensitiveDescriptor = Object.entries(value).some(([key, item]) => (
+            /^(field|name|key)$/i.test(key)
+            && typeof item === 'string'
+            && SECRET_KEY_PATTERN.test(item)
+        ));
         for (const [key, item] of Object.entries(value)) {
-            if (/token|secret|password|pin|api[_-]?key|authorization|license[_-]?key|access[_-]?key|device[_-]?id/i.test(key)) {
+            if (SECRET_KEY_PATTERN.test(key)
+                || (sensitiveDescriptor && /^(actual|expected|value)$/i.test(key))) {
                 output[key] = '[redacted]';
             } else {
                 output[key] = redactCheckboxDiagnostics(item);

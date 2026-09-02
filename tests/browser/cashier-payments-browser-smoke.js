@@ -28,6 +28,9 @@ const state = {
     orders: new Map(),
     createKeys: [],
     confirmKeys: [],
+    phase1CloseKeys: [],
+    unresolvedAvailable: true,
+    unresolvedDelayMs: 0,
     shift: null,
     serviceOutOperations: new Map(),
     operationCalls: [],
@@ -107,7 +110,7 @@ function orderDetails(order) {
 }
 
 function ensureShift() {
-    if (!state.shift) state.shift = { id: 501, status: 'open', openedAt: '2026-08-04T10:00:00.000Z', closedAt: null };
+    if (!state.shift) state.shift = { id: 501, status: 'open', providerStatus: 'OPENED', openedAt: '2026-08-04T10:00:00.000Z', closedAt: null };
     return state.shift;
 }
 
@@ -130,6 +133,14 @@ function activeChecklist() {
 }
 
 function registerStatePayload() {
+    const unresolvedCount = [...state.orders.values()].filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized').length;
+    const phase1Close = state.shift ? {
+        visible: true,
+        allowed: state.shift.providerStatus === 'OPENED' && unresolvedCount === 0,
+        shiftId: state.shift.id,
+        status: state.shift.providerStatus,
+        reasonCode: unresolvedCount > 0 ? 'unresolved_operations' : null
+    } : null;
     return {
         success: true,
         fiscalProfileId: 1,
@@ -150,6 +161,7 @@ function registerStatePayload() {
         integrationReady: true,
         readinessCode: 'ready',
         shift: state.shift,
+        phase1Close,
         checklist: state.shift ? activeChecklist() : null
     };
 }
@@ -160,6 +172,9 @@ async function handleApi(req, res, url) {
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') return json(res, 200, registerStatePayload());
     if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
+        const delayMs = Math.max(0, Number(state.unresolvedDelayMs || 0));
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
+        if (!state.unresolvedAvailable) return json(res, 503, { success: false, code: 'queue_unavailable', error: 'queue unavailable' });
         const orders = [...state.orders.values()]
             .filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized')
             .map(order => ({
@@ -175,7 +190,18 @@ async function handleApi(req, res, url) {
                 nextRunAt: '2026-08-04T10:01:00.000Z',
                 incidentReason: null
             }));
-        return json(res, 200, { success: true, fiscalProfileId: 1, fiscalRegisterId: 10, orders });
+        return json(res, 200, {
+            success: true,
+            fiscalProfileId: 1,
+            fiscalRegisterId: 10,
+            page: 1,
+            pageSize: 50,
+            totalCount: orders.length,
+            registerCount: orders.length,
+            myCount: orders.filter(order => order.isMine === true).length,
+            hasMore: false,
+            orders
+        });
     }
     if (url.pathname === '/api/payments/checkbox-sales-report' && req.method === 'GET') {
         const orders = [...state.orders.values()]
@@ -242,6 +268,22 @@ async function handleApi(req, res, url) {
         state.operationCalls.push({ type: 'close', key: req.headers['idempotency-key'] });
         state.shift.status = 'closing';
         return json(res, 200, { success: true, replayed: false, fiscalShiftId: Number(closeMatch[1]), status: 'closing', checklist: activeChecklist() });
+    }
+    const phase1CloseMatch = url.pathname.match(/^\/api\/payments\/shifts\/(\d+)\/phase1-close$/);
+    if (phase1CloseMatch && req.method === 'POST') {
+        const shiftId = Number(phase1CloseMatch[1]);
+        const key = req.headers['idempotency-key'];
+        state.phase1CloseKeys.push(key);
+        if (!state.shift || state.shift.id !== shiftId) return json(res, 409, { success: false, code: 'shift_identity_mismatch' });
+        const replayed = state.shift.providerStatus === 'CLOSING' || state.shift.providerStatus === 'CLOSED';
+        state.shift.status = 'closing';
+        state.shift.providerStatus = 'CLOSING';
+        setTimeout(() => {
+            state.shift.status = 'closed';
+            state.shift.providerStatus = 'CLOSED';
+            state.shift.closedAt = '2026-08-04T18:00:00.000Z';
+        }, 100);
+        return json(res, 202, { success: true, replayed, fiscalShiftId: shiftId, status: 'closing' });
     }
     const reportMatch = url.pathname.match(/^\/api\/payments\/shifts\/(\d+)\/report$/);
     if (reportMatch && req.method === 'GET') {
@@ -330,10 +372,22 @@ async function run() {
         assert.equal(new Set(state.confirmKeys).size, state.confirmKeys.length, 'duplicate UI clicks must not create a second idempotency key');
 
         const currentOrderId = state.nextOrderId;
+        await page.waitForSelector('#startNextOrderBtn:not(.hidden):not([disabled])');
+        state.unresolvedDelayMs = 500;
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'checking retains the last known unresolved receipt');
+        assert.equal(await page.getAttribute('#unresolvedOrdersBody', 'aria-busy'), 'true', 'checking exposes an accessible busy state');
+        assert.equal(await page.isDisabled('#startNextOrderBtn'), true, 'checking blocks next customer even when the previous payment is confirmed');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="available"]');
+        state.unresolvedDelayMs = 0;
+        await page.waitForSelector('#startNextOrderBtn:not([disabled])');
+
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(await page.isDisabled('#confirmCardBtn'), true, 'reload keeps pending payment blocked');
         assert.equal(await page.locator('#operationalContourPanel').isVisible(), false, 'Cashier PRO panel stays hidden when flag is false');
+        assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'Phase-1 close is blocked while the register has an unresolved receipt');
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'next customer keeps unresolved previous receipt visible');
@@ -346,12 +400,77 @@ async function run() {
         assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /api\.checkbox\.ua\/check\.pdf/);
         assert.match(await page.getAttribute('#providerQrUrl', 'href'), /api\.checkbox\.ua\/qr/);
         await page.waitForSelector('#startNextOrderBtn:not(.hidden)');
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        state.unresolvedDelayMs = 500;
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
+        assert.equal(await page.isDisabled('#startNextOrderBtn'), true, 'checking blocks the next-customer transition');
+        assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'checking blocks Phase-1 shift close');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
+        state.unresolvedDelayMs = 0;
+        await page.waitForSelector('#startNextOrderBtn:not([disabled])');
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        state.unresolvedDelayMs = 500;
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
+        assert.equal(await page.isDisabled('#createPaymentOrderBtn'), true, 'checking blocks creating a new payment order');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
+        state.unresolvedDelayMs = 0;
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        await page.check('input[name="paymentTender"][value="cash"]');
         await page.fill('#paymentKidsCount', '2');
         await page.click('#createPaymentOrderBtn');
         await page.waitForFunction(() => document.querySelector('#paymentTotalAmount')?.textContent.includes('500'));
         assert.equal(state.nextOrderId, currentOrderId + 1, 'new payment can start after fiscalized receipt');
+        await page.waitForSelector('#cashReceivedAmount:not([disabled])');
+        state.unresolvedDelayMs = 500;
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
+        assert.equal(await page.isDisabled('#cashReceivedAmount'), true, 'checking blocks received-cash input on an unpaid draft');
+        assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'checking blocks payment confirmation on an unpaid draft');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
+        state.unresolvedDelayMs = 0;
+        await page.waitForSelector('#cashReceivedAmount:not([disabled])');
+
+        await page.waitForSelector('#phase1ShiftPanel:not(.hidden)');
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        state.unresolvedAvailable = false;
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
+        assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'Phase-1 close is blocked when the unresolved queue is unavailable');
+        state.unresolvedAvailable = true;
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        await page.evaluate(() => {
+            window.__cashierSmokeConfirmModal = window.confirmModal;
+            window.confirmModal = undefined;
+        });
+        await page.click('#phase1CloseShiftBtn');
+        await page.waitForFunction(() => document.querySelector('#cashierGlobalStatus')?.textContent.includes('Безпечне підтвердження тимчасово недоступне'));
+        assert.equal(state.phase1CloseKeys.length, 0, 'missing shared confirmation sends no Phase-1 close request');
+        await page.evaluate(() => { window.confirmModal = window.__cashierSmokeConfirmModal; });
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        await page.click('#phase1CloseShiftBtn');
+        await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]');
+        assert.match(await page.textContent('.confirm-overlay .confirm-message'), /нові чеки потребуватимуть відкриття нової зміни/);
+        await page.click('.confirm-overlay .confirm-cancel');
+        await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]', { state: 'detached' });
+        assert.equal(state.phase1CloseKeys.length, 0, 'cancelled final confirmation sends no Phase-1 close request');
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        await page.evaluate(() => {
+            const button = document.querySelector('#phase1CloseShiftBtn');
+            button.click();
+            button.click();
+        });
+        await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]');
+        await page.click('.confirm-overlay .confirm-ok');
+        await page.waitForFunction(() => document.querySelector('#phase1ShiftStatus')?.textContent.trim() === 'закрита', null, { timeout: 10000 });
+        assert.equal(state.phase1CloseKeys.length, 1, 'Phase-1 close double click sends one request');
+        assert.ok(state.phase1CloseKeys[0], 'Phase-1 close uses a stable Idempotency-Key');
+        assert.equal(await page.evaluate(() => document.activeElement?.id), 'phase1ShiftStatus', 'focus moves to the confirmed CLOSED status');
 
         const deniedContext = await browser.newContext();
         await deniedContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });

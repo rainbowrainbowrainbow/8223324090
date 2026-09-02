@@ -620,6 +620,8 @@ function normalizeProviderReceipt(receipt = {}, fallback = {}, context = {}) {
     requireProviderMatch(receiptField(receipt, 'receiptType', 'receipt_type'), providerReceiptTypeForOperation(context.job?.operation_type), 'provider_receipt_type_mismatch', 'receiptType');
     requireProviderMatch(receiptField(receipt, 'providerRegisterId', 'provider_register_id'), context.job?.provider_register_id, 'provider_receipt_register_mismatch', 'providerRegisterId');
     requireProviderMatch(receiptField(receipt, 'providerCashierId', 'provider_cashier_id'), context.job?.provider_cashier_id, 'provider_receipt_cashier_mismatch', 'providerCashierId');
+    requireProviderMatch(receiptField(receipt, 'providerShiftId', 'provider_shift_id'), context.job?.provider_shift_id, 'provider_receipt_shift_mismatch', 'providerShiftId');
+    requireProviderMatch(receiptField(receipt, 'providerOrganizationId', 'provider_organization_id'), context.job?.provider_organization_id, 'provider_receipt_organization_mismatch', 'providerOrganizationId');
     return {
         providerReceiptId,
         fiscalCode: receipt.fiscalCode || receipt.fiscal_code || null,
@@ -1632,19 +1634,19 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
             let result;
             if (context.job.job_type === 'receipt_sell' || context.job.job_type === 'receipt_status_lookup') {
                 result = await runReceiptSaleJob(effectiveProvider, context);
-                return finalizeJobSuccess(dbPool, context, result);
+                return await finalizeJobSuccess(dbPool, context, result);
             }
             if (context.job.job_type === 'receipt_return') {
                 result = await runReceiptReturnJob(effectiveProvider, context);
-                return finalizeJobSuccess(dbPool, context, result);
+                return await finalizeJobSuccess(dbPool, context, result);
             }
             if (context.job.job_type === 'service_receipt') {
                 result = await runServiceReceiptJob(effectiveProvider, context);
-                return finalizeJobSuccess(dbPool, context, result);
+                return await finalizeJobSuccess(dbPool, context, result);
             }
             if (context.job.job_type === 'shift_open' || context.job.job_type === 'shift_close') {
                 result = await runShiftJob(effectiveProvider, context);
-                return finalizeJobSuccess(dbPool, context, result);
+                return await finalizeJobSuccess(dbPool, context, result);
             }
             throw new PaymentOutboxWorkerError('payment_outbox_job_type_not_supported', 'Payment outbox job type is not supported by this worker', { retryable: false });
         } catch (error) {

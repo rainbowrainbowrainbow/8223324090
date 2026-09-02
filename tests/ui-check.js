@@ -7228,6 +7228,7 @@ check('Cashier thin UI exposes server-backed unresolved queue and read-only Chec
     cashierPaymentsHtml.includes('id="unresolvedOrdersPanel"')
     && cashierPaymentsHtml.includes('id="unresolvedOrdersBody"')
     && cashierPaymentsHtml.includes('id="refreshUnresolvedOrdersBtn"')
+    && cashierPaymentsHtml.includes('id="loadMoreUnresolvedOrdersBtn"')
     && cashierPaymentsHtml.includes('id="checkboxSalesReportPanel"')
     && cashierPaymentsHtml.includes('id="checkboxSalesReportBody"')
     && cashierPaymentsHtml.includes('id="loadCheckboxSalesReportBtn"')
@@ -7242,6 +7243,23 @@ check('Cashier thin UI exposes server-backed unresolved queue and read-only Chec
     && !cashierPaymentsHtml.includes('id="refundForm"')
     && !cashierPaymentsHtml.includes('id="reconciliationForm"')
     && !cashierPaymentsHtml.includes('type="password"'));
+check('Cashier thin UI exposes a separate fail-closed Phase-1 Checkbox shift close surface',
+    cashierPaymentsHtml.includes('id="phase1ShiftPanel"')
+    && cashierPaymentsHtml.includes('id="phase1ShiftStatus"')
+    && cashierPaymentsHtml.includes('id="phase1ShiftCloseNotice"')
+    && cashierPaymentsHtml.includes('id="phase1CloseShiftBtn"')
+    && cashierPaymentsHtml.includes('aria-describedby="phase1ShiftCloseNotice"')
+    && !cashierPaymentsHtml.includes('id="closeShiftBtn"')
+    && cashierPaymentsJs.includes('state.registerState?.phase1Close')
+    && cashierPaymentsJs.includes('raw.visible === true')
+    && cashierPaymentsJs.includes("getOperationIdempotencyKey('phase1-close', shiftId)")
+    && cashierPaymentsJs.includes('/phase1-close')
+    && cashierPaymentsJs.includes("context.status !== 'opened'")
+    && cashierPaymentsJs.includes("state.unresolvedQueueState === 'available'")
+    && cashierPaymentsJs.includes("typeof window.confirmModal === 'function'")
+    && cashierPaymentsJs.includes('Закрити поточну зміну в Checkbox?')
+    && !cashierPaymentsJs.includes('window.confirm(')
+    && cashierPaymentsJs.includes('phase1CloseReachedClosed'));
 check('Cashier frontend uses provider-aware readiness and server-backed recovery APIs',
     cashierPaymentsJs.includes('loadPilotRegisterState')
     && cashierPaymentsJs.includes('/api/payments/pilot-register-state')
@@ -7252,11 +7270,21 @@ check('Cashier frontend uses provider-aware readiness and server-backed recovery
     && cashierPaymentsJs.includes('renderUnresolvedOrders')
     && cashierPaymentsJs.includes('queue_unavailable')
     && cashierPaymentsJs.includes('unresolvedQueueState')
+    && cashierPaymentsJs.includes('unresolvedRegisterCount')
+    && cashierPaymentsJs.includes("loadUnresolvedOrders({ silent: false, append: true })")
     && cashierPaymentsJs.includes('refreshReadiness')
     && cashierPaymentsJs.includes('failed_retryable')
     && cashierPaymentsJs.includes('failed_terminal')
     && cashierPaymentsJs.includes('dead')
     && cashierPaymentsJs.includes('POLLING_TIMEOUT_MS'));
+check('Cashier unresolved refresh fails closed while checking and retains the last known server snapshot',
+    cashierPaymentsJs.includes("state.unresolvedQueueState = 'checking'")
+    && cashierPaymentsJs.includes("const isChecking = state.unresolvedQueueState === 'checking'")
+    && cashierPaymentsJs.includes("body.setAttribute('aria-busy', isChecking ? 'true' : 'false')")
+    && cashierPaymentsJs.includes("refreshButton.setAttribute('aria-busy', busy ? 'true' : 'false')")
+    && cashierPaymentsJs.includes('Перевіряємо повний список незавершених чеків')
+    && cashierPaymentsJs.includes('Останній відомий список збережено нижче, але під час перевірки він може змінитися')
+    && cashierPaymentsJs.includes('state.unresolvedLastKnownOrders'));
 check('Cashier payments frontend preserves idempotency and blocks repeat payment while fiscalization is pending',
     cashierPaymentsJs.includes('getCreateIdempotencyKey')
     && cashierPaymentsJs.includes('getConfirmIdempotencyKey')

@@ -16,6 +16,53 @@ const migration316 = read('db/migrations/316_payment_fiscal_ledger_foundation.sq
 const migration319 = read('db/migrations/319_cashier_operations_hardening.sql');
 const migration326 = read('db/migrations/328_cashier_pro_isolation_hardening.sql');
 const routes = read('routes/payments.js');
+const {
+  applyPhase1CloseReadiness,
+  resolvePhase1CloseAvailability
+} = require('../services/payments/cashierOperationsService');
+
+test('Phase-1 close is visible only to the exact owner and stays eligible when payment acceptance is disabled', () => {
+  const user = { id: 4, role: 'creator', business_contexts: ['event_genix'] };
+  const local = resolvePhase1CloseAvailability({
+    user,
+    binding: { capability_scope: ['payments.view', 'fiscal.shift.close'] },
+    registerMetadata: { integration_owner: 4 },
+    shift: { id: 9, status: 'open', lifecycle_stage: 'OPENED', provider_shift_id: 'provider-shift' },
+    blockerCount: 0,
+    checkboxIntegrationEnabled: true,
+    registerFeatureEnabled: true,
+    runtimeConfigResolvable: true
+  });
+  const ready = applyPhase1CloseReadiness(local, {
+    checkboxIntegrationEnabled: true,
+    paymentAcceptanceEnabled: false,
+    providerReady: true,
+    readinessCode: 'payment_acceptance_disabled',
+    shiftState: 'open'
+  });
+  assert.deepEqual(ready, { visible: true, allowed: true, reasonCode: 'ready', shiftId: 9, status: 'OPENED' });
+  assert.deepEqual(Object.keys(ready).sort(), ['allowed', 'reasonCode', 'shiftId', 'status', 'visible']);
+  const otherUser = resolvePhase1CloseAvailability({
+    user: { ...user, id: 3 },
+    binding: { capability_scope: ['payments.view', 'fiscal.shift.close'] },
+    registerMetadata: { integration_owner: 4 },
+    shift: { id: 9, status: 'open', lifecycle_stage: 'OPENED', provider_shift_id: 'provider-shift' },
+    checkboxIntegrationEnabled: true,
+    registerFeatureEnabled: true,
+    runtimeConfigResolvable: true
+  });
+  assert.equal(otherUser.visible, false);
+  assert.equal(otherUser.allowed, false);
+  assert.equal(otherUser.reasonCode, 'integration_owner_only');
+});
+
+test('pilot register state sanitizes shift provider identity and reports the just-closed local shift', () => {
+  const body = service.slice(service.indexOf('async function loadPilotRegisterState'), service.indexOf('async function createServiceIn'));
+  assert.match(body, /status IN \('opening', 'open', 'closing', 'closed'\)/);
+  assert.match(body, /phase1Close/);
+  assert.doesNotMatch(body, /providerShiftId:/);
+  assert.doesNotMatch(body, /providerSnapshot:/);
+});
 
 test('auto-open shift is register-locked and linked to sale fiscal operations', () => {
   assert.match(service, /pg_advisory_xact_lock\(\$1, \$2\)/);

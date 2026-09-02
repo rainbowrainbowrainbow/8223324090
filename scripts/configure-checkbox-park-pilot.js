@@ -19,6 +19,8 @@ const APPLY_CONFIRM_VALUE = 'true';
 const ACTION_PIN_ENV = 'CHECKBOX_PILOT_ACTION_PIN';
 const ACTION_PIN_USER_ENV_PREFIX = 'CHECKBOX_PILOT_ACTION_PIN_USER_';
 const CONFIG_FILE_ENV = 'CHECKBOX_PILOT_CONFIG_FILE';
+const NPM_CONFIG_FILE_ENV = 'npm_config_config_file';
+const NPM_LIFECYCLE_EVENT = 'configure:checkbox:park';
 const QA_TEST_USER_ID = 47;
 
 const MODES = Object.freeze([
@@ -42,6 +44,10 @@ const DEFAULT_CAPABILITIES = Object.freeze([
     'fiscal.shift.open'
 ]);
 
+const INTEGRATION_OWNER_CAPABILITIES = Object.freeze([
+    'fiscal.shift.close'
+]);
+
 const PIN_REQUIRED_CAPABILITIES = Object.freeze([
     'fiscal.service_out.approve',
     'fiscal.refund',
@@ -59,8 +65,41 @@ class PilotConfigError extends Error {
     }
 }
 
+function isHelpRequest(argv = []) {
+    return argv.includes('--help') || argv.includes('-h');
+}
+
+function cliUsage() {
+    return [
+        'Configure the Checkbox park + middle pilot mapping (dry-run by default).',
+        '',
+        'Usage:',
+        '  node scripts/configure-checkbox-park-pilot.js --config-file <path>',
+        '  node scripts/configure-checkbox-park-pilot.js preflight --config-file <path>',
+        '  npm run configure:checkbox:park -- --config-file="C:\\Users\\Plotva\\.eventgenix\\checkbox-park-test.config.json"',
+        '  npm run configure:checkbox:park -- preflight --config-file="C:\\Users\\Plotva\\.eventgenix\\checkbox-park-test.config.json"',
+        '',
+        'Windows/npm 10 note:',
+        '  With npm, keep --config-file=<path> as one argument. A separated',
+        '  --config-file <path> can be consumed by npm before the script starts.',
+        '',
+        'Alternative:',
+        '  Set CHECKBOX_PILOT_CONFIG_FILE to the local JSON path, then run the command without --config-file.',
+        '',
+        'Mutation modes additionally require an authorized actor, a reason, and the explicit apply safety environment gate.',
+        'Never put passwords, PINs, license keys, access keys, tokens, webhook secrets, or price overrides in the JSON file or CLI arguments.'
+    ].join('\n');
+}
+
+function configFilePathFromEnvironment(env = {}) {
+    const explicitPath = optionalText(env[CONFIG_FILE_ENV]);
+    if (explicitPath) return explicitPath;
+    if (env.npm_lifecycle_event !== NPM_LIFECYCLE_EVENT) return null;
+    return optionalText(env[NPM_CONFIG_FILE_ENV]);
+}
+
 function parseArgs(argv = process.argv.slice(2), env = {}) {
-    const configFilePath = configFilePathFromArgs(argv) || optionalText(env[CONFIG_FILE_ENV]);
+    const configFilePath = configFilePathFromArgs(argv) || configFilePathFromEnvironment(env);
     const options = {
         mode: 'dry-run',
         crmProfileKey: CRM_PROFILE_KEY,
@@ -136,6 +175,7 @@ function parseArgs(argv = process.argv.slice(2), env = {}) {
             i += 1;
             continue;
         }
+        if (name.startsWith('config-file=')) continue;
         if (forbidden.test(name) && !['provider-license-ref', 'cashier-login-ref'].includes(name)) {
             throw new PilotConfigError('pilot_config_secret_arg_forbidden', `Raw secret-like argument is forbidden: ${arg}`);
         }
@@ -222,6 +262,13 @@ function configFilePathFromArgs(argv = []) {
         if (argv[index] === '--config-file') {
             const value = argv[index + 1];
             if (!value || value.startsWith('--')) {
+                throw new PilotConfigError('pilot_config_arg_value_missing', 'Value is required for --config-file');
+            }
+            return value;
+        }
+        if (argv[index].startsWith('--config-file=')) {
+            const value = argv[index].slice('--config-file='.length);
+            if (!value) {
                 throw new PilotConfigError('pilot_config_arg_value_missing', 'Value is required for --config-file');
             }
             return value;
@@ -539,10 +586,16 @@ function normalizePlan(options) {
         providerLicenseRef: normalizeRef(options.providerLicenseRef, 'provider_license_ref'),
         providerCashierId: requireText(options.providerCashierId, 'provider_cashier_id'),
         cashierLoginRef: normalizeRef(options.cashierLoginRef, 'cashier_login_ref'),
-        integrationOwner: requireText(options.integrationOwner, 'integration_owner'),
+        integrationOwner: Number(requireText(options.integrationOwner, 'integration_owner')),
         expectedIsTest: parseExpectedIsTest(options.expectedIsTest),
         items: options.items
     };
+    if (!Number.isSafeInteger(fullPlan.integrationOwner) || fullPlan.integrationOwner <= 0) {
+        throw new PilotConfigError('pilot_config_integration_owner_invalid', 'integration owner must be an exact positive EventGenix user id');
+    }
+    if (!fullPlan.cashierUserIds.includes(fullPlan.integrationOwner)) {
+        throw new PilotConfigError('pilot_config_integration_owner_binding_required', 'Integration owner must have an exact cashier binding in this config');
+    }
     if (fullPlan.primaryTestCashierUserId && !fullPlan.cashierUserIds.includes(fullPlan.primaryTestCashierUserId)) {
         throw new PilotConfigError('pilot_config_primary_cashier_missing', 'Primary test cashier user must be included in cashier bindings');
     }
@@ -551,6 +604,17 @@ function normalizePlan(options) {
     }
     assertNoCredentialRefCollisions([fullPlan.providerLicenseRef, fullPlan.cashierLoginRef]);
     return fullPlan;
+}
+
+function capabilitiesForUser(plan, userId) {
+    const normalizedUserId = Number(userId);
+    const ownerUserId = Number(plan?.integrationOwner);
+    const ownerOnly = new Set(INTEGRATION_OWNER_CAPABILITIES);
+    const capabilities = (plan?.capabilities || []).filter(capability => !ownerOnly.has(capability));
+    if (Number.isSafeInteger(ownerUserId) && ownerUserId > 0 && normalizedUserId === ownerUserId) {
+        capabilities.push(...INTEGRATION_OWNER_CAPABILITIES);
+    }
+    return [...new Set(capabilities)];
 }
 
 function requiresActionPin(capabilities = []) {
@@ -626,6 +690,10 @@ function publicPlan(plan) {
         integrationOwner: plan.integrationOwner || null,
         expectedIsTest: plan.expectedIsTest,
         capabilities: plan.capabilities,
+        bindings: (plan.cashierUserIds || []).map(userId => ({
+            userId,
+            capabilityScope: capabilitiesForUser(plan, userId).sort()
+        })),
         actionPinRequired: requiresActionPin(plan.capabilities),
         primaryTestCashierUserId: plan.primaryTestCashierUserId || null,
         itemMappings: (plan.items || []).map(item => ({
@@ -674,7 +742,7 @@ function desiredSnapshot(plan) {
             userId,
             providerCashierId: plan.providerCashierId || null,
             cashierLoginRef: plan.cashierLoginRef || null,
-            capabilityScope: [...(plan.capabilities || [])].sort()
+            capabilityScope: capabilitiesForUser(plan, userId).sort()
         })),
         itemMappings: [...(plan.items || [])]
             .sort((a, b) => a.itemCode.localeCompare(b.itemCode))
@@ -868,7 +936,7 @@ async function preflightPlan(client, plan, { useStoredMappings = false } = {}) {
     }
     const deniedCapabilities = [];
     for (const user of users.rows) {
-        for (const capability of plan.capabilities) {
+        for (const capability of capabilitiesForUser(plan, Number(user.id))) {
             const decision = resolveCapability(user, capability);
             if (!decision.allowed) deniedCapabilities.push({ userId: Number(user.id), capability, reason: decision.reason });
         }
@@ -1016,7 +1084,7 @@ async function applyPlan(client, plan, env = process.env) {
                 PROVIDER,
                 plan.providerCashierId,
                 plan.cashierLoginRef,
-                plan.capabilities,
+                capabilitiesForUser(plan, userId),
                 pinHash,
                 pinHash ? userId : null
             ]
@@ -1273,7 +1341,7 @@ async function rotateBinding(client, plan, env = process.env) {
                 PROVIDER,
                 plan.providerCashierId,
                 plan.cashierLoginRef,
-                plan.capabilities,
+                capabilitiesForUser(plan, userId),
                 pinHash,
                 pinHash ? userId : null
             ]
@@ -1295,14 +1363,47 @@ async function changeOwner(client, plan) {
     if (!beforeStatus.found || !beforeStatus.fiscalRegisterId) {
         throw new PilotConfigError('pilot_config_register_missing', 'Configured park middle register does not exist');
     }
+    const ownerBinding = await client.query(
+        `SELECT id
+           FROM fiscal_cashier_bindings
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND user_id = $3
+            AND status = 'active'
+          FOR UPDATE`,
+        [beforeStatus.fiscalProfileId, beforeStatus.fiscalRegisterId, plan.integrationOwner]
+    );
+    if (ownerBinding.rows.length !== 1) {
+        throw new PilotConfigError('pilot_config_integration_owner_binding_required', 'Integration owner must have one active exact binding before owner rotation');
+    }
     await client.query(
         `UPDATE fiscal_registers
-            SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{integration_owner}', to_jsonb($1::text), true),
+            SET metadata = jsonb_set(COALESCE(metadata, '{}'::jsonb), '{integration_owner}', to_jsonb($1::integer), true),
                 updated_at = NOW()
           WHERE id = $2
             AND fiscal_profile_id = $3
             AND register_alias = $4`,
         [plan.integrationOwner, beforeStatus.fiscalRegisterId, beforeStatus.fiscalProfileId, plan.registerAlias]
+    );
+    await client.query(
+        `UPDATE fiscal_cashier_bindings
+            SET capability_scope = CASE
+                    WHEN user_id = $3
+                    THEN ARRAY(
+                        SELECT DISTINCT capability
+                          FROM unnest(capability_scope || ARRAY['fiscal.shift.close']::text[]) AS capability
+                    )
+                    ELSE ARRAY(
+                        SELECT capability
+                          FROM unnest(capability_scope) AS capability
+                         WHERE capability <> 'fiscal.shift.close'
+                    )
+                END,
+                updated_at = NOW()
+          WHERE fiscal_profile_id = $1
+            AND fiscal_register_id = $2
+            AND status = 'active'`,
+        [beforeStatus.fiscalProfileId, beforeStatus.fiscalRegisterId, plan.integrationOwner]
     );
     const afterStatus = await statusPlan(client, plan);
     await writeConfigAudit(client, plan, {
@@ -1378,6 +1479,7 @@ async function assertMutationActorAuthorized(client, plan) {
 }
 
 async function run(argv = process.argv.slice(2), { env = process.env, dbPool = pool } = {}) {
+    if (isHelpRequest(argv)) return { help: true, usage: cliUsage() };
     const plan = parseArgs(argv, env);
     if (plan.mode === 'dry-run') return { applied: false, plan: publicPlan(plan) };
     const client = await dbPool.connect();
@@ -1459,9 +1561,10 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
 }
 
 if (require.main === module) {
-    run()
+    const argv = process.argv.slice(2);
+    run(argv)
         .then(result => {
-            console.log(JSON.stringify(result, null, 2));
+            console.log(result.help ? result.usage : JSON.stringify(result, null, 2));
             return pool.end();
         })
         .catch(async error => {
@@ -1481,7 +1584,9 @@ module.exports = {
     ACTION_PIN_USER_ENV_PREFIX,
     APPLY_CONFIRM_ENV,
     CONFIG_FILE_ENV,
+    NPM_CONFIG_FILE_ENV,
     DEFAULT_CAPABILITIES,
+    INTEGRATION_OWNER_CAPABILITIES,
     PIN_REQUIRED_CAPABILITIES,
     PilotConfigError,
     assertNonSecretConfig,
@@ -1489,7 +1594,9 @@ module.exports = {
     actionPinHashesByUser,
     activeAdmissionTicketCodes,
     applyPlan,
+    capabilitiesForUser,
     configHash,
+    cliUsage,
     desiredSnapshot,
     diffPlan,
     diffSnapshots,

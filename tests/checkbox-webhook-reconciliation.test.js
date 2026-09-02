@@ -257,13 +257,14 @@ describe('Checkbox webhook event handling', () => {
 
     it('writes provider audit without req.user and redacts secret-like payload fields', async () => {
         const dbPool = new FakeWebhookDb();
+        const syntheticToken = ['also', 'secret'].join('-');
         await handleCheckboxWebhook({
             dbPool,
             rawBody: Buffer.from(JSON.stringify({
                 event_id: 'evt-secret',
                 provider_operation_id: 'op-1',
                 api_key: 'should-not-persist',
-                nested: { token: 'also-secret' }
+                nested: { token: syntheticToken }
             })),
             headers: {}
         });
@@ -566,7 +567,7 @@ class FakeWorkerClient {
     release() {}
 }
 
-function createProvider({ lookupReceipts = new Map(), failPrepare = null, failValidate = null, timeoutAfterSuccess = false } = {}) {
+function createProvider({ lookupReceipts = new Map(), failPrepare = null, failValidate = null, timeoutAfterSuccess = false, receiptOverrides = {} } = {}) {
     const calls = { lookup: [], prepare: [], validate: [], create: [] };
     return {
         calls,
@@ -591,7 +592,10 @@ function createProvider({ lookupReceipts = new Map(), failPrepare = null, failVa
                 receiptType: 'SELL',
                 totalAmountMinor: paymentOrder.total_amount_minor,
                 providerRegisterId: 'register-1',
-                providerCashierId: 'cashier-1'
+                providerCashierId: 'cashier-1',
+                providerShiftId: 'shift-1',
+                providerOrganizationId: 'org-1',
+                ...receiptOverrides
             };
             lookupReceipts.set(providerOperationId, receipt);
             if (timeoutAfterSuccess) {
@@ -689,6 +693,16 @@ describe('payment outbox worker reconciliation', () => {
         assert.equal(provider.calls.prepare.length, 1);
         assert.equal(provider.calls.validate.length, 0);
         assert.equal(provider.calls.create.length, 0);
+    });
+
+    it('fails closed before fiscalization when receipt organization differs from immutable provider context', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-wrong-org' });
+        const provider = createProvider({ receiptOverrides: { providerOrganizationId: 'org-other' } });
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-wrong-org' });
+        assert.equal(result.failed, 1);
+        assert.equal(result.results[0].error.code, 'provider_receipt_organization_mismatch');
+        assert.equal(dbPool.receipts.length, 0);
+        assert.notEqual(dbPool.operations[0].status, 'fiscalized');
     });
 
     it('fails closed when the runtime provider cannot recheck mutation readiness', async () => {

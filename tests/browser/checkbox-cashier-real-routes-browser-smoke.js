@@ -209,9 +209,7 @@ async function startMockCheckbox(scope) {
         tokensIssued: 0,
         shift: {
             id: scope.providerShiftId,
-            status: 'OPENED',
-            cash_register_id: scope.providerRegisterId,
-            cashier_id: scope.providerCashierId
+            status: 'OPENED'
         },
         receipts: new Map(),
         providerUnavailable: false
@@ -253,6 +251,7 @@ async function startMockCheckbox(scope) {
                     created_at: '2026-01-01T00:00:00.000Z',
                     offline_mode: false,
                     stay_offline: false,
+                    has_shift: Boolean(state.shift && !['CLOSED', 'ERROR', 'CANCELLED'].includes(String(state.shift.status || '').toUpperCase())),
                     documents_state: { last_receipt_code: null, last_report_code: null }
                 });
             }
@@ -276,7 +275,11 @@ async function startMockCheckbox(scope) {
             }
             if (req.url === '/api/v1/cashier/shift' && req.method === 'GET') {
                 if (!state.shift) return send(404, { error: 'shift_not_open' });
-                return send(200, state.shift);
+                return send(200, {
+                    id: state.shift.id,
+                    status: state.shift.status,
+                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000', active: true }
+                });
             }
             if (req.url.startsWith('/api/v1/shifts/') && req.method === 'GET') {
                 if (!state.shift) return send(404, { error: 'shift_not_open' });
@@ -289,11 +292,13 @@ async function startMockCheckbox(scope) {
             if (req.url === '/api/v1/shifts' && req.method === 'POST') {
                 state.shift = {
                     id: body.id || crypto.randomUUID(),
-                    status: 'OPENED',
-                    cash_register_id: scope.providerRegisterId,
-                    cashier_id: scope.providerCashierId
+                    status: 'OPENED'
                 };
-                return send(202, state.shift);
+                return send(202, {
+                    ...state.shift,
+                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000', active: true },
+                    cashier: { id: scope.providerCashierId }
+                });
             }
             if (req.url === '/api/v1/receipts/validate' && req.method === 'POST') {
                 return send(200, { valid: true });
@@ -315,6 +320,7 @@ async function startMockCheckbox(scope) {
                     cash_register_id: scope.providerRegisterId,
                     cashier_id: scope.providerCashierId,
                     shift_id: state.shift?.id,
+                    organization_id: scope.providerOrganizationId,
                     payments: body.payments || [],
                     context: body.context,
                     fiscal_code: `FC-${body.id}`.slice(0, 64),
@@ -394,7 +400,7 @@ async function run() {
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
-        const context = await browser.newContext();
+        const context = await browser.newContext({ serviceWorkers: 'block' });
         const page = await context.newPage();
         await loginViaApi(page, cashier);
         await page.goto(`${BASE_URL}/cashier-payments`, { waitUntil: 'domcontentloaded' });
@@ -454,8 +460,35 @@ async function run() {
         await page.focus('#cashReceivedAmount');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount');
         await page.fill('#cashReceivedAmount', '5000');
+        const confirmResponsePromise = page.waitForResponse(response => (
+            response.request().method() === 'POST'
+            && /\/api\/payments\/orders\/\d+\/confirm(?:\?|$)/.test(response.url())
+        ));
         await page.click('#confirmCashBtn');
-        await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');
+        const confirmResponse = await confirmResponsePromise;
+        if (!confirmResponse.ok()) {
+            const body = await confirmResponse.json().catch(async () => ({ raw: await confirmResponse.text() }));
+            throw new Error(`Cash confirmation route failed with ${confirmResponse.status()}: ${JSON.stringify(body)}`);
+        }
+        try {
+            await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');
+        } catch (error) {
+            const browserState = await page.evaluate(() => ({
+                globalStatus: document.querySelector('#cashierGlobalStatus')?.textContent?.trim() || null,
+                confirmationReason: document.querySelector('#confirmDisabledReason')?.textContent?.trim() || null,
+                readinessText: document.querySelector('#cashierReadinessStatus')?.textContent?.trim() || null,
+                order: window.CashierPaymentsPage?.state?.orderDetails?.order || null,
+                registerState: window.CashierPaymentsPage?.state?.registerState || null,
+                unresolvedQueueState: window.CashierPaymentsPage?.state?.unresolvedQueueState || null
+            }));
+            const dbState = await pool.query(`
+                SELECT id, status, payment_status, fiscal_status
+                  FROM payment_orders
+              ORDER BY id DESC
+                 LIMIT 3
+            `);
+            throw new Error(`Cash confirmation did not enter pending state. Browser=${JSON.stringify(browserState)} DB=${JSON.stringify(dbState.rows)}`, { cause: error });
+        }
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         const pendingOrderId = await page.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id);
         const unresolvedApi = await page.evaluate(async () => {
@@ -467,6 +500,34 @@ async function run() {
         });
         assert.equal(unresolvedApi.ok, true, JSON.stringify(unresolvedApi));
         assert.ok((unresolvedApi.body.orders || []).some(order => order.id === pendingOrderId), 'unresolved endpoint must expose the paid pending receipt');
+        await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedInFlight === false);
+        let unresolvedRouteUnavailable = true;
+        const unresolvedRouteHandler = async route => {
+            if (unresolvedRouteUnavailable) {
+                await route.fulfill({
+                    status: 503,
+                    contentType: 'application/json',
+                    body: JSON.stringify({ success: false, code: 'queue_unavailable', error: 'queue unavailable' })
+                });
+                return;
+            }
+            await route.continue();
+        };
+        await page.route('**/api/payments/unresolved-orders*', unresolvedRouteHandler);
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${pendingOrderId}`), 'queue failure must retain the last known unresolved receipt');
+        assert.equal(await page.isDisabled('#createPaymentOrderBtn'), true, 'queue failure blocks creating a new payment');
+        assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'queue failure blocks payment confirmation');
+        assert.equal(await page.isDisabled('#startNextOrderBtn'), true, 'queue failure blocks the next customer flow');
+        unresolvedRouteUnavailable = false;
+        await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedInFlight === false);
+        await page.click('#refreshUnresolvedOrdersBtn');
+        await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedQueueState === 'available');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="available"]');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${pendingOrderId}`), 'manual refresh restores the real server-backed unresolved queue');
+        assert.equal(await page.isDisabled('#startNextOrderBtn'), false, 'next customer is restored only after a successful queue refresh');
+        await page.unroute('**/api/payments/unresolved-orders*', unresolvedRouteHandler);
         const reportApi = await page.evaluate(async () => {
             const token = localStorage.getItem('pzp_token');
             const response = await fetch('/api/payments/checkbox-sales-report?crmProfileKey=event_genix&registerAlias=middle&page=1&pageSize=1', {

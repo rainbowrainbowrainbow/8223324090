@@ -35,10 +35,14 @@ function mapReceiptGood(item = {}) {
     }
     const good = { code, name, price };
     const tax = item.tax || item.providerTaxId || item.taxCode;
-    if (String(tax || '').match(/^admission_tariff:/i)) {
+    const taxIds = tax == null || tax === '' ? [] : (Array.isArray(tax) ? tax : [tax]);
+    if (taxIds.some(value => String(value || '').match(/^admission_tariff:/i))) {
         throw new CheckboxClientError('checkbox_internal_tax_reference_forbidden', 'Internal admission tariff reference must not be sent as Checkbox tax', { status: 422, retryable: false });
     }
-    if (tax) good.tax = Array.isArray(tax) ? tax : [tax];
+    if (taxIds.length > 2 || taxIds.some(value => !['string', 'number'].includes(typeof value) || String(value).trim() === '')) {
+        throw new CheckboxClientError('checkbox_good_tax_invalid', 'Checkbox good tax must contain at most two provider tax IDs', { status: 422, retryable: false });
+    }
+    if (taxIds.length) good.tax = taxIds;
     return {
         good,
         quantity,

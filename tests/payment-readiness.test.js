@@ -1,6 +1,7 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const path = require('node:path');
 const test = require('node:test');
@@ -8,18 +9,152 @@ const test = require('node:test');
 const {
     applyPaymentAcceptanceGate,
     canProbeProviderReadiness,
+    finalizeFreshReadiness,
     freshShiftContextMatches,
     loadPaymentOrderTaxContext,
+    normalizeUnresolvedPagination,
+    readinessErrorResponse,
     resolveProviderShiftReadiness,
     resolveUnreportedPaymentPermissionPolicy,
     sanitizePersistedReadinessDetails
 } = require('../services/payments/paymentReadinessService');
+const {
+    isCashierProEnabled,
+    isCheckboxIntegrationEnabled,
+    isCheckboxPaymentAcceptanceEnabled,
+    isCheckboxWebhookEnabled
+} = require('../services/checkbox/config');
+const { CheckboxClientError } = require('../services/checkbox/errors');
+const { requestPaymentOutboxWakeup } = require('../services/payments/paymentOutboxWakeup');
+const { isScannableFile, scanContent } = require('../scripts/check-checkbox-source-safety');
 
 const ROOT = path.resolve(__dirname, '..');
 
 function read(relativePath) {
     return fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
 }
+
+test('production Checkbox gates accept only explicit true or 1 and never sandbox aliases', () => {
+    const gates = [
+        ['CHECKBOX_INTEGRATION_ENABLED', isCheckboxIntegrationEnabled],
+        ['CHECKBOX_ACCEPT_PAYMENTS_ENABLED', isCheckboxPaymentAcceptanceEnabled],
+        ['CHECKBOX_WEBHOOK_ENABLED', isCheckboxWebhookEnabled],
+        ['EVENTGENIX_CASHIER_PRO_ENABLED', isCashierProEnabled]
+    ];
+    for (const [name, enabled] of gates) {
+        for (const value of ['true', 'TRUE', '1', ' true ']) {
+            assert.equal(enabled({ [name]: value }), true, `${name} must accept ${JSON.stringify(value)}`);
+        }
+        for (const value of [undefined, '', 'false', '0', 'yes', 'on', 'sandbox', 'test', 'garbage']) {
+            assert.equal(enabled({ [name]: value }), false, `${name} must reject ${JSON.stringify(value)}`);
+        }
+    }
+});
+
+test('Checkbox source safety scan covers templates and structured config without broad test-name exemptions', () => {
+    for (const file of ['manifest.env.example', 'runtime.env', 'runtime.ps1', 'workflow.yml', 'workflow.yaml', 'config.json']) {
+        assert.equal(isScannableFile(file), true, `${file} must be scanned`);
+    }
+    const credential = ['sandbox', 'cashier', 'credential', crypto.randomUUID()].join('-');
+    const unsafeEnv = ['CHECKBOX_SANDBOX_', 'PASSWORD', '=', credential].join('');
+    const unsafeJson = ['{"log', 'in":"', credential, '"}'].join('');
+    const unsafeYaml = ['access', '_key', ': ', credential].join('');
+    const unsafeGate = ['CHECKBOX_INTEGRATION_ENABLED', 'sandbox'].join('=');
+    const unsafeJsonGate = JSON.stringify({ CHECKBOX_INTEGRATION_ENABLED: 'sandbox' });
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeEnv).length > 0);
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.json', unsafeJson).length > 0);
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.yml', unsafeYaml).length > 0);
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeGate).length > 0);
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.json', unsafeJsonGate).length > 0);
+    assert.deepEqual(scanContent(
+        'docs/integrations/checkbox/runtime.env.example',
+        ['CHECKBOX_INTEGRATION_ENABLED=false', ['CHECKBOX_SANDBOX_', 'PASSWORD', '='].join('')].join('\n')
+    ), []);
+    assert.deepEqual(scanContent('tests/mock.test.js', "const auth = { password: 'mock-password' };"), []);
+    assert.ok(scanContent('services/checkbox/runtime.js', "const auth = { password: 'mock-password' };").length > 0);
+});
+
+test('readiness error responses redact login, license, access, device, token and PIN material centrally', () => {
+    const values = {
+        cashierIdentity: `cashier-${crypto.randomUUID()}`,
+        licenseValue: `license-${crypto.randomUUID()}`,
+        accessValue: `access-${crypto.randomUUID()}`,
+        deviceValue: `device-${crypto.randomUUID()}`,
+        bearerValue: `token-${crypto.randomUUID()}`,
+        actionCode: String(crypto.randomInt(100000, 1000000))
+    };
+    const sensitiveMessage = [
+        ['login', values.cashierIdentity].join('='),
+        ['license_key', values.licenseValue].join('='),
+        ['access_key', values.accessValue].join('='),
+        ['device_id', values.deviceValue].join('='),
+        ['token', values.bearerValue].join('='),
+        ['pin_code', values.actionCode].join('=')
+    ].join(' ');
+    const error = new CheckboxClientError(
+        'checkbox_readiness_probe_failed',
+        sensitiveMessage,
+        {
+            status: 503,
+            details: {
+                login: values.cashierIdentity,
+                license_key: values.licenseValue,
+                nestedAccess: { accessKey: values.accessValue },
+                descriptor: { field: 'device_id', actual: values.deviceValue, expected: values.deviceValue },
+                authorization: `Bearer ${values.bearerValue}`,
+                pinCode: values.actionCode
+            }
+        }
+    );
+    const response = readinessErrorResponse(error);
+    const serialized = JSON.stringify(response);
+    assert.equal(response.status, 503);
+    assert.equal(response.body.code, 'checkbox_readiness_probe_failed');
+    for (const secret of Object.values(values)) assert.doesNotMatch(serialized, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.match(serialized, /\[redacted\]/);
+});
+
+test('unresolved queue pagination validates positive page values and caps pageSize at 100', () => {
+    assert.deepEqual(normalizeUnresolvedPagination({}), { page: 1, pageSize: 50 });
+    assert.deepEqual(normalizeUnresolvedPagination({ page: '2', pageSize: '100' }), { page: 2, pageSize: 100 });
+    for (const value of ['0', '-1', '1.5', 'abc']) {
+        assert.throws(
+            () => normalizeUnresolvedPagination({ page: value }),
+            error => error?.code === 'unresolved_page_invalid' && error?.status === 422
+        );
+    }
+    assert.throws(
+        () => normalizeUnresolvedPagination({ pageSize: '101' }),
+        error => error?.code === 'unresolved_page_size_invalid' && error?.status === 422
+    );
+});
+
+test('post-commit outbox wake-up is single-flight and Phase-1 close drains one job', async () => {
+    const previous = process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED;
+    delete process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED;
+    let releaseWorker;
+    const calls = [];
+    const workerDone = new Promise(resolve => { releaseWorker = resolve; });
+    const workerRunner = async options => {
+        calls.push(options);
+        await workerDone;
+        return { claimed: 0, succeeded: 0, failed: 0 };
+    };
+    try {
+        assert.equal(requestPaymentOutboxWakeup({ batchSize: 1, reason: 'phase1-test', workerRunner }), true);
+        assert.equal(requestPaymentOutboxWakeup({ batchSize: 1, reason: 'phase1-test-duplicate', workerRunner }), false);
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0].batchSize, 1);
+        assert.equal(calls[0].throwOnDegraded, false);
+        assert.equal(requestPaymentOutboxWakeup({ batchSize: 1, reason: 'phase1-test-running', workerRunner }), false);
+        releaseWorker();
+        await new Promise(resolve => setImmediate(resolve));
+    } finally {
+        if (previous === undefined) delete process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED;
+        else process.env.PAYMENT_OUTBOX_WAKEUP_DISABLED = previous;
+    }
+});
 
 test('migration 326 adds sanitized Checkbox readiness snapshots and operational incidents', () => {
     const sql = read('db/migrations/326_checkbox_readiness_and_phase1_close.sql');
@@ -114,6 +249,18 @@ test('provider readiness remains probeable while payment acceptance stays fail-c
         integrationReady: false
     });
     assert.equal(applyPaymentAcceptanceGate({ ...providerState, paymentAcceptanceEnabled: true }).integrationReady, true);
+    assert.deepEqual(finalizeFreshReadiness({ ...providerState, paymentAcceptanceEnabled: true }), {
+        ...providerState,
+        paymentAcceptanceEnabled: true,
+        providerReady: true,
+        integrationReady: true
+    });
+    assert.deepEqual(finalizeFreshReadiness(providerState), {
+        ...providerState,
+        providerReady: true,
+        readinessCode: 'payment_acceptance_disabled',
+        integrationReady: false
+    });
 });
 
 test('provider OPENED shift requires the exact durable local provider shift id', () => {
@@ -145,6 +292,19 @@ test('provider OPENED shift requires the exact durable local provider shift id',
         assert.equal(blocked.readinessCode, 'local_shift_requires_reconciliation');
         assert.equal(blocked.localShiftMatched, false);
     }
+    const portalClosed = resolveProviderShiftReadiness({
+        providerShift: { id: 'shift-one', status: 'CLOSED' },
+        localShift: { provider_shift_id: 'shift-one', status: 'open', lifecycle_stage: 'OPENED' }
+    });
+    assert.equal(portalClosed.shiftState, 'closed');
+    assert.equal(portalClosed.readinessCode, 'ready');
+    assert.equal(portalClosed.localShiftMatched, true);
+    const wrongClosedShift = resolveProviderShiftReadiness({
+        providerShift: { id: 'shift-other', status: 'CLOSED' },
+        localShift: { provider_shift_id: 'shift-one', status: 'open', lifecycle_stage: 'OPENED' }
+    });
+    assert.equal(wrongClosedShift.shiftState, 'local_stale');
+    assert.equal(wrongClosedShift.localShiftMatched, false);
     assert.equal(freshShiftContextMatches(
         { provider_shift_id: 'shift-one', status: 'open', lifecycle_stage: 'OPENED' },
         { providerShiftId: 'shift-one', shiftState: 'open' }
@@ -157,8 +317,24 @@ test('provider OPENED shift requires the exact durable local provider shift id',
 
 test('provider OPENED shift requires detailed cashier identity and never trusts a sparse current-shift fallback', () => {
     const readiness = read('services/payments/paymentReadinessService.js');
+    assert.match(readiness, /normalizeShiftResponse\(currentShiftObservation\.payload, expected, \{ requireCashier: false \}\)/);
     assert.match(readiness, /getShiftById\(\{ shiftId: current\.id \}\)[\s\S]*requireOpened: true, requireCashier: true/);
-    assert.doesNotMatch(readiness, /normalizeShiftResponse\(current(?:\.raw \|\| current)?[\s\S]*requireCashier: false/);
+});
+
+test('current-shift absence requires official register has_shift=false and malformed responses fail closed', () => {
+    const readiness = read('services/payments/paymentReadinessService.js');
+    assert.match(
+        readiness,
+        /getCurrentShiftWithAbsenceProof\([\s\S]*providerReadiness\.register[\s\S]*currentShiftObservation\.absent/
+    );
+    const provider = read('services/checkbox/provider.js');
+    assert.match(provider, /error\.status === 404 \|\| error\.status === 422/);
+    assert.match(provider, /register\.hasShift !== false[\s\S]*checkbox_current_shift_unknown/);
+    assert.match(provider, /checkbox_current_shift_response_malformed/);
+    assert.match(
+        readiness,
+        /if \(localShiftId && \['open', 'opening', 'closing'\]\.includes\(localState\)\)[\s\S]*getShiftById\(\{ shiftId: localShiftId \}\)[\s\S]*expectedShiftId: localShiftId/
+    );
 });
 
 test('fresh payment tax context uses immutable order items and rejects active mapping drift', async () => {
@@ -340,6 +516,24 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(phaseOneClose, /external_stage: 'auth'/);
     assert.match(phaseOneClose, /action: 'fiscal\.shift\.close'/);
     assert.match(phaseOneClose, /requirePaymentAcceptance: false/);
+    assert.match(phaseOneClose, /loadAndAuthorizePhase1CloseShift/);
+    assert.match(read('services/payments/paymentReadinessService.js'), /assertPhase1CloseIntegrationOwner\(shift, user\)/);
+    assert.match(phaseOneClose, /phase1CloseOperationIdempotencyKey/);
+    assert.match(phaseOneClose, /loadPhase1CloseReplay/);
+    assert.match(read('services/payments/paymentReadinessService.js'), /async function loadPhase1CloseReplay[\s\S]*replayed: true/);
+    assert.match(phaseOneClose, /requestPaymentOutboxWakeup\(\{ batchSize: 1, reason: 'phase1_shift_close_requested' \}\)/);
+    assert.doesNotMatch(phaseOneClose, /shift_close_already_requested/);
+    assert.match(phaseOneClose, /const freshProviderReadiness = await probeCheckboxReadiness\([\s\S]*force: true/);
+    assert.match(phaseOneClose, /freshProviderReadiness,[\s\S]*requirePaymentAcceptance: false|requirePaymentAcceptance: false,[\s\S]*freshProviderReadiness/);
+    assert.ok(
+        phaseOneClose.indexOf('loadAndAuthorizePhase1CloseShift') < phaseOneClose.indexOf('await probeCheckboxReadiness'),
+        'Phase-1 close must authorize the exact target shift before provider readiness HTTP'
+    );
+    assert.ok(
+        phaseOneClose.indexOf('await probeCheckboxReadiness') < phaseOneClose.lastIndexOf('await withTransaction'),
+        'Phase-1 close provider refresh must happen outside the DB transaction'
+    );
+    assert.match(read('services/payments/paymentReadinessService.js'), /const contextualState = \{[\s\S]*fiscalConfigurationHash: scope\.configHash[\s\S]*expectedIsTest/);
     assert.doesNotMatch(phaseOneClose, /VALUES[\s\S]*'shift_close_lookup'\)/, 'A new Phase-1 close job must submit close before entering lookup recovery');
 });
 
@@ -384,6 +578,7 @@ test('Checkbox regression gates are wired into CI and local scripts', () => {
     assert.equal(packageJson.scripts['check:checkbox-safety'], 'node scripts/check-checkbox-source-safety.js');
     assert.match(ci, /npm run check:checkbox-openapi/);
     assert.match(ci, /npm run check:checkbox-safety/);
+    assert.match(ci, /tests\/checkbox-fullstack-testmode-harness\.test\.js/);
     assert.match(ci, /npm run test:integration:checkbox-park-config:isolated/);
     assert.match(ci, /npm run test:integration:checkbox-park-cashier-smoke:isolated/);
     assert.match(ci, /npm run test:integration:checkbox-ui-real:isolated/);
@@ -411,6 +606,7 @@ test('cashier UI fails closed when unresolved queue is unavailable and refreshes
     const html = read('cashier-payments.html');
     const js = read('js/cashier-payments-page.js');
     assert.match(html, /id="refreshReadinessBtn"/);
+    assert.match(html, /id="loadMoreUnresolvedOrdersBtn"[^>]*aria-describedby="unresolvedOrdersHelp"/);
     assert.match(js, /unresolvedQueueState: 'unknown'/);
     assert.match(js, /data-queue-state="queue_unavailable"/);
     assert.match(js, /data-queue-state="empty"/);
@@ -423,10 +619,58 @@ test('cashier UI fails closed when unresolved queue is unavailable and refreshes
     assert.match(js, /READINESS_REQUEST_TIMEOUT_MS/);
     assert.match(js, /Черга незавершених чеків недоступна/);
     assert.match(js, /startNextOrder[\s\S]*state\.unresolvedQueueState !== 'available'/);
+    assert.match(js, /params\.set\('pageSize', String\(UNRESOLVED_PAGE_SIZE\)\)/);
+    assert.match(js, /state\.unresolvedRegisterCount/);
+    assert.match(js, /loadUnresolvedOrders\(\{ silent: false, append: true \}\)/);
+});
+
+test('cashier UI fails closed synchronously while the unresolved queue is checking', () => {
+    const js = read('js/cashier-payments-page.js');
+    const loadBlock = js.slice(js.indexOf('async function loadUnresolvedOrders'), js.indexOf('function renderCheckboxSalesReport'));
+    const checkingIndex = loadBlock.indexOf("state.unresolvedQueueState = 'checking'");
+    const requestIndex = loadBlock.indexOf('await apiRequest(`/api/payments/unresolved-orders');
+    assert.ok(checkingIndex >= 0, 'load should enter checking state');
+    assert.ok(requestIndex > checkingIndex, 'checking must be set before the unresolved request starts');
+    assert.match(loadBlock, /renderUnresolvedOrders\(\);[\s\S]*renderReadinessState\(\);[\s\S]*try \{/);
+    assert.match(js, /const isChecking = state\.unresolvedQueueState === 'checking'/);
+    assert.match(js, /data-queue-state="checking"/);
+    assert.match(js, /body\.setAttribute\('aria-busy', isChecking \? 'true' : 'false'\)/);
+    assert.match(js, /Останній відомий список збережено нижче, але під час перевірки він може змінитися/);
+    assert.match(js, /state\.unresolvedLastKnownOrders/);
+    assert.match(js, /state\.unresolvedQueueState === 'checking'[\s\S]*Дочекайтеся завершення перевірки/);
+});
+
+test('cashier thin UI exposes Phase-1 shift close without loading Cashier PRO controls', () => {
+    const html = read('cashier-payments.html');
+    const js = read('js/cashier-payments-page.js');
+    assert.match(html, /id="phase1ShiftPanel"/);
+    assert.match(html, /id="phase1ShiftStatus"/);
+    assert.match(html, /id="phase1ShiftCloseNotice"[^>]*role="status"[^>]*aria-live="polite"/);
+    assert.match(html, /id="phase1CloseShiftBtn"[^>]*aria-describedby="phase1ShiftCloseNotice"/);
+    assert.doesNotMatch(html, /id="closeShiftBtn"/);
+    assert.doesNotMatch(html, /id="operationalContourPanel"/);
+    assert.match(js, /const raw = state\.registerState\?\.phase1Close/);
+    assert.match(js, /raw\.visible === true/);
+    assert.match(js, /raw\.allowed === true/);
+    assert.match(js, /state\.unresolvedQueueState === 'available'/);
+    assert.match(js, /const unresolvedCount = Number\(state\.unresolvedRegisterCount \|\| 0\)/);
+    assert.match(js, /context\.status !== 'opened'/);
+    assert.match(js, /hasAction\('fiscal\.shift\.close'\)/);
+    assert.match(js, /typeof window\.confirmModal === 'function'/);
+    assert.match(js, /Закрити поточну зміну в Checkbox\?/);
+    assert.match(js, /нові чеки потребуватимуть відкриття нової зміни/);
+    assert.match(js, /if \(!confirmed\)[\s\S]*Запит до Checkbox не надіслано/);
+    assert.doesNotMatch(js, /window\.confirm\(/);
+    assert.match(js, /getOperationIdempotencyKey\('phase1-close', shiftId\)/);
+    assert.match(js, /\/api\/payments\/shifts\/\$\{encodeURIComponent\(shiftId\)\}\/phase1-close/);
+    assert.match(js, /phase1CloseReachedClosed/);
+    assert.match(js, /context\.status === 'closed'/);
+    assert.match(js, /Не повторюйте запит/);
 });
 
 test('unresolved queue is register-wide with latest-job dedupe and mine markers', () => {
     const service = read('services/payments/paymentReadinessService.js');
+    const routes = read('routes/payments.js');
     const js = read('js/cashier-payments-page.js');
     const listBlock = service.slice(service.indexOf('async function listUnresolvedPaymentOrders'), service.indexOf('async function loadCheckboxSalesReport'));
     assert.match(listBlock, /WITH latest_job AS \(/);
@@ -435,6 +679,12 @@ test('unresolved queue is register-wide with latest-job dedupe and mine markers'
     assert.match(listBlock, /po\.fiscal_register_id = \$2/);
     assert.match(listBlock, /isMine:/);
     assert.match(listBlock, /cashierIdentity:/);
+    assert.match(listBlock, /COUNT\(\*\)::integer AS register_count/);
+    assert.match(listBlock, /COUNT\(\*\) FILTER \(WHERE cashier_user_id = \$4\)::integer AS my_count/);
+    assert.match(listBlock, /LIMIT \$4 OFFSET \$5/);
+    assert.doesNotMatch(listBlock, /LIMIT 100/);
+    assert.match(listBlock, /hasMore: offset \+ result\.rows\.length < registerCount/);
+    assert.match(routes, /normalizeUnresolvedPagination\(\{[\s\S]*page: req\.query\.page,[\s\S]*pageSize: req\.query\.pageSize \?\? req\.query\.page_size/);
     assert.match(service, /async function countCloseBlockers[\s\S]*po\.fiscal_register_id = \$2/);
     assert.match(js, /Мої чеки/);
     assert.match(js, /Вся каса/);

@@ -126,8 +126,21 @@
                     <div><p class="cashier-kicker">Контроль</p><h2 id="unresolvedOrdersTitle">Незавершені чеки</h2></div>
                     <button type="button" id="refreshUnresolvedOrdersBtn" class="btn btn-secondary">Оновити</button>
                 </div>
-                <p class="cashier-muted">Оплачені orders зі статусом pending / unknown / retryable / dead залишаються тут, навіть якщо наступний касир працює з цією касою.</p>
+                <p id="unresolvedOrdersHelp" class="cashier-muted">Оплачені orders зі статусом pending / unknown / retryable / dead залишаються тут, навіть якщо наступний касир працює з цією касою.</p>
                 <div id="unresolvedOrdersBody" class="cashier-report-body" aria-live="polite">Незавершених чеків не завантажено.</div>
+                <div class="cashier-unresolved-actions">
+                    <button type="button" id="loadMoreUnresolvedOrdersBtn" class="btn btn-secondary hidden" aria-describedby="unresolvedOrdersHelp">Показати ще</button>
+                </div>
+            </section>
+
+            <section id="phase1ShiftPanel" class="cashier-card cashier-result-card hidden" aria-labelledby="phase1ShiftTitle" aria-hidden="true">
+                <div class="cashier-card-head">
+                    <div><p class="cashier-kicker">Завершення дня</p><h2 id="phase1ShiftTitle">Зміна Checkbox</h2></div>
+                    <span id="phase1ShiftStatus" class="cashier-status">—</span>
+                </div>
+                <p class="cashier-muted">Безпечне закриття поточної зміни Checkbox без Cashier PRO. Закриття недоступне, доки є незавершені чеки або стан каси не підтверджено сервером.</p>
+                <p id="phase1ShiftCloseNotice" class="cashier-help" role="status" aria-live="polite">Стан зміни ще не завантажено.</p>
+                <button type="button" id="phase1CloseShiftBtn" class="btn btn-secondary cashier-primary-action" disabled aria-describedby="phase1ShiftCloseNotice">Закрити зміну Checkbox</button>
             </section>
 
             <section id="checkboxSalesReportPanel" class="cashier-card cashier-result-card" aria-labelledby="checkboxSalesReportTitle">

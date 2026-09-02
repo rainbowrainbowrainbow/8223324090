@@ -14,6 +14,7 @@ const {
   assertNoPreexistingSandboxShift,
   assertSandboxProofMutationGuard,
   closeOwnedSandboxShift,
+  loadCurrentSandboxShift,
   publicSandboxEvidence,
   publicReadinessDiagnostics,
   runSandboxSaleProof,
@@ -317,6 +318,7 @@ test('sandbox sale proof creates exact CASH and CASHLESS receipts and verifies o
         cash_register_id: 'register-test',
         cashier_id: 'cashier-test',
         shift_id: 'shift-test',
+        organization_id: 'org-test',
         payments: [{ type: tender.type, value: tender.value, label: tender.label }],
         context: payload.context
       };
@@ -373,6 +375,7 @@ test('sandbox receipt proof fails closed on UUID, amount, type, tender, register
     cash_register_id: 'register-test',
     cashier_id: 'cashier-test',
     shift_id: 'shift-test',
+    organization_id: 'org-test',
     payments: [{ type: 'CASH', value: 1000, label: 'Готівка' }],
     context: payload.context
   };
@@ -396,6 +399,7 @@ test('sandbox receipt proof fails closed on UUID, amount, type, tender, register
     ['cash_register_id', 'wrong-register'],
     ['cashier_id', 'wrong-cashier'],
     ['shift_id', 'wrong-shift'],
+    ['organization_id', 'wrong-organization'],
     ['payments', [{ type: 'CASHLESS', value: 1000 }]],
     ['payments', [{ type: 'CASH', value: 1000 }, { type: 'CASHLESS', value: 1000 }]],
     ['context', { ...payload.context, fiscal_operation_id: 'wrong-operation' }]
@@ -510,6 +514,33 @@ test('sandbox mutations fail closed when Checkbox already has a shift not owned 
         && error.details?.providerStatus === status
     );
   }
+});
+
+test('sandbox current-shift 422 is absence only with official has_shift=false proof', async () => {
+  const config = proofConfig();
+  const provider422 = new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 422', {
+    status: 422,
+    retryable: false
+  });
+  const client = hasShift => ({
+    async getCashRegisterInfo() {
+      return {
+        id: config.expectedRegisterId,
+        organization_id: config.expectedOrganizationId,
+        is_test: true,
+        has_shift: hasShift
+      };
+    },
+    async getCurrentShift() {
+      throw provider422;
+    }
+  });
+
+  assert.equal(await loadCurrentSandboxShift(client(false), config), null);
+  await assert.rejects(
+    () => loadCurrentSandboxShift(client(true), config),
+    error => error === provider422
+  );
 });
 
 test('failure cleanup bounded-polls the exact smoke-owned UUID through not-found and opening before close', async () => {
@@ -666,6 +697,32 @@ test('mapper produces official Checkbox receipt/service payload shapes without f
   const serviceOut = mapServiceReceipt({ providerRequestUuid: crypto.randomUUID(), operationType: 'service_out', amountMinor: '1000' });
   assert.equal(serviceIn.payment.operation_type, 'REINFORCEMENT');
   assert.equal(serviceOut.payment.operation_type, 'COLLECTION');
+});
+
+test('mapper enforces the official maximum of two provider tax IDs and omits tax for untaxed goods', () => {
+  const base = {
+    providerRequestUuid: crypto.randomUUID(),
+    amountMinor: '1000',
+    items: [{ code: 'park-ticket', name: 'Park ticket', priceMinor: '1000', quantityMillis: 1000 }]
+  };
+  const untaxed = mapSaleReceipt(base);
+  assert.equal(Object.hasOwn(untaxed.goods[0].good, 'tax'), false);
+
+  const twoTaxes = mapSaleReceipt({
+    ...base,
+    providerRequestUuid: crypto.randomUUID(),
+    items: [{ ...base.items[0], tax: ['7', 8] }]
+  });
+  assert.deepEqual(twoTaxes.goods[0].good.tax, ['7', 8]);
+
+  assert.throws(
+    () => mapSaleReceipt({
+      ...base,
+      providerRequestUuid: crypto.randomUUID(),
+      items: [{ ...base.items[0], tax: ['7', '8', '9'] }]
+    }),
+    error => error instanceof CheckboxClientError && error.code === 'checkbox_good_tax_invalid'
+  );
 });
 
 test('client maps exact official endpoints, headers and timeout/lookup recovery avoids duplicate sale', async () => {

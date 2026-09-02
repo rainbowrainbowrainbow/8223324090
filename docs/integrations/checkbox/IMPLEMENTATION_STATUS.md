@@ -1,12 +1,12 @@
 # Checkbox Implementation Status
 
-Last updated: 2026-08-22.
+Last updated: 2026-09-03.
 
 Production/deploy base:
 
 - Live URL: `https://8223324090-production.up.railway.app/api/version`.
 - Release package baseline prepared for this handoff: `0.81.66` (`Timeline Narrow Identity Fix`).
-- Live commit before this hardening release: `e2ebbe944a3fa87d5ca92414447e62fc03b48885`.
+- Confirmed live commit at the start of this release preparation: `a43a2eaef5120580aa624f33655a388ae6f79acd`.
 - Live source branch: `codex/eventgenix-production`.
 - Release source of truth is not this document and not any long-lived `.codex-temp` worktree. Before commit, push, deploy, rollback, or production activation, run the release staleness guard and use live `/api/version` plus the confirmed deploy source branch.
 - Current released Checkbox migrations: `316` through `337`.
@@ -42,14 +42,16 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - `docs/integrations/checkbox/checkbox-test-mode.env.example` documents ref-specific test-mode env names without values.
 - Checkbox sandbox smoke allows official Checkbox HTTPS hosts but refuses mutation until exact expected test identity is configured and `/cashier/me` proves `is_test === true`.
 - Real Checkbox test-mode proof completed on 2026-08-22 against the locally configured test register: exact organization/register/cashier and `is_test=true` were verified; one 10 UAH CASH and one 10 UAH CASHLESS receipt reached `DONE`; both smoke-owned shifts reached `CLOSED`; no service, refund, PRO, production EventGenix, or production Checkbox operation was performed.
+- A final browser-to-EventGenix-to-Checkbox proof completed on 2026-09-02 with one existing unpaid CARD draft only: no CASH order was created, one durable sale reached `DONE`, the exact smoke-owned shift closed through the canonical EventGenix Phase-1 close route, all three outbox jobs succeeded, and the final unresolved order/job counts were zero. The local disposable ledger and sanitized one-shot run record were preserved for inspection.
 - The proof succeeded without an access key for the selected Phase-1 calls. This is evidence for the current Checkbox contract only, not permission to omit a key from future operations that officially require one.
 - Real Checkbox responses normalize the EventGenix context marker to the string `True` and may omit optional context. Receipt verification therefore treats context as optional official metadata, but validates any echoed EventGenix context completely and fail-closed; durable UUID, status, type, amount, tender, cashier, register, and shift remain mandatory.
 - Official short `/cashier/shift` responses do not contain cashier identity. Cleanup proves ownership through `/shifts/{id}`, then matches the short current-shift UUID/register before close.
 - Sandbox mutation runs require an explicit stable `CHECKBOX_SANDBOX_DEVICE_ID`; PID-derived device identities are no longer allowed. Official empty-body HTTP 205 signout is handled explicitly.
 - Focused local mock HTTP + PostgreSQL smoke coverage exists and is wired into CI.
-- CI hardening gates now include value-free Checkbox OpenAPI compatibility checks, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
+- CI hardening gates now include a deterministic value-free semantic Checkbox OpenAPI projection, source safety scans, real PostgreSQL configuration tests, real PostgreSQL/local HTTP worker smoke, and real-routes browser smoke.
+- `config/checkboxOpenApiContract.js` pins the reviewed public API operations, response codes, required fields, enums, headers, and money/quantity units without provider IDs or examples. `check:checkbox-openapi:official` compares it read-only with the current official contract before release or activation.
 - Release `0.81.66` is the package baseline prepared in this handoff.
-- The confirmed live baseline before deployment remains `0.81.16`; reconfirm live version/commit after delivery and before future activation.
+- The same `0.81.66` package is the confirmed live baseline before the pending test-mode harness hardening is released.
 - Provider-aware readiness fail-closed handling, unresolved-queue unavailable state, scheduler degraded incidents, durable shift recovery, immutable provider context snapshots, append-only configuration audit guards, and actor-based configuration authorization are part of the released baseline.
 
 ## Not Ready
@@ -59,17 +61,18 @@ The thin MVP should connect only the park `event_genix` profile and `middle` reg
 - Test-mode non-secret organization/register/cashier identity has been collected locally in the non-repository JSON config; secrets remain local-only and production mapping is not configured.
 - Accountant-approved fiscal item/tax values are still missing for production activation.
 - The test cashier returns `cash_payment=null` and `card_payment=null`. This is unreported legacy test metadata, not an explicit denial; a guarded test-only proof succeeded for both tenders. Production remains fail-closed unless permissions are explicitly reported as allowed.
-- End-of-day production policy still needs a final product decision before real activation: manual Checkbox portal close/runbook or narrow Phase-1 close flow.
+- End-of-day policy for the thin pilot is the narrow Phase-1 close flow in EventGenix. It is restricted to the exact configured integration owner, blocks on unresolved receipts, reuses one durable close operation, and waits for Checkbox `CLOSED`. Portal close remains an audited recovery fallback, not the normal operator flow.
 - `npm run test:integration:checkbox-ui-real:isolated` needs a disposable local `TEST_DATABASE_URL`; production `DATABASE_URL` must not be used as a fallback.
 - Current release preparation keeps explicit password/PIN provider authentication, optional outlet ID, test-mode certificate handling, and null-current-shift readiness handling. Production activation remains disabled.
-- The local test secret file still needs a stable `CHECKBOX_PARK_MIDDLE_TEST_DEVICE_ID` value before future operator-run smoke commands; do not commit that local value.
+- A stable test-only Checkbox device identity is configured in the local secret file and was proven by the 2026-09-02 smoke. Its value must remain outside the repository and must not be copied into logs or documentation.
+- The pinned projection intentionally covers the EventGenix-used Checkbox surface rather than copying the full upstream document. Upstream compatibility must still be checked with `npm run check:checkbox-openapi:official` before activation; a contract mismatch blocks fiscal mutations until reviewed.
 
 ## Next Tasks
 
-1. Add the already verified stable test device ID to the local-only `CHECKBOX_PARK_MIDDLE_TEST_DEVICE_ID` variable before future smoke runs; never place it in the repository.
-2. Run local config preflight from `CHECKBOX_PILOT_CONFIG_FILE` against a disposable/local PostgreSQL database before any apply. User `3` is the confirmed EventGenix CRM operator, while the Checkbox provider cashier remains the separate test identity.
-3. Collect accountant-approved production legal entity, item names, taxed/untaxed policy, and provider mapping inputs.
-4. Apply production mapping only in a separately approved activation task, with register and all global acceptance flags still disabled.
+1. Release the reviewed test-mode harness and owner-only Phase-1 close hardening with all production Checkbox gates disabled.
+2. Collect accountant-approved production legal entity, item names, taxed/untaxed policy, and provider mapping inputs.
+3. Apply production mapping only in a separately approved activation task, with register and all global acceptance flags still disabled.
+4. Run production-identity read-only readiness before accepting money.
 5. Enable the first controlled production receipt only after fresh provider readiness, operator review, rollback readiness, and explicit approval.
 
 ## Activation Blockers

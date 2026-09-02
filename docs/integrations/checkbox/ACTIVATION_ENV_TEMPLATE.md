@@ -62,5 +62,4 @@ Rules:
 - The JSON file may contain only non-secret mapping data: CRM profile, park/middle aliases, FOP labels, provider organization/register/cashier IDs, credential refs, EventGenix user IDs, item/tax mappings, and `expectedIsTest`.
 - The JSON file must not contain passwords, Checkbox cashier PINs, license keys, access keys, tokens, webhook secrets, or price overrides.
 - Admission prices always come from the EventGenix CRM tariff snapshot. Fiscal config maps item names and tax mode only.
-- `npm run configure:checkbox:park -- --config-file C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json` is dry-run by default and prints sanitized provider identity flags instead of provider IDs.
-
+- `npm run configure:checkbox:park -- --config-file="C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json"` is the canonical npm 10/Windows form. Keep `--config-file=<path>` as one argument; the separated form can be consumed by npm. The command is dry-run by default and prints sanitized provider identity flags instead of provider IDs.

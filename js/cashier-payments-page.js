@@ -14,6 +14,9 @@
     const READINESS_REFRESH_MIN_MS = 15000;
     const READINESS_REFRESH_MAX_MS = 60000;
     const READINESS_REQUEST_TIMEOUT_MS = 8000;
+    const UNRESOLVED_PAGE_SIZE = 50;
+    const PHASE1_CLOSE_POLL_INTERVAL_MS = 2500;
+    const PHASE1_CLOSE_POLL_TIMEOUT_MS = 60000;
 
     const state = {
         user: null,
@@ -26,13 +29,25 @@
         reportInFlight: false,
         unresolvedInFlight: false,
         unresolvedOrders: [],
+        unresolvedPage: 0,
+        unresolvedPageSize: UNRESOLVED_PAGE_SIZE,
+        unresolvedRegisterCount: 0,
+        unresolvedMyCount: 0,
+        unresolvedHasMore: false,
         unresolvedQueueState: 'unknown',
         unresolvedLastKnownOrders: [],
+        unresolvedLastKnownSummary: { registerCount: 0, myCount: 0 },
         unresolvedLastRefreshAt: null,
         unresolvedLastError: null,
         readinessInFlight: false,
         readinessTimer: null,
         readinessBackoffMs: READINESS_REFRESH_MIN_MS,
+        phase1CloseConfirmationInFlight: false,
+        phase1CloseInFlight: false,
+        phase1ClosePollingTimer: null,
+        phase1ClosePollingStartedAt: 0,
+        phase1CloseTargetShiftId: null,
+        phase1ClosePollingPaused: false,
         tender: 'cash',
         pollingTimer: null,
         pollingOrderId: null,
@@ -70,7 +85,7 @@
     function formatStatus(value) {
         const status = normalizeStatus(value);
         const labels = {
-            draft: 'чернетка', unpaid: 'не оплачено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', open: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита',
+            draft: 'чернетка', unpaid: 'не оплачено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита',
             payment_recorded: 'оплату зафіксовано', fiscalized: 'чек створено', failed: 'помилка з повтором', failed_retryable: 'помилка, буде повтор', failed_terminal: 'помилка без автоповтору', dead: 'потрібна ручна перевірка', cancelled: 'скасовано',
             validation_failed: 'помилка перевірки', ready_to_send: 'готово до відправки', sending: 'відправляється', validating: 'перевіряється', not_open: 'не відкрита',
             mapping_missing: 'mapping відсутній', credentials_missing: 'credentials відсутні', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', ready: 'готово'
@@ -362,6 +377,7 @@
     async function refreshReadiness({ silent = false, force = true } = {}) {
         if (state.readinessInFlight) return state.registerState;
         state.readinessInFlight = true;
+        state.phase1ClosePollingPaused = false;
         const button = $('refreshReadinessBtn');
         if (button) button.disabled = true;
         try {
@@ -478,7 +494,9 @@
             idempotency_key_required: 'Idempotency-Key обов’язковий для безпечного повтору запиту.',
             queue_unavailable: 'Черга незавершених чеків недоступна. Підтвердження грошей заблоковано.',
             provider_unavailable: 'Checkbox тимчасово недоступний. Нові оплати заблоковано.',
-            payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Recovery вже оплачених чеків дозволений.'
+            payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Recovery вже оплачених чеків дозволений.',
+            phase1_shift_identity_mismatch: 'Сервер повернув іншу зміну. Закриття зупинено без повторного запиту.',
+            phase1_close_confirmation_unavailable: 'Безпечне підтвердження тимчасово недоступне. Запит на закриття не надіслано.'
         };
         if (readableMessages[code]) return readableMessages[code];
         const messages = {
@@ -601,22 +619,50 @@
         const ids = serverIds.length ? serverIds : pendingOrderIds();
         if (currentOrderId && !ids.includes(String(currentOrderId))) ids.unshift(String(currentOrderId));
         pendingNotice.classList.toggle('hidden', ids.length === 0);
+        const knownTotal = state.unresolvedQueueState === 'available'
+            ? state.unresolvedRegisterCount
+            : state.unresolvedLastKnownSummary.registerCount;
+        const remainingCount = Math.max(0, Number(knownTotal || 0) - ids.length);
         pendingNotice.textContent = ids.length
-            ? `Незавершені чеки: ${ids.map(id => `RCP-${id}`).join(', ')}. Вони залишаються у серверній черзі нижче; повторну оплату для них не створюйте.`
+            ? `Незавершені чеки: ${ids.map(id => `RCP-${id}`).join(', ')}${remainingCount ? ` та ще ${remainingCount}` : ''}. Вони залишаються у серверній черзі нижче; повторну оплату для них не створюйте.`
             : '';
+    }
+
+    function syncUnresolvedControls() {
+        const refreshButton = $('refreshUnresolvedOrdersBtn');
+        const loadMoreButton = $('loadMoreUnresolvedOrdersBtn');
+        const busy = state.unresolvedInFlight || state.unresolvedQueueState === 'checking';
+        if (refreshButton) {
+            refreshButton.disabled = busy;
+            refreshButton.setAttribute('aria-disabled', busy ? 'true' : 'false');
+            refreshButton.setAttribute('aria-busy', busy ? 'true' : 'false');
+        }
+        if (loadMoreButton) {
+            const visible = state.unresolvedQueueState === 'available' && state.unresolvedHasMore;
+            loadMoreButton.classList.toggle('hidden', !visible);
+            loadMoreButton.disabled = busy || !visible;
+            loadMoreButton.setAttribute('aria-disabled', loadMoreButton.disabled ? 'true' : 'false');
+            loadMoreButton.setAttribute('aria-busy', busy ? 'true' : 'false');
+        }
     }
 
     function renderUnresolvedOrders() {
         const body = $('unresolvedOrdersBody');
         if (!body) return;
         const orders = Array.isArray(state.unresolvedOrders) ? state.unresolvedOrders : [];
-        if (state.unresolvedQueueState === 'unavailable') {
+        const isChecking = state.unresolvedQueueState === 'checking';
+        body.setAttribute('aria-busy', isChecking ? 'true' : 'false');
+        if (isChecking || state.unresolvedQueueState === 'unavailable') {
             const lastKnown = Array.isArray(state.unresolvedLastKnownOrders) ? state.unresolvedLastKnownOrders : [];
+            const lastKnownRegisterCount = Number(state.unresolvedLastKnownSummary.registerCount || lastKnown.length || 0);
+            const lastKnownMyCount = Number(state.unresolvedLastKnownSummary.myCount || 0);
+            const alertMarkup = isChecking
+                ? '<div class="cashier-alert cashier-alert-warning" data-queue-state="checking" role="status">Перевіряємо повний список незавершених чеків. Приймання грошей, наступний клієнт і закриття зміни тимчасово заблоковані.</div>'
+                : '<div class="cashier-alert cashier-alert-danger" data-queue-state="queue_unavailable" role="alert">Черга незавершених чеків недоступна. Не приймайте гроші й не починайте наступного клієнта до успішного оновлення.</div>';
             body.innerHTML = `
-                <div class="cashier-alert cashier-alert-danger" data-queue-state="queue_unavailable" role="alert">
-                    Черга незавершених чеків недоступна. Не приймайте гроші й не починайте наступного клієнта до успішного оновлення.
-                </div>
-                ${lastKnown.length ? '<p class="cashier-muted">Останній відомий список збережено нижче, але він може бути застарілим.</p>' : '<p class="cashier-empty">Останнього відомого списку немає. Це не означає, що незавершених чеків немає.</p>'}
+                ${alertMarkup}
+                ${lastKnownRegisterCount ? `<div class="cashier-report-grid" aria-label="Останній відомий підсумок незавершених чеків"><div><dt>Мої чеки</dt><dd>${lastKnownMyCount}</dd></div><div><dt>Вся каса</dt><dd>${lastKnownRegisterCount}</dd></div></div>` : ''}
+                ${lastKnown.length ? '<p class="cashier-muted">Останній відомий список збережено нижче, але під час перевірки він може змінитися.</p>' : '<p class="cashier-empty">Останнього відомого списку немає. Це не означає, що незавершених чеків немає.</p>'}
                 ${lastKnown.length ? `<div class="cashier-unresolved-list">${lastKnown.map(order => `
                     <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="Відкрити RCP-${escapeAttribute(order.id)}">
                         <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.orderKey || '')}</small></span>
@@ -631,19 +677,24 @@
             renderPendingOrdersNotice();
             syncCreateAvailability();
             syncConfirmationAvailability();
+            renderPhase1ShiftState();
+            syncUnresolvedControls();
             return;
         }
         if (!orders.length) {
             body.innerHTML = '<p class="cashier-empty" data-queue-state="empty">Незавершених чеків для цієї каси немає.</p>';
             renderPendingOrdersNotice();
+            renderPhase1ShiftState();
+            syncUnresolvedControls();
             return;
         }
-        const myCount = orders.filter(order => order.isMine === true).length;
-        const registerCount = orders.length;
+        const myCount = Number(state.unresolvedMyCount || 0);
+        const registerCount = Number(state.unresolvedRegisterCount || orders.length);
         body.innerHTML = `
-            <div class="cashier-report-grid" aria-label="Підсумок незавершених чеків">
+            <div class="cashier-report-grid" data-queue-state="available" aria-label="Підсумок незавершених чеків">
                 <div><dt>Мої чеки</dt><dd>${myCount}</dd></div>
                 <div><dt>Вся каса</dt><dd>${registerCount}</dd></div>
+                <div><dt>Показано</dt><dd>${orders.length}/${registerCount}</dd></div>
             </div>
             <div class="cashier-unresolved-list">
                 ${orders.map(order => `
@@ -658,22 +709,42 @@
                 `).join('')}
             </div>`;
         renderPendingOrdersNotice();
+        renderPhase1ShiftState();
+        syncUnresolvedControls();
     }
 
-    async function loadUnresolvedOrders({ silent = false } = {}) {
+    async function loadUnresolvedOrders({ silent = false, append = false } = {}) {
         if (state.unresolvedInFlight) return state.unresolvedOrders;
         state.unresolvedInFlight = true;
-        const button = $('refreshUnresolvedOrdersBtn');
-        if (button) button.disabled = true;
+        state.unresolvedQueueState = 'checking';
+        state.unresolvedLastError = null;
+        renderUnresolvedOrders();
+        renderReadinessState();
         try {
             const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
+            const requestedPage = append ? Math.max(1, Number(state.unresolvedPage || 0) + 1) : 1;
+            params.set('page', String(requestedPage));
+            params.set('pageSize', String(UNRESOLVED_PAGE_SIZE));
             const result = await apiRequest(`/api/payments/unresolved-orders?${params.toString()}`, {
                 method: 'GET',
                 headers: apiHeaders(),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
-            state.unresolvedOrders = Array.isArray(result.orders) ? result.orders : [];
-            state.unresolvedLastKnownOrders = state.unresolvedOrders;
+            const incoming = Array.isArray(result.orders) ? result.orders : [];
+            const merged = append ? [...state.unresolvedOrders, ...incoming] : incoming;
+            state.unresolvedOrders = [...new Map(merged.map(order => [String(order.id), order])).values()];
+            state.unresolvedPage = Math.max(1, Number(result.page || requestedPage));
+            state.unresolvedPageSize = Math.max(1, Number(result.pageSize || UNRESOLVED_PAGE_SIZE));
+            state.unresolvedRegisterCount = Math.max(0, Number(result.registerCount ?? result.totalCount ?? state.unresolvedOrders.length));
+            state.unresolvedMyCount = Math.max(0, Number(result.myCount ?? state.unresolvedOrders.filter(order => order.isMine === true).length));
+            state.unresolvedHasMore = typeof result.hasMore === 'boolean'
+                ? result.hasMore
+                : state.unresolvedOrders.length < state.unresolvedRegisterCount;
+            state.unresolvedLastKnownOrders = state.unresolvedOrders.slice();
+            state.unresolvedLastKnownSummary = {
+                registerCount: state.unresolvedRegisterCount,
+                myCount: state.unresolvedMyCount
+            };
             state.unresolvedQueueState = 'available';
             state.unresolvedLastRefreshAt = Date.now();
             state.unresolvedLastError = null;
@@ -692,7 +763,7 @@
             return state.unresolvedOrders;
         } finally {
             state.unresolvedInFlight = false;
-            if (button) button.disabled = false;
+            syncUnresolvedControls();
         }
     }
 
@@ -805,6 +876,7 @@
             renderReadinessState();
             syncCreateAvailability();
             syncConfirmationAvailability();
+            renderPhase1ShiftState();
             return;
         }
         state.cashierProEnabled = Boolean(result.cashierProEnabled);
@@ -826,6 +898,7 @@
         renderReadinessState();
         syncCreateAvailability();
         syncConfirmationAvailability();
+        renderPhase1ShiftState();
     }
 
     function renderBlockers(blockers) {
@@ -896,6 +969,7 @@
 
     function queueUnavailableReason() {
         if (state.unresolvedQueueState === 'available') return '';
+        if (state.unresolvedQueueState === 'checking') return 'Перевіряємо повний список незавершених чеків. Дочекайтеся завершення перевірки.';
         if (state.unresolvedQueueState === 'unavailable') return 'Черга незавершених чеків недоступна. Оновіть список перед прийманням грошей.';
         return 'Черга незавершених чеків ще не перевірена.';
     }
@@ -1033,6 +1107,105 @@
         return Boolean(state.registerState?.checklist?.pendingUnknownOperations?.length);
     }
 
+    function phase1CloseContext() {
+        const raw = state.registerState?.phase1Close;
+        if (!raw || typeof raw !== 'object') return null;
+        const shiftId = raw.shiftId ?? raw.fiscalShiftId ?? state.registerState?.shift?.id ?? null;
+        const status = normalizeStatus(raw.providerStatus || raw.shiftStatus || raw.status);
+        return {
+            visible: raw.visible === true,
+            allowed: raw.allowed === true,
+            shiftId: shiftId == null || shiftId === '' ? null : String(shiftId),
+            status,
+            reasonCode: String(raw.reasonCode || raw.code || '').trim().toLowerCase()
+        };
+    }
+
+    function phase1CloseUnavailableReason(context = phase1CloseContext()) {
+        if (!context) return 'Закриття зміни не надане сервером для цього користувача або каси.';
+        if (!hasAction('fiscal.shift.close')) return 'Немає дозволу на закриття зміни Checkbox.';
+        const queueReason = queueUnavailableReason();
+        if (queueReason) return queueReason;
+        const unresolvedCount = Number(state.unresolvedRegisterCount || 0);
+        if (unresolvedCount > 0) return `Закриття заблоковане: незавершених чеків на касі — ${unresolvedCount}.`;
+        if (!context.shiftId) return 'Сервер не підтвердив точну зміну для закриття.';
+        if (context.status !== 'opened') {
+            const statusMessages = {
+                created: 'Зміна ще створюється у Checkbox.',
+                opening: 'Зміна ще відкривається у Checkbox.',
+                closing: 'Зміна вже закривається у Checkbox.',
+                closed: 'Зміну Checkbox закрито.',
+                unknown: 'Статус зміни Checkbox не підтверджено.'
+            };
+            return statusMessages[context.status] || `Закриття недоступне: статус зміни — ${formatStatus(context.status)}.`;
+        }
+        if (context.allowed !== true) {
+            const reasonMessages = {
+                unresolved_orders: 'Закриття заблоковане, доки є незавершені чеки.',
+                unresolved_operations: 'Закриття заблоковане, доки є незавершені чеки.',
+                queue_unavailable: 'Не вдалося перевірити незавершені чеки каси.',
+                provider_unavailable: 'Checkbox тимчасово недоступний для безпечного закриття зміни.',
+                identity_mismatch: 'Checkbox повернув іншу касу, організацію або касира.',
+                checkbox_cashier_identity_mismatch: 'Checkbox повернув іншого касира.',
+                checkbox_organization_identity_mismatch: 'Checkbox повернув іншу організацію.',
+                checkbox_register_identity_mismatch: 'Checkbox повернув іншу касу.',
+                checkbox_signature_unavailable: 'Підпис Checkbox недоступний.',
+                checkbox_certificate_unavailable: 'Сертифікат Checkbox недоступний.',
+                readiness_stale: 'Готовність Checkbox застаріла. Оновіть її перед закриттям зміни.',
+                readiness_missing: 'Готовність Checkbox ще не підтверджена.',
+                global_integration_disabled: 'Інтеграція Checkbox вимкнена.',
+                register_disabled: 'Цю касу вимкнено в налаштуваннях інтеграції.',
+                credentials_missing: 'Runtime-доступи Checkbox не налаштовані.',
+                integration_owner_missing: 'Для каси не призначено відповідального за інтеграцію.',
+                integration_owner_only: 'Закрити зміну може лише відповідальний за інтеграцію.',
+                capability_denied: 'Немає системного дозволу на закриття зміни.',
+                binding_capability_denied: 'Прив’язка користувача до каси не дозволяє закриття зміни.',
+                no_open_shift: 'Відкритої зміни Checkbox немає.',
+                shift_not_provider_open: 'Checkbox не підтвердив зміну як OPENED.',
+                provider_shift_not_open: 'Checkbox не підтвердив зміну як OPENED.',
+                provider_not_ready: 'Checkbox не готовий до безпечного закриття зміни.'
+            };
+            return reasonMessages[context.reasonCode] || 'Сервер не дозволив закриття цієї зміни.';
+        }
+        return '';
+    }
+
+    function renderPhase1ShiftState() {
+        const panel = $('phase1ShiftPanel');
+        const button = $('phase1CloseShiftBtn');
+        const notice = $('phase1ShiftCloseNotice');
+        const context = phase1CloseContext();
+        const visible = Boolean(context?.visible);
+        if (panel) {
+            panel.classList.toggle('hidden', !visible);
+            panel.setAttribute('aria-hidden', visible ? 'false' : 'true');
+        }
+        if (!visible) {
+            setDisabledReason(button, true, 'Закриття зміни недоступне для цього користувача або каси.');
+            if (notice) notice.textContent = 'Закриття зміни недоступне.';
+            return;
+        }
+        setStatus('phase1ShiftStatus', context.status);
+        const reason = phase1CloseUnavailableReason(context);
+        const disabled = Boolean(reason) || state.phase1CloseConfirmationInFlight || state.phase1CloseInFlight;
+        const busyReason = state.phase1CloseConfirmationInFlight
+            ? 'Очікуємо вашого фінального підтвердження.'
+            : state.phase1CloseInFlight
+            ? 'Запит на закриття прийнято. Очікуємо підтвердження CLOSED від Checkbox.'
+            : reason;
+        setDisabledReason(button, disabled, busyReason);
+        if (notice) {
+            notice.textContent = busyReason || 'Зміна OPENED, незавершених чеків немає. Можна безпечно надіслати запит на закриття.';
+        }
+        if (context.status === 'closing'
+            && context.shiftId
+            && !state.phase1ClosePollingTimer
+            && !state.phase1CloseInFlight
+            && !state.phase1ClosePollingPaused) {
+            startPhase1ClosePolling(context.shiftId);
+        }
+    }
+
     function baseScopePayload() {
         const mapping = state.registerState;
         const order = state.orderDetails?.order || {};
@@ -1059,6 +1232,142 @@
         if (panel) {
             panel.classList.add('hidden');
             panel.setAttribute('aria-hidden', 'true');
+        }
+    }
+
+    function clearPhase1ClosePolling({ preserveTarget = false } = {}) {
+        if (state.phase1ClosePollingTimer) window.clearTimeout(state.phase1ClosePollingTimer);
+        state.phase1ClosePollingTimer = null;
+        state.phase1ClosePollingStartedAt = 0;
+        if (!preserveTarget) state.phase1CloseTargetShiftId = null;
+    }
+
+    function phase1CloseReachedClosed(context, targetShiftId) {
+        return Boolean(
+            context
+            && context.status === 'closed'
+            && context.shiftId
+            && String(context.shiftId) === String(targetShiftId)
+        );
+    }
+
+    async function confirmPhase1ShiftClose() {
+        const confirmFn = typeof window.confirmModal === 'function' ? window.confirmModal : null;
+        if (!confirmFn) throw new Error('phase1_close_confirmation_unavailable');
+        return Boolean(await confirmFn(
+            'Закрити поточну зміну в Checkbox? Після закриття нові чеки потребуватимуть відкриття нової зміни.',
+            { type: 'warning', okText: 'Закрити зміну', cancelText: 'Скасувати' }
+        ));
+    }
+
+    function startPhase1ClosePolling(shiftId) {
+        const targetShiftId = String(shiftId || '').trim();
+        if (!targetShiftId) return;
+        if (state.phase1CloseTargetShiftId !== targetShiftId) {
+            clearPhase1ClosePolling();
+            state.phase1CloseTargetShiftId = targetShiftId;
+            state.phase1ClosePollingStartedAt = Date.now();
+            state.phase1ClosePollingPaused = false;
+        } else if (!state.phase1ClosePollingStartedAt) {
+            state.phase1ClosePollingStartedAt = Date.now();
+        }
+        if (state.phase1ClosePollingTimer) return;
+        state.phase1CloseInFlight = true;
+        renderPhase1ShiftState();
+        state.phase1ClosePollingTimer = window.setTimeout(async () => {
+            state.phase1ClosePollingTimer = null;
+            const target = state.phase1CloseTargetShiftId;
+            if (!target) return;
+            if (Date.now() - state.phase1ClosePollingStartedAt > PHASE1_CLOSE_POLL_TIMEOUT_MS) {
+                state.phase1CloseInFlight = false;
+                state.phase1ClosePollingPaused = true;
+                clearPhase1ClosePolling({ preserveTarget: true });
+                renderPhase1ShiftState();
+                notify('Закриття зміни ще не підтверджено. Не повторюйте запит: оновіть стан Checkbox вручну.', 'error');
+                $('refreshReadinessBtn')?.focus?.({ preventScroll: false });
+                return;
+            }
+            const result = await loadPilotRegisterState({ silent: true });
+            const context = phase1CloseContext();
+            if (phase1CloseReachedClosed(context, target)) {
+                clearOperationIdempotencyKey('phase1-close', target);
+                state.phase1CloseInFlight = false;
+                state.phase1ClosePollingPaused = false;
+                clearPhase1ClosePolling();
+                renderPhase1ShiftState();
+                notify('Зміну Checkbox закрито.', 'success');
+                const status = $('phase1ShiftStatus');
+                status?.setAttribute?.('tabindex', '-1');
+                status?.focus?.({ preventScroll: false });
+                return;
+            }
+            if (result && context?.shiftId && String(context.shiftId) !== String(target)) {
+                state.phase1CloseInFlight = false;
+                state.phase1ClosePollingPaused = true;
+                clearPhase1ClosePolling({ preserveTarget: true });
+                renderPhase1ShiftState();
+                notify('Сервер повернув іншу зміну. Закриття зупинено без повторного POST.', 'error');
+                $('refreshReadinessBtn')?.focus?.({ preventScroll: false });
+                return;
+            }
+            startPhase1ClosePolling(target);
+        }, PHASE1_CLOSE_POLL_INTERVAL_MS);
+    }
+
+    async function closePhase1Shift() {
+        if (state.phase1CloseConfirmationInFlight || state.phase1CloseInFlight) return;
+        const context = phase1CloseContext();
+        let reason = phase1CloseUnavailableReason(context);
+        if (reason || !context?.shiftId) {
+            notify(reason || 'Закриття зміни недоступне.', 'error');
+            const focusTarget = state.unresolvedQueueState !== 'available' ? $('refreshUnresolvedOrdersBtn') : $('phase1CloseShiftBtn');
+            focusTarget?.focus?.({ preventScroll: false });
+            return;
+        }
+        state.phase1CloseConfirmationInFlight = true;
+        renderPhase1ShiftState();
+        let confirmed = false;
+        try {
+            confirmed = await confirmPhase1ShiftClose();
+        } catch (error) {
+            notify(paymentUiError(error), 'error');
+        } finally {
+            state.phase1CloseConfirmationInFlight = false;
+        }
+        if (!confirmed) {
+            renderPhase1ShiftState();
+            if (typeof window.confirmModal === 'function') notify('Закриття зміни скасовано. Запит до Checkbox не надіслано.', 'info');
+            $('phase1CloseShiftBtn')?.focus?.({ preventScroll: false });
+            return;
+        }
+        const freshContext = phase1CloseContext();
+        reason = phase1CloseUnavailableReason(freshContext);
+        if (reason || !freshContext?.shiftId || String(freshContext.shiftId) !== String(context.shiftId)) {
+            renderPhase1ShiftState();
+            notify(reason || 'Стан зміни змінився під час підтвердження. Оновіть готовність і спробуйте знову.', 'error');
+            $('refreshReadinessBtn')?.focus?.({ preventScroll: false });
+            return;
+        }
+        const shiftId = context.shiftId;
+        const idempotencyKey = getOperationIdempotencyKey('phase1-close', shiftId);
+        state.phase1CloseInFlight = true;
+        state.phase1ClosePollingPaused = false;
+        renderPhase1ShiftState();
+        try {
+            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/phase1-close`, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify({})
+            });
+            const returnedShiftId = result.fiscalShiftId ?? result.shiftId ?? shiftId;
+            if (String(returnedShiftId) !== String(shiftId)) throw new Error('phase1_shift_identity_mismatch');
+            notify(result.replayed ? 'Запит на закриття зміни вже прийнято. Очікуємо CLOSED.' : 'Закриття зміни надіслано. Очікуємо CLOSED від Checkbox.', 'success');
+            startPhase1ClosePolling(shiftId);
+        } catch (error) {
+            state.phase1CloseInFlight = false;
+            renderPhase1ShiftState();
+            notify(paymentUiError(error), 'error');
+            $('phase1CloseShiftBtn')?.focus?.({ preventScroll: false });
         }
     }
 
@@ -1416,8 +1725,10 @@
         $('startNextOrderBtn')?.addEventListener('click', startNextOrder);
         $('cancelDraftOrderBtn')?.addEventListener('click', cancelDraftOrder);
         $('refreshUnresolvedOrdersBtn')?.addEventListener('click', () => { void loadUnresolvedOrders({ silent: false }); });
+        $('loadMoreUnresolvedOrdersBtn')?.addEventListener('click', () => { void loadUnresolvedOrders({ silent: false, append: true }); });
         $('loadCheckboxSalesReportBtn')?.addEventListener('click', () => { void loadCheckboxSalesReport({ silent: false }); });
         $('refreshReadinessBtn')?.addEventListener('click', () => { void refreshReadiness({ silent: false }); });
+        $('phase1CloseShiftBtn')?.addEventListener('click', () => { void closePhase1Shift(); });
         $('unresolvedOrdersBody')?.addEventListener('click', event => {
             const target = event.target?.closest?.('[data-order-id]');
             const orderId = target?.getAttribute?.('data-order-id');
@@ -1510,6 +1821,7 @@
         getConfirmIdempotencyKey,
         getOperationIdempotencyKey,
         loadPaymentOrder,
-        loadPilotRegisterState
+        loadPilotRegisterState,
+        closePhase1Shift
     };
 })();

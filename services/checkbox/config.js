@@ -16,6 +16,10 @@ function boolEnv(value) {
     return /^(1|true|yes|on|sandbox)$/i.test(String(value || '').trim());
 }
 
+function productionGateEnv(value) {
+    return /^(1|true)$/i.test(String(value || '').trim());
+}
+
 function parseRequiredBooleanEnv(env, name) {
     const raw = String(env[name] || '').trim().toLowerCase();
     if (!raw) {
@@ -34,19 +38,19 @@ function parseRequiredBooleanEnv(env, name) {
 }
 
 function isCheckboxIntegrationEnabled(env = process.env) {
-    return boolEnv(env.CHECKBOX_INTEGRATION_ENABLED);
+    return productionGateEnv(env.CHECKBOX_INTEGRATION_ENABLED);
 }
 
 function isCheckboxPaymentAcceptanceEnabled(env = process.env) {
-    return boolEnv(env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED);
+    return productionGateEnv(env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED);
 }
 
 function isCheckboxWebhookEnabled(env = process.env) {
-    return boolEnv(env.CHECKBOX_WEBHOOK_ENABLED);
+    return productionGateEnv(env.CHECKBOX_WEBHOOK_ENABLED);
 }
 
 function isCashierProEnabled(env = process.env) {
-    return boolEnv(env.EVENTGENIX_CASHIER_PRO_ENABLED);
+    return productionGateEnv(env.EVENTGENIX_CASHIER_PRO_ENABLED);
 }
 
 function normalizeCredentialRef(value) {

@@ -20,13 +20,43 @@ Status: production deployment runbook for disabled fiscal mode. Production activ
 4. Collect exact Checkbox test-mode organization, register, cashier, and credential reference names. Outlet ID is optional metadata because the current official cashier/register schemas do not expose it; do not invent one.
 5. Store raw Checkbox credentials only in environment variables outside the repository.
 6. For local test-mode preparation, keep non-secret mapping in `C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json` and run dry-run first:
-   `npm run configure:checkbox:park -- --config-file C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json`.
+   `npm run configure:checkbox:park -- --config-file="C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json"`.
 7. Run preflight with the same config file only after dry-run is clean:
-   `npm run configure:checkbox:park -- preflight --config-file C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json`.
+   `npm run configure:checkbox:park -- preflight --config-file="C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json"`.
+   On npm 10 for Windows, `--config-file=<path>` must stay one argument. Do not write it as the separated `--config-file <path>` form after a single npm separator, because npm consumes the option and passes only the path to Node. Use `node scripts/configure-checkbox-park-pilot.js --help` for the canonical examples.
 8. Keep raw Checkbox credentials in the local env file only. Do not put password, PIN, license key, access key, token, webhook secret, or price overrides into the JSON config.
 9. Run the Checkbox test-mode smoke only when `/cashier/me` proves the cashier is test-mode.
 10. Enable the pilot register only after successful preflight and explicit activation approval.
 11. Turn on `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true` only in the separate controlled payment activation task.
+
+### Test register device identity
+
+Checkbox uses `X-Device-ID` to block duplicate RRO agents. Keep one stable local-only value per test register and never commit or print it.
+
+- Do not generate a new value after a successful sign-in.
+- `QR-код ключа ліцензії` and `Скинути пінкод` do not replace `X-Device-ID`.
+- HTTP 409 `base.device_id` means the register is already bound to another agent ID. Stop; do not omit the header, delete the register, or retry with random IDs.
+- Recover the exact prior ID, use a separately approved fresh test register, or request a provider-side re-bind for the test register.
+
+With the exact stable ID configured in the local secret file, always run the read-only/full-stack preflight first:
+
+`npm run smoke:checkbox:testmode:fullstack:preflight`
+
+The mutation stage is a separate operator action and must retain its explicit sandbox and owned-shift cleanup confirmations.
+
+### Full-stack test-mode proof contract
+
+Use only the npm commands backed by `scripts/run-isolated-postgres-tests.js`. Do not run `tests/browser/checkbox-cashier-real-testmode-browser-smoke.js` directly. The runner attests the loopback target and disposable PostgreSQL configuration before the harness can authenticate or mutate Checkbox.
+
+- `npm run smoke:checkbox:testmode:fullstack:preflight` is read-only and is always the first step.
+- Mutation commands require a fresh, explicit user authorization, the exact stage-specific confirmation variables, a new single-use UUID run ID, and a local run-ledger directory outside the repository.
+- `smoke:checkbox:testmode:fullstack` is the full mutation proof.
+- `smoke:checkbox:testmode:fullstack:card-recovery` is only for the documented preserved-cash recovery state; it must never recreate the cash sale.
+- `smoke:checkbox:testmode:fullstack:final-card-close` creates or resumes only the explicitly authorized single card draft, proves `DONE`, and closes only its exact owned shift through the Phase-1 EventGenix route.
+- A resume confirmation never authorizes creating a replacement order. Identity mismatch, `is_test` mismatch, non-ready provider state, or an unknown result stops the run.
+- An explicit `cash_payment=false` or `card_payment=false` blocks confirmation of that tender before money/fiscal mutation. Closing an already-fiscalized, smoke-owned shift is a separate recovery action: it never authorizes another payment and still requires exact provider identity, an available provider, zero unresolved orders, and the immutable shift ID.
+
+The value-free variable manifest is `docs/integrations/checkbox/checkbox-test-mode.env.example`. Real values remain only in local secret files outside the repository.
 
 ## First test receipt
 
@@ -61,10 +91,15 @@ Track these read-only signals:
 
 Phase 1 supports a narrow close/sync policy only. Full cash reconciliation, service operations, supervisor PIN approvals, operational reports, and auto-close are Cashier PRO and remain disabled.
 
-If production activation starts before Cashier PRO, the accepted end-of-day policy must be one of:
+The normal thin-pilot end-of-day policy is the narrow Phase 1 close flow in EventGenix:
 
-- close in the Checkbox portal and sync local status read-only; or
-- use the narrow Phase 1 close flow that blocks on pending, unknown, retryable, or dead fiscal operations.
+1. Only the exact configured integration owner with `fiscal.shift.close` and an active profile/location/register binding can see and use the action.
+2. The unresolved queue must be available and empty for the whole register.
+3. The local shift must match the provider `OPENED` shift exactly.
+4. The operator confirms the final action once. A repeated request reuses the same idempotency key, close operation, outbox job, and provider shift UUID.
+5. EventGenix waits for Checkbox `CLOSED`; it never treats a submitted/closing response as final success.
+
+Closing in the Checkbox portal is an audited recovery fallback only. After a portal close, use the read-only status/sync flow so the local shift converges to the same provider shift; never open or adopt another shift automatically.
 
 ## Refund fallback
 

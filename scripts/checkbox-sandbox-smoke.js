@@ -372,6 +372,44 @@ function assertNoPreexistingSandboxShift(shift) {
     );
 }
 
+async function loadCurrentSandboxShift(client, config) {
+    const register = await client.getCashRegisterInfo();
+    assertSame(register?.id, config.expectedRegisterId, 'checkbox_sandbox_register_mismatch', 'cash_register.id');
+    assertSame(register?.organization_id, config.expectedOrganizationId, 'checkbox_sandbox_register_organization_mismatch', 'cash_register.organization_id');
+    if (register?.is_test !== true) {
+        throw new CheckboxClientError('checkbox_sandbox_register_not_test', 'Sandbox mutations require cash_register.is_test=true', {
+            status: 2,
+            retryable: false
+        });
+    }
+    if (typeof register?.has_shift !== 'boolean') {
+        throw new CheckboxClientError('checkbox_sandbox_register_has_shift_missing', 'Cash register response must report official has_shift before sandbox mutations', {
+            status: 2,
+            retryable: false
+        });
+    }
+
+    try {
+        const shift = await client.getCurrentShift();
+        if (!shift || typeof shift !== 'object' || Array.isArray(shift)) {
+            throw new CheckboxClientError('checkbox_sandbox_current_shift_malformed', 'Current shift response does not match the official schema', {
+                status: 2,
+                retryable: false
+            });
+        }
+        if (register.has_shift !== true) {
+            throw new CheckboxClientError('checkbox_sandbox_shift_state_mismatch', 'Checkbox returned a current shift while cash_register.has_shift=false', {
+                status: 2,
+                retryable: false
+            });
+        }
+        return shift;
+    } catch (error) {
+        if ((error?.status === 404 || error?.status === 422) && register.has_shift === false) return null;
+        throw error;
+    }
+}
+
 async function waitShiftOpened(client, shift, config) {
     let current = shift;
     const expectedShiftId = shiftIdentity(shift).shiftId;
@@ -525,7 +563,7 @@ async function closeOwnedSandboxShift({
         try {
             ownedShift = await client.getShiftById({ shiftId: expectedShiftId });
         } catch (error) {
-            if (error?.status === 404 || error?.status === 422) {
+            if (error?.status === 404) {
                 lastStatus = 'NOT_FOUND';
                 if (attempt + 1 < pollAttempts) {
                     await new Promise(resolve => setTimeout(resolve, pollDelayMs));
@@ -675,10 +713,7 @@ async function runSandboxSmoke() {
     let openedBySmoke = false;
     let shiftClosed = false;
     try {
-        shift = await client.getCurrentShift().catch(error => {
-            if (error.status === 404 || error.status === 422) return null;
-            throw error;
-        });
+        shift = await loadCurrentSandboxShift(client, config);
         assertNoPreexistingSandboxShift(shift);
         const providerShiftUuid = crypto.randomUUID();
         openedBySmoke = true;
@@ -773,6 +808,7 @@ module.exports = {
     assertSandboxProofMutationGuard,
     closeOwnedSandboxShift,
     fetchOfficialOpenApi,
+    loadCurrentSandboxShift,
     publicSandboxEvidence,
     publicReadinessDiagnostics,
     resolveLocalOpenApiRef,

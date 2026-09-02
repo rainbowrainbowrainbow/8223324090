@@ -70,7 +70,7 @@ function argsFor({ userId, legalEntityKey, ticketCodes, overrides = {} }) {
         '--cashier-user-id', String(userId),
         '--provider-cashier-id', `${legalEntityKey}_cashier`,
         '--cashier-login-ref', `${legalEntityKey}_cashier_ref`,
-        '--integration-owner', `${legalEntityKey}_owner`,
+        '--integration-owner', String(userId),
         '--expected-is-test', 'true',
         '--actor-user-id', String(userId),
         '--reason', 'integration test config change'
@@ -118,6 +118,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     assert.equal(binding.rows[0].provider_cashier_login_ref, `${legalEntityKey}_cashier_ref`);
     assert.equal(binding.rows[0].action_pin_hash, null, 'thin MVP binding must not require action PIN');
     assert.deepEqual(binding.rows[0].capability_scope.sort(), [
+        'fiscal.shift.close',
         'fiscal.shift.open',
         'payments.confirm_received',
         'payments.create',
@@ -300,6 +301,12 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
             AND user_id = $3`,
         [applied.fiscalProfileId, applied.fiscalRegisterId, userId]
     );
+    await pool.query(
+        `UPDATE fiscal_registers
+            SET metadata = metadata || jsonb_build_object('integration_owner', 999999)
+          WHERE id = $1`,
+        [applied.fiscalRegisterId]
+    );
     await assert.rejects(
         () => updateOperationalIncidentStatus({
             dbPool: pool,
@@ -340,7 +347,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         `UPDATE fiscal_registers
             SET metadata = metadata || jsonb_build_object('integration_owner', $2::text)
           WHERE id = $1`,
-        [applied.fiscalRegisterId, `${legalEntityKey}_owner`]
+        [applied.fiscalRegisterId, String(userId)]
     );
 
     const enabled = await run(['enable-register', ...args], { env, dbPool: pool });

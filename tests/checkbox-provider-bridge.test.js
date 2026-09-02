@@ -108,6 +108,7 @@ function cashRegisterInfo(overrides = {}) {
         created_at: new Date().toISOString(),
         offline_mode: false,
         stay_offline: false,
+        has_shift: false,
         documents_state: { last_receipt_code: null, last_report_code: null },
         ...overrides
     };
@@ -150,6 +151,7 @@ function checkboxReceipt(receiptId, overrides = {}) {
         cash_register_id: PROVIDER_REGISTER_ID,
         cashier_id: PROVIDER_CASHIER_ID,
         shift_id: PROVIDER_SHIFT_ID,
+        organization_id: PROVIDER_ORGANIZATION_ID,
         payments: [{ type: 'CASHLESS', value: 12345, label: 'Картка' }],
         context: { eventgenix: true, fiscal_profile_id: 7, fiscal_operation_id: 501, payment_order_id: 301 },
         shift: openedShift(),
@@ -412,7 +414,7 @@ test('runtime provider readiness requires only the permission for the selected t
         const { server, baseUrl } = await listenMock(call => {
             if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
             if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ permissions }) };
-            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
             if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
             if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
             return { status: 404, body: { error: 'not found' } };
@@ -457,7 +459,7 @@ test('mutation readiness applies tender permissions only to sale operations', as
         const { server, baseUrl } = await listenMock(call => {
             if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
             if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ permissions }) };
-            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
             if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
             if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
             return { status: 404, body: { error: 'not found' } };
@@ -512,6 +514,112 @@ test('opened current shift cannot fall back to its sparse response when detailed
     }
 });
 
+test('malformed null current shift fails closed instead of being normalized as no shift', async () => {
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: null };
+        return { status: 404, body: { detail: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const input = {
+            providerOperationId: crypto.randomUUID(),
+            fiscalOperation: {
+                provider_register_id: PROVIDER_REGISTER_ID,
+                provider_cashier_id: PROVIDER_CASHIER_ID,
+                provider_organization_id: PROVIDER_ORGANIZATION_ID
+            }
+        };
+        await assert.rejects(
+            () => provider.getCurrentShiftStatus(input),
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_response_malformed'
+        );
+        await assert.rejects(
+            () => provider.ensureShiftOpened(input),
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_response_malformed'
+        );
+        assert.equal(calls.some(call => call.method === 'POST' && call.path === '/api/v1/shifts'), false);
+    } finally {
+        await close(server);
+    }
+});
+
+test('current shift 422 means absent only when official register has_shift is false', async () => {
+    async function run(hasShift) {
+        const { server, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+            if (call.path === '/api/v1/cashier/shift') return { status: 422, body: { detail: [{ type: 'value_error' }] } };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: hasShift }) };
+            return { status: 404, body: { detail: 'not found' } };
+        });
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const input = {
+            providerOperationId: crypto.randomUUID(),
+            fiscalOperation: {
+                provider_register_id: PROVIDER_REGISTER_ID,
+                provider_cashier_id: PROVIDER_CASHIER_ID,
+                provider_organization_id: PROVIDER_ORGANIZATION_ID
+            }
+        };
+        return { server, provider, input };
+    }
+
+    const absent = await run(false);
+    try {
+        const current = await absent.provider.getCurrentShiftStatus(absent.input);
+        assert.equal(current.status, 'CLOSED');
+        assert.equal(current.notFound, true);
+    } finally {
+        await close(absent.server);
+    }
+
+    const ambiguous = await run(true);
+    try {
+        await assert.rejects(
+            () => ambiguous.provider.getCurrentShiftStatus(ambiguous.input),
+            error => error instanceof CheckboxClientError
+                && error.code === 'checkbox_current_shift_unknown'
+                && error.unknown === true
+        );
+    } finally {
+        await close(ambiguous.server);
+    }
+});
+
+test('shift close fails before mutation when official current shift is null', async () => {
+    const operationId = crypto.randomUUID();
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
+        if (call.path === '/api/v1/cashier/shift') return { body: null };
+        if (call.path === '/api/v1/shifts/close') return { status: 500, body: { error: 'must not close' } };
+        return { status: 404, body: { detail: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        await assert.rejects(
+            () => provider.closeShift({
+                providerOperationId: operationId,
+                fiscalOperation: {
+                    operation_type: 'shift_close',
+                    provider_operation_id: operationId,
+                    provider_shift_id: PROVIDER_SHIFT_ID,
+                    provider_register_id: PROVIDER_REGISTER_ID,
+                    provider_cashier_id: PROVIDER_CASHIER_ID,
+                    provider_organization_id: PROVIDER_ORGANIZATION_ID
+                }
+            }),
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_response_malformed'
+        );
+        assert.equal(calls.some(call => call.path === '/api/v1/shifts/close'), false);
+    } finally {
+        await close(server);
+    }
+});
+
 test('runtime provider permits unreported payment permissions only for explicit test mode', async () => {
     async function createTestProvider(permissions, { expectedIsTest = true } = {}) {
         const { server, calls, baseUrl } = await listenMock(call => {
@@ -528,7 +636,7 @@ test('runtime provider permits unreported payment permissions only for explicit 
             if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: expectedIsTest }) };
             if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: expectedIsTest ? 'TEST' : 'CLOUD_SIGNATURE_3' }) };
             if (call.path === '/api/v1/cashier/tax') return { body: [] };
-            if (call.path === '/api/v1/cashier/shift') return { body: null };
+            if (call.path === '/api/v1/cashier/shift') return { status: 404, body: { error: 'shift_not_open' } };
             return { status: 404, body: { error: 'not found' } };
         });
         return {
@@ -794,7 +902,7 @@ test('runtime provider aggregate readiness reports all read-only blockers withou
     }
 });
 
-test('runtime provider aggregate readiness treats null current shift as no open shift', async () => {
+test('runtime provider aggregate readiness fails closed on malformed null current shift', async () => {
     const { server, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
@@ -813,9 +921,9 @@ test('runtime provider aggregate readiness treats null current shift as no open 
             expectedIsTest: false
         }, { expectedTaxIds: ['7'] });
         const currentShift = diagnostics.checks.find(check => check.code === 'current_shift');
-        assert.equal(currentShift.status, 'not_applicable');
-        assert.equal(currentShift.ready, true);
-        assert.equal(currentShift.details.shiftStatus, 'none');
+        assert.equal(currentShift.status, 'unavailable');
+        assert.equal(currentShift.ready, false);
+        assert.equal(currentShift.details.errorCode, 'checkbox_current_shift_response_malformed');
     } finally {
         await close(server);
     }
@@ -830,7 +938,7 @@ test('runtime provider aggregate readiness accepts test signature without certif
         if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ is_test: true }) };
         if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus({ type: 'TEST' }) };
         if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
-        if (call.path === '/api/v1/cashier/shift') return { body: null };
+        if (call.path === '/api/v1/cashier/shift') return { status: 404, body: { error: 'shift_not_open' } };
         return { status: 404, body: { error: 'not found' } };
     });
     try {
@@ -855,7 +963,7 @@ test('runtime provider aggregate readiness distinguishes cash/card permission tr
         const { server, baseUrl } = await listenMock(call => {
             if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
             if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ permissions }) };
-            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
             if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
             if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
             if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
@@ -901,7 +1009,7 @@ test('runtime provider aggregate readiness supports password and PIN auth modes'
         const { server, calls, baseUrl } = await listenMock(call => {
             if (call.path === '/api/v1/cashier/signin' || call.path === '/api/v1/cashier/signinPinCode') return { body: { access_token: 'token-1' } };
             if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
-            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
             if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
             if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
             if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
@@ -936,7 +1044,7 @@ test('runtime provider aggregate readiness reports identity and is_test mismatch
     const { server, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile({ id: 'wrong-cashier', is_test: true, organization: { id: 'wrong-org' } }) };
-        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ id: 'wrong-register', organization_id: 'wrong-org', is_test: true }) };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ id: 'wrong-register', organization_id: 'wrong-org', is_test: true, has_shift: true }) };
         if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
         if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ cash_register: { id: 'wrong-register' } }) };
@@ -1137,7 +1245,7 @@ test('runtime provider re-authenticates once on 401 and does not leak secrets in
     }
 });
 
-test('runtime provider fails closed on cashier, register, UUID, type or amount mismatch', async () => {
+test('runtime provider fails closed on cashier, organization, register, UUID, type or amount mismatch', async () => {
     const receiptId = crypto.randomUUID();
     async function expectProviderError(handler, code) {
         const { server, baseUrl } = await listenMock(handler);
@@ -1191,6 +1299,17 @@ test('runtime provider fails closed on cashier, register, UUID, type or amount m
         if (call.path === '/api/v1/receipts/sell') return { status: 201, body: checkboxReceipt(receiptId, { total_sum: 999 }) };
         return { body: { valid: true } };
     }, 'checkbox_receipt_total_sum_mismatch');
+
+    await expectProviderError(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
+        if (call.path === '/api/v1/receipts/sell') {
+            return { status: 201, body: checkboxReceipt(receiptId, { organization_id: crypto.randomUUID() }) };
+        }
+        return { body: { valid: true } };
+    }, 'checkbox_receipt_organization_mismatch');
 });
 
 test('runtime provider blocks HTTP 200 validation responses with false result', async () => {
@@ -1424,7 +1543,7 @@ test('runtime provider closes shift with provider generated report payload and w
     const { server, calls, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
-        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
         if (call.path === '/api/v1/cashier/shift') {
             return { body: openedShift({ cashier: undefined }) };
         }
@@ -1505,7 +1624,7 @@ test('runtime provider blocks shift close before mutation on wrong organization,
         const { server, calls, baseUrl } = await listenMock(call => {
             if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
             if (call.path === '/api/v1/cashier/me') return { body: scenario.profile };
-            if (call.path === '/api/v1/cash-registers/info') return { body: scenario.register || cashRegisterInfo() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: scenario.register || cashRegisterInfo({ has_shift: true }) };
             if (call.path === '/api/v1/cashier/shift') return { body: scenario.current };
             if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: scenario.detailed };
             if (call.path === '/api/v1/shifts/close') return { status: 500, body: { error: 'must not close' } };
@@ -1548,7 +1667,7 @@ test('runtime provider rejects a shift-close response that does not match the im
     const { server, calls, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
-        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ cashier: undefined }) };
         if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/shifts/close') {
@@ -1583,7 +1702,7 @@ test('runtime provider rechecks worker lease ownership immediately before non-id
     const { server, calls, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
-        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo() };
+        if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
         if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ cashier: undefined }) };
         if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) return { body: openedShift() };
         if (call.path === '/api/v1/shifts/close') return { status: 202, body: openedShift({ status: 'CLOSING' }) };

@@ -1,13 +1,17 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const { spawnSync } = require('node:child_process');
 
 const {
     ACTION_PIN_ENV,
     actionPinEnvNameForUser,
     actionPinHashesByUser,
+    capabilitiesForUser,
+    DEFAULT_CAPABILITIES,
     PilotConfigError,
     parseArgs,
     publicPlan,
@@ -37,7 +41,7 @@ const baseArgs = [
     '--cashier-user-id', '50',
     '--provider-cashier-id', 'cashier-50',
     '--cashier-login-ref', 'park-middle',
-    '--integration-owner', 'eventgenix-checkbox',
+    '--integration-owner', '50',
     '--expected-is-test', 'true',
     '--item', 'regular_child|Park child admission|taxed|7|1|0'
 ];
@@ -113,9 +117,36 @@ test('park pilot config CLI is dry-run by default and never enables register fea
     assert.equal('providerCashierId' in output, false);
     assert.equal('providerRegisterId' in output, false);
     assert.equal('providerOrganizationId' in output, false);
-    assert.equal(output.integrationOwner, 'eventgenix-checkbox');
+    assert.equal(output.integrationOwner, 50);
     assert.equal(output.expectedIsTest, true);
     assert.equal(output.itemMappings[0].taxMode, 'taxed');
+});
+
+test('park pilot config grants Phase-1 shift close only to the exact integration owner binding', () => {
+    const plan = parseArgs([
+        ...baseArgs,
+        '--cashier-user-id', '51',
+        '--capabilities', 'payments.view,payments.create,payments.confirm_received,fiscal.shift.open,fiscal.shift.close'
+    ]);
+    assert.equal(capabilitiesForUser(plan, 50).includes('fiscal.shift.close'), true);
+    assert.equal(capabilitiesForUser(plan, 51).includes('fiscal.shift.close'), false);
+    const snapshot = require('../scripts/configure-checkbox-park-pilot').desiredSnapshot(plan);
+    assert.equal(snapshot.bindings.find(binding => binding.userId === 50).capabilityScope.includes('fiscal.shift.close'), true);
+    assert.equal(snapshot.bindings.find(binding => binding.userId === 51).capabilityScope.includes('fiscal.shift.close'), false);
+});
+
+test('park pilot config requires an exact integration owner user with a binding in the plan', () => {
+    const replaceOwner = replacement => baseArgs.map((value, index, list) => (
+        index > 0 && list[index - 1] === '--integration-owner' ? replacement : value
+    ));
+    assert.throws(
+        () => parseArgs(replaceOwner('owner-label')),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_integration_owner_invalid'
+    );
+    assert.throws(
+        () => parseArgs(replaceOwner('999')),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_integration_owner_binding_required'
+    );
 });
 
 test('park pilot config accepts missing provider outlet without inventing an identifier', () => {
@@ -170,6 +201,33 @@ test('park pilot config supports CHECKBOX_PILOT_CONFIG_FILE env fallback', () =>
     const plan = parseArgs([], { CHECKBOX_PILOT_CONFIG_FILE: file });
     assert.equal(plan.legalEntityKey, 'env_fop');
     assert.equal(plan.mode, 'dry-run');
+});
+
+test('park pilot config supports npm 10 Windows-safe --config-file=<path> handoff', () => {
+    const file = writeTempConfig(testConfig({ legalEntityKey: 'npm_config_fop' }));
+    const plan = parseArgs([], {
+        npm_lifecycle_event: 'configure:checkbox:park',
+        npm_config_config_file: file
+    });
+    assert.equal(plan.legalEntityKey, 'npm_config_fop');
+    assert.equal(plan.mode, 'dry-run');
+    assert.throws(
+        () => parseArgs([], { npm_config_config_file: file }),
+        error => error instanceof PilotConfigError && error.code === 'legal_entity_key'
+    );
+});
+
+test('park pilot config CLI --help exits successfully with canonical npm 10 Windows syntax', () => {
+    const script = path.resolve(__dirname, '..', 'scripts', 'configure-checkbox-park-pilot.js');
+    const result = spawnSync(process.execPath, [script, '--help'], {
+        cwd: path.resolve(__dirname, '..'),
+        encoding: 'utf8'
+    });
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /dry-run by default/i);
+    assert.match(result.stdout, /--config-file="C:\\Users\\Plotva\\\.eventgenix\\checkbox-park-test\.config\.json"/);
+    assert.match(result.stdout, /keep --config-file=<path> as one argument/i);
+    assert.doesNotMatch(result.stdout, /pilot_config_arg_value_missing/);
 });
 
 test('park pilot config file rejects secrets and price overrides', () => {
@@ -348,6 +406,10 @@ class FakePilotConfigClient {
                     }))
             };
         }
+        if (normalized.startsWith('SELECT id FROM fiscal_cashier_bindings')) {
+            const binding = this.db.bindings.get(`${params[0]}:${params[1]}:${params[2]}`);
+            return { rows: binding?.status === 'active' ? [{ id: 1 }] : [] };
+        }
         if (normalized.startsWith('SELECT fim.item_code')) {
             return {
                 rows: [...this.db.items.values()]
@@ -450,6 +512,16 @@ class FakePilotConfigClient {
         if (normalized.startsWith('UPDATE fiscal_cashier_bindings SET status =')) {
             for (const binding of this.db.bindings.values()) {
                 if (binding.fiscal_profile_id === params[0] && binding.fiscal_register_id === params[1] && binding.status === 'active') binding.status = 'suspended';
+            }
+            return { rows: [] };
+        }
+        if (normalized.startsWith('UPDATE fiscal_cashier_bindings SET capability_scope = CASE')) {
+            for (const binding of this.db.bindings.values()) {
+                if (binding.fiscal_profile_id !== params[0] || binding.fiscal_register_id !== params[1] || binding.status !== 'active') continue;
+                const withoutClose = binding.capability_scope.filter(capability => capability !== 'fiscal.shift.close');
+                binding.capability_scope = Number(binding.user_id) === Number(params[2])
+                    ? [...new Set([...withoutClose, 'fiscal.shift.close'])]
+                    : withoutClose;
             }
             return { rows: [] };
         }
@@ -573,8 +645,22 @@ test('park pilot config explicit commands mutate with audit and keep register st
     assert.equal([...db.registers.values()][0].feature_enabled, true);
     await run(['--replace-tax-mapping', ...withoutItemArgs(authorizedMutationArgs), '--item', 'regular_child|Park child admission|taxed|8|1|0', '--reason', 'test tax mapping rotation'], { env, dbPool: db });
     assert.equal([...db.items.values()].find(item => item.item_code === 'regular_child').provider_tax_id, '8');
-    await run(['--change-owner', ...authorizedMutationArgs, '--integration-owner', 'new-owner', '--reason', 'test owner change'], { env, dbPool: db });
-    assert.equal([...db.registers.values()][0].metadata.integration_owner, 'new-owner');
+    const originalBinding = [...db.bindings.values()][0];
+    db.bindings.set(`${originalBinding.fiscal_profile_id}:${originalBinding.fiscal_register_id}:51`, {
+        ...originalBinding,
+        user_id: 51,
+        capability_scope: [...DEFAULT_CAPABILITIES]
+    });
+    await run([
+        '--change-owner',
+        ...authorizedMutationArgs,
+        '--cashier-user-id', '51',
+        '--integration-owner', '51',
+        '--reason', 'test owner change'
+    ], { env, dbPool: db });
+    assert.equal([...db.registers.values()][0].metadata.integration_owner, 51);
+    assert.equal([...db.bindings.values()].find(binding => Number(binding.user_id) === 50).capability_scope.includes('fiscal.shift.close'), false);
+    assert.equal([...db.bindings.values()].find(binding => Number(binding.user_id) === 51).capability_scope.includes('fiscal.shift.close'), true);
     assert.ok(db.audits.length >= 4);
 });
 
@@ -622,7 +708,8 @@ test('park pilot config thin MVP bindings do not require action PIN', async () =
 });
 
 test('park pilot config uses runtime-compatible bcrypt action PIN hashes for future PRO bindings', async () => {
-    const pin = '837261';
+    const pin = String(crypto.randomInt(100000, 1000000));
+    const wrongPin = pin === '999999' ? '100000' : String(Number(pin) + 1).padStart(6, '0');
     const hashes = await actionPinHashesByUser(
         { [ACTION_PIN_ENV]: pin },
         ['payments.view', 'fiscal.service_out.approve'],
@@ -631,14 +718,17 @@ test('park pilot config uses runtime-compatible bcrypt action PIN hashes for fut
     const hash = hashes.get(50);
     assert.match(hash, /^\$2[aby]\$/);
     assert.equal(await verifyActionPin(pin, hash), true);
-    assert.equal(await verifyActionPin('837262', hash), false);
+    assert.equal(await verifyActionPin(wrongPin, hash), false);
 });
 
 test('park pilot config requires per-user distinct action PINs for future multi-user PRO bindings', async () => {
     const proCapabilities = ['payments.view', 'fiscal.service_out.approve'];
+    const firstPin = String(crypto.randomInt(100000, 1000000));
+    let secondPin = String(crypto.randomInt(100000, 1000000));
+    while (secondPin === firstPin) secondPin = String(crypto.randomInt(100000, 1000000));
     await assert.rejects(
         () => actionPinHashesByUser(
-            { [ACTION_PIN_ENV]: '837261' },
+            { [ACTION_PIN_ENV]: firstPin },
             proCapabilities,
             [50, 60]
         ),
@@ -647,8 +737,8 @@ test('park pilot config requires per-user distinct action PINs for future multi-
     await assert.rejects(
         () => actionPinHashesByUser(
             {
-                [actionPinEnvNameForUser(50)]: '837261',
-                [actionPinEnvNameForUser(60)]: '837261'
+                [actionPinEnvNameForUser(50)]: firstPin,
+                [actionPinEnvNameForUser(60)]: firstPin
             },
             proCapabilities,
             [50, 60]
@@ -657,14 +747,14 @@ test('park pilot config requires per-user distinct action PINs for future multi-
     );
     const hashes = await actionPinHashesByUser(
         {
-            [actionPinEnvNameForUser(50)]: '837261',
-            [actionPinEnvNameForUser(60)]: '941726'
+            [actionPinEnvNameForUser(50)]: firstPin,
+            [actionPinEnvNameForUser(60)]: secondPin
         },
         proCapabilities,
         [50, 60]
     );
     assert.equal(hashes.size, 2);
-    assert.equal(await verifyActionPin('837261', hashes.get(50)), true);
-    assert.equal(await verifyActionPin('941726', hashes.get(60)), true);
+    assert.equal(await verifyActionPin(firstPin, hashes.get(50)), true);
+    assert.equal(await verifyActionPin(secondPin, hashes.get(60)), true);
     assert.notEqual(hashes.get(50), hashes.get(60));
 });

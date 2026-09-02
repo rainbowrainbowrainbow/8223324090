@@ -87,6 +87,97 @@ function assertBindingAllowsAction(binding, action) {
     }
 }
 
+function integrationOwnerMatchesUser(metadata = {}, user = {}) {
+    const ownerUserId = Number(metadata?.integration_owner);
+    const userId = Number(user?.id);
+    return Number.isSafeInteger(ownerUserId)
+        && ownerUserId > 0
+        && Number.isSafeInteger(userId)
+        && userId === ownerUserId;
+}
+
+function resolvePhase1CloseAvailability({
+    user,
+    binding,
+    registerMetadata = {},
+    shift = null,
+    blockerCount = 0,
+    checkboxIntegrationEnabled = false,
+    registerFeatureEnabled = false,
+    runtimeConfigResolvable = false
+} = {}) {
+    const ownerConfigured = Number.isSafeInteger(Number(registerMetadata?.integration_owner))
+        && Number(registerMetadata.integration_owner) > 0;
+    const ownerMatches = integrationOwnerMatchesUser(registerMetadata, user);
+    const canonicalCapability = canUseAction(user, 'fiscal.shift.close');
+    const bindingCapability = normalizeCapabilityScope(binding?.capability_scope ?? binding?.capabilityScope)
+        .includes('fiscal.shift.close');
+    const visible = ownerMatches && canonicalCapability;
+    let reasonCode = 'ready';
+    if (!ownerConfigured) reasonCode = 'integration_owner_missing';
+    else if (!ownerMatches) reasonCode = 'integration_owner_only';
+    else if (!canonicalCapability) reasonCode = 'capability_denied';
+    else if (!bindingCapability) reasonCode = 'binding_capability_denied';
+    else if (!checkboxIntegrationEnabled) reasonCode = 'global_integration_disabled';
+    else if (!registerFeatureEnabled) reasonCode = 'register_disabled';
+    else if (!runtimeConfigResolvable) reasonCode = 'credentials_missing';
+    else if (!shift) reasonCode = 'no_open_shift';
+    else if (shift.status === 'opening' || ['CREATED', 'OPENING'].includes(shift.lifecycle_stage)) reasonCode = 'shift_opening';
+    else if (shift.status === 'closing' || shift.lifecycle_stage === 'CLOSING') reasonCode = 'shift_closing';
+    else if (shift.status !== 'open' || shift.lifecycle_stage !== 'OPENED' || !shift.provider_shift_id) reasonCode = 'shift_not_provider_open';
+    else if (Number(blockerCount || 0) > 0) reasonCode = 'unresolved_operations';
+    const shiftId = Number.isSafeInteger(Number(shift?.id)) && Number(shift.id) > 0 ? Number(shift.id) : null;
+    const lifecycleStatus = String(shift?.lifecycle_stage || shift?.status || '').trim().toUpperCase();
+    return {
+        visible,
+        allowed: visible && reasonCode === 'ready',
+        reasonCode,
+        shiftId,
+        status: ['CREATED', 'OPENING', 'OPENED', 'CLOSING', 'CLOSED'].includes(lifecycleStatus)
+            ? lifecycleStatus
+            : null
+    };
+}
+
+function applyPhase1CloseReadiness(phase1Close = {}, readiness = {}) {
+    const state = {
+        visible: phase1Close.visible === true,
+        allowed: phase1Close.allowed === true,
+        reasonCode: String(phase1Close.reasonCode || 'not_available'),
+        shiftId: Number.isSafeInteger(Number(phase1Close.shiftId)) && Number(phase1Close.shiftId) > 0
+            ? Number(phase1Close.shiftId)
+            : null,
+        status: ['CREATED', 'OPENING', 'OPENED', 'CLOSING', 'CLOSED'].includes(String(phase1Close.status || '').trim().toUpperCase())
+            ? String(phase1Close.status).trim().toUpperCase()
+            : null
+    };
+    if (!state.visible || !state.allowed) return state;
+    if (readiness.checkboxIntegrationEnabled !== true) {
+        return { ...state, allowed: false, reasonCode: 'global_integration_disabled' };
+    }
+    if (readiness.providerReady !== true) {
+        const code = String(readiness.readinessCode || '').trim();
+        const allowedCodes = new Set([
+            'provider_unavailable',
+            'readiness_missing',
+            'readiness_stale',
+            'checkbox_cashier_identity_mismatch',
+            'checkbox_organization_identity_mismatch',
+            'checkbox_register_identity_mismatch',
+            'checkbox_signature_unavailable',
+            'checkbox_certificate_unavailable',
+            'shift_opening',
+            'shift_closing',
+            'local_shift_requires_reconciliation'
+        ]);
+        return { ...state, allowed: false, reasonCode: allowedCodes.has(code) ? code : 'provider_not_ready' };
+    }
+    if (readiness.shiftState !== 'open') {
+        return { ...state, allowed: false, reasonCode: 'provider_shift_not_open' };
+    }
+    return state;
+}
+
 async function withTransaction(callback) {
     const client = await pool.connect();
     try {
@@ -313,6 +404,38 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
     return { ...shift.rows[0], fiscal_location_id: fiscalLocationId, crm_profile_key: order.crm_profile_key };
 }
 
+async function countPhase1CloseBlockers(client, { fiscalProfileId, fiscalRegisterId } = {}) {
+    const result = await client.query(
+        `WITH latest_job AS (
+             SELECT DISTINCT ON (payment_order_id)
+                    payment_order_id,
+                    status
+               FROM payment_outbox_jobs
+              WHERE fiscal_profile_id = $1
+                AND payment_order_id IS NOT NULL
+                AND job_type IN ('receipt_sell', 'receipt_status_lookup')
+              ORDER BY payment_order_id, created_at DESC, id DESC
+         )
+         SELECT COUNT(*) AS blocker_count
+           FROM payment_orders po
+           LEFT JOIN fiscal_operations fo
+             ON fo.payment_order_id = po.id
+            AND fo.fiscal_profile_id = po.fiscal_profile_id
+            AND fo.operation_type = 'sale'
+           LEFT JOIN latest_job job ON job.payment_order_id = po.id
+          WHERE po.fiscal_profile_id = $1
+            AND po.fiscal_register_id = $2
+            AND po.payment_status = 'confirmed'
+            AND (
+                po.fiscal_status IN ('pending', 'unknown', 'failed', 'validating', 'ready_to_send', 'sending', 'blocked')
+                OR fo.status IN ('pending', 'unknown', 'failed')
+                OR job.status IN ('failed', 'dead', 'claimed', 'running')
+            )`,
+        [fiscalProfileId, fiscalRegisterId]
+    );
+    return Number(result.rows[0]?.blocker_count || 0);
+}
+
 async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', registerAlias = 'middle' }) {
     return withTransaction(async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(process.env);
@@ -331,7 +454,8 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
                  fr.provider,
                  fr.provider_license_ref,
                  fr.status AS fiscal_register_status,
-                 fr.feature_enabled
+                 fr.feature_enabled,
+                 fr.metadata AS register_metadata
                FROM fiscal_profiles fp
                JOIN fiscal_locations fl
                  ON fl.fiscal_profile_id = fp.id
@@ -355,6 +479,13 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
                 registerFeatureEnabled: false,
                 runtimeConfigResolvable: false,
                 readinessCode: mapping.rows.length > 1 ? 'mapping_ambiguous' : 'mapping_missing',
+                phase1Close: {
+                    visible: false,
+                    allowed: false,
+                    reasonCode: mapping.rows.length > 1 ? 'mapping_ambiguous' : 'mapping_missing',
+                    shiftId: null,
+                    status: null
+                },
                 checklist: null
             };
         }
@@ -395,13 +526,30 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
                FROM fiscal_shifts
               WHERE fiscal_profile_id = $1
                 AND fiscal_register_id = $2
-                AND status IN ('opening', 'open', 'closing')
-              ORDER BY opened_at DESC NULLS LAST, id DESC
+                AND status IN ('opening', 'open', 'closing', 'closed')
+              ORDER BY CASE WHEN status IN ('opening', 'open', 'closing') THEN 0 ELSE 1 END,
+                       COALESCE(closed_at, opened_at, created_at) DESC NULLS LAST,
+                       id DESC
               LIMIT 1`,
             [row.fiscal_profile_id, row.fiscal_register_id]
         );
         const shift = shiftResult.rows[0] || null;
-        const checklist = cashierProEnabled && shift ? await buildCloseChecklist(client, shift) : null;
+        const proShiftActive = shift && ['opening', 'open', 'closing'].includes(String(shift.status || '').toLowerCase());
+        const checklist = cashierProEnabled && proShiftActive ? await buildCloseChecklist(client, shift) : null;
+        const closeBlockerCount = shift ? await countPhase1CloseBlockers(client, {
+            fiscalProfileId: row.fiscal_profile_id,
+            fiscalRegisterId: row.fiscal_register_id
+        }) : 0;
+        const phase1Close = resolvePhase1CloseAvailability({
+            user,
+            binding,
+            registerMetadata: row.register_metadata,
+            shift,
+            blockerCount: closeBlockerCount,
+            checkboxIntegrationEnabled,
+            registerFeatureEnabled: Boolean(row.feature_enabled),
+            runtimeConfigResolvable
+        });
         return {
             checkboxIntegrationEnabled,
             cashierProEnabled,
@@ -423,11 +571,11 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
             shift: shift ? {
                 id: Number(shift.id),
                 status: shift.status,
+                lifecycleStage: shift.lifecycle_stage || null,
                 openedAt: shift.opened_at || null,
-                closedAt: shift.closed_at || null,
-                providerShiftId: shift.provider_shift_id || null,
-                providerSnapshot: shift.provider_snapshot || {}
+                closedAt: shift.closed_at || null
             } : null,
+            phase1Close,
             checklist
         };
     });
@@ -1361,8 +1509,11 @@ function cashierOperationsErrorResponse(error) {
 module.exports = {
     AUTO_CLOSE_FLAG,
     CashierOperationsError,
+    applyPhase1CloseReadiness,
     ensureOpenShiftForSale,
+    integrationOwnerMatchesUser,
     loadPilotRegisterState,
+    resolvePhase1CloseAvailability,
     createServiceIn,
     createServiceOutRequest,
     approveServiceOut,

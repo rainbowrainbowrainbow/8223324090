@@ -337,6 +337,7 @@ async function listenMockCheckbox() {
                         created_at: '2026-01-01T00:00:00.000Z',
                         offline_mode: false,
                         stay_offline: false,
+                        has_shift: Boolean(state.shiftOpened && state.shiftStatus !== 'CLOSED'),
                         documents_state: { last_receipt_code: null, last_report_code: null }
                     });
                 }
@@ -365,8 +366,7 @@ async function listenMockCheckbox() {
                     return send(200, {
                         id: state.shiftId,
                         status: state.shiftStatus || 'OPENED',
-                        cash_register_id: state.registerId,
-                        cashier_id: state.cashierId
+                        cash_register: { id: state.registerId, fiscal_number: '4000000000', active: true }
                     });
                 }
                 if (req.url.startsWith('/api/v1/shifts/') && req.method === 'GET') {
@@ -392,11 +392,11 @@ async function listenMockCheckbox() {
                     state.shiftExists = true;
                     state.shiftStatus = 'OPENED';
                     state.shiftId = body?.id || state.shiftId || crypto.randomUUID();
-                    return send(201, {
+                    return send(202, {
                         id: state.shiftId,
                         status: 'OPENED',
-                        cash_register_id: state.registerId,
-                        cashier_id: state.cashierId
+                        cash_register: { id: state.registerId, fiscal_number: '4000000000', active: true },
+                        cashier: { id: state.cashierId }
                     });
                 }
                 if (req.url === '/api/v1/shifts/close' && req.method === 'POST') {
@@ -433,6 +433,7 @@ async function listenMockCheckbox() {
                         cash_register_id: state.registerId,
                         cashier_id: state.cashierId,
                         shift_id: state.shiftId,
+                        organization_id: state.organizationId,
                         context: body?.context || {},
                         tax_url: `https://api.checkbox.in.ua/api/v1/receipts/${id}`
                     };
@@ -780,6 +781,60 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         }
     });
 
+    test('explicit card permission denial blocks confirmation before payment or fiscal mutation', async () => {
+        const order = await createOrder({
+            user: cashier,
+            key: 'card-permission-denied',
+            tender: 'card_terminal_manual',
+            totalUah: TEST_TICKET_PRICES_UAH.adult_companion,
+            itemCode: 'adult_companion'
+        });
+        const originalPermissions = { ...mock.state.permissions };
+        mock.state.permissions = { ...originalPermissions, card_payment: false };
+        try {
+            await assert.rejects(
+                confirmPaymentOrder({
+                    dbPool: pool,
+                    user: cashier,
+                    orderId: order.order.id,
+                    idempotencyKey: `confirm-card-permission-denied-${process.pid}`,
+                    requireCheckboxIntegrationReady: true,
+                    checkboxFetchImpl: createOfficialHostMockFetch(mock),
+                    body: {
+                        tender: 'card_terminal_manual',
+                        confirmedAmountMinor: '1000',
+                        terminalShowedSuccess: true,
+                        terminalReference: 'permission-denied-test'
+                    }
+                }),
+                error => error?.code === 'checkbox_cashier_permissions_missing'
+            );
+        } finally {
+            mock.state.permissions = originalPermissions;
+        }
+        const state = await pool.query(
+            `SELECT po.status,
+                    po.payment_status,
+                    po.fiscal_status,
+                    (SELECT COUNT(*)::integer FROM payment_attempts pa WHERE pa.payment_order_id = po.id) AS attempt_count,
+                    (SELECT COUNT(*)::integer FROM payment_allocations allocation WHERE allocation.payment_order_id = po.id) AS allocation_count,
+                    (SELECT COUNT(*)::integer FROM fiscal_operations operation WHERE operation.payment_order_id = po.id) AS operation_count,
+                    (SELECT COUNT(*)::integer FROM payment_outbox_jobs job WHERE job.payment_order_id = po.id) AS job_count
+               FROM payment_orders po
+              WHERE po.id = $1`,
+            [order.order.id]
+        );
+        assert.deepEqual(state.rows[0], {
+            status: 'draft',
+            payment_status: 'unpaid',
+            fiscal_status: 'pending',
+            attempt_count: 0,
+            allocation_count: 0,
+            operation_count: 0,
+            job_count: 0
+        });
+    });
+
     test('actual worker preserves shift recovery stage and retries only the same durable UUID after two exact 404 lookups', async () => {
         assert.equal(mock.state.shiftOpened, false, 'recovery regression must start without a provider shift');
         const order = await createOrder({
@@ -912,15 +967,153 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             force: true
         });
         assert.equal(readiness.providerReady, true);
+        const unresolvedCloseOrder = await createOrder({
+            user: cashier,
+            key: 'phase1-close-blocker',
+            tender: 'cash',
+            totalUah: TEST_TICKET_PRICES_UAH.regular_child,
+            itemCode: 'regular_child'
+        });
+        await confirmOrder({
+            user: cashier,
+            order: unresolvedCloseOrder,
+            key: 'phase1-close-blocker',
+            tender: 'cash',
+            amountMinor: '10000',
+            receivedAmountMinor: '10000'
+        });
         const previousAcceptance = process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED;
         process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'false';
         try {
+            const closeMutationCounts = async () => {
+                const result = await pool.query(
+                    `SELECT
+                         COUNT(DISTINCT fo.id) FILTER (WHERE fo.operation_type = 'shift_close')::integer AS operation_count,
+                         COUNT(DISTINCT job.id) FILTER (WHERE fo.operation_type = 'shift_close')::integer AS job_count
+                       FROM fiscal_operations fo
+                       LEFT JOIN payment_outbox_jobs job
+                         ON job.fiscal_operation_id = fo.id
+                        AND job.fiscal_profile_id = fo.fiscal_profile_id
+                      WHERE fo.fiscal_shift_id = $1`,
+                    [shift.fiscal_shift_id]
+                );
+                return {
+                    operationCount: Number(result.rows[0].operation_count || 0),
+                    jobCount: Number(result.rows[0].job_count || 0),
+                    providerClosePosts: mock.state.calls.filter(call => call.path === '/api/v1/shifts/close' && call.method === 'POST').length
+                };
+            };
+            const beforeUnsafeClose = await closeMutationCounts();
+            await assert.rejects(
+                requestPhase1ShiftClose({
+                    dbPool: pool,
+                    user: cashier,
+                    shiftId: shift.fiscal_shift_id,
+                    idempotencyKey: `phase1-close-unresolved-${process.pid}`,
+                    fetchImpl: createOfficialHostMockFetch(mock)
+                }),
+                error => error?.code === 'shift_close_blocked_unresolved'
+            );
+            assert.deepEqual(
+                await closeMutationCounts(),
+                beforeUnsafeClose,
+                'Confirmed unresolved order must create no shift-close operation, job, or provider close POST'
+            );
+            await runWorkerUntilIdle(createHttpProvider(mock));
+            const resolvedBlocker = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [unresolvedCloseOrder.order.id]);
+            assert.equal(resolvedBlocker.rows[0].fiscal_status, 'fiscalized');
+            const expectedCashierId = mock.state.cashierId;
+            mock.state.cashierId = 'wrong-close-cashier';
+            try {
+                await assert.rejects(
+                    requestPhase1ShiftClose({
+                        dbPool: pool,
+                        user: cashier,
+                        shiftId: shift.fiscal_shift_id,
+                        idempotencyKey: `phase1-close-wrong-identity-${process.pid}`,
+                        fetchImpl: createOfficialHostMockFetch(mock)
+                    }),
+                    error => error?.code === 'checkbox_cashier_identity_mismatch'
+                );
+            } finally {
+                mock.state.cashierId = expectedCashierId;
+            }
+            assert.deepEqual(
+                await closeMutationCounts(),
+                beforeUnsafeClose,
+                'Provider identity mismatch must create no shift-close operation, job, or close POST'
+            );
+
+            mock.state.unavailablePaths.add('/api/v1/cash-registers/info');
+            try {
+                await assert.rejects(
+                    requestPhase1ShiftClose({
+                        dbPool: pool,
+                        user: cashier,
+                        shiftId: shift.fiscal_shift_id,
+                        idempotencyKey: `phase1-close-provider-unavailable-${process.pid}`,
+                        fetchImpl: createOfficialHostMockFetch(mock)
+                    }),
+                    error => error?.code === 'provider_unavailable'
+                );
+            } finally {
+                mock.state.unavailablePaths.delete('/api/v1/cash-registers/info');
+            }
+            assert.deepEqual(
+                await closeMutationCounts(),
+                beforeUnsafeClose,
+                'Provider unavailable readiness must create no shift-close operation, job, or close POST'
+            );
+
+            const callsBeforeDeniedClose = mock.state.calls.length;
+            await assert.rejects(
+                requestPhase1ShiftClose({
+                    dbPool: pool,
+                    user: { ...cashier, id: 999999 },
+                    shiftId: shift.fiscal_shift_id,
+                    idempotencyKey: `phase1-close-denied-${process.pid}`,
+                    fetchImpl: createOfficialHostMockFetch(mock)
+                }),
+                error => error?.code === 'phase1_close_owner_denied'
+            );
+            assert.equal(
+                mock.state.calls.length,
+                callsBeforeDeniedClose,
+                'Unauthorized exact-shift close must not perform provider HTTP'
+            );
+            const callsBeforeWrongOwner = mock.state.calls.length;
+            await assert.rejects(
+                requestPhase1ShiftClose({
+                    dbPool: pool,
+                    user: secondCashier,
+                    shiftId: shift.fiscal_shift_id,
+                    idempotencyKey: `phase1-close-wrong-owner-${process.pid}`,
+                    fetchImpl: createOfficialHostMockFetch(mock)
+                }),
+                error => error?.code === 'phase1_close_owner_denied'
+            );
+            assert.equal(mock.state.calls.length, callsBeforeWrongOwner, 'Non-owner close must fail before provider HTTP');
             const closeRequest = await requestPhase1ShiftClose({
                 dbPool: pool,
                 user: cashier,
                 shiftId: shift.fiscal_shift_id,
-                idempotencyKey: `phase1-close-recovery-${process.pid}`
+                idempotencyKey: `phase1-close-recovery-${process.pid}`,
+                fetchImpl: createOfficialHostMockFetch(mock)
             });
+            assert.equal(closeRequest.replayed, false);
+            const callsBeforeReplay = mock.state.calls.length;
+            const closeReplay = await requestPhase1ShiftClose({
+                dbPool: pool,
+                user: cashier,
+                shiftId: shift.fiscal_shift_id,
+                idempotencyKey: `phase1-close-recovery-${process.pid}`,
+                fetchImpl: createOfficialHostMockFetch(mock)
+            });
+            assert.equal(closeReplay.replayed, true);
+            assert.equal(closeReplay.fiscalOperationId, closeRequest.fiscalOperationId);
+            assert.equal(closeReplay.outboxJobId, closeRequest.outboxJobId);
+            assert.equal(closeReplay.providerRequestUuid, closeRequest.providerRequestUuid);
+            assert.equal(mock.state.calls.length, callsBeforeReplay, 'Idempotent close replay must not perform provider readiness HTTP');
             const queuedClose = await pool.query(
                 'SELECT status, external_stage FROM payment_outbox_jobs WHERE id = $1',
                 [closeRequest.outboxJobId]
@@ -1330,6 +1523,33 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         assert.equal(unresolvedForSecondCashier.orders.find(order => order.id === second.order.id).isMine, true);
         assert.ok(unresolvedForSecondCashier.registerCount >= 2);
         assert.ok(unresolvedForSecondCashier.myCount >= 1);
+
+        const firstUnresolvedPage = await listUnresolvedPaymentOrders({
+            dbPool: pool,
+            user: secondCashier,
+            crmProfileKey: CRM_PROFILE_KEY,
+            registerAlias: REGISTER_ALIAS,
+            page: 1,
+            pageSize: 1
+        });
+        const secondUnresolvedPage = await listUnresolvedPaymentOrders({
+            dbPool: pool,
+            user: secondCashier,
+            crmProfileKey: CRM_PROFILE_KEY,
+            registerAlias: REGISTER_ALIAS,
+            page: 2,
+            pageSize: 1
+        });
+        assert.equal(firstUnresolvedPage.orders.length, 1, 'unresolved rows respect pageSize');
+        assert.equal(secondUnresolvedPage.orders.length, 1, 'the next unresolved page remains reachable');
+        assert.notEqual(firstUnresolvedPage.orders[0].id, secondUnresolvedPage.orders[0].id);
+        assert.equal(firstUnresolvedPage.page, 1);
+        assert.equal(firstUnresolvedPage.pageSize, 1);
+        assert.equal(firstUnresolvedPage.hasMore, true);
+        assert.equal(firstUnresolvedPage.registerCount, unresolvedForSecondCashier.registerCount);
+        assert.equal(secondUnresolvedPage.registerCount, unresolvedForSecondCashier.registerCount);
+        assert.equal(firstUnresolvedPage.myCount, unresolvedForSecondCashier.myCount);
+        assert.equal(secondUnresolvedPage.myCount, unresolvedForSecondCashier.myCount);
 
         const report = await loadCheckboxSalesReport({
             dbPool: pool,

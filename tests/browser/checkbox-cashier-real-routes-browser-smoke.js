@@ -425,7 +425,7 @@ async function run() {
         } catch (error) {
             const bootstrapDiagnostics = await page.evaluate(async () => {
                 const token = localStorage.getItem('pzp_token');
-                const response = await fetch('/api/payments/pilot-register-state?crmProfileKey=event_genix&registerAlias=middle', {
+                const response = await fetch('/api/payments/pilot-register-state?crmProfileKey=event_genix&locationAlias=park&registerAlias=middle', {
                     headers: token ? { Authorization: `Bearer ${token}` } : {}
                 });
                 return {
@@ -494,7 +494,7 @@ async function run() {
         const pendingOrderId = await page.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id);
         const unresolvedApi = await page.evaluate(async () => {
             const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/unresolved-orders?crmProfileKey=event_genix&registerAlias=middle', {
+            const response = await fetch('/api/payments/unresolved-orders?crmProfileKey=event_genix&locationAlias=park&registerAlias=middle', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
@@ -531,7 +531,7 @@ async function run() {
         await page.unroute('**/api/payments/unresolved-orders*', unresolvedRouteHandler);
         const reportApi = await page.evaluate(async () => {
             const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/checkbox-sales-report?crmProfileKey=event_genix&registerAlias=middle&page=1&pageSize=1', {
+            const response = await fetch('/api/payments/checkbox-sales-report?crmProfileKey=event_genix&locationAlias=park&registerAlias=middle&page=1&pageSize=1', {
                 headers: { Authorization: `Bearer ${token}` }
             });
             return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };

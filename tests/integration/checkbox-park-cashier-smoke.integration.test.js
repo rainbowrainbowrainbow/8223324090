@@ -165,7 +165,8 @@ function testPilotConfig({ cashierIds, legalEntityKey, providerOrganizationId, p
         locationName: 'Дитячий критий парк',
         registerName: 'Середня каса',
         providerRegisterId,
-        credentialRef: 'park-middle-smoke',
+        registerCredentialRef: 'park-middle-smoke-register',
+        cashierCredentialRef: 'park-middle-smoke-cashier',
         providerCashierId,
         expectedIsTest: true,
         integrationOwnerUserId: cashierIds[0],
@@ -644,12 +645,13 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         previousCheckboxEnv = {
             CHECKBOX_INTEGRATION_ENABLED: process.env.CHECKBOX_INTEGRATION_ENABLED,
             CHECKBOX_ACCEPT_PAYMENTS_ENABLED: process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED,
-            CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL,
-            CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN,
-            CHECKBOX_PARK_MIDDLE_SMOKE_PASSWORD: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_PASSWORD,
-            CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY,
-            CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY,
-            CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID,
+            CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_BASE_URL: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_BASE_URL,
+            CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_LICENSE_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_LICENSE_KEY,
+            CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_ACCESS_KEY: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_ACCESS_KEY,
+            CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_AUTH_MODE: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_AUTH_MODE,
+            CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_LOGIN: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_LOGIN,
+            CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_PASSWORD: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_PASSWORD,
+            CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_DEVICE_ID: process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_DEVICE_ID,
             CHECKBOX_PHASE2_REFUND_CASHIER_LOGIN: process.env.CHECKBOX_PHASE2_REFUND_CASHIER_LOGIN,
             CHECKBOX_PHASE2_REFUND_CASHIER_PASSWORD: process.env.CHECKBOX_PHASE2_REFUND_CASHIER_PASSWORD,
             CHECKBOX_EXPECT_IS_TEST: process.env.CHECKBOX_EXPECT_IS_TEST,
@@ -676,12 +678,13 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         mock.state.registerId = scope.providerRegisterId;
         process.env.CHECKBOX_INTEGRATION_ENABLED = 'true';
         process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'true';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_BASE_URL = 'https://api.checkbox.in.ua';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LOGIN = 'mock-login';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_PASSWORD = 'mock-password';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_LICENSE_KEY = 'mock-license';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_ACCESS_KEY = 'mock-access';
-        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_DEVICE_ID = 'eventgenix-smoke-device';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_BASE_URL = 'https://api.checkbox.in.ua';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_LICENSE_KEY = 'mock-license';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_REGISTER_ACCESS_KEY = 'mock-access';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_AUTH_MODE = 'password';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_LOGIN = 'mock-login';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_PASSWORD = 'mock-password';
+        process.env.CHECKBOX_PARK_MIDDLE_SMOKE_CASHIER_DEVICE_ID = 'eventgenix-smoke-device';
         process.env.CHECKBOX_PHASE2_REFUND_CASHIER_LOGIN = 'mock-refund-login';
         process.env.CHECKBOX_PHASE2_REFUND_CASHIER_PASSWORD = 'mock-refund-password';
         process.env.CHECKBOX_EXPECT_IS_TEST = 'true';
@@ -3490,7 +3493,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                         provider_organization_id: scope.providerOrganizationId,
                         provider_outlet_id: null,
                         provider_register_id: scope.providerRegisterId,
-                        provider_license_ref: 'park-middle-smoke',
+                        provider_license_ref: 'park-middle-smoke-register',
                         register_expected_is_test: true
                     },
                     fiscalConfig: { snapshot: { expected_is_test: true } }

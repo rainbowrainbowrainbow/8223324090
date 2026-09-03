@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.70 - Checkbox Multi-Business UI Hardening
+
+### Release / Versioning / (03.09.2026) [codex]
+- **Касирський UI “Оплата та чек”** — додано зрозумілий flow станів, кращі кнопки, історію чеків, стабільні повідомлення для незавершених чеків і чистіші причини блокування зміни.
+- **Multi-business hardening** — readiness, створення оплати, unresolved queue, report і close shift тепер працюють тільки в exact `crmProfileKey + locationAlias + registerAlias` scope.
+- **Park/Dar isolation** — додано regression-перевірки, що чеки, товари, касири й fiscal mappings різних бізнесів не змішуються.
+- **Фіскалізація не активована** — production Checkbox integration, acceptance gate, webhook і Cashier PRO залишаються вимкненими.
+
+---
+
 ## v0.81.69 - Checkbox Hardening Release
 
 ### Release / Versioning / (03.09.2026) [codex]

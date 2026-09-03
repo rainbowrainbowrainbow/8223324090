@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.69",
+  "version": "0.81.70",
   "eventGenix": {
-    "releaseLabel": "Checkbox Hardening Release"
+    "releaseLabel": "Checkbox Multi-Business UI Hardening"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

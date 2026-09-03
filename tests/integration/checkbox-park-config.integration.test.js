@@ -9,9 +9,11 @@ const {
 } = require('../../services/payments/paymentReadinessService');
 
 const SHOULD_RUN = process.env.RUN_CHECKBOX_PARK_CONFIG_INTEGRATION === 'true';
+let uniqueCounter = 0;
 
 function unique(prefix) {
-    return `${prefix}_${process.pid}_${Date.now()}`.toLowerCase();
+    uniqueCounter += 1;
+    return `${prefix}_${process.pid}_${Date.now()}_${uniqueCounter}`.toLowerCase();
 }
 
 function deferred() {

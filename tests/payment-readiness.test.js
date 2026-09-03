@@ -358,7 +358,7 @@ test('cashier payment mutation projection removes durable provider and ledger id
     assert.deepEqual(creatorResult.order.confirmationSnapshot, { tender: 'cash' });
 });
 
-test('cashier read models remove provider and ledger identities without hiding operational state', () => {
+test('cashier read models remove provider and ledger identities without hiding operational state or scope proof', () => {
     const cashier = { id: 3, role: 'cashier', extra_roles: [] };
     const unresolved = {
         fiscalProfileId: 1,
@@ -380,9 +380,9 @@ test('cashier read models remove provider and ledger identities without hiding o
         }]
     };
     const projectedQueue = cashierProjection.projectUnresolvedOrdersForViewer(cashier, unresolved);
-    assert.equal(projectedQueue.fiscalProfileId, undefined);
-    assert.equal(projectedQueue.fiscalLocationId, undefined);
-    assert.equal(projectedQueue.fiscalRegisterId, undefined);
+    assert.equal(projectedQueue.fiscalProfileId, 1);
+    assert.equal(projectedQueue.fiscalLocationId, 2);
+    assert.equal(projectedQueue.fiscalRegisterId, 3);
     assert.equal(projectedQueue.registerWide, true);
     assert.equal(projectedQueue.orders[0].paymentStatus, 'confirmed');
     assert.equal(projectedQueue.orders[0].fiscalStatus, 'unknown');

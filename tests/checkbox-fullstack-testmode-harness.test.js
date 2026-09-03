@@ -35,7 +35,8 @@ function writeConfig(overrides = {}) {
         providerOrganizationId: 'test-org-id',
         providerRegisterId: 'test-register-id',
         providerCashierId: 'test-cashier-id',
-        credentialRef: 'park-middle-test',
+        registerCredentialRef: 'park-middle-test',
+        cashierCredentialRef: 'park-middle-test',
         expectedIsTest: true,
         integrationOwnerUserId: 4,
         cashierUserIds: [3, 4],
@@ -93,7 +94,6 @@ test('full-stack preflight accepts only local DB, official host, exact test iden
 
 test('full-stack harness resolves stable device from the cashier credential ref', t => {
     const configFile = writeConfig({
-        credentialRef: 'park-register-test',
         registerCredentialRef: 'park-register-test',
         cashierCredentialRef: 'park-cashier-test'
     });
@@ -342,7 +342,9 @@ test('final proof starts empty, creates only card and closes through EventGenix 
     const finalStart = runBlock.indexOf('if (isFinalCardClose) {');
     const mutationReadinessGuard = runBlock.indexOf("if (readiness.integrationReady !== true || readiness.readinessCode !== 'ready')");
     assert.ok(mutationReadinessGuard > 0 && mutationReadinessGuard < finalStart, 'exact provider readiness must be checked before final-card mutation');
-    const finalBranch = runBlock.slice(finalStart, runBlock.indexOf("await assertNoLocalFiscalMutations();\n\n        const cashOrderId", finalStart));
+    const regularMutationStart = runBlock.indexOf("const cashOrderId = await createAndConfirmOrder(page, 'cash');", finalStart);
+    assert.ok(regularMutationStart > finalStart, 'regular cash/card mutation branch must follow the final-card branch');
+    const finalBranch = runBlock.slice(finalStart, regularMutationStart);
     assert.match(finalBranch, /assertNoLocalFiscalMutations\(\)/);
     assert.match(finalBranch, /createAndConfirmOrder\(page, 'card_terminal_manual'\)/);
     assert.match(finalBranch, /confirmExistingCardDraft[\s\S]*loadExactResumableCardDraft/);
@@ -370,6 +372,18 @@ test('card recovery runner preserves the exact disposable ledger and never reset
         runner,
         /if \(preserveCheckboxRecoveryState\) \{[\s\S]*Preserving disposable Checkbox card-recovery proof[\s\S]*else if/
     );
+});
+
+test('every fresh isolated suite refuses to erase preserved Checkbox mutation evidence', () => {
+    const runner = fs.readFileSync(
+        path.join(__dirname, '..', 'scripts', 'run-isolated-postgres-tests.js'),
+        'utf8'
+    );
+    assert.match(
+        runner,
+        /else \{\s*await assertNoPreservedCheckboxMutationState\(testDb\);\s*initialSchemaResetAuthorized = true;\s*await resetPublicSchema\(testDb\)/
+    );
+    assert.match(runner, /else if \(!initialSchemaResetAuthorized\) \{[\s\S]*preserved Checkbox state remains untouched/);
 });
 
 test('final one-card runner starts from an empty disposable DB and preserves proof state', () => {
@@ -401,4 +415,15 @@ test('owned-shift close and cleanup support an exact recovery shift id', () => {
     assert.match(harness, /localOwnedShift\(scope, cashier, \{ shiftId = null, excludeShiftId = null \} = \{\}\)/);
     assert.match(harness, /cleanupOwnedShiftIfNeeded\([\s\S]*targetShiftId[\s\S]*baselineShiftId/);
     assert.doesNotMatch(harness, /fiscal_receipts\s+WHERE[^;]*fiscal_register_id/);
+});
+
+test('Phase-1 close authenticates the exact integration owner separately from the cashier', () => {
+    const harness = fs.readFileSync(
+        path.join(__dirname, 'browser', 'checkbox-cashier-real-testmode-browser-smoke.js'),
+        'utf8'
+    );
+    assert.match(harness, /if \(userId === ownerUserId\) ownerUsername = username/);
+    assert.match(harness, /const integrationOwnerToken = MUTATION_STAGES\.has\(guard\.stage\)[\s\S]*cashier\.ownerUsername/);
+    assert.match(harness, /closeOwnedShiftThroughEventGenix\(page, integrationOwnerToken, scope, cashier/);
+    assert.doesNotMatch(harness, /await closeOwnedShiftThroughEventGenix\(page, token, scope, cashier/);
 });

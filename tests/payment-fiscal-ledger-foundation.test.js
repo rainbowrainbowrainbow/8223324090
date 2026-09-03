@@ -207,7 +207,8 @@ test('state transition helpers fail closed for invalid payment, fiscal, shift, a
     assert.equal(canTransition('fiscalOperation', 'unknown', 'pending'), true);
     assert.throws(() => assertTransition('fiscalOperation', 'pending', 'fiscalized'), /Invalid fiscalOperation transition/);
 
-    assert.equal(canTransition('fiscalShift', 'closed', 'opening'), true);
+    assert.equal(canTransition('fiscalShift', 'closed', 'opening'), false);
+    assert.throws(() => assertTransition('fiscalShift', 'closed', 'opening'), /State is terminal/);
     assert.throws(() => assertTransition('fiscalShift', 'closed', 'open'), /Invalid fiscalShift transition/);
 
     assert.equal(canTransition('paymentRefund', 'money_refunded', 'fiscal_return_pending'), true);

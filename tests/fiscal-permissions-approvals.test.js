@@ -8,7 +8,8 @@ const { ACTION_PERMISSION_BY_KEY } = require('../config/permissionRegistry');
 const {
     PAYMENT_FISCAL_CAPABILITIES,
     authorizeFiscalActionContext,
-    assertFiscalBindingScope
+    assertFiscalBindingScope,
+    loadFiscalCashierBinding
 } = require('../services/payments/fiscalAccess');
 const {
     PIN_MAX_ATTEMPTS,
@@ -54,6 +55,32 @@ function baseUser(overrides = {}) {
     };
 }
 
+test('fiscal cashier binding lookup adds a row lock only for serialized PIN flows', async () => {
+    const queries = [];
+    const client = {
+        async query(sql, params) {
+            queries.push({ sql, params });
+            return { rows: [baseBinding()] };
+        }
+    };
+
+    await loadFiscalCashierBinding(client, {
+        userId: 50,
+        fiscalProfileId: 20,
+        fiscalRegisterId: 40
+    });
+    await loadFiscalCashierBinding(client, {
+        userId: 50,
+        fiscalProfileId: 20,
+        fiscalRegisterId: 40,
+        forUpdate: true
+    });
+
+    assert.doesNotMatch(queries[0].sql, /FOR UPDATE/);
+    assert.match(queries[1].sql, /FOR UPDATE OF b/);
+    assert.deepEqual(queries[1].params, [50, 20, 40]);
+});
+
 test('payment/fiscal cashier capabilities are narrow and do not grant finance management', () => {
     for (const action of PAYMENT_FISCAL_CAPABILITIES) {
         assert.ok(ACTION_PERMISSION_BY_KEY[action], `${action} must be in the canonical permission registry`);
@@ -73,30 +100,41 @@ test('payment/fiscal cashier capabilities are narrow and do not grant finance ma
     assert.equal(canUseAction(deniedCashier, 'payments.create'), false);
 });
 
-test('creator and art director can access park cashier payment/fiscal pilot without broad finance grant', () => {
+test('art director keeps thin Checkbox access without automatic Cashier PRO authority', () => {
     const { PAGE_ACCESS } = require('../middleware/auth');
-    const requiredActions = [
+    const thinActions = [
         'payments.view',
         'payments.create',
         'payments.confirm_received',
         'fiscal.shift.open',
         'fiscal.shift.close',
+        'fiscal.audit.view'
+    ];
+    const cashierProActions = [
         'fiscal.service_in',
         'fiscal.service_out.request',
         'fiscal.service_out.approve',
         'fiscal.refund',
-        'fiscal.reconcile',
-        'fiscal.audit.view'
+        'fiscal.reconcile'
     ];
 
-    for (const role of ['creator', 'art_director']) {
-        assert.ok(PAGE_ACCESS['/cashier-payments'].includes(role), role + ' must see the cashier page in the menu');
-        for (const action of requiredActions) {
-            assert.equal(canUseAction(baseUser({ role }), action), true, role + ' must have ' + action);
-        }
+    assert.ok(PAGE_ACCESS['/cashier-payments'].includes('creator'), 'creator must see the cashier page in the menu');
+    assert.ok(PAGE_ACCESS['/cashier-payments'].includes('art_director'), 'art director must see the cashier page in the menu');
+
+    for (const action of [...thinActions, ...cashierProActions]) {
+        assert.equal(canUseAction(baseUser({ role: 'creator' }), action), true, `creator must have ${action}`);
+    }
+
+    for (const action of thinActions) {
+        assert.equal(canUseAction(baseUser({ role: 'art_director' }), action), true, `art director must retain thin ${action}`);
+    }
+    for (const action of cashierProActions) {
+        assert.equal(canUseAction(baseUser({ role: 'art_director' }), action), false, `art director must not automatically receive Cashier PRO ${action}`);
     }
 
     assert.equal(canUseAction(baseUser({ role: 'art_director' }), 'finance.manage'), false, 'art director must not receive broad finance.manage');
+    assert.equal(canUseAction(baseUser({ role: 'art_director' }), 'fiscal.incident.manage'), false, 'art director must not manage fiscal incidents by role');
+    assert.equal(canUseAction(baseUser({ role: 'art_director' }), 'fiscal.configure'), false, 'art director must not configure fiscal integration by role');
 });
 
 test('fiscal.configure is non-delegable and explicit allowlist is ignored', () => {

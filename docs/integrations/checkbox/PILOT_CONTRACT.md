@@ -1,15 +1,15 @@
 # Checkbox Park Pilot Contract
 
-Status: implementation contract for a disabled production MVP. Production Checkbox activation is out of scope.
+Status: implementation contract for the deployed but disabled production MVP. Production Checkbox activation is out of scope.
 
 Last reviewed: 2026-09-03.
 
 ## Confirmed Base
 
 - Production URL checked: `https://8223324090-production.up.railway.app/api/version`.
-- Live package baseline checked before this hardening release: `0.81.66` (`Timeline Narrow Identity Fix`).
-- Live commit checked before this hardening release: `a43a2eaef5120580aa624f33655a388ae6f79acd`.
-- Live source branch checked before this hardening release: `codex/eventgenix-production`.
+- Confirmed live package baseline: `0.81.68` (`Checkbox Cashier UI Polish`).
+- Confirmed live commit: `b7980fb451e6a50a9fe2403613a27bcd721d210a`.
+- Confirmed live source branch: `codex/eventgenix-production`.
 - This worktree is not a long-lived source of truth. Before any commit, push, deploy, rollback, or production activation, reconfirm live `/api/version`, fetch the active deploy source branch, and port only the reviewed Checkbox diff into a clean release worktree.
 
 All follow-up implementation or release tasks must start from the newest live source confirmed by the release staleness guard, not from stale chat history, stale docs, or a dirty `.codex-temp` branch.
@@ -87,7 +87,7 @@ Required logical gates for follow-up tasks:
 | Ledger schema | Additive fiscal/payment tables, BIGINT money, immutable item snapshots, idempotency constraints, explicit fiscal item mapping table | Production pilot mapping data still requires separate activation | Additional operational reporting and reconciliation revisions |
 | Payment workflow | Server-side order preview, cash/card manual confirmation, received/change snapshot, one local fiscal operation and outbox job | Real admission source activation and accountant-approved mapping data | Split/partial/prepayment not in scope |
 | Checkbox adapter | Runtime provider factory, worker-client DTO bridge, receipt UUID lookup, status/error normalization, sandbox harness, exact official API host allowlist | Real Checkbox sandbox/prod credentials are not configured in repository | Broader provider operations after MVP sale path |
-| Outbox/recovery | Worker skips claiming when disabled/unconfigured, uses locks/batches/retry/backoff/dead letter, and lookup-before-resale | Production integration gate remains disabled | Manual reconciliation UI and operations |
+| Outbox/recovery | Worker skips claiming when disabled/unconfigured, uses short claim/finalize transactions, one-at-a-time register processing, durable external stages, immutable provider snapshots, and same-UUID lookup recovery | Unreleased migrations `343–345` and the production legacy-shift preflight must pass before release; production integration remains disabled | Manual reconciliation UI and operations |
 | UI | `/cashier-payments` thin page and menu exist; creator and art director access exists; an owner-only Phase-1 shift close is separate from Cashier PRO; Phase 2 UI is gated | Live production QA must stay read-only while integration is disabled | Service in/out, close checklist, refunds, reports |
 | Permissions | Narrow capabilities, user/profile/location/register bindings, and `capability_scope` enforcement exist | Production bindings require separate operator configuration | Supervisor PIN approval workflows |
 | Configuration | Operator CLI supports dry-run/preflight/apply/status/diff, explicit change commands, and local non-secret config files | Production legal/tax/provider/user values still require explicit activation input | Multi-FOP production rollout |
@@ -166,7 +166,7 @@ Shift states:
 | `opening` | Shift open request in progress | `open`, `failed`, `unknown` |
 | `open` | Checkbox shift is confirmed open for the register | `closing`, `closed`, `unknown` |
 | `closing` | Shift close request in progress | `closed`, `failed`, `unknown` |
-| `closed` | Checkbox shift is closed | `opening` |
+| `closed` | Checkbox shift is closed; a later business day creates a new durable local shift | terminal for this shift |
 | `failed` | Known provider failure | retry/manual review |
 | `blocked` | Mapping, credentials, or gate missing | manual correction |
 
@@ -197,6 +197,8 @@ Until these are resolved, `CHECKBOX_INTEGRATION_ENABLED`, `CHECKBOX_ACCEPT_PAYME
 - Separate internal tariff references from provider tax IDs.
 - Use durable provider UUIDs from fiscal operations for idempotency.
 - Never create a second Checkbox sale after a timeout before status lookup proves the first sale does not exist.
+- A provider receipt identity mismatch must commit append-only observation evidence and a scoped incident, never overwrite the immutable receipt or be lost in a rolled-back success transaction.
+- Pre-mutation failures may retry only the same durable operation UUID. At or after `sale_submit`, `return_submit`, or `service_submit`, recovery is lookup-only for that UUID.
 - Webhooks must authenticate raw body before mutation, dedupe provider event ID plus payload hash, and never rely on `req.user`.
 - Hermes/EventBus delivery failures must not change payment or fiscal statuses.
 - Production secrets, real IDs, provider webhook configuration, and the first real fiscal receipt require a separate activation task.

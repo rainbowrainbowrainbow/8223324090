@@ -543,6 +543,30 @@ test('sandbox current-shift 422 is absence only with official has_shift=false pr
   );
 });
 
+test('sandbox current-shift null is absence only with official has_shift=false proof', async () => {
+  const config = proofConfig();
+  const client = hasShift => ({
+    async getCashRegisterInfo() {
+      return {
+        id: config.expectedRegisterId,
+        organization_id: config.expectedOrganizationId,
+        is_test: true,
+        has_shift: hasShift
+      };
+    },
+    async getCurrentShift() {
+      return null;
+    }
+  });
+
+  assert.equal(await loadCurrentSandboxShift(client(false), config), null);
+  await assert.rejects(
+    () => loadCurrentSandboxShift(client(true), config),
+    error => error instanceof CheckboxClientError
+      && error.code === 'checkbox_sandbox_current_shift_unknown'
+  );
+});
+
 test('failure cleanup bounded-polls the exact smoke-owned UUID through not-found and opening before close', async () => {
   const config = proofConfig({ closeShift: false });
   const states = [

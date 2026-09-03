@@ -42,7 +42,7 @@ function sampleQuote(overrides = {}) {
             {
                 ticketTypeId: 1,
                 ticketTypeCode: 'regular_child',
-                ticketTypeName: 'Äèòÿ÷èé âõ³ä',
+                ticketTypeName: 'Ð”Ð¸Ñ‚ÑÑ‡Ð¸Ð¹ Ð²Ñ…Ñ–Ð´',
                 quantity: 2,
                 unitPriceUah: 250,
                 subtotalUah: 500,
@@ -54,7 +54,7 @@ function sampleQuote(overrides = {}) {
     };
 }
 
-function defaultMapping() {
+function defaultMapping(overrides = {}) {
     return {
         fiscal_profile_id: 20,
         fiscal_register_id: 40,
@@ -64,7 +64,14 @@ function defaultMapping() {
         legal_entity_name: 'Park FOP',
         register_alias: 'middle',
         register_display_name: 'Middle register',
-        feature_enabled: true
+        provider: 'checkbox',
+        provider_organization_id: 'test-organization',
+        provider_outlet_id: 'test-outlet',
+        provider_register_id: 'test-register',
+        provider_license_ref: 'test-register-credential-ref',
+        register_expected_is_test: true,
+        feature_enabled: true,
+        ...overrides
     };
 }
 
@@ -89,7 +96,13 @@ function defaultFiscalItemMapping(overrides = {}) {
 
 class FakePaymentDb {
     constructor(options = {}) {
-        this.mappingRows = options.mappingRows || [defaultMapping()];
+        this.registerCredentialRef = Object.hasOwn(options, 'registerCredentialRef')
+            ? options.registerCredentialRef
+            : 'test-register-credential-ref';
+        this.cashierCredentialRef = Object.hasOwn(options, 'cashierCredentialRef')
+            ? options.cashierCredentialRef
+            : 'test-cashier-credential-ref';
+        this.mappingRows = options.mappingRows || [defaultMapping({ provider_license_ref: this.registerCredentialRef })];
         this.itemMappingRows = Object.hasOwn(options, 'itemMappingRows') ? options.itemMappingRows : [defaultFiscalItemMapping()];
         this.failOn = options.failOn || null;
         this.locks = new Map();
@@ -120,6 +133,15 @@ class FakePaymentDb {
             legal_entity_name: 'Park FOP',
             register_alias: 'middle',
             register_display_name: 'Middle register',
+            provider: 'checkbox',
+            provider_organization_id: 'test-organization',
+            provider_outlet_id: 'test-outlet',
+            provider_register_id: 'test-register',
+            provider_license_ref: this.registerCredentialRef,
+            register_expected_is_test: true,
+            feature_enabled: true,
+            bound_provider_cashier_id: 'test-cashier',
+            bound_provider_cashier_login_ref: this.cashierCredentialRef,
             cashier_user_id: 50,
             source_type: 'admission_ticket',
             source_id: 'source-1',
@@ -269,6 +291,15 @@ class FakePaymentClient {
                     status: 'active',
                     action_pin_hash: '$2a$10$fakehashfornonpinpaths',
                     capability_scope: this.db.mappingRows[0]?.capability_scope || ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open']
+                }]
+            };
+        }
+
+        if (normalized.includes('FROM fiscal_cashier_bindings') && normalized.includes('SELECT provider_cashier_id, provider_cashier_login_ref')) {
+            return {
+                rows: [{
+                    provider_cashier_id: 'test-cashier',
+                    provider_cashier_login_ref: this.db.cashierCredentialRef
                 }]
             };
         }
@@ -655,6 +686,31 @@ test('wrong CRM profile/FOP mapping fails closed before creating an order', asyn
         error => error.code === 'fiscal_mapping_ambiguous_or_missing'
     );
     assert.equal(db.orders.length, 0);
+});
+
+test('missing cashier credential ref blocks confirmation before monetary or outbox writes', async () => {
+    const db = new FakePaymentDb({ cashierCredentialRef: null });
+    const order = db.seedOrder({ payment_method: 'cash', total_amount_minor: '50000' });
+
+    await assert.rejects(
+        () => confirmPaymentOrder({
+            dbPool: db,
+            user: baseUser(),
+            orderId: order.id,
+            body: { tender: 'cash', confirmedAmountMinor: '50000' },
+            idempotencyKey: 'confirm-missing-cashier-ref',
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'fiscal_provider_context_incomplete'
+            && error.details?.missing?.join(',') === 'cashier_credential_ref'
+    );
+
+    assert.equal(order.status, 'draft');
+    assert.equal(order.payment_status, 'unpaid');
+    assert.equal(db.attempts.length, 0);
+    assert.equal(db.allocations.length, 0);
+    assert.equal(db.fiscalOperations.length, 0);
+    assert.equal(db.outboxJobs.length, 0);
 });
 
 test('cash confirmation atomically records payment and queues exactly one fiscal outbox job', async () => {

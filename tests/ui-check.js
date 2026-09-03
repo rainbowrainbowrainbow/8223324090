@@ -7213,6 +7213,7 @@ check('Timeline product sales separates revenue viewing from data export while p
 const cashierPaymentsHtml = fileText('cashier-payments.html');
 const cashierPaymentsJs = fileText('js/cashier-payments-page.js');
 const cashierPaymentsCss = fileText('css/cashier-payments.css');
+const cashierPaymentsRoutes = fileText('routes/payments.js');
 const cashierCanonicalButtonIds = [
     'refreshReadinessBtn', 'createPaymentOrderBtn', 'startNextOrderBtn', 'cancelDraftOrderBtn',
     'confirmCashBtn', 'confirmCardBtn', 'providerTaxUrl', 'providerPdfUrl', 'providerQrUrl',
@@ -7289,7 +7290,11 @@ check('Cashier frontend uses provider-aware readiness and server-backed recovery
     && cashierPaymentsJs.includes('POLLING_TIMEOUT_MS'));
 check('Cashier unresolved refresh fails closed while checking and retains the last known server snapshot',
     cashierPaymentsJs.includes("state.unresolvedQueueState = 'checking'")
-    && cashierPaymentsJs.includes("const isChecking = state.unresolvedQueueState === 'checking'")
+    && cashierPaymentsJs.includes("const isChecking = queueState === 'checking'")
+    && cashierPaymentsJs.includes("const isStale = queueState === 'stale'")
+    && cashierPaymentsJs.includes('normalizeUnresolvedQueuePayload')
+    && cashierPaymentsJs.includes('loadedIds.has(String(order.id))')
+    && cashierPaymentsJs.includes('scheduleUnresolvedRefresh')
     && cashierPaymentsJs.includes("body.setAttribute('aria-busy', isChecking ? 'true' : 'false')")
     && cashierPaymentsJs.includes("refreshButton.setAttribute('aria-busy', busy ? 'true' : 'false')")
     && cashierPaymentsJs.includes('Перевіряємо повний список незавершених чеків')
@@ -7321,7 +7326,7 @@ check('Cashier payments uses the canonical page-button contract for every static
     && cashierCanonicalButtonIds.every(cashierButtonUsesCanonicalClass));
 check('Cashier payments exposes concise readiness, semantic steps, and compact native disclosures',
     cashierPaymentsHtml.includes('id="cashierReadinessSummary"')
-    && cashierPaymentsHtml.includes('<details id="cashierReadinessDetails"')
+    && /<details id="cashierReadinessDetails"[^>]*hidden/.test(cashierPaymentsHtml)
     && cashierPaymentsHtml.includes('Деталі для адміністратора')
     && cashierPaymentsHtml.includes('id="cashierReadinessTechnicalList"')
     && ['1', '2', '3'].every(step => cashierPaymentsHtml.includes(`data-payment-step="${step}"`))
@@ -7333,12 +7338,74 @@ check('Cashier payments exposes concise readiness, semantic steps, and compact n
     && cashierPaymentsHtml.includes('Тут зберігаються всі оплачені чеки цієї каси')
     && cashierPaymentsHtml.includes('Внутрішній звіт Event Genix лише для перегляду')
     && !/Оплачені orders|pending \/ unknown|read-only|finance_transaction|placeholder="mine/i.test(cashierPaymentsHtml));
+check('Cashier payment diagnostics stay redacted on ordinary routes and UI details require fiscal.configure',
+    cashierPaymentsJs.includes("const canViewTechnicalDetails = hasAction('fiscal.configure')")
+    && cashierPaymentsJs.includes('details.hidden = !canViewTechnicalDetails')
+    && !cashierPaymentsJs.includes('item.taxReference')
+    && !cashierPaymentsJs.includes('escapeHtml(item.itemCode')
+    && !cashierPaymentsRoutes.includes("canUseAction(user, 'fiscal.configure')")
+    && cashierPaymentsRoutes.includes('projectReadinessForViewer')
+    && cashierPaymentsRoutes.includes('projectPilotRegisterStateForViewer')
+    && cashierPaymentsRoutes.includes('projectPaymentOrderDetailsForViewer'));
+check('Cashier receipt artifacts use only exact trusted Checkbox HTTPS hosts',
+    cashierPaymentsJs.includes("host === 'api.checkbox.ua'")
+    && cashierPaymentsJs.includes("host === 'api.checkbox.in.ua'")
+    && !cashierPaymentsJs.includes("host.endsWith('.checkbox.ua')")
+    && !cashierPaymentsJs.includes("host.endsWith('.checkbox.in.ua')")
+    && cashierPaymentsJs.includes('isTrustedCheckboxUrl(order.providerTaxUrl)'));
+check('Cashier unresolved buttons expose the full fiscal recovery context to assistive technology',
+    cashierPaymentsJs.includes('function unresolvedOrderAccessibleLabel(order = {})')
+    && cashierPaymentsJs.includes('сума ${formatMoneyMinor(order.totalAmountMinor)}')
+    && cashierPaymentsJs.includes('оплата ${formatStatus(order.paymentStatus)}')
+    && cashierPaymentsJs.includes('фіскалізація ${formatStatus(order.fiscalStatus)}')
+    && cashierPaymentsJs.includes('escapeAttribute(unresolvedOrderAccessibleLabel(order))'));
+check('Cashier actions expose Ukrainian busy feedback and accessible busy state',
+    cashierPaymentsJs.includes('function setButtonBusy(button, busy, busyText)')
+    && cashierPaymentsJs.includes("form.setAttribute('aria-busy', state.createInFlight ? 'true' : 'false')")
+    && cashierPaymentsJs.includes("confirmationStep?.setAttribute('aria-busy', state.confirmInFlight ? 'true' : 'false')")
+    && cashierPaymentsJs.includes("panel.setAttribute('aria-busy', state.readinessInFlight ? 'true' : 'false')")
+    && cashierPaymentsJs.includes("body.setAttribute('aria-busy', 'true')")
+    && cashierPaymentsJs.includes('Створюємо оплату…')
+    && cashierPaymentsJs.includes('Підтверджуємо оплату…')
+    && cashierPaymentsJs.includes('Оновлюємо готовність…')
+    && cashierPaymentsJs.includes('Формуємо звіт…'));
+check('Cashier unresolved rows hide technical identities, provider states and incident codes',
+    cashierPaymentsJs.includes('function formatUnresolvedOwnership(order = {})')
+    && cashierPaymentsJs.includes('function formatIncidentReason(value)')
+    && cashierPaymentsJs.includes("return labels[status] || 'потребує перевірки'")
+    && cashierPaymentsJs.includes("return userMatch ? `Касир №${userMatch[1]}` : 'Інший касир'")
+    && !cashierPaymentsJs.includes('escapeHtml(order.orderKey'));
+check('Cashier timestamps use one explicit Europe/Kyiv formatter',
+    cashierPaymentsJs.includes('function formatKyivDateTime(value)')
+    && cashierPaymentsJs.includes("timeZone: 'Europe/Kyiv'")
+    && !/new Date\([^\n]+\)\.toLocaleString\('uk-UA'\)/.test(cashierPaymentsJs));
+check('Cashier thin page contains no Cashier PRO handlers, markup or module',
+    !cashierPaymentsJs.includes('bindCashierProEvents')
+    && !cashierPaymentsJs.includes('submitServiceIn')
+    && !cashierPaymentsJs.includes('submitServiceOut')
+    && !cashierPaymentsJs.includes('submitRefund')
+    && !cashierPaymentsJs.includes('submitReconciliation')
+    && !cashierPaymentsJs.includes('refundOrderId')
+    && !cashierPaymentsJs.includes('service_in_amount_required')
+    && !cashierPaymentsJs.includes('service_out_amount_required')
+    && !cashierPaymentsJs.includes('refund_reason_required')
+    && !cashierPaymentsJs.includes('cashierProEnabled')
+    && !cashierPaymentsHtml.includes('data-cashier-pro-page="true"')
+    && !cashierPaymentsHtml.includes('id="operationalContourPanel"')
+    && !cashierPaymentsHtml.includes('cashier-payments-pro'));
 check('Cashier payments defines accessible dark warning and overflow containment surfaces',
     cashierPaymentsCss.includes('body.dark-mode .cashier-alert-warning')
     && cashierPaymentsCss.includes('color: #fde68a')
+    && cashierPaymentsCss.includes('body.dark-mode .cashier-status.is-ok')
+    && cashierPaymentsCss.includes('body.dark-mode .cashier-status.is-warn')
+    && cashierPaymentsCss.includes('body.dark-mode .cashier-status.is-danger')
+    && cashierPaymentsCss.includes('.cashier-secondary-disclosure.has-warning')
+    && cashierPaymentsJs.includes("setStatus('fiscalReceiptBadge', fiscalStatus)")
     && cashierPaymentsCss.includes('.cashier-grid > *')
     && cashierPaymentsCss.includes('min-width: 0')
     && cashierPaymentsCss.includes('max-width: 100%')
+    && cashierPaymentsJs.includes('state.registerState?.locationAlias')
+    && cashierPaymentsJs.includes('state.registerState?.registerAlias')
     && cashierPaymentsCss.includes('.cashier-secondary-disclosure > summary:focus-visible'));
 
 // RESULTS

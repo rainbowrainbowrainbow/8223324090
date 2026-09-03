@@ -14,9 +14,18 @@ const FAILED_RECEIPT_STATUSES = new Set(['ERROR', 'CANCELLATION', 'CANCELLED']);
 const OPEN_SHIFT_STATUS = 'OPENED';
 const CLOSED_SHIFT_STATUS = 'CLOSED';
 const OPENING_SHIFT_STATUSES = new Set(['CREATED', 'OPENING']);
-const CLOSING_SHIFT_STATUSES = new Set(['CLOSING', 'CLOSING_REQUESTED']);
+const CLOSING_SHIFT_STATUSES = new Set(['CLOSING']);
 const TOKEN_CACHE = new Map();
 const READINESS_CHECK_STATUSES = new Set(['ready', 'blocked', 'unavailable', 'not_applicable']);
+
+function classifyShiftStatus(status) {
+    const normalized = upperStatus(status);
+    if (normalized === OPEN_SHIFT_STATUS) return 'opened';
+    if (normalized === CLOSED_SHIFT_STATUS) return 'closed';
+    if (OPENING_SHIFT_STATUSES.has(normalized)) return 'opening';
+    if (CLOSING_SHIFT_STATUSES.has(normalized)) return 'closing';
+    return 'unknown';
+}
 
 class CheckboxProviderConfigError extends CheckboxClientError {
     constructor(code, message, options = {}) {
@@ -33,6 +42,14 @@ function upperStatus(value) {
 function textOrNull(value) {
     const text = String(value ?? '').trim();
     return text || null;
+}
+
+function booleanOrNull(value) {
+    if (value === true || value === false) return value;
+    const text = String(value ?? '').trim().toLowerCase();
+    if (text === 'true') return true;
+    if (text === 'false') return false;
+    return null;
 }
 
 function requireText(value, code) {
@@ -553,6 +570,25 @@ function validateCashRegisterInfo(info = {}, expected = {}, { requireOnline = tr
 async function getCurrentShiftWithAbsenceProof(client, expected = {}, verifiedRegister = null) {
     try {
         const payload = await client.getCurrentShift();
+        if (payload === null) {
+            const register = verifiedRegister || validateCashRegisterInfo(
+                await client.getCashRegisterInfo(),
+                expected,
+                { requireOnline: false }
+            );
+            if (register.hasShift !== false) {
+                throw new CheckboxClientError('checkbox_current_shift_unknown', 'Checkbox returned no current shift while the cash register still reports an active or unknown shift state', {
+                    status: 502,
+                    retryable: true,
+                    unknown: true,
+                    details: {
+                        providerStatus: 200,
+                        registerHasShift: register.hasShift
+                    }
+                });
+            }
+            return { payload: null, absent: true, register };
+        }
         if (!payload || typeof payload !== 'object' || Array.isArray(payload)) {
             throw new CheckboxClientError('checkbox_current_shift_response_malformed', 'Checkbox current shift response does not match the official schema', {
                 status: 502,
@@ -616,6 +652,12 @@ function extractShiftIdentity(shift = {}) {
     };
 }
 
+function optionalProviderDateTime(value) {
+    if (typeof value !== 'string' || !value.trim()) return null;
+    const timestamp = Date.parse(value);
+    return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : null;
+}
+
 function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = false, requireCashier = true } = {}) {
     const identity = extractShiftIdentity(shift);
     if (!identity.id || !identity.status) {
@@ -623,6 +665,14 @@ function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = fal
             status: 502,
             retryable: true,
             unknown: true
+        });
+    }
+    if (classifyShiftStatus(identity.status) === 'unknown') {
+        throw new CheckboxClientError('checkbox_shift_status_unknown', 'Checkbox shift response has an unsupported status', {
+            status: 409,
+            retryable: false,
+            unknown: false,
+            details: { providerStatus: identity.status }
         });
     }
     if (requireOpened && identity.status !== OPEN_SHIFT_STATUS) {
@@ -638,7 +688,12 @@ function normalizeShiftResponse(shift = {}, expected = {}, { requireOpened = fal
     if (requireCashier) {
         assertSameText(identity.cashierId, expected.expectedCashierId, 'checkbox_shift_cashier_mismatch', 'shift.cashier_id');
     }
-    return { ...identity, raw: redactCheckboxDiagnostics(shift) };
+    return {
+        ...identity,
+        openedAt: optionalProviderDateTime(shift.opened_at),
+        closedAt: optionalProviderDateTime(shift.closed_at),
+        raw: redactCheckboxDiagnostics(shift)
+    };
 }
 
 function trustedCheckboxOrigin(baseUrl) {
@@ -1138,15 +1193,19 @@ class CheckboxRuntimeProvider {
                     currentShift = normalizeShiftResponse(observed.payload, strictExpected, { requireCashier: false });
                 }
                 if (currentShift) {
-                const shiftStatus = upperStatus(currentShift.status);
-                checks.push(readinessCheck({
-                    code: 'current_shift',
-                    label: 'Поточна зміна Checkbox',
-                    status: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? 'blocked' : 'ready',
-                    ready: !(OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus)),
-                    recommendation: OPENING_SHIFT_STATUSES.has(shiftStatus) || CLOSING_SHIFT_STATUSES.has(shiftStatus) ? readinessRecommendation('current_shift') : null,
-                    details: shiftReadinessSummary(currentShift)
-                }));
+                    const lifecycle = classifyShiftStatus(currentShift.status);
+                    const recognizedTerminal = lifecycle === 'opened' || lifecycle === 'closed';
+                    checks.push(readinessCheck({
+                        code: 'current_shift',
+                        label: 'Поточна зміна Checkbox',
+                        status: recognizedTerminal ? 'ready' : 'blocked',
+                        ready: recognizedTerminal,
+                        recommendation: recognizedTerminal ? null : readinessRecommendation('current_shift'),
+                        details: {
+                            ...shiftReadinessSummary(currentShift),
+                            statusRecognized: lifecycle !== 'unknown'
+                        }
+                    }));
                 }
             } catch (error) {
                 checks.push(errorCheck('current_shift', 'Поточна зміна Checkbox', error));
@@ -1274,6 +1333,43 @@ class CheckboxRuntimeProvider {
         );
     }
 
+    async recheckExactOpenedShiftBeforeSale(input = {}, expectedInput = null) {
+        const expected = expectedInput || expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
+        const requiredIdentity = [
+            ['provider_organization_id', expected.expectedOrganizationId],
+            ['provider_register_id', expected.expectedRegisterId],
+            ['provider_cashier_id', expected.expectedCashierId],
+            ['provider_shift_id', expected.expectedShiftId]
+        ];
+        const missing = requiredIdentity.filter(([, value]) => !textOrNull(value)).map(([field]) => field);
+        if (missing.length) {
+            throw new CheckboxClientError(
+                'checkbox_sale_shift_context_incomplete',
+                'Immutable Checkbox identity is incomplete before sale submission',
+                { status: 422, retryable: false, details: { missing } }
+            );
+        }
+
+        // This check intentionally bypasses the bounded readiness cache. Validation and
+        // sale are separate provider calls, so the cashier or shift may change between them.
+        const profile = await this.client.getCashierProfile();
+        validateCashierReadiness(profile, expected);
+
+        const observed = await getCurrentShiftWithAbsenceProof(this.client, expected);
+        if (observed.absent) {
+            throw new CheckboxClientError('checkbox_shift_not_opened', 'Checkbox shift is not OPENED immediately before sale submission', {
+                status: 409,
+                retryable: false,
+                unknown: false
+            });
+        }
+        const current = normalizeShiftResponse(observed.payload, expected, {
+            requireOpened: true,
+            requireCashier: false
+        });
+        return this.loadDetailedShift(current, expected);
+    }
+
     async withAuth(expected, run) {
         for (let attempt = 0; attempt < 2; attempt += 1) {
             if (!this.authenticated) await this.authenticate();
@@ -1378,7 +1474,7 @@ class CheckboxRuntimeProvider {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
         expected.expectedReceiptType = 'SELL';
         return this.withAuth(expected, async () => {
-            const shift = await this.ensureShiftOpened(input);
+            const shift = await this.recheckExactOpenedShiftBeforeSale(input, expected);
             await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
             const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
             return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
@@ -1389,9 +1485,10 @@ class CheckboxRuntimeProvider {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
         expected.expectedReceiptType = 'SELL';
         return this.withAuth(expected, async () => {
+            const shift = await this.recheckExactOpenedShiftBeforeSale(input, expected);
             await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
-            const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: expected.expectedShiftId }));
-            return normalizeReceiptArtifacts(receipt, this.client, expected);
+            const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
+            return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
         });
     }
 
@@ -1610,15 +1707,34 @@ function createProviderFromConfig(config = {}, { fetchImpl, tokenCache } = {}) {
 function refsFromContext(context = {}) {
     const job = context.job || context;
     const licenseRef = normalizeCredentialRef(job.register_credential_ref || job.provider_license_ref || job.checkbox_license_ref);
-    const credentialRef = normalizeCredentialRef(job.cashier_credential_ref || job.provider_cashier_login_ref || job.current_provider_cashier_login_ref || job.checkbox_cashier_ref || licenseRef);
+    const credentialRef = normalizeCredentialRef(job.cashier_credential_ref || job.provider_cashier_login_ref || job.current_provider_cashier_login_ref || job.checkbox_cashier_ref);
+    const missing = [];
+    if (!licenseRef) missing.push('register_credential_ref');
+    if (!credentialRef) missing.push('cashier_credential_ref');
+    if (missing.length) {
+        throw new CheckboxProviderConfigError(
+            'checkbox_runtime_context_incomplete',
+            'Immutable Checkbox credential references are incomplete',
+            { details: { missing } }
+        );
+    }
     return { credentialRef, licenseRef };
 }
 
-function runtimeContextKey({ fiscalProfileId, fiscalRegisterId }) {
+function runtimeContextKey({
+    fiscalProfileId,
+    fiscalRegisterId,
+    registerCredentialRef,
+    cashierCredentialRef
+} = {}) {
     const profileId = Number(fiscalProfileId);
     const registerId = Number(fiscalRegisterId);
-    if (!Number.isSafeInteger(profileId) || profileId <= 0 || !Number.isSafeInteger(registerId) || registerId <= 0) return '';
-    return `${profileId}:${registerId}`;
+    const registerRef = normalizeCredentialRef(registerCredentialRef);
+    const cashierRef = normalizeCredentialRef(cashierCredentialRef);
+    if (!Number.isSafeInteger(profileId) || profileId <= 0
+        || !Number.isSafeInteger(registerId) || registerId <= 0
+        || !registerRef || !cashierRef) return '';
+    return JSON.stringify([profileId, registerId, registerRef, cashierRef]);
 }
 
 function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCache, allowLocalMockHost = false } = {}) {
@@ -1628,8 +1744,16 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
         },
         canResolveRefs({ credentialRef, licenseRef } = {}) {
             if (!this.isEnabled()) return false;
+            const cashierRef = normalizeCredentialRef(credentialRef);
+            const registerRef = normalizeCredentialRef(licenseRef);
+            if (!cashierRef || !registerRef) return false;
             try {
-                loadCheckboxRuntimeConfig({ env, credentialRef, licenseRef, allowLocalMockHost });
+                loadCheckboxRuntimeConfig({
+                    env,
+                    credentialRef: cashierRef,
+                    licenseRef: registerRef,
+                    allowLocalMockHost
+                });
                 return true;
             } catch {
                 return false;
@@ -1641,6 +1765,20 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
             }
             const refs = refsFromContext(context);
             const config = loadCheckboxRuntimeConfig({ env, ...refs, allowLocalMockHost });
+            const job = context.job || context;
+            const snapshotExpectedIsTest = booleanOrNull(job.expected_is_test);
+            if (snapshotExpectedIsTest == null || config.expectedIsTest !== snapshotExpectedIsTest) {
+                throw new CheckboxProviderConfigError(
+                    'checkbox_runtime_expected_is_test_mismatch',
+                    'Checkbox runtime test-mode expectation differs from immutable fiscal operation context',
+                    {
+                        details: {
+                            snapshotExpectedIsTest,
+                            runtimeExpectedIsTest: config.expectedIsTest
+                        }
+                    }
+                );
+            }
             return createProviderFromConfig(config, { fetchImpl, tokenCache });
         },
         async getEligibleRuntimeContexts(dbPool) {
@@ -1670,7 +1808,11 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                        LEFT JOIN fiscal_cashier_bindings fcb
                          ON fcb.fiscal_profile_id = job.fiscal_profile_id
                         AND fcb.fiscal_register_id = fr.id
-                        AND fcb.user_id = COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+                        AND fcb.user_id = CASE
+                            WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                                THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+                            ELSE fo.initiated_by_user_id
+                        END
                         AND fcb.status = 'active'
                       WHERE job.status IN ('queued', 'failed', 'claimed', 'running')
                         AND COALESCE(job.payload->>'provider', fo.provider, fr.provider) = 'checkbox'`
@@ -1678,16 +1820,20 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                 const contexts = new Map();
                 for (const row of result.rows) {
                     if (this.canResolveRefs({
-                        credentialRef: row.provider_cashier_login_ref || row.provider_license_ref,
+                        credentialRef: row.provider_cashier_login_ref,
                         licenseRef: row.provider_license_ref
                     })) {
                         const key = runtimeContextKey({
                             fiscalProfileId: row.fiscal_profile_id,
-                            fiscalRegisterId: row.fiscal_register_id
+                            fiscalRegisterId: row.fiscal_register_id,
+                            registerCredentialRef: row.provider_license_ref,
+                            cashierCredentialRef: row.provider_cashier_login_ref
                         });
                         if (key) contexts.set(key, {
                             fiscalProfileId: Number(row.fiscal_profile_id),
-                            fiscalRegisterId: Number(row.fiscal_register_id)
+                            fiscalRegisterId: Number(row.fiscal_register_id),
+                            registerCredentialRef: normalizeCredentialRef(row.provider_license_ref),
+                            cashierCredentialRef: normalizeCredentialRef(row.provider_cashier_login_ref)
                         });
                     }
                 }
@@ -1710,6 +1856,7 @@ module.exports = {
     SUCCESS_RECEIPT_STATUSES,
     CheckboxProviderConfigError,
     CheckboxRuntimeProvider,
+    classifyShiftStatus,
     createCheckboxProviderFactory,
     createProviderFromConfig,
     dbItemToCheckboxItem,

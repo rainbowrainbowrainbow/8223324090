@@ -17,6 +17,7 @@ const STARTUP_TIMEOUT_MS = 180_000;
 const SHUTDOWN_TIMEOUT_MS = 20_000;
 const TEST_TIMEOUT_MS = Number(process.env.ISOLATED_TEST_TIMEOUT_MS) || 15 * 60_000;
 const POLL_INTERVAL_MS = 500;
+const ISOLATED_DATABASE_LOCK_NAMESPACE = 'eventgenix-isolated-postgres-runner-v1';
 const MODES = {
     api: ['tests/api.test.js'],
     attendance: [
@@ -102,6 +103,43 @@ function createPool(testDb) {
     });
 }
 
+async function acquireIsolatedDatabaseLock(testDb, {
+    poolFactory = createPool,
+    write = message => process.stdout.write(message)
+} = {}) {
+    const lockPool = poolFactory(testDb);
+    let lockClient = null;
+    const lockParams = [ISOLATED_DATABASE_LOCK_NAMESPACE];
+    const acquireSql = 'SELECT pg_advisory_lock(hashtext($1), hashtext(current_database()))';
+    const releaseSql = 'SELECT pg_advisory_unlock(hashtext($1), hashtext(current_database()))';
+    const safeTarget = `${testDb.hostname}/${testDb.databaseName}`;
+
+    try {
+        lockClient = await lockPool.connect();
+        write(`[isolated-db] Waiting for exclusive disposable database lock: ${safeTarget}\n`);
+        await lockClient.query(acquireSql, lockParams);
+        write(`[isolated-db] Acquired exclusive disposable database lock: ${safeTarget}\n`);
+    } catch (error) {
+        if (lockClient) lockClient.release();
+        await lockPool.end().catch(() => {});
+        throw error;
+    }
+
+    let released = false;
+    return {
+        async release() {
+            if (released) return;
+            released = true;
+            try {
+                await lockClient.query(releaseSql, lockParams);
+            } finally {
+                lockClient.release();
+                await lockPool.end();
+            }
+        }
+    };
+}
+
 async function resetPublicSchema(testDb) {
     const pool = createPool(testDb);
     try {
@@ -113,14 +151,16 @@ async function resetPublicSchema(testDb) {
     }
 }
 
-async function assertNoPreservedCheckboxMutationState(testDb) {
+async function assertNoPreservedCheckboxMutationState(testDb, {
+    poolFactory = createPool
+} = {}) {
     const tableNames = [
         'payment_orders',
         'fiscal_operations',
         'payment_outbox_jobs',
         'fiscal_shifts'
     ];
-    const pool = createPool(testDb);
+    const pool = poolFactory(testDb);
     try {
         const preserved = [];
         for (const tableName of tableNames) {
@@ -549,6 +589,7 @@ async function runSuite(testDb, testFile, suiteMode) {
     const preserveCheckboxFinalProofState = suiteMode === 'checkbox-ui-testmode-final-card-close';
     const resumeCheckboxFinalDraft = preserveCheckboxFinalProofState
         && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_RESUME_DRAFT_CONFIRM || '').trim().toLowerCase() === 'resume-one-local-unpaid-draft';
+    let initialSchemaResetAuthorized = false;
 
     const launchServerOnce = async () => {
         serverSpawnError = null;
@@ -575,14 +616,13 @@ async function runSuite(testDb, testFile, suiteMode) {
     };
 
     try {
-        if (preserveFailedCheckboxMutationState && !resumeCheckboxFinalDraft) {
-            await assertNoPreservedCheckboxMutationState(testDb);
-        }
         if (preserveCheckboxRecoveryState) {
             await assertExactCheckboxCardRecoveryState(testDb);
         } else if (resumeCheckboxFinalDraft) {
             await assertExactCheckboxFinalDraftState(testDb);
         } else {
+            await assertNoPreservedCheckboxMutationState(testDb);
+            initialSchemaResetAuthorized = true;
             await resetPublicSchema(testDb);
         }
         await launchServerOnce();
@@ -619,6 +659,10 @@ async function runSuite(testDb, testFile, suiteMode) {
                     preserveCheckboxFinalProofState
                         ? '[isolated-db] Preserving disposable Checkbox final card-close proof for exact post-run inspection.\n'
                         : '[isolated-db] Preserving disposable Checkbox card-recovery proof for exact post-run inspection.\n'
+                );
+            } else if (!initialSchemaResetAuthorized) {
+                process.stderr.write(
+                    '[isolated-db] Initial schema reset was not authorized; preserved Checkbox state remains untouched.\n'
                 );
             } else if (!primaryError || !preserveFailedCheckboxMutationState) {
                 await resetPublicSchema(testDb);
@@ -696,9 +740,14 @@ async function main() {
         ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
         : MODES[mode];
 
-    for (const testFile of files) {
-        process.stdout.write(`\n[isolated-db] Running ${testFile} against ${testDb.hostname}/${testDb.databaseName}\n`);
-        await runSuite(testDb, testFile, mode);
+    const databaseLock = await acquireIsolatedDatabaseLock(testDb);
+    try {
+        for (const testFile of files) {
+            process.stdout.write(`\n[isolated-db] Running ${testFile} against ${testDb.hostname}/${testDb.databaseName}\n`);
+            await runSuite(testDb, testFile, mode);
+        }
+    } finally {
+        await databaseLock.release();
     }
 }
 
@@ -710,6 +759,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+    acquireIsolatedDatabaseLock,
     assertExactCheckboxCardRecoveryState,
     assertExactCheckboxFinalDraftState,
     assertNoPreservedCheckboxMutationState,

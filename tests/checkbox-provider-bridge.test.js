@@ -4,7 +4,9 @@ const http = require('node:http');
 const crypto = require('node:crypto');
 
 const { CheckboxClientError, redactCheckboxDiagnostics } = require('../services/checkbox/errors');
+const CHECKBOX_OPENAPI_CONTRACT = require('../config/checkboxOpenApiContract');
 const {
+    classifyShiftStatus,
     createCheckboxProviderFactory,
     createProviderFromConfig,
     normalizeReceiptArtifacts,
@@ -12,6 +14,45 @@ const {
 } = require('../services/checkbox/provider');
 const { loadCheckboxRuntimeConfig } = require('../services/checkbox/config');
 const { classifyWorkerError, processPaymentOutboxJobs, runShiftJob } = require('../services/payments/paymentOutboxWorker');
+
+test('runtime shift classifier accepts exactly the pinned official ShiftStatus enum', () => {
+    assert.deepEqual(CHECKBOX_OPENAPI_CONTRACT.enums.ShiftStatus, ['CREATED', 'OPENING', 'OPENED', 'CLOSING', 'CLOSED']);
+    assert.deepEqual(
+        CHECKBOX_OPENAPI_CONTRACT.enums.ShiftStatus.map(status => [status, classifyShiftStatus(status)]),
+        [
+            ['CREATED', 'opening'],
+            ['OPENING', 'opening'],
+            ['OPENED', 'opened'],
+            ['CLOSING', 'closing'],
+            ['CLOSED', 'closed']
+        ]
+    );
+    for (const status of ['', 'ERROR', 'CANCELLED', 'CLOSING_REQUESTED', 'PROVIDER_FUTURE_STATE']) {
+        assert.equal(classifyShiftStatus(status), 'unknown');
+    }
+});
+
+test('shift normalization preserves only valid official opened_at and closed_at timestamps', () => {
+    const openedAt = '2026-08-22T18:02:09+03:00';
+    const closedAt = '2026-08-22T18:06:31+03:00';
+    const normalized = normalizeShiftResponse({
+        id: PROVIDER_SHIFT_ID,
+        status: 'CLOSED',
+        opened_at: openedAt,
+        closed_at: closedAt
+    }, { expectedShiftId: PROVIDER_SHIFT_ID }, { requireCashier: false });
+    assert.equal(normalized.openedAt, new Date(openedAt).toISOString());
+    assert.equal(normalized.closedAt, new Date(closedAt).toISOString());
+
+    const malformed = normalizeShiftResponse({
+        id: PROVIDER_SHIFT_ID,
+        status: 'CLOSED',
+        opened_at: 'not-a-date',
+        closed_at: 12345
+    }, { expectedShiftId: PROVIDER_SHIFT_ID }, { requireCashier: false });
+    assert.equal(malformed.openedAt, null);
+    assert.equal(malformed.closedAt, null);
+});
 
 function listenMock(handler) {
     const calls = [];
@@ -70,6 +111,7 @@ const PROVIDER_ORGANIZATION_ID = '11111111-1111-4111-8111-111111111111';
 const PROVIDER_REGISTER_ID = '22222222-2222-4222-8222-222222222222';
 const PROVIDER_CASHIER_ID = '33333333-3333-4333-8333-333333333333';
 const PROVIDER_SHIFT_ID = '44444444-4444-4444-8444-444444444444';
+const SECOND_PROVIDER_SHIFT_ID = '55555555-5555-4555-8555-555555555555';
 
 function cashierProfile(overrides = {}) {
     return {
@@ -93,7 +135,7 @@ function openedShift(overrides = {}) {
         status: 'OPENED',
         serial: 1,
         taxes: [],
-        cash_register: { id: PROVIDER_REGISTER_ID, fiscal_number: '4000000000', active: true },
+        cash_register: { id: PROVIDER_REGISTER_ID, fiscal_number: '4000000000' },
         cashier: { id: PROVIDER_CASHIER_ID, full_name: 'Sandbox Cashier' },
         ...overrides
     };
@@ -288,6 +330,54 @@ test('runtime provider maps worker DTO to official auth, shift, validate, sell a
         assert.equal(sell.body.payments[0].value, 12345);
         assert.equal(sell.body.context.fiscal_operation_id, 501);
         assert.equal(sell.body.context.payment_order_id, 301);
+    } finally {
+        await close(server);
+    }
+});
+
+test('runtime provider rechecks current and detailed shift after validation and blocks sell when the provider shift flips', async () => {
+    const receiptId = crypto.randomUUID();
+    let detailedShiftReads = 0;
+    const { server, calls, baseUrl } = await listenMock(call => {
+        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1', token_type: 'bearer' } };
+        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+        if (call.path === '/api/v1/cashier/shift') return { body: openedShift() };
+        if (call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`) {
+            detailedShiftReads += 1;
+            return {
+                body: detailedShiftReads === 1
+                    ? openedShift()
+                    : openedShift({ id: SECOND_PROVIDER_SHIFT_ID })
+            };
+        }
+        if (call.path === '/api/v1/receipts/validate') return { body: { valid: true } };
+        if (call.path === '/api/v1/receipts/sell') return { status: 500, body: { error: 'sell must not run after shift flip' } };
+        return { status: 404, body: { error: 'not found' } };
+    });
+    try {
+        const provider = createProviderFromConfig(providerConfig(baseUrl));
+        const input = saleInput(receiptId);
+
+        await provider.validateSale(input);
+        await assert.rejects(
+            () => provider.submitSaleReceipt(input),
+            error => error instanceof CheckboxClientError
+                && error.code === 'checkbox_shift_id_mismatch'
+                && error.status === 409
+        );
+
+        const validateIndex = calls.findIndex(call => call.path === '/api/v1/receipts/validate');
+        const currentShiftReadsAfterValidation = calls
+            .map((call, index) => ({ call, index }))
+            .filter(({ call, index }) => index > validateIndex && call.path === '/api/v1/cashier/shift');
+        const detailedShiftReadsAfterValidation = calls
+            .map((call, index) => ({ call, index }))
+            .filter(({ call, index }) => index > validateIndex && call.path === `/api/v1/shifts/${PROVIDER_SHIFT_ID}`);
+
+        assert.equal(currentShiftReadsAfterValidation.length, 1);
+        assert.equal(detailedShiftReadsAfterValidation.length, 1);
+        assert.ok(currentShiftReadsAfterValidation[0].index < detailedShiftReadsAfterValidation[0].index);
+        assert.equal(calls.some(call => call.path === '/api/v1/receipts/sell'), false);
     } finally {
         await close(server);
     }
@@ -514,14 +604,15 @@ test('opened current shift cannot fall back to its sparse response when detailed
     }
 });
 
-test('malformed null current shift fails closed instead of being normalized as no shift', async () => {
-    const { server, calls, baseUrl } = await listenMock(call => {
-        if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
-        if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
-        if (call.path === '/api/v1/cashier/shift') return { body: null };
-        return { status: 404, body: { detail: 'not found' } };
-    });
-    try {
+test('null current shift proves absence only when official register has_shift is false', async () => {
+    async function run(hasShift) {
+        const { server, calls, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+            if (call.path === '/api/v1/cashier/shift') return { body: null };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: hasShift }) };
+            return { status: 404, body: { detail: 'not found' } };
+        });
         const provider = createProviderFromConfig(providerConfig(baseUrl));
         const input = {
             providerOperationId: crypto.randomUUID(),
@@ -531,17 +622,35 @@ test('malformed null current shift fails closed instead of being normalized as n
                 provider_organization_id: PROVIDER_ORGANIZATION_ID
             }
         };
-        await assert.rejects(
-            () => provider.getCurrentShiftStatus(input),
-            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_response_malformed'
-        );
-        await assert.rejects(
-            () => provider.ensureShiftOpened(input),
-            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_response_malformed'
-        );
-        assert.equal(calls.some(call => call.method === 'POST' && call.path === '/api/v1/shifts'), false);
+        return { server, calls, provider, input };
+    }
+
+    const absent = await run(false);
+    try {
+        const current = await absent.provider.getCurrentShiftStatus(absent.input);
+        assert.equal(current.status, 'CLOSED');
+        assert.equal(current.notFound, true);
     } finally {
-        await close(server);
+        await close(absent.server);
+    }
+
+    const ambiguous = await run(true);
+    try {
+        await assert.rejects(
+            () => ambiguous.provider.getCurrentShiftStatus(ambiguous.input),
+            error => error instanceof CheckboxClientError
+                && error.code === 'checkbox_current_shift_unknown'
+                && error.unknown === true
+        );
+        await assert.rejects(
+            () => ambiguous.provider.ensureShiftOpened(ambiguous.input),
+            error => error instanceof CheckboxClientError
+                && error.code === 'checkbox_current_shift_unknown'
+                && error.unknown === true
+        );
+        assert.equal(ambiguous.calls.some(call => call.method === 'POST' && call.path === '/api/v1/shifts'), false);
+    } finally {
+        await close(ambiguous.server);
     }
 });
 
@@ -612,7 +721,7 @@ test('shift close fails before mutation when official current shift is null', as
                     provider_organization_id: PROVIDER_ORGANIZATION_ID
                 }
             }),
-            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_response_malformed'
+            error => error instanceof CheckboxClientError && error.code === 'checkbox_current_shift_unknown'
         );
         assert.equal(calls.some(call => call.path === '/api/v1/shifts/close'), false);
     } finally {
@@ -902,7 +1011,7 @@ test('runtime provider aggregate readiness reports all read-only blockers withou
     }
 });
 
-test('runtime provider aggregate readiness fails closed on malformed null current shift', async () => {
+test('runtime provider aggregate readiness accepts null current shift only with has_shift=false proof', async () => {
     const { server, baseUrl } = await listenMock(call => {
         if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
         if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
@@ -921,11 +1030,48 @@ test('runtime provider aggregate readiness fails closed on malformed null curren
             expectedIsTest: false
         }, { expectedTaxIds: ['7'] });
         const currentShift = diagnostics.checks.find(check => check.code === 'current_shift');
-        assert.equal(currentShift.status, 'unavailable');
-        assert.equal(currentShift.ready, false);
-        assert.equal(currentShift.details.errorCode, 'checkbox_current_shift_response_malformed');
+        assert.equal(currentShift.status, 'not_applicable');
+        assert.equal(currentShift.ready, true);
+        assert.equal(currentShift.details.shiftStatus, 'none');
     } finally {
         await close(server);
+    }
+});
+
+test('runtime provider aggregate readiness blocks unsupported current shift statuses without mutations', async () => {
+    for (const status of ['ERROR', 'CANCELLED', 'CLOSING_REQUESTED', 'PROVIDER_FUTURE_STATE']) {
+        const { server, calls, baseUrl } = await listenMock(call => {
+            if (call.path === '/api/v1/cashier/signin') return { body: { access_token: 'token-1' } };
+            if (call.path === '/api/v1/cashier/me') return { body: cashierProfile() };
+            if (call.path === '/api/v1/cash-registers/info') return { body: cashRegisterInfo({ has_shift: true }) };
+            if (call.path === '/api/v1/cashier/check-signature') return { body: signatureStatus() };
+            if (call.path === '/api/v1/cashier/tax') return { body: cashierTaxes() };
+            if (call.path === '/api/v1/cashier/shift') return { body: openedShift({ status }) };
+            return { status: 404, body: { error: 'not found' } };
+        });
+        try {
+            const provider = createProviderFromConfig(providerConfig(baseUrl));
+            const diagnostics = await provider.collectReadinessDiagnostics({
+                expectedCashierId: PROVIDER_CASHIER_ID,
+                expectedOrganizationId: PROVIDER_ORGANIZATION_ID,
+                expectedRegisterId: PROVIDER_REGISTER_ID,
+                expectedIsTest: false
+            }, { expectedTaxIds: ['7'] });
+            const currentShift = diagnostics.checks.find(check => check.code === 'current_shift');
+            assert.equal(diagnostics.ready, false);
+            assert.equal(currentShift.status, 'blocked');
+            assert.equal(currentShift.ready, false);
+            assert.equal(currentShift.details.errorCode, 'checkbox_shift_status_unknown');
+            assert.equal(currentShift.details.retryable, false);
+            assert.equal(currentShift.details.unknown, false);
+            assert.equal(diagnostics.mutations, false);
+            assert.equal(
+                calls.some(call => call.method === 'POST' && ['/api/v1/shifts', '/api/v1/shifts/close', '/api/v1/receipts/validate', '/api/v1/receipts/sell'].includes(call.path)),
+                false
+            );
+        } finally {
+            await close(server);
+        }
     }
 });
 
@@ -1422,6 +1568,7 @@ test('shift-open recovery requires two exact UUID 404 observations before retryi
         },
         async openShift(input) {
             calls.push({ method: 'openShift', input });
+            await input.beforeExternalMutation?.();
             return { id: shiftId, status: 'OPENED' };
         }
     };
@@ -1465,6 +1612,7 @@ test('confirmed shift lookup 404 retries open with the same durable UUID only', 
         },
         async openShift(input) {
             calls.push({ method: 'openShift', input });
+            await input.beforeExternalMutation?.();
             return { id: shiftId, status: 'OPENED' };
         }
     };
@@ -1506,6 +1654,7 @@ test('same-UUID shift-open conflict returns to exact lookup instead of creating 
         },
         async openShift(input) {
             calls.push({ method: 'openShift', input });
+            await input.beforeExternalMutation?.();
             throw new CheckboxClientError('checkbox_validation_error', 'Checkbox HTTP 409', {
                 status: 409,
                 retryable: false
@@ -1785,6 +1934,113 @@ test('shift-close timeout recovery looks up the exact immutable shift instead of
     assert.equal(calls.some(call => call.method === 'closeShift'), false);
 });
 
+test('provider-closed local shift forces an auth-stage close job into exact lookup-only recovery', async () => {
+    const calls = [];
+    const stages = [];
+    const provider = {
+        async lookupShift(input, options) {
+            calls.push({ method: 'lookupShift', input, options });
+            return {
+                id: PROVIDER_SHIFT_ID,
+                status: 'CLOSED',
+                registerId: PROVIDER_REGISTER_ID,
+                cashierId: PROVIDER_CASHIER_ID
+            };
+        },
+        async prepareMutation() {
+            calls.push({ method: 'prepareMutation' });
+        },
+        async closeShift() {
+            calls.push({ method: 'closeShift' });
+            throw new Error('provider-closed local shift must never submit another close request');
+        }
+    };
+    const result = await runShiftJob(provider, {
+        job: {
+            job_type: 'shift_close',
+            external_stage: 'auth',
+            fiscal_shift_status: 'closed',
+            fiscal_shift_lifecycle_stage: 'CLOSED',
+            provider_operation_id: crypto.randomUUID(),
+            provider_shift_id: PROVIDER_SHIFT_ID,
+            provider_register_id: PROVIDER_REGISTER_ID,
+            provider_cashier_id: PROVIDER_CASHIER_ID,
+            provider_organization_id: PROVIDER_ORGANIZATION_ID,
+            payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+        },
+        async recordStage(stage) { stages.push(stage); }
+    });
+
+    assert.equal(result.source, 'shift_close_lookup');
+    assert.equal(result.response.id, PROVIDER_SHIFT_ID);
+    assert.equal(result.response.status, 'CLOSED');
+    assert.deepEqual(stages, ['shift_close_lookup']);
+    assert.deepEqual(calls.map(call => call.method), ['lookupShift']);
+});
+
+test('provider-closed local shift requires an explicit CLOSED lookup status', async () => {
+    let closeCalls = 0;
+    const provider = {
+        async lookupShift() {
+            return { id: PROVIDER_SHIFT_ID };
+        },
+        async closeShift() {
+            closeCalls += 1;
+        }
+    };
+    await assert.rejects(
+        () => runShiftJob(provider, {
+            job: {
+                job_type: 'shift_close',
+                external_stage: 'auth',
+                fiscal_shift_status: 'closed',
+                fiscal_shift_lifecycle_stage: 'CLOSED',
+                provider_operation_id: crypto.randomUUID(),
+                provider_shift_id: PROVIDER_SHIFT_ID,
+                payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+            },
+            async recordStage() {}
+        }),
+        error => error?.code === 'checkbox_shift_close_pending'
+            && error.retryable === true
+            && error.unknown === true
+    );
+    assert.equal(closeCalls, 0);
+});
+
+test('locally CLOSED shift never repeats close from a stale retry stage', async () => {
+    let closeCalls = 0;
+    const provider = {
+        async lookupShift() {
+            return { id: PROVIDER_SHIFT_ID, status: 'OPENED' };
+        },
+        async prepareMutation() {
+            throw new Error('locally CLOSED shift must not prepare another close mutation');
+        },
+        async closeShift() {
+            closeCalls += 1;
+        }
+    };
+
+    await assert.rejects(
+        () => runShiftJob(provider, {
+            job: {
+                job_type: 'shift_close',
+                external_stage: 'shift_close_lookup_still_open',
+                fiscal_shift_status: 'closed',
+                fiscal_shift_lifecycle_stage: 'CLOSED',
+                provider_operation_id: crypto.randomUUID(),
+                provider_shift_id: PROVIDER_SHIFT_ID,
+                payload: { provider_shift_id: PROVIDER_SHIFT_ID }
+            },
+            async recordStage() {}
+        }),
+        error => error?.code === 'checkbox_shift_close_state_mismatch'
+            && error.retryable === false
+    );
+    assert.equal(closeCalls, 0);
+});
+
 test('shift-close recovery observes exact OPENED shift twice before retrying close', async () => {
     const operationId = crypto.randomUUID();
     const calls = [];
@@ -1804,6 +2060,7 @@ test('shift-close recovery observes exact OPENED shift twice before retrying clo
         },
         async closeShift(input) {
             calls.push({ method: 'closeShift', input });
+            await input.beforeExternalMutation?.();
             return {
                 id: PROVIDER_SHIFT_ID,
                 status: 'CLOSED',
@@ -1999,7 +2256,31 @@ test('provider factory resolves only logical refs through environment values', (
         }
     });
     assert.equal(factory.canResolveRefs({ credentialRef: 'park-middle', licenseRef: 'park-middle' }), true);
+    assert.equal(factory.canResolveRefs({ credentialRef: '', licenseRef: 'park-middle' }), false);
+    assert.equal(factory.canResolveRefs({ credentialRef: 'park-middle', licenseRef: '' }), false);
     assert.equal(factory.canResolveRefs({ credentialRef: 'missing', licenseRef: 'missing' }), false);
+    assert.throws(
+        () => factory.createForContext({
+            job: {
+                register_credential_ref: 'park-middle',
+                expected_is_test: false
+            }
+        }),
+        error => error.code === 'checkbox_runtime_context_incomplete'
+            && error.configuration === true
+            && error.details?.missing?.includes('cashier_credential_ref')
+    );
+    assert.throws(
+        () => factory.createForContext({
+            job: {
+                register_credential_ref: 'park-middle',
+                cashier_credential_ref: 'park-middle',
+                expected_is_test: true
+            }
+        }),
+        error => error.code === 'checkbox_runtime_expected_is_test_mismatch'
+            && error.configuration === true
+    );
 });
 
 test('provider factory eligibility is scoped by fiscal profile and register without payment_outbox_jobs.provider', async () => {
@@ -2042,8 +2323,18 @@ test('provider factory eligibility is scoped by fiscal profile and register with
     });
 
     const contexts = await factory.getEligibleRuntimeContexts(dbPool);
-    assert.deepEqual(contexts, [{ fiscalProfileId: 20, fiscalRegisterId: 40 }]);
+    assert.deepEqual(contexts, [{
+        fiscalProfileId: 20,
+        fiscalRegisterId: 40,
+        registerCredentialRef: 'park-middle',
+        cashierCredentialRef: 'park-middle'
+    }]);
     assert.doesNotMatch(queries.join('\n'), /\bjob\.provider\b|\bpayment_outbox_jobs\.provider\b/);
+    assert.match(
+        queries.join('\n'),
+        /WHEN job\.job_type IN \('receipt_sell', 'receipt_status_lookup', 'receipt_validate'\)[\s\S]*THEN COALESCE\(po\.cashier_user_id, fo\.initiated_by_user_id\)[\s\S]*ELSE fo\.initiated_by_user_id/,
+        'sale jobs use the order cashier while refund/service/shift jobs use their own immutable initiator'
+    );
 });
 
 test('runtime config does not fall back to global Checkbox secrets for logical refs', () => {

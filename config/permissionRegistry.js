@@ -49,8 +49,10 @@ const TRAINING_ACCESS = Object.freeze([...MANAGER_UP, 'hr', 'senior_instructor',
 const GUARDIAN_OPS_ACCESS = Object.freeze(['creator', 'director', 'admin', 'security']);
 const FINANCE_ANALYTICS_ACCESS = Object.freeze(['creator', 'director', 'accountant']);
 const PAYMENT_CASHIER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director', 'reception']);
-const FISCAL_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director']);
-const FISCAL_APPROVER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'art_director']);
+const FISCAL_PHASE1_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin', 'art_director']);
+const CASHIER_PRO_OPERATOR_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'admin']);
+const CASHIER_PRO_APPROVER_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager']);
+const FISCAL_AUDIT_ACCESS = Object.freeze(['creator', 'director', 'accountant', 'manager', 'senior_manager', 'art_director']);
 const PAYROLL_VIEW_ROLES = Object.freeze(['creator', 'director', 'vice_director', 'hr', 'accountant']);
 const PAYROLL_REVERSE_CLOSE_ROLES = Object.freeze(['creator', 'director', 'accountant']);
 const PAYROLL_RULE_ROLES = Object.freeze(['creator', 'director', 'hr', 'accountant']);
@@ -567,7 +569,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         ]
     }),
     action({
-        key: 'fiscal.shift.open', label: 'Open fiscal shift', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        key: 'fiscal.shift.open', label: 'Open fiscal shift', group: 'payments', defaultRoles: FISCAL_PHASE1_OPERATOR_ACCESS, risk: 'critical',
         backendConsumers: [
             source('services/payments/cashierOperationsService.js', 'ensureOpenShiftForSale', { enforces: true }),
             source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
@@ -577,7 +579,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         ]
     }),
     action({
-        key: 'fiscal.shift.close', label: 'Close fiscal shift', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        key: 'fiscal.shift.close', label: 'Close fiscal shift', group: 'payments', defaultRoles: FISCAL_PHASE1_OPERATOR_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.shift.close')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'closeShift', { enforces: true }),
@@ -590,7 +592,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         ]
     }),
     action({
-        key: 'fiscal.service_in', label: 'Fiscal service cash in', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        key: 'fiscal.service_in', label: 'Fiscal service cash in', group: 'payments', defaultRoles: CASHIER_PRO_OPERATOR_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.service_in')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'createServiceIn', { enforces: true }),
@@ -599,7 +601,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/payments.js', '/api/payments/service-in', 'fiscal.service_in')]
     }),
     action({
-        key: 'fiscal.service_out.request', label: 'Request fiscal service cash out', group: 'payments', defaultRoles: FISCAL_OPERATOR_ACCESS, risk: 'critical',
+        key: 'fiscal.service_out.request', label: 'Request fiscal service cash out', group: 'payments', defaultRoles: CASHIER_PRO_OPERATOR_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.service_out.request')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'createServiceOutRequest', { enforces: true }),
@@ -608,7 +610,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/payments.js', '/api/payments/service-out', 'fiscal.service_out.request')]
     }),
     action({
-        key: 'fiscal.service_out.approve', label: 'Approve fiscal service cash out', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        key: 'fiscal.service_out.approve', label: 'Approve fiscal service cash out', group: 'payments', defaultRoles: CASHIER_PRO_APPROVER_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.service_out.approve')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'approveServiceOut', { enforces: true }),
@@ -617,7 +619,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/payments.js', '/api/payments/service-out/:operationId/approve', 'fiscal.service_out.approve', 'Requires server-side action PIN; initiator cannot approve own service-out.')]
     }),
     action({
-        key: 'fiscal.refund', label: 'Approve fiscal refund', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        key: 'fiscal.refund', label: 'Approve fiscal refund', group: 'payments', defaultRoles: CASHIER_PRO_APPROVER_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.refund')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'createFullRefund', { enforces: true }),
@@ -626,7 +628,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/payments.js', '/api/payments/orders/:orderId/refund', 'fiscal.refund', 'Requires server-side approval object bound to the operation/profile/register.')]
     }),
     action({
-        key: 'fiscal.reconcile', label: 'Reconcile fiscal cash', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        key: 'fiscal.reconcile', label: 'Reconcile fiscal cash', group: 'payments', defaultRoles: CASHIER_PRO_APPROVER_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.reconcile')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'createReconciliationRevision', { enforces: true }),
@@ -635,7 +637,7 @@ const ACTION_PERMISSIONS = Object.freeze([
         apiConsumers: [api('routes/payments.js', '/api/payments/shifts/:shiftId/reconcile', 'fiscal.reconcile', 'Non-zero difference requires server-side approval.')]
     }),
     action({
-        key: 'fiscal.audit.view', label: 'View fiscal audit trail', group: 'payments', defaultRoles: FISCAL_APPROVER_ACCESS, risk: 'critical',
+        key: 'fiscal.audit.view', label: 'View fiscal audit trail', group: 'payments', defaultRoles: FISCAL_AUDIT_ACCESS, risk: 'critical',
         backendConsumers: [
             source('routes/payments.js', "requireAction('fiscal.audit.view')", { enforces: true }),
             source('services/payments/cashierOperationsService.js', 'getOperationalReport', { enforces: true }),
@@ -662,8 +664,14 @@ const ACTION_PERMISSIONS = Object.freeze([
     action({
         key: 'fiscal.configure', label: 'Configure fiscal profiles and registers', group: 'payments', defaultRoles: ['creator', 'director'], risk: 'critical',
         delegable: false,
-        backendConsumers: [source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })],
-        apiConsumers: [api('services/payments/fiscalAccess.js', 'Fiscal configuration authorization service', null, 'Non-delegable: explicit allowlist is ignored by the access policy.')]
+        backendConsumers: [
+            source('routes/payments.js', "requireAction('fiscal.configure')", { enforces: true }),
+            source('services/payments/fiscalAccess.js', "PAYMENT_FISCAL_CAPABILITIES", { enforces: true })
+        ],
+        apiConsumers: [
+            api('routes/payments.js', '/api/payments/fiscal-bindings/:bindingId/action-pin', 'fiscal.configure', 'Authenticated per-user Cashier PRO PIN enrollment; runtime service also requires a distinct actor and locks the exact target binding row.'),
+            api('services/payments/fiscalAccess.js', 'Fiscal configuration authorization service', null, 'Non-delegable: explicit allowlist is ignored by the access policy.')
+        ]
     }),
     action({
         key: 'create_booking', label: 'Створювати бронювання', group: 'bookings',

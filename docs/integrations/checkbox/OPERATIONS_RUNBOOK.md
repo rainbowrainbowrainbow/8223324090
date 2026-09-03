@@ -16,18 +16,21 @@ Status: production deployment runbook for disabled fiscal mode. Production activ
 
 1. Confirm production `/api/version` matches the intended release commit.
 2. Confirm the active deploy branch is the branch that contains the release commits.
-3. Collect accountant-approved FOP/legal entity data, fiscal item names, tax mode, and tax IDs.
-4. Collect exact Checkbox test-mode organization, register, cashier, and credential reference names. Outlet ID is optional metadata because the current official cashier/register schemas do not expose it; do not invent one.
-5. Store raw Checkbox credentials only in environment variables outside the repository.
-6. For local test-mode preparation, keep non-secret mapping in `C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json` and run dry-run first:
+3. Before any release that introduces migration `343` or later, run the read-only legacy-shift preflight with a task-specific read-only DB URL:
+   `npm run audit:checkbox-release-db-preflight`.
+   Set `CHECKBOX_RELEASE_PREFLIGHT_DATABASE_URL` and explicitly set `CHECKBOX_RELEASE_PREFLIGHT_DATABASE_SSL=true` (remote TLS) or `false` (local only). The command never falls back to `DATABASE_URL`. Any non-zero blocker count stops deployment and requires a separate audited reconciliation/data-fix; do not normalize historical fiscal rows silently.
+4. Collect accountant-approved FOP/legal entity data, fiscal item names, tax mode, and tax IDs.
+5. Collect exact Checkbox test-mode organization, register, cashier, and credential reference names. Outlet ID is optional metadata because the current official cashier/register schemas do not expose it; do not invent one.
+6. Store raw Checkbox credentials only in environment variables outside the repository.
+7. For local test-mode preparation, keep non-secret mapping in `C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json` and run dry-run first:
    `npm run configure:checkbox:park -- --config-file="C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json"`.
-7. Run preflight with the same config file only after dry-run is clean:
+8. Run preflight with the same config file only after dry-run is clean:
    `npm run configure:checkbox:park -- preflight --config-file="C:\Users\Plotva\.eventgenix\checkbox-park-test.config.json"`.
    On npm 10 for Windows, `--config-file=<path>` must stay one argument. Do not write it as the separated `--config-file <path>` form after a single npm separator, because npm consumes the option and passes only the path to Node. Use `node scripts/configure-checkbox-park-pilot.js --help` for the canonical examples.
-8. Keep raw Checkbox credentials in the local env file only. Do not put password, PIN, license key, access key, token, webhook secret, or price overrides into the JSON config.
-9. Run the Checkbox test-mode smoke only when `/cashier/me` proves the cashier is test-mode.
-10. Enable the pilot register only after successful preflight and explicit activation approval.
-11. Turn on `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true` only in the separate controlled payment activation task.
+9. Keep raw Checkbox credentials in the local env file only. Do not put password, PIN, license key, access key, token, webhook secret, or price overrides into the JSON config.
+10. Run the Checkbox test-mode smoke only when `/cashier/me` proves the cashier is test-mode.
+11. Enable the pilot register only after successful preflight and explicit activation approval.
+12. Turn on `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=true` only in the separate controlled payment activation task.
 
 ### Test register device identity
 
@@ -113,8 +116,8 @@ Refunds are not active in thin MVP production mode. Until Cashier PRO is explici
 
 There are two different stops:
 
-- Stop new payments: set `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false` or disable the specific register mapping so cashiers cannot confirm new money.
-- Full emergency stop: set `CHECKBOX_INTEGRATION_ENABLED=false` to stop new provider HTTP mutations.
+- Stop new payments while preserving recovery: set `CHECKBOX_ACCEPT_PAYMENTS_ENABLED=false`. This blocks create/confirm but keeps lookup and finalization of already-paid orders available.
+- Full emergency stop / provider stop: set `CHECKBOX_INTEGRATION_ENABLED=false` globally. Disabling a specific register mapping is the equivalent per-register full stop because its queued jobs are no longer eligible for worker claim; use it only after a successful drain or for an emergency that requires recovery to stop too.
 
 Rollback procedure:
 

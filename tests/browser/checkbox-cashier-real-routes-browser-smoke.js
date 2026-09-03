@@ -278,14 +278,14 @@ async function startMockCheckbox(scope) {
                 return send(200, {
                     id: state.shift.id,
                     status: state.shift.status,
-                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000', active: true }
+                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000' }
                 });
             }
             if (req.url.startsWith('/api/v1/shifts/') && req.method === 'GET') {
                 if (!state.shift) return send(404, { error: 'shift_not_open' });
                 return send(200, {
                     ...state.shift,
-                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000', active: true },
+                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000' },
                     cashier: { id: scope.providerCashierId }
                 });
             }
@@ -296,7 +296,7 @@ async function startMockCheckbox(scope) {
                 };
                 return send(202, {
                     ...state.shift,
-                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000', active: true },
+                    cash_register: { id: scope.providerRegisterId, fiscal_number: '4000000000' },
                     cashier: { id: scope.providerCashierId }
                 });
             }

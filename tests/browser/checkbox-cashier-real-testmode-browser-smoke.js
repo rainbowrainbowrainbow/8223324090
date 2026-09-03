@@ -282,6 +282,7 @@ async function seedExactUsers(local) {
     const capabilities = [...new Set([...DEFAULT_CAPABILITIES, 'fiscal.shift.close'])];
     const primaryName = String(eventUsers.primaryTestCashierName || local.config.primaryTestCashierName || 'Test CRM cashier').trim();
     let primaryUsername = null;
+    let ownerUsername = null;
     for (const userId of ids) {
         const isPrimary = userId === primaryUserId;
         const username = `checkbox_testmode_${userId}_${crypto.randomBytes(3).toString('hex')}`;
@@ -315,9 +316,13 @@ async function seedExactUsers(local) {
             ]
         );
         if (isPrimary) primaryUsername = username;
+        if (userId === ownerUserId) ownerUsername = username;
     }
     await pool.query(`SELECT setval(pg_get_serial_sequence('users', 'id'), GREATEST((SELECT MAX(id) FROM users), 1), true)`);
-    return { id: primaryUserId, username: primaryUsername, password, ownerUserId, capabilities };
+    if (!ownerUsername) {
+        throw new FullstackTestModeError('checkbox_fullstack_owner_login_missing', 'Disposable integration owner login was not created');
+    }
+    return { id: primaryUserId, username: primaryUsername, password, ownerUserId, ownerUsername, capabilities };
 }
 
 async function withHarnessConfig(local, cashier, callback) {
@@ -780,18 +785,23 @@ async function verifyExistingCardRecoveryScope(local, cashier, baseline) {
     });
 }
 
-async function login(page, baseUrl, cashier) {
+async function authenticateEventGenixUser(page, baseUrl, credentials, errorPrefix) {
     const response = await page.request.post(`${baseUrl}/api/auth/login`, {
-        data: { username: cashier.username, password: cashier.password }
+        data: { username: credentials.username, password: credentials.password }
     });
-    if (!response.ok()) throw new FullstackTestModeError('checkbox_fullstack_login_failed', 'Disposable EventGenix cashier login failed');
+    if (!response.ok()) throw new FullstackTestModeError(`${errorPrefix}_login_failed`, 'Disposable EventGenix user login failed');
     const payload = await response.json();
-    if (!payload.token) throw new FullstackTestModeError('checkbox_fullstack_login_token_missing', 'Disposable EventGenix login did not return a token');
+    if (!payload.token) throw new FullstackTestModeError(`${errorPrefix}_token_missing`, 'Disposable EventGenix login did not return a token');
+    return payload.token;
+}
+
+async function login(page, baseUrl, cashier) {
+    const token = await authenticateEventGenixUser(page, baseUrl, cashier, 'checkbox_fullstack_cashier');
     await page.addInitScript(token => {
         localStorage.setItem('pzp_token', token);
         localStorage.setItem('pzp_dark_mode', 'false');
-    }, payload.token);
-    return payload.token;
+    }, token);
+    return token;
 }
 
 async function forceProviderReadiness(page) {
@@ -854,7 +864,28 @@ async function createAndConfirmOrder(page, tender) {
     if (await page.locator('#startNextOrderBtn:not(.hidden)').count()) {
         await page.click('#startNextOrderBtn');
     }
-    await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+    try {
+        await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+    } catch (error) {
+        const state = await page.evaluate(() => {
+            const pageState = window.CashierPaymentsPage?.state || {};
+            return {
+                readinessCode: pageState.registerState?.readinessCode || null,
+                integrationReady: pageState.registerState?.integrationReady === true,
+                providerReady: pageState.registerState?.providerReady === true
+                    || pageState.registerState?.readiness?.providerReady === true,
+                readinessInFlight: pageState.readinessInFlight === true,
+                unresolvedQueueState: pageState.unresolvedQueueState || null,
+                unresolvedLastErrorCode: pageState.unresolvedLastError?.code || null,
+                hasCurrentOrder: Boolean(pageState.orderDetails?.order?.id)
+            };
+        });
+        throw new FullstackTestModeError(
+            'checkbox_fullstack_create_not_ready',
+            `Cashier UI did not reach a safe create-ready state: ${JSON.stringify(state)}`,
+            { cause: error }
+        );
+    }
     await page.check(`input[name="paymentTender"][value="${tender}"]`);
     await page.fill('#paymentKidsCount', '1');
     await page.fill('#paymentAdultsCount', '0');
@@ -1588,10 +1619,20 @@ async function run() {
         browser = await chromium.launch({ headless: process.env.CASHIER_PAYMENTS_BROWSER_SMOKE_HEADLESS !== 'false' });
         const context = await browser.newContext();
         const page = await context.newPage();
-        const token = await login(page, guard.baseUrl, cashier);
+        await login(page, guard.baseUrl, cashier);
+        const integrationOwnerToken = MUTATION_STAGES.has(guard.stage)
+            ? await authenticateEventGenixUser(page, guard.baseUrl, {
+                username: cashier.ownerUsername,
+                password: cashier.password
+            }, 'checkbox_fullstack_owner')
+            : null;
         await page.goto(`${guard.baseUrl}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.registerState);
+        await page.waitForFunction(() => {
+            const queueState = window.CashierPaymentsPage?.state?.unresolvedQueueState;
+            return Boolean(queueState) && !['unknown', 'checking'].includes(queueState);
+        });
         const readiness = await forceProviderReadiness(page);
         if (guard.stage === 'preflight') {
             if (readiness.providerReady !== true
@@ -1633,7 +1674,7 @@ async function run() {
             await waitForFiscalizedOrder(page, guard.baseUrl, cardOrderId);
             const ownedShift = await loadExactSaleShift(scope, cashier, cardOrderId);
             recoveryShiftId = Number(ownedShift.id);
-            await closeOwnedShiftThroughEventGenix(page, token, scope, cashier, { shiftId: recoveryShiftId });
+            await closeOwnedShiftThroughEventGenix(page, integrationOwnerToken, scope, cashier, { shiftId: recoveryShiftId });
             await assertFinalCardClose(scope, cashier, cardOrderId, recoveryShiftId);
             mutationRun?.update('completed');
             completed = true;
@@ -1676,7 +1717,7 @@ async function run() {
                 recoveryBaseline.baselineShiftId
             );
             recoveryShiftId = Number(recoveryShift.id);
-            await closeOwnedShiftThroughEventGenix(page, token, scope, cashier, { shiftId: recoveryShiftId });
+            await closeOwnedShiftThroughEventGenix(page, integrationOwnerToken, scope, cashier, { shiftId: recoveryShiftId });
             await assertCardRecoveryFinal(scope, cashier, recoveryBaseline, cardOrderId, recoveryShiftId);
             mutationRun?.update('completed');
             completed = true;
@@ -1700,7 +1741,7 @@ async function run() {
         const cardOrderId = await createAndConfirmOrder(page, 'card_terminal_manual');
         await waitForFiscalizedOrder(page, guard.baseUrl, cardOrderId);
 
-        await closeOwnedShiftThroughEventGenix(page, token, scope, cashier);
+        await closeOwnedShiftThroughEventGenix(page, integrationOwnerToken, scope, cashier);
         await assertFinalLedger(scope);
         mutationRun?.update('completed');
         completed = true;

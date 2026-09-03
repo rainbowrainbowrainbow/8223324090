@@ -14,6 +14,7 @@ const REGISTER_ALIAS = 'middle';
 const PROVIDER = 'checkbox';
 const SOURCE_TYPE = 'admission_ticket';
 const ITEM_TYPE = 'admission_ticket';
+const PILOT_CONFIG_TARGET_LOCK_NAMESPACE = 'checkbox_pilot_config_target_v1';
 const APPLY_CONFIRM_ENV = 'EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY';
 const APPLY_CONFIRM_VALUE = 'true';
 const ACTION_PIN_ENV = 'CHECKBOX_PILOT_ACTION_PIN';
@@ -45,7 +46,8 @@ const DEFAULT_CAPABILITIES = Object.freeze([
 ]);
 
 const INTEGRATION_OWNER_CAPABILITIES = Object.freeze([
-    'fiscal.shift.close'
+    'fiscal.shift.close',
+    'fiscal.incident.manage'
 ]);
 
 const PIN_REQUIRED_CAPABILITIES = Object.freeze([
@@ -350,7 +352,12 @@ function optionsFromConfigFile(filePath) {
     const cashierUserIds = numberArray(config.cashierUserIds).length
         ? numberArray(config.cashierUserIds)
         : numberArray(eventGenixUsers.cashierUserIds);
-    const credentialRef = stringOrNull(config.credentialRef);
+    if (stringOrNull(config.credentialRef)) {
+        throw new PilotConfigError(
+            'pilot_config_credential_ref_ambiguous',
+            'Config file must declare registerCredentialRef and cashierCredentialRef separately; legacy credentialRef is ambiguous'
+        );
+    }
     const primaryTestCashierUserId = Number(eventGenixUsers.primaryTestCashierUserId || config.primaryTestCashierUserId || 0) || null;
     const integrationOwnerUserId = stringOrNull(config.integrationOwnerUserId)
         || stringOrNull(config.integrationOwner)
@@ -367,10 +374,10 @@ function optionsFromConfigFile(filePath) {
         providerOutletId: stringOrNull(config.providerOutletId),
         registerName: stringOrNull(config.registerName) || stringOrNull(config.registerDisplayName) || stringOrNull(config.registerAlias) || 'Middle',
         providerRegisterId: stringOrNull(config.providerRegisterId),
-        providerLicenseRef: stringOrNull(config.providerLicenseRef) || stringOrNull(config.registerCredentialRef) || credentialRef,
+        providerLicenseRef: stringOrNull(config.providerLicenseRef) || stringOrNull(config.registerCredentialRef),
         cashierUserIds,
         providerCashierId: stringOrNull(config.providerCashierId),
-        cashierLoginRef: stringOrNull(config.cashierLoginRef) || stringOrNull(config.cashierCredentialRef) || credentialRef,
+        cashierLoginRef: stringOrNull(config.cashierLoginRef) || stringOrNull(config.cashierCredentialRef),
         integrationOwner: integrationOwnerUserId,
         expectedIsTest: config.expectedIsTest,
         capabilities: Array.isArray(config.capabilities) ? config.capabilities.map(item => String(item).trim()).filter(Boolean) : [...DEFAULT_CAPABILITIES],
@@ -491,6 +498,21 @@ function assertNoCredentialRefCollisions(refs = []) {
 async function assertNoStoredCredentialRefCollisions(client, plan) {
     const suppliedRefs = [plan.providerLicenseRef, plan.cashierLoginRef].filter(Boolean);
     if (!suppliedRefs.length) return;
+    const prefixes = [...new Set(suppliedRefs.map(credentialEnvPrefix).filter(Boolean))].sort();
+    if (prefixes.length) {
+        // Mutation modes run inside an explicit transaction, so these locks remain
+        // held through the following scan and writes. The DB trigger is the final
+        // cross-table guard for every writer, including non-CLI callers.
+        await client.query(
+            `SELECT pg_advisory_xact_lock(
+                        hashtext('checkbox_credential_env_prefix_v344'),
+                        hashtext(prefix)
+                    )
+               FROM unnest($1::text[]) AS requested(prefix)
+              ORDER BY prefix`,
+            [prefixes]
+        );
+    }
     const existing = await client.query(
         `SELECT provider_license_ref AS credential_ref
            FROM fiscal_registers
@@ -818,6 +840,25 @@ async function loadExistingTarget(client, plan) {
         [plan.crmProfileKey, plan.legalEntityKey, plan.locationAlias, plan.registerAlias]
     );
     return result.rows[0] || null;
+}
+
+function pilotConfigTargetLockKey(plan) {
+    return JSON.stringify([
+        PILOT_CONFIG_TARGET_LOCK_NAMESPACE,
+        String(plan.crmProfileKey || '').trim(),
+        String(plan.legalEntityKey || '').trim(),
+        String(plan.registerAlias || '').trim()
+    ]);
+}
+
+async function acquirePilotConfigTargetLock(client, plan) {
+    const lockKey = pilotConfigTargetLockKey(plan);
+    await client.query(
+        `SELECT pg_advisory_xact_lock(hashtextextended($1, 0))
+                AS checkbox_pilot_config_target_lock`,
+        [lockKey]
+    );
+    return lockKey;
 }
 
 async function assertNoExistingConflicts(client, plan) {
@@ -1482,20 +1523,32 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
     if (isHelpRequest(argv)) return { help: true, usage: cliUsage() };
     const plan = parseArgs(argv, env);
     if (plan.mode === 'dry-run') return { applied: false, plan: publicPlan(plan) };
+    if (isMutationMode(plan.mode)) assertMutationAllowed(env);
     const client = await dbPool.connect();
+    let transactionOpen = false;
     try {
+        await client.query('BEGIN');
+        transactionOpen = true;
+        await acquirePilotConfigTargetLock(client, plan);
         if (plan.mode === 'status') {
-            return { mode: plan.mode, status: await statusPlan(client, plan) };
+            const result = { mode: plan.mode, status: await statusPlan(client, plan) };
+            await client.query('COMMIT');
+            transactionOpen = false;
+            return result;
         }
         if (plan.mode === 'diff') {
-            return { mode: plan.mode, diff: await diffPlan(client, plan), plan: publicPlan(plan) };
+            const result = { mode: plan.mode, diff: await diffPlan(client, plan), plan: publicPlan(plan) };
+            await client.query('COMMIT');
+            transactionOpen = false;
+            return result;
         }
         if (plan.mode === 'preflight') {
             const preflight = await preflightPlan(client, plan);
-            return { mode: plan.mode, ok: preflight.ok, preflight, plan: publicPlan(plan) };
+            const result = { mode: plan.mode, ok: preflight.ok, preflight, plan: publicPlan(plan) };
+            await client.query('COMMIT');
+            transactionOpen = false;
+            return result;
         }
-        assertMutationAllowed(env);
-        await client.query('BEGIN');
         await assertMutationActorAuthorized(client, plan);
         if (plan.mode === 'apply' || plan.mode === 'create') {
             const statusBefore = await statusPlan(client, plan);
@@ -1512,6 +1565,7 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
                 throw new PilotConfigError('pilot_config_post_apply_preflight_failed', 'Post-apply preflight failed; rolling back', { details: preflightAfter });
             }
             await client.query('COMMIT');
+            transactionOpen = false;
             return { applied: true, ...result, preflight: preflightAfter, plan: publicPlan(plan) };
         }
         if (plan.mode === 'replace-tax-mapping') {
@@ -1521,6 +1575,7 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
                 throw new PilotConfigError('pilot_config_post_tax_mapping_preflight_failed', 'Post-replace preflight failed; rolling back', { details: preflightAfter });
             }
             await client.query('COMMIT');
+            transactionOpen = false;
             return { mode: plan.mode, applied: true, ...result, preflight: preflightAfter };
         }
         if (plan.mode === 'rotate-binding') {
@@ -1530,11 +1585,13 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
             }
             const result = await rotateBinding(client, plan, env);
             await client.query('COMMIT');
+            transactionOpen = false;
             return { mode: plan.mode, applied: true, ...result };
         }
         if (plan.mode === 'change-owner') {
             const result = await changeOwner(client, plan);
             await client.query('COMMIT');
+            transactionOpen = false;
             return { mode: plan.mode, applied: true, ...result };
         }
         if (plan.mode === 'enable-register') {
@@ -1544,16 +1601,18 @@ async function run(argv = process.argv.slice(2), { env = process.env, dbPool = p
             }
             const result = await setRegisterEnabled(client, plan, true);
             await client.query('COMMIT');
+            transactionOpen = false;
             return { mode: plan.mode, enabled: true, ...result, preflight };
         }
         if (plan.mode === 'disable-register') {
             const result = await setRegisterEnabled(client, plan, false);
             await client.query('COMMIT');
+            transactionOpen = false;
             return { mode: plan.mode, enabled: false, ...result };
         }
         throw new PilotConfigError('pilot_config_mode_invalid', `Unsupported mode: ${plan.mode}`);
     } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
+        if (transactionOpen) await client.query('ROLLBACK').catch(() => {});
         throw error;
     } finally {
         client.release();
@@ -1594,6 +1653,7 @@ module.exports = {
     actionPinHashesByUser,
     activeAdmissionTicketCodes,
     applyPlan,
+    acquirePilotConfigTargetLock,
     capabilitiesForUser,
     configHash,
     cliUsage,
@@ -1604,6 +1664,7 @@ module.exports = {
     optionsFromConfigFile,
     parseArgs,
     parseItem,
+    pilotConfigTargetLockKey,
     preflightPlan,
     publicPlan,
     replaceTaxMappings,

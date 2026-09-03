@@ -13,12 +13,16 @@ const SCOPES = [
     'services/payments',
     'routes/payments.js',
     'scripts/checkbox-outbox-recovery.js',
+    'scripts/checkbox-release-db-preflight.js',
     'scripts/check-checkbox-openapi-compatibility.js',
     'scripts/checkbox-readiness-status.js',
     'scripts/checkbox-sandbox-smoke.js',
     'scripts/configure-checkbox-park-pilot.js',
     'scripts/run-isolated-postgres-tests.js',
     'db/migrations/337_checkbox_shift_recovery_stage_constraints.sql',
+    'db/migrations/343_checkbox_shift_operation_invariants.sql',
+    'db/migrations/344_checkbox_concurrent_immutability_guards.sql',
+    'db/migrations/345_checkbox_service_receipt_recovery_stages.sql',
     'docs/integrations/checkbox',
     'tests/helpers/checkbox-browser-fetch-shim.js',
     'tests/checkbox-provider-bridge.test.js',
@@ -27,10 +31,16 @@ const SCOPES = [
     'tests/checkbox-park-config.test.js',
     'tests/checkbox-fullstack-testmode-harness.test.js',
     'tests/checkbox-webhook-reconciliation.test.js',
+    'tests/checkbox-release-db-preflight.test.js',
+    'tests/checkbox-shift-db-invariants.test.js',
+    'tests/closed-shift-sale-guard.test.js',
     'tests/fiscal-cashier-operations.test.js',
     'tests/payment-workflow.test.js',
     'tests/payment-readiness.test.js',
     'tests/payment-fiscal-ledger-foundation.test.js',
+    'tests/payment-outbox-mutation-boundary.test.js',
+    'tests/payment-outbox-receipt-mismatch.test.js',
+    'tests/payment-outbox-wakeup.test.js',
     'tests/integration/checkbox-park-cashier-smoke.integration.test.js',
     'tests/integration/checkbox-park-config.integration.test.js',
     'tests/browser/checkbox-cashier-real-routes-browser-smoke.js',
@@ -69,6 +79,7 @@ const PRODUCTION_GATES = new Set([
 const SENSITIVE_ENV_KEY = /(?:^|_)(?:LOGIN|USERNAME|PASSWORD|PASSCODE|PIN(?:_CODE)?|LICENSE_KEY|ACCESS_KEY|WEBHOOK_SECRET|ACCESS_TOKEN|TOKEN|DEVICE_ID)$/i;
 const pinPattern = /\b(?:pin|PIN|ПІН|пін)[^.\n]{0,40}\b1234\b|\b1234\b[^.\n]{0,40}(?:pin|PIN|ПІН|пін)/;
 const QUOTED_CREDENTIAL_LITERAL = /\b((?:[A-Za-z0-9]+_)*(?:login|username|password|passcode|pin(?:_code)?|license_key|access_key|webhook_secret|access_token|token|device_id)|pinCode|licenseKey|accessKey|webhookSecret|accessToken|deviceId)\b["']?\s*[:=]\s*(["'`])([^"'`\r\n]*)\2/gi;
+const QUOTED_PROVIDER_ID_LITERAL = /\b(provider_(?:organization|outlet|register|cashier|operation|receipt|shift)_id|provider(?:Organization|Outlet|Register|Cashier|Operation|Receipt|Shift)Id|PROVIDER_(?:ORGANIZATION|OUTLET|REGISTER|CASHIER|OPERATION|RECEIPT|SHIFT)_ID)\b["']?\s*[:=]\s*(["'`])([^"'`\r\n]*)\2/g;
 const YAML_CREDENTIAL_LITERAL = /^\s*["']?(login|username|password|passcode|pin(?:[_-]?code)?|license[_-]?key|access[_-]?key|webhook[_-]?secret|access[_-]?token|token|device[_-]?id)["']?\s*:\s*([^#\r\n]+?)\s*$/gim;
 const SAFE_SYNTHETIC_TEST_CREDENTIALS = new Set([
     'abc123',
@@ -102,7 +113,8 @@ const SAFE_SYNTHETIC_TEST_CREDENTIALS = new Set([
     'secret-password',
     'stable-explicit-test-device',
     'stable-test-device-identity',
-    'token-1'
+    'token-1',
+    '00000000-0000-4000-8000-000000000101'
 ]);
 
 function isScannableFile(file) {
@@ -128,11 +140,22 @@ function isApprovedSyntheticTestCredential(rel, value) {
     const normalized = normalizeAssignmentValue(value);
     return SAFE_SYNTHETIC_TEST_CREDENTIALS.has(normalized)
         || /^mock-(?:login|password|license|access|device)(?:-[a-z0-9_-]+)?$/i.test(normalized)
+        || /^mock-[a-z0-9_-]+-(?:login|password)$/i.test(normalized)
         || /^mock-(?:pin-)?token-(?:[a-z0-9_-]+|\$\{[^}\r\n]+\})$/i.test(normalized)
         || /^token-(?:\d+|\$\{[A-Za-z][A-Za-z0-9]*\})$/i.test(normalized)
         || /^(?:actor|user)-\$\{[^}\r\n]+\}$/i.test(normalized)
         || /^checkbox_config_actor_\$\{[A-Za-z][A-Za-z0-9]*\}$/i.test(normalized)
         || /^(?:natalia|cashier)_http_smoke(?:_second)?_\$\{process\.pid\}$/i.test(normalized);
+}
+
+function isApprovedSyntheticTestProviderId(rel, value) {
+    if (!/^tests\//.test(rel)) return false;
+    const normalized = normalizeAssignmentValue(value);
+    return /^(?:test|mock|sandbox|smoke|fixture|synthetic|internal|durable|different|rotated|tampered|new)(?:[-_][a-z0-9_-]+)+$/i.test(normalized)
+        || /^(?:org|organization|outlet|register|cashier|operation|receipt|shift|provider|op|chk)-(?:test|smoke|fixture|synthetic|private|one|other|\d+)(?:-[a-z0-9_-]+)*$/i.test(normalized)
+        || /^provider-shift(?:-\d+)?$/i.test(normalized)
+        || /^mock-(?:org|organization|outlet|register|cashier|shift)-\$\{(?:process\.pid|suffix|cashier\.id)\}$/i.test(normalized)
+        || /^(?:00000000-0000-4000-8000-000000000201|11111111-1111-4111-8111-111111111111|22222222-2222-4222-8222-222222222222|33333333-3333-4333-8333-333333333333|44444444-4444-4444-8444-444444444444|55555555-5555-4555-8555-555555555555)$/i.test(normalized);
 }
 
 function parseEnvAssignment(line) {
@@ -199,6 +222,12 @@ function scanContent(rel, body) {
         failures.push(`${rel}: credential-like literal assigned to ${String(match[1]).toLowerCase()}`);
     }
 
+    for (const match of body.matchAll(QUOTED_PROVIDER_ID_LITERAL)) {
+        const value = match[3];
+        if (isEmptyOrExplicitPlaceholder(value) || isApprovedSyntheticTestProviderId(rel, value)) continue;
+        failures.push(`${rel}: provider identifier literal assigned to ${String(match[1])}`);
+    }
+
     if (/\.ya?ml$/i.test(rel)) {
         for (const match of body.matchAll(YAML_CREDENTIAL_LITERAL)) {
             const value = normalizeAssignmentValue(match[2]);
@@ -228,6 +257,7 @@ function main() {
 if (require.main === module) main();
 
 module.exports = {
+    SCOPES,
     isScannableFile,
     parseEnvAssignment,
     scanContent,

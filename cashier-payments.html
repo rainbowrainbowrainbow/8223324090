@@ -43,14 +43,14 @@
                 </div>
                 <div class="cashier-scope-card" aria-label="Пілотний профіль">
                     <span>CRM профіль</span><strong>парк</strong>
-                    <span>Каса</span><strong>середня (middle)</strong>
+                    <span>Каса</span><strong>середня каса</strong>
                 </div>
             </section>
             <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Немає доступу до оплати або фіскалізації.</div>
             <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
             <section id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning cashier-readiness-card hidden" role="region" aria-labelledby="cashierReadinessSummary">
                 <div id="cashierReadinessSummary" class="cashier-readiness-summary" role="status" aria-live="polite">Перевіряємо готовність каси…</div>
-                <details id="cashierReadinessDetails" class="cashier-readiness-details">
+                <details id="cashierReadinessDetails" class="cashier-readiness-details" hidden>
                     <summary>Деталі для адміністратора</summary>
                     <ul id="cashierReadinessTechnicalList"></ul>
                 </details>
@@ -117,7 +117,7 @@
             </section>
 
             <section id="fiscalResultPanel" class="cashier-card cashier-result-card cashier-step is-inactive" data-payment-step="3" aria-disabled="true" aria-labelledby="fiscalResultTitle">
-                <div class="cashier-card-head"><div><p class="cashier-kicker">Крок 3</p><h2 id="fiscalResultTitle">Фіскальний чек</h2></div><span id="fiscalReceiptBadge" class="cashier-pill">очікує</span></div>
+                <div class="cashier-card-head"><div><p class="cashier-kicker">Крок 3</p><h2 id="fiscalResultTitle">Фіскальний чек</h2></div><span id="fiscalReceiptBadge" class="cashier-status">очікує</span></div>
                 <p id="fiscalPendingMessage" class="cashier-muted">Після підтвердження оплати сервер створить одну надійну задачу фіскалізації. Якщо Checkbox тимчасово недоступний, оплата лишається підтвердженою, а чек — у статусі очікування.</p>
                 <div id="pendingReceiptNotice" class="cashier-alert cashier-alert-warning hidden" role="status" aria-live="polite"></div>
                 <div id="providerReceiptLinks" class="cashier-provider-links hidden" aria-live="polite">

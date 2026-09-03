@@ -164,7 +164,7 @@ function authorizeFiscalActionContext({
     };
 }
 
-async function loadFiscalCashierBinding(client, { userId, fiscalProfileId, fiscalRegisterId }) {
+async function loadFiscalCashierBinding(client, { userId, fiscalProfileId, fiscalRegisterId, forUpdate = false }) {
     const normalizedUserId = normalizePositiveId(userId);
     const normalizedProfileId = normalizePositiveId(fiscalProfileId);
     const normalizedRegisterId = normalizePositiveId(fiscalRegisterId);
@@ -190,7 +190,8 @@ async function loadFiscalCashierBinding(client, { userId, fiscalProfileId, fisca
           WHERE b.user_id = $1
             AND b.fiscal_profile_id = $2
             AND b.fiscal_register_id = $3
-            AND b.status = 'active'`,
+            AND b.status = 'active'
+          ${forUpdate ? 'FOR UPDATE OF b' : ''}`,
         [normalizedUserId, normalizedProfileId, normalizedRegisterId]
     );
 

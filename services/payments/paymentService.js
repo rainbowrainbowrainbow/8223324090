@@ -64,6 +64,22 @@ function normalizeBoolean(value) {
     return null;
 }
 
+function assertCompleteFiscalCredentialRefs(mapping = {}, binding = {}) {
+    const registerCredentialRef = String(mapping?.provider_license_ref ?? '').trim() || null;
+    const cashierCredentialRef = String(binding?.provider_cashier_login_ref ?? '').trim() || null;
+    const missing = [];
+    if (!registerCredentialRef) missing.push('register_credential_ref');
+    if (!cashierCredentialRef) missing.push('cashier_credential_ref');
+    if (missing.length) {
+        throw new PaymentServiceError(
+            'fiscal_provider_context_incomplete',
+            'Checkbox provider configuration is incomplete',
+            { status: 409, details: { missing } }
+        );
+    }
+    return { registerCredentialRef, cashierCredentialRef };
+}
+
 function paymentAdvisoryScope(key) {
     return `eventgenix:payments:${String(key || '').trim()}`;
 }
@@ -76,14 +92,15 @@ async function lockPaymentIdempotency(client, key) {
 }
 
 function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeConfig = {} } = {}) {
+    const { registerCredentialRef, cashierCredentialRef } = assertCompleteFiscalCredentialRefs(mapping, binding);
     const snapshot = {
         provider: 'checkbox',
         provider_organization_id: mapping.provider_organization_id || null,
         provider_outlet_id: mapping.provider_outlet_id || null,
         provider_register_id: mapping.provider_register_id || null,
         provider_cashier_id: binding.provider_cashier_id || null,
-        register_credential_ref: mapping.provider_license_ref || null,
-        cashier_credential_ref: binding.provider_cashier_login_ref || mapping.provider_license_ref || null,
+        register_credential_ref: registerCredentialRef,
+        cashier_credential_ref: cashierCredentialRef,
         expected_is_test: normalizeBoolean(runtimeConfig.expectedIsTest ?? mapping.register_expected_is_test),
         fiscal_profile_id: mapping.fiscal_profile_id == null ? null : Number(mapping.fiscal_profile_id),
         fiscal_location_id: mapping.fiscal_location_id == null ? null : Number(mapping.fiscal_location_id),
@@ -288,11 +305,15 @@ async function assertCheckboxIntegrationReady(client, {
             details: { matches: binding.rows.length }
         });
     }
+    const credentialRefs = assertCompleteFiscalCredentialRefs(
+        { provider_license_ref: providerLicenseRef },
+        binding.rows[0]
+    );
     try {
         const runtimeConfig = loadCheckboxRuntimeConfig({
             env,
-            credentialRef: binding.rows[0].provider_cashier_login_ref || providerLicenseRef,
-            licenseRef: providerLicenseRef
+            credentialRef: credentialRefs.cashierCredentialRef,
+            licenseRef: credentialRefs.registerCredentialRef
         });
         return {
             binding: binding.rows[0],
@@ -802,6 +823,7 @@ async function confirmPaymentOrder({
         : null;
 
     const result = await withTransaction(dbPool, async client => {
+        await lockPaymentIdempotency(client, key);
         const existingAttempt = await findAttemptByIdempotency(client, key);
         if (existingAttempt) {
             const existingOrder = await loadOrderSnapshot(client, existingAttempt.payment_order_id);
@@ -828,6 +850,32 @@ async function confirmPaymentOrder({
             throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
         }
 
+        // Resolve and authorize the immutable register scope without a row lock first,
+        // then serialize every confirmation against Phase-1 shift close before taking
+        // the payment-order row lock or writing any payment/fiscal ledger rows.
+        const scopedOrder = await loadOrderSnapshot(client, numericOrderId);
+        if (!scopedOrder) {
+            throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
+        }
+        await authorizer(client, {
+            user,
+            action: 'payments.confirm_received',
+            fiscalProfileId: scopedOrder.fiscal_profile_id,
+            crmProfileKey: scopedOrder.crm_profile_key,
+            fiscalLocationId: scopedOrder.fiscal_location_id,
+            fiscalRegisterId: scopedOrder.fiscal_register_id
+        });
+        await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
+            scopedOrder.fiscal_profile_id,
+            scopedOrder.fiscal_register_id
+        ]);
+        if (requireCheckboxIntegrationReady && !isCheckboxIntegrationEnabled(env)) {
+            throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
+        }
+        if (requireCheckboxIntegrationReady && !isCheckboxPaymentAcceptanceEnabled(env)) {
+            throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
+        }
+
         const lockResult = await client.query(
             `SELECT po.*,
                     fp.crm_profile_key,
@@ -843,7 +891,9 @@ async function confirmPaymentOrder({
                     fr.feature_enabled,
                     fr.provider_license_ref,
                     fr.provider_register_id,
-                    fr.metadata->>'expected_is_test' AS register_expected_is_test
+                    fr.metadata->>'expected_is_test' AS register_expected_is_test,
+                    confirmed_binding.provider_cashier_id AS bound_provider_cashier_id,
+                    confirmed_binding.provider_cashier_login_ref AS bound_provider_cashier_login_ref
                FROM payment_orders po
                JOIN fiscal_profiles fp ON fp.id = po.fiscal_profile_id
                JOIN fiscal_registers fr
@@ -852,14 +902,24 @@ async function confirmPaymentOrder({
                JOIN fiscal_locations fl
                  ON fl.id = fr.fiscal_location_id
                 AND fl.fiscal_profile_id = po.fiscal_profile_id
+               JOIN fiscal_cashier_bindings confirmed_binding
+                 ON confirmed_binding.fiscal_profile_id = po.fiscal_profile_id
+                AND confirmed_binding.fiscal_location_id = fl.id
+                AND confirmed_binding.fiscal_register_id = fr.id
+                AND confirmed_binding.user_id = $2
+                AND confirmed_binding.status = 'active'
               WHERE po.id = $1
-              FOR UPDATE`,
-            [numericOrderId]
+              FOR UPDATE OF po`,
+            [numericOrderId, user?.id || null]
         );
         if (!lockResult.rows.length) {
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
         }
         const order = lockResult.rows[0];
+        if (Number(order.fiscal_profile_id) !== Number(scopedOrder.fiscal_profile_id)
+            || Number(order.fiscal_register_id) !== Number(scopedOrder.fiscal_register_id)) {
+            throw new PaymentServiceError('payment_order_scope_changed', 'Payment order fiscal scope changed while acquiring the register lock', { status: 409 });
+        }
 
         await authorizer(client, {
             user,
@@ -912,6 +972,11 @@ async function confirmPaymentOrder({
                 env
             });
         } else {
+            const fallbackBinding = {
+                provider_cashier_id: order.bound_provider_cashier_id,
+                provider_cashier_login_ref: order.bound_provider_cashier_login_ref
+            };
+            const fallbackExpectedIsTest = normalizeBoolean(order.register_expected_is_test);
             fiscalConfig = buildFiscalConfigurationSnapshot({
                 mapping: {
                     fiscal_profile_id: order.fiscal_profile_id,
@@ -926,8 +991,8 @@ async function confirmPaymentOrder({
                     register_expected_is_test: order.register_expected_is_test,
                     register_alias: order.register_alias
                 },
-                binding: {},
-                runtimeConfig: {}
+                binding: fallbackBinding,
+                runtimeConfig: { expectedIsTest: fallbackExpectedIsTest }
             });
         }
 

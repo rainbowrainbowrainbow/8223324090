@@ -14,17 +14,25 @@ const {
 } = require('../checkbox/errors');
 const {
     OPEN_SHIFT_STATUS,
+    classifyShiftStatus,
     createProviderFromConfig,
     getCurrentShiftWithAbsenceProof,
     normalizeShiftResponse
 } = require('../checkbox/provider');
 const { requestPaymentOutboxWakeup } = require('./paymentOutboxWakeup');
+const { countFiscalShiftCloseBlockers } = require('./shiftCloseBlockers');
+const {
+    CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE,
+    guardPaidPreSubmitSalesForClosedShift
+} = require('./closedShiftSaleGuard');
+const { publishInTransaction } = require('../eventBus');
 
 const PILOT_CRM_PROFILE_KEY = 'event_genix';
 const PILOT_REGISTER_ALIAS = 'middle';
 const READINESS_TTL_MS = 60 * 1000;
 const PROBE_TIMEOUT_MS = 8 * 1000;
 const READINESS_PROBE_IN_FLIGHT = new Map();
+let READINESS_SCHEDULER_IN_FLIGHT = null;
 const UNRESOLVED_FISCAL_STATUSES = Object.freeze(['pending', 'unknown', 'failed', 'validating', 'ready_to_send', 'sending', 'blocked']);
 const TERMINAL_FAILURE_FISCAL_STATUSES = new Set(['blocked', 'validation_failed']);
 
@@ -58,6 +66,27 @@ function normalizeBoolean(value) {
     if (['1', 'true', 'yes', 'on'].includes(text)) return true;
     if (['0', 'false', 'no', 'off'].includes(text)) return false;
     return null;
+}
+
+function fiscalCredentialRefs(mapping = {}, binding = {}) {
+    const registerCredentialRef = String(mapping?.provider_license_ref ?? '').trim() || null;
+    const cashierCredentialRef = String(binding?.provider_cashier_login_ref ?? '').trim() || null;
+    const missing = [];
+    if (!registerCredentialRef) missing.push('register_credential_ref');
+    if (!cashierCredentialRef) missing.push('cashier_credential_ref');
+    return { registerCredentialRef, cashierCredentialRef, missing };
+}
+
+function assertCompleteFiscalCredentialRefs(mapping = {}, binding = {}) {
+    const refs = fiscalCredentialRefs(mapping, binding);
+    if (refs.missing.length) {
+        throw new PaymentReadinessError(
+            'fiscal_context_incomplete',
+            'Checkbox credential references are incomplete',
+            { status: 409, details: { missing: refs.missing } }
+        );
+    }
+    return refs;
 }
 
 function normalizeReadinessTender(value) {
@@ -144,7 +173,12 @@ function publicFiscalQueueStatus(row = {}) {
     return fiscalStatus || 'unknown';
 }
 
-function normalizeUnresolvedPagination({ page = 1, pageSize = 50 } = {}) {
+function normalizeUnresolvedPagination({
+    page = 1,
+    pageSize = 50,
+    cursor = null,
+    snapshotRevision = null
+} = {}) {
     const normalizePositiveInteger = (value, { field, defaultValue, max = Number.MAX_SAFE_INTEGER }) => {
         if (value == null || String(value).trim() === '') return defaultValue;
         const text = String(value).trim();
@@ -160,21 +194,62 @@ function normalizeUnresolvedPagination({ page = 1, pageSize = 50 } = {}) {
         }
         return parsed;
     };
-    return {
+    const normalized = {
         page: normalizePositiveInteger(page, { field: 'page', defaultValue: 1, max: 1_000_000 }),
         pageSize: normalizePositiveInteger(pageSize, { field: 'page_size', defaultValue: 50, max: 100 })
     };
+    const hasCursor = cursor != null && String(cursor).trim() !== '';
+    const hasSnapshotRevision = snapshotRevision != null && String(snapshotRevision).trim() !== '';
+    if (hasCursor !== hasSnapshotRevision) {
+        throw new PaymentReadinessError(
+            'unresolved_snapshot_context_invalid',
+            'Unresolved queue cursor and snapshot revision must be provided together',
+            { status: 422 }
+        );
+    }
+    if (normalized.page === 1 && (hasCursor || hasSnapshotRevision)) {
+        throw new PaymentReadinessError(
+            'unresolved_snapshot_context_invalid',
+            'The first unresolved queue page must start a fresh snapshot',
+            { status: 422 }
+        );
+    }
+    if (normalized.page > 1 && (!hasCursor || !hasSnapshotRevision)) {
+        throw new PaymentReadinessError(
+            'unresolved_snapshot_context_required',
+            'Unresolved queue continuation requires a cursor and snapshot revision',
+            { status: 422 }
+        );
+    }
+    if (hasCursor) {
+        normalized.cursor = normalizePositiveInteger(cursor, {
+            field: 'cursor',
+            defaultValue: null,
+            max: Number.MAX_SAFE_INTEGER
+        });
+        const revision = String(snapshotRevision).trim();
+        if (!/^[0-9a-f]{32}$/.test(revision)) {
+            throw new PaymentReadinessError(
+                'unresolved_snapshot_revision_invalid',
+                'Unresolved queue snapshot revision is invalid',
+                { status: 422 }
+            );
+        }
+        normalized.snapshotRevision = revision;
+    }
+    return normalized;
 }
 
 function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeConfig = {} } = {}) {
+    const { registerCredentialRef, cashierCredentialRef } = assertCompleteFiscalCredentialRefs(mapping, binding);
     const snapshot = {
         provider: 'checkbox',
         provider_organization_id: mapping.provider_organization_id || null,
         provider_outlet_id: mapping.provider_outlet_id || null,
         provider_register_id: mapping.provider_register_id || null,
         provider_cashier_id: binding.provider_cashier_id || null,
-        register_credential_ref: mapping.provider_license_ref || null,
-        cashier_credential_ref: binding.provider_cashier_login_ref || mapping.provider_license_ref || null,
+        register_credential_ref: registerCredentialRef,
+        cashier_credential_ref: cashierCredentialRef,
         expected_is_test: runtimeConfig.expectedIsTest,
         fiscal_profile_id: mapping.fiscal_profile_id == null ? null : Number(mapping.fiscal_profile_id),
         fiscal_location_id: mapping.fiscal_location_id == null ? null : Number(mapping.fiscal_location_id),
@@ -188,29 +263,24 @@ function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeC
 
 function missingLocalFiscalContext(mapping = {}, binding = {}, runtimeConfig = null) {
     const missing = [];
+    const credentialRefs = fiscalCredentialRefs(mapping, binding);
     if (!String(mapping.provider_organization_id || '').trim()) missing.push('provider_organization_id');
     // Checkbox's official cashier/register readiness schemas do not expose outlet_id.
     // Organization + register + cashier + is_test are the provider identity boundary.
     if (!String(mapping.provider_register_id || '').trim()) missing.push('provider_register_id');
     if (!String(binding.provider_cashier_id || '').trim()) missing.push('provider_cashier_id');
-    if (!String(mapping.provider_license_ref || '').trim()) missing.push('register_credential_ref');
-    if (!String(binding.provider_cashier_login_ref || mapping.provider_license_ref || '').trim()) missing.push('cashier_credential_ref');
+    missing.push(...credentialRefs.missing);
     if (normalizeBoolean(mapping.register_expected_is_test) == null) missing.push('expected_is_test_mapping');
     if (runtimeConfig && runtimeConfig.expectedIsTest == null) missing.push('expected_is_test_env');
     return missing;
 }
 
 function assertIntegrationOwner(mapping = {}, user = {}) {
-    const owner = String(mapping.register_metadata?.integration_owner || '').trim();
-    if (!owner) {
-        throw new PaymentReadinessError('fiscal_incident_owner_missing', 'Fiscal register integration owner is not configured', { status: 403 });
+    const ownerUserId = Number(mapping.register_metadata?.integration_owner);
+    if (!Number.isSafeInteger(ownerUserId) || ownerUserId <= 0) {
+        throw new PaymentReadinessError('fiscal_incident_owner_missing', 'Fiscal register integration owner is not configured as an exact user id', { status: 403 });
     }
-    const candidates = [
-        user?.id == null ? '' : String(user.id),
-        user?.username,
-        user?.name
-    ].map(value => String(value || '').trim()).filter(Boolean);
-    if (!candidates.includes(owner)) {
+    if (ownerUserId !== Number(user?.id)) {
         throw new PaymentReadinessError('fiscal_incident_owner_denied', 'Only the exact fiscal integration owner can manage incidents', { status: 403 });
     }
     return true;
@@ -446,26 +516,114 @@ async function loadPaymentOrderTaxContext(client, {
 
 async function loadLatestLocalShift(client, mapping, { lockConfiguration = false } = {}) {
     if (!mapping) return null;
-    const lockClause = lockConfiguration ? ' FOR UPDATE' : '';
+    const lockClause = lockConfiguration ? ' FOR UPDATE OF shift' : '';
     const result = await client.query(
-        `SELECT *
-           FROM fiscal_shifts
-          WHERE fiscal_profile_id = $1
-            AND fiscal_register_id = $2
-            AND status IN ('opening', 'open', 'closing')
-           ORDER BY opened_at DESC NULLS LAST, id DESC
-           LIMIT 1${lockClause}`,
+        `SELECT shift.*,
+                open_operation.provider_operation_id AS open_provider_operation_id
+           FROM fiscal_shifts shift
+           LEFT JOIN fiscal_operations open_operation
+             ON open_operation.id = shift.open_operation_id
+            AND open_operation.fiscal_profile_id = shift.fiscal_profile_id
+            AND open_operation.fiscal_register_id = shift.fiscal_register_id
+            AND open_operation.fiscal_shift_id = shift.id
+            AND open_operation.operation_type = 'shift_open'
+          WHERE shift.fiscal_profile_id = $1
+            AND shift.fiscal_register_id = $2
+            AND (
+                shift.status IN ('opening', 'open', 'closing')
+                OR shift.lifecycle_stage IN ('CREATED', 'OPENING', 'OPENED', 'CLOSING')
+            )
+           ORDER BY shift.opened_at DESC NULLS LAST, shift.id DESC
+           LIMIT 2${lockClause}`,
         [mapping.fiscal_profile_id, mapping.fiscal_register_id]
     );
+    if (result.rows.length > 1) {
+        throw new PaymentReadinessError('local_shift_ambiguous', 'Multiple unresolved fiscal shifts exist for this register', {
+            status: 409
+        });
+    }
     return result.rows[0] || null;
 }
 
 function localShiftState(shift) {
     if (!shift) return 'closed';
-    if (shift.status === 'open' && shift.lifecycle_stage === 'OPENED') return 'open';
-    if (shift.status === 'opening' || shift.lifecycle_stage === 'OPENING' || shift.lifecycle_stage === 'CREATED') return 'opening';
-    if (shift.status === 'closing' || shift.lifecycle_stage === 'CLOSING') return 'closing';
-    return String(shift.status || 'unknown').trim() || 'unknown';
+    const status = String(shift.status || '').trim().toLowerCase();
+    const lifecycleStage = String(shift.lifecycle_stage || '').trim().toUpperCase();
+    if (status === 'open' && lifecycleStage === 'OPENED') return 'open';
+    if (status === 'opening' && ['CREATED', 'OPENING'].includes(lifecycleStage)) return 'opening';
+    if (status === 'closing' && lifecycleStage === 'CLOSING') return 'closing';
+    if (status === 'closed' && lifecycleStage === 'CLOSED') return 'closed';
+    return 'local_stale';
+}
+
+function reconcileCachedShiftReadiness(snapshotRow, localShift) {
+    const snapshotState = String(snapshotRow?.shift_state || '').trim().toLowerCase();
+    const currentState = localShiftState(localShift);
+    const snapshotProviderShiftId = String(snapshotRow?.provider_shift_id || '').trim();
+    const currentProviderShiftId = String(localShift?.provider_shift_id || '').trim();
+    let matches = false;
+
+    if (snapshotState === 'closed') {
+        matches = currentState === 'closed';
+    } else if (snapshotState === 'open') {
+        matches = currentState === 'open'
+            && Boolean(snapshotProviderShiftId)
+            && snapshotProviderShiftId === currentProviderShiftId;
+    } else if (snapshotState === 'external_open') {
+        matches = currentState === 'closed' && !currentProviderShiftId;
+    } else if (snapshotState === 'opening') {
+        matches = currentState === 'opening'
+            && (!snapshotProviderShiftId || snapshotProviderShiftId === currentProviderShiftId);
+    } else if (snapshotState === 'closing') {
+        matches = currentState === 'closing'
+            && Boolean(snapshotProviderShiftId)
+            && snapshotProviderShiftId === currentProviderShiftId;
+    } else if (snapshotState === 'local_stale') {
+        matches = currentState === 'local_stale'
+            && (!snapshotProviderShiftId || !currentProviderShiftId || snapshotProviderShiftId === currentProviderShiftId);
+    }
+
+    if (matches) {
+        return { matches: true, shiftState: snapshotState, readinessCode: null };
+    }
+
+    const readinessCode = currentState === 'opening'
+        ? 'shift_opening'
+        : currentState === 'closing'
+            ? 'shift_closing'
+            : currentState === 'local_stale'
+                ? 'local_shift_requires_reconciliation'
+                : 'readiness_context_changed';
+    return {
+        matches: false,
+        shiftState: currentState,
+        readinessCode
+    };
+}
+
+async function countClosedShiftBlockedSales(client, mapping) {
+    if (!mapping) return 0;
+    const result = await client.query(
+        `SELECT COUNT(*)::integer AS count
+           FROM fiscal_operations operation
+           JOIN payment_orders payment
+             ON payment.id = operation.payment_order_id
+            AND payment.fiscal_profile_id = operation.fiscal_profile_id
+           JOIN payment_outbox_jobs job
+             ON job.fiscal_operation_id = operation.id
+            AND job.fiscal_profile_id = operation.fiscal_profile_id
+          WHERE operation.fiscal_profile_id = $1
+            AND operation.fiscal_register_id = $2
+            AND operation.operation_type = 'sale'
+            AND operation.status = 'blocked'
+            AND operation.last_error_code = $3
+            AND payment.payment_status = 'confirmed'
+            AND payment.fiscal_status <> 'fiscalized'
+            AND job.job_type = 'receipt_sell'
+            AND job.status = 'dead'`,
+        [mapping.fiscal_profile_id, mapping.fiscal_register_id, CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE]
+    );
+    return Number(result.rows[0]?.count || 0);
 }
 
 async function loadScope(client, {
@@ -477,7 +635,7 @@ async function loadScope(client, {
     lockConfiguration = false
 } = {}) {
     const { mapping, matches } = await loadPilotMapping(client, { crmProfileKey, registerAlias, lockConfiguration });
-    if (!mapping) return { mapping: null, binding: null, matches, tax: { ready: false, missingCodes: [] }, shift: null, runtimeConfig: null, configHash: null };
+    if (!mapping) return { mapping: null, binding: null, matches, tax: { ready: false, missingCodes: [] }, shift: null, blockingClosedShiftSaleCount: 0, runtimeConfig: null, configHash: null };
     let binding = null;
     if (requireUserAuthorization) {
         await authorizeFiscalAction(client, {
@@ -513,7 +671,8 @@ async function loadScope(client, {
     }
     const tax = await loadTaxMappingReadiness(client, mapping);
     const shift = await loadLatestLocalShift(client, mapping, { lockConfiguration });
-    return { mapping, binding, matches, tax, shift, runtimeConfig: null, configHash: null };
+    const blockingClosedShiftSaleCount = await countClosedShiftBlockedSales(client, mapping);
+    return { mapping, binding, matches, tax, shift, blockingClosedShiftSaleCount, runtimeConfig: null, configHash: null };
 }
 
 async function loadScopeForBinding(client, bindingRow) {
@@ -524,7 +683,8 @@ async function loadScopeForBinding(client, bindingRow) {
     if (!mapping) return null;
     const tax = await loadTaxMappingReadiness(client, mapping);
     const shift = await loadLatestLocalShift(client, mapping);
-    return { mapping, binding: bindingRow, matches: 1, tax, shift };
+    const blockingClosedShiftSaleCount = await countClosedShiftBlockedSales(client, mapping);
+    return { mapping, binding: bindingRow, matches: 1, tax, shift, blockingClosedShiftSaleCount };
 }
 
 function baseReadiness({
@@ -535,6 +695,7 @@ function baseReadiness({
     binding,
     tax,
     shift,
+    blockingClosedShiftSaleCount = 0,
     runtimeConfig = null,
     runtimeConfigError = null,
     now = new Date()
@@ -553,8 +714,10 @@ function baseReadiness({
     else if (!registerActive) readinessCode = 'register_disabled';
     else if (!taxMappingReady) readinessCode = 'tax_mapping_missing';
     else if (!runtimeSecretsResolvable) readinessCode = runtimeConfigError?.code || 'credentials_missing';
+    else if (Number(blockingClosedShiftSaleCount) > 0) readinessCode = 'paid_sale_closed_shift_reconciliation_required';
     else if (shiftState === 'opening') readinessCode = 'shift_opening';
     else if (shiftState === 'closing') readinessCode = 'shift_closing';
+    else if (shiftState === 'local_stale') readinessCode = 'local_shift_requires_reconciliation';
     else if (!paymentAcceptanceEnabled) readinessCode = 'payment_acceptance_disabled';
     return {
         checkboxIntegrationEnabled: Boolean(checkboxIntegrationEnabled),
@@ -567,6 +730,7 @@ function baseReadiness({
         signatureCertificateReady: false,
         taxMappingReady,
         providerUnavailable: false,
+        blockingFiscalIncident: Number(blockingClosedShiftSaleCount) > 0,
         staleReadiness: true,
         shiftState,
         readinessCode,
@@ -603,13 +767,21 @@ function deriveIntegrationReady(state = {}) {
         && state.signatureCertificateReady
         && state.taxMappingReady
         && !state.providerUnavailable
+        && !state.blockingFiscalIncident
         && !state.staleReadiness
         && ['closed', 'open'].includes(state.shiftState)
     );
 }
 
 function canProbeProviderReadiness(state = {}) {
-    return ['ready', 'payment_acceptance_disabled'].includes(String(state.readinessCode || ''));
+    return [
+        'ready',
+        'payment_acceptance_disabled',
+        'shift_opening',
+        'shift_closing',
+        'local_shift_requires_reconciliation',
+        'paid_sale_closed_shift_reconciliation_required'
+    ].includes(String(state.readinessCode || ''));
 }
 
 function applyPaymentAcceptanceGate(state = {}, { providerReady = deriveIntegrationReady(state) } = {}) {
@@ -735,21 +907,22 @@ function serializeReadinessSnapshot(row = {}) {
 async function loadLatestReadinessSnapshot(client, scope) {
     if (!scope?.mapping) return null;
     const hash = String(scope.configHash || '').trim();
+    const credentialRefs = fiscalCredentialRefs(scope.mapping, scope.binding);
     const result = await client.query(
         `SELECT *
            FROM checkbox_readiness_snapshots
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
-            AND COALESCE(register_credential_ref, '') = COALESCE($3, '')
-            AND COALESCE(cashier_credential_ref, '') = COALESCE($4, '')
+            AND COALESCE(register_credential_ref, '') = COALESCE($3::text, '')
+            AND COALESCE(cashier_credential_ref, '') = COALESCE($4::text, '')
             AND ($5::text IS NULL OR fiscal_configuration_hash = $5)
           ORDER BY checked_at DESC, id DESC
           LIMIT 1`,
         [
             scope.mapping.fiscal_profile_id,
             scope.mapping.fiscal_register_id,
-            scope.mapping.provider_license_ref || null,
-            scope.binding?.provider_cashier_login_ref || scope.mapping.provider_license_ref || null,
+            credentialRefs.registerCredentialRef,
+            credentialRefs.cashierCredentialRef,
             hash || null
         ]
     );
@@ -759,6 +932,7 @@ async function loadLatestReadinessSnapshot(client, scope) {
 async function insertReadinessSnapshot(client, scope, state, details = {}) {
     const mapping = scope.mapping;
     if (!mapping) return null;
+    const credentialRefs = fiscalCredentialRefs(mapping, scope.binding);
     const expiresAt = state.expiresAt || readinessExpiresAt().toISOString();
     const row = await client.query(
         `INSERT INTO checkbox_readiness_snapshots (
@@ -778,8 +952,8 @@ async function insertReadinessSnapshot(client, scope, state, details = {}) {
             mapping.fiscal_register_id,
             mapping.fiscal_location_id,
             mapping.crm_profile_key,
-            mapping.provider_license_ref || null,
-            scope.binding?.provider_cashier_login_ref || mapping.provider_license_ref || null,
+            credentialRefs.registerCredentialRef,
+            credentialRefs.cashierCredentialRef,
             scope.configHash || null,
             state.readinessCode,
             state.integrationReady === true,
@@ -834,10 +1008,11 @@ async function prepareReadinessScope({
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
             try {
+                const credentialRefs = assertCompleteFiscalCredentialRefs(scope.mapping, scope.binding);
                 runtimeConfig = loadCheckboxRuntimeConfig({
                     env,
-                    credentialRef: scope.binding.provider_cashier_login_ref || scope.mapping.provider_license_ref,
-                    licenseRef: scope.mapping.provider_license_ref
+                    credentialRef: credentialRefs.cashierCredentialRef,
+                    licenseRef: credentialRefs.registerCredentialRef
                 });
                 assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
@@ -863,6 +1038,7 @@ async function prepareReadinessScope({
             binding: scope.binding,
             tax: scope.tax,
             shift: scope.shift,
+            blockingClosedShiftSaleCount: scope.blockingClosedShiftSaleCount,
             runtimeConfig,
             runtimeConfigError,
             now
@@ -871,35 +1047,214 @@ async function prepareReadinessScope({
     });
 }
 
-async function syncPortalClosedShift(client, scope, providerShiftState) {
+async function syncPortalClosedShift(client, scope, providerShiftStatus, providerShiftId = null) {
     const shift = scope.shift;
-    if (!shift || !['open', 'opening', 'closing'].includes(String(shift.status || ''))) return null;
-    if (!['closed'].includes(providerShiftState)) return null;
+    if (!shift) return null;
+    if (classifyShiftStatus(providerShiftStatus) !== 'closed') return null;
+    const observedProviderShiftId = String(providerShiftId || '').trim();
+    if (!observedProviderShiftId) return null;
+    const locked = await client.query(
+        `SELECT shift.*,
+                open_operation.provider_operation_id AS open_provider_operation_id
+           FROM fiscal_shifts shift
+           LEFT JOIN fiscal_operations open_operation
+             ON open_operation.id = shift.open_operation_id
+            AND open_operation.fiscal_profile_id = shift.fiscal_profile_id
+            AND open_operation.fiscal_register_id = shift.fiscal_register_id
+            AND open_operation.fiscal_shift_id = shift.id
+            AND open_operation.operation_type = 'shift_open'
+          WHERE shift.id = $1
+            AND shift.fiscal_profile_id = $2
+            AND shift.fiscal_register_id = $3
+          FOR UPDATE OF shift`,
+        [shift.id, shift.fiscal_profile_id, shift.fiscal_register_id]
+    );
+    const currentShift = locked.rows[0] || null;
+    if (!currentShift) return null;
+    const lifecycleStage = String(currentShift.lifecycle_stage || '').trim().toUpperCase();
+    const recoverableStatus = ['open', 'opening', 'closing', 'failed', 'blocked', 'unknown'].includes(String(currentShift.status || ''));
+    if (!recoverableStatus || !['CREATED', 'OPENING', 'OPENED', 'CLOSING'].includes(lifecycleStage)) return null;
+    let expectedProviderShiftId = String(currentShift.provider_shift_id || '').trim();
+    let recoveredFromOpenOperation = false;
+    if (
+        !expectedProviderShiftId
+        && ['CREATED', 'OPENING'].includes(lifecycleStage)
+        && String(currentShift.open_provider_operation_id || '').trim() === observedProviderShiftId
+    ) {
+        expectedProviderShiftId = observedProviderShiftId;
+        recoveredFromOpenOperation = true;
+    }
+    if (!expectedProviderShiftId || expectedProviderShiftId !== observedProviderShiftId) return null;
     const result = await client.query(
         `UPDATE fiscal_shifts
             SET status = 'closed',
                 lifecycle_stage = 'CLOSED',
+                provider_shift_id = COALESCE(provider_shift_id, $4),
                 closed_at = COALESCE(closed_at, NOW()),
-                provider_closed_at = COALESCE(provider_closed_at, NOW()),
                 provider_snapshot = provider_snapshot || $3::jsonb,
                 updated_at = NOW()
           WHERE id = $1
             AND fiscal_profile_id = $2
-            AND status IN ('open', 'opening', 'closing')
+            AND fiscal_register_id = $5
+            AND (provider_shift_id IS NULL OR provider_shift_id = $4)
+            AND lifecycle_stage IN ('CREATED', 'OPENING', 'OPENED', 'CLOSING')
           RETURNING *`,
         [
-            shift.id,
-            shift.fiscal_profile_id,
-            JSON.stringify({ synced_from_provider_readiness: true, provider_shift_state: providerShiftState })
+            currentShift.id,
+            currentShift.fiscal_profile_id,
+            JSON.stringify({
+                synced_from_provider_readiness: true,
+                provider_shift_status: String(providerShiftStatus || '').trim().toUpperCase(),
+                provider_shift_id: observedProviderShiftId,
+                recovered_from_open_operation: recoveredFromOpenOperation
+            }),
+            observedProviderShiftId,
+            currentShift.fiscal_register_id
         ]
     );
-    return result.rows[0] || null;
+    const syncedShift = result.rows[0] || null;
+    if (!syncedShift) return null;
+    const closedSaleGuard = await guardPaidPreSubmitSalesForClosedShift(client, {
+        fiscalProfileId: currentShift.fiscal_profile_id,
+        fiscalRegisterId: currentShift.fiscal_register_id,
+        fiscalShiftId: currentShift.id,
+        providerShiftId: observedProviderShiftId,
+        source: 'checkbox_readiness_portal_close_sync'
+    });
+    const auditIdempotencyKey = `fiscal_shift_portal_close_synced:${currentShift.id}:${fingerprint({ providerShiftId: observedProviderShiftId }).slice(0, 32)}`;
+    const recoveryJobs = await client.query(
+        `UPDATE payment_outbox_jobs job
+            SET status = CASE WHEN job.status = 'dead' THEN 'queued' ELSE job.status END,
+                max_attempts = CASE WHEN job.status = 'dead' THEN job.max_attempts + 1 ELSE job.max_attempts END,
+                locked_at = NULL,
+                locked_by = NULL,
+                lock_token = NULL,
+                heartbeat_at = NULL,
+                external_stage = CASE
+                    WHEN operation.operation_type = 'shift_open' THEN 'shift_lookup'
+                    ELSE 'shift_close_lookup'
+                END,
+                payload = job.payload || jsonb_build_object(
+                    'external_stage', CASE
+                        WHEN operation.operation_type = 'shift_open' THEN 'shift_lookup'
+                        ELSE 'shift_close_lookup'
+                    END,
+                    'provider_shift_id', $3::text,
+                    'portal_closed_sync', TRUE
+                ) || CASE
+                    WHEN job.status = 'dead' THEN jsonb_build_object('portal_closed_dead_recovery_used', TRUE)
+                    ELSE '{}'::jsonb
+                END,
+                next_run_at = NOW(),
+                last_error_code = NULL,
+                last_error_message = NULL,
+                updated_at = NOW()
+           FROM fiscal_operations operation
+          WHERE operation.id = job.fiscal_operation_id
+            AND operation.fiscal_profile_id = job.fiscal_profile_id
+            AND operation.fiscal_profile_id = $1
+            AND operation.fiscal_shift_id = $2
+            AND operation.operation_type IN ('shift_open', 'shift_close')
+            AND job.job_type = operation.operation_type
+            AND (
+                job.status IN ('queued', 'failed')
+                OR (
+                    job.status = 'dead'
+                    AND COALESCE(LOWER(job.payload->>'portal_closed_dead_recovery_used') IN ('true', '1'), FALSE) = FALSE
+                )
+            )
+          RETURNING job.id, job.fiscal_operation_id, job.status, job.external_stage`,
+        [currentShift.fiscal_profile_id, currentShift.id, observedProviderShiftId]
+    );
+    const activeRecoveryJobs = await client.query(
+        `UPDATE payment_outbox_jobs job
+            SET payload = job.payload || jsonb_build_object(
+                    'portal_closed_sync_observed', TRUE,
+                    'provider_shift_id', $3::text
+                ),
+                updated_at = NOW()
+           FROM fiscal_operations operation
+          WHERE operation.id = job.fiscal_operation_id
+            AND operation.fiscal_profile_id = job.fiscal_profile_id
+            AND operation.fiscal_profile_id = $1
+            AND operation.fiscal_shift_id = $2
+            AND operation.operation_type IN ('shift_open', 'shift_close')
+            AND job.job_type = operation.operation_type
+            AND job.status IN ('claimed', 'running')
+          RETURNING job.id, job.fiscal_operation_id`,
+        [currentShift.fiscal_profile_id, currentShift.id, observedProviderShiftId]
+    );
+    const operationIds = recoveryJobs.rows.map(row => Number(row.fiscal_operation_id)).filter(Number.isSafeInteger);
+    if (operationIds.length) {
+        await client.query(
+            `UPDATE fiscal_operations
+                SET status = CASE WHEN status = 'fiscalized' THEN status ELSE 'pending' END,
+                    external_stage = CASE
+                        WHEN operation_type = 'shift_open' THEN 'shift_lookup'
+                        ELSE 'shift_close_lookup'
+                    END,
+                    last_error_code = NULL,
+                    last_error_message = NULL
+              WHERE fiscal_profile_id = $1
+                AND fiscal_shift_id = $2
+                AND id = ANY($3::bigint[])
+                AND operation_type IN ('shift_open', 'shift_close')`,
+            [currentShift.fiscal_profile_id, currentShift.id, operationIds]
+        );
+    }
+    await client.query(
+        `INSERT INTO fiscal_audit_events (
+             fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+             idempotency_key, before_snapshot, after_snapshot, metadata
+         )
+         SELECT $1::bigint, NULL::integer, 'fiscal_shift_portal_close_synced', 'fiscal_shifts', $2::bigint,
+                $3::text, $4::jsonb, $5::jsonb, $6::jsonb
+          WHERE NOT EXISTS (
+                SELECT 1
+                  FROM fiscal_audit_events
+                 WHERE fiscal_profile_id = $1::bigint
+                   AND event_type = 'fiscal_shift_portal_close_synced'
+                   AND entity_table = 'fiscal_shifts'
+                   AND entity_id = $2::bigint
+                   AND idempotency_key = $3::text
+          )`,
+        [
+            currentShift.fiscal_profile_id,
+            currentShift.id,
+            auditIdempotencyKey,
+            JSON.stringify({
+                status: currentShift.status,
+                lifecycle_stage: currentShift.lifecycle_stage,
+                provider_shift_id: currentShift.provider_shift_id || null
+            }),
+            JSON.stringify({
+                status: 'closed',
+                lifecycle_stage: 'CLOSED',
+                provider_shift_id: observedProviderShiftId
+            }),
+            JSON.stringify({
+                source: 'checkbox_readiness',
+                lookup_only_recovery: true,
+                recovered_from_open_operation: recoveredFromOpenOperation,
+                recovery_job_count: recoveryJobs.rows.length,
+                active_recovery_job_count: activeRecoveryJobs.rows.length,
+                blocked_pre_submit_sale_count: closedSaleGuard.blocked,
+                active_pre_submit_sale_count: closedSaleGuard.activeObserved
+            })
+        ]
+    );
+    return {
+        shift: syncedShift,
+        recoveryQueued: recoveryJobs.rows.length > 0,
+        blockedPreSubmitSales: closedSaleGuard.blocked,
+        activePreSubmitSales: closedSaleGuard.activeObserved
+    };
 }
 
 function resolveProviderShiftReadiness({ providerShift = null, localShift = null } = {}) {
     if (!providerShift) {
         const localState = localShiftState(localShift);
-        if (['open', 'opening', 'closing'].includes(localState)) {
+        if (localState !== 'closed') {
             return {
                 shiftState: 'local_stale',
                 readinessCode: 'local_shift_requires_reconciliation',
@@ -911,9 +1266,15 @@ function resolveProviderShiftReadiness({ providerShift = null, localShift = null
     }
     const providerStatus = String(providerShift.status || '').trim().toUpperCase();
     const providerShiftId = String(providerShift.id || '').trim() || null;
-    if (providerStatus === OPEN_SHIFT_STATUS) {
+    const providerLifecycle = classifyShiftStatus(providerStatus);
+    if (providerLifecycle === 'opened') {
         const localProviderShiftId = String(localShift?.provider_shift_id || '').trim() || null;
-        const localShiftMatched = Boolean(providerShiftId && localProviderShiftId && providerShiftId === localProviderShiftId);
+        const localShiftMatched = Boolean(
+            localShiftState(localShift) === 'open'
+            && providerShiftId
+            && localProviderShiftId
+            && providerShiftId === localProviderShiftId
+        );
         return {
             shiftState: localShiftMatched ? 'open' : 'external_open',
             readinessCode: localShiftMatched ? 'ready' : 'external_shift_requires_sync',
@@ -921,18 +1282,18 @@ function resolveProviderShiftReadiness({ providerShift = null, localShift = null
             localShiftMatched
         };
     }
-    if (['OPENING', 'CREATED'].includes(providerStatus)) {
+    if (providerLifecycle === 'opening') {
         return { shiftState: 'opening', readinessCode: 'shift_opening', providerShiftId, localShiftMatched: false };
     }
-    if (providerStatus === 'CLOSING') {
+    if (providerLifecycle === 'closing') {
         return { shiftState: 'closing', readinessCode: 'shift_closing', providerShiftId, localShiftMatched: false };
     }
-    if (providerStatus === 'CLOSED') {
+    if (providerLifecycle === 'closed') {
         const localState = localShiftState(localShift);
         const localProviderShiftId = String(localShift?.provider_shift_id || '').trim() || null;
         const localActive = ['open', 'opening', 'closing'].includes(localState);
         const localShiftMatched = Boolean(providerShiftId && localProviderShiftId && providerShiftId === localProviderShiftId);
-        if (localActive && !localShiftMatched) {
+        if (localState === 'local_stale' || (localActive && !localShiftMatched)) {
             return {
                 shiftState: 'local_stale',
                 readinessCode: 'local_shift_requires_reconciliation',
@@ -942,8 +1303,12 @@ function resolveProviderShiftReadiness({ providerShift = null, localShift = null
         }
         return { shiftState: 'closed', readinessCode: 'ready', providerShiftId, localShiftMatched: !localActive || localShiftMatched };
     }
-    const closed = resolveProviderShiftReadiness({ providerShift: null, localShift });
-    return { ...closed, providerShiftId };
+    return {
+        shiftState: 'unknown',
+        readinessCode: 'checkbox_shift_status_unknown',
+        providerShiftId,
+        localShiftMatched: false
+    };
 }
 
 function freshShiftContextMatches(localShift, freshProviderReadiness = {}) {
@@ -1073,9 +1438,13 @@ async function probeProvider(scope, {
             providerStatus: current.status
         };
     } else {
-        const localShiftId = String(scope.shift?.provider_shift_id || '').trim();
-        const localState = localShiftState(scope.shift);
-        if (localShiftId && ['open', 'opening', 'closing'].includes(localState)) {
+        const localLifecycle = String(scope.shift?.lifecycle_stage || '').trim().toUpperCase();
+        const localShiftId = String(
+            scope.shift?.provider_shift_id
+            || (['CREATED', 'OPENING'].includes(localLifecycle) ? scope.shift?.open_provider_operation_id : null)
+            || ''
+        ).trim();
+        if (localShiftId && ['CREATED', 'OPENING', 'OPENED', 'CLOSING'].includes(localLifecycle)) {
             try {
                 const historical = normalizeShiftResponse(
                     await provider.client.getShiftById({ shiftId: localShiftId }),
@@ -1118,10 +1487,14 @@ async function probeProvider(scope, {
         signatureCertificateReady: true,
         taxMappingReady: scope.paymentTaxContext ? true : scope.tax?.ready === true,
         providerUnavailable: false,
+        blockingFiscalIncident: Number(scope.blockingClosedShiftSaleCount) > 0,
         staleReadiness: false,
         shiftState,
-        readinessCode: shiftResolution.readinessCode,
+        readinessCode: Number(scope.blockingClosedShiftSaleCount) > 0
+            ? 'paid_sale_closed_shift_reconciliation_required'
+            : shiftResolution.readinessCode,
         providerShiftId,
+        providerShiftStatus: shiftResolution.providerStatus || null,
         checkedAt: nowIso(now),
         expiresAt: readinessExpiresAt(now).toISOString(),
         latencyMs,
@@ -1143,6 +1516,59 @@ async function probeProvider(scope, {
     };
 }
 
+function providerReadinessProbeKey(scope, { requiredTender = null } = {}) {
+    const credentialRefs = fiscalCredentialRefs(scope.mapping, scope.binding);
+    return fingerprint({
+        fiscalProfileId: scope.mapping?.fiscal_profile_id || null,
+        fiscalRegisterId: scope.mapping?.fiscal_register_id || null,
+        fiscalConfigurationHash: scope.configHash || null,
+        registerCredentialRef: credentialRefs.registerCredentialRef,
+        cashierCredentialRef: credentialRefs.cashierCredentialRef,
+        providerCashierId: scope.binding?.provider_cashier_id || null,
+        localShiftId: scope.shift?.id || null,
+        localShiftStatus: scope.shift?.status || null,
+        localShiftLifecycle: scope.shift?.lifecycle_stage || null,
+        providerShiftId: scope.shift?.provider_shift_id || null,
+        requiredTender: normalizeReadinessTender(requiredTender)
+    });
+}
+
+async function probeProviderSingleFlight(scope, options = {}, executeProbe = probeProvider) {
+    const singleFlightKey = providerReadinessProbeKey(scope, options);
+    const existing = READINESS_PROBE_IN_FLIGHT.get(singleFlightKey);
+    if (existing) return existing;
+    const runProbe = Promise.resolve().then(() => executeProbe(scope, options));
+    READINESS_PROBE_IN_FLIGHT.set(singleFlightKey, runProbe);
+    try {
+        return await runProbe;
+    } finally {
+        if (READINESS_PROBE_IN_FLIGHT.get(singleFlightKey) === runProbe) {
+            READINESS_PROBE_IN_FLIGHT.delete(singleFlightKey);
+        }
+    }
+}
+
+async function safePublishFiscalEvent(
+    client,
+    eventType,
+    payload,
+    aggregateType,
+    aggregateId,
+    idempotencyKey,
+    publish = publishInTransaction
+) {
+    const savepoint = 'payment_readiness_event_publish';
+    await client.query(`SAVEPOINT ${savepoint}`);
+    try {
+        await publish(client, eventType, payload, aggregateType, aggregateId, idempotencyKey);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+    } catch (_) {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        // EventBus/Hermes failures must not roll back fiscal decisions or audit evidence.
+    }
+}
+
 async function loadReadinessState({
     dbPool = pool,
     user,
@@ -1159,10 +1585,11 @@ async function loadReadinessState({
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
             try {
+                const credentialRefs = assertCompleteFiscalCredentialRefs(scope.mapping, scope.binding);
                 runtimeConfig = loadCheckboxRuntimeConfig({
                     env,
-                    credentialRef: scope.binding.provider_cashier_login_ref || scope.mapping.provider_license_ref,
-                    licenseRef: scope.mapping.provider_license_ref
+                    credentialRef: credentialRefs.cashierCredentialRef,
+                    licenseRef: credentialRefs.registerCredentialRef
                 });
                 assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
@@ -1179,6 +1606,7 @@ async function loadReadinessState({
             binding: scope.binding,
             tax: scope.tax,
             shift: scope.shift,
+            blockingClosedShiftSaleCount: scope.blockingClosedShiftSaleCount,
             runtimeConfig,
             runtimeConfigError
         });
@@ -1196,6 +1624,7 @@ async function loadReadinessState({
             return { ...local, readinessCode: 'readiness_missing', readinessSnapshot: null };
         }
         const staleReadiness = serialized.staleReadiness === true;
+        const cachedShift = reconcileCachedShiftReadiness(latest, scope.shift);
         const testModeMismatch = serialized.expectedIsTest !== runtimeConfig.expectedIsTest;
         const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
             env,
@@ -1212,9 +1641,15 @@ async function loadReadinessState({
             runtimeSecretsResolvable: local.runtimeSecretsResolvable,
             registerActive: local.registerActive,
             taxMappingReady: local.taxMappingReady,
-            staleReadiness,
+            blockingFiscalIncident: local.blockingFiscalIncident,
+            staleReadiness: staleReadiness || !cachedShift.matches,
+            shiftState: cachedShift.shiftState,
             readinessCode: testModeMismatch
                 ? 'checkbox_expected_is_test_mismatch'
+                : local.blockingFiscalIncident
+                    ? 'paid_sale_closed_shift_reconciliation_required'
+                    : !cachedShift.matches
+                        ? cachedShift.readinessCode
                 : staleReadiness
                     ? 'readiness_stale'
                     : unreportedPermissionBlocked
@@ -1228,7 +1663,10 @@ async function loadReadinessState({
             readinessSnapshot: serialized
         };
         return applyPaymentAcceptanceGate(merged, {
-            providerReady: !testModeMismatch && !unreportedPermissionBlocked && deriveIntegrationReady(merged)
+            providerReady: !testModeMismatch
+                && cachedShift.matches
+                && !unreportedPermissionBlocked
+                && deriveIntegrationReady(merged)
         });
     });
 }
@@ -1263,6 +1701,7 @@ async function probeCheckboxReadiness({
     const latest = await withTransaction(dbPool, async client => loadLatestReadinessSnapshot(client, scope));
     const serializedLatest = serializeReadinessSnapshot(latest);
     if (!force && serializedLatest && serializedLatest.staleReadiness !== true) {
+        const cachedShift = reconcileCachedShiftReadiness(latest, scope.shift);
         const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
             env,
             expectedIsTest: scope.runtimeConfig.expectedIsTest
@@ -1278,27 +1717,34 @@ async function probeCheckboxReadiness({
             runtimeSecretsResolvable: local.runtimeSecretsResolvable,
             registerActive: local.registerActive,
             taxMappingReady: local.taxMappingReady,
-            readinessCode: unreportedPermissionBlocked ? 'checkbox_payment_permission_unreported' : serializedLatest.readinessCode,
+            blockingFiscalIncident: local.blockingFiscalIncident,
+            staleReadiness: !cachedShift.matches,
+            shiftState: cachedShift.shiftState,
+            readinessCode: local.blockingFiscalIncident
+                ? 'paid_sale_closed_shift_reconciliation_required'
+                : !cachedShift.matches
+                    ? cachedShift.readinessCode
+                : unreportedPermissionBlocked
+                    ? 'checkbox_payment_permission_unreported'
+                    : serializedLatest.readinessCode,
             paymentPermissionWarning: permissionDetails.warning,
             unreportedPaymentPermissions: permissionDetails.unreported,
             readinessSnapshot: serializedLatest,
             cached: true
         }, {
-            providerReady: !unreportedPermissionBlocked && deriveIntegrationReady({ ...local, ...serializedLatest })
+            providerReady: cachedShift.matches
+                && !unreportedPermissionBlocked
+                && deriveIntegrationReady({
+                    ...local,
+                    ...serializedLatest,
+                    staleReadiness: false,
+                    shiftState: cachedShift.shiftState
+                })
         });
     }
-    const singleFlightKey = [
-        scope.mapping.fiscal_profile_id,
-        scope.mapping.fiscal_register_id,
-        scope.configHash || 'no-config'
-    ].join(':');
-    if (READINESS_PROBE_IN_FLIGHT.has(singleFlightKey)) {
-        return READINESS_PROBE_IN_FLIGHT.get(singleFlightKey);
-    }
-    const runProbe = (async () => {
     let result;
     try {
-        result = await probeProvider(scope, { fetchImpl, now, env });
+        result = await probeProviderSingleFlight(scope, { fetchImpl, now, env });
     } catch (error) {
         const info = publicError(error);
         const providerUnavailable = info.retryable === true || info.unknown === true || info.status >= 500 || /timeout|network|fetch|aborted/i.test(info.message);
@@ -1314,7 +1760,7 @@ async function probeCheckboxReadiness({
             details: { error: info }
         };
     }
-    return withTransaction(dbPool, async client => {
+    const persisted = await withTransaction(dbPool, async client => {
         const contextualState = {
             ...result.state,
             fiscalProfileId: Number(scope.mapping?.fiscal_profile_id || 0) || null,
@@ -1324,7 +1770,17 @@ async function probeCheckboxReadiness({
             expectedIsTest: scope.runtimeConfig?.expectedIsTest ?? null,
             requiredTender: null
         };
-        await syncPortalClosedShift(client, scope, contextualState.shiftState);
+        const portalSync = await syncPortalClosedShift(
+            client,
+            scope,
+            contextualState.providerShiftStatus,
+            contextualState.providerShiftId
+        );
+        if ((portalSync?.blockedPreSubmitSales || 0) > 0 || (portalSync?.activePreSubmitSales || 0) > 0) {
+            contextualState.blockingFiscalIncident = true;
+            contextualState.integrationReady = false;
+            contextualState.readinessCode = 'paid_sale_closed_shift_reconciliation_required';
+        }
         const inserted = await insertReadinessSnapshot(client, scope, contextualState, result.details);
         if (contextualState.integrationReady === true) {
             await resolveOperationalIncidents(client, {
@@ -1343,19 +1799,19 @@ async function probeCheckboxReadiness({
                 details: { readiness_code: result.state.readinessCode, sanitized: true }
             });
         }
-        return applyPaymentAcceptanceGate({
-            ...contextualState,
-            paymentAcceptanceEnabled: local.paymentAcceptanceEnabled,
-            readinessSnapshot: serializeReadinessSnapshot(inserted)
-        });
+        return {
+            state: applyPaymentAcceptanceGate({
+                ...contextualState,
+                paymentAcceptanceEnabled: local.paymentAcceptanceEnabled,
+                readinessSnapshot: serializeReadinessSnapshot(inserted)
+            }),
+            recoveryQueued: portalSync?.recoveryQueued === true
+        };
     });
-    })();
-    READINESS_PROBE_IN_FLIGHT.set(singleFlightKey, runProbe);
-    try {
-        return await runProbe;
-    } finally {
-        READINESS_PROBE_IN_FLIGHT.delete(singleFlightKey);
+    if (persisted.recoveryQueued) {
+        requestPaymentOutboxWakeup({ batchSize: 1, reason: 'provider_closed_shift_recovery' });
     }
+    return persisted.state;
 }
 
 function readinessFailureStatus(readinessCode) {
@@ -1491,10 +1947,11 @@ async function assertPaymentReadiness({
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
             try {
+                const credentialRefs = assertCompleteFiscalCredentialRefs(scope.mapping, scope.binding);
                 runtimeConfig = loadCheckboxRuntimeConfig({
                     env,
-                    credentialRef: scope.binding.provider_cashier_login_ref || scope.mapping.provider_license_ref,
-                    licenseRef: scope.mapping.provider_license_ref
+                    credentialRef: credentialRefs.cashierCredentialRef,
+                    licenseRef: credentialRefs.registerCredentialRef
                 });
                 assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
@@ -1520,6 +1977,7 @@ async function assertPaymentReadiness({
             binding: scope.binding,
             tax: scope.tax,
             shift: scope.shift,
+            blockingClosedShiftSaleCount: scope.blockingClosedShiftSaleCount,
             runtimeConfig,
             runtimeConfigError
         });
@@ -1602,6 +2060,7 @@ async function assertPaymentReadiness({
                         fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
                     };
                 } else {
+                    const cachedShift = reconcileCachedShiftReadiness(latest, scope.shift);
                     const permissionPolicy = resolveUnreportedPaymentPermissionPolicy({
                         env,
                         expectedIsTest: runtimeConfig.expectedIsTest
@@ -1616,8 +2075,11 @@ async function assertPaymentReadiness({
                         runtimeSecretsResolvable: local.runtimeSecretsResolvable,
                         registerActive: local.registerActive,
                         taxMappingReady: local.taxMappingReady,
-                        staleReadiness,
-                        readinessCode: staleReadiness
+                        staleReadiness: staleReadiness || !cachedShift.matches,
+                        shiftState: cachedShift.shiftState,
+                        readinessCode: !cachedShift.matches
+                            ? cachedShift.readinessCode
+                            : staleReadiness
                             ? 'readiness_stale'
                             : unreportedPermissionBlocked
                                 ? 'checkbox_payment_permission_unreported'
@@ -1628,7 +2090,9 @@ async function assertPaymentReadiness({
                         fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
                         fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
                     };
-                    state.integrationReady = unreportedPermissionBlocked ? false : deriveIntegrationReady(state);
+                    state.integrationReady = !cachedShift.matches || unreportedPermissionBlocked
+                        ? false
+                        : deriveIntegrationReady(state);
                 }
             }
         }
@@ -1660,48 +2124,17 @@ async function listUnresolvedPaymentOrders({
     crmProfileKey = PILOT_CRM_PROFILE_KEY,
     registerAlias = PILOT_REGISTER_ALIAS,
     page = 1,
-    pageSize = 50
+    pageSize = 50,
+    cursor = null,
+    snapshotRevision = null
 } = {}) {
-    const pagination = normalizeUnresolvedPagination({ page, pageSize });
-    const offset = (pagination.page - 1) * pagination.pageSize;
+    const pagination = normalizeUnresolvedPagination({ page, pageSize, cursor, snapshotRevision });
     return withTransaction(dbPool, async client => {
         const scope = await loadScope(client, { user, crmProfileKey, registerAlias, action: 'payments.view', requireUserAuthorization: true });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
         const currentUserId = Number(user?.id || 0);
-        const counts = await client.query(
-            `WITH latest_job AS (
-                 SELECT DISTINCT ON (payment_order_id)
-                        payment_order_id,
-                        status
-                   FROM payment_outbox_jobs
-                  WHERE fiscal_profile_id = $1
-                    AND payment_order_id IS NOT NULL
-                    AND job_type IN ('receipt_sell', 'receipt_status_lookup')
-                  ORDER BY payment_order_id, created_at DESC, id DESC
-             ), unresolved_orders AS (
-                 SELECT po.id, po.cashier_user_id
-                   FROM payment_orders po
-                   LEFT JOIN fiscal_operations fo
-                     ON fo.payment_order_id = po.id
-                    AND fo.fiscal_profile_id = po.fiscal_profile_id
-                    AND fo.operation_type = 'sale'
-                   LEFT JOIN latest_job job ON job.payment_order_id = po.id
-                  WHERE po.fiscal_profile_id = $1
-                    AND po.fiscal_register_id = $2
-                    AND po.payment_status = 'confirmed'
-                    AND (
-                        po.fiscal_status = ANY($3::text[])
-                        OR job.status IN ('failed', 'dead', 'claimed', 'running')
-                        OR fo.status IN ('pending', 'unknown', 'failed')
-                    )
-             )
-             SELECT COUNT(*)::integer AS register_count,
-                    COUNT(*) FILTER (WHERE cashier_user_id = $4)::integer AS my_count
-               FROM unresolved_orders`,
-            [scope.mapping.fiscal_profile_id, scope.mapping.fiscal_register_id, UNRESOLVED_FISCAL_STATUSES, currentUserId]
-        );
         const result = await client.query(
             `WITH latest_job AS (
                  SELECT DISTINCT ON (payment_order_id)
@@ -1718,53 +2151,143 @@ async function listUnresolvedPaymentOrders({
                     AND payment_order_id IS NOT NULL
                     AND job_type IN ('receipt_sell', 'receipt_status_lookup')
                   ORDER BY payment_order_id, created_at DESC, id DESC
+             ), unresolved_orders AS (
+                 SELECT
+                     po.id,
+                     po.order_key,
+                     po.cashier_user_id,
+                     po.payment_status,
+                     po.fiscal_status,
+                     po.total_amount_minor,
+                     po.currency,
+                     po.created_at,
+                     po.confirmed_at,
+                     fo.id AS fiscal_operation_id,
+                     fo.provider_operation_id,
+                     fo.status AS fiscal_operation_status,
+                     job.id AS outbox_job_id,
+                     job.job_type,
+                     job.status AS outbox_status,
+                     job.attempts,
+                     job.max_attempts,
+                     job.last_error_code,
+                     job.next_run_at
+                   FROM payment_orders po
+                   LEFT JOIN fiscal_operations fo
+                     ON fo.payment_order_id = po.id
+                    AND fo.fiscal_profile_id = po.fiscal_profile_id
+                    AND fo.operation_type = 'sale'
+                   LEFT JOIN latest_job job ON job.payment_order_id = po.id
+                  WHERE po.fiscal_profile_id = $1
+                    AND po.fiscal_register_id = $2
+                    AND po.payment_status = 'confirmed'
+                    AND (
+                        po.fiscal_status = ANY($3::text[])
+                        OR job.status IN ('failed', 'dead', 'claimed', 'running')
+                        OR fo.status IN ('pending', 'unknown', 'failed')
+                    )
+             ), queue_meta AS (
+                 SELECT COUNT(*)::integer AS register_count,
+                        COUNT(*) FILTER (WHERE cashier_user_id = $4)::integer AS my_count,
+                        md5(CONCAT(
+                            $1::text,
+                            ':',
+                            $2::text,
+                            ':',
+                            COALESCE(string_agg(
+                                CONCAT_WS(
+                                    ':',
+                                    id::text,
+                                    payment_status,
+                                    fiscal_status,
+                                    COALESCE(fiscal_operation_id::text, ''),
+                                    COALESCE(fiscal_operation_status, ''),
+                                    COALESCE(outbox_job_id::text, ''),
+                                    COALESCE(outbox_status, '')
+                                ),
+                                ',' ORDER BY id DESC
+                            ), '')
+                        )) AS snapshot_revision,
+                        COALESCE(BOOL_OR(id = $5::bigint), false) AS cursor_present,
+                        COUNT(*) FILTER (
+                            WHERE $5::bigint IS NOT NULL
+                              AND id >= $5::bigint
+                        )::integer AS cursor_rank
+                   FROM unresolved_orders
+             ), page_candidates AS (
+                 SELECT *
+                   FROM unresolved_orders
+                  WHERE $5::bigint IS NULL OR id < $5::bigint
+                  ORDER BY id DESC
+                  LIMIT ($6::integer + 1)
              )
              SELECT
-                 po.id,
-                 po.order_key,
-                 po.cashier_user_id,
-                 po.payment_status,
-                 po.fiscal_status,
-                 po.total_amount_minor,
-                 po.currency,
-                 po.created_at,
-                 po.confirmed_at,
-                 fo.id AS fiscal_operation_id,
-                 fo.provider_operation_id,
-                 fo.status AS fiscal_operation_status,
-                 job.id AS outbox_job_id,
-                 job.job_type,
-                 job.status AS outbox_status,
-                 job.attempts,
-                 job.max_attempts,
-                 job.last_error_code,
-                 job.next_run_at
-               FROM payment_orders po
-               LEFT JOIN fiscal_operations fo
-                 ON fo.payment_order_id = po.id
-               AND fo.fiscal_profile_id = po.fiscal_profile_id
-                AND fo.operation_type = 'sale'
-               LEFT JOIN latest_job job ON job.payment_order_id = po.id
-              WHERE po.fiscal_profile_id = $1
-                AND po.fiscal_register_id = $2
-                AND po.payment_status = 'confirmed'
-                AND (
-                    po.fiscal_status = ANY($3::text[])
-                    OR job.status IN ('failed', 'dead', 'claimed', 'running')
-                    OR fo.status IN ('pending', 'unknown', 'failed')
-                )
-              ORDER BY po.confirmed_at DESC NULLS LAST, po.id DESC
-              LIMIT $4 OFFSET $5`,
+                 meta.register_count,
+                 meta.my_count,
+                 meta.snapshot_revision,
+                 meta.cursor_present,
+                 meta.cursor_rank,
+                 candidate.id AS payment_order_id,
+                 candidate.order_key,
+                 candidate.cashier_user_id,
+                 candidate.payment_status,
+                 candidate.fiscal_status,
+                 candidate.total_amount_minor,
+                 candidate.currency,
+                 candidate.created_at,
+                 candidate.confirmed_at,
+                 candidate.fiscal_operation_id,
+                 candidate.provider_operation_id,
+                 candidate.fiscal_operation_status,
+                 candidate.outbox_job_id,
+                 candidate.job_type,
+                 candidate.outbox_status,
+                 candidate.attempts,
+                 candidate.max_attempts,
+                 candidate.last_error_code,
+                 candidate.next_run_at
+                FROM queue_meta meta
+                LEFT JOIN page_candidates candidate ON TRUE
+               ORDER BY candidate.id DESC NULLS LAST`,
             [
                 scope.mapping.fiscal_profile_id,
                 scope.mapping.fiscal_register_id,
                 UNRESOLVED_FISCAL_STATUSES,
-                pagination.pageSize,
-                offset
+                currentUserId,
+                pagination.cursor || null,
+                pagination.pageSize
             ]
         );
-        const registerCount = Number(counts.rows[0]?.register_count || 0);
-        const myCount = Number(counts.rows[0]?.my_count || 0);
+        const metadata = result.rows[0] || {};
+        const registerCount = Number(metadata.register_count || 0);
+        const myCount = Number(metadata.my_count || 0);
+        const currentSnapshotRevision = String(metadata.snapshot_revision || '');
+        if (!/^[0-9a-f]{32}$/.test(currentSnapshotRevision)) {
+            throw new PaymentReadinessError('unresolved_snapshot_invalid', 'Unresolved queue snapshot could not be established', { status: 503 });
+        }
+        if (pagination.snapshotRevision && pagination.snapshotRevision !== currentSnapshotRevision) {
+            throw new PaymentReadinessError(
+                'unresolved_snapshot_changed',
+                'Unresolved queue changed while loading; restart from the first page',
+                { status: 409, details: { restartPage: 1 } }
+            );
+        }
+        if (pagination.cursor) {
+            const expectedCursorRank = (pagination.page - 1) * pagination.pageSize;
+            if (metadata.cursor_present !== true || Number(metadata.cursor_rank || 0) !== expectedCursorRank) {
+                throw new PaymentReadinessError(
+                    'unresolved_cursor_invalid',
+                    'Unresolved queue cursor does not match the requested page',
+                    { status: 422 }
+                );
+            }
+        }
+        const candidates = result.rows.filter(row => row.payment_order_id != null);
+        const hasMore = candidates.length > pagination.pageSize;
+        const rows = candidates.slice(0, pagination.pageSize);
+        const nextCursor = hasMore && rows.length
+            ? Number(rows[rows.length - 1].payment_order_id)
+            : null;
         return {
             fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
             fiscalLocationId: Number(scope.mapping.fiscal_location_id),
@@ -1774,9 +2297,11 @@ async function listUnresolvedPaymentOrders({
             pageSize: pagination.pageSize,
             myCount,
             registerCount,
-            hasMore: offset + result.rows.length < registerCount,
-            orders: result.rows.map(row => ({
-                id: Number(row.id),
+            snapshotRevision: currentSnapshotRevision,
+            nextCursor,
+            hasMore,
+            orders: rows.map(row => ({
+                id: Number(row.payment_order_id),
                 orderKey: row.order_key,
                 isMine: Number(row.cashier_user_id || 0) === currentUserId,
                 cashierIdentity: row.cashier_user_id == null ? null : `user:${Number(row.cashier_user_id)}`,
@@ -1812,11 +2337,50 @@ async function loadCheckboxSalesReport({
     page = 1,
     pageSize = 50
 } = {}) {
-    const normalizedPage = Math.max(1, Math.min(Number(page) || 1, 10000));
-    const normalizedPageSize = Math.max(1, Math.min(Number(pageSize) || 50, 100));
+    const normalizeBoundedInteger = (value, { fallback, maximum, code, label }) => {
+        if (value == null || value === '') return fallback;
+        const normalized = Number(value);
+        if (!Number.isSafeInteger(normalized) || normalized < 1 || normalized > maximum) {
+            throw new PaymentReadinessError(code, `${label} is invalid`, { status: 422 });
+        }
+        return normalized;
+    };
+    const normalizeDateFilter = (value, { code, label }) => {
+        if (value == null || value === '') return null;
+        const normalized = String(value).trim();
+        if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized)) {
+            throw new PaymentReadinessError(code, `${label} is invalid`, { status: 422 });
+        }
+        const parsed = new Date(`${normalized}T00:00:00.000Z`);
+        if (Number.isNaN(parsed.getTime()) || parsed.toISOString().slice(0, 10) !== normalized) {
+            throw new PaymentReadinessError(code, `${label} is invalid`, { status: 422 });
+        }
+        return normalized;
+    };
+    const normalizedPage = normalizeBoundedInteger(page, {
+        fallback: 1,
+        maximum: 10000,
+        code: 'checkbox_report_page_invalid',
+        label: 'Report page'
+    });
+    const normalizedPageSize = normalizeBoundedInteger(pageSize, {
+        fallback: 50,
+        maximum: 100,
+        code: 'checkbox_report_page_size_invalid',
+        label: 'Report page size'
+    });
     const offset = (normalizedPage - 1) * normalizedPageSize;
-    const normalizedDateFrom = /^\d{4}-\d{2}-\d{2}$/.test(String(dateFrom || '')) ? String(dateFrom) : null;
-    const normalizedDateTo = /^\d{4}-\d{2}-\d{2}$/.test(String(dateTo || '')) ? String(dateTo) : null;
+    const normalizedDateFrom = normalizeDateFilter(dateFrom, {
+        code: 'checkbox_report_date_from_invalid',
+        label: 'Report start date'
+    });
+    const normalizedDateTo = normalizeDateFilter(dateTo, {
+        code: 'checkbox_report_date_to_invalid',
+        label: 'Report end date'
+    });
+    if (normalizedDateFrom && normalizedDateTo && normalizedDateFrom > normalizedDateTo) {
+        throw new PaymentReadinessError('checkbox_report_date_range_invalid', 'Report date range is invalid', { status: 422 });
+    }
     const normalizedShiftId = shiftId == null || shiftId === ''
         ? null
         : Number(shiftId);
@@ -1931,10 +2495,12 @@ async function loadCheckboxSalesReport({
             fiscalizedAt: row.fiscalized_at || null
         }));
         const totalsResult = await client.query(
-            `WITH latest_job AS (
+             `WITH latest_job AS (
                  SELECT DISTINCT ON (payment_order_id)
                         payment_order_id,
-                        status AS outbox_status
+                        status AS outbox_status,
+                        attempts,
+                        max_attempts
                    FROM payment_outbox_jobs
                   WHERE fiscal_profile_id = $1
                     AND payment_order_id IS NOT NULL
@@ -1946,7 +2512,9 @@ async function loadCheckboxSalesReport({
                         po.fiscal_status,
                         po.payment_method,
                         po.total_amount_minor,
-                        job.outbox_status
+                        job.outbox_status,
+                        job.attempts,
+                        job.max_attempts
                    FROM payment_orders po
                    LEFT JOIN latest_job job ON job.payment_order_id = po.id
                    LEFT JOIN fiscal_operations fo
@@ -1966,7 +2534,13 @@ async function loadCheckboxSalesReport({
                    FROM (
                      SELECT CASE
                                WHEN outbox_status = 'dead' THEN 'dead'
-                               WHEN fiscal_status = 'failed' OR outbox_status IN ('failed', 'claimed', 'running') THEN 'failed_retryable'
+                               WHEN outbox_status = 'failed'
+                                 THEN CASE
+                                          WHEN max_attempts > 0 AND attempts >= max_attempts THEN 'failed_terminal'
+                                          ELSE 'failed_retryable'
+                                      END
+                               WHEN outbox_status = 'queued' AND fiscal_status = 'failed' THEN 'failed_retryable'
+                               WHEN fiscal_status IN ('blocked', 'validation_failed') THEN 'failed_terminal'
                                ELSE fiscal_status
                             END AS public_status,
                             COUNT(*) AS status_count
@@ -2201,7 +2775,14 @@ async function updateOperationalIncidentStatus({
         throw new PaymentReadinessError('incident_reason_required', 'Incident lifecycle changes require a reason', { status: 422 });
     }
     return withTransaction(dbPool, async client => {
-        const scope = await loadScope(client, { user, crmProfileKey, registerAlias, action: 'fiscal.incident.manage', requireUserAuthorization: true });
+        const scope = await loadScope(client, {
+            user,
+            crmProfileKey,
+            registerAlias,
+            action: 'fiscal.incident.manage',
+            requireUserAuthorization: true,
+            lockConfiguration: true
+        });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
@@ -2267,35 +2848,80 @@ async function updateOperationalIncidentStatus({
 }
 
 async function countCloseBlockers(client, shift) {
-    const result = await client.query(
-        `WITH latest_job AS (
-             SELECT DISTINCT ON (payment_order_id)
-                    payment_order_id,
-                    status
-               FROM payment_outbox_jobs
-              WHERE fiscal_profile_id = $1
-                AND payment_order_id IS NOT NULL
-                AND job_type IN ('receipt_sell', 'receipt_status_lookup')
-              ORDER BY payment_order_id, created_at DESC, id DESC
+    return countFiscalShiftCloseBlockers(client, {
+        fiscalProfileId: shift.fiscal_profile_id,
+        fiscalRegisterId: shift.fiscal_register_id
+    });
+}
+
+async function recordPhase1CloseBlocked(client, {
+    shift,
+    user,
+    requestKey,
+    blockerCount,
+    stage
+}) {
+    const eventIdempotencyKey = `phase1_shift_close_blocked:${shift.id}:${fingerprint({ requestKey, stage }).slice(0, 32)}`;
+    const snapshot = {
+        fiscal_shift_id: Number(shift.id),
+        fiscal_register_id: Number(shift.fiscal_register_id),
+        blocker_count: Number(blockerCount),
+        stage
+    };
+    await client.query(
+        `INSERT INTO fiscal_audit_events (
+             fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+             idempotency_key, after_snapshot, metadata
          )
-         SELECT COUNT(*) AS blocker_count
-           FROM payment_orders po
-           LEFT JOIN fiscal_operations fo
-             ON fo.payment_order_id = po.id
-            AND fo.fiscal_profile_id = po.fiscal_profile_id
-            AND fo.operation_type = 'sale'
-           LEFT JOIN latest_job job ON job.payment_order_id = po.id
-          WHERE po.fiscal_profile_id = $1
-            AND po.fiscal_register_id = $2
-            AND po.payment_status = 'confirmed'
-            AND (
-                po.fiscal_status IN ('pending', 'unknown', 'failed', 'validating', 'ready_to_send', 'sending', 'blocked')
-                OR fo.status IN ('pending', 'unknown', 'failed')
-                OR job.status IN ('failed', 'dead', 'claimed', 'running')
-            )`,
-        [shift.fiscal_profile_id, shift.fiscal_register_id]
+         SELECT $1::bigint, $2::integer, 'phase1_shift_close_blocked', 'fiscal_shifts',
+                $3::bigint, $4::text, $5::jsonb, $6::jsonb
+          WHERE NOT EXISTS (
+                SELECT 1
+                  FROM fiscal_audit_events
+                 WHERE event_type = 'phase1_shift_close_blocked'
+                   AND idempotency_key = $4::text
+          )`,
+        [
+            shift.fiscal_profile_id,
+            user?.id || null,
+            shift.id,
+            eventIdempotencyKey,
+            JSON.stringify(snapshot),
+            JSON.stringify({ phase: 'thin_mvp_shift_close', reason: 'unresolved_financial_operations' })
+        ]
     );
-    return Number(result.rows[0]?.blocker_count || 0);
+    await safePublishFiscalEvent(
+        client,
+        'shift.close_blocked',
+        {
+            fiscalProfileId: Number(shift.fiscal_profile_id),
+            fiscalRegisterId: Number(shift.fiscal_register_id),
+            fiscalShiftId: Number(shift.id),
+            blockerCount: Number(blockerCount),
+            stage,
+            phase: 'thin_mvp_shift_close'
+        },
+        'fiscal_shift',
+        String(shift.id),
+        eventIdempotencyKey
+    );
+}
+
+function phase1CloseBlockedError(blockerCount) {
+    return new PaymentReadinessError('shift_close_blocked_unresolved', 'Unresolved payment/fiscal operations block shift close', {
+        status: 409,
+        details: { blockerCount: Number(blockerCount) }
+    });
+}
+
+function assertPhase1ClosePaymentDrain(env = process.env) {
+    if (isCheckboxPaymentAcceptanceEnabled(env)) {
+        throw new PaymentReadinessError(
+            'phase1_close_requires_payment_drain',
+            'Disable new Checkbox payment acceptance before closing the Phase-1 shift',
+            { status: 409 }
+        );
+    }
 }
 
 async function loadAndAuthorizePhase1CloseShift(client, {
@@ -2353,6 +2979,32 @@ async function loadAndAuthorizePhase1CloseShift(client, {
         throw new PaymentReadinessError('shift_not_provider_open', 'Only a provider OPENED shift can be closed by the Phase-1 flow', { status: 409 });
     }
     return shift;
+}
+
+async function lockAndAuthorizePhase1CloseShift(client, options = {}) {
+    const scopedShift = await loadAndAuthorizePhase1CloseShift(client, {
+        ...options,
+        lock: false,
+        requireProviderOpen: false
+    });
+    await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
+        scopedShift.fiscal_profile_id,
+        scopedShift.fiscal_register_id
+    ]);
+    const lockedShift = await loadAndAuthorizePhase1CloseShift(client, {
+        ...options,
+        lock: true,
+        requireProviderOpen: false
+    });
+    if (Number(lockedShift.fiscal_profile_id) !== Number(scopedShift.fiscal_profile_id)
+        || Number(lockedShift.fiscal_register_id) !== Number(scopedShift.fiscal_register_id)) {
+        throw new PaymentReadinessError(
+            'phase1_shift_scope_changed',
+            'Fiscal shift scope changed while acquiring the register lock',
+            { status: 409 }
+        );
+    }
+    return lockedShift;
 }
 
 function phase1CloseOperationIdempotencyKey(idempotencyKey) {
@@ -2445,20 +3097,31 @@ async function requestPhase1ShiftClose({
     }
     const operationIdempotencyKey = phase1CloseOperationIdempotencyKey(key);
     const preflight = await withTransaction(dbPool, async client => {
-        const shift = await loadAndAuthorizePhase1CloseShift(client, {
+        const shift = await lockAndAuthorizePhase1CloseShift(client, {
             user,
-            shiftId: numericShiftId,
-            lock: false,
-            requireProviderOpen: false
+            shiftId: numericShiftId
         });
+        assertPhase1ClosePaymentDrain(env);
         const replay = await loadPhase1CloseReplay(client, { operationIdempotencyKey, shift });
         if (replay) return { shift, replay };
         if (shift.status !== 'open' || shift.lifecycle_stage !== 'OPENED' || !shift.provider_shift_id) {
             throw new PaymentReadinessError('shift_not_provider_open', 'Only a provider OPENED shift can be closed by the Phase-1 flow', { status: 409 });
         }
+        const blockers = await countCloseBlockers(client, shift);
+        if (blockers > 0) {
+            await recordPhase1CloseBlocked(client, {
+                shift,
+                user,
+                requestKey: key,
+                blockerCount: blockers,
+                stage: 'preflight'
+            });
+            return { shift, replay: null, blocked: { blockerCount: blockers } };
+        }
         return { shift, replay: null };
     });
     if (preflight.replay) return preflight.replay;
+    if (preflight.blocked) throw phase1CloseBlockedError(preflight.blocked.blockerCount);
     const preauthorizedShift = preflight.shift;
     // A Phase-1 close is a recovery action, not a new payment acceptance.
     // Refresh provider identity/shift state before opening the short DB transaction
@@ -2474,12 +3137,11 @@ async function requestPhase1ShiftClose({
         force: true
     });
     const result = await withTransaction(dbPool, async client => {
-        const shift = await loadAndAuthorizePhase1CloseShift(client, {
+        const shift = await lockAndAuthorizePhase1CloseShift(client, {
             user,
-            shiftId: numericShiftId,
-            lock: true,
-            requireProviderOpen: false
+            shiftId: numericShiftId
         });
+        assertPhase1ClosePaymentDrain(env);
         const replay = await loadPhase1CloseReplay(client, { operationIdempotencyKey, shift });
         if (replay) return replay;
         if (shift.status !== 'open' || shift.lifecycle_stage !== 'OPENED' || !shift.provider_shift_id) {
@@ -2487,10 +3149,14 @@ async function requestPhase1ShiftClose({
         }
         const blockers = await countCloseBlockers(client, shift);
         if (blockers > 0) {
-            throw new PaymentReadinessError('shift_close_blocked_unresolved', 'Unresolved payment/fiscal operations block shift close', {
-                status: 409,
-                details: { blockerCount: blockers }
+            await recordPhase1CloseBlocked(client, {
+                shift,
+                user,
+                requestKey: key,
+                blockerCount: blockers,
+                stage: 'authoritative'
             });
+            return { blocked: { blockerCount: blockers } };
         }
         await assertPaymentReadiness({
             client,
@@ -2508,10 +3174,11 @@ async function requestPhase1ShiftClose({
             fiscalProfileId: shift.fiscal_profile_id,
             fiscalRegisterId: shift.fiscal_register_id
         });
+        const credentialRefs = assertCompleteFiscalCredentialRefs(shift, binding);
         const runtimeConfig = loadCheckboxRuntimeConfig({
             env,
-            credentialRef: binding.provider_cashier_login_ref || shift.provider_license_ref,
-            licenseRef: shift.provider_license_ref
+            credentialRef: credentialRefs.cashierCredentialRef,
+            licenseRef: credentialRefs.registerCredentialRef
         });
         const fiscalConfig = buildFiscalConfigurationSnapshot({ mapping: shift, binding, runtimeConfig });
         const providerRequestUuid = crypto.randomUUID();
@@ -2593,6 +3260,31 @@ async function requestPhase1ShiftClose({
                 JSON.stringify({ provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.id), phase: 'thin_mvp_shift_close', external_stage: 'auth' })
             ]
         );
+        await client.query(
+            `INSERT INTO fiscal_audit_events (
+                 fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+                 idempotency_key, after_snapshot, metadata
+             )
+             VALUES ($1, $2, 'phase1_shift_close_requested', 'fiscal_operations', $3, $4, $5::jsonb, $6::jsonb)`,
+            [
+                shift.fiscal_profile_id,
+                user?.id || null,
+                closeOperation.id,
+                `phase1_shift_close_requested:${closeOperation.id}`,
+                JSON.stringify({
+                    fiscal_shift_id: Number(shift.id),
+                    fiscal_operation_id: Number(closeOperation.id),
+                    outbox_job_id: Number(job.rows[0].id),
+                    status: 'closing'
+                }),
+                JSON.stringify({
+                    fiscal_register_id: Number(shift.fiscal_register_id),
+                    provider_request_uuid: providerRequestUuid,
+                    provider_shift_id: shift.provider_shift_id,
+                    phase: 'thin_mvp_shift_close'
+                })
+            ]
+        );
         return {
             replayed: false,
             fiscalShiftId: Number(shift.id),
@@ -2602,33 +3294,70 @@ async function requestPhase1ShiftClose({
             providerRequestUuid
         };
     });
+    if (result.blocked) throw phase1CloseBlockedError(result.blocked.blockerCount);
     if (!result.replayed) {
         requestPaymentOutboxWakeup({ batchSize: 1, reason: 'phase1_shift_close_requested' });
     }
     return result;
 }
 
-async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process.env, fetchImpl } = {}) {
+async function runCheckboxReadinessProbeSchedulerOnce({ dbPool = pool, env = process.env, fetchImpl } = {}) {
     if (!isCheckboxIntegrationEnabled(env)) return { ok: true, skipped: true, reason: 'checkbox_integration_disabled', probed: 0 };
     const client = await dbPool.connect();
     try {
         const result = await client.query(
-            `SELECT DISTINCT
-                    fp.crm_profile_key,
-                    fr.register_alias,
-                    fcb.*
-               FROM fiscal_cashier_bindings fcb
-               JOIN fiscal_profiles fp
-                 ON fp.id = fcb.fiscal_profile_id
-                AND fp.status = 'active'
-               JOIN fiscal_registers fr
-                 ON fr.id = fcb.fiscal_register_id
-                AND fr.fiscal_profile_id = fcb.fiscal_profile_id
-                AND fr.status = 'active'
-                AND fr.feature_enabled = TRUE
-                AND fr.provider = 'checkbox'
-              WHERE fcb.status = 'active'
-              ORDER BY fp.crm_profile_key, fr.register_alias, fcb.id
+            `WITH provider_contexts AS (
+                 SELECT DISTINCT ON (
+                        fcb.fiscal_profile_id,
+                        fcb.fiscal_register_id,
+                        COALESCE(fcb.provider_cashier_id, ''),
+                        COALESCE(fcb.provider_cashier_login_ref, ''),
+                        COALESCE(fr.provider_license_ref, '')
+                    )
+                        fp.crm_profile_key,
+                        fr.register_alias,
+                        fr.provider_license_ref AS scheduler_register_credential_ref,
+                        fcb.*
+                   FROM fiscal_cashier_bindings fcb
+                   JOIN fiscal_profiles fp
+                     ON fp.id = fcb.fiscal_profile_id
+                    AND fp.status = 'active'
+                   JOIN fiscal_registers fr
+                     ON fr.id = fcb.fiscal_register_id
+                    AND fr.fiscal_profile_id = fcb.fiscal_profile_id
+                    AND fr.status = 'active'
+                    AND fr.feature_enabled = TRUE
+                    AND fr.provider = 'checkbox'
+                  WHERE fcb.status = 'active'
+                  ORDER BY
+                        fcb.fiscal_profile_id,
+                        fcb.fiscal_register_id,
+                        COALESCE(fcb.provider_cashier_id, ''),
+                        COALESCE(fcb.provider_cashier_login_ref, ''),
+                        COALESCE(fr.provider_license_ref, ''),
+                        fcb.id
+             )
+             SELECT context.*
+               FROM provider_contexts context
+               LEFT JOIN LATERAL (
+                   SELECT snapshot.checked_at, snapshot.id
+                     FROM checkbox_readiness_snapshots snapshot
+                    WHERE snapshot.fiscal_profile_id = context.fiscal_profile_id
+                      AND snapshot.fiscal_register_id = context.fiscal_register_id
+                      AND COALESCE(snapshot.provider_cashier_id, '') = COALESCE(context.provider_cashier_id, '')
+                      AND COALESCE(snapshot.register_credential_ref, '') = COALESCE(context.scheduler_register_credential_ref, '')
+                      AND COALESCE(snapshot.cashier_credential_ref, '') = COALESCE(context.provider_cashier_login_ref, '')
+                    ORDER BY snapshot.checked_at DESC, snapshot.id DESC
+                    LIMIT 1
+               ) latest_readiness ON TRUE
+              ORDER BY
+                    latest_readiness.checked_at ASC NULLS FIRST,
+                    context.fiscal_profile_id,
+                    context.fiscal_register_id,
+                    COALESCE(context.provider_cashier_id, ''),
+                    COALESCE(context.provider_cashier_login_ref, ''),
+                    COALESCE(context.scheduler_register_credential_ref, ''),
+                    context.id
               LIMIT 20`
         );
         let probed = 0;
@@ -2638,10 +3367,11 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
                 const prepared = await withTransaction(dbPool, async tx => {
                     const scope = await loadScopeForBinding(tx, row);
                     if (!scope) return null;
+                    const credentialRefs = assertCompleteFiscalCredentialRefs(scope.mapping, scope.binding);
                     const runtimeConfig = loadCheckboxRuntimeConfig({
                         env,
-                        credentialRef: row.provider_cashier_login_ref || scope.mapping.provider_license_ref,
-                        licenseRef: scope.mapping.provider_license_ref
+                        credentialRef: credentialRefs.cashierCredentialRef,
+                        licenseRef: credentialRefs.registerCredentialRef
                     });
                     assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
                     scope.runtimeConfig = runtimeConfig;
@@ -2654,19 +3384,30 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
                         binding: scope.binding,
                         tax: scope.tax,
                         shift: scope.shift,
+                        blockingClosedShiftSaleCount: scope.blockingClosedShiftSaleCount,
                         runtimeConfig
                     });
                     return { scope, local };
                 });
                 if (!prepared) continue;
                 let resultState;
-                if (!canProbeProviderReadiness(prepared.local)) {
-                    resultState = { state: prepared.local, details: { reason: prepared.local.readinessCode } };
-                } else {
-                        resultState = await probeProvider(prepared.scope, { fetchImpl, env });
-                }
-                await withTransaction(dbPool, async tx => {
-                    await syncPortalClosedShift(tx, prepared.scope, resultState.state.shiftState);
+                    if (!canProbeProviderReadiness(prepared.local)) {
+                        resultState = { state: prepared.local, details: { reason: prepared.local.readinessCode } };
+                    } else {
+                        resultState = await probeProviderSingleFlight(prepared.scope, { fetchImpl, env });
+                    }
+                const portalSync = await withTransaction(dbPool, async tx => {
+                    const syncResult = await syncPortalClosedShift(
+                        tx,
+                        prepared.scope,
+                        resultState.state.providerShiftStatus,
+                        resultState.state.providerShiftId
+                    );
+                    if ((syncResult?.blockedPreSubmitSales || 0) > 0 || (syncResult?.activePreSubmitSales || 0) > 0) {
+                        resultState.state.blockingFiscalIncident = true;
+                        resultState.state.integrationReady = false;
+                        resultState.state.readinessCode = 'paid_sale_closed_shift_reconciliation_required';
+                    }
                     await insertReadinessSnapshot(tx, prepared.scope, resultState.state, resultState.details);
                     if (resultState.state.integrationReady === true) {
                         await resolveOperationalIncidents(tx, {
@@ -2676,7 +3417,11 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
                             reason: 'scheduler_probe_recovered'
                         });
                     }
+                    return syncResult;
                 });
+                if (portalSync?.recoveryQueued === true) {
+                    requestPaymentOutboxWakeup({ batchSize: 1, reason: 'scheduler_provider_closed_shift_recovery' });
+                }
                 probed += 1;
             } catch (error) {
                 failed += 1;
@@ -2707,6 +3452,19 @@ async function runCheckboxReadinessProbeScheduler({ dbPool = pool, env = process
         return { ok: true, probed, failed };
     } finally {
         client.release();
+    }
+}
+
+async function runCheckboxReadinessProbeScheduler(options = {}) {
+    if (READINESS_SCHEDULER_IN_FLIGHT) return READINESS_SCHEDULER_IN_FLIGHT;
+    const run = runCheckboxReadinessProbeSchedulerOnce(options);
+    READINESS_SCHEDULER_IN_FLIGHT = run;
+    try {
+        return await run;
+    } finally {
+        if (READINESS_SCHEDULER_IN_FLIGHT === run) {
+            READINESS_SCHEDULER_IN_FLIGHT = null;
+        }
     }
 }
 
@@ -2753,9 +3511,14 @@ module.exports = {
     canProbeProviderReadiness,
     resolveUnreportedPaymentPermissionPolicy,
     resolveProviderShiftReadiness,
+    reconcileCachedShiftReadiness,
     freshShiftContextMatches,
     sanitizePersistedReadinessDetails,
     requestPhase1ShiftClose,
     runCheckboxReadinessProbeScheduler,
-    updateOperationalIncidentStatus
+    updateOperationalIncidentStatus,
+    __readinessProbeTest: Object.freeze({
+        providerReadinessProbeKey,
+        probeProviderSingleFlight
+    })
 };

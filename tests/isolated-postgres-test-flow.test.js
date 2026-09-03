@@ -10,6 +10,10 @@ const {
     assertSafeTestDatabaseUrl,
     assertSafeIsolatedTestUrl
 } = require('../scripts/test-db-safety');
+const {
+    acquireIsolatedDatabaseLock,
+    assertNoPreservedCheckboxMutationState
+} = require('../scripts/run-isolated-postgres-tests');
 
 function safeEnv(overrides = {}) {
     return {
@@ -19,6 +23,144 @@ function safeEnv(overrides = {}) {
 }
 
 describe('isolated PostgreSQL test flow safety', () => {
+    it('holds one session advisory lock for the complete disposable database run', async () => {
+        const queries = [];
+        let clientReleaseCount = 0;
+        let poolEndCount = 0;
+        const client = {
+            async query(sql, params) {
+                queries.push({ sql, params });
+                return { rows: [{}] };
+            },
+            release() {
+                clientReleaseCount += 1;
+            }
+        };
+        const lock = await acquireIsolatedDatabaseLock({
+            hostname: '127.0.0.1',
+            databaseName: 'eventgenix_lock_test'
+        }, {
+            poolFactory: () => ({
+                connect: async () => client,
+                end: async () => { poolEndCount += 1; }
+            }),
+            write: () => {}
+        });
+
+        assert.equal(queries.length, 1);
+        assert.match(queries[0].sql, /pg_advisory_lock\(hashtext\(\$1\), hashtext\(current_database\(\)\)\)/);
+        assert.deepEqual(queries[0].params, ['eventgenix-isolated-postgres-runner-v1']);
+        assert.equal(clientReleaseCount, 0, 'the lock connection must remain open while the suite runs');
+        assert.equal(poolEndCount, 0);
+
+        await lock.release();
+        await lock.release();
+
+        assert.equal(queries.length, 2);
+        assert.match(queries[1].sql, /pg_advisory_unlock\(hashtext\(\$1\), hashtext\(current_database\(\)\)\)/);
+        assert.equal(clientReleaseCount, 1);
+        assert.equal(poolEndCount, 1);
+    });
+
+    it('allows an initial reset when Checkbox payment and fiscal tables are absent or empty', async () => {
+        let poolEndCount = 0;
+        const existingEmptyTables = new Set(['payment_orders', 'fiscal_operations']);
+        const queries = [];
+        const poolFactory = () => ({
+            async query(sql, params = []) {
+                queries.push({ sql, params });
+                if (sql.includes('to_regclass')) {
+                    const tableName = String(params[0] || '').replace(/^public\./, '');
+                    return {
+                        rows: [{ table_name: existingEmptyTables.has(tableName) ? `public.${tableName}` : null }]
+                    };
+                }
+                if (/COUNT\(\*\)::int/.test(sql)) return { rows: [{ count: 0 }] };
+                throw new Error(`Unexpected safety probe query: ${sql}`);
+            },
+            async end() {
+                poolEndCount += 1;
+            }
+        });
+
+        await assert.doesNotReject(() => assertNoPreservedCheckboxMutationState({
+            hostname: '127.0.0.1',
+            databaseName: 'eventgenix_guard_empty_test'
+        }, { poolFactory }));
+
+        assert.equal(poolEndCount, 1);
+        assert.equal(queries.filter(item => item.sql.includes('to_regclass')).length, 4);
+        assert.equal(queries.filter(item => /COUNT\(\*\)::int/.test(item.sql)).length, 2);
+    });
+
+    it('fails closed before reset when preserved Checkbox state exists and closes the probe pool', async () => {
+        let poolEndCount = 0;
+        const tableCounts = new Map([
+            ['payment_orders', 2],
+            ['fiscal_operations', 1],
+            ['payment_outbox_jobs', 0],
+            ['fiscal_shifts', 1]
+        ]);
+        const poolFactory = () => ({
+            async query(sql, params = []) {
+                if (sql.includes('to_regclass')) {
+                    const tableName = String(params[0] || '').replace(/^public\./, '');
+                    return { rows: [{ table_name: `public.${tableName}` }] };
+                }
+                const tableName = sql.match(/FROM\s+([a-z_]+)/i)?.[1];
+                if (!tableCounts.has(tableName)) throw new Error(`Unexpected safety probe query: ${sql}`);
+                return { rows: [{ count: tableCounts.get(tableName) }] };
+            },
+            async end() {
+                poolEndCount += 1;
+            }
+        });
+
+        await assert.rejects(
+            () => assertNoPreservedCheckboxMutationState({
+                hostname: '127.0.0.1',
+                databaseName: 'eventgenix_guard_preserved_test'
+            }, { poolFactory }),
+            error => {
+                assert.match(error.message, /Preserved Checkbox mutation state exists/);
+                assert.match(error.message, /payment_orders=2/);
+                assert.match(error.message, /fiscal_operations=1/);
+                assert.match(error.message, /fiscal_shifts=1/);
+                assert.match(error.message, /Automatic reset\/retry is forbidden/);
+                return true;
+            }
+        );
+        assert.equal(poolEndCount, 1);
+    });
+
+    it('guards every initial schema reset without blocking successful post-run cleanup', () => {
+        const runner = fs.readFileSync(
+            path.join(__dirname, '..', 'scripts', 'run-isolated-postgres-tests.js'),
+            'utf8'
+        );
+        const runSuite = runner.slice(
+            runner.indexOf('async function runSuite'),
+            runner.indexOf('async function main')
+        );
+
+        assert.ok(runSuite.includes([
+            '        } else {',
+            '            await assertNoPreservedCheckboxMutationState(testDb);',
+            '            initialSchemaResetAuthorized = true;',
+            '            await resetPublicSchema(testDb);',
+            '        }'
+        ].join('\n')), 'the preserved-state guard must run immediately before every initial reset');
+        assert.ok(runSuite.includes([
+            '            } else if (!initialSchemaResetAuthorized) {',
+            '                process.stderr.write(',
+            "                    '[isolated-db] Initial schema reset was not authorized; preserved Checkbox state remains untouched.\\n'",
+            '                );',
+            '            } else if (!primaryError || !preserveFailedCheckboxMutationState) {',
+            '                await resetPublicSchema(testDb);'
+        ].join('\n')), 'a rejected initial guard must skip cleanup, while authorized successful runs retain cleanup');
+        assert.doesNotMatch(runSuite, /protectCheckboxEvidenceBeforePreflightReset/);
+    });
+
     it('accepts an explicitly confirmed local disposable database', () => {
         const result = assertSafeTestDatabaseUrl(
             'postgresql://tester:secret@127.0.0.1:5432/eventgenix_test',

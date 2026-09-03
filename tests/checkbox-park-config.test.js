@@ -14,6 +14,7 @@ const {
     DEFAULT_CAPABILITIES,
     PilotConfigError,
     parseArgs,
+    pilotConfigTargetLockKey,
     publicPlan,
     run
 } = require('../scripts/configure-checkbox-park-pilot');
@@ -65,7 +66,8 @@ function testConfig(overrides = {}) {
         legalEntityName: 'Park Test FOP',
         taxIdentifier: '1234567890',
         provider: 'checkbox',
-        credentialRef: 'park_middle_test',
+        registerCredentialRef: 'park_middle_test',
+        cashierCredentialRef: 'park_middle_test',
         expectedIsTest: true,
         providerOrganizationId: 'org-test',
         providerOutletId: '',
@@ -323,6 +325,7 @@ class FakePilotConfigClient {
         const normalized = sql.replace(/\s+/g, ' ').trim();
         this.db.queries.push({ sql: normalized, params });
         if (normalized === 'BEGIN' || normalized === 'COMMIT' || normalized === 'ROLLBACK') return { rows: [] };
+        if (normalized.startsWith('SELECT pg_advisory_xact_lock')) return { rows: [] };
         if (normalized.startsWith('SELECT fp.id AS fiscal_profile_id')) {
             const row = this.db.profiles.get(`${params[0]}:${params[1]}`);
             if (!row) return { rows: [] };
@@ -599,6 +602,57 @@ test('park pilot config apply is explicit and idempotent', async () => {
     assert.equal([...db.bindings.values()][0].provider_cashier_id, 'cashier-50');
     assert.equal([...db.items.values()][0].tax_mode, 'taxed');
     assert.equal(db.audits.length, 1);
+});
+
+test('park pilot config rejects ambiguous legacy credentialRef', () => {
+    const config = testConfig({ credentialRef: 'legacy_shared_ref' });
+    delete config.registerCredentialRef;
+    delete config.cashierCredentialRef;
+    assert.throws(
+        () => parseArgs(['--config-file', writeTempConfig(config)]),
+        error => error instanceof PilotConfigError && error.code === 'pilot_config_credential_ref_ambiguous'
+    );
+});
+
+test('park pilot config locks the canonical target before status, preflight, and apply reads', async () => {
+    const basePlan = parseArgs(['apply', ...authorizedMutationArgs]);
+    const changedProviderPlan = parseArgs([
+        'apply',
+        ...authorizedMutationArgs.flatMap((arg, index, list) => {
+            if (arg === '--provider-register-id') return ['--provider-register-id', 'register-2'];
+            return index > 0 && list[index - 1] === '--provider-register-id' ? [] : [arg];
+        })
+    ]);
+    const otherFopPlan = parseArgs([
+        'apply',
+        ...authorizedMutationArgs.flatMap((arg, index, list) => {
+            if (arg === '--legal-entity-key') return ['--legal-entity-key', 'other_fop'];
+            return index > 0 && list[index - 1] === '--legal-entity-key' ? [] : [arg];
+        })
+    ]);
+    assert.equal(
+        pilotConfigTargetLockKey(basePlan),
+        pilotConfigTargetLockKey(changedProviderPlan),
+        'provider values must not split the canonical target lock'
+    );
+    assert.notEqual(pilotConfigTargetLockKey(basePlan), pilotConfigTargetLockKey(otherFopPlan));
+
+    const cases = [
+        ['status', ['status', '--legal-entity-key', 'park_fop'], {}],
+        ['preflight', ['preflight', ...baseArgs], {}],
+        ['apply', ['apply', ...authorizedMutationArgs], { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' }]
+    ];
+    for (const [mode, args, env] of cases) {
+        const db = new FakePilotConfigDb();
+        await run(args, { env, dbPool: db });
+        const beginIndex = db.queries.findIndex(query => query.sql === 'BEGIN');
+        const lockIndex = db.queries.findIndex(query => query.sql.includes('checkbox_pilot_config_target_lock'));
+        const firstTargetReadIndex = db.queries.findIndex(query => query.sql.startsWith('SELECT fp.id AS fiscal_profile_id'));
+        const commitIndex = db.queries.findIndex(query => query.sql === 'COMMIT');
+        assert.ok(beginIndex >= 0 && beginIndex < lockIndex, `${mode} must acquire its target lock inside a transaction`);
+        assert.ok(lockIndex < firstTargetReadIndex, `${mode} must re-read the target only after locking`);
+        assert.ok(firstTargetReadIndex < commitIndex, `${mode} target read must remain in the lock transaction`);
+    }
 });
 
 test('park pilot config file preflight verifies six active CRM ticket mappings and user capabilities', async () => {

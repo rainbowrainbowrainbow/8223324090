@@ -2,12 +2,17 @@
 'use strict';
 
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const fs = require('node:fs');
 const http = require('node:http');
 const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.CASHIER_PAYMENTS_BROWSER_SMOKE_HEADLESS !== 'false';
+const VISUAL_ARTIFACT_DIR = String(process.env.CASHIER_PAYMENTS_VISUAL_ARTIFACT_DIR || '').trim()
+    ? path.resolve(process.env.CASHIER_PAYMENTS_VISUAL_ARTIFACT_DIR)
+    : null;
+const UNRESOLVED_NEXT_RUN_AT = '2026-08-04T21:30:00.000Z';
 
 function requirePlaywright() {
     try { return require('playwright'); }
@@ -30,8 +35,19 @@ const state = {
     confirmKeys: [],
     phase1CloseKeys: [],
     unresolvedAvailable: true,
+    unresolvedPayloadMode: 'normal',
+    unresolvedSnapshotConflictServed: false,
+    unresolvedRequestCount: 0,
     unresolvedDelayMs: 0,
     nextPilotRegisterStateDelayMs: 0,
+    nextCreateDelayMs: 0,
+    nextConfirmDelayMs: 0,
+    orderGetPlans: [],
+    nextReadinessDelayMs: 0,
+    nextSalesReportDelayMs: 0,
+    readinessRequestCount: 0,
+    salesReportRequestCount: 0,
+    unresolvedDisplayOverride: null,
     shift: null,
     serviceOutOperations: new Map(),
     operationCalls: [],
@@ -54,25 +70,86 @@ function readBody(req) {
     });
 }
 
-function permissionPayload(allowed = true) {
+async function captureVisualArtifact(page, filename) {
+    if (!VISUAL_ARTIFACT_DIR) return;
+    fs.mkdirSync(VISUAL_ARTIFACT_DIR, { recursive: true });
+    await page.screenshot({
+        path: path.join(VISUAL_ARTIFACT_DIR, filename),
+        fullPage: true,
+        animations: 'disabled',
+        caret: 'hide'
+    });
+}
+
+function unresolvedSnapshotRevision(orders) {
+    const membership = [...orders]
+        .sort((left, right) => Number(right.id) - Number(left.id))
+        .map(order => [
+            Number(order.id),
+            String(order.paymentStatus || ''),
+            String(order.fiscalStatus || ''),
+            String(order.outboxStatus || ''),
+            String(order.nextRunAt || '')
+        ].join(':'))
+        .join('|');
+    return crypto.createHash('md5').update(membership).digest('hex');
+}
+
+function permissionPayload(allowed = true, { fiscalConfigure = false } = {}) {
     const capabilities = {};
-    for (const key of ['page:/cashier-payments', 'action:payments.view', 'action:payments.create', 'action:payments.confirm_received', 'action:fiscal.shift.open', 'action:fiscal.shift.close', 'action:fiscal.service_in', 'action:fiscal.service_out.request', 'action:fiscal.service_out.approve', 'action:fiscal.refund', 'action:fiscal.reconcile', 'action:fiscal.audit.view']) {
+    const keys = ['page:/cashier-payments', 'action:payments.view', 'action:payments.create', 'action:payments.confirm_received', 'action:fiscal.shift.open', 'action:fiscal.shift.close', 'action:fiscal.service_in', 'action:fiscal.service_out.request', 'action:fiscal.service_out.approve', 'action:fiscal.refund', 'action:fiscal.reconcile', 'action:fiscal.audit.view'];
+    if (fiscalConfigure) keys.push('action:fiscal.configure');
+    for (const key of keys) {
         capabilities[key] = { allowed, source: allowed ? 'server_effective' : 'default_deny', reason: allowed ? 'smoke_allow' : 'smoke_deny', key: key.split(':')[1], type: key.split(':')[0] };
+    }
+    const actions = { 'payments.view': allowed, 'payments.create': allowed, 'payments.confirm_received': allowed, 'fiscal.shift.open': allowed, 'fiscal.shift.close': allowed, 'fiscal.service_in': allowed, 'fiscal.service_out.request': allowed, 'fiscal.service_out.approve': allowed, 'fiscal.refund': allowed, 'fiscal.reconcile': allowed, 'fiscal.audit.view': allowed };
+    const actionAllowlist = allowed ? Object.keys(actions) : [];
+    const actionDenylist = allowed ? [] : Object.keys(actions);
+    if (fiscalConfigure) {
+        actions['fiscal.configure'] = allowed;
+        if (allowed) actionAllowlist.push('fiscal.configure');
+        else actionDenylist.push('fiscal.configure');
     }
     return {
         capabilities,
         pages: { '/cashier-payments': allowed },
-        actions: { 'payments.view': allowed, 'payments.create': allowed, 'payments.confirm_received': allowed, 'fiscal.shift.open': allowed, 'fiscal.shift.close': allowed, 'fiscal.service_in': allowed, 'fiscal.service_out.request': allowed, 'fiscal.service_out.approve': allowed, 'fiscal.refund': allowed, 'fiscal.reconcile': allowed, 'fiscal.audit.view': allowed },
+        actions,
         pageAllowlist: allowed ? ['/cashier-payments'] : [],
         pageDenylist: allowed ? [] : ['/cashier-payments'],
-        actionAllowlist: allowed ? ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open', 'fiscal.shift.close', 'fiscal.service_in', 'fiscal.service_out.request', 'fiscal.service_out.approve', 'fiscal.refund', 'fiscal.reconcile', 'fiscal.audit.view'] : [],
-        actionDenylist: allowed ? [] : ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open', 'fiscal.shift.close', 'fiscal.service_in', 'fiscal.service_out.request', 'fiscal.service_out.approve', 'fiscal.refund', 'fiscal.reconcile', 'fiscal.audit.view'],
+        actionAllowlist,
+        actionDenylist,
         capabilityCatalog: {
             pageRoles: { '/cashier-payments': ['reception'] },
-            actionRoles: { 'payments.view': ['reception'], 'payments.create': ['reception'], 'payments.confirm_received': ['reception'], 'fiscal.shift.open': ['reception'], 'fiscal.shift.close': ['reception'], 'fiscal.service_in': ['reception'], 'fiscal.service_out.request': ['reception'], 'fiscal.service_out.approve': ['administrator'], 'fiscal.refund': ['administrator'], 'fiscal.reconcile': ['administrator'], 'fiscal.audit.view': ['reception'] },
+            actionRoles: { 'payments.view': ['reception'], 'payments.create': ['reception'], 'payments.confirm_received': ['reception'], 'fiscal.shift.open': ['reception'], 'fiscal.shift.close': ['reception'], 'fiscal.service_in': ['reception'], 'fiscal.service_out.request': ['reception'], 'fiscal.service_out.approve': ['administrator'], 'fiscal.refund': ['administrator'], 'fiscal.reconcile': ['administrator'], 'fiscal.audit.view': ['reception'], ...(fiscalConfigure ? { 'fiscal.configure': ['creator'] } : {}) },
             pageAliases: {}, actionAliases: {}, actionLegacyKeys: {}, explicitAllowDisabledPages: [], explicitAllowDisabledActions: [], nonDelegableActions: []
         }
     };
+}
+
+function artDirectorPermissionPayload() {
+    const payload = permissionPayload(true);
+    const deniedActions = [
+        'finance.manage',
+        'fiscal.configure',
+        'fiscal.service_in',
+        'fiscal.service_out.request',
+        'fiscal.service_out.approve',
+        'fiscal.refund',
+        'fiscal.reconcile'
+    ];
+    for (const action of deniedActions) {
+        payload.actions[action] = false;
+        payload.capabilities[`action:${action}`] = {
+            allowed: false,
+            source: 'default_deny',
+            reason: 'art_director_boundary',
+            key: action,
+            type: 'action'
+        };
+        payload.actionAllowlist = payload.actionAllowlist.filter(value => value !== action);
+        if (!payload.actionDenylist.includes(action)) payload.actionDenylist.push(action);
+    }
+    return payload;
 }
 
 function orderDetails(order) {
@@ -104,7 +181,7 @@ function orderDetails(order) {
         },
         items: [{ id: 1, lineNumber: 1, itemType: 'admission_ticket', itemCode: 'regular_child', itemName: 'Вхідний квиток парку', unitPriceMinor: '50000', quantityMillis: '1000', totalAmountMinor: '50000', currency: 'UAH', taxReference: 'admission_tariff:smoke' }],
         fiscalOperation: order.paymentStatus === 'confirmed' ? { id: 8, fiscalShiftId: state.shift?.id || null, status: order.fiscalStatus, provider: 'checkbox', providerOperationId: 'provider-smoke', providerStatus: order.fiscalStatus } : null,
-        outboxJob: order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized' ? { id: 77, jobType: 'receipt_sell', status: 'queued', externalStage: 'receipt_lookup', attempts: 0, maxAttempts: 10, nextRunAt: '2026-08-04T10:01:00.000Z', lastErrorCode: null } : null,
+        outboxJob: order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized' ? { id: 77, jobType: 'receipt_sell', status: 'queued', externalStage: 'receipt_lookup', attempts: 0, maxAttempts: 10, nextRunAt: UNRESOLVED_NEXT_RUN_AT, lastErrorCode: null } : null,
         receipts: order.fiscalStatus === 'fiscalized' ? [{ id: 9, fiscalOperationId: 8, paymentOrderId: order.id, receiptType: 'sale', status: 'fiscalized', provider: 'checkbox', providerReceiptId: 'chk-smoke', providerTaxUrl: 'https://api.checkbox.ua/check', providerPdfUrl: 'https://api.checkbox.ua/check.pdf', providerQrUrl: 'https://api.checkbox.ua/qr', totalAmountMinor: '50000', currency: 'UAH', fiscalizedAt: '2026-08-04T10:00:01.000Z' }] : [],
         artifacts: order.fiscalStatus === 'fiscalized' ? { taxUrl: 'https://api.checkbox.ua/check', pdfUrl: 'https://api.checkbox.ua/check.pdf', qrUrl: 'https://api.checkbox.ua/qr' } : { taxUrl: null, pdfUrl: null, qrUrl: null }
     };
@@ -176,15 +253,76 @@ async function handleApi(req, res, url) {
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
         return json(res, 200, registerStatePayload());
     }
-    if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
+    if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') {
+        state.readinessRequestCount += 1;
+        const delayMs = Math.max(0, Number(state.nextReadinessDelayMs || 0));
+        state.nextReadinessDelayMs = 0;
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
+        return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
+    }
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
+        state.unresolvedRequestCount += 1;
         const delayMs = Math.max(0, Number(state.unresolvedDelayMs || 0));
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
         if (!state.unresolvedAvailable) return json(res, 503, { success: false, code: 'queue_unavailable', error: 'queue unavailable' });
+        if (state.unresolvedPayloadMode === 'malformed') {
+            return json(res, 200, { success: true, page: 1, pageSize: 50, registerCount: 0, myCount: 0, hasMore: false });
+        }
+        if (state.unresolvedPayloadMode === 'snapshot_changed') {
+            const page = Math.max(1, Number(url.searchParams.get('page') || 1));
+            const makeOrder = id => ({
+                id,
+                isMine: true,
+                orderKey: `admission_ticket:pagination-${id}`,
+                paymentStatus: 'confirmed',
+                fiscalStatus: 'unknown',
+                rawFiscalStatus: 'unknown',
+                totalAmountMinor: '10000',
+                currency: 'UAH',
+                confirmedAt: '2026-08-04T10:00:00.000Z',
+                outboxStatus: 'failed',
+                nextRunAt: UNRESOLVED_NEXT_RUN_AT,
+                incidentReason: null
+            });
+            if (url.searchParams.has('cursor')) {
+                const expectedOrders = Array.from({ length: 51 }, (_, index) => makeOrder(50050 - index));
+                const expectedRevision = unresolvedSnapshotRevision(expectedOrders);
+                assert.equal(page, 2, 'snapshot continuation requests the next logical page');
+                assert.equal(url.searchParams.get('cursor'), '50001', 'snapshot continuation sends the exact server cursor');
+                assert.equal(url.searchParams.get('snapshotRevision'), expectedRevision, 'snapshot continuation sends the exact server revision');
+                state.unresolvedSnapshotConflictServed = true;
+                return json(res, 409, {
+                    success: false,
+                    code: 'unresolved_snapshot_changed',
+                    error: 'unresolved snapshot changed'
+                });
+            }
+            if (state.unresolvedSnapshotConflictServed) {
+                return json(res, 503, { success: false, code: 'queue_unavailable', error: 'queue unavailable after snapshot conflict' });
+            }
+            const orders = Array.from({ length: 50 }, (_, index) => makeOrder(50050 - index));
+            const snapshotRevision = unresolvedSnapshotRevision([...orders, makeOrder(50000)]);
+            return json(res, 200, {
+                success: true,
+                fiscalProfileId: 1,
+                fiscalLocationId: 7,
+                fiscalRegisterId: 10,
+                registerWide: true,
+                page,
+                pageSize: 50,
+                registerCount: 51,
+                myCount: 51,
+                hasMore: true,
+                snapshotRevision,
+                nextCursor: '50001',
+                orders
+            });
+        }
         const orders = [...state.orders.values()]
             .filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized')
             .map(order => ({
                 id: order.id,
+                isMine: true,
                 orderKey: `admission_ticket:${order.sourceId}`,
                 paymentStatus: order.paymentStatus,
                 fiscalStatus: order.fiscalStatus === 'failed' ? 'failed_retryable' : order.fiscalStatus,
@@ -193,23 +331,33 @@ async function handleApi(req, res, url) {
                 currency: 'UAH',
                 confirmedAt: '2026-08-04T10:00:00.000Z',
                 outboxStatus: 'queued',
-                nextRunAt: '2026-08-04T10:01:00.000Z',
-                incidentReason: null
-            }));
+                nextRunAt: UNRESOLVED_NEXT_RUN_AT,
+                incidentReason: null,
+                ...(state.unresolvedDisplayOverride || {})
+            }))
+            .sort((left, right) => Number(right.id) - Number(left.id));
         return json(res, 200, {
             success: true,
             fiscalProfileId: 1,
+            fiscalLocationId: 7,
             fiscalRegisterId: 10,
+            registerWide: true,
             page: 1,
             pageSize: 50,
             totalCount: orders.length,
             registerCount: orders.length,
             myCount: orders.filter(order => order.isMine === true).length,
             hasMore: false,
+            snapshotRevision: unresolvedSnapshotRevision(orders),
+            nextCursor: null,
             orders
         });
     }
     if (url.pathname === '/api/payments/checkbox-sales-report' && req.method === 'GET') {
+        state.salesReportRequestCount += 1;
+        const delayMs = Math.max(0, Number(state.nextSalesReportDelayMs || 0));
+        state.nextSalesReportDelayMs = 0;
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
         const orders = [...state.orders.values()]
             .filter(order => order.paymentStatus === 'confirmed')
             .map(order => ({
@@ -226,6 +374,9 @@ async function handleApi(req, res, url) {
     }
     if (url.pathname === '/api/payments/admission-ticket/orders' && req.method === 'POST') {
         const body = await readBody(req);
+        const delayMs = Math.max(0, Number(state.nextCreateDelayMs || 0));
+        state.nextCreateDelayMs = 0;
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
         const key = req.headers['idempotency-key'];
         state.createKeys.push(key);
         const replay = [...state.orders.values()].find(order => order.createKey === key);
@@ -299,9 +450,17 @@ async function handleApi(req, res, url) {
     const orderMatch = url.pathname.match(/^\/api\/payments\/orders\/(\d+)(\/confirm)?$/);
     if (orderMatch && req.method === 'GET') {
         const order = state.orders.get(Number(orderMatch[1]));
-        return order ? json(res, 200, orderDetails(order)) : json(res, 404, { success: false, code: 'payment_order_not_found' });
+        if (!order) return json(res, 404, { success: false, code: 'payment_order_not_found' });
+        const plan = state.orderGetPlans.shift() || null;
+        const responseOrder = plan?.orderPatch ? { ...order, ...plan.orderPatch } : order;
+        const responseBody = orderDetails(responseOrder);
+        if (plan?.delayMs) await new Promise(resolve => setTimeout(resolve, Number(plan.delayMs)));
+        return json(res, 200, responseBody);
     }
     if (orderMatch && orderMatch[2] && req.method === 'POST') {
+        const delayMs = Math.max(0, Number(state.nextConfirmDelayMs || 0));
+        state.nextConfirmDelayMs = 0;
+        if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
         const order = state.orders.get(Number(orderMatch[1]));
         if (!order) return json(res, 404, { success: false, code: 'payment_order_not_found' });
         const key = req.headers['idempotency-key'];
@@ -466,11 +625,14 @@ async function assertNoCashierPageOverflow(page) {
                 viewportWidth,
                 documentScrollWidth: document.documentElement.scrollWidth,
                 bodyScrollWidth: document.body.scrollWidth,
+                tableScrollWidth: document.querySelector('.cashier-table-wrap')?.scrollWidth || 0,
+                tableClientWidth: document.querySelector('.cashier-table-wrap')?.clientWidth || 0,
                 offenders
             };
         });
         assert.ok(layout.documentScrollWidth <= layout.viewportWidth + 1, `document does not overflow at ${width}px: ${JSON.stringify(layout)}`);
         assert.ok(layout.bodyScrollWidth <= layout.viewportWidth + 1, `body does not overflow at ${width}px: ${JSON.stringify(layout)}`);
+        assert.ok(layout.tableScrollWidth <= layout.tableClientWidth + 1, `positions table stays readable without hidden horizontal scrolling at ${width}px: ${JSON.stringify(layout)}`);
         assert.deepEqual(layout.offenders, [], `cashier cards stay inside the viewport at ${width}px`);
     }
     await page.setViewportSize({ width: 1280, height: 900 });
@@ -479,8 +641,8 @@ async function assertNoCashierPageOverflow(page) {
     }, originalDisclosureState);
 }
 
-async function darkWarningContrast(page) {
-    return page.evaluate(() => {
+async function elementContrast(page, selector) {
+    return page.evaluate(targetSelector => {
         const parse = value => {
             const match = String(value || '').match(/rgba?\(([^)]+)\)/i);
             if (!match) return null;
@@ -502,7 +664,7 @@ async function darkWarningContrast(page) {
             return channel <= 0.04045 ? channel / 12.92 : ((channel + 0.055) / 1.055) ** 2.4;
         };
         const luminance = color => 0.2126 * linear(color.r) + 0.7152 * linear(color.g) + 0.0722 * linear(color.b);
-        const panel = document.getElementById('cashierReadinessStatus');
+        const panel = document.querySelector(targetSelector);
         const chain = [];
         for (let node = panel; node; node = node.parentElement) chain.push(node);
         let background = { r: 255, g: 255, b: 255, a: 1 };
@@ -518,7 +680,7 @@ async function darkWarningContrast(page) {
             foreground: getComputedStyle(panel).color,
             background: getComputedStyle(panel).backgroundColor
         };
-    });
+    }, selector);
 }
 
 async function run() {
@@ -527,14 +689,47 @@ async function run() {
     const base = `http://127.0.0.1:${server.address().port}`;
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
-        let context = await browser.newContext();
+        let context = await browser.newContext({ timezoneId: 'UTC' });
         await context.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         let page = await context.newPage();
         await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedQueueState === 'available');
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await captureVisualArtifact(page, '01-light-ready-empty.png');
         await assertPaymentStepState(page, { 1: 'active', 2: 'inactive', 3: 'inactive' });
+        assert.equal(await page.isHidden('#cashierReadinessDetails'), true, 'ordinary cashier does not see fiscal configuration diagnostics');
+        assert.equal(await page.textContent('#cashierReadinessTechnicalList'), '', 'ordinary cashier receives no rendered technical checklist');
+        const cashierProSelector = '[data-cashier-pro-page], [data-cashier-pro], #operationalContourPanel, #serviceInForm, #serviceOutForm, #serviceOutApprovalPanel, #refundForm, #reconciliationForm, #closeShiftBtn, #loadOperationalReportBtn, script[src*="cashier-payments-pro"]';
+        assert.equal(await page.locator(cashierProSelector).count(), 0, 'thin page does not load any Cashier PRO markup or module');
+        assert.equal(state.operationCalls.length, 0, 'opening the thin page performs no Cashier PRO request');
+        assert.deepEqual(await page.evaluate(() => ({
+            apiUa: window.CashierPaymentsPage.isTrustedCheckboxUrl('https://api.checkbox.ua/receipt'),
+            apiInUa: window.CashierPaymentsPage.isTrustedCheckboxUrl('https://api.checkbox.in.ua/receipt'),
+            subdomain: window.CashierPaymentsPage.isTrustedCheckboxUrl('https://files.checkbox.ua/receipt'),
+            deceptive: window.CashierPaymentsPage.isTrustedCheckboxUrl('https://api.checkbox.ua.attacker.test/receipt'),
+            http: window.CashierPaymentsPage.isTrustedCheckboxUrl('http://api.checkbox.ua/receipt')
+        })), { apiUa: true, apiInUa: true, subdomain: false, deceptive: false, http: false }, 'receipt artifacts use the exact server host allowlist');
+
+        const readinessCallsBefore = state.readinessRequestCount;
+        state.nextReadinessDelayMs = 300;
+        await page.click('#refreshReadinessBtn');
+        await page.waitForFunction(() => {
+            const button = document.getElementById('refreshReadinessBtn');
+            return button?.disabled === true
+                && button.getAttribute('aria-busy') === 'true'
+                && button.textContent.trim() === 'Оновлюємо готовність…';
+        });
+        assert.equal(await page.getAttribute('#cashierReadinessStatus', 'aria-busy'), 'true', 'readiness region exposes its busy state');
+        assert.equal((await page.textContent('#cashierReadinessSummary')).trim(), 'Оновлюємо готовність Checkbox…', 'readiness summary explains the active refresh');
+        await page.waitForFunction(() => {
+            const button = document.getElementById('refreshReadinessBtn');
+            return button?.disabled === false
+                && button.getAttribute('aria-busy') === 'false'
+                && button.textContent.trim() === 'Оновити готовність Checkbox';
+        });
+        assert.equal(state.readinessRequestCount, readinessCallsBefore + 1, 'one readiness click sends one provider probe');
 
         assert.equal(await page.evaluate(() => document.getElementById('unresolvedOrdersPanel') instanceof HTMLDetailsElement), true, 'unresolved receipts use a native disclosure');
         assert.equal(await page.evaluate(() => document.getElementById('checkboxSalesReportPanel') instanceof HTMLDetailsElement), true, 'sales report uses a native disclosure');
@@ -550,32 +745,113 @@ async function run() {
         await page.keyboard.press('Enter');
         assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), '', 'sales report opens from the keyboard');
         assert.equal(await page.evaluate(() => document.activeElement === document.querySelector('#checkboxSalesReportPanel > summary')), true, 'sales report keeps focus on its summary');
+        const reportCallsBefore = state.salesReportRequestCount;
+        state.nextSalesReportDelayMs = 300;
+        await page.click('#loadCheckboxSalesReportBtn');
+        await page.waitForFunction(() => {
+            const button = document.getElementById('loadCheckboxSalesReportBtn');
+            return button?.disabled === true
+                && button.getAttribute('aria-busy') === 'true'
+                && button.textContent.trim() === 'Формуємо звіт…';
+        });
+        assert.equal(await page.getAttribute('#checkboxSalesReportBody', 'aria-busy'), 'true', 'report region exposes its busy state');
+        assert.equal((await page.textContent('#checkboxSalesReportBody')).trim(), 'Формуємо звіт…', 'report region explains the active request');
+        await page.waitForFunction(() => {
+            const button = document.getElementById('loadCheckboxSalesReportBtn');
+            return button?.disabled === false
+                && button.getAttribute('aria-busy') === 'false'
+                && button.textContent.trim() === 'Показати звіт';
+        });
+        assert.equal(state.salesReportRequestCount, reportCallsBefore + 1, 'one report click sends one report request');
         await assertCanonicalCashierButtons(page);
         await assertNoCashierPageOverflow(page);
+        await page.focus('#checkboxSalesReportPanel > summary');
         await page.keyboard.press('Enter');
         assert.equal(await page.getAttribute('#checkboxSalesReportPanel', 'open'), null, 'sales report closes from the keyboard');
 
         await page.fill('#paymentKidsCount', '1');
         state.nextPilotRegisterStateDelayMs = 400;
+        state.nextCreateDelayMs = 300;
+        // Keep the register-wide queue refresh observable even if a scheduled
+        // readiness request consumes the one-shot pilot-state delay first.
+        state.unresolvedDelayMs = 500;
         await page.click('#createPaymentOrderBtn');
-        await page.waitForSelector('#cancelDraftOrderBtn:not(.hidden)');
+        await page.waitForFunction(() => {
+            const button = document.getElementById('createPaymentOrderBtn');
+            return button?.disabled === true
+                && button.getAttribute('aria-busy') === 'true'
+                && button.textContent.trim() === 'Створюємо оплату…';
+        });
+        assert.equal(await page.getAttribute('#paymentOrderForm', 'aria-busy'), 'true', 'payment form exposes the create busy state');
+        assert.equal((await page.textContent('#createPaymentDisabledReason')).trim(), 'Створюємо оплату…', 'create disabled reason explains the active request');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
         assert.equal(await page.isDisabled('#cashReceivedAmount'), true, 'a newly rendered draft stays fail-closed until its register queue refresh completes');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'confirmation stays fail-closed while the refreshed register state is pending');
-        assert.equal(await page.locator('#unresolvedOrdersBody [data-queue-state="checking"]').count(), 1, 'the visible queue state immediately explains the temporary block');
+        await page.waitForSelector('#cancelDraftOrderBtn:not(.hidden)');
         await page.waitForSelector('#cashReceivedAmount:not([disabled])');
+        state.unresolvedDelayMs = 0;
+        assert.equal(await page.getAttribute('#createPaymentOrderBtn', 'aria-busy'), 'false', 'create busy state clears after the request');
+        assert.equal((await page.textContent('#createPaymentOrderBtn')).trim(), 'Створити оплату', 'create button restores its Ukrainian label');
         await assertPaymentStepState(page, { 1: 'complete', 2: 'active', 3: 'inactive' });
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount', 'creating a cash draft focuses the received amount');
+        assert.equal((await page.textContent('#cashierRegister')).trim(), 'парк / середня каса', 'order snapshot keeps the localized park and middle register context');
+        assert.doesNotMatch(await page.textContent('#paymentItemsBody'), /admission_tariff:smoke/, 'cashier positions do not render internal tax references');
+        assert.doesNotMatch(await page.textContent('#paymentItemsBody'), /regular_child/, 'cashier positions do not render internal CRM item codes');
         await page.fill('#cashReceivedAmount', '600');
+        state.nextConfirmDelayMs = 300;
         await page.click('#confirmCashBtn');
+        await page.waitForFunction(() => {
+            const button = document.getElementById('confirmCashBtn');
+            return button?.disabled === true
+                && button.getAttribute('aria-busy') === 'true'
+                && button.textContent.trim() === 'Підтверджуємо оплату…';
+        });
+        assert.equal(await page.getAttribute('[data-payment-step="2"]', 'aria-busy'), 'true', 'confirmation step exposes the active payment request');
+        assert.equal((await page.textContent('#confirmDisabledReason')).trim(), 'Підтверджуємо оплату…', 'confirmation reason explains the active request');
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
-        await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
+        assert.equal(await page.getAttribute('#confirmCashBtn', 'aria-busy'), 'false', 'confirmation busy state clears after the request');
+        assert.equal((await page.textContent('#confirmCashBtn')).trim(), 'Готівку отримано — створити чек', 'confirmation button restores its Ukrainian label');
+        const unresolvedAccessibleName = await page.getAttribute('#unresolvedOrdersBody [data-order-id]', 'aria-label');
+        assert.match(unresolvedAccessibleName, new RegExp(`RCP-${state.nextOrderId}`), 'unresolved accessible name identifies the order');
+        assert.match(unresolvedAccessibleName, /сума.+оплата.+фіскалізація.+наступна спроба.+причин/i, 'unresolved accessible name preserves amount, statuses, retry and incident context');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'fiscalResultPanel', 'payment confirmation focuses the fiscal result');
+        assert.match(await page.textContent('#unresolvedOrdersBody [data-order-id]'), /Мій чек/, 'own unresolved payment uses a human ownership label');
+        assert.doesNotMatch(await page.textContent('#unresolvedOrdersBody'), /admission_ticket:/, 'technical order identity is not rendered');
+        const expectedKyivTime = await page.evaluate(timestamp => new Intl.DateTimeFormat('uk-UA', {
+            timeZone: 'Europe/Kyiv',
+            dateStyle: 'short',
+            timeStyle: 'short'
+        }).format(new Date(timestamp)), UNRESOLVED_NEXT_RUN_AT);
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(expectedKyivTime.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')), 'recovery time stays in Europe/Kyiv even when the browser runs in UTC');
+
+        state.unresolvedDisplayOverride = {
+            isMine: false,
+            cashierIdentity: 'user:47',
+            orderKey: 'admission_ticket:do-not-render',
+            fiscalStatus: 'provider_new_state_9000',
+            incidentReason: 'internal_provider_stack_code'
+        };
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="available"]');
+        const sanitizedUnresolvedText = await page.textContent('#unresolvedOrdersBody');
+        const sanitizedUnresolvedLabel = await page.getAttribute('#unresolvedOrdersBody [data-order-id]', 'aria-label');
+        assert.match(sanitizedUnresolvedText, /Касир №47/, 'another cashier is shown with a sanitized register-local label');
+        assert.match(sanitizedUnresolvedText, /потребує перевірки/i, 'unknown provider status uses a safe Ukrainian fallback');
+        assert.match(sanitizedUnresolvedText, /Потрібна перевірка відповідального/i, 'unknown incident uses a safe Ukrainian fallback');
+        assert.doesNotMatch(`${sanitizedUnresolvedText} ${sanitizedUnresolvedLabel}`, /admission_ticket:|user:47|provider_new_state_9000|internal_provider_stack_code/i, 'technical order, cashier, provider and incident codes stay hidden');
+        state.unresolvedDisplayOverride = null;
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="available"]');
+        await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
+        assert.equal(await page.locator('#fiscalReceiptBadge').evaluate(element => element.classList.contains('is-warn')), true, 'pending receipt exposes a visual warning status');
+        assert.equal(await page.locator('#unresolvedOrdersPanel').evaluate(element => element.classList.contains('has-warning')), true, 'unresolved disclosure exposes a visual warning state');
+        await captureVisualArtifact(page, '02-light-pending-unresolved.png');
         assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), '', 'a paid unresolved receipt opens the safety disclosure');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'cash repeat submit is blocked after fiscal pending');
         assert.equal(state.confirmKeys.length, 1, 'cash confirmation should submit once after double-click guard');
         await context.close();
 
-        context = await browser.newContext();
+        context = await browser.newContext({ timezoneId: 'UTC' });
         await context.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         page = await context.newPage();
         await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
@@ -602,25 +878,93 @@ async function run() {
         state.unresolvedDelayMs = 0;
         await page.waitForSelector('#startNextOrderBtn:not([disabled])');
 
+        state.unresolvedPayloadMode = 'malformed';
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'malformed HTTP 200 retains the last known unresolved receipt');
+        assert.equal(await page.isDisabled('#startNextOrderBtn'), true, 'malformed HTTP 200 blocks the next-customer flow');
+        state.unresolvedPayloadMode = 'normal';
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="available"]');
+        await page.waitForSelector('#startNextOrderBtn:not([disabled])');
+
+        state.unresolvedPayloadMode = 'snapshot_changed';
+        state.unresolvedSnapshotConflictServed = false;
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#loadMoreUnresolvedOrdersBtn:not(.hidden):not([disabled])');
+        await page.click('#loadMoreUnresolvedOrdersBtn');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
+        assert.match(await page.textContent('#unresolvedOrdersBody'), /RCP-50050/, 'snapshot conflict keeps the last complete page visible');
+        assert.equal(await page.isDisabled('#startNextOrderBtn'), true, 'snapshot conflict fails closed while the canonical first page cannot reload');
+        state.unresolvedPayloadMode = 'normal';
+        state.unresolvedSnapshotConflictServed = false;
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="available"]');
+        await page.waitForSelector('#startNextOrderBtn:not([disabled])');
+
         await page.reload({ waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#unresolvedOrdersBody [data-order-id]');
         assert.equal(await page.isDisabled('#confirmCardBtn'), true, 'reload keeps pending payment blocked');
-        assert.equal(await page.locator('#operationalContourPanel').isVisible(), false, 'Cashier PRO panel stays hidden when flag is false');
+        assert.equal(await page.locator(cashierProSelector).count(), 0, 'reload still contains no Cashier PRO surface');
+        assert.equal(state.operationCalls.length, 0, 'thin payment flow performs no Cashier PRO request');
         assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'Phase-1 close is blocked while the register has an unresolved receipt');
+        const readinessCallsBeforeFiscalizedNextCustomer = state.readinessRequestCount;
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        assert.equal(
+            state.readinessRequestCount,
+            readinessCallsBeforeFiscalizedNextCustomer + 1,
+            'next customer refreshes provider readiness after the prior sale may have changed the shift context'
+        );
         assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${currentOrderId}`), 'next customer keeps unresolved previous receipt visible');
 
         for (const order of state.orders.values()) order.fiscalStatus = 'fiscalized';
         const current = state.orders.get(currentOrderId);
         await page.goto(`${base}/cashier-payments?orderId=${currentOrderId}`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#providerReceiptLinks:not(.hidden)');
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached' });
         await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
         assert.match(await page.getAttribute('#providerTaxUrl', 'href'), /api\.checkbox\.ua\/check/);
         assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /api\.checkbox\.ua\/check\.pdf/);
         assert.match(await page.getAttribute('#providerQrUrl', 'href'), /api\.checkbox\.ua\/qr/);
+        assert.equal(await page.locator('#fiscalReceiptBadge').evaluate(element => element.classList.contains('is-ok')), true, 'fiscalized receipt exposes a visual success status');
+        assert.equal(await page.locator('#pendingReceiptNotice').evaluate(element => element.classList.contains('hidden')), true, 'server-confirmed empty queue clears the stale local pending notice');
+        assert.doesNotMatch(await page.textContent('#pendingReceiptNotice'), new RegExp(`RCP-${currentOrderId}`), 'fiscalized receipt is removed from local recovery fallback');
+        await page.evaluate(orderIds => {
+            const key = Object.keys(localStorage).find(item => item.endsWith(':pendingOrderIds'));
+            if (!key) throw new Error('scoped pending-order cache key is missing');
+            localStorage.setItem(key, JSON.stringify(orderIds));
+        }, [String(currentOrderId), '888001', '888002']);
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached' });
+        assert.deepEqual(await page.evaluate(() => {
+            const key = Object.keys(localStorage).find(item => item.endsWith(':pendingOrderIds'));
+            return key ? JSON.parse(localStorage.getItem(key) || '[]') : null;
+        }), [], 'a complete authoritative empty snapshot clears every stale local recovery id');
+        state.unresolvedAvailable = false;
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
+        assert.equal(await page.locator('#pendingReceiptNotice').evaluate(element => element.classList.contains('hidden')), true, 'a later queue outage cannot resurrect ids cleared by an authoritative snapshot');
+        assert.doesNotMatch(await page.textContent('#pendingReceiptNotice'), /RCP-(?:888001|888002)/, 'cleared historical recovery ids stay absent during an outage');
+        state.unresolvedAvailable = true;
+        await refreshUnresolvedOrders(page);
+        await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached' });
+        state.orderGetPlans.push(
+            { delayMs: 250, orderPatch: { fiscalStatus: 'pending' } },
+            { delayMs: 0, orderPatch: { fiscalStatus: 'fiscalized' } }
+        );
+        await page.evaluate(async orderId => {
+            const stale = window.CashierPaymentsPage.loadPaymentOrder(orderId, { silent: true });
+            await new Promise(resolve => setTimeout(resolve, 40));
+            const current = window.CashierPaymentsPage.loadPaymentOrder(orderId, { silent: true });
+            await Promise.all([stale, current]);
+        }, currentOrderId);
+        assert.equal((await page.textContent('#fiscalReceiptBadge')).trim(), 'чек створено', 'a delayed stale pending response cannot overwrite a newer fiscalized response');
+        assert.equal(await page.evaluate(() => window.CashierPaymentsPage.state.pollingOrderId), null, 'a delayed stale pending response cannot restart receipt polling');
         await page.waitForSelector('#startNextOrderBtn:not(.hidden)');
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await captureVisualArtifact(page, '05-light-fiscalized-receipt.png');
         state.unresolvedDelayMs = 500;
         await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="checking"]');
@@ -660,6 +1004,8 @@ async function run() {
         await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]');
         assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'Phase-1 close is blocked when the unresolved queue is unavailable');
+        await page.setViewportSize({ width: 1440, height: 1000 });
+        await captureVisualArtifact(page, '07-light-queue-unavailable.png');
         state.unresolvedAvailable = true;
         await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
@@ -692,8 +1038,18 @@ async function run() {
         assert.ok(state.phase1CloseKeys[0], 'Phase-1 close uses a stable Idempotency-Key');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'phase1ShiftStatus', 'focus moves to the confirmed CLOSED status');
 
-        const disabledContext = await browser.newContext();
+        const disabledContext = await browser.newContext({ timezoneId: 'UTC' });
         await disabledContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'true'); });
+        await disabledContext.route('**/api/auth/verify', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ user: { id: 4, name: 'Smoke Creator', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
+        }));
+        await disabledContext.route('**/api/auth/permissions', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(permissionPayload(true, { fiscalConfigure: true }))
+        }));
         await disabledContext.route('**/api/payments/pilot-register-state*', route => route.fulfill({
             status: 200,
             contentType: 'application/json',
@@ -715,7 +1071,21 @@ async function run() {
         await disabledContext.route('**/api/payments/unresolved-orders*', route => route.fulfill({
             status: 200,
             contentType: 'application/json',
-            body: JSON.stringify({ success: true, page: 1, pageSize: 50, totalCount: 0, registerCount: 0, myCount: 0, hasMore: false, orders: [] })
+            body: JSON.stringify({
+                success: true,
+                fiscalProfileId: 1,
+                fiscalLocationId: 7,
+                fiscalRegisterId: 10,
+                registerWide: true,
+                page: 1,
+                pageSize: 50,
+                registerCount: 0,
+                myCount: 0,
+                hasMore: false,
+                snapshotRevision: 'd41d8cd98f00b204e9800998ecf8427e',
+                nextCursor: null,
+                orders: []
+            })
         }));
         const disabledPage = await disabledContext.newPage();
         await disabledPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
@@ -724,6 +1094,7 @@ async function run() {
         assert.equal(readinessSummary, 'Оплати поки вимкнені — сторінка працює лише для перегляду.');
         assert.ok(readinessSummary.length < 90, 'cashier-facing readiness remains concise');
         assert.doesNotMatch(readinessSummary, /CHECKBOX_|mapping|credential|provider|runtime|register|pending|unknown/i, 'cashier-facing readiness hides raw technical language');
+        assert.equal(await disabledPage.isHidden('#cashierAccessDenied'), true, 'creator keeps thin payment page access in disabled view-only mode');
         assert.equal(await disabledPage.isDisabled('#createPaymentOrderBtn'), true, 'disabled integration keeps payment creation fail closed');
         assert.equal(await disabledPage.getAttribute('#cashierReadinessDetails', 'open'), null, 'administrator details start collapsed');
         await disabledPage.focus('#cashierReadinessDetails > summary');
@@ -732,11 +1103,88 @@ async function run() {
         assert.equal(await disabledPage.evaluate(() => document.activeElement === document.querySelector('#cashierReadinessDetails > summary')), true, 'administrator disclosure keeps keyboard focus');
         const technicalReadiness = (await disabledPage.textContent('#cashierReadinessTechnicalList')).trim();
         assert.match(technicalReadiness, /Інтеграція Checkbox вимкнена|Глобальна інтеграція Checkbox вимкнена/, 'technical reasons remain available to an administrator');
-        const contrast = await darkWarningContrast(disabledPage);
+        const contrast = await elementContrast(disabledPage, '#cashierReadinessStatus');
         assert.ok(contrast.ratio >= 4.5, `dark warning contrast is WCAG AA: ${JSON.stringify(contrast)}`);
+        await disabledPage.evaluate(() => {
+            const samples = document.createElement('div');
+            samples.id = 'cashierContrastSamples';
+            samples.innerHTML = [
+                '<span data-contrast="pill" class="cashier-pill">службова позначка</span>',
+                '<span data-contrast="ok" class="cashier-status is-ok">готово</span>',
+                '<span data-contrast="warn" class="cashier-status is-warn">очікує</span>',
+                '<span data-contrast="danger" class="cashier-status is-danger">помилка</span>'
+            ].join('');
+            document.querySelector('#main-content').appendChild(samples);
+        });
+        for (const kind of ['pill', 'ok', 'warn', 'danger']) {
+            const sampleContrast = await elementContrast(disabledPage, `[data-contrast="${kind}"]`);
+            assert.ok(sampleContrast.ratio >= 4.5, `dark ${kind} badge contrast is WCAG AA: ${JSON.stringify(sampleContrast)}`);
+        }
+        await disabledPage.locator('#cashierContrastSamples').evaluate(element => element.remove());
+        await disabledPage.setViewportSize({ width: 1440, height: 1000 });
+        await captureVisualArtifact(disabledPage, '03-dark-disabled-admin.png');
+        await disabledPage.setViewportSize({ width: 390, height: 844 });
+        await captureVisualArtifact(disabledPage, '04-dark-disabled-admin-mobile.png');
         await disabledContext.close();
 
-        const deniedContext = await browser.newContext();
+        state.unresolvedAvailable = true;
+        state.unresolvedPayloadMode = 'normal';
+        const artDirectorContext = await browser.newContext({ timezoneId: 'UTC', viewport: { width: 1440, height: 1000 } });
+        await artDirectorContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
+        await artDirectorContext.route('**/api/auth/verify', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ user: { id: 44, name: 'Smoke Art Director', role: 'art_director', roles: ['art_director'], businessProfile: 'event_genix' } })
+        }));
+        await artDirectorContext.route('**/api/auth/permissions', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(artDirectorPermissionPayload())
+        }));
+        const artDirectorPage = await artDirectorContext.newPage();
+        await artDirectorPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await artDirectorPage.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        assert.equal(await artDirectorPage.isHidden('#cashierAccessDenied'), true, 'art director keeps thin payment page access');
+        assert.deepEqual(await artDirectorPage.evaluate(() => ({
+            paymentsView: window.canUseAction?.('payments.view'),
+            paymentsCreate: window.canUseAction?.('payments.create'),
+            financeManage: window.canUseAction?.('finance.manage'),
+            fiscalConfigure: window.canUseAction?.('fiscal.configure'),
+            fiscalRefund: window.canUseAction?.('fiscal.refund')
+        })), {
+            paymentsView: true,
+            paymentsCreate: true,
+            financeManage: false,
+            fiscalConfigure: false,
+            fiscalRefund: false
+        }, 'art director receives thin payment capabilities without finance or Cashier PRO mutation rights');
+        assert.equal(await artDirectorPage.isHidden('#cashierReadinessDetails'), true, 'art director cannot see fiscal configuration diagnostics');
+        assert.equal(await artDirectorPage.locator('a[href="/cashier-payments"]').filter({ hasText: 'Оплата та чек' }).count(), 1, 'art director sees the thin payment navigation entry');
+        await captureVisualArtifact(artDirectorPage, '06-light-art-director-ready.png');
+        await artDirectorContext.close();
+
+        state.unresolvedAvailable = true;
+        state.unresolvedPayloadMode = 'normal';
+        const freshnessContext = await browser.newContext({ timezoneId: 'UTC' });
+        await freshnessContext.addInitScript(() => {
+            localStorage.setItem('pzp_token', 'smoke-token');
+            localStorage.setItem('pzp_dark_mode', 'false');
+            window.__EVENTGENIX_TEST_CASHIER_QUEUE_TIMING__ = { ttlMs: 300, retryMinMs: 100, retryMaxMs: 200 };
+        });
+        const freshnessPage = await freshnessContext.newPage();
+        await freshnessPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await freshnessPage.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        const requestsBeforeExpiry = state.unresolvedRequestCount;
+        state.unresolvedAvailable = false;
+        await freshnessPage.waitForSelector('#unresolvedOrdersBody [data-queue-state="queue_unavailable"]', { timeout: 3000 });
+        assert.ok(state.unresolvedRequestCount > requestsBeforeExpiry, 'the queue is refreshed automatically before its bounded freshness expires');
+        assert.equal(await freshnessPage.isDisabled('#createPaymentOrderBtn'), true, 'an expired queue that cannot refresh blocks payment creation');
+        state.unresolvedAvailable = true;
+        await freshnessPage.waitForSelector('#createPaymentOrderBtn:not([disabled])', { timeout: 3000 });
+        assert.ok(state.unresolvedRequestCount > requestsBeforeExpiry + 1, 'bounded backoff automatically recovers the queue after an outage');
+        await freshnessContext.close();
+
+        const deniedContext = await browser.newContext({ timezoneId: 'UTC' });
         await deniedContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         await deniedContext.route('**/api/auth/permissions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(permissionPayload(false)) }));
         const deniedPage = await deniedContext.newPage();

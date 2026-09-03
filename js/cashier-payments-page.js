@@ -15,14 +15,31 @@
     const READINESS_REFRESH_MAX_MS = 60000;
     const READINESS_REQUEST_TIMEOUT_MS = 8000;
     const UNRESOLVED_PAGE_SIZE = 50;
+    const KYIV_DATE_TIME_FORMATTER = new Intl.DateTimeFormat('uk-UA', {
+        timeZone: 'Europe/Kyiv',
+        dateStyle: 'short',
+        timeStyle: 'short'
+    });
+    const UNRESOLVED_QUEUE_TTL_MS = boundedTestTiming('ttlMs', 60000);
+    const UNRESOLVED_REFRESH_MIN_MS = boundedTestTiming('retryMinMs', 15000);
+    const UNRESOLVED_REFRESH_MAX_MS = Math.max(
+        UNRESOLVED_REFRESH_MIN_MS,
+        boundedTestTiming('retryMaxMs', 60000)
+    );
     const PHASE1_CLOSE_POLL_INTERVAL_MS = 2500;
     const PHASE1_CLOSE_POLL_TIMEOUT_MS = 60000;
+
+    function boundedTestTiming(key, fallback) {
+        const value = Number(window.__EVENTGENIX_TEST_CASHIER_QUEUE_TIMING__?.[key]);
+        if (!Number.isFinite(value) || value < 100) return fallback;
+        // A browser-local test hook may only shorten safety windows, never relax them.
+        return Math.min(fallback, Math.floor(value));
+    }
 
     const state = {
         user: null,
         orderDetails: null,
         registerState: null,
-        cashierProEnabled: false,
         createInFlight: false,
         confirmInFlight: false,
         confirmSubmitted: false,
@@ -31,6 +48,9 @@
         unresolvedOrders: [],
         unresolvedPage: 0,
         unresolvedPageSize: UNRESOLVED_PAGE_SIZE,
+        unresolvedSnapshotRevision: null,
+        unresolvedNextCursor: null,
+        unresolvedSnapshotRestartPending: false,
         unresolvedRegisterCount: 0,
         unresolvedMyCount: 0,
         unresolvedHasMore: false,
@@ -39,7 +59,11 @@
         unresolvedLastKnownSummary: { registerCount: 0, myCount: 0 },
         unresolvedLastRefreshAt: null,
         unresolvedLastError: null,
+        unresolvedRefreshTimer: null,
+        unresolvedRefreshBackoffMs: UNRESOLVED_REFRESH_MIN_MS,
+        unresolvedAutoRefreshEnabled: false,
         readinessInFlight: false,
+        nextCustomerSafetyRefreshInFlight: false,
         readinessTimer: null,
         readinessBackoffMs: READINESS_REFRESH_MIN_MS,
         phase1CloseConfirmationInFlight: false,
@@ -49,6 +73,7 @@
         phase1CloseTargetShiftId: null,
         phase1ClosePollingPaused: false,
         tender: 'cash',
+        orderLoadGeneration: 0,
         pollingTimer: null,
         pollingOrderId: null,
         pollingStartedAt: 0
@@ -70,7 +95,7 @@
 
     function setText(id, value) {
         const el = $(id);
-        if (el) el.textContent = value == null || value === '' ? '?' : String(value);
+        if (el) el.textContent = value == null || value === '' ? '—' : String(value);
     }
 
     function safeJson(value) {
@@ -88,16 +113,16 @@
             draft: 'чернетка', unpaid: 'не оплачено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита', blocked: 'заблоковано',
             payment_recorded: 'оплату зафіксовано', fiscalized: 'чек створено', failed: 'помилка з повтором', failed_retryable: 'помилка, буде повтор', failed_terminal: 'помилка без автоповтору', dead: 'потрібна ручна перевірка', cancelled: 'скасовано',
             validation_failed: 'помилка перевірки', ready_to_send: 'готово до відправки', sending: 'відправляється', validating: 'перевіряється', not_open: 'не відкрита', not_required: 'не потрібен',
-            mapping_missing: 'налаштування каси відсутнє', credentials_missing: 'доступи не налаштовані', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', ready: 'готово'
+            mapping_missing: 'налаштування каси відсутнє', credentials_missing: 'доступи не налаштовані', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', paid_sale_closed_shift_reconciliation_required: 'потрібна ручна звірка оплаченого чека', ready: 'готово'
         };
-        return labels[status] || status;
+        return labels[status] || 'потребує перевірки';
     }
 
     function classifyStatus(value) {
         const status = normalizeStatus(value);
         if (['confirmed', 'payment_recorded', 'fiscalized', 'open', 'closed'].includes(status)) return 'is-ok';
         if (['pending', 'unknown', 'ready_to_send', 'sending', 'validating', 'opening', 'closing', 'failed', 'failed_retryable'].includes(status)) return 'is-warn';
-        if (['failed_terminal', 'dead', 'validation_failed', 'blocked', 'cancelled'].includes(status)) return 'is-danger';
+        if (['failed_terminal', 'dead', 'validation_failed', 'blocked', 'cancelled', 'paid_sale_closed_shift_reconciliation_required'].includes(status)) return 'is-danger';
         return '';
     }
 
@@ -106,11 +131,15 @@
         return profile === 'event_genix' ? 'парк' : (profile || '—');
     }
 
-    function formatLocationRegister(locationValue, registerValue) {
+    function formatLocationRegister(locationValue, registerValue, registerDisplayName = '', locationDisplayName = '') {
         const location = String(locationValue || '').trim();
         const register = String(registerValue || '').trim();
-        const locationLabel = location === 'park' ? 'парк' : (location || '—');
-        const registerLabel = register === 'middle' ? 'середня каса' : (register || '—');
+        const locationLabel = location.toLowerCase() === 'park'
+            ? 'парк'
+            : (String(locationDisplayName || '').trim() || 'локація');
+        const registerLabel = register.toLowerCase() === 'middle'
+            ? 'середня каса'
+            : (String(registerDisplayName || '').trim() || 'каса');
         return `${locationLabel} / ${registerLabel}`;
     }
 
@@ -134,6 +163,56 @@
 
     function formatMoneyMinor(value) {
         return new Intl.NumberFormat('uk-UA', { style: 'currency', currency: 'UAH' }).format(minorToNumber(value));
+    }
+
+    function formatKyivDateTime(value) {
+        if (!value) return '—';
+        const date = value instanceof Date ? value : new Date(value);
+        if (Number.isNaN(date.getTime())) return '—';
+        return KYIV_DATE_TIME_FORMATTER.format(date);
+    }
+
+    function formatUnresolvedOwnership(order = {}) {
+        if (order.isMine === true) return 'Мій чек';
+        const identity = String(order.cashierIdentity || '').trim();
+        const userMatch = identity.match(/^user:(\d+)$/i);
+        return userMatch ? `Касир №${userMatch[1]}` : 'Інший касир';
+    }
+
+    function formatIncidentReason(value) {
+        const code = normalizeStatus(value);
+        if (!value) return '';
+        const labels = {
+            provider_unavailable: 'Checkbox тимчасово недоступний; система повторить перевірку.',
+            provider_shift_closed_before_sale_submit: 'Зміну закрито до відправлення чека; потрібна ручна звірка.',
+            paid_sale_closed_shift_reconciliation_required: 'Потрібна ручна звірка оплаченого чека.',
+            receipt_validation_failed: 'Checkbox не прийняв дані чека; потрібна перевірка відповідального.',
+            identity_mismatch: 'Дані каси не збігаються; потрібна перевірка відповідального.'
+        };
+        if (labels[code]) return labels[code];
+        if (/(timeout|network|unavailable|provider_5\d\d)/.test(code)) {
+            return 'Checkbox тимчасово не відповів; система повторить перевірку.';
+        }
+        if (/(identity|cashier|organization|register|shift).*mismatch/.test(code)) {
+            return 'Дані каси не збігаються; потрібна перевірка відповідального.';
+        }
+        if (/(validation|malformed|invalid)/.test(code)) {
+            return 'Дані чека не пройшли перевірку; потрібна перевірка відповідального.';
+        }
+        return 'Потрібна перевірка відповідального.';
+    }
+
+    function setButtonBusy(button, busy, busyText) {
+        if (!button) return;
+        if (busy) {
+            if (!button.dataset.idleText) button.dataset.idleText = button.textContent || '';
+            button.textContent = busyText;
+            button.disabled = true;
+        } else if (button.dataset.idleText) {
+            button.textContent = button.dataset.idleText;
+            delete button.dataset.idleText;
+        }
+        button.setAttribute('aria-busy', busy ? 'true' : 'false');
     }
 
     function parseUahToMinor(value) {
@@ -201,21 +280,6 @@
 
     function clearOperationIdempotencyKey(action, target = 'current') {
         storageRemove(operationStorageKey(action, target));
-    }
-
-    function parseAmountInput(id, code) {
-        try {
-            const amount = parseUahToMinor($(id)?.value || '0');
-            if (amount <= 0n) throw new Error(code);
-            return amount.toString();
-        } catch (error) {
-            if (error.message === 'cash_amount_invalid') throw error;
-            throw new Error(code);
-        }
-    }
-
-    function parseNullableAmountInput(id) {
-        return parseUahToMinor($(id)?.value || '0').toString();
     }
 
     function orderStorageScope() {
@@ -310,8 +374,7 @@
             return;
         }
         state.createInFlight = true;
-        const button = $('createPaymentOrderBtn');
-        if (button) button.disabled = true;
+        syncCreateAvailability();
         try {
             const payload = buildAdmissionTicketPayload();
             const idempotencyKey = getCreateIdempotencyKey();
@@ -327,7 +390,6 @@
             notify(result.replayed ? 'Цю саму оплату безпечно відкрито повторно.' : 'Оплату створено. Перевірте позиції та підтвердьте отримання грошей.', 'success');
             focusFirstConfirmationControl();
         } catch (error) {
-            if (button) button.disabled = false;
             notify(paymentUiError(error), 'error');
         } finally {
             state.createInFlight = false;
@@ -336,10 +398,18 @@
     }
 
     async function loadPaymentOrder(orderId, { silent = false } = {}) {
+        const loadGeneration = ++state.orderLoadGeneration;
         const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(orderId)}`, {
             method: 'GET',
             headers: apiHeaders()
         });
+        if (loadGeneration !== state.orderLoadGeneration) return state.orderDetails;
+        const currentOrder = state.orderDetails?.order;
+        if (String(currentOrder?.id || '') === String(result.order?.id || '')
+            && FISCAL_DONE_STATUSES.has(effectiveFiscalStatus(currentOrder))
+            && !FISCAL_DONE_STATUSES.has(effectiveFiscalStatus(result.order))) {
+            return state.orderDetails;
+        }
         state.orderDetails = result;
         state.tender = result.order?.sourceSnapshot?.tender || (result.order?.paymentMethod === 'card_terminal' ? 'card_terminal_manual' : 'cash');
         state.confirmSubmitted = orderBlocksPayment(result.order);
@@ -352,7 +422,9 @@
         syncTenderControls();
         renderOrder(result);
         await loadPilotRegisterState({ silent: true });
+        if (loadGeneration !== state.orderLoadGeneration) return state.orderDetails;
         await loadUnresolvedOrders({ silent: true });
+        if (loadGeneration !== state.orderLoadGeneration) return state.orderDetails;
         syncOrderPolling(result.order);
         if (!silent) notify('Оплату завантажено.', 'success');
         return result;
@@ -368,13 +440,11 @@
             });
             state.registerState = result;
             renderRegisterState(result);
-            syncOperationalAvailability();
             if (!silent) notify('Стан каси оновлено.', 'success');
             return result;
         } catch (error) {
             state.registerState = null;
             renderRegisterState(null);
-            syncOperationalAvailability();
             if (!silent) notify(paymentUiError(error), 'error');
             return null;
         }
@@ -398,7 +468,10 @@
         state.readinessInFlight = true;
         state.phase1ClosePollingPaused = false;
         const button = $('refreshReadinessBtn');
-        if (button) button.disabled = true;
+        setButtonBusy(button, true, 'Оновлюємо готовність…');
+        renderReadinessState();
+        syncCreateAvailability();
+        syncConfirmationAvailability();
         try {
             await apiRequest('/api/payments/readiness/probe', {
                 method: 'POST',
@@ -423,7 +496,11 @@
             return state.registerState;
         } finally {
             state.readinessInFlight = false;
+            setButtonBusy(button, false, '');
             if (button) button.disabled = false;
+            renderReadinessState();
+            syncCreateAvailability();
+            syncConfirmationAvailability();
             scheduleReadinessRefresh();
         }
     }
@@ -498,11 +575,16 @@
 
     function paymentUiError(error) {
         const code = error?.code || error?.message;
-        const readableMessages = {
+        const messages = {
             cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
             cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
             payment_date_required: 'Вкажіть дату квитка.',
             checkbox_integration_not_ready: 'Інтеграція Checkbox або налаштування каси не готові. Підтвердження грошей заблоковано.',
+            checkbox_integration_disabled: 'Зв’язок із Checkbox вимкнений. Приймання грошей недоступне.',
+            checkbox_payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Уже оплачені чеки залишаються у відновленні.',
+            readiness_stale: 'Перевірка каси застаріла. Оновіть готовність Checkbox перед оплатою.',
+            checkbox_provider_unavailable: 'Checkbox тимчасово недоступний. Нові оплати заблоковано.',
+            external_shift_requires_sync: 'У Checkbox є інша відкрита зміна. Потрібна безпечна звірка відповідальним.',
             kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
             adults_count_invalid: 'Кількість дорослих не може бути від’ємною.',
             card_terminal_success_required: 'Перед підтвердженням поставте позначку: термінал показав успішну оплату.',
@@ -512,35 +594,14 @@
             forbidden: 'Немає доступу до цієї каси або CRM профілю.',
             idempotency_key_required: 'Не вдалося створити ключ безпечного повтору запиту.',
             queue_unavailable: 'Черга незавершених чеків недоступна. Підтвердження грошей заблоковано.',
+            unresolved_snapshot_changed: 'Список незавершених чеків змінився під час перегляду. Оновлюємо його з початку.',
             provider_unavailable: 'Checkbox тимчасово недоступний. Нові оплати заблоковано.',
+            paid_sale_closed_shift_reconciliation_required: 'Зміну Checkbox закрито до відправлення вже оплаченої операції. Нові оплати заблоковано до ручної звірки.',
             payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Уже оплачені чеки продовжують безпечно відновлюватися.',
             phase1_shift_identity_mismatch: 'Сервер повернув іншу зміну. Закриття зупинено без повторного запиту.',
             phase1_close_confirmation_unavailable: 'Безпечне підтвердження тимчасово недоступне. Запит на закриття не надіслано.'
         };
-        if (readableMessages[code]) return readableMessages[code];
-        const messages = {
-            cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
-            cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
-            payment_date_required: 'Вкажіть дату квитка.',
-            checkbox_integration_not_ready: 'Інтеграція Checkbox або налаштування каси не готові. Підтвердження грошей заблоковане.',
-            kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
-            adults_count_invalid: 'Кількість дорослих не може бути відʼємною.',
-            card_terminal_success_required: 'Перед підтвердженням поставте позначку: термінал показав успішну оплату.',
-            payment_repeat_blocked: 'Повторна оплата заблокована: оплата вже підтверджена або чек очікує фіскалізації.',
-            payment_order_cancel_denied: 'Скасувати можна тільки неоплачену чернетку.',
-            fiscal_mapping_ambiguous_or_missing: 'Парк і середня каса не налаштовані або мають неоднозначну відповідність.',
-            forbidden: 'Немає доступу до цієї каси або CRM профілю.',
-            service_in_amount_required: 'Сума службового внесення має бути більшою за нуль.',
-            service_out_amount_required: 'Сума службової видачі має бути більшою за нуль.',
-            service_out_reason_required: 'Вкажіть причину службової видачі.',
-            shift_not_open: 'Для цієї операції потрібна відкрита зміна.',
-            shift_close_blocked: 'Закриття заблоковане, поки є чеки, що очікують завершення або перевірки.',
-            close_actual_totals_required: 'Вкажіть фактичну готівку та суму звіту термінала.',
-            refund_order_required: 'Вкажіть ID оплати для повернення.',
-            refund_reason_required: 'Вкажіть причину повернення.',
-            idempotency_key_required: 'Не вдалося створити ключ безпечного повтору запиту.'
-        };
-        return messages[code] || error?.message || '\u0414\u0456\u044f \u043a\u0430\u0441\u0438\u0440\u0430 \u043d\u0435 \u0432\u0438\u043a\u043e\u043d\u0430\u043d\u0430.';
+        return messages[code] || 'Не вдалося виконати дію. Оновіть стан каси або зверніться до відповідального.';
     }
 
     function renderOrder(details) {
@@ -548,14 +609,26 @@
         const items = Array.isArray(details?.items) ? details.items : [];
         if (!order) return;
         setText('cashierFiscalProfile', `${formatCrmProfile(order.crmProfileKey)} / ${order.legalEntityName || order.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
-        setText('cashierRegister', formatLocationRegister(order.sourceSnapshot?.location_alias, order.registerDisplayName || order.registerAlias));
+        const locationAlias = order.sourceSnapshot?.location_alias
+            || order.sourceSnapshot?.locationAlias
+            || order.locationAlias
+            || state.registerState?.locationAlias;
+        const registerAlias = order.registerAlias
+            || order.sourceSnapshot?.register_alias
+            || order.sourceSnapshot?.registerAlias
+            || state.registerState?.registerAlias
+            || order.registerDisplayName;
+        setText('cashierRegister', formatLocationRegister(
+            locationAlias,
+            registerAlias,
+            order.registerDisplayName || state.registerState?.registerDisplayName,
+            order.locationDisplayName || state.registerState?.locationDisplayName
+        ));
         setStatus('cashierPaymentStatus', order.paymentStatus || order.status);
         setStatus('cashierFiscalStatus', effectiveFiscalStatus(order));
         setText('internalReceiptLabel', `RCP-${order.id} \u2014 ${INTERNAL_RECEIPT_TEXT}`);
         setText('paymentTotalAmount', formatMoneyMinor(order.totalAmountMinor));
         setText('cardExactAmount', formatMoneyMinor(order.totalAmountMinor));
-        const refundOrder = $('refundOrderId');
-        if (refundOrder && !refundOrder.value) refundOrder.value = String(order.id);
         renderItems(items);
         renderFiscalResult(details);
         syncCreateAvailability();
@@ -571,7 +644,7 @@
         }
         body.innerHTML = items.map(item => `
             <tr>
-                <td><strong>${escapeHtml(item.itemName)}</strong><div class="cashier-muted">${escapeHtml(item.itemCode || '')} \u00b7 ${escapeHtml(item.taxReference || 'податкове налаштування')}</div></td>
+                <td><strong>${escapeHtml(item.itemName)}</strong></td>
                 <td>${escapeHtml(formatQuantity(item.quantityMillis))}</td>
                 <td>${escapeHtml(formatMoneyMinor(item.unitPriceMinor))}</td>
                 <td>${escapeHtml(formatMoneyMinor(item.totalAmountMinor))}</td>
@@ -584,12 +657,12 @@
         const fiscalStatus = effectiveFiscalStatus(order);
         const artifacts = details?.artifacts || {};
         const latestReceipt = Array.isArray(details?.receipts) ? details.receipts[0] : null;
-        const badge = $('fiscalReceiptBadge');
-        if (badge) badge.textContent = formatStatus(fiscalStatus);
+        setStatus('fiscalReceiptBadge', fiscalStatus);
         const message = $('fiscalPendingMessage');
         const links = $('providerReceiptLinks');
         const pendingNotice = $('pendingReceiptNotice');
         const hasOfficialReceipt = FISCAL_DONE_STATUSES.has(fiscalStatus) || latestReceipt?.status === 'fiscalized';
+        if (hasOfficialReceipt) forgetPendingOrder(order.id);
         if (message) {
             if (hasOfficialReceipt) message.textContent = '\u041e\u0444\u0456\u0446\u0456\u0439\u043d\u0438\u0439 \u0447\u0435\u043a Checkbox \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e. RCP-* \u043b\u0438\u0448\u0430\u0454\u0442\u044c\u0441\u044f \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044c\u043e\u044e \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u0454\u044e Event Genix.';
             else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = '\u0424\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u044f \u043e\u0447\u0456\u043a\u0443\u0454 \u0430\u0431\u043e \u043c\u0430\u0454 \u043d\u0435\u0432\u0456\u0434\u043e\u043c\u0438\u0439 \u0441\u0442\u0430\u043d. \u041f\u043e\u0432\u0442\u043e\u0440\u043d\u0430 \u043e\u043f\u043b\u0430\u0442\u0430 \u0437\u0430\u0431\u043b\u043e\u043a\u043e\u0432\u0430\u043d\u0430.';
@@ -631,11 +704,18 @@
         storageSet('pendingOrderIds', JSON.stringify(ids));
     }
 
+    function replacePendingOrderIds(orderIds) {
+        const ids = Array.from(new Set((orderIds || []).map(String).filter(Boolean))).slice(0, 10);
+        storageSet('pendingOrderIds', JSON.stringify(ids));
+    }
+
     function renderPendingOrdersNotice(currentOrderId = null) {
         const pendingNotice = $('pendingReceiptNotice');
         if (!pendingNotice) return;
         const serverIds = (state.unresolvedOrders || []).map(order => String(order.id)).filter(Boolean);
-        const ids = serverIds.length ? serverIds : pendingOrderIds();
+        const ids = state.unresolvedQueueState === 'available'
+            ? serverIds
+            : pendingOrderIds();
         if (currentOrderId && !ids.includes(String(currentOrderId))) ids.unshift(String(currentOrderId));
         pendingNotice.classList.toggle('hidden', ids.length === 0);
         const knownTotal = state.unresolvedQueueState === 'available'
@@ -647,17 +727,146 @@
             : '';
     }
 
+    function unresolvedQueueIsFresh(now = Date.now()) {
+        const refreshedAt = Number(state.unresolvedLastRefreshAt || 0);
+        return state.unresolvedQueueState === 'available'
+            && Number.isFinite(refreshedAt)
+            && refreshedAt > 0
+            && Math.max(0, Number(now) - refreshedAt) < UNRESOLVED_QUEUE_TTL_MS;
+    }
+
+    function effectiveUnresolvedQueueState() {
+        if (state.unresolvedQueueState === 'available' && !unresolvedQueueIsFresh()) return 'stale';
+        return state.unresolvedQueueState;
+    }
+
+    function invalidUnresolvedQueuePayload() {
+        const error = new Error('queue_unavailable');
+        error.code = 'queue_unavailable';
+        return error;
+    }
+
+    function normalizeUnresolvedQueuePayload(result, {
+        requestedPage,
+        requestedPageSize,
+        requestedCursor = null,
+        requestedSnapshotRevision = null,
+        append = false
+    } = {}) {
+        const positiveInteger = value => Number.isSafeInteger(Number(value)) && Number(value) > 0;
+        const nonNegativeInteger = value => Number.isSafeInteger(Number(value)) && Number(value) >= 0;
+        const snapshotRevision = String(result?.snapshotRevision || '').trim().toLowerCase();
+        const nextCursor = result?.nextCursor == null || result?.nextCursor === ''
+            ? null
+            : String(result.nextCursor).trim();
+        if (!result || result.success !== true || result.registerWide !== true || !Array.isArray(result.orders)) {
+            throw invalidUnresolvedQueuePayload();
+        }
+        if (!positiveInteger(result.fiscalProfileId)
+            || !positiveInteger(result.fiscalLocationId)
+            || !positiveInteger(result.fiscalRegisterId)
+            || !positiveInteger(result.page)
+            || !positiveInteger(result.pageSize)
+            || Number(result.page) !== Number(requestedPage)
+            || Number(result.pageSize) !== Number(requestedPageSize)
+            || !nonNegativeInteger(result.registerCount)
+            || !nonNegativeInteger(result.myCount)
+            || Number(result.myCount) > Number(result.registerCount)
+            || typeof result.hasMore !== 'boolean'
+            || result.orders.length > Number(result.pageSize)
+            || !/^[a-f0-9]{32}$/.test(snapshotRevision)
+            || (nextCursor !== null && !positiveInteger(nextCursor))
+            || result.hasMore !== (nextCursor !== null)) {
+            throw invalidUnresolvedQueuePayload();
+        }
+        if (append && (!positiveInteger(requestedCursor)
+            || !/^[a-f0-9]{32}$/.test(String(requestedSnapshotRevision || '').trim().toLowerCase())
+            || snapshotRevision !== String(requestedSnapshotRevision).trim().toLowerCase())) {
+            throw invalidUnresolvedQueuePayload();
+        }
+        const expectedProfileId = Number(state.registerState?.fiscalProfileId || 0);
+        const expectedLocationId = Number(state.registerState?.fiscalLocationId || 0);
+        const expectedRegisterId = Number(state.registerState?.fiscalRegisterId || 0);
+        if ((expectedProfileId && Number(result.fiscalProfileId) !== expectedProfileId)
+            || (expectedLocationId && Number(result.fiscalLocationId) !== expectedLocationId)
+            || (expectedRegisterId && Number(result.fiscalRegisterId) !== expectedRegisterId)) {
+            throw invalidUnresolvedQueuePayload();
+        }
+        const seen = new Set();
+        const orders = result.orders.map(order => {
+            const id = Number(order?.id);
+            if (!order || !positiveInteger(id)
+                || seen.has(String(id))
+                || order.isMine !== true && order.isMine !== false
+                || normalizeStatus(order.paymentStatus) !== 'confirmed'
+                || !String(order.fiscalStatus || '').trim()
+                || !/^\d+$/.test(String(order.totalAmountMinor || ''))
+                || String(order.currency || '').trim().toUpperCase() !== 'UAH') {
+                throw invalidUnresolvedQueuePayload();
+            }
+            seen.add(String(id));
+            return { ...order, id };
+        });
+        if (orders.some((order, index) => index > 0 && order.id >= orders[index - 1].id)
+            || (append && orders.some(order => order.id >= Number(requestedCursor)))
+            || result.hasMore && (orders.length !== Number(result.pageSize) || nextCursor !== String(orders.at(-1)?.id || ''))
+            || !result.hasMore && nextCursor !== null
+            || orders.length > Number(result.registerCount)) {
+            throw invalidUnresolvedQueuePayload();
+        }
+        return {
+            ...result,
+            fiscalProfileId: Number(result.fiscalProfileId),
+            fiscalLocationId: Number(result.fiscalLocationId),
+            fiscalRegisterId: Number(result.fiscalRegisterId),
+            page: Number(result.page),
+            pageSize: Number(result.pageSize),
+            registerCount: Number(result.registerCount),
+            myCount: Number(result.myCount),
+            snapshotRevision,
+            nextCursor,
+            orders
+        };
+    }
+
+    function clearUnresolvedRefreshTimer() {
+        if (state.unresolvedRefreshTimer) window.clearTimeout(state.unresolvedRefreshTimer);
+        state.unresolvedRefreshTimer = null;
+    }
+
+    function scheduleUnresolvedRefresh({ delayMs = null } = {}) {
+        clearUnresolvedRefreshTimer();
+        if (!state.unresolvedAutoRefreshEnabled) return;
+        const refreshedAt = Number(state.unresolvedLastRefreshAt || 0);
+        const untilStale = refreshedAt > 0
+            ? Math.max(100, UNRESOLVED_QUEUE_TTL_MS - Math.max(0, Date.now() - refreshedAt))
+            : UNRESOLVED_REFRESH_MIN_MS;
+        const delay = delayMs == null
+            ? (state.unresolvedQueueState === 'available' ? untilStale : state.unresolvedRefreshBackoffMs)
+            : Number(delayMs);
+        state.unresolvedRefreshTimer = window.setTimeout(() => {
+            state.unresolvedRefreshTimer = null;
+            if (state.unresolvedQueueState === 'available' && !unresolvedQueueIsFresh()) {
+                state.unresolvedQueueState = 'stale';
+                renderUnresolvedOrders();
+                renderReadinessState();
+            }
+            void loadUnresolvedOrders({ silent: true });
+        }, Math.max(100, Math.min(Number(delay) || UNRESOLVED_REFRESH_MIN_MS, UNRESOLVED_REFRESH_MAX_MS)));
+    }
+
     function syncUnresolvedControls() {
         const refreshButton = $('refreshUnresolvedOrdersBtn');
         const loadMoreButton = $('loadMoreUnresolvedOrdersBtn');
-        const busy = state.unresolvedInFlight || state.unresolvedQueueState === 'checking';
+        const queueState = effectiveUnresolvedQueueState();
+        const busy = state.unresolvedInFlight || queueState === 'checking';
         if (refreshButton) {
             refreshButton.disabled = busy;
             refreshButton.setAttribute('aria-disabled', busy ? 'true' : 'false');
             refreshButton.setAttribute('aria-busy', busy ? 'true' : 'false');
         }
         if (loadMoreButton) {
-            const visible = state.unresolvedQueueState === 'available' && state.unresolvedHasMore;
+            const visible = queueState === 'available' && state.unresolvedHasMore;
             loadMoreButton.classList.toggle('hidden', !visible);
             loadMoreButton.disabled = busy || !visible;
             loadMoreButton.setAttribute('aria-disabled', loadMoreButton.disabled ? 'true' : 'false');
@@ -669,13 +878,14 @@
         const panel = $('unresolvedOrdersPanel');
         const badge = $('unresolvedOrdersSummaryBadge');
         if (!panel || !badge) return;
-        const queueState = state.unresolvedQueueState;
+        const queueState = effectiveUnresolvedQueueState();
         const count = queueState === 'available'
             ? Number(state.unresolvedRegisterCount || 0)
             : Number(state.unresolvedLastKnownSummary.registerCount || 0);
         const labels = {
             checking: 'перевіряємо',
             unavailable: 'список недоступний',
+            stale: 'потрібне оновлення',
             unknown: 'не перевірено'
         };
         badge.textContent = queueState === 'available'
@@ -696,28 +906,32 @@
         const body = $('unresolvedOrdersBody');
         if (!body) return;
         const orders = Array.isArray(state.unresolvedOrders) ? state.unresolvedOrders : [];
-        const isChecking = state.unresolvedQueueState === 'checking';
+        const queueState = effectiveUnresolvedQueueState();
+        const isChecking = queueState === 'checking';
+        const isStale = queueState === 'stale';
         syncUnresolvedDisclosure();
         body.setAttribute('aria-busy', isChecking ? 'true' : 'false');
-        if (isChecking || state.unresolvedQueueState === 'unavailable') {
+        if (isChecking || isStale || queueState === 'unavailable') {
             const lastKnown = Array.isArray(state.unresolvedLastKnownOrders) ? state.unresolvedLastKnownOrders : [];
             const lastKnownRegisterCount = Number(state.unresolvedLastKnownSummary.registerCount || lastKnown.length || 0);
             const lastKnownMyCount = Number(state.unresolvedLastKnownSummary.myCount || 0);
             const alertMarkup = isChecking
                 ? '<div class="cashier-alert cashier-alert-warning" data-queue-state="checking" role="status">Перевіряємо повний список незавершених чеків. Приймання грошей, наступний клієнт і закриття зміни тимчасово заблоковані.</div>'
-                : '<div class="cashier-alert cashier-alert-danger" data-queue-state="queue_unavailable" role="alert">Черга незавершених чеків недоступна. Не приймайте гроші й не починайте наступного клієнта до успішного оновлення.</div>';
+                : isStale
+                    ? '<div class="cashier-alert cashier-alert-warning" data-queue-state="stale" role="alert">Дані про незавершені чеки застаріли. Приймання грошей заблоковано до успішного оновлення.</div>'
+                    : '<div class="cashier-alert cashier-alert-danger" data-queue-state="queue_unavailable" role="alert">Черга незавершених чеків недоступна. Не приймайте гроші й не починайте наступного клієнта до успішного оновлення.</div>';
             body.innerHTML = `
                 ${alertMarkup}
                 ${lastKnownRegisterCount ? `<div class="cashier-report-grid" aria-label="Останній відомий підсумок незавершених чеків"><div><dt>Мої чеки</dt><dd>${lastKnownMyCount}</dd></div><div><dt>Вся каса</dt><dd>${lastKnownRegisterCount}</dd></div></div>` : ''}
                 ${lastKnown.length ? '<p class="cashier-muted">Останній відомий список збережено нижче, але під час перевірки він може змінитися.</p>' : '<p class="cashier-empty">Останнього відомого списку немає. Це не означає, що незавершених чеків немає.</p>'}
                 ${lastKnown.length ? `<div class="cashier-unresolved-list">${lastKnown.map(order => `
-                    <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="Відкрити RCP-${escapeAttribute(order.id)}">
-                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.orderKey || '')}</small></span>
-                        <span>${order.isMine === true ? 'Мій чек' : escapeHtml(order.cashierIdentity || 'Інший касир')}</span>
+                    <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="${escapeAttribute(unresolvedOrderAccessibleLabel(order))}">
+                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(formatUnresolvedOwnership(order))}</small></span>
                         <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
                         <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
                         <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
-                        <span>${order.nextRunAt ? `наступна спроба ${escapeHtml(new Date(order.nextRunAt).toLocaleString('uk-UA'))}` : 'стан відновлення ще невідомий'}</span>
+                        <span>${order.nextRunAt ? `наступна спроба ${escapeHtml(formatKyivDateTime(order.nextRunAt))}` : 'стан відновлення ще невідомий'}</span>
+                        <span>${escapeHtml(formatIncidentReason(order.incidentReason))}</span>
                     </button>
                 `).join('')}</div>` : ''}
             `;
@@ -745,13 +959,13 @@
             </div>
             <div class="cashier-unresolved-list">
                 ${orders.map(order => `
-                    <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="Відкрити RCP-${escapeAttribute(order.id)}">
-                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.orderKey || '')}</small></span>
+                    <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="${escapeAttribute(unresolvedOrderAccessibleLabel(order))}">
+                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(formatUnresolvedOwnership(order))}</small></span>
                         <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
                         <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
                         <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
-                        <span>${order.nextRunAt ? `наступна спроба ${escapeHtml(new Date(order.nextRunAt).toLocaleString('uk-UA'))}` : 'очікує автоматичного відновлення'}</span>
-                        <span>${order.incidentReason ? `причина: ${escapeHtml(order.incidentReason)}` : ''}</span>
+                        <span>${order.nextRunAt ? `наступна спроба ${escapeHtml(formatKyivDateTime(order.nextRunAt))}` : 'очікує автоматичного відновлення'}</span>
+                        <span>${escapeHtml(formatIncidentReason(order.incidentReason))}</span>
                     </button>
                 `).join('')}
             </div>`;
@@ -760,26 +974,73 @@
         syncUnresolvedControls();
     }
 
+    function unresolvedOrderAccessibleLabel(order = {}) {
+        const ownership = formatUnresolvedOwnership(order);
+        const retry = order.nextRunAt
+            ? `наступна спроба ${formatKyivDateTime(order.nextRunAt)}`
+            : 'час наступної спроби не визначено';
+        const incident = formatIncidentReason(order.incidentReason);
+        return [
+            `Відкрити RCP-${order.id}`,
+            ownership,
+            `сума ${formatMoneyMinor(order.totalAmountMinor)}`,
+            `оплата ${formatStatus(order.paymentStatus)}`,
+            `фіскалізація ${formatStatus(order.fiscalStatus)}`,
+            retry,
+            incident ? `причина: ${incident}` : 'без зафіксованої причини інциденту'
+        ].join('. ');
+    }
+
     async function loadUnresolvedOrders({ silent = false, append = false } = {}) {
         if (state.unresolvedInFlight) return state.unresolvedOrders;
+        clearUnresolvedRefreshTimer();
         state.unresolvedInFlight = true;
         state.unresolvedQueueState = 'checking';
         state.unresolvedLastError = null;
         renderUnresolvedOrders();
         renderReadinessState();
+        let retryDelayMs = null;
+        let restartAfterSnapshotChange = false;
         try {
             const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
             const requestedPage = append ? Math.max(1, Number(state.unresolvedPage || 0) + 1) : 1;
             params.set('page', String(requestedPage));
             params.set('pageSize', String(UNRESOLVED_PAGE_SIZE));
-            const result = await apiRequest(`/api/payments/unresolved-orders?${params.toString()}`, {
+            const requestedCursor = append ? state.unresolvedNextCursor : null;
+            const requestedSnapshotRevision = append ? state.unresolvedSnapshotRevision : null;
+            if (append) {
+                if (!requestedCursor || !requestedSnapshotRevision) throw invalidUnresolvedQueuePayload();
+                params.set('cursor', String(requestedCursor));
+                params.set('snapshotRevision', String(requestedSnapshotRevision));
+            }
+            const response = await apiRequest(`/api/payments/unresolved-orders?${params.toString()}`, {
                 method: 'GET',
                 headers: apiHeaders(),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
+            const result = normalizeUnresolvedQueuePayload(response, {
+                requestedPage,
+                requestedPageSize: UNRESOLVED_PAGE_SIZE,
+                requestedCursor,
+                requestedSnapshotRevision,
+                append
+            });
             const incoming = Array.isArray(result.orders) ? result.orders : [];
+            if (append) {
+                const expectedLoadedCount = (requestedPage - 1) * UNRESOLVED_PAGE_SIZE;
+                const loadedIds = new Set(state.unresolvedOrders.map(order => String(order.id)));
+                if (state.unresolvedOrders.length !== expectedLoadedCount
+                    || incoming.some(order => loadedIds.has(String(order.id)))) {
+                    throw invalidUnresolvedQueuePayload();
+                }
+            }
             const merged = append ? [...state.unresolvedOrders, ...incoming] : incoming;
-            state.unresolvedOrders = [...new Map(merged.map(order => [String(order.id), order])).values()];
+            if (merged.length > result.registerCount
+                || (result.hasMore && merged.length >= result.registerCount)
+                || (!result.hasMore && merged.length !== result.registerCount)) {
+                throw invalidUnresolvedQueuePayload();
+            }
+            state.unresolvedOrders = merged;
             state.unresolvedPage = Math.max(1, Number(result.page || requestedPage));
             state.unresolvedPageSize = Math.max(1, Number(result.pageSize || UNRESOLVED_PAGE_SIZE));
             state.unresolvedRegisterCount = Math.max(0, Number(result.registerCount ?? result.totalCount ?? state.unresolvedOrders.length));
@@ -787,6 +1048,8 @@
             state.unresolvedHasMore = typeof result.hasMore === 'boolean'
                 ? result.hasMore
                 : state.unresolvedOrders.length < state.unresolvedRegisterCount;
+            state.unresolvedSnapshotRevision = result.snapshotRevision;
+            state.unresolvedNextCursor = result.nextCursor;
             state.unresolvedLastKnownOrders = state.unresolvedOrders.slice();
             state.unresolvedLastKnownSummary = {
                 registerCount: state.unresolvedRegisterCount,
@@ -795,6 +1058,10 @@
             state.unresolvedQueueState = 'available';
             state.unresolvedLastRefreshAt = Date.now();
             state.unresolvedLastError = null;
+            state.unresolvedRefreshBackoffMs = UNRESOLVED_REFRESH_MIN_MS;
+            if (!state.unresolvedHasMore) {
+                replacePendingOrderIds(state.unresolvedOrders.map(order => order.id));
+            }
             renderUnresolvedOrders();
             renderReadinessState();
             syncCreateAvailability();
@@ -804,6 +1071,13 @@
         } catch (error) {
             state.unresolvedQueueState = 'unavailable';
             state.unresolvedLastError = { code: error?.code || error?.name || 'queue_unavailable', message: error?.message || 'queue_unavailable' };
+            restartAfterSnapshotChange = append && error?.code === 'unresolved_snapshot_changed';
+            state.unresolvedSnapshotRestartPending = restartAfterSnapshotChange;
+            retryDelayMs = restartAfterSnapshotChange ? null : state.unresolvedRefreshBackoffMs;
+            state.unresolvedRefreshBackoffMs = Math.min(
+                UNRESOLVED_REFRESH_MAX_MS,
+                Math.max(UNRESOLVED_REFRESH_MIN_MS, state.unresolvedRefreshBackoffMs * 2)
+            );
             if (!silent) notify(paymentUiError(error), 'error');
             renderUnresolvedOrders();
             renderReadinessState();
@@ -811,6 +1085,12 @@
         } finally {
             state.unresolvedInFlight = false;
             syncUnresolvedControls();
+            if (restartAfterSnapshotChange && state.unresolvedSnapshotRestartPending) {
+                state.unresolvedSnapshotRestartPending = false;
+                window.setTimeout(() => { void loadUnresolvedOrders({ silent: true }); }, 0);
+            } else {
+                scheduleUnresolvedRefresh({ delayMs: retryDelayMs });
+            }
         }
     }
 
@@ -827,6 +1107,14 @@
         const totalCount = Number(report.totalCount || orders.length || 0);
         const page = Number(report.page || 1);
         const pageSize = Number(report.pageSize || orders.length || 50);
+        const fiscalizedIds = new Set(
+            orders
+                .filter(order => FISCAL_DONE_STATUSES.has(normalizeStatus(order.fiscalStatus)))
+                .map(order => String(order.id))
+        );
+        if (fiscalizedIds.size) {
+            replacePendingOrderIds(pendingOrderIds().filter(id => !fiscalizedIds.has(String(id))));
+        }
         body.innerHTML = `
             <dl class="cashier-report-grid">
                 <div><dt>Оплати</dt><dd>${escapeHtml(formatMoneyMinor(totals.paymentTotalMinor || 0))}</dd></div>
@@ -841,7 +1129,7 @@
             <div class="cashier-unresolved-list">
                 ${orders.map(order => `
                     <div class="cashier-unresolved-item">
-                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.confirmedAt ? new Date(order.confirmedAt).toLocaleString('uk-UA') : '')}</small></span>
+                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.confirmedAt ? formatKyivDateTime(order.confirmedAt) : '')}</small></span>
                         <span>${escapeHtml(order.paymentMethod === 'card_terminal' ? 'термінал' : 'готівка')}</span>
                         <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
                         <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
@@ -855,7 +1143,12 @@
         if (state.reportInFlight) return;
         state.reportInFlight = true;
         const button = $('loadCheckboxSalesReportBtn');
-        if (button) button.disabled = true;
+        const body = $('checkboxSalesReportBody');
+        setButtonBusy(button, true, 'Формуємо звіт…');
+        if (body) {
+            body.setAttribute('aria-busy', 'true');
+            body.textContent = 'Формуємо звіт…';
+        }
         try {
             const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
             const dateFrom = $('checkboxReportDateFrom')?.value || '';
@@ -876,10 +1169,13 @@
             renderCheckboxSalesReport(result);
             if (!silent) notify('Внутрішній звіт продажів Checkbox завантажено.', 'success');
         } catch (error) {
+            if (body) body.textContent = 'Не вдалося завантажити звіт. Спробуйте ще раз.';
             if (!silent) notify(paymentUiError(error), 'error');
         } finally {
             state.reportInFlight = false;
+            setButtonBusy(button, false, '');
             if (button) button.disabled = false;
+            if (body) body.setAttribute('aria-busy', 'false');
         }
     }
 
@@ -890,9 +1186,7 @@
             const host = parsed.hostname.toLowerCase();
             return parsed.protocol === 'https:'
                 && (host === 'api.checkbox.ua'
-                    || host === 'api.checkbox.in.ua'
-                    || host.endsWith('.checkbox.ua')
-                    || host.endsWith('.checkbox.in.ua'));
+                    || host === 'api.checkbox.in.ua');
         } catch {
             return false;
         }
@@ -909,76 +1203,27 @@
 
     function renderRegisterState(result) {
         if (!result) {
-            state.cashierProEnabled = false;
             setText('cashierFiscalProfile', state.orderDetails?.order ? $('cashierFiscalProfile')?.textContent : '—');
             setText('cashierRegister', state.orderDetails?.order ? $('cashierRegister')?.textContent : '—');
-            setText('opsFiscalProfile', '—');
-            setText('opsRegister', '—');
-            setStatus('activeShiftStatus', 'not_open');
-            setText('activeShiftId', '—');
-            setText('shiftExpectedCash', formatMoneyMinor(0));
-            setText('shiftExpectedTerminal', formatMoneyMinor(0));
-            renderBlockers([]);
-            renderReportBody(null);
             renderReadinessState();
             syncCreateAvailability();
             syncConfirmationAvailability();
             renderPhase1ShiftState();
             return;
         }
-        state.cashierProEnabled = Boolean(result.cashierProEnabled);
         if (!state.orderDetails?.order) {
             setText('cashierFiscalProfile', `${formatCrmProfile(result.crmProfileKey)} / ${result.legalEntityName || result.legalEntityKey || 'ФОП не налаштовано'}`);
-            setText('cashierRegister', formatLocationRegister(result.locationAlias, result.registerDisplayName || result.registerAlias));
+            setText('cashierRegister', formatLocationRegister(
+                result.locationAlias,
+                result.registerAlias,
+                result.registerDisplayName,
+                result.locationDisplayName
+            ));
         }
-        setText('opsFiscalProfile', `${formatCrmProfile(result.crmProfileKey)} / ${result.legalEntityName || result.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
-        setText('opsRegister', formatLocationRegister(result.locationAlias, result.registerDisplayName || result.registerAlias));
-        setStatus('activeShiftStatus', result.shift?.status || 'not_open');
-        setText('activeShiftId', result.shift?.id || '?');
-        setText('shiftExpectedCash', formatMoneyMinor(result.checklist?.cashExpectedMinor || 0));
-        setText('shiftExpectedTerminal', formatMoneyMinor(result.checklist?.terminalExpectedMinor || 0));
-        const cashActual = $('cashActualAmount');
-        const terminalActual = $('terminalReportTotalAmount');
-        if (cashActual && !cashActual.value) cashActual.value = minorToNumber(result.checklist?.cashExpectedMinor || 0).toFixed(2);
-        if (terminalActual && !terminalActual.value) terminalActual.value = minorToNumber(result.checklist?.terminalExpectedMinor || 0).toFixed(2);
-        renderBlockers(result.checklist?.pendingUnknownOperations || []);
         renderReadinessState();
         syncCreateAvailability();
         syncConfirmationAvailability();
         renderPhase1ShiftState();
-    }
-
-    function renderBlockers(blockers) {
-        const panel = $('shiftBlockersPanel');
-        const list = $('shiftBlockersList');
-        const rows = Array.isArray(blockers) ? blockers : [];
-        if (panel) panel.classList.toggle('hidden', rows.length === 0);
-        if (list) {
-            list.innerHTML = rows.length
-                ? rows.map(item => `<li>\u041e\u043f\u0435\u0440\u0430\u0446\u0456\u044f #${escapeHtml(item.id)} \u00b7 ${escapeHtml(item.type)} \u00b7 ${escapeHtml(formatStatus(item.status))}</li>`).join('')
-                : '';
-        }
-    }
-
-    function renderReportBody(report) {
-        const body = $('operationalReportBody');
-        if (!body) return;
-        if (!report) {
-            body.textContent = 'Звіт не завантажено.';
-            return;
-        }
-        const checklist = report.checklist || {};
-        body.innerHTML = `
-            <dl class="cashier-report-grid">
-                <div><dt>\u0412\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u0456\u0439 \u0437\u0432\u0456\u0442</dt><dd>${escapeHtml(report.internalReportLabel || '\u0412\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u0456\u0439 \u043e\u043f\u0435\u0440\u0430\u0446\u0456\u0439\u043d\u0438\u0439 \u0437\u0432\u0456\u0442')}</dd></div>
-                <div><dt>\u041e\u0444\u0456\u0446\u0456\u0439\u043d\u0438\u0439 Z-\u0437\u0432\u0456\u0442</dt><dd>${report.officialZReport ? '\u0442\u0430\u043a' : '\u043d\u0456'}</dd></div>
-                <div><dt>\u041e\u0447\u0456\u043a\u0443\u0432\u0430\u043d\u0430 \u0433\u043e\u0442\u0456\u0432\u043a\u0430</dt><dd>${escapeHtml(formatMoneyMinor(checklist.cashExpectedMinor || 0))}</dd></div>
-                <div><dt>\u041e\u0447\u0456\u043a\u0443\u0432\u0430\u043d\u0438\u0439 \u0442\u0435\u0440\u043c\u0456\u043d\u0430\u043b</dt><dd>${escapeHtml(formatMoneyMinor(checklist.terminalExpectedMinor || 0))}</dd></div>
-                <div><dt>\u0421\u043b\u0443\u0436\u0431\u043e\u0432\u0435 \u0432\u043d\u0435\u0441\u0435\u043d\u043d\u044f</dt><dd>${escapeHtml(formatMoneyMinor(checklist.serviceInMinor || 0))}</dd></div>
-                <div><dt>\u0421\u043b\u0443\u0436\u0431\u043e\u0432\u0430 \u0432\u0438\u0434\u0430\u0447\u0430</dt><dd>${escapeHtml(formatMoneyMinor(checklist.serviceOutMinor || 0))}</dd></div>
-            </dl>
-            ${report.checkboxZDocumentUrl ? `<a class="btn-page-secondary" target="_blank" rel="noopener" href="${escapeAttribute(report.checkboxZDocumentUrl)}">\u0412\u0456\u0434\u043a\u0440\u0438\u0442\u0438 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 Checkbox</a>` : '<p class="cashier-muted">\u041f\u043e\u0441\u0438\u043b\u0430\u043d\u043d\u044f \u043d\u0430 \u0434\u043e\u043a\u0443\u043c\u0435\u043d\u0442 Checkbox \u0449\u0435 \u043d\u0435\u0434\u043e\u0441\u0442\u0443\u043f\u043d\u0435.</p>'}
-        `;
     }
 
     function escapeAttribute(value) {
@@ -1008,16 +1253,18 @@
     function integrationReady() {
         return Boolean(
             state.registerState?.integrationReady === true
-            && state.unresolvedQueueState === 'available'
-            && state.registerState?.fiscalProfileId
-            && state.registerState?.fiscalRegisterId
+            && state.readinessInFlight !== true
+            && state.nextCustomerSafetyRefreshInFlight !== true
+            && unresolvedQueueIsFresh()
         );
     }
 
     function queueUnavailableReason() {
-        if (state.unresolvedQueueState === 'available') return '';
-        if (state.unresolvedQueueState === 'checking') return 'Перевіряємо повний список незавершених чеків. Дочекайтеся завершення перевірки.';
-        if (state.unresolvedQueueState === 'unavailable') return 'Черга незавершених чеків недоступна. Оновіть список перед прийманням грошей.';
+        const queueState = effectiveUnresolvedQueueState();
+        if (queueState === 'available') return '';
+        if (queueState === 'checking') return 'Перевіряємо повний список незавершених чеків. Дочекайтеся завершення перевірки.';
+        if (queueState === 'stale') return 'Дані про незавершені чеки застаріли. Дочекайтеся успішного оновлення.';
+        if (queueState === 'unavailable') return 'Черга незавершених чеків недоступна. Оновіть список перед прийманням грошей.';
         return 'Черга незавершених чеків ще не перевірена.';
     }
 
@@ -1063,6 +1310,7 @@
         const summary = $('cashierReadinessSummary');
         const details = $('cashierReadinessDetails');
         const technicalList = $('cashierReadinessTechnicalList');
+        const canViewTechnicalDetails = hasAction('fiscal.configure');
         const messages = [];
         if (!state.registerState) {
             messages.push('Не вдалося прочитати стан пілотної каси.');
@@ -1080,6 +1328,7 @@
                 runtime_config_missing: 'Налаштування підключення Checkbox відсутні.',
                 runtime_config_invalid: 'Налаштування підключення Checkbox некоректні.',
                 provider_unavailable: 'Сервіс Checkbox тимчасово недоступний.',
+                paid_sale_closed_shift_reconciliation_required: 'Є оплачена операція, яку не було відправлено до закриття зміни. Потрібна ручна звірка; нові оплати заблоковано.',
                 identity_mismatch: 'Checkbox повернув іншу організацію, касира або касу.',
                 checkbox_cashier_test_mode_mismatch: 'Касир Checkbox не підтверджений як тестовий.',
                 checkbox_expected_is_test_mismatch: 'Очікуваний режим каси не збігається між збереженим налаштуванням, локальними доступами та Checkbox.',
@@ -1095,8 +1344,8 @@
             if (state.registerState.shift && normalizeStatus(state.registerState.shift.status) === 'opening') {
                 messages.push('Зміна відкривається у Checkbox; приймання грошей стане доступним після підтвердження готовності.');
             }
-            if (!state.registerState.mappingExists) messages.push('Не знайдено однозначної відповідності між профілем, локацією та касою.');
-            if (!(state.registerState.featureEnabled || state.registerState.registerFeatureEnabled)) messages.push('Інтеграцію для середньої каси вимкнено.');
+            if (state.registerState.mappingExists === false) messages.push('Не знайдено однозначної відповідності між профілем, локацією та касою.');
+            if (state.registerState.featureEnabled === false && state.registerState.registerFeatureEnabled === false) messages.push('Інтеграцію для середньої каси вимкнено.');
             if (state.registerState.checkboxIntegrationEnabled === false) messages.push('Глобальна інтеграція Checkbox вимкнена.');
             if (state.registerState.runtimeConfigResolvable === false) messages.push('Посилання на локальні доступи Checkbox не вдалося знайти в середовищі сервера.');
         }
@@ -1107,25 +1356,28 @@
             || state.registerState?.paymentAcceptanceEnabled === false
             || state.registerState?.readinessCode === 'global_integration_disabled'
             || state.registerState?.readinessCode === 'payment_acceptance_disabled';
-        const summaryText = ready
-            ? 'Каса готова — можна приймати оплату.'
-            : (viewOnly
-                ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
-                : 'Каса ще не готова — приймання оплат заблоковано.');
+        const summaryText = state.readinessInFlight
+            ? 'Оновлюємо готовність Checkbox…'
+            : (ready
+                ? 'Каса готова — можна приймати оплату.'
+                : (viewOnly
+                    ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
+                    : 'Каса ще не готова — приймання оплат заблоковано.'));
         if (summary) summary.textContent = summaryText;
         if (technicalList) {
-            technicalList.innerHTML = messages.length
+            technicalList.innerHTML = canViewTechnicalDetails && messages.length
                 ? [...new Set(messages)].map(message => `<li>${escapeHtml(message)}</li>`).join('')
-                : '<li>Усі перевірки готовності пройдено.</li>';
+                : (canViewTechnicalDetails ? '<li>Усі перевірки готовності пройдено.</li>' : '');
         }
         if (details) {
-            details.hidden = ready;
-            if (ready) details.open = false;
+            details.hidden = !canViewTechnicalDetails;
+            if (!canViewTechnicalDetails) details.open = false;
         }
         panel.classList.remove('hidden');
         panel.classList.toggle('is-ready', ready);
         panel.classList.toggle('is-blocked', !ready);
         panel.classList.toggle('cashier-alert-warning', !ready);
+        panel.setAttribute('aria-busy', state.readinessInFlight ? 'true' : 'false');
     }
 
     function setDisabledReason(el, disabled, reason) {
@@ -1144,19 +1396,24 @@
         const nextAllowed = orderAllowsNextCustomer(order);
         const hasCurrentOrder = Boolean(order?.id);
         const disabled = !ready || active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
-        const reason = !ready
-            ? 'Каса не готова: перегляньте повідомлення про готовність вище.'
-            : (active ? 'Спершу підтвердьте або скасуйте поточну чернетку.' : (hasCurrentOrder ? 'Натисніть “Нова оплата” для наступного клієнта.' : ''));
+        const reason = state.createInFlight
+            ? 'Створюємо оплату…'
+            : (!ready
+                ? (queueUnavailableReason() || 'Каса не готова: перегляньте повідомлення про готовність вище.')
+                : (active ? 'Спершу підтвердьте або скасуйте поточну чернетку.' : (hasCurrentOrder ? 'Натисніть “Нова оплата” для наступного клієнта.' : '')));
+        const createButton = $('createPaymentOrderBtn');
         const form = $('paymentOrderForm');
         if (form) {
             form.querySelectorAll('input, select').forEach(el => { el.disabled = disabled; });
+            form.setAttribute('aria-busy', state.createInFlight ? 'true' : 'false');
         }
         setText('createPaymentDisabledReason', reason || 'Каса готова. Ціна, ФОП, профіль і каса визначаються сервером.');
-        setDisabledReason($('createPaymentOrderBtn'), disabled, reason);
+        setButtonBusy(createButton, state.createInFlight, 'Створюємо оплату…');
+        setDisabledReason(createButton, disabled, reason);
         const nextButton = $('startNextOrderBtn');
         if (nextButton) {
             nextButton.classList.toggle('hidden', !nextAllowed);
-            setDisabledReason(nextButton, nextAllowed && state.unresolvedQueueState !== 'available', queueUnavailableReason());
+            setDisabledReason(nextButton, nextAllowed && !unresolvedQueueIsFresh(), queueUnavailableReason());
             nextButton.textContent = normalizeStatus(order?.paymentStatus) === 'confirmed' && !orderIsComplete(order)
                 ? 'Наступний клієнт'
                 : 'Нова оплата';
@@ -1171,15 +1428,6 @@
 
     function hasAction(action) {
         return typeof canAccess === 'function' ? canAccess(action) : false;
-    }
-
-    function hasOpenShift() {
-        const status = normalizeStatus(state.registerState?.shift?.status);
-        return status === 'open' || status === 'opening';
-    }
-
-    function hasCloseBlockers() {
-        return Boolean(state.registerState?.checklist?.pendingUnknownOperations?.length);
     }
 
     function phase1CloseContext() {
@@ -1228,6 +1476,7 @@
                 checkbox_certificate_unavailable: 'Сертифікат Checkbox недоступний.',
                 readiness_stale: 'Готовність Checkbox застаріла. Оновіть її перед закриттям зміни.',
                 readiness_missing: 'Готовність Checkbox ще не підтверджена.',
+                phase1_close_requires_payment_drain: 'Спочатку відповідальний має зупинити приймання нових оплат. Уже оплачені чеки треба дочекатися й лише потім закривати зміну.',
                 global_integration_disabled: 'Інтеграція Checkbox вимкнена.',
                 register_disabled: 'Цю касу вимкнено в налаштуваннях інтеграції.',
                 credentials_missing: 'Доступи Checkbox не налаштовані на сервері.',
@@ -1278,35 +1527,6 @@
             && !state.phase1CloseInFlight
             && !state.phase1ClosePollingPaused) {
             startPhase1ClosePolling(context.shiftId);
-        }
-    }
-
-    function baseScopePayload() {
-        const mapping = state.registerState;
-        const order = state.orderDetails?.order || {};
-        const fiscalProfileId = mapping?.fiscalProfileId || order.fiscalProfileId;
-        const fiscalLocationId = mapping?.fiscalLocationId || order.fiscalLocationId;
-        const fiscalRegisterId = mapping?.fiscalRegisterId || order.fiscalRegisterId;
-        if (!fiscalProfileId || !fiscalLocationId || !fiscalRegisterId) throw new Error('fiscal_mapping_ambiguous_or_missing');
-        return {
-            crmProfileKey: mapping?.crmProfileKey || order.crmProfileKey || PILOT_SCOPE.crmProfileKey,
-            fiscalProfileId,
-            fiscalLocationId,
-            fiscalRegisterId
-        };
-    }
-
-    function setFormControlsEnabled(formId, enabled) {
-        const form = $(formId);
-        if (!form) return;
-        form.querySelectorAll('input, button, textarea, select').forEach(el => { el.disabled = !enabled; });
-    }
-
-    function syncOperationalAvailability() {
-        const panel = $('operationalContourPanel');
-        if (panel) {
-            panel.classList.add('hidden');
-            panel.setAttribute('aria-hidden', 'true');
         }
     }
 
@@ -1395,7 +1615,7 @@
         let reason = phase1CloseUnavailableReason(context);
         if (reason || !context?.shiftId) {
             notify(reason || 'Закриття зміни недоступне.', 'error');
-            const focusTarget = state.unresolvedQueueState !== 'available' ? $('refreshUnresolvedOrdersBtn') : $('phase1CloseShiftBtn');
+            const focusTarget = !unresolvedQueueIsFresh() ? $('refreshUnresolvedOrdersBtn') : $('phase1CloseShiftBtn');
             focusTarget?.focus?.({ preventScroll: false });
             return;
         }
@@ -1446,26 +1666,30 @@
         }
     }
 
-    function syncOperationBusyState() {
-        // Cashier PRO is intentionally not loaded on the thin "Оплата та чек" page.
-    }
-
     function syncConfirmationAvailability() {
         const order = state.orderDetails?.order || null;
         const hasOrder = Boolean(order?.id);
         const blocked = !integrationReady() || !hasOrder || orderBlocksPayment(order) || state.confirmSubmitted || state.confirmInFlight;
-        const reason = !integrationReady()
-            ? 'Каса не готова до Checkbox операцій.'
-            : (!hasOrder ? 'Спершу створіть оплату.' : (orderBlocksPayment(order) ? 'Цю оплату вже не можна підтвердити повторно.' : ''));
+        const reason = state.confirmInFlight
+            ? 'Підтверджуємо оплату…'
+            : (!integrationReady()
+                ? (queueUnavailableReason() || 'Каса не готова до Checkbox операцій.')
+                : (!hasOrder ? 'Спершу створіть оплату.' : (orderBlocksPayment(order) ? 'Цю оплату вже не можна підтвердити повторно.' : '')));
         const cashReceived = $('cashReceivedAmount');
         const terminalSuccess = $('terminalSuccessCheckbox');
         const terminalReference = $('terminalReference');
+        const cashButton = $('confirmCashBtn');
+        const cardButton = $('confirmCardBtn');
+        const confirmationStep = document.querySelector('[data-payment-step="2"]');
         setText('confirmDisabledReason', reason);
+        confirmationStep?.setAttribute('aria-busy', state.confirmInFlight ? 'true' : 'false');
         if (cashReceived) cashReceived.disabled = blocked || state.tender !== 'cash';
         if (terminalSuccess) terminalSuccess.disabled = blocked || state.tender !== 'card_terminal_manual';
         if (terminalReference) terminalReference.disabled = blocked || state.tender !== 'card_terminal_manual';
-        setDisabledReason($('confirmCashBtn'), blocked || state.tender !== 'cash', reason);
-        setDisabledReason($('confirmCardBtn'), blocked || state.tender !== 'card_terminal_manual' || !$('terminalSuccessCheckbox')?.checked, reason || 'Поставте позначку, що термінал показав успіх.');
+        setButtonBusy(cashButton, state.confirmInFlight && state.tender === 'cash', 'Підтверджуємо оплату…');
+        setButtonBusy(cardButton, state.confirmInFlight && state.tender === 'card_terminal_manual', 'Підтверджуємо оплату…');
+        setDisabledReason(cashButton, blocked || state.tender !== 'cash', reason);
+        setDisabledReason(cardButton, blocked || state.tender !== 'card_terminal_manual' || !$('terminalSuccessCheckbox')?.checked, reason || 'Поставте позначку, що термінал показав успіх.');
         updateCashChange();
     }
 
@@ -1488,7 +1712,7 @@
             const change = received > total ? received - total : 0n;
             output.textContent = formatMoneyMinor(change.toString());
         } catch {
-            output.textContent = '?';
+            output.textContent = '—';
         }
     }
 
@@ -1551,175 +1775,6 @@
         }
     }
 
-    async function runOperation(buttonId, action, target, callback) {
-        if (state.operationInFlight.has(buttonId)) return;
-        state.operationInFlight.add(buttonId);
-        syncOperationalAvailability();
-        const idempotencyKey = getOperationIdempotencyKey(action, target);
-        try {
-            const result = await callback(idempotencyKey);
-            clearOperationIdempotencyKey(action, target);
-            await loadPilotRegisterState({ silent: true });
-            return result;
-        } catch (error) {
-            notify(paymentUiError(error), 'error');
-            return null;
-        } finally {
-            state.operationInFlight.delete(buttonId);
-            syncOperationalAvailability();
-        }
-    }
-
-    async function submitServiceIn(event) {
-        event?.preventDefault?.();
-        if (!$('serviceInFinalCheck')?.checked) {
-            notify('Підтвердьте службове внесення перед відправленням.', 'error');
-            return;
-        }
-        await runOperation('serviceInBtn', 'service-in', 'current', async idempotencyKey => {
-            const result = await apiRequest('/api/payments/service-in', {
-                method: 'POST',
-                headers: apiHeaders(idempotencyKey),
-                body: JSON.stringify({ ...baseScopePayload(), amountMinor: parseAmountInput('serviceInAmount', 'service_in_amount_required'), reason: $('serviceInReason')?.value?.trim() || null, finalConfirmation: SERVICE_IN_FINAL_CONFIRMATION })
-            });
-            notify(result.replayed ? 'Службове внесення безпечно оброблено повторно.' : 'Службове внесення поставлено в чергу Checkbox.', 'success');
-            $('serviceInAmount').value = '';
-            $('serviceInReason').value = '';
-            $('serviceInFinalCheck').checked = false;
-            return result;
-        });
-    }
-
-    async function submitServiceOut(event) {
-        event?.preventDefault?.();
-        await runOperation('serviceOutRequestBtn', 'service-out-request', 'current', async idempotencyKey => {
-            const result = await apiRequest('/api/payments/service-out', {
-                method: 'POST',
-                headers: apiHeaders(idempotencyKey),
-                body: JSON.stringify({ ...baseScopePayload(), amountMinor: parseAmountInput('serviceOutAmount', 'service_out_amount_required'), reason: $('serviceOutReason')?.value?.trim() })
-            });
-            if (result.operationId) {
-                state.lastServiceOutOperationId = result.operationId;
-                setText('serviceOutApprovalOperationId', result.operationId);
-            }
-            notify(result.replayed ? 'Запит на службову видачу безпечно оброблено повторно.' : 'Запит на службову видачу створено. Потрібне окреме підтвердження.', 'success');
-            syncOperationalAvailability();
-            return result;
-        });
-    }
-
-    async function approveServiceOutSubmit(event) {
-        event?.preventDefault?.();
-        const operationId = state.lastServiceOutOperationId || $('serviceOutApprovalOperationId')?.textContent?.trim();
-        if (!operationId || operationId === '?') {
-            notify('Не вибрано службову видачу для підтвердження.', 'error');
-            return;
-        }
-        await runOperation('serviceOutApproveBtn', 'service-out-approve', operationId, async idempotencyKey => {
-            const result = await apiRequest(`/api/payments/service-out/${encodeURIComponent(operationId)}/approve`, {
-                method: 'POST',
-                headers: apiHeaders(idempotencyKey),
-                body: JSON.stringify({ pin: $('serviceOutApprovalPin')?.value || '' })
-            });
-            $('serviceOutApprovalPin').value = '';
-            state.lastServiceOutOperationId = null;
-            setText('serviceOutApprovalOperationId', '?');
-            notify(result.replayed ? 'Підтвердження службової видачі безпечно оброблено повторно.' : 'Службову видачу підтверджено та поставлено в чергу.', 'success');
-            return result;
-        });
-    }
-
-    async function submitRefund(event) {
-        event?.preventDefault?.();
-        const orderId = $('refundOrderId')?.value?.trim();
-        if (!orderId) {
-            notify(paymentUiError(new Error('refund_order_required')), 'error');
-            return;
-        }
-        await runOperation('refundBtn', 'refund-full', orderId, async idempotencyKey => {
-            const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(orderId)}/refund`, {
-                method: 'POST',
-                headers: apiHeaders(idempotencyKey),
-                body: JSON.stringify({
-                    reason: $('refundReason')?.value?.trim(),
-                    pin: $('refundPin')?.value || '',
-                    terminalRefundConfirmed: Boolean($('terminalRefundConfirmed')?.checked),
-                    terminalRefundReference: $('terminalRefundReference')?.value?.trim() || undefined
-                })
-            });
-            $('refundPin').value = '';
-            notify(result.replayed ? 'Повернення безпечно оброблено повторно.' : 'Повне повернення поставлено в чергу. Оригінальний чек не змінюється.', 'success');
-            return result;
-        });
-    }
-
-    function reconciliationPayload() {
-        return {
-            cashActualMinor: parseNullableAmountInput('cashActualAmount'),
-            terminalReportTotalMinor: parseNullableAmountInput('terminalReportTotalAmount'),
-            reason: $('reconciliationReason')?.value?.trim() || null,
-            pin: $('reconciliationPin')?.value || undefined
-        };
-    }
-
-    async function submitReconciliation(event) {
-        event?.preventDefault?.();
-        const shiftId = state.registerState?.shift?.id;
-        if (!shiftId) {
-            notify('Для звірки потрібна відкрита зміна.', 'error');
-            return;
-        }
-        await runOperation('reconcileShiftBtn', 'reconcile-shift', shiftId, async idempotencyKey => {
-            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/reconcile`, {
-                method: 'POST',
-                headers: apiHeaders(idempotencyKey),
-                body: JSON.stringify(reconciliationPayload())
-            });
-            $('reconciliationPin').value = '';
-            notify(result.replayed ? 'Звірку безпечно оброблено повторно.' : 'Нову версію звірки збережено.', 'success');
-            return result;
-        });
-    }
-
-    async function closeShift() {
-        const shiftId = state.registerState?.shift?.id;
-        if (!shiftId) {
-            notify('Для закриття потрібна відкрита зміна.', 'error');
-            return;
-        }
-        if (hasCloseBlockers()) {
-            notify(paymentUiError(new Error('shift_close_blocked')), 'error');
-            return;
-        }
-        await runOperation('closeShiftBtn', 'close-shift', shiftId, async idempotencyKey => {
-            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/close`, {
-                method: 'POST',
-                headers: apiHeaders(idempotencyKey),
-                body: JSON.stringify(reconciliationPayload())
-            });
-            $('reconciliationPin').value = '';
-            notify(result.replayed ? 'Закриття зміни безпечно оброблено повторно.' : 'Закриття зміни поставлено в чергу.', 'success');
-            return result;
-        });
-    }
-
-    async function loadOperationalReport() {
-        const shiftId = state.registerState?.shift?.id;
-        if (!shiftId) {
-            notify('Для внутрішнього звіту потрібна відкрита або нещодавня зміна.', 'error');
-            return;
-        }
-        await runOperation('loadOperationalReportBtn', 'load-report', shiftId, async () => {
-            const result = await apiRequest(`/api/payments/shifts/${encodeURIComponent(shiftId)}/report`, {
-                method: 'GET',
-                headers: apiHeaders()
-            });
-            renderReportBody(result);
-            notify('Внутрішній звіт завантажено.', 'success');
-            return result;
-        });
-    }
-
     async function cancelDraftOrder() {
         const order = state.orderDetails?.order;
         if (!order?.id) return;
@@ -1728,6 +1783,7 @@
             return;
         }
         const idempotencyKey = getOperationIdempotencyKey('cancel-draft', order.id);
+        state.orderLoadGeneration += 1;
         const button = $('cancelDraftOrderBtn');
         setDisabledReason(button, true, 'Скасування виконується.');
         try {
@@ -1753,12 +1809,13 @@
     }
 
     function startNextOrder() {
-        if (state.unresolvedQueueState !== 'available') {
+        if (!unresolvedQueueIsFresh()) {
             notify(queueUnavailableReason(), 'error');
             $('refreshUnresolvedOrdersBtn')?.focus?.({ preventScroll: false });
             return;
         }
         clearOrderPolling();
+        state.orderLoadGeneration += 1;
         clearCreateIdempotencyKey();
         storageRemove('lastOrderId');
         const currentOrderId = state.orderDetails?.order?.id;
@@ -1766,6 +1823,7 @@
         state.orderDetails = null;
         state.confirmSubmitted = false;
         state.confirmInFlight = false;
+        state.nextCustomerSafetyRefreshInFlight = true;
         $('terminalSuccessCheckbox') && ($('terminalSuccessCheckbox').checked = false);
         $('terminalReference') && ($('terminalReference').value = '');
         $('cashReceivedAmount') && ($('cashReceivedAmount').value = '');
@@ -1777,11 +1835,24 @@
         setText('cashChangeAmount', formatMoneyMinor(0));
         renderItems([]);
         renderFiscalResult({ order: { fiscalStatus: 'pending' }, receipts: [], artifacts: {} });
-        void loadUnresolvedOrders({ silent: true });
         renderRegisterState(state.registerState);
         syncTenderControls();
         syncCreateAvailability();
-        $('paymentDate')?.focus();
+        // A completed sale can open or close the provider shift after the cached
+        // readiness snapshot was taken. Keep the new draft disabled until both
+        // register-wide unresolved visibility and a fresh provider observation
+        // converge for the next customer.
+        void (async () => {
+            try {
+                await loadUnresolvedOrders({ silent: true });
+                await refreshReadiness({ silent: true, force: true });
+            } finally {
+                state.nextCustomerSafetyRefreshInFlight = false;
+                syncCreateAvailability();
+                syncConfirmationAvailability();
+                $('paymentDate')?.focus({ preventScroll: false });
+            }
+        })();
     }
 
     function bindEvents() {
@@ -1809,14 +1880,6 @@
             const orderId = target?.getAttribute?.('data-order-id');
             if (orderId) void loadPaymentOrder(orderId, { silent: false });
         });
-        $('refreshShiftStateBtn')?.addEventListener('click', () => { void refreshReadiness({ silent: false }); });
-        $('serviceInForm')?.addEventListener('submit', submitServiceIn);
-        $('serviceOutForm')?.addEventListener('submit', submitServiceOut);
-        $('serviceOutApprovalPanel')?.addEventListener('submit', approveServiceOutSubmit);
-        $('refundForm')?.addEventListener('submit', submitRefund);
-        $('reconciliationForm')?.addEventListener('submit', submitReconciliation);
-        $('closeShiftBtn')?.addEventListener('click', closeShift);
-        $('loadOperationalReportBtn')?.addEventListener('click', loadOperationalReport);
         const today = new Intl.DateTimeFormat('en-CA', {
             timeZone: 'Europe/Kyiv',
             year: 'numeric',
@@ -1841,7 +1904,6 @@
     async function initCashierPaymentsPage() {
         bindEvents();
         syncTenderControls();
-        syncOperationalAvailability();
         syncCreateAvailability();
         if (typeof initDarkMode === 'function') initDarkMode();
         try {
@@ -1864,13 +1926,23 @@
                 return;
             }
             await loadPilotRegisterState({ silent: true });
+            state.unresolvedAutoRefreshEnabled = true;
             await loadUnresolvedOrders({ silent: true });
             scheduleReadinessRefresh();
             const params = new URLSearchParams(window.location.search);
-            const orderId = params.get('orderId') || storageGet('lastOrderId');
+            const queryOrderId = params.get('orderId');
+            const storedOrderId = storageGet('lastOrderId');
+            const orderId = queryOrderId || storedOrderId;
             if (orderId) {
                 try { await loadPaymentOrder(orderId, { silent: true }); }
-                catch { /* stale local order id should not block opening the page */ }
+                catch (error) {
+                    if (!queryOrderId
+                        && String(storedOrderId || '') === String(orderId)
+                        && (Number(error?.status) === 404 || error?.code === 'payment_order_not_found')) {
+                        storageRemove('lastOrderId');
+                    }
+                    /* A stale local order id must not block opening the page. */
+                }
             }
         } catch (error) {
             if (error?.message === 'Invalid token') {
@@ -1885,6 +1957,10 @@
         }
     }
 
+    window.addEventListener('pagehide', () => {
+        state.unresolvedAutoRefreshEnabled = false;
+        clearUnresolvedRefreshTimer();
+    });
     document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });
 
     window.CashierPaymentsPage = {
@@ -1895,8 +1971,11 @@
         getCreateIdempotencyKey,
         getConfirmIdempotencyKey,
         getOperationIdempotencyKey,
+        unresolvedQueueIsFresh,
         loadPaymentOrder,
         loadPilotRegisterState,
-        closePhase1Shift
+        closePhase1Shift,
+        isTrustedCheckboxUrl,
+        unresolvedOrderAccessibleLabel
     };
 })();

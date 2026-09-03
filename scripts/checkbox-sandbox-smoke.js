@@ -391,6 +391,13 @@ async function loadCurrentSandboxShift(client, config) {
 
     try {
         const shift = await client.getCurrentShift();
+        if (shift === null && register.has_shift === false) return null;
+        if (shift === null) {
+            throw new CheckboxClientError('checkbox_sandbox_current_shift_unknown', 'Checkbox returned no current shift while cash_register.has_shift is active or unknown', {
+                status: 2,
+                retryable: false
+            });
+        }
         if (!shift || typeof shift !== 'object' || Array.isArray(shift)) {
             throw new CheckboxClientError('checkbox_sandbox_current_shift_malformed', 'Current shift response does not match the official schema', {
                 status: 2,

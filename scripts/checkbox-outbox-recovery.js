@@ -2,6 +2,7 @@
 'use strict';
 
 const { pool } = require('../db');
+const { resolveCapability } = require('../services/accountAccessPolicy');
 
 const PRE_SELL_STAGES = new Set([
     'auth',
@@ -19,6 +20,28 @@ const PRE_SELL_STAGES = new Set([
     'receipt_validation'
 ]);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
+const SERVICE_PRE_MUTATION_STAGES = new Set(['auth', 'readiness']);
+const SERVICE_POST_SUBMIT_STAGES = new Set(['service_submit', 'service_lookup', 'complete']);
+const RETURN_PRE_MUTATION_STAGES = new Set(['auth', 'readiness']);
+const RETURN_POST_SUBMIT_STAGES = new Set(['return_submit', 'return_lookup', 'complete']);
+const SHIFT_OPEN_RECOVERY_STAGES = new Set([
+    'auth',
+    'readiness',
+    'shift_request',
+    'shift_request_maybe_submitted',
+    'shift_lookup',
+    'shift_lookup_not_found',
+    'shift_request_retry_same_uuid'
+]);
+const SHIFT_CLOSE_RECOVERY_STAGES = new Set([
+    'auth',
+    'readiness',
+    'shift_close_request',
+    'shift_close_request_maybe_submitted',
+    'shift_close_lookup',
+    'shift_close_lookup_still_open',
+    'shift_close_retry_exact_shift'
+]);
 const MUTATING_MODES = new Set(['requeue-pre-sell', 'lookup-only']);
 const MODES = new Set(['status', 'dead-letter', ...MUTATING_MODES]);
 
@@ -73,8 +96,52 @@ function jsonObject(value) {
 function externalStage(row) {
     const requestSnapshot = jsonObject(row.request_snapshot);
     const payload = jsonObject(row.payload);
-    const stage = row.operation_external_stage || payload.external_stage || requestSnapshot.external_stage || null;
-    return typeof stage === 'string' ? stage : null;
+    const current = [
+        row.job_external_stage,
+        payload.external_stage,
+        row.operation_external_stage
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    const snapshot = String(requestSnapshot.external_stage || '').trim();
+    const all = snapshot ? [...current, snapshot] : current;
+    const distinctCurrent = [...new Set(current)];
+    const operationType = String(row.operation_type || '').trim();
+    const jobType = String(row.job_type || '').trim();
+    const isShiftOpen = operationType === 'shift_open' || jobType === 'shift_open';
+    const isShiftClose = operationType === 'shift_close' || jobType === 'shift_close';
+    const isServiceReceipt = jobType === 'service_receipt';
+    const isReturnReceipt = jobType === 'receipt_return';
+
+    if (isServiceReceipt && all.some(stage => SERVICE_POST_SUBMIT_STAGES.has(stage))) {
+        if (distinctCurrent.length === 1 && SERVICE_POST_SUBMIT_STAGES.has(distinctCurrent[0])) {
+            return distinctCurrent[0];
+        }
+        return 'service_lookup';
+    }
+    if (isReturnReceipt && all.some(stage => RETURN_POST_SUBMIT_STAGES.has(stage))) {
+        if (distinctCurrent.length === 1 && RETURN_POST_SUBMIT_STAGES.has(distinctCurrent[0])) {
+            return distinctCurrent[0];
+        }
+        return 'return_lookup';
+    }
+    if (!isShiftOpen && !isShiftClose && !isServiceReceipt && !isReturnReceipt && all.some(stage => POST_SELL_STAGES.has(stage))) {
+        if (distinctCurrent.length === 1 && POST_SELL_STAGES.has(distinctCurrent[0])) {
+            return distinctCurrent[0];
+        }
+        return 'receipt_lookup';
+    }
+    if (isShiftOpen && all.some(stage => SHIFT_OPEN_RECOVERY_STAGES.has(stage) && !['auth', 'readiness', 'shift_request'].includes(stage))) {
+        if (distinctCurrent.length === 1 && SHIFT_OPEN_RECOVERY_STAGES.has(distinctCurrent[0])) {
+            return distinctCurrent[0];
+        }
+        return 'shift_lookup';
+    }
+    if (isShiftClose && all.some(stage => SHIFT_CLOSE_RECOVERY_STAGES.has(stage) && !['auth', 'readiness', 'shift_close_request'].includes(stage))) {
+        if (distinctCurrent.length === 1 && SHIFT_CLOSE_RECOVERY_STAGES.has(distinctCurrent[0])) {
+            return distinctCurrent[0];
+        }
+        return 'shift_close_lookup';
+    }
+    return current[0] || all[0] || null;
 }
 
 function sanitizeRow(row) {
@@ -97,6 +164,7 @@ function sanitizeRow(row) {
         registerFeatureEnabled: row.register_feature_enabled,
         shiftId: row.shift_id || null,
         shiftStatus: row.shift_status || null,
+        shiftLifecycleStage: row.shift_lifecycle_stage || null,
         providerShiftId: row.provider_shift_id || null,
         paymentOrderId: row.payment_order_id || null,
         paymentStatus: row.payment_status || null,
@@ -130,6 +198,7 @@ async function loadScopedRows(client, args, options = {}) {
             poj.locked_by,
             poj.heartbeat_at,
             poj.last_error_code AS job_last_error_code,
+            poj.external_stage AS job_external_stage,
             poj.payload,
             fo.id AS operation_id,
             fo.fiscal_register_id,
@@ -143,6 +212,7 @@ async function loadScopedRows(client, args, options = {}) {
             fr.feature_enabled AS register_feature_enabled,
             fs.id AS shift_id,
             fs.status AS shift_status,
+            fs.lifecycle_stage AS shift_lifecycle_stage,
             fs.provider_shift_id,
             po.payment_status,
             po.fiscal_status
@@ -181,6 +251,20 @@ function assertSingleJob(rows, mode) {
 
 function buildMutationPlan(row, mode) {
     const stage = externalStage(row);
+    const operationType = String(row.operation_type || '').trim();
+    const jobType = String(row.job_type || '').trim();
+    const shiftLifecycleStage = String(row.shift_lifecycle_stage || '').trim().toUpperCase();
+    const shiftStatus = String(row.shift_status || '').trim().toLowerCase();
+    const isShiftOpen = operationType === 'shift_open' || jobType === 'shift_open';
+    const isShiftClose = operationType === 'shift_close' || jobType === 'shift_close';
+    const isServiceReceipt = jobType === 'service_receipt';
+    const isReturnReceipt = jobType === 'receipt_return';
+    if ((operationType === 'shift_open') !== (jobType === 'shift_open')) {
+        throw new Error('Shift-open recovery requires matching shift_open operation and job types');
+    }
+    if ((operationType === 'shift_close') !== (jobType === 'shift_close')) {
+        throw new Error('Shift-close recovery requires matching shift_close operation and job types');
+    }
     if (row.locked_by && (row.heartbeat_at || row.locked_at)) {
         const leaseAt = Date.parse(row.heartbeat_at || row.locked_at);
         if (Number.isFinite(leaseAt) && Date.now() - leaseAt < 5 * 60 * 1000) {
@@ -188,37 +272,118 @@ function buildMutationPlan(row, mode) {
         }
     }
     if (mode === 'requeue-pre-sell') {
-        if (!PRE_SELL_STAGES.has(stage)) {
+        const allowedPreMutationStages = isServiceReceipt
+            ? SERVICE_PRE_MUTATION_STAGES
+            : (isReturnReceipt ? RETURN_PRE_MUTATION_STAGES : PRE_SELL_STAGES);
+        if (!allowedPreMutationStages.has(stage)) {
             throw new Error(`requeue-pre-sell is allowed only before sale submit; current stage is ${stage || 'unknown'}`);
+        }
+        if (isShiftOpen) {
+            if (!row.shift_id || !SHIFT_OPEN_RECOVERY_STAGES.has(stage)) {
+                throw new Error(`shift_open recovery stage is invalid: ${stage || 'unknown'}`);
+            }
+            if (!['CREATED', 'OPENING'].includes(shiftLifecycleStage) || !['opening', 'failed', 'blocked'].includes(shiftStatus)) {
+                throw new Error(`shift_open recovery requires CREATED/OPENING lifecycle; current state is ${shiftStatus || 'unknown'}/${shiftLifecycleStage || 'unknown'}`);
+            }
+        }
+        if (isShiftClose) {
+            if (!row.shift_id || !row.provider_shift_id || !SHIFT_CLOSE_RECOVERY_STAGES.has(stage)) {
+                throw new Error(`shift_close recovery stage is invalid: ${stage || 'unknown'}`);
+            }
+            if (shiftLifecycleStage !== 'CLOSING' || !['closing', 'failed', 'blocked'].includes(shiftStatus)) {
+                throw new Error(`shift_close recovery requires CLOSING lifecycle; current state is ${shiftStatus || 'unknown'}/${shiftLifecycleStage || 'unknown'}`);
+            }
         }
         if (row.operation_status === 'fiscalized' || row.fiscal_status === 'fiscalized') {
             throw new Error('Cannot requeue a fiscalized operation');
         }
         return {
             targetStage: stage || 'auth',
-            operationStatus: row.operation_status === 'unknown' ? 'pending' : row.operation_status,
-            action: 'requeue_pre_sell'
+            operationStatus: 'pending',
+            action: isServiceReceipt
+                ? 'requeue_pre_service_submit'
+                : (isReturnReceipt ? 'requeue_pre_return_submit' : 'requeue_pre_sell')
         };
     }
 
     if (mode === 'lookup-only') {
+        if (isShiftOpen || isShiftClose) {
+            throw new Error('lookup-only is receipt-only; recover shift jobs through their exact shift lookup stage');
+        }
         if (!row.provider_operation_id) {
             throw new Error('lookup-only requires provider_operation_id');
         }
         if (row.operation_status === 'fiscalized' || row.fiscal_status === 'fiscalized') {
             throw new Error('Cannot lookup-only a fiscalized operation through recovery; use status');
         }
-        if (!POST_SELL_STAGES.has(stage) && row.job_type !== 'receipt_status_lookup') {
+        const allowedPostSubmitStages = isServiceReceipt
+            ? SERVICE_POST_SUBMIT_STAGES
+            : (isReturnReceipt ? RETURN_POST_SUBMIT_STAGES : POST_SELL_STAGES);
+        if (!allowedPostSubmitStages.has(stage) && row.job_type !== 'receipt_status_lookup') {
             throw new Error(`lookup-only is allowed only for possibly submitted sale; current stage is ${stage || 'unknown'}`);
         }
+        const targetStage = isServiceReceipt
+            ? 'service_lookup'
+            : (isReturnReceipt ? 'return_lookup' : 'receipt_lookup');
         return {
-            targetStage: 'receipt_lookup',
+            targetStage,
             operationStatus: 'unknown',
-            action: 'force_lookup_only'
+            action: isServiceReceipt
+                ? 'force_service_lookup_only'
+                : (isReturnReceipt ? 'force_return_lookup_only' : 'force_lookup_only')
         };
     }
 
     throw new Error(`Mode ${mode} is not mutating`);
+}
+
+function normalizeTextArray(value) {
+    if (Array.isArray(value)) return value.map(item => String(item || '').trim()).filter(Boolean);
+    if (typeof value === 'string' && value.startsWith('{') && value.endsWith('}')) {
+        return value.slice(1, -1).split(',').map(item => item.trim().replace(/^"|"$/g, '')).filter(Boolean);
+    }
+    return [];
+}
+
+async function assertRecoveryActorAuthorized(client, row, actorUserId) {
+    const result = await client.query(
+        `SELECT u.id, u.username, u.name, u.role, u.extra_roles, u.action_allowlist, u.action_denylist, u.is_active,
+                binding.capability_scope,
+                register.metadata AS register_metadata
+           FROM users u
+           JOIN fiscal_cashier_bindings binding
+             ON binding.user_id = u.id
+            AND binding.fiscal_profile_id = $2
+            AND binding.fiscal_register_id = $3
+            AND binding.status = 'active'
+           JOIN fiscal_registers register
+             ON register.id = binding.fiscal_register_id
+            AND register.fiscal_profile_id = binding.fiscal_profile_id
+            AND register.status = 'active'
+          WHERE u.id = $1
+          LIMIT 1
+          FOR UPDATE OF u, binding, register`,
+        [actorUserId, row.fiscal_profile_id, row.fiscal_register_id]
+    );
+    if (result.rows.length !== 1) {
+        throw new Error('Recovery actor requires one active exact fiscal profile/register binding');
+    }
+    const actor = result.rows[0];
+    if (actor.is_active !== true) {
+        throw new Error('Recovery actor user is not active');
+    }
+    const decision = resolveCapability(actor, 'fiscal.incident.manage');
+    if (!decision.allowed) {
+        throw new Error('Recovery actor lacks canonical fiscal.incident.manage capability');
+    }
+    if (!normalizeTextArray(actor.capability_scope).includes('fiscal.incident.manage')) {
+        throw new Error('Recovery actor binding does not allow fiscal.incident.manage');
+    }
+    const metadata = jsonObject(actor.register_metadata);
+    if (Number(metadata.integration_owner) !== Number(actorUserId)) {
+        throw new Error('Only the exact fiscal register integration owner can recover outbox jobs');
+    }
+    return actor;
 }
 
 async function applyMutation(client, row, plan, reason, actorUserId = null) {
@@ -230,13 +395,16 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
         no_repeat_sale: true
     };
 
-    await client.query(
+    const operationUpdate = await client.query(
         `UPDATE fiscal_operations
             SET status = $2,
-                external_stage = $3
+                external_stage = $3,
+                last_error_code = NULL,
+                last_error_message = NULL
           WHERE id = $1
             AND fiscal_profile_id = $4
-            AND fiscal_register_id = $5`,
+            AND fiscal_register_id = $5
+          RETURNING id`,
         [
             row.operation_id,
             plan.operationStatus,
@@ -245,8 +413,11 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
             row.fiscal_register_id
         ]
     );
+    if (operationUpdate.rows.length !== 1) {
+        throw new Error('Recovery could not update the exact scoped fiscal operation');
+    }
 
-    await client.query(
+    const jobUpdate = await client.query(
         `UPDATE payment_outbox_jobs
             SET status = 'queued',
                 locked_at = NULL,
@@ -262,14 +433,19 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
                     || jsonb_build_object('external_stage', $2, 'operator_recovery_at', to_jsonb(NOW())),
                 updated_at = NOW()
           WHERE id = $1
-            AND fiscal_profile_id = $3`,
-        [row.job_id, plan.targetStage, row.fiscal_profile_id]
+            AND fiscal_profile_id = $3
+            AND fiscal_operation_id = $4
+          RETURNING id`,
+        [row.job_id, plan.targetStage, row.fiscal_profile_id, row.operation_id]
     );
+    if (jobUpdate.rows.length !== 1) {
+        throw new Error('Recovery could not update the exact scoped outbox job');
+    }
 
     if (row.operation_type === 'shift_open' && row.shift_id) {
-        await client.query(
+        const shiftUpdate = await client.query(
             `UPDATE fiscal_shifts
-                SET status = CASE WHEN $3 = 'receipt_lookup' THEN status ELSE 'opening' END,
+                SET status = 'opening',
                     lifecycle_stage = CASE
                         WHEN $3 IN (
                             'shift_request_maybe_submitted',
@@ -282,9 +458,37 @@ async function applyMutation(client, row, plan, reason, actorUserId = null) {
                     updated_at = NOW()
               WHERE id = $1
                 AND fiscal_profile_id = $2
-                AND status IN ('opening', 'failed', 'blocked')`,
-            [row.shift_id, row.fiscal_profile_id, plan.targetStage]
+                AND fiscal_register_id = $4
+                AND open_operation_id = $5
+                AND status IN ('opening', 'failed', 'blocked')
+                AND lifecycle_stage IN ('CREATED', 'OPENING')
+              RETURNING id`,
+            [row.shift_id, row.fiscal_profile_id, plan.targetStage, row.fiscal_register_id, row.operation_id]
         );
+        if (shiftUpdate.rows.length !== 1) {
+            throw new Error('Shift-open recovery could not restore the exact canonical shift lifecycle');
+        }
+    }
+
+    if (row.operation_type === 'shift_close' && row.shift_id) {
+        const shiftUpdate = await client.query(
+            `UPDATE fiscal_shifts
+                SET status = 'closing',
+                    lifecycle_stage = 'CLOSING',
+                    updated_at = NOW()
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+                AND fiscal_register_id = $3
+                AND close_operation_id = $4
+                AND provider_shift_id = $5
+                AND status IN ('closing', 'failed', 'blocked')
+                AND lifecycle_stage = 'CLOSING'
+              RETURNING id`,
+            [row.shift_id, row.fiscal_profile_id, row.fiscal_register_id, row.operation_id, row.provider_shift_id]
+        );
+        if (shiftUpdate.rows.length !== 1) {
+            throw new Error('Shift-close recovery could not restore the exact canonical shift lifecycle');
+        }
     }
 
     await client.query(
@@ -327,6 +531,9 @@ async function main() {
         if (args.apply && !actorUserId) {
             throw new Error('--actor-user-id is required for mutating recovery');
         }
+        if (args.apply && !String(args.reason || '').trim()) {
+            throw new Error('--reason is required for mutating recovery');
+        }
         const plan = buildMutationPlan(row, args.mode);
         const output = {
             mode: args.mode,
@@ -343,6 +550,7 @@ async function main() {
         await client.query('BEGIN');
         const lockedRows = await loadScopedRows(client, args, { forUpdate: true });
         const lockedRow = assertSingleJob(lockedRows, args.mode);
+        await assertRecoveryActorAuthorized(client, lockedRow, actorUserId);
         const lockedPlan = buildMutationPlan(lockedRow, args.mode);
         await applyMutation(client, lockedRow, lockedPlan, args.reason, actorUserId);
         await client.query('COMMIT');
@@ -365,3 +573,12 @@ async function main() {
 if (require.main === module) {
     main();
 }
+
+module.exports = {
+    SHIFT_OPEN_RECOVERY_STAGES,
+    SHIFT_CLOSE_RECOVERY_STAGES,
+    externalStage,
+    buildMutationPlan,
+    assertRecoveryActorAuthorized,
+    applyMutation
+};

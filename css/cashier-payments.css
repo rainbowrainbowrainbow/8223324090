@@ -290,7 +290,13 @@
 .cashier-items-table {
     width: 100%;
     border-collapse: collapse;
-    min-width: 560px;
+    min-width: 100%;
+    table-layout: fixed;
+}
+
+.cashier-items-table th:first-child,
+.cashier-items-table td:first-child {
+    width: 40%;
 }
 
 .cashier-items-table th,
@@ -481,6 +487,16 @@
 
 .cashier-secondary-disclosure {
     margin-bottom: 18px;
+}
+
+.cashier-secondary-disclosure.has-warning {
+    border-color: rgba(245, 158, 11, .38);
+    box-shadow: 0 12px 28px rgba(146, 64, 14, .08);
+}
+
+.cashier-secondary-disclosure.has-warning > summary .cashier-pill {
+    background: rgba(245, 158, 11, .16);
+    color: #92400e;
 }
 
 .cashier-secondary-disclosure > summary {
@@ -721,6 +737,22 @@ body.dark-mode .cashier-pill,
 body.dark-mode .cashier-status {
     background: rgba(30,41,59,.74);
     border-color: rgba(255,255,255,.10);
+    color: #cbd5e1;
+}
+
+body.dark-mode .cashier-status.is-ok {
+    background: rgba(6, 95, 70, .38);
+    color: #a7f3d0;
+}
+
+body.dark-mode .cashier-status.is-warn {
+    background: rgba(146, 64, 14, .38);
+    color: #fde68a;
+}
+
+body.dark-mode .cashier-status.is-danger {
+    background: rgba(127, 29, 29, .42);
+    color: #fecaca;
 }
 
 body.dark-mode .cashier-alert-warning {
@@ -739,6 +771,16 @@ body.dark-mode .cashier-secondary-disclosure > summary::after {
     border-color: rgba(148, 163, 184, .22);
     background: rgba(15, 23, 42, .56);
     color: #cbd5e1;
+}
+
+body.dark-mode .cashier-secondary-disclosure.has-warning {
+    border-color: rgba(251, 191, 36, .34);
+    box-shadow: 0 12px 28px rgba(0, 0, 0, .18);
+}
+
+body.dark-mode .cashier-secondary-disclosure.has-warning > summary .cashier-pill {
+    background: rgba(146, 64, 14, .38);
+    color: #fde68a;
 }
 
 body.dark-mode .cashier-secondary-disclosure-body,
@@ -810,6 +852,18 @@ body.dark-mode .cashier-confirm-panel {
 
     .cashier-scope-card {
         min-width: 0;
+    }
+
+    .cashier-items-table th,
+    .cashier-items-table td {
+        padding: 9px 5px;
+        font-size: 12px;
+        overflow-wrap: anywhere;
+    }
+
+    .cashier-items-table th {
+        font-size: 10px;
+        letter-spacing: .02em;
     }
 }
 

@@ -14,6 +14,37 @@ function unique(prefix) {
     return `${prefix}_${process.pid}_${Date.now()}`.toLowerCase();
 }
 
+function deferred() {
+    let resolve;
+    const promise = new Promise(resolvePromise => {
+        resolve = resolvePromise;
+    });
+    return { promise, resolve };
+}
+
+function targetLockGate(dbPool, { attempted, acquired, release = null }) {
+    return {
+        async connect() {
+            const client = await dbPool.connect();
+            return {
+                async query(sql, params) {
+                    const isTargetLock = String(sql).includes('checkbox_pilot_config_target_lock');
+                    if (isTargetLock) attempted?.resolve();
+                    const result = await client.query(sql, params);
+                    if (isTargetLock) {
+                        acquired?.resolve();
+                        if (release) await release.promise;
+                    }
+                    return result;
+                },
+                release() {
+                    client.release();
+                }
+            };
+        }
+    };
+}
+
 async function seedUser() {
     const result = await pool.query(
         `INSERT INTO users (username, password_hash, name, role, is_active)
@@ -118,6 +149,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     assert.equal(binding.rows[0].provider_cashier_login_ref, `${legalEntityKey}_cashier_ref`);
     assert.equal(binding.rows[0].action_pin_hash, null, 'thin MVP binding must not require action PIN');
     assert.deepEqual(binding.rows[0].capability_scope.sort(), [
+        'fiscal.incident.manage',
         'fiscal.shift.close',
         'fiscal.shift.open',
         'payments.confirm_received',
@@ -321,6 +353,22 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         `UPDATE fiscal_registers
             SET metadata = metadata || jsonb_build_object('integration_owner', $2::text)
           WHERE id = $1`,
+        [applied.fiscalRegisterId, `checkbox_config_actor_${userId}`]
+    );
+    await assert.rejects(
+        () => updateOperationalIncidentStatus({
+            dbPool: pool,
+            user: fiscalConfigUser(userId, ['payments.view', 'fiscal.incident.manage']),
+            incidentId,
+            status: 'acknowledged',
+            reason: 'username must not substitute for exact integration owner id'
+        }),
+        error => error.code === 'fiscal_incident_owner_missing'
+    );
+    await pool.query(
+        `UPDATE fiscal_registers
+            SET metadata = metadata || jsonb_build_object('integration_owner', $2::text)
+          WHERE id = $1`,
         [applied.fiscalRegisterId, String(userId)]
     );
     const acknowledged = await updateOperationalIncidentStatus({
@@ -361,6 +409,89 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     await pool.query('UPDATE fiscal_profiles SET status = $1 WHERE id = $2', ['archived', applied.fiscalProfileId]);
 });
 
+test('concurrent generic config apply locks an absent target before re-read and refuses silent overwrite', { skip: !SHOULD_RUN }, async () => {
+    const userId = await seedUser();
+    const ticketCodes = await activeTicketCodes();
+    const legalEntityKey = unique('park_fop_config_race');
+    const firstArgs = argsFor({ userId, legalEntityKey, ticketCodes });
+    const conflictingArgs = firstArgs.flatMap((arg, index, list) => {
+        if (arg === '--provider-register-id') return ['--provider-register-id', `${legalEntityKey}_other_register`];
+        return index > 0 && list[index - 1] === '--provider-register-id' ? [] : [arg];
+    });
+    const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
+    const firstAttempted = deferred();
+    const firstAcquired = deferred();
+    const releaseFirst = deferred();
+    const secondAttempted = deferred();
+    const secondAcquired = deferred();
+    let secondLockAcquired = false;
+    secondAcquired.promise.then(() => {
+        secondLockAcquired = true;
+    });
+
+    try {
+        const firstApply = run(['apply', ...firstArgs], {
+            env,
+            dbPool: targetLockGate(pool, { attempted: firstAttempted, acquired: firstAcquired, release: releaseFirst })
+        });
+        await firstAcquired.promise;
+
+        const secondApply = run(['apply', ...conflictingArgs], {
+            env,
+            dbPool: targetLockGate(pool, { attempted: secondAttempted, acquired: secondAcquired })
+        }).then(
+            value => ({ value, error: null }),
+            error => ({ value: null, error })
+        );
+        await secondAttempted.promise;
+        await new Promise(resolve => setImmediate(resolve));
+        assert.equal(secondLockAcquired, false, 'second create/apply must wait on the same absent-target lock');
+
+        releaseFirst.resolve();
+        const applied = await firstApply;
+        const conflicting = await secondApply;
+        assert.equal(conflicting.value, null);
+        assert.equal(conflicting.error?.code, 'pilot_config_drift_requires_explicit_command');
+
+        const stored = await run(['status', '--legal-entity-key', legalEntityKey], { env, dbPool: pool });
+        assert.equal(stored.status.configSnapshot.providerRegisterId, `${legalEntityKey}_register`);
+        assert.equal(stored.status.featureEnabled, false);
+        assert.equal(
+            await countRows(
+                `SELECT COUNT(*)::integer AS count
+                   FROM fiscal_configuration_audit
+                  WHERE fiscal_profile_id = $1
+                    AND fiscal_register_id = $2`,
+                [applied.fiscalProfileId, applied.fiscalRegisterId]
+            ),
+            1,
+            'rejected concurrent plan must not append an audit or overwrite configuration'
+        );
+
+        const exactReplay = await run(['apply', ...firstArgs], { env, dbPool: pool });
+        assert.equal(exactReplay.noChange, true, 'exact apply remains idempotent after serialized creation');
+        assert.equal(exactReplay.fiscalRegisterId, applied.fiscalRegisterId);
+    } finally {
+        releaseFirst.resolve();
+        await pool.query(
+            `UPDATE fiscal_registers register
+                SET status = 'archived'
+               FROM fiscal_profiles profile
+              WHERE register.fiscal_profile_id = profile.id
+                AND profile.crm_profile_key = 'event_genix'
+                AND profile.legal_entity_key = $1`,
+            [legalEntityKey]
+        ).catch(() => {});
+        await pool.query(
+            `UPDATE fiscal_profiles
+                SET status = 'archived'
+              WHERE crm_profile_key = 'event_genix'
+                AND legal_entity_key = $1`,
+            [legalEntityKey]
+        ).catch(() => {});
+    }
+});
+
 test('park config preflight rejects wrong user, missing mapping, and second FOP for middle register', { skip: !SHOULD_RUN }, async () => {
     const userId = await seedUser();
     const ticketCodes = await activeTicketCodes();
@@ -381,4 +512,124 @@ test('park config preflight rejects wrong user, missing mapping, and second FOP 
         () => run(['preflight', ...argsFor({ userId, legalEntityKey: unique('park_fop_other'), ticketCodes })], { env, dbPool: pool }),
         error => error.code === 'pilot_config_other_fop_register_conflict'
     );
+});
+
+test('credential prefix collision is serialized across concurrent PostgreSQL writers', { skip: !SHOULD_RUN }, async () => {
+    const scope = await pool.query(
+        `SELECT fr.fiscal_profile_id, fr.fiscal_location_id, fr.id AS fiscal_register_id, fr.crm_profile_key
+           FROM fiscal_registers fr
+          ORDER BY fr.id DESC
+          LIMIT 1`
+    );
+    assert.equal(scope.rowCount, 1, 'configuration suite must create a fiscal register before the race test');
+    const firstUserId = await seedUser();
+    const secondUserId = await seedUser();
+    const collisionBase = unique('credential-prefix-race');
+    const firstRef = `${collisionBase}-shared`;
+    const secondRef = `${collisionBase}_shared`;
+    const first = await pool.connect();
+    const second = await pool.connect();
+    const row = scope.rows[0];
+    const insertBinding = (client, userId, providerCashierId, credentialRef) => client.query(
+        `INSERT INTO fiscal_cashier_bindings (
+             fiscal_profile_id, fiscal_location_id, fiscal_register_id, crm_profile_key,
+             user_id, provider, provider_cashier_id, provider_cashier_login_ref,
+             status, capability_scope
+         )
+         VALUES ($1, $2, $3, $4, $5, 'checkbox', $6, $7, 'active', ARRAY['payments.view']::text[])`,
+        [
+            row.fiscal_profile_id,
+            row.fiscal_location_id,
+            row.fiscal_register_id,
+            row.crm_profile_key,
+            userId,
+            providerCashierId,
+            credentialRef
+        ]
+    );
+
+    try {
+        await first.query('BEGIN');
+        await second.query('BEGIN');
+        await insertBinding(first, firstUserId, `${collisionBase}-cashier-1`, firstRef);
+        await second.query("SET LOCAL lock_timeout = '150ms'");
+        await assert.rejects(
+            () => insertBinding(second, secondUserId, `${collisionBase}-cashier-2`, secondRef),
+            error => error.code === '55P03'
+        );
+        await second.query('ROLLBACK');
+        await first.query('COMMIT');
+
+        await second.query('BEGIN');
+        await assert.rejects(
+            () => insertBinding(second, secondUserId, `${collisionBase}-cashier-2`, secondRef),
+            error => error.code === '23505'
+        );
+        await second.query('ROLLBACK');
+    } finally {
+        await first.query('ROLLBACK').catch(() => {});
+        await second.query('ROLLBACK').catch(() => {});
+        first.release();
+        second.release();
+    }
+});
+
+test('payment item insertion serializes with sealing of the same order', { skip: !SHOULD_RUN }, async () => {
+    const scope = await pool.query(
+        `SELECT fr.fiscal_profile_id, fr.id AS fiscal_register_id
+           FROM fiscal_registers fr
+          ORDER BY fr.id DESC
+          LIMIT 1`
+    );
+    assert.equal(scope.rowCount, 1, 'configuration suite must create a fiscal register before the sealing race test');
+    const cashierUserId = await seedUser();
+    const identity = unique('payment-item-seal-race');
+    const order = await pool.query(
+        `INSERT INTO payment_orders (
+             fiscal_profile_id, fiscal_register_id, cashier_user_id,
+             source_type, source_id, order_key, idempotency_key,
+             status, payment_status, fiscal_status, payment_method,
+             total_amount_minor, currency, source_snapshot, created_by_user_id
+         )
+         VALUES ($1, $2, $3, 'admission_ticket', $4, $5, $6,
+                 'draft', 'unpaid', 'pending', 'cash', 1000, 'UAH', '{}'::jsonb, $3)
+         RETURNING id, fiscal_profile_id`,
+        [scope.rows[0].fiscal_profile_id, scope.rows[0].fiscal_register_id, cashierUserId, identity, identity, identity]
+    );
+    const first = await pool.connect();
+    const second = await pool.connect();
+    try {
+        await first.query('BEGIN');
+        await second.query('BEGIN');
+        await first.query(
+            `INSERT INTO payment_order_items (
+                 fiscal_profile_id, payment_order_id, line_number, item_type, item_code, item_name,
+                 unit_price_minor, quantity_millis, total_amount_minor, currency,
+                 provider_tax_id, tax_mode, item_snapshot
+             )
+             VALUES ($1, $2, 1, 'admission_ticket', 'race-item', 'Race item',
+                     1000, 1000, 1000, 'UAH', NULL, 'untaxed', '{}'::jsonb)`,
+            [order.rows[0].fiscal_profile_id, order.rows[0].id]
+        );
+        await second.query("SET LOCAL lock_timeout = '150ms'");
+        await assert.rejects(
+            () => second.query(
+                `UPDATE payment_orders
+                    SET status = 'confirmed',
+                        payment_status = 'confirmed',
+                        sealed_at = NOW(),
+                        seal_fingerprint = $2
+                  WHERE id = $1`,
+                [order.rows[0].id, identity]
+            ),
+            error => error.code === '55P03'
+        );
+        await second.query('ROLLBACK');
+        await first.query('ROLLBACK');
+    } finally {
+        await first.query('ROLLBACK').catch(() => {});
+        await second.query('ROLLBACK').catch(() => {});
+        first.release();
+        second.release();
+    }
 });

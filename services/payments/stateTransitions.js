@@ -30,7 +30,7 @@ const STATE_MACHINES = Object.freeze({
         opening: ['open', 'failed', 'unknown'],
         open: ['closing', 'closed', 'unknown'],
         closing: ['closed', 'failed', 'unknown'],
-        closed: ['opening'],
+        closed: [],
         failed: ['opening', 'closing', 'blocked'],
         blocked: ['unknown']
     }),

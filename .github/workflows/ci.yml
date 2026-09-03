@@ -342,7 +342,7 @@ jobs:
         run: npm run check:checkbox-safety
 
       - name: Run Checkbox thin unit contracts
-        run: node --test tests/checkbox-openapi-contract.test.js tests/checkbox-provider-bridge.test.js tests/checkbox-sandbox-harness.test.js tests/checkbox-park-config.test.js tests/checkbox-fullstack-testmode-harness.test.js tests/payment-fiscal-ledger-foundation.test.js tests/payment-readiness.test.js
+        run: npm run test:checkbox-thin
 
       - name: Run Checkbox park configuration PostgreSQL test
         env:

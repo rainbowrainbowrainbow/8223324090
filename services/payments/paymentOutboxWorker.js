@@ -4,8 +4,12 @@ const crypto = require('node:crypto');
 const { pool } = require('../../db');
 const { publishInTransaction } = require('../eventBus');
 const { CheckboxClientError } = require('../checkbox/errors');
-const { createCheckboxProviderFactory, runtimeContextKey } = require('../checkbox/provider');
+const { createCheckboxProviderFactory } = require('../checkbox/provider');
 const { isCashierProEnabled } = require('../checkbox/config');
+const {
+    CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE,
+    guardPaidPreSubmitSalesForClosedShift
+} = require('./closedShiftSaleGuard');
 
 const WORKER_NAME = 'payment-outbox-worker';
 const DEFAULT_BATCH_SIZE = 1;
@@ -36,6 +40,10 @@ const PRE_SELL_STAGES = new Set([
     'receipt_validation'
 ]);
 const POST_SELL_STAGES = new Set(['sale_submit', 'receipt_lookup', 'complete']);
+const RETURN_PRE_MUTATION_STAGES = new Set(['auth', 'readiness']);
+const RETURN_POST_SUBMIT_STAGES = new Set(['return_submit', 'return_lookup', 'complete']);
+const SERVICE_PRE_MUTATION_STAGES = new Set(['auth', 'readiness']);
+const SERVICE_POST_SUBMIT_STAGES = new Set(['service_submit', 'service_lookup', 'complete']);
 const SHIFT_OPEN_LOOKUP_STAGES = new Set([
     'shift_request_maybe_submitted',
     'shift_lookup',
@@ -53,9 +61,13 @@ const SHIFT_LIFECYCLE_TRANSITIONS = Object.freeze({
     OPENING: ['OPENED', 'CLOSED'],
     OPENED: ['CLOSING', 'CLOSED'],
     CLOSING: ['CLOSED'],
-    CLOSED: ['OPENING']
+    CLOSED: []
 });
 const CASHIER_PRO_JOB_TYPES = new Set(['receipt_return', 'service_receipt']);
+
+function normalizedLockExpiryMs(value) {
+    return Math.max(30_000, Math.floor(Number(value) || DEFAULT_LOCK_EXPIRY_MS));
+}
 
 class PaymentOutboxWorkerError extends Error {
     constructor(code, message, { retryable = true, unknown = false, details = null } = {}) {
@@ -114,6 +126,14 @@ function safeJsonObject(value) {
         }
     }
     return {};
+}
+
+function stableJson(value) {
+    if (Array.isArray(value)) return `[${value.map(stableJson).join(',')}]`;
+    if (value && typeof value === 'object') {
+        return `{${Object.keys(value).sort().map(key => `${JSON.stringify(key)}:${stableJson(value[key])}`).join(',')}}`;
+    }
+    return JSON.stringify(value);
 }
 
 function normalizeBoolean(value) {
@@ -197,10 +217,20 @@ async function claimPaymentOutboxJobs(client, {
     if (Array.isArray(eligibleFiscalProfileIds) && eligibleFiscalProfileIds.length === 0) {
         return [];
     }
-    const runtimeKeys = Array.isArray(eligibleRuntimeContexts)
-        ? eligibleRuntimeContexts.map(runtimeContextKey).filter(Boolean)
+    const runtimeContexts = Array.isArray(eligibleRuntimeContexts)
+        ? eligibleRuntimeContexts.map(context => ({
+            fiscal_profile_id: Number(context?.fiscalProfileId),
+            fiscal_register_id: Number(context?.fiscalRegisterId),
+            register_credential_ref: String(context?.registerCredentialRef || '').trim(),
+            cashier_credential_ref: String(context?.cashierCredentialRef || '').trim()
+        })).filter(context => Number.isSafeInteger(context.fiscal_profile_id)
+            && context.fiscal_profile_id > 0
+            && Number.isSafeInteger(context.fiscal_register_id)
+            && context.fiscal_register_id > 0
+            && context.register_credential_ref
+            && context.cashier_credential_ref)
         : null;
-    if (Array.isArray(runtimeKeys) && runtimeKeys.length === 0) {
+    if (Array.isArray(runtimeContexts) && runtimeContexts.length === 0) {
         return [];
     }
     const token = lockToken();
@@ -208,77 +238,129 @@ async function claimPaymentOutboxJobs(client, {
         ? RETRYABLE_JOB_TYPES
         : RETRYABLE_JOB_TYPES.filter(type => !CASHIER_PRO_JOB_TYPES.has(type));
     const result = await client.query(
-        `WITH candidate_jobs AS (
+        `WITH candidate_registers AS MATERIALIZED (
+             SELECT
+                 fr.id AS fiscal_register_id,
+                 fr.fiscal_profile_id,
+                 next_job.id AS job_id
+               FROM fiscal_registers fr
+               JOIN LATERAL (
+                    SELECT job.id, job.priority, job.next_run_at
+                      FROM payment_outbox_jobs job
+                      JOIN fiscal_operations fo
+                        ON fo.id = job.fiscal_operation_id
+                       AND fo.fiscal_profile_id = job.fiscal_profile_id
+                       AND fo.provider = 'checkbox'
+                      LEFT JOIN payment_orders po
+                        ON po.id = job.payment_order_id
+                       AND po.fiscal_profile_id = job.fiscal_profile_id
+                       LEFT JOIN fiscal_shifts fs
+                         ON fs.id = fo.fiscal_shift_id
+                        AND fs.fiscal_profile_id = job.fiscal_profile_id
+                       JOIN fiscal_cashier_bindings fcb
+                         ON fcb.fiscal_profile_id = job.fiscal_profile_id
+                        AND fcb.fiscal_register_id = fr.id
+                        AND fcb.user_id = CASE
+                            WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                                THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+                            ELSE fo.initiated_by_user_id
+                        END
+                        AND fcb.status = 'active'
+                      WHERE job.fiscal_profile_id = fr.fiscal_profile_id
+                        AND COALESCE(po.fiscal_register_id, fo.fiscal_register_id) = fr.id
+                        AND fo.register_credential_ref = fr.provider_license_ref
+                        AND fo.cashier_credential_ref = fcb.provider_cashier_login_ref
+                        AND (
+                            $6::jsonb IS NULL
+                            OR EXISTS (
+                                SELECT 1
+                                  FROM jsonb_to_recordset($6::jsonb) AS eligible(
+                                       fiscal_profile_id bigint,
+                                       fiscal_register_id bigint,
+                                       register_credential_ref text,
+                                       cashier_credential_ref text
+                                  )
+                                 WHERE eligible.fiscal_profile_id = fr.fiscal_profile_id
+                                   AND eligible.fiscal_register_id = fr.id
+                                   AND eligible.register_credential_ref = fr.provider_license_ref
+                                   AND eligible.cashier_credential_ref = fcb.provider_cashier_login_ref
+                                   AND eligible.register_credential_ref = fo.register_credential_ref
+                                   AND eligible.cashier_credential_ref = fo.cashier_credential_ref
+                            )
+                        )
+                        AND job.job_type = ANY($1::text[])
+                       AND ($8::boolean = TRUE OR job.job_type <> 'shift_close' OR job.payload->>'phase' = 'thin_mvp_shift_close')
+                       AND COALESCE(job.payload->>'provider', fo.provider, fr.provider) = 'checkbox'
+                       AND (
+                           job.job_type <> 'receipt_sell'
+                           OR (fs.status = 'open' AND fs.provider_shift_id IS NOT NULL AND fs.lifecycle_stage = 'OPENED')
+                           OR (
+                               fs.provider_shift_id IS NOT NULL
+                               AND (
+                                   NULLIF(job.external_stage, '') IN ('sale_submit', 'receipt_lookup', 'complete')
+                                   OR NULLIF(job.payload->>'external_stage', '') IN ('sale_submit', 'receipt_lookup', 'complete')
+                                   OR NULLIF(fo.external_stage, '') IN ('sale_submit', 'receipt_lookup', 'complete')
+                                   OR NULLIF(fo.request_snapshot->>'external_stage', '') IN ('sale_submit', 'receipt_lookup', 'complete')
+                               )
+                           )
+                       )
+                       AND NOT EXISTS (
+                           SELECT 1
+                             FROM payment_outbox_jobs active_job
+                             LEFT JOIN fiscal_operations active_fo
+                               ON active_fo.id = active_job.fiscal_operation_id
+                              AND active_fo.fiscal_profile_id = active_job.fiscal_profile_id
+                             LEFT JOIN payment_orders active_po
+                               ON active_po.id = active_job.payment_order_id
+                              AND active_po.fiscal_profile_id = active_job.fiscal_profile_id
+                            WHERE active_job.id <> job.id
+                              AND active_job.fiscal_profile_id = job.fiscal_profile_id
+                              AND COALESCE(active_po.fiscal_register_id, active_fo.fiscal_register_id) = fr.id
+                              AND active_job.status IN ('claimed', 'running')
+                              AND COALESCE(active_job.heartbeat_at, active_job.locked_at) >= clock_timestamp() - ($4::int * INTERVAL '1 second')
+                       )
+                       AND job.attempts < job.max_attempts
+                       AND (
+                           (job.status IN ('queued', 'failed') AND job.next_run_at <= NOW())
+                           OR (job.status IN ('claimed', 'running') AND COALESCE(job.heartbeat_at, job.locked_at) < clock_timestamp() - ($4::int * INTERVAL '1 second'))
+                       )
+                     ORDER BY job.priority ASC, job.next_run_at ASC, job.id ASC
+                     LIMIT 1
+               ) next_job ON TRUE
+              WHERE fr.provider = 'checkbox'
+                 AND fr.status = 'active'
+                 AND fr.feature_enabled = TRUE
+                 AND ($5::bigint[] IS NULL OR fr.fiscal_profile_id = ANY($5::bigint[]))
+               ORDER BY next_job.priority ASC, next_job.next_run_at ASC, next_job.id ASC
+              FOR UPDATE OF fr SKIP LOCKED
+              LIMIT $2
+         ), candidate_jobs AS MATERIALIZED (
              SELECT job.id
                FROM payment_outbox_jobs job
-               JOIN fiscal_operations fo
-                 ON fo.id = job.fiscal_operation_id
-                AND fo.fiscal_profile_id = job.fiscal_profile_id
-                AND fo.provider = 'checkbox'
-               LEFT JOIN payment_orders po
-                 ON po.id = job.payment_order_id
-                AND po.fiscal_profile_id = job.fiscal_profile_id
-               LEFT JOIN fiscal_shifts fs
-                 ON fs.id = fo.fiscal_shift_id
-                AND fs.fiscal_profile_id = job.fiscal_profile_id
-               JOIN fiscal_registers fr
-                 ON fr.id = COALESCE(po.fiscal_register_id, fo.fiscal_register_id)
-                AND fr.fiscal_profile_id = job.fiscal_profile_id
-                AND fr.provider = 'checkbox'
-                AND fr.status = 'active'
-                AND fr.feature_enabled = TRUE
-              WHERE job.job_type = ANY($1::text[])
-                AND ($8::boolean = TRUE OR job.job_type <> 'shift_close' OR job.payload->>'phase' = 'thin_mvp_shift_close')
-                AND ($5::bigint[] IS NULL OR job.fiscal_profile_id = ANY($5::bigint[]))
-                AND ($6::text[] IS NULL OR (job.fiscal_profile_id::text || ':' || COALESCE(po.fiscal_register_id, fo.fiscal_register_id)::text) = ANY($6::text[]))
-                AND COALESCE(job.payload->>'provider', fo.provider, fr.provider) = 'checkbox'
-                AND (
-                    job.job_type <> 'receipt_sell'
-                    OR (fs.status = 'open' AND fs.provider_shift_id IS NOT NULL AND fs.lifecycle_stage = 'OPENED')
-                )
-                AND NOT EXISTS (
-                    SELECT 1
-                      FROM payment_outbox_jobs active_job
-                      LEFT JOIN fiscal_operations active_fo
-                        ON active_fo.id = active_job.fiscal_operation_id
-                       AND active_fo.fiscal_profile_id = active_job.fiscal_profile_id
-                      LEFT JOIN payment_orders active_po
-                        ON active_po.id = active_job.payment_order_id
-                       AND active_po.fiscal_profile_id = active_job.fiscal_profile_id
-                     WHERE active_job.id <> job.id
-                       AND active_job.fiscal_profile_id = job.fiscal_profile_id
-                       AND COALESCE(active_po.fiscal_register_id, active_fo.fiscal_register_id) = COALESCE(po.fiscal_register_id, fo.fiscal_register_id)
-                       AND active_job.status IN ('claimed', 'running')
-                       AND COALESCE(active_job.heartbeat_at, active_job.locked_at) >= NOW() - ($4::int * INTERVAL '1 second')
-                )
-                AND job.attempts < job.max_attempts
-                AND (
-                    (job.status IN ('queued', 'failed') AND job.next_run_at <= NOW())
-                    OR (job.status IN ('claimed', 'running') AND COALESCE(job.heartbeat_at, job.locked_at) < NOW() - ($4::int * INTERVAL '1 second'))
-                )
-              ORDER BY job.priority ASC, job.next_run_at ASC, job.id ASC
+               JOIN candidate_registers candidate
+                 ON candidate.job_id = job.id
+                AND candidate.fiscal_profile_id = job.fiscal_profile_id
               FOR UPDATE OF job SKIP LOCKED
-              LIMIT $2
          )
          UPDATE payment_outbox_jobs job
             SET status = 'claimed',
-                locked_at = NOW(),
+                locked_at = clock_timestamp(),
                 locked_by = $3,
                 lock_token = $7::uuid,
                 lock_version = lock_version + 1,
-                heartbeat_at = NOW(),
+                heartbeat_at = clock_timestamp(),
                 attempts = job.attempts + 1,
                 updated_at = NOW()
            FROM candidate_jobs
           WHERE job.id = candidate_jobs.id
-          RETURNING job.*`,
+          RETURNING job.*, clock_timestamp() AS lease_claimed_at`,
         [
             claimableJobTypes,
             limit,
             lockedBy,
             lockExpirySeconds,
             Array.isArray(eligibleFiscalProfileIds) ? eligibleFiscalProfileIds.map(id => Number(id)) : null,
-            runtimeKeys,
+            Array.isArray(runtimeContexts) ? JSON.stringify(runtimeContexts) : null,
             token,
             cashierProEnabled === true
         ]
@@ -319,16 +401,18 @@ async function loadJobContext(client, job) {
              po.source_snapshot,
              po.confirmation_snapshot,
              fr.register_alias,
+             fr.id AS current_fiscal_register_id,
+             fr.fiscal_profile_id AS current_fiscal_profile_id,
+             fr.fiscal_location_id AS current_fiscal_location_id,
+             fr.crm_profile_key AS current_crm_profile_key,
              fr.provider_register_id AS current_provider_register_id,
              fr.provider AS register_provider,
              fr.status AS register_status,
              fr.provider_license_ref,
              fr.feature_enabled AS register_feature_enabled,
-             COALESCE(
-                 fr.metadata->>'expected_is_test',
-                 fr.metadata->>'expectedIsTest',
-                 fo.request_snapshot #>> '{provider_context,expected_is_test}'
-             ) AS current_expected_is_test,
+             COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS current_expected_is_test,
+             fp.crm_profile_key AS current_profile_crm_profile_key,
+             fp.legal_entity_key AS current_legal_entity_key,
              fp.provider_organization_id AS current_provider_organization_id,
              fl.provider_outlet_id AS current_provider_outlet_id,
              fs.status AS fiscal_shift_status,
@@ -357,7 +441,11 @@ async function loadJobContext(client, job) {
            LEFT JOIN fiscal_cashier_bindings fcb
              ON fcb.fiscal_profile_id = job.fiscal_profile_id
             AND fcb.fiscal_register_id = COALESCE(po.fiscal_register_id, fo.fiscal_register_id)
-            AND fcb.user_id = COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+            AND fcb.user_id = CASE
+                WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                    THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+                ELSE fo.initiated_by_user_id
+            END
             AND fcb.status = 'active'
           WHERE job.id = $1
           LIMIT 1`,
@@ -377,43 +465,148 @@ async function loadJobContext(client, job) {
     return { job: context.rows[0], items: items.rows };
 }
 
-function shouldLookupBeforeSale(contextJob) {
-    return contextJob.job_type === 'receipt_status_lookup'
-        || contextJob.fiscal_operation_status === 'unknown'
-        || contextJob.fiscal_operation_status === 'failed'
-        || Number(contextJob.attempts || 0) > 1;
+function observedExternalStages(contextJob = {}) {
+    const payload = safeJsonObject(contextJob.payload);
+    const request = safeJsonObject(contextJob.fiscal_request_snapshot);
+    const current = [
+        contextJob.external_stage,
+        payload.external_stage,
+        contextJob.fiscal_operation_external_stage
+    ].map(value => String(value || '').trim()).filter(Boolean);
+    const snapshot = String(request.external_stage || '').trim();
+    return { current, all: snapshot ? [...current, snapshot] : current };
 }
 
 function externalStage(contextJob = {}) {
-    const payload = safeJsonObject(contextJob.payload);
-    const request = safeJsonObject(contextJob.fiscal_request_snapshot);
-    return String(contextJob.external_stage || payload.external_stage || contextJob.fiscal_operation_external_stage || request.external_stage || 'auth').trim() || 'auth';
+    const { current, all } = observedExternalStages(contextJob);
+    const jobType = String(contextJob.job_type || '').trim();
+    const distinctCurrent = [...new Set(current)];
+
+    if (jobType === 'receipt_sell' || jobType === 'receipt_status_lookup') {
+        const submittedEvidence = all.filter(stage => POST_SELL_STAGES.has(stage));
+        if (submittedEvidence.length) {
+            if (distinctCurrent.length === 1 && POST_SELL_STAGES.has(distinctCurrent[0])) {
+                return distinctCurrent[0];
+            }
+            return 'receipt_lookup';
+        }
+    }
+
+    if (jobType === 'service_receipt') {
+        const submittedEvidence = all.filter(stage => SERVICE_POST_SUBMIT_STAGES.has(stage));
+        if (submittedEvidence.length) {
+            if (distinctCurrent.length === 1 && SERVICE_POST_SUBMIT_STAGES.has(distinctCurrent[0])) {
+                return distinctCurrent[0];
+            }
+            return 'service_lookup';
+        }
+    }
+
+    if (jobType === 'receipt_return') {
+        const submittedEvidence = all.filter(stage => RETURN_POST_SUBMIT_STAGES.has(stage));
+        if (submittedEvidence.length) {
+            if (distinctCurrent.length === 1 && RETURN_POST_SUBMIT_STAGES.has(distinctCurrent[0])) {
+                return distinctCurrent[0];
+            }
+            return 'return_lookup';
+        }
+    }
+
+    if (jobType === 'shift_open') {
+        const submittedEvidence = all.filter(stage => SHIFT_OPEN_LOOKUP_STAGES.has(stage));
+        if (submittedEvidence.length) {
+            if (distinctCurrent.length === 1 && SHIFT_OPEN_LOOKUP_STAGES.has(distinctCurrent[0])) {
+                return distinctCurrent[0];
+            }
+            return 'shift_lookup';
+        }
+    }
+
+    if (jobType === 'shift_close') {
+        const submittedEvidence = all.filter(stage => SHIFT_CLOSE_LOOKUP_STAGES.has(stage));
+        if (submittedEvidence.length) {
+            if (distinctCurrent.length === 1 && SHIFT_CLOSE_LOOKUP_STAGES.has(distinctCurrent[0])) {
+                return distinctCurrent[0];
+            }
+            return 'shift_close_lookup';
+        }
+    }
+
+    return current[0] || all[0] || 'auth';
 }
 
 function saleStageRequiresLookup(stage) {
     return POST_SELL_STAGES.has(String(stage || '').trim());
 }
 
+function failedOperationLacksPreMutationEvidence(contextJob, preMutationStages) {
+    const status = String(contextJob?.fiscal_operation_status || '').trim().toLowerCase();
+    if (!['failed', 'unknown'].includes(status)) return false;
+    const currentStages = observedExternalStages(contextJob).current;
+    return currentStages.length === 0
+        || currentStages.some(stage => !preMutationStages.has(stage));
+}
+
+function shouldLookupBeforeSale(contextJob) {
+    return contextJob?.job_type === 'receipt_status_lookup'
+        || saleStageRequiresLookup(externalStage(contextJob))
+        || failedOperationLacksPreMutationEvidence(contextJob, PRE_SELL_STAGES);
+}
+
+function createExternalMutationBoundary(context, stage) {
+    return async () => {
+        if (typeof context.recordStage === 'function') {
+            await context.recordStage(stage);
+            return;
+        }
+        await context.assertMutationOwnership?.();
+    };
+}
+
 async function recordExternalStage(dbPool, context, stage) {
     const safeStage = String(stage || '').trim();
     if (!safeStage) return;
-    context.job.payload = { ...safeJsonObject(context.job.payload), external_stage: safeStage };
-    context.job.fiscal_request_snapshot = { ...safeJsonObject(context.job.fiscal_request_snapshot), external_stage: safeStage };
-    context.job.external_stage = safeStage;
+    const lockExpiryMs = normalizedLockExpiryMs(context.lockExpiryMs);
     await withTransaction(dbPool, async client => {
+        if (safeStage === 'sale_submit') {
+            const shiftReady = await client.query(
+                `SELECT shift.id
+                   FROM fiscal_operations operation
+                   JOIN fiscal_shifts shift
+                     ON shift.id = operation.fiscal_shift_id
+                    AND shift.fiscal_profile_id = operation.fiscal_profile_id
+                    AND shift.fiscal_register_id = operation.fiscal_register_id
+                  WHERE operation.id = $1
+                    AND operation.fiscal_profile_id = $2
+                    AND operation.operation_type = 'sale'
+                    AND shift.status = 'open'
+                    AND shift.lifecycle_stage = 'OPENED'
+                    AND shift.provider_shift_id IS NOT NULL
+                  FOR UPDATE OF shift`,
+                [context.job.fiscal_operation_id, context.job.fiscal_profile_id]
+            );
+            if (!shiftReady.rows.length) {
+                throw new PaymentOutboxWorkerError(
+                    CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE,
+                    'Provider shift closed before the sale mutation boundary; automatic resubmission is forbidden',
+                    { retryable: false, unknown: false }
+                );
+            }
+        }
         const owner = await client.query(
             `UPDATE payment_outbox_jobs
                 SET payload = payload || $3::jsonb,
                     external_stage = $5,
                     status = CASE WHEN status = 'claimed' THEN 'running' ELSE status END,
-                    locked_at = NOW(),
-                    heartbeat_at = NOW(),
+                    locked_at = clock_timestamp(),
+                    heartbeat_at = clock_timestamp(),
                     updated_at = NOW()
               WHERE id = $1
                 AND fiscal_profile_id = $2
                 AND locked_by = $4
                 AND lock_token = $6::uuid
                 AND status IN ('claimed', 'running')
+                AND COALESCE(heartbeat_at, locked_at) >= clock_timestamp() - ($7::int * INTERVAL '1 millisecond')
               RETURNING id`,
             [
                 context.job.id,
@@ -421,7 +614,8 @@ async function recordExternalStage(dbPool, context, stage) {
                 JSON.stringify({ external_stage: safeStage }),
                 context.job.locked_by,
                 safeStage,
-                context.job.lock_token
+                context.job.lock_token,
+                lockExpiryMs
             ]
         );
         if (!owner.rows.length) {
@@ -430,14 +624,16 @@ async function recordExternalStage(dbPool, context, stage) {
         if (context.job.fiscal_operation_id) {
             await client.query(
                 `UPDATE fiscal_operations
-                    SET status = CASE
+                        SET status = CASE
                             WHEN $3::jsonb->>'external_stage' = 'receipt_validation' THEN 'validating'
                             WHEN $3::jsonb->>'external_stage' = 'sale_submit' THEN 'sending'
+                            WHEN $3::jsonb->>'external_stage' = 'return_submit' THEN 'sending'
+                            WHEN $3::jsonb->>'external_stage' = 'service_submit' THEN 'sending'
                             WHEN status IN ('pending', 'failed') THEN 'pending'
                             ELSE status
                         END,
                         external_stage = $3::jsonb->>'external_stage',
-                        sent_at = CASE WHEN $3::jsonb->>'external_stage' = 'sale_submit' THEN COALESCE(sent_at, NOW()) ELSE sent_at END
+                        sent_at = CASE WHEN $3::jsonb->>'external_stage' IN ('sale_submit', 'return_submit', 'service_submit') THEN COALESCE(sent_at, NOW()) ELSE sent_at END
                   WHERE id = $1
                     AND fiscal_profile_id = $2
                     AND status <> 'fiscalized'`,
@@ -499,6 +695,43 @@ async function recordExternalStage(dbPool, context, stage) {
             );
         }
     });
+    context.job.payload = { ...safeJsonObject(context.job.payload), external_stage: safeStage };
+    context.job.fiscal_request_snapshot = { ...safeJsonObject(context.job.fiscal_request_snapshot), external_stage: safeStage };
+    context.job.external_stage = safeStage;
+}
+
+async function assertPaymentOutboxJobOwnership(dbPool, context) {
+    const lockExpiryMs = normalizedLockExpiryMs(context.lockExpiryMs);
+    await withTransaction(dbPool, async client => {
+        const owner = await client.query(
+            `UPDATE payment_outbox_jobs
+                SET status = CASE WHEN status = 'claimed' THEN 'running' ELSE status END,
+                    locked_at = clock_timestamp(),
+                    heartbeat_at = clock_timestamp(),
+                    updated_at = NOW()
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+                AND locked_by = $3
+                AND lock_token = $4::uuid
+                AND status IN ('claimed', 'running')
+                AND COALESCE(heartbeat_at, locked_at) >= clock_timestamp() - ($5::int * INTERVAL '1 millisecond')
+              RETURNING id`,
+            [
+                context.job.id,
+                context.job.fiscal_profile_id,
+                context.job.locked_by,
+                context.job.lock_token,
+                lockExpiryMs
+            ]
+        );
+        if (!owner.rows.length) {
+            throw new PaymentOutboxWorkerError(
+                'payment_outbox_job_ownership_lost',
+                'Payment outbox job ownership was lost before provider communication',
+                { retryable: true }
+            );
+        }
+    });
 }
 
 async function recordExternalStageInTransaction(client, context, stage) {
@@ -519,7 +752,7 @@ async function recordExternalStageInTransaction(client, context, stage) {
                 SET external_stage = $3::jsonb->>'external_stage'
               WHERE id = $1
                 AND fiscal_profile_id = $2
-                AND status <> 'fiscalized'`,
+                AND (status <> 'fiscalized' OR $3::jsonb->>'external_stage' = 'complete')`,
             [context.job.fiscal_operation_id, context.job.fiscal_profile_id, JSON.stringify({ external_stage: safeStage })]
         );
     }
@@ -527,8 +760,109 @@ async function recordExternalStageInTransaction(client, context, stage) {
 
 function assertImmutableProviderContext(context = {}) {
     const job = context.job || {};
-    const hasSnapshot = Boolean(job.fiscal_configuration_hash);
-    if (!hasSnapshot) return;
+    const request = safeJsonObject(job.fiscal_request_snapshot);
+    const providerContext = safeJsonObject(request.provider_context);
+    const operationHash = String(job.fiscal_configuration_hash || '').trim();
+    const requestHash = String(request.fiscal_configuration_hash || '').trim();
+    const requiredTextFields = [
+        'provider_organization_id',
+        'provider_register_id',
+        'provider_cashier_id',
+        'register_credential_ref',
+        'cashier_credential_ref'
+    ];
+    const missing = requiredTextFields.filter(field => !String(job[field] ?? '').trim());
+    for (const field of ['fiscal_profile_id', 'operation_fiscal_location_id', 'fiscal_register_id']) {
+        const value = Number(job[field]);
+        if (!Number.isSafeInteger(value) || value <= 0) missing.push(field);
+    }
+    if (normalizeBoolean(job.expected_is_test) == null) missing.push('expected_is_test');
+    if (!/^[0-9a-f]{64}$/i.test(operationHash)) missing.push('fiscal_configuration_hash');
+    if (!Object.keys(providerContext).length) missing.push('request_snapshot.provider_context');
+    if (!/^[0-9a-f]{64}$/i.test(requestHash)) missing.push('request_snapshot.fiscal_configuration_hash');
+    for (const field of [
+        ...requiredTextFields,
+        'provider_outlet_id',
+        'expected_is_test',
+        'fiscal_profile_id',
+        'fiscal_location_id',
+        'fiscal_register_id'
+    ]) {
+        if (!Object.prototype.hasOwnProperty.call(providerContext, field)) {
+            missing.push(`request_snapshot.provider_context.${field}`);
+        }
+    }
+    if (missing.length) {
+        throw new PaymentOutboxWorkerError(
+            'fiscal_provider_context_snapshot_incomplete',
+            'Immutable fiscal provider context snapshot is incomplete',
+            { retryable: false, details: { missing: [...new Set(missing)].sort() } }
+        );
+    }
+    if (requestHash !== operationHash) {
+        throw new PaymentOutboxWorkerError('fiscal_configuration_hash_mismatch', 'Fiscal configuration hash is inconsistent with the immutable operation snapshot', {
+            retryable: false,
+            details: { hasOperationHash: true, hasRequestHash: true }
+        });
+    }
+    const recomputedHash = crypto.createHash('sha256').update(stableJson(providerContext)).digest('hex');
+    if (recomputedHash !== operationHash) {
+        throw new PaymentOutboxWorkerError('fiscal_configuration_hash_mismatch', 'Immutable fiscal provider context does not match its configuration hash', {
+            retryable: false,
+            details: { snapshotHashMatches: false }
+        });
+    }
+    const snapshotPairs = [
+        ['provider_organization_id', job.provider_organization_id, providerContext.provider_organization_id],
+        ['provider_outlet_id', job.provider_outlet_id, providerContext.provider_outlet_id],
+        ['provider_register_id', job.provider_register_id, providerContext.provider_register_id],
+        ['provider_cashier_id', job.provider_cashier_id, providerContext.provider_cashier_id],
+        ['register_credential_ref', job.register_credential_ref, providerContext.register_credential_ref],
+        ['cashier_credential_ref', job.cashier_credential_ref, providerContext.cashier_credential_ref]
+    ];
+    for (const [field, operationValue, snapshotValue] of snapshotPairs) {
+        if (String(operationValue ?? '').trim() !== String(snapshotValue ?? '').trim()) {
+            throw new PaymentOutboxWorkerError('fiscal_provider_context_snapshot_mismatch', 'Fiscal operation context differs from its immutable request snapshot', {
+                retryable: false,
+                details: { field }
+            });
+        }
+    }
+    const snapshotIds = [
+        ['fiscal_profile_id', job.fiscal_profile_id, providerContext.fiscal_profile_id],
+        ['fiscal_location_id', job.operation_fiscal_location_id, providerContext.fiscal_location_id],
+        ['fiscal_register_id', job.fiscal_register_id, providerContext.fiscal_register_id]
+    ];
+    for (const [field, operationValue, snapshotValue] of snapshotIds) {
+        if (Number(operationValue) !== Number(snapshotValue)) {
+            throw new PaymentOutboxWorkerError('fiscal_provider_context_snapshot_mismatch', 'Fiscal operation scope differs from its immutable request snapshot', {
+                retryable: false,
+                details: { field }
+            });
+        }
+    }
+    if (normalizeBoolean(providerContext.expected_is_test) !== normalizeBoolean(job.expected_is_test)) {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_snapshot_mismatch', 'Fiscal operation test-mode expectation differs from its immutable request snapshot', {
+            retryable: false,
+            details: { field: 'expected_is_test' }
+        });
+    }
+    if (providerContext.provider != null && String(providerContext.provider).trim() !== 'checkbox') {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_snapshot_mismatch', 'Immutable provider snapshot is not scoped to Checkbox', {
+            retryable: false,
+            details: { field: 'provider' }
+        });
+    }
+    if (
+        String(job.register_provider || '').trim() !== 'checkbox'
+        || String(job.register_status || '').trim() !== 'active'
+        || job.register_feature_enabled !== true
+    ) {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal register is not an active enabled Checkbox register', {
+            retryable: false,
+            details: { field: 'register_runtime_state' }
+        });
+    }
     const pairs = [
         ['provider_organization_id', job.provider_organization_id, job.current_provider_organization_id],
         ['provider_outlet_id', job.provider_outlet_id, job.current_provider_outlet_id],
@@ -540,12 +874,52 @@ function assertImmutableProviderContext(context = {}) {
     for (const [field, expected, current] of pairs) {
         const expectedText = String(expected ?? '').trim();
         const currentText = String(current ?? '').trim();
-        if (expectedText && expectedText !== currentText) {
+        if (expectedText !== currentText) {
             throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal mapping differs from immutable fiscal operation snapshot', {
                 retryable: false,
                 details: { field, expected: expectedText || null, current: currentText || null }
             });
         }
+    }
+    const currentScopePairs = [
+        ['fiscal_profile_id', job.fiscal_profile_id, job.current_fiscal_profile_id],
+        ['fiscal_location_id', job.operation_fiscal_location_id, job.current_fiscal_location_id],
+        ['fiscal_register_id', job.fiscal_register_id, job.current_fiscal_register_id]
+    ];
+    for (const [field, expected, current] of currentScopePairs) {
+        if (Number(expected) !== Number(current)) {
+            throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal scope differs from immutable fiscal operation snapshot', {
+                retryable: false,
+                details: { field, expected: Number(expected) || null, current: Number(current) || null }
+            });
+        }
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(providerContext, 'crm_profile_key')
+        && String(providerContext.crm_profile_key || '').trim() !== String(job.current_profile_crm_profile_key || job.current_crm_profile_key || '').trim()
+    ) {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current CRM profile differs from immutable fiscal operation snapshot', {
+            retryable: false,
+            details: { field: 'crm_profile_key' }
+        });
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(providerContext, 'legal_entity_key')
+        && String(providerContext.legal_entity_key || '').trim() !== String(job.current_legal_entity_key || '').trim()
+    ) {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current legal entity differs from immutable fiscal operation snapshot', {
+            retryable: false,
+            details: { field: 'legal_entity_key' }
+        });
+    }
+    if (
+        Object.prototype.hasOwnProperty.call(providerContext, 'register_alias')
+        && String(providerContext.register_alias || '').trim() !== String(job.register_alias || '').trim()
+    ) {
+        throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current register alias differs from immutable fiscal operation snapshot', {
+            retryable: false,
+            details: { field: 'register_alias' }
+        });
     }
     const expectedIsTest = normalizeBoolean(job.expected_is_test);
     const currentExpectedIsTest = normalizeBoolean(job.current_expected_is_test);
@@ -553,15 +927,6 @@ function assertImmutableProviderContext(context = {}) {
         throw new PaymentOutboxWorkerError('fiscal_provider_context_drift', 'Current fiscal mapping test-mode expectation differs from immutable fiscal operation snapshot', {
             retryable: false,
             details: { field: 'expected_is_test', expected: expectedIsTest, current: currentExpectedIsTest }
-        });
-    }
-    const request = safeJsonObject(job.fiscal_request_snapshot);
-    const requestHash = String(request.fiscal_configuration_hash || '').trim();
-    const operationHash = String(job.fiscal_configuration_hash || '').trim();
-    if (!operationHash || (requestHash && requestHash !== operationHash)) {
-        throw new PaymentOutboxWorkerError('fiscal_configuration_hash_mismatch', 'Fiscal configuration hash is missing or inconsistent', {
-            retryable: false,
-            details: { hasOperationHash: Boolean(operationHash), hasRequestHash: Boolean(requestHash) }
         });
     }
 }
@@ -637,10 +1002,23 @@ function normalizeProviderReceipt(receipt = {}, fallback = {}, context = {}) {
 }
 
 
-async function safePublishFiscalEvent(client, eventType, payload, aggregateType, aggregateId, idempotencyKey) {
+async function safePublishFiscalEvent(
+    client,
+    eventType,
+    payload,
+    aggregateType,
+    aggregateId,
+    idempotencyKey,
+    publish = publishInTransaction
+) {
+    const savepoint = 'payment_outbox_event_publish';
+    await client.query(`SAVEPOINT ${savepoint}`);
     try {
-        await publishInTransaction(client, eventType, payload, aggregateType, aggregateId, idempotencyKey);
+        await publish(client, eventType, payload, aggregateType, aggregateId, idempotencyKey);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
     } catch (_) {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
         // EventBus/Hermes failures must not roll back payment/fiscal state.
     }
 }
@@ -807,10 +1185,14 @@ async function markFiscalized(client, context, receipt) {
         await recordReceiptObservation(client, context, normalized, { mismatches });
         if (mismatches.length) {
             await recordReceiptMismatchIncident(client, context, normalized, mismatches);
-            throw new PaymentOutboxWorkerError('fiscal_receipt_identity_mismatch', 'Provider receipt observation conflicts with immutable local fiscal receipt', {
+            const mismatchError = new PaymentOutboxWorkerError('fiscal_receipt_identity_mismatch', 'Provider receipt observation conflicts with immutable local fiscal receipt', {
                 retryable: false,
                 details: { mismatches }
             });
+            // The finalize transaction must commit the append-only observation and incident
+            // together with the failed job state instead of rolling them back with the error.
+            mismatchError.receiptMismatchEvidenceRecorded = true;
+            throw mismatchError;
         }
     } else {
         await recordReceiptObservation(client, context, normalized);
@@ -944,6 +1326,21 @@ async function markJobFailed(client, context, errorInfo) {
             AND fiscal_profile_id = $2`,
         [context.job.id, context.job.fiscal_profile_id, dead ? 'dead' : 'failed', nextRun, errorInfo.code, errorInfo.message]
     );
+
+    if (
+        context.job.operation_type === 'sale'
+        && errorInfo.code === CLOSED_SHIFT_PRE_SUBMIT_ERROR_CODE
+        && context.job.fiscal_shift_id
+        && context.job.provider_shift_id
+    ) {
+        await guardPaidPreSubmitSalesForClosedShift(client, {
+            fiscalProfileId: context.job.fiscal_profile_id,
+            fiscalRegisterId: context.job.fiscal_register_id,
+            fiscalShiftId: context.job.fiscal_shift_id,
+            providerShiftId: context.job.provider_shift_id,
+            source: 'sale_mutation_boundary'
+        });
+    }
 
     if (context.job.fiscal_operation_id) {
         const nextStatus = errorInfo.unknown ? 'unknown' : (errorInfo.retryable === false ? 'blocked' : 'failed');
@@ -1080,37 +1477,59 @@ async function markJobConfigUnavailable(client, context, errorInfo) {
 }
 
 async function runReceiptReturnJob(provider, context) {
-    if (context.job.fiscal_operation_status === 'unknown' || Number(context.job.attempts || 0) > 1) {
+    const stage = externalStage(context.job);
+    const lookupOnly = RETURN_POST_SUBMIT_STAGES.has(stage)
+        || failedOperationLacksPreMutationEvidence(context.job, RETURN_PRE_MUTATION_STAGES);
+    if (lookupOnly) {
+        if (stage !== 'return_lookup') await context.recordStage?.('return_lookup');
         const lookup = await lookupProviderReceipt(provider, context);
         if (lookup?.found || lookup?.receipt) return { receipt: lookup.receipt || lookup, source: 'lookup' };
-        if (context.job.fiscal_operation_status === 'unknown') {
-            throw new PaymentOutboxWorkerError('return_lookup_required_before_retry', 'Unknown return operation must be reconciled before another return attempt', { retryable: true, unknown: true });
-        }
+        throw new PaymentOutboxWorkerError('return_lookup_required_before_retry', 'Possibly submitted return must be reconciled before another return attempt', { retryable: true, unknown: true });
     }
     if (!provider.createReturnReceipt) {
         throw new PaymentOutboxWorkerError('checkbox_return_not_supported', 'Checkbox return receipt operation is not configured', { retryable: false });
     }
+    await context.recordStage?.('readiness');
     return {
         receipt: await provider.createReturnReceipt({
             fiscalOperation: context.job,
             paymentOrder: context.job,
             items: context.items,
-            beforeExternalMutation: context.assertMutationOwnership
+            beforeExternalMutation: createExternalMutationBoundary(context, 'return_submit')
         }),
         source: 'return'
     };
 }
 
 async function runServiceReceiptJob(provider, context) {
+    const stage = externalStage(context.job);
+    const lookupOnly = SERVICE_POST_SUBMIT_STAGES.has(stage)
+        || failedOperationLacksPreMutationEvidence(context.job, SERVICE_PRE_MUTATION_STAGES);
+    if (lookupOnly) {
+        if (!provider.lookupReceipt) {
+            throw new PaymentOutboxWorkerError('checkbox_service_receipt_lookup_not_supported', 'Checkbox service receipt lookup is not configured', { retryable: false });
+        }
+        if (stage !== 'service_lookup') await context.recordStage?.('service_lookup');
+        const lookup = await lookupProviderReceipt(provider, context);
+        if (lookup?.found || lookup?.receipt) {
+            return { receipt: lookup.receipt || lookup, source: 'service_lookup' };
+        }
+        throw new PaymentOutboxWorkerError(
+            'service_receipt_lookup_pending',
+            'Possibly submitted service receipt is not visible yet; only same-UUID lookup is allowed',
+            { retryable: true, unknown: true }
+        );
+    }
     if (!provider.createServiceReceipt) {
         throw new PaymentOutboxWorkerError('checkbox_service_receipt_not_supported', 'Checkbox service receipt operation is not configured', { retryable: false });
     }
+    await context.recordStage?.('readiness');
     return {
         receipt: await provider.createServiceReceipt({
             fiscalOperation: context.job,
-            beforeExternalMutation: context.assertMutationOwnership
+            beforeExternalMutation: createExternalMutationBoundary(context, 'service_submit')
         }),
-        source: 'service'
+        source: 'service_submit'
     };
 }
 
@@ -1136,28 +1555,42 @@ async function markShiftJobSucceeded(client, context, result) {
     }
     if (context.job.job_type === 'shift_open') {
         const providerStatus = String(result.response?.status || '').trim().toUpperCase();
-        if (providerStatus !== 'OPENED') {
+        if (!['OPENED', 'CLOSED'].includes(providerStatus)) {
             throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Checkbox shift open has not reached OPENED status', {
                 retryable: true,
                 unknown: true,
                 details: { providerStatus: providerStatus || null }
             });
         }
+        const expectedShiftId = String(context.job.provider_operation_id || '').trim();
+        const actualShiftId = String(result.response?.id || '').trim();
+        if (!expectedShiftId || !actualShiftId || actualShiftId !== expectedShiftId) {
+            throw new PaymentOutboxWorkerError('checkbox_shift_open_identity_mismatch', 'Checkbox shift lookup did not return the exact durable open request UUID', {
+                retryable: false,
+                details: { expectedShiftId: expectedShiftId || null, actualShiftId: actualShiftId || null, providerStatus }
+            });
+        }
         let currentLifecycleStage = String(context.job.fiscal_shift_lifecycle_stage || 'CREATED').trim().toUpperCase();
         if (currentLifecycleStage === 'CREATED') {
             const opening = await client.query(
                 `UPDATE fiscal_shifts
-                    SET lifecycle_stage = 'OPENING',
+                    SET status = 'opening',
+                        lifecycle_stage = 'OPENING',
                         provider_snapshot = provider_snapshot || $3::jsonb,
                         updated_at = NOW()
                   WHERE id = $1
                     AND fiscal_profile_id = $2
+                    AND fiscal_register_id = $4
+                    AND open_operation_id = $5
+                    AND status IN ('opening', 'failed', 'blocked', 'unknown')
                     AND lifecycle_stage = 'CREATED'
                   RETURNING id`,
                 [
                     shiftId,
                     context.job.fiscal_profile_id,
-                    JSON.stringify({ lifecycle_stage: 'OPENING', external_stage: 'shift_request_maybe_submitted', source: 'shift_finalize' })
+                    JSON.stringify({ lifecycle_stage: 'OPENING', external_stage: 'shift_request_maybe_submitted', source: 'shift_finalize' }),
+                    context.job.fiscal_register_id,
+                    context.job.fiscal_operation_id
                 ]
             );
             if (!opening.rows.length) {
@@ -1169,25 +1602,116 @@ async function markShiftJobSucceeded(client, context, result) {
             }
             currentLifecycleStage = 'OPENING';
         }
-        assertLifecycleTransition(currentLifecycleStage, 'OPENED');
+        const targetLifecycleStage = providerStatus === 'CLOSED' ? 'CLOSED' : 'OPENED';
+        if (currentLifecycleStage !== targetLifecycleStage) {
+            assertLifecycleTransition(currentLifecycleStage, targetLifecycleStage);
+        }
+        if (providerStatus === 'CLOSED') {
+            const updatedShift = await client.query(
+                `UPDATE fiscal_shifts
+                    SET status = 'closed',
+                        lifecycle_stage = 'CLOSED',
+                        provider_shift_id = COALESCE(provider_shift_id, $3),
+                        opened_at = COALESCE(opened_at, $7::timestamptz),
+                        provider_opened_at = COALESCE(provider_opened_at, $7::timestamptz),
+                        closed_at = COALESCE(closed_at, $8::timestamptz, NOW()),
+                        provider_closed_at = COALESCE(provider_closed_at, $8::timestamptz),
+                        provider_snapshot = provider_snapshot || $4::jsonb,
+                        updated_at = NOW()
+                  WHERE id = $1
+                    AND fiscal_profile_id = $2
+                    AND fiscal_register_id = $5
+                    AND open_operation_id = $6
+                    AND (provider_shift_id IS NULL OR provider_shift_id = $3)
+                    AND (
+                        (status IN ('opening', 'failed', 'blocked', 'unknown') AND lifecycle_stage = 'OPENING')
+                        OR (status = 'closed' AND lifecycle_stage = 'CLOSED')
+                    )
+                  RETURNING id`,
+                [
+                    shiftId,
+                    context.job.fiscal_profile_id,
+                    actualShiftId,
+                    JSON.stringify({
+                        open_result: result.response || {},
+                        lifecycle_stage: 'CLOSED',
+                        missed_opened_observation: true
+                    }),
+                    context.job.fiscal_register_id,
+                    context.job.fiscal_operation_id,
+                    result.response?.openedAt || null,
+                    result.response?.closedAt || null
+                ]
+            );
+            if (!updatedShift.rows.length) {
+                throw new PaymentOutboxWorkerError('checkbox_shift_open_closed_finalize_mismatch', 'Provider-closed shift could not reconcile the exact local open workflow', {
+                    retryable: false,
+                    details: { shiftId: Number(shiftId), providerShiftId: actualShiftId, currentLifecycleStage }
+                });
+            }
+            await guardPaidPreSubmitSalesForClosedShift(client, {
+                fiscalProfileId: context.job.fiscal_profile_id,
+                fiscalRegisterId: context.job.fiscal_register_id,
+                fiscalShiftId: shiftId,
+                providerShiftId: actualShiftId,
+                source: 'shift_open_exact_closed_lookup'
+            });
+            await client.query(
+                `INSERT INTO fiscal_audit_events (
+                     fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+                     idempotency_key, after_snapshot, metadata
+                 )
+                 SELECT $1::bigint, NULL::integer, 'fiscal_shift_open_observed_closed', 'fiscal_shifts', $2::bigint,
+                        $3::text, $4::jsonb, $5::jsonb
+                  WHERE NOT EXISTS (
+                        SELECT 1
+                          FROM fiscal_audit_events
+                         WHERE fiscal_profile_id = $1::bigint
+                           AND event_type = 'fiscal_shift_open_observed_closed'
+                           AND entity_table = 'fiscal_shifts'
+                           AND entity_id = $2::bigint
+                           AND idempotency_key = $3::text
+                  )`,
+                [
+                    context.job.fiscal_profile_id,
+                    shiftId,
+                    `fiscal_shift_open_observed_closed:${context.job.fiscal_operation_id}`,
+                    JSON.stringify({ status: 'closed', lifecycle_stage: 'CLOSED' }),
+                    JSON.stringify({
+                        provider_status: 'CLOSED',
+                        recovery_policy: 'exact_open_uuid_lookup_only',
+                        sanitized: true
+                    })
+                ]
+            );
+            await markJobSucceeded(client, context.job);
+            return { ok: true, jobId: Number(context.job.id), source: `${result.source || 'shift_open'}_observed_closed` };
+        }
         const updatedShift = await client.query(
             `UPDATE fiscal_shifts
                 SET status = 'open',
                     lifecycle_stage = 'OPENED',
                     provider_shift_id = COALESCE(provider_shift_id, $3),
-                    opened_at = COALESCE(opened_at, NOW()),
-                    provider_opened_at = COALESCE(provider_opened_at, NOW()),
+                    opened_at = COALESCE(opened_at, $7::timestamptz, NOW()),
+                    provider_opened_at = COALESCE(provider_opened_at, $7::timestamptz),
                     provider_snapshot = provider_snapshot || $4::jsonb,
                     updated_at = NOW()
                   WHERE id = $1
-                AND fiscal_profile_id = $2
-                AND status = 'opening'
+                    AND fiscal_profile_id = $2
+                    AND fiscal_register_id = $5
+                    AND open_operation_id = $6
+                    AND (provider_shift_id IS NULL OR provider_shift_id = $3)
+                    AND status = 'opening'
+                    AND lifecycle_stage = 'OPENING'
               RETURNING id`,
             [
                 shiftId,
                 context.job.fiscal_profile_id,
-                result.response?.id || null,
-                JSON.stringify({ open_result: result.response || {}, lifecycle_stage: 'OPENED' })
+                actualShiftId,
+                JSON.stringify({ open_result: result.response || {}, lifecycle_stage: 'OPENED' }),
+                context.job.fiscal_register_id,
+                context.job.fiscal_operation_id,
+                result.response?.openedAt || null
             ]
         );
         if (!updatedShift.rows.length) {
@@ -1210,26 +1734,68 @@ async function markShiftJobSucceeded(client, context, result) {
                 details: { expectedShiftId: expectedShiftId || null, actualShiftId: actualShiftId || null, providerStatus: providerStatus || null }
             });
         }
-        if (providerStatus && providerStatus !== 'CLOSED') {
+        if (providerStatus !== 'CLOSED') {
             throw new PaymentOutboxWorkerError('checkbox_shift_close_not_completed', 'Checkbox shift close has not reached CLOSED status', {
                 retryable: true,
                 unknown: true,
-                details: { providerStatus }
+                details: { providerStatus: providerStatus || null }
             });
         }
-        assertLifecycleTransition(context.job.fiscal_shift_lifecycle_stage || 'CLOSING', 'CLOSED');
+        const currentLifecycleStage = String(context.job.fiscal_shift_lifecycle_stage || '').trim().toUpperCase();
+        if (currentLifecycleStage !== 'CLOSED') {
+            assertLifecycleTransition(currentLifecycleStage || 'CLOSING', 'CLOSED');
+        }
+        const updatedShift = await client.query(
+            `UPDATE fiscal_shifts
+                SET status = 'closed',
+                    lifecycle_stage = 'CLOSED',
+                    closed_at = COALESCE(closed_at, $5::timestamptz, NOW()),
+                    provider_closed_at = COALESCE(provider_closed_at, $5::timestamptz),
+                    provider_snapshot = provider_snapshot || $4::jsonb,
+                    updated_at = NOW()
+              WHERE id = $1
+                AND fiscal_profile_id = $2
+                AND provider_shift_id = $3
+                AND (
+                    (status = 'closing' AND lifecycle_stage = 'CLOSING')
+                    OR (status = 'closed' AND lifecycle_stage = 'CLOSED')
+                )
+              RETURNING id`,
+            [
+                shiftId,
+                context.job.fiscal_profile_id,
+                expectedShiftId,
+                JSON.stringify({ close_result: result.response || {} }),
+                result.response?.closedAt || null
+            ]
+        );
+        if (!updatedShift.rows.length) {
+            throw new PaymentOutboxWorkerError('checkbox_shift_close_finalize_mismatch', 'Provider-closed shift could not finalize the exact local shift row', {
+                retryable: false,
+                details: { shiftId: Number(shiftId), providerShiftId: expectedShiftId, currentLifecycleStage: currentLifecycleStage || null }
+            });
+        }
+        await guardPaidPreSubmitSalesForClosedShift(client, {
+            fiscalProfileId: context.job.fiscal_profile_id,
+            fiscalRegisterId: context.job.fiscal_register_id,
+            fiscalShiftId: shiftId,
+            providerShiftId: expectedShiftId,
+            source: 'shift_close_exact_closed_lookup'
+        });
+        await markJobSucceeded(client, context.job);
+        return { ok: true, jobId: Number(context.job.id), source: result.source };
     }
     await client.query(
         `UPDATE fiscal_shifts
             SET status = 'closed',
                 lifecycle_stage = 'CLOSED',
-                closed_at = COALESCE(closed_at, NOW()),
-                provider_closed_at = COALESCE(provider_closed_at, NOW()),
+                closed_at = COALESCE(closed_at, $4::timestamptz, NOW()),
+                provider_closed_at = COALESCE(provider_closed_at, $4::timestamptz),
                 provider_snapshot = provider_snapshot || $3::jsonb,
                 updated_at = NOW()
           WHERE id = $1
             AND fiscal_profile_id = $2`,
-        [shiftId, context.job.fiscal_profile_id, JSON.stringify({ close_result: result.response || {} })]
+        [shiftId, context.job.fiscal_profile_id, JSON.stringify({ close_result: result.response || {} }), result.response?.closedAt || null]
     );
     await markJobSucceeded(client, context.job);
     return { ok: true, jobId: Number(context.job.id), source: result.source };
@@ -1240,7 +1806,20 @@ async function runShiftJob(provider, context) {
     if (!method) {
         throw new PaymentOutboxWorkerError('checkbox_shift_operation_not_supported', 'Checkbox shift operation is not configured', { retryable: false });
     }
-    const stage = externalStage(context.job);
+    let stage = externalStage(context.job);
+    let forcedLocalClosedLookup = false;
+    const localShiftStatus = String(context.job.fiscal_shift_status || '').trim().toLowerCase();
+    const localShiftLifecycle = String(context.job.fiscal_shift_lifecycle_stage || '').trim().toUpperCase();
+    const localShiftAlreadyClosed = localShiftStatus === 'closed' || localShiftLifecycle === 'CLOSED';
+    if (
+        context.job.job_type === 'shift_close'
+        && !SHIFT_CLOSE_LOOKUP_STAGES.has(stage)
+        && localShiftAlreadyClosed
+    ) {
+        await context.recordStage?.('shift_close_lookup');
+        stage = 'shift_close_lookup';
+        forcedLocalClosedLookup = true;
+    }
     if (context.job.job_type === 'shift_open' && SHIFT_OPEN_LOOKUP_STAGES.has(stage) && (provider.lookupShift || provider.ensureShiftOpened)) {
         const lookupInput = {
             providerOperationId: context.job.provider_operation_id,
@@ -1275,9 +1854,11 @@ async function runShiftJob(provider, context) {
                 await provider.prepareMutation(lookupInput);
             }
             await context.recordStage?.('shift_request_retry_same_uuid');
-            await context.recordStage?.('shift_request_maybe_submitted');
             try {
-                const response = await provider.openShift(lookupInput);
+                const response = await provider.openShift({
+                    ...lookupInput,
+                    beforeExternalMutation: createExternalMutationBoundary(context, 'shift_request_maybe_submitted')
+                });
                 const providerStatus = String(response?.status || '').trim().toUpperCase();
                 if (providerStatus !== 'OPENED') {
                     await context.recordStage?.('shift_lookup');
@@ -1310,7 +1891,7 @@ async function runShiftJob(provider, context) {
             });
         }
         const confirmedStillOpenStage = stage === 'shift_close_lookup_still_open' || stage === 'shift_close_retry_exact_shift';
-        if (!confirmedStillOpenStage) {
+        if (!confirmedStillOpenStage && !forcedLocalClosedLookup) {
             await context.recordStage?.('shift_close_lookup');
         }
         const lookupInput = {
@@ -1345,6 +1926,22 @@ async function runShiftJob(provider, context) {
             return { response: { ...response, status: 'CLOSED', id: actualShiftId }, source: 'shift_close_lookup' };
         }
         if (String(response?.status || '').toUpperCase() === 'OPENED') {
+            if (localShiftAlreadyClosed) {
+                throw new PaymentOutboxWorkerError(
+                    'checkbox_shift_close_state_mismatch',
+                    'A locally CLOSED shift was observed as OPENED by Checkbox during lookup-only recovery',
+                    {
+                        retryable: false,
+                        details: {
+                            expectedShiftId,
+                            actualShiftId,
+                            localShiftStatus: localShiftStatus || null,
+                            localShiftLifecycle: localShiftLifecycle || null,
+                            providerStatus: 'OPENED'
+                        }
+                    }
+                );
+            }
             if (!confirmedStillOpenStage) {
                 await context.recordStage?.('shift_close_lookup_still_open');
                 throw new PaymentOutboxWorkerError('checkbox_shift_close_still_open', 'Exact Checkbox shift is still OPENED; a second exact lookup is required before close retry', {
@@ -1357,9 +1954,11 @@ async function runShiftJob(provider, context) {
                 await provider.prepareMutation(lookupInput);
             }
             await context.recordStage?.('shift_close_retry_exact_shift');
-            await context.recordStage?.('shift_close_request_maybe_submitted');
             try {
-                const closeResponse = await provider.closeShift(lookupInput);
+                const closeResponse = await provider.closeShift({
+                    ...lookupInput,
+                    beforeExternalMutation: createExternalMutationBoundary(context, 'shift_close_request_maybe_submitted')
+                });
                 const closeStatus = String(closeResponse?.status || '').trim().toUpperCase();
                 if (closeStatus === 'CLOSED') {
                     return { response: closeResponse, source: 'shift_close_exact_retry' };
@@ -1398,11 +1997,6 @@ async function runShiftJob(provider, context) {
         });
     }
     await context.recordStage?.(context.job.job_type === 'shift_open' ? 'shift_request' : 'shift_close_request');
-    if (context.job.job_type === 'shift_open') {
-        await context.recordStage?.('shift_request_maybe_submitted');
-    } else {
-        await context.recordStage?.('shift_close_request_maybe_submitted');
-    }
     let response;
     try {
         response = await method.call(provider, {
@@ -1410,7 +2004,12 @@ async function runShiftJob(provider, context) {
             providerRequestUuid: context.job.provider_operation_id,
             fiscalOperation: context.job,
             payload: context.job.payload || {},
-            beforeExternalMutation: context.assertMutationOwnership
+            beforeExternalMutation: createExternalMutationBoundary(
+                context,
+                context.job.job_type === 'shift_open'
+                    ? 'shift_request_maybe_submitted'
+                    : 'shift_close_request_maybe_submitted'
+            )
         });
     } catch (error) {
         if (error instanceof CheckboxClientError && error.status === 409) {
@@ -1426,7 +2025,7 @@ async function runShiftJob(provider, context) {
         throw error;
     }
     const providerStatus = String(response?.status || '').trim().toUpperCase();
-    if (context.job.job_type === 'shift_open' && providerStatus !== 'OPENED') {
+    if (context.job.job_type === 'shift_open' && !['OPENED', 'CLOSED'].includes(providerStatus)) {
         await context.recordStage?.('shift_lookup');
         throw new PaymentOutboxWorkerError('checkbox_shift_open_pending', 'Checkbox shift open has not reached OPENED status', {
             retryable: true,
@@ -1448,6 +2047,22 @@ async function runShiftJob(provider, context) {
 async function runReceiptSaleJob(provider, context) {
     const stage = externalStage(context.job);
     const mustLookupOnly = saleStageRequiresLookup(stage);
+    const failureWithoutPreMutationEvidence = failedOperationLacksPreMutationEvidence(context.job, PRE_SELL_STAGES);
+
+    if (context.job.job_type === 'receipt_status_lookup' || mustLookupOnly || failureWithoutPreMutationEvidence) {
+        if (!context.job.provider_shift_id) {
+            throw new PaymentOutboxWorkerError('receipt_lookup_shift_identity_missing', 'Receipt lookup requires the immutable provider shift identity', {
+                retryable: false
+            });
+        }
+        await context.recordStage?.('receipt_lookup');
+        const lookup = await lookupProviderReceipt(provider, context);
+        if (lookup?.found || lookup?.receipt) {
+            return { receipt: lookup.receipt || lookup, source: 'lookup' };
+        }
+        throw new PaymentOutboxWorkerError('receipt_lookup_required_before_retry', 'Possibly submitted sale must be reconciled by lookup before any further sale attempt', { retryable: true, unknown: true });
+    }
+
     if (
         context.job.fiscal_shift_status !== 'open'
         || (context.job.fiscal_shift_lifecycle_stage && context.job.fiscal_shift_lifecycle_stage !== 'OPENED')
@@ -1458,19 +2073,6 @@ async function runReceiptSaleJob(provider, context) {
             unknown: false,
             details: { fiscalShiftStatus: context.job.fiscal_shift_status || null, providerShiftId: context.job.provider_shift_id || null }
         });
-    }
-
-    if (context.job.job_type === 'receipt_status_lookup' || mustLookupOnly || (shouldLookupBeforeSale(context.job) && !PRE_SELL_STAGES.has(stage))) {
-        await context.recordStage?.('receipt_lookup');
-        const lookup = await lookupProviderReceipt(provider, context);
-        if (lookup?.found || lookup?.receipt) {
-            return { receipt: lookup.receipt || lookup, source: 'lookup' };
-        }
-        throw new PaymentOutboxWorkerError('receipt_lookup_required_before_retry', 'Possibly submitted sale must be reconciled by lookup before any further sale attempt', { retryable: true, unknown: true });
-    }
-
-    if (context.job.job_type === 'receipt_status_lookup') {
-        throw new PaymentOutboxWorkerError('receipt_not_found_for_status_lookup', 'Provider receipt was not found during status lookup', { retryable: true, unknown: true });
     }
 
     const expectedTaxIds = [];
@@ -1518,7 +2120,6 @@ async function runReceiptSaleJob(provider, context) {
         items: context.items,
         beforeExternalMutation: context.assertMutationOwnership
     });
-    await context.recordStage?.('sale_submit');
     const submitSale = provider.submitSaleReceipt || provider.createSaleReceipt;
     const receipt = await submitSale.call(provider, {
         providerOperationId: context.job.provider_operation_id,
@@ -1526,19 +2127,20 @@ async function runReceiptSaleJob(provider, context) {
         fiscalOperation: context.job,
         paymentOrder: context.job,
         items: context.items,
-        beforeExternalMutation: context.assertMutationOwnership
+        beforeExternalMutation: createExternalMutationBoundary(context, 'sale_submit')
     });
     return { receipt, source: 'sale' };
 }
 
-async function loadProcessingContext(dbPool, job) {
+async function loadProcessingContext(dbPool, job, lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS) {
+    const leaseWindowMs = normalizedLockExpiryMs(lockExpiryMs);
     return withTransaction(dbPool, async client => {
         const context = await loadJobContext(client, job);
         const owner = await client.query(
             `UPDATE payment_outbox_jobs
                 SET status = 'running',
-                    locked_at = NOW(),
-                    heartbeat_at = NOW(),
+                    locked_at = clock_timestamp(),
+                    heartbeat_at = clock_timestamp(),
                     updated_at = NOW()
               WHERE id = $1
                 AND fiscal_profile_id = $2
@@ -1546,8 +2148,9 @@ async function loadProcessingContext(dbPool, job) {
                 AND attempts = $4
                 AND lock_token = $5::uuid
                 AND status IN ('claimed', 'running')
+                AND COALESCE(heartbeat_at, locked_at) >= clock_timestamp() - ($6::int * INTERVAL '1 millisecond')
               RETURNING id`,
-            [context.job.id, context.job.fiscal_profile_id, job.locked_by, job.attempts, job.lock_token]
+            [context.job.id, context.job.fiscal_profile_id, job.locked_by, job.attempts, job.lock_token, leaseWindowMs]
         );
         if (!owner.rows.length) {
             throw new PaymentOutboxWorkerError('payment_outbox_job_ownership_lost', 'Claimed payment outbox job ownership was lost before processing', { retryable: true });
@@ -1555,11 +2158,15 @@ async function loadProcessingContext(dbPool, job) {
         context.job.locked_by = job.locked_by;
         context.job.lock_token = job.lock_token;
         context.job.status = 'running';
+        context.lockExpiryMs = leaseWindowMs;
+        context.claimedHeartbeatAt = job.heartbeat_at || null;
+        context.claimObservedAt = job.lease_claimed_at || null;
         return context;
     });
 }
 
 async function assertFinalizeOwnership(client, context) {
+    const lockExpiryMs = normalizedLockExpiryMs(context.lockExpiryMs);
     const result = await client.query(
         `SELECT id
            FROM payment_outbox_jobs
@@ -1569,12 +2176,145 @@ async function assertFinalizeOwnership(client, context) {
             AND attempts = $4
             AND lock_token = $5::uuid
             AND status IN ('claimed', 'running')
+            AND COALESCE(heartbeat_at, locked_at) >= clock_timestamp() - ($6::int * INTERVAL '1 millisecond')
           FOR UPDATE`,
-        [context.job.id, context.job.fiscal_profile_id, context.job.locked_by, context.job.attempts, context.job.lock_token]
+        [context.job.id, context.job.fiscal_profile_id, context.job.locked_by, context.job.attempts, context.job.lock_token, lockExpiryMs]
     );
     if (!result.rows.length) {
-        throw new PaymentOutboxWorkerError('payment_outbox_job_ownership_lost', 'Payment outbox job ownership was lost before finalize', { retryable: true });
+        const observed = await client.query(
+            `SELECT status,
+                    attempts,
+                    attempts = $4::int AS attempts_match,
+                    locked_by = $3 AS owner_matches,
+                    lock_token = $5::uuid AS token_matches,
+                    COALESCE(heartbeat_at, locked_at) >= clock_timestamp() - ($6::int * INTERVAL '1 millisecond') AS lease_fresh,
+                    EXTRACT(EPOCH FROM (clock_timestamp() - COALESCE(heartbeat_at, locked_at))) * 1000 AS lease_age_ms
+               FROM payment_outbox_jobs
+              WHERE id = $1
+                AND fiscal_profile_id = $2`,
+            [context.job.id, context.job.fiscal_profile_id, context.job.locked_by, context.job.attempts, context.job.lock_token, lockExpiryMs]
+        );
+        const row = observed.rows[0] || null;
+        const details = row ? {
+            jobId: Number(context.job.id),
+            status: row.status,
+            attemptsMatch: row.attempts_match === true,
+            ownerMatches: row.owner_matches === true,
+            tokenMatches: row.token_matches === true,
+            leaseFresh: row.lease_fresh === true,
+            leaseAgeMs: Math.round(Number(row.lease_age_ms)),
+            lockExpiryMs,
+            claimedHeartbeatAt: context.claimedHeartbeatAt || null,
+            claimObservedAt: context.claimObservedAt || null,
+            processingErrorCode: context.processingErrorCode || null
+        } : { jobMissing: true };
+        throw new PaymentOutboxWorkerError(
+            'payment_outbox_job_ownership_lost',
+            `Payment outbox job ownership was lost before finalize (${JSON.stringify(details)})`,
+            {
+            retryable: true,
+            details
+            }
+        );
     }
+}
+
+async function requeueActiveShiftJobAfterPortalClose(client, context, errorInfo) {
+    if (!['shift_open', 'shift_close'].includes(context.job.job_type)) return false;
+    const recoveryStage = context.job.job_type === 'shift_open' ? 'shift_lookup' : 'shift_close_lookup';
+    const recovered = await client.query(
+        `UPDATE payment_outbox_jobs job
+            SET status = 'queued',
+                max_attempts = GREATEST(job.max_attempts, job.attempts + 1),
+                locked_at = NULL,
+                locked_by = NULL,
+                lock_token = NULL,
+                heartbeat_at = NULL,
+                external_stage = $3::text,
+                payload = job.payload || jsonb_build_object(
+                    'external_stage', $3::text,
+                    'portal_closed_active_recovery_used', TRUE,
+                    'portal_closed_active_recovery_error_code', $4::text
+                ),
+                next_run_at = NOW(),
+                last_error_code = NULL,
+                last_error_message = NULL,
+                updated_at = NOW()
+           FROM fiscal_operations operation,
+                fiscal_shifts shift
+          WHERE job.id = $1
+            AND job.fiscal_profile_id = $2
+            AND job.fiscal_operation_id = operation.id
+            AND operation.fiscal_profile_id = job.fiscal_profile_id
+            AND shift.id = operation.fiscal_shift_id
+            AND shift.fiscal_profile_id = operation.fiscal_profile_id
+            AND shift.fiscal_register_id = operation.fiscal_register_id
+            AND shift.status = 'closed'
+            AND shift.lifecycle_stage = 'CLOSED'
+            AND shift.provider_shift_id IS NOT NULL
+            AND COALESCE(LOWER(job.payload->>'portal_closed_sync_observed') IN ('true', '1'), FALSE) = TRUE
+            AND COALESCE(LOWER(job.payload->>'portal_closed_active_recovery_used') IN ('true', '1'), FALSE) = FALSE
+            AND (
+                (
+                    job.job_type = 'shift_open'
+                    AND operation.operation_type = 'shift_open'
+                    AND shift.open_operation_id = operation.id
+                    AND operation.provider_operation_id = shift.provider_shift_id
+                )
+                OR (
+                    job.job_type = 'shift_close'
+                    AND operation.operation_type = 'shift_close'
+                    AND shift.close_operation_id = operation.id
+                    AND NULLIF(operation.request_snapshot->>'provider_shift_id', '') = shift.provider_shift_id
+                )
+            )
+          RETURNING job.id, job.fiscal_operation_id`,
+        [context.job.id, context.job.fiscal_profile_id, recoveryStage, String(errorInfo.code || 'provider_closed_active_recovery').slice(0, 120)]
+    );
+    if (!recovered.rows.length) return false;
+
+    await client.query(
+        `UPDATE fiscal_operations
+            SET status = 'pending',
+                external_stage = $3,
+                next_status_check_at = NOW(),
+                last_error_code = NULL,
+                last_error_message = NULL
+          WHERE id = $1
+            AND fiscal_profile_id = $2
+            AND status <> 'fiscalized'`,
+        [context.job.fiscal_operation_id, context.job.fiscal_profile_id, recoveryStage]
+    );
+    await client.query(
+        `INSERT INTO fiscal_audit_events (
+             fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+             idempotency_key, after_snapshot, metadata
+         )
+         SELECT $1::bigint, NULL::integer, 'payment_outbox_active_portal_close_requeued', 'payment_outbox_jobs', $2::bigint,
+                $3::text, $4::jsonb, $5::jsonb
+          WHERE NOT EXISTS (
+                SELECT 1
+                  FROM fiscal_audit_events
+                 WHERE fiscal_profile_id = $1::bigint
+                   AND event_type = 'payment_outbox_active_portal_close_requeued'
+                   AND entity_table = 'payment_outbox_jobs'
+                   AND entity_id = $2::bigint
+                   AND idempotency_key = $3::text
+          )`,
+        [
+            context.job.fiscal_profile_id,
+            context.job.id,
+            `payment_outbox_active_portal_close_requeued:${context.job.id}:${context.job.attempts}`,
+            JSON.stringify({ status: 'queued', external_stage: recoveryStage }),
+            JSON.stringify({
+                provider: 'checkbox',
+                recovery_policy: 'exact_closed_shift_lookup_only',
+                triggering_error_code: String(errorInfo.code || 'unknown').slice(0, 120),
+                sanitized: true
+            })
+        ]
+    );
+    return true;
 }
 
 async function finalizeJobFailure(dbPool, context, errorInfo) {
@@ -1584,9 +2324,40 @@ async function finalizeJobFailure(dbPool, context, errorInfo) {
             await markJobConfigUnavailable(client, context, errorInfo);
             return { ok: false, skipped: true, jobId: Number(context.job.id), error: errorInfo };
         }
+        if (await requeueActiveShiftJobAfterPortalClose(client, context, errorInfo)) {
+            return { ok: false, recoveryQueued: true, jobId: Number(context.job.id), error: errorInfo };
+        }
         await markJobFailed(client, context, errorInfo);
         return { ok: false, jobId: Number(context.job.id), error: errorInfo };
     });
+}
+
+function isRecordedReceiptMismatchError(error) {
+    return error instanceof PaymentOutboxWorkerError
+        && error.code === 'fiscal_receipt_identity_mismatch'
+        && error.receiptMismatchEvidenceRecorded === true;
+}
+
+async function finalizeReceiptJobInTransaction(client, context, result, { recordCompleteStage = false } = {}) {
+    try {
+        await markFiscalized(client, context, result.receipt);
+    } catch (error) {
+        if (!isRecordedReceiptMismatchError(error)) throw error;
+        const errorInfo = classifyWorkerError(error);
+        await markJobFailed(client, context, errorInfo);
+        return {
+            ok: false,
+            jobId: Number(context.job.id),
+            source: result.source,
+            receiptMismatch: true,
+            error: errorInfo
+        };
+    }
+    if (recordCompleteStage) {
+        await recordExternalStageInTransaction(client, context, 'complete');
+    }
+    await markJobSucceeded(client, context.job);
+    return { ok: true, jobId: Number(context.job.id), source: result.source };
 }
 
 async function finalizeJobSuccess(dbPool, context, result) {
@@ -1595,22 +2366,18 @@ async function finalizeJobSuccess(dbPool, context, result) {
         finalizeContext.job.locked_by = context.job.locked_by;
         finalizeContext.job.lock_token = context.job.lock_token;
         finalizeContext.job.attempts = context.job.attempts;
+        finalizeContext.lockExpiryMs = context.lockExpiryMs;
+        finalizeContext.claimedHeartbeatAt = context.claimedHeartbeatAt || null;
+        finalizeContext.claimObservedAt = context.claimObservedAt || null;
         await assertFinalizeOwnership(client, finalizeContext);
         if (finalizeContext.job.job_type === 'receipt_sell' || finalizeContext.job.job_type === 'receipt_status_lookup') {
-            await recordExternalStageInTransaction(client, finalizeContext, 'complete');
-            await markFiscalized(client, finalizeContext, result.receipt);
-            await markJobSucceeded(client, finalizeContext.job);
-            return { ok: true, jobId: Number(finalizeContext.job.id), source: result.source };
+            return finalizeReceiptJobInTransaction(client, finalizeContext, result, { recordCompleteStage: true });
         }
         if (finalizeContext.job.job_type === 'receipt_return') {
-            await markFiscalized(client, finalizeContext, result.receipt);
-            await markJobSucceeded(client, finalizeContext.job);
-            return { ok: true, jobId: Number(finalizeContext.job.id), source: result.source };
+            return finalizeReceiptJobInTransaction(client, finalizeContext, result);
         }
         if (finalizeContext.job.job_type === 'service_receipt') {
-            await markFiscalized(client, finalizeContext, result.receipt);
-            await markJobSucceeded(client, finalizeContext.job);
-            return { ok: true, jobId: Number(finalizeContext.job.id), source: result.source };
+            return finalizeReceiptJobInTransaction(client, finalizeContext, result, { recordCompleteStage: true });
         }
         if (finalizeContext.job.job_type === 'shift_open' || finalizeContext.job.job_type === 'shift_close') {
             return markShiftJobSucceeded(client, finalizeContext, result);
@@ -1619,12 +2386,12 @@ async function finalizeJobSuccess(dbPool, context, result) {
     });
 }
 
-async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
+async function processOnePaymentOutboxJob({ dbPool, provider, job, lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS }) {
     let context;
     try {
-        context = await loadProcessingContext(dbPool, job);
+        context = await loadProcessingContext(dbPool, job, lockExpiryMs);
         context.recordStage = stage => recordExternalStage(dbPool, context, stage);
-        context.assertMutationOwnership = () => recordExternalStage(dbPool, context, externalStage(context.job));
+        context.assertMutationOwnership = () => assertPaymentOutboxJobOwnership(dbPool, context);
         try {
             assertImmutableProviderContext(context);
             if (!saleStageRequiresLookup(externalStage(context.job))) {
@@ -1651,6 +2418,7 @@ async function processOnePaymentOutboxJob({ dbPool, provider, job }) {
             throw new PaymentOutboxWorkerError('payment_outbox_job_type_not_supported', 'Payment outbox job type is not supported by this worker', { retryable: false });
         } catch (error) {
             const errorInfo = classifyWorkerError(error);
+            context.processingErrorCode = errorInfo.code || null;
             return finalizeJobFailure(dbPool, context, errorInfo);
         }
     } catch (error) {
@@ -1704,7 +2472,7 @@ async function processPaymentOutboxJobs({
         const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize: 1, lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
         const job = claimed[0];
         if (!job) break;
-        results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job }));
+        results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job, lockExpiryMs }));
     }
     const summary = {
         claimed: results.length,
@@ -1729,13 +2497,20 @@ module.exports = {
     DEFAULT_LOCK_EXPIRY_MS,
     PaymentOutboxWorkerError,
     RETRYABLE_JOB_TYPES,
+    assertImmutableProviderContext,
     claimPaymentOutboxJobs,
     classifyWorkerError,
     computeBackoffMs,
     createUnavailableCheckboxProvider,
+    externalStage,
+    finalizeJobSuccess,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs,
+    runReceiptReturnJob,
+    runReceiptSaleJob,
+    runServiceReceiptJob,
     runShiftJob,
+    safePublishFiscalEvent,
     sanitizeError,
     shouldLookupBeforeSale
 };

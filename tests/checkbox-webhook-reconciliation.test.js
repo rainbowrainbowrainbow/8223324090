@@ -14,6 +14,7 @@ const {
     claimPaymentOutboxJobs,
     processPaymentOutboxJobs
 } = require('../services/payments/paymentOutboxWorker');
+const { buildFiscalConfigurationSnapshot } = require('../services/payments/paymentReadinessService');
 
 function listen(app) {
     return new Promise(resolve => {
@@ -288,6 +289,32 @@ class FakeWorkerDb {
     }
 
     static oneJob({ id = 1, status = 'queued', attempts = 0, maxAttempts = 3, operationStatus = 'pending', operationId = 'op-1', externalStage = null, shiftStatus = 'open', providerShiftId = 'shift-1' } = {}) {
+        const mapping = {
+            fiscal_profile_id: 7,
+            fiscal_location_id: 17,
+            fiscal_register_id: 27,
+            crm_profile_key: 'event_genix',
+            legal_entity_key: 'test-fop',
+            register_alias: 'middle',
+            provider_organization_id: 'org-1',
+            provider_outlet_id: null,
+            provider_register_id: 'register-1',
+            provider_license_ref: 'register-ref'
+        };
+        const binding = {
+            provider_cashier_id: 'cashier-1',
+            provider_cashier_login_ref: 'cashier-ref'
+        };
+        const fiscalConfiguration = buildFiscalConfigurationSnapshot({
+            mapping,
+            binding,
+            runtimeConfig: { expectedIsTest: true }
+        });
+        const requestSnapshot = {
+            provider_context: fiscalConfiguration.snapshot,
+            fiscal_configuration_hash: fiscalConfiguration.hash,
+            ...(externalStage ? { external_stage: externalStage } : {})
+        };
         return new FakeWorkerDb({
             jobs: [{
                 id,
@@ -312,13 +339,27 @@ class FakeWorkerDb {
                 operation_type: 'sale',
                 provider_operation_id: operationId,
                 provider_status: null,
+                provider_organization_id: mapping.provider_organization_id,
+                provider_outlet_id: mapping.provider_outlet_id,
+                provider_register_id: mapping.provider_register_id,
+                provider_cashier_id: binding.provider_cashier_id,
+                register_credential_ref: mapping.provider_license_ref,
+                cashier_credential_ref: binding.provider_cashier_login_ref,
+                expected_is_test: true,
+                fiscal_configuration_hash: fiscalConfiguration.hash,
+                fiscal_location_id: mapping.fiscal_location_id,
+                fiscal_register_id: mapping.fiscal_register_id,
+                fiscal_shift_id: 901 + id,
+                initiated_by_user_id: 3,
                 fiscal_shift_status: shiftStatus,
                 provider_shift_id: providerShiftId,
-                request_snapshot: externalStage ? { external_stage: externalStage } : {}
+                request_snapshot: requestSnapshot
             }],
             orders: [{
                 id: 301 + id,
                 fiscal_profile_id: 7,
+                fiscal_register_id: mapping.fiscal_register_id,
+                cashier_user_id: 3,
                 status: 'confirmed',
                 payment_status: 'paid',
                 fiscal_status: 'pending',
@@ -367,8 +408,15 @@ class FakeWorkerClient {
             this.inTransaction = false;
             return { rows: [] };
         }
+        if (
+            normalized.startsWith('SAVEPOINT ')
+            || normalized.startsWith('ROLLBACK TO SAVEPOINT ')
+            || normalized.startsWith('RELEASE SAVEPOINT ')
+        ) {
+            return { rows: [] };
+        }
 
-        if (normalized.startsWith('WITH candidate_jobs AS')) {
+        if (normalized.startsWith('WITH candidate_registers AS MATERIALIZED')) {
             const limit = params[1];
             const claimable = this.db.jobs
                 .filter(job => ['queued', 'failed'].includes(job.status) || (['claimed', 'running'].includes(job.status) && job.locked_by === 'stale-worker'))
@@ -397,10 +445,40 @@ class FakeWorkerClient {
                     operation_type: operation?.operation_type,
                     provider_operation_id: operation?.provider_operation_id,
                     provider_status: operation?.provider_status,
-                    provider_register_id: 'register-1',
-                    provider_cashier_id: 'cashier-1',
-                    provider_organization_id: 'org-1',
+                    provider_organization_id: operation?.provider_organization_id,
+                    provider_outlet_id: operation?.provider_outlet_id,
+                    provider_register_id: operation?.provider_register_id,
+                    provider_cashier_id: operation?.provider_cashier_id,
+                    register_credential_ref: operation?.register_credential_ref,
+                    cashier_credential_ref: operation?.cashier_credential_ref,
+                    expected_is_test: operation?.expected_is_test,
+                    fiscal_configuration_hash: operation?.fiscal_configuration_hash,
+                    operation_fiscal_location_id: operation?.fiscal_location_id,
+                    fiscal_operation_external_stage: operation?.request_snapshot?.external_stage || null,
+                    fiscal_operation_initiated_by_user_id: operation?.initiated_by_user_id,
+                    fiscal_register_id: order?.fiscal_register_id || operation?.fiscal_register_id,
+                    cashier_user_id: order?.cashier_user_id,
+                    register_alias: 'middle',
+                    current_fiscal_register_id: operation?.fiscal_register_id,
+                    current_fiscal_profile_id: operation?.fiscal_profile_id,
+                    current_fiscal_location_id: operation?.fiscal_location_id,
+                    current_crm_profile_key: 'event_genix',
+                    current_profile_crm_profile_key: 'event_genix',
+                    current_legal_entity_key: 'test-fop',
+                    current_provider_organization_id: operation?.provider_organization_id,
+                    current_provider_outlet_id: operation?.provider_outlet_id,
+                    current_provider_register_id: operation?.provider_register_id,
+                    current_provider_cashier_id: operation?.provider_cashier_id,
+                    current_provider_cashier_login_ref: operation?.cashier_credential_ref,
+                    register_provider: 'checkbox',
+                    register_status: 'active',
+                    register_feature_enabled: true,
+                    provider_license_ref: operation?.register_credential_ref,
+                    current_expected_is_test: 'true',
                     fiscal_shift_status: operation?.fiscal_shift_status || 'open',
+                    fiscal_shift_lifecycle_stage: String(operation?.fiscal_shift_status || 'open').toUpperCase() === 'OPEN'
+                        ? 'OPENED'
+                        : String(operation?.fiscal_shift_status || 'created').toUpperCase(),
                     provider_shift_id: operation?.provider_shift_id || 'shift-1',
                     fiscal_request_snapshot: operation?.request_snapshot,
                     payment_order_status: order?.status,
@@ -440,6 +518,18 @@ class FakeWorkerClient {
         if (normalized.startsWith('SELECT id FROM payment_outbox_jobs') && normalized.includes('FOR UPDATE')) {
             const job = this.db.jobs.find(row => row.id === params[0] && row.fiscal_profile_id === params[1] && row.locked_by === params[2] && row.attempts === params[3] && ['claimed', 'running'].includes(row.status));
             return { rows: job ? [{ id: job.id }] : [] };
+        }
+
+        if (normalized.startsWith('SELECT shift.id FROM fiscal_operations operation') && normalized.includes('FOR UPDATE OF shift')) {
+            const operation = this.db.operations.find(row => (
+                row.id === params[0]
+                && row.fiscal_profile_id === params[1]
+                && row.operation_type === 'sale'
+            ));
+            const isProviderOpened = operation
+                && operation.fiscal_shift_status === 'open'
+                && Boolean(operation.provider_shift_id);
+            return { rows: isProviderOpened ? [{ id: operation.fiscal_shift_id }] : [] };
         }
 
         if (normalized.startsWith('UPDATE payment_outbox_jobs') && normalized.includes('payload = payload || $3::jsonb')) {
@@ -584,7 +674,8 @@ function createProvider({ lookupReceipts = new Map(), failPrepare = null, failVa
             calls.validate.push(input.providerOperationId);
             if (failValidate) throw failValidate;
         },
-        async createSaleReceipt({ providerOperationId, paymentOrder }) {
+        async createSaleReceipt({ providerOperationId, paymentOrder, beforeExternalMutation }) {
+            await beforeExternalMutation?.();
             calls.create.push(providerOperationId);
             const receipt = {
                 id: providerOperationId,
@@ -618,7 +709,10 @@ describe('payment outbox worker reconciliation', () => {
             }
         };
         await claimPaymentOutboxJobs(client, { batchSize: 3, lockedBy: 'worker-a', lockExpiryMs: 60000 });
-        assert.match(queries[0].sql, /FOR UPDATE(?: OF job)? SKIP LOCKED/);
+        assert.match(queries[0].sql, /candidate_registers AS MATERIALIZED/);
+        assert.match(queries[0].sql, /JOIN LATERAL[\s\S]*LIMIT 1/);
+        assert.match(queries[0].sql, /FOR UPDATE OF fr SKIP LOCKED/);
+        assert.match(queries[0].sql, /candidate_jobs AS MATERIALIZED[\s\S]*FOR UPDATE OF job SKIP LOCKED/);
         assert.match(queries[0].sql, /COALESCE\(job\.heartbeat_at,\s*job\.locked_at\)/);
         assert.match(queries[0].sql, /LIMIT \$2/);
         assert.equal(queries[0].params[1], 3);

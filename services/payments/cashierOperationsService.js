@@ -23,8 +23,11 @@ const {
     loadCheckboxRuntimeConfig
 } = require('../checkbox/config');
 const { safeCheckboxArtifactUrl } = require('../checkbox/provider');
+const { countFiscalShiftCloseBlockers } = require('./shiftCloseBlockers');
+const { buildFiscalConfigurationSnapshot } = require('./paymentReadinessService');
 
 const OPEN_SHIFT_STATUSES = Object.freeze(['opening', 'open']);
+const UNRESOLVED_SHIFT_LIFECYCLE_STAGES = Object.freeze(['CREATED', 'OPENING', 'OPENED', 'CLOSING']);
 const CLOSE_BLOCKER_STATUSES = Object.freeze(['pending', 'unknown', 'validating', 'ready_to_send', 'sending', 'failed', 'blocked']);
 const AUTO_CLOSE_FLAG = 'EVENTGENIX_FISCAL_AUTO_CLOSE_ENABLED';
 
@@ -56,7 +59,7 @@ function amountMinor(value, code = 'invalid_amount') {
 
 function nullableAmountMinor(value) {
     if (value === undefined || value === null || value === '') return null;
-    return toPostgresBigint(value, { allowZero: true });
+    return BigInt(toPostgresBigint(value, { allowZero: true }));
 }
 
 function normalizeBoolean(value) {
@@ -65,6 +68,22 @@ function normalizeBoolean(value) {
     if (text === 'true') return true;
     if (text === 'false') return false;
     return null;
+}
+
+function assertCompleteFiscalCredentialRefs(mapping = {}, binding = {}) {
+    const registerCredentialRef = String(mapping?.provider_license_ref ?? '').trim() || null;
+    const cashierCredentialRef = String(binding?.provider_cashier_login_ref ?? '').trim() || null;
+    const missing = [];
+    if (!registerCredentialRef) missing.push('register_credential_ref');
+    if (!cashierCredentialRef) missing.push('cashier_credential_ref');
+    if (missing.length) {
+        throw new CashierOperationsError(
+            'fiscal_provider_context_incomplete',
+            'Checkbox provider configuration is incomplete',
+            { status: 409, details: { missing } }
+        );
+    }
+    return { registerCredentialRef, cashierCredentialRef };
 }
 
 function requireReason(value, code = 'reason_required') {
@@ -155,6 +174,9 @@ function applyPhase1CloseReadiness(phase1Close = {}, readiness = {}) {
     if (readiness.checkboxIntegrationEnabled !== true) {
         return { ...state, allowed: false, reasonCode: 'global_integration_disabled' };
     }
+    if (readiness.paymentAcceptanceEnabled === true) {
+        return { ...state, allowed: false, reasonCode: 'phase1_close_requires_payment_drain' };
+    }
     if (readiness.providerReady !== true) {
         const code = String(readiness.readinessCode || '').trim();
         const allowedCodes = new Set([
@@ -195,19 +217,39 @@ async function withTransaction(callback) {
 
 async function loadOpenShift(client, { fiscalProfileId, fiscalRegisterId }) {
     const result = await client.query(
-        `SELECT fs.*, fr.fiscal_location_id, fr.register_alias, fp.crm_profile_key
+        `SELECT fs.*, fr.fiscal_location_id, fr.register_alias, fp.crm_profile_key,
+                open_operation.status AS open_operation_status,
+                open_job.status AS open_job_status
            FROM fiscal_shifts fs
            JOIN fiscal_registers fr
              ON fr.id = fs.fiscal_register_id
             AND fr.fiscal_profile_id = fs.fiscal_profile_id
            JOIN fiscal_profiles fp
              ON fp.id = fs.fiscal_profile_id
+           LEFT JOIN fiscal_operations open_operation
+             ON open_operation.id = fs.open_operation_id
+            AND open_operation.fiscal_profile_id = fs.fiscal_profile_id
+            AND open_operation.fiscal_register_id = fs.fiscal_register_id
+            AND open_operation.fiscal_shift_id = fs.id
+            AND open_operation.operation_type = 'shift_open'
+           LEFT JOIN LATERAL (
+                SELECT job.status
+                  FROM payment_outbox_jobs job
+                 WHERE job.fiscal_profile_id = fs.fiscal_profile_id
+                   AND job.fiscal_operation_id = open_operation.id
+                   AND job.job_type = 'shift_open'
+                 ORDER BY job.id DESC
+                 LIMIT 1
+           ) open_job ON TRUE
           WHERE fs.fiscal_profile_id = $1
             AND fs.fiscal_register_id = $2
-            AND fs.status = ANY($3::text[])
+            AND (
+                fs.status = ANY($3::text[])
+                OR fs.lifecycle_stage = ANY($4::text[])
+            )
           ORDER BY fs.opened_at DESC NULLS LAST, fs.id DESC
-          FOR UPDATE`,
-        [fiscalProfileId, fiscalRegisterId, OPEN_SHIFT_STATUSES]
+          FOR UPDATE OF fs`,
+        [fiscalProfileId, fiscalRegisterId, OPEN_SHIFT_STATUSES, UNRESOLVED_SHIFT_LIFECYCLE_STAGES]
     );
     if (result.rows.length > 1) {
         throw new CashierOperationsError('ambiguous_open_shift', 'More than one open shift found for register', { status: 409 });
@@ -274,6 +316,128 @@ async function insertOutboxJob(client, {
     return result.rows[0] || null;
 }
 
+async function loadImmutableProviderConfiguration(client, {
+    user,
+    fiscalProfileId,
+    fiscalLocationId,
+    fiscalRegisterId,
+    crmProfileKey,
+    env = process.env
+}) {
+    if (!isCheckboxIntegrationEnabled(env)) {
+        throw new CashierOperationsError(
+            'checkbox_integration_disabled',
+            'Checkbox integration is disabled',
+            { status: 503 }
+        );
+    }
+    const result = await client.query(
+        `SELECT
+             fp.id AS fiscal_profile_id,
+             fp.crm_profile_key,
+             fp.legal_entity_key,
+             fp.provider_organization_id,
+             fl.id AS fiscal_location_id,
+             fl.provider_outlet_id,
+             fr.id AS fiscal_register_id,
+             fr.register_alias,
+             fr.provider,
+             fr.provider_register_id,
+             fr.provider_license_ref,
+             fr.feature_enabled,
+             COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
+             binding.provider_cashier_id,
+             binding.provider_cashier_login_ref
+           FROM fiscal_profiles fp
+           JOIN fiscal_locations fl
+             ON fl.fiscal_profile_id = fp.id
+            AND fl.crm_profile_key = fp.crm_profile_key
+            AND fl.status = 'active'
+           JOIN fiscal_registers fr
+             ON fr.fiscal_profile_id = fp.id
+            AND fr.fiscal_location_id = fl.id
+            AND fr.crm_profile_key = fp.crm_profile_key
+            AND fr.status = 'active'
+           JOIN fiscal_cashier_bindings binding
+             ON binding.fiscal_profile_id = fp.id
+            AND binding.fiscal_location_id = fl.id
+            AND binding.fiscal_register_id = fr.id
+            AND binding.user_id = $5
+            AND binding.status = 'active'
+          WHERE fp.id = $1
+            AND fl.id = $2
+            AND fr.id = $3
+            AND fp.crm_profile_key = $4
+            AND fp.status = 'active'
+          FOR SHARE OF fp, fl, fr, binding`,
+        [
+            normalizePositiveId(fiscalProfileId, 'fiscal_profile_required'),
+            normalizePositiveId(fiscalLocationId, 'fiscal_location_required'),
+            normalizePositiveId(fiscalRegisterId, 'fiscal_register_required'),
+            String(crmProfileKey || '').trim(),
+            normalizePositiveId(user?.id, 'cashier_user_required')
+        ]
+    );
+    if (result.rows.length !== 1) {
+        throw new CashierOperationsError(
+            result.rows.length ? 'fiscal_provider_context_ambiguous' : 'fiscal_provider_context_missing',
+            'Exact Checkbox provider configuration is unavailable for this fiscal operation',
+            { status: 409 }
+        );
+    }
+    const mapping = result.rows[0];
+    if (mapping.provider !== 'checkbox' || mapping.feature_enabled !== true) {
+        throw new CashierOperationsError(
+            mapping.provider !== 'checkbox' ? 'fiscal_provider_not_checkbox' : 'fiscal_register_disabled',
+            'The exact Checkbox register is not enabled',
+            { status: 409 }
+        );
+    }
+    const missing = [
+        ['provider_organization_id', mapping.provider_organization_id],
+        ['provider_register_id', mapping.provider_register_id],
+        ['provider_cashier_id', mapping.provider_cashier_id],
+        ['register_credential_ref', mapping.provider_license_ref],
+        ['cashier_credential_ref', mapping.provider_cashier_login_ref]
+    ].filter(([, value]) => !String(value || '').trim()).map(([field]) => field);
+    const mappingExpectedIsTest = normalizeBoolean(mapping.register_expected_is_test);
+    if (mappingExpectedIsTest == null) missing.push('expected_is_test');
+    if (missing.length) {
+        throw new CashierOperationsError(
+            'fiscal_provider_context_incomplete',
+            'Checkbox provider configuration is incomplete',
+            { status: 409, details: { missing } }
+        );
+    }
+    let runtimeConfig;
+    try {
+        runtimeConfig = loadCheckboxRuntimeConfig({
+            env,
+            credentialRef: mapping.provider_cashier_login_ref,
+            licenseRef: mapping.provider_license_ref
+        });
+    } catch (error) {
+        throw new CashierOperationsError(
+            'checkbox_runtime_config_unavailable',
+            'Checkbox runtime credentials are unavailable',
+            { status: 503, details: { code: String(error?.code || 'checkbox_runtime_config_unavailable') } }
+        );
+    }
+    if (runtimeConfig.expectedIsTest !== mappingExpectedIsTest) {
+        throw new CashierOperationsError(
+            'checkbox_expected_is_test_mismatch',
+            'Checkbox runtime and register test-mode expectations do not match',
+            { status: 409 }
+        );
+    }
+    const fiscalConfig = buildFiscalConfigurationSnapshot({
+        mapping,
+        binding: mapping,
+        runtimeConfig
+    });
+    return { mapping, fiscalConfig };
+}
+
 async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null }) {
     const fiscalProfileId = normalizePositiveId(order?.fiscal_profile_id, 'fiscal_profile_required');
     const fiscalRegisterId = normalizePositiveId(order?.fiscal_register_id, 'fiscal_register_required');
@@ -281,7 +445,32 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
     await client.query('SELECT pg_advisory_xact_lock($1, $2)', [fiscalProfileId, fiscalRegisterId]);
 
     const existing = await loadOpenShift(client, { fiscalProfileId, fiscalRegisterId });
-    if (existing) return existing;
+    if (existing) {
+        const lifecycleStage = String(existing.lifecycle_stage || '').trim().toUpperCase();
+        const shiftStatus = String(existing.status || '').trim().toLowerCase();
+        const openJobStatus = String(existing.open_job_status || '').trim().toLowerCase();
+        if (lifecycleStage === 'OPENED' && shiftStatus === 'open' && existing.provider_shift_id) {
+            return existing;
+        }
+        if (['CREATED', 'OPENING'].includes(lifecycleStage)
+            && ['queued', 'claimed', 'running'].includes(openJobStatus)) {
+            return existing;
+        }
+        throw new CashierOperationsError(
+            lifecycleStage === 'CLOSING' ? 'shift_closing' : 'shift_open_recovery_required',
+            lifecycleStage === 'CLOSING'
+                ? 'Fiscal shift is closing; a new sale cannot start'
+                : 'The durable shift-open workflow requires recovery before a new sale can start',
+            {
+                status: 409,
+                details: {
+                    fiscalShiftId: Number(existing.id),
+                    lifecycleStage: lifecycleStage || null,
+                    shiftStatus: shiftStatus || null
+                }
+            }
+        );
+    }
 
     await authorizeFiscalAction(client, {
         user,
@@ -305,14 +494,18 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
             [fiscalProfileId, fiscalRegisterId, user?.id || null]
         )
         : { rows: [] };
+    const credentialRefs = assertCompleteFiscalCredentialRefs(
+        { provider_license_ref: order.provider_license_ref },
+        binding.rows[0]
+    );
     const fiscalSnapshot = fiscalConfig?.snapshot || {};
     const providerContext = {
         provider_organization_id: order.provider_organization_id || null,
         provider_outlet_id: order.provider_outlet_id || null,
         provider_register_id: order.provider_register_id || null,
         provider_cashier_id: binding.rows[0]?.provider_cashier_id || null,
-        register_credential_ref: order.provider_license_ref || null,
-        cashier_credential_ref: binding.rows[0]?.provider_cashier_login_ref || order.provider_license_ref || null,
+        register_credential_ref: credentialRefs.registerCredentialRef,
+        cashier_credential_ref: credentialRefs.cashierCredentialRef,
         expected_is_test: normalizeBoolean(fiscalSnapshot.expected_is_test ?? order.register_expected_is_test),
         fiscal_profile_id: fiscalProfileId,
         fiscal_location_id: fiscalLocationId,
@@ -405,35 +598,7 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
 }
 
 async function countPhase1CloseBlockers(client, { fiscalProfileId, fiscalRegisterId } = {}) {
-    const result = await client.query(
-        `WITH latest_job AS (
-             SELECT DISTINCT ON (payment_order_id)
-                    payment_order_id,
-                    status
-               FROM payment_outbox_jobs
-              WHERE fiscal_profile_id = $1
-                AND payment_order_id IS NOT NULL
-                AND job_type IN ('receipt_sell', 'receipt_status_lookup')
-              ORDER BY payment_order_id, created_at DESC, id DESC
-         )
-         SELECT COUNT(*) AS blocker_count
-           FROM payment_orders po
-           LEFT JOIN fiscal_operations fo
-             ON fo.payment_order_id = po.id
-            AND fo.fiscal_profile_id = po.fiscal_profile_id
-            AND fo.operation_type = 'sale'
-           LEFT JOIN latest_job job ON job.payment_order_id = po.id
-          WHERE po.fiscal_profile_id = $1
-            AND po.fiscal_register_id = $2
-            AND po.payment_status = 'confirmed'
-            AND (
-                po.fiscal_status IN ('pending', 'unknown', 'failed', 'validating', 'ready_to_send', 'sending', 'blocked')
-                OR fo.status IN ('pending', 'unknown', 'failed')
-                OR job.status IN ('failed', 'dead', 'claimed', 'running')
-            )`,
-        [fiscalProfileId, fiscalRegisterId]
-    );
-    return Number(result.rows[0]?.blocker_count || 0);
+    return countFiscalShiftCloseBlockers(client, { fiscalProfileId, fiscalRegisterId });
 }
 
 async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', registerAlias = 'middle' }) {
@@ -506,15 +671,21 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
         let runtimeConfigResolvable = false;
         let runtimeConfigErrorCode = null;
         if (checkboxIntegrationEnabled && row.feature_enabled) {
-            try {
-                loadCheckboxRuntimeConfig({
-                    env: process.env,
-                    credentialRef: binding.provider_cashier_login_ref || row.provider_license_ref,
-                    licenseRef: row.provider_license_ref
-                });
-                runtimeConfigResolvable = true;
-            } catch (error) {
-                runtimeConfigErrorCode = error.code || 'checkbox_runtime_config_unavailable';
+            const registerCredentialRef = String(row.provider_license_ref ?? '').trim();
+            const cashierCredentialRef = String(binding.provider_cashier_login_ref ?? '').trim();
+            if (!registerCredentialRef || !cashierCredentialRef) {
+                runtimeConfigErrorCode = 'fiscal_provider_context_incomplete';
+            } else {
+                try {
+                    loadCheckboxRuntimeConfig({
+                        env: process.env,
+                        credentialRef: cashierCredentialRef,
+                        licenseRef: registerCredentialRef
+                    });
+                    runtimeConfigResolvable = true;
+                } catch (error) {
+                    runtimeConfigErrorCode = error.code || 'checkbox_runtime_config_unavailable';
+                }
             }
         }
         let readinessCode = 'ready';
@@ -600,14 +771,25 @@ async function createServiceIn({ user, body = {}, idempotencyKey }) {
             fiscalRegisterId
         });
         const shift = await assertOpenShift(client, { fiscalProfileId, fiscalRegisterId });
+        const { fiscalConfig } = await loadImmutableProviderConfiguration(client, {
+            user,
+            fiscalProfileId,
+            fiscalLocationId,
+            fiscalRegisterId,
+            crmProfileKey
+        });
         const providerRequestUuid = crypto.randomUUID();
         const operation = await client.query(
             `INSERT INTO fiscal_operations (
                  fiscal_profile_id, fiscal_register_id, fiscal_shift_id, operation_type, status,
                  approval_required, server_approval_status, idempotency_key, provider, provider_operation_id, amount_minor, currency,
-                 request_snapshot, initiated_by_user_id
+                 request_snapshot, initiated_by_user_id,
+                 provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+                 register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash,
+                 fiscal_location_id, external_stage
              )
-             VALUES ($1, $2, $3, 'service_in', 'pending', FALSE, 'not_required', $4, 'checkbox', $5, $6, 'UAH', $7::jsonb, $8)
+             VALUES ($1, $2, $3, 'service_in', 'pending', FALSE, 'not_required', $4, 'checkbox', $5, $6, 'UAH', $7::jsonb, $8,
+                     $9, $10, $11, $12, $13, $14, $15, $16, $17, 'auth')
              ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
@@ -617,8 +799,23 @@ async function createServiceIn({ user, body = {}, idempotencyKey }) {
                 `fiscal_operation:service_in:${key}`,
                 providerRequestUuid,
                 toPostgresBigint(minor, { allowZero: false }),
-                JSON.stringify({ reason: body.reason || null, provider_request_uuid: providerRequestUuid }),
-                user?.id || null
+                JSON.stringify({
+                    reason: body.reason || null,
+                    provider_request_uuid: providerRequestUuid,
+                    external_stage: 'auth',
+                    fiscal_configuration_hash: fiscalConfig.hash,
+                    provider_context: fiscalConfig.snapshot
+                }),
+                user?.id || null,
+                fiscalConfig.snapshot.provider_organization_id,
+                fiscalConfig.snapshot.provider_outlet_id,
+                fiscalConfig.snapshot.provider_register_id,
+                fiscalConfig.snapshot.provider_cashier_id,
+                fiscalConfig.snapshot.register_credential_ref,
+                fiscalConfig.snapshot.cashier_credential_ref,
+                fiscalConfig.snapshot.expected_is_test,
+                fiscalConfig.hash,
+                fiscalConfig.snapshot.fiscal_location_id
             ]
         );
         if (!operation.rows.length) {
@@ -629,7 +826,7 @@ async function createServiceIn({ user, body = {}, idempotencyKey }) {
             fiscalOperationId: operation.rows[0].id,
             jobType: 'service_receipt',
             idempotencyKey: `payment_outbox:service_in:${operation.rows[0].id}`,
-            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, operation_type: 'service_in' }
+            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, operation_type: 'service_in', external_stage: 'auth' }
         });
         await insertAudit(client, {
             fiscalProfileId,
@@ -664,12 +861,25 @@ async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
             fiscalRegisterId
         });
         const shift = await assertOpenShift(client, { fiscalProfileId, fiscalRegisterId });
+        const { fiscalConfig } = await loadImmutableProviderConfiguration(client, {
+            user,
+            fiscalProfileId,
+            fiscalLocationId,
+            fiscalRegisterId,
+            crmProfileKey
+        });
+        const providerRequestUuid = crypto.randomUUID();
         const operation = await client.query(
             `INSERT INTO fiscal_operations (
                  fiscal_profile_id, fiscal_register_id, fiscal_shift_id, operation_type, status,
-                 approval_required, server_approval_status, idempotency_key, provider, amount_minor, currency, request_snapshot, initiated_by_user_id
+                 approval_required, server_approval_status, idempotency_key, provider, provider_operation_id, amount_minor, currency,
+                 request_snapshot, initiated_by_user_id,
+                 provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+                 register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash,
+                 fiscal_location_id, external_stage
              )
-             VALUES ($1, $2, $3, 'service_out', 'blocked', TRUE, 'required', $4, 'checkbox', $5, 'UAH', $6::jsonb, $7)
+             VALUES ($1, $2, $3, 'service_out', 'blocked', TRUE, 'required', $4, 'checkbox', $5, $6, 'UAH', $7::jsonb, $8,
+                     $9, $10, $11, $12, $13, $14, $15, $16, $17, 'auth')
              ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
@@ -677,9 +887,25 @@ async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
                 fiscalRegisterId,
                 shift.id,
                 `fiscal_operation:service_out:${key}`,
+                providerRequestUuid,
                 toPostgresBigint(minor, { allowZero: false }),
-                JSON.stringify({ reason }),
-                user?.id || null
+                JSON.stringify({
+                    reason,
+                    provider_request_uuid: providerRequestUuid,
+                    external_stage: 'auth',
+                    fiscal_configuration_hash: fiscalConfig.hash,
+                    provider_context: fiscalConfig.snapshot
+                }),
+                user?.id || null,
+                fiscalConfig.snapshot.provider_organization_id,
+                fiscalConfig.snapshot.provider_outlet_id,
+                fiscalConfig.snapshot.provider_register_id,
+                fiscalConfig.snapshot.provider_cashier_id,
+                fiscalConfig.snapshot.register_credential_ref,
+                fiscalConfig.snapshot.cashier_credential_ref,
+                fiscalConfig.snapshot.expected_is_test,
+                fiscalConfig.hash,
+                fiscalConfig.snapshot.fiscal_location_id
             ]
         );
         if (!operation.rows.length) {
@@ -694,7 +920,7 @@ async function createServiceOutRequest({ user, body = {}, idempotencyKey }) {
             idempotencyKey: `fiscal_service_out_requested:${operation.rows[0].id}`,
             afterSnapshot: { amount_minor: minor.toString(), fiscal_shift_id: Number(shift.id), reason }
         });
-        return { replayed: false, operationId: Number(operation.rows[0].id), fiscalShiftId: Number(shift.id) };
+        return { replayed: false, operationId: Number(operation.rows[0].id), fiscalShiftId: Number(shift.id), providerRequestUuid };
     });
 }
 
@@ -706,7 +932,7 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
         throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability');
     }
 
-    return withTransaction(async client => {
+    const transactionResult = await withTransaction(async client => {
         const locked = await client.query(
             `SELECT fo.*, fr.fiscal_location_id, fp.crm_profile_key
                FROM fiscal_operations fo
@@ -729,7 +955,8 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
         const binding = await loadFiscalCashierBinding(client, {
             userId: user?.id,
             fiscalProfileId: operation.fiscal_profile_id,
-            fiscalRegisterId: operation.fiscal_register_id
+            fiscalRegisterId: operation.fiscal_register_id,
+            forUpdate: true
         });
         assertBindingAllowsAction(binding, 'fiscal.service_out.approve');
         const approvalResult = await approveFiscalAction({
@@ -741,8 +968,13 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
             context: { operation_id: targetOperationId, idempotency_key: key }
         });
         if (!approvalResult.ok) {
-            await persistApprovalPinFailureDurably({ fiscalProfileId: operation.fiscal_profile_id, actorUserId: user?.id, binding, result: approvalResult });
-            throw new FiscalApprovalError(approvalResult.code, approvalResult.code);
+            await persistApprovalPinResult(client, {
+                fiscalProfileId: operation.fiscal_profile_id,
+                actorUserId: user?.id,
+                binding,
+                result: approvalResult
+            });
+            return { pinFailureCode: approvalResult.code };
         }
         await persistApprovalPinResult(client, { fiscalProfileId: operation.fiscal_profile_id, actorUserId: user?.id, binding, result: approvalResult });
         const approval = await insertAndConsumeApproval(client, {
@@ -751,25 +983,34 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
             actionType: 'fiscal.service_out.approve',
             actorUserId: user?.id
         });
-        const providerRequestUuid = crypto.randomUUID();
-        await client.query(
+        const providerRequestUuid = String(operation.provider_operation_id || '').trim();
+        if (!providerRequestUuid || !operation.fiscal_configuration_hash) {
+            throw new CashierOperationsError('service_out_provider_snapshot_missing', 'Service-out immutable provider snapshot is missing', { status: 409 });
+        }
+        const approved = await client.query(
             `UPDATE fiscal_operations
                 SET status = 'pending',
-                    provider_operation_id = $2,
-                    approval_id = $4,
-                    approved_by_user_id = $5,
-                    server_approval_status = 'consumed',
-                    request_snapshot = request_snapshot || $3::jsonb,
-                    updated_at = NOW()
-              WHERE id = $1`,
-            [operation.id, providerRequestUuid, JSON.stringify({ approved_by_user_id: user?.id || null, approval_id: Number(approval.id), provider_request_uuid: providerRequestUuid }), approval.id, user?.id || null]
+                    approval_id = $2,
+                    approved_by_user_id = $3,
+                    server_approval_status = 'consumed'
+              WHERE id = $1
+                AND status = 'blocked'
+                AND server_approval_status = 'required'
+                AND approval_id IS NULL
+                AND provider_operation_id = $4
+                AND fiscal_configuration_hash IS NOT NULL
+              RETURNING id`,
+            [operation.id, approval.id, user?.id || null, providerRequestUuid]
         );
+        if (!approved.rows.length) {
+            throw new CashierOperationsError('service_out_approval_conflict', 'Service-out approval state changed concurrently', { status: 409 });
+        }
         await insertOutboxJob(client, {
             fiscalProfileId: operation.fiscal_profile_id,
             fiscalOperationId: operation.id,
             jobType: 'service_receipt',
             idempotencyKey: `payment_outbox:service_out:${operation.id}`,
-            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, operation_type: 'service_out' }
+            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, operation_type: 'service_out', external_stage: 'auth' }
         });
         await insertAudit(client, {
             fiscalProfileId: operation.fiscal_profile_id,
@@ -783,6 +1024,10 @@ async function approveServiceOut({ user, operationId, body = {}, idempotencyKey 
         });
         return { operationId: Number(operation.id), approvalId: Number(approval.id), providerRequestUuid };
     });
+    if (transactionResult.pinFailureCode) {
+        throw new FiscalApprovalError(transactionResult.pinFailureCode, transactionResult.pinFailureCode);
+    }
+    return transactionResult;
 }
 
 
@@ -811,33 +1056,31 @@ async function persistApprovalPinResult(client, { fiscalProfileId, actorUserId, 
     }
 }
 
+async function safePublishFiscalEvent(
+    client,
+    eventType,
+    payload,
+    aggregateType,
+    aggregateId,
+    idempotencyKey,
+    publish = publishInTransaction
+) {
+    const savepoint = 'cashier_operations_event_publish';
+    await client.query(`SAVEPOINT ${savepoint}`);
+    try {
+        await publish(client, eventType, payload, aggregateType, aggregateId, idempotencyKey);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+    } catch (_) {
+        await client.query(`ROLLBACK TO SAVEPOINT ${savepoint}`);
+        await client.query(`RELEASE SAVEPOINT ${savepoint}`);
+        // EventBus/Hermes failures must not roll back fiscal decisions or audit evidence.
+    }
+}
+
 function sanitizeOperatorReference(value) {
     const text = String(value || '').trim();
     if (!text) return null;
     return text.replace(/[^\p{L}\p{N}\s._:\/#-]/gu, '').replace(/\s+/g, ' ').slice(0, 160) || null;
-}
-
-async function persistApprovalPinFailureDurably({ fiscalProfileId, actorUserId, binding, result }) {
-    if (result?.ok !== false || !result?.bindingPatch || !binding?.id) return;
-    const client = await pool.connect();
-    try {
-        await client.query('BEGIN');
-        await client.query(
-            `SELECT id
-               FROM fiscal_cashier_bindings
-              WHERE id = $1
-                AND fiscal_profile_id = $2
-              FOR UPDATE`,
-            [binding.id, fiscalProfileId]
-        );
-        await persistApprovalPinResult(client, { fiscalProfileId, actorUserId, binding, result });
-        await client.query('COMMIT');
-    } catch (error) {
-        await client.query('ROLLBACK').catch(() => {});
-        throw error;
-    } finally {
-        client.release();
-    }
 }
 
 async function insertApproval(client, approval) {
@@ -1013,7 +1256,7 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
     const key = String(idempotencyKey || '').trim();
     if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
 
-    return withTransaction(async client => {
+    const transactionResult = await withTransaction(async client => {
         const shift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.reconcile' });
         const checklist = await buildCloseChecklist(client, shift);
         const { actualCash, actualTerminal, difference } = computeDifference({ checklist, body });
@@ -1021,6 +1264,14 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
         let approvalOperation = null;
         const reason = difference !== 0n ? requireReason(body.reason, 'reconciliation_difference_reason_required') : (body.reason || null);
         if (difference !== 0n) {
+            const binding = await loadFiscalCashierBinding(client, {
+                userId: user?.id,
+                fiscalProfileId: shift.fiscal_profile_id,
+                fiscalRegisterId: shift.fiscal_register_id,
+                forUpdate: true
+            });
+            assertBindingAllowsAction(binding, 'fiscal.reconcile');
+            await client.query('SAVEPOINT fiscal_reconciliation_before_approval');
             const operationResult = await client.query(
                 `INSERT INTO fiscal_operations (
                      fiscal_profile_id, fiscal_register_id, fiscal_shift_id, operation_type, status,
@@ -1043,11 +1294,6 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
             if (!approvalOperation) {
                 throw new CashierOperationsError('reconciliation_difference_already_requested', 'Reconciliation difference approval was already requested for this idempotency key', { status: 409 });
             }
-            const binding = await loadFiscalCashierBinding(client, {
-                userId: user?.id,
-                fiscalProfileId: shift.fiscal_profile_id,
-                fiscalRegisterId: shift.fiscal_register_id
-            });
             const approvalResult = await approveFiscalAction({
                 actor: user,
                 binding,
@@ -1057,8 +1303,14 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
                 context: { fiscal_shift_id: Number(shift.id), idempotency_key: key, difference_minor: difference.toString() }
             });
             if (!approvalResult.ok) {
-                await persistApprovalPinFailureDurably({ fiscalProfileId: shift.fiscal_profile_id, actorUserId: user?.id, binding, result: approvalResult });
-                throw new FiscalApprovalError(approvalResult.code, approvalResult.code);
+                await client.query('ROLLBACK TO SAVEPOINT fiscal_reconciliation_before_approval');
+                await persistApprovalPinResult(client, {
+                    fiscalProfileId: shift.fiscal_profile_id,
+                    actorUserId: user?.id,
+                    binding,
+                    result: approvalResult
+                });
+                return { pinFailureCode: approvalResult.code };
             }
             await persistApprovalPinResult(client, { fiscalProfileId: shift.fiscal_profile_id, actorUserId: user?.id, binding, result: approvalResult });
             approval = await insertAndConsumeApproval(client, {
@@ -1072,8 +1324,7 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
                     SET status = 'not_required',
                         approval_id = $2,
                         approved_by_user_id = $3,
-                        server_approval_status = 'consumed',
-                        updated_at = NOW()
+                        server_approval_status = 'consumed'
                   WHERE id = $1`,
                 [approvalOperation.id, approval.id, user?.id || null]
             );
@@ -1110,7 +1361,7 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
             ]
         );
         if (difference !== 0n) {
-            await publishInTransaction(
+            await safePublishFiscalEvent(
                 client,
                 'reconciliation.difference',
                 { fiscalProfileId: Number(shift.fiscal_profile_id), fiscalShiftId: Number(shift.id), differenceMinor: difference.toString() },
@@ -1121,38 +1372,100 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
         }
         return { revisionId: Number(row.rows[0].id), fiscalShiftId: Number(shift.id), differenceMinor: difference.toString(), checklist };
     });
+    if (transactionResult.pinFailureCode) {
+        throw new FiscalApprovalError(transactionResult.pinFailureCode, transactionResult.pinFailureCode);
+    }
+    return transactionResult;
 }
 
 async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
     const key = String(idempotencyKey || '').trim();
     if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
-    return withTransaction(async client => {
+    const result = await withTransaction(async client => {
         const shift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.shift.close' });
         if (shift.status !== 'open') {
             throw new CashierOperationsError('shift_not_open', 'Only open shift can be closed', { status: 409 });
         }
         const checklist = await buildCloseChecklist(client, shift);
-        if (checklist.pendingUnknownOperations.length) {
-            await publishInTransaction(
+        const registerBlockerCount = await countPhase1CloseBlockers(client, {
+            fiscalProfileId: shift.fiscal_profile_id,
+            fiscalRegisterId: shift.fiscal_register_id
+        });
+        if (registerBlockerCount > 0) {
+            const blockedIdempotencyKey = `shift.close_blocked:${shift.id}:${key}`;
+            await safePublishFiscalEvent(
                 client,
                 'shift.close_blocked',
-                { fiscalProfileId: Number(shift.fiscal_profile_id), fiscalShiftId: Number(shift.id), blockers: checklist.pendingUnknownOperations },
+                {
+                    fiscalProfileId: Number(shift.fiscal_profile_id),
+                    fiscalRegisterId: Number(shift.fiscal_register_id),
+                    fiscalShiftId: Number(shift.id),
+                    blockerCount: registerBlockerCount,
+                    blockers: checklist.pendingUnknownOperations,
+                    phase: 'cashier_pro_shift_close'
+                },
                 'fiscal_shift',
                 String(shift.id),
-                `shift.close_blocked:${shift.id}:${key}`
+                blockedIdempotencyKey
             );
-            throw new CashierOperationsError('shift_close_blocked_pending_unknown', 'Pending or unknown fiscal operations block shift close', { status: 409, details: { checklist } });
+            const existingAudit = await client.query(
+                `SELECT 1
+                   FROM fiscal_audit_events
+                  WHERE event_type = 'shift_close_blocked'
+                    AND idempotency_key = $1
+                  LIMIT 1`,
+                [blockedIdempotencyKey]
+            );
+            if (!existingAudit.rows.length) {
+                await insertAudit(client, {
+                    fiscalProfileId: shift.fiscal_profile_id,
+                    actorUserId: user?.id,
+                    eventType: 'shift_close_blocked',
+                    entityTable: 'fiscal_shifts',
+                    entityId: shift.id,
+                    idempotencyKey: blockedIdempotencyKey,
+                    afterSnapshot: {
+                        blocker_count: registerBlockerCount,
+                        phase: 'cashier_pro_shift_close'
+                    }
+                });
+            }
+            return { blocked: true, checklist, blockerCount: registerBlockerCount };
         }
         const { actualCash, actualTerminal, difference } = computeDifference({ checklist, body });
         const reason = difference !== 0n ? requireReason(body.reason, 'shift_close_difference_reason_required') : (body.reason || null);
+        let binding = null;
+        if (difference !== 0n) {
+            binding = await loadFiscalCashierBinding(client, {
+                userId: user?.id,
+                fiscalProfileId: shift.fiscal_profile_id,
+                fiscalRegisterId: shift.fiscal_register_id,
+                forUpdate: true
+            });
+            assertBindingAllowsAction(binding, 'fiscal.shift.close');
+        }
+        const { fiscalConfig } = await loadImmutableProviderConfiguration(client, {
+            user,
+            fiscalProfileId: shift.fiscal_profile_id,
+            fiscalLocationId: shift.fiscal_location_id,
+            fiscalRegisterId: shift.fiscal_register_id,
+            crmProfileKey: shift.crm_profile_key
+        });
         const providerRequestUuid = crypto.randomUUID();
+        if (difference !== 0n) {
+            await client.query('SAVEPOINT fiscal_shift_close_before_approval');
+        }
         const operation = await client.query(
             `INSERT INTO fiscal_operations (
                  fiscal_profile_id, fiscal_register_id, fiscal_shift_id, operation_type, status,
                  approval_required, server_approval_status, idempotency_key, provider, provider_operation_id,
-                 currency, request_snapshot, initiated_by_user_id
+                 currency, request_snapshot, initiated_by_user_id,
+                 provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+                 register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash,
+                 fiscal_location_id, external_stage
              )
-             VALUES ($1, $2, $3, 'shift_close', $4, $5, $6, $7, 'checkbox', $8, 'UAH', $9::jsonb, $10)
+             VALUES ($1, $2, $3, 'shift_close', $4, $5, $6, $7, 'checkbox', $8, 'UAH', $9::jsonb, $10,
+                     $11, $12, $13, $14, $15, $16, $17, $18, $19, 'auth')
              ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
@@ -1164,8 +1477,28 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
                 difference !== 0n ? 'required' : 'not_required',
                 `fiscal_operation:shift_close:${shift.id}:${key}`,
                 providerRequestUuid,
-                JSON.stringify({ close_checklist: checklist, cash_actual_minor: actualCash.toString(), terminal_report_total_minor: actualTerminal.toString(), difference_minor: difference.toString(), reason }),
-                user?.id || null
+                JSON.stringify({
+                    close_checklist: checklist,
+                    cash_actual_minor: actualCash.toString(),
+                    terminal_report_total_minor: actualTerminal.toString(),
+                    difference_minor: difference.toString(),
+                    reason,
+                    provider_request_uuid: providerRequestUuid,
+                    provider_shift_id: shift.provider_shift_id,
+                    external_stage: 'auth',
+                    fiscal_configuration_hash: fiscalConfig.hash,
+                    provider_context: fiscalConfig.snapshot
+                }),
+                user?.id || null,
+                fiscalConfig.snapshot.provider_organization_id,
+                fiscalConfig.snapshot.provider_outlet_id,
+                fiscalConfig.snapshot.provider_register_id,
+                fiscalConfig.snapshot.provider_cashier_id,
+                fiscalConfig.snapshot.register_credential_ref,
+                fiscalConfig.snapshot.cashier_credential_ref,
+                fiscalConfig.snapshot.expected_is_test,
+                fiscalConfig.hash,
+                fiscalConfig.snapshot.fiscal_location_id
             ]
         );
         const closeOperation = operation.rows[0];
@@ -1174,11 +1507,6 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
         }
         let approval = null;
         if (difference !== 0n) {
-            const binding = await loadFiscalCashierBinding(client, {
-                userId: user?.id,
-                fiscalProfileId: shift.fiscal_profile_id,
-                fiscalRegisterId: shift.fiscal_register_id
-            });
             const approvalResult = await approveFiscalAction({
                 actor: user,
                 binding,
@@ -1188,8 +1516,14 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
                 context: { fiscal_shift_id: Number(shift.id), idempotency_key: key, difference_minor: difference.toString() }
             });
             if (!approvalResult.ok) {
-                await persistApprovalPinFailureDurably({ fiscalProfileId: shift.fiscal_profile_id, actorUserId: user?.id, binding, result: approvalResult });
-                throw new FiscalApprovalError(approvalResult.code, approvalResult.code);
+                await client.query('ROLLBACK TO SAVEPOINT fiscal_shift_close_before_approval');
+                await persistApprovalPinResult(client, {
+                    fiscalProfileId: shift.fiscal_profile_id,
+                    actorUserId: user?.id,
+                    binding,
+                    result: approvalResult
+                });
+                return { pinFailureCode: approvalResult.code };
             }
             await persistApprovalPinResult(client, { fiscalProfileId: shift.fiscal_profile_id, actorUserId: user?.id, binding, result: approvalResult });
             approval = await insertAndConsumeApproval(client, {
@@ -1203,8 +1537,7 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
                     SET status = 'pending',
                         approval_id = $2,
                         approved_by_user_id = $3,
-                        server_approval_status = 'consumed',
-                        updated_at = NOW()
+                        server_approval_status = 'consumed'
                   WHERE id = $1`,
                 [closeOperation.id, approval.id, user?.id || null]
             );
@@ -1212,6 +1545,7 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
         await client.query(
             `UPDATE fiscal_shifts
                 SET status = 'closing',
+                    lifecycle_stage = 'CLOSING',
                     closed_by_user_id = $2,
                     close_operation_id = $3,
                     provider_snapshot = provider_snapshot || $4::jsonb,
@@ -1229,10 +1563,20 @@ async function closeShift({ user, shiftId, body = {}, idempotencyKey }) {
             fiscalOperationId: closeOperation.id,
             jobType: 'shift_close',
             idempotencyKey: `payment_outbox:shift_close:${closeOperation.id}`,
-            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.id) }
+            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, fiscal_shift_id: Number(shift.id), external_stage: 'auth' }
         });
         return { fiscalShiftId: Number(shift.id), fiscalOperationId: Number(closeOperation.id), status: 'closing', providerRequestUuid, checklist, differenceMinor: difference.toString() };
     });
+    if (result?.pinFailureCode) {
+        throw new FiscalApprovalError(result.pinFailureCode, result.pinFailureCode);
+    }
+    if (result?.blocked) {
+        throw new CashierOperationsError('shift_close_blocked_pending_unknown', 'Pending or unknown fiscal operations block shift close', {
+            status: 409,
+            details: { checklist: result.checklist, blockerCount: result.blockerCount }
+        });
+    }
+    return result;
 }
 
 async function autoCloseShift({ user, shiftId, body = {}, idempotencyKey, env = process.env }) {
@@ -1247,7 +1591,7 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
     if (!key) throw new CashierOperationsError('idempotency_key_required', 'Idempotency-Key is required');
     const reason = requireReason(body.reason, 'refund_reason_required');
 
-    return withTransaction(async client => {
+    const transactionResult = await withTransaction(async client => {
         const orderResult = await client.query(
             `SELECT po.*, fr.id AS original_fiscal_receipt_id, fr.provider_receipt_id,
                     freg.fiscal_location_id, fp.crm_profile_key
@@ -1270,15 +1614,23 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
         if (!canUseAction(user, 'fiscal.refund')) {
             throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action: 'fiscal.refund' });
         }
-        const refundBinding = await loadFiscalCashierBinding(client, {
-            userId: user?.id,
-            fiscalProfileId: order.fiscal_profile_id,
-            fiscalRegisterId: order.fiscal_register_id
-        });
-        assertBindingAllowsAction(refundBinding, 'fiscal.refund');
         const shift = await assertOpenShift(client, {
             fiscalProfileId: order.fiscal_profile_id,
             fiscalRegisterId: order.fiscal_register_id
+        });
+        const refundBinding = await loadFiscalCashierBinding(client, {
+            userId: user?.id,
+            fiscalProfileId: order.fiscal_profile_id,
+            fiscalRegisterId: order.fiscal_register_id,
+            forUpdate: true
+        });
+        assertBindingAllowsAction(refundBinding, 'fiscal.refund');
+        const { fiscalConfig } = await loadImmutableProviderConfiguration(client, {
+            user,
+            fiscalProfileId: order.fiscal_profile_id,
+            fiscalLocationId: order.fiscal_location_id,
+            fiscalRegisterId: order.fiscal_register_id,
+            crmProfileKey: order.crm_profile_key
         });
         const providerRequestUuid = crypto.randomUUID();
         const refundMethod = order.payment_method === 'card_terminal' || order.payment_method === 'card_terminal_manual'
@@ -1290,6 +1642,7 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
         const terminalRefundReference = sanitizeOperatorReference(body.terminalRefundReference || body.terminal_refund_reference);
         const moneyStatus = 'refunded';
         const fiscalStatus = 'pending';
+        await client.query('SAVEPOINT fiscal_refund_before_mutation');
         const refund = await client.query(
             `INSERT INTO payment_refunds (
                  fiscal_profile_id, fiscal_register_id, fiscal_shift_id, payment_order_id, fiscal_operation_id,
@@ -1328,9 +1681,14 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
         const operation = await client.query(
             `INSERT INTO fiscal_operations (
                  fiscal_profile_id, fiscal_register_id, payment_order_id, payment_refund_id, fiscal_shift_id, operation_type, status,
-                 approval_required, server_approval_status, idempotency_key, provider, provider_operation_id, amount_minor, currency, request_snapshot, initiated_by_user_id
+                 approval_required, server_approval_status, idempotency_key, provider, provider_operation_id, amount_minor, currency,
+                 request_snapshot, initiated_by_user_id,
+                 provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+                 register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash,
+                 fiscal_location_id, external_stage
              )
-             VALUES ($1, $2, $3, $4, $5, 'return', 'blocked', TRUE, 'required', $6, 'checkbox', $7, $8, 'UAH', $9::jsonb, $10)
+             VALUES ($1, $2, $3, $4, $5, 'return', 'blocked', TRUE, 'required', $6, 'checkbox', $7, $8, 'UAH', $9::jsonb, $10,
+                     $11, $12, $13, $14, $15, $16, $17, $18, $19, 'auth')
              RETURNING *`,
             [
                 order.fiscal_profile_id,
@@ -1345,9 +1703,21 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
                     reason,
                     original_fiscal_receipt_id: Number(order.original_fiscal_receipt_id),
                     original_provider_receipt_id: order.provider_receipt_id,
-                    provider_request_uuid: providerRequestUuid
+                    provider_request_uuid: providerRequestUuid,
+                    external_stage: 'auth',
+                    fiscal_configuration_hash: fiscalConfig.hash,
+                    provider_context: fiscalConfig.snapshot
                 }),
-                user?.id || null
+                user?.id || null,
+                fiscalConfig.snapshot.provider_organization_id,
+                fiscalConfig.snapshot.provider_outlet_id,
+                fiscalConfig.snapshot.provider_register_id,
+                fiscalConfig.snapshot.provider_cashier_id,
+                fiscalConfig.snapshot.register_credential_ref,
+                fiscalConfig.snapshot.cashier_credential_ref,
+                fiscalConfig.snapshot.expected_is_test,
+                fiscalConfig.hash,
+                fiscalConfig.snapshot.fiscal_location_id
             ]
         );
         const approvalResult = await approveFiscalAction({
@@ -1359,8 +1729,14 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
             context: { refund_id: Number(refund.rows[0].id), idempotency_key: key }
         });
         if (!approvalResult.ok) {
-            await persistApprovalPinFailureDurably({ fiscalProfileId: order.fiscal_profile_id, actorUserId: user?.id, binding: refundBinding, result: approvalResult });
-            throw new FiscalApprovalError(approvalResult.code, approvalResult.code);
+            await client.query('ROLLBACK TO SAVEPOINT fiscal_refund_before_mutation');
+            await persistApprovalPinResult(client, {
+                fiscalProfileId: order.fiscal_profile_id,
+                actorUserId: user?.id,
+                binding: refundBinding,
+                result: approvalResult
+            });
+            return { pinFailureCode: approvalResult.code };
         }
         await persistApprovalPinResult(client, { fiscalProfileId: order.fiscal_profile_id, actorUserId: user?.id, binding: refundBinding, result: approvalResult });
         const approval = await insertAndConsumeApproval(client, {
@@ -1374,8 +1750,7 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
                 SET status = 'pending',
                     approval_id = $2,
                     approved_by_user_id = $3,
-                    server_approval_status = 'consumed',
-                    updated_at = NOW()
+                    server_approval_status = 'consumed'
               WHERE id = $1`,
             [operation.rows[0].id, approval.id, user?.id || null]
         );
@@ -1393,7 +1768,7 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
             paymentOrderId: order.id,
             jobType: 'receipt_return',
             idempotencyKey: `payment_outbox:receipt_return:${refund.rows[0].id}`,
-            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, original_fiscal_receipt_id: Number(order.original_fiscal_receipt_id) }
+            payload: { provider: 'checkbox', provider_request_uuid: providerRequestUuid, original_fiscal_receipt_id: Number(order.original_fiscal_receipt_id), external_stage: 'auth' }
         });
         return {
             replayed: false,
@@ -1404,6 +1779,10 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
             providerRequestUuid
         };
     });
+    if (transactionResult.pinFailureCode) {
+        throw new FiscalApprovalError(transactionResult.pinFailureCode, transactionResult.pinFailureCode);
+    }
+    return transactionResult;
 }
 
 async function enrollFiscalActionPin({ user, bindingId, body = {} }) {

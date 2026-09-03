@@ -81,6 +81,13 @@ function normalizeBusinessContext(value) {
   return BUSINESS_CONTEXTS[raw] ? raw : DEFAULT_BUSINESS_CONTEXT;
 }
 
+function normalizeKnownBusinessContext(value) {
+  const raw = String(value || '').trim().toLowerCase();
+  if (!raw) return null;
+  if (BUSINESS_CONTEXT_ALIASES[raw]) return BUSINESS_CONTEXT_ALIASES[raw];
+  return BUSINESS_CONTEXTS[raw] ? raw : null;
+}
+
 function businessContextFromRequest(req) {
   return normalizeBusinessContext(
     req?.body?.businessContext
@@ -458,6 +465,7 @@ module.exports = {
   BUSINESS_SCOPE_MULTI,
   BUSINESS_SCOPE_SINGLE,
   DEFAULT_BUSINESS_CONTEXT,
+  normalizeKnownBusinessContext,
   normalizeBusinessContext,
   normalizeBusinessContextList,
   normalizeBusinessScopeMode,

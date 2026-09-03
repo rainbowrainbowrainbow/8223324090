@@ -170,12 +170,13 @@ function orderDetails(order) {
             totalAmountMinor: '50000',
             currency: 'UAH',
             confirmedAt: order.paymentStatus === 'confirmed' ? '2026-08-04T10:00:00.000Z' : null,
-            sourceSnapshot: { tender: order.tender, crm_profile_key: 'event_genix', register_alias: 'middle' },
+            sourceSnapshot: { tender: order.tender, crm_profile_key: 'event_genix', location_alias: 'park', register_alias: 'middle' },
             confirmationSnapshot: {},
             crmProfileKey: 'event_genix',
             legalEntityKey: 'fop_smoke',
             legalEntityName: 'Smoke FOP',
             fiscalLocationId: 7,
+            locationAlias: 'park',
             registerAlias: 'middle',
             registerDisplayName: 'Middle cash desk'
         },
@@ -244,16 +245,29 @@ function registerStatePayload() {
     };
 }
 
+function assertParkMiddleScope(input) {
+    const get = key => {
+        if (input instanceof URLSearchParams) return input.get(key);
+        return input?.[key] ?? input?.[key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)];
+    };
+    assert.equal(get('crmProfileKey'), 'event_genix', 'cashier request must include exact CRM profile scope');
+    assert.equal(get('locationAlias'), 'park', 'cashier request must include exact fiscal location scope');
+    assert.equal(get('registerAlias'), 'middle', 'cashier request must include exact register scope');
+}
+
 async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') return json(res, 200, { user: { id: 50, name: 'Smoke Cashier', role: 'administrator', roles: ['reception', 'administrator'], businessProfile: 'event_genix' } });
     if (url.pathname === '/api/auth/permissions') return json(res, 200, permissionPayload(url.searchParams.get('deny') !== '1' && req.headers['x-smoke-deny'] !== '1'));
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') {
+        assertParkMiddleScope(url.searchParams);
         const delayMs = Math.max(0, Number(state.nextPilotRegisterStateDelayMs || 0));
         state.nextPilotRegisterStateDelayMs = 0;
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
         return json(res, 200, registerStatePayload());
     }
     if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') {
+        const body = await readBody(req);
+        assertParkMiddleScope(body);
         state.readinessRequestCount += 1;
         const delayMs = Math.max(0, Number(state.nextReadinessDelayMs || 0));
         state.nextReadinessDelayMs = 0;
@@ -261,6 +275,7 @@ async function handleApi(req, res, url) {
         return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
     }
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
+        assertParkMiddleScope(url.searchParams);
         state.unresolvedRequestCount += 1;
         const delayMs = Math.max(0, Number(state.unresolvedDelayMs || 0));
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -354,6 +369,7 @@ async function handleApi(req, res, url) {
         });
     }
     if (url.pathname === '/api/payments/checkbox-sales-report' && req.method === 'GET') {
+        assertParkMiddleScope(url.searchParams);
         state.salesReportRequestCount += 1;
         const delayMs = Math.max(0, Number(state.nextSalesReportDelayMs || 0));
         state.nextSalesReportDelayMs = 0;
@@ -368,12 +384,15 @@ async function handleApi(req, res, url) {
                 totalAmountMinor: '50000',
                 currency: 'UAH',
                 confirmedAt: '2026-08-04T10:00:00.000Z',
-                providerTaxUrl: order.fiscalStatus === 'fiscalized' ? 'https://api.checkbox.ua/check' : null
+                providerTaxUrl: order.fiscalStatus === 'fiscalized' ? 'https://api.checkbox.ua/check' : null,
+                providerPdfUrl: order.fiscalStatus === 'fiscalized' ? 'https://api.checkbox.ua/check.pdf' : null,
+                providerQrUrl: order.fiscalStatus === 'fiscalized' ? 'https://api.checkbox.ua/qr' : null
             }));
         return json(res, 200, { success: true, internalReport: true, officialZReport: false, page: 1, pageSize: 50, totalCount: orders.length, filters: {}, totals: { paymentTotalMinor: String(orders.length * 50000), cashTotalMinor: '50000', cardTerminalTotalMinor: '50000', statusCounts: { pending: orders.filter(order => order.fiscalStatus === 'pending').length, fiscalized: orders.filter(order => order.fiscalStatus === 'fiscalized').length } }, orders });
     }
     if (url.pathname === '/api/payments/admission-ticket/orders' && req.method === 'POST') {
         const body = await readBody(req);
+        assertParkMiddleScope(body);
         const delayMs = Math.max(0, Number(state.nextCreateDelayMs || 0));
         state.nextCreateDelayMs = 0;
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -760,9 +779,10 @@ async function run() {
             const button = document.getElementById('loadCheckboxSalesReportBtn');
             return button?.disabled === false
                 && button.getAttribute('aria-busy') === 'false'
-                && button.textContent.trim() === 'Показати звіт';
+                && button.textContent.trim() === 'Завантажити історію чеків';
         });
         assert.equal(state.salesReportRequestCount, reportCallsBefore + 1, 'one report click sends one report request');
+        assert.match(await page.textContent('#checkboxSalesReportBody'), /Історія чеків|Оплати всього|офіційний артефакт/i, 'receipt history renders cashier-facing labels');
         await assertCanonicalCashierButtons(page);
         await assertNoCashierPageOverflow(page);
         await page.focus('#checkboxSalesReportPanel > summary');
@@ -927,6 +947,12 @@ async function run() {
         assert.match(await page.getAttribute('#providerTaxUrl', 'href'), /api\.checkbox\.ua\/check/);
         assert.match(await page.getAttribute('#providerPdfUrl', 'href'), /api\.checkbox\.ua\/check\.pdf/);
         assert.match(await page.getAttribute('#providerQrUrl', 'href'), /api\.checkbox\.ua\/qr/);
+        await page.locator('#checkboxSalesReportPanel').evaluate(panel => { panel.open = true; });
+        await page.click('#loadCheckboxSalesReportBtn');
+        await page.waitForSelector('#checkboxSalesReportBody .cashier-history-link');
+        const receiptHistoryText = await page.textContent('#checkboxSalesReportBody');
+        assert.match(receiptHistoryText, /RCP-\d+/, 'receipt history shows the internal receipt id');
+        assert.match(receiptHistoryText, /Чек[\s\S]*PDF[\s\S]*QR/, 'receipt history exposes trusted official receipt, PDF and QR actions');
         assert.equal(await page.locator('#fiscalReceiptBadge').evaluate(element => element.classList.contains('is-ok')), true, 'fiscalized receipt exposes a visual success status');
         assert.equal(await page.locator('#pendingReceiptNotice').evaluate(element => element.classList.contains('hidden')), true, 'server-confirmed empty queue clears the stale local pending notice');
         assert.doesNotMatch(await page.textContent('#pendingReceiptNotice'), new RegExp(`RCP-${currentOrderId}`), 'fiscalized receipt is removed from local recovery fallback');

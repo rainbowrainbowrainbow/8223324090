@@ -92,6 +92,39 @@ function testConfig(overrides = {}) {
     };
 }
 
+function darTestConfig(overrides = {}) {
+    return testConfig({
+        crmProfileKey: 'dar',
+        locationAlias: 'dar',
+        registerAlias: 'main',
+        registerDisplayName: 'Dar main test',
+        legalEntityKey: 'dar_test_fop',
+        legalEntityName: 'Dar Test FOP',
+        taxIdentifier: '9876543210',
+        registerCredentialRef: 'dar_main_test',
+        cashierCredentialRef: 'dar_main_test',
+        providerOrganizationId: 'org-test-dar',
+        providerOutletId: '',
+        providerRegisterId: 'register-test-dar',
+        providerCashierId: 'cashier-test-dar',
+        integrationOwnerUserId: 4,
+        cashierUserIds: [3, 4],
+        eventGenixUsers: {
+            primaryTestCashierUserId: 3,
+            primaryTestCashierName: 'Наталія Василівна',
+            cashierUserIds: [3, 4],
+            integrationOwnerUserIds: [4]
+        },
+        items: SIX_TICKET_CODES.map(code => ({
+            itemCode: code,
+            fiscalItemName: `Dar fiscal ${code}`,
+            taxMode: 'untaxed',
+            providerTaxId: null
+        })),
+        ...overrides
+    });
+}
+
 function withoutItemArgs(args) {
     const output = [];
     for (let index = 0; index < args.length; index += 1) {
@@ -122,6 +155,18 @@ test('park pilot config CLI is dry-run by default and never enables register fea
     assert.equal(output.integrationOwner, 50);
     assert.equal(output.expectedIsTest, true);
     assert.equal(output.itemMappings[0].taxMode, 'taxed');
+});
+
+test('park pilot config accepts explicit CLI profile location and register aliases', () => {
+    const plan = parseArgs([
+        ...baseArgs,
+        '--crm-profile', 'dar',
+        '--location-alias', 'dar',
+        '--register-alias', 'main'
+    ]);
+    assert.equal(plan.crmProfileKey, 'dar');
+    assert.equal(plan.locationAlias, 'dar');
+    assert.equal(plan.registerAlias, 'main');
 });
 
 test('park pilot config grants Phase-1 shift close only to the exact integration owner binding', () => {
@@ -196,6 +241,24 @@ test('park pilot config loads non-secret local config files and stays dry-run by
     assert.equal(output.providerRegisterIdConfigured, true);
     assert.equal(output.providerCashierIdConfigured, true);
     assert.doesNotMatch(JSON.stringify(output), /org-test|register-test|cashier-test/);
+});
+
+test('park pilot config supports Dar as a separate non-secret config scope', () => {
+    const file = writeTempConfig(darTestConfig());
+    const plan = parseArgs(['--config-file', file]);
+    const output = publicPlan(plan);
+    assert.equal(plan.crmProfileKey, 'dar');
+    assert.equal(plan.locationAlias, 'dar');
+    assert.equal(plan.registerAlias, 'main');
+    assert.equal(plan.legalEntityKey, 'dar_test_fop');
+    assert.equal(plan.providerLicenseRef, 'dar_main_test');
+    assert.equal(plan.cashierLoginRef, 'dar_main_test');
+    assert.deepEqual(plan.cashierUserIds, [3, 4]);
+    assert.equal(output.featureEnabled, false);
+    assert.equal(output.providerOrganizationIdConfigured, true);
+    assert.equal(output.providerRegisterIdConfigured, true);
+    assert.equal(output.providerCashierIdConfigured, true);
+    assert.doesNotMatch(JSON.stringify(output), /org-test-dar|register-test-dar|cashier-test-dar/);
 });
 
 test('park pilot config supports CHECKBOX_PILOT_CONFIG_FILE env fallback', () => {
@@ -330,7 +393,8 @@ class FakePilotConfigClient {
             const row = this.db.profiles.get(`${params[0]}:${params[1]}`);
             if (!row) return { rows: [] };
             const location = this.db.locations.get(`${row.id}:${params[2]}`) || {};
-            const register = this.db.registers.get(`${row.id}:${params[3]}`) || {};
+            const registerMatch = this.db.registers.get(`${row.id}:${params[3]}`) || {};
+            const register = registerMatch.fiscal_location_id === location.id ? registerMatch : {};
             return {
                 rows: [{
                     fiscal_profile_id: row.id,
@@ -414,9 +478,22 @@ class FakePilotConfigClient {
             return { rows: binding?.status === 'active' ? [{ id: 1 }] : [] };
         }
         if (normalized.startsWith('SELECT fim.item_code')) {
+            const profile = this.db.profiles.get(`${params[0]}:${params[1]}`);
+            const location = profile ? this.db.locations.get(`${profile.id}:${params[2]}`) : null;
+            const register = profile && location ? this.db.registers.get(`${profile.id}:${params[3]}`) : null;
             return {
                 rows: [...this.db.items.values()]
-                    .filter(item => item.status === 'active')
+                    .filter(item => (
+                        profile
+                        && location
+                        && register
+                        && item.status === 'active'
+                        && item.fiscal_profile_id === profile.id
+                        && item.fiscal_register_id === register.id
+                        && item.source_type === params[4]
+                        && item.item_type === params[5]
+                        && item.provider === params[6]
+                    ))
                     .map(item => ({
                         item_code: item.item_code,
                         fiscal_item_name: item.fiscal_item_name,
@@ -636,6 +713,13 @@ test('park pilot config locks the canonical target before status, preflight, and
         'provider values must not split the canonical target lock'
     );
     assert.notEqual(pilotConfigTargetLockKey(basePlan), pilotConfigTargetLockKey(otherFopPlan));
+    const otherLocationPlan = parseArgs([
+        'apply',
+        ...authorizedMutationArgs,
+        '--location-alias',
+        'dar'
+    ]);
+    assert.notEqual(pilotConfigTargetLockKey(basePlan), pilotConfigTargetLockKey(otherLocationPlan));
 
     const cases = [
         ['status', ['status', '--legal-entity-key', 'park_fop'], {}],
@@ -653,6 +737,51 @@ test('park pilot config locks the canonical target before status, preflight, and
         assert.ok(lockIndex < firstTargetReadIndex, `${mode} must re-read the target only after locking`);
         assert.ok(firstTargetReadIndex < commitIndex, `${mode} target read must remain in the lock transaction`);
     }
+});
+
+test('park pilot config applies Park and Dar as separate fiscal targets without item leakage', async () => {
+    const db = new SixTicketPilotConfigDb();
+    const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
+    await run([
+        '--apply',
+        '--config-file',
+        writeTempConfig(testConfig()),
+        '--actor-user-id',
+        '4',
+        '--reason',
+        'test park isolated config'
+    ], { env, dbPool: db });
+    await run([
+        '--apply',
+        '--config-file',
+        writeTempConfig(darTestConfig()),
+        '--actor-user-id',
+        '4',
+        '--reason',
+        'test dar isolated config'
+    ], { env, dbPool: db });
+
+    assert.equal(db.profiles.size, 2);
+    assert.equal(db.locations.size, 2);
+    assert.equal(db.registers.size, 2);
+    const parkProfile = db.profiles.get('event_genix:park_test_fop');
+    const darProfile = db.profiles.get('dar:dar_test_fop');
+    assert.ok(parkProfile);
+    assert.ok(darProfile);
+    const parkItems = [...db.items.values()].filter(item => item.fiscal_profile_id === parkProfile.id);
+    const darItems = [...db.items.values()].filter(item => item.fiscal_profile_id === darProfile.id);
+    assert.equal(parkItems.length, 6);
+    assert.equal(darItems.length, 6);
+    assert.equal(parkItems.every(item => item.crm_profile_key === 'event_genix'), true);
+    assert.equal(darItems.every(item => item.crm_profile_key === 'dar'), true);
+
+    const darPreflight = await run([
+        'preflight',
+        '--config-file',
+        writeTempConfig(darTestConfig())
+    ], { dbPool: db });
+    assert.equal(darPreflight.ok, true);
+    assert.equal(darPreflight.preflight.checks.find(check => check.code === 'item_mappings_complete').ok, true);
 });
 
 test('park pilot config file preflight verifies six active CRM ticket mappings and user capabilities', async () => {

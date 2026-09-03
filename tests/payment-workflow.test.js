@@ -59,6 +59,7 @@ function defaultMapping(overrides = {}) {
         fiscal_profile_id: 20,
         fiscal_register_id: 40,
         fiscal_location_id: 30,
+        location_alias: 'park',
         crm_profile_key: 'event_genix',
         legal_entity_key: 'park_fop',
         legal_entity_name: 'Park FOP',
@@ -128,6 +129,7 @@ class FakePaymentDb {
             fiscal_profile_id: 20,
             fiscal_register_id: 40,
             fiscal_location_id: 30,
+            location_alias: 'park',
             crm_profile_key: 'event_genix',
             legal_entity_key: 'park_fop',
             legal_entity_name: 'Park FOP',
@@ -259,8 +261,14 @@ class FakePaymentClient {
             return { rows: this.db.orders.filter(order => Number(order.fiscal_profile_id) === Number(params[0]) && order.order_key === params[1]).slice(0, 1) };
         }
 
-        if (normalized.includes('FROM fiscal_profiles fp') && normalized.includes('fr.register_alias = $2')) {
-            return { rows: this.db.mappingRows.filter(row => row.crm_profile_key === params[0] && row.register_alias === params[1]) };
+        if (normalized.includes('FROM fiscal_profiles fp') && normalized.includes('fl.location_alias = $2') && normalized.includes('fr.register_alias = $3')) {
+            return {
+                rows: this.db.mappingRows.filter(row => (
+                    row.crm_profile_key === params[0]
+                    && row.location_alias === params[1]
+                    && row.register_alias === params[2]
+                ))
+            };
         }
 
         if (normalized.includes('FROM fiscal_item_mappings')) {
@@ -285,9 +293,9 @@ class FakePaymentClient {
                     user_id: Number(params[0]),
                     fiscal_profile_id: Number(params[1]),
                     fiscal_register_id: Number(params[2]),
-                    fiscal_location_id: 30,
-                    register_fiscal_location_id: 30,
-                    crm_profile_key: 'event_genix',
+                    fiscal_location_id: this.db.mappingRows.find(row => Number(row.fiscal_profile_id) === Number(params[1]) && Number(row.fiscal_register_id) === Number(params[2]))?.fiscal_location_id || 30,
+                    register_fiscal_location_id: this.db.mappingRows.find(row => Number(row.fiscal_profile_id) === Number(params[1]) && Number(row.fiscal_register_id) === Number(params[2]))?.fiscal_location_id || 30,
+                    crm_profile_key: this.db.mappingRows.find(row => Number(row.fiscal_profile_id) === Number(params[1]) && Number(row.fiscal_register_id) === Number(params[2]))?.crm_profile_key || 'event_genix',
                     status: 'active',
                     action_pin_hash: '$2a$10$fakehashfornonpinpaths',
                     capability_scope: this.db.mappingRows[0]?.capability_scope || ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open']
@@ -310,6 +318,12 @@ class FakePaymentClient {
                 id: this.db.next.order++,
                 fiscal_profile_id: Number(params[0]),
                 fiscal_register_id: Number(params[1]),
+                fiscal_location_id: JSON.parse(params[9])?.fiscal_location_id || null,
+                location_alias: JSON.parse(params[9])?.location_alias || null,
+                crm_profile_key: JSON.parse(params[9])?.crm_profile_key || null,
+                legal_entity_key: JSON.parse(params[9])?.legal_entity_key || null,
+                legal_entity_name: JSON.parse(params[9])?.legal_entity_name || null,
+                register_alias: JSON.parse(params[9])?.register_alias || null,
                 cashier_user_id: params[2],
                 source_type: params[3],
                 source_id: params[4],
@@ -343,10 +357,10 @@ class FakePaymentClient {
                 quantity_millis: String(params[6]),
                 total_amount_minor: String(params[7]),
                 tax_reference: params[8],
-                provider_tax_id: params[9],
-                tax_mode: params[10],
-                tax_code: params[11],
-                tax_rate_bps: params[12],
+                tax_code: params[9],
+                tax_rate_bps: params[10],
+                provider_tax_id: params[11],
+                tax_mode: params[12],
                 item_snapshot: JSON.parse(params[13])
             });
             return { rows: [] };
@@ -556,6 +570,15 @@ class FakePaymentClient {
 const allowAuthorizer = async () => ({ ok: true });
 const quoteResolver = async () => sampleQuote();
 
+function scopedPaymentBody(overrides = {}) {
+    return {
+        crmProfileKey: 'event_genix',
+        locationAlias: 'park',
+        registerAlias: 'middle',
+        ...overrides
+    };
+}
+
 test('payment state machine accepts only cash and manual terminal tenders', () => {
     assert.deepEqual(normalizeTender('cash'), { tender: 'cash', paymentMethod: 'cash' });
     assert.deepEqual(normalizeTender('card_terminal_manual'), {
@@ -570,10 +593,10 @@ test('cash payment order uses server admission snapshot and ignores client prici
     const result = await createAdmissionTicketPaymentOrder({
         dbPool: db,
         user: baseUser(),
-        body: {
+        body: scopedPaymentBody({
             tender: 'cash',
             admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 }
-        },
+        }),
         idempotencyKey: 'create-cash-1',
         quoteResolver,
         authorizer: allowAuthorizer
@@ -591,7 +614,7 @@ test('cash payment order uses server admission snapshot and ignores client prici
         () => createAdmissionTicketPaymentOrder({
             dbPool: new FakePaymentDb(),
             user: baseUser(),
-            body: { tender: 'cash', totalAmountMinor: 1, admissionTicket: { date: '2099-01-15' } },
+            body: scopedPaymentBody({ tender: 'cash', totalAmountMinor: 1, admissionTicket: { date: '2099-01-15' } }),
             idempotencyKey: 'forbidden-price',
             quoteResolver,
             authorizer: allowAuthorizer
@@ -602,7 +625,7 @@ test('cash payment order uses server admission snapshot and ignores client prici
 
 test('server source identity creates separate standalone walk-in sales for identical quotes', async () => {
     const db = new FakePaymentDb();
-    const body = { tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } };
+    const body = scopedPaymentBody({ tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } });
 
     const first = await createAdmissionTicketPaymentOrder({
         dbPool: db,
@@ -634,7 +657,7 @@ test('client-controlled sourceId is rejected before order creation', async () =>
         () => createAdmissionTicketPaymentOrder({
             dbPool: db,
             user: baseUser(),
-            body: { tender: 'cash', sourceId: 'client-source', admissionTicket: { date: '2099-01-15' } },
+            body: scopedPaymentBody({ tender: 'cash', sourceId: 'client-source', admissionTicket: { date: '2099-01-15' } }),
             idempotencyKey: 'forbidden-source',
             quoteResolver,
             authorizer: allowAuthorizer
@@ -650,7 +673,7 @@ test('missing Checkbox tax mapping blocks order before taking money', async () =
         () => createAdmissionTicketPaymentOrder({
             dbPool: db,
             user: baseUser(),
-            body: { tender: 'cash', admissionTicket: { date: '2099-01-15' } },
+            body: scopedPaymentBody({ tender: 'cash', admissionTicket: { date: '2099-01-15' } }),
             idempotencyKey: 'missing-tax',
             quoteResolver,
             authorizer: allowAuthorizer
@@ -665,12 +688,12 @@ test('wrong CRM profile/FOP mapping fails closed before creating an order', asyn
         () => createAdmissionTicketPaymentOrder({
             dbPool: new FakePaymentDb(),
             user: baseUser(),
-            body: { crmProfileKey: 'preschool', tender: 'cash', admissionTicket: { date: '2099-01-15' } },
+            body: scopedPaymentBody({ crmProfileKey: 'preschool', locationAlias: 'preschool', registerAlias: 'middle', tender: 'cash', admissionTicket: { date: '2099-01-15' } }),
             idempotencyKey: 'wrong-profile',
             quoteResolver,
             authorizer: allowAuthorizer
         }),
-        error => error.code === 'crm_profile_not_supported_for_pilot'
+        error => error.code === 'fiscal_crm_profile_invalid'
     );
 
     const db = new FakePaymentDb({ mappingRows: [] });
@@ -678,7 +701,7 @@ test('wrong CRM profile/FOP mapping fails closed before creating an order', asyn
         () => createAdmissionTicketPaymentOrder({
             dbPool: db,
             user: baseUser(),
-            body: { tender: 'cash', admissionTicket: { date: '2099-01-15' } },
+            body: scopedPaymentBody({ tender: 'cash', admissionTicket: { date: '2099-01-15' } }),
             idempotencyKey: 'missing-mapping',
             quoteResolver,
             authorizer: allowAuthorizer
@@ -686,6 +709,111 @@ test('wrong CRM profile/FOP mapping fails closed before creating an order', asyn
         error => error.code === 'fiscal_mapping_ambiguous_or_missing'
     );
     assert.equal(db.orders.length, 0);
+});
+
+test('payment order creation requires explicit profile location register scope', async () => {
+    await assert.rejects(
+        () => createAdmissionTicketPaymentOrder({
+            dbPool: new FakePaymentDb(),
+            user: baseUser(),
+            body: { tender: 'cash', admissionTicket: { date: '2099-01-15' } },
+            idempotencyKey: 'missing-fiscal-scope',
+            quoteResolver,
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'fiscal_crm_profile_required'
+    );
+
+    await assert.rejects(
+        () => createAdmissionTicketPaymentOrder({
+            dbPool: new FakePaymentDb(),
+            user: baseUser(),
+            body: scopedPaymentBody({ locationAlias: '', tender: 'cash', admissionTicket: { date: '2099-01-15' } }),
+            idempotencyKey: 'missing-location-scope',
+            quoteResolver,
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'fiscal_location_alias_required'
+    );
+});
+
+test('separate business scope creates Dar order with Dar mapping and items only', async () => {
+    const darMapping = defaultMapping({
+        fiscal_profile_id: 21,
+        fiscal_location_id: 31,
+        fiscal_register_id: 41,
+        crm_profile_key: 'dar',
+        location_alias: 'dar',
+        register_alias: 'front',
+        legal_entity_key: 'dar_fop',
+        legal_entity_name: 'Dar FOP',
+        provider_organization_id: 'organization-test-dar',
+        provider_outlet_id: 'outlet-test-dar',
+        provider_register_id: 'register-test-dar',
+        provider_license_ref: 'dar-register-credential-ref'
+    });
+    const db = new FakePaymentDb({
+        registerCredentialRef: 'dar-register-credential-ref',
+        mappingRows: [defaultMapping(), darMapping],
+        itemMappingRows: [
+            defaultFiscalItemMapping(),
+            defaultFiscalItemMapping({
+                id: 701,
+                fiscal_profile_id: 21,
+                fiscal_register_id: 41,
+                fiscal_item_name: 'Dar child admission',
+                provider_tax_id: null,
+                tax_mode: 'untaxed',
+                tax_code: null,
+                tax_rate_bps: null
+            })
+        ]
+    });
+    const darQuoteResolver = async () => sampleQuote({
+        businessContext: 'dar',
+        ticketSubtotal: 300,
+        quoteFingerprint: 'dar-quote-fingerprint',
+        ticketLines: [{
+            ticketTypeId: 10,
+            ticketTypeCode: 'regular_child',
+            ticketTypeName: 'Dar дитячий квиток',
+            quantity: 3,
+            unitPriceUah: 100,
+            subtotalUah: 300,
+            tariffVersionId: 90,
+            currency: 'UAH'
+        }]
+    });
+
+    const result = await createAdmissionTicketPaymentOrder({
+        dbPool: db,
+        user: baseUser({ business_contexts: ['dar'] }),
+        body: scopedPaymentBody({
+            crmProfileKey: 'dar',
+            locationAlias: 'dar',
+            registerAlias: 'front',
+            tender: 'cash',
+            admissionTicket: { date: '2099-01-15', banquetGuests: 3, banquetAdults: 0 }
+        }),
+        idempotencyKey: 'create-dar-1',
+        quoteResolver: darQuoteResolver,
+        authorizer: allowAuthorizer
+    });
+
+    assert.equal(result.order.fiscalProfileId, 21);
+    assert.equal(result.order.fiscalLocationId, 31);
+    assert.equal(result.order.fiscalRegisterId, 41);
+    assert.equal(result.order.crmProfileKey, 'dar');
+    assert.equal(result.order.locationAlias, 'dar');
+    assert.equal(result.order.registerAlias, 'front');
+    assert.equal(db.orders[0].source_snapshot.crm_profile_key, 'dar');
+    assert.equal(db.orders[0].source_snapshot.location_alias, 'dar');
+    assert.equal(db.orders[0].source_snapshot.register_alias, 'front');
+    assert.equal(db.items.length, 1);
+    assert.equal(db.items[0].item_name, 'Dar child admission');
+    assert.equal(db.items[0].tax_mode, 'untaxed');
+    assert.equal(db.items[0].provider_tax_id, null);
+    assert.ok(db.orders[0].order_key.includes('admission_ticket:dar:dar:front:'));
 });
 
 test('missing cashier credential ref blocks confirmation before monetary or outbox writes', async () => {
@@ -1078,7 +1206,7 @@ test('payments API smoke passes Idempotency-Key and user context into order crea
         const res = await request(
             'POST',
             '/api/payments/admission-ticket/orders',
-            { tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } },
+            scopedPaymentBody({ tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } }),
             { 'Idempotency-Key': 'api-create-1' }
         );
 
@@ -1087,6 +1215,9 @@ test('payments API smoke passes Idempotency-Key and user context into order crea
         assert.equal(calls.create.length, 1);
         assert.equal(calls.create[0].idempotencyKey, 'api-create-1');
         assert.equal(calls.create[0].user.id, 50);
+        assert.equal(calls.create[0].body.crmProfileKey, 'event_genix');
+        assert.equal(calls.create[0].body.locationAlias, 'park');
+        assert.equal(calls.create[0].body.registerAlias, 'middle');
     });
 });
 

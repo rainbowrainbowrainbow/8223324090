@@ -7225,7 +7225,7 @@ const cashierButtonUsesCanonicalClass = id => {
     return /class=["'][^"']*\bbtn-page-(?:primary|secondary|toolbar)\b/i.test(tag);
 };
 check('Cashier payments pilot UI is scoped to park middle register and shows immutable fiscal/payment snapshot',
-    cashierPaymentsHtml.includes('data-pilot-scope="event_genix:middle"')
+    cashierPaymentsHtml.includes('data-pilot-scope="event_genix:park:middle"')
     && cashierPaymentsHtml.includes('id="cashierFiscalProfile"')
     && cashierPaymentsHtml.includes('id="cashierRegister"')
     && cashierPaymentsHtml.includes('id="cashierPaymentStatus"')
@@ -7241,6 +7241,7 @@ check('Cashier thin UI exposes server-backed unresolved queue and read-only Chec
     && cashierPaymentsHtml.includes('id="refreshUnresolvedOrdersBtn"')
     && cashierPaymentsHtml.includes('id="loadMoreUnresolvedOrdersBtn"')
     && cashierPaymentsHtml.includes('id="checkboxSalesReportPanel"')
+    && cashierPaymentsHtml.includes('id="checkboxSalesReportSummaryBadge"')
     && cashierPaymentsHtml.includes('id="checkboxSalesReportBody"')
     && cashierPaymentsHtml.includes('id="loadCheckboxSalesReportBtn"')
     && cashierPaymentsHtml.includes('id="refreshReadinessBtn"')
@@ -7273,10 +7274,16 @@ check('Cashier thin UI exposes a separate fail-closed Phase-1 Checkbox shift clo
     && cashierPaymentsJs.includes('phase1CloseReachedClosed'));
 check('Cashier frontend uses provider-aware readiness and server-backed recovery APIs',
     cashierPaymentsJs.includes('loadPilotRegisterState')
+    && cashierPaymentsJs.includes("locationAlias: 'park'")
+    && cashierPaymentsJs.includes('PILOT_SCOPE.locationAlias')
+    && cashierPaymentsJs.includes('X-Cashier-Pilot-Scope')
     && cashierPaymentsJs.includes('/api/payments/pilot-register-state')
     && cashierPaymentsJs.includes('/api/payments/readiness/probe')
     && cashierPaymentsJs.includes('/api/payments/unresolved-orders')
     && cashierPaymentsJs.includes('/api/payments/checkbox-sales-report')
+    && cashierPaymentsJs.includes('renderReceiptHistoryActions')
+    && cashierPaymentsJs.includes('providerPdfUrl')
+    && cashierPaymentsJs.includes('providerQrUrl')
     && cashierPaymentsJs.includes('loadUnresolvedOrders')
     && cashierPaymentsJs.includes('renderUnresolvedOrders')
     && cashierPaymentsJs.includes('queue_unavailable')
@@ -7330,12 +7337,16 @@ check('Cashier payments exposes concise readiness, semantic steps, and compact n
     && cashierPaymentsHtml.includes('Деталі для адміністратора')
     && cashierPaymentsHtml.includes('id="cashierReadinessTechnicalList"')
     && ['1', '2', '3'].every(step => cashierPaymentsHtml.includes(`data-payment-step="${step}"`))
+    && cashierPaymentsHtml.includes('id="cashierFlowOverview"')
+    && cashierPaymentsHtml.includes('id="cashierFlowRecovery"')
     && cashierPaymentsJs.includes('function syncPaymentStepState()')
+    && cashierPaymentsJs.includes('function syncFlowOverview()')
     && cashierPaymentsJs.includes("setAttribute('aria-current', 'step')")
     && cashierPaymentsJs.includes("setAttribute('aria-disabled', 'true')")
     && cashierPaymentsHtml.includes('<details id="unresolvedOrdersPanel"')
     && cashierPaymentsHtml.includes('<details id="checkboxSalesReportPanel"')
     && cashierPaymentsHtml.includes('Тут зберігаються всі оплачені чеки цієї каси')
+    && cashierPaymentsHtml.includes('Історія чеків')
     && cashierPaymentsHtml.includes('Внутрішній звіт Event Genix лише для перегляду')
     && !/Оплачені orders|pending \/ unknown|read-only|finance_transaction|placeholder="mine/i.test(cashierPaymentsHtml));
 check('Cashier payment diagnostics stay redacted on ordinary routes and UI details require fiscal.configure',

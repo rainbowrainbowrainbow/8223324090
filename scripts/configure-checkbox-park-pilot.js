@@ -4,13 +4,14 @@
 const crypto = require('node:crypto');
 const fs = require('node:fs');
 const { pool } = require('../db');
-const { BUSINESS_CONTEXTS } = require('../services/businessContext');
+const { BUSINESS_CONTEXTS, normalizeKnownBusinessContext } = require('../services/businessContext');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { createActionPinHash, sanitizePin } = require('../services/payments/fiscalApprovals');
 
 const CRM_PROFILE_KEY = 'event_genix';
 const LOCATION_ALIAS = 'park';
 const REGISTER_ALIAS = 'middle';
+const CONFIGURABLE_CRM_PROFILE_KEYS = Object.freeze(['event_genix', 'dar']);
 const PROVIDER = 'checkbox';
 const SOURCE_TYPE = 'admission_ticket';
 const ITEM_TYPE = 'admission_ticket';
@@ -73,7 +74,7 @@ function isHelpRequest(argv = []) {
 
 function cliUsage() {
     return [
-        'Configure the Checkbox park + middle pilot mapping (dry-run by default).',
+        'Configure a Checkbox fiscal profile/register mapping for EventGenix park or Dar (dry-run by default).',
         '',
         'Usage:',
         '  node scripts/configure-checkbox-park-pilot.js --config-file <path>',
@@ -201,6 +202,12 @@ function parseArgs(argv = process.argv.slice(2), env = {}) {
                 break;
             case 'crm-profile':
                 options.crmProfileKey = value;
+                break;
+            case 'location-alias':
+                options.locationAlias = value;
+                break;
+            case 'register-alias':
+                options.registerAlias = value;
                 break;
             case 'legal-entity-key':
                 options.legalEntityKey = value;
@@ -473,6 +480,23 @@ function normalizeRef(value, code) {
     return ref;
 }
 
+function normalizeScopeAlias(value, code, label) {
+    const alias = requireText(value, code).toLowerCase();
+    if (!/^[a-z0-9_:-]+$/.test(alias)) {
+        throw new PilotConfigError(`${code}_invalid`, `${label} must contain only letters, digits, underscore, colon or dash`);
+    }
+    return alias;
+}
+
+function normalizeConfigurableCrmProfileKey(value) {
+    const input = requireText(value, 'crm_profile_key');
+    const normalized = normalizeKnownBusinessContext(input);
+    if (!normalized || !CONFIGURABLE_CRM_PROFILE_KEYS.includes(normalized)) {
+        throw new PilotConfigError('pilot_config_profile_forbidden', 'Only event_genix park or dar fiscal profiles can be configured by this tool');
+    }
+    return normalized;
+}
+
 function credentialEnvPrefix(ref) {
     const safe = normalizeRef(ref, 'credential_ref')
         .replace(/[^A-Za-z0-9]+/g, '_')
@@ -530,15 +554,9 @@ function normalizePlan(options) {
     if (!MODES.includes(options.mode)) {
         throw new PilotConfigError('pilot_config_mode_invalid', `Mode must be one of: ${MODES.join(', ')}`);
     }
-    if (options.crmProfileKey !== CRM_PROFILE_KEY) {
-        throw new PilotConfigError('pilot_config_profile_forbidden', 'Only event_genix park profile can be configured by this pilot tool');
-    }
-    if (options.locationAlias !== LOCATION_ALIAS) {
-        throw new PilotConfigError('pilot_config_location_forbidden', 'Only park location can be configured by this pilot tool');
-    }
-    if (options.registerAlias !== REGISTER_ALIAS) {
-        throw new PilotConfigError('pilot_config_register_forbidden', 'Only middle register can be configured by this pilot tool');
-    }
+    const crmProfileKey = normalizeConfigurableCrmProfileKey(options.crmProfileKey);
+    const locationAlias = normalizeScopeAlias(options.locationAlias, 'location_alias', 'Fiscal location alias');
+    const registerAlias = normalizeScopeAlias(options.registerAlias, 'register_alias', 'Fiscal register alias');
     const cashierUserIds = [...new Set(options.cashierUserIds)];
     for (const id of cashierUserIds) {
         if (!Number.isSafeInteger(id) || id <= 0) {
@@ -552,10 +570,10 @@ function normalizePlan(options) {
     const plan = {
         mode: options.mode,
         apply: options.mode === 'apply' || options.mode === 'create',
-        crmProfileKey: CRM_PROFILE_KEY,
+        crmProfileKey,
         legalEntityKey: requireText(options.legalEntityKey, 'legal_entity_key'),
-        locationAlias: LOCATION_ALIAS,
-        registerAlias: REGISTER_ALIAS,
+        locationAlias,
+        registerAlias,
         cashierUserIds,
         capabilities,
         actorUserId: options.actorUserId == null ? null : Number(options.actorUserId),
@@ -833,6 +851,7 @@ async function loadExistingTarget(client, plan) {
             AND fl.location_alias = $3
            LEFT JOIN fiscal_registers fr
              ON fr.fiscal_profile_id = fp.id
+            AND fr.fiscal_location_id = fl.id
             AND fr.register_alias = $4
           WHERE fp.crm_profile_key = $1
             AND fp.legal_entity_key = $2
@@ -847,6 +866,7 @@ function pilotConfigTargetLockKey(plan) {
         PILOT_CONFIG_TARGET_LOCK_NAMESPACE,
         String(plan.crmProfileKey || '').trim(),
         String(plan.legalEntityKey || '').trim(),
+        String(plan.locationAlias || '').trim(),
         String(plan.registerAlias || '').trim()
     ]);
 }
@@ -888,13 +908,20 @@ async function assertNoExistingConflicts(client, plan) {
            JOIN fiscal_profiles fp ON fp.id = fr.fiscal_profile_id
           WHERE fr.crm_profile_key = $1
             AND fr.register_alias = $2
+            AND fr.fiscal_location_id = (
+                SELECT fl.id
+                  FROM fiscal_locations fl
+                 WHERE fl.fiscal_profile_id = fr.fiscal_profile_id
+                   AND fl.location_alias = $4
+                 LIMIT 1
+            )
             AND fr.status = 'active'
             AND fp.legal_entity_key <> $3
           LIMIT 5`,
-        [plan.crmProfileKey, plan.registerAlias, plan.legalEntityKey]
+        [plan.crmProfileKey, plan.registerAlias, plan.legalEntityKey, plan.locationAlias]
     );
     if (other.rows.length) {
-        throw new PilotConfigError('pilot_config_other_fop_register_conflict', 'Another active FOP already owns the park middle register alias', {
+        throw new PilotConfigError('pilot_config_other_fop_register_conflict', 'Another active FOP already owns this fiscal profile/location/register alias', {
             details: { legalEntityKeys: other.rows.map(row => row.legal_entity_key) }
         });
     }
@@ -922,30 +949,36 @@ async function existingActiveMappingCodes(client, plan) {
                 MIN(fim.tax_rate_bps)::integer AS tax_rate_bps,
                 COUNT(*)::integer AS count
            FROM fiscal_profiles fp
+           JOIN fiscal_locations fl
+             ON fl.fiscal_profile_id = fp.id
+            AND fl.crm_profile_key = fp.crm_profile_key
+            AND fl.location_alias = $3
+            AND fl.status = 'active'
            JOIN fiscal_registers fr
              ON fr.fiscal_profile_id = fp.id
-            AND fr.register_alias = $3
+            AND fr.fiscal_location_id = fl.id
+            AND fr.register_alias = $4
            JOIN fiscal_item_mappings fim
              ON fim.fiscal_profile_id = fp.id
             AND fim.fiscal_register_id = fr.id
-            AND fim.source_type = $4
-            AND fim.item_type = $5
-            AND fim.provider = $6
+            AND fim.source_type = $5
+            AND fim.item_type = $6
+            AND fim.provider = $7
             AND fim.status = 'active'
           WHERE fp.crm_profile_key = $1
             AND fp.legal_entity_key = $2
           GROUP BY fim.item_code
           ORDER BY fim.item_code`,
-        [plan.crmProfileKey, plan.legalEntityKey, plan.registerAlias, SOURCE_TYPE, ITEM_TYPE, PROVIDER]
+        [plan.crmProfileKey, plan.legalEntityKey, plan.locationAlias, plan.registerAlias, SOURCE_TYPE, ITEM_TYPE, PROVIDER]
     );
     return result.rows;
 }
 
 async function preflightPlan(client, plan, { useStoredMappings = false } = {}) {
     const checks = [];
-    collectCheck(checks, 'crm_profile_known', Boolean(BUSINESS_CONTEXTS[CRM_PROFILE_KEY]), 'CRM profile event_genix exists in canonical business context registry');
-    collectCheck(checks, 'preschool_not_in_scope', plan.crmProfileKey === CRM_PROFILE_KEY, 'Preschool/day-care profile is not created or activated');
-    collectCheck(checks, 'register_alias_middle', plan.registerAlias === REGISTER_ALIAS, 'Register alias is exactly middle');
+    collectCheck(checks, 'crm_profile_known', Boolean(BUSINESS_CONTEXTS[plan.crmProfileKey]), 'CRM profile exists in canonical business context registry');
+    collectCheck(checks, 'preschool_not_in_scope', plan.crmProfileKey !== 'preschool', 'Preschool/day-care profile is not created or activated');
+    collectCheck(checks, 'fiscal_scope_declared', Boolean(plan.locationAlias && plan.registerAlias), 'Fiscal location and register aliases are explicit');
     collectCheck(checks, 'expected_test_identity_declared', typeof plan.expectedIsTest === 'boolean', 'Checkbox expected is_test identity is explicitly declared');
 
     await assertNoExistingConflicts(client, plan);

@@ -601,7 +601,7 @@ async function countPhase1CloseBlockers(client, { fiscalProfileId, fiscalRegiste
     return countFiscalShiftCloseBlockers(client, { fiscalProfileId, fiscalRegisterId });
 }
 
-async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', registerAlias = 'middle' }) {
+async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, registerAlias }) {
     return withTransaction(async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(process.env);
         const cashierProEnabled = isCashierProEnabled(process.env);
@@ -625,16 +625,17 @@ async function loadPilotRegisterState({ user, crmProfileKey = 'event_genix', reg
                JOIN fiscal_locations fl
                  ON fl.fiscal_profile_id = fp.id
                 AND fl.crm_profile_key = fp.crm_profile_key
+                AND fl.location_alias = $2
                 AND fl.status = 'active'
                JOIN fiscal_registers fr
                 ON fr.fiscal_profile_id = fp.id
                 AND fr.fiscal_location_id = fl.id
                 AND fr.crm_profile_key = fp.crm_profile_key
-                AND fr.register_alias = $2
+                AND fr.register_alias = $3
                 AND fr.status = 'active'
               WHERE fp.crm_profile_key = $1
                 AND fp.status = 'active'`,
-            [String(crmProfileKey || '').trim(), String(registerAlias || '').trim()]
+            [String(crmProfileKey || '').trim(), String(locationAlias || '').trim(), String(registerAlias || '').trim()]
         );
         if (mapping.rows.length !== 1) {
             return {

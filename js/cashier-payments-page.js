@@ -2,7 +2,7 @@
 'use strict';
 
 (function () {
-    const PILOT_SCOPE = Object.freeze({ crmProfileKey: 'event_genix', registerAlias: 'middle', defaultEnabled: false });
+    const PILOT_SCOPE = Object.freeze({ crmProfileKey: 'event_genix', locationAlias: 'park', registerAlias: 'middle', defaultEnabled: false });
     const INTERNAL_RECEIPT_TEXT = '\u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f';
     const STORAGE_PREFIX = 'eventgenix:cashier-payments';
     const FISCAL_BLOCKING_STATUSES = new Set(['pending', 'unknown', 'sending', 'validating', 'ready_to_send', 'failed', 'failed_retryable']);
@@ -44,6 +44,8 @@
         confirmInFlight: false,
         confirmSubmitted: false,
         reportInFlight: false,
+        receiptHistoryLoaded: false,
+        lastReportRefreshAt: null,
         unresolvedInFlight: false,
         unresolvedOrders: [],
         unresolvedPage: 0,
@@ -62,6 +64,7 @@
         unresolvedRefreshTimer: null,
         unresolvedRefreshBackoffMs: UNRESOLVED_REFRESH_MIN_MS,
         unresolvedAutoRefreshEnabled: false,
+        unresolvedForceOpenChecking: false,
         readinessInFlight: false,
         nextCustomerSafetyRefreshInFlight: false,
         readinessTimer: null,
@@ -202,6 +205,64 @@
         return 'Потрібна перевірка відповідального.';
     }
 
+    function formatPaymentMethod(value) {
+        const method = normalizeStatus(value);
+        if (method === 'card_terminal' || method === 'card_terminal_manual') return 'Термінал';
+        if (method === 'cash') return 'Готівка';
+        return 'Оплата';
+    }
+
+    function formatRecoveryText(order = {}) {
+        const fiscalStatus = effectiveFiscalStatus(order);
+        if (FISCAL_DONE_STATUSES.has(fiscalStatus)) return 'Чек створено. Після оновлення він зникне з незавершених.';
+        if (['dead', 'failed_terminal', 'validation_failed', 'blocked'].includes(fiscalStatus)) {
+            return 'Автоповтор зупинено — потрібна перевірка відповідального.';
+        }
+        if (order.nextRunAt) return `Чек очікує Checkbox — буде повтор ${formatKyivDateTime(order.nextRunAt)}.`;
+        return 'Чек очікує Checkbox — система повторить автоматично.';
+    }
+
+    function updateTextIfPresent(id, value) {
+        const el = $(id);
+        if (el) el.textContent = value;
+    }
+
+    function setFlowNodeState(name, mode) {
+        const node = document.querySelector(`[data-flow-node="${name}"]`);
+        if (!node) return;
+        node.classList.remove('is-active', 'is-complete', 'is-blocked', 'is-muted');
+        if (mode) node.classList.add(`is-${mode}`);
+    }
+
+    function syncFlowOverview() {
+        const order = state.orderDetails?.order || null;
+        const fiscalStatus = effectiveFiscalStatus(order);
+        const queueState = effectiveUnresolvedQueueState();
+        const queueCount = queueState === 'available'
+            ? Number(state.unresolvedRegisterCount || 0)
+            : Number(state.unresolvedLastKnownSummary.registerCount || 0);
+        const readinessReady = integrationReady();
+        const viewOnly = state.registerState?.checkboxIntegrationEnabled === false
+            || state.registerState?.paymentAcceptanceEnabled === false
+            || state.registerState?.readinessCode === 'global_integration_disabled'
+            || state.registerState?.readinessCode === 'payment_acceptance_disabled';
+        const hasOrder = Boolean(order?.id);
+        const paid = normalizeStatus(order?.paymentStatus) === 'confirmed' || normalizeStatus(order?.status) === 'payment_recorded';
+        const fiscalized = FISCAL_DONE_STATUSES.has(fiscalStatus);
+
+        updateTextIfPresent('cashierFlowReadiness', state.readinessInFlight ? 'оновлюємо' : (readinessReady ? 'готова' : (viewOnly ? 'тільки перегляд' : 'заблоковано')));
+        updateTextIfPresent('cashierFlowOrder', !hasOrder ? 'створіть оплату' : (paid ? 'оплату прийнято' : 'очікує підтвердження'));
+        updateTextIfPresent('cashierFlowReceipt', fiscalized ? 'чек створено' : (paid ? 'чек очікує Checkbox' : 'ще не створювався'));
+        updateTextIfPresent('cashierFlowRecovery', queueState === 'available'
+            ? (queueCount > 0 ? `${queueCount} незавершених` : 'черга чиста')
+            : 'потрібне оновлення');
+
+        setFlowNodeState('readiness', readinessReady ? 'complete' : 'blocked');
+        setFlowNodeState('order', !hasOrder ? 'active' : (paid ? 'complete' : 'active'));
+        setFlowNodeState('receipt', fiscalized ? 'complete' : (paid ? 'active' : 'muted'));
+        setFlowNodeState('recovery', queueState === 'available' && queueCount === 0 ? 'complete' : (queueState === 'available' ? 'active' : 'blocked'));
+    }
+
     function setButtonBusy(button, busy, busyText) {
         if (!button) return;
         if (busy) {
@@ -242,7 +303,7 @@
         const userId = state.user?.id || state.user?.username || 'anonymous';
         const fiscalProfileId = state.registerState?.fiscalProfileId || 'profile-pending';
         const fiscalRegisterId = state.registerState?.fiscalRegisterId || 'register-pending';
-        return `${STORAGE_PREFIX}:u:${userId}:crm:${PILOT_SCOPE.crmProfileKey}:reg:${PILOT_SCOPE.registerAlias}:fp:${fiscalProfileId}:fr:${fiscalRegisterId}`;
+        return `${STORAGE_PREFIX}:u:${userId}:crm:${PILOT_SCOPE.crmProfileKey}:loc:${PILOT_SCOPE.locationAlias}:reg:${PILOT_SCOPE.registerAlias}:fp:${fiscalProfileId}:fr:${fiscalRegisterId}`;
     }
 
     function storageKey(key) {
@@ -266,7 +327,7 @@
 
 
     function operationStorageKey(action, target) {
-        return `${action}:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.registerAlias}:${target || 'current'}`;
+        return `${action}:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${target || 'current'}`;
     }
 
     function getOperationIdempotencyKey(action, target = 'current') {
@@ -286,7 +347,7 @@
         const date = $('paymentDate')?.value || 'no-date';
         const kids = $('paymentKidsCount')?.value || '0';
         const adults = $('paymentAdultsCount')?.value || '0';
-        return `${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.registerAlias}:${state.tender}:${date}:${kids}:${adults}`;
+        return `${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${state.tender}:${date}:${kids}:${adults}`;
     }
 
     function getCreateIdempotencyKey() {
@@ -303,7 +364,7 @@
     }
 
     function getConfirmIdempotencyKey(orderId) {
-        const key = `confirm:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.registerAlias}:${orderId}`;
+        const key = `confirm:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${orderId}`;
         const existing = storageGet(key);
         if (existing) return existing;
         const generated = randomKey('cashier-ui-confirm');
@@ -314,7 +375,7 @@
     function apiHeaders(idempotencyKey = null) {
         const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders(true) : { 'Content-Type': 'application/json' };
         if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
-        headers['X-Cashier-Pilot-Scope'] = `${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.registerAlias}`;
+        headers['X-Cashier-Pilot-Scope'] = `${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}`;
         return headers;
     }
 
@@ -353,6 +414,8 @@
         return {
             tender: state.tender,
             crmProfileKey: PILOT_SCOPE.crmProfileKey,
+            locationAlias: PILOT_SCOPE.locationAlias,
+            registerAlias: PILOT_SCOPE.registerAlias,
             admissionTicket: {
                 date,
                 banquetGuests: kids,
@@ -414,11 +477,17 @@
         state.tender = result.order?.sourceSnapshot?.tender || (result.order?.paymentMethod === 'card_terminal' ? 'card_terminal_manual' : 'cash');
         state.confirmSubmitted = orderBlocksPayment(result.order);
         // Keep confirmation fail-closed while the order's register-wide safety context is refreshed.
-        // Rendering the draft before this transition creates a brief false-ready focus window.
-        state.unresolvedQueueState = 'checking';
-        state.unresolvedLastError = null;
-        renderUnresolvedOrders();
-        renderReadinessState();
+        // Rendering a new draft before this transition creates a brief false-ready focus window.
+        // Existing paid orders keep the last visible queue snapshot during silent polling to avoid UI blinking.
+        const orderChanged = String(currentOrder?.id || '') !== String(result.order?.id || '');
+        const newUnpaidDraft = orderChanged && normalizeStatus(result.order?.paymentStatus) === 'unpaid';
+        if (!silent || newUnpaidDraft || !unresolvedQueueIsFresh()) {
+            if (newUnpaidDraft) state.unresolvedForceOpenChecking = true;
+            state.unresolvedQueueState = 'checking';
+            state.unresolvedLastError = null;
+            renderUnresolvedOrders();
+            renderReadinessState();
+        }
         syncTenderControls();
         renderOrder(result);
         await loadPilotRegisterState({ silent: true });
@@ -426,13 +495,14 @@
         await loadUnresolvedOrders({ silent: true });
         if (loadGeneration !== state.orderLoadGeneration) return state.orderDetails;
         syncOrderPolling(result.order);
+        if (FISCAL_DONE_STATUSES.has(effectiveFiscalStatus(result.order))) refreshReceiptHistoryIfVisible();
         if (!silent) notify('Оплату завантажено.', 'success');
         return result;
     }
 
     async function loadPilotRegisterState({ silent = false } = {}) {
         try {
-            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
+            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias });
             const result = await apiRequest(`/api/payments/pilot-register-state?${params.toString()}`, {
                 method: 'GET',
                 headers: apiHeaders(),
@@ -476,7 +546,7 @@
             await apiRequest('/api/payments/readiness/probe', {
                 method: 'POST',
                 headers: apiHeaders(),
-                body: JSON.stringify({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias, force }),
+                body: JSON.stringify({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias, force }),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
             const result = await loadPilotRegisterState({ silent: true });
@@ -665,7 +735,7 @@
         if (hasOfficialReceipt) forgetPendingOrder(order.id);
         if (message) {
             if (hasOfficialReceipt) message.textContent = '\u041e\u0444\u0456\u0446\u0456\u0439\u043d\u0438\u0439 \u0447\u0435\u043a Checkbox \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e. RCP-* \u043b\u0438\u0448\u0430\u0454\u0442\u044c\u0441\u044f \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044c\u043e\u044e \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u0454\u044e Event Genix.';
-            else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = '\u0424\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u044f \u043e\u0447\u0456\u043a\u0443\u0454 \u0430\u0431\u043e \u043c\u0430\u0454 \u043d\u0435\u0432\u0456\u0434\u043e\u043c\u0438\u0439 \u0441\u0442\u0430\u043d. \u041f\u043e\u0432\u0442\u043e\u0440\u043d\u0430 \u043e\u043f\u043b\u0430\u0442\u0430 \u0437\u0430\u0431\u043b\u043e\u043a\u043e\u0432\u0430\u043d\u0430.';
+            else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = 'Чек очікує Checkbox або буде повтор. Оплата вже зафіксована, тому повторно приймати гроші за цей RCP не можна.';
             else message.textContent = '\u041f\u0456\u0441\u043b\u044f \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043e\u043f\u043b\u0430\u0442\u0438 \u0441\u0435\u0440\u0432\u0435\u0440 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u044c \u043e\u0434\u043d\u0443 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0437\u0430\u0434\u0430\u0447\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.';
         }
         if (pendingNotice) {
@@ -680,6 +750,7 @@
             const visibleLinks = Array.from(links.querySelectorAll('a')).some(link => !link.classList.contains('hidden'));
             links.classList.toggle('hidden', !hasOfficialReceipt || !visibleLinks);
         }
+        syncFlowOverview();
     }
 
     function pendingOrderIds() {
@@ -722,8 +793,10 @@
             ? state.unresolvedRegisterCount
             : state.unresolvedLastKnownSummary.registerCount;
         const remainingCount = Math.max(0, Number(knownTotal || 0) - ids.length);
+        const recoverySubject = ids.length === 1 ? 'Він залишається' : 'Вони залишаються';
+        const repeatSubject = ids.length === 1 ? 'нього' : 'них';
         pendingNotice.textContent = ids.length
-            ? `Незавершені чеки: ${ids.map(id => `RCP-${id}`).join(', ')}${remainingCount ? ` та ще ${remainingCount}` : ''}. Вони залишаються у серверній черзі нижче; повторну оплату для них не створюйте.`
+            ? `Чек очікує Checkbox / буде повтор: ${ids.map(id => `RCP-${id}`).join(', ')}${remainingCount ? ` та ще ${remainingCount}` : ''}. ${recoverySubject} у серверній черзі нижче; повторну оплату для ${repeatSubject} не створюйте.`
             : '';
     }
 
@@ -892,14 +965,36 @@
             ? (count > 0 ? `${count} незавершених` : 'немає')
             : (labels[queueState] || 'не перевірено');
         const needsAttention = queueState !== 'available' || count > 0;
+        const shouldAutoOpen = count > 0
+            || queueState === 'unavailable'
+            || queueState === 'stale'
+            || (queueState === 'checking' && state.unresolvedForceOpenChecking === true);
         panel.classList.toggle('has-warning', needsAttention);
-        if (needsAttention) {
-            if (!panel.open) panel.dataset.safetyOpened = 'true';
+        if (shouldAutoOpen) {
+            if (!panel.open) panel.dataset.safetyOpened = count > 0 ? 'unresolved' : queueState;
             panel.open = true;
-        } else if (panel.dataset.safetyOpened === 'true') {
+        } else if (queueState === 'available' && count === 0 && panel.dataset.safetyOpened && panel.dataset.safetyOpened !== 'unresolved') {
             panel.open = false;
             delete panel.dataset.safetyOpened;
+            state.unresolvedForceOpenChecking = false;
+        } else {
+            delete panel.dataset.safetyOpened;
+            if (queueState === 'available') state.unresolvedForceOpenChecking = false;
         }
+    }
+
+    function renderUnresolvedOrderButton(order = {}) {
+        return `
+            <button type="button" class="cashier-unresolved-item cashier-unresolved-item--receipt" data-order-id="${escapeAttribute(order.id)}" aria-label="${escapeAttribute(unresolvedOrderAccessibleLabel(order))}">
+                <span class="cashier-receipt-id"><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(formatUnresolvedOwnership(order))}</small></span>
+                <span class="cashier-receipt-money">${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
+                <span>${escapeHtml(formatPaymentMethod(order.paymentMethod || order.tender))}</span>
+                <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
+                <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
+                <span class="cashier-recovery-text">${escapeHtml(formatRecoveryText(order))}</span>
+                <span class="cashier-recovery-reason">${escapeHtml(formatIncidentReason(order.incidentReason))}</span>
+            </button>
+        `;
     }
 
     function renderUnresolvedOrders() {
@@ -924,22 +1019,14 @@
                 ${alertMarkup}
                 ${lastKnownRegisterCount ? `<div class="cashier-report-grid" aria-label="Останній відомий підсумок незавершених чеків"><div><dt>Мої чеки</dt><dd>${lastKnownMyCount}</dd></div><div><dt>Вся каса</dt><dd>${lastKnownRegisterCount}</dd></div></div>` : ''}
                 ${lastKnown.length ? '<p class="cashier-muted">Останній відомий список збережено нижче, але під час перевірки він може змінитися.</p>' : '<p class="cashier-empty">Останнього відомого списку немає. Це не означає, що незавершених чеків немає.</p>'}
-                ${lastKnown.length ? `<div class="cashier-unresolved-list">${lastKnown.map(order => `
-                    <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="${escapeAttribute(unresolvedOrderAccessibleLabel(order))}">
-                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(formatUnresolvedOwnership(order))}</small></span>
-                        <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
-                        <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
-                        <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
-                        <span>${order.nextRunAt ? `наступна спроба ${escapeHtml(formatKyivDateTime(order.nextRunAt))}` : 'стан відновлення ще невідомий'}</span>
-                        <span>${escapeHtml(formatIncidentReason(order.incidentReason))}</span>
-                    </button>
-                `).join('')}</div>` : ''}
+                ${lastKnown.length ? `<div class="cashier-unresolved-list">${lastKnown.map(order => renderUnresolvedOrderButton(order)).join('')}</div>` : ''}
             `;
             renderPendingOrdersNotice();
             syncCreateAvailability();
             syncConfirmationAvailability();
             renderPhase1ShiftState();
             syncUnresolvedControls();
+            syncFlowOverview();
             return;
         }
         if (!orders.length) {
@@ -947,6 +1034,7 @@
             renderPendingOrdersNotice();
             renderPhase1ShiftState();
             syncUnresolvedControls();
+            syncFlowOverview();
             return;
         }
         const myCount = Number(state.unresolvedMyCount || 0);
@@ -958,20 +1046,12 @@
                 <div><dt>Показано</dt><dd>${orders.length}/${registerCount}</dd></div>
             </div>
             <div class="cashier-unresolved-list">
-                ${orders.map(order => `
-                    <button type="button" class="cashier-unresolved-item" data-order-id="${escapeAttribute(order.id)}" aria-label="${escapeAttribute(unresolvedOrderAccessibleLabel(order))}">
-                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(formatUnresolvedOwnership(order))}</small></span>
-                        <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
-                        <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
-                        <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
-                        <span>${order.nextRunAt ? `наступна спроба ${escapeHtml(formatKyivDateTime(order.nextRunAt))}` : 'очікує автоматичного відновлення'}</span>
-                        <span>${escapeHtml(formatIncidentReason(order.incidentReason))}</span>
-                    </button>
-                `).join('')}
+                ${orders.map(order => renderUnresolvedOrderButton(order)).join('')}
             </div>`;
         renderPendingOrdersNotice();
         renderPhase1ShiftState();
         syncUnresolvedControls();
+        syncFlowOverview();
     }
 
     function unresolvedOrderAccessibleLabel(order = {}) {
@@ -994,15 +1074,23 @@
     async function loadUnresolvedOrders({ silent = false, append = false } = {}) {
         if (state.unresolvedInFlight) return state.unresolvedOrders;
         clearUnresolvedRefreshTimer();
+        const keepVisibleSnapshot = silent
+            && !append
+            && state.unresolvedQueueState === 'available'
+            && unresolvedQueueIsFresh();
         state.unresolvedInFlight = true;
-        state.unresolvedQueueState = 'checking';
+        if (!keepVisibleSnapshot) state.unresolvedQueueState = 'checking';
         state.unresolvedLastError = null;
-        renderUnresolvedOrders();
-        renderReadinessState();
+        if (keepVisibleSnapshot) {
+            syncUnresolvedControls();
+        } else {
+            renderUnresolvedOrders();
+            renderReadinessState();
+        }
         let retryDelayMs = null;
         let restartAfterSnapshotChange = false;
         try {
-            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
+            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias });
             const requestedPage = append ? Math.max(1, Number(state.unresolvedPage || 0) + 1) : 1;
             params.set('page', String(requestedPage));
             params.set('pageSize', String(UNRESOLVED_PAGE_SIZE));
@@ -1094,11 +1182,35 @@
         }
     }
 
+    function renderReceiptHistoryActions(order = {}) {
+        const taxUrlTrusted = isTrustedCheckboxUrl(order.providerTaxUrl);
+        const links = [
+            { href: taxUrlTrusted ? order.providerTaxUrl : null, label: 'Чек' },
+            { href: order.providerPdfUrl, label: 'PDF' },
+            { href: order.providerQrUrl, label: 'QR' }
+        ].filter(link => isTrustedCheckboxUrl(link.href));
+        if (!links.length) return '<span class="cashier-history-empty-artifact">офіційний артефакт ще недоступний</span>';
+        return `<span class="cashier-history-actions">${links.map(link => `<a class="btn-page-secondary cashier-history-link" target="_blank" rel="noopener" href="${escapeAttribute(link.href)}">${escapeHtml(link.label)}</a>`).join('')}</span>`;
+    }
+
+    function renderReceiptHistoryRow(order = {}) {
+        return `
+            <div class="cashier-history-item">
+                <span class="cashier-receipt-id"><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.confirmedAt ? formatKyivDateTime(order.confirmedAt) : 'час не підтверджено')}</small></span>
+                <span>${escapeHtml(formatPaymentMethod(order.paymentMethod))}</span>
+                <span class="cashier-receipt-money">${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
+                <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
+                <span class="cashier-recovery-text">${escapeHtml(formatRecoveryText(order))}</span>
+                ${renderReceiptHistoryActions(order)}
+            </div>
+        `;
+    }
+
     function renderCheckboxSalesReport(report) {
         const body = $('checkboxSalesReportBody');
         if (!body) return;
         if (!report) {
-            body.textContent = 'Звіт не завантажено.';
+            body.textContent = 'Історію чеків ще не завантажено.';
             return;
         }
         const totals = report.totals || {};
@@ -1115,9 +1227,13 @@
         if (fiscalizedIds.size) {
             replacePendingOrderIds(pendingOrderIds().filter(id => !fiscalizedIds.has(String(id))));
         }
+        state.receiptHistoryLoaded = true;
+        state.lastReportRefreshAt = Date.now();
+        const badge = $('checkboxSalesReportSummaryBadge');
+        if (badge) badge.textContent = totalCount ? `${totalCount} чеків · лише перегляд` : 'чеків немає · лише перегляд';
         body.innerHTML = `
             <dl class="cashier-report-grid">
-                <div><dt>Оплати</dt><dd>${escapeHtml(formatMoneyMinor(totals.paymentTotalMinor || 0))}</dd></div>
+                <div><dt>Оплати всього</dt><dd>${escapeHtml(formatMoneyMinor(totals.paymentTotalMinor || 0))}</dd></div>
                 <div><dt>Готівка</dt><dd>${escapeHtml(formatMoneyMinor(totals.cashTotalMinor || 0))}</dd></div>
                 <div><dt>Термінал</dt><dd>${escapeHtml(formatMoneyMinor(totals.cardTerminalTotalMinor || 0))}</dd></div>
                 <div><dt>Фіскалізовано</dt><dd>${Number(counts.fiscalized || 0)}</dd></div>
@@ -1126,17 +1242,10 @@
                 <div><dt>Сторінка</dt><dd>${page} · ${orders.length}/${totalCount}</dd></div>
             </dl>
             <p class="cashier-muted">Суми пораховані по всьому фільтру, не лише по ${pageSize} рядках поточної сторінки. Це внутрішній звіт, не Z-звіт.</p>
-            <div class="cashier-unresolved-list">
-                ${orders.map(order => `
-                    <div class="cashier-unresolved-item">
-                        <span><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.confirmedAt ? formatKyivDateTime(order.confirmedAt) : '')}</small></span>
-                        <span>${escapeHtml(order.paymentMethod === 'card_terminal' ? 'термінал' : 'готівка')}</span>
-                        <span>${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
-                        <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
-                        ${isTrustedCheckboxUrl(order.providerTaxUrl) ? `<a class="btn-page-secondary" target="_blank" rel="noopener" href="${escapeAttribute(order.providerTaxUrl)}">Відкрити чек</a>` : '<span></span>'}
-                    </div>
-                `).join('') || '<p class="cashier-empty">Оплачених продажів ще немає.</p>'}
+            <div class="cashier-history-list" aria-label="Історія чеків цієї каси">
+                ${orders.map(order => renderReceiptHistoryRow(order)).join('') || '<p class="cashier-empty">Оплачених продажів за цим фільтром ще немає.</p>'}
             </div>`;
+        renderPendingOrdersNotice();
     }
 
     async function loadCheckboxSalesReport({ silent = false } = {}) {
@@ -1147,10 +1256,10 @@
         setButtonBusy(button, true, 'Формуємо звіт…');
         if (body) {
             body.setAttribute('aria-busy', 'true');
-            body.textContent = 'Формуємо звіт…';
+            if (!silent || !state.receiptHistoryLoaded) body.textContent = 'Формуємо звіт…';
         }
         try {
-            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, registerAlias: PILOT_SCOPE.registerAlias });
+            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias });
             const dateFrom = $('checkboxReportDateFrom')?.value || '';
             const dateTo = $('checkboxReportDateTo')?.value || '';
             const shiftId = $('checkboxReportShiftId')?.value || '';
@@ -1167,9 +1276,9 @@
                 headers: apiHeaders()
             });
             renderCheckboxSalesReport(result);
-            if (!silent) notify('Внутрішній звіт продажів Checkbox завантажено.', 'success');
+            if (!silent) notify('Історію чеків завантажено.', 'success');
         } catch (error) {
-            if (body) body.textContent = 'Не вдалося завантажити звіт. Спробуйте ще раз.';
+            if (body) body.textContent = 'Не вдалося завантажити історію чеків. Спробуйте ще раз.';
             if (!silent) notify(paymentUiError(error), 'error');
         } finally {
             state.reportInFlight = false;
@@ -1199,6 +1308,12 @@
         el.classList.toggle('hidden', !visible);
         if (visible) el.href = href;
         else el.removeAttribute('href');
+    }
+
+    function refreshReceiptHistoryIfVisible() {
+        const panel = $('checkboxSalesReportPanel');
+        if (!panel?.open && !state.receiptHistoryLoaded) return;
+        void loadCheckboxSalesReport({ silent: true });
     }
 
     function renderRegisterState(result) {
@@ -1378,6 +1493,7 @@
         panel.classList.toggle('is-blocked', !ready);
         panel.classList.toggle('cashier-alert-warning', !ready);
         panel.setAttribute('aria-busy', state.readinessInFlight ? 'true' : 'false');
+        syncFlowOverview();
     }
 
     function setDisabledReason(el, disabled, reason) {
@@ -1476,7 +1592,7 @@
                 checkbox_certificate_unavailable: 'Сертифікат Checkbox недоступний.',
                 readiness_stale: 'Готовність Checkbox застаріла. Оновіть її перед закриттям зміни.',
                 readiness_missing: 'Готовність Checkbox ще не підтверджена.',
-                phase1_close_requires_payment_drain: 'Спочатку відповідальний має зупинити приймання нових оплат. Уже оплачені чеки треба дочекатися й лише потім закривати зміну.',
+                phase1_close_requires_payment_drain: 'Закриття недоступне: спочатку зупиніть нові оплати, дочекайтеся завершення чеків і оновіть стан зміни.',
                 global_integration_disabled: 'Інтеграція Checkbox вимкнена.',
                 register_disabled: 'Цю касу вимкнено в налаштуваннях інтеграції.',
                 credentials_missing: 'Доступи Checkbox не налаштовані на сервері.',
@@ -1764,6 +1880,7 @@
             if (result.order?.id) storageSet('lastOrderId', result.order.id);
             await loadPaymentOrder(result.order?.id || orderId, { silent: true });
             await loadUnresolvedOrders({ silent: true });
+            refreshReceiptHistoryIfVisible();
             notify(result.replayed ? 'Це саме підтвердження безпечно оброблено повторно.' : '\u041e\u043f\u043b\u0430\u0442\u0443 \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043e. \u0427\u0435\u043a \u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0447\u0435\u0440\u0433\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.', 'success');
             syncOrderPolling(state.orderDetails?.order);
             focusFiscalResult();
@@ -1819,7 +1936,7 @@
         clearCreateIdempotencyKey();
         storageRemove('lastOrderId');
         const currentOrderId = state.orderDetails?.order?.id;
-        if (currentOrderId) storageRemove(`confirm:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.registerAlias}:${currentOrderId}`);
+        if (currentOrderId) storageRemove(`confirm:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${currentOrderId}`);
         state.orderDetails = null;
         state.confirmSubmitted = false;
         state.confirmInFlight = false;
@@ -1887,6 +2004,13 @@
             day: '2-digit'
         }).format(new Date());
         if ($('paymentDate') && !$('paymentDate').value) $('paymentDate').value = today;
+        if ($('checkboxReportDateFrom') && !$('checkboxReportDateFrom').value) $('checkboxReportDateFrom').value = today;
+        if ($('checkboxReportDateTo') && !$('checkboxReportDateTo').value) $('checkboxReportDateTo').value = today;
+        ['checkboxReportDateFrom', 'checkboxReportDateTo', 'checkboxReportShiftId', 'checkboxReportCashierUserId'].forEach(id => {
+            $(id)?.addEventListener('change', () => {
+                if ($('checkboxReportPage')) $('checkboxReportPage').value = '1';
+            });
+        });
     }
 
     function setDenied(message) {

@@ -18,7 +18,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
-<body data-page="cashier-payments" data-page-group="sales" data-pilot-scope="event_genix:middle">
+<body data-page="cashier-payments" data-page-group="sales" data-pilot-scope="event_genix:park:middle">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();</script>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <div id="loginOverlay" class="page-login-overlay hidden"><a href="/">Увійти</a></div>
@@ -56,6 +56,25 @@
                 </details>
                 <div class="cashier-toolbar-row" aria-label="Керування готовністю Checkbox">
                     <button type="button" id="refreshReadinessBtn" class="btn-page-secondary btn-page-toolbar" aria-describedby="cashierReadinessSummary" aria-controls="cashierReadinessDetails">Оновити готовність Checkbox</button>
+                </div>
+            </section>
+
+            <section id="cashierFlowOverview" class="cashier-flow-overview" aria-label="Стан касового процесу">
+                <div class="cashier-flow-node is-active" data-flow-node="readiness">
+                    <span class="cashier-flow-number">1</span>
+                    <span><strong>Готовність каси</strong><small id="cashierFlowReadiness">перевіряємо</small></span>
+                </div>
+                <div class="cashier-flow-node" data-flow-node="order">
+                    <span class="cashier-flow-number">2</span>
+                    <span><strong>Оплата</strong><small id="cashierFlowOrder">створіть оплату</small></span>
+                </div>
+                <div class="cashier-flow-node" data-flow-node="receipt">
+                    <span class="cashier-flow-number">3</span>
+                    <span><strong>Чек Checkbox</strong><small id="cashierFlowReceipt">очікує дії</small></span>
+                </div>
+                <div class="cashier-flow-node" data-flow-node="recovery">
+                    <span class="cashier-flow-number">4</span>
+                    <span><strong>Контроль</strong><small id="cashierFlowRecovery">черга перевіряється</small></span>
                 </div>
             </section>
 
@@ -156,12 +175,12 @@
 
             <details id="checkboxSalesReportPanel" class="cashier-card cashier-result-card cashier-secondary-disclosure" aria-labelledby="checkboxSalesReportTitle">
                 <summary class="cashier-card-head cashier-disclosure-summary">
-                    <span class="cashier-disclosure-heading"><span class="cashier-kicker">Звіт</span><span id="checkboxSalesReportTitle" role="heading" aria-level="2">Продажі Checkbox</span></span>
-                    <span class="cashier-pill">лише перегляд</span>
+                    <span class="cashier-disclosure-heading"><span class="cashier-kicker">Історія</span><span id="checkboxSalesReportTitle" role="heading" aria-level="2">Історія чеків</span></span>
+                    <span id="checkboxSalesReportSummaryBadge" class="cashier-pill">Продажі Checkbox · лише перегляд</span>
                 </summary>
                 <div class="cashier-disclosure-body">
-                    <p class="cashier-muted">Внутрішній звіт Event Genix лише для перегляду. Це не офіційний Z-звіт і він не створює фінансових операцій.</p>
-                    <div class="cashier-report-filters" aria-label="Фільтри продажів Checkbox">
+                    <p class="cashier-muted">Внутрішній звіт Event Genix лише для перегляду: показує чеки цієї каси, посилання на офіційні артефакти Checkbox і не створює фінансових операцій. Це не офіційний Z-звіт.</p>
+                    <div class="cashier-report-filters" aria-label="Фільтри історії чеків">
                         <label class="cashier-field"><span>Дата від</span><input id="checkboxReportDateFrom" type="date"></label>
                         <label class="cashier-field"><span>Дата до</span><input id="checkboxReportDateTo" type="date"></label>
                         <label class="cashier-field"><span>ID зміни</span><input id="checkboxReportShiftId" type="number" min="1" step="1" inputmode="numeric"></label>
@@ -169,9 +188,9 @@
                         <label class="cashier-field"><span>Сторінка</span><input id="checkboxReportPage" type="number" min="1" step="1" value="1" inputmode="numeric"></label>
                     </div>
                     <div class="cashier-toolbar-row">
-                        <button type="button" id="loadCheckboxSalesReportBtn" class="btn-page-secondary btn-page-toolbar" aria-controls="checkboxSalesReportBody">Показати звіт</button>
+                        <button type="button" id="loadCheckboxSalesReportBtn" class="btn-page-secondary btn-page-toolbar" aria-controls="checkboxSalesReportBody">Завантажити історію чеків</button>
                     </div>
-                    <div id="checkboxSalesReportBody" class="cashier-report-body" aria-live="polite">Звіт не завантажено.</div>
+                    <div id="checkboxSalesReportBody" class="cashier-report-body" aria-live="polite">Історію чеків ще не завантажено.</div>
                 </div>
             </details>
         </main>

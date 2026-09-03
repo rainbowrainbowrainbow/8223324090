@@ -380,9 +380,9 @@ test('cashier read models remove provider and ledger identities without hiding o
         }]
     };
     const projectedQueue = cashierProjection.projectUnresolvedOrdersForViewer(cashier, unresolved);
-    assert.equal(projectedQueue.fiscalProfileId, 1);
-    assert.equal(projectedQueue.fiscalLocationId, 2);
-    assert.equal(projectedQueue.fiscalRegisterId, 3);
+    assert.equal(projectedQueue.fiscalProfileId, undefined);
+    assert.equal(projectedQueue.fiscalLocationId, undefined);
+    assert.equal(projectedQueue.fiscalRegisterId, undefined);
     assert.equal(projectedQueue.registerWide, true);
     assert.equal(projectedQueue.orders[0].paymentStatus, 'confirmed');
     assert.equal(projectedQueue.orders[0].fiscalStatus, 'unknown');
@@ -1306,7 +1306,7 @@ test('cashier UI fails closed when unresolved queue is unavailable and refreshes
     assert.match(js, /state\.unresolvedQueueState === 'available'/);
     assert.match(js, /\/api\/payments\/readiness\/probe/);
     assert.match(js, /await loadPilotRegisterState\(\{ silent: true \}\)/);
-    assert.match(js, /JSON\.stringify\(\{ crmProfileKey: PILOT_SCOPE\.crmProfileKey, registerAlias: PILOT_SCOPE\.registerAlias, force \}\)/);
+    assert.match(js, /JSON\.stringify\(\{ crmProfileKey: PILOT_SCOPE\.crmProfileKey, locationAlias: PILOT_SCOPE\.locationAlias, registerAlias: PILOT_SCOPE\.registerAlias, force \}\)/);
     assert.match(js, /READINESS_REFRESH_MIN_MS/);
     assert.match(js, /READINESS_REFRESH_MAX_MS/);
     assert.match(js, /READINESS_REQUEST_TIMEOUT_MS/);
@@ -1376,6 +1376,7 @@ test('unresolved queue is register-wide with latest-job dedupe and mine markers'
     assert.doesNotMatch(listBlock, /po\.cashier_user_id = \$3/);
     assert.match(listBlock, /po\.fiscal_profile_id = \$1/);
     assert.match(listBlock, /po\.fiscal_register_id = \$2/);
+    assert.match(service, /fl\.location_alias = \$2/);
     assert.match(listBlock, /isMine:/);
     assert.match(listBlock, /cashierIdentity:/);
     assert.match(listBlock, /COUNT\(\*\)::integer AS register_count/);
@@ -1420,6 +1421,33 @@ test('Checkbox sales report is filterable, paginated, and totals are not limited
     assert.match(js, /params\.set\('pageSize', '50'\)/);
     assert.match(js, /Суми пораховані по всьому фільтру/);
     assert.doesNotMatch(js, /Z-звіт[^.]*офіційний/, 'Internal report must not be presented as an official Z-report');
+});
+
+test('cashier payment routes require exact fiscal scope and do not default to park FOP', () => {
+    const routes = read('routes/payments.js');
+    const js = read('js/cashier-payments-page.js');
+    const readiness = read('services/payments/paymentReadinessService.js');
+    const paymentService = read('services/payments/paymentService.js');
+    assert.match(routes, /function requirePaymentFiscalScope/);
+    assert.match(routes, /locationAlias: fiscalScopeValueFromRequest\(req, 'locationAlias', 'location_alias'\)/);
+    assert.match(routes, /throw new PaymentReadinessError\('fiscal_scope_required'/);
+    assert.doesNotMatch(routes, /\|\| 'event_genix'/);
+    assert.doesNotMatch(routes, /\|\| 'middle'/);
+    assert.match(js, /locationAlias: 'park'/);
+    assert.match(js, /X-Cashier-Pilot-Scope'\] = `\$\{PILOT_SCOPE\.crmProfileKey\}:\$\{PILOT_SCOPE\.locationAlias\}:\$\{PILOT_SCOPE\.registerAlias\}`/);
+    assert.match(paymentService, /function normalizeRequiredPaymentScope/);
+    assert.match(paymentService, /fiscal_location_alias_required/);
+    assert.match(paymentService, /const fiscalScope = normalizeRequiredPaymentScope\(body\)/);
+    assert.doesNotMatch(paymentService, /crm_profile_not_supported_for_pilot/);
+    assert.doesNotMatch(paymentService, /crmProfileKey = PILOT_CRM_PROFILE_KEY/);
+    assert.doesNotMatch(paymentService, /locationAlias = PILOT_LOCATION_ALIAS/);
+    assert.doesNotMatch(paymentService, /registerAlias = PILOT_REGISTER_ALIAS/);
+    assert.match(readiness, /function normalizeFiscalScope/);
+    assert.match(readiness, /fiscal_location_alias_required/);
+    assert.match(readiness, /fiscalLocationId: Number\(scope\.mapping\?\.fiscal_location_id/);
+    assert.doesNotMatch(readiness, /crmProfileKey = PILOT_CRM_PROFILE_KEY/);
+    assert.doesNotMatch(readiness, /locationAlias = PILOT_LOCATION_ALIAS/);
+    assert.doesNotMatch(readiness, /registerAlias = PILOT_REGISTER_ALIAS/);
 });
 
 test('Checkbox sales report rejects fractional pagination and impossible date filters before PostgreSQL', async () => {

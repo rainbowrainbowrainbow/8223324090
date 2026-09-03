@@ -1,7 +1,7 @@
 'use strict';
 
 const { canUseAction } = require('../../middleware/auth');
-const { canAccessBusinessContext, normalizeBusinessContext } = require('../businessContext');
+const { canAccessBusinessContext, normalizeKnownBusinessContext } = require('../businessContext');
 const { assertApprovalUsable } = require('./fiscalApprovals');
 
 const PAYMENT_FISCAL_CAPABILITIES = Object.freeze([
@@ -113,7 +113,13 @@ function assertFiscalBindingScope({ user, binding, fiscalProfileId, crmProfileKe
     if (registerLocationId && registerLocationId !== requestedLocationId) {
         throw new FiscalAccessError('fiscal_register_wrong_location', 'Fiscal register does not belong to the requested fiscal location');
     }
-    if (!canAccessBusinessContext(user, normalizeBusinessContext(requestedProfileKey))) {
+    const knownRequestedProfileKey = normalizeKnownBusinessContext(requestedProfileKey);
+    if (!knownRequestedProfileKey || knownRequestedProfileKey !== requestedProfileKey) {
+        throw new FiscalAccessError('fiscal_business_context_unknown', 'Fiscal business context is unknown', {
+            crmProfileKey: requestedProfileKey
+        });
+    }
+    if (!canAccessBusinessContext(user, knownRequestedProfileKey)) {
         throw new FiscalAccessError('fiscal_business_context_denied', 'User cannot access the requested CRM profile');
     }
 

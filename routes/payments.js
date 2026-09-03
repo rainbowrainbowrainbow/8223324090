@@ -25,6 +25,7 @@ const {
     applyPhase1CloseReadiness
 } = require('../services/payments/cashierOperationsService');
 const {
+    PaymentReadinessError,
     loadCheckboxSalesReport,
     listUnresolvedPaymentOrders,
     loadOperationalHealth,
@@ -42,6 +43,32 @@ router.use(authenticateToken);
 
 function idempotencyKeyFromRequest(req) {
     return req.get('Idempotency-Key') || req.get('idempotency-key') || '';
+}
+
+function fiscalScopeValueFromRequest(req, camelKey, snakeKey) {
+    return req.body?.[camelKey]
+        ?? req.body?.[snakeKey]
+        ?? req.query?.[camelKey]
+        ?? req.query?.[snakeKey]
+        ?? null;
+}
+
+function requirePaymentFiscalScope(req) {
+    const scope = {
+        crmProfileKey: fiscalScopeValueFromRequest(req, 'crmProfileKey', 'crm_profile_key'),
+        locationAlias: fiscalScopeValueFromRequest(req, 'locationAlias', 'location_alias'),
+        registerAlias: fiscalScopeValueFromRequest(req, 'registerAlias', 'register_alias')
+    };
+    const missing = Object.entries(scope)
+        .filter(([, value]) => String(value ?? '').trim() === '')
+        .map(([key]) => key);
+    if (missing.length) {
+        throw new PaymentReadinessError('fiscal_scope_required', 'Fiscal profile, location, and register scope are required', {
+            status: 422,
+            details: { missing }
+        });
+    }
+    return scope;
 }
 
 function projectReadinessForViewer(_user, readiness = {}) {
@@ -165,8 +192,14 @@ function projectReadinessErrorForViewer(_user, response = {}) {
 }
 
 function projectUnresolvedOrdersForViewer(_user, result = {}) {
+    const {
+        fiscalProfileId,
+        fiscalLocationId,
+        fiscalRegisterId,
+        ...publicResult
+    } = result || {};
     return {
-        ...result,
+        ...publicResult,
         orders: Array.isArray(result.orders) ? result.orders.map(order => {
             const {
                 orderKey,
@@ -181,7 +214,7 @@ function projectUnresolvedOrdersForViewer(_user, result = {}) {
 }
 
 function projectSalesReportForViewer(_user, result = {}) {
-    const { fiscalProfileId, fiscalRegisterId, ...publicResult } = result;
+    const { fiscalProfileId, fiscalLocationId, fiscalRegisterId, ...publicResult } = result;
     return {
         ...publicResult,
         orders: Array.isArray(result.orders) ? result.orders.map(order => {
@@ -237,7 +270,7 @@ function projectIncidentsForViewer(_user, result = {}) {
 }
 
 function projectOperationalHealthForViewer(_user, result = {}) {
-    const { fiscalProfileId, fiscalRegisterId, ...publicResult } = result;
+    const { fiscalProfileId, fiscalLocationId, fiscalRegisterId, ...publicResult } = result;
     return publicResult;
 }
 
@@ -336,18 +369,15 @@ router.post('/orders/:orderId/cancel', requireAction('payments.create'), async (
 
 router.get('/pilot-register-state', requireAction('payments.view'), async (req, res) => {
     try {
-        const crmProfileKey = req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix';
-        const registerAlias = req.query.registerAlias || req.query.register_alias || 'middle';
+        const scope = requirePaymentFiscalScope(req);
         const [localState, readiness] = await Promise.all([
             loadPilotRegisterState({
                 user: req.user,
-                crmProfileKey,
-                registerAlias
+                ...scope
             }),
             loadReadinessState({
                 user: req.user,
-                crmProfileKey,
-                registerAlias
+                ...scope
             })
         ]);
         const phase1Close = applyPhase1CloseReadiness(localState.phase1Close, readiness);
@@ -363,10 +393,10 @@ router.get('/pilot-register-state', requireAction('payments.view'), async (req, 
 
 router.post('/readiness/probe', requireAction('payments.view'), async (req, res) => {
     try {
+        const scope = requirePaymentFiscalScope(req);
         const result = await probeCheckboxReadiness({
             user: req.user,
-            crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle',
+            ...scope,
             force: req.body?.force === true || req.body?.force === 'true' || req.query.force === 'true'
         });
         return res.status(200).json({ success: true, ...projectReadinessForViewer(req.user, result) });
@@ -384,10 +414,10 @@ router.get('/unresolved-orders', requireAction('payments.view'), async (req, res
             cursor: req.query.cursor,
             snapshotRevision: req.query.snapshotRevision ?? req.query.snapshot_revision
         });
+        const scope = requirePaymentFiscalScope(req);
         const result = await listUnresolvedPaymentOrders({
             user: req.user,
-            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
+            ...scope,
             ...pagination
         });
         return res.status(200).json({ success: true, ...projectUnresolvedOrdersForViewer(req.user, result) });
@@ -399,10 +429,10 @@ router.get('/unresolved-orders', requireAction('payments.view'), async (req, res
 
 router.get('/checkbox-sales-report', requireAction('payments.view'), async (req, res) => {
     try {
+        const scope = requirePaymentFiscalScope(req);
         const result = await loadCheckboxSalesReport({
             user: req.user,
-            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
+            ...scope,
             dateFrom: req.query.dateFrom || req.query.date_from || null,
             dateTo: req.query.dateTo || req.query.date_to || null,
             shiftId: req.query.shiftId || req.query.shift_id || null,
@@ -419,10 +449,10 @@ router.get('/checkbox-sales-report', requireAction('payments.view'), async (req,
 
 router.get('/operational-health', requireAction('fiscal.audit.view'), async (req, res) => {
     try {
+        const scope = requirePaymentFiscalScope(req);
         const result = await loadOperationalHealth({
             user: req.user,
-            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle'
+            ...scope
         });
         return res.status(200).json({ success: true, ...projectOperationalHealthForViewer(req.user, result) });
     } catch (error) {
@@ -433,10 +463,10 @@ router.get('/operational-health', requireAction('fiscal.audit.view'), async (req
 
 router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) => {
     try {
+        const scope = requirePaymentFiscalScope(req);
         const result = await listOperationalIncidents({
             user: req.user,
-            crmProfileKey: req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.query.registerAlias || req.query.register_alias || 'middle',
+            ...scope,
             status: req.query.status || 'open'
         });
         return res.status(200).json({ success: true, ...projectIncidentsForViewer(req.user, result) });
@@ -448,13 +478,13 @@ router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) =>
 
 router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.incident.manage'), async (req, res) => {
     try {
+        const scope = requirePaymentFiscalScope(req);
         const result = await updateOperationalIncidentStatus({
             user: req.user,
             incidentId: req.params.incidentId,
             status: 'acknowledged',
             reason: req.body?.reason || null,
-            crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle'
+            ...scope
         });
         return res.status(200).json({ success: true, ...projectIncidentsForViewer(req.user, result) });
     } catch (error) {
@@ -465,13 +495,13 @@ router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.incident
 
 router.post('/incidents/:incidentId/resolve', requireAction('fiscal.incident.manage'), async (req, res) => {
     try {
+        const scope = requirePaymentFiscalScope(req);
         const result = await updateOperationalIncidentStatus({
             user: req.user,
             incidentId: req.params.incidentId,
             status: 'resolved',
             reason: req.body?.reason || null,
-            crmProfileKey: req.body?.crmProfileKey || req.body?.crm_profile_key || req.query.crmProfileKey || req.query.crm_profile_key || 'event_genix',
-            registerAlias: req.body?.registerAlias || req.body?.register_alias || req.query.registerAlias || req.query.register_alias || 'middle'
+            ...scope
         });
         return res.status(200).json({ success: true, ...projectIncidentsForViewer(req.user, result) });
     } catch (error) {

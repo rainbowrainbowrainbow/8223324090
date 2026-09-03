@@ -6,7 +6,7 @@ const {
     AdmissionTicketError,
     resolveAdmissionTicketQuote
 } = require('../admissionTickets');
-const { normalizeBusinessContext } = require('../businessContext');
+const { normalizeKnownBusinessContext } = require('../businessContext');
 const { authorizeFiscalAction, FiscalAccessError } = require('./fiscalAccess');
 const { toPostgresBigint } = require('./money');
 const { ensureOpenShiftForSale } = require('./cashierOperationsService');
@@ -28,10 +28,47 @@ const {
 } = require('../checkbox/config');
 
 const PILOT_CRM_PROFILE_KEY = 'event_genix';
+const PILOT_LOCATION_ALIAS = 'park';
 const PILOT_REGISTER_ALIAS = 'middle';
 const ORDER_SOURCE_TYPE = 'admission_ticket';
 const OUTBOX_JOB_TYPE = 'receipt_sell';
 const WALK_IN_SOURCE_PREFIX = 'walkin_sale';
+
+function normalizeRequiredFiscalScopeValue(value, code, label) {
+    const text = String(value ?? '').trim().toLowerCase();
+    if (!text) {
+        throw new PaymentServiceError(code, `${label} is required`, { status: 422 });
+    }
+    if (!/^[a-z0-9_:-]+$/.test(text)) {
+        throw new PaymentServiceError(`${code}_invalid`, `${label} is invalid`, { status: 422 });
+    }
+    return text;
+}
+
+function normalizeRequiredPaymentScope(body = {}) {
+    const rawCrmProfileKey = body.crmProfileKey ?? body.crm_profile_key;
+    const crmProfileInput = normalizeRequiredFiscalScopeValue(rawCrmProfileKey, 'fiscal_crm_profile_required', 'CRM fiscal profile');
+    const crmProfileKey = normalizeKnownBusinessContext(crmProfileInput);
+    if (!crmProfileKey) {
+        throw new PaymentServiceError('fiscal_crm_profile_invalid', 'CRM fiscal profile is unknown', {
+            status: 422,
+            details: { crmProfileKey: crmProfileInput }
+        });
+    }
+    return {
+        crmProfileKey,
+        locationAlias: normalizeRequiredFiscalScopeValue(
+            body.locationAlias ?? body.location_alias,
+            'fiscal_location_alias_required',
+            'Fiscal location alias'
+        ),
+        registerAlias: normalizeRequiredFiscalScopeValue(
+            body.registerAlias ?? body.register_alias,
+            'fiscal_register_alias_required',
+            'Fiscal register alias'
+        )
+    };
+}
 
 class PaymentServiceError extends Error {
     constructor(code, message, { status = 400, details = null } = {}) {
@@ -107,6 +144,7 @@ function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeC
         fiscal_register_id: mapping.fiscal_register_id == null ? null : Number(mapping.fiscal_register_id),
         crm_profile_key: mapping.crm_profile_key || null,
         legal_entity_key: mapping.legal_entity_key || null,
+        location_alias: mapping.location_alias || null,
         register_alias: mapping.register_alias || null
     };
     return {
@@ -132,8 +170,6 @@ function assertNoClientFiscalOverride(body = {}) {
         'fiscal_profile_id',
         'fiscalRegisterId',
         'fiscal_register_id',
-        'registerAlias',
-        'register_alias',
         'legalEntityKey',
         'legal_entity_key',
         'fop',
@@ -178,7 +214,11 @@ function normalizePaymentOrder(row = {}) {
     return {
         id: Number(row.id),
         fiscalProfileId: Number(row.fiscal_profile_id),
+        fiscalLocationId: row.fiscal_location_id == null ? null : Number(row.fiscal_location_id),
         fiscalRegisterId: Number(row.fiscal_register_id),
+        crmProfileKey: row.crm_profile_key || row.source_snapshot?.crm_profile_key || null,
+        locationAlias: row.location_alias || row.source_snapshot?.location_alias || null,
+        registerAlias: row.register_alias || row.source_snapshot?.register_alias || null,
         sourceType: row.source_type,
         sourceId: row.source_id,
         orderKey: row.order_key,
@@ -215,13 +255,18 @@ async function withTransaction(dbPool, run) {
     }
 }
 
-async function loadPilotFiscalMapping(client, { crmProfileKey = PILOT_CRM_PROFILE_KEY, registerAlias = PILOT_REGISTER_ALIAS } = {}) {
+async function loadPilotFiscalMapping(client, {
+    crmProfileKey,
+    locationAlias,
+    registerAlias
+} = {}) {
     const result = await client.query(
         `SELECT
              fp.id AS fiscal_profile_id,
              fp.crm_profile_key,
              fp.legal_entity_key,
              fp.legal_entity_name,
+             fp.provider_organization_id,
              fp.status AS fiscal_profile_status,
              fl.id AS fiscal_location_id,
              fl.location_alias,
@@ -238,22 +283,23 @@ async function loadPilotFiscalMapping(client, { crmProfileKey = PILOT_CRM_PROFIL
            JOIN fiscal_locations fl
              ON fl.fiscal_profile_id = fp.id
             AND fl.crm_profile_key = fp.crm_profile_key
+            AND fl.location_alias = $2
             AND fl.status = 'active'
            JOIN fiscal_registers fr
              ON fr.fiscal_profile_id = fp.id
             AND fr.fiscal_location_id = fl.id
             AND fr.crm_profile_key = fp.crm_profile_key
-            AND fr.register_alias = $2
+            AND fr.register_alias = $3
             AND fr.status = 'active'
             AND fr.feature_enabled = TRUE
           WHERE fp.crm_profile_key = $1
             AND fp.status = 'active'`,
-        [crmProfileKey, registerAlias]
+        [crmProfileKey, locationAlias, registerAlias]
     );
     if (result.rows.length !== 1) {
         throw new PaymentServiceError('fiscal_mapping_ambiguous_or_missing', 'Fiscal profile/register mapping is missing or ambiguous', {
             status: 409,
-            details: { crmProfileKey, registerAlias, matches: result.rows.length }
+            details: { crmProfileKey, locationAlias, registerAlias, matches: result.rows.length }
         });
     }
     return result.rows[0];
@@ -475,6 +521,7 @@ async function loadOrderSnapshot(client, orderId) {
                 fp.legal_entity_name,
                 fp.provider_organization_id,
                 fl.id AS fiscal_location_id,
+                fl.location_alias,
                 fl.provider_outlet_id,
                 fr.register_alias,
                 fr.display_name AS register_display_name,
@@ -528,33 +575,22 @@ async function createAdmissionTicketPaymentOrder({
         throw new PaymentServiceError('checkbox_payment_acceptance_disabled', 'Checkbox payment acceptance is disabled while fiscal recovery may continue', { status: 503 });
     }
 
-    const rawCrmProfileKey = body.crmProfileKey || body.crm_profile_key || PILOT_CRM_PROFILE_KEY;
-    const rawCrmProfileText = String(rawCrmProfileKey || '').trim().toLowerCase();
-    if (rawCrmProfileText && rawCrmProfileText !== PILOT_CRM_PROFILE_KEY) {
-        throw new PaymentServiceError('crm_profile_not_supported_for_pilot', 'Only the park CRM profile is enabled for the Checkbox pilot', {
-            status: 409,
-            details: { crmProfileKey: rawCrmProfileText }
-        });
-    }
-    const crmProfileKey = normalizeBusinessContext(rawCrmProfileKey);
-    if (crmProfileKey !== PILOT_CRM_PROFILE_KEY) {
-        throw new PaymentServiceError('crm_profile_not_supported_for_pilot', 'Only the park CRM profile is enabled for the Checkbox pilot', {
-            status: 409,
-            details: { crmProfileKey }
-        });
-    }
+    const fiscalScope = normalizeRequiredPaymentScope(body);
+    const { crmProfileKey, locationAlias, registerAlias } = fiscalScope;
     const { tender, paymentMethod } = normalizeTender(body.tender || body.paymentMethod || body.payment_method);
     const admissionTicketInput = body.admissionTicket || body.admission_ticket || {};
     const requestFingerprint = fingerprint({
         endpoint: 'create_admission_ticket_payment_order',
         crmProfileKey,
+        locationAlias,
+        registerAlias,
         tender,
         admissionTicketInput
     });
 
     return withTransaction(dbPool, async client => {
         await lockPaymentIdempotency(client, key);
-        const mapping = await loadPilotFiscalMapping(client, { crmProfileKey });
+        const mapping = await loadPilotFiscalMapping(client, fiscalScope);
         await authorizer(client, {
             user,
             action: 'payments.create',
@@ -567,6 +603,7 @@ async function createAdmissionTicketPaymentOrder({
             await assertCheckboxIntegrationReady(client, {
                 user,
                 fiscalProfileId: mapping.fiscal_profile_id,
+                fiscalLocationId: mapping.fiscal_location_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 registerStatus: mapping.fiscal_register_status,
                 registerFeatureEnabled: Boolean(mapping.feature_enabled),
@@ -579,6 +616,8 @@ async function createAdmissionTicketPaymentOrder({
                 fiscalProfileId: mapping.fiscal_profile_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 crmProfileKey: mapping.crm_profile_key,
+                locationAlias: mapping.location_alias,
+                registerAlias: mapping.register_alias,
                 action: 'payments.create',
                 tender
             });
@@ -624,7 +663,7 @@ async function createAdmissionTicketPaymentOrder({
         const saleUuid = crypto.randomUUID();
         const sourceId = `${WALK_IN_SOURCE_PREFIX}_${saleUuid}`;
         const quoteFingerprint = String(quote.quoteFingerprint || fingerprint({ crmProfileKey, quote })).trim();
-        const orderKey = `${ORDER_SOURCE_TYPE}:${mapping.crm_profile_key}:${PILOT_REGISTER_ALIAS}:${sourceId}`;
+        const orderKey = `${ORDER_SOURCE_TYPE}:${mapping.crm_profile_key}:${mapping.location_alias}:${mapping.register_alias}:${sourceId}`;
         const sourceSnapshot = {
             source: ORDER_SOURCE_TYPE,
             source_mode: 'standalone_walk_in',
@@ -634,6 +673,7 @@ async function createAdmissionTicketPaymentOrder({
             logical_source_key: orderKey,
             quote,
             crm_profile_key: mapping.crm_profile_key,
+            location_alias: mapping.location_alias,
             register_alias: mapping.register_alias,
             fiscal_location_id: Number(mapping.fiscal_location_id),
             legal_entity_key: mapping.legal_entity_key,
@@ -812,9 +852,12 @@ async function confirmPaymentOrder({
             dbPool,
             user,
             fiscalProfileId: preflight.order.fiscal_profile_id,
+            fiscalLocationId: preflight.order.fiscal_location_id,
             fiscalRegisterId: preflight.order.fiscal_register_id,
             paymentOrderId: numericOrderId,
             crmProfileKey: preflight.order.crm_profile_key,
+            locationAlias: preflight.order.location_alias,
+            registerAlias: preflight.order.register_alias,
             action: 'payments.confirm_received',
             tender: immutableTender,
             env,
@@ -883,6 +926,7 @@ async function confirmPaymentOrder({
                     fp.legal_entity_name,
                     fp.provider_organization_id,
                     fl.id AS fiscal_location_id,
+                    fl.location_alias,
                     fl.provider_outlet_id,
                     fr.register_alias,
                     fr.display_name AS register_display_name,
@@ -953,6 +997,7 @@ async function confirmPaymentOrder({
                     provider_register_id: order.provider_register_id,
                     provider_license_ref: order.provider_license_ref,
                     register_expected_is_test: order.register_expected_is_test,
+                    location_alias: order.location_alias,
                     register_alias: order.register_alias
                 },
                 binding: verifiedRuntime.binding,
@@ -962,9 +1007,12 @@ async function confirmPaymentOrder({
                 client,
                 user,
                 fiscalProfileId: order.fiscal_profile_id,
+                fiscalLocationId: order.fiscal_location_id,
                 fiscalRegisterId: order.fiscal_register_id,
                 paymentOrderId: order.id,
                 crmProfileKey: order.crm_profile_key,
+                locationAlias: order.location_alias,
+                registerAlias: order.register_alias,
                 action: 'payments.confirm_received',
                 tender: immutableTender,
                 freshProviderReadiness,
@@ -989,6 +1037,7 @@ async function confirmPaymentOrder({
                     provider_register_id: order.provider_register_id,
                     provider_license_ref: order.provider_license_ref,
                     register_expected_is_test: order.register_expected_is_test,
+                    location_alias: order.location_alias,
                     register_alias: order.register_alias
                 },
                 binding: fallbackBinding,
@@ -1313,6 +1362,7 @@ function normalizePaymentOrderDetails(row = {}) {
         legalEntityKey: row.legal_entity_key,
         legalEntityName: row.legal_entity_name,
         fiscalLocationId: Number(row.fiscal_location_id),
+        locationAlias: row.location_alias,
         registerAlias: row.register_alias,
         registerDisplayName: row.register_display_name
     };
@@ -1504,6 +1554,7 @@ module.exports = {
     ORDER_SOURCE_TYPE,
     OUTBOX_JOB_TYPE,
     PILOT_CRM_PROFILE_KEY,
+    PILOT_LOCATION_ALIAS,
     PILOT_REGISTER_ALIAS,
     PaymentServiceError,
     assertNoClientFiscalOverride,

@@ -102,6 +102,74 @@
     min-width: 0;
 }
 
+.cashier-flow-overview {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(150px, 1fr));
+    gap: 12px;
+}
+
+.cashier-flow-node {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    min-width: 0;
+    padding: 14px;
+    border: 1px solid var(--gray-100);
+    border-radius: 18px;
+    background: var(--white);
+    color: var(--gray-700);
+    box-shadow: var(--shadow-xs, 0 1px 2px rgba(15, 23, 42, .05));
+}
+
+.cashier-flow-node strong,
+.cashier-flow-node small {
+    display: block;
+}
+
+.cashier-flow-node small {
+    margin-top: 2px;
+    color: var(--gray-500);
+    font-size: 12px;
+    font-weight: 800;
+}
+
+.cashier-flow-number {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex: 0 0 34px;
+    width: 34px;
+    height: 34px;
+    border-radius: 999px;
+    background: var(--gray-100);
+    color: var(--gray-700);
+    font-weight: 900;
+}
+
+.cashier-flow-node.is-active,
+.cashier-flow-node.is-complete {
+    border-color: rgba(16, 185, 129, .28);
+}
+
+.cashier-flow-node.is-active .cashier-flow-number,
+.cashier-flow-node.is-complete .cashier-flow-number {
+    background: rgba(16, 185, 129, .14);
+    color: #047857;
+}
+
+.cashier-flow-node.is-blocked {
+    border-color: rgba(245, 158, 11, .34);
+}
+
+.cashier-flow-node.is-blocked .cashier-flow-number {
+    background: rgba(245, 158, 11, .16);
+    color: #92400e;
+}
+
+.cashier-flow-node.is-muted {
+    opacity: .72;
+}
+
 .cashier-grid > * {
     min-width: 0;
     max-width: 100%;
@@ -216,7 +284,8 @@
 .cashier-primary-action:focus-visible,
 .cashier-status:focus-visible,
 .cashier-table-wrap:focus-visible,
-.cashier-provider-links a:focus-visible {
+.cashier-provider-links a:focus-visible,
+.cashier-history-actions a:focus-visible {
     outline: 3px solid rgba(99,102,241,.35);
     outline-offset: 2px;
 }
@@ -580,6 +649,19 @@
     margin-top: 14px;
 }
 
+.cashier-provider-links .btn-page-secondary,
+.cashier-history-actions .btn-page-secondary,
+.cashier-toolbar-row .btn-page-toolbar {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 40px;
+    border-radius: 12px;
+    text-decoration: none;
+    font-weight: 900;
+    line-height: 1.2;
+}
+
 .cashier-ops-card {
     margin-bottom: 24px;
 }
@@ -693,6 +775,10 @@
     overflow-wrap: anywhere;
 }
 
+.cashier-unresolved-item--receipt {
+    grid-template-columns: minmax(130px, 1.1fr) minmax(110px, .72fr) minmax(96px, .65fr) minmax(96px, .65fr) minmax(130px, .8fr) minmax(210px, 1.35fr) minmax(150px, .95fr);
+}
+
 button.cashier-unresolved-item {
     cursor: pointer;
 }
@@ -710,6 +796,49 @@ button.cashier-unresolved-item:focus-visible {
     color: var(--gray-500);
 }
 
+.cashier-receipt-id strong,
+.cashier-receipt-money {
+    font-weight: 900;
+}
+
+.cashier-recovery-text,
+.cashier-recovery-reason,
+.cashier-history-empty-artifact {
+    color: var(--gray-600);
+    font-size: 13px;
+    line-height: 1.35;
+}
+
+.cashier-history-list {
+    display: grid;
+    gap: 10px;
+}
+
+.cashier-history-item {
+    display: grid;
+    grid-template-columns: minmax(130px, 1.15fr) minmax(96px, .7fr) minmax(100px, .72fr) minmax(120px, .82fr) minmax(180px, 1.18fr) minmax(150px, 1fr);
+    gap: 10px;
+    align-items: center;
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 14px;
+    background: var(--white);
+    color: var(--gray-800);
+    overflow-wrap: anywhere;
+}
+
+.cashier-history-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: flex-end;
+}
+
+.cashier-history-link {
+    min-width: 54px;
+    padding-inline: 12px;
+}
+
 .cashier-op-box input:disabled,
 .cashier-op-box button:disabled {
     cursor: not-allowed;
@@ -722,6 +851,7 @@ button.cashier-unresolved-item:focus-visible {
 
 body.dark-mode .cashier-hero,
 body.dark-mode .cashier-card,
+body.dark-mode .cashier-flow-node,
 body.dark-mode .cashier-field input,
 body.dark-mode .cashier-tender-group,
 body.dark-mode .cashier-checkbox-row {
@@ -732,6 +862,7 @@ body.dark-mode .cashier-checkbox-row {
 body.dark-mode .cashier-meta-grid div,
 body.dark-mode .cashier-op-box,
 body.dark-mode .cashier-report-grid div,
+body.dark-mode .cashier-history-item,
 body.dark-mode .cashier-unresolved-item,
 body.dark-mode .cashier-pill,
 body.dark-mode .cashier-status {
@@ -809,6 +940,10 @@ body.dark-mode .cashier-exact-amount strong {
 
 body.dark-mode .cashier-muted,
 body.dark-mode .cashier-help,
+body.dark-mode .cashier-flow-node small,
+body.dark-mode .cashier-recovery-text,
+body.dark-mode .cashier-recovery-reason,
+body.dark-mode .cashier-history-empty-artifact,
 body.dark-mode .cashier-scope-card span,
 body.dark-mode .cashier-meta-grid dt,
 body.dark-mode .cashier-items-table th {
@@ -818,10 +953,16 @@ body.dark-mode .cashier-items-table th {
 body.dark-mode .cashier-table-wrap,
 body.dark-mode .cashier-report-body,
 body.dark-mode .cashier-op-box,
+body.dark-mode .cashier-history-item,
 body.dark-mode .cashier-items-table th,
 body.dark-mode .cashier-items-table td,
 body.dark-mode .cashier-confirm-panel {
     border-color: rgba(255,255,255,.10);
+}
+
+body.dark-mode .cashier-flow-number {
+    background: rgba(30,41,59,.86);
+    color: #cbd5e1;
 }
 
 @media (max-width: 1023px) {
@@ -841,11 +982,13 @@ body.dark-mode .cashier-confirm-panel {
     }
 
     .cashier-grid,
+    .cashier-flow-overview,
     .cashier-meta-grid,
     .cashier-two-cols,
     .cashier-ops-grid,
     .cashier-ops-grid-wide,
     .cashier-report-grid,
+    .cashier-history-item,
     .cashier-unresolved-item {
         grid-template-columns: minmax(0, 1fr);
     }
@@ -879,13 +1022,15 @@ body.dark-mode .cashier-confirm-panel {
     }
 
     .cashier-toolbar-row,
-    .cashier-provider-links {
+    .cashier-provider-links,
+    .cashier-history-actions {
         align-items: stretch;
         flex-direction: column;
     }
 
     .cashier-toolbar-row :where(.btn-page-toolbar, .btn-page-secondary),
-    .cashier-provider-links :where(.btn-page-secondary, .btn-page-primary) {
+    .cashier-provider-links :where(.btn-page-secondary, .btn-page-primary),
+    .cashier-history-actions :where(.btn-page-secondary, .btn-page-primary) {
         width: 100%;
     }
 

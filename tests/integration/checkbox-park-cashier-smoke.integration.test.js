@@ -18,7 +18,7 @@ const { run: runPilotConfig } = require('../../scripts/configure-checkbox-park-p
 const { pool } = require('../../db');
 const {
     cancelDraftPaymentOrder,
-    createAdmissionTicketPaymentOrder,
+    createAdmissionTicketPaymentOrder: createAdmissionTicketPaymentOrderBase,
     confirmPaymentOrder
 } = require('../../services/payments/paymentService');
 const { createProviderFromConfig } = require('../../services/checkbox/provider');
@@ -48,15 +48,16 @@ const { verifyCheckboxWebhookSignature } = require('../../services/checkbox/webh
 const { countFiscalShiftCloseBlockers } = require('../../services/payments/shiftCloseBlockers');
 const { assertRecoveryActorAuthorized } = require('../../scripts/checkbox-outbox-recovery');
 const {
-    listUnresolvedPaymentOrders,
-    loadCheckboxSalesReport,
-    loadReadinessState,
-    probeCheckboxReadiness,
+    listUnresolvedPaymentOrders: listUnresolvedPaymentOrdersBase,
+    loadCheckboxSalesReport: loadCheckboxSalesReportBase,
+    loadReadinessState: loadReadinessStateBase,
+    probeCheckboxReadiness: probeCheckboxReadinessBase,
     requestPhase1ShiftClose
 } = require('../../services/payments/paymentReadinessService');
 
 const enabled = process.env.RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION === 'true';
 const CRM_PROFILE_KEY = 'event_genix';
+const LOCATION_ALIAS = 'park';
 const REGISTER_ALIAS = 'middle';
 const FISCAL_ACTIONS = Object.freeze([
     'payments.view',
@@ -87,6 +88,47 @@ const TEST_TICKET_PRICES_UAH = Object.freeze({
 });
 const nativeFetch = globalThis.fetch;
 const OFFICIAL_CHECKBOX_HOSTS = new Set(['api.checkbox.in.ua', 'api.checkbox.ua']);
+
+function withParkMiddlePaymentScope(body = {}) {
+    return {
+        crmProfileKey: body.crmProfileKey ?? body.crm_profile_key ?? CRM_PROFILE_KEY,
+        locationAlias: body.locationAlias ?? body.location_alias ?? LOCATION_ALIAS,
+        registerAlias: body.registerAlias ?? body.register_alias ?? REGISTER_ALIAS,
+        ...body
+    };
+}
+
+function withParkMiddleScope(options = {}) {
+    return {
+        crmProfileKey: options.crmProfileKey ?? options.crm_profile_key ?? CRM_PROFILE_KEY,
+        locationAlias: options.locationAlias ?? options.location_alias ?? LOCATION_ALIAS,
+        registerAlias: options.registerAlias ?? options.register_alias ?? REGISTER_ALIAS,
+        ...options
+    };
+}
+
+function createAdmissionTicketPaymentOrder(options = {}) {
+    return createAdmissionTicketPaymentOrderBase({
+        ...options,
+        body: withParkMiddlePaymentScope(options.body || {})
+    });
+}
+
+function loadReadinessState(options = {}) {
+    return loadReadinessStateBase(withParkMiddleScope(options));
+}
+
+function probeCheckboxReadiness(options = {}) {
+    return probeCheckboxReadinessBase(withParkMiddleScope(options));
+}
+
+function listUnresolvedPaymentOrders(options = {}) {
+    return listUnresolvedPaymentOrdersBase(withParkMiddleScope(options));
+}
+
+function loadCheckboxSalesReport(options = {}) {
+    return loadCheckboxSalesReportBase(withParkMiddleScope(options));
+}
 
 function requireIsolatedDatabase() {
     assert.equal(enabled, true, 'set RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION=true');

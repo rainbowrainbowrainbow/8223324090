@@ -316,10 +316,16 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         ]
     );
     const incidentId = Number(incident.rows[0].id);
+    const incidentScope = {
+        crmProfileKey: 'event_genix',
+        locationAlias: 'park',
+        registerAlias: 'middle'
+    };
     await assert.rejects(
         () => updateOperationalIncidentStatus({
             dbPool: pool,
             user: fiscalConfigUser(userId, ['fiscal.audit.view'], 'reception'),
+            ...incidentScope,
             incidentId,
             status: 'acknowledged',
             reason: 'read-only user must not mutate incident'
@@ -347,6 +353,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         () => updateOperationalIncidentStatus({
             dbPool: pool,
             user: fiscalConfigUser(userId, ['payments.view', 'fiscal.incident.manage']),
+            ...incidentScope,
             incidentId,
             status: 'acknowledged',
             reason: 'manager without exact ownership must not mutate incident'
@@ -363,6 +370,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         () => updateOperationalIncidentStatus({
             dbPool: pool,
             user: fiscalConfigUser(userId, ['payments.view', 'fiscal.incident.manage']),
+            ...incidentScope,
             incidentId,
             status: 'acknowledged',
             reason: 'username must not substitute for exact integration owner id'
@@ -378,6 +386,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
     const acknowledged = await updateOperationalIncidentStatus({
         dbPool: pool,
         user: fiscalConfigUser(userId, ['payments.view', 'fiscal.incident.manage']),
+        ...incidentScope,
         incidentId,
         status: 'acknowledged',
         reason: 'integration test acknowledge'

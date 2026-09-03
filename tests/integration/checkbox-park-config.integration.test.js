@@ -191,6 +191,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         dbPool: pool,
         user: fiscalConfigUser(userId),
         crmProfileKey: 'event_genix',
+        locationAlias: 'park',
         registerAlias: 'middle',
         checkboxIntegrationEnabled: false
     });
@@ -211,6 +212,7 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         dbPool: pool,
         user: fiscalConfigUser(userId),
         crmProfileKey: 'event_genix',
+        locationAlias: 'park',
         registerAlias: 'middle',
         checkboxIntegrationEnabled: false
     });

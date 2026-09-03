@@ -200,6 +200,9 @@ function projectUnresolvedOrdersForViewer(_user, result = {}) {
     } = result || {};
     return {
         ...publicResult,
+        fiscalProfileId,
+        fiscalLocationId,
+        fiscalRegisterId,
         orders: Array.isArray(result.orders) ? result.orders.map(order => {
             const {
                 orderKey,

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.69 - Checkbox Hardening Release
+
+### Release / Versioning / (03.09.2026) [codex]
+- **Checkbox Hardening Release** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.68 - Checkbox Cashier UI Polish
 
 ### Release / Versioning / (03.09.2026) [codex]

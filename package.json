@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.68",
+  "version": "0.81.69",
   "eventGenix": {
-    "releaseLabel": "Checkbox Cashier UI Polish"
+    "releaseLabel": "Checkbox Hardening Release"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

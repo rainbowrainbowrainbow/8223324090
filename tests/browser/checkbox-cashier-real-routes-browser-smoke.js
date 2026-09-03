@@ -158,6 +158,7 @@ async function seedFiscalScope(cashier) {
             provider_outlet_id: `mock-outlet-${suffix}`,
             provider_register_id: `mock-register-${suffix}`,
             provider_license_ref: CREDENTIAL_REF,
+            location_alias: 'park',
             register_alias: REGISTER_ALIAS
         },
         binding: {

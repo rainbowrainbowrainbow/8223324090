@@ -152,7 +152,8 @@ function isApprovedSyntheticTestProviderId(rel, value) {
     if (!/^tests\//.test(rel)) return false;
     const normalized = normalizeAssignmentValue(value);
     return /^(?:test|mock|sandbox|smoke|fixture|synthetic|internal|durable|different|rotated|tampered|new)(?:[-_][a-z0-9_-]+)+$/i.test(normalized)
-        || /^(?:org|organization|outlet|register|cashier|operation|receipt|shift|provider|op|chk)-(?:test|smoke|fixture|synthetic|private|one|other|\d+)(?:-[a-z0-9_-]+)*$/i.test(normalized)
+        || /^(?:org|organization|outlet|register|cashier|operation|receipt|shift|provider|op|chk)-(?:test|smoke|fixture|synthetic|private|one|other)(?:-[a-z0-9_-]+)*$/i.test(normalized)
+        || /^(?:org|organization|outlet|register|cashier|operation|receipt|shift|provider|op|chk)-\d+$/i.test(normalized)
         || /^provider-shift(?:-\d+)?$/i.test(normalized)
         || /^mock-(?:org|organization|outlet|register|cashier|shift)-\$\{(?:process\.pid|suffix|cashier\.id)\}$/i.test(normalized)
         || /^(?:00000000-0000-4000-8000-000000000201|11111111-1111-4111-8111-111111111111|22222222-2222-4222-8222-222222222222|33333333-3333-4333-8333-333333333333|44444444-4444-4444-8444-444444444444|55555555-5555-4555-8555-555555555555)$/i.test(normalized);

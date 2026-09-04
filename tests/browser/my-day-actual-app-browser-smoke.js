@@ -1117,7 +1117,7 @@ async function main() {
 
         await api(TARGET_URL, '/api/my-day/timer/start', { method: 'POST', token: session.token, body: { taskId: manualTaskId } });
         await page.goto(`${TARGET_URL}/tasks`, { waitUntil: 'domcontentloaded' });
-        await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-global-task-timer-elapsed]:visible').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await page.locator('.global-task-timer__title, .global-task-timer-panel__title, .global-task-timer-chip').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         const secondarySession = await createDisposableUser(TARGET_URL, session.token);
         const secondaryTimerApi = await api(TARGET_URL, '/api/my-day/timer', { token: secondarySession.token });
@@ -1151,7 +1151,7 @@ async function main() {
         });
         assert.ok(Number(decisionSeed.id) > 0, 'browser smoke creates one disposable pending decision');
         await page.goto(`${TARGET_URL}/dashboard`, { waitUntil: 'domcontentloaded' });
-        await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-global-task-timer-elapsed]:visible').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         const decisionOverlay = page.locator('#decisionScreen');
         await decisionOverlay.waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await decisionOverlay.locator('[data-decision-screen-dismiss]').first().click();
@@ -1165,7 +1165,7 @@ async function main() {
         await myDaySidebarLink.click();
         await page.waitForURL(url => url.pathname === '/profile' && url.searchParams.get('tab') === 'myday', { timeout: TIMEOUT_MS });
         await page.locator('#cabinetMyDaySegmentPanel').waitFor({ state: 'visible', timeout: TIMEOUT_MS });
-        await page.locator('[data-global-task-timer-elapsed]').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
+        await page.locator('[data-global-task-timer-elapsed]:visible').first().waitFor({ state: 'visible', timeout: TIMEOUT_MS });
         await api(TARGET_URL, '/api/my-day/timer/stop', { method: 'POST', token: session.token, body: {} });
         await evaluateAfterNavigationSettles(page, () => {
             window.dispatchEvent(new CustomEvent('crm:timer-updated', { detail: { action: 'stop', emittedAt: Date.now() } }));

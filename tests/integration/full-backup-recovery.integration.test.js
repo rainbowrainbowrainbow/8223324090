@@ -794,7 +794,7 @@ test(
             );
             assert.equal(
                 staleBootstrapResponse.status,
-                403,
+                401,
                 'pre-restore bootstrap JWT must be invalid after users are restored'
             );
             await assertOnlyAuditDeltas(targetPool, parsedArtifact);

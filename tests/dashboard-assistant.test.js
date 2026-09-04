@@ -49,6 +49,16 @@ function tokenFor(role = 'manager') {
     );
 }
 
+function authAwareEmptyDb() {
+    const query = async sql => {
+        if (/SELECT\s+is_active,\s*session_revoked_at\s+FROM\s+users/i.test(String(sql))) {
+            return { rows: [{ is_active: true, session_revoked_at: null }], rowCount: 1 };
+        }
+        return { rows: [], rowCount: 0 };
+    };
+    return { pool: { query }, query };
+}
+
 function listen(app) {
     return new Promise(resolve => {
         const server = app.listen(0, '127.0.0.1', () => {
@@ -547,10 +557,7 @@ describe('dashboard assistant route context', () => {
         clearAssistantModules();
 
         const calls = [];
-        installMock('../db', {
-            pool: { query: async () => ({ rows: [] }) },
-            query: async () => ({ rows: [] })
-        });
+        installMock('../db', authAwareEmptyDb());
         installMock('../services/dashboardAssistant', {
             getDashboardAssistantReply: async input => {
                 calls.push(input);
@@ -599,10 +606,7 @@ describe('dashboard assistant route context', () => {
         clearAssistantModules();
 
         const calls = [];
-        installMock('../db', {
-            pool: { query: async () => ({ rows: [] }) },
-            query: async () => ({ rows: [] })
-        });
+        installMock('../db', authAwareEmptyDb());
         installMock('../services/dashboardAssistant', {
             getDashboardAssistantReply: async input => {
                 calls.push(input);
@@ -652,10 +656,7 @@ describe('dashboard assistant route context', () => {
         clearAssistantModules();
 
         let transcriptionInput = null;
-        installMock('../db', {
-            pool: { query: async () => ({ rows: [] }) },
-            query: async () => ({ rows: [] })
-        });
+        installMock('../db', authAwareEmptyDb());
         installMock('../services/dashboardAssistant', {
             getDashboardAssistantReply: async () => ({ text: 'ok' }),
             normalizeAssistantReply: reply => reply
@@ -690,10 +691,7 @@ describe('dashboard assistant route context', () => {
         clearAssistantModules();
 
         const transcriptions = [];
-        installMock('../db', {
-            pool: { query: async () => ({ rows: [] }) },
-            query: async () => ({ rows: [] })
-        });
+        installMock('../db', authAwareEmptyDb());
         installMock('../services/dashboardAssistant', {
             getDashboardAssistantReply: async () => ({ text: 'ok' }),
             normalizeAssistantReply: reply => reply
@@ -729,10 +727,7 @@ describe('dashboard assistant route context', () => {
         process.env.JWT_SECRET = TEST_JWT_SECRET;
         clearAssistantModules();
 
-        installMock('../db', {
-            pool: { query: async () => ({ rows: [] }) },
-            query: async () => ({ rows: [] })
-        });
+        installMock('../db', authAwareEmptyDb());
         installMock('../services/dashboardAssistant', {
             getDashboardAssistantReply: async () => ({ text: 'ok' }),
             normalizeAssistantReply: reply => reply

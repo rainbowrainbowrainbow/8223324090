@@ -104,6 +104,9 @@ function fakePool() {
             if (text.startsWith('UPDATE employee_profiles') || text.startsWith('UPDATE users SET last_seen_at')) {
                 return { rows: [], rowCount: 0 };
             }
+            if (text.startsWith('SELECT is_active, session_revoked_at FROM users WHERE id = $1')) {
+                return { rows: [{ is_active: true, session_revoked_at: null }], rowCount: 1 };
+            }
 
             if (text.includes('FROM chat_mutes cm')) {
                 const rows = text.includes('cm.user_id = $1')

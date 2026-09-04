@@ -5700,7 +5700,7 @@ test('business operating profile owns shell start page and module visibility', (
     assert.match(api, /profileFor: getCrmBusinessProfileForContext/);
     assert.match(api, /startPageForUser: crmBusinessStartPageForUser/);
     assert.match(auth, /await hydrateBusinessOperatingProfile\(authenticatedUser, \{ sessionSnapshot: bootstrapSession \}\)/);
-    assert.match(auth, /await hydrateBusinessOperatingProfile\(user\)/);
+    assert.match(auth, /await hydrateBusinessOperatingProfile\(verifiedUser, \{ sessionSnapshot: bootstrapSession \}\)/);
     assert.match(sidebar, /crmBusinessProfileChanged/);
     assert.match(html, /settingsBusinessProfileContract/);
 

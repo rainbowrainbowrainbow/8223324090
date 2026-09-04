@@ -166,7 +166,14 @@ describe('chat upload route storage and safety', () => {
         resetState();
         clearModules();
 
-        const pool = { query: async () => ({ rows: [], rowCount: 0 }) };
+        const pool = {
+            query: async sql => {
+                if (/SELECT\s+is_active,\s*session_revoked_at\s+FROM\s+users/i.test(String(sql))) {
+                    return { rows: [{ is_active: true, session_revoked_at: null }], rowCount: 1 };
+                }
+                return { rows: [], rowCount: 0 };
+            }
+        };
         installMock('../db', { pool, query: pool.query.bind(pool) });
         installMock('../services/chatService', fakeChatService());
         installMock('../services/chatUploadStorage', fakeChatUploadStorage());

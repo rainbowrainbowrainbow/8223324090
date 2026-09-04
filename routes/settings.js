@@ -9,6 +9,12 @@ const { logAdminAction } = require('../services/adminAudit');
 const { settingsCache } = require('../services/cache');
 const { getVisibleBookingScope } = require('../services/bookingVisibility');
 const { getReleaseMetadata } = require('../services/release');
+const { createWriteRateLimiter } = require('../middleware/rateLimit');
+const {
+    ParkDarProductionAttestationError,
+    PRODUCTION_ATTESTATION_MARKER_PARAM,
+    buildProductionAttestation
+} = require('../services/payments/parkDarProductionAttestation');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     timelineContextFromRequest,
@@ -58,6 +64,16 @@ const {
 const { requireRole, requireMinRole, requireAction, authenticateToken } = require('../middleware/auth');
 const { isSafeSettingReadKey } = require('../services/settingsAccessPolicy');
 const log = createLogger('Settings');
+const parkDarProductionAttestationLimiter = createWriteRateLimiter('park-dar-production-attestation', {
+    windowMs: 60_000,
+    max: 10,
+    methods: ['GET']
+});
+
+function limitParkDarProductionAttestation(req, res, next) {
+    if (req.query?.[PRODUCTION_ATTESTATION_MARKER_PARAM] === undefined) return next();
+    return parkDarProductionAttestationLimiter(req, res, next);
+}
 
 function activeBookingStatusSql(alias = '') {
     const column = alias ? `${alias}.status` : 'status';
@@ -219,8 +235,27 @@ async function buildDeepHealth() {
 // v39.8: Move version + health BEFORE auth (must be public)
 // Duplicates removed from below auth wall
 
-router.get('/version', (req, res) => {
-    res.json(getReleaseMetadata());
+router.get('/version', limitParkDarProductionAttestation, async (req, res) => {
+    const attestationKeys = ['blockId', 'manifestSha256', 'nonce'];
+    const requestedAttestation = req.query?.[PRODUCTION_ATTESTATION_MARKER_PARAM];
+    if (requestedAttestation === undefined) return res.json(getReleaseMetadata());
+    res.set('Cache-Control', 'no-store, max-age=0');
+    if (requestedAttestation !== '1') {
+        return res.status(400).json({ success: false, code: 'park_dar_attestation_marker_invalid' });
+    }
+    try {
+        const attestation = await buildProductionAttestation({
+            challenge: Object.fromEntries(attestationKeys.map(key => [key, req.query?.[key]])),
+            dbPool: pool
+        });
+        return res.status(200).json(attestation);
+    } catch (error) {
+        if (error instanceof ParkDarProductionAttestationError) {
+            return res.status(error.status || 503).json({ success: false, code: error.code });
+        }
+        log.error('PARK/DAR production attestation failed', { code: 'park_dar_attestation_internal_error' });
+        return res.status(503).json({ success: false, code: 'park_dar_attestation_unavailable' });
+    }
 });
 
 router.get('/health', async (req, res) => {

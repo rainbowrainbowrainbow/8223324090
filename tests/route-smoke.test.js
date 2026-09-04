@@ -1083,6 +1083,28 @@ function createFakePool() {
             if (/^(BEGIN|COMMIT|ROLLBACK|SAVEPOINT\s+\w+|RELEASE SAVEPOINT\s+\w+|ROLLBACK TO SAVEPOINT\s+\w+)$/i.test(text)) {
                 return { rows: [], rowCount: 0, command: text.split(/\s+/)[0].toUpperCase() };
             }
+            if (/^BEGIN TRANSACTION ISOLATION LEVEL REPEATABLE READ READ ONLY$/i.test(text)) {
+                return { rows: [], rowCount: 0, command: 'BEGIN' };
+            }
+            if (/^SET LOCAL search_path = pg_catalog, public$/i.test(text)) {
+                return { rows: [], rowCount: 0, command: 'SET' };
+            }
+            if (/FROM pg_catalog\.pg_database database_record\s+CROSS JOIN pg_catalog\.pg_control_system\(\) control_record/i.test(text)) {
+                return {
+                    rows: [{
+                        transaction_read_only: 'on',
+                        database_name: 'route_smoke_database',
+                        database_oid: '9876',
+                        system_identifier: '7681708227381576429',
+                        database_owner_oid: '10',
+                        database_encoding: 'UTF8',
+                        database_collate: 'C',
+                        database_ctype: 'C',
+                        server_version_num: '160000'
+                    }],
+                    rowCount: 1
+                };
+            }
             if (/^SET LOCAL (lock_timeout|statement_timeout|idle_in_transaction_session_timeout) = /i.test(text)) {
                 return { rows: [], rowCount: 0, command: 'SET' };
             }
@@ -4522,6 +4544,62 @@ describe('route-level API safety smoke', () => {
             assert.equal(version.data.sourceBranch, null);
             assert.equal(version.data.deploymentMetadata.status, 'unavailable');
             assert.equal(version.data.deploymentMetadata.complete, false);
+
+            const nonceOnlyVersion = await request('GET', '/api/version?nonce=ordinary-cache-buster');
+            assert.equal(nonceOnlyVersion.status, 200, JSON.stringify(nonceOnlyVersion.data));
+            assert.equal(nonceOnlyVersion.data.version, pkg.version);
+
+            const invalidAttestationMarker = await request('GET', '/api/version?parkDarProductionAttestation=0');
+            assert.equal(invalidAttestationMarker.status, 400, JSON.stringify(invalidAttestationMarker.data));
+            assert.equal(invalidAttestationMarker.data.code, 'park_dar_attestation_marker_invalid');
+
+            const attestationEnv = {
+                NODE_ENV: 'production',
+                TEST_MODE: 'false',
+                RAILWAY_PROJECT_ID: 'bc28b46c-d4bc-491c-893a-d8401c633668',
+                RAILWAY_PROJECT_NAME: 'fortunate-appreciation',
+                RAILWAY_ENVIRONMENT_ID: 'd9f9b984-d54d-4620-a8bf-c48882ad5158',
+                RAILWAY_ENVIRONMENT_NAME: 'production',
+                RAILWAY_SERVICE_ID: '3fb62d4c-2dc2-4701-8e2b-09ce16e188ee',
+                RAILWAY_SERVICE_NAME: '8223324090',
+                RAILWAY_PUBLIC_DOMAIN: '8223324090-production.up.railway.app',
+                RAILWAY_GIT_COMMIT_SHA: 'abcdef0123456789abcdef0123456789abcdef01',
+                RAILWAY_GIT_BRANCH: 'codex/eventgenix-production',
+                CHECKBOX_INTEGRATION_ENABLED: 'false',
+                CHECKBOX_ACCEPT_PAYMENTS_ENABLED: 'false',
+                CHECKBOX_WEBHOOK_ENABLED: 'false',
+                CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS: 'false',
+                EVENTGENIX_CASHIER_PRO_ENABLED: 'false'
+            };
+            const attestationPreviousEnv = Object.fromEntries(
+                Object.keys(attestationEnv).map(key => [key, process.env[key]])
+            );
+            try {
+                Object.assign(process.env, attestationEnv);
+                const challengePath = '/api/version?parkDarProductionAttestation=1'
+                    + '&blockId=PARK-DAR-PRODUCTION-CONFIG-PLAN'
+                    + '&manifestSha256=' + 'b'.repeat(64)
+                    + '&nonce=123e4567-e89b-42d3-a456-426614174000';
+                const attestation = await request('GET', challengePath);
+                assert.equal(attestation.status, 200, JSON.stringify(attestation.data));
+                assert.equal(attestation.data.liveSha, attestationEnv.RAILWAY_GIT_COMMIT_SHA);
+                assert.equal(attestation.data.branch, attestationEnv.RAILWAY_GIT_BRANCH);
+                assert.equal(attestation.data.globalGates.CHECKBOX_ACCEPT_PAYMENTS_ENABLED, false);
+                assert.equal(attestation.data.database_name, undefined);
+
+                // The earlier invalid marker consumed one of the ten per-IP requests.
+                for (let index = 0; index < 8; index += 1) {
+                    const allowed = await request('GET', challengePath);
+                    assert.equal(allowed.status, 200, JSON.stringify(allowed.data));
+                }
+                const rateLimited = await request('GET', challengePath);
+                assert.equal(rateLimited.status, 429, JSON.stringify(rateLimited.data));
+            } finally {
+                for (const [key, value] of Object.entries(attestationPreviousEnv)) {
+                    if (value === undefined) delete process.env[key];
+                    else process.env[key] = value;
+                }
+            }
 
             process.env.RAILWAY_GIT_COMMIT_SHA = 'abcdef0123456789abcdef0123456789abcdef01';
             process.env.RAILWAY_GIT_BRANCH = 'codex/production';

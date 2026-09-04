@@ -15,7 +15,7 @@ const { pool } = require('../db');
 const {
     JWT_SECRET, authenticateToken, PAGE_ACCESS, ACTION_PERMISSIONS, ROLE_HIERARCHY, ROLE_LEVEL,
     createTokenPair, rotateRefreshToken, revokeRefreshToken, revokeAllUserTokens, cleanupRefreshTokens,
-    buildAuthUserPayload, normalizeRoleList, normalizePageAllowlist, normalizePageDenylist, requireAction,
+    buildAuthUserPayload, loadAuthenticatedUserAccess, normalizeRoleList, normalizePageAllowlist, normalizePageDenylist, requireAction,
     canUseAction
 } = require('../middleware/auth');
 const { buildCapabilitySnapshot } = require('../services/accountAccessPolicy');
@@ -218,6 +218,11 @@ router.post('/login', async (req, res) => {
 
         // v39.9: Unified error message prevents username enumeration
         let user = result.rows[0];
+        if (user
+            && typeof req.reserveCanonicalLoginAttempt === 'function'
+            && !req.reserveCanonicalLoginAttempt({ id: user.id, username: user.username })) {
+            return;
+        }
         const passwordMatches = user && user.is_active !== false
             ? await credentials.passwordCandidates.reduce(async (matchedPromise, candidate) => {
                 if (await matchedPromise) return true;
@@ -233,16 +238,65 @@ router.post('/login', async (req, res) => {
             return res.status(401).json({ error: 'Невірний логін або пароль' });
         }
 
-        user = await resolveActiveQaCreatorLease(user, pool);
-
-        // v38.4.0: Issue access + refresh token pair
         const deviceInfo = req.headers['user-agent'] || '';
         const ipAddress = req.ip || req.connection?.remoteAddress;
-        const { accessToken, refreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });
+        const loginClient = await pool.connect();
+        let loginTransactionOpen = false;
+        let tokenPair;
+        let authUser;
+        let token;
+        try {
+            await loginClient.query('BEGIN');
+            loginTransactionOpen = true;
+            const lockedResult = await loginClient.query(
+                `SELECT u.id, u.username, u.password_hash, u.role, u.extra_roles, u.page_allowlist, u.page_denylist, u.action_allowlist, u.action_denylist, u.business_contexts, u.default_business_context, u.name, u.telegram_chat_id, u.is_active,
+                        u.login_aliases, u.avatar_emoji, u.avatar_color, upe.avatar_url
+                 FROM users u
+                 LEFT JOIN user_profiles_ext upe ON upe.username = u.username
+                 WHERE ${LOGIN_IDENTITY_WHERE_SQL}
+                 ORDER BY CASE WHEN LOWER(u.username) = $1 THEN 0 ELSE 1 END
+                 LIMIT 1
+                 FOR UPDATE OF u`,
+                [loginIdentifier]
+            );
+            const lockedUser = lockedResult.rows[0] || null;
+            const credentialsStillValid = lockedUser
+                && Number(lockedUser.id) === Number(user.id)
+                && lockedUser.is_active !== false
+                && lockedUser.password_hash === user.password_hash;
 
-        // Backward compat: also issue legacy long-lived token for existing clients
-        const authUser = buildAuthUserPayload(user);
-        const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: '24h' });
+            if (!credentialsStillValid) {
+                await loginClient.query('ROLLBACK');
+                loginTransactionOpen = false;
+                const reason = !lockedUser || Number(lockedUser.id) !== Number(user.id)
+                    ? 'login_identity_changed'
+                    : (lockedUser.is_active === false ? 'inactive_account' : 'password_changed');
+                await recordLoginFailure({ user: lockedUser || user, loginIdentifier, reason, credentials, req });
+                log.warn(`Login failed for "${loginIdentifier}" (${reason})`);
+                return res.status(401).json({ error: 'Невірний логін або пароль' });
+            }
+
+            user = await resolveActiveQaCreatorLease(lockedUser, loginClient);
+            tokenPair = await createTokenPair(user, { deviceInfo, ipAddress }, loginClient);
+
+            // Backward compat: also issue legacy long-lived token for existing clients.
+            authUser = buildAuthUserPayload(user);
+            token = jwt.sign(
+                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt },
+                JWT_SECRET,
+                { expiresIn: '24h' }
+            );
+            await loginClient.query('COMMIT');
+            loginTransactionOpen = false;
+        } catch (error) {
+            if (loginTransactionOpen) {
+                try { await loginClient.query('ROLLBACK'); } catch {}
+            }
+            throw error;
+        } finally {
+            loginClient.release();
+        }
+        const { accessToken, refreshToken, expiresAt } = tokenPair;
 
         await recordAccountSecurityEvent({
             actor: user,
@@ -285,7 +339,10 @@ router.get('/verify', authenticateToken, async (req, res) => {
             [req.user.username]
         );
         if (result.rows.length === 0) {
-            return res.status(403).json({ error: 'User not found or deactivated' });
+            return res.status(401).json({
+                error: 'User not found or deactivated',
+                code: 'auth_user_inactive'
+            });
         }
         const user = {
             ...result.rows[0],
@@ -1412,7 +1469,10 @@ router.put('/password', authenticateToken, async (req, res) => {
             return bcrypt.compare(candidate, result.rows[0].password_hash || '').catch(() => false);
         }, Promise.resolve(false));
         if (!valid) {
-            return res.status(401).json({ error: 'Невірний поточний пароль' });
+            return res.status(400).json({
+                error: 'Невірний поточний пароль',
+                code: 'current_password_invalid'
+            });
         }
 
         const hash = await bcrypt.hash(newPassword, 10);
@@ -1476,22 +1536,47 @@ router.get('/security', authenticateToken, async (req, res) => {
 
 // Personal cabinet: revoke all sessions and force current device to log in again
 router.post('/security/revoke-sessions', authenticateToken, async (req, res) => {
+    let revokeClient = null;
+    let revokeTransactionOpen = false;
     try {
-        await pool.query('UPDATE users SET session_revoked_at = NOW() WHERE id = $1', [req.user.id]);
-        await revokeAllUserTokens(req.user.id);
+        revokeClient = await pool.connect();
+        await revokeClient.query('BEGIN');
+        revokeTransactionOpen = true;
+        const user = await loadAuthenticatedUserAccess(req.user, {
+            requireFresh: true,
+            requireIdentityMatch: true,
+            includeStaffProfile: false,
+            db: revokeClient,
+            lockUser: true
+        });
+        await revokeClient.query(
+            'UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1',
+            [user.id]
+        );
+        await revokeAllUserTokens(user.id, revokeClient);
+        await revokeClient.query('COMMIT');
+        revokeTransactionOpen = false;
         await recordAccountSecurityEvent({
-            actor: req.user,
-            target: req.user,
+            actor: user,
+            target: user,
             eventType: 'sessions_revoked',
             reason: 'self_service',
             details: { scope: 'all_devices' },
             req
         });
-        log.info(`All sessions revoked from personal cabinet for user "${req.user.username}"`);
+        log.info(`All sessions revoked from personal cabinet for user "${user.username}"`);
         res.json({ success: true, reloginRequired: true });
     } catch (err) {
+        if (revokeTransactionOpen) {
+            try { await revokeClient.query('ROLLBACK'); } catch {}
+        }
+        if (err?.isAuthSessionError) {
+            return res.status(401).json({ error: 'Invalid token' });
+        }
         log.error('Revoke own sessions error', err);
         res.status(500).json({ error: 'Internal server error' });
+    } finally {
+        if (revokeClient) revokeClient.release();
     }
 });
 
@@ -1558,7 +1643,7 @@ router.post('/impersonate', authenticateToken, requireAction('manage_accounts'),
         if (!target.is_active) return res.status(400).json({ error: 'User is deactivated' });
 
         const authUser = { ...buildAuthUserPayload(target), imp: true, impBy: req.user.username };
-        const token = jwt.sign(authUser, JWT_SECRET, { expiresIn: '1h' });
+        const token = jwt.sign({ ...authUser, sessionIssuedAt: Date.now() }, JWT_SECRET, { expiresIn: '1h' });
 
         // Audit log
         try {
@@ -1615,7 +1700,12 @@ router.post('/refresh', async (req, res) => {
 
         if (result.error) {
             log.warn(`Refresh failed: ${result.error}`);
-            return res.status(result.status).json({ error: result.error });
+            return res.status(result.status).json({
+                error: result.error,
+                ...(result.code ? { code: result.code } : {}),
+                ...(result.retryable ? { retryable: true } : {}),
+                ...(result.reloginRequired ? { reloginRequired: true } : {})
+            });
         }
 
         log.info(`Token refreshed for user "${result.user.username}"`);
@@ -1647,22 +1737,51 @@ router.post('/logout', async (req, res) => {
             const authHeader = req.headers['authorization'];
             const token = authHeader && authHeader.split(' ')[1];
             if (!token) return res.status(401).json({ error: 'Auth required for logout-all' });
+            let logoutClient = null;
+            let logoutTransactionOpen = false;
+            let user;
             try {
-                const user = jwt.verify(token, JWT_SECRET);
-                await pool.query('UPDATE users SET session_revoked_at = NOW() WHERE id = $1', [user.id]);
-                await revokeAllUserTokens(user.id);
-                await recordAccountSecurityEvent({
-                    actor: user,
-                    target: user,
-                    eventType: 'sessions_revoked',
-                    reason: 'logout_all_devices',
-                    details: { scope: 'all_devices' },
-                    req
+                const tokenUser = jwt.verify(token, JWT_SECRET);
+                logoutClient = await pool.connect();
+                await logoutClient.query('BEGIN');
+                logoutTransactionOpen = true;
+                user = await loadAuthenticatedUserAccess(tokenUser, {
+                    requireFresh: true,
+                    requireIdentityMatch: true,
+                    includeStaffProfile: false,
+                    db: logoutClient,
+                    lockUser: true
                 });
-                log.info(`All tokens revoked for user "${user.username}"`);
-            } catch {
-                return res.status(401).json({ error: 'Invalid token' });
+                await logoutClient.query(
+                    'UPDATE users SET session_revoked_at = clock_timestamp() WHERE id = $1',
+                    [user.id]
+                );
+                await revokeAllUserTokens(user.id, logoutClient);
+                await logoutClient.query('COMMIT');
+                logoutTransactionOpen = false;
+            } catch (error) {
+                if (logoutTransactionOpen) {
+                    try { await logoutClient.query('ROLLBACK'); } catch {}
+                }
+                if (error?.isAuthSessionError
+                    || error instanceof jwt.JsonWebTokenError
+                    || error instanceof jwt.TokenExpiredError
+                    || error instanceof jwt.NotBeforeError) {
+                    return res.status(401).json({ error: 'Invalid token' });
+                }
+                throw error;
+            } finally {
+                if (logoutClient) logoutClient.release();
             }
+            await recordAccountSecurityEvent({
+                actor: user,
+                target: user,
+                eventType: 'sessions_revoked',
+                reason: 'logout_all_devices',
+                details: { scope: 'all_devices' },
+                req
+            });
+            log.info(`All tokens revoked for user "${user.username}"`);
         } else if (refreshToken) {
             const revokedUser = await revokeRefreshToken(refreshToken);
             if (revokedUser) {

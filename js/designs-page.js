@@ -32,6 +32,10 @@ let editTags = [];
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
         document.getElementById('currentUser').textContent = user.name || user.username;
     } catch {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return;
+        }
         document.getElementById('loginOverlay').classList.remove('hidden');
         document.getElementById('mainApp')?.classList.add('hidden');
         if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();

@@ -1278,6 +1278,10 @@ const DashboardPage = (() => {
             console.error('[dashboard:init] session verification failed:', err);
         }
         if (!verified) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return;
+            }
             window.location.href = '/';
             return;
         }
@@ -7628,18 +7632,97 @@ const DashboardPage = (() => {
         if (typeof RoleSwitcher !== 'undefined') {
             // Use RoleSwitcher impersonation
             try {
-                const resp = await fetch('/api/auth/impersonate', {
+                const transitionBusy = typeof getActiveAuthTransitionMarker === 'function'
+                    ? Boolean(getActiveAuthTransitionMarker())
+                    : Boolean(localStorage.getItem('pzp_auth_transition'));
+                if (transitionBusy) {
+                    throw new Error('Сесія зараз оновлюється. Спробуйте ще раз.');
+                }
+                const sourceUser = AppState.currentUser;
+                const sourceGeneration = localStorage.getItem('pzp_auth_session_generation') || '';
+                const sourceSnapshot = typeof captureApiAuthSessionSnapshot === 'function'
+                    ? captureApiAuthSessionSnapshot(sourceUser)
+                    : null;
+                const sourceSessionIsCurrent = () => {
+                    if (sourceSnapshot && typeof isApiAuthSessionSnapshotCurrent === 'function') {
+                        return isApiAuthSessionSnapshotCurrent(sourceSnapshot, sourceUser);
+                    }
+                    let storedUser = null;
+                    try {
+                        storedUser = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || 'null');
+                    } catch {}
+                    const sameIdentity = typeof apiAuthUsersShareIdentity === 'function'
+                        ? apiAuthUsersShareIdentity(sourceUser, storedUser)
+                        : String(sourceUser?.id ?? '') === String(storedUser?.id ?? '')
+                            && String(sourceUser?.username || '').trim().toLowerCase()
+                                === String(storedUser?.username || '').trim().toLowerCase();
+                    return sameIdentity
+                        && (localStorage.getItem('pzp_auth_session_generation') || '') === sourceGeneration;
+                };
+                const requestOptions = {
                     method: 'POST',
                     headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token'), 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ userId })
-                });
+                    body: JSON.stringify({ userId }),
+                    authSessionSnapshot: sourceSnapshot,
+                    authUser: sourceUser
+                };
+                const resp = typeof apiFetchWithAuthRetry === 'function'
+                    ? await apiFetchWithAuthRetry('/api/auth/impersonate', requestOptions)
+                    : await fetch('/api/auth/impersonate', requestOptions);
+                if (!resp || !sourceSessionIsCurrent()) {
+                    throw new Error('Сесія змінилася. Повторіть дію з поточного акаунта.');
+                }
                 if (!resp.ok) throw new Error((await resp.json().catch(() => ({}))).error || 'Failed');
                 const data = await resp.json();
-                sessionStorage.setItem('realToken', localStorage.getItem('pzp_token'));
-                sessionStorage.setItem('realUser', JSON.stringify(AppState.currentUser));
-                sessionStorage.setItem('impersonating', data.user.username);
-                localStorage.setItem('pzp_token', data.token);
-                localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+                if (!sourceSessionIsCurrent()) {
+                    throw new Error('Сесія змінилася. Повторіть дію з поточного акаунта.');
+                }
+                const preserveSessionValue = (key, value) => {
+                    if (value) sessionStorage.setItem(key, value);
+                    else sessionStorage.removeItem(key);
+                };
+                const transition = typeof beginAuthTransition === 'function'
+                    ? beginAuthTransition('impersonate')
+                    : (() => {
+                        const marker = `impersonate-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+                        localStorage.setItem('pzp_auth_transition', marker);
+                        return { marker, owned: true };
+                    })();
+                if (!transition.owned) {
+                    throw new Error('Сесія зараз оновлюється. Спробуйте ще раз.');
+                }
+                try {
+                    if (!sourceSessionIsCurrent()) {
+                        throw new Error('Сесія змінилася. Повторіть дію з поточного акаунта.');
+                    }
+                    preserveSessionValue('realToken', localStorage.getItem('pzp_token'));
+                    preserveSessionValue('realAccessToken', localStorage.getItem('pzp_access_token'));
+                    preserveSessionValue('realRefreshToken', localStorage.getItem('pzp_refresh_token'));
+                    preserveSessionValue('realRefreshExpiresAt', localStorage.getItem('pzp_refresh_expires_at'));
+                    preserveSessionValue('realSessionGeneration', sourceGeneration);
+                    preserveSessionValue(
+                        'realUser',
+                        localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || JSON.stringify(sourceUser)
+                    );
+                    sessionStorage.setItem('realSessionBackupVersion', '2');
+                    sessionStorage.setItem('impersonating', data.user.username);
+                    if (typeof rotateApiAuthSessionGeneration === 'function') rotateApiAuthSessionGeneration();
+                    localStorage.removeItem('pzp_refresh_token');
+                    localStorage.removeItem('pzp_refresh_expires_at');
+                    localStorage.setItem('pzp_token', data.token);
+                    localStorage.setItem('pzp_access_token', data.token);
+                    localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+                    preserveSessionValue(
+                        'impersonationSessionGeneration',
+                        localStorage.getItem('pzp_auth_session_generation')
+                    );
+                    preserveSessionValue('impersonationTargetUser', JSON.stringify(data.user));
+                } finally {
+                    if (typeof endAuthTransition === 'function') endAuthTransition(transition);
+                    else if (localStorage.getItem('pzp_auth_transition') === transition.marker) {
+                        localStorage.removeItem('pzp_auth_transition');
+                    }
+                }
                 window.location.reload();
             } catch (err) {
                 if (typeof showNotification === 'function') showNotification('Помилка: ' + err.message, 'error');

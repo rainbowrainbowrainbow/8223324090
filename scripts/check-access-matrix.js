@@ -127,7 +127,7 @@ function loadFrontendAuth() {
     const sandbox = makeBrowserSandbox();
     sandbox.__capabilityCatalog = require(path.join(ROOT, 'services/accountAccessPolicy')).buildCapabilityCatalog();
     const api = vm.runInNewContext(
-        `${code}\n;PAGE_ACCESS = __capabilityCatalog.pageRoles; ACTION_PERMISSIONS = __capabilityCatalog.actionRoles; PAGE_CAPABILITY_ALIASES = __capabilityCatalog.pageAliases; ACTION_CAPABILITY_ALIASES = __capabilityCatalog.actionAliases; EXPLICIT_ALLOW_DISABLED_PAGES = new Set(__capabilityCatalog.explicitAllowDisabledPages); NON_DELEGABLE_ACTIONS = new Set(__capabilityCatalog.nonDelegableActions); ({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, resolveCapability, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess });`,
+        `${code}\n;PAGE_ACCESS = __capabilityCatalog.pageRoles; ACTION_PERMISSIONS = __capabilityCatalog.actionRoles; PAGE_CAPABILITY_ALIASES = __capabilityCatalog.pageAliases; ACTION_CAPABILITY_ALIASES = __capabilityCatalog.actionAliases; EXPLICIT_ALLOW_DISABLED_PAGES = new Set(__capabilityCatalog.explicitAllowDisabledPages); NON_DELEGABLE_ACTIONS = new Set(__capabilityCatalog.nonDelegableActions); ({ ROLE_HIERARCHY, ROLE_NAMES, PAGE_ACCESS, resolveCapability, canAccessPage, getCurrentPageAccessPath, enforceCurrentPageAccess, setPermissionLifecycle });`,
         sandbox,
         { filename }
     );
@@ -467,6 +467,11 @@ frontend.sandbox.window.location = {
     reload() {}
 };
 frontend.sandbox.AppState.currentUser = { role: 'accountant' };
+frontend.setPermissionLifecycle('idle');
+if (frontend.enforceCurrentPageAccess() !== null || redirectTarget !== null) {
+    fail('frontend page guard must defer without redirect until permissions are ready');
+}
+frontend.setPermissionLifecycle('ready');
 if (frontend.enforceCurrentPageAccess() !== false || redirectTarget !== '/') {
     fail('frontend page guard must redirect disallowed manual URLs to the role start page');
 }
@@ -483,8 +488,9 @@ frontend.sandbox.AppState.currentUser = { role: 'art_director' };
 if (frontend.getCurrentPageAccessPath() !== '/designs' || frontend.enforceCurrentPageAccess() !== true || redirectTarget) {
     fail('frontend page guard must evaluate embedded static routes against their parent page access');
 }
-if (!/hasVerifiedUser && !enforceCurrentPageAccess\(user\)/.test(frontend.source)) {
-    fail('frontend sub-page bootstrap must run page access guard after verified AppState user is available');
+if (!/!hasVerifiedRuntime \|\| permissionState !== 'ready'/.test(frontend.source)
+    || !/if \(!enforceCurrentPageAccess\(user\)\) return;/.test(frontend.source)) {
+    fail('frontend sub-page bootstrap must enforce access only after verified runtime and permissions are ready');
 }
 
 if (failures.length) {

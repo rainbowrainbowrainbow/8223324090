@@ -1748,6 +1748,10 @@ async function initPage() {
     try {
         user = await apiVerifyToken();
     } catch (err) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'boardContent' })) {
+            return;
+        }
         bootStep('auth:runtime-failed', { message: err?.message || String(err) });
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
         if (typeof handleStandaloneInitError === 'function') {
@@ -1758,7 +1762,14 @@ async function initPage() {
         }
         return;
     }
-    if (!user) { window.location.href = '/'; return; }
+    if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'boardContent' })) {
+            return;
+        }
+        window.location.href = '/';
+        return;
+    }
 
     bootStep('auth:ok', { role: user.role, username: user.username });
     try {

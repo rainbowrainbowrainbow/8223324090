@@ -1,7 +1,9 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
+const crypto = require('node:crypto');
 const express = require('express');
 const jwt = require('jsonwebtoken');
+const bcrypt = require('bcryptjs');
 
 const TEST_JWT_SECRET = 'auth-account-lifecycle-secret';
 
@@ -59,8 +61,13 @@ function createFakePool() {
         }],
         refreshTokens: [],
         securityEvents: [],
-        transactionStatements: []
+        queryStatements: [],
+        transactionStatements: [],
+        beforeLoginRevalidation: null,
+        databaseClockOffsetMs: 0
     };
+
+    const databaseNow = () => new Date(Date.now() + Number(state.databaseClockOffsetMs || 0));
 
     function publicUser(row) {
         return row ? {
@@ -97,6 +104,7 @@ function createFakePool() {
 
     async function query(sql, params = []) {
         const text = normalizeSql(sql);
+        state.queryStatements.push(text);
 
         if (/^(BEGIN|COMMIT|ROLLBACK)\b/i.test(text)) {
             state.transactionStatements.push(text.split(/\s+/)[0].toUpperCase());
@@ -159,6 +167,37 @@ function createFakePool() {
             return { rows: user ? [{ id: user.id }] : [] };
         }
 
+        if (/SELECT u\.id, u\.username, u\.password_hash/i.test(text)
+            && /FROM users u/i.test(text)
+            && /FOR UPDATE OF u/i.test(text)) {
+            if (typeof state.beforeLoginRevalidation === 'function') {
+                const revalidate = state.beforeLoginRevalidation;
+                state.beforeLoginRevalidation = null;
+                await revalidate();
+            }
+            const user = findUserByLogin(params[0]);
+            return { rows: user ? [{
+                id: user.id,
+                username: user.username,
+                password_hash: user.password_hash,
+                role: user.role,
+                extra_roles: user.extra_roles || [],
+                page_allowlist: user.page_allowlist || [],
+                page_denylist: user.page_denylist || [],
+                action_allowlist: user.action_allowlist || [],
+                action_denylist: user.action_denylist || [],
+                business_contexts: user.business_contexts || ['event_genix'],
+                default_business_context: user.default_business_context || 'event_genix',
+                name: user.name,
+                telegram_chat_id: user.telegram_chat_id || null,
+                is_active: user.is_active,
+                login_aliases: user.login_aliases || [],
+                avatar_emoji: user.avatar_emoji || null,
+                avatar_color: user.avatar_color || null,
+                avatar_url: user.avatar_url || null
+            }] : [] };
+        }
+
         if (/SELECT u\.id, u\.username, u\.password_hash/i.test(text) && /FROM users u/i.test(text)) {
             const user = findUserByLogin(params[0]);
             return { rows: user ? [{
@@ -215,7 +254,7 @@ function createFakePool() {
                 token_hash: tokenHash,
                 device_info: deviceInfo,
                 ip_address: ipAddress,
-                created_at: new Date(),
+                created_at: databaseNow(),
                 expires_at: expiresAt,
                 revoked_at: null,
                 replaced_by: null
@@ -224,9 +263,48 @@ function createFakePool() {
             return { rows: [row], rowCount: 1 };
         }
 
-        if (/SELECT id, user_id, revoked_at, expires_at FROM refresh_tokens WHERE token_hash = \$1/i.test(text)) {
+        if (/SELECT user_id FROM refresh_tokens WHERE token_hash = \$1/i.test(text)) {
             const row = state.refreshTokens.find(item => item.token_hash === params[0]);
-            return { rows: row ? [row] : [] };
+            return { rows: row ? [{ user_id: row.user_id }] : [] };
+        }
+
+        if (/SELECT id, user_id, device_info, ip_address, revoked_at, replaced_by, expires_at, created_at,/i.test(text)
+            && /rotation_age_ms FROM refresh_tokens WHERE token_hash = \$1 FOR UPDATE/i.test(text)) {
+            const row = state.refreshTokens.find(item => item.token_hash === params[0]);
+            return {
+                rows: row ? [{
+                    ...row,
+                    rotation_age_ms: row.revoked_at
+                        ? databaseNow().getTime() - new Date(row.revoked_at).getTime()
+                        : null
+                }] : []
+            };
+        }
+
+        if (/SELECT id, user_id, revoked_at, replaced_by FROM refresh_tokens WHERE token_hash = \$1 FOR UPDATE/i.test(text)) {
+            const row = state.refreshTokens.find(item => item.token_hash === params[0]);
+            return { rows: row ? [{
+                id: row.id,
+                user_id: row.user_id,
+                revoked_at: row.revoked_at,
+                replaced_by: row.replaced_by
+            }] : [] };
+        }
+
+        if (/SELECT id, user_id, revoked_at, replaced_by FROM refresh_tokens WHERE id = \$1 AND user_id = \$2 FOR UPDATE/i.test(text)) {
+            const row = state.refreshTokens.find(item => Number(item.id) === Number(params[0])
+                && Number(item.user_id) === Number(params[1]));
+            return { rows: row ? [{
+                id: row.id,
+                user_id: row.user_id,
+                revoked_at: row.revoked_at,
+                replaced_by: row.replaced_by
+            }] : [] };
+        }
+
+        if (/SELECT device_info, ip_address FROM refresh_tokens WHERE id = \$1 AND user_id = \$2/i.test(text)) {
+            const row = state.refreshTokens.find(item => Number(item.id) === Number(params[0]) && Number(item.user_id) === Number(params[1]));
+            return { rows: row ? [{ device_info: row.device_info, ip_address: row.ip_address }] : [] };
         }
 
         if (/SELECT id, device_info, ip_address, created_at, expires_at FROM refresh_tokens WHERE user_id = \$1/i.test(text)) {
@@ -340,6 +418,11 @@ function createFakePool() {
             }] : [] };
         }
 
+        if (/SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, name, telegram_chat_id FROM users WHERE id = \$1 FOR UPDATE/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            return { rows: row ? [{ ...publicUser(row) }] : [] };
+        }
+
         if (/UPDATE refresh_tokens rt SET revoked_at = NOW\(\) FROM users u/i.test(text)) {
             const row = state.refreshTokens.find(item => item.token_hash === params[0] && !item.revoked_at);
             if (!row) return { rows: [], rowCount: 0 };
@@ -368,11 +451,11 @@ function createFakePool() {
             return { rows: [], rowCount: row ? 1 : 0 };
         }
 
-        if (/UPDATE refresh_tokens SET revoked_at = NOW\(\), replaced_by =/i.test(text)) {
+        if (/UPDATE refresh_tokens SET revoked_at = (?:NOW|clock_timestamp)\(\), replaced_by =/i.test(text)) {
             const newRow = state.refreshTokens.find(item => item.token_hash === params[0]);
             const oldRow = state.refreshTokens.find(item => Number(item.id) === Number(params[1]));
             if (oldRow) {
-                oldRow.revoked_at = new Date();
+                oldRow.revoked_at = databaseNow();
                 oldRow.replaced_by = newRow?.id || null;
             }
             return { rows: [], rowCount: oldRow ? 1 : 0 };
@@ -387,6 +470,35 @@ function createFakePool() {
                 }
             });
             return { rows: [], rowCount: count };
+        }
+
+        if (/UPDATE refresh_tokens SET revoked_at = clock_timestamp\(\) WHERE user_id = \$1/i.test(text)) {
+            let count = 0;
+            state.refreshTokens.forEach(item => {
+                if (Number(item.user_id) === Number(params[0]) && !item.revoked_at) {
+                    item.revoked_at = new Date();
+                    count += 1;
+                }
+            });
+            return { rows: [], rowCount: count };
+        }
+
+        if (/UPDATE refresh_tokens SET revoked_at = clock_timestamp\(\) WHERE id = ANY\(\$1::int\[\]\) AND revoked_at IS NULL(?: RETURNING id)?/i.test(text)) {
+            const ids = new Set((params[0] || []).map(Number));
+            const rows = [];
+            state.refreshTokens.forEach(item => {
+                if (ids.has(Number(item.id)) && !item.revoked_at) {
+                    item.revoked_at = new Date();
+                    rows.push({ id: item.id });
+                }
+            });
+            return { rows, rowCount: rows.length };
+        }
+
+        if (/UPDATE users SET session_revoked_at = (?:NOW|clock_timestamp)\(\) WHERE id = \$1/i.test(text)) {
+            const row = state.users.find(item => Number(item.id) === Number(params[0]));
+            if (row) row.session_revoked_at = new Date();
+            return { rows: [], rowCount: row ? 1 : 0 };
         }
 
         if (/SELECT u\.id, u\.username, u\.role, u\.extra_roles, u\.page_allowlist, u\.page_denylist, u\.action_allowlist, u\.action_denylist, u\.business_contexts, u\.default_business_context, u\.name/i.test(text)
@@ -430,7 +542,7 @@ function createFakePool() {
             return { rows: row ? [{ id: row.id }] : [], rowCount: row ? 1 : 0 };
         }
 
-        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*page_denylist = COALESCE\(\$4::text\[\], page_denylist\),\s*action_allowlist = COALESCE\(\$5::text\[\], action_allowlist\),\s*action_denylist = COALESCE\(\$6::text\[\], action_denylist\),\s*business_contexts = COALESCE\(\$7::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$8::text, default_business_context\),\s*session_revoked_at = NOW\(\)\s*WHERE id = \$9\s*RETURNING id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context/i.test(text)) {
+        if (/UPDATE users SET role = \$1,\s*extra_roles = COALESCE\(\$2::text\[\], extra_roles\),\s*page_allowlist = COALESCE\(\$3::text\[\], page_allowlist\),\s*page_denylist = COALESCE\(\$4::text\[\], page_denylist\),\s*action_allowlist = COALESCE\(\$5::text\[\], action_allowlist\),\s*action_denylist = COALESCE\(\$6::text\[\], action_denylist\),\s*business_contexts = COALESCE\(\$7::text\[\], business_contexts\),\s*default_business_context = COALESCE\(\$8::text, default_business_context\),\s*session_revoked_at = (?:NOW|clock_timestamp)\(\)\s*WHERE id = \$9\s*RETURNING id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[8]));
             if (row) {
                 row.role = params[0];
@@ -456,7 +568,7 @@ function createFakePool() {
                 default_business_context: row.default_business_context || 'event_genix'
             }] : [], rowCount: row ? 1 : 0 };
         }
-        if (/UPDATE users SET password_hash = \$1,\s*password_changed_at = NOW\(\),\s*session_revoked_at = NOW\(\),\s*is_active = CASE WHEN \$3::boolean THEN true ELSE is_active END\s*WHERE id = \$2\s*RETURNING id, username, is_active, password_changed_at, session_revoked_at/i.test(text)) {
+        if (/UPDATE users SET password_hash = \$1,\s*password_changed_at = NOW\(\),\s*session_revoked_at = (?:NOW|clock_timestamp)\(\),\s*is_active = CASE WHEN \$3::boolean THEN true ELSE is_active END\s*WHERE id = \$2\s*RETURNING id, username, is_active, password_changed_at, session_revoked_at/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[1]));
             if (row) {
                 row.password_hash = params[0];
@@ -472,7 +584,7 @@ function createFakePool() {
                 session_revoked_at: row.session_revoked_at
             }] : [], rowCount: row ? 1 : 0 };
         }
-        if (/UPDATE users SET is_active = \$1,\s*session_revoked_at = CASE WHEN \$1 = false THEN NOW\(\) ELSE session_revoked_at END\s*WHERE id = \$2/i.test(text)) {
+        if (/UPDATE users SET is_active = \$1,\s*session_revoked_at = CASE WHEN \$1 = false THEN (?:NOW|clock_timestamp)\(\) ELSE session_revoked_at END\s*WHERE id = \$2/i.test(text)) {
             const row = state.users.find(item => Number(item.id) === Number(params[1]));
             if (row) {
                 row.is_active = !!params[0];
@@ -571,9 +683,16 @@ async function withAuthApp(run) {
     const { authenticateToken, requireAction } = require('../middleware/auth');
     const app = express();
     app.use(express.json());
+    app.use(require('../middleware/apiVersioning').apiVersionRewrite);
     app.use('/api/auth', require('../routes/auth'));
     app.use('/api/users', require('../routes/users'));
     app.get('/api/protected-smoke', authenticateToken, (req, res) => {
+        res.json({ success: true, user: req.user });
+    });
+    app.get('/api/demo/overview', authenticateToken, (req, res) => {
+        res.json({ success: true, user: req.user });
+    });
+    app.post('/api/demo/sessions', authenticateToken, (req, res) => {
         res.json({ success: true, user: req.user });
     });
     app.delete('/api/delete-booking-smoke', authenticateToken, requireAction('delete_booking'), (_req, res) => {
@@ -597,6 +716,56 @@ async function withAuthApp(run) {
 function creatorToken() {
     return jwt.sign({ id: 1, username: 'creator', name: 'Creator', role: 'creator' }, TEST_JWT_SECRET, { expiresIn: '1h' });
 }
+
+test('login revalidates the locked account before issuing tokens after a concurrent password reset', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const user = fakePool.state.users[0];
+        user.username = 'race.operator';
+        user.password_hash = await bcrypt.hash('old-password', 4);
+        const replacementHash = await bcrypt.hash('new-password', 4);
+        fakePool.state.beforeLoginRevalidation = async () => {
+            user.password_hash = replacementHash;
+            user.session_revoked_at = new Date();
+        };
+
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: 'race.operator',
+            password: 'old-password'
+        });
+
+        assert.equal(login.status, 401);
+        assert.equal(login.data.error, 'Невірний логін або пароль');
+        assert.equal(fakePool.state.refreshTokens.length, 0);
+        assert.deepEqual(fakePool.state.transactionStatements.slice(-2), ['BEGIN', 'ROLLBACK']);
+        assert.ok(fakePool.state.securityEvents.some(event => event.reason === 'password_changed'));
+    });
+});
+
+test('signed demo tokens work only for the scoped demo playback API', async () => {
+    await withAuthApp(async ({ baseUrl }) => {
+        const demoToken = jwt.sign({
+            id: -1,
+            username: 'demo',
+            role: 'viewer',
+            name: 'Demo User',
+            isDemo: true,
+            tokenPurpose: 'demo',
+            sessionIssuedAt: Date.now()
+        }, TEST_JWT_SECRET, { expiresIn: '2h' });
+
+        const overview = await request(baseUrl, 'GET', '/api/demo/overview', undefined, demoToken);
+        const versionedOverview = await request(baseUrl, 'GET', '/api/v1/demo/overview', undefined, demoToken);
+        const session = await request(baseUrl, 'POST', '/api/demo/sessions', {}, demoToken);
+        const unrelated = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, demoToken);
+
+        assert.equal(overview.status, 200);
+        assert.equal(overview.data.user.isDemo, true);
+        assert.equal(versionedOverview.status, 200);
+        assert.equal(session.status, 200);
+        assert.equal(unrelated.status, 403);
+        assert.equal(unrelated.data.code, 'auth_demo_scope_denied');
+    });
+});
 
 test('protected system accounts cannot be impersonated', async () => {
     await withAuthApp(async ({ baseUrl, fakePool }) => {
@@ -723,6 +892,12 @@ test('created manual account can log in, verify, access protected API, reject wr
         assert.equal(login.data.user.username, 'new.operator');
         assert.equal(login.data.user.password_hash, undefined, 'login response must not expose password hash');
 
+        const originalRefreshRow = fakePool.state.refreshTokens.find(token => !token.revoked_at);
+        assert.equal(jwt.decode(login.data.accessToken).sessionIssuedAt, originalRefreshRow.created_at.getTime());
+        assert.equal(jwt.decode(login.data.token).sessionIssuedAt, originalRefreshRow.created_at.getTime());
+        originalRefreshRow.device_info = 'Android browser before network change';
+        originalRefreshRow.ip_address = '203.0.113.10';
+
         const verify = await request(baseUrl, 'GET', '/api/auth/verify', undefined, login.data.token);
         assert.equal(verify.status, 200);
         assert.equal(verify.data.user.username, 'new.operator');
@@ -734,23 +909,248 @@ test('created manual account can log in, verify, access protected API, reject wr
         const blocked = await request(baseUrl, 'GET', '/api/protected-smoke');
         assert.equal(blocked.status, 401);
 
+        const invalidToken = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, 'not-a-valid-jwt');
+        assert.equal(invalidToken.status, 401);
+        assert.equal(invalidToken.data.code, 'auth_token_invalid');
+
         const refresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
         assert.equal(refresh.status, 200);
         assert.ok(refresh.data.accessToken);
         assert.ok(refresh.data.refreshToken);
         assert.equal(refresh.data.user.username, 'new.operator');
 
+        const duplicateRefresh = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: login.data.refreshToken });
+        assert.equal(duplicateRefresh.status, 409);
+        assert.equal(duplicateRefresh.data.code, 'refresh_already_rotated');
+        assert.equal(duplicateRefresh.data.retryable, undefined);
+        assert.equal(duplicateRefresh.data.reloginRequired, true);
+        const activeRotatedToken = fakePool.state.refreshTokens.find(token => token.token_hash !== fakePool.state.refreshTokens[0].token_hash);
+        assert.ok(activeRotatedToken);
+        assert.equal(activeRotatedToken.revoked_at, null, 'duplicate same-client refresh must not revoke the rotated session');
+
         const refreshedVerify = await request(baseUrl, 'GET', '/api/auth/verify', undefined, refresh.data.accessToken);
         assert.equal(refreshedVerify.status, 200);
         assert.equal(refreshedVerify.data.user.username, 'new.operator');
 
-        const logout = await request(baseUrl, 'POST', '/api/auth/logout', { refreshToken: refresh.data.refreshToken });
+        const cutoffBeforeLogout = fakePool.state.users.find(user => user.username === 'new.operator').session_revoked_at;
+        const logout = await request(baseUrl, 'POST', '/api/auth/logout', {
+            refreshToken: login.data.refreshToken
+        });
         assert.equal(logout.status, 200);
         assert.equal(logout.data.success, true);
-        assert.equal(fakePool.state.refreshTokens.every(token => token.revoked_at), true);
+        assert.equal(
+            fakePool.state.refreshTokens.every(token => token.revoked_at),
+            true,
+            'logging out with a rotated predecessor must revoke its current replacement chain'
+        );
 
         const refreshAfterLogout = await request(baseUrl, 'POST', '/api/auth/refresh', { refreshToken: refresh.data.refreshToken });
         assert.equal(refreshAfterLogout.status, 401);
+        assert.equal(refreshAfterLogout.data.code, 'refresh_token_revoked');
+        assert.equal(
+            fakePool.state.users.find(user => user.username === 'new.operator').session_revoked_at,
+            cutoffBeforeLogout,
+            'current-device logout and retry must not revoke every device through the account cutoff'
+        );
+    });
+});
+
+test('post-grace refresh replay revokes only the rotated replacement chain', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+
+        const firstLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        const otherDeviceLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(firstLogin.status, 200);
+        assert.equal(otherDeviceLogin.status, 200);
+
+        const rotated = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: firstLogin.data.refreshToken
+        });
+        assert.equal(rotated.status, 200);
+
+        const [oldRow, unrelatedRow, replacementRow] = fakePool.state.refreshTokens;
+        assert.ok(oldRow.revoked_at);
+        assert.equal(unrelatedRow.revoked_at, null);
+        assert.equal(replacementRow.revoked_at, null);
+        oldRow.revoked_at = new Date(Date.now() - 6000);
+        const cutoffBeforeReplay = creator.session_revoked_at;
+
+        const replay = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: firstLogin.data.refreshToken
+        });
+
+        assert.equal(replay.status, 401);
+        assert.equal(replay.data.code, 'refresh_token_reuse');
+        assert.ok(replacementRow.revoked_at, 'the compromised rotation chain must be revoked');
+        assert.equal(unrelatedRow.revoked_at, null, 'an unrelated device session must remain active');
+        assert.equal(creator.session_revoked_at, cutoffBeforeReplay, 'replay must not move the account-wide cutoff');
+    });
+});
+
+test('refresh duplicate grace uses the PostgreSQL clock even when the app clock is behind', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+        fakePool.state.databaseClockOffsetMs = 60000;
+
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(login.status, 200);
+
+        const rotated = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: login.data.refreshToken
+        });
+        assert.equal(rotated.status, 200);
+
+        const duplicate = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: login.data.refreshToken
+        });
+        assert.equal(duplicate.status, 409);
+        assert.equal(duplicate.data.code, 'refresh_already_rotated');
+        assert.equal(fakePool.state.refreshTokens.at(-1).revoked_at, null);
+        assert.ok(
+            fakePool.state.queryStatements.some(sql => /EXTRACT\(EPOCH FROM \(clock_timestamp\(\) - revoked_at\)\) \* 1000 AS rotation_age_ms/i.test(sql)),
+            'the grace age must be computed by PostgreSQL under the token row lock'
+        );
+        assert.ok(
+            fakePool.state.queryStatements.some(sql => /UPDATE refresh_tokens SET revoked_at = clock_timestamp\(\), replaced_by =/i.test(sql)),
+            'the rotated predecessor timestamp must use the same PostgreSQL clock'
+        );
+    });
+});
+
+test('current-device logout revokes a replacement chain longer than one hundred tokens', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const rawRootToken = 'long-refresh-chain-root';
+        const replacementCount = 105;
+        const chain = [];
+        for (let index = 0; index <= replacementCount; index += 1) {
+            const id = fakePool.state.nextRefreshId++;
+            chain.push({
+                id,
+                user_id: 1,
+                token_hash: index === 0
+                    ? crypto.createHash('sha256').update(rawRootToken).digest('hex')
+                    : `replacement-${index}`,
+                device_info: 'long-chain-test',
+                ip_address: '127.0.0.1',
+                created_at: new Date(Date.now() - (replacementCount - index) * 1000),
+                expires_at: new Date(Date.now() + 86400000),
+                revoked_at: index < replacementCount ? new Date(Date.now() - 1000) : null,
+                replaced_by: null
+            });
+        }
+        for (let index = 0; index < chain.length - 1; index += 1) {
+            chain[index].replaced_by = chain[index + 1].id;
+        }
+        const unrelated = {
+            id: fakePool.state.nextRefreshId++,
+            user_id: 1,
+            token_hash: 'unrelated-device-token',
+            device_info: 'unrelated-device',
+            ip_address: '127.0.0.2',
+            created_at: new Date(),
+            expires_at: new Date(Date.now() + 86400000),
+            revoked_at: null,
+            replaced_by: null
+        };
+        fakePool.state.refreshTokens.push(...chain, unrelated);
+
+        const logout = await request(baseUrl, 'POST', '/api/auth/logout', {
+            refreshToken: rawRootToken
+        });
+
+        assert.equal(logout.status, 200);
+        assert.equal(logout.data.success, true);
+        assert.ok(chain.at(-1).revoked_at, 'the active tail after 105 replacements must be revoked');
+        assert.equal(chain.every(token => token.revoked_at), true);
+        assert.equal(unrelated.revoked_at, null, 'an unrelated device session must remain active');
+    });
+});
+
+test('logout-all rejects an access token already behind the session cutoff without touching a newer login', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+
+        const oldLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(oldLogin.status, 200);
+
+        const firstLogoutAll = await request(baseUrl, 'POST', '/api/auth/logout', {
+            allDevices: true
+        }, oldLogin.data.accessToken);
+        assert.equal(firstLogoutAll.status, 200);
+        const establishedCutoffMs = creator.session_revoked_at.getTime();
+
+        await new Promise(resolve => setTimeout(resolve, 2));
+        const newLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(newLogin.status, 200);
+        const newRefreshRow = fakePool.state.refreshTokens.at(-1);
+        assert.equal(newRefreshRow.revoked_at, null);
+
+        const staleLogoutAll = await request(baseUrl, 'POST', '/api/auth/logout', {
+            allDevices: true
+        }, oldLogin.data.accessToken);
+
+        assert.equal(staleLogoutAll.status, 401);
+        assert.equal(creator.session_revoked_at.getTime(), establishedCutoffMs);
+        assert.equal(newRefreshRow.revoked_at, null, 'a stale access token must not revoke the newer session');
+    });
+});
+
+test('personal security session revocation locks the account and revokes tokens in one transaction', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(login.status, 200);
+
+        fakePool.state.queryStatements.length = 0;
+        const revoke = await request(
+            baseUrl,
+            'POST',
+            '/api/auth/security/revoke-sessions',
+            {},
+            login.data.accessToken
+        );
+
+        assert.equal(revoke.status, 200);
+        assert.equal(revoke.data.reloginRequired, true);
+        assert.ok(creator.session_revoked_at);
+        assert.equal(fakePool.state.refreshTokens.every(token => token.revoked_at), true);
+        const beginIndex = fakePool.state.queryStatements.lastIndexOf('BEGIN');
+        const commitIndex = fakePool.state.queryStatements.indexOf('COMMIT', beginIndex);
+        const transactionSql = fakePool.state.queryStatements.slice(beginIndex, commitIndex + 1);
+        assert.equal(transactionSql[0], 'BEGIN');
+        assert.match(transactionSql[1], /SELECT is_active, session_revoked_at FROM users WHERE id = \$1 FOR UPDATE/i);
+        assert.equal(
+            transactionSql.some(sql => /UPDATE users SET session_revoked_at = clock_timestamp\(\)/i.test(sql)),
+            true
+        );
+        assert.equal(
+            transactionSql.some(sql => /UPDATE refresh_tokens SET revoked_at = clock_timestamp\(\) WHERE user_id = \$1/i.test(sql)),
+            true
+        );
+        assert.equal(transactionSql.at(-1), 'COMMIT');
     });
 });
 
@@ -826,6 +1226,22 @@ test('account security journal records semantic account, password, role, login, 
         }, creatorToken());
         assert.equal(impersonate.status, 200);
         assert.ok(impersonate.data.token);
+
+        const wrongCurrentPassword = await request(baseUrl, 'PUT', '/api/auth/password', {
+            currentPassword: 'WrongCurrentPassword789!',
+            newPassword: 'AuditPass987!'
+        }, accessLogin.data.accessToken);
+        assert.equal(wrongCurrentPassword.status, 400);
+        assert.equal(wrongCurrentPassword.data.code, 'current_password_invalid');
+
+        const sessionAfterWrongPassword = await request(
+            baseUrl,
+            'GET',
+            '/api/protected-smoke',
+            undefined,
+            accessLogin.data.accessToken
+        );
+        assert.equal(sessionAfterWrongPassword.status, 200);
 
         const passwordChange = await request(baseUrl, 'PUT', '/api/auth/password', {
             currentPassword: 'AuditPass789!',
@@ -1307,4 +1723,229 @@ test('isolated QA creator lease expires fail-closed and never changes the stored
         assert.equal(qaUser.qa_creator_lease_expires_at, null);
         assert.equal(qaUser.role, 'senior_manager');
     });
+});
+
+test('temporary auth verification failure is retryable and does not masquerade as forbidden access', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const originalQuery = fakePool.query;
+        fakePool.query = async () => {
+            throw new Error('temporary database outage');
+        };
+        try {
+            const unavailable = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, creatorToken());
+            assert.equal(unavailable.status, 503);
+            assert.equal(unavailable.data.code, 'auth_verification_unavailable');
+            assert.equal(unavailable.data.retryable, true);
+        } finally {
+            fakePool.query = originalQuery;
+        }
+    });
+});
+
+test('session revocation rejects legacy same-second tokens while allowing a newer millisecond token', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const legacyToken = creatorToken();
+        const legacyIssuedSecond = jwt.decode(legacyToken).iat;
+        const cutoffMs = legacyIssuedSecond * 1000 + 500;
+        fakePool.state.users[0].session_revoked_at = new Date(cutoffMs);
+
+        const revoked = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, legacyToken);
+        assert.equal(revoked.status, 401);
+        assert.equal(revoked.data.code, 'auth_session_revoked');
+
+        const newerToken = jwt.sign({
+            id: 1,
+            username: 'creator',
+            name: 'Creator',
+            role: 'creator',
+            sessionIssuedAt: cutoffMs + 1
+        }, TEST_JWT_SECRET, { expiresIn: '1h' });
+        const accepted = await request(baseUrl, 'GET', '/api/protected-smoke', undefined, newerToken);
+        assert.equal(accepted.status, 200);
+    });
+});
+
+test('auth limiters reserve concurrent login attempts and isolate accounts and refresh sessions on a shared IP', async () => {
+    const rateLimitModulePath = require.resolve('../middleware/rateLimit');
+    const originalLoginMax = process.env.LOGIN_RATE_LIMIT_MAX;
+    const originalLoginIpMax = process.env.LOGIN_IP_RATE_LIMIT_MAX;
+    process.env.LOGIN_RATE_LIMIT_MAX = '3';
+    process.env.LOGIN_IP_RATE_LIMIT_MAX = '20';
+    delete require.cache[rateLimitModulePath];
+
+    const { loginRateLimiter, refreshSessionLimiter } = require('../middleware/rateLimit');
+    const app = express();
+    app.use(express.json());
+    app.post('/login', loginRateLimiter, async (req, res) => {
+        if (['canonical.operator', 'operator.alias.one', 'operator.alias.two', 'operator.alias.three'].includes(req.body?.username)) {
+            if (!req.reserveCanonicalLoginAttempt({ id: 901, username: 'canonical.operator' })) return;
+        }
+        if (req.body?.username === 'burst.operator') {
+            await new Promise(resolve => setTimeout(resolve, 30));
+        }
+        if (req.body?.password === 'correct') return res.json({ success: true });
+        return res.status(401).json({ error: 'Invalid credentials' });
+    });
+    app.post('/refresh', refreshSessionLimiter, (_req, res) => res.json({ success: true }));
+
+    const { server, baseUrl } = await listen(app);
+    try {
+        for (let index = 0; index < 5; index += 1) {
+            const successful = await request(baseUrl, 'POST', '/login', {
+                username: 'successful.operator',
+                password: 'correct'
+            });
+            assert.equal(successful.status, 200, 'successful logins must not consume the failure bucket');
+        }
+
+        for (let index = 0; index < 3; index += 1) {
+            const failed = await request(baseUrl, 'POST', '/login', {
+                username: 'locked.operator',
+                password: 'wrong'
+            });
+            assert.equal(failed.status, 401);
+        }
+
+        const limitedResponse = await fetch(`${baseUrl}/login`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ username: 'locked.operator', password: 'correct' })
+        });
+        const limitedBody = await limitedResponse.json();
+        assert.equal(limitedResponse.status, 429);
+        assert.equal(limitedBody.code, 'login_rate_limited');
+        assert.ok(Number(limitedResponse.headers.get('retry-after')) > 0);
+
+        const neighboringAccount = await request(baseUrl, 'POST', '/login', {
+            username: 'neighbor.operator',
+            password: 'correct'
+        });
+        assert.equal(neighboringAccount.status, 200, 'one account must not exhaust the shared-IP account bucket');
+
+        const burst = await Promise.all(Array.from({ length: 5 }, () => request(baseUrl, 'POST', '/login', {
+            username: 'burst.operator',
+            password: 'wrong'
+        })));
+        assert.deepEqual(
+            burst.map(result => result.status).sort(),
+            [401, 401, 401, 429, 429],
+            'in-flight reservations must stop a parallel credential burst at the configured account max'
+        );
+
+        for (const username of ['canonical.operator', 'operator.alias.one', 'operator.alias.two']) {
+            const failedAlias = await request(baseUrl, 'POST', '/login', {
+                username,
+                password: 'wrong'
+            });
+            assert.equal(failedAlias.status, 401);
+        }
+        const limitedAlias = await request(baseUrl, 'POST', '/login', {
+            username: 'operator.alias.three',
+            password: 'correct'
+        });
+        assert.equal(limitedAlias.status, 429, 'aliases for one account must share the canonical failure bucket');
+        assert.equal(limitedAlias.data.code, 'login_rate_limited');
+
+        for (let index = 0; index < 15; index += 1) {
+            const independentSession = await request(baseUrl, 'POST', '/refresh', {
+                refreshToken: `shared-ip-session-${index}`
+            });
+            assert.equal(independentSession.status, 200, 'independent refresh sessions must not share one IP bucket');
+        }
+        for (let index = 0; index < 10; index += 1) {
+            const sameSession = await request(baseUrl, 'POST', '/refresh', {
+                refreshToken: 'repeated-refresh-session'
+            });
+            assert.equal(sameSession.status, 200);
+        }
+        const limitedRefresh = await request(baseUrl, 'POST', '/refresh', {
+            refreshToken: 'repeated-refresh-session'
+        });
+        assert.equal(limitedRefresh.status, 429);
+        assert.equal(limitedRefresh.data.code, 'refresh_rate_limited');
+        assert.equal(limitedRefresh.data.retryable, true);
+    } finally {
+        await close(server);
+        delete require.cache[rateLimitModulePath];
+        if (originalLoginMax === undefined) delete process.env.LOGIN_RATE_LIMIT_MAX;
+        else process.env.LOGIN_RATE_LIMIT_MAX = originalLoginMax;
+        if (originalLoginIpMax === undefined) delete process.env.LOGIN_IP_RATE_LIMIT_MAX;
+        else process.env.LOGIN_IP_RATE_LIMIT_MAX = originalLoginIpMax;
+    }
+});
+
+test('global API rate limits cannot silently weaken the five-attempt login default', async () => {
+    const rateLimitModulePath = require.resolve('../middleware/rateLimit');
+    const originalRateMax = process.env.RATE_LIMIT_MAX;
+    const originalLoginMax = process.env.LOGIN_RATE_LIMIT_MAX;
+    const originalLoginIpMax = process.env.LOGIN_IP_RATE_LIMIT_MAX;
+    process.env.RATE_LIMIT_MAX = '300';
+    delete process.env.LOGIN_RATE_LIMIT_MAX;
+    process.env.LOGIN_IP_RATE_LIMIT_MAX = '100';
+    delete require.cache[rateLimitModulePath];
+
+    const { loginRateLimiter } = require('../middleware/rateLimit');
+    const app = express();
+    app.use(express.json());
+    app.post('/login', loginRateLimiter, (_req, res) => res.status(401).json({ error: 'Invalid credentials' }));
+    const { server, baseUrl } = await listen(app);
+
+    try {
+        for (let index = 0; index < 5; index += 1) {
+            const failed = await request(baseUrl, 'POST', '/login', {
+                username: 'default-limit.operator',
+                password: 'wrong'
+            });
+            assert.equal(failed.status, 401);
+        }
+        const limited = await request(baseUrl, 'POST', '/login', {
+            username: 'default-limit.operator',
+            password: 'wrong'
+        });
+        assert.equal(limited.status, 429);
+        assert.equal(limited.data.code, 'login_rate_limited');
+    } finally {
+        await close(server);
+        delete require.cache[rateLimitModulePath];
+        if (originalRateMax === undefined) delete process.env.RATE_LIMIT_MAX;
+        else process.env.RATE_LIMIT_MAX = originalRateMax;
+        if (originalLoginMax === undefined) delete process.env.LOGIN_RATE_LIMIT_MAX;
+        else process.env.LOGIN_RATE_LIMIT_MAX = originalLoginMax;
+        if (originalLoginIpMax === undefined) delete process.env.LOGIN_IP_RATE_LIMIT_MAX;
+        else process.env.LOGIN_IP_RATE_LIMIT_MAX = originalLoginIpMax;
+    }
+});
+
+test('refresh limiter caps random-token floods per IP without relying on token reuse', async () => {
+    const rateLimitModulePath = require.resolve('../middleware/rateLimit');
+    const originalRefreshIpMax = process.env.REFRESH_IP_RATE_LIMIT_MAX;
+    process.env.REFRESH_IP_RATE_LIMIT_MAX = '10';
+    delete require.cache[rateLimitModulePath];
+
+    const { refreshSessionLimiter } = require('../middleware/rateLimit');
+    const app = express();
+    app.use(express.json());
+    app.post('/refresh', refreshSessionLimiter, (_req, res) => res.json({ success: true }));
+
+    const { server, baseUrl } = await listen(app);
+    try {
+        for (let index = 0; index < 10; index += 1) {
+            const response = await request(baseUrl, 'POST', '/refresh', {
+                refreshToken: `random-invalid-token-${index}`
+            });
+            assert.equal(response.status, 200);
+        }
+
+        const limited = await request(baseUrl, 'POST', '/refresh', {
+            refreshToken: 'random-invalid-token-10'
+        });
+        assert.equal(limited.status, 429);
+        assert.equal(limited.data.code, 'refresh_rate_limited');
+        assert.equal(limited.data.retryable, true);
+    } finally {
+        await close(server);
+        delete require.cache[rateLimitModulePath];
+        if (originalRefreshIpMax === undefined) delete process.env.REFRESH_IP_RATE_LIMIT_MAX;
+        else process.env.REFRESH_IP_RATE_LIMIT_MAX = originalRefreshIpMax;
+    }
 });

@@ -158,8 +158,10 @@ async function initPage() {
         return;
     }
 
-    const token = localStorage.getItem('pzp_token');
-    if (!token) {
+    const hasStoredSession = typeof apiHasStoredAuthSession === 'function'
+        ? apiHasStoredAuthSession()
+        : Boolean(localStorage.getItem('pzp_token'));
+    if (!hasStoredSession) {
         if (isEmbeddedEarly) {
             renderProductIaTabs();
             renderCategoryTabs();
@@ -172,6 +174,10 @@ async function initPage() {
 
     const user = await apiVerifyToken();
     if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return;
+        }
         if (isEmbeddedEarly) {
             renderProductIaTabs();
             renderCategoryTabs();

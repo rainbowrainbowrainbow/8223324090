@@ -248,6 +248,10 @@
             else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
             return true;
         } catch (error) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return false;
+            }
             document.getElementById('mainApp')?.classList.add('hidden');
             if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
             window.location.href = '/';

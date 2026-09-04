@@ -2070,6 +2070,10 @@
             }
         } catch (error) {
             if (error?.message === 'Invalid token') {
+                if (typeof handleTransientAuthSessionBootstrap === 'function'
+                    && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                    return;
+                }
                 window.location.href = '/';
                 return;
             }

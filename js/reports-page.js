@@ -1274,12 +1274,28 @@ const ReportsPage = (() => {
     // ==========================================
 
     async function init() {
+        let verifiedUser = null;
         try {
             if (typeof apiVerifyToken === 'function') {
-                const user = await apiVerifyToken();
-                if (user) AppState.currentUser = user;
+                verifiedUser = await apiVerifyToken();
             }
-        } catch { return; }
+        } catch {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return;
+            }
+            window.location.href = '/';
+            return;
+        }
+        if (!verifiedUser) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return;
+            }
+            window.location.href = '/';
+            return;
+        }
+        AppState.currentUser = verifiedUser;
         if (typeof initDarkMode === 'function') initDarkMode();
         syncReportWorkflowSettingsAccess();
         initReportsBusinessContext(AppState.currentUser);

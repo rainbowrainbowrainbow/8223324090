@@ -246,6 +246,11 @@
 
         container.innerHTML = '<div class="empty-state">Завантаження...</div>';
         const result = await apiGetCertificates(filters);
+        if (result.authTransient) {
+            container.innerHTML = '<div class="page-fatal-error" role="alert"><h3>Сесію тимчасово не підтверджено</h3><p>Сертифікати не завантажені, але ваш вхід збережено.</p><button type="button" class="btn-page-primary" data-cert-load-retry>Повторити</button></div>';
+            container.querySelector('[data-cert-load-retry]')?.addEventListener('click', () => loadCertificatesPage());
+            return;
+        }
         state.items = Array.isArray(result.items) ? result.items : [];
         state.stats = result.stats || null;
         renderStats(state.stats, result.total, state.items);
@@ -462,9 +467,10 @@
         actions.innerHTML = '';
 
         try {
-            const response = await fetch(`${API_BASE}/certificates/${encodeURIComponent(id)}`, {
+            const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${encodeURIComponent(id)}`, {
                 headers: getAuthHeaders(false)
             });
+            if (!response) throw new Error('auth_session_unavailable');
             if (!response.ok) throw new Error('not_found');
             const cert = await response.json();
             renderDetail(cert);
@@ -596,9 +602,10 @@
         try {
             let cert = state.detailCert && String(state.detailCert.id) === String(id) ? state.detailCert : null;
             if (!cert) {
-                const response = await fetch(`${API_BASE}/certificates/${encodeURIComponent(id)}`, {
+                const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${encodeURIComponent(id)}`, {
                     headers: getAuthHeaders(false)
                 });
+                if (!response) throw new Error('auth_session_unavailable');
                 if (!response.ok) throw new Error('not_found');
                 cert = await response.json();
             }
@@ -721,15 +728,39 @@
     }
 
     async function bootstrapAuthenticatedShell() {
-
+        if (typeof apiVerifyToken !== 'function'
+            || typeof hydrateBusinessOperatingProfile !== 'function'
+            || typeof hydrateActionPermissions !== 'function') {
+            throw new Error('Shared authentication runtime is unavailable');
+        }
         const user = await apiVerifyToken();
         if (!user) {
+            const authFailure = typeof getApiAuthSessionFailure === 'function'
+                ? getApiAuthSessionFailure()
+                : null;
+            if (typeof isApiAuthSessionFailureTransient === 'function'
+                && isApiAuthSessionFailureTransient(authFailure)) {
+                const error = new Error('Не вдалося тимчасово підтвердити сесію');
+                error.code = 'auth_session_transient';
+                error.authFailure = authFailure;
+                throw error;
+            }
             if (typeof clearAuthStorage === 'function') clearAuthStorage();
             redirectToLogin();
             return null;
         }
 
+        await hydrateBusinessOperatingProfile(user);
+        const permissions = await hydrateActionPermissions(user);
+        if (!permissions) {
+            const error = new Error('Не вдалося завантажити права доступу');
+            error.code = 'permission_bootstrap_failed';
+            throw error;
+        }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
+        window.WorkingRole?.hydrate?.();
+        if (typeof enforceCurrentPageAccess === 'function' && !enforceCurrentPageAccess(user)) return null;
+
         const userEl = $('currentUser');
         if (userEl) userEl.textContent = user.name || user.username || '';
         if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
@@ -761,7 +792,31 @@
             const user = await bootstrapAuthenticatedShell();
             if (!user) return;
         } catch (error) {
-            if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+            const authFailure = typeof getApiAuthSessionFailure === 'function'
+                ? getApiAuthSessionFailure()
+                : error?.authFailure;
+            const terminalAuthFailure = error?.code === 'auth_session_terminal'
+                || (typeof isApiAuthSessionFailureTerminal === 'function'
+                    && isApiAuthSessionFailureTerminal(authFailure));
+            if (terminalAuthFailure) return;
+            if (typeof showAuthenticatedPageShell === 'function') {
+                showAuthenticatedPageShell({ markRuntimeReady: false });
+            }
+            if (error?.code === 'auth_session_transient' && typeof renderAuthSessionBootstrapError === 'function') {
+                renderAuthSessionBootstrapError({
+                    containerId: 'main-content',
+                    failure: error.authFailure,
+                    retry: () => window.location.reload()
+                });
+                return;
+            }
+            if (error?.code === 'permission_bootstrap_failed' && typeof renderPermissionBootstrapError === 'function') {
+                renderPermissionBootstrapError({
+                    containerId: 'main-content',
+                    retry: () => window.location.reload()
+                });
+                return;
+            }
             if (typeof handleStandaloneInitError === 'function') {
                 handleStandaloneInitError('certificates', error, renderCertificatePageFatalError);
             } else {

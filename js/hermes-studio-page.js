@@ -50,10 +50,6 @@
         }
     }
 
-    function getToken() {
-        return localStorage.getItem('pzp_token');
-    }
-
     function businessContextParam() {
         const value = new URLSearchParams(window.location.search).get('businessContext');
         return value ? String(value).trim() : '';
@@ -66,26 +62,36 @@
     }
 
     async function studioFetch(path, options = {}) {
-        const token = getToken();
         const headers = {
             ...(options.body ? { 'Content-Type': 'application/json' } : {}),
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
+            ...(typeof getAuthHeaders === 'function' ? getAuthHeaders(Boolean(options.body)) : {}),
             ...(options.headers || {})
         };
-        const res = await fetch(`${API_BASE}${path}`, {
+        const res = await apiFetchWithAuthRetry(`${API_BASE}${path}`, {
             ...options,
             headers
         });
+        if (!res) {
+            const failure = typeof getApiAuthSessionFailure === 'function'
+                ? getApiAuthSessionFailure()
+                : null;
+            const isTransient = typeof isApiAuthSessionFailureTransient === 'function'
+                && isApiAuthSessionFailureTransient(failure);
+            const err = new Error(isTransient
+                ? 'Сесію тимчасово не вдалося підтвердити. Повторіть спробу.'
+                : 'Сесію завершено. Увійдіть знову.');
+            err.code = failure?.reason === 'session-changed'
+                ? 'auth_session_changed'
+                : (isTransient ? 'auth_session_transient' : 'auth_session_terminal');
+            err.authFailure = failure;
+            throw err;
+        }
         const text = await res.text();
         let data = {};
         try {
             data = text ? JSON.parse(text) : {};
         } catch {
             data = { error: text };
-        }
-        if (res.status === 401) {
-            window.location.href = '/';
-            return null;
         }
         if (!res.ok) {
             const err = new Error(data.error || data.message || `HTTP ${res.status}`);
@@ -320,7 +326,27 @@
         renderDetail();
     }
 
-    async function loadJobs({ preserveSelection = true } = {}) {
+    function assertHermesBootstrapSessionCurrent(sessionSnapshot, authUser, stage = 'hermes-bootstrap') {
+        if (!sessionSnapshot) return;
+        const sessionIsCurrent = typeof isAuthBootstrapSessionCurrent === 'function'
+            && isAuthBootstrapSessionCurrent(sessionSnapshot, authUser);
+        if (sessionIsCurrent) return;
+        if (typeof authBootstrapSessionChangedError === 'function') {
+            throw authBootstrapSessionChangedError(stage);
+        }
+        const error = new Error('Authentication session changed during Hermes Studio bootstrap');
+        error.code = 'auth_session_changed';
+        error.authFailure = { kind: 'transient', transient: true, stage, reason: 'session-changed' };
+        throw error;
+    }
+
+    async function loadJobs({
+        preserveSelection = true,
+        bootstrap = false,
+        sessionSnapshot = null,
+        authUser = null
+    } = {}) {
+        assertHermesBootstrapSessionCurrent(sessionSnapshot, authUser, 'hermes-jobs');
         state.loading = true;
         renderQueue();
         try {
@@ -328,7 +354,10 @@
             const status = $('hermesStudioStatusFilter')?.value || '';
             if (status) params.set('status', status);
             params.set('limit', '50');
-            const data = await studioFetch(`/jobs?${params.toString()}`);
+            const data = await studioFetch(`/jobs?${params.toString()}`, sessionSnapshot
+                ? { authSessionSnapshot: sessionSnapshot, authUser }
+                : {});
+            assertHermesBootstrapSessionCurrent(sessionSnapshot, authUser, 'hermes-jobs');
             if (!data) return;
             state.jobs = Array.isArray(data.items) ? data.items : [];
             state.canDecide = data.meta?.canDecide === true || canCurrentUserDecide();
@@ -336,11 +365,22 @@
                 state.selectedJobId = state.jobs[0]?.id || null;
             }
         } catch (err) {
+            assertHermesBootstrapSessionCurrent(sessionSnapshot, authUser, 'hermes-jobs');
+            if (bootstrap && [
+                'auth_session_terminal',
+                'auth_session_transient',
+                'auth_session_changed'
+            ].includes(err?.code)) {
+                throw err;
+            }
             console.error('[hermes-studio] load jobs failed', err);
             notify(err.message || 'Не вдалося завантажити Hermes Studio', 'error');
         } finally {
             state.loading = false;
-            renderAll();
+            const canPublish = !sessionSnapshot
+                || (typeof isAuthBootstrapSessionCurrent === 'function'
+                    && isAuthBootstrapSessionCurrent(sessionSnapshot, authUser));
+            if (canPublish) renderAll();
         }
     }
 
@@ -443,26 +483,70 @@
     }
 
     async function initAuth() {
-        const token = getToken();
-        if (!token) {
+        const hasStoredSession = typeof apiHasStoredAuthSession === 'function'
+            ? apiHasStoredAuthSession()
+            : Boolean(
+                localStorage.getItem('pzp_token')
+                || localStorage.getItem('pzp_access_token')
+                || localStorage.getItem('pzp_refresh_token')
+            );
+        if (!hasStoredSession) {
             window.location.href = '/';
             return;
         }
         try {
-            const res = await fetch('/api/auth/verify', {
-                headers: { Authorization: `Bearer ${token}` }
-            });
-            if (!res.ok) throw new Error('Token invalid');
-            const data = await res.json();
-            const user = data.user || data;
+            if (typeof apiVerifyToken !== 'function'
+                || typeof apiFetchWithAuthRetry !== 'function'
+                || typeof hydrateActionPermissions !== 'function'
+                || typeof captureAuthBootstrapSession !== 'function'
+                || typeof isAuthBootstrapSessionCurrent !== 'function'
+                || typeof authBootstrapSessionChangedError !== 'function') {
+                throw new Error('Shared authentication runtime is unavailable');
+            }
+            const user = await apiVerifyToken();
+            if (!user) {
+                const authFailure = typeof getApiAuthSessionFailure === 'function'
+                    ? getApiAuthSessionFailure()
+                    : null;
+                if (typeof isApiAuthSessionFailureTransient === 'function'
+                    && isApiAuthSessionFailureTransient(authFailure)) {
+                    const error = new Error('Session verification is temporarily unavailable');
+                    error.code = 'auth_session_transient';
+                    error.authFailure = authFailure;
+                    throw error;
+                }
+                if (typeof clearAuthStorage === 'function') clearAuthStorage();
+                window.location.href = '/';
+                return;
+            }
+            const bootstrapSession = captureAuthBootstrapSession(user);
+            assertHermesBootstrapSessionCurrent(bootstrapSession, user, 'hermes-verify');
+            if (typeof hydrateBusinessOperatingProfile === 'function') {
+                await hydrateBusinessOperatingProfile(user, { sessionSnapshot: bootstrapSession });
+                assertHermesBootstrapSessionCurrent(bootstrapSession, user, 'hermes-profile');
+            }
+            const permissions = await hydrateActionPermissions(user, { sessionSnapshot: bootstrapSession });
+            assertHermesBootstrapSessionCurrent(bootstrapSession, user, 'hermes-permissions');
+            if (!permissions) {
+                const error = new Error('Permission catalog is temporarily unavailable');
+                error.code = 'permission_bootstrap_failed';
+                throw error;
+            }
             if (typeof AppState !== 'undefined') AppState.currentUser = user;
+            window.WorkingRole?.hydrate?.();
             $('currentUser').textContent = user.name || user.username || '';
             if (typeof enforceCurrentPageAccess === 'function' && !enforceCurrentPageAccess(user)) return;
             if (typeof bindLogoutButton === 'function') bindLogoutButton();
             if (typeof initDarkMode === 'function') initDarkMode();
             state.canDecide = canCurrentUserDecide();
+            await loadJobs({
+                preserveSelection: false,
+                bootstrap: true,
+                sessionSnapshot: bootstrapSession,
+                authUser: user
+            });
+            assertHermesBootstrapSessionCurrent(bootstrapSession, user, 'hermes-publish');
             bindUi();
-            await loadJobs({ preserveSelection: false });
             if (typeof showAuthenticatedPageShell === 'function') {
                 showAuthenticatedPageShell();
             } else {
@@ -470,9 +554,73 @@
                 if (window.Sidebar?.markShellReady) window.Sidebar.markShellReady();
             }
         } catch (err) {
-            console.error('[hermes-studio] auth failed', err);
-            if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
-            window.location.href = '/';
+            console.error('[hermes-studio] bootstrap failed', err);
+            const authFailure = typeof getApiAuthSessionFailure === 'function'
+                ? getApiAuthSessionFailure()
+                : err?.authFailure;
+            const terminalAuthFailure = err?.code === 'auth_session_terminal'
+                || (typeof isApiAuthSessionFailureTerminal === 'function'
+                    && isApiAuthSessionFailureTerminal(authFailure));
+            if (terminalAuthFailure) return;
+            const sessionChanged = err?.code === 'auth_session_changed'
+                || err?.authFailure?.reason === 'session-changed';
+            if (sessionChanged) {
+                state.jobs = [];
+                state.selectedJobId = null;
+                state.canDecide = false;
+                if (typeof AppState !== 'undefined' && AppState?.currentUser) {
+                    if (typeof clearRuntimePermissionCatalog === 'function') {
+                        clearRuntimePermissionCatalog(AppState.currentUser);
+                    }
+                    AppState.currentUser = null;
+                }
+                const currentUserLabel = $('currentUser');
+                if (currentUserLabel) currentUserLabel.textContent = '';
+                if (typeof renderAuthSessionBootstrapError === 'function') {
+                    renderAuthSessionBootstrapError({
+                        failure: err.authFailure,
+                        retry: () => window.location.reload()
+                    });
+                } else {
+                    window.location.reload();
+                }
+                return;
+            }
+            if (['auth_session_transient', 'auth_session_changed'].includes(err?.code)
+                && typeof renderAuthSessionBootstrapError === 'function') {
+                if (typeof showAuthenticatedPageShell === 'function') {
+                    showAuthenticatedPageShell({ markRuntimeReady: false });
+                }
+                renderAuthSessionBootstrapError({
+                    containerId: 'main-content',
+                    failure: err.authFailure,
+                    retry: () => window.location.reload()
+                });
+                return;
+            }
+            if (err?.code === 'permission_bootstrap_failed'
+                && typeof renderPermissionBootstrapError === 'function') {
+                if (typeof showAuthenticatedPageShell === 'function') {
+                    showAuthenticatedPageShell({ markRuntimeReady: false });
+                }
+                renderPermissionBootstrapError({
+                    containerId: 'main-content',
+                    retry: () => window.location.reload()
+                });
+                return;
+            }
+            if (typeof showAuthenticatedPageShell === 'function') {
+                showAuthenticatedPageShell({ markRuntimeReady: false });
+            }
+            if (typeof renderAuthSessionBootstrapError === 'function') {
+                renderAuthSessionBootstrapError({
+                    containerId: 'main-content',
+                    failure: { status: 0, retryable: true, stage: 'page-bootstrap' },
+                    retry: () => window.location.reload()
+                });
+            } else {
+                notify('Сторінку тимчасово не вдалося завантажити. Сесію збережено — повторіть спробу.', 'error');
+            }
         }
     }
 

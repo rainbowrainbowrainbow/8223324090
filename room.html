@@ -261,7 +261,17 @@
     async function initRoomPage() {
         if (localStorage.getItem('pzp_dark_mode') !== 'false') document.body.classList.add('dark-mode');
         const user = await apiVerifyToken();
-        if (!user) { window.location.href = '/'; return; }
+        if (!user) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({
+                    retry: initRoomPage,
+                    containerId: 'main-content'
+                })) {
+                return;
+            }
+            window.location.href = '/';
+            return;
+        }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
 
         // Check if viewing someone else's room

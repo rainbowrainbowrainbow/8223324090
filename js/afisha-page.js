@@ -784,6 +784,10 @@
             return true;
         } catch (err) {
             console.error('[afisha-page] auth bootstrap failed', err);
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return false;
+            }
             if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
             window.location.href = '/';
             return false;

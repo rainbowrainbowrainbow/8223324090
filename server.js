@@ -17,7 +17,7 @@ const { pool, initDatabase } = require('./db');
 const { authenticateToken, requireAction, requireRole } = require('./middleware/auth');
 const { apiAuthBoundary } = require('./middleware/apiAuthBoundary');
 const { businessScopeWriteGuard } = require('./middleware/businessScopeGuard');
-const { rateLimiter, loginRateLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
+const { rateLimiter, loginRateLimiter, refreshSessionLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { errorResponseMetadata } = require('./middleware/errorResponseMetadata');
@@ -261,7 +261,7 @@ app.use('/api', businessScopeWriteGuard);
 app.use('/api/auth/login', loginRateLimiter);
 // v25.3: Rate limiters for sensitive endpoints
 app.use('/api/auth/password', sensitiveActionLimiter);
-app.use('/api/auth/refresh', sensitiveActionLimiter);
+app.use('/api/auth/refresh', refreshSessionLimiter);
 app.use('/api/auth/impersonate', sensitiveActionLimiter);
 app.use('/api/shop/buy', shopBuyLimiter);
 app.use('/api/gamification/shop/buy', shopBuyLimiter);

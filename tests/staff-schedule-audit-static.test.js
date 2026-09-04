@@ -147,7 +147,7 @@ test('staff lifecycle cleanup is centralized and preserves historical evidence',
     assert.match(lifecycle, /NOT EXISTS \(\s*SELECT 1 FROM hr_time_records tr/);
     assert.match(lifecycle, /syncLinkedStaffAccountDeactivation/);
     assert.match(lifecycle, /UPDATE employee_profiles\s+SET is_active = false/);
-    assert.match(lifecycle, /UPDATE users\s+SET is_active = false,\s+session_revoked_at = NOW\(\)/);
+    assert.match(lifecycle, /UPDATE users\s+SET is_active = false,\s+session_revoked_at = clock_timestamp\(\)/);
     assert.match(lifecycle, /UPDATE refresh_tokens\s+SET revoked_at = NOW\(\)/);
 
     assert.doesNotMatch(staffRoute, /async function cleanupFutureStaffOperationalSchedule/);

@@ -17,6 +17,7 @@ const HR_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8'
 const PROFILE_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
 const STAFF_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'staff-page.js'), 'utf8');
 const LEADS_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'leads-page.js'), 'utf8');
+const DASHBOARD_PAGE_CODE = fs.readFileSync(path.join(ROOT, 'js', 'dashboard-page.js'), 'utf8');
 
 function response(status, body = {}) {
     return {
@@ -61,10 +62,12 @@ function loadCheckSessionHarness(overrides = {}) {
     assert.ok(end > start, 'login function should follow checkSession');
 
     const calls = [];
-    const store = new Map([
-        ['pzp_token', 'stored-token'],
-        ['pzp_current_user', JSON.stringify({ username: 'cached.user' })]
-    ]);
+    const initialStore = overrides.initialStore || {
+        pzp_token: 'stored-token',
+        pzp_current_user: JSON.stringify({ username: 'cached.user' })
+    };
+    const { initialStore: _ignoredInitialStore, ...contextOverrides } = overrides;
+    const store = new Map(Object.entries(initialStore).map(([key, value]) => [key, String(value)]));
     const classSets = {
         loginScreen: new Set(['hidden']),
         mainApp: new Set(['hidden'])
@@ -94,13 +97,22 @@ function loadCheckSessionHarness(overrides = {}) {
         window: { WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) } },
         navigator: { onLine: true },
         setTimeout: fn => fn(),
-        hasStoredRefreshSession: () => false,
+        hasStoredRefreshSession: () => Boolean(store.get('pzp_refresh_token')),
         apiVerifyToken: async () => { throw new Error('verify failed'); },
+        captureAuthBootstrapSession: user => ({ user }),
+        isAuthBootstrapSessionCurrent: () => true,
+        authBootstrapSessionChangedError: () => new Error('session changed'),
         hydrateBusinessOperatingProfile: async () => calls.push(['hydrateBusinessOperatingProfile']),
         hydrateActionPermissions: async () => calls.push(['hydrateActionPermissions']),
         showMainApp: () => calls.push(['showMainApp']),
+        showAuthenticatedPageShell: options => calls.push(['showAuthenticatedPageShell', options]),
+        renderPermissionBootstrapError: options => calls.push(['renderPermissionBootstrapError', options]),
+        clearAuthSessionBootstrapError: () => calls.push(['clearAuthSessionBootstrapError']),
         resetAuthenticatedRuntimeReady: () => {},
         scheduleOfflineSessionRecovery: () => calls.push(['scheduleOfflineSessionRecovery']),
+        getApiAuthSessionFailure: () => null,
+        isApiAuthSessionFailureTransient: () => false,
+        renderAuthSessionBootstrapError: options => calls.push(['renderAuthSessionBootstrapError', options]),
         clearAuthStorage: () => {
             calls.push(['clearAuthStorage']);
             store.delete('pzp_token');
@@ -112,21 +124,30 @@ function loadCheckSessionHarness(overrides = {}) {
             classSets.loginScreen.delete('hidden');
             classSets.mainApp.add('hidden');
         },
-        ...overrides
+        ...contextOverrides
     };
     vm.createContext(context);
-    vm.runInContext(AUTH_CODE.slice(start, end), context, { filename: 'js/auth.js' });
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + AUTH_CODE.slice(start, end),
+        context,
+        { filename: 'js/auth.js' }
+    );
     return { context, calls, classSets, store };
 }
 
-function extractAuthFunction(functionName) {
-    const start = AUTH_CODE.indexOf(`function ${functionName}`);
+function extractSourceFunction(source, functionName) {
+    const start = source.indexOf(`function ${functionName}(`);
     assert.ok(start >= 0, `${functionName} function missing`);
-    const signatureStart = AUTH_CODE.indexOf('(', start);
+    const declarationStart = source.slice(Math.max(0, start - 6), start) === 'async '
+        ? start - 6
+        : start;
+    const signatureStart = source.indexOf('(', start);
     let signatureDepth = 0;
     let signatureEnd = -1;
-    for (let i = signatureStart; i < AUTH_CODE.length; i += 1) {
-        const char = AUTH_CODE[i];
+    for (let i = signatureStart; i < source.length; i += 1) {
+        const char = source[i];
         if (char === '(') signatureDepth += 1;
         if (char === ')') {
             signatureDepth -= 1;
@@ -137,17 +158,75 @@ function extractAuthFunction(functionName) {
         }
     }
     assert.ok(signatureEnd > signatureStart, `${functionName} signature end missing`);
-    const bodyStart = AUTH_CODE.indexOf('{', signatureEnd);
+    const bodyStart = source.indexOf('{', signatureEnd);
     let depth = 0;
-    for (let i = bodyStart; i < AUTH_CODE.length; i += 1) {
-        const char = AUTH_CODE[i];
+    for (let i = bodyStart; i < source.length; i += 1) {
+        const char = source[i];
         if (char === '{') depth += 1;
         if (char === '}') {
             depth -= 1;
-            if (depth === 0) return AUTH_CODE.slice(start, i + 1);
+            if (depth === 0) return source.slice(declarationStart, i + 1);
         }
     }
     throw new Error(`Could not extract ${functionName}`);
+}
+
+function extractAuthFunction(functionName) {
+    return extractSourceFunction(AUTH_CODE, functionName);
+}
+
+function loadAutoFillHarness(options = {}) {
+    const calls = [];
+    const store = new Map();
+    const sessionStore = new Map();
+    if (options.cachedUser) store.set('pzp_current_user', JSON.stringify(options.cachedUser));
+    let permissionStatus = options.permissionStatus || 'idle';
+    let runtimeReady = Boolean(options.runtimeReady);
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } },
+        AppState: { currentUser: options.appUser || null },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        sessionStorage: {
+            getItem: key => sessionStore.get(key) || null,
+            setItem: (key, value) => sessionStore.set(key, String(value)),
+            removeItem: key => sessionStore.delete(key)
+        },
+        getPermissionLifecycle: () => ({ status: permissionStatus }),
+        isAuthenticatedRuntimeReady: () => runtimeReady,
+        enforceCurrentPageAccess: user => {
+            calls.push(['enforceCurrentPageAccess', user]);
+            return true;
+        },
+        window: {
+            WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) },
+            location: { reload: () => calls.push(['reload']) }
+        },
+        document: { getElementById: () => null },
+        Sidebar: { initUserCard: () => calls.push(['Sidebar.initUserCard']) },
+        setApiAuthSessionFailure: (...args) => calls.push(['setApiAuthSessionFailure', ...args]),
+        clearRuntimePermissionCatalog: user => calls.push(['clearRuntimePermissionCatalog', user]),
+        setPermissionLifecycle: status => {
+            permissionStatus = status;
+            calls.push(['setPermissionLifecycle', status]);
+        },
+        resetAuthenticatedRuntimeReady: () => calls.push(['resetAuthenticatedRuntimeReady']),
+        showAuthenticatedPageShell: options => calls.push(['showAuthenticatedPageShell', options]),
+        renderAuthSessionBootstrapError: options => calls.push(['renderAuthSessionBootstrapError', options])
+    };
+    vm.createContext(context);
+    vm.runInContext(extractAuthFunction('_autoFillUser'), context, { filename: 'js/auth.js' });
+    return {
+        context,
+        calls,
+        store,
+        sessionStore,
+        setPermissionStatus: status => { permissionStatus = status; },
+        setRuntimeReady: ready => { runtimeReady = Boolean(ready); }
+    };
 }
 
 function classListHarness(initial = []) {
@@ -222,10 +301,37 @@ function loadLogoutShellHarness(pathname = '/') {
     vm.runInContext([
         extractAuthFunction('resetAuthExitVisualState'),
         extractAuthFunction('clearAuthenticatedPageShell'),
+        extractAuthFunction('clearAuthSessionBootstrapError'),
         extractAuthFunction('showLoginScreen'),
         extractAuthFunction('logout')
     ].join('\n'), context, { filename: 'js/auth.js' });
     return { context, calls, bodyClasses, htmlClasses, loginClasses, mainClasses, bodyAttrs };
+}
+
+function loadRefreshRevocationHarness(localEntries = [], sessionEntries = []) {
+    const localStore = new Map(localEntries);
+    const sessionStore = new Map(sessionEntries);
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const context = {
+        AUTH_REFRESH_TOKEN_KEY: 'pzp_refresh_token',
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        fetch: async (url, options) => {
+            calls.push({ url, options });
+            return { ok: true };
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext([
+        extractAuthFunction('revokeRefreshTokenValue'),
+        extractAuthFunction('revokeStoredRefreshToken')
+    ].join('\n'), context, { filename: 'js/auth.js' });
+    return { context, calls, localStore, sessionStore };
 }
 
 test('apiVerifyToken refreshes a stored refresh session when the legacy token is missing', async () => {
@@ -248,7 +354,7 @@ test('apiVerifyToken refreshes a stored refresh session when the legacy token is
         throw new Error(`Unexpected fetch: ${url}`);
     }, {
         pzp_refresh_token: 'refresh-one',
-        pzp_current_user: JSON.stringify({ username: 'old' })
+        pzp_current_user: JSON.stringify({ id: 7, username: 'new.operator' })
     });
 
     const user = await context.apiVerifyToken();
@@ -275,6 +381,78 @@ test('checkSession falls back to login instead of leaving a blank shell when ver
     );
 });
 
+test('checkSession canonically clears partial auth storage when no token remains', async () => {
+    const { context, calls, store } = loadCheckSessionHarness({
+        initialStore: {
+            pzp_current_user: JSON.stringify({ id: 19, username: 'stale.user', role: 'manager' }),
+            pzp_session: JSON.stringify({ userId: 19 }),
+            pzp_auth_session_generation: 'stale-generation',
+            pzp_auth_login_intent: 'stale-login-intent'
+        }
+    });
+    context.AppState.currentUser = { id: 19, username: 'stale.user', role: 'manager' };
+    context.clearAuthStorage = () => {
+        calls.push(['clearAuthStorage']);
+        store.clear();
+        context.AppState.currentUser = null;
+    };
+
+    assert.equal(await context.checkSession(), false);
+
+    assert.equal(store.size, 0);
+    assert.equal(context.AppState.currentUser, null);
+    assert.deepEqual(
+        calls.map(call => call[0]),
+        ['clearAuthStorage', 'clearPrivateClientCaches', 'showLoginScreen']
+    );
+});
+
+test('checkSession preserves auth storage and offers retry on transient verification failure', async () => {
+    const failure = { kind: 'transient', transient: true, stage: 'verify', status: 429 };
+    const { context, calls, store } = loadCheckSessionHarness({
+        apiVerifyToken: async () => null,
+        getApiAuthSessionFailure: () => failure,
+        isApiAuthSessionFailureTransient: value => value?.transient === true
+    });
+
+    assert.equal(await context.checkSession(), false);
+
+    assert.equal(store.get('pzp_token'), 'stored-token');
+    assert.match(store.get('pzp_current_user'), /cached\.user/);
+    assert.equal(calls.some(call => call[0] === 'clearAuthStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'clearPrivateClientCaches'), false);
+    assert.equal(calls.some(call => call[0] === 'showLoginScreen'), false);
+    const recovery = calls.find(call => call[0] === 'renderAuthSessionBootstrapError');
+    assert.equal(recovery?.[1]?.failure, failure);
+    assert.equal(typeof recovery?.[1]?.retry, 'function');
+});
+
+test('checkSession keeps a verified session when permission hydration is temporarily unavailable', async () => {
+    const verifiedUser = { id: 7, username: 'cached.user', role: 'manager' };
+    const { context, calls, store } = loadCheckSessionHarness({
+        apiVerifyToken: async () => verifiedUser,
+        hydrateActionPermissions: async () => {
+            calls.push(['hydrateActionPermissions']);
+            return null;
+        }
+    });
+
+    assert.equal(await context.checkSession(), false);
+
+    assert.equal(context.AppState.currentUser.username, 'cached.user');
+    assert.equal(store.get('pzp_token'), 'stored-token');
+    assert.match(store.get('pzp_current_user'), /cached\.user/);
+    assert.equal(calls.some(call => call[0] === 'clearAuthStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'clearPrivateClientCaches'), false);
+    assert.equal(calls.some(call => call[0] === 'showLoginScreen'), false);
+    assert.equal(calls.some(call => call[0] === 'showMainApp'), false);
+    const shellCall = calls.find(call => call[0] === 'showAuthenticatedPageShell');
+    assert.equal(shellCall?.[1]?.markRuntimeReady, false);
+    const recovery = calls.find(call => call[0] === 'renderPermissionBootstrapError');
+    assert.equal(recovery?.[1]?.overlay, true);
+    assert.equal(typeof recovery?.[1]?.retry, 'function');
+});
+
 test('checkSession preserves an offline session and can recover when connectivity returns', async () => {
     let verifyOnline = false;
     const navigator = { onLine: false };
@@ -295,6 +473,241 @@ test('checkSession preserves an offline session and can recover when connectivit
     assert.equal(await context.checkSession(), true);
     assert.equal(context.AppState.currentUser.username, 'cached.user');
     assert.equal(calls.some(call => call[0] === 'showMainApp'), true);
+});
+
+test('checkSession bootstraps access-only and refresh-only sessions without a cached user record', async () => {
+    for (const initialStore of [
+        { pzp_access_token: 'access-only' },
+        { pzp_refresh_token: 'refresh-only' }
+    ]) {
+        const verifiedUser = { id: 71, username: 'storage.partial', role: 'manager' };
+        const { context, calls } = loadCheckSessionHarness({
+            initialStore,
+            apiVerifyToken: async () => verifiedUser
+        });
+
+        assert.equal(await context.checkSession(), true);
+        assert.equal(context.AppState.currentUser, verifiedUser);
+        assert.equal(calls.some(call => call[0] === 'showMainApp'), true);
+        assert.equal(calls.some(call => call[0] === 'showLoginScreen'), false);
+        assert.equal(calls.some(call => call[0] === 'clearAuthStorage'), false);
+    }
+});
+
+test('checkSession restarts once when another tab changes the account during bootstrap', async () => {
+    const accountA = { id: 71, username: 'account.a', role: 'animator' };
+    const accountB = { id: 72, username: 'account.b', role: 'manager' };
+    let markFirstHydrationStarted;
+    const firstHydrationStarted = new Promise(resolve => { markFirstHydrationStarted = resolve; });
+    let releaseFirstHydration;
+    let verifyCalls = 0;
+    let hydrateCalls = 0;
+    const harness = loadCheckSessionHarness({
+        initialStore: {
+            pzp_token: 'access-a',
+            pzp_access_token: 'access-a',
+            pzp_refresh_token: 'refresh-a',
+            pzp_auth_session_generation: 'generation-a',
+            pzp_current_user: JSON.stringify(accountA)
+        }
+    });
+    const { context, calls, store } = harness;
+    context.apiVerifyToken = async () => (++verifyCalls === 1 ? accountA : accountB);
+    context.captureAuthBootstrapSession = user => ({
+        generation: store.get('pzp_auth_session_generation') || '',
+        identity: user
+    });
+    context.isAuthBootstrapSessionCurrent = (snapshot, user) => {
+        const cached = JSON.parse(store.get('pzp_current_user') || 'null');
+        const runtime = context.AppState.currentUser;
+        return snapshot.generation === (store.get('pzp_auth_session_generation') || '')
+            && cached?.id === user?.id
+            && (!runtime || runtime.id === user?.id);
+    };
+    context.hydrateBusinessOperatingProfile = async user => {
+        hydrateCalls += 1;
+        if (hydrateCalls !== 1) return user;
+        markFirstHydrationStarted();
+        return new Promise(resolve => { releaseFirstHydration = resolve; });
+    };
+    context.hydrateActionPermissions = async user => ({ userId: user.id });
+
+    const pending = context.checkSession();
+    await firstHydrationStarted;
+    store.set('pzp_token', 'access-b');
+    store.set('pzp_access_token', 'access-b');
+    store.set('pzp_refresh_token', 'refresh-b');
+    store.set('pzp_auth_session_generation', 'generation-b');
+    store.set('pzp_current_user', JSON.stringify(accountB));
+    releaseFirstHydration(accountA);
+
+    assert.equal(await pending, true);
+    assert.equal(verifyCalls, 2);
+    assert.equal(hydrateCalls, 2);
+    assert.equal(context.AppState.currentUser.id, accountB.id);
+    assert.equal(calls.filter(call => call[0] === 'showMainApp').length, 1);
+    assert.equal(calls.some(call => call[0] === 'clearAuthStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'showLoginScreen'), false);
+});
+
+test('checkSession fully clears stale runtime state when the session disappears during bootstrap', async () => {
+    const account = { id: 75, username: 'account.logout', role: 'animator' };
+    let markHydrationStarted;
+    let releaseHydration;
+    const hydrationStarted = new Promise(resolve => { markHydrationStarted = resolve; });
+    const { context, calls, store } = loadCheckSessionHarness({
+        initialStore: {
+            pzp_token: 'access-a',
+            pzp_access_token: 'access-a',
+            pzp_refresh_token: 'refresh-a',
+            pzp_auth_session_generation: 'generation-a',
+            pzp_current_user: JSON.stringify(account)
+        },
+        apiVerifyToken: async () => account
+    });
+    context.captureAuthBootstrapSession = user => ({
+        generation: store.get('pzp_auth_session_generation') || '',
+        identity: user
+    });
+    context.isAuthBootstrapSessionCurrent = snapshot => (
+        snapshot.generation === (store.get('pzp_auth_session_generation') || '')
+    );
+    context.hydrateBusinessOperatingProfile = async () => {
+        markHydrationStarted();
+        return new Promise(resolve => { releaseHydration = resolve; });
+    };
+
+    const pending = context.checkSession();
+    await hydrationStarted;
+    [
+        'pzp_token',
+        'pzp_access_token',
+        'pzp_refresh_token',
+        'pzp_auth_session_generation'
+    ].forEach(key => store.delete(key));
+    releaseHydration(account);
+
+    assert.equal(await pending, false);
+    assert.equal(context.AppState.currentUser, null);
+    assert.equal(store.has('pzp_current_user'), false);
+    assert.equal(calls.filter(call => call[0] === 'clearAuthStorage').length, 1);
+    assert.equal(calls.filter(call => call[0] === 'showLoginScreen').length, 1);
+});
+
+test('checkSession bounds repeated cross-tab account changes and renders recovery', async () => {
+    const accounts = [
+        { id: 81, username: 'account.a', role: 'animator' },
+        { id: 82, username: 'account.b', role: 'manager' },
+        { id: 83, username: 'account.c', role: 'creator' }
+    ];
+    const hydrateStarted = [];
+    const hydrateReleased = [];
+    const markHydrateStarted = [];
+    const releaseHydrate = [];
+    let verifyCalls = 0;
+    let hydrateCalls = 0;
+    const harness = loadCheckSessionHarness({
+        initialStore: {
+            pzp_token: 'access-a',
+            pzp_access_token: 'access-a',
+            pzp_refresh_token: 'refresh-a',
+            pzp_auth_session_generation: 'generation-a',
+            pzp_current_user: JSON.stringify(accounts[0])
+        }
+    });
+    const { context, calls, store } = harness;
+    for (let index = 0; index < 2; index += 1) {
+        hydrateStarted[index] = new Promise(resolve => { markHydrateStarted[index] = resolve; });
+        hydrateReleased[index] = new Promise(resolve => { releaseHydrate[index] = resolve; });
+    }
+    context.apiVerifyToken = async () => accounts[Math.min(verifyCalls++, 1)];
+    context.captureAuthBootstrapSession = user => ({
+        generation: store.get('pzp_auth_session_generation') || '',
+        identity: user
+    });
+    context.isAuthBootstrapSessionCurrent = (snapshot, user) => {
+        const cached = JSON.parse(store.get('pzp_current_user') || 'null');
+        const runtime = context.AppState.currentUser;
+        return snapshot.generation === (store.get('pzp_auth_session_generation') || '')
+            && cached?.id === user?.id
+            && (!runtime || runtime.id === user?.id);
+    };
+    context.hydrateBusinessOperatingProfile = async () => {
+        const index = hydrateCalls++;
+        markHydrateStarted[index]();
+        return hydrateReleased[index];
+    };
+    context.hydrateActionPermissions = async user => ({ userId: user.id });
+
+    const pending = context.checkSession();
+    await hydrateStarted[0];
+    store.set('pzp_token', 'access-b');
+    store.set('pzp_access_token', 'access-b');
+    store.set('pzp_refresh_token', 'refresh-b');
+    store.set('pzp_auth_session_generation', 'generation-b');
+    store.set('pzp_current_user', JSON.stringify(accounts[1]));
+    releaseHydrate[0](accounts[0]);
+    await hydrateStarted[1];
+    store.set('pzp_token', 'access-c');
+    store.set('pzp_access_token', 'access-c');
+    store.set('pzp_refresh_token', 'refresh-c');
+    store.set('pzp_auth_session_generation', 'generation-c');
+    store.set('pzp_current_user', JSON.stringify(accounts[2]));
+    releaseHydrate[1](accounts[1]);
+
+    assert.equal(await pending, false);
+    assert.equal(verifyCalls, 2);
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-c');
+    assert.equal(calls.filter(call => call[0] === 'renderAuthSessionBootstrapError').length, 1);
+    assert.equal(calls.some(call => call[0] === 'clearAuthStorage'), false);
+    assert.equal(calls.some(call => call[0] === 'showLoginScreen'), false);
+});
+
+test('a late login response cannot overwrite a newer cross-tab login', async () => {
+    let resolveLogin;
+    const loginResponse = new Promise(resolve => { resolveLogin = resolve; });
+    const newerUser = { id: 92, username: 'newer.user', role: 'manager' };
+    const store = new Map();
+    const revoked = [];
+    let rememberCalls = 0;
+    const context = {
+        console: { error() {}, warn() {}, log() {} },
+        AUTH_LOGIN_INTENT_KEY: 'pzp_auth_login_intent',
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        apiLogin: async () => loginResponse,
+        rememberAuthSession: () => { rememberCalls += 1; return true; },
+        revokeRefreshTokenValue: token => revoked.push(token)
+    };
+    vm.createContext(context);
+    vm.runInContext(extractAuthFunction('login'), context, { filename: 'js/auth.js' });
+
+    const pending = context.login('older.user', 'password');
+    await Promise.resolve();
+    const olderIntent = store.get('pzp_auth_login_intent');
+    assert.match(olderIntent, /^login-/);
+    store.set('pzp_auth_login_intent', 'login-newer-tab');
+    store.set('pzp_token', 'newer-access');
+    store.set('pzp_access_token', 'newer-access');
+    store.set('pzp_refresh_token', 'newer-refresh');
+    store.set('pzp_auth_session_generation', 'newer-generation');
+    store.set('pzp_current_user', JSON.stringify(newerUser));
+    resolveLogin({
+        accessToken: 'older-access',
+        refreshToken: 'older-refresh',
+        user: { id: 91, username: 'older.user', role: 'animator' }
+    });
+
+    const result = await pending;
+    assert.equal(result.success, false);
+    assert.deepEqual(revoked, ['older-refresh']);
+    assert.equal(rememberCalls, 0);
+    assert.equal(store.get('pzp_refresh_token'), 'newer-refresh');
+    assert.deepEqual(JSON.parse(store.get('pzp_current_user')), newerUser);
+    assert.equal(store.get('pzp_auth_login_intent'), 'login-newer-tab');
 });
 
 test('Service Worker registration is canonical, authenticated, and idempotent', async () => {
@@ -397,6 +810,364 @@ test('logout clears session data and exits to a stable login visual state', () =
     assert.equal(bodyAttrs.has('aria-busy'), false);
     assert.equal(loginClasses.set.has('hidden'), false);
     assert.equal(mainClasses.set.has('hidden'), true);
+});
+
+test('canonical auth cleanup purges impersonation backup credentials', () => {
+    const localStore = new Map([
+        ['pzp_token', 'target-token'],
+        ['pzp_access_token', 'target-access'],
+        ['pzp_refresh_token', 'target-refresh'],
+        ['pzp_refresh_expires_at', 'target-expiry'],
+        ['pzp_auth_session_generation', 'target-generation'],
+        ['pzp_auth_login_intent', 'pending-login'],
+        ['pzp_current_user', JSON.stringify({ id: 14, username: 'target.user' })],
+        ['pzp_session', 'target-session']
+    ]);
+    const sessionStore = new Map([
+        ['impersonating', 'target.user'],
+        ['realToken', 'creator-token'],
+        ['realAccessToken', 'creator-access'],
+        ['realRefreshToken', 'creator-refresh'],
+        ['realRefreshExpiresAt', 'creator-expiry'],
+        ['realSessionBackupVersion', '2'],
+        ['realUser', JSON.stringify({ id: 1, username: 'creator' })]
+    ]);
+    const storage = map => ({
+        getItem: key => map.get(key) || null,
+        setItem: (key, value) => map.set(key, String(value)),
+        removeItem: key => map.delete(key)
+    });
+    const calls = [];
+    const context = {
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        fetch: async (url, options) => {
+            calls.push({ url, options });
+            return { ok: true };
+        },
+        AUTH_ACCESS_TOKEN_KEY: 'pzp_access_token',
+        AUTH_REFRESH_TOKEN_KEY: 'pzp_refresh_token',
+        AUTH_REFRESH_EXPIRES_KEY: 'pzp_refresh_expires_at',
+        AUTH_SESSION_GENERATION_KEY: 'pzp_auth_session_generation',
+        AUTH_TRANSITION_KEY: 'pzp_auth_transition',
+        AUTH_LOGIN_INTENT_KEY: 'pzp_auth_login_intent',
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } }
+    };
+    vm.createContext(context);
+    vm.runInContext([
+        extractAuthFunction('revokeRefreshTokenValue'),
+        extractAuthFunction('clearImpersonationBackup'),
+        extractAuthFunction('clearAuthStorage')
+    ].join('\n'), context, { filename: 'js/auth.js' });
+
+    context.clearAuthStorage();
+
+    assert.equal(localStore.size, 0);
+    assert.equal(sessionStore.size, 0);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0].options.body), { refreshToken: 'creator-refresh' });
+});
+
+test('terminal cleanup can preserve an active explicit login intent while clearing the old session', () => {
+    const localStore = new Map([
+        ['pzp_token', 'old-token'],
+        ['pzp_access_token', 'old-access'],
+        ['pzp_refresh_token', 'old-refresh'],
+        ['pzp_auth_login_intent', 'pending-login'],
+        ['pzp_current_user', JSON.stringify({ id: 14, username: 'old.user' })]
+    ]);
+    const sessionStore = new Map();
+    const storage = map => ({
+        getItem: key => map.get(key) || null,
+        removeItem: key => map.delete(key)
+    });
+    const context = {
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        AUTH_ACCESS_TOKEN_KEY: 'pzp_access_token',
+        AUTH_REFRESH_TOKEN_KEY: 'pzp_refresh_token',
+        AUTH_REFRESH_EXPIRES_KEY: 'pzp_refresh_expires_at',
+        AUTH_SESSION_GENERATION_KEY: 'pzp_auth_session_generation',
+        AUTH_TRANSITION_KEY: 'pzp_auth_transition',
+        AUTH_LOGIN_INTENT_KEY: 'pzp_auth_login_intent',
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } }
+    };
+    vm.createContext(context);
+    vm.runInContext([
+        extractAuthFunction('clearImpersonationBackup'),
+        extractAuthFunction('clearAuthStorage')
+    ].join('\n'), context, { filename: 'js/auth.js' });
+
+    context.clearAuthStorage({ preserveLoginIntent: true });
+
+    assert.deepEqual([...localStore.entries()], [['pzp_auth_login_intent', 'pending-login']]);
+    assert.equal(sessionStore.size, 0);
+});
+
+test('remembering a new login revokes an isolated creator refresh before replacing the session', () => {
+    const localStore = new Map([
+        ['pzp_token', 'target-access'],
+        ['pzp_refresh_token', 'target-refresh'],
+        ['pzp_current_user', JSON.stringify({ id: 14, username: 'target.user' })]
+    ]);
+    const sessionStore = new Map([
+        ['realSessionBackupVersion', '2'],
+        ['impersonating', 'target.user'],
+        ['realRefreshToken', 'creator-refresh']
+    ]);
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.get(key) || null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const context = {
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        fetch: async (url, options) => {
+            calls.push({ url, options });
+            return { ok: true };
+        },
+        AUTH_ACCESS_TOKEN_KEY: 'pzp_access_token',
+        AUTH_REFRESH_TOKEN_KEY: 'pzp_refresh_token',
+        AUTH_REFRESH_EXPIRES_KEY: 'pzp_refresh_expires_at',
+        AUTH_SESSION_GENERATION_KEY: 'pzp_auth_session_generation',
+        AUTH_TRANSITION_KEY: 'pzp_auth_transition',
+        AUTH_LOGIN_INTENT_KEY: 'pzp_auth_login_intent',
+        AUTH_TRANSITION_MAX_AGE_MS: 15000,
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `let authOwnedTransition = null;\n`
+            + extractAuthFunction('getActiveAuthTransitionMarker') + '\n'
+            + extractAuthFunction('beginAuthTransition') + '\n'
+            + extractAuthFunction('endAuthTransition') + '\n'
+            + extractAuthFunction('revokeRefreshTokenValue') + '\n'
+            + extractAuthFunction('clearImpersonationBackup') + '\n'
+            + extractAuthFunction('rememberAuthSession'),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    assert.equal(context.rememberAuthSession({
+        accessToken: 'new-access',
+        refreshToken: 'new-refresh',
+        user: { id: 93, username: 'new.user', role: 'manager' }
+    }), true);
+
+    assert.equal(sessionStore.size, 0);
+    assert.equal(localStore.get('pzp_refresh_token'), 'new-refresh');
+    assert.equal(JSON.parse(localStore.get('pzp_current_user')).id, 93);
+    assert.equal(calls.length, 1);
+    assert.deepEqual(JSON.parse(calls[0].options.body), { refreshToken: 'creator-refresh' });
+});
+
+test('logout revokes an isolated creator refresh token before impersonation cleanup', () => {
+    const { context, calls, localStore, sessionStore } = loadRefreshRevocationHarness([], [
+        ['realSessionBackupVersion', '2'],
+        ['impersonating', 'target.user'],
+        ['realRefreshToken', 'creator-refresh']
+    ]);
+
+    context.revokeStoredRefreshToken();
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/api/auth/logout');
+    assert.equal(calls[0].options.keepalive, true);
+    assert.deepEqual(JSON.parse(calls[0].options.body), { refreshToken: 'creator-refresh' });
+    assert.equal(localStore.size, 0);
+    assert.equal(sessionStore.get('realRefreshToken'), 'creator-refresh');
+});
+
+test('logout revokes each unique active and isolated refresh token exactly once', () => {
+    const { context, calls } = loadRefreshRevocationHarness([
+        ['pzp_refresh_token', 'target-refresh']
+    ], [
+        ['realSessionBackupVersion', '2'],
+        ['impersonating', 'target.user'],
+        ['realRefreshToken', 'creator-refresh']
+    ]);
+
+    context.revokeStoredRefreshToken();
+
+    assert.deepEqual(
+        calls.map(call => JSON.parse(call.options.body).refreshToken).sort(),
+        ['creator-refresh', 'target-refresh']
+    );
+});
+
+test('logout ignores a stale creator refresh backup without both impersonation markers', () => {
+    for (const sessionEntries of [
+        [['realRefreshToken', 'stale-refresh']],
+        [['realSessionBackupVersion', '2'], ['realRefreshToken', 'stale-refresh']],
+        [['impersonating', 'target.user'], ['realRefreshToken', 'stale-refresh']]
+    ]) {
+        const { context, calls } = loadRefreshRevocationHarness([], sessionEntries);
+        context.revokeStoredRefreshToken();
+        assert.equal(calls.length, 0);
+    }
+});
+
+test('cross-tab terminal logout revokes and purges an isolated creator refresh backup', () => {
+    const localStore = new Map();
+    const sessionStore = new Map([
+        ['realSessionBackupVersion', '2'],
+        ['impersonating', 'target.user'],
+        ['realRefreshToken', 'creator-refresh']
+    ]);
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } },
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        fetch: async (url, options) => {
+            calls.push({ url, options });
+            return { ok: true };
+        },
+        setTimeout: callback => {
+            callback();
+            return 1;
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';\n`
+            + `let crossTabLogoutInProgress = false;\n`
+            + `let crossTabSessionSyncInProgress = false;\n`
+            + extractAuthFunction('clearImpersonationBackup') + '\n'
+            + extractAuthFunction('revokeRefreshTokenValue') + '\n'
+            + extractAuthFunction('revokeStoredRefreshToken') + '\n'
+            + extractAuthFunction('handleCrossTabAuthStorageChange'),
+        context,
+        { filename: 'js/auth.js' }
+    );
+    context.logout = () => {
+        context.revokeStoredRefreshToken();
+        context.clearImpersonationBackup();
+    };
+
+    context.handleCrossTabAuthStorageChange({
+        key: 'pzp_auth_session_generation',
+        newValue: null
+    });
+
+    assert.equal(calls.length, 1);
+    assert.equal(calls[0].url, '/api/auth/logout');
+    assert.deepEqual(JSON.parse(calls[0].options.body), { refreshToken: 'creator-refresh' });
+    assert.equal(sessionStore.size, 0);
+});
+
+test('cross-tab account replacement immediately covers stale private UI and reloads once', () => {
+    const userA = { id: 31, username: 'account.a' };
+    const localStore = new Map([
+        ['pzp_token', 'account-b-token'],
+        ['pzp_access_token', 'account-b-token'],
+        ['pzp_refresh_token', 'account-b-refresh'],
+        ['pzp_auth_session_generation', 'generation-b'],
+        ['pzp_current_user', JSON.stringify({ id: 32, username: 'account.b' })]
+    ]);
+    const calls = [];
+    const elements = new Map();
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } },
+        localStorage: {
+            getItem: key => localStore.get(key) || null
+        },
+        AppState: { currentUser: userA },
+        resetAuthenticatedRuntimeReady: () => calls.push('reset-runtime'),
+        clearRuntimePermissionCatalog: user => calls.push(['clear-permissions', user]),
+        clearAuthenticatedPageShell: () => calls.push('clear-shell'),
+        authBootstrapUsersShareIdentity: (left, right) => left?.id === right?.id,
+        document: {
+            getElementById: id => {
+                if (!elements.has(id)) {
+                    elements.set(id, { classList: { add: value => calls.push(['hide', id, value]) } });
+                }
+                return elements.get(id);
+            }
+        },
+        window: { location: { reload: () => calls.push('reload') } }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';\n`
+            + `let crossTabLogoutInProgress = false;\n`
+            + `let crossTabSessionSyncInProgress = false;\n`
+            + extractAuthFunction('handleCrossTabAuthStorageChange'),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    context.handleCrossTabAuthStorageChange({
+        key: 'pzp_auth_session_generation',
+        oldValue: 'generation-a',
+        newValue: 'generation-b'
+    });
+    context.handleCrossTabAuthStorageChange({
+        key: 'pzp_current_user',
+        oldValue: JSON.stringify(userA),
+        newValue: localStore.get('pzp_current_user')
+    });
+
+    assert.equal(context.AppState.currentUser, null);
+    assert.equal(calls.filter(call => call === 'reload').length, 1);
+    assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'clear-permissions'), true);
+    assert.equal(calls.some(call => Array.isArray(call) && call[0] === 'hide' && call[1] === 'mainApp'), true);
+    assert.equal(localStore.get('pzp_refresh_token'), 'account-b-refresh');
+});
+
+test('cross-tab cleanup does not cancel an explicit login already in flight', () => {
+    const localStore = new Map([['pzp_auth_login_intent', 'pending-login']]);
+    const calls = [];
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } },
+        localStorage: {
+            getItem: key => localStore.get(key) || null
+        },
+        clearAuthStorage: options => calls.push(['clear-auth', options]),
+        clearPrivateClientCaches: () => calls.push('clear-caches'),
+        showLoginScreen: () => calls.push('show-login'),
+        logout: () => calls.push('logout'),
+        setTimeout: callback => {
+            callback();
+            return 1;
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';\n`
+            + `let crossTabLogoutInProgress = false;\n`
+            + `let crossTabSessionSyncInProgress = false;\n`
+            + extractAuthFunction('handleCrossTabAuthStorageChange'),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    context.handleCrossTabAuthStorageChange({
+        key: 'pzp_auth_session_generation',
+        oldValue: 'generation-a',
+        newValue: null
+    });
+
+    assert.equal(calls.some(call => call === 'logout'), false);
+    assert.equal(calls[0][0], 'clear-auth');
+    assert.equal(calls[0][1]?.preserveLoginIntent, true);
+    assert.equal(localStore.get('pzp_auth_login_intent'), 'pending-login');
 });
 
 test('logout cache fallback removes API and runtime namespaces', async () => {
@@ -573,6 +1344,343 @@ test('handleAuthError treats 403 as authorization failure without logging the us
     assert.match(store.get('pzp_current_user'), /role-limited/);
 });
 
+test('a terminal response from an old session preserves an in-flight explicit login intent', () => {
+    const loginIntent = 'login-in-progress';
+    const { context, store } = loadApi(async () => response(500), {
+        pzp_token: 'old-token',
+        pzp_access_token: 'old-access',
+        pzp_refresh_token: 'old-refresh',
+        pzp_current_user: JSON.stringify({ id: 41, username: 'old.user' }),
+        pzp_auth_login_intent: loginIntent
+    });
+    const clearCalls = [];
+    context.clearAuthStorage = options => {
+        clearCalls.push(options);
+        store.delete('pzp_token');
+        store.delete('pzp_access_token');
+        store.delete('pzp_refresh_token');
+        store.delete('pzp_current_user');
+        if (options?.preserveLoginIntent !== true) store.delete('pzp_auth_login_intent');
+    };
+    context.clearPrivateClientCaches = () => {};
+    context.showLoginScreen = () => {};
+
+    assert.equal(context.handleAuthError(response(401), { refreshAttempted: true }), true);
+
+    assert.equal(clearCalls.length, 1);
+    assert.equal(clearCalls[0]?.preserveLoginIntent, true);
+    assert.equal(store.get('pzp_auth_login_intent'), loginIntent);
+    assert.equal(store.has('pzp_refresh_token'), false);
+});
+
+test('dashboard impersonation isolates the creator refresh session before reloading as the target', async () => {
+    const localStore = new Map([
+        ['pzp_token', 'creator-legacy'],
+        ['pzp_access_token', 'creator-access'],
+        ['pzp_refresh_token', 'creator-refresh'],
+        ['pzp_refresh_expires_at', '2026-10-01T00:00:00.000Z'],
+        ['pzp_auth_session_generation', 'creator-generation'],
+        ['pzp_current_user', JSON.stringify({ id: 1, username: 'creator' })]
+    ]);
+    const sessionStore = new Map();
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
+        AppState: { currentUser: { id: 1, username: 'creator' } },
+        RoleSwitcher: {},
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        document: { getElementById: id => id === 'testUserSelect' ? { value: '72' } : null },
+        fetch: async () => response(200, {
+            token: 'target-access',
+            user: { id: 72, username: 'target.user', role: 'animator' }
+        }),
+        rotateApiAuthSessionGeneration: () => {
+            calls.push('rotate');
+            localStore.set('pzp_auth_session_generation', 'target-generation');
+        },
+        showNotification: message => calls.push(['notification', message]),
+        window: { location: { reload: () => calls.push('reload') } }
+    };
+    vm.createContext(context);
+    vm.runInContext(extractSourceFunction(DASHBOARD_PAGE_CODE, 'switchTestUser'), context, {
+        filename: 'js/dashboard-page.js'
+    });
+
+    await context.switchTestUser();
+
+    assert.equal(sessionStore.get('realSessionBackupVersion'), '2');
+    assert.equal(sessionStore.get('realToken'), 'creator-legacy');
+    assert.equal(sessionStore.get('realAccessToken'), 'creator-access');
+    assert.equal(sessionStore.get('realRefreshToken'), 'creator-refresh');
+    assert.equal(sessionStore.get('realRefreshExpiresAt'), '2026-10-01T00:00:00.000Z');
+    assert.equal(sessionStore.get('realSessionGeneration'), 'creator-generation');
+    assert.equal(sessionStore.get('impersonationSessionGeneration'), 'target-generation');
+    assert.equal(JSON.parse(sessionStore.get('impersonationTargetUser')).id, 72);
+    assert.equal(localStore.get('pzp_token'), 'target-access');
+    assert.equal(localStore.get('pzp_access_token'), 'target-access');
+    assert.equal(localStore.has('pzp_refresh_token'), false);
+    assert.equal(localStore.has('pzp_refresh_expires_at'), false);
+    assert.equal(JSON.parse(localStore.get('pzp_current_user')).id, 72);
+    assert.equal(localStore.has('pzp_auth_transition'), false);
+    assert.deepEqual(calls, ['rotate', 'reload']);
+});
+
+test('a stale impersonation response cannot overwrite an account selected in another tab', async () => {
+    const creator = { id: 1, username: 'creator' };
+    const newerUser = { id: 91, username: 'newer.account' };
+    const localStore = new Map([
+        ['pzp_token', 'creator-access'],
+        ['pzp_access_token', 'creator-access'],
+        ['pzp_refresh_token', 'creator-refresh'],
+        ['pzp_auth_session_generation', 'creator-generation'],
+        ['pzp_current_user', JSON.stringify(creator)]
+    ]);
+    const sessionStore = new Map();
+    const calls = [];
+    let resolveImpersonation;
+    let markRequestStarted;
+    const requestStarted = new Promise(resolve => { markRequestStarted = resolve; });
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
+        AppState: { currentUser: creator },
+        RoleSwitcher: {},
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        document: { getElementById: id => id === 'testUserSelect' ? { value: '72' } : null },
+        fetch: async () => {
+            markRequestStarted();
+            return await new Promise(resolve => { resolveImpersonation = resolve; });
+        },
+        rotateApiAuthSessionGeneration: () => calls.push('rotate'),
+        showNotification: message => calls.push(['notification', message]),
+        window: { location: { reload: () => calls.push('reload') } }
+    };
+    vm.createContext(context);
+    vm.runInContext(extractSourceFunction(DASHBOARD_PAGE_CODE, 'switchTestUser'), context, {
+        filename: 'js/dashboard-page.js'
+    });
+
+    const pendingSwitch = context.switchTestUser();
+    await requestStarted;
+    localStore.set('pzp_token', 'newer-access');
+    localStore.set('pzp_access_token', 'newer-access');
+    localStore.set('pzp_refresh_token', 'newer-refresh');
+    localStore.set('pzp_auth_session_generation', 'newer-generation');
+    localStore.set('pzp_current_user', JSON.stringify(newerUser));
+    context.AppState.currentUser = newerUser;
+    resolveImpersonation(response(200, {
+        token: 'target-access',
+        user: { id: 72, username: 'target.user', role: 'animator' }
+    }));
+    await pendingSwitch;
+
+    assert.equal(localStore.get('pzp_token'), 'newer-access');
+    assert.equal(localStore.get('pzp_refresh_token'), 'newer-refresh');
+    assert.deepEqual(JSON.parse(localStore.get('pzp_current_user')), newerUser);
+    assert.equal(sessionStore.size, 0);
+    assert.equal(calls.some(call => call === 'reload' || call === 'rotate'), false);
+    assert.equal(calls.filter(call => Array.isArray(call) && call[0] === 'notification').length, 1);
+});
+
+test('ending impersonation restores the creator token pair under a fresh session generation', () => {
+    const localStore = new Map([
+        ['pzp_token', 'target-access'],
+        ['pzp_access_token', 'target-access'],
+        ['pzp_auth_session_generation', 'target-generation'],
+        ['pzp_current_user', JSON.stringify({ id: 72, username: 'target.user' })]
+    ]);
+    const sessionStore = new Map([
+        ['realSessionBackupVersion', '2'],
+        ['realToken', 'creator-legacy'],
+        ['realAccessToken', 'creator-access'],
+        ['realRefreshToken', 'creator-refresh'],
+        ['realRefreshExpiresAt', '2026-10-01T00:00:00.000Z'],
+        ['realSessionGeneration', 'creator-generation'],
+        ['realUser', JSON.stringify({ id: 1, username: 'creator' })],
+        ['impersonating', 'target.user'],
+        ['impersonationSessionGeneration', 'target-generation'],
+        ['impersonationTargetUser', JSON.stringify({ id: 72, username: 'target.user' })]
+    ]);
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const roleSwitcherStart = AUTH_CODE.indexOf('const RoleSwitcher = (() => {');
+    const roleSwitcherEnd = AUTH_CODE.indexOf('window.RoleSwitcher = RoleSwitcher;', roleSwitcherStart)
+        + 'window.RoleSwitcher = RoleSwitcher;'.length;
+    assert.ok(roleSwitcherStart >= 0 && roleSwitcherEnd > roleSwitcherStart);
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        revokeRefreshTokenValue: token => calls.push(['revoke', token]),
+        clearImpersonationBackup: () => sessionStore.clear(),
+        rotateApiAuthSessionGeneration: () => {
+            calls.push('rotate');
+            localStore.set('pzp_auth_session_generation', 'restored-generation');
+        },
+        window: {
+            RolePreview: { clearPreviewRole: () => false },
+            location: { reload: () => calls.push('reload') }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_TRANSITION_KEY = 'pzp_auth_transition';\n`
+            + AUTH_CODE.slice(roleSwitcherStart, roleSwitcherEnd),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    assert.equal(context.window.RoleSwitcher.resetImpersonation(), true);
+    assert.equal(localStore.get('pzp_token'), 'creator-legacy');
+    assert.equal(localStore.get('pzp_access_token'), 'creator-access');
+    assert.equal(localStore.get('pzp_refresh_token'), 'creator-refresh');
+    assert.equal(localStore.get('pzp_refresh_expires_at'), '2026-10-01T00:00:00.000Z');
+    assert.equal(localStore.get('pzp_auth_session_generation'), 'restored-generation');
+    assert.equal(JSON.parse(localStore.get('pzp_current_user')).id, 1);
+    assert.equal(sessionStore.size, 0);
+    assert.deepEqual(calls, ['rotate', 'reload']);
+});
+
+test('ending stale impersonation cannot overwrite a newer cross-tab account session', () => {
+    const newerUser = { id: 91, username: 'newer.account' };
+    const localStore = new Map([
+        ['pzp_token', 'newer-access'],
+        ['pzp_access_token', 'newer-access'],
+        ['pzp_refresh_token', 'newer-refresh'],
+        ['pzp_auth_session_generation', 'newer-generation'],
+        ['pzp_current_user', JSON.stringify(newerUser)]
+    ]);
+    const sessionStore = new Map([
+        ['realSessionBackupVersion', '2'],
+        ['realToken', 'creator-legacy'],
+        ['realAccessToken', 'creator-access'],
+        ['realRefreshToken', 'creator-refresh'],
+        ['realUser', JSON.stringify({ id: 1, username: 'creator' })],
+        ['impersonating', 'target.user'],
+        ['impersonationSessionGeneration', 'target-generation'],
+        ['impersonationTargetUser', JSON.stringify({ id: 72, username: 'target.user' })]
+    ]);
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const roleSwitcherStart = AUTH_CODE.indexOf('const RoleSwitcher = (() => {');
+    const roleSwitcherEnd = AUTH_CODE.indexOf('window.RoleSwitcher = RoleSwitcher;', roleSwitcherStart)
+        + 'window.RoleSwitcher = RoleSwitcher;'.length;
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        rotateApiAuthSessionGeneration: () => calls.push('rotate'),
+        revokeRefreshTokenValue: token => calls.push(['revoke', token]),
+        clearImpersonationBackup: () => sessionStore.clear(),
+        window: {
+            RolePreview: { clearPreviewRole: () => false },
+            location: { reload: () => calls.push('reload') }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_TRANSITION_KEY = 'pzp_auth_transition';\n`
+            + AUTH_CODE.slice(roleSwitcherStart, roleSwitcherEnd),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    assert.equal(context.window.RoleSwitcher.resetImpersonation(), false);
+    assert.equal(localStore.get('pzp_token'), 'newer-access');
+    assert.equal(localStore.get('pzp_refresh_token'), 'newer-refresh');
+    assert.deepEqual(JSON.parse(localStore.get('pzp_current_user')), newerUser);
+    assert.equal(sessionStore.size, 0);
+    assert.deepEqual(calls, [['revoke', 'creator-refresh']]);
+});
+
+test('ending impersonation during an active auth transition preserves the creator backup', () => {
+    const targetUser = { id: 72, username: 'target.user' };
+    const marker = `auth-${Date.now().toString(36)}-external`;
+    const localStore = new Map([
+        ['pzp_token', 'target-access'],
+        ['pzp_access_token', 'target-access'],
+        ['pzp_auth_session_generation', 'target-generation'],
+        ['pzp_auth_transition', marker],
+        ['pzp_current_user', JSON.stringify(targetUser)]
+    ]);
+    const sessionStore = new Map([
+        ['realSessionBackupVersion', '2'],
+        ['realRefreshToken', 'creator-refresh'],
+        ['realUser', JSON.stringify({ id: 1, username: 'creator' })],
+        ['impersonating', 'target.user'],
+        ['impersonationSessionGeneration', 'target-generation'],
+        ['impersonationTargetUser', JSON.stringify(targetUser)]
+    ]);
+    const calls = [];
+    const storage = store => ({
+        getItem: key => store.has(key) ? store.get(key) : null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    });
+    const roleSwitcherStart = AUTH_CODE.indexOf('const RoleSwitcher = (() => {');
+    const roleSwitcherEnd = AUTH_CODE.indexOf('window.RoleSwitcher = RoleSwitcher;', roleSwitcherStart)
+        + 'window.RoleSwitcher = RoleSwitcher;'.length;
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
+        localStorage: storage(localStore),
+        sessionStorage: storage(sessionStore),
+        revokeRefreshTokenValue: token => calls.push(['revoke', token]),
+        clearImpersonationBackup: () => sessionStore.clear(),
+        window: {
+            RolePreview: { clearPreviewRole: () => false },
+            location: { reload: () => calls.push('reload') }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_TRANSITION_KEY = 'pzp_auth_transition';\n`
+            + `const AUTH_TRANSITION_MAX_AGE_MS = 15000;\n`
+            + `let authOwnedTransition = null;\n`
+            + extractAuthFunction('getActiveAuthTransitionMarker') + '\n'
+            + extractAuthFunction('beginAuthTransition') + '\n'
+            + extractAuthFunction('endAuthTransition') + '\n'
+            + AUTH_CODE.slice(roleSwitcherStart, roleSwitcherEnd),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    assert.equal(context.window.RoleSwitcher.resetImpersonation(), false);
+    assert.equal(localStore.get('pzp_auth_transition'), marker);
+    assert.equal(sessionStore.get('realRefreshToken'), 'creator-refresh');
+    assert.deepEqual(calls, []);
+});
+
 test('auth headers and session detection accept access-only or refresh-only storage', () => {
     const { context: accessContext } = loadApi(async () => response(500), {
         pzp_access_token: 'access-only'
@@ -598,14 +1706,386 @@ test('apiVerifyToken returns null without stored auth state and avoids network r
     assert.equal(await context.apiVerifyToken(), null);
 });
 
+test('auto-fill never enforces page access while permissions are idle', () => {
+    const { context, calls } = loadAutoFillHarness({
+        appUser: { id: 17, username: 'manager.cached', role: 'manager' },
+        permissionStatus: 'idle',
+        runtimeReady: true
+    });
+
+    context._autoFillUser();
+
+    assert.equal(calls.some(call => call[0] === 'enforceCurrentPageAccess'), false);
+});
+
+test('terminal auth cleanup cannot be undone by a later auto-fill tick', () => {
+    const user = { id: 17, username: 'manager.cached', role: 'manager' };
+    const { context, calls, store, sessionStore } = loadAutoFillHarness({
+        appUser: user,
+        cachedUser: user,
+        permissionStatus: 'ready',
+        runtimeReady: true
+    });
+    store.set('pzp_token', 'expired-token');
+    store.set('pzp_access_token', 'expired-access');
+    store.set('pzp_refresh_token', 'revoked-refresh');
+    store.set('pzp_auth_session_generation', 'terminal-generation');
+    sessionStore.set('realSessionBackupVersion', '2');
+    sessionStore.set('impersonating', 'target.user');
+    sessionStore.set('realRefreshToken', 'creator-refresh');
+
+    vm.runInContext(
+        `const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';\n`
+            + `const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';\n`
+            + `const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';\n`
+            + `const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';\n`
+            + `const AUTH_TRANSITION_KEY = 'pzp_auth_transition';\n`
+            + `const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';\n`
+            + extractAuthFunction('clearImpersonationBackup') + '\n'
+            + extractAuthFunction('clearAuthStorage'),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    context.clearAuthStorage();
+    context._autoFillUser();
+
+    assert.equal(context.AppState.currentUser, null);
+    assert.equal(store.has('pzp_current_user'), false);
+    assert.equal(store.has('pzp_refresh_token'), false);
+    assert.equal(sessionStore.size, 0);
+    assert.equal(calls.some(call => call[0] === 'enforceCurrentPageAccess'), false);
+});
+
+test('cache-only user cannot become verified across repeated auto-fill ticks', () => {
+    const harness = loadAutoFillHarness({
+        cachedUser: { id: 23, name: 'Cached Manager', role: 'manager' },
+        permissionStatus: 'ready',
+        runtimeReady: false
+    });
+
+    harness.context._autoFillUser();
+    assert.equal(harness.context.AppState.currentUser.id, 23, 'first tick may restore display data');
+    harness.context._autoFillUser();
+    assert.equal(
+        harness.calls.some(call => call[0] === 'enforceCurrentPageAccess'),
+        false,
+        'restored AppState data must not become proof of server verification on the next tick'
+    );
+
+    harness.setRuntimeReady(true);
+    harness.context._autoFillUser();
+    assert.equal(harness.calls.filter(call => call[0] === 'enforceCurrentPageAccess').length, 1);
+});
+
+test('auto-fill never overwrites a newer account stored by another tab', () => {
+    const accountA = { id: 23, username: 'account.a', name: 'Account A', role: 'animator' };
+    const accountB = { id: 24, username: 'account.b', name: 'Account B', role: 'manager' };
+    const harness = loadAutoFillHarness({
+        appUser: accountA,
+        cachedUser: accountB,
+        permissionStatus: 'ready',
+        runtimeReady: true
+    });
+
+    harness.context._autoFillUser();
+
+    assert.equal(harness.context.AppState.currentUser, accountA);
+    assert.deepEqual(JSON.parse(harness.store.get('pzp_current_user')), accountB);
+    assert.equal(harness.calls.some(call => call[0] === 'enforceCurrentPageAccess'), false);
+    assert.equal(harness.calls.some(call => call[0] === 'setApiAuthSessionFailure'), true);
+    assert.equal(harness.calls.some(call => call[0] === 'showAuthenticatedPageShell'), true);
+    assert.equal(harness.calls.some(call => call[0] === 'renderAuthSessionBootstrapError'), true);
+});
+
+test('business profile hydration cannot publish after the auth session changes', async () => {
+    let resolveProfile;
+    let profileStarted;
+    const profileStartedPromise = new Promise(resolve => { profileStarted = resolve; });
+    const accountA = { id: 31, username: 'account.a', role: 'animator' };
+    const accountB = { id: 32, username: 'account.b', role: 'manager' };
+    const store = new Map([['pzp_current_user', JSON.stringify(accountA)]]);
+    let sessionCurrent = true;
+    const context = {
+        CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
+        AppState: { currentUser: accountA },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value))
+        },
+        captureAuthBootstrapSession: () => ({ generation: 'account-a-generation' }),
+        isAuthBootstrapSessionCurrent: () => sessionCurrent,
+        authBootstrapSessionChangedError: stage => {
+            const error = new Error('session changed');
+            error.code = 'auth_session_transient';
+            error.stage = stage;
+            return error;
+        },
+        window: {
+            CrmBusinessContext: {
+                hydrateProfile: async () => {
+                    profileStarted();
+                    return await new Promise(resolve => { resolveProfile = resolve; });
+                }
+            }
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        extractAuthFunction('hydrateBusinessOperatingProfile'),
+        context,
+        { filename: 'js/auth.js' }
+    );
+
+    const hydration = context.hydrateBusinessOperatingProfile(accountA);
+    await profileStartedPromise;
+    sessionCurrent = false;
+    context.AppState.currentUser = accountB;
+    store.set('pzp_current_user', JSON.stringify(accountB));
+    resolveProfile({ key: 'stale-account-a-profile' });
+
+    await assert.rejects(hydration, error => error.code === 'auth_session_transient');
+    assert.equal(Object.hasOwn(accountA, 'businessProfile'), false);
+    assert.equal(context.AppState.currentUser, accountB);
+    assert.equal(JSON.parse(store.get('pzp_current_user')).id, 32);
+});
+
+test('bootstrap session-change errors preserve an existing terminal auth failure', () => {
+    const terminalFailure = {
+        kind: 'terminal',
+        terminal: true,
+        transient: false,
+        stage: 'request',
+        reason: 'unauthorized'
+    };
+    const calls = [];
+    const context = {
+        getApiAuthSessionFailure: () => terminalFailure,
+        markApiAuthSessionChanged: stage => calls.push(['mark', stage]),
+        setApiAuthSessionFailure: (...args) => calls.push(['set', ...args])
+    };
+    vm.createContext(context);
+    vm.runInContext(extractAuthFunction('authBootstrapSessionChangedError'), context, {
+        filename: 'js/auth.js'
+    });
+
+    const error = context.authBootstrapSessionChangedError('business-profile');
+
+    assert.equal(error.code, 'auth_session_terminal');
+    assert.equal(error.authFailure, terminalFailure);
+    assert.deepEqual(calls, []);
+});
+
+test('sidebar verify fallback preserves hydrated runtime and cached permissions', () => {
+    const permissionSnapshot = {
+        capabilities: { 'page:/certificates': { allowed: true } },
+        capabilityCatalog: { pageRoles: { '/certificates': ['animator'] } }
+    };
+    const runtimeUser = {
+        id: 31,
+        name: '?',
+        role: 'animator',
+        permissions: permissionSnapshot,
+        businessProfile: { key: 'event_genix' }
+    };
+    const store = new Map([
+        ['pzp_current_user', JSON.stringify(runtimeUser)]
+    ]);
+    const context = {
+        AppState: { currentUser: runtimeUser, authPermissions: permissionSnapshot },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value))
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        extractSourceFunction(SIDEBAR_CODE, '_mergeVerifiedSidebarUser'),
+        context,
+        { filename: 'js/components/sidebar.js' }
+    );
+
+    const result = context._mergeVerifiedSidebarUser({ id: 31, name: 'Валерія', role: 'animator' });
+    const cached = JSON.parse(store.get('pzp_current_user'));
+
+    assert.equal(result, runtimeUser, 'sidebar must preserve the hydrated runtime user object');
+    assert.equal(context.AppState.currentUser, runtimeUser);
+    assert.equal(result.permissions, permissionSnapshot);
+    assert.equal(result.businessProfile.key, 'event_genix');
+    assert.equal(cached.permissions.capabilities['page:/certificates'].allowed, true);
+});
+
+test('sidebar verify fallback drops stale permissions when authorization changes', () => {
+    const permissionSnapshot = {
+        capabilities: { 'page:/certificates': { allowed: true } }
+    };
+    const runtimeUser = {
+        id: 31,
+        username: 'operator',
+        role: 'animator',
+        roles: ['animator'],
+        permissions: permissionSnapshot
+    };
+    const store = new Map([
+        ['pzp_current_user', JSON.stringify(runtimeUser)]
+    ]);
+    const context = {
+        AppState: { currentUser: runtimeUser, authPermissions: permissionSnapshot },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value))
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        extractSourceFunction(SIDEBAR_CODE, '_mergeVerifiedSidebarUser'),
+        context,
+        { filename: 'js/components/sidebar.js' }
+    );
+
+    const result = context._mergeVerifiedSidebarUser({
+        id: 31,
+        username: 'operator',
+        role: 'manager',
+        roles: ['manager']
+    });
+    const cached = JSON.parse(store.get('pzp_current_user'));
+
+    assert.notEqual(result, runtimeUser);
+    assert.equal(result.role, 'manager');
+    assert.equal(Object.hasOwn(result, 'permissions'), false);
+    assert.equal(context.AppState.authPermissions, null);
+    assert.equal(cached.role, 'manager');
+    assert.equal(Object.hasOwn(cached, 'permissions'), false);
+});
+
+test('sidebar clears stale permission state before publishing an authorization change', () => {
+    const permissionSnapshot = {
+        capabilities: { 'page:/certificates': { allowed: true } }
+    };
+    const runtimeUser = {
+        id: 31,
+        username: 'operator',
+        role: 'animator',
+        permissions: permissionSnapshot
+    };
+    const events = [];
+    let currentUser = runtimeUser;
+    let lifecycle = 'ready';
+    const appState = { authPermissions: permissionSnapshot };
+    Object.defineProperty(appState, 'currentUser', {
+        configurable: true,
+        get: () => currentUser,
+        set: value => {
+            events.push({
+                type: 'user-changed',
+                permissions: appState.authPermissions,
+                lifecycle
+            });
+            currentUser = value;
+        }
+    });
+    const context = {
+        AppState: appState,
+        clearRuntimePermissionCatalog: target => {
+            events.push({ type: 'catalog-cleared' });
+            appState.authPermissions = null;
+            delete target.permissions;
+        },
+        setPermissionLifecycle: status => {
+            lifecycle = status;
+            events.push({ type: 'lifecycle', status });
+        },
+        localStorage: {
+            getItem: () => JSON.stringify(runtimeUser),
+            setItem: () => {}
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        extractSourceFunction(SIDEBAR_CODE, '_mergeVerifiedSidebarUser'),
+        context,
+        { filename: 'js/components/sidebar.js' }
+    );
+
+    context._mergeVerifiedSidebarUser({
+        id: 31,
+        username: 'operator',
+        role: 'manager',
+        roles: ['manager']
+    });
+
+    assert.deepEqual(events.map(event => event.type), ['catalog-cleared', 'lifecycle', 'user-changed']);
+    assert.equal(events[2].permissions, null, 'user-changed listeners must not observe the old catalog');
+    assert.equal(events[2].lifecycle, 'loading', 'user-changed listeners must see permissions as loading');
+});
+
+test('sidebar verify fallback cannot overwrite a runtime user after an account switch', () => {
+    const runtimeUser = { id: 42, username: 'new.account', role: 'manager' };
+    const cachedJson = JSON.stringify(runtimeUser);
+    const store = new Map([['pzp_current_user', cachedJson]]);
+    const context = {
+        AppState: { currentUser: runtimeUser, authPermissions: { capabilities: {} } },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value))
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        extractSourceFunction(SIDEBAR_CODE, '_mergeVerifiedSidebarUser'),
+        context,
+        { filename: 'js/components/sidebar.js' }
+    );
+
+    const result = context._mergeVerifiedSidebarUser({
+        id: 41,
+        username: 'old.account',
+        role: 'animator'
+    });
+
+    assert.equal(result, null);
+    assert.equal(context.AppState.currentUser, runtimeUser);
+    assert.equal(store.get('pzp_current_user'), cachedJson);
+});
+
+test('sidebar verify fallback cannot restore stale runtime identity over a newer cached account', () => {
+    const runtimeUser = { id: 41, username: 'old.account', role: 'animator' };
+    const cachedUser = { id: 42, username: 'new.account', role: 'manager' };
+    const cachedJson = JSON.stringify(cachedUser);
+    const store = new Map([['pzp_current_user', cachedJson]]);
+    const failures = [];
+    const context = {
+        AppState: { currentUser: runtimeUser, authPermissions: { capabilities: {} } },
+        setApiAuthSessionFailure: (kind, details) => failures.push({ kind, ...details }),
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value))
+        }
+    };
+    vm.createContext(context);
+    vm.runInContext(
+        extractSourceFunction(SIDEBAR_CODE, '_mergeVerifiedSidebarUser'),
+        context,
+        { filename: 'js/components/sidebar.js' }
+    );
+
+    const result = context._mergeVerifiedSidebarUser(runtimeUser);
+
+    assert.equal(result, null);
+    assert.equal(context.AppState.currentUser, runtimeUser);
+    assert.equal(store.get('pzp_current_user'), cachedJson);
+    assert.deepEqual(failures, [{ kind: 'transient', stage: 'sidebar', reason: 'session-changed' }]);
+});
+
 test('sales funnel verifies the shared session before protected loaders', () => {
     const resolverStart = LEADS_PAGE_CODE.indexOf('async function resolveLeadAuthenticatedUser()');
-    const resolverEnd = LEADS_PAGE_CODE.indexOf('function showLeadBootstrapError()', resolverStart);
+    const resolverEnd = LEADS_PAGE_CODE.indexOf('function showLeadBootstrapError(', resolverStart);
     const resolverCode = LEADS_PAGE_CODE.slice(resolverStart, resolverEnd);
     const initStart = LEADS_PAGE_CODE.indexOf("document.addEventListener('DOMContentLoaded', async () => {");
     const verifyCall = LEADS_PAGE_CODE.indexOf('user = await resolveLeadAuthenticatedUser()', initStart);
     const authErrorStart = LEADS_PAGE_CODE.indexOf('} catch (error) {', verifyCall);
-    const missingSessionRedirect = LEADS_PAGE_CODE.indexOf("if (!user) { window.location.href = '/'; return; }", authErrorStart);
+    const missingSessionRedirect = LEADS_PAGE_CODE.indexOf('if (!user) {', authErrorStart);
     const authErrorCode = LEADS_PAGE_CODE.slice(authErrorStart, missingSessionRedirect);
     const autoFillStart = AUTH_CODE.indexOf('function _autoFillUser()');
     const autoFillEnd = AUTH_CODE.indexOf('setTimeout(_autoFillUser, 200)', autoFillStart);
@@ -623,14 +2103,18 @@ test('sales funnel verifies the shared session before protected loaders', () => 
     assert.doesNotMatch(initAuthBlock, /localStorage\.getItem\(['"]pzp_token['"]\)/);
     assert.match(resolverCode, /apiHasStoredAuthSession\(\)/);
     assert.match(resolverCode, /await apiVerifyToken\(\)/);
+    assert.match(resolverCode, /await hydrateBusinessOperatingProfile\(user\)/);
     assert.match(resolverCode, /await hydrateActionPermissions\(user\)/);
     assert.match(resolverCode, /if \(!permissions\) throw new Error\(/);
+    assert.match(resolverCode, /AppState\.currentUser = user/);
+    assert.match(resolverCode, /!enforceCurrentPageAccess\(user\)/);
     assert.match(resolverCode, /return user;/);
-    assert.match(authErrorCode, /showLeadBootstrapError\(\);\s*return;/);
+    assert.match(authErrorCode, /showLeadBootstrapError\(error\);\s*return;/);
+    assert.match(LEADS_PAGE_CODE.slice(missingSessionRedirect, loadUsersCall), /if \(!leadAuthRedirectHandled\) window\.location\.href = '\/';/);
     assert.match(LEADS_PAGE_CODE, /apiFetchWithAuthRetry\(leadApiUrl\(url\)/);
-    assert.match(autoFillCode, /permissionCatalogUnavailable = permissionState === 'loading' \|\| permissionState === 'error';/);
-    assert.match(autoFillCode, /hasVerifiedUser && permissionCatalogUnavailable\) return;/);
-    assert.match(autoFillCode, /hasVerifiedUser && !enforceCurrentPageAccess\(user\)/);
+    assert.match(autoFillCode, /const hasVerifiedRuntime = isAuthenticatedRuntimeReady\(\);/);
+    assert.match(autoFillCode, /if \(!hasVerifiedRuntime \|\| permissionState !== 'ready'\) return;/);
+    assert.match(autoFillCode, /if \(!enforceCurrentPageAccess\(user\)\) return;/);
 });
 
 test('tasks page lets apiVerifyToken own refresh-token bootstrap instead of prechecking legacy token', () => {
@@ -750,6 +2234,72 @@ test('protected page bootstrap inventory delegates refresh-only sessions to apiV
             bootstrapBeforeVerify,
             /localStorage\.getItem\(['"]pzp_token['"]\)/,
             `${name} must not reject refresh-only sessions before verification`
+        );
+    }
+});
+
+test('every production apiVerifyToken page bootstrap distinguishes transient failures before terminal handling', () => {
+    const dedicatedTransientHandlers = new Set([
+        'js/auth.js',
+        'js/certificates-page.js',
+        'js/hermes-studio-page.js',
+        'js/leads-page.js'
+    ]);
+    const harmlessCallsites = new Set([
+        'js/components/sidebar.js'
+    ]);
+    const productionFiles = [
+        ...fs.readdirSync(ROOT)
+            .filter(file => file.endsWith('.html')),
+        ...fs.readdirSync(path.join(ROOT, 'js'), { recursive: true })
+            .filter(file => file.endsWith('.js'))
+            .map(file => `js/${file.replaceAll('\\', '/')}`)
+    ];
+    const pageCallsites = productionFiles.filter(relativePath => {
+        if (relativePath === 'js/api.js') return false;
+        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+        return /\bapiVerifyToken\s*\(/.test(code);
+    });
+
+    assert.ok(pageCallsites.length >= 37, 'expected the complete protected-page bootstrap inventory');
+    for (const relativePath of pageCallsites) {
+        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+        if (harmlessCallsites.has(relativePath)) {
+            assert.doesNotMatch(
+                code,
+                /apiVerifyToken[\s\S]{0,1200}(?:showLoginScreen\s*\(|location\.(?:assign|replace)\s*\(|location\.href\s*=|logout\s*\()/,
+                `${relativePath} harmless verifier must not perform terminal auth handling`
+            );
+            continue;
+        }
+        if (dedicatedTransientHandlers.has(relativePath)) {
+            assert.match(
+                code,
+                /isApiAuthSessionFailureTransient\s*\(/,
+                `${relativePath} must retain its dedicated transient-session branch`
+            );
+            continue;
+        }
+        assert.match(
+            code,
+            /handleTransientAuthSessionBootstrap\s*\(/,
+            `${relativePath} must guard transient null/throw before login redirect or overlay`
+        );
+    }
+
+    for (const relativePath of [
+        'js/center-page.js',
+        'js/demo-page.js',
+        'js/programs-page.js',
+        'sound.html'
+    ]) {
+        const code = fs.readFileSync(path.join(ROOT, relativePath), 'utf8');
+        const verifyIndex = code.indexOf('apiVerifyToken()');
+        assert.ok(verifyIndex > 0, `${relativePath} verify call missing`);
+        assert.match(
+            code.slice(0, verifyIndex),
+            /apiHasStoredAuthSession\s*\(\s*\)/,
+            `${relativePath} must accept refresh-token-only sessions before verification`
         );
     }
 });

@@ -310,11 +310,34 @@
     <script>
     (async function() {
         try {
-            if (typeof apiVerifyToken === 'function') {
-                const user = await apiVerifyToken();
-                if (user) AppState.currentUser = user;
+            if (typeof apiVerifyToken !== 'function') {
+                window.location.href = '/';
+                return;
             }
-        } catch { return; }
+            const user = await apiVerifyToken();
+            if (!user) {
+                if (typeof handleTransientAuthSessionBootstrap === 'function'
+                    && handleTransientAuthSessionBootstrap({
+                        retry: () => window.location.reload(),
+                        containerId: 'main-content'
+                    })) {
+                    return;
+                }
+                window.location.href = '/';
+                return;
+            }
+            AppState.currentUser = user;
+        } catch {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({
+                    retry: () => window.location.reload(),
+                    containerId: 'main-content'
+                })) {
+                return;
+            }
+            window.location.href = '/';
+            return;
+        }
         if (typeof initDarkMode === 'function') initDarkMode();
 
         const token = localStorage.getItem('pzp_token');

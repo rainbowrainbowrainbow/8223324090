@@ -12,9 +12,61 @@ let profileModalPasswordBaseline = '';
 const AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
 const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
 const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
+const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';
+const AUTH_TRANSITION_KEY = 'pzp_auth_transition';
+const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';
+const AUTH_TRANSITION_MAX_AGE_MS = 15000;
 let serviceWorkerRegistrationPromise = null;
 let authenticatedRuntimeReady = false;
 let offlineSessionRecoveryBound = false;
+let crossTabLogoutInProgress = false;
+let crossTabSessionSyncInProgress = false;
+let authOwnedTransition = null;
+
+function getActiveAuthTransitionMarker() {
+    const marker = localStorage.getItem(AUTH_TRANSITION_KEY) || '';
+    if (!marker) return '';
+    const parts = String(marker).split('-');
+    const timestampPart = ['remember', 'merge', 'api', 'auth', 'impersonate', 'restore'].includes(parts[0])
+        ? parts[1]
+        : parts[0];
+    const startedAt = Number.parseInt(timestampPart || '', 36);
+    const ageMs = Date.now() - startedAt;
+    if (!Number.isFinite(startedAt)
+        || ageMs > AUTH_TRANSITION_MAX_AGE_MS
+        || ageMs < -1000) {
+        if (localStorage.getItem(AUTH_TRANSITION_KEY) === marker) {
+            localStorage.removeItem(AUTH_TRANSITION_KEY);
+        }
+        return '';
+    }
+    return marker;
+}
+
+function beginAuthTransition(prefix = 'auth') {
+    const activeMarker = getActiveAuthTransitionMarker();
+    if (activeMarker) {
+        if (authOwnedTransition?.marker === activeMarker) {
+            authOwnedTransition.depth += 1;
+            return { marker: activeMarker, owned: true };
+        }
+        return { marker: activeMarker, owned: false };
+    }
+    const marker = `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(AUTH_TRANSITION_KEY, marker);
+    authOwnedTransition = { marker, depth: 1 };
+    return { marker, owned: true };
+}
+
+function endAuthTransition(transition) {
+    if (!transition?.owned || authOwnedTransition?.marker !== transition.marker) return;
+    authOwnedTransition.depth -= 1;
+    if (authOwnedTransition.depth > 0) return;
+    authOwnedTransition = null;
+    if (localStorage.getItem(AUTH_TRANSITION_KEY) === transition.marker) {
+        localStorage.removeItem(AUTH_TRANSITION_KEY);
+    }
+}
 
 function hasAuthenticatedRuntimeSession() {
     if (typeof AppState === 'undefined' || !AppState.currentUser) return false;
@@ -269,47 +321,160 @@ function openProfilePage() {
 // ==========================================
 
 async function checkSession() {
-    const token = localStorage.getItem('pzp_token');
-    const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
+    return checkSessionAttempt(0);
+}
 
-    if ((token || hasStoredRefreshSession()) && savedUser) {
+async function checkSessionAttempt(sessionChangeRetry = 0) {
+    const restartAfterSessionChange = async stage => {
+        const sessionChangeError = authBootstrapSessionChangedError(stage);
+        resetAuthenticatedRuntimeReady();
+        if (typeof AppState !== 'undefined' && AppState?.currentUser) {
+            if (typeof clearRuntimePermissionCatalog === 'function') {
+                clearRuntimePermissionCatalog(AppState.currentUser);
+            }
+            AppState.currentUser = null;
+        }
+        const sessionStillExists = Boolean(
+            localStorage.getItem('pzp_token')
+            || localStorage.getItem(AUTH_ACCESS_TOKEN_KEY)
+            || localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)
+        );
+        if (sessionStillExists && sessionChangeRetry < 1) {
+            return checkSessionAttempt(sessionChangeRetry + 1);
+        }
+        if (sessionStillExists) {
+            showAuthenticatedPageShell({ markRuntimeReady: false });
+            renderAuthSessionBootstrapError({
+                retry: checkSession,
+                failure: sessionChangeError.authFailure
+            });
+            return false;
+        }
+        clearAuthStorage();
+        clearPrivateClientCaches();
+        showLoginScreen();
+        return false;
+    };
+    const token = localStorage.getItem('pzp_token');
+    const accessToken = localStorage.getItem(AUTH_ACCESS_TOKEN_KEY);
+
+    if (token || accessToken || hasStoredRefreshSession()) {
+        let verifiedUser = null;
+        let bootstrapSession = null;
         try {
             // Verify token with server
-            const user = await apiVerifyToken();
-            if (user) {
-                AppState.currentUser = user;
-                await hydrateBusinessOperatingProfile(user);
-                await hydrateActionPermissions(user);
+            verifiedUser = await apiVerifyToken();
+            if (verifiedUser) {
+                clearAuthSessionBootstrapError();
+                bootstrapSession = captureAuthBootstrapSession(verifiedUser);
+                if (!isAuthBootstrapSessionCurrent(bootstrapSession, verifiedUser)) {
+                    return restartAfterSessionChange('session-bootstrap');
+                }
+                AppState.currentUser = verifiedUser;
+                await hydrateBusinessOperatingProfile(verifiedUser, { sessionSnapshot: bootstrapSession });
+                if (!isAuthBootstrapSessionCurrent(bootstrapSession, verifiedUser)) {
+                    return restartAfterSessionChange('business-profile');
+                }
+                const permissions = await hydrateActionPermissions(verifiedUser, { sessionSnapshot: bootstrapSession });
+                if (!isAuthBootstrapSessionCurrent(bootstrapSession, verifiedUser)) {
+                    return restartAfterSessionChange('permissions');
+                }
+                if (!permissions) {
+                    showAuthenticatedPageShell({ markRuntimeReady: false });
+                    renderPermissionBootstrapError({
+                        overlay: true,
+                        retry: checkSession
+                    });
+                    return false;
+                }
                 window.WorkingRole?.hydrate?.();
                 showMainApp();
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
                 return true;
             }
         } catch (err) {
-            console.warn('[auth] Session bootstrap failed; returning to login screen', err);
+            console.warn('[auth] Session bootstrap failed', err);
+            if (bootstrapSession && !isAuthBootstrapSessionCurrent(bootstrapSession, verifiedUser)) {
+                return restartAfterSessionChange(err?.stage || 'session-bootstrap');
+            }
+            if (verifiedUser) {
+                resetAuthenticatedRuntimeReady();
+                showAuthenticatedPageShell({ markRuntimeReady: false });
+                renderAuthSessionBootstrapError({
+                    retry: checkSession,
+                    failure: { status: Number(err?.status || 0), retryable: true }
+                });
+                return false;
+            }
         }
-        if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        const authFailure = typeof getApiAuthSessionFailure === 'function'
+            ? getApiAuthSessionFailure()
+            : null;
+        const transientAuthFailure = typeof isApiAuthSessionFailureTransient === 'function'
+            && isApiAuthSessionFailureTransient(authFailure);
+        if ((typeof navigator !== 'undefined' && navigator.onLine === false) || transientAuthFailure) {
             resetAuthenticatedRuntimeReady();
-            scheduleOfflineSessionRecovery();
-            showLoginScreen();
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) scheduleOfflineSessionRecovery();
+            renderAuthSessionBootstrapError({ retry: checkSession, failure: authFailure });
             return false;
         }
         // Token expired or invalid
         resetAuthenticatedRuntimeReady();
-        clearAuthStorage();
-        clearPrivateClientCaches();
     }
+    // Canonical cleanup also covers partial storage left behind without tokens.
+    clearAuthStorage();
+    clearPrivateClientCaches();
     showLoginScreen();
     return false;
 }
 
 async function login(username, password) {
+    const loginIntent = `login-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(AUTH_LOGIN_INTENT_KEY, loginIntent);
+    const clearLoginIntent = () => {
+        if (localStorage.getItem(AUTH_LOGIN_INTENT_KEY) === loginIntent) {
+            localStorage.removeItem(AUTH_LOGIN_INTENT_KEY);
+        }
+    };
+    let data;
     try {
-        const data = await apiLogin(username, password);
-        AppState.currentUser = data.user;
-        rememberAuthSession(data);
-        await hydrateBusinessOperatingProfile(data.user || AppState.currentUser);
-        await hydrateActionPermissions(data.user || AppState.currentUser);
+        data = await apiLogin(username, password);
+    } catch (err) {
+        clearLoginIntent();
+        console.error('Login error:', err);
+        return { success: false, error: err.message || 'Невірний логін або пароль' };
+    }
+
+    if (localStorage.getItem(AUTH_LOGIN_INTENT_KEY) !== loginIntent
+        || !rememberAuthSession(data, { loginIntent })) {
+        revokeRefreshTokenValue(data.refreshToken);
+        clearLoginIntent();
+        return { success: false, error: 'Сесія змінилася в іншій вкладці. Повторіть вхід.' };
+    }
+    clearLoginIntent();
+    AppState.currentUser = data.user;
+    const bootstrapSession = captureAuthBootstrapSession(data.user || AppState.currentUser);
+    try {
+        const authenticatedUser = data.user || AppState.currentUser;
+        if (!isAuthBootstrapSessionCurrent(bootstrapSession, authenticatedUser)) {
+            return { success: true, pending: true };
+        }
+        await hydrateBusinessOperatingProfile(authenticatedUser, { sessionSnapshot: bootstrapSession });
+        if (!isAuthBootstrapSessionCurrent(bootstrapSession, authenticatedUser)) {
+            return { success: true, pending: true };
+        }
+        const permissions = await hydrateActionPermissions(authenticatedUser, { sessionSnapshot: bootstrapSession });
+        if (!isAuthBootstrapSessionCurrent(bootstrapSession, authenticatedUser)) {
+            return { success: true, pending: true };
+        }
+        if (!permissions) {
+            showAuthenticatedPageShell({ markRuntimeReady: false });
+            renderPermissionBootstrapError({
+                overlay: true,
+                retry: checkSession
+            });
+            return { success: true, pending: true };
+        }
         window.WorkingRole?.hydrate?.();
         await registerAuthenticatedServiceWorker();
         // v33.14.0: Init sidebar user card
@@ -327,8 +492,17 @@ async function login(username, password) {
         checkDailyLogin();
         return { success: true };
     } catch (err) {
-        console.error('Login error:', err);
-        return { success: false, error: err.message || 'Невірний логін або пароль' };
+        console.warn('[auth] Post-login bootstrap failed', err);
+        if (!isAuthBootstrapSessionCurrent(bootstrapSession, data.user || AppState.currentUser)) {
+            return { success: true, pending: true };
+        }
+        resetAuthenticatedRuntimeReady();
+        showAuthenticatedPageShell({ markRuntimeReady: false });
+        renderAuthSessionBootstrapError({
+            retry: checkSession,
+            failure: { status: Number(err?.status || 0), retryable: true }
+        });
+        return { success: true, pending: true };
     }
 }
 
@@ -352,7 +526,7 @@ function logout() {
     AppState.currentUser = null;
     resetAuthenticatedRuntimeReady();
     window.dispatchEvent(new CustomEvent('crm:auth-cleared', { detail: { reason: 'logout' } }));
-    clearAuthStorage();
+    clearAuthStorage({ revokeImpersonationRefresh: false });
     clearPrivateClientCaches();
     showLoginScreen();
 }
@@ -545,32 +719,93 @@ window.HeaderSettingsActions = {
     refresh: initSharedHeaderActions
 };
 
-function clearAuthStorage() {
+function clearImpersonationBackup(options = {}) {
+    if (typeof sessionStorage === 'undefined') return;
+    if (options.revokeRefresh === true
+        && sessionStorage.getItem('realSessionBackupVersion') === '2'
+        && Boolean(sessionStorage.getItem('impersonating'))) {
+        const isolatedRefreshToken = sessionStorage.getItem('realRefreshToken');
+        if (isolatedRefreshToken && typeof revokeRefreshTokenValue === 'function') {
+            revokeRefreshTokenValue(isolatedRefreshToken);
+        }
+    }
+    [
+        'impersonating',
+        'realToken',
+        'realAccessToken',
+        'realRefreshToken',
+        'realRefreshExpiresAt',
+        'realSessionGeneration',
+        'realSessionBackupVersion',
+        'realUser',
+        'impersonationSessionGeneration',
+        'impersonationTargetUser'
+    ].forEach(key => sessionStorage.removeItem(key));
+}
+
+function clearAuthStorage(options = {}) {
+    const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
+    if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(runtimeUser);
+    if (typeof setPermissionLifecycle === 'function') setPermissionLifecycle('idle');
+    if (typeof AppState !== 'undefined' && AppState) AppState.currentUser = null;
+    if (typeof resetAuthenticatedRuntimeReady === 'function') resetAuthenticatedRuntimeReady();
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(AUTH_ACCESS_TOKEN_KEY);
     localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY);
     localStorage.removeItem(AUTH_REFRESH_EXPIRES_KEY);
+    localStorage.removeItem(AUTH_SESSION_GENERATION_KEY);
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     localStorage.removeItem(CONFIG.STORAGE.SESSION);
+    localStorage.removeItem(AUTH_TRANSITION_KEY);
+    if (options.preserveLoginIntent !== true) {
+        localStorage.removeItem(AUTH_LOGIN_INTENT_KEY);
+    }
+    clearImpersonationBackup({ revokeRefresh: options.revokeImpersonationRefresh !== false });
 }
 
-function rememberAuthSession(data = {}) {
-    const accessToken = data.accessToken || data.token || '';
-    const legacyToken = data.token || accessToken;
-    if (legacyToken) localStorage.setItem('pzp_token', legacyToken);
-    if (accessToken) localStorage.setItem(AUTH_ACCESS_TOKEN_KEY, accessToken);
-    if (data.refreshToken) localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
-    if (data.refreshExpiresAt) localStorage.setItem(AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
-    if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+function rememberAuthSession(data = {}, options = {}) {
+    if (options.loginIntent
+        && localStorage.getItem(AUTH_LOGIN_INTENT_KEY) !== options.loginIntent) return false;
+    const transition = beginAuthTransition('remember');
+    if (!transition.owned) return false;
+    try {
+        if (options.loginIntent
+            && localStorage.getItem(AUTH_LOGIN_INTENT_KEY) !== options.loginIntent) return false;
+        clearImpersonationBackup({ revokeRefresh: true });
+        if (typeof rotateApiAuthSessionGeneration === 'function') {
+            rotateApiAuthSessionGeneration();
+        } else {
+            const generation = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+            localStorage.setItem(AUTH_SESSION_GENERATION_KEY, generation);
+        }
+        const accessToken = data.accessToken || data.token || '';
+        const legacyToken = data.token || accessToken;
+        if (legacyToken) localStorage.setItem('pzp_token', legacyToken);
+        if (accessToken) localStorage.setItem(AUTH_ACCESS_TOKEN_KEY, accessToken);
+        if (data.refreshToken) localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.refreshExpiresAt) localStorage.setItem(AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
+        if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+    } finally {
+        endAuthTransition(transition);
+    }
+    return true;
 }
 
-async function hydrateBusinessOperatingProfile(user = AppState.currentUser) {
+async function hydrateBusinessOperatingProfile(user = AppState.currentUser, options = {}) {
+    const sessionSnapshot = options.sessionSnapshot || captureAuthBootstrapSession(user);
+    if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+        throw authBootstrapSessionChangedError('business-profile');
+    }
     if (typeof window === 'undefined' || !window.CrmBusinessContext?.hydrateProfile) return null;
     const profile = await window.CrmBusinessContext.hydrateProfile({
         user,
+        sessionSnapshot,
         updateUrl: false,
         emit: true
     });
+    if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+        throw authBootstrapSessionChangedError('business-profile');
+    }
     if (profile && user) {
         user.businessProfile = profile;
         try {
@@ -581,6 +816,103 @@ async function hydrateBusinessOperatingProfile(user = AppState.currentUser) {
 }
 
 const PERMISSION_RETRY_DELAY_MS = 250;
+
+function readAuthBootstrapStoredUser() {
+    try {
+        const user = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || 'null');
+        return user && typeof user === 'object' && !Array.isArray(user) ? user : null;
+    } catch {
+        return null;
+    }
+}
+
+function authBootstrapUsersShareIdentity(left, right) {
+    if (typeof apiAuthUsersShareIdentity === 'function') return apiAuthUsersShareIdentity(left, right);
+    const leftId = left?.id === undefined || left?.id === null ? '' : String(left.id);
+    const rightId = right?.id === undefined || right?.id === null ? '' : String(right.id);
+    if (leftId && rightId) return leftId === rightId;
+    const leftUsername = String(left?.username || '').trim().toLowerCase();
+    const rightUsername = String(right?.username || '').trim().toLowerCase();
+    return Boolean(leftUsername && rightUsername && leftUsername === rightUsername);
+}
+
+function captureAuthBootstrapSession(user = null) {
+    if (typeof captureApiAuthSessionSnapshot === 'function') {
+        return captureApiAuthSessionSnapshot(user);
+    }
+    const accessTokenKey = typeof AUTH_ACCESS_TOKEN_KEY !== 'undefined'
+        ? AUTH_ACCESS_TOKEN_KEY
+        : 'pzp_access_token';
+    const refreshTokenKey = typeof AUTH_REFRESH_TOKEN_KEY !== 'undefined'
+        ? AUTH_REFRESH_TOKEN_KEY
+        : 'pzp_refresh_token';
+    const generationKey = typeof AUTH_SESSION_GENERATION_KEY !== 'undefined'
+        ? AUTH_SESSION_GENERATION_KEY
+        : 'pzp_auth_session_generation';
+    const storedUser = readAuthBootstrapStoredUser();
+    const identitySource = user && typeof user === 'object' ? user : storedUser;
+    const identityId = identitySource?.id ?? null;
+    const identityUsername = String(identitySource?.username || '').trim();
+    let generation = localStorage.getItem(generationKey) || '';
+    const hasStoredSession = Boolean(
+        localStorage.getItem('pzp_token')
+        || localStorage.getItem(accessTokenKey)
+        || localStorage.getItem(refreshTokenKey)
+    );
+    if (!generation && hasStoredSession) {
+        generation = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+        localStorage.setItem(generationKey, generation);
+    }
+    return {
+        generation,
+        accessToken: localStorage.getItem('pzp_token') || localStorage.getItem(accessTokenKey) || '',
+        refreshToken: localStorage.getItem(refreshTokenKey) || '',
+        identity: identitySource && (identityId !== null || identityUsername)
+            ? { id: identityId, username: identityUsername }
+            : null,
+        hadStoredUser: Boolean(storedUser)
+    };
+}
+
+function isAuthBootstrapSessionCurrent(snapshot, user = null) {
+    if (typeof isApiAuthSessionSnapshotCurrent === 'function') {
+        return isApiAuthSessionSnapshotCurrent(snapshot, user);
+    }
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    const generationKey = typeof AUTH_SESSION_GENERATION_KEY !== 'undefined'
+        ? AUTH_SESSION_GENERATION_KEY
+        : 'pzp_auth_session_generation';
+    const currentGeneration = localStorage.getItem(generationKey) || '';
+    if (currentGeneration !== String(snapshot.generation || '')) return false;
+
+    const expectedUser = user && typeof user === 'object' ? user : snapshot.identity;
+    if (snapshot.identity && expectedUser && !authBootstrapUsersShareIdentity(snapshot.identity, expectedUser)) return false;
+    const storedUser = readAuthBootstrapStoredUser();
+    if (snapshot.hadStoredUser && !storedUser) return false;
+    if (storedUser && expectedUser && !authBootstrapUsersShareIdentity(storedUser, expectedUser)) return false;
+    const runtimeUser = typeof AppState !== 'undefined' && AppState?.currentUser
+        ? AppState.currentUser
+        : null;
+    return !(runtimeUser && expectedUser && !authBootstrapUsersShareIdentity(runtimeUser, expectedUser));
+}
+
+function authBootstrapSessionChangedError(stage = 'bootstrap') {
+    const existingFailure = typeof getApiAuthSessionFailure === 'function'
+        ? getApiAuthSessionFailure()
+        : null;
+    const terminal = existingFailure?.kind === 'terminal';
+    if (!terminal && typeof markApiAuthSessionChanged === 'function') markApiAuthSessionChanged(stage);
+    else if (!terminal && typeof setApiAuthSessionFailure === 'function') {
+        setApiAuthSessionFailure('transient', { stage, reason: 'session-changed' });
+    }
+    const error = new Error('Authentication session changed during page bootstrap');
+    error.code = terminal ? 'auth_session_terminal' : 'auth_session_transient';
+    error.authFailure = terminal
+        ? existingFailure
+        : { kind: 'transient', transient: true, stage, reason: 'session-changed' };
+    return error;
+}
+
 let permissionLifecycle = { status: 'idle', attempt: 0, failure: null, updatedAt: 0 };
 
 function getPermissionLifecycle() {
@@ -660,8 +992,81 @@ function permissionFailureMessage() {
     return 'Не вдалося тимчасово завантажити права доступу. Дані сторінки не показані, щоб не приховати дозволені дії помилково.';
 }
 
+function authSessionFailureMessage(failure = {}) {
+    if (failure?.status === 429) {
+        return 'Сервер тимчасово обмежив перевірку сесії. Зачекайте трохи й повторіть спробу.';
+    }
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return 'Немає з’єднання з сервером. Сесію збережено — повторіть перевірку після відновлення мережі.';
+    }
+    return 'Не вдалося тимчасово підтвердити сесію. Дані входу збережено — повторіть спробу.';
+}
+
+function clearAuthSessionBootstrapError() {
+    document.getElementById('authSessionRecovery')?.remove();
+}
+
+function ensureAuthSessionRecoverySurface() {
+    let target = document.getElementById('authSessionRecovery');
+    if (!target && document.body && typeof document.createElement === 'function') {
+        target = document.createElement('div');
+        target.id = 'authSessionRecovery';
+        target.className = 'auth-session-recovery-overlay';
+        target.setAttribute('role', 'alert');
+        target.setAttribute('aria-live', 'assertive');
+        document.body.appendChild(target);
+    }
+    return target;
+}
+
+function renderAuthSessionBootstrapError(options = {}) {
+    let target = options.target
+        || (options.containerId ? document.getElementById(options.containerId) : null)
+        || ensureAuthSessionRecoverySurface();
+    if (!target) return;
+    const retry = typeof options.retry === 'function' ? options.retry : null;
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p>${retry ? '<button type="button" class="btn btn-primary" data-auth-session-retry>Повторити</button>' : ''}</div>`;
+    const button = target.querySelector?.('[data-auth-session-retry]');
+    if (button && retry) {
+        button.addEventListener('click', async () => {
+            if (button.disabled) return;
+            button.disabled = true;
+            button.setAttribute('aria-busy', 'true');
+            try { await retry(); }
+            finally {
+                button.disabled = false;
+                button.removeAttribute('aria-busy');
+            }
+        });
+    }
+}
+
+function handleTransientAuthSessionBootstrap(options = {}) {
+    const failure = options.failure || (typeof getApiAuthSessionFailure === 'function'
+        ? getApiAuthSessionFailure()
+        : null);
+    const isTransient = (typeof navigator !== 'undefined' && navigator.onLine === false)
+        || (typeof isApiAuthSessionFailureTransient === 'function'
+            && isApiAuthSessionFailureTransient(failure));
+    if (!isTransient) return false;
+
+    resetAuthenticatedRuntimeReady();
+    if (options.showShell !== false) showAuthenticatedPageShell({ markRuntimeReady: false });
+    renderAuthSessionBootstrapError({
+        containerId: options.containerId,
+        target: options.target,
+        failure,
+        retry: typeof options.retry === 'function'
+            ? options.retry
+            : () => window.location.reload()
+    });
+    return true;
+}
+
 function renderPermissionBootstrapError(options = {}) {
-    const target = options.target || document.getElementById(options.containerId || 'main-content');
+    const target = options.target
+        || (options.overlay === true ? ensureAuthSessionRecoverySurface() : null)
+        || document.getElementById(options.containerId || 'main-content');
     if (!target) return;
     const retry = typeof options.retry === 'function' ? options.retry : null;
     target.innerHTML = `<div class="page-fatal-error permission-bootstrap-error" role="alert" data-permission-state="error"><h3>Права доступу тимчасово недоступні</h3><p>${_escHtml(permissionFailureMessage())}</p>${retry ? '<button type="button" class="btn btn-primary" data-permission-retry>Повторити</button>' : ''}</div>`;
@@ -685,17 +1090,41 @@ async function hydrateActionPermissions(user = AppState.currentUser, options = {
         setPermissionLifecycle('error', { failure: { status: 0, retryable: false, message: 'Authenticated user is unavailable' } });
         return null;
     }
+    const sessionSnapshot = options.sessionSnapshot || captureAuthBootstrapSession(user);
+    if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+        authBootstrapSessionChangedError('permissions');
+        return null;
+    }
     const maxAttempts = options.retry === false ? 1 : 2;
     clearRuntimePermissionCatalog(user);
     for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+        if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+            authBootstrapSessionChangedError('permissions');
+            return null;
+        }
         setPermissionLifecycle('loading', { attempt });
         try {
             const headers = typeof getAuthHeaders === 'function'
                 ? getAuthHeaders(false)
                 : { Authorization: `Bearer ${localStorage.getItem(AUTH_ACCESS_TOKEN_KEY) || localStorage.getItem('pzp_token') || ''}` };
-            const response = await fetch('/api/auth/permissions', { headers });
+            const response = typeof apiFetchWithAuthRetry === 'function'
+                ? await apiFetchWithAuthRetry('/api/auth/permissions', {
+                    headers,
+                    authSessionSnapshot: sessionSnapshot,
+                    authUser: user
+                })
+                : await fetch('/api/auth/permissions', { headers });
+            if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+                authBootstrapSessionChangedError('permissions');
+                return null;
+            }
+            if (!response) throw permissionLoadError(0);
             if (!response.ok) throw permissionLoadError(response.status);
             const permissions = await response.json();
+            if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+                authBootstrapSessionChangedError('permissions');
+                return null;
+            }
             applyActionPermissions(user, permissions);
             setPermissionLifecycle('ready', { attempt });
             try {
@@ -703,6 +1132,10 @@ async function hydrateActionPermissions(user = AppState.currentUser, options = {
             } catch {}
             return permissions;
         } catch (cause) {
+            if (!isAuthBootstrapSessionCurrent(sessionSnapshot, user)) {
+                authBootstrapSessionChangedError('permissions');
+                return null;
+            }
             const error = permissionLoadError(cause?.status, cause);
             const failure = { status: error.status, retryable: error.retryable, message: error.message };
             if (error.retryable && attempt < maxAttempts) {
@@ -722,8 +1155,7 @@ function hasStoredRefreshSession() {
     return Boolean(localStorage.getItem(AUTH_REFRESH_TOKEN_KEY));
 }
 
-function revokeStoredRefreshToken() {
-    const refreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY);
+function revokeRefreshTokenValue(refreshToken) {
     if (!refreshToken) return;
     try {
         fetch('/api/auth/logout', {
@@ -733,6 +1165,104 @@ function revokeStoredRefreshToken() {
             keepalive: true
         }).catch(() => {});
     } catch {}
+}
+
+function revokeStoredRefreshToken() {
+    const refreshTokens = new Set();
+    const activeRefreshToken = localStorage.getItem(AUTH_REFRESH_TOKEN_KEY);
+    if (activeRefreshToken) refreshTokens.add(activeRefreshToken);
+
+    try {
+        const hasIsolatedCreatorSession = sessionStorage.getItem('realSessionBackupVersion') === '2'
+            && Boolean(sessionStorage.getItem('impersonating'));
+        const isolatedCreatorRefreshToken = hasIsolatedCreatorSession
+            ? sessionStorage.getItem('realRefreshToken')
+            : null;
+        if (isolatedCreatorRefreshToken) refreshTokens.add(isolatedCreatorRefreshToken);
+    } catch {}
+
+    refreshTokens.forEach(revokeRefreshTokenValue);
+}
+
+function handleCrossTabAuthStorageChange(event) {
+    const authKeys = new Set([
+        'pzp_token',
+        AUTH_ACCESS_TOKEN_KEY,
+        AUTH_REFRESH_TOKEN_KEY,
+        AUTH_SESSION_GENERATION_KEY,
+        CONFIG.STORAGE.CURRENT_USER,
+        CONFIG.STORAGE.SESSION
+    ]);
+    if (crossTabSessionSyncInProgress || !authKeys.has(event?.key)) return;
+
+    if (event?.newValue !== null) {
+        const generationChanged = event.key === AUTH_SESSION_GENERATION_KEY
+            && event.oldValue !== event.newValue;
+        let identityChanged = false;
+        if (event.key === CONFIG.STORAGE.CURRENT_USER && event.oldValue !== event.newValue) {
+            try {
+                const incomingUser = JSON.parse(event.newValue);
+                const runtimeUser = typeof AppState !== 'undefined' && AppState
+                    ? AppState.currentUser
+                    : null;
+                identityChanged = !runtimeUser
+                    || typeof authBootstrapUsersShareIdentity !== 'function'
+                    || !authBootstrapUsersShareIdentity(runtimeUser, incomingUser);
+            } catch {
+                identityChanged = true;
+            }
+        }
+        if (!generationChanged && !identityChanged) return;
+
+        crossTabSessionSyncInProgress = true;
+        resetAuthenticatedRuntimeReady();
+        if (typeof AppState !== 'undefined' && AppState?.currentUser) {
+            if (typeof clearRuntimePermissionCatalog === 'function') {
+                clearRuntimePermissionCatalog(AppState.currentUser);
+            }
+            AppState.currentUser = null;
+        }
+        if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();
+        document.getElementById('mainApp')?.classList.add('hidden');
+        document.getElementById('sidebarToggle')?.classList.add('hidden');
+        window.location.reload();
+        return;
+    }
+
+    if (crossTabLogoutInProgress) return;
+
+    const sharedSessionStillExists = Boolean(
+        localStorage.getItem('pzp_token')
+        || localStorage.getItem(AUTH_ACCESS_TOKEN_KEY)
+        || localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)
+        || localStorage.getItem(AUTH_SESSION_GENERATION_KEY)
+        || localStorage.getItem(CONFIG.STORAGE.CURRENT_USER)
+    );
+    if (sharedSessionStillExists) return;
+
+    const loginIntentInProgress = Boolean(localStorage.getItem(AUTH_LOGIN_INTENT_KEY));
+    if (loginIntentInProgress) {
+        crossTabLogoutInProgress = true;
+        try {
+            clearAuthStorage({ preserveLoginIntent: true });
+            clearPrivateClientCaches();
+            showLoginScreen();
+        } finally {
+            setTimeout(() => { crossTabLogoutInProgress = false; }, 0);
+        }
+        return;
+    }
+
+    crossTabLogoutInProgress = true;
+    try {
+        logout();
+    } finally {
+        setTimeout(() => { crossTabLogoutInProgress = false; }, 0);
+    }
+}
+
+if (typeof window !== 'undefined' && window.addEventListener) {
+    window.addEventListener('storage', handleCrossTabAuthStorageChange);
 }
 
 function clearPrivateClientCaches() {
@@ -762,6 +1292,7 @@ function clearPrivateClientCaches() {
 }
 
 function showLoginScreen() {
+    clearAuthSessionBootstrapError();
     // v31.7.1: Redirect to canonical login page from sub-pages
     const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
     if (path !== '/' && path !== '/index') {
@@ -921,8 +1452,9 @@ function initCrmAssistantRail() {
         .catch(err => console.warn('[crm-assistant] rail init failed', err));
 }
 
-function showAuthenticatedPageShell() {
-    markAuthenticatedRuntimeReady();
+function showAuthenticatedPageShell(options = {}) {
+    const activateRuntime = options.markRuntimeReady !== false;
+    if (activateRuntime) markAuthenticatedRuntimeReady();
     document.body.classList.remove('auth-screen');
     document.body.classList.add('authenticated-shell');
     document.getElementById('loginScreen')?.classList.add('hidden');
@@ -942,6 +1474,11 @@ function showAuthenticatedPageShell() {
 
     const sidebarToggle = document.getElementById('sidebarToggle');
     if (sidebarToggle) sidebarToggle.classList.remove('hidden');
+
+    if (!activateRuntime) {
+        if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+        return;
+    }
 
     if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
     if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
@@ -1710,6 +2247,8 @@ if (typeof window !== 'undefined') {
     window.hydrateActionPermissions = hydrateActionPermissions;
     window.getPermissionLifecycle = getPermissionLifecycle;
     window.renderPermissionBootstrapError = renderPermissionBootstrapError;
+    window.renderAuthSessionBootstrapError = renderAuthSessionBootstrapError;
+    window.handleTransientAuthSessionBootstrap = handleTransientAuthSessionBootstrap;
     window.resolveCapability = resolveCapability;
 }
 
@@ -1808,6 +2347,11 @@ function getCurrentPageAccessPath() {
 }
 
 function enforceCurrentPageAccess(user = AppState.currentUser) {
+    // A missing catalog is not an access denial. Standalone pages hydrate the
+    // catalog asynchronously, so redirecting before that request completes
+    // creates a false deny (and a visible bounce back to the timeline).
+    if (getPermissionLifecycle().status !== 'ready') return null;
+
     const path = getCurrentPageAccessPath();
     if (path === '/invite') return true;
     if (canAccessPage(path)) return true;
@@ -3287,20 +3831,41 @@ document.addEventListener('DOMContentLoaded', () => {
         if (document.body.classList.contains('authenticated-shell')) initCrmAssistantRail();
     }, 350);
 
-    // v37.5: Auto-fill sidebar avatar from AppState OR localStorage
-    // Page-specific JS files set AppState.currentUser after apiVerifyToken()
-    // but never call Sidebar.initUserCard() or save to localStorage
+    // v37.5: Auto-fill sidebar avatar from AppState OR localStorage.
+    // AppState may itself have been populated from localStorage, so it is not
+    // proof that the server session or permission catalog has been verified.
     function _autoFillUser() {
         try {
             let user = null;
 
-            // Priority 1: AppState (set by page-specific initPage after apiVerifyToken)
-            let hasVerifiedUser = false;
+            // Priority 1: AppState (runtime state or a previously restored cache)
             if (typeof AppState !== 'undefined' && AppState.currentUser) {
                 user = AppState.currentUser;
-                hasVerifiedUser = true;
                 // Sync to localStorage so other mechanisms can find it
                 const saved = JSON.parse(localStorage.getItem('pzp_current_user') || '{}');
+                const savedHasIdentity = saved?.id !== undefined || Boolean(String(saved?.username || '').trim());
+                const runtimeHasIdentity = user?.id !== undefined || Boolean(String(user?.username || '').trim());
+                const sameIdentity = typeof apiAuthUsersShareIdentity === 'function'
+                    ? apiAuthUsersShareIdentity(saved, user)
+                    : (saved?.id !== undefined && user?.id !== undefined
+                        ? String(saved.id) === String(user.id)
+                        : String(saved?.username || '').trim().toLowerCase() === String(user?.username || '').trim().toLowerCase());
+                if (savedHasIdentity && runtimeHasIdentity && !sameIdentity) {
+                    if (typeof setApiAuthSessionFailure === 'function') {
+                        setApiAuthSessionFailure('transient', { stage: 'auto-fill', reason: 'session-changed' });
+                    }
+                    if (typeof resetAuthenticatedRuntimeReady === 'function') resetAuthenticatedRuntimeReady();
+                    if (typeof showAuthenticatedPageShell === 'function') {
+                        showAuthenticatedPageShell({ markRuntimeReady: false });
+                    }
+                    if (typeof renderAuthSessionBootstrapError === 'function') {
+                        renderAuthSessionBootstrapError({
+                            failure: { status: 0, retryable: true, stage: 'auto-fill', reason: 'session-changed' },
+                            retry: () => window.location.reload()
+                        });
+                    }
+                    return;
+                }
                 user = { ...saved, ...user };
                 AppState.currentUser = user;
                 localStorage.setItem('pzp_current_user', JSON.stringify(user));
@@ -3319,9 +3884,9 @@ document.addEventListener('DOMContentLoaded', () => {
             }
 
             const permissionState = getPermissionLifecycle().status;
-            const permissionCatalogUnavailable = permissionState === 'loading' || permissionState === 'error';
-            if (hasVerifiedUser && permissionCatalogUnavailable) return;
-            if (hasVerifiedUser && !enforceCurrentPageAccess(user)) return;
+            const hasVerifiedRuntime = isAuthenticatedRuntimeReady();
+            if (!hasVerifiedRuntime || permissionState !== 'ready') return;
+            if (!enforceCurrentPageAccess(user)) return;
             window.WorkingRole?.hydrate?.();
 
             // Fill header #currentUser
@@ -3354,13 +3919,83 @@ const RoleSwitcher = (() => {
 
     function resetImpersonation() {
         const realToken = sessionStorage.getItem('realToken');
+        const realAccessToken = sessionStorage.getItem('realAccessToken');
+        const realRefreshToken = sessionStorage.getItem('realRefreshToken');
+        const realRefreshExpiresAt = sessionStorage.getItem('realRefreshExpiresAt');
         const realUser = sessionStorage.getItem('realUser');
-        if (realToken) localStorage.setItem('pzp_token', realToken);
-        if (realUser) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, realUser);
-        sessionStorage.removeItem('impersonating');
-        sessionStorage.removeItem('realToken');
-        sessionStorage.removeItem('realUser');
-        if (realToken || realUser) window.location.reload();
+        const hasIsolatedBackup = sessionStorage.getItem('realSessionBackupVersion') === '2';
+        const hasBackup = hasIsolatedBackup || Boolean(realToken || realUser);
+        const impersonating = sessionStorage.getItem('impersonating') || '';
+        const expectedGeneration = sessionStorage.getItem('impersonationSessionGeneration') || '';
+        let expectedTarget = null;
+        try { expectedTarget = JSON.parse(sessionStorage.getItem('impersonationTargetUser') || 'null'); } catch {}
+        const sessionMatchesTarget = () => {
+            let currentUser = null;
+            try { currentUser = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || 'null'); } catch {}
+            const sameIdentity = expectedTarget
+                ? (typeof apiAuthUsersShareIdentity === 'function'
+                    ? apiAuthUsersShareIdentity(expectedTarget, currentUser)
+                    : String(expectedTarget?.id ?? '') === String(currentUser?.id ?? '')
+                        && String(expectedTarget?.username || '').trim().toLowerCase()
+                            === String(currentUser?.username || '').trim().toLowerCase())
+                : String(currentUser?.username || '').trim().toLowerCase()
+                    === String(impersonating).trim().toLowerCase();
+            const currentGeneration = localStorage.getItem(AUTH_SESSION_GENERATION_KEY) || '';
+            return Boolean(impersonating && sameIdentity)
+                && (!expectedGeneration || currentGeneration === expectedGeneration);
+        };
+        const discardBackup = () => {
+            if (realRefreshToken) revokeRefreshTokenValue(realRefreshToken);
+            clearImpersonationBackup();
+        };
+
+        const transitionBusy = typeof getActiveAuthTransitionMarker === 'function'
+            ? Boolean(getActiveAuthTransitionMarker())
+            : Boolean(localStorage.getItem(AUTH_TRANSITION_KEY));
+        if (transitionBusy) return false;
+        if (!hasBackup || !sessionMatchesTarget()) {
+            discardBackup();
+            return false;
+        }
+
+        const transition = typeof beginAuthTransition === 'function'
+            ? beginAuthTransition('restore')
+            : (() => {
+                const marker = `restore-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+                localStorage.setItem(AUTH_TRANSITION_KEY, marker);
+                return { marker, owned: true };
+            })();
+        if (!transition.owned) return false;
+        try {
+            if (!sessionMatchesTarget()) {
+                discardBackup();
+                return false;
+            }
+            if (hasIsolatedBackup) {
+                if (realToken) localStorage.setItem('pzp_token', realToken);
+                else localStorage.removeItem('pzp_token');
+                if (realAccessToken) localStorage.setItem(AUTH_ACCESS_TOKEN_KEY, realAccessToken);
+                else if (realToken) localStorage.setItem(AUTH_ACCESS_TOKEN_KEY, realToken);
+                else localStorage.removeItem(AUTH_ACCESS_TOKEN_KEY);
+                if (realRefreshToken) localStorage.setItem(AUTH_REFRESH_TOKEN_KEY, realRefreshToken);
+                else localStorage.removeItem(AUTH_REFRESH_TOKEN_KEY);
+                if (realRefreshExpiresAt) localStorage.setItem(AUTH_REFRESH_EXPIRES_KEY, realRefreshExpiresAt);
+                else localStorage.removeItem(AUTH_REFRESH_EXPIRES_KEY);
+            } else if (realToken) {
+                // Backward compatibility for impersonation sessions created before refresh isolation.
+                localStorage.setItem('pzp_token', realToken);
+                localStorage.setItem(AUTH_ACCESS_TOKEN_KEY, realToken);
+            }
+            if (realUser) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, realUser);
+            if (typeof rotateApiAuthSessionGeneration === 'function') rotateApiAuthSessionGeneration();
+            clearImpersonationBackup();
+        } finally {
+            if (typeof endAuthTransition === 'function') endAuthTransition(transition);
+            else if (localStorage.getItem(AUTH_TRANSITION_KEY) === transition.marker) {
+                localStorage.removeItem(AUTH_TRANSITION_KEY);
+            }
+        }
+        window.location.reload();
         return true;
     }
 

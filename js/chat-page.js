@@ -1263,6 +1263,10 @@
         // apiVerifyToken owns refresh-only session recovery before chat connects.
         var verified = await apiVerifyToken();
         if (!verified) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload() })) {
+                return;
+            }
             window.location.href = '/';
             return;
         }

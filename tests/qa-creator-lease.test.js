@@ -72,8 +72,8 @@ test('lease endpoints and auth lifecycle keep automatic expiry server-side', () 
     assert.match(usersRoute, /router\.delete\('\/:id\/qa-creator-lease'/);
     assert.match(usersRoute, /assertPermanentCreatorForQaLease/);
     assert.match(usersRoute, /QA_CREATOR_LEASE_TARGET_NOT_ISOLATED/);
-    assert.match(authMiddleware, /resolveActiveQaCreatorLease\(freshUser, pool, \{ expectedLeaseId: user\.qaCreatorLeaseId \}\)/);
-    assert.match(authMiddleware, /const user = await resolveActiveQaCreatorLease\(userResult\.rows\[0\], pool\)/);
-    assert.match(authRoute, /user = await resolveActiveQaCreatorLease\(user, pool\)/);
+    assert.match(authMiddleware, /resolveActiveQaCreatorLease\(freshUser, db, \{ expectedLeaseId: user\.qaCreatorLeaseId \}\)/);
+    assert.match(authMiddleware, /const user = await resolveActiveQaCreatorLease\(storedUser, client\)/);
+    assert.match(authRoute, /user = await resolveActiveQaCreatorLease\(lockedUser, loginClient\)/);
     assert.match(authRoute, /role: req\.user\.role/);
 });

@@ -771,7 +771,7 @@ async function reissueOneTimeLoginForExistingAccount(client, user, { actor = {},
         `UPDATE users
          SET password_hash = $1,
              password_changed_at = NOW(),
-             session_revoked_at = NOW(),
+             session_revoked_at = clock_timestamp(),
              is_active = true
          WHERE id = $2
          RETURNING id, username, name, role, extra_roles, is_active, password_changed_at, session_revoked_at`,

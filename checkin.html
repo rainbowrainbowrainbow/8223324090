@@ -579,6 +579,15 @@
         async function requireAuthorizedSession() {
             const user = typeof apiVerifyToken === 'function' ? await apiVerifyToken() : null;
             if (!user) {
+                if (typeof handleTransientAuthSessionBootstrap === 'function'
+                    && handleTransientAuthSessionBootstrap({
+                        retry: initializeCheckin,
+                        containerId: 'statusMsg',
+                        showShell: false
+                    })) {
+                    setRetryVisible(false);
+                    return false;
+                }
                 setStatus('Необхідна авторизація. Перенаправлення на вхід...', 'error');
                 window.location.href = '/';
                 return false;

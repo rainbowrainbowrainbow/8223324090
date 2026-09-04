@@ -2,3 +2,45 @@
 
 @import url("./pages-core.css?v=0.81.70");
 @import url("./pages-shared-widgets.css?v=0.81.70");
+
+/* Shared fail-closed bootstrap recovery surface. */
+.page-fatal-error {
+    padding: 18px;
+    border: 1px solid rgba(239, 68, 68, 0.28);
+    border-radius: 12px;
+    background: var(--surface, #ffffff);
+    color: var(--text-primary, #1f2937);
+    box-shadow: 0 18px 48px rgba(15, 23, 42, 0.2);
+}
+
+.page-fatal-error h3 {
+    margin: 0 0 8px;
+    font-size: 17px;
+    font-weight: 900;
+}
+
+.page-fatal-error p {
+    margin: 0 0 14px;
+    color: inherit;
+}
+
+.auth-session-recovery-overlay {
+    position: fixed;
+    inset: 0;
+    z-index: 20050;
+    display: grid;
+    place-items: center;
+    padding: 24px;
+    background: rgba(15, 23, 42, 0.72);
+    backdrop-filter: blur(6px);
+}
+
+.auth-session-recovery-overlay .page-fatal-error {
+    width: min(100%, 520px);
+}
+
+body.dark-mode .auth-session-recovery-overlay .page-fatal-error {
+    border-color: rgba(248, 113, 113, 0.38);
+    background: #172033;
+    color: #f8fafc;
+}

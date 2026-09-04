@@ -259,8 +259,12 @@
     (async function() {
         if (typeof bindLogoutButton === 'function') bindLogoutButton();
 
-        var token = localStorage.getItem('pzp_token');
-        if (token) {
+        var hasStoredSession = typeof apiHasStoredAuthSession === 'function'
+            ? apiHasStoredAuthSession()
+            : Boolean(localStorage.getItem('pzp_token')
+                || localStorage.getItem('pzp_access_token')
+                || localStorage.getItem('pzp_refresh_token'));
+        if (hasStoredSession) {
             var user = await apiVerifyToken();
             if (user) {
                 AppState.currentUser = user;
@@ -268,6 +272,13 @@
                 var ue = document.getElementById('currentUser'); if (ue) ue.textContent = user.name;
                 if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
                 else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+                return;
+            }
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({
+                    retry: () => window.location.reload(),
+                    containerId: 'main-content'
+                })) {
                 return;
             }
         }

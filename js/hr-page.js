@@ -2664,7 +2664,14 @@ async function initPage() {
     try {
     initDarkMode();
     const user = await apiVerifyToken();
-    if (!user) { window.location.href = '/'; return; }
+    if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'tab-today' })) {
+            return;
+        }
+        window.location.href = '/';
+        return;
+    }
 
     const permissions = typeof hydrateActionPermissions === 'function'
         ? await hydrateActionPermissions(user)

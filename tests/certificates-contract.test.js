@@ -75,3 +75,17 @@ test('animators can issue single and batch certificates without receiving lifecy
     assert.match(routeCode, /router\.patch\('\/:id\/status', requireRole\('admin', 'user'\)/);
     assert.match(routeCode, /router\.delete\('\/:id', requireRole\('admin', 'user'\)/);
 });
+
+test('certificate page requests use the shared refresh-safe auth wrapper', () => {
+    const apiCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'api.js'), 'utf8');
+    const pageCode = fs.readFileSync(path.join(__dirname, '..', 'js', 'certificates-page.js'), 'utf8');
+    const apiStart = apiCode.indexOf('// v8.4: Certificates API');
+    const apiEnd = apiCode.indexOf('// v11.0: Kleshnya API', apiStart);
+    const certificateApi = apiCode.slice(apiStart, apiEnd);
+
+    assert.match(certificateApi, /apiFetchWithAuthRetry/);
+    assert.doesNotMatch(certificateApi, /await fetch\(/);
+    assert.doesNotMatch(certificateApi, /handleAuthError\(/);
+    assert.match(pageCode, /apiFetchWithAuthRetry\(`\$\{API_BASE\}\/certificates\/\$\{encodeURIComponent\(id\)\}`/);
+    assert.match(pageCode, /data-cert-load-retry/);
+});

@@ -455,6 +455,10 @@
             return true;
         } catch (err) {
             console.error('Guardian ops auth failed', err);
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return false;
+            }
             window.location.href = '/';
             return false;
         }

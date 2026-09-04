@@ -54,7 +54,9 @@ router.post('/login', demoRateLimit, async (req, res) => {
             username: 'demo',
             role: 'viewer',
             name: name || 'Demo User',
-            isDemo: true
+            isDemo: true,
+            tokenPurpose: 'demo',
+            sessionIssuedAt: Date.now()
         };
 
         const token = jwt.sign(demoUser, JWT_SECRET, { expiresIn: '2h' });

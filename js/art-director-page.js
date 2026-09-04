@@ -943,6 +943,10 @@ async function initAuth() {
     // apiVerifyToken owns refresh-only session recovery.
     const user = await apiVerifyToken();
     if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return false;
+        }
         document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }

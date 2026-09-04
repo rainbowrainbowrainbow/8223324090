@@ -3310,6 +3310,10 @@ async function initPage() {
 
     const user = await apiVerifyToken();
     if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return;
+        }
         window.location.href = '/';
         return;
     }

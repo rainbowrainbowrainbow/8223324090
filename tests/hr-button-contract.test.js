@@ -2246,7 +2246,7 @@ test('HR offboarding readiness owns account/resource/document closure guardrails
         assert.ok(HR_ROUTE.includes(token), `missing route token ${token}`);
     }
     for (const token of [
-        'session_revoked_at = NOW()',
+        'session_revoked_at = clock_timestamp()',
         'UPDATE refresh_tokens',
         "eventType: 'account_deactivated'",
         'UPDATE employee_profiles'

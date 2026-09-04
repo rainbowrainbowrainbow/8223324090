@@ -8171,6 +8171,11 @@ async function initStaffSchedulePage(options = {}) {
             user = await apiVerifyToken();
         }
         if (!user) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                staffScheduleInitPromise = null;
+                return;
+            }
             if (mode !== 'hr') window.location.href = '/';
             else throw new Error('Staff schedule user is not available');
             return;

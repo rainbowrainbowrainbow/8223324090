@@ -18,7 +18,8 @@ const CopilotPage = (() => {
 
     async function init() {
         // Wait for auth
-        await waitForAuth();
+        const authReady = await waitForAuth();
+        if (!authReady) return;
 
         const user = AppState?.currentUser;
         if (!user || !MANAGER_ROLES.includes(user.role)) {
@@ -59,26 +60,19 @@ const CopilotPage = (() => {
     }
 
     async function waitForAuth() {
-        // If already authenticated, return immediately
-        if (AppState?.currentUser) return;
-
         // apiVerifyToken owns refresh-only session recovery.
         const verified = await apiVerifyToken();
-        if (!verified) { window.location.href = '/'; return; }
+        if (!verified) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload() })) {
+                return false;
+            }
+            window.location.href = '/';
+            return false;
+        }
         AppState.currentUser = verified;
-
-        const savedUser = localStorage.getItem('pzp_current_user');
-        if (savedUser) {
-            try { AppState.currentUser = JSON.parse(savedUser); } catch {}
-        }
-
-        // Verify with server
-        if (typeof apiVerifyToken === 'function') {
-            const verified = await apiVerifyToken();
-            if (!verified) { window.location.href = '/'; return; }
-            AppState.currentUser = verified;
-            if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
-        }
+        if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+        return true;
     }
 
     async function loadAllData() {

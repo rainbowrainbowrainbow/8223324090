@@ -294,7 +294,10 @@ const MAYSTERNYA_LEAD_TASK_PRESETS = {
 };
 
 // Auth helpers
+let leadAuthRedirectHandled = false;
+
 async function resolveLeadAuthenticatedUser() {
+    leadAuthRedirectHandled = false;
     if (typeof apiHasStoredAuthSession !== 'function'
         || typeof apiVerifyToken !== 'function'
         || typeof hydrateActionPermissions !== 'function') {
@@ -302,17 +305,55 @@ async function resolveLeadAuthenticatedUser() {
     }
     if (!apiHasStoredAuthSession()) return null;
     const user = await apiVerifyToken();
-    if (!user) return null;
+    if (!user) {
+        const authFailure = typeof getApiAuthSessionFailure === 'function'
+            ? getApiAuthSessionFailure()
+            : null;
+        if (typeof isApiAuthSessionFailureTransient === 'function'
+            && isApiAuthSessionFailureTransient(authFailure)) {
+            const error = new Error('Не вдалося тимчасово підтвердити сесію');
+            error.code = 'auth_session_transient';
+            error.authFailure = authFailure;
+            throw error;
+        }
+        return null;
+    }
+    if (typeof hydrateBusinessOperatingProfile === 'function') {
+        await hydrateBusinessOperatingProfile(user);
+    }
     const permissions = await hydrateActionPermissions(user);
     if (!permissions) throw new Error('Не вдалося завантажити права доступу');
+    if (typeof AppState !== 'undefined') AppState.currentUser = user;
+    window.WorkingRole?.hydrate?.();
+    if (typeof enforceCurrentPageAccess === 'function' && !enforceCurrentPageAccess(user)) {
+        leadAuthRedirectHandled = true;
+        return null;
+    }
     return user;
 }
 
-function showLeadBootstrapError() {
+function showLeadBootstrapError(error = null) {
+    const authFailure = typeof getApiAuthSessionFailure === 'function'
+        ? getApiAuthSessionFailure()
+        : error?.authFailure;
+    const terminalAuthFailure = error?.code === 'auth_session_terminal'
+        || (typeof isApiAuthSessionFailureTerminal === 'function'
+            && isApiAuthSessionFailureTerminal(authFailure));
+    if (terminalAuthFailure) return;
     normalizeLeadCanonicalRoute();
     const message = 'Не вдалося завантажити права доступу. Оновіть сторінку або спробуйте ще раз.';
-    if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
+    if (typeof showAuthenticatedPageShell === 'function') {
+        showAuthenticatedPageShell({ markRuntimeReady: false });
+    }
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
+    if (error?.code === 'auth_session_transient' && typeof renderAuthSessionBootstrapError === 'function') {
+        renderAuthSessionBootstrapError({
+            containerId: 'main-content',
+            failure: error.authFailure || authFailure,
+            retry: () => window.location.reload()
+        });
+        return;
+    }
     if (typeof renderPermissionBootstrapError === 'function') {
         renderPermissionBootstrapError({
             containerId: 'main-content',
@@ -774,6 +815,16 @@ async function apiFetch(url, opts = {}) {
         headers: { ...getAuthHeaders(!!opts.body), ...opts.headers }
     });
     if (!res) {
+        const authFailure = typeof getApiAuthSessionFailure === 'function'
+            ? getApiAuthSessionFailure()
+            : null;
+        if (typeof isApiAuthSessionFailureTransient === 'function'
+            && isApiAuthSessionFailureTransient(authFailure)) {
+            const error = new Error('Сесію тимчасово не вдалося підтвердити. Повторіть запит.');
+            error.code = 'auth_session_transient';
+            error.authFailure = authFailure;
+            throw error;
+        }
         window.location.href = '/';
         throw new Error('Unauthorized');
     }
@@ -801,10 +852,13 @@ document.addEventListener('DOMContentLoaded', async () => {
         user = await resolveLeadAuthenticatedUser();
     } catch (error) {
         console.warn('[Leads] Auth bootstrap failed:', error?.message || error);
-        showLeadBootstrapError();
+        showLeadBootstrapError(error);
         return;
     }
-    if (!user) { window.location.href = '/'; return; }
+    if (!user) {
+        if (!leadAuthRedirectHandled) window.location.href = '/';
+        return;
+    }
 
     const saved = localStorage.getItem('pzp_dark_mode');
     if (saved !== 'false') {
@@ -816,7 +870,6 @@ document.addEventListener('DOMContentLoaded', async () => {
     // Check TEST_MODE badge
     checkTestMode();
 
-    if (typeof AppState !== 'undefined') AppState.currentUser = user;
     initLeadBusinessContext(user);
     syncLeadRevenueUi();
 

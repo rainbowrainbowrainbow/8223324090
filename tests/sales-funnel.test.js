@@ -42,8 +42,11 @@ describe('Sales Funnel deposit_received local regression', () => {
         );
         assert.doesNotMatch(leadsPage, /localStorage\.getItem\(['"]pzp_token['"]\)/);
         assert.match(leadsPage, /user = await resolveLeadAuthenticatedUser\(\)/);
-        assert.match(leadsPage, /showLeadBootstrapError\(\);\s*return;/);
+        assert.match(leadsPage, /if \(!leadAuthRedirectHandled\) window\.location\.href = '\/'/);
+        assert.match(leadsPage, /showLeadBootstrapError\(error\);\s*return;/);
         assert.match(leadsPage, /apiFetchWithAuthRetry\(leadApiUrl\(url\)/);
+        assert.match(leadsPage, /isApiAuthSessionFailureTransient\(authFailure\)/);
+        assert.doesNotMatch(leadsPage, /if \(!res\) \{\s*window\.location\.href = '\/'/);
     });
 
     it('deposit_received stage transition is wired to the accountant banquet deposit hook', () => {

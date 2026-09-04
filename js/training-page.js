@@ -32,6 +32,7 @@
     }
 
     function restoreTrainingShellVisibility() {
+        if (typeof isAuthenticatedRuntimeReady === 'function' && !isAuthenticatedRuntimeReady()) return;
         document.body.classList.remove('auth-screen', 'page-exiting', 'shell-baseline');
         document.body.classList.add('authenticated-shell', 'training-shell-ready');
         if (window.self === window.top) {
@@ -66,37 +67,81 @@
     }
 
     async function initTrainingShell() {
-        restoreTrainingShellVisibility();
         try {
-            if (typeof apiVerifyToken === 'function') {
-                const user = await apiVerifyToken();
-                if (!user) {
-                    if (typeof showLoginScreen === 'function') showLoginScreen();
-                    else window.location.href = '/';
-                    return;
-                }
-                const permissions = typeof hydrateActionPermissions === 'function'
-                    ? await hydrateActionPermissions(user)
-                    : null;
-                if (!permissions) {
-                    if (typeof renderPermissionBootstrapError === 'function') {
-                        renderPermissionBootstrapError({ target: document.getElementById('trainingPage'), retry: initializeTrainingPage });
-                    }
+            if (typeof apiVerifyToken !== 'function') {
+                if (typeof showLoginScreen === 'function') showLoginScreen();
+                else window.location.href = '/';
+                return false;
+            }
+            const user = await apiVerifyToken();
+            if (!user) {
+                if (typeof handleTransientAuthSessionBootstrap === 'function'
+                    && handleTransientAuthSessionBootstrap({
+                        retry: initializeTrainingPage,
+                        target: document.getElementById('trainingPage')
+                    })) {
                     return false;
                 }
-                if (typeof AppState !== 'undefined') AppState.currentUser = user;
-                currentUser = user;
-                try { localStorage.setItem('pzp_current_user', JSON.stringify(user)); } catch {}
-                const userEl = document.getElementById('currentUser');
-                if (userEl) userEl.textContent = user.name || user.username || '';
+                if (typeof showLoginScreen === 'function') showLoginScreen();
+                else window.location.href = '/';
+                return false;
             }
-            return true;
-        } catch (err) {
-            console.warn('[training] auth verification fallback', err);
-        } finally {
+            const permissions = typeof hydrateActionPermissions === 'function'
+                ? await hydrateActionPermissions(user)
+                : null;
+            if (!permissions) {
+                const authFailure = typeof getApiAuthSessionFailure === 'function'
+                    ? getApiAuthSessionFailure()
+                    : null;
+                if (typeof isApiAuthSessionFailureTerminal === 'function'
+                    && isApiAuthSessionFailureTerminal(authFailure)) {
+                    return false;
+                }
+                if (typeof showAuthenticatedPageShell === 'function') {
+                    showAuthenticatedPageShell({ markRuntimeReady: false });
+                }
+                if (typeof renderPermissionBootstrapError === 'function') {
+                    renderPermissionBootstrapError({ target: document.getElementById('trainingPage'), retry: initializeTrainingPage });
+                }
+                return false;
+            }
+            if (typeof AppState !== 'undefined') AppState.currentUser = user;
+            currentUser = user;
+            try { localStorage.setItem('pzp_current_user', JSON.stringify(user)); } catch {}
+            const userEl = document.getElementById('currentUser');
+            if (userEl) userEl.textContent = user.name || user.username || '';
             if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
             restoreTrainingShellVisibility();
             updateOnboardingAccess();
+            return true;
+        } catch (err) {
+            console.warn('[training] auth verification fallback', err);
+            const authFailure = typeof getApiAuthSessionFailure === 'function'
+                ? getApiAuthSessionFailure()
+                : err?.authFailure;
+            if (err?.code === 'auth_session_terminal'
+                || (typeof isApiAuthSessionFailureTerminal === 'function'
+                    && isApiAuthSessionFailureTerminal(authFailure))) {
+                return false;
+            }
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({
+                    retry: initializeTrainingPage,
+                    target: document.getElementById('trainingPage')
+                })) {
+                return false;
+            }
+            if (typeof showAuthenticatedPageShell === 'function') {
+                showAuthenticatedPageShell({ markRuntimeReady: false });
+            }
+            if (typeof renderAuthSessionBootstrapError === 'function') {
+                renderAuthSessionBootstrapError({
+                    target: document.getElementById('trainingPage'),
+                    failure: { status: 0, retryable: true, stage: 'page-bootstrap' },
+                    retry: initializeTrainingPage
+                });
+            }
+            return false;
         }
     }
 

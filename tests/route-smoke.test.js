@@ -2711,7 +2711,7 @@ function createFakePool() {
                 }
                 return { rows, rowCount: rows.length };
             }
-            if (/UPDATE users SET is_active = false, session_revoked_at = NOW\(\) WHERE id = ANY\(\$1::int\[\]\) RETURNING id, username, name, role/i.test(text)) {
+            if (/UPDATE users SET is_active = false, session_revoked_at = (?:NOW|clock_timestamp)\(\) WHERE id = ANY\(\$1::int\[\]\) RETURNING id, username, name, role/i.test(text)) {
                 const ids = Array.isArray(params[0]) ? params[0].map(Number) : [];
                 const rows = [];
                 for (const accounts of hrState.accountsByStaff.values()) {
@@ -5415,7 +5415,7 @@ describe('route-level API safety smoke', () => {
             dates: [],
             roster_reconciliation: []
         });
-        assert.ok(queries.some(q => /UPDATE users SET is_active = false, session_revoked_at = NOW\(\)/i.test(q.text)));
+        assert.ok(queries.some(q => /UPDATE users SET is_active = false, session_revoked_at = clock_timestamp\(\)/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE employee_profiles SET is_active = false WHERE staff_id = \$1 AND COALESCE\(is_active, true\) = true RETURNING id, user_id/i.test(q.text)));
         assert.ok(queries.some(q => /UPDATE refresh_tokens SET revoked_at = NOW\(\)/i.test(q.text)));
         assert.ok(queries.some(q => /INSERT INTO account_security_events/i.test(q.text) && q.params[4] === 'account_deactivated' && q.params[5] === 'hr_offboarding'));

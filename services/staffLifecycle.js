@@ -143,7 +143,7 @@ async function syncLinkedStaffAccountDeactivation(client, staffId, options = {})
         const disabled = await client.query(
             `UPDATE users
              SET is_active = false,
-                 session_revoked_at = NOW()
+                 session_revoked_at = clock_timestamp()
              WHERE id = ANY($1::int[])
              RETURNING id, username, name, role`,
             [userIds]

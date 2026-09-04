@@ -4341,6 +4341,13 @@
         document.addEventListener('DOMContentLoaded', async function() {
             var verified = await apiVerifyToken();
             if (!verified) {
+                if (typeof handleTransientAuthSessionBootstrap === 'function'
+                    && handleTransientAuthSessionBootstrap({
+                        retry: () => window.location.reload(),
+                        containerId: 'mainContent'
+                    })) {
+                    return;
+                }
                 window.location.href = '/';
                 return;
             }

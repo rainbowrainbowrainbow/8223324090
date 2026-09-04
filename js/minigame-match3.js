@@ -1270,7 +1270,14 @@ async function initGamePage() {
         document.documentElement.style.colorScheme = 'dark';
     }
     const user = await apiVerifyToken();
-    if (!user) { window.location.href = '/'; return; }
+    if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return;
+        }
+        window.location.href = '/';
+        return;
+    }
     if (typeof AppState !== 'undefined') AppState.currentUser = user;
 
     try {

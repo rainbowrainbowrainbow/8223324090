@@ -1441,14 +1441,28 @@ async function initProfilePage() {
     // Get current user
     try {
         const user = typeof apiVerifyToken === 'function' ? await apiVerifyToken() : null;
-        if (!user) { window.location.href = '/'; return; }
+        if (!user) {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return;
+            }
+            window.location.href = '/';
+            return;
+        }
         if (typeof AppState !== 'undefined') AppState.currentUser = user;
         if (typeof hydrateBusinessOperatingProfile === 'function') await hydrateBusinessOperatingProfile(user);
         if (typeof hydrateActionPermissions === 'function') await hydrateActionPermissions(user);
         window.WorkingRole?.hydrate?.();
         currentUserId = user.id;
         loadCabinetMyDayViewModePreference();
-    } catch (e) { window.location.href = '/'; return; }
+    } catch (e) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return;
+        }
+        window.location.href = '/';
+        return;
+    }
 
     // Check URL for user ID
     const params = new URLSearchParams(window.location.search);

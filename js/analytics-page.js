@@ -576,6 +576,10 @@ async function initStandaloneAnalyticsPage() {
         else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
     } catch (err) {
         if (err?.message === 'Invalid token') {
+            if (typeof handleTransientAuthSessionBootstrap === 'function'
+                && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+                return;
+            }
             window.location.href = '/';
             document.getElementById('mainApp')?.classList.add('hidden');
             if (typeof clearAuthenticatedPageShell === 'function') clearAuthenticatedPageShell();

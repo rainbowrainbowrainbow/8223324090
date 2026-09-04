@@ -7,6 +7,232 @@ const API_BASE = '/api';
 const API_AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
 const API_AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
 const API_AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
+const API_AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';
+const API_AUTH_TRANSITION_KEY = 'pzp_auth_transition';
+const API_AUTH_PRESERVE_BUSINESS_SCOPE_HEADERS = Symbol('apiAuthPreserveBusinessScopeHeaders');
+const API_AUTH_REFRESHABLE_UNAUTHORIZED_CODES = new Set([
+    'auth_token_missing',
+    'auth_token_invalid'
+]);
+const API_AUTH_TERMINAL_UNAUTHORIZED_CODES = new Set([
+    'auth_user_missing',
+    'auth_user_deactivated',
+    'auth_user_inactive',
+    'auth_session_revoked',
+    'auth_identity_changed'
+]);
+const API_AUTH_REFRESH_SETTLEMENT_MS = 5000;
+const API_AUTH_REFRESH_REPLAY_CONFIRM_DELAY_MS = 250;
+const API_AUTH_TRANSITION_MAX_AGE_MS = 15000;
+const apiSemanticUnauthorizedResponses = new WeakSet();
+let apiAuthRefreshOperation = null;
+let apiAuthSessionFailure = null;
+let apiOwnedAuthTransition = null;
+
+function getActiveApiAuthTransitionMarker() {
+    const marker = localStorage.getItem(API_AUTH_TRANSITION_KEY) || '';
+    if (!marker) return '';
+    const parts = String(marker).split('-');
+    const timestampPart = ['remember', 'merge', 'api', 'auth', 'impersonate', 'restore'].includes(parts[0])
+        ? parts[1]
+        : parts[0];
+    const startedAt = Number.parseInt(timestampPart || '', 36);
+    const ageMs = Date.now() - startedAt;
+    if (!Number.isFinite(startedAt)
+        || ageMs > API_AUTH_TRANSITION_MAX_AGE_MS
+        || ageMs < -1000) {
+        if (localStorage.getItem(API_AUTH_TRANSITION_KEY) === marker) {
+            localStorage.removeItem(API_AUTH_TRANSITION_KEY);
+        }
+        return '';
+    }
+    return marker;
+}
+
+function beginApiAuthTransition(prefix = 'api') {
+    const activeMarker = getActiveApiAuthTransitionMarker();
+    if (activeMarker) {
+        if (apiOwnedAuthTransition?.marker === activeMarker) {
+            apiOwnedAuthTransition.depth += 1;
+            return { marker: activeMarker, owned: true };
+        }
+        return { marker: activeMarker, owned: false };
+    }
+    const marker = `${prefix}-${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+    localStorage.setItem(API_AUTH_TRANSITION_KEY, marker);
+    apiOwnedAuthTransition = { marker, depth: 1 };
+    return { marker, owned: true };
+}
+
+function endApiAuthTransition(transition) {
+    if (!transition?.owned || apiOwnedAuthTransition?.marker !== transition.marker) return;
+    apiOwnedAuthTransition.depth -= 1;
+    if (apiOwnedAuthTransition.depth > 0) return;
+    apiOwnedAuthTransition = null;
+    if (localStorage.getItem(API_AUTH_TRANSITION_KEY) === transition.marker) {
+        localStorage.removeItem(API_AUTH_TRANSITION_KEY);
+    }
+}
+
+function setApiAuthSessionFailure(kind, details = {}) {
+    const status = Number(details.status || 0) || null;
+    apiAuthSessionFailure = {
+        kind: kind === 'terminal' ? 'terminal' : 'transient',
+        terminal: kind === 'terminal',
+        transient: kind !== 'terminal',
+        stage: details.stage || 'unknown',
+        status,
+        reason: details.reason || (status ? 'http' : 'network'),
+        updatedAt: Date.now()
+    };
+    return apiAuthSessionFailure;
+}
+
+function clearApiAuthSessionFailure() {
+    apiAuthSessionFailure = null;
+}
+
+function getApiAuthSessionFailure() {
+    return apiAuthSessionFailure ? { ...apiAuthSessionFailure } : null;
+}
+
+function isApiAuthSessionFailureTerminal(failure = apiAuthSessionFailure) {
+    return failure?.kind === 'terminal' || failure?.terminal === true;
+}
+
+function isApiAuthSessionFailureTransient(failure = apiAuthSessionFailure) {
+    return failure?.kind === 'transient' || failure?.transient === true;
+}
+
+function classifyApiAuthHttpFailure(status) {
+    const normalizedStatus = Number(status || 0) || 0;
+    return [400, 401, 403].includes(normalizedStatus) ? 'terminal' : 'transient';
+}
+
+function normalizeApiAuthList(...values) {
+    return Array.from(new Set(values.flatMap(value => Array.isArray(value) ? value : [])
+        .map(value => String(value || '').trim().toLowerCase())
+        .filter(Boolean)))
+        .sort();
+}
+
+function apiAuthAuthorizationFingerprint(user = {}) {
+    const primaryRole = String(user?.role || '').trim().toLowerCase();
+    return JSON.stringify({
+        primaryRole,
+        roles: normalizeApiAuthList([primaryRole], user?.roles, user?.extraRoles, user?.extra_roles),
+        pageAllowlist: normalizeApiAuthList(user?.pageAllowlist, user?.page_allowlist),
+        pageDenylist: normalizeApiAuthList(user?.pageDenylist, user?.page_denylist),
+        actionAllowlist: normalizeApiAuthList(user?.actionAllowlist, user?.action_allowlist),
+        actionDenylist: normalizeApiAuthList(user?.actionDenylist, user?.action_denylist),
+        businessContexts: normalizeApiAuthList(user?.businessContexts, user?.business_contexts),
+        defaultBusinessContext: String(user?.defaultBusinessContext || user?.default_business_context || '').trim().toLowerCase(),
+        qaCreatorLeaseId: String(user?.qaCreatorLeaseId || user?.qa_creator_lease_id || '')
+    });
+}
+
+function readApiAuthStoredUser() {
+    try {
+        const user = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || 'null');
+        return user && typeof user === 'object' && !Array.isArray(user) ? user : null;
+    } catch {
+        return null;
+    }
+}
+
+function apiAuthUsersShareIdentity(left, right) {
+    const leftId = left?.id === undefined || left?.id === null ? '' : String(left.id);
+    const rightId = right?.id === undefined || right?.id === null ? '' : String(right.id);
+    if (leftId && rightId) return leftId === rightId;
+
+    const leftUsername = String(left?.username || '').trim().toLowerCase();
+    const rightUsername = String(right?.username || '').trim().toLowerCase();
+    return Boolean(leftUsername && rightUsername && leftUsername === rightUsername);
+}
+
+function createApiAuthSessionGeneration() {
+    if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') return crypto.randomUUID();
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}-${Math.random().toString(36).slice(2)}`;
+}
+
+function ensureApiAuthSessionGeneration() {
+    let generation = localStorage.getItem(API_AUTH_SESSION_GENERATION_KEY) || '';
+    if (!generation && apiHasStoredAuthSession()) {
+        generation = createApiAuthSessionGeneration();
+        localStorage.setItem(API_AUTH_SESSION_GENERATION_KEY, generation);
+    }
+    return generation;
+}
+
+function rotateApiAuthSessionGeneration() {
+    const generation = createApiAuthSessionGeneration();
+    localStorage.setItem(API_AUTH_SESSION_GENERATION_KEY, generation);
+    return generation;
+}
+
+function captureApiAuthSessionSnapshot(user = null) {
+    const storedUser = readApiAuthStoredUser();
+    const identitySource = user && typeof user === 'object' ? user : storedUser;
+    const identityId = identitySource?.id ?? null;
+    const identityUsername = String(identitySource?.username || '').trim();
+    return {
+        generation: ensureApiAuthSessionGeneration(),
+        accessToken: getStoredAuthToken() || '',
+        refreshToken: localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) || '',
+        identity: identitySource && typeof identitySource === 'object' && (identityId !== null || identityUsername)
+            ? {
+                id: identityId,
+                username: identityUsername
+            }
+            : null,
+        hadStoredUser: Boolean(storedUser)
+    };
+}
+
+function isApiAuthSessionSnapshotCurrent(snapshot, user = null) {
+    if (!snapshot || typeof snapshot !== 'object') return false;
+    if (ensureApiAuthSessionGeneration() !== String(snapshot.generation || '')) return false;
+
+    const expectedUser = user && typeof user === 'object' ? user : snapshot.identity;
+    if (snapshot.identity && expectedUser && !apiAuthUsersShareIdentity(snapshot.identity, expectedUser)) return false;
+
+    const storedUser = readApiAuthStoredUser();
+    if (snapshot.hadStoredUser && !storedUser) return false;
+    if (storedUser && expectedUser && !apiAuthUsersShareIdentity(storedUser, expectedUser)) return false;
+
+    const runtimeUser = typeof AppState !== 'undefined' && AppState?.currentUser
+        ? AppState.currentUser
+        : null;
+    if (runtimeUser && expectedUser && !apiAuthUsersShareIdentity(runtimeUser, expectedUser)) return false;
+    return true;
+}
+
+function markApiAuthSessionChanged(stage = 'request') {
+    const existingFailure = getApiAuthSessionFailure();
+    if (existingFailure?.kind === 'terminal') return false;
+    setApiAuthSessionFailure('transient', { stage, reason: 'session-changed' });
+    return false;
+}
+
+function syncApiAuthUserAliases(target, source = {}) {
+    [
+        ['extraRoles', 'extra_roles'],
+        ['pageAllowlist', 'page_allowlist'],
+        ['pageDenylist', 'page_denylist'],
+        ['actionAllowlist', 'action_allowlist'],
+        ['actionDenylist', 'action_denylist'],
+        ['businessContexts', 'business_contexts'],
+        ['defaultBusinessContext', 'default_business_context']
+    ].forEach(([camelKey, snakeKey]) => {
+        const hasCamelValue = Object.prototype.hasOwnProperty.call(source, camelKey);
+        const hasSnakeValue = Object.prototype.hasOwnProperty.call(source, snakeKey);
+        if (!hasCamelValue && !hasSnakeValue) return;
+        const value = hasCamelValue ? source[camelKey] : source[snakeKey];
+        target[camelKey] = value;
+        target[snakeKey] = value;
+    });
+    return target;
+}
 
 function getStoredAuthToken() {
     return localStorage.getItem('pzp_token') || localStorage.getItem(API_AUTH_ACCESS_TOKEN_KEY);
@@ -55,6 +281,21 @@ function apiFailureFromBody(body = {}, response = null, fallback = 'API error') 
 }
 
 function apiAuthFailure(response = null) {
+    const failure = getApiAuthSessionFailure();
+    if (!response && failure?.transient) {
+        return {
+            ...apiFailureFromBody(
+                {
+                    error: 'Тимчасово не вдалося підтвердити сесію. Спробуйте ще раз.',
+                    code: 'auth_session_temporarily_unavailable'
+                },
+                null,
+                'Тимчасово не вдалося підтвердити сесію. Спробуйте ще раз.'
+            ),
+            authTransient: true,
+            retryable: true
+        };
+    }
     return apiFailureFromBody(
         { error: 'Сесію завершено. Увійдіть знову.' },
         response,
@@ -1178,7 +1419,11 @@ function initCrmBusinessContextPage(options = {}) {
 
 async function apiGetBusinessOperatingProfile(options = {}) {
     const url = crmBusinessApiUrl(`${API_BASE}/business/profile`, options.context || getCrmBusinessContext(options.user));
-    const response = await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) });
+    const response = await apiFetchWithAuthRetry(url, {
+        headers: getAuthHeaders(false),
+        authSessionSnapshot: options.sessionSnapshot,
+        authUser: options.user
+    });
     if (!response || handleAuthError(response)) return null;
     return await response.json();
 }
@@ -1203,11 +1448,21 @@ async function apiSaveBusinessCabinet(payload = {}, options = {}) {
 }
 
 async function hydrateCrmBusinessProfile(options = {}) {
+    const sessionSnapshot = options.sessionSnapshot || captureApiAuthSessionSnapshot(options.user);
+    if (!isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) {
+        markApiAuthSessionChanged('business-profile');
+        return null;
+    }
     try {
         const payload = await apiGetBusinessOperatingProfile(options);
+        if (!isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) {
+            markApiAuthSessionChanged('business-profile');
+            return null;
+        }
         if (!payload) return getCrmBusinessOperatingProfile();
         return applyCrmBusinessProfile(payload.businessProfile || payload, options);
     } catch (error) {
+        if (!isApiAuthSessionSnapshotCurrent(sessionSnapshot, options.user)) return null;
         console.warn('[CrmBusinessContext] business profile hydrate failed', error);
         return getCrmBusinessOperatingProfile();
     }
@@ -1270,6 +1525,22 @@ function applyCrmBusinessScopeHeaders(headers = {}) {
 }
 
 const CRM_BUSINESS_MUTATING_METHODS = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+const CRM_BUSINESS_SCOPE_WRITE_EXEMPT_PATHS = new Set([
+    '/api/auth/login',
+    '/api/auth/refresh',
+    '/api/auth/logout',
+    '/api/auth/password',
+    '/api/auth/security/revoke-sessions',
+    '/api/auth/impersonate',
+    '/api/auth/log-action',
+    '/auth/login',
+    '/auth/refresh',
+    '/auth/logout',
+    '/auth/password',
+    '/auth/security/revoke-sessions',
+    '/auth/impersonate',
+    '/auth/log-action'
+]);
 
 function crmBusinessRequestPath(url) {
     try {
@@ -1285,13 +1556,56 @@ function assertCrmBusinessWritableRequest(url, method = 'GET') {
     if (!CRM_BUSINESS_MUTATING_METHODS.has(normalizedMethod)) return;
     if (!isCrmBusinessScopeReadOnly()) return;
     const path = crmBusinessRequestPath(url);
-    if (path === '/api/auth/log-action' || path === '/auth/log-action') return;
+    if (CRM_BUSINESS_SCOPE_WRITE_EXEMPT_PATHS.has(path)) return;
     throw apiErrorFromPayload({
         success: false,
         status: 403,
         code: 'business_scope_read_only',
         error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'змінювати дані')
     }, 'Read-only business scope');
+}
+
+function apiNativeFetch(url, options) {
+    return globalThis.fetch(url, options);
+}
+
+function apiNetworkShouldUseAuthRetry(url, options = {}) {
+    let parsed;
+    try {
+        const base = typeof window !== 'undefined' && window.location?.origin
+            ? window.location.origin
+            : 'http://localhost';
+        parsed = new URL(String(url || ''), base);
+        if (typeof window !== 'undefined' && window.location?.origin && parsed.origin !== window.location.origin) {
+            return false;
+        }
+    } catch {
+        return false;
+    }
+    if (!parsed.pathname.startsWith('/api/')) return false;
+    if (['/api/auth/login', '/api/auth/refresh', '/api/auth/verify'].includes(parsed.pathname)) return false;
+    return apiHasAuthHeader(apiHeaderObject(options.headers || {})) || apiHasStoredAuthSession();
+}
+
+function apiNetworkFetch(url, options = {}) {
+    if (apiNetworkShouldUseAuthRetry(url, options)) return apiFetchWithAuthRetry(url, options);
+    return apiNativeFetch(url, options);
+}
+
+async function classifyApiUnauthorizedResponse(response) {
+    if (!response || response.status !== 401) return null;
+    // Test doubles and very old fetch shims may not support clone(). Preserve the
+    // legacy refresh behavior there; native browser Responses always support it.
+    if (typeof response.clone !== 'function') return 'refreshable';
+    try {
+        const payload = await response.clone().json();
+        const code = String(payload?.code || '').trim().toLowerCase();
+        if (API_AUTH_REFRESHABLE_UNAUTHORIZED_CODES.has(code)) return 'refreshable';
+        if (API_AUTH_TERMINAL_UNAUTHORIZED_CODES.has(code)) return 'terminal';
+        return 'semantic';
+    } catch {
+        return 'semantic';
+    }
 }
 
 async function safeFetch(url, opts = {}) {
@@ -1302,7 +1616,8 @@ async function safeFetch(url, opts = {}) {
         if (token) opts.headers['Authorization'] = `Bearer ${token}`;
     }
     applyCrmBusinessScopeHeaders(opts.headers);
-    const res = await fetch(url, opts);
+    const res = await apiNetworkFetch(url, opts);
+    if (!res) return null;
     if (res.status === 401) {
         if (typeof handleAuthError === 'function') handleAuthError(res);
         return null;
@@ -1329,6 +1644,10 @@ function getTimelineAuthHeaders(withContentType = true) {
     delete headers['x-business-scope'];
     delete headers['X-Business-Contexts'];
     delete headers['x-business-contexts'];
+    Object.defineProperty(headers, API_AUTH_PRESERVE_BUSINESS_SCOPE_HEADERS, {
+        value: true,
+        enumerable: false
+    });
     return headers;
 }
 
@@ -1360,42 +1679,239 @@ function apiWithBearer(headers = {}, token = '', force = false) {
 
 async function apiFetchWithAuthRetry(url, opts = {}) {
     const request = { ...opts };
+    const preserveBusinessScopeHeaders = request.authBusinessScope === false
+        || opts.headers?.[API_AUTH_PRESERVE_BUSINESS_SCOPE_HEADERS] === true;
+    const requiredSessionSnapshot = request.authSessionSnapshot || null;
+    const requestedAuthUser = request.authUser && typeof request.authUser === 'object'
+        ? request.authUser
+        : null;
+    delete request.authSessionSnapshot;
+    delete request.authUser;
+    delete request.authBusinessScope;
     assertCrmBusinessWritableRequest(url, request.method || 'GET');
+    if (getActiveApiAuthTransitionMarker()) {
+        setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+        return null;
+    }
     const originalHeaders = apiHeaderObject(opts.headers || {});
-    applyCrmBusinessScopeHeaders(originalHeaders);
+    if (!preserveBusinessScopeHeaders) applyCrmBusinessScopeHeaders(originalHeaders);
+    const storedUser = readApiAuthStoredUser();
+    const runtimeUser = typeof AppState !== 'undefined' && AppState?.currentUser
+        ? AppState.currentUser
+        : null;
+    if (runtimeUser && storedUser && !apiAuthUsersShareIdentity(runtimeUser, storedUser)) {
+        setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-changed' });
+        return null;
+    }
+    const requestUser = requestedAuthUser || runtimeUser || storedUser;
+    if (requiredSessionSnapshot
+        && !isApiAuthSessionSnapshotCurrent(requiredSessionSnapshot, requestUser)) {
+        markApiAuthSessionChanged('request');
+        return null;
+    }
+    const requestSessionSnapshot = captureApiAuthSessionSnapshot(requestUser);
+    const currentTokenForSameIdentity = () => {
+        const latestToken = getStoredAuthToken();
+        if (!latestToken || !apiAuthUsersShareIdentity(requestUser, readApiAuthStoredUser())) return null;
+        return latestToken;
+    };
     let token = getStoredAuthToken();
-    if (!token && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) token = await apiRefreshAuthToken();
-    request.headers = apiWithBearer(originalHeaders, token);
-
-    let response = await fetch(url, request);
-    if (response.status === 401 && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) {
-        const refreshedToken = await apiRefreshAuthToken();
-        if (refreshedToken) {
-            response = await fetch(url, {
-                ...opts,
-                headers: apiWithBearer(originalHeaders, refreshedToken, true)
-            });
+    if (!token && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) {
+        const refreshResult = await apiRefreshAuthSession(requestUser);
+        token = refreshResult.accessToken;
+        if (!token && refreshResult.outcome === 'superseded') token = currentTokenForSameIdentity();
+        if (!token && ['transient', 'superseded', 'identity-mismatch'].includes(refreshResult.outcome)) {
+            if (refreshResult.outcome === 'superseded') {
+                setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-changed' });
+            }
+            return null;
+        }
+        if (!token && refreshResult.outcome === 'terminal') {
+            if (typeof handleAuthError === 'function') {
+                handleAuthError({ status: 401 }, { refreshAttempted: true });
+            }
+            return null;
         }
     }
+    if (token && !isApiAuthSessionSnapshotCurrent(requestSessionSnapshot, requestUser)) {
+        markApiAuthSessionChanged('request');
+        return null;
+    }
+    if (getActiveApiAuthTransitionMarker()) {
+        setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+        return null;
+    }
+    request.headers = apiWithBearer(originalHeaders, token, true);
+
+    let responseSessionSnapshot = requestSessionSnapshot;
+    let response = await apiNativeFetch(url, request);
+    if (getActiveApiAuthTransitionMarker()) {
+        setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+        return null;
+    }
+    let unauthorizedKind = await classifyApiUnauthorizedResponse(response);
+    if (response.status !== 401
+        && !isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+        markApiAuthSessionChanged('request');
+        return null;
+    }
+    if (response.status === 401
+        && unauthorizedKind === 'refreshable'
+        && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY)) {
+        if (!isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+            markApiAuthSessionChanged('request');
+            return null;
+        }
+        const latestStoredToken = getStoredAuthToken();
+        if (latestStoredToken && latestStoredToken !== token) {
+            const sameIdentityToken = currentTokenForSameIdentity();
+            if (!sameIdentityToken) {
+                // Never replay a request under a different signed-in account.
+                setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-changed' });
+                return null;
+            }
+            token = sameIdentityToken;
+            responseSessionSnapshot = captureApiAuthSessionSnapshot(requestUser);
+            if (getActiveApiAuthTransitionMarker()
+                || getStoredAuthToken() !== token
+                || !isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+                setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+                return null;
+            }
+            response = await apiNativeFetch(url, {
+                ...request,
+                headers: apiWithBearer(originalHeaders, token, true)
+            });
+            if (getActiveApiAuthTransitionMarker()) {
+                setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+                return null;
+            }
+            unauthorizedKind = await classifyApiUnauthorizedResponse(response);
+        } else {
+            const refreshResult = await apiRefreshAuthSession(requestUser);
+            let refreshedToken = refreshResult.accessToken;
+            if (!refreshedToken && refreshResult.outcome === 'superseded') {
+                refreshedToken = currentTokenForSameIdentity();
+            }
+            if (refreshedToken) {
+                const storedUserAfterRefresh = readApiAuthStoredUser();
+                if (!isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)
+                    || (requestUser && !apiAuthUsersShareIdentity(requestUser, storedUserAfterRefresh))) {
+                    markApiAuthSessionChanged('request');
+                    return null;
+                }
+                token = refreshedToken;
+                responseSessionSnapshot = captureApiAuthSessionSnapshot(requestUser);
+                if (getActiveApiAuthTransitionMarker()
+                    || getStoredAuthToken() !== refreshedToken
+                    || !isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+                    setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+                    return null;
+                }
+                response = await apiNativeFetch(url, {
+                    ...request,
+                    headers: apiWithBearer(originalHeaders, refreshedToken, true)
+                });
+                if (getActiveApiAuthTransitionMarker()) {
+                    setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+                    return null;
+                }
+                unauthorizedKind = await classifyApiUnauthorizedResponse(response);
+            } else if (['transient', 'superseded', 'identity-mismatch'].includes(refreshResult.outcome)) {
+                if (refreshResult.outcome === 'superseded') {
+                    setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-changed' });
+                }
+                return null;
+            } else if (['terminal', 'missing'].includes(refreshResult.outcome)) {
+                if (refreshResult.outcome === 'missing') {
+                    setApiAuthSessionFailure('terminal', {
+                        stage: 'request',
+                        status: response.status,
+                        reason: 'missing-refresh-session'
+                    });
+                }
+                if (typeof handleAuthError === 'function') {
+                    handleAuthError(response, { refreshAttempted: true });
+                }
+                return null;
+            } else {
+                setApiAuthSessionFailure('transient', {
+                    stage: 'request',
+                    reason: 'unknown-refresh-outcome'
+                });
+                return null;
+            }
+        }
+    }
+    if (getActiveApiAuthTransitionMarker()) {
+        setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-transition' });
+        return null;
+    }
+    if (!isApiAuthSessionSnapshotCurrent(responseSessionSnapshot, requestUser)) {
+        markApiAuthSessionChanged('request');
+        return null;
+    }
+    const activeToken = getStoredAuthToken();
+    if (response?.status === 401 && activeToken && activeToken !== token) {
+        setApiAuthSessionFailure('transient', { stage: 'request', reason: 'session-changed' });
+        return null;
+    }
+    if (response?.status === 401 && unauthorizedKind === 'semantic') {
+        apiSemanticUnauthorizedResponses.add(response);
+        return response;
+    }
     if (response && response.status === 401 && typeof handleAuthError === 'function') {
-        if (handleAuthError(response)) return null;
+        setApiAuthSessionFailure('terminal', {
+            stage: 'request',
+            status: response.status,
+            reason: 'unauthorized'
+        });
+        if (handleAuthError(response, { refreshAttempted: true })) return null;
     }
     return response;
 }
 
 // v5.0: Handle 401/403 — redirect to login
-function handleAuthError(response) {
+function handleAuthError(response, options = {}) {
+    if (!response) return true;
     if (response.status === 403) {
         return false;
     }
     if (response.status === 401) {
+        if (apiSemanticUnauthorizedResponses.has(response)) return false;
+        const hasRefreshSession = Boolean(localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY));
+        if (hasRefreshSession && options.refreshAttempted !== true) {
+            setApiAuthSessionFailure('transient', {
+                stage: 'legacy-request',
+                status: response.status,
+                reason: 'access-token-expired'
+            });
+            void apiRefreshAuthSession().then(result => {
+                if (!['terminal', 'missing'].includes(result.outcome)) return;
+                const isEmbedded = document.documentElement.classList.contains('embed-mode')
+                    || (window.self !== window.top);
+                if (isEmbedded) return;
+                if (typeof clearPrivateClientCaches === 'function') clearPrivateClientCaches();
+                if (typeof showLoginScreen === 'function') showLoginScreen();
+            });
+            return true;
+        }
+        const existingFailure = getApiAuthSessionFailure();
+        if (existingFailure?.kind !== 'terminal') {
+            setApiAuthSessionFailure('terminal', {
+                stage: 'request',
+                status: response.status,
+                reason: 'unauthorized'
+            });
+        }
         // In embedded mode (iframe), never redirect — parent page handles auth
         const isEmbedded = document.documentElement.classList.contains('embed-mode')
             || (window.self !== window.top);
         if (isEmbedded) return true;
 
         if (typeof clearAuthStorage === 'function') {
-            clearAuthStorage();
+            // A late 401 from the previous session must not cancel a newer explicit login.
+            clearAuthStorage({ preserveLoginIntent: true });
         } else {
             clearApiAuthSessionStorage();
         }
@@ -1421,7 +1937,7 @@ async function apiCall(method, url, body = null, { fallback = null, raw = false 
         const isGet = method === 'GET';
         const opts = { method, headers: getAuthHeaders(!isGet) };
         if (body && !isGet) opts.body = JSON.stringify(body);
-        const response = await fetch(`${API_BASE}${url}`, opts);
+        const response = await apiNetworkFetch(`${API_BASE}${url}`, opts);
         if (handleAuthError(response)) return fallback;
         if (raw) return response;
         if (!response.ok) {
@@ -1448,7 +1964,7 @@ async function apiGetBookings(date, options = {}) {
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }
-        const response = await fetch(`${API_BASE}${path}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${path}`, {
             headers: getTimelineAuthHeaders(false),
             signal: options.signal
         });
@@ -1482,7 +1998,7 @@ async function apiGetBookingById(id, options = {}) {
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }
-        const response = await fetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}${path}`, { headers: getTimelineAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, status: response?.status || 401 };
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -1531,7 +2047,7 @@ async function apiQuoteAdmissionTickets(payload = {}, options = {}) {
         };
         const response = typeof apiFetchWithAuthRetry === 'function'
             ? await apiFetchWithAuthRetry(url, requestOptions)
-            : await fetch(url, requestOptions);
+            : await apiNetworkFetch(url, requestOptions);
         const current = admissionTicketQuoteRequests.get(sequenceKey);
         if (!current || current.sequence !== sequence) {
             return { success: false, stale: true, aborted: true };
@@ -1576,7 +2092,7 @@ async function apiCreateBooking(booking, options = {}) {
     try {
         const payload = timelineApiPayload(booking);
         if (options.banquetContext) payload.banquetContext = options.banquetContext;
-        const response = await fetch(`${API_BASE}${timelineApiUrlWithView('/bookings', options)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrlWithView('/bookings', options)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(payload)
@@ -1595,7 +2111,7 @@ async function apiCreateBooking(booking, options = {}) {
 
 async function apiCreateEducationLessonSeries(booking) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/bookings/education-series')}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl('/bookings/education-series')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({ booking: timelineApiPayload(booking) }))
@@ -1619,7 +2135,7 @@ async function apiCreateEducationLessonSeries(booking) {
 
 async function apiGetEducationLessonSeries(seriesId) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/education-series/${encodeURIComponent(seriesId)}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/education-series/${encodeURIComponent(seriesId)}`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false, bookings: [] };
@@ -1636,7 +2152,7 @@ async function apiGetEducationLessonSeries(seriesId) {
 
 async function apiCancelEducationLessonSeries(seriesId, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/education-series/${encodeURIComponent(seriesId)}/cancel`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/education-series/${encodeURIComponent(seriesId)}/cancel`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(options || {}))
@@ -1664,7 +2180,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
             payload.banquetActivities = options.banquetActivities.map(item => timelineApiPayload(item));
         }
         if (options.banquetContext) payload.banquetContext = options.banquetContext;
-        const response = await fetch(`${API_BASE}${timelineApiUrlWithView('/bookings/full', options)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrlWithView('/bookings/full', options)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload))
@@ -1683,7 +2199,7 @@ async function apiCreateBookingFull(main, linked, options = {}) {
 
 async function apiGetBanquetByBooking(bookingId) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -1700,7 +2216,7 @@ async function apiGetBanquetByBooking(bookingId) {
 
 async function apiUpdateBanquetBookingSet(groupId, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/booking-set`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/booking-set`)}`, {
             method: 'PUT',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload))
@@ -1719,7 +2235,7 @@ async function apiUpdateBanquetBookingSet(groupId, payload = {}) {
 
 async function apiGetBanquetDepositByBooking(bookingId) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}/deposit`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/by-booking/${encodeURIComponent(bookingId)}/deposit`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -1736,7 +2252,7 @@ async function apiGetBanquetDepositByBooking(bookingId) {
 
 async function apiGetBanquetDepositByGroup(groupId) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/deposit`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/deposit`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -1757,7 +2273,7 @@ async function apiListBanquetDepositsForAccounting(filters = {}) {
         const status = filters.accountingStatus || filters.accounting_status || filters.status || '';
         if (status) params.set('accountingStatus', status);
         const query = params.toString();
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits${query ? `?${query}` : ''}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits${query ? `?${query}` : ''}`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -1774,7 +2290,7 @@ async function apiListBanquetDepositsForAccounting(filters = {}) {
 
 async function apiStartBanquetDepositReview(depositId) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits/${encodeURIComponent(depositId)}/review-start`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits/${encodeURIComponent(depositId)}/review-start`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(true),
             body: JSON.stringify({})
@@ -1791,7 +2307,7 @@ async function apiStartBanquetDepositReview(depositId) {
 
 async function apiUpdateBanquetDepositAccounting(depositId, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits/${encodeURIComponent(depositId)}/accounting`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquet-deposits/${encodeURIComponent(depositId)}/accounting`)}`, {
             method: 'PATCH',
             headers: getTimelineAuthHeaders(true),
             body: JSON.stringify(payload)
@@ -1816,7 +2332,7 @@ async function apiGetBanquetCandidates(options = {}) {
         if (options.drawerMode) params.set('drawerMode', options.drawerMode);
         if (options.contextGeneration) params.set('contextGeneration', options.contextGeneration);
         const query = params.toString();
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/candidates${query ? `?${query}` : ''}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/candidates${query ? `?${query}` : ''}`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -1840,7 +2356,7 @@ async function apiCreateBanquetGroup(primaryBookingId, options = {}) {
             meta: options.meta || {},
             banquetContext: options.banquetContext || null
         });
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/banquets')}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl('/banquets')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(payload)
@@ -1859,7 +2375,7 @@ async function apiCreateBanquetGroup(primaryBookingId, options = {}) {
 
 async function apiCreateBanquetMemberBooking(groupId, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/member-booking`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/member-booking`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({
@@ -1883,7 +2399,7 @@ async function apiCreateBanquetMemberBooking(groupId, payload = {}) {
 
 async function apiCreateBanquetMemberBookingFromSource(payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/banquets/from-source/member-booking')}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl('/banquets/from-source/member-booking')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({
@@ -1909,7 +2425,7 @@ async function apiGetCenterPriceRule(code) {
     const safeCode = String(code || '').trim();
     if (!safeCode) return { success: false, error: 'Price rule code is required' };
     try {
-        const response = await fetch(`${API_BASE}/center/prices/${encodeURIComponent(safeCode)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/center/prices/${encodeURIComponent(safeCode)}`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -1926,7 +2442,7 @@ async function apiGetCenterPriceRule(code) {
 
 async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activity-booking`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activity-booking`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({
@@ -1950,7 +2466,7 @@ async function apiCreateBanquetActivityBooking(groupId, payload = {}) {
 
 async function apiCreateBanquetActivityBookingFromSource(payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/banquets/from-source/activity-booking')}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl('/banquets/from-source/activity-booking')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({
@@ -1974,7 +2490,7 @@ async function apiCreateBanquetActivityBookingFromSource(payload = {}) {
 
 async function apiAttachBanquetGroupBooking(groupId, bookingId, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/bookings`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/bookings`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload({
@@ -2003,7 +2519,7 @@ async function apiAttachBanquetGroupBooking(groupId, bookingId, options = {}) {
 
 async function apiGetBookingCancellationReadiness(id, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/cancellation-readiness`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/cancellation-readiness`, {
             businessContext: options.businessContext
         })}`, {
             method: 'GET',
@@ -2023,7 +2539,7 @@ async function apiCancelBanquetActivity(groupId, bookingId, options = {}) {
     try {
         const headers = getTimelineAuthHeaders(false);
         if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activities/${encodeURIComponent(bookingId)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/activities/${encodeURIComponent(bookingId)}`, {
             businessContext: options.businessContext
         })}`, {
             method: 'DELETE',
@@ -2043,7 +2559,7 @@ async function apiCancelBanquetGroup(groupId, options = {}) {
     try {
         const headers = getTimelineAuthHeaders();
         if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/cancel`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/cancel`, {
             businessContext: options.businessContext
         })}`, {
             method: 'POST',
@@ -2066,7 +2582,7 @@ async function apiDeleteBooking(id, options = {}) {
     try {
         const headers = getTimelineAuthHeaders(false);
         if (options.idempotencyKey) headers['Idempotency-Key'] = options.idempotencyKey;
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'DELETE',
             headers
         });
@@ -2084,7 +2600,7 @@ async function apiDeleteBooking(id, options = {}) {
 
 async function apiUpdateBanquetGuestArrival(groupId, guestArrivalTime, updatedAt, options = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/arrival`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/banquets/${encodeURIComponent(groupId)}/arrival`, {
             businessContext: options.businessContext
         })}`, {
             method: 'PATCH',
@@ -2103,7 +2619,7 @@ async function apiUpdateBanquetGuestArrival(groupId, guestArrivalTime, updatedAt
 
 async function apiUpdateBooking(id, booking) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${id}`)}`, {
             method: 'PUT',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(booking))
@@ -2132,7 +2648,7 @@ async function apiUpdateBooking(id, booking) {
 
 async function apiConfirmBooking(id, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/confirm`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/confirm`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))
@@ -2151,7 +2667,7 @@ async function apiConfirmBooking(id, payload = {}) {
 
 async function apiMarkBookingPreliminary(id, payload = {}) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/preliminary`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/preliminary`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))
@@ -2170,7 +2686,7 @@ async function apiMarkBookingPreliminary(id, payload = {}) {
 
 async function apiUpdateLinkedBookingsAtomic(id, payload) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/linked-atomic`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(id)}/linked-atomic`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload || {}))
@@ -2206,7 +2722,7 @@ async function apiCreateBookingBanquetLink(sourceId, targetId, label = '', relat
     try {
         const payload = { targetId, label };
         if (relationType) payload.relationType = relationType;
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/bookings/${encodeURIComponent(sourceId)}/banquet-links`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(payload))
@@ -2229,7 +2745,7 @@ async function apiDeleteBookingBanquetLink(sourceId, targetId, relationType = 'b
         if (relationType) {
             path += `${path.includes('?') ? '&' : '?'}relationType=${encodeURIComponent(relationType)}`;
         }
-        const response = await fetch(`${API_BASE}${path}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${path}`, {
             method: 'DELETE',
             headers: getTimelineAuthHeaders(false)
         });
@@ -2251,7 +2767,7 @@ async function apiGetLines(date, options = {}) {
         if (options.fresh) {
             path += `${path.includes('?') ? '&' : '?'}_fresh=${encodeURIComponent(String(Date.now()))}`;
         }
-        const response = await fetch(`${API_BASE}${path}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${path}`, {
             headers: getTimelineAuthHeaders(false),
             signal: options.signal
         });
@@ -2275,7 +2791,7 @@ async function apiSaveLines(date, lines) {
                 code: 'room_timeline_legacy_line_save_blocked'
             };
         }
-        const response = await fetch(`${API_BASE}${timelineApiUrlWithView(`/lines/${date}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrlWithView(`/lines/${date}`)}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify((lines || []).map(line => timelineApiPayload(line)))
@@ -2295,7 +2811,7 @@ async function apiGetTimelineResources(type = null, options = {}) {
         if (type) params.set('type', type);
         if (options.includeInactive) params.set('includeInactive', 'true');
         const query = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources${query}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/timeline/resources${query}`)}`, {
             headers: getTimelineAuthHeaders(false)
         });
         if (handleAuthError(response)) return [];
@@ -2310,7 +2826,7 @@ async function apiGetTimelineResources(type = null, options = {}) {
 
 async function apiSaveTimelineResource(resource) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl('/timeline/resources')}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl('/timeline/resources')}`, {
             method: 'POST',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(resource || {}))
@@ -2329,7 +2845,7 @@ async function apiSaveTimelineResource(resource) {
 
 async function apiUpdateTimelineResource(resourceId, resource) {
     try {
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}`)}`, {
             method: 'PUT',
             headers: getTimelineAuthHeaders(),
             body: JSON.stringify(timelineApiPayload(resource || {}))
@@ -2351,7 +2867,7 @@ async function apiDeleteTimelineResource(resourceId, options = {}) {
         const params = new URLSearchParams();
         if (options.confirmFutureBookings) params.set('confirmFutureBookings', 'true');
         const suffix = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}${suffix}`)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}${timelineApiUrl(`/timeline/resources/${encodeURIComponent(resourceId)}${suffix}`)}`, {
             method: 'DELETE',
             headers: getTimelineAuthHeaders(false)
         });
@@ -2380,7 +2896,7 @@ async function apiGetHistory(filters = {}) {
         if (filters.offset) params.set('offset', filters.offset);
         const qs = params.toString();
         const url = `${API_BASE}/history${qs ? '?' + qs : ''}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { items: [], total: 0 };
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
@@ -2396,7 +2912,7 @@ async function apiGetHistory(filters = {}) {
 
 async function apiAddHistory(action, user, data) {
     try {
-        const response = await fetch(`${API_BASE}/history`, {
+        const response = await apiNetworkFetch(`${API_BASE}/history`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ action, user, data })
@@ -2414,7 +2930,7 @@ async function apiAddHistory(action, user, data) {
 
 async function apiGetStats(dateFrom, dateTo) {
     try {
-        const response = await fetch(`${API_BASE}/stats/${dateFrom}/${dateTo}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/stats/${dateFrom}/${dateTo}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2432,7 +2948,7 @@ async function apiGetStatsRevenue(params = {}) {
         if (params.from) qs.set('from', params.from);
         if (params.to) qs.set('to', params.to);
         const url = `${API_BASE}/stats/revenue${qs.toString() ? '?' + qs.toString() : ''}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2450,7 +2966,7 @@ async function apiGetStatsPrograms(params = {}) {
         if (params.to) qs.set('to', params.to);
         if (params.limit) qs.set('limit', params.limit);
         const url = `${API_BASE}/stats/programs${qs.toString() ? '?' + qs.toString() : ''}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2467,7 +2983,7 @@ async function apiGetStatsLoad(params = {}) {
         if (params.from) qs.set('from', params.from);
         if (params.to) qs.set('to', params.to);
         const url = `${API_BASE}/stats/load${qs.toString() ? '?' + qs.toString() : ''}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2480,7 +2996,7 @@ async function apiGetStatsLoad(params = {}) {
 async function apiGetStatsTrends(period = 'month') {
     try {
         const url = `${API_BASE}/stats/trends?period=${encodeURIComponent(period)}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2492,7 +3008,7 @@ async function apiGetStatsTrends(period = 'month') {
 
 async function apiTelegramNotify(text) {
     try {
-        const response = await fetch(`${API_BASE}/telegram/notify`, {
+        const response = await apiNetworkFetch(`${API_BASE}/telegram/notify`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ text })
@@ -2508,7 +3024,7 @@ async function apiTelegramNotify(text) {
 
 async function apiTelegramAskAnimator(date, note) {
     try {
-        const response = await fetch(`${API_BASE}/telegram/ask-animator`, {
+        const response = await apiNetworkFetch(`${API_BASE}/telegram/ask-animator`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ date, note })
@@ -2537,7 +3053,7 @@ async function apiTelegramAskAnimator(date, note) {
 
 async function apiCheckAnimatorStatus(requestId) {
     try {
-        const response = await fetch(`${API_BASE}/telegram/animator-status/${requestId}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/telegram/animator-status/${requestId}`, { headers: getAuthHeaders(false) });
         return await response.json();
     } catch (err) {
         console.error('Check animator status error:', err);
@@ -2547,7 +3063,7 @@ async function apiCheckAnimatorStatus(requestId) {
 
 async function apiGetSetting(key) {
     try {
-        const response = await fetch(`${API_BASE}/settings/${key}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/settings/${key}`, { headers: getAuthHeaders(false) });
         const data = await response.json();
         return data.value;
     } catch (err) {
@@ -2558,7 +3074,7 @@ async function apiGetSetting(key) {
 
 async function apiSaveSetting(key, value) {
     try {
-        await fetch(`${API_BASE}/settings`, {
+        await apiNetworkFetch(`${API_BASE}/settings`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ key, value })
@@ -2605,7 +3121,7 @@ async function apiGetProducts(activeOnly = true, filters = {}) {
         if (filters.availabilityStatus) params.set('availabilityStatus', filters.availabilityStatus);
         if (filters.priceDate || filters.price_date) params.set('priceDate', filters.priceDate || filters.price_date);
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products${qs}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/products${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2621,7 +3137,7 @@ async function apiGetProduct(id, options = {}) {
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         if (options.priceDate || options.price_date) params.set('priceDate', options.priceDate || options.price_date);
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -2639,7 +3155,7 @@ async function apiGetProductCatalogs() {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, context);
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/catalogs${qs}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/products/catalogs${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
@@ -2656,7 +3172,7 @@ async function apiCreateProduct(product) {
         if (!guardCrmBusinessWrite('створювати продукти')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'створювати продукти') };
         }
-        const response = await fetch(`${API_BASE}/products`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(product)
@@ -2679,7 +3195,7 @@ async function apiUpdateProduct(id, product) {
         if (!guardCrmBusinessWrite('редагувати продукти')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'редагувати продукти') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(product)
@@ -2702,7 +3218,7 @@ async function apiUpdateProductDocument(id, payload) {
         if (!guardCrmBusinessWrite('редагувати документи продуктів')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'редагувати документи продуктів') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/source-document`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/source-document`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2728,7 +3244,7 @@ async function apiDeleteProduct(id, options = {}) {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}${qs}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
@@ -2749,7 +3265,7 @@ async function apiGetProductTechCard(id, options = {}) {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card${qs}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, techCard: { mode: 'simple', ingredients: [] } };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
@@ -2767,7 +3283,7 @@ async function apiUpdateProductTechCard(id, payload = {}) {
         if (!guardCrmBusinessWrite('редагувати техкарти')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'редагувати техкарти') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2789,7 +3305,7 @@ async function apiWriteOffProductTechCard(id, payload = {}) {
         if (!guardCrmBusinessWrite('списувати склад')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'списувати склад') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card/write-off`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/tech-card/write-off`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2811,7 +3327,7 @@ async function apiGenerateProductMenuAiDraft(payload = {}) {
         if (!guardCrmBusinessWrite('створювати AI-чернетки меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'створювати AI-чернетки меню') };
         }
-        const response = await fetch(`${API_BASE}/products/menu-ai-draft`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/menu-ai-draft`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2833,7 +3349,7 @@ async function apiGenerateProductMenuImage(id, payload = {}) {
         if (!guardCrmBusinessWrite('генерувати фото меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'генерувати фото меню') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/draft`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/draft`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2855,7 +3371,7 @@ async function apiCreateProductMenuExternalDraft(id, payload = {}) {
         if (!guardCrmBusinessWrite('зберегти ручний draft фото меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'зберегти ручний draft фото меню') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/external-draft`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/external-draft`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2877,7 +3393,7 @@ async function apiGetProductMenuImageStatus(id, options = {}) {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/status${qs}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/status${qs}`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -2897,7 +3413,7 @@ async function apiApplyProductMenuImage(id, payload = {}) {
         if (!guardCrmBusinessWrite('застосувати фото меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'застосувати фото меню') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/apply`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/apply`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2919,7 +3435,7 @@ async function apiRejectProductMenuImage(id, payload = {}) {
         if (!guardCrmBusinessWrite('відхилити фото меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'відхилити фото меню') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/reject`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/menu-image/reject`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2941,7 +3457,7 @@ async function apiGetProductMenuAiDraft(id, options = {}) {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft${qs}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false };
         const body = await response.json().catch(() => ({}));
         if (!response.ok) {
@@ -2959,7 +3475,7 @@ async function apiSaveProductMenuAiDraft(id, payload = {}) {
         if (!guardCrmBusinessWrite('зберігати AI-чернетки меню')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'зберігати AI-чернетки меню') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/ai-card-draft`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -2978,7 +3494,7 @@ async function apiSaveProductMenuAiDraft(id, payload = {}) {
 
 async function apiGetProgramIconSettings() {
     try {
-        const response = await fetch(`${API_BASE}/products/program-icon-settings`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/program-icon-settings`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -2996,7 +3512,7 @@ async function apiUpdateProgramIconSettings(settings = {}) {
         if (!guardCrmBusinessWrite('налаштовувати AI-іконки програм')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'налаштовувати AI-іконки програм') };
         }
-        const response = await fetch(`${API_BASE}/products/program-icon-settings`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/program-icon-settings`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify({ settings })
@@ -3016,7 +3532,7 @@ async function apiGenerateProductProgramIcon(id, payload = {}) {
         if (!guardCrmBusinessWrite('генерувати AI-іконку програми')) {
             return { success: false, error: crmBusinessReadOnlyMessage(getCrmBusinessScope(), 'генерувати AI-іконку програми') };
         }
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/program-icon/generate`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/program-icon/generate`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(crmBusinessPayload(payload || {}, getProductBusinessContextValue(payload)))
@@ -3036,7 +3552,7 @@ async function apiGetProductProgramIconStatus(id, options = {}) {
         const params = new URLSearchParams();
         addProductBusinessContextParam(params, getProductBusinessContextValue(options));
         const qs = params.toString() ? `?${params.toString()}` : '';
-        const response = await fetch(`${API_BASE}/products/${encodeURIComponent(id)}/program-icon/status${qs}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/products/${encodeURIComponent(id)}/program-icon/status${qs}`, {
             headers: getAuthHeaders(false)
         });
         if (handleAuthError(response)) return { success: false };
@@ -3051,7 +3567,7 @@ async function apiGetProductProgramIconStatus(id, options = {}) {
 
 // v5.0: Auth API
 async function apiLogin(username, password) {
-    const response = await fetch(`${API_BASE}/auth/login`, {
+    const response = await apiNetworkFetch(`${API_BASE}/auth/login`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ username, password })
@@ -3059,84 +3575,450 @@ async function apiLogin(username, password) {
     if (!response.ok) {
         let errMsg = 'Login failed';
         try { const err = await response.json(); errMsg = err.error || errMsg; } catch {}
-        throw new Error(errMsg);
+        const error = new Error(errMsg);
+        error.status = response.status;
+        error.retryAfter = response.headers?.get?.('Retry-After') || null;
+        throw error;
     }
-    return await response.json();
+    const data = await response.json();
+    clearApiAuthSessionFailure();
+    return data;
+}
+
+function clearApiImpersonationBackup(options = {}) {
+    if (typeof clearImpersonationBackup === 'function') {
+        clearImpersonationBackup(options);
+        return;
+    }
+    if (typeof sessionStorage === 'undefined') return;
+    if (options.revokeRefresh === true
+        && sessionStorage.getItem('realSessionBackupVersion') === '2'
+        && Boolean(sessionStorage.getItem('impersonating'))) {
+        revokeUnclaimedApiRefreshToken(sessionStorage.getItem('realRefreshToken'));
+    }
+    [
+        'impersonating',
+        'realToken',
+        'realAccessToken',
+        'realRefreshToken',
+        'realRefreshExpiresAt',
+        'realSessionGeneration',
+        'realSessionBackupVersion',
+        'realUser',
+        'impersonationSessionGeneration',
+        'impersonationTargetUser'
+    ].forEach(key => sessionStorage.removeItem(key));
+}
+
+function revokeUnclaimedApiRefreshToken(refreshToken) {
+    if (!refreshToken) return;
+    try {
+        apiNativeFetch(`${API_BASE}/auth/logout`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ refreshToken }),
+            keepalive: true
+        }).catch(() => {});
+    } catch {}
 }
 
 function clearApiAuthSessionStorage() {
+    const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
+    if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(runtimeUser);
+    if (typeof setPermissionLifecycle === 'function') setPermissionLifecycle('idle');
+    if (typeof AppState !== 'undefined' && AppState) AppState.currentUser = null;
+    if (typeof resetAuthenticatedRuntimeReady === 'function') resetAuthenticatedRuntimeReady();
     localStorage.removeItem('pzp_token');
     localStorage.removeItem(API_AUTH_ACCESS_TOKEN_KEY);
     localStorage.removeItem(API_AUTH_REFRESH_TOKEN_KEY);
     localStorage.removeItem(API_AUTH_REFRESH_EXPIRES_KEY);
+    localStorage.removeItem(API_AUTH_SESSION_GENERATION_KEY);
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     localStorage.removeItem(CONFIG.STORAGE.SESSION);
+    localStorage.removeItem(API_AUTH_TRANSITION_KEY);
+    clearApiImpersonationBackup({ revokeRefresh: true });
 }
 
 function rememberApiAuthSession(data = {}) {
-    const accessToken = data.accessToken || data.token || '';
-    const legacyToken = data.token || accessToken;
-    if (legacyToken) localStorage.setItem('pzp_token', legacyToken);
-    if (accessToken) localStorage.setItem(API_AUTH_ACCESS_TOKEN_KEY, accessToken);
-    if (data.refreshToken) localStorage.setItem(API_AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
-    if (data.refreshExpiresAt) localStorage.setItem(API_AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
-    if (data.user) localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(data.user));
+    const transition = beginApiAuthTransition('remember');
+    if (!transition.owned) return false;
+    try {
+        const storedUser = readApiAuthStoredUser();
+        const identityChanged = Boolean(data.user && storedUser && !apiAuthUsersShareIdentity(data.user, storedUser));
+        if (identityChanged || !localStorage.getItem(API_AUTH_SESSION_GENERATION_KEY)) {
+            rotateApiAuthSessionGeneration();
+        }
+        const accessToken = data.accessToken || data.token || '';
+        const legacyToken = data.token || accessToken;
+        if (legacyToken) localStorage.setItem('pzp_token', legacyToken);
+        if (accessToken) localStorage.setItem(API_AUTH_ACCESS_TOKEN_KEY, accessToken);
+        if (data.refreshToken) localStorage.setItem(API_AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
+        if (data.refreshExpiresAt) localStorage.setItem(API_AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
+        if (data.user) mergeApiCurrentUser(data.user, { allowIdentityChange: true });
+    } finally {
+        endApiAuthTransition(transition);
+    }
+    return true;
 }
 
-function mergeApiCurrentUser(user = null) {
+function mergeApiCurrentUser(user = null, options = {}) {
     if (!user) return user;
+    const transition = beginApiAuthTransition('merge');
+    if (!transition.owned) return null;
     try {
         const saved = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || '{}');
-        const next = { ...saved, ...user };
+        const savedId = saved?.id === undefined || saved?.id === null ? '' : String(saved.id);
+        const incomingId = user?.id === undefined || user?.id === null ? '' : String(user.id);
+        const savedUsername = String(saved?.username || '').trim().toLowerCase();
+        const incomingUsername = String(user?.username || '').trim().toLowerCase();
+        const identityChanged = savedId && incomingId
+            ? savedId !== incomingId
+            : Boolean(savedUsername && incomingUsername && savedUsername !== incomingUsername);
+        if (identityChanged && options.allowIdentityChange !== true) {
+            setApiAuthSessionFailure('transient', { stage: 'user-merge', reason: 'session-changed' });
+            return null;
+        }
+        const next = identityChanged ? { ...user } : { ...saved, ...user };
+        syncApiAuthUserAliases(next, user);
+        const authorizationChanged = !identityChanged
+            && apiAuthAuthorizationFingerprint(saved) !== apiAuthAuthorizationFingerprint(user);
+        const hasIncomingPermissions = Object.prototype.hasOwnProperty.call(user, 'permissions')
+            && user.permissions !== undefined;
+        if (!identityChanged
+            && !authorizationChanged
+            && saved?.permissions
+            && !hasIncomingPermissions) {
+            next.permissions = saved.permissions;
+        } else if (!hasIncomingPermissions) {
+            delete next.permissions;
+        }
+        const runtimeAuthorizationChanged = identityChanged || authorizationChanged;
+        if (runtimeAuthorizationChanged && typeof clearRuntimePermissionCatalog === 'function') {
+            clearRuntimePermissionCatalog(next);
+        } else if (runtimeAuthorizationChanged && typeof AppState !== 'undefined' && AppState) {
+            AppState.authPermissions = null;
+            delete next.permissions;
+        }
+        if (runtimeAuthorizationChanged && typeof setPermissionLifecycle === 'function') {
+            setPermissionLifecycle('loading');
+        }
+        if (runtimeAuthorizationChanged) rotateApiAuthSessionGeneration();
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(next));
+        const runtimeUser = typeof AppState !== 'undefined' && AppState?.currentUser
+            ? AppState.currentUser
+            : null;
+        const mayPublishRuntimeUser = !runtimeUser
+            || apiAuthUsersShareIdentity(runtimeUser, saved)
+            || apiAuthUsersShareIdentity(runtimeUser, user);
+        if (runtimeAuthorizationChanged
+            && mayPublishRuntimeUser
+            && typeof AppState !== 'undefined'
+            && AppState) {
+            AppState.currentUser = next;
+        }
         return next;
     } catch {
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
         return user;
+    } finally {
+        endApiAuthTransition(transition);
     }
 }
 
-async function apiRefreshAuthToken() {
-    const refreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
-    if (!refreshToken) return null;
+function isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration) {
+    return localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) === refreshToken
+        && (localStorage.getItem(API_AUTH_SESSION_GENERATION_KEY) || '') === String(sessionGeneration || '');
+}
+
+function waitForApiAuthRefreshSettlement(refreshToken, sessionGeneration) {
+    if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) return Promise.resolve(true);
+    return new Promise(resolve => {
+        let timer = null;
+        let settled = false;
+        const finish = () => {
+            if (settled) return;
+            settled = true;
+            if (timer !== null && typeof clearTimeout === 'function') clearTimeout(timer);
+            if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+                window.removeEventListener('storage', handleStorage);
+            }
+            resolve(!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration));
+        };
+        const handleStorage = event => {
+            if (!event || [
+                API_AUTH_ACCESS_TOKEN_KEY,
+                API_AUTH_REFRESH_TOKEN_KEY,
+                API_AUTH_SESSION_GENERATION_KEY
+            ].includes(event.key)) finish();
+        };
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('storage', handleStorage);
+        }
+        timer = setTimeout(finish, API_AUTH_REFRESH_SETTLEMENT_MS);
+    });
+}
+
+async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, sessionGeneration = '') {
+    if (!refreshToken) return { accessToken: null, outcome: 'missing' };
     try {
-        const response = await fetch(`${API_BASE}/auth/refresh`, {
+        let response = await apiNetworkFetch(`${API_BASE}/auth/refresh`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ refreshToken })
         });
-        const data = await response.json().catch(() => ({}));
-        if (!response.ok || !data.accessToken) {
-            clearApiAuthSessionStorage();
-            return null;
+        let data = await response.json().catch(() => ({}));
+        if (getActiveApiAuthTransitionMarker()) {
+            if (response.ok) revokeUnclaimedApiRefreshToken(data.refreshToken);
+            setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'session-transition' });
+            return { accessToken: null, outcome: 'superseded' };
         }
-        rememberApiAuthSession(data);
-        return data.accessToken;
+        if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+            return { accessToken: null, outcome: 'superseded' };
+        }
+        if (!response.ok || !data.accessToken) {
+            let alreadyRotated = response.status === 409
+                && String(data?.code || '').toLowerCase() === 'refresh_already_rotated';
+            if (alreadyRotated) {
+                if (await waitForApiAuthRefreshSettlement(refreshToken, sessionGeneration)) {
+                    return { accessToken: null, outcome: 'superseded' };
+                }
+                await new Promise(resolve => setTimeout(resolve, API_AUTH_REFRESH_REPLAY_CONFIRM_DELAY_MS));
+                if (getActiveApiAuthTransitionMarker()) {
+                    setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'session-transition' });
+                    return { accessToken: null, outcome: 'superseded' };
+                }
+                if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+                    return { accessToken: null, outcome: 'superseded' };
+                }
+                response = await apiNetworkFetch(`${API_BASE}/auth/refresh`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ refreshToken })
+                });
+                data = await response.json().catch(() => ({}));
+                if (getActiveApiAuthTransitionMarker()) {
+                    if (response.ok) revokeUnclaimedApiRefreshToken(data.refreshToken);
+                    setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'session-transition' });
+                    return { accessToken: null, outcome: 'superseded' };
+                }
+                if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+                    return { accessToken: null, outcome: 'superseded' };
+                }
+                alreadyRotated = response.status === 409
+                    && String(data?.code || '').toLowerCase() === 'refresh_already_rotated';
+            }
+            const failureKind = alreadyRotated
+                ? 'terminal'
+                : (response.ok ? 'transient' : classifyApiAuthHttpFailure(response.status));
+            setApiAuthSessionFailure(failureKind, {
+                stage: 'refresh',
+                status: response.status,
+                reason: alreadyRotated
+                    ? 'refresh-already-rotated'
+                    : (response.ok ? 'malformed-response' : 'http')
+            });
+            if (failureKind === 'terminal') clearApiAuthSessionStorage();
+            return { accessToken: null, outcome: failureKind };
+        }
+        if (expectedUser
+            && (!data.user || !apiAuthUsersShareIdentity(expectedUser, data.user))) {
+            revokeUnclaimedApiRefreshToken(data.refreshToken);
+            setApiAuthSessionFailure('terminal', {
+                stage: 'refresh',
+                reason: 'refresh-identity-mismatch'
+            });
+            clearApiAuthSessionStorage();
+            return { accessToken: null, outcome: 'terminal' };
+        }
+        if (!rememberApiAuthSession(data)) {
+            revokeUnclaimedApiRefreshToken(data.refreshToken);
+            setApiAuthSessionFailure('transient', {
+                stage: 'refresh',
+                reason: 'session-transition'
+            });
+            return { accessToken: null, outcome: 'superseded' };
+        }
+        clearApiAuthSessionFailure();
+        return { accessToken: data.accessToken, outcome: 'success' };
     } catch (err) {
+        if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+            return { accessToken: null, outcome: 'superseded' };
+        }
+        setApiAuthSessionFailure('transient', {
+            stage: 'refresh',
+            reason: 'network'
+        });
         console.warn('[Auth] refresh failed:', err?.message || err);
-        return null;
+        return { accessToken: null, outcome: 'transient' };
     }
 }
 
-async function apiVerifyToken() {
+function apiAuthRefreshIdentityKey(user = null) {
+    if (!user || typeof user !== 'object') return '';
+    if (user.id !== undefined && user.id !== null) return `id:${String(user.id)}`;
+    const username = String(user.username || '').trim().toLowerCase();
+    return username ? `username:${username}` : '';
+}
+
+function apiRefreshAuthSession(expectedUserOverride = null) {
+    if (getActiveApiAuthTransitionMarker()) {
+        setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'session-transition' });
+        return Promise.resolve({ accessToken: null, outcome: 'transient' });
+    }
+    const refreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
+    if (!refreshToken) return Promise.resolve({ accessToken: null, outcome: 'missing' });
+    const sessionGeneration = ensureApiAuthSessionGeneration();
+    const expectedUser = expectedUserOverride && typeof expectedUserOverride === 'object'
+        ? expectedUserOverride
+        : readApiAuthStoredUser();
+    const expectedIdentityKey = apiAuthRefreshIdentityKey(expectedUser);
+    if (apiAuthRefreshOperation?.refreshToken === refreshToken
+        && apiAuthRefreshOperation?.sessionGeneration === sessionGeneration
+        && apiAuthRefreshOperation?.expectedIdentityKey === expectedIdentityKey) {
+        return apiAuthRefreshOperation.promise;
+    }
+
+    const operation = { refreshToken, sessionGeneration, expectedIdentityKey, promise: null };
+    const pendingRefresh = performApiAuthTokenRefresh(refreshToken, expectedUser, sessionGeneration);
+    const trackedRefresh = pendingRefresh.finally(() => {
+        if (apiAuthRefreshOperation === operation) apiAuthRefreshOperation = null;
+    });
+    operation.promise = trackedRefresh;
+    apiAuthRefreshOperation = operation;
+    return trackedRefresh;
+}
+
+async function apiRefreshAuthToken() {
+    const result = await apiRefreshAuthSession();
+    return result.accessToken || null;
+}
+
+async function apiVerifyToken(sessionChangeRetry = 0) {
+    if (getActiveApiAuthTransitionMarker()) {
+        setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
+        return null;
+    }
     let token = getStoredAuthToken();
-    if (!token) token = await apiRefreshAuthToken();
-    if (!token) return null;
-    try {
-        let response = await fetch(`${API_BASE}/auth/verify`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!response.ok && (response.status === 401 || response.status === 403)) {
-            const refreshedToken = await apiRefreshAuthToken();
-            if (!refreshedToken) return null;
-            response = await fetch(`${API_BASE}/auth/verify`, {
-                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+    const hadRefreshToken = Boolean(localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY));
+    if (!token && hadRefreshToken) {
+        const refreshResult = await apiRefreshAuthSession();
+        if (refreshResult.outcome === 'superseded') {
+            if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+            return null;
+        }
+        token = refreshResult.accessToken;
+    }
+    if (!token) {
+        if (!hadRefreshToken || !getApiAuthSessionFailure()) {
+            setApiAuthSessionFailure('terminal', {
+                stage: 'verify',
+                reason: 'missing-session'
             });
         }
-        if (!response.ok) return null;
-        const data = await response.json();
-        return mergeApiCurrentUser(data.user);
-    } catch {
+        return null;
+    }
+    let verifiedRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
+    try {
+        let response = await apiNetworkFetch(`${API_BASE}/auth/verify`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (getActiveApiAuthTransitionMarker()) {
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
+            return null;
+        }
+        if (getStoredAuthToken() !== token
+            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+            if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+            return null;
+        }
+        if (response.status === 403) {
+            setApiAuthSessionFailure('terminal', {
+                stage: 'verify',
+                status: response.status,
+                reason: 'forbidden-session'
+            });
+            clearApiAuthSessionStorage();
+            return null;
+        }
+        if (response.status === 401) {
+            const refreshResult = await apiRefreshAuthSession();
+            if (!refreshResult.accessToken) {
+                if (refreshResult.outcome === 'superseded') {
+                    if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+                    setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+                } else if (refreshResult.outcome === 'missing' || !getApiAuthSessionFailure()) {
+                    setApiAuthSessionFailure('terminal', {
+                        stage: 'verify',
+                        status: response.status,
+                        reason: 'unauthorized'
+                    });
+                    clearApiAuthSessionStorage();
+                }
+                return null;
+            }
+            const refreshedToken = refreshResult.accessToken;
+            token = refreshedToken;
+            verifiedRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
+            response = await apiNetworkFetch(`${API_BASE}/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${refreshedToken}` }
+            });
+            if (getActiveApiAuthTransitionMarker()) {
+                setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
+                return null;
+            }
+            if (getStoredAuthToken() !== token
+                || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+                if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+                setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+                return null;
+            }
+        }
+        if (!response.ok) {
+            const failureKind = classifyApiAuthHttpFailure(response.status);
+            setApiAuthSessionFailure(failureKind, {
+                stage: 'verify',
+                status: response.status,
+                reason: 'http'
+            });
+            if (failureKind === 'terminal') clearApiAuthSessionStorage();
+            return null;
+        }
+        const data = await response.json().catch(() => null);
+        if (getStoredAuthToken() !== token
+            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+            if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+            return null;
+        }
+        if (!data?.user || typeof data.user !== 'object' || Array.isArray(data.user)) {
+            setApiAuthSessionFailure('transient', {
+                stage: 'verify',
+                status: response.status,
+                reason: 'malformed-response'
+            });
+            return null;
+        }
+        const user = mergeApiCurrentUser(data.user);
+        if (!user) {
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
+            return null;
+        }
+        clearApiAuthSessionFailure();
+        return user;
+    } catch (err) {
+        if (getStoredAuthToken() !== token
+            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+            if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+            return null;
+        }
+        setApiAuthSessionFailure('transient', {
+            stage: 'verify',
+            reason: 'network'
+        });
+        console.warn('[Auth] verify failed:', err?.message || err);
         return null;
     }
 }
@@ -3144,7 +4026,7 @@ async function apiVerifyToken() {
 // v10.4: Personal cabinet profile
 async function apiGetProfile() {
     try {
-        const response = await fetch(`${API_BASE}/auth/profile`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/auth/profile`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3157,7 +4039,7 @@ async function apiGetProfile() {
 // v10.4: Change password
 async function apiChangePassword(currentPassword, newPassword) {
     try {
-        const response = await fetch(`${API_BASE}/auth/password`, {
+        const response = await apiNetworkFetch(`${API_BASE}/auth/password`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify({ currentPassword, newPassword })
@@ -3175,7 +4057,7 @@ async function apiChangePassword(currentPassword, newPassword) {
 // v10.6: Quick task status from profile
 async function apiQuickTaskStatus(taskId, status) {
     try {
-        const response = await fetch(`${API_BASE}/auth/tasks/${taskId}/quick-status`, {
+        const response = await apiNetworkFetch(`${API_BASE}/auth/tasks/${taskId}/quick-status`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify({ status })
@@ -3193,7 +4075,7 @@ async function apiQuickTaskStatus(taskId, status) {
 // v10.6: Log user UI action
 async function apiLogAction(action, target, meta) {
     try {
-        fetch(`${API_BASE}/auth/log-action`, {
+        apiNetworkFetch(`${API_BASE}/auth/log-action`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ action, target, meta })
@@ -3204,7 +4086,7 @@ async function apiLogAction(action, target, meta) {
 // v10.6: Get achievements definitions
 async function apiGetAchievements() {
     try {
-        const response = await fetch(`${API_BASE}/auth/achievements`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/auth/achievements`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return {};
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3222,7 +4104,7 @@ async function apiGetActionLog(filters = {}) {
         if (filters.limit) params.set('limit', filters.limit);
         if (filters.offset) params.set('offset', filters.offset);
         const qs = params.toString();
-        const response = await fetch(`${API_BASE}/auth/action-log${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/auth/action-log${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { items: [], total: 0 };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3243,7 +4125,7 @@ async function apiGetProfileActivity(filters = {}) {
         if (filters.limit) params.set('limit', filters.limit);
         if (filters.offset) params.set('offset', filters.offset);
         const url = `${API_BASE}/history?${params.toString()}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { items: [], total: 0 };
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
@@ -3258,7 +4140,7 @@ async function apiGetProfileActivity(filters = {}) {
 // v22.3: Gamification API helpers
 async function apiGamificationProfile(username) {
     try {
-        const response = await fetch(`${API_BASE}/gamification/profile/${encodeURIComponent(username)}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/profile/${encodeURIComponent(username)}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -3267,7 +4149,7 @@ async function apiGamificationProfile(username) {
 
 async function apiGamificationShop() {
     try {
-        const response = await fetch(`${API_BASE}/gamification/shop`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/shop`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -3276,7 +4158,7 @@ async function apiGamificationShop() {
 
 async function apiGamificationBuy(shopItemId) {
     try {
-        const response = await fetch(`${API_BASE}/gamification/shop/buy`, {
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/shop/buy`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ shopItemId })
         });
         if (handleAuthError(response)) return { success: false };
@@ -3286,7 +4168,7 @@ async function apiGamificationBuy(shopItemId) {
 
 async function apiGamificationEquip(itemId) {
     try {
-        const response = await fetch(`${API_BASE}/gamification/equip`, {
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/equip`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ itemId })
         });
         if (handleAuthError(response)) return { success: false };
@@ -3296,7 +4178,7 @@ async function apiGamificationEquip(itemId) {
 
 async function apiGamificationUnequip(slot) {
     try {
-        const response = await fetch(`${API_BASE}/gamification/unequip`, {
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/unequip`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify({ slot })
         });
         if (handleAuthError(response)) return { success: false };
@@ -3307,7 +4189,7 @@ async function apiGamificationUnequip(slot) {
 async function apiGamificationLeaderboard(sortBy) {
     try {
         const qs = sortBy ? `?sortBy=${sortBy}` : '';
-        const response = await fetch(`${API_BASE}/gamification/leaderboard${qs}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/leaderboard${qs}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -3316,7 +4198,7 @@ async function apiGamificationLeaderboard(sortBy) {
 
 async function apiGamificationAchievements() {
     try {
-        const response = await fetch(`${API_BASE}/gamification/achievements`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/achievements`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -3325,7 +4207,7 @@ async function apiGamificationAchievements() {
 
 async function apiGamificationCoinHistory() {
     try {
-        const response = await fetch(`${API_BASE}/gamification/coins/history`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/gamification/coins/history`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -3342,8 +4224,17 @@ async function apiGetCertificates(filters = {}) {
         if (filters.offset) params.set('offset', filters.offset);
         const qs = params.toString();
         const url = `${API_BASE}/certificates${qs ? '?' + qs : ''}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return { items: [], total: 0, stats: null };
+        const response = await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) });
+        if (!response) {
+            const failure = getApiAuthSessionFailure();
+            return {
+                items: [],
+                total: 0,
+                stats: null,
+                authTransient: isApiAuthSessionFailureTransient(failure),
+                authFailure: failure
+            };
+        }
         if (!response.ok) throw new Error('API error');
         return await response.json();
     } catch (err) {
@@ -3354,12 +4245,12 @@ async function apiGetCertificates(filters = {}) {
 
 async function apiCreateCertificate(data) {
     try {
-        const response = await fetch(`${API_BASE}/certificates`, {
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -3374,12 +4265,12 @@ async function apiCreateCertificate(data) {
 
 async function apiBatchCreateCertificates(data) {
     try {
-        const response = await fetch(`${API_BASE}/certificates/batch`, {
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/batch`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -3393,8 +4284,8 @@ async function apiBatchCreateCertificates(data) {
 
 async function apiGetCertificateByCode(code) {
     try {
-        const response = await fetch(`${API_BASE}/certificates/code/${encodeURIComponent(code)}`, { headers: getAuthHeaders(false) });
-        if (handleAuthError(response)) return null;
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/code/${encodeURIComponent(code)}`, { headers: getAuthHeaders(false) });
+        if (!response) return null;
         if (!response.ok) return null;
         return await response.json();
     } catch (err) {
@@ -3405,12 +4296,12 @@ async function apiGetCertificateByCode(code) {
 
 async function apiUpdateCertificateStatus(id, status, reason) {
     try {
-        const response = await fetch(`${API_BASE}/certificates/${id}/status`, {
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${id}/status`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify({ status, reason })
         });
-        if (handleAuthError(response)) return { success: false };
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -3425,12 +4316,12 @@ async function apiUpdateCertificateStatus(id, status, reason) {
 
 async function apiUpdateCertificate(id, data) {
     try {
-        const response = await fetch(`${API_BASE}/certificates/${id}`, {
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -3445,11 +4336,11 @@ async function apiUpdateCertificate(id, data) {
 
 async function apiDeleteCertificate(id) {
     try {
-        const response = await fetch(`${API_BASE}/certificates/${id}`, {
+        const response = await apiFetchWithAuthRetry(`${API_BASE}/certificates/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
-        if (handleAuthError(response)) return { success: false };
+        if (!response) return { success: false, error: 'Сесію тимчасово не вдалося підтвердити' };
         if (!response.ok) {
             const body = await response.json().catch(() => ({}));
             return { success: false, error: body.error || 'API error' };
@@ -3541,7 +4432,7 @@ function buildCrmAssistantPageContext(overrides = {}) {
 
 async function apiGetKleshnyaGreeting(date) {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/greeting?date=${date}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/greeting?date=${date}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) return null;
         return await response.json();
@@ -3553,7 +4444,7 @@ async function apiGetKleshnyaGreeting(date) {
 
 async function apiGetKleshnyaChat() {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/chat`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/chat`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) return [];
         return await response.json();
@@ -3567,7 +4458,7 @@ async function apiSendKleshnyaMessage(message, sessionId) {
     try {
         const body = { message, pageContext: buildCrmAssistantPageContext() };
         if (sessionId) body.session_id = sessionId;
-        const response = await fetch(`${API_BASE}/kleshnya/chat`, {
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/chat`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(body)
@@ -3584,7 +4475,7 @@ async function apiSendKleshnyaMessage(message, sessionId) {
 // v2.0: Kleshnya Sessions API
 async function apiGetKleshnyaSessions() {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/sessions`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/sessions`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) return [];
         return await response.json();
@@ -3596,7 +4487,7 @@ async function apiGetKleshnyaSessions() {
 
 async function apiCreateKleshnyaSession(title, emoji) {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/sessions`, {
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/sessions`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ title, emoji })
@@ -3612,7 +4503,7 @@ async function apiCreateKleshnyaSession(title, emoji) {
 
 async function apiUpdateKleshnyaSession(id, updates) {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/sessions/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/sessions/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(updates)
@@ -3628,7 +4519,7 @@ async function apiUpdateKleshnyaSession(id, updates) {
 
 async function apiDeleteKleshnyaSession(id) {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/sessions/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/sessions/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
@@ -3647,7 +4538,7 @@ async function apiGetSessionMessages(sessionId, limit, offset) {
         if (limit) params.push(`limit=${limit}`);
         if (offset) params.push(`offset=${offset}`);
         if (params.length) url += '?' + params.join('&');
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) return [];
         return await response.json();
@@ -3659,7 +4550,7 @@ async function apiGetSessionMessages(sessionId, limit, offset) {
 
 async function apiSetMessageReaction(messageId, reaction) {
     try {
-        const response = await fetch(`${API_BASE}/kleshnya/messages/${messageId}/reaction`, {
+        const response = await apiNetworkFetch(`${API_BASE}/kleshnya/messages/${messageId}/reaction`, {
             method: 'PATCH',
             headers: getAuthHeaders(),
             body: JSON.stringify({ reaction })
@@ -3677,7 +4568,7 @@ async function apiGetKleshnyaMedia(type) {
     try {
         let url = `${API_BASE}/kleshnya/media`;
         if (type) url += `?type=${type}`;
-        const response = await fetch(url, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return [];
         if (!response.ok) return [];
         return await response.json();
@@ -3698,7 +4589,7 @@ async function apiGetWarehouse(filters = {}) {
         if (filters.low_stock) params.set('low_stock', 'true');
         if (filters.all) params.set('all', 'true');
         const qs = params.toString();
-        const response = await fetch(`${API_BASE}/warehouse${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { items: [], lowStockCount: 0 };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3710,7 +4601,7 @@ async function apiGetWarehouse(filters = {}) {
 
 async function apiGetWarehouseLocationsSummary() {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/locations-summary`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/locations-summary`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, locations: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3722,7 +4613,7 @@ async function apiGetWarehouseLocationsSummary() {
 
 async function apiGetWarehouseCostumes() {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/costumes`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/costumes`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, data: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3734,7 +4625,7 @@ async function apiGetWarehouseCostumes() {
 
 async function apiCreateWarehouseCostume(costume) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/costumes`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/costumes`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(costume || {})
@@ -3751,7 +4642,7 @@ async function apiCreateWarehouseCostume(costume) {
 
 async function apiUpdateWarehouseCostume(id, costume) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/costumes/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/costumes/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(costume || {})
@@ -3768,7 +4659,7 @@ async function apiUpdateWarehouseCostume(id, costume) {
 
 async function apiDeleteWarehouseCostume(id) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/costumes/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/costumes/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
@@ -3784,7 +4675,7 @@ async function apiDeleteWarehouseCostume(id) {
 
 async function apiCreateWarehouseLocation(location) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/locations`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/locations`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(location || {})
@@ -3801,7 +4692,7 @@ async function apiCreateWarehouseLocation(location) {
 
 async function apiUpdateWarehouseLocation(id, location) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/locations/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/locations/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(location || {})
@@ -3818,7 +4709,7 @@ async function apiUpdateWarehouseLocation(id, location) {
 
 async function apiArchiveWarehouseLocation(id) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/locations/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/locations/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
@@ -3834,7 +4725,7 @@ async function apiArchiveWarehouseLocation(id) {
 
 async function apiCreateWarehouseItem(item) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(item)
@@ -3853,7 +4744,7 @@ async function apiCreateWarehouseItem(item) {
 
 async function apiUpdateWarehouseItem(id, item) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(item)
@@ -3872,7 +4763,7 @@ async function apiUpdateWarehouseItem(id, item) {
 
 async function apiDeleteWarehouseItem(id) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/${id}`, {
             method: 'DELETE',
             headers: getAuthHeaders(false)
         });
@@ -3890,7 +4781,7 @@ async function apiDeleteWarehouseItem(id) {
 
 async function apiUseWarehouseItem(id, amount, reason) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/${id}/use`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/${id}/use`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ amount, reason })
@@ -3909,7 +4800,7 @@ async function apiUseWarehouseItem(id, amount, reason) {
 
 async function apiRestockWarehouseItem(id, amount, reason) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/${id}/restock`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/${id}/restock`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ amount, reason })
@@ -3928,7 +4819,7 @@ async function apiRestockWarehouseItem(id, amount, reason) {
 
 async function apiTransferWarehouseItem(id, data) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/stock/${id}/transfer`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/stock/${id}/transfer`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
@@ -3943,7 +4834,7 @@ async function apiTransferWarehouseItem(id, data) {
 
 async function apiGetWarehouseMovements(id) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/stock/${id}/movements`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/stock/${id}/movements`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, movements: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3959,7 +4850,7 @@ async function apiGetWarehouseHistory(filters = {}) {
         if (filters.limit) params.set('limit', filters.limit);
         if (filters.offset) params.set('offset', filters.offset);
         const qs = params.toString();
-        const response = await fetch(`${API_BASE}/warehouse/history${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/history${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { items: [], total: 0 };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3971,7 +4862,7 @@ async function apiGetWarehouseHistory(filters = {}) {
 
 async function apiGetWarehousePhotoIntakeStatus() {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/photo-intake/status`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/photo-intake/status`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3987,7 +4878,7 @@ async function apiGetWarehousePhotoIntakes(filters = {}) {
         if (filters.status) params.set('status', filters.status);
         if (filters.limit) params.set('limit', filters.limit);
         const qs = params.toString();
-        const response = await fetch(`${API_BASE}/warehouse/photo-intake${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/photo-intake${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { success: false, items: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -3999,7 +4890,7 @@ async function apiGetWarehousePhotoIntakes(filters = {}) {
 
 async function apiConfirmWarehousePhotoIntake(id, payload) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/photo-intake/${id}/confirm`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/photo-intake/${id}/confirm`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(payload || {})
@@ -4016,7 +4907,7 @@ async function apiConfirmWarehousePhotoIntake(id, payload) {
 
 async function apiCancelWarehousePhotoIntake(id, notes) {
     try {
-        const response = await fetch(`${API_BASE}/warehouse/photo-intake/${id}/cancel`, {
+        const response = await apiNetworkFetch(`${API_BASE}/warehouse/photo-intake/${id}/cancel`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify({ notes: notes || null })
@@ -4038,7 +4929,7 @@ async function apiGetContractors(filters = {}) {
         if (filters.q) params.set('q', filters.q);
         if (filters.active !== undefined) params.set('active', filters.active ? 'true' : 'false');
         const qs = params.toString();
-        const response = await fetch(`${API_BASE}/contractors${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/contractors${qs ? '?' + qs : ''}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { contractors: [] };
         if (!response.ok) throw new Error('API error');
         const data = await response.json();
@@ -4051,7 +4942,7 @@ async function apiGetContractors(filters = {}) {
 
 async function apiCreateContractor(data) {
     try {
-        const response = await fetch(`${API_BASE}/contractors`, {
+        const response = await apiNetworkFetch(`${API_BASE}/contractors`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
@@ -4066,7 +4957,7 @@ async function apiCreateContractor(data) {
 
 async function apiUpdateContractor(id, data) {
     try {
-        const response = await fetch(`${API_BASE}/contractors/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/contractors/${id}`, {
             method: 'PUT',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
@@ -4084,7 +4975,7 @@ async function apiGetContractorOrderContext(id, filters = {}) {
         const params = new URLSearchParams();
         if (filters.stockItemId) params.set('stockItemId', filters.stockItemId);
         if (filters.procurementItemId) params.set('procurementItemId', filters.procurementItemId);
-        const response = await fetch(`${API_BASE}/contractors/${id}/order-context?${params}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/contractors/${id}/order-context?${params}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4101,7 +4992,7 @@ async function apiGetProcurementLists(filters = {}) {
         if (filters.department) params.set('department', filters.department);
         if (filters.status) params.set('status', filters.status);
         if (filters.all) params.set('all', 'true');
-        const response = await fetch(`${API_BASE}/procurement?${params}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/procurement?${params}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { lists: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4113,7 +5004,7 @@ async function apiGetProcurementLists(filters = {}) {
 
 async function apiGetProcurementList(id) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${id}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${id}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4125,7 +5016,7 @@ async function apiGetProcurementList(id) {
 
 async function apiCreateProcurementList(data) {
     try {
-        const response = await fetch(`${API_BASE}/procurement`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -4138,7 +5029,7 @@ async function apiCreateProcurementList(data) {
 
 async function apiUpdateProcurementList(id, data) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${id}`, {
             method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -4151,7 +5042,7 @@ async function apiUpdateProcurementList(id, data) {
 
 async function apiDeleteProcurementList(id) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${id}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${id}`, {
             method: 'DELETE', headers: getAuthHeaders()
         });
         if (handleAuthError(response)) return null;
@@ -4164,7 +5055,7 @@ async function apiDeleteProcurementList(id) {
 
 async function apiAddProcurementItem(listId, data) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${listId}/items`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${listId}/items`, {
             method: 'POST', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -4177,7 +5068,7 @@ async function apiAddProcurementItem(listId, data) {
 
 async function apiUpdateProcurementItem(listId, itemId, data) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${listId}/items/${itemId}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${listId}/items/${itemId}`, {
             method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -4190,7 +5081,7 @@ async function apiUpdateProcurementItem(listId, itemId, data) {
 
 async function apiDeleteProcurementItem(listId, itemId) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${listId}/items/${itemId}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${listId}/items/${itemId}`, {
             method: 'DELETE', headers: getAuthHeaders()
         });
         if (handleAuthError(response)) return null;
@@ -4203,7 +5094,7 @@ async function apiDeleteProcurementItem(listId, itemId) {
 
 async function apiCompleteProcurement(id) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${id}/complete`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${id}/complete`, {
             method: 'POST', headers: getAuthHeaders()
         });
         if (handleAuthError(response)) return null;
@@ -4216,7 +5107,7 @@ async function apiCompleteProcurement(id) {
 
 async function apiGetProcurementSuggestions() {
     try {
-        const response = await fetch(`${API_BASE}/procurement/suggestions/low-stock`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/suggestions/low-stock`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { suggestions: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4228,7 +5119,7 @@ async function apiGetProcurementSuggestions() {
 
 async function apiGetProcurementKitchenDemand() {
     try {
-        const response = await fetch(`${API_BASE}/procurement/suggestions/kitchen-demand`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/suggestions/kitchen-demand`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { suggestions: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4240,7 +5131,7 @@ async function apiGetProcurementKitchenDemand() {
 
 async function apiCreateProcurementFromStockItem(stockItemId, data = {}) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/from-stock-item/${stockItemId}`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/from-stock-item/${stockItemId}`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
@@ -4255,7 +5146,7 @@ async function apiCreateProcurementFromStockItem(stockItemId, data = {}) {
 
 async function apiReceiveProcurementItem(listId, itemId, data = {}) {
     try {
-        const response = await fetch(`${API_BASE}/procurement/${listId}/items/${itemId}/receive`, {
+        const response = await apiNetworkFetch(`${API_BASE}/procurement/${listId}/items/${itemId}/receive`, {
             method: 'POST',
             headers: getAuthHeaders(),
             body: JSON.stringify(data)
@@ -4271,7 +5162,7 @@ async function apiReceiveProcurementItem(listId, itemId, data = {}) {
 // v17.0: Budget API
 async function apiGetBudget(year) {
     try {
-        const response = await fetch(`${API_BASE}/finance/budget?year=${year}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/finance/budget?year=${year}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return { plans: [] };
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4283,7 +5174,7 @@ async function apiGetBudget(year) {
 
 async function apiSaveBudget(data) {
     try {
-        const response = await fetch(`${API_BASE}/finance/budget`, {
+        const response = await apiNetworkFetch(`${API_BASE}/finance/budget`, {
             method: 'PUT', headers: getAuthHeaders(), body: JSON.stringify(data)
         });
         if (handleAuthError(response)) return null;
@@ -4296,7 +5187,7 @@ async function apiSaveBudget(data) {
 
 async function apiGetBudgetComparison(year, month) {
     try {
-        const response = await fetch(`${API_BASE}/finance/budget/comparison?year=${year}&month=${month}`, { headers: getAuthHeaders(false) });
+        const response = await apiNetworkFetch(`${API_BASE}/finance/budget/comparison?year=${year}&month=${month}`, { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4313,7 +5204,7 @@ async function apiSearchCustomers(query) {
         url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
         const response = typeof apiFetchWithAuthRetry === 'function'
             ? await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) })
-            : await fetch(url, { headers: getAuthHeaders(false) });
+            : await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (!response || handleAuthError(response)) return [];
         if (!response.ok) throw new Error('API error');
         const payload = await response.json();
@@ -4332,7 +5223,7 @@ async function apiGetCustomer(id) {
         url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
         const response = typeof apiFetchWithAuthRetry === 'function'
             ? await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) })
-            : await fetch(url, { headers: getAuthHeaders(false) });
+            : await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (!response || handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         return await response.json();
@@ -4347,7 +5238,7 @@ async function apiGetLeadBookingContext(id) {
         url = window.TimelineBusinessContext?.appendApiContext?.(url) || url;
         const response = typeof apiFetchWithAuthRetry === 'function'
             ? await apiFetchWithAuthRetry(url, { headers: getAuthHeaders(false) })
-            : await fetch(url, { headers: getAuthHeaders(false) });
+            : await apiNetworkFetch(url, { headers: getAuthHeaders(false) });
         if (!response || handleAuthError(response)) return null;
         if (!response.ok) throw new Error('API error');
         const payload = await response.json();

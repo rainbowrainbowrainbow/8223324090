@@ -3040,10 +3040,10 @@ function initSidebar() {
 }
 
 async function initAuth() {
-    const token = localStorage.getItem('pzp_token');
-    const savedUser = localStorage.getItem(CONFIG.STORAGE.CURRENT_USER);
-
-    if (!token || !savedUser) {
+    const hasStoredSession = typeof apiHasStoredAuthSession === 'function'
+        ? apiHasStoredAuthSession()
+        : Boolean(localStorage.getItem('pzp_token'));
+    if (!hasStoredSession) {
         document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }
@@ -3051,6 +3051,10 @@ async function initAuth() {
     // Verify token
     const user = await apiVerifyToken();
     if (!user) {
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({ retry: () => window.location.reload(), containerId: 'main-content' })) {
+            return false;
+        }
         document.getElementById('loginOverlay')?.classList.remove('hidden');
         return false;
     }

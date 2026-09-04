@@ -581,15 +581,45 @@ function bindSmartCredentialPaste() {
 
 function initAuthListeners() {
     bindSmartCredentialPaste();
+    let loginSubmitInFlight = false;
     document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
         e.preventDefault();
+        if (loginSubmitInFlight) return;
+
+        const form = e.currentTarget;
+        const submitButton = form?.querySelector?.('button[type="submit"], input[type="submit"]') || null;
+        const originalButtonText = submitButton?.textContent || '';
+        const originalButtonValue = submitButton?.value || '';
+        const originalButtonDisabled = Boolean(submitButton?.disabled);
+        const loginError = document.getElementById('loginError');
+        loginSubmitInFlight = true;
+        form?.setAttribute?.('aria-busy', 'true');
+        if (submitButton) {
+            submitButton.disabled = true;
+            if (submitButton.tagName === 'INPUT') submitButton.value = 'Вхід…';
+            else submitButton.textContent = 'Вхід…';
+        }
+        if (loginError) loginError.textContent = '';
+
         const usernameEl = document.getElementById('username');
         const passwordEl = document.getElementById('password');
-        applyLoginCredentialBlock(usernameEl?.value);
-        applyLoginCredentialBlock(passwordEl?.value);
-        const result = await login(usernameEl?.value, passwordEl?.value);
-        if (!result.success) {
-            document.getElementById('loginError').textContent = result.error || 'Невірний логін або пароль';
+        try {
+            applyLoginCredentialBlock(usernameEl?.value);
+            applyLoginCredentialBlock(passwordEl?.value);
+            const result = await login(usernameEl?.value, passwordEl?.value);
+            if (!result?.success && loginError) {
+                loginError.textContent = result?.error || 'Невірний логін або пароль';
+            }
+        } catch (error) {
+            if (loginError) loginError.textContent = error?.message || 'Не вдалося увійти. Спробуйте ще раз.';
+        } finally {
+            loginSubmitInFlight = false;
+            form?.removeAttribute?.('aria-busy');
+            if (submitButton) {
+                submitButton.disabled = originalButtonDisabled;
+                if (submitButton.tagName === 'INPUT') submitButton.value = originalButtonValue;
+                else submitButton.textContent = originalButtonText;
+            }
         }
     });
     if (typeof bindLogoutButton === 'function') bindLogoutButton();

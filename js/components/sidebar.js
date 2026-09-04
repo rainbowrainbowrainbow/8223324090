@@ -3983,6 +3983,86 @@ const Sidebar = (() => {
         }
     }
 
+    function _mergeVerifiedSidebarUser(user) {
+        if (!user || typeof user !== 'object') return user;
+
+        const sameIdentity = (left, right) => {
+            const leftId = left?.id === undefined || left?.id === null ? '' : String(left.id);
+            const rightId = right?.id === undefined || right?.id === null ? '' : String(right.id);
+            if (leftId && rightId) return leftId === rightId;
+            const leftUsername = String(left?.username || '').trim().toLowerCase();
+            const rightUsername = String(right?.username || '').trim().toLowerCase();
+            return Boolean(leftUsername && rightUsername && leftUsername === rightUsername);
+        };
+        const authorizationFingerprint = candidate => {
+            const normalizeList = (...values) => Array.from(new Set(values
+                .flatMap(value => Array.isArray(value) ? value : [])
+                .map(value => String(value || '').trim().toLowerCase())
+                .filter(Boolean)))
+                .sort();
+            const primaryRole = String(candidate?.role || '').trim().toLowerCase();
+            return JSON.stringify({
+                primaryRole,
+                roles: normalizeList([primaryRole], candidate?.roles, candidate?.extraRoles, candidate?.extra_roles),
+                pageAllowlist: normalizeList(candidate?.pageAllowlist, candidate?.page_allowlist),
+                pageDenylist: normalizeList(candidate?.pageDenylist, candidate?.page_denylist),
+                actionAllowlist: normalizeList(candidate?.actionAllowlist, candidate?.action_allowlist),
+                actionDenylist: normalizeList(candidate?.actionDenylist, candidate?.action_denylist),
+                businessContexts: normalizeList(candidate?.businessContexts, candidate?.business_contexts),
+                defaultBusinessContext: String(candidate?.defaultBusinessContext || candidate?.default_business_context || '').trim().toLowerCase(),
+                qaCreatorLeaseId: String(candidate?.qaCreatorLeaseId || candidate?.qa_creator_lease_id || '')
+            });
+        };
+
+        let cachedUser = null;
+        try {
+            const saved = localStorage.getItem('pzp_current_user');
+            cachedUser = saved ? JSON.parse(saved) : null;
+        } catch {}
+
+        const runtimeUser = typeof AppState !== 'undefined' && AppState.currentUser
+            ? AppState.currentUser
+            : null;
+        const runtimeIdentityChanged = runtimeUser && !sameIdentity(runtimeUser, user);
+        const cachedIdentityChanged = cachedUser && !sameIdentity(cachedUser, user);
+        if (runtimeIdentityChanged || cachedIdentityChanged) {
+            if (typeof setApiAuthSessionFailure === 'function') {
+                setApiAuthSessionFailure('transient', { stage: 'sidebar', reason: 'session-changed' });
+            }
+            return null;
+        }
+        const baselineUser = runtimeUser && typeof runtimeUser === 'object'
+            ? runtimeUser
+            : cachedUser;
+        const preserveRuntimeState = Boolean(baselineUser)
+            && authorizationFingerprint(baselineUser) === authorizationFingerprint(user);
+        const target = preserveRuntimeState && runtimeUser
+            ? runtimeUser
+            : (preserveRuntimeState ? { ...(baselineUser || {}), ...user } : { ...user });
+        const hydratedPermissions = (typeof AppState !== 'undefined' && AppState.authPermissions)
+            || runtimeUser?.permissions
+            || cachedUser?.permissions
+            || null;
+
+        Object.assign(target, user);
+        if (preserveRuntimeState && hydratedPermissions) target.permissions = hydratedPermissions;
+        else if (!Object.prototype.hasOwnProperty.call(user, 'permissions')) delete target.permissions;
+        if (!preserveRuntimeState && typeof clearRuntimePermissionCatalog === 'function') {
+            clearRuntimePermissionCatalog(target);
+        }
+        if (!preserveRuntimeState && typeof setPermissionLifecycle === 'function') {
+            setPermissionLifecycle('loading');
+        }
+        if (typeof AppState !== 'undefined') {
+            if (!preserveRuntimeState) AppState.authPermissions = null;
+            AppState.currentUser = target;
+        }
+        try {
+            localStorage.setItem('pzp_current_user', JSON.stringify(target));
+        } catch {}
+        return target;
+    }
+
     function _getSidebarPrimaryRole(user) {
         const roles = Array.isArray(user?.roles) ? user.roles : [];
         return String(user?.role || user?.account_role || user?.accountRole || roles[0] || '').trim();
@@ -4565,19 +4645,21 @@ const Sidebar = (() => {
             return;
         }
 
-        // Last resort: fetch user from server directly
+        // Last resort: use the canonical stale-response-safe session verifier.
         try {
-            const token = localStorage.getItem('pzp_token');
-            if (!token) return;
-            const res = await fetch('/api/auth/verify', {
-                headers: { 'Authorization': 'Bearer ' + token }
-            });
-            if (!res.ok) return;
-            const data = await res.json();
-            const user = data.user || data;
+            if (typeof apiVerifyToken !== 'function') return;
+            const user = await apiVerifyToken();
             if (user && user.name) {
-                if (typeof AppState !== 'undefined') AppState.currentUser = user;
-                localStorage.setItem('pzp_current_user', JSON.stringify(user));
+                const mergedUser = _mergeVerifiedSidebarUser(user);
+                if (!mergedUser) return;
+                if (typeof hydrateBusinessOperatingProfile === 'function') {
+                    await hydrateBusinessOperatingProfile(mergedUser);
+                }
+                if (typeof hydrateActionPermissions === 'function') {
+                    const permissions = await hydrateActionPermissions(mergedUser);
+                    if (!permissions) return;
+                }
+                window.WorkingRole?.hydrate?.();
                 initUserCard();
             }
         } catch {}

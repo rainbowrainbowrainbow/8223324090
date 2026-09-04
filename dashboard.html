@@ -318,6 +318,13 @@
             DashboardPage.init();
             return;
         }
+        if (typeof handleTransientAuthSessionBootstrap === 'function'
+            && handleTransientAuthSessionBootstrap({
+                retry: () => window.location.reload(),
+                containerId: 'main-content'
+            })) {
+            return;
+        }
         // v31.7.1: Redirect to canonical login page
         window.location.href = '/';
     })();

@@ -109,7 +109,7 @@ function buildAuthUserPayload(user) {
 function authSessionError(message, code = 'auth_session_invalid') {
     const error = new Error(message);
     error.code = code;
-    error.status = 403;
+    error.status = 401;
     error.isAuthSessionError = true;
     return error;
 }
@@ -121,10 +121,32 @@ function isAuthCompatibilityMiss(error) {
         || /relation .*users.*does not exist/i.test(message);
 }
 
+function isDemoTokenPrincipal(user) {
+    return Number(user?.id) === -1
+        && user?.isDemo === true
+        && String(user?.username || '') === 'demo'
+        && String(user?.role || '') === 'viewer'
+        && (!user?.tokenPurpose || user.tokenPurpose === 'demo');
+}
+
+function isDemoTokenRequestAllowed(req) {
+    const method = String(req?.method || 'GET').toUpperCase();
+    const path = String(req?.path || req?.url || req?.originalUrl || '')
+        .split('?')[0]
+        .replace(/\/+$/, '');
+    const apiLocalPath = path.startsWith('/api/') ? path.slice(4) : path;
+    if (method === 'GET' && apiLocalPath === '/demo/overview') return true;
+    if (method === 'POST' && apiLocalPath === '/demo/sessions') return true;
+    return method === 'PUT' && /^\/demo\/sessions\/[^/]+$/.test(apiLocalPath);
+}
+
 async function loadAuthenticatedUserAccess(user, options = {}) {
     const requireFresh = options.requireFresh === true;
     const requireIdentityMatch = options.requireIdentityMatch === true;
-    const includeStaffProfile = options.includeStaffProfile === true || requireFresh;
+    const includeStaffProfile = options.includeStaffProfile === true
+        || (requireFresh && options.includeStaffProfile !== false);
+    const db = options.db || pool;
+    const lockUser = options.lockUser === true;
     const userId = user?.id || user?.userId || user?.sub;
     if (!userId) {
         if (requireFresh) throw authSessionError('User not found or deactivated', 'auth_user_missing');
@@ -132,25 +154,31 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
     }
 
     try {
-        const sessionState = await pool.query(
-            'SELECT is_active, session_revoked_at FROM users WHERE id = $1',
+        const sessionState = await db.query(
+            `SELECT is_active, session_revoked_at FROM users WHERE id = $1${lockUser ? ' FOR UPDATE' : ''}`,
             [userId]
         );
         const sessionRow = sessionState.rows[0];
-        if (!sessionRow && requireFresh) {
+        if (!sessionRow) {
             throw authSessionError('User not found or deactivated', 'auth_user_missing');
         }
         if (sessionRow?.is_active === false) {
             throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
         }
-        const revokedUnix = sessionRow?.session_revoked_at
-            ? Math.floor(new Date(sessionRow.session_revoked_at).getTime() / 1000)
-            : 0;
-        if (revokedUnix && Number(user.iat || 0) < revokedUnix) {
+        const revokedAtMs = sessionRow?.session_revoked_at
+            ? new Date(sessionRow.session_revoked_at).getTime()
+            : NaN;
+        const issuedAtMs = Number(user.sessionIssuedAt || user.session_issued_at || 0);
+        const revokedUnix = Number.isFinite(revokedAtMs) ? Math.floor(revokedAtMs / 1000) : 0;
+        const issuedBeforeCutoff = Number.isFinite(revokedAtMs)
+            && (issuedAtMs > 0
+                ? issuedAtMs <= revokedAtMs
+                : Number(user.iat || 0) <= revokedUnix);
+        if (issuedBeforeCutoff) {
             throw authSessionError('Session revoked. Please login again.', 'auth_session_revoked');
         }
 
-        const freshAccessState = await pool.query(
+        const freshAccessState = await db.query(
             `SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts,
                     default_business_context, name, telegram_chat_id, is_active
              FROM users WHERE id = $1`,
@@ -172,13 +200,13 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
             throw authSessionError('User not found or deactivated', 'auth_user_deactivated');
         }
         const accessUser = user?.qaCreatorLeaseId
-            ? await resolveActiveQaCreatorLease(freshUser, pool, { expectedLeaseId: user.qaCreatorLeaseId })
+            ? await resolveActiveQaCreatorLease(freshUser, db, { expectedLeaseId: user.qaCreatorLeaseId })
             : freshUser;
 
         let staffState = { rows: [] };
         if (includeStaffProfile) {
             try {
-                staffState = await pool.query(
+                staffState = await db.query(
                     `SELECT staff_id
                      FROM employee_profiles
                      WHERE user_id = $1
@@ -212,10 +240,25 @@ async function loadAuthenticatedUserAccess(user, options = {}) {
 async function authenticateToken(req, res, next) {
     const authHeader = req.headers['authorization'];
     const token = authHeader && authHeader.split(' ')[1];
-    if (!token) return res.status(401).json({ error: 'Authentication required' });
+    if (!token) {
+        return res.status(401).json({
+            error: 'Authentication required',
+            code: 'auth_token_missing'
+        });
+    }
 
     try {
         const user = jwt.verify(token, JWT_SECRET);
+        if (isDemoTokenPrincipal(user)) {
+            if (!isDemoTokenRequestAllowed(req)) {
+                return res.status(403).json({
+                    error: 'Demo session is not allowed for this resource',
+                    code: 'auth_demo_scope_denied'
+                });
+            }
+            req.user = user;
+            return next();
+        }
         const recoveryMode = process.env.BACKUP_RECOVERY_MODE === 'true';
         const requestUser = await loadAuthenticatedUserAccess(user, {
             requireFresh: recoveryMode,
@@ -255,9 +298,20 @@ async function authenticateToken(req, res, next) {
         next();
     } catch (err) {
         if (err?.isAuthSessionError) {
-            return res.status(err.status || 403).json({ error: err.message });
+            return res.status(err.status || 401).json({ error: err.message, code: err.code });
         }
-        return res.status(403).json({ error: 'Invalid or expired token' });
+        if (err instanceof jwt.JsonWebTokenError || err instanceof jwt.TokenExpiredError || err instanceof jwt.NotBeforeError) {
+            return res.status(401).json({
+                error: 'Invalid or expired token',
+                code: 'auth_token_invalid'
+            });
+        }
+        log.error('Authentication verification unavailable', err);
+        return res.status(503).json({
+            error: 'Authentication verification temporarily unavailable',
+            code: 'auth_verification_unavailable',
+            retryable: true
+        });
     }
 }
 
@@ -318,6 +372,7 @@ const ANY_ROLE = ROLE_HIERARCHY;
 // v38.4.0: Refresh token utilities
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 const ACCESS_TOKEN_EXPIRY = '15m'; // Short-lived access token
+const REFRESH_ROTATION_DUPLICATE_GRACE_MS = 5000;
 
 /**
  * Generate a cryptographically secure refresh token
@@ -336,87 +391,186 @@ function hashRefreshToken(token) {
 /**
  * Create a new access + refresh token pair
  */
-async function createTokenPair(user, { deviceInfo, ipAddress } = {}) {
+async function createTokenPair(user, { deviceInfo, ipAddress } = {}, db = pool) {
     const authUser = buildAuthUserPayload(user);
-    const accessToken = jwt.sign(
-        authUser,
-        JWT_SECRET,
-        { expiresIn: ACCESS_TOKEN_EXPIRY }
-    );
-
     const refreshToken = generateRefreshToken();
     const tokenHash = hashRefreshToken(refreshToken);
     const expiresAt = new Date(Date.now() + REFRESH_TOKEN_EXPIRY_DAYS * 24 * 60 * 60 * 1000);
 
-    await pool.query(
-        `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at)
-         VALUES ($1, $2, $3, $4, $5)`,
+    const insertResult = await db.query(
+        `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at, created_at)
+         VALUES ($1, $2, $3, $4, $5, clock_timestamp())
+         RETURNING created_at`,
         [user.id, tokenHash, (deviceInfo || '').slice(0, 200), ipAddress || null, expiresAt]
     );
 
-    return { accessToken, refreshToken, expiresAt };
+    const databaseIssuedAt = new Date(insertResult.rows?.[0]?.created_at).getTime();
+    const sessionIssuedAt = Number.isFinite(databaseIssuedAt) ? databaseIssuedAt : Date.now();
+    const accessToken = jwt.sign(
+        { ...authUser, sessionIssuedAt },
+        JWT_SECRET,
+        { expiresIn: ACCESS_TOKEN_EXPIRY }
+    );
+
+    return { accessToken, refreshToken, expiresAt, sessionIssuedAt };
 }
 
 /**
- * Rotate refresh token: verify old → issue new → revoke old
- * Implements replay detection: if already-revoked token is reused, revoke ALL tokens for that user
+ * Rotate refresh token under a row lock so parallel refreshes cannot both consume
+ * the same token. A same-client duplicate stays non-destructive even when the
+ * first successful response was lost and the client retries later.
  */
 async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {}) {
     const oldHash = hashRefreshToken(oldRefreshToken);
+    const normalizedDeviceInfo = (deviceInfo || '').slice(0, 200);
+    const normalizedIpAddress = ipAddress ? String(ipAddress) : null;
+    const client = await pool.connect();
 
-    const result = await pool.query(
-        'SELECT id, user_id, revoked_at, expires_at FROM refresh_tokens WHERE token_hash = $1',
-        [oldHash]
-    );
-
-    if (result.rows.length === 0) {
-        return { error: 'Invalid refresh token', status: 401 };
-    }
-
-    const oldToken = result.rows[0];
-
-    // Replay detection: if token was already revoked, it's a potential theft
-    if (oldToken.revoked_at) {
-        log.warn(`Refresh token replay detected for user ${oldToken.user_id} — revoking all tokens`);
-        await pool.query(
-            'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
-            [oldToken.user_id]
+    try {
+        await client.query('BEGIN');
+        const ownerResult = await client.query(
+            'SELECT user_id FROM refresh_tokens WHERE token_hash = $1',
+            [oldHash]
         );
-        return { error: 'Token reuse detected. All sessions revoked.', status: 401 };
+        if (ownerResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { error: 'Invalid refresh token', code: 'refresh_token_invalid', status: 401 };
+        }
+
+        // Keep the same lock order as account lifecycle transactions:
+        // users row first, refresh-token row second.
+        const userResult = await client.query(
+            `SELECT id, username, role, extra_roles, page_allowlist, page_denylist,
+                    action_allowlist, action_denylist, business_contexts,
+                    default_business_context, name, telegram_chat_id, is_active,
+                    session_revoked_at
+             FROM users
+             WHERE id = $1
+             FOR UPDATE`,
+            [ownerResult.rows[0].user_id]
+        );
+        const result = await client.query(
+            `SELECT id, user_id, device_info, ip_address, revoked_at, replaced_by, expires_at, created_at,
+                    EXTRACT(EPOCH FROM (clock_timestamp() - revoked_at)) * 1000 AS rotation_age_ms
+             FROM refresh_tokens
+             WHERE token_hash = $1
+             FOR UPDATE`,
+            [oldHash]
+        );
+
+        if (result.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return { error: 'Invalid refresh token', code: 'refresh_token_invalid', status: 401 };
+        }
+
+        const oldToken = result.rows[0];
+        const storedUser = userResult.rows[0] || null;
+
+        if (!storedUser || !storedUser.is_active) {
+            await client.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
+            await client.query('COMMIT');
+            return { error: 'User not found or deactivated', code: 'refresh_user_inactive', status: 401 };
+        }
+
+        const revokedAtMs = storedUser.session_revoked_at
+            ? new Date(storedUser.session_revoked_at).getTime()
+            : NaN;
+        const tokenCreatedAtMs = oldToken.created_at
+            ? new Date(oldToken.created_at).getTime()
+            : NaN;
+        if (Number.isFinite(revokedAtMs)
+            && (!Number.isFinite(tokenCreatedAtMs) || tokenCreatedAtMs <= revokedAtMs)) {
+            if (!oldToken.revoked_at) {
+                await client.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
+            }
+            await client.query('COMMIT');
+            return { error: 'Session revoked. Please login again.', code: 'refresh_session_revoked', status: 401 };
+        }
+
+        if (oldToken.revoked_at) {
+            if (oldToken.replaced_by) {
+                const rotationAgeMs = Number(oldToken.rotation_age_ms);
+                if (Number.isFinite(rotationAgeMs)
+                    && rotationAgeMs >= 0
+                    && rotationAgeMs <= REFRESH_ROTATION_DUPLICATE_GRACE_MS) {
+                    await client.query('ROLLBACK');
+                    return {
+                        error: 'Refresh token was already rotated by this client',
+                        code: 'refresh_already_rotated',
+                        status: 409,
+                        reloginRequired: true
+                    };
+                }
+
+                const replacementIds = [];
+                const visited = new Set();
+                let replacementId = oldToken.replaced_by;
+                while (replacementId && !visited.has(Number(replacementId))) {
+                    const replacementResult = await client.query(
+                        `SELECT id, user_id, revoked_at, replaced_by
+                         FROM refresh_tokens
+                         WHERE id = $1 AND user_id = $2
+                         FOR UPDATE`,
+                        [replacementId, oldToken.user_id]
+                    );
+                    const replacement = replacementResult.rows[0] || null;
+                    if (!replacement) break;
+                    const tokenId = Number(replacement.id);
+                    visited.add(tokenId);
+                    replacementIds.push(tokenId);
+                    replacementId = replacement.replaced_by;
+                }
+                if (replacementIds.length > 0) {
+                    await client.query(
+                        `UPDATE refresh_tokens
+                         SET revoked_at = clock_timestamp()
+                         WHERE id = ANY($1::int[]) AND revoked_at IS NULL`,
+                        [replacementIds]
+                    );
+                }
+                await client.query('COMMIT');
+                return {
+                    error: 'Refresh token reuse detected. This session was revoked.',
+                    code: 'refresh_token_reuse',
+                    status: 401
+                };
+            }
+            await client.query('ROLLBACK');
+            return {
+                error: 'Refresh token was revoked',
+                code: 'refresh_token_revoked',
+                status: 401
+            };
+        }
+
+        if (new Date(oldToken.expires_at) < new Date()) {
+            await client.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
+            await client.query('COMMIT');
+            return { error: 'Refresh token expired', code: 'refresh_token_expired', status: 401 };
+        }
+
+        const user = await resolveActiveQaCreatorLease(storedUser, client);
+        const { accessToken, refreshToken: newRefreshToken, expiresAt } = await createTokenPair(
+            user,
+            { deviceInfo: normalizedDeviceInfo, ipAddress: normalizedIpAddress },
+            client
+        );
+        const newHash = hashRefreshToken(newRefreshToken);
+        await client.query(
+            `UPDATE refresh_tokens SET revoked_at = clock_timestamp(),
+                    replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $1)
+             WHERE id = $2`,
+            [newHash, oldToken.id]
+        );
+        await client.query('COMMIT');
+
+        return { accessToken, refreshToken: newRefreshToken, expiresAt, user };
+    } catch (error) {
+        try { await client.query('ROLLBACK'); } catch {}
+        throw error;
+    } finally {
+        client.release();
     }
-
-    // Check expiry
-    if (new Date(oldToken.expires_at) < new Date()) {
-        await pool.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
-        return { error: 'Refresh token expired', status: 401 };
-    }
-
-    // Get user
-    const userResult = await pool.query(
-        'SELECT id, username, role, extra_roles, page_allowlist, page_denylist, action_allowlist, action_denylist, business_contexts, default_business_context, name, telegram_chat_id, is_active FROM users WHERE id = $1',
-        [oldToken.user_id]
-    );
-
-    if (userResult.rows.length === 0 || !userResult.rows[0].is_active) {
-        await pool.query('UPDATE refresh_tokens SET revoked_at = NOW() WHERE id = $1', [oldToken.id]);
-        return { error: 'User not found or deactivated', status: 403 };
-    }
-
-    const user = await resolveActiveQaCreatorLease(userResult.rows[0], pool);
-
-    // Issue new pair
-    const { accessToken, refreshToken: newRefreshToken, expiresAt } = await createTokenPair(user, { deviceInfo, ipAddress });
-
-    // Revoke old token and link to new via hash lookup (atomic)
-    const newHash = hashRefreshToken(newRefreshToken);
-    await pool.query(
-        `UPDATE refresh_tokens SET revoked_at = NOW(),
-                replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $1)
-         WHERE id = $2`,
-        [newHash, oldToken.id]
-    );
-
-    return { accessToken, refreshToken: newRefreshToken, expiresAt, user };
 }
 
 /**
@@ -424,17 +578,73 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
  */
 async function revokeRefreshToken(refreshToken) {
     const tokenHash = hashRefreshToken(refreshToken);
-    const result = await pool.query(
-        `UPDATE refresh_tokens rt
-         SET revoked_at = NOW()
-         FROM users u
-         WHERE rt.token_hash = $1
-           AND rt.user_id = u.id
-           AND rt.revoked_at IS NULL
-         RETURNING u.id, u.username, u.role, u.extra_roles, u.page_allowlist, u.page_denylist, u.action_allowlist, u.action_denylist, u.name, u.telegram_chat_id`,
-        [tokenHash]
-    );
-    return result.rows[0] || null;
+    const client = await pool.connect();
+    try {
+        await client.query('BEGIN');
+        const ownerResult = await client.query(
+            'SELECT user_id FROM refresh_tokens WHERE token_hash = $1',
+            [tokenHash]
+        );
+        if (ownerResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const userResult = await client.query(
+            `SELECT id, username, role, extra_roles, page_allowlist, page_denylist,
+                    action_allowlist, action_denylist, name, telegram_chat_id
+             FROM users
+             WHERE id = $1
+             FOR UPDATE`,
+            [ownerResult.rows[0].user_id]
+        );
+        if (userResult.rows.length === 0) {
+            await client.query('ROLLBACK');
+            return null;
+        }
+
+        const tokenIds = [];
+        const visited = new Set();
+        let tokenResult = await client.query(
+            `SELECT id, user_id, revoked_at, replaced_by
+             FROM refresh_tokens
+             WHERE token_hash = $1
+             FOR UPDATE`,
+            [tokenHash]
+        );
+        let tokenRow = tokenResult.rows[0] || null;
+        while (tokenRow && !visited.has(Number(tokenRow.id))) {
+            const tokenId = Number(tokenRow.id);
+            visited.add(tokenId);
+            tokenIds.push(tokenId);
+            if (!tokenRow.replaced_by) break;
+            tokenResult = await client.query(
+                `SELECT id, user_id, revoked_at, replaced_by
+                 FROM refresh_tokens
+                 WHERE id = $1 AND user_id = $2
+                 FOR UPDATE`,
+                [tokenRow.replaced_by, ownerResult.rows[0].user_id]
+            );
+            tokenRow = tokenResult.rows[0] || null;
+        }
+
+        const revokeResult = tokenIds.length > 0
+            ? await client.query(
+                `UPDATE refresh_tokens
+                 SET revoked_at = clock_timestamp()
+                 WHERE id = ANY($1::int[]) AND revoked_at IS NULL
+                 RETURNING id`,
+                [tokenIds]
+            )
+            : { rowCount: 0 };
+        await client.query('COMMIT');
+        return revokeResult.rowCount > 0 ? userResult.rows[0] : null;
+    } catch (error) {
+        try { await client.query('ROLLBACK'); } catch {}
+        throw error;
+    } finally {
+        client.release();
+    }
 }
 
 /**
@@ -442,7 +652,7 @@ async function revokeRefreshToken(refreshToken) {
  */
 async function revokeAllUserTokens(userId, db = pool) {
     await db.query(
-        'UPDATE refresh_tokens SET revoked_at = NOW() WHERE user_id = $1 AND revoked_at IS NULL',
+        'UPDATE refresh_tokens SET revoked_at = clock_timestamp() WHERE user_id = $1 AND revoked_at IS NULL',
         [userId]
     );
 }

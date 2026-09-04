@@ -379,7 +379,7 @@ describe('disposable token-backed permission capability contract', { skip: !enab
         assert.equal(update.status, 200, JSON.stringify(update.data));
 
         const currentToken = await request('GET', '/api/auth/permissions', null, account.token);
-        assert.ok([200, 403].includes(currentToken.status), 'existing token must be revoked or rehydrated from fresh access state');
+        assert.ok([200, 401].includes(currentToken.status), 'existing token must be revoked or rehydrated from fresh access state');
         if (currentToken.status === 200) {
             assert.equal(currentToken.data?.capabilities?.['action:hr.reports.view']?.allowed, false);
             assert.equal(currentToken.data?.capabilities?.['action:hr.reports.export']?.allowed, false);

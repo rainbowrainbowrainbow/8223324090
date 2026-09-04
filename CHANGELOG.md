@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.72 - PARK/DAR Read-Only Attestation Bootstrap
+
+### Release / Versioning / (04.09.2026) [codex]
+- **PARK/DAR Read-Only Attestation Bootstrap** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.71 - Auth Navigation Session Hardening
 
 ### Авторизація / Навігація / (04.09.2026) [codex]

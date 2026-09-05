@@ -452,13 +452,20 @@ function createFakePool() {
         }
 
         if (/UPDATE refresh_tokens SET revoked_at = (?:NOW|clock_timestamp)\(\), replaced_by =/i.test(text)) {
-            const newRow = state.refreshTokens.find(item => item.token_hash === params[0]);
+            const newRow = state.refreshTokens.find(item => item.token_hash === params[0])
+                || state.refreshTokens.find(item => Number(item.id) === Number(params[0]));
             const oldRow = state.refreshTokens.find(item => Number(item.id) === Number(params[1]));
             if (oldRow) {
                 oldRow.revoked_at = databaseNow();
                 oldRow.replaced_by = newRow?.id || null;
             }
             return { rows: [], rowCount: oldRow ? 1 : 0 };
+        }
+
+        if (/UPDATE refresh_tokens SET replaced_by = \$1 WHERE id = \$2/i.test(text)) {
+            const row = state.refreshTokens.find(item => Number(item.id) === Number(params[1]));
+            if (row) row.replaced_by = Number(params[0]);
+            return { rows: [], rowCount: row ? 1 : 0 };
         }
 
         if (/UPDATE refresh_tokens SET revoked_at = NOW\(\) WHERE user_id = \$1/i.test(text)) {
@@ -493,6 +500,19 @@ function createFakePool() {
                 }
             });
             return { rows, rowCount: rows.length };
+        }
+
+        if (/UPDATE refresh_tokens SET revoked_at = clock_timestamp\(\) WHERE id = ANY\(\$1::int\[\]\) AND id <> \$2 AND revoked_at IS NULL/i.test(text)) {
+            const ids = new Set((params[0] || []).map(Number));
+            const keepId = Number(params[1]);
+            let count = 0;
+            state.refreshTokens.forEach(item => {
+                if (ids.has(Number(item.id)) && Number(item.id) !== keepId && !item.revoked_at) {
+                    item.revoked_at = databaseNow();
+                    count += 1;
+                }
+            });
+            return { rows: [], rowCount: count };
         }
 
         if (/UPDATE users SET session_revoked_at = (?:NOW|clock_timestamp)\(\) WHERE id = \$1/i.test(text)) {
@@ -660,8 +680,8 @@ async function close(server) {
     return new Promise((resolve, reject) => server.close(err => err ? reject(err) : resolve()));
 }
 
-async function request(baseUrl, method, path, body, token) {
-    const headers = {};
+async function request(baseUrl, method, path, body, token, extraHeaders = {}) {
+    const headers = { ...extraHeaders };
     if (body !== undefined) headers['Content-Type'] = 'application/json';
     if (token) headers.Authorization = `Bearer ${token}`;
     const res = await fetch(`${baseUrl}${path}`, {
@@ -894,7 +914,10 @@ test('created manual account can log in, verify, access protected API, reject wr
 
         const originalRefreshRow = fakePool.state.refreshTokens.find(token => !token.revoked_at);
         assert.equal(jwt.decode(login.data.accessToken).sessionIssuedAt, originalRefreshRow.created_at.getTime());
+        assert.equal(jwt.decode(login.data.accessToken).sessionTokenId, originalRefreshRow.id);
         assert.equal(jwt.decode(login.data.token).sessionIssuedAt, originalRefreshRow.created_at.getTime());
+        assert.equal(jwt.decode(login.data.token).sessionTokenId, originalRefreshRow.id);
+        assert.equal(login.data.sessionTokenId, originalRefreshRow.id);
         originalRefreshRow.device_info = 'Android browser before network change';
         originalRefreshRow.ip_address = '203.0.113.10';
 
@@ -926,6 +949,7 @@ test('created manual account can log in, verify, access protected API, reject wr
         assert.equal(duplicateRefresh.data.reloginRequired, true);
         const activeRotatedToken = fakePool.state.refreshTokens.find(token => token.token_hash !== fakePool.state.refreshTokens[0].token_hash);
         assert.ok(activeRotatedToken);
+        assert.equal(refresh.data.sessionTokenId, activeRotatedToken.id);
         assert.equal(activeRotatedToken.revoked_at, null, 'duplicate same-client refresh must not revoke the rotated session');
 
         const refreshedVerify = await request(baseUrl, 'GET', '/api/auth/verify', undefined, refresh.data.accessToken);
@@ -955,7 +979,175 @@ test('created manual account can log in, verify, access protected API, reject wr
     });
 });
 
-test('post-grace refresh replay revokes only the rotated replacement chain', async () => {
+test('post-grace same-client refresh replay recovers a lost rotation response', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+
+        const firstLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        const otherDeviceLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        }, null, { 'User-Agent': 'unrelated-device' });
+        assert.equal(firstLogin.status, 200);
+        assert.equal(otherDeviceLogin.status, 200);
+
+        const rotated = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: firstLogin.data.refreshToken
+        });
+        assert.equal(rotated.status, 200);
+
+        const [oldRow, unrelatedRow, replacementRow] = fakePool.state.refreshTokens;
+        assert.ok(oldRow.revoked_at);
+        assert.equal(unrelatedRow.revoked_at, null);
+        assert.equal(replacementRow.revoked_at, null);
+        oldRow.revoked_at = new Date(Date.now() - 6000);
+        const cutoffBeforeReplay = creator.session_revoked_at;
+
+        const recovery = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: firstLogin.data.refreshToken
+        }, firstLogin.data.accessToken);
+
+        assert.equal(recovery.status, 200);
+        assert.ok(recovery.data.accessToken);
+        assert.ok(recovery.data.refreshToken);
+        assert.notEqual(recovery.data.refreshToken, rotated.data.refreshToken);
+        assert.equal(recovery.data.user.username, creator.username);
+        assert.equal(recovery.data.recovered, true);
+        assert.ok(replacementRow.revoked_at, 'the unreachable lost-response replacement must be revoked');
+        const recoveredRow = fakePool.state.refreshTokens.at(-1);
+        assert.equal(recoveredRow.revoked_at, null, 'the recovered same-client session must remain active');
+        assert.equal(recovery.data.sessionTokenId, recoveredRow.id);
+        assert.equal(oldRow.replaced_by, replacementRow.id, 'the original predecessor must still point to its first replacement');
+        assert.equal(replacementRow.replaced_by, recoveredRow.id, 'recovery must keep the replacement chain connected');
+        assert.equal(unrelatedRow.revoked_at, null, 'an unrelated device session must remain active');
+        assert.equal(creator.session_revoked_at, cutoffBeforeReplay, 'recovery must not move the account-wide cutoff');
+
+        const recoveredVerify = await request(baseUrl, 'GET', '/api/auth/verify', undefined, recovery.data.accessToken);
+        assert.equal(recoveredVerify.status, 200);
+        assert.equal(recoveredVerify.data.user.username, creator.username);
+
+        const logoutFirstReplacement = await request(baseUrl, 'POST', '/api/auth/logout', {
+            refreshToken: rotated.data.refreshToken
+        });
+        assert.equal(logoutFirstReplacement.status, 200);
+        const recoveredAfterLogout = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: recovery.data.refreshToken
+        });
+        assert.equal(recoveredAfterLogout.status, 401);
+        assert.equal(recoveredAfterLogout.data.code, 'refresh_token_revoked');
+        assert.ok(recoveredRow.revoked_at, 'logging out the first replacement must revoke the recovered tail');
+    });
+});
+
+
+test('post-grace recovery rejects signed access proof from a different session of the same account', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+
+        const firstLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        }, null, { 'User-Agent': 'session-a' });
+        const secondLogin = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        }, null, { 'User-Agent': 'session-b' });
+        assert.equal(firstLogin.status, 200);
+        assert.equal(secondLogin.status, 200);
+        assert.notEqual(firstLogin.data.sessionTokenId, secondLogin.data.sessionTokenId);
+
+        const rotated = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: firstLogin.data.refreshToken
+        }, firstLogin.data.accessToken, { 'User-Agent': 'session-a' });
+        assert.equal(rotated.status, 200);
+
+        const [oldRow, unrelatedRow, replacementRow] = fakePool.state.refreshTokens;
+        oldRow.revoked_at = new Date(Date.now() - 6000);
+        assert.equal(Number(jwt.decode(secondLogin.data.accessToken).sessionTokenId), Number(unrelatedRow.id));
+        assert.notEqual(Number(jwt.decode(secondLogin.data.accessToken).sessionTokenId), Number(oldRow.id));
+
+        const crossSessionRecovery = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: firstLogin.data.refreshToken
+        }, secondLogin.data.accessToken, { 'User-Agent': 'session-a' });
+
+        assert.equal(crossSessionRecovery.status, 401);
+        assert.equal(crossSessionRecovery.data.code, 'refresh_token_reuse');
+        assert.ok(replacementRow.revoked_at, 'cross-session proof must not recover and must revoke the compromised chain');
+        assert.equal(unrelatedRow.revoked_at, null, 'the proof session itself must remain active');
+    });
+});
+
+test('post-grace predecessor replay cannot recover after current-device logout', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(login.status, 200);
+        const rotated = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: login.data.refreshToken
+        }, login.data.accessToken);
+        assert.equal(rotated.status, 200);
+
+        const [oldRow, replacementRow] = fakePool.state.refreshTokens;
+        oldRow.revoked_at = new Date(Date.now() - 6000);
+        const logout = await request(baseUrl, 'POST', '/api/auth/logout', {
+            refreshToken: rotated.data.refreshToken
+        });
+        assert.equal(logout.status, 200);
+        assert.ok(replacementRow.revoked_at, 'current replacement must be terminally revoked by logout');
+
+        const replayAfterLogout = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: login.data.refreshToken
+        }, login.data.accessToken);
+
+        assert.equal(replayAfterLogout.status, 401);
+        assert.equal(replayAfterLogout.data.code, 'refresh_token_reuse');
+        assert.equal(
+            fakePool.state.refreshTokens.filter(token => !token.revoked_at).length,
+            0,
+            'logout-then-predecessor replay must not create a new active session'
+        );
+    });
+});
+
+test('post-grace same-fingerprint replay without signed session proof stays hostile', async () => {
+    await withAuthApp(async ({ baseUrl, fakePool }) => {
+        const creator = fakePool.state.users[0];
+        creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
+
+        const login = await request(baseUrl, 'POST', '/api/auth/login', {
+            username: creator.username,
+            password: 'CreatorPass789!'
+        });
+        assert.equal(login.status, 200);
+        const rotated = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: login.data.refreshToken
+        });
+        assert.equal(rotated.status, 200);
+
+        const [oldRow, replacementRow] = fakePool.state.refreshTokens;
+        oldRow.revoked_at = new Date(Date.now() - 6000);
+
+        const replay = await request(baseUrl, 'POST', '/api/auth/refresh', {
+            refreshToken: login.data.refreshToken
+        });
+
+        assert.equal(replay.status, 401);
+        assert.equal(replay.data.code, 'refresh_token_reuse');
+        assert.ok(replacementRow.revoked_at, 'same UA/IP without signed access proof must not recover');
+    });
+});
+
+test('post-grace hostile refresh replay revokes only the rotated replacement chain', async () => {
     await withAuthApp(async ({ baseUrl, fakePool }) => {
         const creator = fakePool.state.users[0];
         creator.password_hash = await bcrypt.hash('CreatorPass789!', 4);
@@ -985,7 +1177,7 @@ test('post-grace refresh replay revokes only the rotated replacement chain', asy
 
         const replay = await request(baseUrl, 'POST', '/api/auth/refresh', {
             refreshToken: firstLogin.data.refreshToken
-        });
+        }, null, { 'User-Agent': 'hostile-replay-client' });
 
         assert.equal(replay.status, 401);
         assert.equal(replay.data.code, 'refresh_token_reuse');

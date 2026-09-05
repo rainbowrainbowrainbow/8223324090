@@ -17,7 +17,7 @@ const { pool, initDatabase } = require('./db');
 const { authenticateToken, requireAction, requireRole } = require('./middleware/auth');
 const { apiAuthBoundary } = require('./middleware/apiAuthBoundary');
 const { businessScopeWriteGuard } = require('./middleware/businessScopeGuard');
-const { rateLimiter, loginRateLimiter, refreshSessionLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
+const { rateLimiter, authAvailabilityRateLimiter, loginRateLimiter, refreshSessionLimiter, sensitiveActionLimiter, shopBuyLimiter, landingLeadLimiter } = require('./middleware/rateLimit');
 const { cacheControl, securityHeaders } = require('./middleware/security');
 const { requestIdMiddleware } = require('./middleware/requestId');
 const { errorResponseMetadata } = require('./middleware/errorResponseMetadata');
@@ -238,7 +238,13 @@ app.use('/api', (req, res, next) => {
 app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec, { customSiteTitle: 'Event Genix API' }));
 app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
 
-// Rate limiter for all API routes
+// Auth availability must not depend on the shared business API budget.
+app.use(['/api/auth/verify', '/api/auth/login', '/api/auth/refresh'], authAvailabilityRateLimiter);
+// Auth abuse limiters run before the public auth routes reach their handlers.
+app.use('/api/auth/login', loginRateLimiter);
+app.use('/api/auth/refresh', refreshSessionLimiter);
+
+// Rate limiter for business API routes
 app.use('/api', rateLimiter);
 app.use('/api/landing/demo-request', landingLeadLimiter);
 app.use('/api/leads/landing', landingLeadLimiter);
@@ -257,11 +263,8 @@ app.use(
 // Aggregate business scopes are overview-only; write actions must pick one active business first.
 app.use('/api', businessScopeWriteGuard);
 
-// Login rate limiter (stricter: 5 attempts per minute)
-app.use('/api/auth/login', loginRateLimiter);
 // v25.3: Rate limiters for sensitive endpoints
 app.use('/api/auth/password', sensitiveActionLimiter);
-app.use('/api/auth/refresh', refreshSessionLimiter);
 app.use('/api/auth/impersonate', sensitiveActionLimiter);
 app.use('/api/shop/buy', shopBuyLimiter);
 app.use('/api/gamification/shop/buy', shopBuyLimiter);

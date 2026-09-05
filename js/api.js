@@ -8,7 +8,10 @@ const API_AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
 const API_AUTH_REFRESH_TOKEN_KEY = 'pzp_refresh_token';
 const API_AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
 const API_AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';
+const API_AUTH_SESSION_TOKEN_ID_KEY = 'pzp_auth_session_token_id';
 const API_AUTH_TRANSITION_KEY = 'pzp_auth_transition';
+const API_AUTH_REFRESH_COORDINATION_KEY = 'pzp_auth_refresh_coordination';
+const API_AUTH_REFRESH_APPLIED_AT_KEY = 'pzp_auth_refresh_applied_at';
 const API_AUTH_PRESERVE_BUSINESS_SCOPE_HEADERS = Symbol('apiAuthPreserveBusinessScopeHeaders');
 const API_AUTH_REFRESHABLE_UNAUTHORIZED_CODES = new Set([
     'auth_token_missing',
@@ -24,10 +27,24 @@ const API_AUTH_TERMINAL_UNAUTHORIZED_CODES = new Set([
 const API_AUTH_REFRESH_SETTLEMENT_MS = 5000;
 const API_AUTH_REFRESH_REPLAY_CONFIRM_DELAY_MS = 250;
 const API_AUTH_TRANSITION_MAX_AGE_MS = 15000;
+const API_AUTH_REFRESH_COORDINATION_MAX_AGE_MS = 15000;
+const API_AUTH_REFRESH_COORDINATION_WAIT_MS = 5000;
+const API_AUTH_RATE_LIMIT_RETRY_MAX = 2;
+const API_AUTH_RATE_LIMIT_RETRY_DEFAULT_MS = 250;
+const API_AUTH_RATE_LIMIT_AUTO_RETRY_MAX_DELAY_MS = 2000;
+const API_AUTH_RETRYABLE_RATE_LIMIT_CODES = new Set([
+    'auth_availability_rate_limited'
+]);
 const apiSemanticUnauthorizedResponses = new WeakSet();
 let apiAuthRefreshOperation = null;
 let apiAuthSessionFailure = null;
 let apiOwnedAuthTransition = null;
+
+function recordApiRedirectDiagnostic(event, details = {}) {
+    try {
+        window.RedirectDiagnostics?.record(event, details);
+    } catch {}
+}
 
 function getActiveApiAuthTransitionMarker() {
     const marker = localStorage.getItem(API_AUTH_TRANSITION_KEY) || '';
@@ -74,6 +91,61 @@ function endApiAuthTransition(transition) {
     }
 }
 
+function readApiAuthRefreshCoordinationMarker() {
+    try {
+        const raw = localStorage.getItem(API_AUTH_REFRESH_COORDINATION_KEY) || '';
+        if (!raw) return null;
+        const marker = JSON.parse(raw);
+        const startedAt = Number(marker?.startedAt || 0);
+        const ageMs = Date.now() - startedAt;
+        if (!marker?.id
+            || !Number.isFinite(startedAt)
+            || ageMs > API_AUTH_REFRESH_COORDINATION_MAX_AGE_MS
+            || ageMs < -1000) {
+            if (localStorage.getItem(API_AUTH_REFRESH_COORDINATION_KEY) === raw) {
+                localStorage.removeItem(API_AUTH_REFRESH_COORDINATION_KEY);
+            }
+            return null;
+        }
+        return marker;
+    } catch {
+        localStorage.removeItem(API_AUTH_REFRESH_COORDINATION_KEY);
+        return null;
+    }
+}
+
+function apiAuthRefreshCoordinationMatches(marker, refreshToken, sessionGeneration, expectedIdentityKey) {
+    return marker
+        && marker.refreshToken === refreshToken
+        && String(marker.sessionGeneration || '') === String(sessionGeneration || '')
+        && String(marker.expectedIdentityKey || '') === String(expectedIdentityKey || '');
+}
+
+function clearApiAuthRefreshCoordinationMarker(marker) {
+    if (!marker?.id) return;
+    const active = readApiAuthRefreshCoordinationMarker();
+    if (active?.id === marker.id) localStorage.removeItem(API_AUTH_REFRESH_COORDINATION_KEY);
+}
+
+function getApiAuthRefreshAppliedAt() {
+    const value = Number(localStorage.getItem(API_AUTH_REFRESH_APPLIED_AT_KEY) || 0);
+    const now = Date.now();
+    if (!Number.isFinite(value) || value < 0 || value > now + 1000) {
+        localStorage.removeItem(API_AUTH_REFRESH_APPLIED_AT_KEY);
+        return 0;
+    }
+    return value;
+}
+
+function rememberApiAuthRefreshAppliedAt(startedAt) {
+    const value = Number(startedAt || 0);
+    if (!Number.isFinite(value) || value <= 0) return;
+    const current = getApiAuthRefreshAppliedAt();
+    if (!current || value >= current) {
+        localStorage.setItem(API_AUTH_REFRESH_APPLIED_AT_KEY, String(value));
+    }
+}
+
 function setApiAuthSessionFailure(kind, details = {}) {
     const status = Number(details.status || 0) || null;
     apiAuthSessionFailure = {
@@ -85,6 +157,14 @@ function setApiAuthSessionFailure(kind, details = {}) {
         reason: details.reason || (status ? 'http' : 'network'),
         updatedAt: Date.now()
     };
+    const retryAfterSeconds = Number(details.retryAfterSeconds);
+    if (Number.isFinite(retryAfterSeconds) && retryAfterSeconds > 0) {
+        apiAuthSessionFailure.retryAfterSeconds = retryAfterSeconds;
+    }
+    if (details.code) apiAuthSessionFailure.code = String(details.code);
+    if (details.bucket) apiAuthSessionFailure.bucket = String(details.bucket);
+    if (details.requestId) apiAuthSessionFailure.requestId = String(details.requestId);
+    recordApiRedirectDiagnostic('auth-session-failure', apiAuthSessionFailure);
     return apiAuthSessionFailure;
 }
 
@@ -107,6 +187,76 @@ function isApiAuthSessionFailureTransient(failure = apiAuthSessionFailure) {
 function classifyApiAuthHttpFailure(status) {
     const normalizedStatus = Number(status || 0) || 0;
     return [400, 401, 403].includes(normalizedStatus) ? 'terminal' : 'transient';
+}
+
+function parseApiAuthRetryAfterMs(response) {
+    const header = response?.headers?.get?.('Retry-After');
+    const numericSeconds = Number(header);
+    if (Number.isFinite(numericSeconds) && numericSeconds > 0) {
+        return Math.max(API_AUTH_RATE_LIMIT_RETRY_DEFAULT_MS, Math.ceil(numericSeconds * 1000));
+    }
+    if (header) {
+        const timestamp = Date.parse(header);
+        if (Number.isFinite(timestamp)) {
+            return Math.max(API_AUTH_RATE_LIMIT_RETRY_DEFAULT_MS, timestamp - Date.now());
+        }
+    }
+    return API_AUTH_RATE_LIMIT_RETRY_DEFAULT_MS;
+}
+
+function getApiAuthRateLimitFailureDetails(stage, response, data = {}) {
+    if (!isApiAuthRetryableRateLimit(response, data)) return null;
+    const retryAfterMs = parseApiAuthRetryAfterMs(response);
+    const bodyRetryAfterSeconds = Number(data?.retryAfterSeconds);
+    const retryAfterSeconds = Number.isFinite(bodyRetryAfterSeconds) && bodyRetryAfterSeconds > 0
+        ? bodyRetryAfterSeconds
+        : Math.ceil(retryAfterMs / 1000);
+    return {
+        stage,
+        status: response.status,
+        reason: retryAfterMs > API_AUTH_RATE_LIMIT_AUTO_RETRY_MAX_DELAY_MS
+            ? 'rate-limit-retry-later'
+            : 'rate-limit-retry-exhausted',
+        retryAfterSeconds,
+        code: data?.code || 'auth_availability_rate_limited',
+        bucket: data?.bucket || 'auth_availability_ip',
+        requestId: data?.requestId || data?.request_id || null
+    };
+}
+
+function isApiAuthRetryableRateLimit(response, data = {}) {
+    if (response?.status !== 429) return false;
+    const code = String(data?.code || '').trim().toLowerCase();
+    return API_AUTH_RETRYABLE_RATE_LIMIT_CODES.has(code) || data?.bucket === 'auth_availability_ip';
+}
+
+function waitForApiAuthRateLimitBackoff(response) {
+    return new Promise(resolve => setTimeout(resolve, parseApiAuthRetryAfterMs(response)));
+}
+
+async function retryApiAuthRateLimitedResponse(response, data, makeRequest, options = {}) {
+    let retries = 0;
+    let currentResponse = response;
+    let currentData = data;
+    while (isApiAuthRetryableRateLimit(currentResponse, currentData)
+        && retries < API_AUTH_RATE_LIMIT_RETRY_MAX) {
+        const retryAfterMs = parseApiAuthRetryAfterMs(currentResponse);
+        if (retryAfterMs > API_AUTH_RATE_LIMIT_AUTO_RETRY_MAX_DELAY_MS) {
+            return {
+                response: currentResponse,
+                data: currentData,
+                retries,
+                retryLater: true,
+                retryAfterMs
+            };
+        }
+        await waitForApiAuthRateLimitBackoff(currentResponse);
+        if (typeof options.canContinue === 'function' && !options.canContinue()) break;
+        currentResponse = await makeRequest();
+        currentData = await currentResponse.json().catch(() => ({}));
+        retries += 1;
+    }
+    return { response: currentResponse, data: currentData, retries, retryLater: false };
 }
 
 function normalizeApiAuthList(...values) {
@@ -1590,6 +1740,15 @@ function apiNetworkShouldUseAuthRetry(url, options = {}) {
 function apiNetworkFetch(url, options = {}) {
     if (apiNetworkShouldUseAuthRetry(url, options)) return apiFetchWithAuthRetry(url, options);
     return apiNativeFetch(url, options);
+}
+
+async function readApiResponseJsonForRetry(response) {
+    try {
+        const source = typeof response?.clone === 'function' ? response.clone() : response;
+        return await source?.json?.().catch?.(() => ({})) || {};
+    } catch {
+        return {};
+    }
 }
 
 async function classifyApiUnauthorizedResponse(response) {
@@ -3622,7 +3781,8 @@ function revokeUnclaimedApiRefreshToken(refreshToken) {
     } catch {}
 }
 
-function clearApiAuthSessionStorage() {
+function clearApiAuthSessionStorage(reason = 'api-auth-session-clear') {
+    recordApiRedirectDiagnostic('auth-storage-clear', { storageClearReason: reason });
     const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
     if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(runtimeUser);
     if (typeof setPermissionLifecycle === 'function') setPermissionLifecycle('idle');
@@ -3633,13 +3793,16 @@ function clearApiAuthSessionStorage() {
     localStorage.removeItem(API_AUTH_REFRESH_TOKEN_KEY);
     localStorage.removeItem(API_AUTH_REFRESH_EXPIRES_KEY);
     localStorage.removeItem(API_AUTH_SESSION_GENERATION_KEY);
+    localStorage.removeItem(API_AUTH_SESSION_TOKEN_ID_KEY);
     localStorage.removeItem(CONFIG.STORAGE.CURRENT_USER);
     localStorage.removeItem(CONFIG.STORAGE.SESSION);
     localStorage.removeItem(API_AUTH_TRANSITION_KEY);
+    localStorage.removeItem(API_AUTH_REFRESH_COORDINATION_KEY);
+    localStorage.removeItem(API_AUTH_REFRESH_APPLIED_AT_KEY);
     clearApiImpersonationBackup({ revokeRefresh: true });
 }
 
-function rememberApiAuthSession(data = {}) {
+function rememberApiAuthSession(data = {}, options = {}) {
     const transition = beginApiAuthTransition('remember');
     if (!transition.owned) return false;
     try {
@@ -3654,7 +3817,11 @@ function rememberApiAuthSession(data = {}) {
         if (accessToken) localStorage.setItem(API_AUTH_ACCESS_TOKEN_KEY, accessToken);
         if (data.refreshToken) localStorage.setItem(API_AUTH_REFRESH_TOKEN_KEY, data.refreshToken);
         if (data.refreshExpiresAt) localStorage.setItem(API_AUTH_REFRESH_EXPIRES_KEY, String(data.refreshExpiresAt));
+        if (data.sessionTokenId !== undefined && data.sessionTokenId !== null) {
+            localStorage.setItem(API_AUTH_SESSION_TOKEN_ID_KEY, String(data.sessionTokenId));
+        }
         if (data.user) mergeApiCurrentUser(data.user, { allowIdentityChange: true });
+        rememberApiAuthRefreshAppliedAt(options.refreshOperationStartedAt);
     } finally {
         endApiAuthTransition(transition);
     }
@@ -3663,8 +3830,7 @@ function rememberApiAuthSession(data = {}) {
 
 function mergeApiCurrentUser(user = null, options = {}) {
     if (!user) return user;
-    const transition = beginApiAuthTransition('merge');
-    if (!transition.owned) return null;
+    let transition = null;
     try {
         const saved = JSON.parse(localStorage.getItem(CONFIG.STORAGE.CURRENT_USER) || '{}');
         const savedId = saved?.id === undefined || saved?.id === null ? '' : String(saved.id);
@@ -3693,6 +3859,10 @@ function mergeApiCurrentUser(user = null, options = {}) {
             delete next.permissions;
         }
         const runtimeAuthorizationChanged = identityChanged || authorizationChanged;
+        if (runtimeAuthorizationChanged) {
+            transition = beginApiAuthTransition('merge');
+            if (!transition.owned) return null;
+        }
         if (runtimeAuthorizationChanged && typeof clearRuntimePermissionCatalog === 'function') {
             clearRuntimePermissionCatalog(next);
         } else if (runtimeAuthorizationChanged && typeof AppState !== 'undefined' && AppState) {
@@ -3721,7 +3891,7 @@ function mergeApiCurrentUser(user = null, options = {}) {
         localStorage.setItem(CONFIG.STORAGE.CURRENT_USER, JSON.stringify(user));
         return user;
     } finally {
-        endApiAuthTransition(transition);
+        if (transition) endApiAuthTransition(transition);
     }
 }
 
@@ -3758,21 +3928,74 @@ function waitForApiAuthRefreshSettlement(refreshToken, sessionGeneration) {
     });
 }
 
-async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, sessionGeneration = '') {
+function normalizeApiAuthSessionTokenId(value) {
+    const numeric = Number(value || 0);
+    return Number.isSafeInteger(numeric) && numeric > 0 ? numeric : 0;
+}
+
+function getApiAuthSessionTokenId() {
+    const value = normalizeApiAuthSessionTokenId(localStorage.getItem(API_AUTH_SESSION_TOKEN_ID_KEY));
+    if (!value && localStorage.getItem(API_AUTH_SESSION_TOKEN_ID_KEY)) {
+        localStorage.removeItem(API_AUTH_SESSION_TOKEN_ID_KEY);
+    }
+    return value;
+}
+
+function apiAuthRefreshResponseMatchesIdentity(expectedUser, data = {}) {
+    const storedUser = readApiAuthStoredUser();
+    if (expectedUser && storedUser && !apiAuthUsersShareIdentity(expectedUser, storedUser)) return false;
+    return true;
+}
+
+function canApplyApiAuthRefreshResponse(refreshToken, expectedUser, sessionGeneration, data = {}) {
+    if (!data?.accessToken || !data.refreshToken) return false;
+    if ((localStorage.getItem(API_AUTH_SESSION_GENERATION_KEY) || '') !== String(sessionGeneration || '')) return false;
+    if (!apiAuthRefreshResponseMatchesIdentity(expectedUser, data)) return false;
+    if (isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) return true;
+
+    const responseSessionTokenId = normalizeApiAuthSessionTokenId(data.sessionTokenId || data.refreshTokenId);
+    const currentSessionTokenId = getApiAuthSessionTokenId();
+    const currentRefreshToken = localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY);
+    if (!currentRefreshToken || currentRefreshToken === refreshToken) return false;
+    return Boolean(responseSessionTokenId
+        && currentSessionTokenId
+        && responseSessionTokenId > currentSessionTokenId);
+}
+
+async function requestApiAuthTokenRefresh(refreshToken) {
+    const headers = { 'Content-Type': 'application/json' };
+    const accessToken = localStorage.getItem(API_AUTH_ACCESS_TOKEN_KEY) || localStorage.getItem('pzp_token');
+    if (accessToken) headers.Authorization = `Bearer ${accessToken}`;
+    return apiNetworkFetch(`${API_BASE}/auth/refresh`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ refreshToken })
+    });
+}
+
+async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, sessionGeneration = '', options = {}) {
     if (!refreshToken) return { accessToken: null, outcome: 'missing' };
     try {
-        let response = await apiNetworkFetch(`${API_BASE}/auth/refresh`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ refreshToken })
-        });
+        let response = await requestApiAuthTokenRefresh(refreshToken);
         let data = await response.json().catch(() => ({}));
+        ({ response, data } = await retryApiAuthRateLimitedResponse(
+            response,
+            data,
+            () => requestApiAuthTokenRefresh(refreshToken),
+            {
+                canContinue: () => !getActiveApiAuthTransitionMarker()
+                    && isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)
+            }
+        ));
         if (getActiveApiAuthTransitionMarker()) {
             if (response.ok) revokeUnclaimedApiRefreshToken(data.refreshToken);
             setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'session-transition' });
             return { accessToken: null, outcome: 'superseded' };
         }
-        if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+        if (!response.ok && !isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+            return { accessToken: null, outcome: 'superseded' };
+        }
+        if (response.ok && data.accessToken && !canApplyApiAuthRefreshResponse(refreshToken, expectedUser, sessionGeneration, data)) {
             return { accessToken: null, outcome: 'superseded' };
         }
         if (!response.ok || !data.accessToken) {
@@ -3790,35 +4013,54 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
                 if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
                     return { accessToken: null, outcome: 'superseded' };
                 }
-                response = await apiNetworkFetch(`${API_BASE}/auth/refresh`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ refreshToken })
-                });
+                response = await requestApiAuthTokenRefresh(refreshToken);
                 data = await response.json().catch(() => ({}));
+                ({ response, data } = await retryApiAuthRateLimitedResponse(
+                    response,
+                    data,
+                    () => requestApiAuthTokenRefresh(refreshToken),
+                    {
+                        canContinue: () => !getActiveApiAuthTransitionMarker()
+                            && isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)
+                    }
+                ));
                 if (getActiveApiAuthTransitionMarker()) {
                     if (response.ok) revokeUnclaimedApiRefreshToken(data.refreshToken);
                     setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'session-transition' });
                     return { accessToken: null, outcome: 'superseded' };
                 }
-                if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+                if (!response.ok && !isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+            return { accessToken: null, outcome: 'superseded' };
+        }
+        if (response.ok && data.accessToken && !canApplyApiAuthRefreshResponse(refreshToken, expectedUser, sessionGeneration, data)) {
                     return { accessToken: null, outcome: 'superseded' };
                 }
                 alreadyRotated = response.status === 409
                     && String(data?.code || '').toLowerCase() === 'refresh_already_rotated';
             }
-            const failureKind = alreadyRotated
-                ? 'terminal'
-                : (response.ok ? 'transient' : classifyApiAuthHttpFailure(response.status));
-            setApiAuthSessionFailure(failureKind, {
-                stage: 'refresh',
-                status: response.status,
-                reason: alreadyRotated
-                    ? 'refresh-already-rotated'
-                    : (response.ok ? 'malformed-response' : 'http')
-            });
-            if (failureKind === 'terminal') clearApiAuthSessionStorage();
-            return { accessToken: null, outcome: failureKind };
+            if (!response.ok || !data.accessToken) {
+                const failureKind = alreadyRotated
+                    ? 'terminal'
+                    : (response.ok ? 'transient' : classifyApiAuthHttpFailure(response.status));
+                const rateLimitFailure = getApiAuthRateLimitFailureDetails('refresh', response, data);
+                setApiAuthSessionFailure(failureKind, rateLimitFailure || {
+                    stage: 'refresh',
+                    status: response.status,
+                    reason: alreadyRotated
+                        ? 'refresh-already-rotated'
+                        : (response.ok ? 'malformed-response' : 'http')
+                });
+                if (failureKind === 'terminal') clearApiAuthSessionStorage('refresh-terminal');
+                recordApiRedirectDiagnostic('auth-refresh', {
+                    refreshOutcome: failureKind,
+                    status: response.status,
+                    code: data?.code,
+                    reason: rateLimitFailure?.reason || (alreadyRotated ? 'refresh-already-rotated' : 'http'),
+                    requestId: data?.requestId || data?.request_id,
+                    retryAfterSeconds: rateLimitFailure?.retryAfterSeconds
+                });
+                return { accessToken: null, outcome: failureKind };
+            }
         }
         if (expectedUser
             && (!data.user || !apiAuthUsersShareIdentity(expectedUser, data.user))) {
@@ -3827,10 +4069,14 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
                 stage: 'refresh',
                 reason: 'refresh-identity-mismatch'
             });
-            clearApiAuthSessionStorage();
+            clearApiAuthSessionStorage('refresh-identity-mismatch');
+            recordApiRedirectDiagnostic('auth-refresh', {
+                refreshOutcome: 'terminal',
+                reason: 'refresh-identity-mismatch'
+            });
             return { accessToken: null, outcome: 'terminal' };
         }
-        if (!rememberApiAuthSession(data)) {
+        if (!rememberApiAuthSession(data, { refreshOperationStartedAt: options.operationStartedAt })) {
             revokeUnclaimedApiRefreshToken(data.refreshToken);
             setApiAuthSessionFailure('transient', {
                 stage: 'refresh',
@@ -3839,6 +4085,11 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
             return { accessToken: null, outcome: 'superseded' };
         }
         clearApiAuthSessionFailure();
+        recordApiRedirectDiagnostic('auth-refresh', {
+            refreshOutcome: 'success',
+            status: response.status,
+            requestId: data?.requestId || data?.request_id
+        });
         return { accessToken: data.accessToken, outcome: 'success' };
     } catch (err) {
         if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
@@ -3846,6 +4097,10 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
         }
         setApiAuthSessionFailure('transient', {
             stage: 'refresh',
+            reason: 'network'
+        });
+        recordApiRedirectDiagnostic('auth-refresh', {
+            refreshOutcome: 'transient',
             reason: 'network'
         });
         console.warn('[Auth] refresh failed:', err?.message || err);
@@ -3858,6 +4113,69 @@ function apiAuthRefreshIdentityKey(user = null) {
     if (user.id !== undefined && user.id !== null) return `id:${String(user.id)}`;
     const username = String(user.username || '').trim().toLowerCase();
     return username ? `username:${username}` : '';
+}
+
+function waitForApiAuthRefreshCoordination(refreshToken, sessionGeneration) {
+    if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) return Promise.resolve('session-changed');
+    return new Promise(resolve => {
+        let timer = null;
+        let settled = false;
+        const finish = outcome => {
+            if (settled) return;
+            settled = true;
+            if (timer !== null && typeof clearTimeout === 'function') clearTimeout(timer);
+            if (typeof window !== 'undefined' && typeof window.removeEventListener === 'function') {
+                window.removeEventListener('storage', handleStorage);
+            }
+            resolve(outcome);
+        };
+        const handleStorage = event => {
+            if (!event) return finish('storage');
+            if (event.key === API_AUTH_ACCESS_TOKEN_KEY
+                || event.key === API_AUTH_REFRESH_TOKEN_KEY
+                || event.key === API_AUTH_SESSION_GENERATION_KEY) {
+                return finish('session-changed');
+            }
+            if (event.key === API_AUTH_REFRESH_COORDINATION_KEY) return finish('coordination-changed');
+            return null;
+        };
+        if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
+            window.addEventListener('storage', handleStorage);
+        }
+        timer = setTimeout(() => finish('timeout'), API_AUTH_REFRESH_COORDINATION_WAIT_MS);
+    });
+}
+
+async function runApiAuthRefreshWithCoordination(refreshToken, expectedUser, sessionGeneration, expectedIdentityKey) {
+    const operationId = createApiAuthSessionGeneration();
+    const operationStartedAt = Date.now();
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+        const activeMarker = readApiAuthRefreshCoordinationMarker();
+        if (apiAuthRefreshCoordinationMatches(activeMarker, refreshToken, sessionGeneration, expectedIdentityKey)
+            && activeMarker.id !== operationId) {
+            await waitForApiAuthRefreshCoordination(refreshToken, sessionGeneration);
+            if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
+                return { accessToken: null, outcome: 'superseded' };
+            }
+        }
+
+        const marker = {
+            id: operationId,
+            refreshToken,
+            sessionGeneration,
+            expectedIdentityKey,
+            startedAt: operationStartedAt
+        };
+        localStorage.setItem(API_AUTH_REFRESH_COORDINATION_KEY, JSON.stringify(marker));
+        const claimedMarker = readApiAuthRefreshCoordinationMarker();
+        if (!claimedMarker || claimedMarker.id !== operationId) continue;
+        try {
+            return await performApiAuthTokenRefresh(refreshToken, expectedUser, sessionGeneration, { operationStartedAt });
+        } finally {
+            clearApiAuthRefreshCoordinationMarker(marker);
+        }
+    }
+    return performApiAuthTokenRefresh(refreshToken, expectedUser, sessionGeneration, { operationStartedAt });
 }
 
 function apiRefreshAuthSession(expectedUserOverride = null) {
@@ -3879,7 +4197,12 @@ function apiRefreshAuthSession(expectedUserOverride = null) {
     }
 
     const operation = { refreshToken, sessionGeneration, expectedIdentityKey, promise: null };
-    const pendingRefresh = performApiAuthTokenRefresh(refreshToken, expectedUser, sessionGeneration);
+    const pendingRefresh = runApiAuthRefreshWithCoordination(
+        refreshToken,
+        expectedUser,
+        sessionGeneration,
+        expectedIdentityKey
+    );
     const trackedRefresh = pendingRefresh.finally(() => {
         if (apiAuthRefreshOperation === operation) apiAuthRefreshOperation = null;
     });
@@ -3933,13 +4256,37 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
             return null;
         }
+        let verifyResponseData = await readApiResponseJsonForRetry(response);
+        ({ response, data: verifyResponseData } = await retryApiAuthRateLimitedResponse(
+            response,
+            verifyResponseData,
+            () => apiNetworkFetch(`${API_BASE}/auth/verify`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            }),
+            {
+                canContinue: () => !getActiveApiAuthTransitionMarker()
+                    && getStoredAuthToken() === token
+                    && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) === verifiedRefreshToken
+            }
+        ));
+        if (getActiveApiAuthTransitionMarker()) {
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
+            return null;
+        }
+        if (getStoredAuthToken() !== token
+            || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+            if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+            setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+            return null;
+        }
         if (response.status === 403) {
             setApiAuthSessionFailure('terminal', {
                 stage: 'verify',
                 status: response.status,
-                reason: 'forbidden-session'
+                reason: 'forbidden-session',
+                requestId: verifyResponseData?.requestId || verifyResponseData?.request_id
             });
-            clearApiAuthSessionStorage();
+            clearApiAuthSessionStorage('verify-forbidden-session');
             return null;
         }
         if (response.status === 401) {
@@ -3954,7 +4301,7 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
                         status: response.status,
                         reason: 'unauthorized'
                     });
-                    clearApiAuthSessionStorage();
+                    clearApiAuthSessionStorage('verify-unauthorized');
                 }
                 return null;
             }
@@ -3974,15 +4321,39 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
                 setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
                 return null;
             }
+            verifyResponseData = await readApiResponseJsonForRetry(response);
+            ({ response, data: verifyResponseData } = await retryApiAuthRateLimitedResponse(
+                response,
+                verifyResponseData,
+                () => apiNetworkFetch(`${API_BASE}/auth/verify`, {
+                    headers: { 'Authorization': `Bearer ${refreshedToken}` }
+                }),
+                {
+                    canContinue: () => !getActiveApiAuthTransitionMarker()
+                        && getStoredAuthToken() === token
+                        && localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) === verifiedRefreshToken
+                }
+            ));
+            if (getActiveApiAuthTransitionMarker()) {
+                setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-transition' });
+                return null;
+            }
+            if (getStoredAuthToken() !== token
+                || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY) !== verifiedRefreshToken) {
+                if (sessionChangeRetry < 1) return apiVerifyToken(sessionChangeRetry + 1);
+                setApiAuthSessionFailure('transient', { stage: 'verify', reason: 'session-changed' });
+                return null;
+            }
         }
         if (!response.ok) {
             const failureKind = classifyApiAuthHttpFailure(response.status);
-            setApiAuthSessionFailure(failureKind, {
+            const rateLimitFailure = getApiAuthRateLimitFailureDetails('verify', response, verifyResponseData);
+            setApiAuthSessionFailure(failureKind, rateLimitFailure || {
                 stage: 'verify',
                 status: response.status,
                 reason: 'http'
             });
-            if (failureKind === 'terminal') clearApiAuthSessionStorage();
+            if (failureKind === 'terminal') clearApiAuthSessionStorage('verify-terminal');
             return null;
         }
         const data = await response.json().catch(() => null);
@@ -3996,7 +4367,8 @@ async function apiVerifyToken(sessionChangeRetry = 0) {
             setApiAuthSessionFailure('transient', {
                 stage: 'verify',
                 status: response.status,
-                reason: 'malformed-response'
+                reason: 'malformed-response',
+                requestId: data?.requestId || data?.request_id
             });
             return null;
         }

@@ -253,7 +253,7 @@ describe('Service Worker cache safety policy', () => {
         );
     });
 
-    it('returns the canonical shell as an offline navigation fallback', async () => {
+    it('returns the canonical shell only for root/index offline navigation fallback', async () => {
         const runtimePolicy = loadPolicy({
             fetch: async () => { throw new Error('offline'); },
             cacheMatch(request) {
@@ -264,9 +264,29 @@ describe('Service Worker cache safety policy', () => {
             }
         });
 
-        const response = await runtimePolicy.networkFirstPage(get('/reports.html'));
+        const response = await runtimePolicy.networkFirstPage(get('/'));
         assert.equal(response.status, 200);
         assert.equal(await response.text(), '<main>Offline shell</main>');
+    });
+
+    it('returns neutral offline navigation for module routes without an exact cached page', async () => {
+        const runtimePolicy = loadPolicy({
+            fetch: async () => { throw new Error('offline'); },
+            cacheMatch(request) {
+                const value = typeof request === 'string' ? request : request.url;
+                return new URL(value, 'https://event-genix.test').pathname === '/index.html'
+                    ? new Response('<main class="timeline-dashboard-page">Timeline shell</main>', { status: 200 })
+                    : null;
+            }
+        });
+
+        const response = await runtimePolicy.networkFirstPage(get('/reports.html'));
+        const body = await response.text();
+        assert.equal(response.status, 503);
+        assert.match(body, /data-offline-navigation="true"/);
+        assert.match(body, /data-requested-route="\/reports\.html"/);
+        assert.doesNotMatch(body, /timeline-dashboard-page/);
+        assert.equal(response.headers.get('Cache-Control'), 'no-store');
     });
 
     it('clears API and runtime caches, restores the public shell, and deletes the legacy offline DB', async () => {

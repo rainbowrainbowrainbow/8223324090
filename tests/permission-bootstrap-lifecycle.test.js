@@ -68,6 +68,7 @@ function loadHarness(fetchImpl) {
         AUTH_ACCESS_TOKEN_KEY: 'pzp_access_token', CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user' } },
         localStorage: { getItem: key => store.get(key) || null, setItem: (key, value) => store.set(key, String(value)) },
         getAuthHeaders: () => ({ Authorization: 'Bearer test' }), fetch: fetchImpl,
+        recordRedirectDiagnostic() {},
         setTimeout: callback => { callback(); }, Date, Error, Object, Number, Set,
         window: { dispatchEvent() {} }, document: { getElementById() { return null; } }, console
     };
@@ -201,6 +202,7 @@ test('page access guard defers without redirect until permissions are ready', ()
             return false;
         },
         getAuthenticatedTimelineStartPage: () => '/',
+        recordRedirectDiagnostic() {},
         window: {
             location: {
                 pathname: '/sales-funnel',

@@ -373,6 +373,7 @@ const ANY_ROLE = ROLE_HIERARCHY;
 const REFRESH_TOKEN_EXPIRY_DAYS = 30;
 const ACCESS_TOKEN_EXPIRY = '15m'; // Short-lived access token
 const REFRESH_ROTATION_DUPLICATE_GRACE_MS = 5000;
+const REFRESH_ROTATION_RECOVERY_WINDOW_MS = 30000;
 
 /**
  * Generate a cryptographically secure refresh token
@@ -388,6 +389,35 @@ function hashRefreshToken(token) {
     return crypto.createHash('sha256').update(token).digest('hex');
 }
 
+function verifyRefreshRecoveryAccessToken(accessToken, storedUser, oldToken) {
+    if (!accessToken || !storedUser || !oldToken?.id || !oldToken?.created_at) return false;
+    let payload;
+    try {
+        payload = jwt.verify(accessToken, JWT_SECRET, { ignoreExpiration: true });
+    } catch {
+        return false;
+    }
+    const payloadId = payload?.id === undefined || payload?.id === null ? '' : String(payload.id);
+    const storedId = storedUser?.id === undefined || storedUser?.id === null ? '' : String(storedUser.id);
+    const payloadUsername = String(payload?.username || '').trim().toLowerCase();
+    const storedUsername = String(storedUser?.username || '').trim().toLowerCase();
+    const identityMatches = payloadId && storedId
+        ? payloadId === storedId
+        : Boolean(payloadUsername && storedUsername && payloadUsername === storedUsername);
+    if (!identityMatches) return false;
+
+    const payloadSessionTokenId = Number(payload.sessionTokenId || payload.refreshTokenId || 0);
+    const oldTokenId = Number(oldToken.id || 0);
+    if (Number.isFinite(payloadSessionTokenId)
+        && Number.isFinite(oldTokenId)
+        && payloadSessionTokenId > 0
+        && oldTokenId > 0) {
+        return payloadSessionTokenId === oldTokenId;
+    }
+
+    return false;
+}
+
 /**
  * Create a new access + refresh token pair
  */
@@ -400,19 +430,20 @@ async function createTokenPair(user, { deviceInfo, ipAddress } = {}, db = pool) 
     const insertResult = await db.query(
         `INSERT INTO refresh_tokens (user_id, token_hash, device_info, ip_address, expires_at, created_at)
          VALUES ($1, $2, $3, $4, $5, clock_timestamp())
-         RETURNING created_at`,
+         RETURNING id, created_at`,
         [user.id, tokenHash, (deviceInfo || '').slice(0, 200), ipAddress || null, expiresAt]
     );
 
     const databaseIssuedAt = new Date(insertResult.rows?.[0]?.created_at).getTime();
     const sessionIssuedAt = Number.isFinite(databaseIssuedAt) ? databaseIssuedAt : Date.now();
+    const refreshTokenId = insertResult.rows?.[0]?.id || null;
     const accessToken = jwt.sign(
-        { ...authUser, sessionIssuedAt },
+        { ...authUser, sessionIssuedAt, sessionTokenId: refreshTokenId },
         JWT_SECRET,
         { expiresIn: ACCESS_TOKEN_EXPIRY }
     );
 
-    return { accessToken, refreshToken, expiresAt, sessionIssuedAt };
+    return { accessToken, refreshToken, expiresAt, sessionIssuedAt, sessionTokenId: refreshTokenId, refreshTokenId };
 }
 
 /**
@@ -420,7 +451,7 @@ async function createTokenPair(user, { deviceInfo, ipAddress } = {}, db = pool) 
  * the same token. A same-client duplicate stays non-destructive even when the
  * first successful response was lost and the client retries later.
  */
-async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {}) {
+async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress, recoveryAccessToken } = {}) {
     const oldHash = hashRefreshToken(oldRefreshToken);
     const normalizedDeviceInfo = (deviceInfo || '').slice(0, 200);
     const normalizedIpAddress = ipAddress ? String(ipAddress) : null;
@@ -502,7 +533,7 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
                     };
                 }
 
-                const replacementIds = [];
+                const replacementRows = [];
                 const visited = new Set();
                 let replacementId = oldToken.replaced_by;
                 while (replacementId && !visited.has(Number(replacementId))) {
@@ -517,8 +548,49 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
                     if (!replacement) break;
                     const tokenId = Number(replacement.id);
                     visited.add(tokenId);
-                    replacementIds.push(tokenId);
+                    replacementRows.push(replacement);
                     replacementId = replacement.replaced_by;
+                }
+                const replacementIds = replacementRows.map(row => Number(row.id));
+                const tailReplacement = replacementRows.at(-1) || null;
+                const hasTerminalRevokedTail = Boolean(tailReplacement?.revoked_at && !tailReplacement?.replaced_by);
+                const hasRecoveryAccessProof = verifyRefreshRecoveryAccessToken(recoveryAccessToken, storedUser, oldToken);
+                if (!hasTerminalRevokedTail
+                    && hasRecoveryAccessProof
+                    && Number.isFinite(rotationAgeMs)
+                    && rotationAgeMs >= 0
+                    && rotationAgeMs <= REFRESH_ROTATION_RECOVERY_WINDOW_MS) {
+                    if (new Date(oldToken.expires_at) < new Date()) {
+                        await client.query('COMMIT');
+                        return { error: 'Refresh token expired', code: 'refresh_token_expired', status: 401 };
+                    }
+                    const user = await resolveActiveQaCreatorLease(storedUser, client);
+                    const { accessToken, refreshToken: recoveredRefreshToken, expiresAt, refreshTokenId } = await createTokenPair(
+                        user,
+                        { deviceInfo: normalizedDeviceInfo, ipAddress: normalizedIpAddress },
+                        client
+                    );
+                    if (replacementIds.length > 0) {
+                        await client.query(
+                            `UPDATE refresh_tokens
+                             SET revoked_at = clock_timestamp()
+                             WHERE id = ANY($1::int[])
+                               AND id <> $2
+                               AND revoked_at IS NULL`,
+                            [replacementIds, refreshTokenId]
+                        );
+                    }
+                    if (tailReplacement) {
+                        await client.query(
+                            `UPDATE refresh_tokens
+                             SET replaced_by = $1
+                             WHERE id = $2`,
+                            [refreshTokenId, tailReplacement.id]
+                        );
+                    }
+                    await client.query('COMMIT');
+
+                    return { accessToken, refreshToken: recoveredRefreshToken, expiresAt, user, sessionTokenId: refreshTokenId, recovered: true };
                 }
                 if (replacementIds.length > 0) {
                     await client.query(
@@ -550,21 +622,20 @@ async function rotateRefreshToken(oldRefreshToken, { deviceInfo, ipAddress } = {
         }
 
         const user = await resolveActiveQaCreatorLease(storedUser, client);
-        const { accessToken, refreshToken: newRefreshToken, expiresAt } = await createTokenPair(
+        const { accessToken, refreshToken: newRefreshToken, expiresAt, refreshTokenId } = await createTokenPair(
             user,
             { deviceInfo: normalizedDeviceInfo, ipAddress: normalizedIpAddress },
             client
         );
-        const newHash = hashRefreshToken(newRefreshToken);
         await client.query(
             `UPDATE refresh_tokens SET revoked_at = clock_timestamp(),
-                    replaced_by = (SELECT id FROM refresh_tokens WHERE token_hash = $1)
+                    replaced_by = $1
              WHERE id = $2`,
-            [newHash, oldToken.id]
+            [refreshTokenId, oldToken.id]
         );
         await client.query('COMMIT');
 
-        return { accessToken, refreshToken: newRefreshToken, expiresAt, user };
+        return { accessToken, refreshToken: newRefreshToken, expiresAt, user, sessionTokenId: refreshTokenId };
     } catch (error) {
         try { await client.query('ROLLBACK'); } catch {}
         throw error;

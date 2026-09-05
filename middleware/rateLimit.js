@@ -11,8 +11,12 @@ const loginCanonicalRateLimitMap = new Map();
 const loginIpRateLimitMap = new Map();
 const refreshSessionRateLimitMap = new Map();
 const refreshIpRateLimitMap = new Map();
+const authAvailabilityRateLimitMap = new Map();
 const RATE_LIMIT_WINDOW = 60000;
 const RATE_LIMIT_MAX = parseInt(process.env.RATE_LIMIT_MAX) || 300;
+const AUTH_AVAILABILITY_RATE_LIMIT_WINDOW = 60000;
+const AUTH_AVAILABILITY_RATE_LIMIT_MAX = parseInt(process.env.AUTH_AVAILABILITY_RATE_LIMIT_MAX)
+    || Math.max(RATE_LIMIT_MAX, 120);
 const LOGIN_RATE_LIMIT_WINDOW = 60000;
 const LOGIN_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_RATE_LIMIT_MAX) || 5;
 const LOGIN_IP_RATE_LIMIT_MAX = parseInt(process.env.LOGIN_IP_RATE_LIMIT_MAX)
@@ -21,6 +25,47 @@ const REFRESH_SESSION_RATE_LIMIT_WINDOW = 60000;
 const REFRESH_SESSION_RATE_LIMIT_MAX = 10;
 const REFRESH_IP_RATE_LIMIT_MAX = parseInt(process.env.REFRESH_IP_RATE_LIMIT_MAX)
     || Math.max(REFRESH_SESSION_RATE_LIMIT_MAX * 10, 100);
+const AUTH_AVAILABILITY_PATHS = new Set([
+    '/auth/verify',
+    '/auth/login',
+    '/auth/refresh'
+]);
+
+function normalizedApiLocalPath(req) {
+    const rawPath = String(req.path || req.url || '/').split('?')[0];
+    if (rawPath.startsWith('/api/')) return rawPath.slice('/api'.length) || '/';
+    return rawPath.startsWith('/') ? rawPath : `/${rawPath}`;
+}
+
+function isAuthAvailabilityRequest(req) {
+    return AUTH_AVAILABILITY_PATHS.has(normalizedApiLocalPath(req));
+}
+
+function retryAfterSecondsFor(entry, now, windowMs) {
+    return Math.max(1, Math.ceil((windowMs - (now - entry.start)) / 1000));
+}
+
+function rejectRateLimited(res, {
+    entry,
+    now,
+    windowMs,
+    error,
+    code,
+    bucket,
+    reason,
+    retryable = true
+}) {
+    const retryAfterSeconds = retryAfterSecondsFor(entry, now, windowMs);
+    res.setHeader('Retry-After', String(retryAfterSeconds));
+    return res.status(429).json({
+        error,
+        code,
+        bucket,
+        reason,
+        retryable,
+        retryAfterSeconds
+    });
+}
 
 function activeRateLimitEntry(map, key, now, windowMs) {
     const entry = map.get(key);
@@ -68,18 +113,20 @@ function canonicalLoginIdentityKey(identity) {
 }
 
 function rejectRateLimitedLogin(res, entry, now) {
-    const retryAfterSeconds = Math.max(1, Math.ceil(
-        (LOGIN_RATE_LIMIT_WINDOW - (now - entry.start)) / 1000
-    ));
-    res.setHeader('Retry-After', String(retryAfterSeconds));
-    return res.status(429).json({
+    return rejectRateLimited(res, {
+        entry,
+        now,
+        windowMs: LOGIN_RATE_LIMIT_WINDOW,
         error: 'Забагато спроб входу, зачекайте хвилину',
         code: 'login_rate_limited',
-        retryAfterSeconds
+        bucket: 'auth_login',
+        reason: 'credential_attempt_budget',
+        retryable: false
     });
 }
 
 function rateLimiter(req, res, next) {
+    if (isAuthAvailabilityRequest(req)) return next();
     const ip = req.ip || req.connection.remoteAddress;
     const now = Date.now();
     let entry = rateLimitMap.get(ip);
@@ -90,9 +137,40 @@ function rateLimiter(req, res, next) {
         entry.count++;
     }
     if (entry.count > RATE_LIMIT_MAX) {
-        return res.status(429).json({ error: 'Забагато запитів, спробуйте пізніше' });
+        return rejectRateLimited(res, {
+            entry,
+            now,
+            windowMs: RATE_LIMIT_WINDOW,
+            error: 'Забагато запитів, спробуйте пізніше',
+            code: 'api_business_rate_limited',
+            bucket: 'api_business_ip',
+            reason: 'business_api_ip_budget'
+        });
     }
     next();
+}
+
+function authAvailabilityRateLimiter(req, res, next) {
+    const ip = String(req.ip || req.connection?.remoteAddress || 'unknown');
+    const now = Date.now();
+    const entry = incrementRateLimitEntry(
+        authAvailabilityRateLimitMap,
+        ip,
+        now,
+        AUTH_AVAILABILITY_RATE_LIMIT_WINDOW
+    );
+
+    if (entry.count <= AUTH_AVAILABILITY_RATE_LIMIT_MAX) return next();
+
+    return rejectRateLimited(res, {
+        entry,
+        now,
+        windowMs: AUTH_AVAILABILITY_RATE_LIMIT_WINDOW,
+        error: 'Забагато запитів авторизації, спробуйте пізніше',
+        code: 'auth_availability_rate_limited',
+        bucket: 'auth_availability_ip',
+        reason: 'auth_availability_ip_budget'
+    });
 }
 
 function loginRateLimiter(req, res, next) {
@@ -185,15 +263,15 @@ function refreshSessionLimiter(req, res, next) {
         : (ipEntry.count > REFRESH_IP_RATE_LIMIT_MAX ? ipEntry : null);
     if (!limitedEntry) return next();
 
-    const retryAfterSeconds = Math.max(1, Math.ceil(
-        (REFRESH_SESSION_RATE_LIMIT_WINDOW - (now - limitedEntry.start)) / 1000
-    ));
-    res.setHeader('Retry-After', String(retryAfterSeconds));
-    return res.status(429).json({
+    return rejectRateLimited(res, {
+        entry: limitedEntry,
+        now,
+        windowMs: REFRESH_SESSION_RATE_LIMIT_WINDOW,
         error: 'Забагато спроб оновлення сесії, зачекайте хвилину',
         code: 'refresh_rate_limited',
-        retryable: true,
-        retryAfterSeconds
+        bucket: limitedEntry === tokenEntry ? 'auth_refresh_session' : 'auth_refresh_ip',
+        reason: limitedEntry === tokenEntry ? 'refresh_token_attempt_budget' : 'refresh_ip_attempt_budget',
+        retryable: true
     });
 }
 
@@ -230,8 +308,14 @@ function createWriteRateLimiter(name, { windowMs = 900000, max = 30, methods = [
             entry.count++;
         }
         if (entry.count > max) {
-            return res.status(429).json({
-                error: 'Забагато запитів на створення, спробуйте пізніше'
+            return rejectRateLimited(res, {
+                entry,
+                now,
+                windowMs,
+                error: 'Забагато запитів на створення, спробуйте пізніше',
+                code: `${name.replace(/[^a-z0-9]+/gi, '_').toLowerCase()}_rate_limited`,
+                bucket: `${name}:ip`,
+                reason: 'write_endpoint_ip_budget'
             });
         }
         next();
@@ -281,6 +365,9 @@ const cleanupTimer = setInterval(() => {
     for (const [ip, entry] of loginIpRateLimitMap) {
         if (now - entry.start > LOGIN_RATE_LIMIT_WINDOW * 2) loginIpRateLimitMap.delete(ip);
     }
+    for (const [ip, entry] of authAvailabilityRateLimitMap) {
+        if (now - entry.start > AUTH_AVAILABILITY_RATE_LIMIT_WINDOW * 2) authAvailabilityRateLimitMap.delete(ip);
+    }
     for (const [key, entry] of refreshSessionRateLimitMap) {
         if (now - entry.start > REFRESH_SESSION_RATE_LIMIT_WINDOW * 2) refreshSessionRateLimitMap.delete(key);
     }
@@ -326,6 +413,7 @@ const landingLeadLimiter = createWriteRateLimiter('landing-lead', {
 
 module.exports = {
     rateLimiter,
+    authAvailabilityRateLimiter,
     loginRateLimiter,
     refreshSessionLimiter,
     bookingCreateLimiter,

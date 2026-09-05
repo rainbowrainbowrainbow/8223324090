@@ -773,9 +773,3 @@ main().catch(error => {
     process.stderr.write(`[redirect-auth-browser] ${error.stack || error.message}\n`);
     process.exitCode = 1;
 });
-
-
-
-
-
-

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.75",
+  "version": "0.81.76",
   "eventGenix": {
-    "releaseLabel": "PARK/DAR Shift Close UX"
+    "releaseLabel": "Redirect Reliability Release"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

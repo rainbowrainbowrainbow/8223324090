@@ -373,4 +373,3 @@ test('R2 gate: same-user metadata merge must not supersede and revoke a valid re
     assert.equal(storedUser.role, user.role);
     assert.equal(storedUser.name, 'Synthetic QA');
 });
-

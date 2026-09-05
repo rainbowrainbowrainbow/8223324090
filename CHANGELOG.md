@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.75 - Redirect Reliability Release
+
+### Авторизація / Навігація / (05.09.2026) [codex]
+- **Сесія не губиться під час refresh** — конкурентні вкладки, втрачена або запізніла відповідь refresh і same-user metadata merge більше не мають очищати чинну сесію.
+- **Ліміти не блокують вхід** — бізнес-навантаження відокремлене від verify/login/refresh, Retry-After зберігається, а довге очікування повертає контрольований retry-later стан.
+- **Навігація без підміни модулів** — Service Worker не підставляє Timeline замість Leads/Certificates при offline або старій вкладці після оновлення.
+- **Безпечна локальна діагностика** — додано bounded/redacted export auth/navigation подій без токенів, cookies, PII, body або автоматичного надсилання.
+
+---
+
 ## v0.81.74 - PARK/DAR Cashier Status UI
 
 ### Release / Versioning / (05.09.2026) [codex]

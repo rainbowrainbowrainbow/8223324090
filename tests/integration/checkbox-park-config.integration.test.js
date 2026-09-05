@@ -84,6 +84,23 @@ async function activeTicketCodes() {
     return result.rows.map(row => row.code);
 }
 
+async function activeCatalogSaleCodes() {
+    const result = await pool.query(
+        `SELECT p.id
+           FROM products p
+           JOIN price_rules pr
+             ON pr.product_id = p.id
+            AND pr.value > 0
+          WHERE p.business_context = 'event_genix'
+            AND p.is_active = TRUE
+            AND COALESCE(p.availability_status, 'active') = 'active'
+          GROUP BY p.id
+         HAVING COUNT(*) = 1
+          ORDER BY p.id`
+    );
+    return result.rows.map(row => row.id);
+}
+
 async function countRows(sql, params = []) {
     const result = await pool.query(sql, params);
     return Number(result.rows[0].count);
@@ -120,6 +137,7 @@ function argsFor({ userId, legalEntityKey, ticketCodes, overrides = {} }) {
 test('park config CLI applies repeatable disabled mapping on real PostgreSQL constraints', { skip: !SHOULD_RUN }, async () => {
     const userId = await seedUser();
     const ticketCodes = await activeTicketCodes();
+    const catalogSaleCodes = await activeCatalogSaleCodes();
     const legalEntityKey = unique('park_fop_config');
     const args = argsFor({ userId, legalEntityKey, ticketCodes });
     const env = { EVENTGENIX_ALLOW_PILOT_CONFIG_APPLY: 'true' };
@@ -195,8 +213,22 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         registerAlias: 'middle',
         checkboxIntegrationEnabled: false
     });
-    assert.equal(taxedReadiness.taxMappingReady, true);
-    assert.equal(taxedReadiness.missingTaxItemCodes.length, 0);
+    if (catalogSaleCodes.length) {
+        assert.equal(taxedReadiness.taxMappingReady, false, 'admission-only PARK config must not satisfy catalog-sale tax readiness');
+        assert.deepEqual(
+            taxedReadiness.missingTaxItemCodes.filter(code => ticketCodes.includes(code)),
+            [],
+            'all active admission tickets must still be mapped'
+        );
+        assert.deepEqual(
+            [...taxedReadiness.missingTaxItemCodes].sort(),
+            [...catalogSaleCodes].sort(),
+            'active catalog-sale items require explicit catalog-sale fiscal mappings'
+        );
+    } else {
+        assert.equal(taxedReadiness.taxMappingReady, true);
+        assert.equal(taxedReadiness.missingTaxItemCodes.length, 0);
+    }
 
     await pool.query(
         `UPDATE fiscal_item_mappings
@@ -216,8 +248,18 @@ test('park config CLI applies repeatable disabled mapping on real PostgreSQL con
         registerAlias: 'middle',
         checkboxIntegrationEnabled: false
     });
-    assert.equal(untaxedReadiness.taxMappingReady, true, 'untaxed active admission items must not require a fabricated provider tax id');
-    assert.equal(untaxedReadiness.missingTaxItemCodes.length, 0);
+    if (catalogSaleCodes.length) {
+        assert.equal(untaxedReadiness.taxMappingReady, false, 'catalog-sale fiscal mappings remain required after admission mappings are switched to untaxed');
+        assert.deepEqual(
+            untaxedReadiness.missingTaxItemCodes.filter(code => ticketCodes.includes(code)),
+            [],
+            'untaxed active admission items must not require a fabricated provider tax id'
+        );
+        assert.deepEqual([...untaxedReadiness.missingTaxItemCodes].sort(), [...catalogSaleCodes].sort());
+    } else {
+        assert.equal(untaxedReadiness.taxMappingReady, true, 'untaxed active admission items must not require a fabricated provider tax id');
+        assert.equal(untaxedReadiness.missingTaxItemCodes.length, 0);
+    }
 
     await assert.rejects(
         () => pool.query(

@@ -19,6 +19,8 @@ const MOCK_PORT = Number(process.env.CHECKBOX_BROWSER_MOCK_PORT || 0);
 const CREDENTIAL_REF = 'park-middle-browser';
 const CRM_PROFILE_KEY = 'event_genix';
 const REGISTER_ALIAS = 'middle';
+const ROUTE_OPTION_ID = 'park_production';
+const EXPECTED_IS_TEST = false;
 const HEADLESS = process.env.CASHIER_PAYMENTS_BROWSER_SMOKE_HEADLESS !== 'false';
 const PAYMENT_ACTIONS = ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open'];
 
@@ -88,9 +90,9 @@ async function seedFiscalScope(cashier) {
         `INSERT INTO fiscal_registers (
              fiscal_profile_id, fiscal_location_id, crm_profile_key, register_alias,
              display_name, provider, provider_register_id, provider_license_ref,
-             status, feature_enabled, metadata
+             status, feature_enabled, acceptance_enabled, metadata
          )
-         VALUES ($1, $2, $3, $4, 'Middle UI smoke register', 'checkbox', $5, $6, 'active', true, $7::jsonb)
+         VALUES ($1, $2, $3, $4, 'Middle UI smoke register', 'checkbox', $5, $6, 'active', true, true, $7::jsonb)
          RETURNING id`,
         [
             profile.rows[0].id,
@@ -99,16 +101,34 @@ async function seedFiscalScope(cashier) {
             REGISTER_ALIAS,
             `mock-register-${suffix}`,
             CREDENTIAL_REF,
-            JSON.stringify({ integration_owner: 'checkbox-ui-real-route-smoke', expected_is_test: true })
+            JSON.stringify({ integration_owner: 'checkbox-ui-real-route-smoke', expected_is_test: EXPECTED_IS_TEST })
+        ]
+    );
+    await pool.query(
+        `INSERT INTO fiscal_sale_routes (
+             route_option_id, business_context, fiscal_profile_id, fiscal_location_id,
+             fiscal_register_id, mode, expected_is_test, status, feature_enabled,
+             acceptance_enabled, metadata
+         )
+         VALUES ($1, $2, $3, $4, $5, 'production', $6, 'active', true, true, $7::jsonb)`,
+        [
+            ROUTE_OPTION_ID,
+            CRM_PROFILE_KEY,
+            profile.rows[0].id,
+            location.rows[0].id,
+            register.rows[0].id,
+            EXPECTED_IS_TEST,
+            JSON.stringify({ integration_owner: 'checkbox-ui-real-route-smoke' })
         ]
     );
     const providerShiftId = `mock-shift-${suffix}`;
-    await pool.query(
+    const shift = await pool.query(
         `INSERT INTO fiscal_shifts (
              fiscal_profile_id, fiscal_register_id, provider, provider_shift_id, status,
              lifecycle_stage, opened_by_user_id, opened_at, provider_opened_at, provider_snapshot
          )
-         VALUES ($1, $2, 'checkbox', $3, 'open', 'OPENED', $4, NOW(), NOW(), $5::jsonb)`,
+         VALUES ($1, $2, 'checkbox', $3, 'open', 'OPENED', $4, NOW(), NOW(), $5::jsonb)
+         RETURNING id`,
         [
             profile.rows[0].id,
             register.rows[0].id,
@@ -117,13 +137,14 @@ async function seedFiscalScope(cashier) {
             JSON.stringify({ seeded_provider_open_shift_for_ui_smoke: true })
         ]
     );
-    await pool.query(
+    const binding = await pool.query(
         `INSERT INTO fiscal_cashier_bindings (
              fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
              user_id, provider, provider_cashier_id, provider_cashier_login_ref,
              status, capability_scope
          )
-         VALUES ($1, $2, $3, $4, $5, 'checkbox', $6, $7, 'active', $8::text[])`,
+         VALUES ($1, $2, $3, $4, $5, 'checkbox', $6, $7, 'active', $8::text[])
+         RETURNING id`,
         [
             profile.rows[0].id,
             register.rows[0].id,
@@ -138,13 +159,38 @@ async function seedFiscalScope(cashier) {
     await pool.query(
         `INSERT INTO fiscal_item_mappings (
              fiscal_profile_id, fiscal_register_id, crm_profile_key, source_type, item_type,
-             item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps, status
+             item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps,
+             tax_mode, status, business_context
          )
           SELECT $1, $2, $3::varchar, 'admission_ticket', 'admission_ticket',
-                 type.code, CONCAT('Park admission ', type.code), 'checkbox', '7', 7, 0, 'active'
+                 type.code, CONCAT('Park admission ', type.code), 'checkbox', '7', 7, 0,
+                 'taxed', 'active', $4::varchar
             FROM admission_ticket_types type
            WHERE type.business_context = $4::varchar
              AND type.is_active = true`,
+        [profile.rows[0].id, register.rows[0].id, CRM_PROFILE_KEY, CRM_PROFILE_KEY]
+    );
+    await pool.query(
+        `INSERT INTO fiscal_item_mappings (
+             fiscal_profile_id, fiscal_register_id, crm_profile_key, source_type, item_type,
+             item_code, fiscal_item_name, provider, provider_tax_id, tax_code, tax_rate_bps,
+             tax_mode, status, business_context
+         )
+          SELECT $1, $2, $3::varchar, 'catalog_sale', 'catalog_sale',
+                 eligible.id, eligible.name, 'checkbox', NULL, NULL, NULL,
+                 'untaxed', 'active', $4::varchar
+            FROM (
+                 SELECT p.id, p.name
+                   FROM products p
+                   JOIN price_rules pr
+                     ON pr.product_id = p.id
+                    AND pr.value > 0
+                  WHERE p.business_context = $4::varchar
+                    AND p.is_active = true
+                    AND COALESCE(p.availability_status, 'active') = 'active'
+                  GROUP BY p.id, p.name
+                 HAVING COUNT(*) = 1
+            ) eligible`,
         [profile.rows[0].id, register.rows[0].id, CRM_PROFILE_KEY, CRM_PROFILE_KEY]
     );
     const readinessConfig = buildFiscalConfigurationSnapshot({
@@ -159,14 +205,55 @@ async function seedFiscalScope(cashier) {
             provider_register_id: `mock-register-${suffix}`,
             provider_license_ref: CREDENTIAL_REF,
             location_alias: 'park',
-            register_alias: REGISTER_ALIAS
+            register_alias: REGISTER_ALIAS,
+            expected_is_test: EXPECTED_IS_TEST
         },
         binding: {
             provider_cashier_id: `mock-cashier-${cashier.id}`,
             provider_cashier_login_ref: CREDENTIAL_REF
         },
-        runtimeConfig: { expectedIsTest: true }
+        runtimeConfig: { expectedIsTest: EXPECTED_IS_TEST }
     });
+    const openOperation = await pool.query(
+        `INSERT INTO fiscal_operations (
+             fiscal_profile_id, fiscal_register_id, fiscal_shift_id, fiscal_location_id,
+             operation_type, status, idempotency_key, provider, provider_operation_id,
+             currency, request_snapshot, initiated_by_user_id,
+             provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+             register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash
+         )
+         VALUES ($1, $2, $3, $4, 'shift_open', 'fiscalized', $5, 'checkbox', $6,
+                 'UAH', $7::jsonb, $8, $9, $10, $11, $12, $13, $14, $15, $16)
+         RETURNING id`,
+        [
+            profile.rows[0].id,
+            register.rows[0].id,
+            shift.rows[0].id,
+            location.rows[0].id,
+            `checkbox-ui-real-route-smoke:shift-open:${suffix}`,
+            providerShiftId,
+            JSON.stringify({
+                provider_shift_id: providerShiftId,
+                cashier_binding_id: Number(binding.rows[0].id),
+                fiscal_configuration_hash: readinessConfig.hash
+            }),
+            cashier.id,
+            `mock-org-${suffix}`,
+            `mock-outlet-${suffix}`,
+            `mock-register-${suffix}`,
+            `mock-cashier-${cashier.id}`,
+            CREDENTIAL_REF,
+            CREDENTIAL_REF,
+            EXPECTED_IS_TEST,
+            readinessConfig.hash
+        ]
+    );
+    await pool.query(
+        `UPDATE fiscal_shifts
+            SET open_operation_id = $2
+          WHERE id = $1`,
+        [shift.rows[0].id, openOperation.rows[0].id]
+    );
     await pool.query(
         `INSERT INTO checkbox_readiness_snapshots (
              fiscal_profile_id, fiscal_register_id, fiscal_location_id, crm_profile_key,
@@ -178,7 +265,7 @@ async function seedFiscalScope(cashier) {
              provider_shift_id, expected_is_test, checked_at, expires_at, latency_ms, result_snapshot
          )
          VALUES ($1, $2, $3, $4, $5, $5, $6, 'ready', true, true, true, true, true, true, true, true, false, false,
-                 'open', $7, $8, $9, $10, $11, true, NOW(), NOW() + INTERVAL '5 minutes', 1, $12::jsonb)`,
+                 'open', $7, $8, $9, $10, $11, $12, NOW(), NOW() + INTERVAL '5 minutes', 1, $13::jsonb)`,
         [
             profile.rows[0].id,
             register.rows[0].id,
@@ -191,6 +278,7 @@ async function seedFiscalScope(cashier) {
             `mock-register-${suffix}`,
             `mock-cashier-${cashier.id}`,
             providerShiftId,
+            EXPECTED_IS_TEST,
             JSON.stringify({ seeded_ready_snapshot_for_ui_smoke: true })
         ]
     );
@@ -235,7 +323,7 @@ async function startMockCheckbox(scope) {
                     id: scope.providerCashierId,
                     organization: { id: scope.providerOrganizationId },
                     blocked: false,
-                    is_test: true,
+                    is_test: EXPECTED_IS_TEST,
                     certificate_end: '2099-01-01T00:00:00.000Z',
                     permissions: { sales: true, cash_payment: true, card_payment: true }
                 });
@@ -248,7 +336,7 @@ async function startMockCheckbox(scope) {
                     id: scope.providerRegisterId,
                     organization_id: scope.providerOrganizationId,
                     fiscal_number: '4000000000',
-                    is_test: true,
+                    is_test: EXPECTED_IS_TEST,
                     created_at: '2026-01-01T00:00:00.000Z',
                     offline_mode: false,
                     stay_offline: false,
@@ -359,7 +447,7 @@ async function processOutboxWithMock(mock) {
         clientName: 'EventGenix Browser Smoke',
         clientVersion: 'test',
         timeoutMs: 1000,
-        expectedIsTest: true
+        expectedIsTest: EXPECTED_IS_TEST
     });
     let idleRounds = 0;
     for (let i = 0; i < 20; i += 1) {
@@ -404,7 +492,7 @@ async function run() {
         const context = await browser.newContext({ serviceWorkers: 'block' });
         const page = await context.newPage();
         await loginViaApi(page, cashier);
-        await page.goto(`${BASE_URL}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${BASE_URL}/cashier-payments?businessContext=${CRM_PROFILE_KEY}&routeOptionId=${ROUTE_OPTION_ID}&saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         const accessibilityContract = await page.evaluate(() => ({
             formLabelledBy: document.querySelector('#paymentOrderForm')?.getAttribute('aria-labelledby'),
@@ -425,7 +513,7 @@ async function run() {
         } catch (error) {
             const bootstrapDiagnostics = await page.evaluate(async () => {
                 const token = localStorage.getItem('pzp_token');
-                const response = await fetch('/api/payments/pilot-register-state?crmProfileKey=event_genix&locationAlias=park&registerAlias=middle', {
+                const response = await fetch(`/api/payments/pilot-register-state?businessContext=${encodeURIComponent('event_genix')}&routeOptionId=${encodeURIComponent('park_production')}`, {
                     headers: token ? { Authorization: `Bearer ${token}` } : {}
                 });
                 return {
@@ -494,7 +582,7 @@ async function run() {
         const pendingOrderId = await page.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id);
         const unresolvedApi = await page.evaluate(async () => {
             const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/unresolved-orders?crmProfileKey=event_genix&locationAlias=park&registerAlias=middle', {
+            const response = await fetch(`/api/payments/unresolved-orders?businessContext=${encodeURIComponent('event_genix')}&routeOptionId=${encodeURIComponent('park_production')}`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
@@ -531,7 +619,7 @@ async function run() {
         await page.unroute('**/api/payments/unresolved-orders*', unresolvedRouteHandler);
         const reportApi = await page.evaluate(async () => {
             const token = localStorage.getItem('pzp_token');
-            const response = await fetch('/api/payments/checkbox-sales-report?crmProfileKey=event_genix&locationAlias=park&registerAlias=middle&page=1&pageSize=1', {
+            const response = await fetch(`/api/payments/checkbox-sales-report?businessContext=${encodeURIComponent('event_genix')}&routeOptionId=${encodeURIComponent('park_production')}&page=1&pageSize=1`, {
                 headers: { Authorization: `Bearer ${token}` }
             });
             return { ok: response.ok, status: response.status, body: await response.json().catch(() => ({})) };
@@ -542,7 +630,7 @@ async function run() {
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         assert.match(await page.textContent('#unresolvedOrdersBody'), new RegExp(`RCP-${pendingOrderId}`), 'unresolved receipt remains visible after next customer');
-        await page.goto(`${BASE_URL}/cashier-payments?orderId=${pendingOrderId}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${BASE_URL}/cashier-payments?businessContext=${CRM_PROFILE_KEY}&routeOptionId=${ROUTE_OPTION_ID}&saleMode=admission&orderId=${pendingOrderId}`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#pendingReceiptNotice:not(.hidden)');
 
         await processOutboxWithMock(mock);

@@ -87,6 +87,8 @@ test('fiscal snapshots require independently present cashier and register creden
             fiscalRegisterId: 3,
             registerStatus: 'active',
             registerFeatureEnabled: true,
+            registerAcceptanceEnabled: true,
+            registerExpectedIsTest: true,
             provider: 'checkbox',
             providerLicenseRef: 'shared-runtime-ref'
         }),
@@ -117,6 +119,61 @@ test('cashier credential refs never fall back to a register license ref', () => 
         provider,
         /checkbox_cashier_ref\s*\|\|\s*licenseRef/,
         'provider resolution must require a cashier credential ref from cashier context'
+    );
+});
+
+test('route-scoped legacy binding fallback still enforces the fiscal cashier capability', async () => {
+    const client = {
+        async query(sql) {
+            const text = String(sql);
+            if (text.includes('FROM fiscal_profiles fp') && text.includes('fl.location_alias = $2')) {
+                return { rows: [{
+                    fiscal_profile_id: 1,
+                    crm_profile_key: 'event_genix',
+                    legal_entity_key: 'owner',
+                    fiscal_location_id: 2,
+                    location_alias: 'park',
+                    fiscal_register_id: 3,
+                    register_alias: 'middle',
+                    provider: 'checkbox',
+                    provider_license_ref: 'register-ref',
+                    fiscal_register_status: 'active',
+                    feature_enabled: true,
+                    acceptance_enabled: false,
+                    register_expected_is_test: true
+                }] };
+            }
+            if (text.includes('FROM fiscal_cashier_bindings b')) {
+                return { rows: [{
+                    id: 8,
+                    user_id: 7,
+                    fiscal_profile_id: 1,
+                    fiscal_location_id: 2,
+                    register_fiscal_location_id: 2,
+                    fiscal_register_id: 3,
+                    crm_profile_key: 'event_genix',
+                    location_alias: 'park',
+                    provider: 'checkbox',
+                    provider_cashier_login_ref: 'cashier-ref',
+                    status: 'active',
+                    capability_scope: ['payments.view']
+                }] };
+            }
+            throw new Error(`unexpected query: ${text.slice(0, 40)}`);
+        }
+    };
+    await assert.rejects(
+        __readinessProbeTest.loadScope(client, {
+            user: { id: 99, role: 'creator', business_contexts: ['event_genix'] },
+            cashierUserId: 7,
+            crmProfileKey: 'event_genix',
+            locationAlias: 'park',
+            registerAlias: 'middle',
+            action: 'payments.create',
+            authorizationCrmProfileKey: 'event_genix',
+            requireFiscalBinding: true
+        }),
+        error => error?.code === 'fiscal_binding_capability_denied'
     );
 });
 
@@ -524,11 +581,13 @@ test('Checkbox source safety scan covers templates and structured config without
     const unsafeJson = ['{"log', 'in":"', credential, '"}'].join('');
     const unsafeYaml = ['access', '_key', ': ', credential].join('');
     const unsafeGate = ['CHECKBOX_INTEGRATION_ENABLED', 'sandbox'].join('=');
+    const unsafeTestPermissionGate = ['CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS', 'true'].join('=');
     const unsafeJsonGate = JSON.stringify({ CHECKBOX_INTEGRATION_ENABLED: 'sandbox' });
     assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeEnv).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.json', unsafeJson).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.yml', unsafeYaml).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeGate).length > 0);
+    assert.ok(scanContent('docs/integrations/checkbox/runtime.env.example', unsafeTestPermissionGate).length > 0);
     assert.ok(scanContent('docs/integrations/checkbox/runtime.json', unsafeJsonGate).length > 0);
     assert.deepEqual(scanContent(
         'docs/integrations/checkbox/runtime.env.example',
@@ -604,6 +663,19 @@ test('readiness error responses redact login, license, access, device, token and
     assert.equal(response.body.code, 'checkbox_readiness_probe_failed');
     for (const secret of Object.values(values)) assert.doesNotMatch(serialized, new RegExp(secret.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
     assert.match(serialized, /\[redacted\]/);
+});
+
+test('readiness preserves expected fiscal sale route client errors instead of returning 500', () => {
+    const error = Object.assign(new Error('Selected fiscal route is not ready'), {
+        name: 'FiscalSaleRouteError',
+        code: 'fiscal_route_acceptance_disabled',
+        status: 503,
+        details: { routeOptionId: 'park_production' }
+    });
+    const response = readinessErrorResponse(error);
+    assert.equal(response.status, 503);
+    assert.equal(response.body.code, 'fiscal_route_acceptance_disabled');
+    assert.equal(response.body.error, 'Selected fiscal route is not ready');
 });
 
 test('unresolved queue pagination requires a validated cursor and snapshot revision after page one', () => {
@@ -1039,6 +1111,14 @@ test('payment readiness service keeps provider HTTP outside DB transactions and 
     assert.match(service, /fiscal_context_incomplete/);
     assert.match(service, /tax_mode = 'untaxed'/);
     assert.match(service, /tax_mode = 'taxed'/);
+    const taxReadiness = service.slice(
+        service.indexOf('async function loadTaxMappingReadiness'),
+        service.indexOf('async function loadLatestLocalShift')
+    );
+    assert.match(taxReadiness, /source_type = 'catalog_sale'[\s\S]*tax_mode = 'untaxed'/);
+    assert.match(taxReadiness, /source_type = 'catalog_sale'[\s\S]*tax_code IS NULL[\s\S]*tax_rate_bps IS NULL/);
+    assert.doesNotMatch(taxReadiness, /source_type = 'catalog_sale'[\s\S]{0,120}tax_mode = 'taxed'/);
+    assert.match(taxReadiness, /source_type = 'admission_ticket'[\s\S]*tax_mode = 'taxed'/);
     assert.match(service, /deriveIntegrationReady/);
     assert.match(service, /providerReady: false/);
     assert.match(service, /syncPortalClosedShift/);
@@ -1174,7 +1254,7 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
         2,
         'payment acceptance must be rechecked after the register lock'
     );
-    assert.match(paymentService, /fr\.metadata->>'expected_is_test' AS register_expected_is_test/);
+    assert.match(paymentService, /COALESCE\(fr\.metadata->>'expected_is_test', fr\.metadata->>'expectedIsTest'\) AS register_expected_is_test/);
     assert.match(cashierOps, /ensureOpenShiftForSale\(client, \{ order, user, fiscalConfig = null \}\)/);
     assert.match(cashierOps, /expected_is_test: normalizeBoolean\(fiscalSnapshot\.expected_is_test \?\? order\.register_expected_is_test\)/);
     assert.match(cashierOps, /register_credential_ref, cashier_credential_ref, expected_is_test, fiscal_configuration_hash/);
@@ -1306,7 +1386,7 @@ test('cashier UI fails closed when unresolved queue is unavailable and refreshes
     assert.match(js, /state\.unresolvedQueueState === 'available'/);
     assert.match(js, /\/api\/payments\/readiness\/probe/);
     assert.match(js, /await loadPilotRegisterState\(\{ silent: true \}\)/);
-    assert.match(js, /JSON\.stringify\(\{ crmProfileKey: PILOT_SCOPE\.crmProfileKey, locationAlias: PILOT_SCOPE\.locationAlias, registerAlias: PILOT_SCOPE\.registerAlias, force \}\)/);
+    assert.match(js, /JSON\.stringify\(\{[\s\S]*businessContext: PILOT_SCOPE\.crmProfileKey,[\s\S]*routeOptionId: PILOT_SCOPE\.routeOptionId,[\s\S]*cashierBindingId[\s\S]*force/);
     assert.match(js, /READINESS_REFRESH_MIN_MS/);
     assert.match(js, /READINESS_REFRESH_MAX_MS/);
     assert.match(js, /READINESS_REQUEST_TIMEOUT_MS/);
@@ -1376,11 +1456,13 @@ test('unresolved queue is register-wide with latest-job dedupe and mine markers'
     assert.doesNotMatch(listBlock, /po\.cashier_user_id = \$3/);
     assert.match(listBlock, /po\.fiscal_profile_id = \$1/);
     assert.match(listBlock, /po\.fiscal_register_id = \$2/);
+    assert.doesNotMatch(listBlock, /po\.business_context/, 'Recovery safety must remain physical-register-wide');
     assert.match(service, /fl\.location_alias = \$2/);
     assert.match(listBlock, /isMine:/);
     assert.match(listBlock, /cashierIdentity:/);
     assert.match(listBlock, /COUNT\(\*\)::integer AS register_count/);
-    assert.match(listBlock, /COUNT\(\*\) FILTER \(WHERE cashier_user_id = \$4\)::integer AS my_count/);
+    assert.match(listBlock, /COUNT\(\*\) FILTER \(WHERE COALESCE\(created_by_user_id, cashier_user_id\) = \$4\)::integer AS my_count/);
+    assert.match(listBlock, /isMine: Number\(row\.created_by_user_id \|\| row\.cashier_user_id \|\| 0\) === currentUserId/);
     assert.match(listBlock, /md5\(CONCAT\([\s\S]*string_agg\([\s\S]*CONCAT_WS\([\s\S]*id::text[\s\S]*payment_status[\s\S]*fiscal_status[\s\S]*outbox_status[\s\S]*ORDER BY id DESC/);
     assert.match(listBlock, /ORDER BY id DESC[\s\S]*LIMIT \(\$6::integer \+ 1\)/);
     assert.match(listBlock, /WHERE \$5::bigint IS NULL OR id < \$5::bigint/);
@@ -1411,8 +1493,12 @@ test('Checkbox sales report is filterable, paginated, and totals are not limited
     assert.match(service, /shiftId = null/);
     assert.match(service, /cashierUserId = null/);
     assert.match(service, /pageSize = 50/);
-    assert.match(service, /LIMIT \$7 OFFSET \$8/);
-    assert.match(service, /\(\$6::bigint IS NULL OR po\.cashier_user_id = \$6::bigint\)/);
+    assert.match(service, /LIMIT \$10 OFFSET \$11/);
+    assert.match(service, /cashierFilterIsMine/);
+    assert.equal((service.match(/\$9::boolean = TRUE AND COALESCE\(po\.created_by_user_id, po\.cashier_user_id\) = \$6::bigint/g) || []).length, 2);
+    assert.equal((service.match(/\$9::boolean = FALSE AND po\.cashier_user_id = \$6::bigint/g) || []).length, 2);
+    assert.match(service, /COALESCE\(po\.business_context, \$8::text\) = \$7::text/);
+    assert.equal((service.match(/COALESCE\(po\.business_context, \$8::text\) = \$7::text/g) || []).length, 2);
     assert.match(service, /WHEN outbox_status = 'failed'[\s\S]*WHEN max_attempts > 0 AND attempts >= max_attempts THEN 'failed_terminal'/);
     assert.match(service, /WHEN outbox_status = 'queued' AND fiscal_status = 'failed' THEN 'failed_retryable'/);
     assert.doesNotMatch(service, /outbox_status IN \('failed', 'claimed', 'running'\)/, 'In-flight jobs must remain pending rather than appear retryable-failed');
@@ -1423,18 +1509,22 @@ test('Checkbox sales report is filterable, paginated, and totals are not limited
     assert.doesNotMatch(js, /Z-звіт[^.]*офіційний/, 'Internal report must not be presented as an official Z-report');
 });
 
-test('cashier payment routes require exact fiscal scope and do not default to park FOP', () => {
+test('cashier payment routes accept only a safe route option and do not trust browser register aliases', () => {
     const routes = read('routes/payments.js');
     const js = read('js/cashier-payments-page.js');
     const readiness = read('services/payments/paymentReadinessService.js');
     const paymentService = read('services/payments/paymentService.js');
-    assert.match(routes, /function requirePaymentFiscalScope/);
-    assert.match(routes, /locationAlias: fiscalScopeValueFromRequest\(req, 'locationAlias', 'location_alias'\)/);
-    assert.match(routes, /throw new PaymentReadinessError\('fiscal_scope_required'/);
-    assert.doesNotMatch(routes, /\|\| 'event_genix'/);
-    assert.doesNotMatch(routes, /\|\| 'middle'/);
-    assert.match(js, /locationAlias: 'park'/);
-    assert.match(js, /X-Cashier-Pilot-Scope'\] = `\$\{PILOT_SCOPE\.crmProfileKey\}:\$\{PILOT_SCOPE\.locationAlias\}:\$\{PILOT_SCOPE\.registerAlias\}`/);
+    assert.match(routes, /async function resolvePaymentFiscalScope/);
+    assert.match(routes, /assertNoClientFiscalRouteOverride\(input\)/);
+    assert.match(routes, /code: 'fiscal_route_option_required'/);
+    assert.match(routes, /resolveFiscalSaleRoute\(\{/);
+    assert.match(routes, /authorizationCrmProfileKey: route\.businessContext/);
+    assert.match(routes, /businessContext: route\.businessContext/);
+    assert.match(readiness, /COALESCE\(business_context, crm_profile_key\) = \$4/);
+    assert.match(js, /routeOptionId: pageParams\.get\('routeOptionId'\)/);
+    assert.match(js, /X-Fiscal-Route-Option'\] = PILOT_SCOPE\.routeOptionId/);
+    assert.match(js, /params\.set\('cashierBindingId', String\(bindingId\)\)/);
+    assert.doesNotMatch(js, /X-Cashier-Pilot-Scope/);
     assert.match(paymentService, /function normalizeRequiredPaymentScope/);
     assert.match(paymentService, /fiscal_location_alias_required/);
     assert.match(paymentService, /const fiscalScope = normalizeRequiredPaymentScope\(body\)/);
@@ -1443,6 +1533,12 @@ test('cashier payment routes require exact fiscal scope and do not default to pa
     assert.doesNotMatch(paymentService, /locationAlias = PILOT_LOCATION_ALIAS/);
     assert.doesNotMatch(paymentService, /registerAlias = PILOT_REGISTER_ALIAS/);
     assert.match(readiness, /function normalizeFiscalScope/);
+    const loadScope = readiness.slice(
+        readiness.indexOf('async function loadScope'),
+        readiness.indexOf('async function loadScopeForBinding')
+    );
+    assert.match(loadScope, /requireFiscalBinding && cashierUserId != null[\s\S]*userId: cashierUserId/);
+    assert.match(loadScope, /hasSelectedCashier[\s\S]*loadSelectedReadinessBinding/);
     assert.match(readiness, /fiscal_location_alias_required/);
     assert.match(readiness, /fiscalLocationId: Number\(scope\.mapping\?\.fiscal_location_id/);
     assert.doesNotMatch(readiness, /crmProfileKey = PILOT_CRM_PROFILE_KEY/);

@@ -2270,17 +2270,14 @@ test('provider factory resolves only logical refs through environment values', (
             && error.configuration === true
             && error.details?.missing?.includes('cashier_credential_ref')
     );
-    assert.throws(
-        () => factory.createForContext({
-            job: {
-                register_credential_ref: 'park-middle',
-                cashier_credential_ref: 'park-middle',
-                expected_is_test: true
-            }
-        }),
-        error => error.code === 'checkbox_runtime_expected_is_test_mismatch'
-            && error.configuration === true
-    );
+    const testModeProvider = factory.createForContext({
+        job: {
+            register_credential_ref: 'park-middle',
+            cashier_credential_ref: 'park-middle',
+            expected_is_test: true
+        }
+    });
+    assert.equal(testModeProvider.expectedIsTest, true);
 });
 
 test('provider factory eligibility is scoped by fiscal profile and register without payment_outbox_jobs.provider', async () => {
@@ -2327,7 +2324,8 @@ test('provider factory eligibility is scoped by fiscal profile and register with
         fiscalProfileId: 20,
         fiscalRegisterId: 40,
         registerCredentialRef: 'park-middle',
-        cashierCredentialRef: 'park-middle'
+        cashierCredentialRef: 'park-middle',
+        expectedIsTest: null
     }]);
     assert.doesNotMatch(queries.join('\n'), /\bjob\.provider\b|\bpayment_outbox_jobs\.provider\b/);
     assert.match(
@@ -2368,6 +2366,8 @@ test('runtime config requires explicit CHECKBOX_EXPECT_IS_TEST before enabling p
     );
     assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'true' } }).expectedIsTest, true);
     assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'false' } }).expectedIsTest, false);
+    assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env, expectedIsTest: true }).expectedIsTest, true);
+    assert.equal(loadCheckboxRuntimeConfig({ credentialRef: 'park-middle', licenseRef: 'park-middle', env: { ...env, CHECKBOX_EXPECT_IS_TEST: 'true' }, expectedIsTest: false }).expectedIsTest, false);
     const testOverrideConfig = loadCheckboxRuntimeConfig({
         credentialRef: 'park-middle',
         licenseRef: 'park-middle',

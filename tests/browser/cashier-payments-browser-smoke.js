@@ -9,6 +9,7 @@ const path = require('node:path');
 
 const ROOT = path.join(__dirname, '..', '..');
 const HEADLESS = process.env.CASHIER_PAYMENTS_BROWSER_SMOKE_HEADLESS !== 'false';
+const FISCAL_CONFIGURE = process.env.CASHIER_PAYMENTS_BROWSER_FISCAL_CONFIGURE === 'true';
 const VISUAL_ARTIFACT_DIR = String(process.env.CASHIER_PAYMENTS_VISUAL_ARTIFACT_DIR || '').trim()
     ? path.resolve(process.env.CASHIER_PAYMENTS_VISUAL_ARTIFACT_DIR)
     : null;
@@ -124,6 +125,31 @@ function permissionPayload(allowed = true, { fiscalConfigure = false } = {}) {
             pageAliases: {}, actionAliases: {}, actionLegacyKeys: {}, explicitAllowDisabledPages: [], explicitAllowDisabledActions: [], nonDelegableActions: []
         }
     };
+}
+
+function routeOptionsPayload({ includeTest = false } = {}) {
+    const routes = [
+        { id: 'park_production', businessContext: 'event_genix', businessLabel: 'ПАРК', mode: 'production', registerLabel: 'Середня каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, readinessCode: 'ready' },
+        { id: 'dar_production', businessContext: 'dar', businessLabel: 'ДАР', mode: 'production', registerLabel: 'Студія / Каса ДАР', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: true, sequentialReady: true, readinessCode: 'ready' }
+    ];
+    if (includeTest) routes.push(
+        { id: 'park_test', businessContext: 'event_genix', businessLabel: 'ПАРК', mode: 'test', registerLabel: 'Тестова каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: false, sequentialReady: true, readinessCode: 'payment_acceptance_disabled' },
+        { id: 'dar_test', businessContext: 'dar', businessLabel: 'ДАР', mode: 'test', registerLabel: 'Тестова каса', status: 'active', configured: true, featureEnabled: true, acceptanceEnabled: false, sequentialReady: true, readinessCode: 'payment_acceptance_disabled' }
+    );
+    return { success: true, routes };
+}
+
+function catalogItems(count, prefix) {
+    return Array.from({ length: count }, (_, index) => ({
+        itemCode: `${prefix}_${String(index + 1).padStart(3, '0')}`,
+        name: `${prefix === 'park' ? 'Позиція ПАРК' : 'Послуга ДАР'} ${index + 1}`,
+        category: index % 2 === 0 ? 'Відвідування' : 'Послуги',
+        unit: 'послуга',
+        priceMinor: String((index + 1) * 1000),
+        quantityRule: { minimum_quantity_millis: 1000, quantity_step_millis: 1000 },
+        priceSource: 'price_rules',
+        taxMode: 'untaxed'
+    }));
 }
 
 function artDirectorPermissionPayload() {
@@ -250,14 +276,28 @@ function assertParkMiddleScope(input) {
         if (input instanceof URLSearchParams) return input.get(key);
         return input?.[key] ?? input?.[key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)];
     };
-    assert.equal(get('crmProfileKey'), 'event_genix', 'cashier request must include exact CRM profile scope');
-    assert.equal(get('locationAlias'), 'park', 'cashier request must include exact fiscal location scope');
-    assert.equal(get('registerAlias'), 'middle', 'cashier request must include exact register scope');
+    assert.equal(get('businessContext'), 'event_genix', 'cashier request must include the safe business context');
+    assert.ok(['park_production', 'park_test'].includes(get('routeOptionId')), 'cashier request must include only an allowed safe route option id');
 }
 
 async function handleApi(req, res, url) {
     if (url.pathname === '/api/auth/verify') return json(res, 200, { user: { id: 50, name: 'Smoke Cashier', role: 'administrator', roles: ['reception', 'administrator'], businessProfile: 'event_genix' } });
-    if (url.pathname === '/api/auth/permissions') return json(res, 200, permissionPayload(url.searchParams.get('deny') !== '1' && req.headers['x-smoke-deny'] !== '1'));
+    if (url.pathname === '/api/auth/permissions') return json(res, 200, permissionPayload(url.searchParams.get('deny') !== '1' && req.headers['x-smoke-deny'] !== '1', { fiscalConfigure: FISCAL_CONFIGURE }));
+    if (url.pathname === '/api/payments/catalog/routes' && req.method === 'GET') {
+        return json(res, 200, routeOptionsPayload({ includeTest: FISCAL_CONFIGURE }));
+    }
+    if (url.pathname === '/api/payments/catalog/cashiers' && req.method === 'GET') {
+        assertParkMiddleScope(url.searchParams);
+        return json(res, 200, { success: true, cashiers: [{ id: 77, cashierName: 'Касир UI', status: 'active', mode: url.searchParams.get('routeOptionId') === 'park_test' ? 'test' : 'production' }] });
+    }
+    if (url.pathname === '/api/payments/catalog/items' && req.method === 'GET') {
+        assertParkMiddleScope(url.searchParams);
+        return json(res, 200, { success: true, items: catalogItems(140, 'park') });
+    }
+    if (url.pathname === '/api/payments/catalog/discounts' && req.method === 'GET') {
+        assertParkMiddleScope(url.searchParams);
+        return json(res, 200, { success: true, discounts: [] });
+    }
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') {
         assertParkMiddleScope(url.searchParams);
         const delayMs = Math.max(0, Number(state.nextPilotRegisterStateDelayMs || 0));
@@ -708,10 +748,46 @@ async function run() {
     const base = `http://127.0.0.1:${server.address().port}`;
     const browser = await chromium.launch({ headless: HEADLESS });
     try {
+        const selectorContext = await browser.newContext({ timezoneId: 'UTC' });
+        await selectorContext.addInitScript(() => { localStorage.setItem('pzp_token', 'selector-smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
+        await selectorContext.route('**/api/auth/verify', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify({ user: { id: 4, name: 'Smoke Creator', role: 'creator', roles: ['creator'], businessProfile: 'event_genix' } })
+        }));
+        await selectorContext.route('**/api/auth/permissions*', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(permissionPayload(true, { fiscalConfigure: true }))
+        }));
+        await selectorContext.route('**/api/payments/catalog/routes', route => route.fulfill({
+            status: 200,
+            contentType: 'application/json',
+            body: JSON.stringify(routeOptionsPayload({ includeTest: true }))
+        }));
+        const selectorPage = await selectorContext.newPage();
+        await selectorPage.setViewportSize({ width: 1440, height: 1000 });
+        await selectorPage.goto(`${base}/cashier-payments?businessContext=event_genix&routeOptionId=park_production`, { waitUntil: 'domcontentloaded' });
+        await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
+        assert.deepEqual(
+            await selectorPage.locator('#paymentRegisterRoute option').allTextContents(),
+            ['Середня каса · готова', 'Тестова каса · приймання вимкнено'],
+            'fiscal.configure user sees both production and test modes for PARK'
+        );
+        assert.equal(await selectorPage.locator('[name="providerRegisterId"], [name="registerAlias"], [name="locationAlias"], [name="isTest"]').count(), 0, 'production UI exposes no raw fiscal/provider inputs');
+        await captureVisualArtifact(selectorPage, '00-catalog-park-production.png');
+        await selectorPage.selectOption('#paymentRegisterRoute', 'park_test');
+        await selectorPage.waitForSelector('#cashierTestModeBanner:not(.hidden)');
+        await selectorPage.waitForFunction(() => document.querySelector('#cashierScopeMode')?.textContent.trim() === 'ТЕСТОВИЙ');
+        assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
+        assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
+        await captureVisualArtifact(selectorPage, '00-catalog-park-test-disabled.png');
+        await selectorContext.close();
+
         let context = await browser.newContext({ timezoneId: 'UTC' });
         await context.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         let page = await context.newPage();
-        await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedQueueState === 'available');
@@ -814,7 +890,7 @@ async function run() {
         assert.equal((await page.textContent('#createPaymentOrderBtn')).trim(), 'Створити оплату', 'create button restores its Ukrainian label');
         await assertPaymentStepState(page, { 1: 'complete', 2: 'active', 3: 'inactive' });
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'cashReceivedAmount', 'creating a cash draft focuses the received amount');
-        assert.equal((await page.textContent('#cashierRegister')).trim(), 'парк / середня каса', 'order snapshot keeps the localized park and middle register context');
+        assert.equal((await page.textContent('#cashierRegister')).trim(), 'ПАРК / Середня каса', 'order snapshot keeps the localized PARK and middle register context');
         assert.doesNotMatch(await page.textContent('#paymentItemsBody'), /admission_tariff:smoke/, 'cashier positions do not render internal tax references');
         assert.doesNotMatch(await page.textContent('#paymentItemsBody'), /regular_child/, 'cashier positions do not render internal CRM item codes');
         await page.fill('#cashReceivedAmount', '600');
@@ -874,7 +950,7 @@ async function run() {
         context = await browser.newContext({ timezoneId: 'UTC' });
         await context.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         page = await context.newPage();
-        await page.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.check('input[name="paymentTender"][value="card_terminal_manual"]');
@@ -940,7 +1016,7 @@ async function run() {
 
         for (const order of state.orders.values()) order.fiscalStatus = 'fiscalized';
         const current = state.orders.get(currentOrderId);
-        await page.goto(`${base}/cashier-payments?orderId=${currentOrderId}`, { waitUntil: 'domcontentloaded' });
+        await page.goto(`${base}/cashier-payments?orderId=${currentOrderId}&saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#providerReceiptLinks:not(.hidden)');
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]', { state: 'attached' });
         await assertPaymentStepState(page, { 1: 'complete', 2: 'complete', 3: 'active' });
@@ -1114,7 +1190,7 @@ async function run() {
             })
         }));
         const disabledPage = await disabledContext.newPage();
-        await disabledPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await disabledPage.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await disabledPage.waitForFunction(() => document.querySelector('#cashierReadinessSummary')?.textContent?.includes('лише для перегляду'));
         const readinessSummary = (await disabledPage.textContent('#cashierReadinessSummary')).trim();
         assert.equal(readinessSummary, 'Оплати поки вимкнені — сторінка працює лише для перегляду.');
@@ -1168,7 +1244,7 @@ async function run() {
             body: JSON.stringify(artDirectorPermissionPayload())
         }));
         const artDirectorPage = await artDirectorContext.newPage();
-        await artDirectorPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await artDirectorPage.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await artDirectorPage.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         assert.equal(await artDirectorPage.isHidden('#cashierAccessDenied'), true, 'art director keeps thin payment page access');
         assert.deepEqual(await artDirectorPage.evaluate(() => ({
@@ -1198,7 +1274,7 @@ async function run() {
             window.__EVENTGENIX_TEST_CASHIER_QUEUE_TIMING__ = { ttlMs: 300, retryMinMs: 100, retryMaxMs: 200 };
         });
         const freshnessPage = await freshnessContext.newPage();
-        await freshnessPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await freshnessPage.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await freshnessPage.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         const requestsBeforeExpiry = state.unresolvedRequestCount;
         state.unresolvedAvailable = false;
@@ -1214,7 +1290,7 @@ async function run() {
         await deniedContext.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
         await deniedContext.route('**/api/auth/permissions', route => route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify(permissionPayload(false)) }));
         const deniedPage = await deniedContext.newPage();
-        await deniedPage.goto(`${base}/cashier-payments`, { waitUntil: 'domcontentloaded' });
+        await deniedPage.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await deniedPage.waitForFunction(() => {
             const denied = document.getElementById('cashierAccessDenied');
             const button = document.getElementById('createPaymentOrderBtn');

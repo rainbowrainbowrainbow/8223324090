@@ -133,7 +133,28 @@ function assertRuntimeBaseUrl(baseUrl, { allowLocalMockHost = false } = {}) {
     return parsed.origin;
 }
 
-function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRef = credentialRef, deviceRef = credentialRef, allowLocalMockHost = false } = {}) {
+function resolveExpectedIsTest(env, explicitExpectedIsTest) {
+    if (explicitExpectedIsTest === true || explicitExpectedIsTest === false) return explicitExpectedIsTest;
+    if (explicitExpectedIsTest != null && String(explicitExpectedIsTest).trim() !== '') {
+        const normalized = String(explicitExpectedIsTest).trim().toLowerCase();
+        if (['true', '1', 'yes', 'on'].includes(normalized)) return true;
+        if (['false', '0', 'no', 'off'].includes(normalized)) return false;
+        throw new CheckboxClientError('checkbox_expected_is_test_invalid', 'Per-register expected is_test must be true or false', {
+            status: 503,
+            retryable: false
+        });
+    }
+    return parseRequiredBooleanEnv(env, 'CHECKBOX_EXPECT_IS_TEST');
+}
+
+function loadCheckboxRuntimeConfig({
+    env = process.env,
+    credentialRef,
+    licenseRef = credentialRef,
+    deviceRef = credentialRef,
+    expectedIsTest = null,
+    allowLocalMockHost = false
+} = {}) {
     const cashierRef = normalizeCredentialRef(credentialRef);
     const registerRef = normalizeCredentialRef(licenseRef);
     const deviceRuntimeRef = normalizeCredentialRef(deviceRef);
@@ -182,7 +203,7 @@ function loadCheckboxRuntimeConfig({ env = process.env, credentialRef, licenseRe
         timeoutMs: Math.max(1000, Math.min(Number(env.CHECKBOX_TIMEOUT_MS || 15000), 60000)),
         credentialRef: cashierRef || null,
         licenseRef: registerRef || null,
-        expectedIsTest: parseRequiredBooleanEnv(env, 'CHECKBOX_EXPECT_IS_TEST'),
+        expectedIsTest: resolveExpectedIsTest(env, expectedIsTest),
         allowUnreportedPaymentPermissions: boolEnv(env.CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS)
     };
 }
@@ -339,6 +360,7 @@ module.exports = {
     loadCheckboxSandboxConfig,
     loadCheckboxRuntimeConfig,
     normalizeCredentialRef,
+    resolveExpectedIsTest,
     resolveAuthMode,
     publicConfigSummary,
     assertSandboxBaseUrl

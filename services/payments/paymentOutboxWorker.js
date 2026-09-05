@@ -260,12 +260,30 @@ async function claimPaymentOutboxJobs(client, {
                        JOIN fiscal_cashier_bindings fcb
                          ON fcb.fiscal_profile_id = job.fiscal_profile_id
                         AND fcb.fiscal_register_id = fr.id
-                        AND fcb.user_id = CASE
-                            WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
-                                THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
-                            ELSE fo.initiated_by_user_id
-                        END
+                        AND (
+                            (
+                                job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                                AND po.selected_fiscal_cashier_binding_id IS NOT NULL
+                                AND fcb.id = po.selected_fiscal_cashier_binding_id
+                                AND fcb.user_id = po.cashier_user_id
+                            )
+                            OR (
+                                job.job_type IN ('shift_open', 'shift_close')
+                                AND fcb.provider_cashier_id IS NOT DISTINCT FROM fo.provider_cashier_id
+                            )
+                            OR (
+                                job.job_type NOT IN ('shift_open', 'shift_close')
+                                AND (job.job_type NOT IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                                    OR po.selected_fiscal_cashier_binding_id IS NULL)
+                                AND fcb.user_id = CASE
+                                    WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                                        THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+                                    ELSE fo.initiated_by_user_id
+                                END
+                            )
+                        )
                         AND fcb.status = 'active'
+                        AND NULLIF(BTRIM(fcb.provider_cashier_login_ref), '') IS NOT NULL
                       WHERE job.fiscal_profile_id = fr.fiscal_profile_id
                         AND COALESCE(po.fiscal_register_id, fo.fiscal_register_id) = fr.id
                         AND fo.register_credential_ref = fr.provider_license_ref
@@ -396,6 +414,7 @@ async function loadJobContext(client, job) {
              po.fiscal_status AS payment_order_fiscal_status,
              COALESCE(po.fiscal_register_id, fo.fiscal_register_id) AS fiscal_register_id,
              po.cashier_user_id,
+             po.selected_fiscal_cashier_binding_id,
              po.total_amount_minor,
              po.payment_method,
              po.source_snapshot,
@@ -441,12 +460,30 @@ async function loadJobContext(client, job) {
            LEFT JOIN fiscal_cashier_bindings fcb
              ON fcb.fiscal_profile_id = job.fiscal_profile_id
             AND fcb.fiscal_register_id = COALESCE(po.fiscal_register_id, fo.fiscal_register_id)
-            AND fcb.user_id = CASE
-                WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
-                    THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
-                ELSE fo.initiated_by_user_id
-            END
+            AND (
+                (
+                    job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                    AND po.selected_fiscal_cashier_binding_id IS NOT NULL
+                    AND fcb.id = po.selected_fiscal_cashier_binding_id
+                    AND fcb.user_id = po.cashier_user_id
+                )
+                OR (
+                    job.job_type IN ('shift_open', 'shift_close')
+                    AND fcb.provider_cashier_id IS NOT DISTINCT FROM fo.provider_cashier_id
+                )
+                OR (
+                    job.job_type NOT IN ('shift_open', 'shift_close')
+                    AND (job.job_type NOT IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                        OR po.selected_fiscal_cashier_binding_id IS NULL)
+                    AND fcb.user_id = CASE
+                        WHEN job.job_type IN ('receipt_sell', 'receipt_status_lookup', 'receipt_validate')
+                            THEN COALESCE(po.cashier_user_id, fo.initiated_by_user_id)
+                        ELSE fo.initiated_by_user_id
+                    END
+                )
+            )
             AND fcb.status = 'active'
+            AND NULLIF(BTRIM(fcb.provider_cashier_login_ref), '') IS NOT NULL
           WHERE job.id = $1
           LIMIT 1`,
         [job.id]

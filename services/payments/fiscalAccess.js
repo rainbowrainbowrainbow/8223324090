@@ -71,6 +71,49 @@ function assertKnownFiscalAction(action) {
     }
 }
 
+function assertFiscalCashierBindingCapability(binding, action) {
+    assertKnownFiscalAction(action);
+    const scope = normalizeCapabilityScope(valueFrom(binding, 'capabilityScope', 'capability_scope'));
+    if (!scope.includes(action)) {
+        throw new FiscalAccessError('fiscal_binding_capability_denied', 'Fiscal cashier binding does not allow the requested capability', { action });
+    }
+    return true;
+}
+
+function authorizeFiscalActor({ user, action, crmProfileKey, approval, now = new Date() }) {
+    assertKnownFiscalAction(action);
+    if (!user?.id) {
+        throw new FiscalAccessError('fiscal_authentication_required', 'Authenticated user is required');
+    }
+    if (!canUseAction(user, action)) {
+        throw new FiscalAccessError('fiscal_capability_denied', 'User lacks the required payment/fiscal capability', { action });
+    }
+    const requestedProfileKey = normalizeProfileKey(crmProfileKey);
+    const knownProfileKey = normalizeKnownBusinessContext(requestedProfileKey);
+    if (!knownProfileKey || knownProfileKey !== requestedProfileKey) {
+        throw new FiscalAccessError('fiscal_business_context_unknown', 'Fiscal business context is unknown', {
+            crmProfileKey: requestedProfileKey
+        });
+    }
+    if (!canAccessBusinessContext(user, knownProfileKey)) {
+        throw new FiscalAccessError('fiscal_business_context_denied', 'User cannot access the requested CRM profile');
+    }
+    if (APPROVAL_REQUIRED_ACTIONS.has(action)) {
+        assertApprovalUsable(approval, {
+            actionType: action,
+            actorUserId: user.id,
+            now
+        });
+    }
+    return {
+        ok: true,
+        userId: normalizePositiveId(user.id),
+        action,
+        crmProfileKey: requestedProfileKey,
+        approvalRequired: APPROVAL_REQUIRED_ACTIONS.has(action)
+    };
+}
+
 function assertFiscalBindingScope({ user, binding, fiscalProfileId, crmProfileKey, fiscalLocationId, fiscalRegisterId }) {
     if (!user?.id) {
         throw new FiscalAccessError('fiscal_authentication_required', 'Authenticated user is required');
@@ -143,10 +186,7 @@ function authorizeFiscalActionContext({
     }
 
     assertFiscalBindingScope({ user, binding, fiscalProfileId, crmProfileKey, fiscalLocationId, fiscalRegisterId });
-    const scope = normalizeCapabilityScope(valueFrom(binding, 'capabilityScope', 'capability_scope'));
-    if (!scope.includes(action)) {
-        throw new FiscalAccessError('fiscal_binding_capability_denied', 'Fiscal cashier binding does not allow the requested capability', { action });
-    }
+    assertFiscalCashierBindingCapability(binding, action);
 
     if (APPROVAL_REQUIRED_ACTIONS.has(action)) {
         assertApprovalUsable(approval, {
@@ -170,13 +210,21 @@ function authorizeFiscalActionContext({
     };
 }
 
-async function loadFiscalCashierBinding(client, { userId, fiscalProfileId, fiscalRegisterId, forUpdate = false }) {
+async function loadFiscalCashierBinding(client, { userId, fiscalProfileId, fiscalRegisterId, bindingId = null, forUpdate = false }) {
     const normalizedUserId = normalizePositiveId(userId);
     const normalizedProfileId = normalizePositiveId(fiscalProfileId);
     const normalizedRegisterId = normalizePositiveId(fiscalRegisterId);
+    const normalizedBindingId = bindingId == null ? null : normalizePositiveId(bindingId);
     if (!client?.query || !normalizedUserId || !normalizedProfileId || !normalizedRegisterId) {
         throw new FiscalAccessError('fiscal_binding_lookup_scope_required', 'Binding lookup requires user, fiscal profile, and register');
     }
+    if (bindingId != null && !normalizedBindingId) {
+        throw new FiscalAccessError('fiscal_binding_lookup_scope_required', 'Binding lookup requires a valid binding id');
+    }
+
+    const bindingFilter = normalizedBindingId ? 'AND b.id = $4' : '';
+    const params = [normalizedUserId, normalizedProfileId, normalizedRegisterId];
+    if (normalizedBindingId) params.push(normalizedBindingId);
 
     const result = await client.query(
         `SELECT
@@ -196,9 +244,10 @@ async function loadFiscalCashierBinding(client, { userId, fiscalProfileId, fisca
           WHERE b.user_id = $1
             AND b.fiscal_profile_id = $2
             AND b.fiscal_register_id = $3
+            ${bindingFilter}
             AND b.status = 'active'
           ${forUpdate ? 'FOR UPDATE OF b' : ''}`,
-        [normalizedUserId, normalizedProfileId, normalizedRegisterId]
+        params
     );
 
     if (!result.rows.length) {
@@ -219,11 +268,18 @@ async function authorizeFiscalAction(client, options) {
     return authorizeFiscalActionContext({ ...options, binding });
 }
 
+async function authorizeFiscalActorAction(_client, options) {
+    return authorizeFiscalActor(options);
+}
+
 module.exports = {
     PAYMENT_FISCAL_CAPABILITIES,
     APPROVAL_REQUIRED_ACTIONS,
     FiscalAccessError,
+    assertFiscalCashierBindingCapability,
     assertFiscalBindingScope,
+    authorizeFiscalActor,
+    authorizeFiscalActorAction,
     authorizeFiscalActionContext,
     loadFiscalCashierBinding,
     normalizeCapabilityScope,

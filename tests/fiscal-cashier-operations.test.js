@@ -73,7 +73,14 @@ test('Phase-1 close is visible only to the exact owner and stays eligible when p
 test('pilot register state sanitizes shift provider identity and reports the just-closed local shift', () => {
   const body = service.slice(service.indexOf('async function loadPilotRegisterState'), service.indexOf('async function createServiceIn'));
   assert.match(body, /status IN \('opening', 'open', 'closing', 'closed'\)/);
+  assert.match(body, /authorizationCrmProfileKey = null/);
+  assert.match(body, /cashierBindingId = null/);
+  assert.match(body, /authorizeFiscalActorAction\(client/);
+  assert.match(body, /id = \$1[\s\S]*fiscal_profile_id = \$2[\s\S]*fiscal_register_id = \$3/);
   assert.match(body, /phase1Close/);
+  assert.match(body, /candidate\.provider_cashier_login_ref = open_operation\.cashier_credential_ref/);
+  assert.match(body, /binding: phase1CloseBinding/);
+  assert.match(body, /runtimeConfigResolvable: phase1CloseRuntimeConfigResolvable/);
   assert.doesNotMatch(body, /providerShiftId:/);
   assert.doesNotMatch(body, /providerSnapshot:/);
 });
@@ -90,6 +97,18 @@ test('auto-open shift is register-locked and linked to sale fiscal operations', 
   assert.match(paymentService, /ensureOpenShiftForSale\(client, \{ order, user, fiscalConfig \}\)/);
   assert.match(paymentService, /payment_order_id, fiscal_shift_id, operation_type/);
   assert.match(autoOpen, /assertCompleteFiscalCredentialRefs/);
+  assert.match(autoOpen, /const routeScoped = Boolean/);
+  assert.match(autoOpen, /authorizeFiscalActorAction\(client,[\s\S]*crmProfileKey: sourceBusinessContext/);
+  assert.match(autoOpen, /loadFiscalCashierBinding\(client,[\s\S]*userId: order\.cashier_user_id \|\| user\?\.id,[\s\S]*bindingId: order\.selected_fiscal_cashier_binding_id \|\| null/);
+  assert.match(autoOpen, /assertFiscalCashierBindingCapability\(binding, 'fiscal\.shift\.open'\)/);
+  assert.ok(
+    autoOpen.indexOf('loadFiscalCashierBinding(client') < autoOpen.indexOf('const existing = await loadOpenShift'),
+    'the selected binding must be resolved before reusing an open shift'
+  );
+  assert.match(autoOpen, /open_shift_cashier_binding_mismatch/);
+  assert.match(autoOpen, /open_cashier_credential_ref/);
+  assert.match(autoOpen, /open_provider_cashier_id/);
+  assert.match(autoOpen, /cashier_binding_id: Number\(binding\.id\)/);
   assert.ok(
     autoOpen.indexOf('assertCompleteFiscalCredentialRefs') < autoOpen.indexOf('INSERT INTO fiscal_shifts'),
     'missing cashier credentials must fail before creating shift or outbox state'
@@ -363,6 +382,15 @@ test('worker keeps Cashier PRO jobs disabled unless PRO flag is explicitly enabl
   assert.match(worker, /const claimableJobTypes = cashierProEnabled/);
   assert.match(worker, /claimableJobTypes,/);
   assert.match(worker, /job\.payload->>'phase' = 'thin_mvp_shift_close'/);
+});
+
+test('outbox shift jobs resolve only the immutable shift-operation cashier identity', () => {
+  const shiftJoinGuards = worker.match(/job\.job_type NOT IN \('shift_open', 'shift_close'\)/g) || [];
+  assert.equal(shiftJoinGuards.length, 2, 'both claim and reload queries must exclude shifts from legacy actor fallback');
+  assert.equal(
+    (worker.match(/job\.job_type IN \('shift_open', 'shift_close'\)[\s\S]{0,180}fcb\.provider_cashier_id IS NOT DISTINCT FROM fo\.provider_cashier_id/g) || []).length,
+    2
+  );
 });
 
 test('service and return receipt durable submit/lookup stages are constrained in both ledger tables', () => {

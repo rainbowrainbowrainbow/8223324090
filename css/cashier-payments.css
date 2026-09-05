@@ -94,6 +94,166 @@
     color: #991b1b;
 }
 
+.cashier-local-qa-banner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px 18px;
+    padding: 14px 18px;
+    border: 2px solid #f59e0b;
+    border-radius: 16px;
+    background: #fffbeb;
+    color: #78350f;
+    box-shadow: 0 8px 22px rgba(146, 64, 14, .12);
+}
+
+.cashier-local-qa-banner strong {
+    font-size: 14px;
+    letter-spacing: .06em;
+}
+
+.cashier-test-mode-banner {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 18px;
+    border: 2px solid #ef4444;
+    border-radius: 16px;
+    background: #fff1f2;
+    color: #881337;
+    box-shadow: 0 8px 24px rgba(190, 24, 93, .14);
+}
+
+.cashier-test-mode-banner strong {
+    flex: 0 0 auto;
+    padding: 6px 10px;
+    border-radius: 999px;
+    background: #e11d48;
+    color: #fff;
+    letter-spacing: .06em;
+}
+
+.cashier-route-card {
+    padding: 20px 24px;
+    border-color: rgba(79, 70, 229, .25);
+}
+
+.cashier-route-grid,
+.cashier-catalog-filters,
+.cashier-cart-summary {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 12px;
+}
+
+.cashier-route-card select,
+.cashier-catalog-filters select,
+.cashier-catalog-filters input {
+    width: 100%;
+    min-height: 46px;
+}
+
+.cashier-cart-summary {
+    margin: 0;
+    padding: 14px;
+    border: 1px solid var(--gray-100);
+    border-radius: 16px;
+    background: var(--gray-50);
+}
+
+.cashier-cart-summary div {
+    display: flex;
+    justify-content: space-between;
+    gap: 10px;
+}
+
+.cashier-cart-summary dt,
+.cashier-cart-summary dd {
+    margin: 0;
+}
+
+.cashier-cart-summary .is-final {
+    grid-column: 1 / -1;
+    padding-top: 10px;
+    border-top: 1px solid var(--gray-100);
+    font-size: 18px;
+    font-weight: 900;
+}
+
+.cashier-route-card.is-test-route {
+    border-color: rgba(225, 29, 72, .6);
+}
+
+.cashier-catalog-fields,
+.cashier-catalog-lines {
+    display: grid;
+    gap: 12px;
+}
+
+.cashier-catalog-heading,
+.cashier-catalog-line {
+    display: flex;
+    align-items: flex-end;
+    gap: 12px;
+}
+
+.cashier-catalog-heading {
+    justify-content: space-between;
+    align-items: center;
+}
+
+.cashier-catalog-heading .cashier-help {
+    margin: 4px 0 0;
+}
+
+.cashier-catalog-line {
+    padding: 12px;
+    border: 1px solid var(--gray-100);
+    border-radius: 16px;
+    background: var(--gray-50);
+}
+
+.cashier-catalog-item-field {
+    flex: 1 1 280px;
+    min-width: 0;
+}
+
+.cashier-catalog-quantity-field {
+    flex: 0 0 118px;
+}
+
+.cashier-catalog-line select,
+.cashier-catalog-line input,
+#paymentCashierBinding,
+#catalogDiscountRule {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    background: var(--white);
+    color: var(--gray-900);
+    font: inherit;
+}
+
+.cashier-catalog-price {
+    flex: 0 0 120px;
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    color: var(--gray-900);
+    font-weight: 900;
+    white-space: nowrap;
+}
+
+.cashier-catalog-remove {
+    min-width: 44px;
+    min-height: 44px;
+    padding: 9px 12px;
+}
+
 .cashier-grid {
     display: grid;
     grid-template-columns: minmax(300px, 0.86fr) minmax(420px, 1.35fr);
@@ -854,9 +1014,20 @@ body.dark-mode .cashier-card,
 body.dark-mode .cashier-flow-node,
 body.dark-mode .cashier-field input,
 body.dark-mode .cashier-tender-group,
-body.dark-mode .cashier-checkbox-row {
+body.dark-mode .cashier-checkbox-row,
+body.dark-mode .cashier-catalog-line,
+body.dark-mode .cashier-catalog-line select,
+body.dark-mode .cashier-catalog-line input,
+body.dark-mode #paymentCashierBinding,
+body.dark-mode #catalogDiscountRule {
     background: rgba(15,23,42,.82);
     border-color: rgba(255,255,255,.10);
+}
+
+body.dark-mode .cashier-local-qa-banner {
+    border-color: rgba(251, 191, 36, .72);
+    background: rgba(120, 53, 15, .46);
+    color: #fde68a;
 }
 
 body.dark-mode .cashier-meta-grid div,
@@ -965,6 +1136,17 @@ body.dark-mode .cashier-flow-number {
     color: #cbd5e1;
 }
 
+body.dark-mode .cashier-test-mode-banner {
+    border-color: #fb7185;
+    background: rgba(136, 19, 55, .32);
+    color: #fecdd3;
+}
+
+body.dark-mode .cashier-cart-summary {
+    border-color: rgba(255,255,255,.10);
+    background: rgba(15,23,42,.68);
+}
+
 @media (max-width: 1023px) {
     body[data-page="cashier-payments"] .sidebar-nav:not(.collapsed) ~ .header ~ main#main-content.cashier-payments-page {
         width: calc(100% - var(--eg-tablet-sidebar-w)) !important;
@@ -989,8 +1171,30 @@ body.dark-mode .cashier-flow-number {
     .cashier-ops-grid-wide,
     .cashier-report-grid,
     .cashier-history-item,
-    .cashier-unresolved-item {
+    .cashier-unresolved-item,
+    .cashier-catalog-line,
+    .cashier-route-grid,
+    .cashier-catalog-filters,
+    .cashier-cart-summary {
         grid-template-columns: minmax(0, 1fr);
+    }
+
+    .cashier-cart-summary .is-final {
+        grid-column: auto;
+    }
+
+    .cashier-catalog-line {
+        display: grid;
+    }
+
+    .cashier-catalog-quantity-field,
+    .cashier-catalog-price {
+        width: 100%;
+        flex-basis: auto;
+    }
+
+    .cashier-catalog-price {
+        justify-content: flex-start;
     }
 
     .cashier-scope-card {
@@ -1025,6 +1229,11 @@ body.dark-mode .cashier-flow-number {
     .cashier-provider-links,
     .cashier-history-actions {
         align-items: stretch;
+        flex-direction: column;
+    }
+
+    .cashier-test-mode-banner {
+        align-items: flex-start;
         flex-direction: column;
     }
 

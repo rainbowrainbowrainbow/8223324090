@@ -6,7 +6,8 @@ const test = require('node:test');
 const {
     PaymentServiceError,
     confirmPaymentOrder,
-    createAdmissionTicketPaymentOrder
+    createAdmissionTicketPaymentOrder,
+    getPaymentOrderDetails
 } = require('../services/payments/paymentService');
 const {
     PaymentWorkflowError,
@@ -72,6 +73,7 @@ function defaultMapping(overrides = {}) {
         provider_license_ref: 'test-register-credential-ref',
         register_expected_is_test: true,
         feature_enabled: true,
+        acceptance_enabled: true,
         ...overrides
     };
 }
@@ -296,6 +298,8 @@ class FakePaymentClient {
                     fiscal_location_id: this.db.mappingRows.find(row => Number(row.fiscal_profile_id) === Number(params[1]) && Number(row.fiscal_register_id) === Number(params[2]))?.fiscal_location_id || 30,
                     register_fiscal_location_id: this.db.mappingRows.find(row => Number(row.fiscal_profile_id) === Number(params[1]) && Number(row.fiscal_register_id) === Number(params[2]))?.fiscal_location_id || 30,
                     crm_profile_key: this.db.mappingRows.find(row => Number(row.fiscal_profile_id) === Number(params[1]) && Number(row.fiscal_register_id) === Number(params[2]))?.crm_profile_key || 'event_genix',
+                    provider_cashier_id: 'test-cashier',
+                    provider_cashier_login_ref: this.db.cashierCredentialRef,
                     status: 'active',
                     action_pin_hash: '$2a$10$fakehashfornonpinpaths',
                     capability_scope: this.db.mappingRows[0]?.capability_scope || ['payments.view', 'payments.create', 'payments.confirm_received', 'fiscal.shift.open']
@@ -314,29 +318,31 @@ class FakePaymentClient {
 
         if (normalized.startsWith('INSERT INTO payment_orders')) {
             this.ensureSnapshot();
+            const sourceSnapshot = JSON.parse(params[10]);
             const row = {
                 id: this.db.next.order++,
                 fiscal_profile_id: Number(params[0]),
                 fiscal_register_id: Number(params[1]),
-                fiscal_location_id: JSON.parse(params[9])?.fiscal_location_id || null,
-                location_alias: JSON.parse(params[9])?.location_alias || null,
-                crm_profile_key: JSON.parse(params[9])?.crm_profile_key || null,
-                legal_entity_key: JSON.parse(params[9])?.legal_entity_key || null,
-                legal_entity_name: JSON.parse(params[9])?.legal_entity_name || null,
-                register_alias: JSON.parse(params[9])?.register_alias || null,
+                fiscal_location_id: sourceSnapshot?.fiscal_location_id || null,
+                location_alias: sourceSnapshot?.location_alias || null,
+                crm_profile_key: sourceSnapshot?.crm_profile_key || null,
+                legal_entity_key: sourceSnapshot?.legal_entity_key || null,
+                legal_entity_name: sourceSnapshot?.legal_entity_name || null,
+                register_alias: sourceSnapshot?.register_alias || null,
                 cashier_user_id: params[2],
-                source_type: params[3],
-                source_id: params[4],
-                order_key: params[5],
-                idempotency_key: params[6],
+                selected_fiscal_cashier_binding_id: params[3],
+                source_type: params[4],
+                source_id: params[5],
+                order_key: params[6],
+                idempotency_key: params[7],
                 status: 'draft',
                 payment_status: 'unpaid',
                 fiscal_status: 'pending',
-                payment_method: params[7],
-                total_amount_minor: String(params[8]),
+                payment_method: params[8],
+                total_amount_minor: String(params[9]),
                 currency: 'UAH',
-                source_snapshot: JSON.parse(params[9]),
-                created_by_user_id: params[10],
+                source_snapshot: sourceSnapshot,
+                created_by_user_id: params[11],
                 confirmation_snapshot: {},
                 confirmed_at: null
             };
@@ -420,7 +426,8 @@ class FakePaymentClient {
                 status: 'open',
                 opened_by_user_id: params[2],
                 opened_at: new Date().toISOString(),
-                provider_snapshot: JSON.parse(params[3]),
+                business_context: params[3],
+                provider_snapshot: JSON.parse(params[4]),
                 open_operation_id: null
             };
             this.db.fiscalShifts.push(row);
@@ -959,6 +966,160 @@ test('wrong amount and partial/split attempts fail without outbox jobs', async (
     assert.equal(db.outboxJobs.length, 0);
 });
 
+test('confirmation rejects browser fiscal route and cashier overrides before touching DB', async () => {
+    for (const field of [
+        'providerRegisterId',
+        'provider_cashier_id',
+        'locationAlias',
+        'register_alias',
+        'credentialRef',
+        'is_test',
+        'routeOptionId',
+        'business_context',
+        'cashierBindingId'
+    ]) {
+        const db = new FakePaymentDb();
+        await assert.rejects(
+            () => confirmPaymentOrder({
+                dbPool: db,
+                user: baseUser(),
+                orderId: 1,
+                body: {
+                    tender: 'cash',
+                    confirmedAmountMinor: '50000',
+                    [field]: 'browser-value'
+                },
+                idempotencyKey: `confirm-forbidden-${field}`,
+                authorizer: allowAuthorizer
+            }),
+            error => error.code === 'client_payment_field_forbidden'
+                && error.details?.field === field,
+            field
+        );
+        assert.equal(db.queries.length, 0, field);
+    }
+});
+
+test('only the authenticated actor that created an order can confirm it', async () => {
+    const db = new FakePaymentDb();
+    const order = db.seedOrder({
+        created_by_user_id: 51,
+        cashier_user_id: 77,
+        payment_method: 'cash',
+        total_amount_minor: '50000'
+    });
+
+    await assert.rejects(
+        () => confirmPaymentOrder({
+            dbPool: db,
+            user: baseUser({ id: 50 }),
+            orderId: order.id,
+            body: { tender: 'cash', confirmedAmountMinor: '50000' },
+            idempotencyKey: 'confirm-wrong-actor',
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'payment_order_actor_mismatch' && error.status === 409
+    );
+    assert.equal(db.attempts.length, 0);
+    assert.equal(db.outboxJobs.length, 0);
+});
+
+test('persisted test-register order cannot be confirmed after fiscal.configure access is lost', async () => {
+    const db = new FakePaymentDb();
+    const order = db.seedOrder({
+        created_by_user_id: 50,
+        fiscal_sale_route_option_id: 'park_test',
+        business_context: 'event_genix',
+        route_expected_is_test: true,
+        register_expected_is_test: true,
+        route_status: 'active',
+        route_feature_enabled: true,
+        route_acceptance_enabled: true,
+        source_snapshot: {
+            request_fingerprint: 'seed',
+            route_option_id: 'park_test',
+            business_context: 'event_genix',
+            register_mode: 'test'
+        }
+    });
+
+    await assert.rejects(
+        () => confirmPaymentOrder({
+            dbPool: db,
+            user: baseUser({
+                action_allowlist: ['payments.confirm_received'],
+                action_denylist: ['fiscal.configure']
+            }),
+            orderId: order.id,
+            body: { tender: 'cash', confirmedAmountMinor: '50000' },
+            idempotencyKey: 'confirm-test-route-without-configure',
+            authorizer: allowAuthorizer
+        }),
+        error => error.code === 'fiscal_capability_denied'
+            && error.details?.action === 'fiscal.configure'
+    );
+    assert.equal(db.attempts.length, 0);
+    assert.equal(db.outboxJobs.length, 0);
+});
+
+test('route-aware order details authorize the actor independently from the selected fiscal cashier', async () => {
+    const order = {
+        id: 71,
+        fiscal_profile_id: 20,
+        fiscal_location_id: 30,
+        fiscal_register_id: 40,
+        crm_profile_key: 'event_genix',
+        business_context: 'event_genix',
+        fiscal_sale_route_option_id: 'park_production',
+        route_expected_is_test: false,
+        register_expected_is_test: false,
+        cashier_user_id: 77,
+        selected_fiscal_cashier_binding_id: 500,
+        created_by_user_id: 50,
+        source_type: 'catalog_sale',
+        source_id: 'catalog-sale-71',
+        order_key: 'catalog_sale:event_genix:71',
+        idempotency_key: 'create-71',
+        status: 'draft',
+        payment_status: 'unpaid',
+        fiscal_status: 'pending',
+        payment_method: 'cash',
+        total_amount_minor: '50000',
+        currency: 'UAH',
+        source_snapshot: {
+            route_option_id: 'park_production',
+            business_context: 'event_genix',
+            register_mode: 'production'
+        },
+        confirmation_snapshot: {}
+    };
+    const queries = [];
+    const client = {
+        release() {},
+        async query(sql) {
+            const normalized = String(sql).replace(/\s+/g, ' ').trim();
+            queries.push(normalized);
+            if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(normalized)) return { rows: [] };
+            if (normalized.includes('FROM payment_orders po') && normalized.includes('WHERE po.id = $1')) return { rows: [order] };
+            if (normalized.includes('FROM payment_order_items')) return { rows: [] };
+            if (normalized.includes('FROM fiscal_operations')) return { rows: [] };
+            if (normalized.includes('FROM fiscal_receipts')) return { rows: [] };
+            if (normalized.includes('FROM payment_outbox_jobs')) return { rows: [] };
+            throw new Error(`Unhandled order-details query: ${normalized}`);
+        }
+    };
+
+    const result = await getPaymentOrderDetails({
+        dbPool: { connect: async () => client },
+        user: baseUser({ id: 50, action_allowlist: ['payments.view'] }),
+        orderId: order.id
+    });
+
+    assert.equal(result.order.id, order.id);
+    assert.equal(result.order.selectedFiscalCashierBindingId, 500);
+    assert.equal(queries.some(sql => sql.includes('FROM fiscal_cashier_bindings')), false);
+});
+
 test('duplicate click with same idempotency key replays and does not create another outbox job', async () => {
     const db = new FakePaymentDb();
     const order = db.seedOrder({ payment_method: 'cash', total_amount_minor: '50000' });
@@ -1143,7 +1304,12 @@ function installMock(modulePath, exports) {
 }
 
 function clearPaymentRouteModules() {
-    for (const modulePath of ['../routes/payments', '../middleware/auth', '../services/payments/paymentService']) {
+    for (const modulePath of [
+        '../routes/payments',
+        '../middleware/auth',
+        '../services/payments/paymentService',
+        '../services/payments/fiscalSaleRouteService'
+    ]) {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     }
 }
@@ -1176,6 +1342,33 @@ async function withPaymentRouteApp(run) {
             body: { success: false, code: error.code || 'mock_error', error: error.message }
         })
     });
+    installMock('../services/payments/fiscalSaleRouteService', {
+        assertNoClientFiscalRouteOverride: input => {
+            const forbidden = ['fiscalProfileId', 'fiscalRegisterId', 'locationAlias', 'registerAlias', 'providerRegisterId'];
+            if (forbidden.some(key => Object.hasOwn(input || {}, key))) {
+                throw Object.assign(new Error('Browser fiscal route override is forbidden'), {
+                    code: 'fiscal_route_override_forbidden',
+                    status: 422
+                });
+            }
+        },
+        listFiscalSaleRouteOptions: async () => [],
+        resolveFiscalSaleRoute: async ({ routeOptionId, businessContext }) => {
+            if (routeOptionId !== 'park_production' || businessContext !== 'event_genix') {
+                throw Object.assign(new Error('Invalid test route'), { code: 'fiscal_route_scope_mismatch', status: 409 });
+            }
+            return {
+                routeOptionId,
+                businessContext,
+                registerMode: 'production',
+                mapping: {
+                    crm_profile_key: 'event_genix',
+                    location_alias: 'park',
+                    register_alias: 'middle'
+                }
+            };
+        }
+    });
 
     const app = express();
     app.use(express.json());
@@ -1206,7 +1399,12 @@ test('payments API smoke passes Idempotency-Key and user context into order crea
         const res = await request(
             'POST',
             '/api/payments/admission-ticket/orders',
-            scopedPaymentBody({ tender: 'cash', admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 } }),
+            {
+                routeOptionId: 'park_production',
+                businessContext: 'event_genix',
+                tender: 'cash',
+                admissionTicket: { date: '2099-01-15', banquetGuests: 2, banquetAdults: 0 }
+            },
             { 'Idempotency-Key': 'api-create-1' }
         );
 

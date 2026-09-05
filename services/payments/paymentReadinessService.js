@@ -2,7 +2,13 @@
 
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
-const { authorizeFiscalAction, loadFiscalCashierBinding, FiscalAccessError } = require('./fiscalAccess');
+const {
+    assertFiscalCashierBindingCapability,
+    authorizeFiscalAction,
+    authorizeFiscalActorAction,
+    loadFiscalCashierBinding,
+    FiscalAccessError
+} = require('./fiscalAccess');
 const {
     isCheckboxIntegrationEnabled,
     isCheckboxPaymentAcceptanceEnabled,
@@ -252,7 +258,7 @@ function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeC
         provider_cashier_id: binding.provider_cashier_id || null,
         register_credential_ref: registerCredentialRef,
         cashier_credential_ref: cashierCredentialRef,
-        expected_is_test: runtimeConfig.expectedIsTest,
+        expected_is_test: normalizeBoolean(mapping.register_expected_is_test ?? runtimeConfig.expectedIsTest),
         fiscal_profile_id: mapping.fiscal_profile_id == null ? null : Number(mapping.fiscal_profile_id),
         fiscal_location_id: mapping.fiscal_location_id == null ? null : Number(mapping.fiscal_location_id),
         fiscal_register_id: mapping.fiscal_register_id == null ? null : Number(mapping.fiscal_register_id),
@@ -341,9 +347,10 @@ async function loadPilotMapping(client, {
              fr.provider_register_id,
              fr.provider_license_ref,
              fr.metadata AS register_metadata,
-             fr.metadata->>'expected_is_test' AS register_expected_is_test,
+             COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
              fr.status AS fiscal_register_status,
-             fr.feature_enabled
+             fr.feature_enabled,
+             fr.acceptance_enabled
            FROM fiscal_profiles fp
            JOIN fiscal_locations fl
              ON fl.fiscal_profile_id = fp.id
@@ -389,9 +396,10 @@ async function loadMappingByIds(client, {
              fr.provider_register_id,
              fr.provider_license_ref,
              fr.metadata AS register_metadata,
-             fr.metadata->>'expected_is_test' AS register_expected_is_test,
+             COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
              fr.status AS fiscal_register_status,
-             fr.feature_enabled
+             fr.feature_enabled,
+             fr.acceptance_enabled
            FROM fiscal_profiles fp
            JOIN fiscal_locations fl
              ON fl.fiscal_profile_id = fp.id
@@ -412,50 +420,98 @@ async function loadMappingByIds(client, {
     return result.rows[0];
 }
 
-async function loadTaxMappingReadiness(client, mapping) {
+async function loadTaxMappingReadiness(client, mapping, { businessContext = null } = {}) {
     if (!mapping) return { ready: false, activeCodes: [], mappedCodes: [], missingCodes: [] };
+    const logicalBusinessContext = normalizeKnownBusinessContext(businessContext || mapping.crm_profile_key);
+    if (!logicalBusinessContext) {
+        throw new PaymentReadinessError('fiscal_business_context_unknown', 'Fiscal business context is unknown', { status: 409 });
+    }
     const active = await client.query(
-        `SELECT code
+        `SELECT 'admission_ticket'::text AS item_type, code AS item_code
            FROM admission_ticket_types
           WHERE business_context = $1
             AND is_active = TRUE
-          ORDER BY code`,
-        [mapping.crm_profile_key]
+          UNION ALL
+         SELECT 'catalog_sale'::text AS item_type, p.id AS item_code
+           FROM products p
+           JOIN price_rules pr
+             ON pr.product_id = p.id
+            AND pr.value > 0
+          WHERE p.business_context = $1
+            AND p.is_active = TRUE
+            AND COALESCE(p.availability_status, 'active') = 'active'
+          GROUP BY p.id
+         HAVING COUNT(*) = 1
+          ORDER BY item_type, item_code`,
+        [logicalBusinessContext]
     );
-    const activeCodes = active.rows.map(row => String(row.code || '').trim()).filter(Boolean);
-    if (!activeCodes.length) return { ready: false, activeCodes, mappedCodes: [], missingCodes: [] };
+    const activeItems = active.rows.map(row => ({
+        itemType: String(row.item_type || '').trim(),
+        itemCode: String(row.item_code || '').trim()
+    })).filter(item => item.itemType && item.itemCode);
+    const activeCodes = [...new Set(activeItems.map(item => item.itemCode))];
+    if (!activeItems.length) return { ready: false, activeCodes, mappedCodes: [], missingCodes: [], activeItems, mappedItems: [], missingItems: [] };
     const mapped = await client.query(
-        `SELECT item_code, provider_tax_id, tax_mode
+        `SELECT source_type, item_type, item_code, provider_tax_id, tax_mode
            FROM fiscal_item_mappings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
             AND crm_profile_key = $3
-            AND source_type = 'admission_ticket'
-            AND item_type = 'admission_ticket'
-            AND item_code = ANY($4::text[])
+            AND COALESCE(business_context, crm_profile_key) = $4
+            AND source_type IN ('admission_ticket', 'catalog_sale')
+            AND item_type = source_type
             AND provider = 'checkbox'
             AND status = 'active'
             AND BTRIM(fiscal_item_name) <> ''
             AND (
                 (
-                    tax_mode = 'taxed'
-                    AND BTRIM(COALESCE(provider_tax_id, '')) <> ''
-                    AND provider_tax_id !~* '^admission_tariff:'
+                    source_type = 'admission_ticket'
+                    AND (
+                        (
+                            tax_mode = 'taxed'
+                            AND BTRIM(COALESCE(provider_tax_id, '')) <> ''
+                            AND provider_tax_id !~* '^admission_tariff:'
+                        )
+                        OR (
+                            tax_mode = 'untaxed'
+                            AND NULLIF(BTRIM(COALESCE(provider_tax_id, '')), '') IS NULL
+                        )
+                    )
                 )
                 OR (
+                    source_type = 'catalog_sale'
+                    AND
                     tax_mode = 'untaxed'
                     AND NULLIF(BTRIM(COALESCE(provider_tax_id, '')), '') IS NULL
+                    AND tax_code IS NULL
+                    AND tax_rate_bps IS NULL
                 )
             )`,
-        [mapping.fiscal_profile_id, mapping.fiscal_register_id, mapping.crm_profile_key, activeCodes]
+        [mapping.fiscal_profile_id, mapping.fiscal_register_id, mapping.crm_profile_key, logicalBusinessContext]
     );
-    const mappedCodes = [...new Set(mapped.rows.map(row => String(row.item_code || '').trim()).filter(Boolean))];
+    const requiredKeys = new Set(activeItems.map(item => `${item.itemType}:${item.itemCode}`));
+    const mappedItems = mapped.rows.map(row => ({
+        itemType: String(row.item_type || '').trim(),
+        itemCode: String(row.item_code || '').trim()
+    })).filter(item => requiredKeys.has(`${item.itemType}:${item.itemCode}`));
+    const mappedKeys = new Set(mappedItems.map(item => `${item.itemType}:${item.itemCode}`));
+    const mappedCodes = [...new Set(mappedItems.map(item => item.itemCode))];
     const providerTaxIds = [...new Set(mapped.rows
         .filter(row => String(row.tax_mode || 'taxed').trim().toLowerCase() === 'taxed')
         .map(row => String(row.provider_tax_id || '').trim())
         .filter(Boolean))];
-    const missingCodes = activeCodes.filter(code => !mappedCodes.includes(code));
-    return { ready: missingCodes.length === 0, activeCodes, mappedCodes, missingCodes, providerTaxIds };
+    const missingItems = activeItems.filter(item => !mappedKeys.has(`${item.itemType}:${item.itemCode}`));
+    const missingCodes = [...new Set(missingItems.map(item => item.itemCode))];
+    return {
+        ready: missingItems.length === 0,
+        activeCodes,
+        mappedCodes,
+        missingCodes,
+        activeItems,
+        mappedItems,
+        missingItems,
+        providerTaxIds
+    };
 }
 
 function normalizePaymentTaxRows(rows = []) {
@@ -505,7 +561,7 @@ async function loadPaymentOrderTaxContext(client, {
     lockConfiguration = false
 } = {}) {
     const immutable = await client.query(
-        `SELECT line_number, item_code, provider_tax_id, COALESCE(tax_mode, 'taxed') AS tax_mode
+        `SELECT line_number, item_type, item_code, provider_tax_id, COALESCE(tax_mode, 'taxed') AS tax_mode
            FROM payment_order_items
           WHERE fiscal_profile_id = $1
             AND payment_order_id = $2
@@ -513,20 +569,28 @@ async function loadPaymentOrderTaxContext(client, {
         [fiscalProfileId, paymentOrderId]
     );
     const immutableContext = paymentTaxContext(immutable.rows);
+    const itemTypes = [...new Set(immutable.rows.map(row => String(row.item_type || 'admission_ticket').trim()).filter(Boolean))];
+    if (itemTypes.length !== 1 || !['admission_ticket', 'catalog_sale'].includes(itemTypes[0])) {
+        throw new PaymentReadinessError('payment_item_type_mixed_or_invalid', 'Payment order must contain one supported item type', { status: 409 });
+    }
+    const itemType = itemTypes[0];
     const itemCodes = [...new Set(immutableContext.items.map(item => item.itemCode))];
     const lockClause = lockConfiguration ? ' FOR UPDATE' : '';
+    const isAdmission = itemType === 'admission_ticket';
     const current = await client.query(
         `SELECT item_code, provider_tax_id, COALESCE(tax_mode, 'taxed') AS tax_mode
            FROM fiscal_item_mappings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
             AND crm_profile_key = $3
-            AND source_type = 'admission_ticket'
-            AND item_type = 'admission_ticket'
+            AND source_type = ${isAdmission ? "'admission_ticket'" : '$5'}
+            AND item_type = ${isAdmission ? "'admission_ticket'" : '$5'}
             AND provider = 'checkbox'
             AND status = 'active'
             AND item_code = ANY($4::text[])${lockClause}`,
-        [fiscalProfileId, fiscalRegisterId, crmProfileKey, itemCodes]
+        isAdmission
+            ? [fiscalProfileId, fiscalRegisterId, crmProfileKey, itemCodes]
+            : [fiscalProfileId, fiscalRegisterId, crmProfileKey, itemCodes, itemType]
     );
     const currentByCode = new Map();
     for (const row of current.rows) {
@@ -678,33 +742,112 @@ async function countClosedShiftBlockedSales(client, mapping) {
     return Number(result.rows[0]?.count || 0);
 }
 
+async function loadSelectedReadinessBinding(client, {
+    bindingId,
+    cashierUserId = null,
+    mapping
+} = {}) {
+    const id = Number(bindingId);
+    if (!Number.isSafeInteger(id) || id <= 0 || !mapping) {
+        throw new PaymentReadinessError('cashier_binding_id_invalid', 'Cashier binding option is invalid', { status: 422 });
+    }
+    const normalizedCashierUserId = cashierUserId == null ? null : Number(cashierUserId);
+    if (cashierUserId != null && (!Number.isSafeInteger(normalizedCashierUserId) || normalizedCashierUserId <= 0)) {
+        throw new PaymentReadinessError('cashier_binding_user_invalid', 'Cashier binding user is invalid', { status: 422 });
+    }
+    const result = await client.query(
+        `SELECT
+             binding.*,
+             profile.crm_profile_key,
+             register.fiscal_location_id AS register_fiscal_location_id,
+             location.location_alias
+           FROM fiscal_cashier_bindings binding
+           JOIN fiscal_profiles profile
+             ON profile.id = binding.fiscal_profile_id
+           JOIN fiscal_registers register
+             ON register.id = binding.fiscal_register_id
+            AND register.fiscal_profile_id = binding.fiscal_profile_id
+           JOIN fiscal_locations location
+             ON location.id = binding.fiscal_location_id
+            AND location.fiscal_profile_id = binding.fiscal_profile_id
+          WHERE binding.id = $1
+            AND binding.fiscal_profile_id = $2
+            AND binding.fiscal_register_id = $3
+            AND ($4::bigint IS NULL OR binding.user_id = $4::bigint)
+            AND binding.provider = 'checkbox'
+            AND binding.status = 'active'
+            AND NULLIF(BTRIM(binding.provider_cashier_login_ref), '') IS NOT NULL
+          LIMIT 2`,
+        [id, mapping.fiscal_profile_id, mapping.fiscal_register_id, normalizedCashierUserId]
+    );
+    if (result.rows.length !== 1) {
+        throw new PaymentReadinessError('cashier_binding_scope_invalid', 'Selected cashier is not active for this register', { status: 409 });
+    }
+    return result.rows[0];
+}
+
 async function loadScope(client, {
     user = null,
+    cashierUserId = null,
+    cashierBindingId = null,
     crmProfileKey,
     locationAlias,
     registerAlias,
     action = 'payments.view',
+    authorizationCrmProfileKey = null,
     requireUserAuthorization = true,
+    requireFiscalBinding = true,
     lockConfiguration = false
 } = {}) {
     const { mapping, matches } = await loadPilotMapping(client, { crmProfileKey, locationAlias, registerAlias, lockConfiguration });
     if (!mapping) return { mapping: null, binding: null, matches, tax: { ready: false, missingCodes: [] }, shift: null, blockingClosedShiftSaleCount: 0, runtimeConfig: null, configHash: null };
     let binding = null;
     if (requireUserAuthorization) {
-        await authorizeFiscalAction(client, {
-            user,
-            action,
-            fiscalProfileId: mapping.fiscal_profile_id,
-            crmProfileKey: mapping.crm_profile_key,
-            fiscalLocationId: mapping.fiscal_location_id,
-            fiscalRegisterId: mapping.fiscal_register_id
-        });
-        binding = await loadFiscalCashierBinding(client, {
-            userId: user?.id,
-            fiscalProfileId: mapping.fiscal_profile_id,
-            fiscalRegisterId: mapping.fiscal_register_id
-        });
-        if (lockConfiguration) {
+        const hasSelectedCashier = cashierBindingId != null;
+        const hasLogicalAuthorizationScope = Boolean(authorizationCrmProfileKey);
+        if (hasSelectedCashier || hasLogicalAuthorizationScope) {
+            await authorizeFiscalActorAction(client, {
+                user,
+                action,
+                crmProfileKey: authorizationCrmProfileKey || mapping.crm_profile_key
+            });
+        } else {
+            await authorizeFiscalAction(client, {
+                user,
+                action,
+                fiscalProfileId: mapping.fiscal_profile_id,
+                crmProfileKey: mapping.crm_profile_key,
+                fiscalLocationId: mapping.fiscal_location_id,
+                fiscalRegisterId: mapping.fiscal_register_id
+            });
+        }
+        if (hasSelectedCashier) {
+            binding = await loadSelectedReadinessBinding(client, {
+                bindingId: cashierBindingId,
+                cashierUserId,
+                mapping
+            });
+            assertFiscalCashierBindingCapability(binding, action);
+        } else if (!hasLogicalAuthorizationScope) {
+            binding = await loadFiscalCashierBinding(client, {
+                userId: cashierUserId || user?.id,
+                fiscalProfileId: mapping.fiscal_profile_id,
+                fiscalRegisterId: mapping.fiscal_register_id
+            });
+        } else if (requireFiscalBinding && cashierUserId != null) {
+            // Admission-ticket compatibility: legacy callers persist the fiscal
+            // cashier user but do not yet persist an explicit binding id.
+            // Catalog-sale routes always provide the selected binding id.
+            binding = await loadFiscalCashierBinding(client, {
+                userId: cashierUserId,
+                fiscalProfileId: mapping.fiscal_profile_id,
+                fiscalRegisterId: mapping.fiscal_register_id
+            });
+            assertFiscalCashierBindingCapability(binding, action);
+        } else if (requireFiscalBinding) {
+            binding = null;
+        }
+        if (lockConfiguration && binding) {
             const lockedBinding = await client.query(
                 `SELECT id
                    FROM fiscal_cashier_bindings
@@ -722,7 +865,9 @@ async function loadScope(client, {
             }
         }
     }
-    const tax = await loadTaxMappingReadiness(client, mapping);
+    const tax = await loadTaxMappingReadiness(client, mapping, {
+        businessContext: authorizationCrmProfileKey || mapping.crm_profile_key
+    });
     const shift = await loadLatestLocalShift(client, mapping, { lockConfiguration });
     const blockingClosedShiftSaleCount = await countClosedShiftBlockedSales(client, mapping);
     return { mapping, binding, matches, tax, shift, blockingClosedShiftSaleCount, runtimeConfig: null, configHash: null };
@@ -1038,10 +1183,13 @@ async function insertReadinessSnapshot(client, scope, state, details = {}) {
 async function prepareReadinessScope({
     dbPool = pool,
     user = null,
+    cashierUserId = null,
+    cashierBindingId = null,
     crmProfileKey,
     locationAlias,
     registerAlias,
     action = 'payments.view',
+    authorizationCrmProfileKey = null,
     requireUserAuthorization = true,
     paymentOrderId = null,
     lockConfiguration = false,
@@ -1050,16 +1198,20 @@ async function prepareReadinessScope({
 } = {}) {
     return withTransaction(dbPool, async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(env);
-        const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env);
         const scope = await loadScope(client, {
             user,
+            cashierUserId,
+            cashierBindingId,
             crmProfileKey,
             locationAlias,
             registerAlias,
             action,
+            authorizationCrmProfileKey,
             requireUserAuthorization,
             lockConfiguration
         });
+        const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env)
+            && scope.mapping?.acceptance_enabled === true;
         let runtimeConfig = null;
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
@@ -1068,7 +1220,8 @@ async function prepareReadinessScope({
                 runtimeConfig = loadCheckboxRuntimeConfig({
                     env,
                     credentialRef: credentialRefs.cashierCredentialRef,
-                    licenseRef: credentialRefs.registerCredentialRef
+                    licenseRef: credentialRefs.registerCredentialRef,
+                    expectedIsTest: scope.mapping.register_expected_is_test
                 });
                 assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
@@ -1086,6 +1239,15 @@ async function prepareReadinessScope({
                 lockConfiguration
             })
             : null;
+        if (scope.paymentTaxContext) {
+            scope.tax = {
+                ready: true,
+                activeCodes: scope.paymentTaxContext.items.map(item => item.itemCode),
+                mappedCodes: scope.paymentTaxContext.items.map(item => item.itemCode),
+                missingCodes: [],
+                providerTaxIds: scope.paymentTaxContext.providerTaxIds
+            };
+        }
         const local = baseReadiness({
             checkboxIntegrationEnabled,
             paymentAcceptanceEnabled,
@@ -1660,16 +1822,28 @@ async function safePublishFiscalEvent(
 async function loadReadinessState({
     dbPool = pool,
     user,
+    cashierBindingId = null,
     crmProfileKey,
     locationAlias,
     registerAlias,
     action = 'payments.view',
+    authorizationCrmProfileKey = null,
     env = process.env
 } = {}) {
     return withTransaction(dbPool, async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(env);
-        const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env);
-        const scope = await loadScope(client, { user, crmProfileKey, locationAlias, registerAlias, action, requireUserAuthorization: true });
+        const scope = await loadScope(client, {
+            user,
+            cashierBindingId,
+            crmProfileKey,
+            locationAlias,
+            registerAlias,
+            action,
+            authorizationCrmProfileKey,
+            requireUserAuthorization: true
+        });
+        const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env)
+            && scope.mapping?.acceptance_enabled === true;
         let runtimeConfig = null;
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
@@ -1678,7 +1852,8 @@ async function loadReadinessState({
                 runtimeConfig = loadCheckboxRuntimeConfig({
                     env,
                     credentialRef: credentialRefs.cashierCredentialRef,
-                    licenseRef: credentialRefs.registerCredentialRef
+                    licenseRef: credentialRefs.registerCredentialRef,
+                    expectedIsTest: scope.mapping.register_expected_is_test
                 });
                 assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
@@ -1711,7 +1886,14 @@ async function loadReadinessState({
         const latest = await loadLatestReadinessSnapshot(client, scope);
         const serialized = serializeReadinessSnapshot(latest);
         if (!serialized) {
-            return { ...local, readinessCode: 'readiness_missing', readinessSnapshot: null };
+            return {
+                ...local,
+                readinessCode: 'readiness_missing',
+                fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
+                fiscalLocationId: Number(scope.mapping.fiscal_location_id),
+                fiscalRegisterId: Number(scope.mapping.fiscal_register_id),
+                readinessSnapshot: null
+            };
         }
         const staleReadiness = serialized.staleReadiness === true;
         const cachedShift = reconcileCachedShiftReadiness(latest, scope.shift);
@@ -1765,10 +1947,12 @@ async function loadReadinessState({
 async function probeCheckboxReadiness({
     dbPool = pool,
     user = null,
+    cashierBindingId = null,
     crmProfileKey,
     locationAlias,
     registerAlias,
     action = 'payments.view',
+    authorizationCrmProfileKey = null,
     env = process.env,
     fetchImpl,
     now = new Date(),
@@ -1777,10 +1961,12 @@ async function probeCheckboxReadiness({
     const { scope, local } = await prepareReadinessScope({
         dbPool,
         user,
+        cashierBindingId,
         crmProfileKey,
         locationAlias,
         registerAlias,
         action,
+        authorizationCrmProfileKey,
         requireUserAuthorization: Boolean(user),
         env,
         now
@@ -1941,6 +2127,8 @@ function throwPaymentReadinessError(state = {}) {
 async function assertFreshPaymentReadiness({
     dbPool = pool,
     user,
+    cashierUserId = null,
+    cashierBindingId = null,
     fiscalProfileId,
     fiscalLocationId,
     fiscalRegisterId,
@@ -1949,6 +2137,7 @@ async function assertFreshPaymentReadiness({
     locationAlias,
     registerAlias,
     action = 'payments.confirm_received',
+    authorizationCrmProfileKey = null,
     tender,
     env = process.env,
     fetchImpl,
@@ -1961,10 +2150,13 @@ async function assertFreshPaymentReadiness({
     const { scope, local } = await prepareReadinessScope({
         dbPool,
         user,
+        cashierUserId,
+        cashierBindingId,
         crmProfileKey,
         locationAlias,
         registerAlias,
         action,
+        authorizationCrmProfileKey,
         requireUserAuthorization: true,
         paymentOrderId,
         env,
@@ -2020,6 +2212,8 @@ async function assertPaymentReadiness({
     dbPool = pool,
     client = null,
     user,
+    cashierUserId = null,
+    cashierBindingId = null,
     fiscalProfileId,
     fiscalLocationId,
     fiscalRegisterId,
@@ -2028,6 +2222,7 @@ async function assertPaymentReadiness({
     locationAlias,
     registerAlias,
     action = 'payments.confirm_received',
+    authorizationCrmProfileKey = null,
     env = process.env,
     tender = null,
     freshProviderReadiness = null,
@@ -2037,18 +2232,22 @@ async function assertPaymentReadiness({
     const run = async queryable => {
         const requiredTender = normalizeReadinessTender(tender);
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(env);
-        const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env);
-        const readinessPaymentAcceptanceEnabled = requirePaymentAcceptance ? paymentAcceptanceEnabled : true;
         const lockConfiguration = Boolean(client && freshProviderReadiness);
         const scope = await loadScope(queryable, {
             user,
+            cashierUserId,
+            cashierBindingId,
             crmProfileKey,
             locationAlias,
             registerAlias,
             action,
+            authorizationCrmProfileKey,
             requireUserAuthorization: true,
             lockConfiguration
         });
+        const paymentAcceptanceEnabled = isCheckboxPaymentAcceptanceEnabled(env)
+            && scope.mapping?.acceptance_enabled === true;
+        const readinessPaymentAcceptanceEnabled = requirePaymentAcceptance ? paymentAcceptanceEnabled : true;
         let runtimeConfig = null;
         let runtimeConfigError = null;
         if (scope.mapping && checkboxIntegrationEnabled && scope.mapping.feature_enabled === true && scope.binding) {
@@ -2057,7 +2256,8 @@ async function assertPaymentReadiness({
                 runtimeConfig = loadCheckboxRuntimeConfig({
                     env,
                     credentialRef: credentialRefs.cashierCredentialRef,
-                    licenseRef: credentialRefs.registerCredentialRef
+                    licenseRef: credentialRefs.registerCredentialRef,
+                    expectedIsTest: scope.mapping.register_expected_is_test
                 });
                 assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
             } catch (error) {
@@ -2075,6 +2275,15 @@ async function assertPaymentReadiness({
                 lockConfiguration
             })
             : null;
+        if (scope.paymentTaxContext) {
+            scope.tax = {
+                ready: true,
+                activeCodes: scope.paymentTaxContext.items.map(item => item.itemCode),
+                mappedCodes: scope.paymentTaxContext.items.map(item => item.itemCode),
+                missingCodes: [],
+                providerTaxIds: scope.paymentTaxContext.providerTaxIds
+            };
+        }
         const local = baseReadiness({
             checkboxIntegrationEnabled,
             paymentAcceptanceEnabled: readinessPaymentAcceptanceEnabled,
@@ -2156,7 +2365,11 @@ async function assertPaymentReadiness({
             const latest = await loadLatestReadinessSnapshot(queryable, scope);
             const serialized = serializeReadinessSnapshot(latest);
             if (!serialized) {
-                state = { ...local, readinessCode: 'readiness_missing', integrationReady: false };
+                state = {
+                    ...state,
+                    readinessCode: 'readiness_missing',
+                    integrationReady: false
+                };
             } else {
                 const staleReadiness = serialized.staleReadiness === true;
                 if (serialized.expectedIsTest !== runtimeConfig.expectedIsTest) {
@@ -2238,6 +2451,7 @@ async function listUnresolvedPaymentOrders({
     crmProfileKey,
     locationAlias,
     registerAlias,
+    authorizationCrmProfileKey = null,
     page = 1,
     pageSize = 50,
     cursor = null,
@@ -2245,7 +2459,16 @@ async function listUnresolvedPaymentOrders({
 } = {}) {
     const pagination = normalizeUnresolvedPagination({ page, pageSize, cursor, snapshotRevision });
     return withTransaction(dbPool, async client => {
-        const scope = await loadScope(client, { user, crmProfileKey, locationAlias, registerAlias, action: 'payments.view', requireUserAuthorization: true });
+        const scope = await loadScope(client, {
+            user,
+            crmProfileKey,
+            locationAlias,
+            registerAlias,
+            action: 'payments.view',
+            authorizationCrmProfileKey,
+            requireUserAuthorization: true,
+            requireFiscalBinding: false
+        });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
@@ -2271,6 +2494,7 @@ async function listUnresolvedPaymentOrders({
                      po.id,
                      po.order_key,
                      po.cashier_user_id,
+                     po.created_by_user_id,
                      po.payment_status,
                      po.fiscal_status,
                      po.total_amount_minor,
@@ -2303,7 +2527,7 @@ async function listUnresolvedPaymentOrders({
                     )
              ), queue_meta AS (
                  SELECT COUNT(*)::integer AS register_count,
-                        COUNT(*) FILTER (WHERE cashier_user_id = $4)::integer AS my_count,
+                        COUNT(*) FILTER (WHERE COALESCE(created_by_user_id, cashier_user_id) = $4)::integer AS my_count,
                         md5(CONCAT(
                             $1::text,
                             ':',
@@ -2345,6 +2569,7 @@ async function listUnresolvedPaymentOrders({
                  candidate.id AS payment_order_id,
                  candidate.order_key,
                  candidate.cashier_user_id,
+                 candidate.created_by_user_id,
                  candidate.payment_status,
                  candidate.fiscal_status,
                  candidate.total_amount_minor,
@@ -2418,7 +2643,7 @@ async function listUnresolvedPaymentOrders({
             orders: rows.map(row => ({
                 id: Number(row.payment_order_id),
                 orderKey: row.order_key,
-                isMine: Number(row.cashier_user_id || 0) === currentUserId,
+                isMine: Number(row.created_by_user_id || row.cashier_user_id || 0) === currentUserId,
                 cashierIdentity: row.cashier_user_id == null ? null : `user:${Number(row.cashier_user_id)}`,
                 paymentStatus: row.payment_status,
                 fiscalStatus: publicFiscalQueueStatus(row),
@@ -2446,6 +2671,8 @@ async function loadCheckboxSalesReport({
     crmProfileKey,
     locationAlias,
     registerAlias,
+    authorizationCrmProfileKey = null,
+    businessContext = null,
     dateFrom = null,
     dateTo = null,
     shiftId = null,
@@ -2503,14 +2730,31 @@ async function loadCheckboxSalesReport({
     if (normalizedShiftId != null && (!Number.isSafeInteger(normalizedShiftId) || normalizedShiftId <= 0)) {
         throw new PaymentReadinessError('shift_id_invalid', 'Fiscal shift id is invalid', { status: 422 });
     }
-    const normalizedCashierUserId = String(cashierUserId || '').trim().toLowerCase() === 'mine'
+    const cashierFilterIsMine = String(cashierUserId || '').trim().toLowerCase() === 'mine';
+    const normalizedCashierUserId = cashierFilterIsMine
         ? Number(user?.id || 0)
         : (cashierUserId == null || cashierUserId === '' ? null : Number(cashierUserId));
     if (normalizedCashierUserId != null && (!Number.isSafeInteger(normalizedCashierUserId) || normalizedCashierUserId <= 0)) {
         throw new PaymentReadinessError('cashier_user_id_invalid', 'Cashier user id filter is invalid', { status: 422 });
     }
+    const requestedBusinessContext = String(businessContext || authorizationCrmProfileKey || '').trim();
+    const normalizedBusinessContext = requestedBusinessContext
+        ? normalizeKnownBusinessContext(requestedBusinessContext)
+        : null;
+    if (requestedBusinessContext && !normalizedBusinessContext) {
+        throw new PaymentReadinessError('fiscal_business_context_unknown', 'Fiscal business context is unknown', { status: 422 });
+    }
     return withTransaction(dbPool, async client => {
-        const scope = await loadScope(client, { user, crmProfileKey, locationAlias, registerAlias, action: 'payments.view', requireUserAuthorization: true });
+        const scope = await loadScope(client, {
+            user,
+            crmProfileKey,
+            locationAlias,
+            registerAlias,
+            action: 'payments.view',
+            authorizationCrmProfileKey,
+            requireUserAuthorization: true,
+            requireFiscalBinding: false
+        });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
@@ -2520,7 +2764,10 @@ async function loadCheckboxSalesReport({
             normalizedDateFrom,
             normalizedDateTo,
             normalizedShiftId,
-            normalizedCashierUserId
+            normalizedCashierUserId,
+            normalizedBusinessContext,
+            scope.mapping.crm_profile_key,
+            cashierFilterIsMine
         ];
         const rowsResult = await client.query(
             `WITH latest_job AS (
@@ -2584,9 +2831,14 @@ async function loadCheckboxSalesReport({
                 AND ($3::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date >= $3::date)
                 AND ($4::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date <= $4::date)
                 AND ($5::bigint IS NULL OR fo.fiscal_shift_id = $5::bigint)
-                AND ($6::bigint IS NULL OR po.cashier_user_id = $6::bigint)
+                AND (
+                    $6::bigint IS NULL
+                    OR ($9::boolean = TRUE AND COALESCE(po.created_by_user_id, po.cashier_user_id) = $6::bigint)
+                    OR ($9::boolean = FALSE AND po.cashier_user_id = $6::bigint)
+                )
+                AND ($7::text IS NULL OR COALESCE(po.business_context, $8::text) = $7::text)
               ORDER BY po.confirmed_at DESC NULLS LAST, po.id DESC
-              LIMIT $7 OFFSET $8`,
+              LIMIT $10 OFFSET $11`,
             [...params, normalizedPageSize, offset]
         );
         const rows = rowsResult.rows.map(row => ({
@@ -2643,7 +2895,12 @@ async function loadCheckboxSalesReport({
                     AND ($3::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date >= $3::date)
                     AND ($4::date IS NULL OR (po.confirmed_at AT TIME ZONE 'Europe/Kyiv')::date <= $4::date)
                     AND ($5::bigint IS NULL OR fo.fiscal_shift_id = $5::bigint)
-                    AND ($6::bigint IS NULL OR po.cashier_user_id = $6::bigint)
+                    AND (
+                        $6::bigint IS NULL
+                        OR ($9::boolean = TRUE AND COALESCE(po.created_by_user_id, po.cashier_user_id) = $6::bigint)
+                        OR ($9::boolean = FALSE AND po.cashier_user_id = $6::bigint)
+                    )
+                    AND ($7::text IS NULL OR COALESCE(po.business_context, $8::text) = $7::text)
              ),
              status_counts AS (
                  SELECT jsonb_object_agg(public_status, status_count) AS status_counts
@@ -2714,10 +2971,20 @@ async function loadOperationalHealth({
     crmProfileKey,
     locationAlias,
     registerAlias,
+    authorizationCrmProfileKey = null,
     env = process.env
 } = {}) {
     return withTransaction(dbPool, async client => {
-        const scope = await loadScope(client, { user, crmProfileKey, locationAlias, registerAlias, action: 'fiscal.audit.view', requireUserAuthorization: true });
+        const scope = await loadScope(client, {
+            user,
+            crmProfileKey,
+            locationAlias,
+            registerAlias,
+            action: 'fiscal.audit.view',
+            authorizationCrmProfileKey,
+            requireUserAuthorization: true,
+            requireFiscalBinding: false
+        });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
@@ -2765,10 +3032,20 @@ async function listOperationalIncidents({
     crmProfileKey,
     locationAlias,
     registerAlias,
+    authorizationCrmProfileKey = null,
     status = 'open'
 } = {}) {
     return withTransaction(dbPool, async client => {
-        const scope = await loadScope(client, { user, crmProfileKey, locationAlias, registerAlias, action: 'fiscal.audit.view', requireUserAuthorization: true });
+        const scope = await loadScope(client, {
+            user,
+            crmProfileKey,
+            locationAlias,
+            registerAlias,
+            action: 'fiscal.audit.view',
+            authorizationCrmProfileKey,
+            requireUserAuthorization: true,
+            requireFiscalBinding: false
+        });
         if (!scope.mapping) {
             throw new PaymentReadinessError('mapping_missing', 'Fiscal profile/register mapping is missing', { status: 409 });
         }
@@ -2882,7 +3159,8 @@ async function updateOperationalIncidentStatus({
     reason = null,
     crmProfileKey,
     locationAlias,
-    registerAlias
+    registerAlias,
+    authorizationCrmProfileKey = null
 } = {}) {
     const id = Number(incidentId);
     if (!Number.isSafeInteger(id) || id <= 0) {
@@ -2903,7 +3181,9 @@ async function updateOperationalIncidentStatus({
             locationAlias,
             registerAlias,
             action: 'fiscal.incident.manage',
+            authorizationCrmProfileKey,
             requireUserAuthorization: true,
+            requireFiscalBinding: false,
             lockConfiguration: true
         });
         if (!scope.mapping) {
@@ -3047,6 +3327,46 @@ function assertPhase1ClosePaymentDrain(env = process.env) {
     }
 }
 
+async function loadPhase1CloseFiscalBinding(client, shift) {
+    const candidates = await client.query(
+        `SELECT binding.id, binding.user_id
+           FROM fiscal_operations open_operation
+           JOIN fiscal_cashier_bindings binding
+             ON binding.fiscal_profile_id = open_operation.fiscal_profile_id
+            AND binding.fiscal_register_id = open_operation.fiscal_register_id
+            AND binding.fiscal_location_id = open_operation.fiscal_location_id
+            AND binding.provider = open_operation.provider
+            AND binding.provider_cashier_id IS NOT DISTINCT FROM open_operation.provider_cashier_id
+            AND binding.provider_cashier_login_ref = open_operation.cashier_credential_ref
+            AND binding.status = 'active'
+          WHERE open_operation.id = $1
+            AND open_operation.fiscal_shift_id = $2
+            AND open_operation.fiscal_profile_id = $3
+            AND open_operation.fiscal_register_id = $4
+            AND open_operation.operation_type = 'shift_open'
+            AND open_operation.provider = 'checkbox'
+            AND NULLIF(BTRIM(open_operation.cashier_credential_ref), '') IS NOT NULL
+          LIMIT 2`,
+        [shift.open_operation_id, shift.id, shift.fiscal_profile_id, shift.fiscal_register_id]
+    );
+    if (candidates.rows.length !== 1) {
+        throw new PaymentReadinessError(
+            'phase1_close_cashier_binding_missing',
+            'Exact fiscal cashier binding from the shift-open operation is required for close',
+            { status: 409 }
+        );
+    }
+    const candidate = candidates.rows[0];
+    const binding = await loadFiscalCashierBinding(client, {
+        userId: candidate.user_id,
+        fiscalProfileId: shift.fiscal_profile_id,
+        fiscalRegisterId: shift.fiscal_register_id,
+        bindingId: candidate.id
+    });
+    assertFiscalCashierBindingCapability(binding, 'fiscal.shift.close');
+    return binding;
+}
+
 async function loadAndAuthorizePhase1CloseShift(client, {
     user,
     shiftId,
@@ -3065,8 +3385,10 @@ async function loadAndAuthorizePhase1CloseShift(client, {
                 fr.provider_license_ref,
                 fr.provider,
                 fr.feature_enabled,
+                fr.acceptance_enabled,
                 fr.status AS fiscal_register_status,
                 fr.metadata AS register_metadata,
+                COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
                 fl.location_alias,
                 fl.provider_outlet_id
            FROM fiscal_shifts fs
@@ -3086,14 +3408,27 @@ async function loadAndAuthorizePhase1CloseShift(client, {
     }
     const shift = shiftResult.rows[0];
     assertPhase1CloseIntegrationOwner(shift, user);
-    await authorizeFiscalAction(client, {
-        user,
-        action: 'fiscal.shift.close',
-        fiscalProfileId: shift.fiscal_profile_id,
-        crmProfileKey: shift.crm_profile_key,
-        fiscalLocationId: shift.fiscal_location_id,
-        fiscalRegisterId: shift.fiscal_register_id
-    });
+    const logicalBusinessContext = normalizeKnownBusinessContext(shift.business_context);
+    if (logicalBusinessContext) {
+        await authorizeFiscalActorAction(client, {
+            user,
+            action: 'fiscal.shift.close',
+            crmProfileKey: logicalBusinessContext
+        });
+        const binding = await loadPhase1CloseFiscalBinding(client, shift);
+        shift.phase1_cashier_binding_id = Number(binding.id);
+        shift.phase1_cashier_user_id = Number(binding.user_id);
+        shift.phase1_authorization_crm_profile_key = logicalBusinessContext;
+    } else {
+        await authorizeFiscalAction(client, {
+            user,
+            action: 'fiscal.shift.close',
+            fiscalProfileId: shift.fiscal_profile_id,
+            crmProfileKey: shift.crm_profile_key,
+            fiscalLocationId: shift.fiscal_location_id,
+            fiscalRegisterId: shift.fiscal_register_id
+        });
+    }
     if (requireProviderOpen && (shift.status !== 'open' || shift.lifecycle_stage !== 'OPENED' || !shift.provider_shift_id)) {
         throw new PaymentReadinessError('shift_not_provider_open', 'Only a provider OPENED shift can be closed by the Phase-1 flow', { status: 409 });
     }
@@ -3248,10 +3583,12 @@ async function requestPhase1ShiftClose({
     const freshProviderReadiness = await probeCheckboxReadiness({
         dbPool,
         user,
+        cashierBindingId: preauthorizedShift.phase1_cashier_binding_id || null,
         crmProfileKey: preauthorizedShift.crm_profile_key,
         locationAlias: preauthorizedShift.location_alias,
         registerAlias: preauthorizedShift.register_alias,
         action: 'fiscal.shift.close',
+        authorizationCrmProfileKey: preauthorizedShift.phase1_authorization_crm_profile_key || null,
         env,
         fetchImpl,
         force: true
@@ -3281,6 +3618,8 @@ async function requestPhase1ShiftClose({
         await assertPaymentReadiness({
             client,
             user,
+            cashierUserId: shift.phase1_cashier_user_id || null,
+            cashierBindingId: shift.phase1_cashier_binding_id || null,
             fiscalProfileId: shift.fiscal_profile_id,
             fiscalLocationId: shift.fiscal_location_id,
             fiscalRegisterId: shift.fiscal_register_id,
@@ -3288,20 +3627,23 @@ async function requestPhase1ShiftClose({
             locationAlias: shift.location_alias,
             registerAlias: shift.register_alias,
             action: 'fiscal.shift.close',
+            authorizationCrmProfileKey: shift.phase1_authorization_crm_profile_key || null,
             requirePaymentAcceptance: false,
             freshProviderReadiness,
             env
         });
         const binding = await loadFiscalCashierBinding(client, {
-            userId: user?.id,
+            userId: shift.phase1_cashier_user_id || user?.id,
             fiscalProfileId: shift.fiscal_profile_id,
-            fiscalRegisterId: shift.fiscal_register_id
+            fiscalRegisterId: shift.fiscal_register_id,
+            bindingId: shift.phase1_cashier_binding_id || null
         });
         const credentialRefs = assertCompleteFiscalCredentialRefs(shift, binding);
         const runtimeConfig = loadCheckboxRuntimeConfig({
             env,
             credentialRef: credentialRefs.cashierCredentialRef,
-            licenseRef: credentialRefs.registerCredentialRef
+            licenseRef: credentialRefs.registerCredentialRef,
+            expectedIsTest: shift.register_expected_is_test
         });
         const fiscalConfig = buildFiscalConfigurationSnapshot({ mapping: shift, binding, runtimeConfig });
         const providerRequestUuid = crypto.randomUUID();
@@ -3501,7 +3843,8 @@ async function runCheckboxReadinessProbeSchedulerOnce({ dbPool = pool, env = pro
                     const runtimeConfig = loadCheckboxRuntimeConfig({
                         env,
                         credentialRef: credentialRefs.cashierCredentialRef,
-                        licenseRef: credentialRefs.registerCredentialRef
+                        licenseRef: credentialRefs.registerCredentialRef,
+                        expectedIsTest: scope.mapping.register_expected_is_test
                     });
                     assertRuntimeConfigMatchesMapping(scope.mapping, runtimeConfig);
                     scope.runtimeConfig = runtimeConfig;
@@ -3599,7 +3942,10 @@ async function runCheckboxReadinessProbeScheduler(options = {}) {
 }
 
 function readinessErrorResponse(error) {
-    if (error instanceof PaymentReadinessError || error instanceof FiscalAccessError || error instanceof CheckboxClientError) {
+    if (error instanceof PaymentReadinessError
+        || error instanceof FiscalAccessError
+        || error instanceof CheckboxClientError
+        || error?.name === 'FiscalSaleRouteError') {
         const safe = publicError(error);
         return {
             status: safe.status || 400,
@@ -3651,6 +3997,7 @@ module.exports = {
     runCheckboxReadinessProbeScheduler,
     updateOperationalIncidentStatus,
     __readinessProbeTest: Object.freeze({
+        loadScope,
         providerReadinessProbeKey,
         probeProviderSingleFlight
     })

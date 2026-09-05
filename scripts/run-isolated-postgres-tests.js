@@ -49,6 +49,12 @@ const MODES = {
     admission: [
         'tests/integration/admission-tickets.integration.test.js'
     ],
+    'catalog-sale': [
+        'tests/integration/catalog-sale-migrations.integration.test.js'
+    ],
+    'catalog-sale-local-qa': [
+        'tests/integration/catalog-sale-local-provider.integration.test.js'
+    ],
     'my-day': [
         'tests/integration/my-day-postgres.integration.test.js'
     ],
@@ -91,7 +97,11 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|my-day|my-day-browser|cashier-smoke|checkbox-config|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|my-day|my-day-browser|cashier-smoke|checkbox-config|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+}
+
+function isCheckboxPaymentAcceptanceEnabledForParent(value) {
+    return /^(1|true)$/i.test(String(value || '').trim());
 }
 
 function createPool(testDb) {
@@ -474,7 +484,8 @@ function runsAgainstDatabaseOnly(testFile) {
 
 async function runSuite(testDb, testFile, suiteMode) {
     const port = await reservePort();
-    const checkboxBrowserMockPort = testFile.includes('checkbox-cashier-real-routes-browser-smoke') ? await reservePort() : null;
+    const catalogSaleLocalQa = testFile.includes('catalog-sale-local-provider.integration');
+    const checkboxBrowserMockPort = (testFile.includes('checkbox-cashier-real-routes-browser-smoke') || catalogSaleLocalQa) ? await reservePort() : null;
     const myDayOpenAiMockPort = (testFile.includes('my-day-postgres.integration') || testFile.includes('my-day-actual-app-browser-smoke')) ? await reservePort() : null;
     const baseUrl = `http://127.0.0.1:${port}`;
     assertSafeIsolatedTestUrl(baseUrl);
@@ -501,7 +512,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         serverEnv.MY_DAY_CLASSIFICATION_TIMEOUT_MS = '250';
         serverEnv.TASK_AI_DRAFT_BUNDLE_ENABLED = 'true';
     }
-    if (checkboxBrowserMockPort) {
+    if (checkboxBrowserMockPort && !catalogSaleLocalQa) {
         const ref = 'PARK_MIDDLE_BROWSER';
         serverEnv.NODE_OPTIONS = [
             serverEnv.NODE_OPTIONS || '',
@@ -521,6 +532,30 @@ async function runSuite(testDb, testFile, suiteMode) {
         serverEnv[`CHECKBOX_${ref}_LICENSE_KEY`] = 'mock-license';
         serverEnv[`CHECKBOX_${ref}_ACCESS_KEY`] = 'mock-access';
         serverEnv[`CHECKBOX_${ref}_DEVICE_ID`] = 'eventgenix-browser-smoke-device';
+    }
+    if (catalogSaleLocalQa) {
+        const sharedRef = 'SHARED_TEST_LOCAL_QA';
+        serverEnv.NODE_OPTIONS = [
+            String(serverEnv.NODE_OPTIONS || '').replace(/--require=\.\/tests\/helpers\/checkbox-browser-fetch-shim\.js/g, '').trim(),
+            '--require=./tests/helpers/checkbox-loopback-only-fetch-shim.js'
+        ].filter(Boolean).join(' ');
+        serverEnv.REQUIRE_ISOLATED_TEST_TARGET = 'true';
+        serverEnv.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER = 'true';
+        serverEnv.CHECKBOX_LOCAL_QA_MOCK_PORT = String(checkboxBrowserMockPort);
+        serverEnv.CHECKBOX_INTEGRATION_ENABLED = 'true';
+        serverEnv.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'true';
+        serverEnv.CHECKBOX_EXPECT_IS_TEST = 'true';
+        serverEnv.CHECKBOX_WEBHOOK_ENABLED = 'false';
+        serverEnv.EVENTGENIX_CASHIER_PRO_ENABLED = 'false';
+        serverEnv.PAYMENT_OUTBOX_WAKEUP_DISABLED = 'true';
+        serverEnv.BACKUP_OUTBOUND_HOLD = 'true';
+        const prefix = `CHECKBOX_${sharedRef}`;
+        serverEnv[`${prefix}_BASE_URL`] = 'https://api.checkbox.ua';
+        serverEnv[`${prefix}_LOGIN`] = 'local-qa-shared';
+        serverEnv[`${prefix}_PASSWORD`] = 'local-qa-shared-password';
+        serverEnv[`${prefix}_LICENSE_KEY`] = 'local-qa-shared-license';
+        serverEnv[`${prefix}_ACCESS_KEY`] = 'local-qa-shared-access';
+        serverEnv[`${prefix}_DEVICE_ID`] = 'local-qa-shared-device';
     }
     const realCheckboxTestMode = testFile.includes('checkbox-cashier-real-testmode-browser-smoke');
     if (realCheckboxTestMode) {
@@ -566,6 +601,8 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_PAYROLL_INSTALLMENTS_INTEGRATION: testFile.includes('payroll-installments') ? 'true' : 'false',
         RUN_PAYROLL_FULLSTACK_SETTLEMENT_INTEGRATION: testFile.includes('payroll-fullstack-settlement') ? 'true' : 'false',
         RUN_ADMISSION_TICKETS_INTEGRATION: testFile.includes('admission-tickets') ? 'true' : 'false',
+        RUN_CATALOG_SALE_MIGRATIONS_INTEGRATION: testFile.includes('catalog-sale-migrations') ? 'true' : 'false',
+        RUN_CATALOG_SALE_LOCAL_QA_INTEGRATION: catalogSaleLocalQa ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION: testFile.includes('checkbox-park-cashier-smoke') ? 'true' : 'false',
@@ -685,7 +722,7 @@ async function runSuite(testDb, testFile, suiteMode) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'my-day', 'my-day-browser', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'checkbox-ui-testmode-preflight', 'checkbox-ui-testmode', 'checkbox-ui-testmode-card-recovery', 'checkbox-ui-testmode-final-card-close', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'catalog-sale', 'catalog-sale-local-qa', 'my-day', 'my-day-browser', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'checkbox-ui-testmode-preflight', 'checkbox-ui-testmode', 'checkbox-ui-testmode-card-recovery', 'checkbox-ui-testmode-final-card-close', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'
         || mode === 'checkbox-ui-testmode'
@@ -694,6 +731,12 @@ async function main() {
     const checkboxMutationMode = mode === 'checkbox-ui-testmode'
         || mode === 'checkbox-ui-testmode-card-recovery'
         || mode === 'checkbox-ui-testmode-final-card-close';
+    if (mode === 'catalog-sale-local-qa') {
+        if (!testDb.isLocal) throw new Error('Catalog-sale local QA requires loopback disposable PostgreSQL');
+        if (isCheckboxPaymentAcceptanceEnabledForParent(process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED)) {
+            throw new Error('Catalog-sale local QA refuses a pre-enabled parent payment acceptance flag');
+        }
+    }
     if (checkboxTestMode) {
         if (!testDb.isLocal) throw new Error('Real Checkbox test-mode full-stack proof requires loopback disposable PostgreSQL');
         if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'

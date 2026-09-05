@@ -10,6 +10,8 @@ const {
     getPaymentOrderDetails,
     paymentErrorResponse
 } = require('../services/payments/paymentService');
+const { createCatalogSalePaymentOrder, listCatalogDiscounts, listCatalogItems, scopeForBusiness } = require('../services/payments/catalogSaleService');
+const { listCashierBindings, listSelectableCashiers, updateCashierBinding } = require('../services/payments/cashierBindingAdminService');
 const {
     approveServiceOut,
     autoCloseShift,
@@ -38,11 +40,40 @@ const {
     updateOperationalIncidentStatus
 } = require('../services/payments/paymentReadinessService');
 const { isCashierProEnabled, isCheckboxIntegrationEnabled } = require('../services/checkbox/config');
+const {
+    assertNoClientFiscalRouteOverride,
+    listFiscalSaleRouteOptions,
+    resolveFiscalSaleRoute
+} = require('../services/payments/fiscalSaleRouteService');
 
 router.use(authenticateToken);
 
 function idempotencyKeyFromRequest(req) {
     return req.get('Idempotency-Key') || req.get('idempotency-key') || '';
+}
+
+function localManualQaStatus(env = process.env, businessContext) {
+    const enabled = String(env.EVENTGENIX_LOCAL_MANUAL_QA || '').trim().toLowerCase() === 'true';
+    if (!enabled) return null;
+    const safe = env.NODE_ENV === 'test'
+        && String(env.REQUIRE_ISOLATED_TEST_TARGET || '').trim().toLowerCase() === 'true'
+        && String(env.ISOLATED_TEST_DATABASE_VERIFIED_BY_RUNNER || '').trim().toLowerCase() === 'true'
+        && String(env.CHECKBOX_LOCAL_QA_FETCH_SHIM_ACTIVE || '').trim().toLowerCase() === 'true'
+        && String(env.CHECKBOX_INTEGRATION_ENABLED || '').trim().toLowerCase() === 'true'
+        && String(env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED || '').trim().toLowerCase() === 'true'
+        && Number.isSafeInteger(Number(env.CHECKBOX_LOCAL_QA_MOCK_PORT))
+        && Number(env.CHECKBOX_LOCAL_QA_MOCK_PORT) > 0;
+    if (!safe) return { enabled: false };
+    const scope = scopeForBusiness(businessContext);
+    return {
+        enabled: true,
+        providerMode: 'loopback_mock',
+        externalNetwork: false,
+        acceptanceScope: 'process_only',
+        businessContext: scope.crmProfileKey,
+        locationAlias: scope.locationAlias,
+        registerAlias: scope.registerAlias
+    };
 }
 
 function fiscalScopeValueFromRequest(req, camelKey, snakeKey) {
@@ -53,22 +84,60 @@ function fiscalScopeValueFromRequest(req, camelKey, snakeKey) {
         ?? null;
 }
 
-function requirePaymentFiscalScope(req) {
-    const scope = {
-        crmProfileKey: fiscalScopeValueFromRequest(req, 'crmProfileKey', 'crm_profile_key'),
-        locationAlias: fiscalScopeValueFromRequest(req, 'locationAlias', 'location_alias'),
-        registerAlias: fiscalScopeValueFromRequest(req, 'registerAlias', 'register_alias')
-    };
-    const missing = Object.entries(scope)
-        .filter(([, value]) => String(value ?? '').trim() === '')
-        .map(([key]) => key);
-    if (missing.length) {
-        throw new PaymentReadinessError('fiscal_scope_required', 'Fiscal profile, location, and register scope are required', {
-            status: 422,
-            details: { missing }
+function routeOptionIdFromRequest(req) {
+    return req.body?.routeOptionId
+        ?? req.body?.route_option_id
+        ?? req.query?.routeOptionId
+        ?? req.query?.route_option_id
+        ?? null;
+}
+
+function cashierBindingIdFromRequest(req) {
+    const value = req.body?.cashierBindingId
+        ?? req.body?.cashier_binding_id
+        ?? req.query?.cashierBindingId
+        ?? req.query?.cashier_binding_id
+        ?? null;
+    if (value == null || value === '') return null;
+    const id = Number(value);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        throw Object.assign(new Error('Cashier binding option is invalid'), {
+            name: 'FiscalSaleRouteError',
+            code: 'cashier_binding_id_invalid',
+            status: 422
         });
     }
-    return scope;
+    return id;
+}
+
+async function resolvePaymentFiscalScope(req) {
+    const input = { ...(req.query || {}), ...(req.body || {}) };
+    assertNoClientFiscalRouteOverride(input);
+    const requestedBusiness = String(
+        fiscalScopeValueFromRequest(req, 'businessContext', 'business_context') || ''
+    ).trim().toLowerCase();
+    const routeOptionId = String(routeOptionIdFromRequest(req) || '').trim();
+    if (!requestedBusiness || !routeOptionId) {
+        throw Object.assign(new Error('Business context and safe fiscal register option are required'), {
+            name: 'FiscalSaleRouteError',
+            code: 'fiscal_route_option_required',
+            status: 422
+        });
+    }
+    const route = await resolveFiscalSaleRoute({
+        user: req.user,
+        routeOptionId,
+        businessContext: requestedBusiness
+    });
+    return {
+        crmProfileKey: route.mapping.crm_profile_key,
+        locationAlias: route.mapping.location_alias,
+        registerAlias: route.mapping.register_alias,
+        authorizationCrmProfileKey: route.businessContext,
+        businessContext: route.businessContext,
+        routeOptionId: route.routeOptionId,
+        cashierBindingId: cashierBindingIdFromRequest(req)
+    };
 }
 
 function projectReadinessForViewer(_user, readiness = {}) {
@@ -298,7 +367,59 @@ function requireCashierProEnabled(req, res, next) {
 
 router.post('/admission-ticket/orders', requireAction('payments.create'), async (req, res) => {
     try {
+        const originalBody = req.body || {};
+        assertNoClientFiscalRouteOverride(originalBody);
+        const routeOptionId = String(routeOptionIdFromRequest(req) || 'park_production').trim();
+        const route = await resolveFiscalSaleRoute({
+            user: req.user,
+            routeOptionId,
+            businessContext: originalBody.businessContext ?? originalBody.business_context ?? 'event_genix',
+            requireMutationReady: true
+        });
+        if (route.businessContext !== 'event_genix') {
+            throw Object.assign(new Error('Admission tickets are available only for PARK'), {
+                name: 'FiscalSaleRouteError',
+                code: 'admission_ticket_route_invalid',
+                status: 409
+            });
+        }
+        const body = {
+            ...originalBody,
+            crmProfileKey: route.mapping.crm_profile_key,
+            locationAlias: route.mapping.location_alias,
+            registerAlias: route.mapping.register_alias
+        };
+        delete body.routeOptionId;
+        delete body.route_option_id;
+        delete body.businessContext;
+        delete body.business_context;
         const result = await createAdmissionTicketPaymentOrder({
+            user: req.user,
+            body,
+            idempotencyKey: idempotencyKeyFromRequest(req),
+            requireCheckboxIntegrationReady: true,
+            fiscalRoute: route
+        });
+        return res.status(result.replayed ? 200 : 201).json({
+            success: true,
+            ...projectPaymentMutationResultForViewer(req.user, result)
+        });
+    } catch (error) {
+        const response = projectReadinessErrorForViewer(req.user, paymentErrorResponse(error));
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/catalog/orders', requireAction('payments.create'), async (req, res) => {
+    try {
+        if (!String(routeOptionIdFromRequest(req) || '').trim()) {
+            throw Object.assign(new Error('Safe fiscal register option is required'), {
+                name: 'FiscalSaleRouteError',
+                code: 'fiscal_route_option_required',
+                status: 422
+            });
+        }
+        const result = await createCatalogSalePaymentOrder({
             user: req.user,
             body: req.body || {},
             idempotencyKey: idempotencyKeyFromRequest(req),
@@ -310,6 +431,93 @@ router.post('/admission-ticket/orders', requireAction('payments.create'), async 
         });
     } catch (error) {
         const response = projectReadinessErrorForViewer(req.user, paymentErrorResponse(error));
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/catalog/routes', requireAction('payments.view'), async (req, res) => {
+    try {
+        const routes = await listFiscalSaleRouteOptions({ user: req.user });
+        return res.status(200).json({ success: true, routes });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/catalog/items', requireAction('payments.view'), async (req, res) => {
+    try {
+        assertNoClientFiscalRouteOverride(req.query || {});
+        const items = await listCatalogItems({
+            businessContext: req.query.businessContext || req.query.business_context,
+            routeOptionId: routeOptionIdFromRequest(req),
+            user: req.user
+        });
+        return res.status(200).json({ success: true, items });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/catalog/discounts', requireAction('payments.view'), async (req, res) => {
+    try {
+        assertNoClientFiscalRouteOverride(req.query || {});
+        const discounts = await listCatalogDiscounts({
+            businessContext: req.query.businessContext || req.query.business_context,
+            routeOptionId: routeOptionIdFromRequest(req),
+            user: req.user
+        });
+        return res.status(200).json({ success: true, discounts });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/local-qa-status', requireAction('payments.view'), (req, res) => {
+    try {
+        const status = localManualQaStatus(process.env, req.query.businessContext || req.query.business_context);
+        if (!status) return res.status(404).json({ success: false, code: 'local_qa_disabled' });
+        if (status.enabled !== true) return res.status(503).json({ success: false, code: 'local_qa_not_isolated' });
+        return res.status(200).json({ success: true, ...status });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/catalog/cashiers', requireAction('payments.create'), async (req, res) => {
+    try {
+        assertNoClientFiscalRouteOverride(req.query || {});
+        const cashiers = await listSelectableCashiers({
+            businessContext: req.query.businessContext || req.query.business_context,
+            routeOptionId: routeOptionIdFromRequest(req),
+            user: req.user
+        });
+        return res.status(200).json({ success: true, cashiers });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.get('/fiscal-bindings/cashiers', requireAction('fiscal.configure'), async (req, res) => {
+    try {
+        const cashiers = await listCashierBindings({ businessContext: req.query.businessContext || req.query.business_context });
+        return res.status(200).json({ success: true, cashiers });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.put('/fiscal-bindings/cashiers/:bindingId', requireAction('fiscal.configure'), async (req, res) => {
+    try {
+        const result = await updateCashierBinding({ bindingId: req.params.bindingId, body: req.body || {}, actorUserId: req.user?.id });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = paymentErrorResponse(error);
         return res.status(response.status).json(response.body);
     }
 });
@@ -372,7 +580,7 @@ router.post('/orders/:orderId/cancel', requireAction('payments.create'), async (
 
 router.get('/pilot-register-state', requireAction('payments.view'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const [localState, readiness] = await Promise.all([
             loadPilotRegisterState({
                 user: req.user,
@@ -396,7 +604,7 @@ router.get('/pilot-register-state', requireAction('payments.view'), async (req, 
 
 router.post('/readiness/probe', requireAction('payments.view'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await probeCheckboxReadiness({
             user: req.user,
             ...scope,
@@ -417,7 +625,7 @@ router.get('/unresolved-orders', requireAction('payments.view'), async (req, res
             cursor: req.query.cursor,
             snapshotRevision: req.query.snapshotRevision ?? req.query.snapshot_revision
         });
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await listUnresolvedPaymentOrders({
             user: req.user,
             ...scope,
@@ -432,7 +640,7 @@ router.get('/unresolved-orders', requireAction('payments.view'), async (req, res
 
 router.get('/checkbox-sales-report', requireAction('payments.view'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await loadCheckboxSalesReport({
             user: req.user,
             ...scope,
@@ -452,7 +660,7 @@ router.get('/checkbox-sales-report', requireAction('payments.view'), async (req,
 
 router.get('/operational-health', requireAction('fiscal.audit.view'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await loadOperationalHealth({
             user: req.user,
             ...scope
@@ -466,7 +674,7 @@ router.get('/operational-health', requireAction('fiscal.audit.view'), async (req
 
 router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await listOperationalIncidents({
             user: req.user,
             ...scope,
@@ -481,7 +689,7 @@ router.get('/incidents', requireAction('fiscal.audit.view'), async (req, res) =>
 
 router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.incident.manage'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await updateOperationalIncidentStatus({
             user: req.user,
             incidentId: req.params.incidentId,
@@ -498,7 +706,7 @@ router.post('/incidents/:incidentId/acknowledge', requireAction('fiscal.incident
 
 router.post('/incidents/:incidentId/resolve', requireAction('fiscal.incident.manage'), async (req, res) => {
     try {
-        const scope = requirePaymentFiscalScope(req);
+        const scope = await resolvePaymentFiscalScope(req);
         const result = await updateOperationalIncidentStatus({
             user: req.user,
             incidentId: req.params.incidentId,

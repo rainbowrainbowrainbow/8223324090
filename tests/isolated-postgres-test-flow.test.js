@@ -137,7 +137,7 @@ describe('isolated PostgreSQL test flow safety', () => {
         const runner = fs.readFileSync(
             path.join(__dirname, '..', 'scripts', 'run-isolated-postgres-tests.js'),
             'utf8'
-        );
+        ).replace(/\r\n/g, '\n');
         const runSuite = runner.slice(
             runner.indexOf('async function runSuite'),
             runner.indexOf('async function main')

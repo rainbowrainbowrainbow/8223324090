@@ -2,7 +2,20 @@
 'use strict';
 
 (function () {
-    const PILOT_SCOPE = Object.freeze({ crmProfileKey: 'event_genix', locationAlias: 'park', registerAlias: 'middle', defaultEnabled: false });
+    const BUSINESS_SCOPES = Object.freeze({
+        event_genix: Object.freeze({ crmProfileKey: 'event_genix', businessLabel: 'ПАРК', locationLabel: 'ПАРК', registerLabel: 'Середня каса' }),
+        dar: Object.freeze({ crmProfileKey: 'dar', businessLabel: 'ДАР', locationLabel: 'ДАР', registerLabel: 'Студія / Каса ДАР' })
+    });
+    const pageParams = new URLSearchParams(window.location.search);
+    const requestedBusinessContext = pageParams.get('businessContext');
+    let PILOT_SCOPE = {
+        ...(BUSINESS_SCOPES[requestedBusinessContext] || BUSINESS_SCOPES.event_genix),
+        routeOptionId: pageParams.get('routeOptionId') || `${requestedBusinessContext === 'dar' ? 'dar' : 'park'}_production`,
+        mode: 'production'
+    };
+    const SALE_MODE = PILOT_SCOPE.crmProfileKey === 'dar' || pageParams.get('saleMode') !== 'admission'
+        ? 'catalog_sale'
+        : 'admission_ticket';
     const INTERNAL_RECEIPT_TEXT = '\u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f';
     const STORAGE_PREFIX = 'eventgenix:cashier-payments';
     const FISCAL_BLOCKING_STATUSES = new Set(['pending', 'unknown', 'sending', 'validating', 'ready_to_send', 'failed', 'failed_retryable']);
@@ -38,6 +51,15 @@
 
     const state = {
         user: null,
+        saleMode: SALE_MODE,
+        routeOptions: [],
+        routeReady: false,
+        routeLoading: true,
+        catalogItems: [],
+        catalogDiscounts: [],
+        catalogReady: SALE_MODE !== 'catalog_sale',
+        localQa: null,
+        selectableCashiers: [],
         orderDetails: null,
         registerState: null,
         createInFlight: false,
@@ -303,7 +325,7 @@
         const userId = state.user?.id || state.user?.username || 'anonymous';
         const fiscalProfileId = state.registerState?.fiscalProfileId || 'profile-pending';
         const fiscalRegisterId = state.registerState?.fiscalRegisterId || 'register-pending';
-        return `${STORAGE_PREFIX}:u:${userId}:crm:${PILOT_SCOPE.crmProfileKey}:loc:${PILOT_SCOPE.locationAlias}:reg:${PILOT_SCOPE.registerAlias}:fp:${fiscalProfileId}:fr:${fiscalRegisterId}`;
+        return `${STORAGE_PREFIX}:u:${userId}:route:${PILOT_SCOPE.routeOptionId}:fp:${fiscalProfileId}:fr:${fiscalRegisterId}`;
     }
 
     function storageKey(key) {
@@ -327,7 +349,7 @@
 
 
     function operationStorageKey(action, target) {
-        return `${action}:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${target || 'current'}`;
+        return `${action}:${PILOT_SCOPE.routeOptionId}:${target || 'current'}`;
     }
 
     function getOperationIdempotencyKey(action, target = 'current') {
@@ -344,10 +366,17 @@
     }
 
     function orderStorageScope() {
+        if (state.saleMode === 'catalog_sale') {
+            const lines = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')]
+                .map(row => `${row.querySelector('[data-catalog-item]')?.value || ''}:${row.querySelector('[data-catalog-quantity]')?.value || ''}`)
+                .join('|');
+            const discount = $('catalogDiscountRule')?.value || 'none';
+            return `${PILOT_SCOPE.routeOptionId}:catalog:${state.tender}:${lines}:${discount}`;
+        }
         const date = $('paymentDate')?.value || 'no-date';
         const kids = $('paymentKidsCount')?.value || '0';
         const adults = $('paymentAdultsCount')?.value || '0';
-        return `${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${state.tender}:${date}:${kids}:${adults}`;
+        return `${PILOT_SCOPE.routeOptionId}:${state.tender}:${date}:${kids}:${adults}`;
     }
 
     function getCreateIdempotencyKey() {
@@ -364,7 +393,7 @@
     }
 
     function getConfirmIdempotencyKey(orderId) {
-        const key = `confirm:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${orderId}`;
+        const key = `confirm:${PILOT_SCOPE.routeOptionId}:${orderId}`;
         const existing = storageGet(key);
         if (existing) return existing;
         const generated = randomKey('cashier-ui-confirm');
@@ -375,8 +404,32 @@
     function apiHeaders(idempotencyKey = null) {
         const headers = typeof getAuthHeaders === 'function' ? getAuthHeaders(true) : { 'Content-Type': 'application/json' };
         if (idempotencyKey) headers['Idempotency-Key'] = idempotencyKey;
-        headers['X-Cashier-Pilot-Scope'] = `${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}`;
+        if (PILOT_SCOPE.routeOptionId) headers['X-Fiscal-Route-Option'] = PILOT_SCOPE.routeOptionId;
         return headers;
+    }
+
+    function routeQueryParams(extra = {}) {
+        return new URLSearchParams({
+            businessContext: PILOT_SCOPE.crmProfileKey,
+            routeOptionId: PILOT_SCOPE.routeOptionId,
+            ...extra
+        });
+    }
+
+    function selectedCashierBindingId() {
+        const id = Number($('paymentCashierBinding')?.value || 0);
+        return Number.isSafeInteger(id) && id > 0 ? id : null;
+    }
+
+    function readinessRouteParams(extra = {}) {
+        const params = routeQueryParams(extra);
+        const bindingId = selectedCashierBindingId();
+        if (bindingId) params.set('cashierBindingId', String(bindingId));
+        return params;
+    }
+
+    function selectedRoute() {
+        return state.routeOptions.find(route => route.id === PILOT_SCOPE.routeOptionId) || null;
     }
 
     async function apiRequest(path, options = {}) {
@@ -404,18 +457,421 @@
         }
     }
 
+    function configurePageContext() {
+        const catalogMode = state.saleMode === 'catalog_sale';
+        const route = selectedRoute();
+        setText('cashierHeroKicker', `Checkbox · ${PILOT_SCOPE.businessLabel} · ${route?.registerLabel || PILOT_SCOPE.registerLabel}`);
+        setText('cashierHeroDescription', catalogMode
+            ? 'Робочий продаж товарів і послуг із серверними цінами та контрольованим вибором каси й касира.'
+            : 'Простий екран для оплати квитка парку готівкою або через термінал і створення офіційного чека Checkbox.');
+        setText('cashierScopeBusiness', PILOT_SCOPE.businessLabel);
+        setText('cashierScopeLocation', PILOT_SCOPE.locationLabel);
+        setText('cashierScopeRegister', route?.registerLabel || PILOT_SCOPE.registerLabel);
+        setText('cashierScopeMode', route?.mode === 'test' ? 'ТЕСТОВИЙ' : 'РОБОЧИЙ');
+        $('cashierTestModeBanner')?.classList.toggle('hidden', route?.mode !== 'test');
+        $('cashierRouteSelector')?.classList.toggle('is-test-route', route?.mode === 'test');
+        $('admissionTicketFields')?.classList.toggle('hidden', catalogMode);
+        $('catalogSaleFields')?.classList.toggle('hidden', !catalogMode);
+        $('paymentDate') && ($('paymentDate').required = !catalogMode);
+        $('paymentKidsCount') && ($('paymentKidsCount').required = !catalogMode);
+        setText('paymentOrderFormTitle', catalogMode ? 'Створити продаж із каталогу' : 'Створити оплату');
+        if ($('createPaymentOrderBtn')) $('createPaymentOrderBtn').textContent = catalogMode ? 'Створити продаж' : 'Створити оплату';
+    }
+
+    async function loadLocalQaStatus() {
+        if (pageParams.get('localQa') !== '1') return null;
+        const params = routeQueryParams();
+        const result = await apiRequest(`/api/payments/local-qa-status?${params.toString()}`, {
+            method: 'GET',
+            headers: apiHeaders()
+        });
+        if (result.enabled !== true || result.providerMode !== 'loopback_mock' || result.externalNetwork !== false) {
+            const error = new Error('local_qa_identity_not_confirmed');
+            error.code = 'local_qa_identity_not_confirmed';
+            throw error;
+        }
+        state.localQa = result;
+        const banner = $('localQaBanner');
+        banner?.classList.remove('hidden');
+        setText('localQaBannerDetails', `${PILOT_SCOPE.businessLabel} · ${selectedRoute()?.registerLabel || 'каса'} · тільки localhost · зовнішній Checkbox заблоковано`);
+        setText('cashierScopeMode', 'LOCAL QA · MOCK');
+        return result;
+    }
+
+    function routeReadinessLabel(route) {
+        if (!route?.configured) return 'не налаштовано';
+        if (route.status !== 'active') return 'неактивна';
+        if (route.featureEnabled !== true) return 'функцію вимкнено';
+        if (route.acceptanceEnabled !== true) return 'приймання вимкнено';
+        if (route.sequentialReady !== true) return 'очікує завершення іншого напрямку';
+        return 'готова';
+    }
+
+    function renderRouteSelectors() {
+        const businessSelect = $('paymentBusinessContext');
+        const registerSelect = $('paymentRegisterRoute');
+        if (!businessSelect || !registerSelect) return;
+        const businesses = [...new Set(state.routeOptions.map(route => route.businessContext))];
+        businessSelect.replaceChildren();
+        for (const businessContext of businesses) {
+            const option = document.createElement('option');
+            option.value = businessContext;
+            option.textContent = businessContext === 'dar' ? 'ДАР' : 'ПАРК';
+            businessSelect.appendChild(option);
+        }
+        if (businesses.includes(PILOT_SCOPE.crmProfileKey)) businessSelect.value = PILOT_SCOPE.crmProfileKey;
+
+        const availableRoutes = state.routeOptions.filter(route => route.businessContext === businessSelect.value);
+        registerSelect.replaceChildren();
+        for (const route of availableRoutes) {
+            const option = document.createElement('option');
+            option.value = route.id;
+            option.textContent = `${route.mode === 'test' ? 'Тестова каса' : route.registerLabel} · ${routeReadinessLabel(route)}`;
+            registerSelect.appendChild(option);
+        }
+        if (availableRoutes.some(route => route.id === PILOT_SCOPE.routeOptionId)) {
+            registerSelect.value = PILOT_SCOPE.routeOptionId;
+        } else if (availableRoutes.length) {
+            registerSelect.value = availableRoutes.find(route => route.mode === 'production')?.id || availableRoutes[0].id;
+        }
+        const route = state.routeOptions.find(item => item.id === registerSelect.value) || null;
+        if (route) {
+            PILOT_SCOPE = {
+                ...BUSINESS_SCOPES[route.businessContext],
+                routeOptionId: route.id,
+                mode: route.mode,
+                registerLabel: route.registerLabel
+            };
+        }
+        state.routeReady = Boolean(
+            route?.configured
+            && route.status === 'active'
+            && route.featureEnabled === true
+            && route.acceptanceEnabled === true
+            && route.sequentialReady === true
+        );
+        setText('cashierRouteStatus', routeReadinessLabel(route));
+        configurePageContext();
+    }
+
+    async function loadRouteOptions() {
+        state.routeLoading = true;
+        state.routeReady = false;
+        setText('cashierRouteStatus', 'завантаження');
+        try {
+            const result = await apiRequest('/api/payments/catalog/routes', { method: 'GET', headers: apiHeaders() });
+            state.routeOptions = Array.isArray(result.routes) ? result.routes : [];
+            if (!state.routeOptions.length) throw new Error('fiscal_route_options_unavailable');
+            renderRouteSelectors();
+            return state.routeOptions;
+        } finally {
+            state.routeLoading = false;
+        }
+    }
+
+    function clearRouteData() {
+        clearReadinessRefreshTimer();
+        clearUnresolvedRefreshTimer();
+        clearOrderPolling();
+        state.catalogItems = [];
+        state.catalogDiscounts = [];
+        state.catalogReady = state.saleMode !== 'catalog_sale';
+        state.selectableCashiers = [];
+        state.registerState = null;
+        state.orderDetails = null;
+        state.unresolvedOrders = [];
+        state.unresolvedQueueState = 'unknown';
+        state.receiptHistoryLoaded = false;
+        $('catalogSaleLines')?.replaceChildren();
+        $('paymentCashierBinding')?.replaceChildren(new Option('Завантаження касирів…', ''));
+    }
+
+    async function activateSelectedRoute(routeOptionId) {
+        const route = state.routeOptions.find(item => item.id === routeOptionId);
+        if (!route) throw new Error('fiscal_route_option_invalid');
+        if (activeUnfinishedOrder()) {
+            renderRouteSelectors();
+            throw new Error('fiscal_route_change_blocked_by_order');
+        }
+        clearRouteData();
+        PILOT_SCOPE = {
+            ...BUSINESS_SCOPES[route.businessContext],
+            routeOptionId: route.id,
+            mode: route.mode,
+            registerLabel: route.registerLabel
+        };
+        state.saleMode = route.businessContext === 'dar' || pageParams.get('saleMode') !== 'admission'
+            ? 'catalog_sale'
+            : 'admission_ticket';
+        renderRouteSelectors();
+        const nextUrl = new URL(window.location.href);
+        nextUrl.searchParams.set('businessContext', route.businessContext);
+        nextUrl.searchParams.set('routeOptionId', route.id);
+        window.history.replaceState({}, '', nextUrl);
+        await loadSelectedRouteWorkspace();
+    }
+
+    async function loadSelectedRouteWorkspace() {
+        const route = selectedRoute();
+        if (!route?.configured) {
+            setText('catalogSaleSummary', 'Каса для цього маршруту ще не налаштована. Продаж заблоковано.');
+            const select = $('paymentCashierBinding');
+            select?.replaceChildren(new Option('Немає налаштованої каси', ''));
+            state.catalogReady = false;
+            state.routeReady = false;
+            renderReadinessState();
+            syncCreateAvailability();
+            return;
+        }
+        await loadSelectableCashiers();
+        await loadCatalogData();
+        await loadPilotRegisterState({ silent: true });
+        state.unresolvedAutoRefreshEnabled = true;
+        await loadUnresolvedOrders({ silent: true });
+        scheduleReadinessRefresh();
+    }
+
+    async function handleBusinessContextChange() {
+        const businessContext = $('paymentBusinessContext')?.value || 'event_genix';
+        const route = state.routeOptions.find(item => item.businessContext === businessContext && item.mode === 'production')
+            || state.routeOptions.find(item => item.businessContext === businessContext);
+        if (!route) return;
+        try { await activateSelectedRoute(route.id); }
+        catch (error) { notify(paymentUiError(error), 'error'); }
+    }
+
+    async function handleRegisterRouteChange() {
+        const routeOptionId = $('paymentRegisterRoute')?.value || '';
+        if (!routeOptionId) return;
+        try { await activateSelectedRoute(routeOptionId); }
+        catch (error) { notify(paymentUiError(error), 'error'); }
+    }
+
+    function catalogItemByCode(itemCode) {
+        return state.catalogItems.find(item => item.itemCode === String(itemCode || '')) || null;
+    }
+
+    function filteredCatalogItems(selectedCode = '') {
+        const search = String($('catalogSearch')?.value || '').trim().toLocaleLowerCase('uk-UA');
+        const category = String($('catalogCategory')?.value || '').trim();
+        const filtered = state.catalogItems.filter(item => {
+            const matchesSearch = !search || `${item.name || ''} ${item.category || ''}`.toLocaleLowerCase('uk-UA').includes(search);
+            return matchesSearch && (!category || item.category === category);
+        });
+        const selected = catalogItemByCode(selectedCode);
+        return selected && !filtered.some(item => item.itemCode === selected.itemCode)
+            ? [selected, ...filtered]
+            : filtered;
+    }
+
+    function fillCatalogSelect(select, selectedCode = '') {
+        if (!select) return;
+        const items = filteredCatalogItems(selectedCode);
+        select.replaceChildren();
+        if (!items.length) {
+            const option = document.createElement('option');
+            option.value = '';
+            option.textContent = 'Нічого не знайдено';
+            select.appendChild(option);
+            return;
+        }
+        for (const item of items) {
+            const option = document.createElement('option');
+            option.value = item.itemCode;
+            option.textContent = `${item.category ? `${item.category} · ` : ''}${item.name}`;
+            select.appendChild(option);
+        }
+        select.value = items.some(item => item.itemCode === selectedCode) ? selectedCode : items[0].itemCode;
+    }
+
+    function refreshCatalogSelects() {
+        document.querySelectorAll('[data-catalog-item]').forEach(select => {
+            const selectedCode = select.value;
+            fillCatalogSelect(select, selectedCode);
+            syncCatalogLine(select.closest('.cashier-catalog-line'));
+        });
+    }
+
+    function renderCatalogCategories() {
+        const select = $('catalogCategory');
+        if (!select) return;
+        const selected = select.value;
+        select.replaceChildren(new Option('Усі категорії', ''));
+        const categories = [...new Set(state.catalogItems.map(item => String(item.category || '').trim()).filter(Boolean))]
+            .sort((left, right) => left.localeCompare(right, 'uk'));
+        for (const category of categories) select.appendChild(new Option(category, category));
+        select.value = categories.includes(selected) ? selected : '';
+    }
+
+    function updateCatalogCartSummary() {
+        let originalTotal = 0;
+        let finalTotal = 0;
+        const discountCode = String($('catalogDiscountRule')?.value || '').trim();
+        const discount = state.catalogDiscounts.find(rule => rule.code === discountCode) || null;
+        const rows = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')];
+        const firstDirection = rows
+            .map(row => catalogItemByCode(row.querySelector('[data-catalog-item]')?.value)?.quantityRule?.club_direction)
+            .find(Boolean) || null;
+        for (const row of rows) {
+            const item = catalogItemByCode(row.querySelector('[data-catalog-item]')?.value);
+            const quantity = Number(row.querySelector('[data-catalog-quantity]')?.value || 0);
+            if (!item || !Number.isFinite(quantity) || quantity <= 0) continue;
+            const lineOriginal = minorToNumber(item.priceMinor) * quantity;
+            let rateBps = 0;
+            if (discount?.code === 'dar_ubd_20') rateBps = Number(discount.rateBps || 0);
+            if (discount?.code === 'dar_second_club_direction_10'
+                && item.quantityRule?.club_direction
+                && item.quantityRule.club_direction !== firstDirection) rateBps = Number(discount.rateBps || 0);
+            originalTotal += lineOriginal;
+            finalTotal += lineOriginal * (10000 - rateBps) / 10000;
+        }
+        setText('catalogOriginalTotal', formatMoneyMinor(Math.round(originalTotal * 100)));
+        setText('catalogDiscountTotal', formatMoneyMinor(Math.round((originalTotal - finalTotal) * 100)));
+        setText('catalogFinalTotal', formatMoneyMinor(Math.round(finalTotal * 100)));
+    }
+
+    function quantityRule(item) {
+        const source = item?.quantityRule || {};
+        const minimumMillis = Number(source.minimum_quantity_millis ?? source.minimumQuantityMillis ?? 1000);
+        const stepMillis = Number(source.quantity_step_millis ?? source.quantityStepMillis ?? 1000);
+        return {
+            minimumMillis: Number.isSafeInteger(minimumMillis) && minimumMillis > 0 ? minimumMillis : 1000,
+            stepMillis: Number.isSafeInteger(stepMillis) && stepMillis > 0 ? stepMillis : 1000
+        };
+    }
+
+    function syncCatalogLine(row) {
+        const select = row.querySelector('[data-catalog-item]');
+        const quantity = row.querySelector('[data-catalog-quantity]');
+        const price = row.querySelector('[data-catalog-price]');
+        const item = catalogItemByCode(select?.value);
+        const rule = quantityRule(item);
+        if (quantity) {
+            quantity.min = String(rule.minimumMillis / 1000);
+            quantity.step = String(rule.stepMillis / 1000);
+            const currentMillis = Math.round(Number(quantity.value || 0) * 1000);
+            if (!Number.isSafeInteger(currentMillis) || currentMillis < rule.minimumMillis || currentMillis % rule.stepMillis !== 0) {
+                quantity.value = String(rule.minimumMillis / 1000);
+            }
+            quantity.setAttribute('aria-label', `Кількість: ${item?.name || 'позиція'}`);
+        }
+        if (price) price.textContent = item ? `${formatMoneyMinor(item.priceMinor)} / ${item.unit || 'шт.'}` : '—';
+        updateCatalogCartSummary();
+        syncCreateAvailability();
+    }
+
+    function addCatalogLine(itemCode = '') {
+        const container = $('catalogSaleLines');
+        if (!container || !state.catalogItems.length) return;
+        const row = document.createElement('div');
+        row.className = 'cashier-catalog-line';
+        row.innerHTML = `
+            <label class="cashier-field cashier-catalog-item-field"><span>Позиція</span><select data-catalog-item aria-label="Позиція каталогу"></select></label>
+            <label class="cashier-field cashier-catalog-quantity-field"><span>Кількість</span><input data-catalog-quantity type="number" inputmode="decimal" value="1"></label>
+            <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна із price rules">—</span>
+            <button type="button" class="btn-page-secondary cashier-catalog-remove" data-catalog-remove aria-label="Видалити позицію">×</button>`;
+        const select = row.querySelector('[data-catalog-item]');
+        fillCatalogSelect(select, catalogItemByCode(itemCode)?.itemCode || state.catalogItems[0].itemCode);
+        select.addEventListener('change', () => syncCatalogLine(row));
+        row.querySelector('[data-catalog-quantity]')?.addEventListener('input', () => syncCatalogLine(row));
+        row.querySelector('[data-catalog-remove]')?.addEventListener('click', () => {
+            if (container.children.length <= 1) return;
+            row.remove();
+            updateCatalogCartSummary();
+            syncCreateAvailability();
+        });
+        container.appendChild(row);
+        syncCatalogLine(row);
+    }
+
+    function renderCatalogDiscounts() {
+        const select = $('catalogDiscountRule');
+        const field = $('catalogDiscountField');
+        if (!select || !field) return;
+        select.replaceChildren();
+        const none = document.createElement('option');
+        none.value = '';
+        none.textContent = 'Без знижки';
+        select.appendChild(none);
+        for (const discount of state.catalogDiscounts) {
+            const option = document.createElement('option');
+            option.value = discount.code;
+            option.textContent = `${discount.name} (${Number(discount.rateBps || 0) / 100}%)`;
+            select.appendChild(option);
+        }
+        field.classList.toggle('hidden', state.catalogDiscounts.length === 0);
+        updateCatalogCartSummary();
+    }
+
+    async function loadCatalogData() {
+        if (state.saleMode !== 'catalog_sale') return;
+        state.catalogReady = false;
+        const params = routeQueryParams();
+        const [catalog, discounts] = await Promise.all([
+            apiRequest(`/api/payments/catalog/items?${params.toString()}`, { method: 'GET', headers: apiHeaders() }),
+            apiRequest(`/api/payments/catalog/discounts?${params.toString()}`, { method: 'GET', headers: apiHeaders() })
+        ]);
+        state.catalogItems = Array.isArray(catalog.items) ? catalog.items : [];
+        state.catalogDiscounts = Array.isArray(discounts.discounts) ? discounts.discounts : [];
+        if (!state.catalogItems.length) throw new Error('catalog_items_unavailable');
+        $('catalogSaleLines')?.replaceChildren();
+        renderCatalogCategories();
+        renderCatalogDiscounts();
+        addCatalogLine();
+        state.catalogReady = true;
+        setText('catalogSaleSummary', `${state.catalogItems.length} активних позицій · ціна із price_rules · без ПДВ`);
+        syncCreateAvailability();
+    }
+
+    function catalogLinesPayload() {
+        const rows = [...document.querySelectorAll('#catalogSaleLines .cashier-catalog-line')];
+        if (!rows.length) throw new Error('catalog_items_required');
+        return rows.map(row => {
+            const itemCode = String(row.querySelector('[data-catalog-item]')?.value || '').trim();
+            const quantity = Number(row.querySelector('[data-catalog-quantity]')?.value || 0);
+            const quantityMillis = Math.round(quantity * 1000);
+            const item = catalogItemByCode(itemCode);
+            const rule = quantityRule(item);
+            if (!item || !Number.isFinite(quantity) || quantity <= 0
+                || !Number.isSafeInteger(quantityMillis)
+                || quantityMillis < rule.minimumMillis
+                || quantityMillis % rule.stepMillis !== 0) {
+                const error = new Error('catalog_quantity_invalid');
+                error.code = 'catalog_quantity_invalid';
+                throw error;
+            }
+            return { itemCode, quantityMillis };
+        });
+    }
+
+    function buildCatalogSalePayload() {
+        const cashierBindingId = Number($('paymentCashierBinding')?.value || 0);
+        if (!Number.isSafeInteger(cashierBindingId) || cashierBindingId <= 0) throw new Error('cashier_binding_required');
+        const discountCode = String($('catalogDiscountRule')?.value || '').trim();
+        return {
+            businessContext: PILOT_SCOPE.crmProfileKey,
+            routeOptionId: PILOT_SCOPE.routeOptionId,
+            cashierBindingId,
+            tender: state.tender,
+            items: catalogLinesPayload(),
+            discountCodes: discountCode ? [discountCode] : []
+        };
+    }
+
     function buildAdmissionTicketPayload() {
         const date = $('paymentDate')?.value;
         const kids = Number($('paymentKidsCount')?.value || 0);
         const adults = Number($('paymentAdultsCount')?.value || 0);
+        const cashierBindingId = Number($('paymentCashierBinding')?.value || 0);
         if (!date) throw new Error('payment_date_required');
         if (!Number.isSafeInteger(kids) || kids <= 0) throw new Error('kids_count_invalid');
         if (!Number.isSafeInteger(adults) || adults < 0) throw new Error('adults_count_invalid');
+        if (!Number.isSafeInteger(cashierBindingId) || cashierBindingId <= 0) throw new Error('cashier_binding_required');
         return {
+            businessContext: PILOT_SCOPE.crmProfileKey,
+            routeOptionId: PILOT_SCOPE.routeOptionId,
             tender: state.tender,
-            crmProfileKey: PILOT_SCOPE.crmProfileKey,
-            locationAlias: PILOT_SCOPE.locationAlias,
-            registerAlias: PILOT_SCOPE.registerAlias,
+            cashierBindingId,
             admissionTicket: {
                 date,
                 banquetGuests: kids,
@@ -423,6 +879,31 @@
                 ticketQuantities: []
             }
         };
+    }
+
+    async function loadSelectableCashiers() {
+        const select = $('paymentCashierBinding');
+        if (!select) return;
+        const params = routeQueryParams();
+        const result = await apiRequest(`/api/payments/catalog/cashiers?${params.toString()}`, { method: 'GET', headers: apiHeaders() });
+        const cashiers = Array.isArray(result.cashiers) ? result.cashiers : [];
+        state.selectableCashiers = cashiers;
+        select.replaceChildren();
+        const placeholder = document.createElement('option');
+        placeholder.value = '';
+        placeholder.textContent = cashiers.length ? 'Оберіть касира' : 'Немає активних касирів';
+        select.appendChild(placeholder);
+        for (const cashier of cashiers) {
+            const option = document.createElement('option');
+            option.value = String(cashier.id);
+            option.textContent = `${cashier.cashierName || 'Касир'} · ${cashier.mode === 'test' ? 'тест' : 'робочий'}`;
+            select.appendChild(option);
+        }
+        if (cashiers.length === 1) select.value = String(cashiers[0].id);
+        setText('paymentCashierHelp', cashiers.length
+            ? 'Оберіть активного касира саме цієї каси.'
+            : 'Для цієї каси немає активного касира з налаштованим credential reference.');
+        syncCreateAvailability();
     }
 
     async function createPaymentOrder(event) {
@@ -439,9 +920,12 @@
         state.createInFlight = true;
         syncCreateAvailability();
         try {
-            const payload = buildAdmissionTicketPayload();
+            const payload = state.saleMode === 'catalog_sale' ? buildCatalogSalePayload() : buildAdmissionTicketPayload();
             const idempotencyKey = getCreateIdempotencyKey();
-            const result = await apiRequest('/api/payments/admission-ticket/orders', {
+            const endpoint = state.saleMode === 'catalog_sale'
+                ? '/api/payments/catalog/orders'
+                : '/api/payments/admission-ticket/orders';
+            const result = await apiRequest(endpoint, {
                 method: 'POST',
                 headers: apiHeaders(idempotencyKey),
                 body: JSON.stringify(payload)
@@ -502,7 +986,7 @@
 
     async function loadPilotRegisterState({ silent = false } = {}) {
         try {
-            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias });
+            const params = readinessRouteParams();
             const result = await apiRequest(`/api/payments/pilot-register-state?${params.toString()}`, {
                 method: 'GET',
                 headers: apiHeaders(),
@@ -543,10 +1027,16 @@
         syncCreateAvailability();
         syncConfirmationAvailability();
         try {
+            const cashierBindingId = selectedCashierBindingId();
             await apiRequest('/api/payments/readiness/probe', {
                 method: 'POST',
                 headers: apiHeaders(),
-                body: JSON.stringify({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias, force }),
+                body: JSON.stringify({
+                    businessContext: PILOT_SCOPE.crmProfileKey,
+                    routeOptionId: PILOT_SCOPE.routeOptionId,
+                    ...(cashierBindingId ? { cashierBindingId } : {}),
+                    force
+                }),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
             const result = await loadPilotRegisterState({ silent: true });
@@ -649,6 +1139,8 @@
             cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
             cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
             payment_date_required: 'Вкажіть дату квитка.',
+            cashier_binding_required: 'Оберіть активного касира Checkbox.',
+            cashier_binding_scope_invalid: 'Обраний касир не належить цій касі або вже не активний.',
             checkbox_integration_not_ready: 'Інтеграція Checkbox або налаштування каси не готові. Підтвердження грошей заблоковано.',
             checkbox_integration_disabled: 'Зв’язок із Checkbox вимкнений. Приймання грошей недоступне.',
             checkbox_payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Уже оплачені чеки залишаються у відновленні.',
@@ -657,6 +1149,21 @@
             external_shift_requires_sync: 'У Checkbox є інша відкрита зміна. Потрібна безпечна звірка відповідальним.',
             kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
             adults_count_invalid: 'Кількість дорослих не може бути від’ємною.',
+            catalog_items_required: 'Додайте хоча б одну позицію каталогу.',
+            catalog_items_unavailable: 'Для цього бізнесу немає доступних позицій каталогу.',
+            catalog_item_unavailable: 'Позиція неактивна, має нульову або неоднозначну ціну.',
+            catalog_quantity_invalid: 'Перевірте кількість: для цієї позиції діє мінімум і крок продажу.',
+            catalog_discount_invalid: 'Обране правило знижки недоступне.',
+            fiscal_route_option_invalid: 'Оберіть доступну касу.',
+            fiscal_route_options_unavailable: 'Для вас немає доступних налаштованих кас.',
+            fiscal_route_change_blocked_by_order: 'Спочатку завершіть або скасуйте поточну оплату, потім змінюйте касу.',
+            fiscal_route_mapping_missing: 'Обрана каса ще не налаштована.',
+            fiscal_route_feature_disabled: 'Обрана каса вимкнена для продажів.',
+            fiscal_route_acceptance_disabled: 'Приймання оплат для цієї каси ще не активоване.',
+            fiscal_route_mode_mismatch: 'Фактичний test/production режим каси не збігається з обраним.',
+            shared_test_register_owned_by_other_business: 'Спільна тестова каса зараз використовується іншим напрямком.',
+            shared_test_register_recovery_incomplete: 'Перед переключенням тестової каси треба завершити попередню зміну й відновлення.',
+            local_qa_identity_not_confirmed: 'LOCAL QA не підтверджений сервером. Продаж заблоковано.',
             card_terminal_success_required: 'Перед підтвердженням поставте позначку: термінал показав успішну оплату.',
             payment_repeat_blocked: 'Повторна оплата заблокована: оплата вже підтверджена або чек очікує фіскалізації.',
             payment_order_cancel_denied: 'Скасувати можна тільки неоплачену чернетку.',
@@ -679,21 +1186,7 @@
         const items = Array.isArray(details?.items) ? details.items : [];
         if (!order) return;
         setText('cashierFiscalProfile', `${formatCrmProfile(order.crmProfileKey)} / ${order.legalEntityName || order.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
-        const locationAlias = order.sourceSnapshot?.location_alias
-            || order.sourceSnapshot?.locationAlias
-            || order.locationAlias
-            || state.registerState?.locationAlias;
-        const registerAlias = order.registerAlias
-            || order.sourceSnapshot?.register_alias
-            || order.sourceSnapshot?.registerAlias
-            || state.registerState?.registerAlias
-            || order.registerDisplayName;
-        setText('cashierRegister', formatLocationRegister(
-            locationAlias,
-            registerAlias,
-            order.registerDisplayName || state.registerState?.registerDisplayName,
-            order.locationDisplayName || state.registerState?.locationDisplayName
-        ));
+        setText('cashierRegister', `${PILOT_SCOPE.businessLabel} / ${selectedRoute()?.registerLabel || order.registerDisplayName || 'каса'}`);
         setStatus('cashierPaymentStatus', order.paymentStatus || order.status);
         setStatus('cashierFiscalStatus', effectiveFiscalStatus(order));
         setText('internalReceiptLabel', `RCP-${order.id} \u2014 ${INTERNAL_RECEIPT_TEXT}`);
@@ -1090,7 +1583,7 @@
         let retryDelayMs = null;
         let restartAfterSnapshotChange = false;
         try {
-            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias });
+            const params = routeQueryParams();
             const requestedPage = append ? Math.max(1, Number(state.unresolvedPage || 0) + 1) : 1;
             params.set('page', String(requestedPage));
             params.set('pageSize', String(UNRESOLVED_PAGE_SIZE));
@@ -1183,6 +1676,9 @@
     }
 
     function renderReceiptHistoryActions(order = {}) {
+        if (state.localQa?.enabled === true) {
+            return '<span class="cashier-history-empty-artifact">локальний mock-чек · зовнішні посилання вимкнено</span>';
+        }
         const taxUrlTrusted = isTrustedCheckboxUrl(order.providerTaxUrl);
         const links = [
             { href: taxUrlTrusted ? order.providerTaxUrl : null, label: 'Чек' },
@@ -1259,7 +1755,7 @@
             if (!silent || !state.receiptHistoryLoaded) body.textContent = 'Формуємо звіт…';
         }
         try {
-            const params = new URLSearchParams({ crmProfileKey: PILOT_SCOPE.crmProfileKey, locationAlias: PILOT_SCOPE.locationAlias, registerAlias: PILOT_SCOPE.registerAlias });
+            const params = routeQueryParams();
             const dateFrom = $('checkboxReportDateFrom')?.value || '';
             const dateTo = $('checkboxReportDateTo')?.value || '';
             const shiftId = $('checkboxReportShiftId')?.value || '';
@@ -1304,7 +1800,7 @@
     function setReceiptLink(id, href) {
         const el = $(id);
         if (!el) return;
-        const visible = isTrustedCheckboxUrl(href);
+        const visible = state.localQa?.enabled !== true && isTrustedCheckboxUrl(href);
         el.classList.toggle('hidden', !visible);
         if (visible) el.href = href;
         else el.removeAttribute('href');
@@ -1367,7 +1863,9 @@
 
     function integrationReady() {
         return Boolean(
-            state.registerState?.integrationReady === true
+            state.routeReady === true
+            && state.routeLoading !== true
+            && state.registerState?.integrationReady === true
             && state.readinessInFlight !== true
             && state.nextCustomerSafetyRefreshInFlight !== true
             && unresolvedQueueIsFresh()
@@ -1511,19 +2009,45 @@
         const order = state.orderDetails?.order;
         const nextAllowed = orderAllowsNextCustomer(order);
         const hasCurrentOrder = Boolean(order?.id);
-        const disabled = !ready || active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
+        const cashierSelected = Number($('paymentCashierBinding')?.value || 0) > 0;
+        let catalogSelectionValid = true;
+        if (state.saleMode === 'catalog_sale') {
+            try { catalogSelectionValid = state.catalogReady && catalogLinesPayload().length > 0; }
+            catch { catalogSelectionValid = false; }
+        }
+        const disabled = !ready || !state.routeReady || !cashierSelected || !catalogSelectionValid || active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
+        const editingDisabled = active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
         const reason = state.createInFlight
             ? 'Створюємо оплату…'
-            : (!ready
+            : (!state.routeReady
+                ? 'Обрана каса ще не готова або приймання оплат для неї вимкнено.'
+                : (!cashierSelected
+                ? 'Оберіть активного касира Checkbox для цієї каси.'
+                : (!catalogSelectionValid
+                ? 'Оберіть доступні позиції та вкажіть дозволену кількість.'
+                : (!ready
                 ? (queueUnavailableReason() || 'Каса не готова: перегляньте повідомлення про готовність вище.')
-                : (active ? 'Спершу підтвердьте або скасуйте поточну чернетку.' : (hasCurrentOrder ? 'Натисніть “Нова оплата” для наступного клієнта.' : '')));
+                : (active ? 'Спершу підтвердьте або скасуйте поточну чернетку.' : (hasCurrentOrder ? 'Натисніть “Нова оплата” для наступного клієнта.' : ''))))));
         const createButton = $('createPaymentOrderBtn');
+        if ($('paymentBusinessContext')) $('paymentBusinessContext').disabled = editingDisabled || state.routeLoading;
+        if ($('paymentRegisterRoute')) $('paymentRegisterRoute').disabled = editingDisabled || state.routeLoading;
         const form = $('paymentOrderForm');
         if (form) {
-            form.querySelectorAll('input, select').forEach(el => { el.disabled = disabled; });
+            form.querySelectorAll('input, select').forEach(el => {
+                const admissionOnly = Boolean(el.closest('#admissionTicketFields'));
+                const catalogOnly = Boolean(el.closest('#catalogSaleFields'));
+                el.disabled = editingDisabled
+                    || (state.saleMode === 'catalog_sale' && admissionOnly)
+                    || (state.saleMode !== 'catalog_sale' && catalogOnly);
+            });
             form.setAttribute('aria-busy', state.createInFlight ? 'true' : 'false');
         }
-        setText('createPaymentDisabledReason', reason || 'Каса готова. Ціна, ФОП, профіль і каса визначаються сервером.');
+        const addLineButton = $('addCatalogLineBtn');
+        if (addLineButton) addLineButton.disabled = editingDisabled || !state.catalogReady;
+        document.querySelectorAll('[data-catalog-remove]').forEach(button => {
+            button.disabled = editingDisabled || document.querySelectorAll('#catalogSaleLines .cashier-catalog-line').length <= 1;
+        });
+        setText('createPaymentDisabledReason', reason || 'Каса готова. Сервер повторно перевірить маршрут, касира, ціну й режим.');
         setButtonBusy(createButton, state.createInFlight, 'Створюємо оплату…');
         setDisabledReason(createButton, disabled, reason);
         const nextButton = $('startNextOrderBtn');
@@ -1936,7 +2460,7 @@
         clearCreateIdempotencyKey();
         storageRemove('lastOrderId');
         const currentOrderId = state.orderDetails?.order?.id;
-        if (currentOrderId) storageRemove(`confirm:${PILOT_SCOPE.crmProfileKey}:${PILOT_SCOPE.locationAlias}:${PILOT_SCOPE.registerAlias}:${currentOrderId}`);
+        if (currentOrderId) storageRemove(`confirm:${PILOT_SCOPE.routeOptionId}:${currentOrderId}`);
         state.orderDetails = null;
         state.confirmSubmitted = false;
         state.confirmInFlight = false;
@@ -1967,13 +2491,28 @@
                 state.nextCustomerSafetyRefreshInFlight = false;
                 syncCreateAvailability();
                 syncConfirmationAvailability();
-                $('paymentDate')?.focus({ preventScroll: false });
+                (state.saleMode === 'catalog_sale'
+                    ? document.querySelector('[data-catalog-item]')
+                    : $('paymentDate'))?.focus({ preventScroll: false });
             }
         })();
     }
 
     function bindEvents() {
         $('paymentOrderForm')?.addEventListener('submit', createPaymentOrder);
+        $('paymentBusinessContext')?.addEventListener('change', () => { void handleBusinessContextChange(); });
+        $('paymentRegisterRoute')?.addEventListener('change', () => { void handleRegisterRouteChange(); });
+        $('paymentCashierBinding')?.addEventListener('change', async () => {
+            syncCreateAvailability();
+            await loadPilotRegisterState({ silent: true });
+        });
+        $('addCatalogLineBtn')?.addEventListener('click', () => addCatalogLine());
+        $('catalogDiscountRule')?.addEventListener('change', () => {
+            updateCatalogCartSummary();
+            syncCreateAvailability();
+        });
+        $('catalogSearch')?.addEventListener('input', refreshCatalogSelects);
+        $('catalogCategory')?.addEventListener('change', refreshCatalogSelects);
         document.querySelectorAll('input[name="paymentTender"]').forEach(input => {
             input.addEventListener('change', () => {
                 if (state.orderDetails?.order) return;
@@ -2019,13 +2558,14 @@
             denied.textContent = message;
             denied.classList.remove('hidden');
         }
-        document.querySelectorAll('input, button').forEach(el => {
+        document.querySelectorAll('input, select, button').forEach(el => {
             if (el.closest('.header') || el.closest('.sidebar-nav')) return;
             el.disabled = true;
         });
     }
 
     async function initCashierPaymentsPage() {
+        configurePageContext();
         bindEvents();
         syncTenderControls();
         syncCreateAvailability();
@@ -2049,10 +2589,9 @@
                 setDenied('Немає доступу до сторінки оплати або потрібних касових дозволів. Розширений доступ до фінансів для цієї сторінки не потрібен.');
                 return;
             }
-            await loadPilotRegisterState({ silent: true });
-            state.unresolvedAutoRefreshEnabled = true;
-            await loadUnresolvedOrders({ silent: true });
-            scheduleReadinessRefresh();
+            await loadRouteOptions();
+            await loadLocalQaStatus();
+            await loadSelectedRouteWorkspace();
             const params = new URLSearchParams(window.location.search);
             const queryOrderId = params.get('orderId');
             const storedOrderId = storageGet('lastOrderId');
@@ -2093,12 +2632,15 @@
 
     window.CashierPaymentsPage = {
         PILOT_SCOPE,
+        SALE_MODE,
         state,
         formatMoneyMinor,
         parseUahToMinor,
         getCreateIdempotencyKey,
         getConfirmIdempotencyKey,
         getOperationIdempotencyKey,
+        buildCatalogSalePayload,
+        loadCatalogData,
         unresolvedQueueIsFresh,
         loadPaymentOrder,
         loadPilotRegisterState,

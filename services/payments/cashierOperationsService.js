@@ -6,7 +6,9 @@ const { canUseAction } = require('../../middleware/auth');
 const { publishInTransaction } = require('../eventBus');
 const {
     FiscalAccessError,
+    assertFiscalCashierBindingCapability,
     authorizeFiscalAction,
+    authorizeFiscalActorAction,
     loadFiscalCashierBinding,
     normalizeCapabilityScope
 } = require('./fiscalAccess');
@@ -219,6 +221,9 @@ async function loadOpenShift(client, { fiscalProfileId, fiscalRegisterId }) {
     const result = await client.query(
         `SELECT fs.*, fr.fiscal_location_id, fr.register_alias, fp.crm_profile_key,
                 open_operation.status AS open_operation_status,
+                open_operation.provider_cashier_id AS open_provider_cashier_id,
+                open_operation.cashier_credential_ref AS open_cashier_credential_ref,
+                open_operation.request_snapshot AS open_operation_request_snapshot,
                 open_job.status AS open_job_status
            FROM fiscal_shifts fs
            JOIN fiscal_registers fr
@@ -414,7 +419,8 @@ async function loadImmutableProviderConfiguration(client, {
         runtimeConfig = loadCheckboxRuntimeConfig({
             env,
             credentialRef: mapping.provider_cashier_login_ref,
-            licenseRef: mapping.provider_license_ref
+            licenseRef: mapping.provider_license_ref,
+            expectedIsTest: mappingExpectedIsTest
         });
     } catch (error) {
         throw new CashierOperationsError(
@@ -444,8 +450,130 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
     const fiscalLocationId = normalizePositiveId(order?.fiscal_location_id, 'fiscal_location_required');
     await client.query('SELECT pg_advisory_xact_lock($1, $2)', [fiscalProfileId, fiscalRegisterId]);
 
+    const expectedIsTest = normalizeBoolean(
+        fiscalConfig?.snapshot?.expected_is_test
+        ?? order?.register_expected_is_test
+    );
+    const durableRouteOptionId = String(order?.fiscal_sale_route_option_id || '').trim().toLowerCase();
+    const durableBusinessContext = String(order?.business_context || '').trim().toLowerCase();
+    const snapshotRouteOptionId = String(order?.source_snapshot?.route_option_id || '').trim().toLowerCase();
+    const snapshotBusinessContext = String(
+        order?.source_snapshot?.business_context
+        || order?.source_snapshot?.crm_profile_key
+        || ''
+    ).trim().toLowerCase();
+    let sourceBusinessContext = durableBusinessContext
+        || snapshotBusinessContext
+        || String(order?.crm_profile_key || '').trim().toLowerCase();
+    let sharedTestRegister = expectedIsTest === true
+        && order?.source_snapshot?.shared_test_register === true;
+    if (durableRouteOptionId) {
+        if (!durableBusinessContext
+            || (snapshotRouteOptionId && snapshotRouteOptionId !== durableRouteOptionId)
+            || (snapshotBusinessContext && snapshotBusinessContext !== durableBusinessContext)) {
+            throw new CashierOperationsError(
+                'fiscal_sale_route_snapshot_mismatch',
+                'Durable fiscal sale route does not match the order snapshot',
+                { status: 409 }
+            );
+        }
+        const routeResult = await client.query(
+            `SELECT mode, expected_is_test, status, feature_enabled, acceptance_enabled, shared_register_group
+               FROM fiscal_sale_routes
+              WHERE route_option_id = $1
+                AND business_context = $2
+                AND fiscal_profile_id = $3
+                AND fiscal_register_id = $4
+              LIMIT 2`,
+            [durableRouteOptionId, durableBusinessContext, fiscalProfileId, fiscalRegisterId]
+        );
+        if (routeResult.rows.length !== 1) {
+            throw new CashierOperationsError(
+                'fiscal_sale_route_scope_invalid',
+                'Durable fiscal sale route is missing or ambiguous',
+                { status: 409 }
+            );
+        }
+        const durableRoute = routeResult.rows[0];
+        const routeExpectedIsTest = normalizeBoolean(durableRoute.expected_is_test);
+        if (durableRoute.status !== 'active'
+            || durableRoute.feature_enabled !== true
+            || durableRoute.acceptance_enabled !== true
+            || routeExpectedIsTest == null
+            || routeExpectedIsTest !== expectedIsTest) {
+            throw new CashierOperationsError(
+                'fiscal_sale_route_not_ready',
+                'Durable fiscal sale route is not ready for mutation',
+                { status: 409 }
+            );
+        }
+        sourceBusinessContext = durableBusinessContext;
+        sharedTestRegister = durableRoute.mode === 'test'
+            && routeExpectedIsTest === true
+            && Boolean(String(durableRoute.shared_register_group || '').trim());
+        if (order?.source_snapshot?.shared_test_register != null
+            && order.source_snapshot.shared_test_register !== sharedTestRegister) {
+            throw new CashierOperationsError(
+                'fiscal_sale_route_snapshot_mismatch',
+                'Shared-register mode does not match the durable fiscal sale route',
+                { status: 409 }
+            );
+        }
+    }
+    if (sharedTestRegister && !/^[a-z0-9_]+$/.test(sourceBusinessContext)) {
+        throw new CashierOperationsError(
+            'shared_test_business_context_missing',
+            'Shared test register requires an immutable business context',
+            { status: 409 }
+        );
+    }
+
+    const binding = await loadFiscalCashierBinding(client, {
+        userId: order.cashier_user_id || user?.id,
+        fiscalProfileId,
+        fiscalRegisterId,
+        bindingId: order.selected_fiscal_cashier_binding_id || null
+    });
+    if (Number(binding.fiscal_location_id) !== fiscalLocationId
+        || Number(binding.register_fiscal_location_id) !== fiscalLocationId) {
+        throw new CashierOperationsError(
+            'cashier_binding_scope_invalid',
+            'Selected cashier is not active for this register location',
+            { status: 409 }
+        );
+    }
+    assertFiscalCashierBindingCapability(binding, 'fiscal.shift.open');
+
     const existing = await loadOpenShift(client, { fiscalProfileId, fiscalRegisterId });
     if (existing) {
+        if (sharedTestRegister && String(existing.business_context || '').trim().toLowerCase() !== sourceBusinessContext) {
+            throw new CashierOperationsError(
+                'shared_test_register_owned_by_other_business',
+                'Shared test register is already owned by another business context',
+                { status: 409 }
+            );
+        }
+        const openSnapshot = existing.open_operation_request_snapshot || {};
+        const openBindingId = Number(openSnapshot.cashier_binding_id);
+        const expectedCredentialRef = String(binding.provider_cashier_login_ref || '').trim();
+        const openCredentialRef = String(existing.open_cashier_credential_ref || '').trim();
+        const expectedProviderCashierId = String(binding.provider_cashier_id || '').trim();
+        const openProviderCashierId = String(existing.open_provider_cashier_id || '').trim();
+        const bindingIdMismatch = Number.isSafeInteger(openBindingId)
+            && openBindingId > 0
+            && openBindingId !== Number(binding.id);
+        const providerCashierMismatch = (expectedProviderCashierId || openProviderCashierId)
+            && expectedProviderCashierId !== openProviderCashierId;
+        if (!openCredentialRef
+            || openCredentialRef !== expectedCredentialRef
+            || providerCashierMismatch
+            || bindingIdMismatch) {
+            throw new CashierOperationsError(
+                'open_shift_cashier_binding_mismatch',
+                'Open fiscal shift belongs to a different cashier binding',
+                { status: 409 }
+            );
+        }
         const lifecycleStage = String(existing.lifecycle_stage || '').trim().toUpperCase();
         const shiftStatus = String(existing.status || '').trim().toLowerCase();
         const openJobStatus = String(existing.open_job_status || '').trim().toLowerCase();
@@ -472,38 +600,69 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
         );
     }
 
-    await authorizeFiscalAction(client, {
-        user,
-        action: 'fiscal.shift.open',
-        fiscalProfileId,
-        crmProfileKey: order.crm_profile_key,
-        fiscalLocationId,
-        fiscalRegisterId
-    });
+    if (sharedTestRegister) {
+        const blockers = await client.query(
+            `SELECT
+                 (SELECT COUNT(*)::int
+                    FROM payment_outbox_jobs job
+                    LEFT JOIN payment_orders po
+                      ON po.id = job.payment_order_id
+                     AND po.fiscal_profile_id = job.fiscal_profile_id
+                    LEFT JOIN fiscal_operations operation
+                      ON operation.id = job.fiscal_operation_id
+                     AND operation.fiscal_profile_id = job.fiscal_profile_id
+                   WHERE COALESCE(po.fiscal_register_id, operation.fiscal_register_id) = $1
+                     AND job.status IN ('queued', 'claimed', 'running', 'failed', 'dead')) AS pending_jobs,
+                 (SELECT COUNT(*)::int FROM fiscal_operations
+                   WHERE fiscal_register_id = $1 AND status = 'unknown') AS unknown_operations,
+                 (SELECT COUNT(*)::int FROM payment_orders
+                   WHERE fiscal_register_id = $1
+                     AND (payment_status = 'unknown' OR fiscal_status = 'unknown')) AS unknown_orders`,
+            [fiscalRegisterId]
+        );
+        const state = blockers.rows[0] || {};
+        if (Number(state.pending_jobs || 0) > 0
+            || Number(state.unknown_operations || 0) > 0
+            || Number(state.unknown_orders || 0) > 0) {
+            throw new CashierOperationsError(
+                'shared_test_register_recovery_incomplete',
+                'Shared test register cannot switch context while recovery is incomplete',
+                { status: 409 }
+            );
+        }
+    }
 
-    const hasProviderIdentity = Boolean(order.provider_organization_id || order.provider_register_id || order.provider_license_ref);
-    const binding = hasProviderIdentity
-        ? await client.query(
-            `SELECT provider_cashier_id, provider_cashier_login_ref
-               FROM fiscal_cashier_bindings
-              WHERE fiscal_profile_id = $1
-                AND fiscal_register_id = $2
-                AND user_id = $3
-                AND status = 'active'
-              LIMIT 1`,
-            [fiscalProfileId, fiscalRegisterId, user?.id || null]
-        )
-        : { rows: [] };
+    const routeScoped = Boolean(
+        order?.fiscal_sale_route_option_id
+        || order?.source_snapshot?.route_option_id
+    );
+    if (routeScoped) {
+        await authorizeFiscalActorAction(client, {
+            user,
+            action: 'fiscal.shift.open',
+            crmProfileKey: sourceBusinessContext
+        });
+    } else {
+        await authorizeFiscalAction(client, {
+            user,
+            action: 'fiscal.shift.open',
+            fiscalProfileId,
+            crmProfileKey: order.crm_profile_key,
+            fiscalLocationId,
+            fiscalRegisterId
+        });
+    }
+
     const credentialRefs = assertCompleteFiscalCredentialRefs(
         { provider_license_ref: order.provider_license_ref },
-        binding.rows[0]
+        binding
     );
     const fiscalSnapshot = fiscalConfig?.snapshot || {};
     const providerContext = {
         provider_organization_id: order.provider_organization_id || null,
         provider_outlet_id: order.provider_outlet_id || null,
         provider_register_id: order.provider_register_id || null,
-        provider_cashier_id: binding.rows[0]?.provider_cashier_id || null,
+        provider_cashier_id: binding.provider_cashier_id || null,
         register_credential_ref: credentialRefs.registerCredentialRef,
         cashier_credential_ref: credentialRefs.cashierCredentialRef,
         expected_is_test: normalizeBoolean(fiscalSnapshot.expected_is_test ?? order.register_expected_is_test),
@@ -522,14 +681,15 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
     const shift = await client.query(
         `INSERT INTO fiscal_shifts (
              fiscal_profile_id, fiscal_register_id, provider, status,
-             opened_by_user_id, lifecycle_stage, provider_snapshot
+             opened_by_user_id, lifecycle_stage, business_context, provider_snapshot
          )
-         VALUES ($1, $2, 'checkbox', 'opening', $3, 'CREATED', $4::jsonb)
+         VALUES ($1, $2, 'checkbox', 'opening', $3, 'CREATED', $4, $5::jsonb)
          RETURNING *`,
         [
             fiscalProfileId,
             fiscalRegisterId,
             user?.id || null,
+            sourceBusinessContext || order.crm_profile_key,
             JSON.stringify({ auto_opened_before_sale: true, fiscal_location_id: fiscalLocationId, lifecycle_stage: 'CREATED' })
         ]
     );
@@ -552,6 +712,7 @@ async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null
             JSON.stringify({
                 provider_request_uuid: providerRequestUuid,
                 auto_opened_before_sale: true,
+                cashier_binding_id: Number(binding.id),
                 external_stage: 'auth',
                 fiscal_configuration_hash: configurationHash,
                 provider_context: providerContext
@@ -601,7 +762,14 @@ async function countPhase1CloseBlockers(client, { fiscalProfileId, fiscalRegiste
     return countFiscalShiftCloseBlockers(client, { fiscalProfileId, fiscalRegisterId });
 }
 
-async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, registerAlias }) {
+async function loadPilotRegisterState({
+    user,
+    crmProfileKey,
+    locationAlias,
+    registerAlias,
+    authorizationCrmProfileKey = null,
+    cashierBindingId = null
+}) {
     return withTransaction(async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(process.env);
         const cashierProEnabled = isCashierProEnabled(process.env);
@@ -620,6 +788,8 @@ async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, regi
                  fr.provider_license_ref,
                  fr.status AS fiscal_register_status,
                  fr.feature_enabled,
+                 fr.acceptance_enabled,
+                 COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
                  fr.metadata AS register_metadata
                FROM fiscal_profiles fp
                JOIN fiscal_locations fl
@@ -656,32 +826,66 @@ async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, regi
             };
         }
         const row = mapping.rows[0];
-        await authorizeFiscalAction(client, {
-            user,
-            action: 'payments.view',
-            fiscalProfileId: row.fiscal_profile_id,
-            crmProfileKey: row.crm_profile_key,
-            fiscalLocationId: row.fiscal_location_id,
-            fiscalRegisterId: row.fiscal_register_id
-        });
-        const binding = await loadFiscalCashierBinding(client, {
-            userId: user?.id,
-            fiscalProfileId: row.fiscal_profile_id,
-            fiscalRegisterId: row.fiscal_register_id
-        });
+        const routedBusinessContext = String(authorizationCrmProfileKey || '').trim().toLowerCase() || null;
+        let binding = null;
+        if (routedBusinessContext) {
+            await authorizeFiscalActorAction(client, {
+                user,
+                action: 'payments.view',
+                crmProfileKey: routedBusinessContext
+            });
+            const selectedBindingId = cashierBindingId == null ? null : Number(cashierBindingId);
+            if (selectedBindingId != null) {
+                if (!Number.isSafeInteger(selectedBindingId) || selectedBindingId <= 0) {
+                    throw new CashierOperationsError('cashier_binding_id_invalid', 'Cashier binding option is invalid', { status: 422 });
+                }
+                const selected = await client.query(
+                    `SELECT *
+                       FROM fiscal_cashier_bindings
+                      WHERE id = $1
+                        AND fiscal_profile_id = $2
+                        AND fiscal_register_id = $3
+                        AND provider = 'checkbox'
+                        AND status = 'active'
+                        AND NULLIF(BTRIM(provider_cashier_login_ref), '') IS NOT NULL
+                      LIMIT 2`,
+                    [selectedBindingId, row.fiscal_profile_id, row.fiscal_register_id]
+                );
+                if (selected.rows.length !== 1) {
+                    throw new CashierOperationsError('cashier_binding_scope_invalid', 'Selected cashier is not active for this register', { status: 409 });
+                }
+                binding = selected.rows[0];
+                assertFiscalCashierBindingCapability(binding, 'payments.view');
+            }
+        } else {
+            await authorizeFiscalAction(client, {
+                user,
+                action: 'payments.view',
+                fiscalProfileId: row.fiscal_profile_id,
+                crmProfileKey: row.crm_profile_key,
+                fiscalLocationId: row.fiscal_location_id,
+                fiscalRegisterId: row.fiscal_register_id
+            });
+            binding = await loadFiscalCashierBinding(client, {
+                userId: user?.id,
+                fiscalProfileId: row.fiscal_profile_id,
+                fiscalRegisterId: row.fiscal_register_id
+            });
+        }
         let runtimeConfigResolvable = false;
         let runtimeConfigErrorCode = null;
         if (checkboxIntegrationEnabled && row.feature_enabled) {
             const registerCredentialRef = String(row.provider_license_ref ?? '').trim();
-            const cashierCredentialRef = String(binding.provider_cashier_login_ref ?? '').trim();
+            const cashierCredentialRef = String(binding?.provider_cashier_login_ref ?? '').trim();
             if (!registerCredentialRef || !cashierCredentialRef) {
-                runtimeConfigErrorCode = 'fiscal_provider_context_incomplete';
+                runtimeConfigErrorCode = binding ? 'fiscal_provider_context_incomplete' : 'binding_missing';
             } else {
                 try {
                     loadCheckboxRuntimeConfig({
                         env: process.env,
                         credentialRef: cashierCredentialRef,
-                        licenseRef: registerCredentialRef
+                        licenseRef: registerCredentialRef,
+                        expectedIsTest: row.register_expected_is_test
                     });
                     runtimeConfigResolvable = true;
                 } catch (error) {
@@ -706,6 +910,50 @@ async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, regi
             [row.fiscal_profile_id, row.fiscal_register_id]
         );
         const shift = shiftResult.rows[0] || null;
+        let phase1CloseBinding = binding;
+        let phase1CloseRuntimeConfigResolvable = runtimeConfigResolvable;
+        if (shift?.open_operation_id) {
+            const openerBinding = await client.query(
+                `SELECT candidate.*
+                   FROM fiscal_operations open_operation
+                   JOIN fiscal_cashier_bindings candidate
+                     ON candidate.fiscal_profile_id = open_operation.fiscal_profile_id
+                    AND candidate.fiscal_register_id = open_operation.fiscal_register_id
+                    AND candidate.fiscal_location_id = open_operation.fiscal_location_id
+                    AND candidate.provider = open_operation.provider
+                    AND candidate.provider_cashier_id IS NOT DISTINCT FROM open_operation.provider_cashier_id
+                    AND candidate.provider_cashier_login_ref = open_operation.cashier_credential_ref
+                    AND candidate.status = 'active'
+                  WHERE open_operation.id = $1
+                    AND open_operation.fiscal_shift_id = $2
+                    AND open_operation.fiscal_profile_id = $3
+                    AND open_operation.fiscal_register_id = $4
+                    AND open_operation.operation_type = 'shift_open'
+                    AND open_operation.provider = 'checkbox'
+                    AND NULLIF(BTRIM(open_operation.cashier_credential_ref), '') IS NOT NULL
+                  LIMIT 2`,
+                [shift.open_operation_id, shift.id, row.fiscal_profile_id, row.fiscal_register_id]
+            );
+            phase1CloseBinding = openerBinding.rows.length === 1 ? openerBinding.rows[0] : null;
+            phase1CloseRuntimeConfigResolvable = false;
+            if (checkboxIntegrationEnabled && row.feature_enabled && phase1CloseBinding) {
+                const registerCredentialRef = String(row.provider_license_ref ?? '').trim();
+                const cashierCredentialRef = String(phase1CloseBinding.provider_cashier_login_ref ?? '').trim();
+                if (registerCredentialRef && cashierCredentialRef) {
+                    try {
+                        loadCheckboxRuntimeConfig({
+                            env: process.env,
+                            credentialRef: cashierCredentialRef,
+                            licenseRef: registerCredentialRef,
+                            expectedIsTest: row.register_expected_is_test
+                        });
+                        phase1CloseRuntimeConfigResolvable = true;
+                    } catch (_) {
+                        phase1CloseRuntimeConfigResolvable = false;
+                    }
+                }
+            }
+        }
         const proShiftActive = shift && ['opening', 'open', 'closing'].includes(String(shift.status || '').toLowerCase());
         const checklist = cashierProEnabled && proShiftActive ? await buildCloseChecklist(client, shift) : null;
         const closeBlockerCount = shift ? await countPhase1CloseBlockers(client, {
@@ -714,13 +962,13 @@ async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, regi
         }) : 0;
         const phase1Close = resolvePhase1CloseAvailability({
             user,
-            binding,
+            binding: phase1CloseBinding,
             registerMetadata: row.register_metadata,
             shift,
             blockerCount: closeBlockerCount,
             checkboxIntegrationEnabled,
             registerFeatureEnabled: Boolean(row.feature_enabled),
-            runtimeConfigResolvable
+            runtimeConfigResolvable: phase1CloseRuntimeConfigResolvable
         });
         return {
             checkboxIntegrationEnabled,
@@ -730,7 +978,7 @@ async function loadPilotRegisterState({ user, crmProfileKey, locationAlias, regi
             runtimeConfigResolvable,
             readinessCode,
             fiscalProfileId: Number(row.fiscal_profile_id),
-            crmProfileKey: row.crm_profile_key,
+            crmProfileKey: routedBusinessContext || row.crm_profile_key,
             legalEntityKey: row.legal_entity_key,
             legalEntityName: row.legal_entity_name,
             fiscalLocationId: Number(row.fiscal_location_id),

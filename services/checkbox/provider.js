@@ -1742,7 +1742,7 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
         isEnabled() {
             return isCheckboxIntegrationEnabled(env);
         },
-        canResolveRefs({ credentialRef, licenseRef } = {}) {
+        canResolveRefs({ credentialRef, licenseRef, expectedIsTest = null } = {}) {
             if (!this.isEnabled()) return false;
             const cashierRef = normalizeCredentialRef(credentialRef);
             const registerRef = normalizeCredentialRef(licenseRef);
@@ -1752,6 +1752,7 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                     env,
                     credentialRef: cashierRef,
                     licenseRef: registerRef,
+                    expectedIsTest,
                     allowLocalMockHost
                 });
                 return true;
@@ -1764,9 +1765,20 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                 throw new CheckboxProviderConfigError('checkbox_integration_disabled', 'Checkbox integration is disabled');
             }
             const refs = refsFromContext(context);
-            const config = loadCheckboxRuntimeConfig({ env, ...refs, allowLocalMockHost });
             const job = context.job || context;
             const snapshotExpectedIsTest = booleanOrNull(job.expected_is_test);
+            if (snapshotExpectedIsTest == null) {
+                throw new CheckboxProviderConfigError(
+                    'checkbox_runtime_expected_is_test_mismatch',
+                    'Immutable fiscal operation context has no explicit test-mode expectation'
+                );
+            }
+            const config = loadCheckboxRuntimeConfig({
+                env,
+                ...refs,
+                expectedIsTest: snapshotExpectedIsTest,
+                allowLocalMockHost
+            });
             if (snapshotExpectedIsTest == null || config.expectedIsTest !== snapshotExpectedIsTest) {
                 throw new CheckboxProviderConfigError(
                     'checkbox_runtime_expected_is_test_mismatch',
@@ -1790,7 +1802,8 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                             job.fiscal_profile_id,
                             COALESCE(po.fiscal_register_id, fo.fiscal_register_id) AS fiscal_register_id,
                             fr.provider_license_ref,
-                            fcb.provider_cashier_login_ref
+                            fcb.provider_cashier_login_ref,
+                            fo.expected_is_test
                        FROM payment_outbox_jobs job
                        JOIN fiscal_operations fo
                          ON fo.id = job.fiscal_operation_id
@@ -1821,7 +1834,8 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                 for (const row of result.rows) {
                     if (this.canResolveRefs({
                         credentialRef: row.provider_cashier_login_ref,
-                        licenseRef: row.provider_license_ref
+                        licenseRef: row.provider_license_ref,
+                        expectedIsTest: booleanOrNull(row.expected_is_test)
                     })) {
                         const key = runtimeContextKey({
                             fiscalProfileId: row.fiscal_profile_id,
@@ -1833,7 +1847,8 @@ function createCheckboxProviderFactory({ env = process.env, fetchImpl, tokenCach
                             fiscalProfileId: Number(row.fiscal_profile_id),
                             fiscalRegisterId: Number(row.fiscal_register_id),
                             registerCredentialRef: normalizeCredentialRef(row.provider_license_ref),
-                            cashierCredentialRef: normalizeCredentialRef(row.provider_cashier_login_ref)
+                            cashierCredentialRef: normalizeCredentialRef(row.provider_cashier_login_ref),
+                            expectedIsTest: booleanOrNull(row.expected_is_test)
                         });
                     }
                 }

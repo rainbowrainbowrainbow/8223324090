@@ -17,7 +17,9 @@ const SCOPES = [
     'scripts/check-checkbox-openapi-compatibility.js',
     'scripts/checkbox-readiness-status.js',
     'scripts/checkbox-sandbox-smoke.js',
+    'scripts/configure-checkbox-catalog-sale.js',
     'scripts/configure-checkbox-park-pilot.js',
+    'scripts/plan-park-dar-production-config.js',
     'scripts/run-isolated-postgres-tests.js',
     'db/migrations/337_checkbox_shift_recovery_stage_constraints.sql',
     'db/migrations/343_checkbox_shift_operation_invariants.sql',
@@ -32,6 +34,8 @@ const SCOPES = [
     'tests/checkbox-fullstack-testmode-harness.test.js',
     'tests/checkbox-webhook-reconciliation.test.js',
     'tests/checkbox-release-db-preflight.test.js',
+    'tests/catalog-sale-mapping-config.test.js',
+    'tests/park-dar-production-config.test.js',
     'tests/checkbox-shift-db-invariants.test.js',
     'tests/closed-shift-sale-guard.test.js',
     'tests/fiscal-cashier-operations.test.js',
@@ -183,7 +187,9 @@ function scanJsonConfiguration(rel, value, failures, pathParts = []) {
     for (const [key, item] of Object.entries(value)) {
         const name = key.toUpperCase();
         const itemPath = [...pathParts, key].join('.');
-        if (PRODUCTION_GATES.has(name) && String(item).trim().toLowerCase() !== 'false') {
+        const explicitlyFalse = item === false
+            || (item && typeof item === 'object' && !Array.isArray(item) && item.const === false);
+        if (PRODUCTION_GATES.has(name) && !explicitlyFalse) {
             failures.push(`${rel}: production fiscal gate ${itemPath} must remain literal false in repository configuration`);
         }
         if (SENSITIVE_ENV_KEY.test(name) && !isEmptyOrExplicitPlaceholder(item)) {
@@ -205,7 +211,7 @@ function scanContent(rel, body) {
         }
     }
 
-    if (isConfigurationSurface(rel)) {
+    if (isConfigurationSurface(rel) && !/\.schema\.json$/i.test(rel)) {
         for (const [index, line] of body.split(/\r?\n/).entries()) {
             const assignment = parseEnvAssignment(line);
             if (!assignment) continue;

@@ -7,7 +7,7 @@ const {
     resolveAdmissionTicketQuote
 } = require('../admissionTickets');
 const { normalizeKnownBusinessContext } = require('../businessContext');
-const { authorizeFiscalAction, FiscalAccessError } = require('./fiscalAccess');
+const { authorizeFiscalAction, authorizeFiscalActorAction, FiscalAccessError } = require('./fiscalAccess');
 const { toPostgresBigint } = require('./money');
 const { ensureOpenShiftForSale } = require('./cashierOperationsService');
 const {
@@ -138,7 +138,7 @@ function buildFiscalConfigurationSnapshot({ mapping = {}, binding = {}, runtimeC
         provider_cashier_id: binding.provider_cashier_id || null,
         register_credential_ref: registerCredentialRef,
         cashier_credential_ref: cashierCredentialRef,
-        expected_is_test: normalizeBoolean(runtimeConfig.expectedIsTest ?? mapping.register_expected_is_test),
+        expected_is_test: normalizeBoolean(mapping.register_expected_is_test ?? runtimeConfig.expectedIsTest),
         fiscal_profile_id: mapping.fiscal_profile_id == null ? null : Number(mapping.fiscal_profile_id),
         fiscal_location_id: mapping.fiscal_location_id == null ? null : Number(mapping.fiscal_location_id),
         fiscal_register_id: mapping.fiscal_register_id == null ? null : Number(mapping.fiscal_register_id),
@@ -189,6 +189,81 @@ function assertNoClientFiscalOverride(body = {}) {
     }
 }
 
+function assertNoClientFiscalConfirmationOverride(body = {}) {
+    assertNoClientFiscalOverride(body);
+    for (const field of [
+        'providerRegisterId',
+        'provider_register_id',
+        'providerCashierId',
+        'provider_cashier_id',
+        'cashierId',
+        'cashier_id',
+        'locationAlias',
+        'location_alias',
+        'registerAlias',
+        'register_alias',
+        'credentialReference',
+        'credential_reference',
+        'credentialRef',
+        'credential_ref',
+        'isTest',
+        'is_test',
+        'registerMode',
+        'register_mode',
+        'routeOptionId',
+        'route_option_id',
+        'businessContext',
+        'business_context',
+        'cashierBindingId',
+        'cashier_binding_id'
+    ]) {
+        if (Object.prototype.hasOwnProperty.call(body, field)) {
+            throw new PaymentServiceError(
+                'client_payment_field_forbidden',
+                'Client cannot override the fiscal route or cashier binding during payment confirmation',
+                { status: 422, details: { field } }
+            );
+        }
+    }
+}
+
+function normalizeOptionalCashierBindingId(body = {}) {
+    const value = body.cashierBindingId ?? body.cashier_binding_id;
+    if (value == null || value === '') return null;
+    const id = Number(value);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        throw new PaymentServiceError('cashier_binding_id_invalid', 'Cashier binding id is invalid', { status: 422 });
+    }
+    return id;
+}
+
+async function loadSelectedCashierBinding(client, { bindingId, fiscalProfileId, fiscalRegisterId } = {}) {
+    const id = Number(bindingId);
+    if (!Number.isSafeInteger(id) || id <= 0) {
+        throw new PaymentServiceError('cashier_binding_required', 'Select an active Checkbox cashier', { status: 422 });
+    }
+    const result = await client.query(
+        `SELECT id, fiscal_profile_id, fiscal_register_id, user_id,
+                provider_cashier_id, provider_cashier_login_ref, cashier_name, status
+           FROM fiscal_cashier_bindings
+          WHERE id = $1
+            AND fiscal_profile_id = $2
+            AND fiscal_register_id = $3
+            AND provider = 'checkbox'
+            AND status = 'active'
+            AND NULLIF(BTRIM(provider_cashier_login_ref), '') IS NOT NULL
+          LIMIT 2`,
+        [id, fiscalProfileId, fiscalRegisterId]
+    );
+    if (result.rows.length !== 1) {
+        throw new PaymentServiceError('cashier_binding_scope_invalid', 'Selected cashier is not active for this register', {
+            status: 409,
+            details: { cashierBindingId: id }
+        });
+    }
+    return result.rows[0];
+}
+
 function uahWholeToMinor(value, field) {
     if (!Number.isSafeInteger(value) || value < 0) {
         throw new PaymentServiceError('admission_ticket_amount_invalid', 'Admission ticket amount must be a whole UAH integer', {
@@ -216,9 +291,14 @@ function normalizePaymentOrder(row = {}) {
         fiscalProfileId: Number(row.fiscal_profile_id),
         fiscalLocationId: row.fiscal_location_id == null ? null : Number(row.fiscal_location_id),
         fiscalRegisterId: Number(row.fiscal_register_id),
+        selectedFiscalCashierBindingId: row.selected_fiscal_cashier_binding_id == null
+            ? null
+            : Number(row.selected_fiscal_cashier_binding_id),
         crmProfileKey: row.crm_profile_key || row.source_snapshot?.crm_profile_key || null,
         locationAlias: row.location_alias || row.source_snapshot?.location_alias || null,
         registerAlias: row.register_alias || row.source_snapshot?.register_alias || null,
+        businessContext: row.business_context || row.source_snapshot?.business_context || row.crm_profile_key || null,
+        fiscalSaleRouteOptionId: row.fiscal_sale_route_option_id || row.source_snapshot?.route_option_id || null,
         sourceType: row.source_type,
         sourceId: row.source_id,
         orderKey: row.order_key,
@@ -278,6 +358,8 @@ async function loadPilotFiscalMapping(client, {
              fr.provider_register_id,
              fr.provider_license_ref,
              fr.feature_enabled,
+             fr.acceptance_enabled,
+             COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
              fr.status AS fiscal_register_status
            FROM fiscal_profiles fp
            JOIN fiscal_locations fl
@@ -323,8 +405,13 @@ async function assertCheckboxIntegrationReady(client, {
     fiscalRegisterId,
     registerStatus,
     registerFeatureEnabled,
+    registerAcceptanceEnabled,
+    registerExpectedIsTest,
     provider,
-    providerLicenseRef
+    providerLicenseRef,
+    cashierUserId = user?.id,
+    cashierBindingId = null,
+    binding: suppliedBinding = null
 } = {}) {
     if (!isCheckboxIntegrationEnabled(env)) {
         throw new PaymentServiceError('checkbox_integration_disabled', 'Checkbox integration is disabled', { status: 503 });
@@ -335,15 +422,27 @@ async function assertCheckboxIntegrationReady(client, {
     if (String(registerStatus || '').trim() !== 'active' || registerFeatureEnabled !== true) {
         throw new PaymentServiceError('checkbox_register_disabled', 'Checkbox register is not enabled for payment confirmation', { status: 409 });
     }
-    const binding = await client.query(
+    const normalizedBindingId = cashierBindingId == null ? null : Number(cashierBindingId);
+    if (cashierBindingId != null && (!Number.isSafeInteger(normalizedBindingId) || normalizedBindingId <= 0)) {
+        throw new PaymentServiceError('cashier_binding_id_invalid', 'Fiscal cashier binding id is invalid', { status: 409 });
+    }
+    if (registerAcceptanceEnabled !== true) {
+        throw new PaymentServiceError('checkbox_register_acceptance_disabled', 'Checkbox register does not accept new payments', { status: 503 });
+    }
+    const expectedIsTest = normalizeBoolean(registerExpectedIsTest);
+    if (expectedIsTest == null) {
+        throw new PaymentServiceError('checkbox_expected_is_test_required', 'Checkbox register test/production mode is not configured', { status: 503 });
+    }
+    const binding = suppliedBinding ? { rows: [suppliedBinding] } : await client.query(
         `SELECT provider_cashier_id, provider_cashier_login_ref
            FROM fiscal_cashier_bindings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
             AND user_id = $3
+            AND ($4::bigint IS NULL OR id = $4::bigint)
             AND status = 'active'
           LIMIT 2`,
-        [fiscalProfileId, fiscalRegisterId, user?.id || null]
+        [fiscalProfileId, fiscalRegisterId, cashierUserId || null, normalizedBindingId]
     );
     if (binding.rows.length !== 1) {
         throw new PaymentServiceError('fiscal_binding_ambiguous_or_missing', 'Exact fiscal cashier binding is required before Checkbox payment', {
@@ -359,7 +458,8 @@ async function assertCheckboxIntegrationReady(client, {
         const runtimeConfig = loadCheckboxRuntimeConfig({
             env,
             credentialRef: credentialRefs.cashierCredentialRef,
-            licenseRef: credentialRefs.registerCredentialRef
+            licenseRef: credentialRefs.registerCredentialRef,
+            expectedIsTest
         });
         return {
             binding: binding.rows[0],
@@ -406,20 +506,24 @@ async function authorizeOrderReplay(client, {
     authorizer,
     expectedFiscalProfileId = null,
     expectedFiscalRegisterId = null,
+    expectedBusinessContext = null,
+    expectedRouteOptionId = null,
+    authorizationCrmProfileKey = null,
     requestFingerprint = null
 } = {}) {
     if (!order) {
         throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
     }
-    await authorizer(client, {
+    await authorizePaymentOrderActor(client, {
         user,
         action,
-        fiscalProfileId: order.fiscal_profile_id,
-        crmProfileKey: order.crm_profile_key,
-        fiscalLocationId: order.fiscal_location_id,
-        fiscalRegisterId: order.fiscal_register_id
+        order,
+        authorizer,
+        authorizationCrmProfileKey,
+        enforceActorOwnership: false
     });
-    if (Number(order.cashier_user_id || 0) !== Number(user?.id || 0)) {
+    const actorUserId = order.created_by_user_id ?? order.cashier_user_id;
+    if (Number(actorUserId || 0) !== Number(user?.id || 0)) {
         throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another payment scope', { status: 409 });
     }
     if (expectedFiscalProfileId && Number(order.fiscal_profile_id) !== Number(expectedFiscalProfileId)) {
@@ -428,29 +532,108 @@ async function authorizeOrderReplay(client, {
     if (expectedFiscalRegisterId && Number(order.fiscal_register_id) !== Number(expectedFiscalRegisterId)) {
         throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another fiscal register', { status: 409 });
     }
+    const orderBusinessContext = String(order.business_context || order.source_snapshot?.business_context || '').trim().toLowerCase();
+    if (expectedBusinessContext && orderBusinessContext !== String(expectedBusinessContext).trim().toLowerCase()) {
+        throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another business context', { status: 409 });
+    }
+    const orderRouteOptionId = String(order.fiscal_sale_route_option_id || order.source_snapshot?.route_option_id || '').trim().toLowerCase();
+    if (expectedRouteOptionId && orderRouteOptionId !== String(expectedRouteOptionId).trim().toLowerCase()) {
+        throw new PaymentServiceError('idempotency_key_scope_conflict', 'Idempotency key belongs to another fiscal sale route', { status: 409 });
+    }
     if (requestFingerprint && order.source_snapshot?.request_fingerprint !== requestFingerprint) {
         throw new PaymentServiceError('idempotency_key_conflict', 'Same idempotency key was used with a different payment order body', { status: 409 });
     }
     return true;
 }
 
-async function loadFiscalItemMappings(client, { fiscalProfileId, fiscalRegisterId, crmProfileKey, lines }) {
-    const codes = [...new Set((lines || []).map(line => String(line.ticketTypeCode || '').trim()).filter(Boolean))];
+async function authorizePaymentOrderActor(client, {
+    user,
+    action,
+    order,
+    authorizer = authorizeFiscalAction,
+    authorizationCrmProfileKey = null,
+    enforceActorOwnership = action === 'payments.confirm_received'
+} = {}) {
+    const routeScoped = Boolean(order?.fiscal_sale_route_option_id || order?.source_snapshot?.route_option_id);
+    const effectiveAuthorizer = routeScoped && authorizer === authorizeFiscalAction
+        ? authorizeFiscalActorAction
+        : authorizer;
+    const crmProfileKey = authorizationCrmProfileKey || (routeScoped
+        ? (order?.business_context || order?.source_snapshot?.business_context)
+        : order?.crm_profile_key);
+    const authorization = await effectiveAuthorizer(client, {
+        user,
+        action,
+        fiscalProfileId: order?.fiscal_profile_id,
+        crmProfileKey,
+        fiscalLocationId: order?.fiscal_location_id,
+        fiscalRegisterId: order?.fiscal_register_id
+    });
+
+    const routeExpectedIsTest = normalizeBoolean(order?.route_expected_is_test);
+    const persistedRouteMode = String(order?.source_snapshot?.register_mode || '').trim().toLowerCase();
+    if (routeScoped && (routeExpectedIsTest === true || persistedRouteMode === 'test')) {
+        await authorizeFiscalActorAction(client, {
+            user,
+            action: 'fiscal.configure',
+            crmProfileKey
+        });
+    }
+
+    if (enforceActorOwnership) {
+        const actorUserId = order?.created_by_user_id ?? order?.cashier_user_id;
+        if (Number(actorUserId || 0) !== Number(user?.id || 0)) {
+            throw new PaymentServiceError(
+                'payment_order_actor_mismatch',
+                'Only the operator who created the payment order can confirm it',
+                { status: 409 }
+            );
+        }
+    }
+
+    return authorization;
+}
+
+function assertPaymentOrderRouteMutationReady(order = {}) {
+    const routeOptionId = String(order.fiscal_sale_route_option_id || order.source_snapshot?.route_option_id || '').trim();
+    if (!routeOptionId) return true;
+    const routeExpectedIsTest = normalizeBoolean(order.route_expected_is_test);
+    const registerExpectedIsTest = normalizeBoolean(order.register_expected_is_test);
+    if (!order.route_status) {
+        throw new PaymentServiceError('fiscal_route_mapping_missing', 'Payment order fiscal sale route is not configured', { status: 409 });
+    }
+    if (routeExpectedIsTest == null || registerExpectedIsTest == null || routeExpectedIsTest !== registerExpectedIsTest) {
+        throw new PaymentServiceError('fiscal_route_mode_mismatch', 'Payment order route and register modes do not match', { status: 409 });
+    }
+    if (order.route_status !== 'active' || order.route_feature_enabled !== true) {
+        throw new PaymentServiceError('fiscal_route_feature_disabled', 'Payment order fiscal sale route is not enabled', { status: 409 });
+    }
+    if (order.route_acceptance_enabled !== true) {
+        throw new PaymentServiceError('fiscal_route_acceptance_disabled', 'Payment order fiscal sale route does not accept new payments', { status: 503 });
+    }
+    return true;
+}
+
+async function loadFiscalItemMappings(client, { fiscalProfileId, fiscalRegisterId, crmProfileKey, businessContext = null, lines, sourceType = ORDER_SOURCE_TYPE, itemType = 'admission_ticket' }) {
+    const codes = [...new Set((lines || []).map(line => String(line.ticketTypeCode || line.itemCode || '').trim()).filter(Boolean))];
     if (!codes.length) {
         throw new PaymentServiceError('fiscal_item_mapping_missing', 'Admission ticket fiscal item mapping is missing', { status: 409 });
     }
+    const isAdmission = sourceType === ORDER_SOURCE_TYPE && itemType === 'admission_ticket';
     const result = await client.query(
         `SELECT *
            FROM fiscal_item_mappings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
-            AND crm_profile_key = $3
+            AND COALESCE(business_context, crm_profile_key) = $3
             AND source_type = $4
-            AND item_type = 'admission_ticket'
-            AND item_code = ANY($5::text[])
+            AND item_type = ${isAdmission ? "'admission_ticket'" : '$5'}
+            AND item_code = ANY($${isAdmission ? '5' : '6'}::text[])
             AND provider = 'checkbox'
             AND status = 'active'`,
-        [fiscalProfileId, fiscalRegisterId, crmProfileKey, ORDER_SOURCE_TYPE, codes]
+        isAdmission
+            ? [fiscalProfileId, fiscalRegisterId, businessContext || crmProfileKey, ORDER_SOURCE_TYPE, codes]
+            : [fiscalProfileId, fiscalRegisterId, businessContext || crmProfileKey, sourceType, itemType, codes]
     );
     const byCode = new Map();
     for (const row of result.rows) {
@@ -528,8 +711,14 @@ async function loadOrderSnapshot(client, orderId) {
                 fr.provider,
                 fr.status AS fiscal_register_status,
                 fr.feature_enabled,
+                fr.acceptance_enabled,
                 fr.provider_license_ref,
-                fr.provider_register_id
+                fr.provider_register_id,
+                COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
+                fsr.status AS route_status,
+                fsr.feature_enabled AS route_feature_enabled,
+                fsr.acceptance_enabled AS route_acceptance_enabled,
+                fsr.expected_is_test AS route_expected_is_test
            FROM payment_orders po
            JOIN fiscal_profiles fp ON fp.id = po.fiscal_profile_id
            JOIN fiscal_registers fr
@@ -537,7 +726,12 @@ async function loadOrderSnapshot(client, orderId) {
             AND fr.fiscal_profile_id = po.fiscal_profile_id
            JOIN fiscal_locations fl
              ON fl.id = fr.fiscal_location_id
-            AND fl.fiscal_profile_id = po.fiscal_profile_id
+             AND fl.fiscal_profile_id = po.fiscal_profile_id
+           LEFT JOIN fiscal_sale_routes fsr
+             ON fsr.route_option_id = po.fiscal_sale_route_option_id
+            AND fsr.business_context = po.business_context
+            AND fsr.fiscal_profile_id = po.fiscal_profile_id
+            AND fsr.fiscal_register_id = po.fiscal_register_id
           WHERE po.id = $1
           LIMIT 1`,
         [orderId]
@@ -564,6 +758,7 @@ async function createAdmissionTicketPaymentOrder({
     quoteResolver = resolveAdmissionTicketQuote,
     authorizer = authorizeFiscalAction,
     requireCheckboxIntegrationReady = false,
+    fiscalRoute = null,
     now = new Date()
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
@@ -579,34 +774,52 @@ async function createAdmissionTicketPaymentOrder({
     const { crmProfileKey, locationAlias, registerAlias } = fiscalScope;
     const { tender, paymentMethod } = normalizeTender(body.tender || body.paymentMethod || body.payment_method);
     const admissionTicketInput = body.admissionTicket || body.admission_ticket || {};
+    const selectedCashierBindingId = normalizeOptionalCashierBindingId(body);
     const requestFingerprint = fingerprint({
         endpoint: 'create_admission_ticket_payment_order',
         crmProfileKey,
         locationAlias,
         registerAlias,
+        routeOptionId: fiscalRoute?.routeOptionId || null,
         tender,
+        selectedCashierBindingId,
         admissionTicketInput
     });
 
     return withTransaction(dbPool, async client => {
         await lockPaymentIdempotency(client, key);
         const mapping = await loadPilotFiscalMapping(client, fiscalScope);
-        await authorizer(client, {
+        const createAuthorizer = fiscalRoute && authorizer === authorizeFiscalAction
+            ? authorizeFiscalActorAction
+            : authorizer;
+        await createAuthorizer(client, {
             user,
             action: 'payments.create',
             fiscalProfileId: mapping.fiscal_profile_id,
-            crmProfileKey: mapping.crm_profile_key,
+            crmProfileKey: fiscalRoute?.businessContext || mapping.crm_profile_key,
             fiscalLocationId: mapping.fiscal_location_id,
             fiscalRegisterId: mapping.fiscal_register_id
         });
+        const selectedBinding = selectedCashierBindingId
+            ? await loadSelectedCashierBinding(client, {
+                bindingId: selectedCashierBindingId,
+                fiscalProfileId: mapping.fiscal_profile_id,
+                fiscalRegisterId: mapping.fiscal_register_id
+            })
+            : null;
         if (requireCheckboxIntegrationReady) {
             await assertCheckboxIntegrationReady(client, {
                 user,
+                cashierUserId: selectedBinding?.user_id || user?.id,
+                cashierBindingId: selectedBinding?.id || null,
+                binding: selectedBinding,
                 fiscalProfileId: mapping.fiscal_profile_id,
                 fiscalLocationId: mapping.fiscal_location_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 registerStatus: mapping.fiscal_register_status,
                 registerFeatureEnabled: Boolean(mapping.feature_enabled),
+                registerAcceptanceEnabled: mapping.acceptance_enabled === true,
+                registerExpectedIsTest: mapping.register_expected_is_test,
                 provider: mapping.provider,
                 providerLicenseRef: mapping.provider_license_ref
             });
@@ -616,8 +829,11 @@ async function createAdmissionTicketPaymentOrder({
                 fiscalProfileId: mapping.fiscal_profile_id,
                 fiscalRegisterId: mapping.fiscal_register_id,
                 crmProfileKey: mapping.crm_profile_key,
+                authorizationCrmProfileKey: fiscalRoute?.businessContext || null,
                 locationAlias: mapping.location_alias,
                 registerAlias: mapping.register_alias,
+                cashierUserId: selectedBinding?.user_id || user?.id,
+                cashierBindingId: selectedBinding?.id || null,
                 action: 'payments.create',
                 tender
             });
@@ -675,25 +891,33 @@ async function createAdmissionTicketPaymentOrder({
             crm_profile_key: mapping.crm_profile_key,
             location_alias: mapping.location_alias,
             register_alias: mapping.register_alias,
+            business_context: fiscalRoute?.businessContext || mapping.crm_profile_key,
+            route_option_id: fiscalRoute?.routeOptionId || null,
+            register_mode: fiscalRoute?.mode || null,
+            shared_test_register: fiscalRoute?.sharedTestRegister === true,
             fiscal_location_id: Number(mapping.fiscal_location_id),
             legal_entity_key: mapping.legal_entity_key,
             legal_entity_name: mapping.legal_entity_name,
+            selected_cashier_binding_id: selectedBinding ? Number(selectedBinding.id) : null,
             tender
         };
 
         const inserted = await client.query(
             `INSERT INTO payment_orders (
-                 fiscal_profile_id, fiscal_register_id, cashier_user_id, source_type, source_id,
+                 fiscal_profile_id, fiscal_register_id, cashier_user_id, selected_fiscal_cashier_binding_id,
+                 source_type, source_id,
                  order_key, idempotency_key, status, payment_status, fiscal_status,
-                 payment_method, total_amount_minor, currency, source_snapshot, created_by_user_id
+                 payment_method, total_amount_minor, currency, source_snapshot, created_by_user_id,
+                 fiscal_sale_route_option_id, business_context
              )
-             VALUES ($1, $2, $3, $4, $5, $6, $7, 'draft', 'unpaid', 'pending', $8, $9, 'UAH', $10::jsonb, $11)
+             VALUES ($1, $2, $3, $4, $5, $6, $7, $8, 'draft', 'unpaid', 'pending', $9, $10, 'UAH', $11::jsonb, $12, $13, $14)
              ON CONFLICT (idempotency_key) DO NOTHING
              RETURNING *`,
             [
                 mapping.fiscal_profile_id,
                 mapping.fiscal_register_id,
-                user?.id || null,
+                selectedBinding?.user_id || user?.id || null,
+                selectedBinding?.id || null,
                 ORDER_SOURCE_TYPE,
                 sourceId,
                 orderKey,
@@ -701,7 +925,9 @@ async function createAdmissionTicketPaymentOrder({
                 paymentMethod,
                 toPostgresBigint(totalAmountMinor, { allowZero: false }),
                 JSON.stringify(sourceSnapshot),
-                user?.id || null
+                user?.id || null,
+                fiscalRoute?.routeOptionId || null,
+                fiscalRoute?.businessContext || null
             ]
         );
         if (!inserted.rows.length) {
@@ -778,7 +1004,7 @@ async function confirmPaymentOrder({
     checkboxFetchImpl
 } = {}) {
     const key = requireIdempotencyKey(idempotencyKey);
-    assertNoClientFiscalOverride(body);
+    assertNoClientFiscalConfirmationOverride(body);
 
     const numericOrderId = Number(orderId);
     if (!Number.isSafeInteger(numericOrderId) || numericOrderId <= 0) {
@@ -823,21 +1049,24 @@ async function confirmPaymentOrder({
         if (!order) {
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
         }
-        await authorizer(client, {
+        await authorizePaymentOrderActor(client, {
             user,
             action: 'payments.confirm_received',
-            fiscalProfileId: order.fiscal_profile_id,
-            crmProfileKey: order.crm_profile_key,
-            fiscalLocationId: order.fiscal_location_id,
-            fiscalRegisterId: order.fiscal_register_id
+            order,
+            authorizer
         });
+        assertPaymentOrderRouteMutationReady(order);
         await assertCheckboxIntegrationReady(client, {
             env,
             user,
+            cashierUserId: order.cashier_user_id,
+            cashierBindingId: order.selected_fiscal_cashier_binding_id,
             fiscalProfileId: order.fiscal_profile_id,
             fiscalRegisterId: order.fiscal_register_id,
             registerStatus: order.fiscal_register_status,
             registerFeatureEnabled: Boolean(order.feature_enabled),
+            registerAcceptanceEnabled: order.acceptance_enabled === true,
+            registerExpectedIsTest: order.register_expected_is_test,
             provider: order.provider,
             providerLicenseRef: order.provider_license_ref
         });
@@ -856,8 +1085,11 @@ async function confirmPaymentOrder({
             fiscalRegisterId: preflight.order.fiscal_register_id,
             paymentOrderId: numericOrderId,
             crmProfileKey: preflight.order.crm_profile_key,
+            authorizationCrmProfileKey: preflight.order.business_context || preflight.order.source_snapshot?.business_context || null,
             locationAlias: preflight.order.location_alias,
             registerAlias: preflight.order.register_alias,
+            cashierUserId: preflight.order.cashier_user_id,
+            cashierBindingId: preflight.order.selected_fiscal_cashier_binding_id,
             action: 'payments.confirm_received',
             tender: immutableTender,
             env,
@@ -900,14 +1132,13 @@ async function confirmPaymentOrder({
         if (!scopedOrder) {
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
         }
-        await authorizer(client, {
+        await authorizePaymentOrderActor(client, {
             user,
             action: 'payments.confirm_received',
-            fiscalProfileId: scopedOrder.fiscal_profile_id,
-            crmProfileKey: scopedOrder.crm_profile_key,
-            fiscalLocationId: scopedOrder.fiscal_location_id,
-            fiscalRegisterId: scopedOrder.fiscal_register_id
+            order: scopedOrder,
+            authorizer
         });
+        assertPaymentOrderRouteMutationReady(scopedOrder);
         await client.query('SELECT pg_advisory_xact_lock($1, $2)', [
             scopedOrder.fiscal_profile_id,
             scopedOrder.fiscal_register_id
@@ -933,9 +1164,14 @@ async function confirmPaymentOrder({
                     fr.provider,
                     fr.status AS fiscal_register_status,
                     fr.feature_enabled,
+                    fr.acceptance_enabled,
                     fr.provider_license_ref,
                     fr.provider_register_id,
-                    fr.metadata->>'expected_is_test' AS register_expected_is_test,
+                    COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest') AS register_expected_is_test,
+                    fsr.status AS route_status,
+                    fsr.feature_enabled AS route_feature_enabled,
+                    fsr.acceptance_enabled AS route_acceptance_enabled,
+                    fsr.expected_is_test AS route_expected_is_test,
                     confirmed_binding.provider_cashier_id AS bound_provider_cashier_id,
                     confirmed_binding.provider_cashier_login_ref AS bound_provider_cashier_login_ref
                FROM payment_orders po
@@ -950,11 +1186,21 @@ async function confirmPaymentOrder({
                  ON confirmed_binding.fiscal_profile_id = po.fiscal_profile_id
                 AND confirmed_binding.fiscal_location_id = fl.id
                 AND confirmed_binding.fiscal_register_id = fr.id
-                AND confirmed_binding.user_id = $2
+                AND confirmed_binding.user_id = po.cashier_user_id
+                AND (
+                    (po.selected_fiscal_cashier_binding_id IS NOT NULL
+                        AND confirmed_binding.id = po.selected_fiscal_cashier_binding_id)
+                    OR po.selected_fiscal_cashier_binding_id IS NULL
+                )
                 AND confirmed_binding.status = 'active'
+               LEFT JOIN fiscal_sale_routes fsr
+                 ON fsr.route_option_id = po.fiscal_sale_route_option_id
+                AND fsr.business_context = po.business_context
+                AND fsr.fiscal_profile_id = po.fiscal_profile_id
+                AND fsr.fiscal_register_id = po.fiscal_register_id
               WHERE po.id = $1
               FOR UPDATE OF po`,
-            [numericOrderId, user?.id || null]
+            [numericOrderId]
         );
         if (!lockResult.rows.length) {
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
@@ -965,23 +1211,30 @@ async function confirmPaymentOrder({
             throw new PaymentServiceError('payment_order_scope_changed', 'Payment order fiscal scope changed while acquiring the register lock', { status: 409 });
         }
 
-        await authorizer(client, {
+        await authorizePaymentOrderActor(client, {
             user,
             action: 'payments.confirm_received',
-            fiscalProfileId: order.fiscal_profile_id,
-            crmProfileKey: order.crm_profile_key,
-            fiscalLocationId: order.fiscal_location_id,
-            fiscalRegisterId: order.fiscal_register_id
+            order,
+            authorizer
         });
+        assertPaymentOrderRouteMutationReady(order);
         let fiscalConfig;
         if (requireCheckboxIntegrationReady) {
             const verifiedRuntime = await assertCheckboxIntegrationReady(client, {
                 env,
                 user,
+                cashierUserId: order.cashier_user_id,
+                cashierBindingId: order.selected_fiscal_cashier_binding_id,
+                binding: {
+                    provider_cashier_id: order.bound_provider_cashier_id,
+                    provider_cashier_login_ref: order.bound_provider_cashier_login_ref
+                },
                 fiscalProfileId: order.fiscal_profile_id,
                 fiscalRegisterId: order.fiscal_register_id,
                 registerStatus: order.fiscal_register_status,
                 registerFeatureEnabled: Boolean(order.feature_enabled),
+                registerAcceptanceEnabled: order.acceptance_enabled === true,
+                registerExpectedIsTest: order.register_expected_is_test,
                 provider: order.provider,
                 providerLicenseRef: order.provider_license_ref
             });
@@ -1011,9 +1264,12 @@ async function confirmPaymentOrder({
                 fiscalRegisterId: order.fiscal_register_id,
                 paymentOrderId: order.id,
                 crmProfileKey: order.crm_profile_key,
+                authorizationCrmProfileKey: order.business_context || order.source_snapshot?.business_context || null,
                 locationAlias: order.location_alias,
                 registerAlias: order.register_alias,
                 action: 'payments.confirm_received',
+                cashierUserId: order.cashier_user_id,
+                cashierBindingId: order.selected_fiscal_cashier_binding_id,
                 tender: immutableTender,
                 freshProviderReadiness,
                 expectedFiscalConfigurationHash: fiscalConfig.hash,
@@ -1460,13 +1716,11 @@ async function getPaymentOrderDetails({
             throw new PaymentServiceError('payment_order_not_found', 'Payment order not found', { status: 404 });
         }
 
-        await authorizer(client, {
+        await authorizePaymentOrderActor(client, {
             user,
             action: 'payments.view',
-            fiscalProfileId: order.fiscal_profile_id,
-            crmProfileKey: order.crm_profile_key,
-            fiscalLocationId: order.fiscal_location_id,
-            fiscalRegisterId: order.fiscal_register_id
+            order,
+            authorizer
         });
 
         const [itemsResult, operationsResult, receiptsResult, outboxResult] = await Promise.all([
@@ -1529,7 +1783,12 @@ async function getPaymentOrderDetails({
 }
 
 function paymentErrorResponse(error) {
-    if (error instanceof PaymentServiceError || error instanceof PaymentWorkflowError || error instanceof AdmissionTicketError || error instanceof FiscalAccessError || error instanceof PaymentReadinessError) {
+    if (error instanceof PaymentServiceError
+        || error instanceof PaymentWorkflowError
+        || error instanceof AdmissionTicketError
+        || error instanceof FiscalAccessError
+        || error instanceof PaymentReadinessError
+        || error?.name === 'FiscalSaleRouteError') {
         return {
             status: error.status || error.statusCode || 400,
             body: {
@@ -1557,14 +1816,23 @@ module.exports = {
     PILOT_LOCATION_ALIAS,
     PILOT_REGISTER_ALIAS,
     PaymentServiceError,
+    authorizeOrderReplay,
     assertNoClientFiscalOverride,
     assertCheckboxIntegrationReady,
     cancelDraftPaymentOrder,
     confirmPaymentOrder,
     createAdmissionTicketPaymentOrder,
+    findOrderByIdempotency,
     getPaymentOrderDetails,
     fingerprint,
+    loadFiscalItemMappings,
+    loadOrderSnapshot,
+    loadPilotFiscalMapping,
+    loadSelectedCashierBinding,
+    normalizePaymentOrder,
+    normalizeOptionalCashierBindingId,
     paymentErrorResponse,
     requireIdempotencyKey,
-    stableJson
+    stableJson,
+    withTransaction
 };

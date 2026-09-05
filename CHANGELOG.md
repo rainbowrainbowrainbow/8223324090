@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.73 - PARK/DAR Catalog Sale
+
+### Release / Versioning / (05.09.2026) [codex]
+- **PARK/DAR Catalog Sale** - Підготовлено локальний release candidate продажів із каталогу PARK/DAR: вибір касира й маршруту, незмінні знімки позицій та міграції 346–351. Production-активація потребує окремого дозволу; acceptance-прапорці не змінено.
+
+---
+
 ## v0.81.72 - PARK/DAR Read-Only Attestation Bootstrap
 
 ### Release / Versioning / (04.09.2026) [codex]

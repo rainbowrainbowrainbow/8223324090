@@ -1,0 +1,220 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eventgenix.local/schemas/park-dar-production-config-v1.json",
+  "title": "EventGenix PARK/DAR production fiscal configuration manifest",
+  "description": "Value-free schema for a protected local manifest. The manifest contains identities and credential references only; it must never contain credential values.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "release",
+    "legalEntity",
+    "providerOrganizationId",
+    "profiles",
+    "locations",
+    "registers",
+    "bindings",
+    "routes",
+    "catalogMembership",
+    "admissionMappings",
+    "migrationDigests",
+    "schemaContractSha256"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 1 },
+    "release": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["blockId", "expectedLiveSha", "branch", "project", "environment", "service"],
+      "properties": {
+        "blockId": { "type": "string", "minLength": 1 },
+        "expectedLiveSha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+        "branch": { "const": "codex/eventgenix-production" },
+        "project": { "const": "fortunate-appreciation" },
+        "environment": { "const": "production" },
+        "service": { "const": "8223324090" }
+      }
+    },
+    "legalEntity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["key", "name", "taxIdentifier"],
+      "properties": {
+        "key": { "$ref": "#/$defs/safeKey" },
+        "name": { "type": "string", "minLength": 1 },
+        "taxIdentifier": { "type": ["string", "null"] }
+      }
+    },
+    "providerOrganizationId": { "type": "string", "minLength": 1 },
+    "schemaContractSha256": { "$ref": "#/$defs/sha256" },
+    "profiles": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 2,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key"],
+        "properties": { "key": { "enum": ["event_genix", "dar"] } }
+      }
+    },
+    "locations": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "profileKey", "alias", "displayName", "providerOutletId"],
+        "properties": {
+          "key": { "enum": ["park_production", "dar_production", "shared_test"] },
+          "profileKey": { "enum": ["event_genix", "dar"] },
+          "alias": { "$ref": "#/$defs/safeKey" },
+          "displayName": { "type": "string", "minLength": 1 },
+          "providerOutletId": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "registers": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "profileKey", "locationKey", "alias", "displayName", "providerRegisterId", "credentialRef", "expectedIsTest", "integrationOwnerUserId"],
+        "properties": {
+          "key": { "enum": ["park_production", "dar_production", "shared_test"] },
+          "profileKey": { "enum": ["event_genix", "dar"] },
+          "locationKey": { "enum": ["park_production", "dar_production", "shared_test"] },
+          "alias": { "$ref": "#/$defs/safeKey" },
+          "displayName": { "type": "string", "minLength": 1 },
+          "providerRegisterId": { "type": "string", "minLength": 1 },
+          "credentialRef": { "enum": ["PARK_MIDDLE_PROD", "DAR_DAR_PROD", "SHARED_TEST_REGISTER"] },
+          "expectedIsTest": { "type": "boolean" },
+          "integrationOwnerUserId": { "type": "integer", "minimum": 1 }
+        }
+      }
+    },
+    "bindings": {
+      "type": "array",
+      "minItems": 3,
+      "maxItems": 3,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["key", "registerKey", "userId", "providerCashierId", "credentialRef", "displayName", "cashierLogin", "capabilities"],
+        "properties": {
+          "key": { "enum": ["park_production", "dar_production", "shared_test"] },
+          "registerKey": { "enum": ["park_production", "dar_production", "shared_test"] },
+          "userId": { "type": "integer", "minimum": 1 },
+          "providerCashierId": { "type": "string", "minLength": 1 },
+          "credentialRef": { "enum": ["PARK_MIDDLE_CASHIER_PROD", "DAR_DAR_CASHIER_PROD", "SHARED_TEST_CASHIER"] },
+          "displayName": { "type": "string", "minLength": 1 },
+          "cashierLogin": { "type": "string", "minLength": 1 },
+          "capabilities": {
+            "type": "array",
+            "minItems": 5,
+            "maxItems": 5,
+            "uniqueItems": true,
+            "items": {
+              "enum": [
+                "fiscal.shift.close",
+                "fiscal.shift.open",
+                "payments.confirm_received",
+                "payments.create",
+                "payments.view"
+              ]
+            }
+          }
+        }
+      }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 4,
+      "maxItems": 4,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["optionId", "businessContext", "registerKey", "mode", "expectedIsTest", "sharedRegisterGroup"],
+        "properties": {
+          "optionId": { "enum": ["park_production", "dar_production", "park_test", "dar_test"] },
+          "businessContext": { "enum": ["event_genix", "dar"] },
+          "registerKey": { "enum": ["park_production", "dar_production", "shared_test"] },
+          "mode": { "enum": ["production", "test"] },
+          "expectedIsTest": { "type": "boolean" },
+          "sharedRegisterGroup": { "type": ["string", "null"] }
+        }
+      }
+    },
+    "catalogMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["event_genix", "dar"],
+      "properties": {
+        "event_genix": { "$ref": "#/$defs/catalogMembership" },
+        "dar": { "$ref": "#/$defs/darCatalogMembership" }
+      }
+    },
+    "admissionMappings": {
+      "type": "array",
+      "minItems": 6,
+      "maxItems": 6,
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["itemCode", "fiscalItemName"],
+        "properties": {
+          "itemCode": { "type": "string", "minLength": 1 },
+          "fiscalItemName": { "type": "string", "minLength": 1 }
+        }
+      }
+    },
+    "migrationDigests": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "346_catalog_sale_foundation",
+        "347_dar_catalog_2026_2027",
+        "348_fiscal_cashier_admin_metadata",
+        "349_payment_order_selected_fiscal_cashier_binding",
+        "350_fiscal_register_route_acceptance",
+        "351_fiscal_sale_routes"
+      ],
+      "properties": {
+        "346_catalog_sale_foundation": { "$ref": "#/$defs/sha256" },
+        "347_dar_catalog_2026_2027": { "$ref": "#/$defs/sha256" },
+        "348_fiscal_cashier_admin_metadata": { "$ref": "#/$defs/sha256" },
+        "349_payment_order_selected_fiscal_cashier_binding": { "$ref": "#/$defs/sha256" },
+        "350_fiscal_register_route_acceptance": { "$ref": "#/$defs/sha256" },
+        "351_fiscal_sale_routes": { "$ref": "#/$defs/sha256" }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "safeKey": { "type": "string", "pattern": "^[a-z0-9_]+$" },
+    "catalogMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedCount", "itemCodesSha256"],
+      "properties": {
+        "expectedCount": { "type": "integer", "minimum": 1 },
+        "itemCodesSha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "darCatalogMembership": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["expectedCount", "itemCodesSha256", "productPriceContractSha256"],
+      "properties": {
+        "expectedCount": { "const": 21 },
+        "itemCodesSha256": { "$ref": "#/$defs/sha256" },
+        "productPriceContractSha256": {
+          "const": "d4a05529430266361727008c9429226706f368054ada35d75f39861b8971d3e8"
+        }
+      }
+    }
+  }
+}

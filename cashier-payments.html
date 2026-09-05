@@ -5,20 +5,20 @@
     <script>(function(){try{var s=localStorage.getItem('pzp_dark_mode');var d=s!=='false';document.documentElement.setAttribute('data-theme',d?'dark':'light');document.documentElement.style.colorScheme=d?'dark':'light';}catch(e){}})();</script>
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Event Genix | Оплата та чек</title>
-    <meta name="description" content="Оплата квитка парку з фіскалізацією Checkbox">
+    <meta name="description" content="Продажі ПАРК і ДАР з контрольованою фіскалізацією Checkbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.72">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.72">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.72">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.72">
-    <link rel="stylesheet" href="css/cashier-payments.css?v=0.81.72">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.72">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.72">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.72">
+    <link rel="stylesheet" href="css/base.css?v=0.81.73">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.73">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.73">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.73">
+    <link rel="stylesheet" href="css/cashier-payments.css?v=0.81.73">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.73">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.73">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.73">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
-<body data-page="cashier-payments" data-page-group="sales" data-pilot-scope="event_genix:park:middle">
+<body data-page="cashier-payments" data-page-group="sales">
     <script>(function(){var s=localStorage.getItem('pzp_dark_mode');if(s!=='false'){document.body.classList.add('dark-mode')}})();</script>
     <a href="#main-content" class="skip-link">Перейти до основного вмісту</a>
     <div id="loginOverlay" class="page-login-overlay hidden"><a href="/">Увійти</a></div>
@@ -35,19 +35,49 @@
         <div class="sidebar-overlay hidden" id="sidebarOverlay"></div>
         <header class="header"><div class="header-content"><button type="button" class="sidebar-toggle" id="sidebarToggle" title="Меню" aria-label="Відкрити або закрити меню">☰</button><div class="user-panel"><span id="currentUser" class="user-name"></span><button type="button" id="logoutBtn" class="btn-logout">Вийти</button></div></div></header>
         <main id="main-content" class="page-container cashier-payments-page">
+            <section id="localQaBanner" class="cashier-local-qa-banner hidden" role="status" aria-live="polite">
+                <strong>LOCAL QA · MOCK CHECKBOX</strong>
+                <span id="localQaBannerDetails">Локальна перевірка без зовнішнього Checkbox.</span>
+            </section>
+            <section id="cashierTestModeBanner" class="cashier-test-mode-banner hidden" role="alert" aria-live="assertive">
+                <strong>ТЕСТОВА КАСА</strong>
+                <span>Цей режим призначений лише для погоджених тестів. Перевірте касу й касира перед підтвердженням оплати.</span>
+            </section>
             <section class="cashier-hero" aria-labelledby="cashierPaymentsTitle">
                 <div>
-                    <p class="cashier-kicker">Checkbox · парк · середня каса</p>
+                    <p id="cashierHeroKicker" class="cashier-kicker">Checkbox · парк · середня каса</p>
                     <h1 id="cashierPaymentsTitle">Оплата та чек</h1>
-                    <p class="cashier-muted">Простий екран для оплати квитка парку готівкою або через термінал і створення офіційного чека Checkbox.</p>
+                    <p id="cashierHeroDescription" class="cashier-muted">Простий екран для оплати квитка парку готівкою або через термінал і створення офіційного чека Checkbox.</p>
                 </div>
                 <div class="cashier-scope-card" aria-label="Пілотний профіль">
-                    <span>CRM профіль</span><strong>парк</strong>
-                    <span>Каса</span><strong>середня каса</strong>
+                    <span>Business context</span><strong id="cashierScopeBusiness">event_genix</strong>
+                    <span>Локація</span><strong id="cashierScopeLocation">парк</strong>
+                    <span>Каса</span><strong id="cashierScopeRegister">середня каса</strong>
+                    <span>Режим</span><strong id="cashierScopeMode">робочий</strong>
                 </div>
             </section>
             <div id="cashierAccessDenied" class="cashier-alert cashier-alert-danger hidden" role="alert">Немає доступу до оплати або фіскалізації.</div>
             <div id="cashierGlobalStatus" class="cashier-alert hidden" role="status" aria-live="polite"></div>
+            <section id="cashierRouteSelector" class="cashier-card cashier-route-card" aria-labelledby="cashierRouteTitle">
+                <div class="cashier-card-head">
+                    <div><p class="cashier-kicker">Маршрут продажу</p><h2 id="cashierRouteTitle">1. Напрямок → 2. Каса</h2></div>
+                    <span id="cashierRouteStatus" class="cashier-pill">завантаження</span>
+                </div>
+                <div class="cashier-route-grid">
+                    <label class="cashier-field"><span>1. Напрямок</span>
+                        <select id="paymentBusinessContext" name="businessContext" aria-describedby="paymentRouteHelp">
+                            <option value="event_genix">ПАРК</option>
+                            <option value="dar">ДАР</option>
+                        </select>
+                    </label>
+                    <label class="cashier-field"><span>2. Каса</span>
+                        <select id="paymentRegisterRoute" name="routeOptionId" aria-describedby="paymentRouteHelp">
+                            <option value="">Завантаження доступних кас…</option>
+                        </select>
+                    </label>
+                </div>
+                <p id="paymentRouteHelp" class="cashier-help">Передаються лише безпечні внутрішні опції. Конкретний register і режим повторно визначає сервер.</p>
+            </section>
             <section id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning cashier-readiness-card hidden" role="region" aria-labelledby="cashierReadinessSummary">
                 <div id="cashierReadinessSummary" class="cashier-readiness-summary" role="status" aria-live="polite">Перевіряємо готовність каси…</div>
                 <details id="cashierReadinessDetails" class="cashier-readiness-details" hidden>
@@ -81,16 +111,38 @@
             <section class="cashier-grid">
                 <form id="paymentOrderForm" class="cashier-card cashier-form cashier-step is-active" data-payment-step="1" aria-current="step" aria-labelledby="paymentOrderFormTitle" aria-describedby="createPaymentDisabledReason">
                     <div class="cashier-card-head">
-                        <div><p class="cashier-kicker">Крок 1</p><h2 id="paymentOrderFormTitle">Створити оплату</h2></div>
+                        <div><p class="cashier-kicker">3. Касир → 4. Товари → 5. Оплата</p><h2 id="paymentOrderFormTitle">Створити оплату</h2></div>
                         <span class="cashier-pill">ціна і ФОП визначаються сервером</span>
                     </div>
-                    <div class="cashier-two-cols">
-                        <label class="cashier-field"><span>Дата квитка</span><input id="paymentDate" name="date" type="date" required></label>
-                        <label class="cashier-field"><span>Діти</span><input id="paymentKidsCount" name="kids" type="number" min="1" step="1" value="1" required></label>
+                    <label class="cashier-field"><span>3. Касир Checkbox</span><select id="paymentCashierBinding" name="cashierBinding" required aria-describedby="paymentCashierHelp"><option value="">Спочатку оберіть касу</option></select></label>
+                    <p id="paymentCashierHelp" class="cashier-help">Показані лише активні касири обраної каси.</p>
+                    <div id="admissionTicketFields">
+                        <div class="cashier-two-cols">
+                            <label class="cashier-field"><span>Дата квитка</span><input id="paymentDate" name="date" type="date" required></label>
+                            <label class="cashier-field"><span>Діти</span><input id="paymentKidsCount" name="kids" type="number" min="1" step="1" value="1" required></label>
+                        </div>
+                        <label class="cashier-field"><span>Дорослі</span><input id="paymentAdultsCount" name="adults" type="number" min="0" step="1" value="0"></label>
                     </div>
-                    <label class="cashier-field"><span>Дорослі</span><input id="paymentAdultsCount" name="adults" type="number" min="0" step="1" value="0"></label>
+                    <div id="catalogSaleFields" class="cashier-catalog-fields hidden">
+                        <div class="cashier-catalog-heading">
+                            <div><strong>4. Товари та послуги</strong><p id="catalogSaleSummary" class="cashier-help">Завантажуємо актуальні ціни із Центру цін…</p></div>
+                            <button type="button" id="addCatalogLineBtn" class="btn-page-secondary">Додати позицію</button>
+                        </div>
+                        <div class="cashier-catalog-filters">
+                            <label class="cashier-field"><span>Пошук</span><input id="catalogSearch" type="search" autocomplete="off" placeholder="Назва позиції"></label>
+                            <label class="cashier-field"><span>Категорія</span><select id="catalogCategory"><option value="">Усі категорії</option></select></label>
+                        </div>
+                        <div id="catalogSaleLines" class="cashier-catalog-lines" aria-live="polite"></div>
+                        <label id="catalogDiscountField" class="cashier-field hidden"><span>Правило знижки</span><select id="catalogDiscountRule" name="catalogDiscountRule"><option value="">Без знижки</option></select></label>
+                        <dl id="catalogCartSummary" class="cashier-cart-summary" aria-live="polite">
+                            <div><dt>Початкова сума</dt><dd id="catalogOriginalTotal">0,00 ₴</dd></div>
+                            <div><dt>Знижка</dt><dd id="catalogDiscountTotal">0,00 ₴</dd></div>
+                            <div class="is-final"><dt>Фінальна сума</dt><dd id="catalogFinalTotal">0,00 ₴</dd></div>
+                        </dl>
+                        <p class="cashier-help">Ціну не можна вводити вручну: перед створенням оплати сервер повторно читає її з price_rules.</p>
+                    </div>
                     <fieldset class="cashier-tender-group">
-                        <legend>Спосіб оплати</legend>
+                        <legend>5. Спосіб оплати</legend>
                         <label><input type="radio" name="paymentTender" value="cash" checked> Готівка</label>
                         <label><input type="radio" name="paymentTender" value="card_terminal_manual"> Термінал</label>
                     </fieldset>
@@ -196,6 +248,6 @@
         </main>
     </div>
     <div id="notification" class="notification hidden"><span id="notificationText"></span></div>
-    <script src="js/ui.js?v=0.81.72"></script><script src="js/config.js?v=0.81.72"></script><script src="js/notification.js?v=0.81.72"></script><script src="js/api.js?v=0.81.72"></script><script src="js/auth.js?v=0.81.72"></script><script src="js/components/sidebar.js?v=0.81.72"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.81.72"></script><script src="js/alerts.js?v=0.81.72"></script>
+    <script src="js/ui.js?v=0.81.73"></script><script src="js/config.js?v=0.81.73"></script><script src="js/notification.js?v=0.81.73"></script><script src="js/api.js?v=0.81.73"></script><script src="js/auth.js?v=0.81.73"></script><script src="js/components/sidebar.js?v=0.81.73"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.81.73"></script><script src="js/alerts.js?v=0.81.73"></script>
 </body>
 </html>

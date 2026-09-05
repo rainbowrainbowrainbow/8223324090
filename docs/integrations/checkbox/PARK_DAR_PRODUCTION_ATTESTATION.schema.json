@@ -1,0 +1,63 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://eventgenix.local/schemas/park-dar-production-attestation-v2.json",
+  "title": "EventGenix PARK/DAR direct HTTPS production read-only attestation",
+  "description": "Sanitized short-lived response fetched directly from the exact production HTTPS origin. It contains no database address, login, provider ID or credential value.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "source",
+    "audience",
+    "origin",
+    "blockId",
+    "nonce",
+    "manifestSha256",
+    "observedAt",
+    "expiresAt",
+    "liveSha",
+    "branch",
+    "project",
+    "environment",
+    "service",
+    "runtimeIdentitySha256",
+    "databaseFingerprintSha256",
+    "globalGates"
+  ],
+  "properties": {
+    "schemaVersion": { "const": 2 },
+    "source": { "const": "eventgenix_production_https_readonly_preflight" },
+    "audience": { "const": "park_dar_production_config_planner" },
+    "origin": { "const": "https://8223324090-production.up.railway.app" },
+    "blockId": { "type": "string", "minLength": 1 },
+    "nonce": { "type": "string", "format": "uuid" },
+    "manifestSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "observedAt": { "type": "string", "format": "date-time" },
+    "expiresAt": { "type": "string", "format": "date-time" },
+    "liveSha": { "type": "string", "pattern": "^[a-f0-9]{40}$" },
+    "branch": { "const": "codex/eventgenix-production" },
+    "project": { "const": "fortunate-appreciation" },
+    "environment": { "const": "production" },
+    "service": { "const": "8223324090" },
+    "runtimeIdentitySha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "databaseFingerprintSha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "globalGates": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "CHECKBOX_INTEGRATION_ENABLED",
+        "CHECKBOX_ACCEPT_PAYMENTS_ENABLED",
+        "CHECKBOX_WEBHOOK_ENABLED",
+        "CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS",
+        "EVENTGENIX_CASHIER_PRO_ENABLED"
+      ],
+      "properties": {
+        "CHECKBOX_INTEGRATION_ENABLED": { "const": false },
+        "CHECKBOX_ACCEPT_PAYMENTS_ENABLED": { "const": false },
+        "CHECKBOX_WEBHOOK_ENABLED": { "const": false },
+        "CHECKBOX_TEST_ALLOW_UNREPORTED_PAYMENT_PERMISSIONS": { "const": false },
+        "EVENTGENIX_CASHIER_PRO_ENABLED": { "const": false }
+      }
+    }
+  }
+}

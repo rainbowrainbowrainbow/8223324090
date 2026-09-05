@@ -269,19 +269,47 @@ async function seedFiscalScope({ cashier, secondCashier }) {
         assert.equal(enabledRegister.featureEnabled, true);
         return apply;
     });
+    const catalogSaleItems = await activeCatalogSaleItems();
+    for (const item of catalogSaleItems) {
+        await pool.query(
+            `INSERT INTO fiscal_item_mappings (
+                 fiscal_profile_id, fiscal_register_id, crm_profile_key, business_context,
+                 source_type, item_type, item_code, fiscal_item_name, provider,
+                 provider_tax_id, tax_code, tax_rate_bps, tax_mode, status
+             )
+             VALUES ($1, $2, $3, $3, 'catalog_sale', 'catalog_sale', $4, $5, 'checkbox',
+                     NULL, NULL, NULL, 'untaxed', 'active')
+             ON CONFLICT (fiscal_profile_id, fiscal_register_id, source_type, item_type, item_code, provider)
+             DO UPDATE
+                 SET business_context = EXCLUDED.business_context,
+                     fiscal_item_name = EXCLUDED.fiscal_item_name,
+                     provider_tax_id = NULL,
+                     tax_code = NULL,
+                     tax_rate_bps = NULL,
+                     tax_mode = 'untaxed',
+                     status = 'active',
+                     updated_at = NOW()`,
+            [applied.fiscalProfileId, applied.fiscalRegisterId, CRM_PROFILE_KEY, item.itemCode, item.fiscalItemName]
+        );
+    }
 
     const mappingRows = await pool.query(
-        `SELECT item_code, tax_mode, provider_tax_id
+        `SELECT source_type, item_type, item_code, tax_mode, provider_tax_id, tax_code, tax_rate_bps
            FROM fiscal_item_mappings
           WHERE fiscal_profile_id = $1
             AND fiscal_register_id = $2
             AND status = 'active'
-          ORDER BY item_code`,
+          ORDER BY source_type, item_code`,
         [applied.fiscalProfileId, applied.fiscalRegisterId]
     );
-    assert.deepEqual(mappingRows.rows.map(row => row.item_code), [...TICKET_CODES].sort());
+    const admissionRows = mappingRows.rows.filter(row => row.source_type === 'admission_ticket');
+    const catalogRows = mappingRows.rows.filter(row => row.source_type === 'catalog_sale');
+    assert.deepEqual(admissionRows.map(row => row.item_code), [...TICKET_CODES].sort());
+    assert.deepEqual(catalogRows.map(row => row.item_code), catalogSaleItems.map(item => item.itemCode));
+    assert.ok(mappingRows.rows.every(row => row.item_type === row.source_type));
     assert.ok(mappingRows.rows.every(row => row.tax_mode === 'untaxed'));
     assert.ok(mappingRows.rows.every(row => row.provider_tax_id === null));
+    assert.ok(catalogRows.every(row => row.tax_code === null && row.tax_rate_bps === null));
 
     const bindingRows = await pool.query(
         `SELECT user_id, action_pin_hash, capability_scope
@@ -650,6 +678,28 @@ async function confirmOrder({ user, order, key, tender, amountMinor, receivedAmo
 async function countRows(sql, params = []) {
     const result = await pool.query(sql, params);
     return Number(result.rows[0].count);
+}
+
+async function activeCatalogSaleItems() {
+    const result = await pool.query(
+        `SELECT p.id AS item_code,
+                COALESCE(NULLIF(BTRIM(p.name), ''), NULLIF(BTRIM(p.label), ''), p.id) AS fiscal_item_name
+           FROM products p
+           JOIN price_rules pr
+             ON pr.product_id = p.id
+            AND pr.value > 0
+          WHERE p.business_context = $1
+            AND p.is_active = TRUE
+            AND COALESCE(p.availability_status, 'active') = 'active'
+          GROUP BY p.id, p.name, p.label
+         HAVING COUNT(*) = 1
+          ORDER BY p.id`,
+        [CRM_PROFILE_KEY]
+    );
+    return result.rows.map(row => ({
+        itemCode: String(row.item_code || '').trim(),
+        fiscalItemName: String(row.fiscal_item_name || row.item_code || '').trim()
+    })).filter(item => item.itemCode && item.fiscalItemName);
 }
 
 async function providerRequestUuidForOperation(fiscalOperationId) {

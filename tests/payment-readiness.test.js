@@ -1438,6 +1438,9 @@ test('cashier thin UI exposes Phase-1 shift close without loading Cashier PRO co
     assert.match(js, /Закрити поточну зміну в Checkbox\?/);
     assert.match(js, /нові чеки потребуватимуть відкриття нової зміни/);
     assert.match(js, /if \(!confirmed\)[\s\S]*Запит до Checkbox не надіслано/);
+    assert.match(js, /phase1CloseSafetyRefreshInFlight/);
+    assert.match(js, /await loadUnresolvedOrders\(\{ silent: true \}\);[\s\S]*await loadPilotRegisterState\(\{ silent: true \}\);/);
+    assert.match(js, /phase1_close_requires_payment_drain:[\s\S]*адміністратор не вимкне приймання нових оплат/);
     assert.doesNotMatch(js, /window\.confirm\(/);
     assert.match(js, /getOperationIdempotencyKey\('phase1-close', shiftId\)/);
     assert.match(js, /\/api\/payments\/shifts\/\$\{encodeURIComponent\(shiftId\)\}\/phase1-close/);

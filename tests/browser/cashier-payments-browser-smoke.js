@@ -49,6 +49,7 @@ const state = {
     readinessRequestCount: 0,
     salesReportRequestCount: 0,
     unresolvedDisplayOverride: null,
+    phase1CloseReasonCode: null,
     shift: null,
     serviceOutOperations: new Map(),
     operationCalls: [],
@@ -241,10 +242,10 @@ function registerStatePayload() {
     const unresolvedCount = [...state.orders.values()].filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized').length;
     const phase1Close = state.shift ? {
         visible: true,
-        allowed: state.shift.providerStatus === 'OPENED' && unresolvedCount === 0,
+        allowed: state.shift.providerStatus === 'OPENED' && unresolvedCount === 0 && !state.phase1CloseReasonCode,
         shiftId: state.shift.id,
         status: state.shift.providerStatus,
-        reasonCode: unresolvedCount > 0 ? 'unresolved_operations' : null
+        reasonCode: unresolvedCount > 0 ? 'unresolved_operations' : state.phase1CloseReasonCode
     } : null;
     return {
         success: true,
@@ -799,6 +800,8 @@ async function run() {
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.waitForFunction(() => window.CashierPaymentsPage?.state?.unresolvedQueueState === 'available');
+        assert.equal((await page.textContent('#fiscalReceiptBadge')).trim(), 'ще не створено', 'an empty payment flow does not look like a pending fiscal receipt');
+        assert.match(await page.textContent('#fiscalPendingMessage'), /Чек ще не створено/, 'an empty payment flow explains how the receipt starts');
         await page.setViewportSize({ width: 1440, height: 1000 });
         await captureVisualArtifact(page, '01-light-ready-empty.png');
         await assertPaymentStepState(page, { 1: 'active', 2: 'inactive', 3: 'inactive' });
@@ -973,6 +976,7 @@ async function run() {
         await page.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        assert.equal((await page.textContent('#fiscalReceiptBadge')).trim(), 'ще не створено', 'a fresh payment page starts without a pending fiscal receipt');
         await page.check('input[name="paymentTender"][value="card_terminal_manual"]');
         await page.click('#createPaymentOrderBtn');
         await page.waitForSelector('#terminalSuccessCheckbox:not([disabled])');
@@ -1027,6 +1031,7 @@ async function run() {
         const readinessCallsBeforeFiscalizedNextCustomer = state.readinessRequestCount;
         await page.click('#startNextOrderBtn');
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
+        assert.equal((await page.textContent('#fiscalReceiptBadge')).trim(), 'ще не створено', 'starting the next customer clears the previous fiscal receipt status');
         assert.equal(
             state.readinessRequestCount,
             readinessCallsBeforeFiscalizedNextCustomer + 1,
@@ -1132,6 +1137,13 @@ async function run() {
         await refreshUnresolvedOrders(page);
         await page.waitForSelector('#unresolvedOrdersBody [data-queue-state="empty"]');
         await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
+        state.phase1CloseReasonCode = 'phase1_close_requires_payment_drain';
+        await page.evaluate(() => window.CashierPaymentsPage.loadPilotRegisterState({ silent: true }));
+        assert.equal(await page.isDisabled('#phase1CloseShiftBtn'), true, 'payment drain gate blocks Phase-1 shift close');
+        assert.match(await page.textContent('#phase1ShiftCloseNotice'), /адміністратор не вимкне приймання нових оплат/, 'payment drain gate explains the required administrator action');
+        state.phase1CloseReasonCode = null;
+        await page.evaluate(() => window.CashierPaymentsPage.loadPilotRegisterState({ silent: true }));
+        await page.waitForSelector('#phase1CloseShiftBtn:not([disabled])');
         await page.evaluate(() => {
             window.__cashierSmokeConfirmModal = window.confirmModal;
             window.confirmModal = undefined;
@@ -1154,8 +1166,10 @@ async function run() {
             button.click();
         });
         await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]');
+        const closeReadinessCallsBefore = state.unresolvedRequestCount;
         await page.click('.confirm-overlay .confirm-ok');
         await page.waitForFunction(() => document.querySelector('#phase1ShiftStatus')?.textContent.trim() === 'закрита', null, { timeout: 10000 });
+        assert.ok(state.unresolvedRequestCount > closeReadinessCallsBefore, 'confirmed Phase-1 close refreshes the register-wide queue before the close request');
         assert.equal(state.phase1CloseKeys.length, 1, 'Phase-1 close double click sends one request');
         assert.ok(state.phase1CloseKeys[0], 'Phase-1 close uses a stable Idempotency-Key');
         assert.equal(await page.evaluate(() => document.activeElement?.id), 'phase1ShiftStatus', 'focus moves to the confirmed CLOSED status');

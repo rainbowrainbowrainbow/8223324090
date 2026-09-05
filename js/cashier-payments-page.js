@@ -94,6 +94,7 @@
         readinessTimer: null,
         readinessBackoffMs: READINESS_REFRESH_MIN_MS,
         phase1CloseConfirmationInFlight: false,
+        phase1CloseSafetyRefreshInFlight: false,
         phase1CloseInFlight: false,
         phase1ClosePollingTimer: null,
         phase1ClosePollingStartedAt: 0,
@@ -137,7 +138,7 @@
     function formatStatus(value) {
         const status = normalizeStatus(value);
         const labels = {
-            draft: 'чернетка', unpaid: 'не оплачено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита', blocked: 'заблоковано',
+            draft: 'чернетка', unpaid: 'не оплачено', not_created: 'ще не створено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита', blocked: 'заблоковано',
             payment_recorded: 'оплату зафіксовано', fiscalized: 'чек створено', failed: 'помилка з повтором', failed_retryable: 'помилка, буде повтор', failed_terminal: 'помилка без автоповтору', dead: 'потрібна ручна перевірка', cancelled: 'скасовано',
             validation_failed: 'помилка перевірки', ready_to_send: 'готово до відправки', sending: 'відправляється', validating: 'перевіряється', not_open: 'не відкрита', not_required: 'не потрібен',
             mapping_missing: 'налаштування каси відсутнє', credentials_missing: 'доступи не налаштовані', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', paid_sale_closed_shift_reconciliation_required: 'потрібна ручна звірка оплаченого чека', ready: 'готово'
@@ -1185,6 +1186,7 @@
             paid_sale_closed_shift_reconciliation_required: 'Зміну Checkbox закрито до відправлення вже оплаченої операції. Нові оплати заблоковано до ручної звірки.',
             payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Уже оплачені чеки продовжують безпечно відновлюватися.',
             phase1_shift_identity_mismatch: 'Сервер повернув іншу зміну. Закриття зупинено без повторного запиту.',
+            phase1_close_requires_payment_drain: 'Закриття зміни заблоковане, доки адміністратор не вимкне приймання нових оплат і система не підтвердить порожню чергу чеків.',
             phase1_close_confirmation_unavailable: 'Безпечне підтвердження тимчасово недоступне. Запит на закриття не надіслано.'
         };
         return messages[code] || 'Не вдалося виконати дію. Оновіть стан каси або зверніться до відповідального.';
@@ -1226,17 +1228,19 @@
 
     function renderFiscalResult(details) {
         const order = details?.order || {};
+        const hasOrder = Boolean(order.id);
         const fiscalStatus = effectiveFiscalStatus(order);
         const artifacts = details?.artifacts || {};
         const latestReceipt = Array.isArray(details?.receipts) ? details.receipts[0] : null;
-        setStatus('fiscalReceiptBadge', fiscalStatus);
+        setStatus('fiscalReceiptBadge', hasOrder ? fiscalStatus : 'not_created');
         const message = $('fiscalPendingMessage');
         const links = $('providerReceiptLinks');
         const pendingNotice = $('pendingReceiptNotice');
         const hasOfficialReceipt = FISCAL_DONE_STATUSES.has(fiscalStatus) || latestReceipt?.status === 'fiscalized';
         if (hasOfficialReceipt) forgetPendingOrder(order.id);
         if (message) {
-            if (hasOfficialReceipt) message.textContent = '\u041e\u0444\u0456\u0446\u0456\u0439\u043d\u0438\u0439 \u0447\u0435\u043a Checkbox \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e. RCP-* \u043b\u0438\u0448\u0430\u0454\u0442\u044c\u0441\u044f \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044c\u043e\u044e \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u0454\u044e Event Genix.';
+            if (!hasOrder) message.textContent = 'Чек ще не створено. Спочатку створіть оплату для поточного клієнта.';
+            else if (hasOfficialReceipt) message.textContent = '\u041e\u0444\u0456\u0446\u0456\u0439\u043d\u0438\u0439 \u0447\u0435\u043a Checkbox \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e. RCP-* \u043b\u0438\u0448\u0430\u0454\u0442\u044c\u0441\u044f \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044c\u043e\u044e \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u0454\u044e Event Genix.';
             else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = 'Чек очікує Checkbox або буде повтор. Оплата вже зафіксована, тому повторно приймати гроші за цей RCP не можна.';
             else message.textContent = '\u041f\u0456\u0441\u043b\u044f \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043e\u043f\u043b\u0430\u0442\u0438 \u0441\u0435\u0440\u0432\u0435\u0440 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u044c \u043e\u0434\u043d\u0443 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0437\u0430\u0434\u0430\u0447\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.';
         }
@@ -2125,7 +2129,7 @@
                 checkbox_certificate_unavailable: 'Сертифікат Checkbox недоступний.',
                 readiness_stale: 'Готовність Checkbox застаріла. Оновіть її перед закриттям зміни.',
                 readiness_missing: 'Готовність Checkbox ще не підтверджена.',
-                phase1_close_requires_payment_drain: 'Закриття недоступне: спочатку зупиніть нові оплати, дочекайтеся завершення чеків і оновіть стан зміни.',
+                phase1_close_requires_payment_drain: 'Закриття зміни заблоковане, доки адміністратор не вимкне приймання нових оплат і система не підтвердить порожню чергу чеків.',
                 global_integration_disabled: 'Інтеграція Checkbox вимкнена.',
                 register_disabled: 'Цю касу вимкнено в налаштуваннях інтеграції.',
                 credentials_missing: 'Доступи Checkbox не налаштовані на сервері.',
@@ -2160,9 +2164,11 @@
         }
         setStatus('phase1ShiftStatus', context.status);
         const reason = phase1CloseUnavailableReason(context);
-        const disabled = Boolean(reason) || state.phase1CloseConfirmationInFlight || state.phase1CloseInFlight;
+        const disabled = Boolean(reason) || state.phase1CloseConfirmationInFlight || state.phase1CloseSafetyRefreshInFlight || state.phase1CloseInFlight;
         const busyReason = state.phase1CloseConfirmationInFlight
             ? 'Очікуємо вашого фінального підтвердження.'
+            : state.phase1CloseSafetyRefreshInFlight
+            ? 'Повторно перевіряємо зміну та незавершені чеки перед закриттям.'
             : state.phase1CloseInFlight
             ? 'Запит на закриття прийнято. Очікуємо підтвердження Checkbox.'
             : reason;
@@ -2259,7 +2265,7 @@
     }
 
     async function closePhase1Shift() {
-        if (state.phase1CloseConfirmationInFlight || state.phase1CloseInFlight) return;
+        if (state.phase1CloseConfirmationInFlight || state.phase1CloseSafetyRefreshInFlight || state.phase1CloseInFlight) return;
         const context = phase1CloseContext();
         let reason = phase1CloseUnavailableReason(context);
         if (reason || !context?.shiftId) {
@@ -2283,6 +2289,14 @@
             if (typeof window.confirmModal === 'function') notify('Закриття зміни скасовано. Запит до Checkbox не надіслано.', 'info');
             $('phase1CloseShiftBtn')?.focus?.({ preventScroll: false });
             return;
+        }
+        state.phase1CloseSafetyRefreshInFlight = true;
+        renderPhase1ShiftState();
+        try {
+            await loadUnresolvedOrders({ silent: true });
+            await loadPilotRegisterState({ silent: true });
+        } finally {
+            state.phase1CloseSafetyRefreshInFlight = false;
         }
         const freshContext = phase1CloseContext();
         reason = phase1CloseUnavailableReason(freshContext);
@@ -2479,12 +2493,12 @@
         $('cashReceivedAmount') && ($('cashReceivedAmount').value = '');
         setText('internalReceiptLabel', 'RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f');
         setStatus('cashierPaymentStatus', 'unpaid');
-        setStatus('cashierFiscalStatus', 'pending');
+        setStatus('cashierFiscalStatus', 'not_created');
         setText('paymentTotalAmount', formatMoneyMinor(0));
         setText('cardExactAmount', formatMoneyMinor(0));
         setText('cashChangeAmount', formatMoneyMinor(0));
         renderItems([]);
-        renderFiscalResult({ order: { fiscalStatus: 'pending' }, receipts: [], artifacts: {} });
+        renderFiscalResult({ order: null, receipts: [], artifacts: {} });
         renderRegisterState(state.registerState);
         syncTenderControls();
         syncCreateAvailability();

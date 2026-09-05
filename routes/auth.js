@@ -282,7 +282,7 @@ router.post('/login', async (req, res) => {
             // Backward compat: also issue legacy long-lived token for existing clients.
             authUser = buildAuthUserPayload(user);
             token = jwt.sign(
-                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt },
+                { ...authUser, sessionIssuedAt: tokenPair.sessionIssuedAt, sessionTokenId: tokenPair.sessionTokenId },
                 JWT_SECRET,
                 { expiresIn: '24h' }
             );
@@ -320,6 +320,7 @@ router.post('/login', async (req, res) => {
             accessToken, // new: short-lived (15m)
             refreshToken, // new: long-lived (30d), store securely
             refreshExpiresAt: expiresAt,
+            sessionTokenId: tokenPair.sessionTokenId,
             user: { ...authUser, ...userAvatarPayload(user) }
         });
     } catch (err) {
@@ -1696,7 +1697,11 @@ router.post('/refresh', async (req, res) => {
 
         const deviceInfo = req.headers['user-agent'] || '';
         const ipAddress = req.ip || req.connection?.remoteAddress;
-        const result = await rotateRefreshToken(refreshToken, { deviceInfo, ipAddress });
+        const authorization = req.headers.authorization || '';
+        const recoveryAccessToken = authorization.startsWith('Bearer ')
+            ? authorization.slice(7).trim()
+            : '';
+        const result = await rotateRefreshToken(refreshToken, { deviceInfo, ipAddress, recoveryAccessToken });
 
         if (result.error) {
             log.warn(`Refresh failed: ${result.error}`);
@@ -1713,7 +1718,9 @@ router.post('/refresh', async (req, res) => {
             accessToken: result.accessToken,
             refreshToken: result.refreshToken,
             refreshExpiresAt: result.expiresAt,
-            user: buildAuthUserPayload(result.user)
+            sessionTokenId: result.sessionTokenId,
+            user: buildAuthUserPayload(result.user),
+            ...(result.recovered ? { recovered: true } : {})
         });
     } catch (err) {
         log.error('Refresh error', err);

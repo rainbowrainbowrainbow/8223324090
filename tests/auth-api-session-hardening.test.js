@@ -372,6 +372,118 @@ test('apiVerifyToken classifies a refresh rate-limit as transient without erasin
     assert.equal(context.getApiAuthSessionFailure().status, 429);
 });
 
+test('apiVerifyToken performs bounded backoff for auth availability 429 before accepting verify', async () => {
+    const calls = [];
+    const delays = [];
+    const { context, store } = loadApi(async (url) => {
+        calls.push(url);
+        if (calls.length === 1) {
+            return response(429, {
+                error: 'busy auth budget',
+                code: 'auth_availability_rate_limited',
+                bucket: 'auth_availability_ip',
+                retryable: true,
+                retryAfterSeconds: 1
+            }, { 'retry-after': '1' });
+        }
+        return response(200, { user: { id: 15, username: 'retry.operator' } });
+    }, {
+        pzp_token: 'valid-access',
+        pzp_access_token: 'valid-access',
+        pzp_refresh_token: 'valid-refresh',
+        pzp_current_user: JSON.stringify({ id: 15, username: 'retry.operator' })
+    }, {
+        setTimeout: (callback, delay) => {
+            delays.push(delay);
+            callback();
+            return 1;
+        }
+    });
+
+    const user = await context.apiVerifyToken();
+    assert.equal(user.id, 15);
+    assert.deepEqual(calls, ['/api/auth/verify', '/api/auth/verify']);
+    assert.deepEqual(delays, [1000]);
+    assert.equal(store.get('pzp_refresh_token'), 'valid-refresh');
+    assert.equal(context.getApiAuthSessionFailure(), null);
+});
+
+test('apiRefreshAuthToken stops after bounded auth availability retries without clearing storage', async () => {
+    const calls = [];
+    const delays = [];
+    const { context, store } = loadApi(async (url) => {
+        calls.push(url);
+        assert.equal(url, '/api/auth/refresh');
+        return response(429, {
+            error: 'busy auth budget',
+            code: 'auth_availability_rate_limited',
+            bucket: 'auth_availability_ip',
+            retryable: true,
+            retryAfterSeconds: 1
+        }, { 'retry-after': '1' });
+    }, {
+        pzp_token: 'expired-access',
+        pzp_access_token: 'expired-access',
+        pzp_refresh_token: 'refresh-kept',
+        pzp_current_user: JSON.stringify({ id: 16, username: 'refresh.retry' })
+    }, {
+        setTimeout: (callback, delay) => {
+            delays.push(delay);
+            callback();
+            return 1;
+        }
+    });
+
+    assert.equal(await context.apiRefreshAuthToken(), null);
+    assert.equal(calls.length, 3);
+    assert.deepEqual(delays, [1000, 1000]);
+    assert.equal(store.get('pzp_token'), 'expired-access');
+    assert.equal(store.get('pzp_access_token'), 'expired-access');
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-kept');
+    assert.equal(context.getApiAuthSessionFailure().kind, 'transient');
+    assert.equal(context.getApiAuthSessionFailure().status, 429);
+    assert.equal(context.getApiAuthSessionFailure().reason, 'rate-limit-retry-exhausted');
+});
+
+test('apiRefreshAuthToken preserves session and returns retry-later for Retry-After beyond retry budget', async () => {
+    const calls = [];
+    const delays = [];
+    const { context, store } = loadApi(async (url) => {
+        calls.push(url);
+        assert.equal(url, '/api/auth/refresh');
+        return response(429, {
+            error: 'busy auth budget',
+            code: 'auth_availability_rate_limited',
+            bucket: 'auth_availability_ip',
+            retryable: true,
+            retryAfterSeconds: 60
+        }, { 'retry-after': '60' });
+    }, {
+        pzp_token: 'expired-access',
+        pzp_access_token: 'expired-access',
+        pzp_refresh_token: 'refresh-kept-long',
+        pzp_current_user: JSON.stringify({ id: 17, username: 'refresh.retry.later' })
+    }, {
+        setTimeout: (callback, delay) => {
+            delays.push(delay);
+            callback();
+            return 1;
+        }
+    });
+
+    assert.equal(await context.apiRefreshAuthToken(), null);
+    assert.deepEqual(calls, ['/api/auth/refresh']);
+    assert.deepEqual(delays, []);
+    assert.equal(store.get('pzp_token'), 'expired-access');
+    assert.equal(store.get('pzp_access_token'), 'expired-access');
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-kept-long');
+    const failure = context.getApiAuthSessionFailure();
+    assert.equal(failure.kind, 'transient');
+    assert.equal(failure.status, 429);
+    assert.equal(failure.reason, 'rate-limit-retry-later');
+    assert.equal(failure.retryAfterSeconds, 60);
+});
+
 test('apiVerifyToken treats verify 403 as terminal without attempting refresh', async () => {
     const calls = [];
     const { context, store } = loadApi(async (url) => {
@@ -455,7 +567,7 @@ test('authenticated retry does not turn a transient refresh failure into logout'
     assert.equal(context.getApiAuthSessionFailure().kind, 'transient');
 });
 
-test('a current-client already-rotated refresh exits the unrecoverable local session', async () => {
+test('a current-client already-rotated refresh can recover without clearing local session state', async () => {
     let refreshCalls = 0;
     const sessionStore = new Map([
         ['impersonating', 'target.user'],
@@ -466,14 +578,21 @@ test('a current-client already-rotated refresh exits the unrecoverable local ses
         ['realSessionBackupVersion', '2'],
         ['realUser', JSON.stringify({ id: 1, username: 'creator' })]
     ]);
-    const { context, store } = loadApi(async url => {
+    const { context, store } = loadApi(async (url, options = {}) => {
         assert.equal(url, '/api/auth/refresh');
+        assert.equal(options.headers?.Authorization, 'Bearer expired-access');
         refreshCalls += 1;
-        return response(409, {
-            error: 'Refresh token was already rotated by this client',
-            code: 'refresh_already_rotated',
-            retryable: true
-        });
+        return refreshCalls === 1
+            ? response(409, {
+                error: 'Refresh token was already rotated by this client',
+                code: 'refresh_already_rotated',
+                retryable: true
+            })
+            : response(200, {
+                accessToken: 'recovered-access',
+                refreshToken: 'recovered-refresh',
+                user: { id: 14, username: 'operator' }
+            });
     }, {
         pzp_token: 'expired-access',
         pzp_access_token: 'expired-access',
@@ -487,12 +606,11 @@ test('a current-client already-rotated refresh exits the unrecoverable local ses
         removeItem: key => sessionStore.delete(key)
     };
 
-    assert.equal(await context.apiRefreshAuthToken(), null);
-    assert.equal(store.size, 0);
-    assert.equal(sessionStore.size, 0);
-    const failure = context.getApiAuthSessionFailure();
-    assert.equal(failure.kind, 'terminal');
-    assert.equal(failure.reason, 'refresh-already-rotated');
+    assert.equal(await context.apiRefreshAuthToken(), 'recovered-access');
+    assert.equal(store.get('pzp_access_token'), 'recovered-access');
+    assert.equal(store.get('pzp_refresh_token'), 'recovered-refresh');
+    assert.ok(sessionStore.size > 0, 'impersonation backup must not be cleared by a recovered refresh');
+    assert.equal(context.getApiAuthSessionFailure(), null);
     assert.equal(refreshCalls, 2, 'the old token must be confirmed after the fixed settlement window');
 });
 

@@ -129,6 +129,190 @@ function isStaticRuntimeCacheAllowed(request, url = new URL(request.url)) {
     return matchesPathPolicy(url.pathname, STATIC_RUNTIME_CACHE_ALLOWLIST);
 }
 
+function escapeOfflineHtml(value) {
+    return String(value || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+}
+
+function offlineNavigationResponse(request) {
+    const url = new URL(request.url);
+    const route = `${url.pathname}${url.search || ''}${url.hash || ''}`;
+    const safeRoute = escapeOfflineHtml(route);
+    return new Response(`<!doctype html>
+<html lang="uk">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Event Genix — offline</title>
+    <style>
+        :root { color-scheme: light dark; font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+        body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #f8fafc; color: #0f172a; }
+        main { max-width: 520px; margin: 24px; padding: 24px; border: 1px solid rgba(148, 163, 184, 0.35); border-radius: 18px; background: #fff; box-shadow: 0 18px 45px rgba(15, 23, 42, 0.12); }
+        h1 { margin: 0 0 12px; font-size: 24px; }
+        p { margin: 0 0 14px; line-height: 1.5; }
+        code { display: inline-block; max-width: 100%; padding: 2px 6px; border-radius: 6px; background: rgba(15, 23, 42, 0.08); overflow-wrap: anywhere; }
+        button { border: 0; border-radius: 10px; padding: 10px 14px; font-weight: 700; color: #fff; background: #2563eb; cursor: pointer; }
+        @media (prefers-color-scheme: dark) {
+            body { background: #020617; color: #e2e8f0; }
+            main { background: #0f172a; border-color: rgba(148, 163, 184, 0.28); }
+            code { background: rgba(226, 232, 240, 0.1); }
+        }
+    </style>
+</head>
+<body data-offline-navigation="true" data-requested-route="${safeRoute}" data-sw-version="${CACHE_NAME}">
+    <main role="alert">
+        <h1>Модуль тимчасово недоступний офлайн</h1>
+        <p>Запитаний маршрут: <code>${safeRoute}</code></p>
+        <p>Підключіться до мережі й повторіть відкриття цієї сторінки.</p>
+        <button type="button" onclick="location.reload()">Спробувати ще раз</button>
+    </main>
+    <script>
+        (function () {
+            try {
+                var key = 'pzp_redirect_diagnostics_v1';
+                var maxEntries = 80;
+                var maxBytes = 32768;
+                var maxAgeMs = 24 * 60 * 60 * 1000;
+                var maxRouteSegments = 3;
+                var allowedModules = {
+                    '': true,
+                    'dashboard': true,
+                    'sales-funnel': true,
+                    'customers': true,
+                    'certificates': true,
+                    'tasks': true,
+                    'profile': true,
+                    'staff': true,
+                    'hr': true,
+                    'reports': true,
+                    'analytics': true,
+                    'finance': true,
+                    'settings': true,
+                    'chat': true,
+                    'warehouse': true,
+                    'designs': true,
+                    'programs': true,
+                    'bookings': true,
+                    'afisha': true,
+                    'training': true,
+                    'invite': true,
+                    'sound': true,
+                    'omni': true,
+                    'timeline': true,
+                    'maysternya-doli': true,
+                    'kleshnya': true,
+                    'copilot': true,
+                    'guardian-ops': true,
+                    'hermes-studio': true,
+                    'status': true
+                };
+                var staticChildren = {
+                    certificates: { new: true, batch: true },
+                    omni: { accounts: true }
+                };
+                function safeShort(value, limit) {
+                    return String(value || '')
+                        .replace(/[^a-zA-Z0-9_.:-]/g, '-')
+                        .replace(/-+/g, '-')
+                        .replace(/^-|-$/g, '')
+                        .slice(0, limit || 80);
+                }
+                function routeSegment(segment) {
+                    try { segment = decodeURIComponent(segment); } catch (_) {}
+                    return safeShort(String(segment || '').toLowerCase(), 48);
+                }
+                function normalizeRoute(value) {
+                    var pathname = String(value || location.pathname || '/').split(/[?#]/)[0] || '/';
+                    var segments = pathname.split('/').filter(Boolean).map(routeSegment).filter(Boolean);
+                    if (!segments.length) return '/';
+                    var moduleName = segments[0];
+                    if (!allowedModules[moduleName]) return '/:unknown';
+                    var output = [moduleName];
+                    var allowedChildren = staticChildren[moduleName] || {};
+                    for (var index = 1; index < segments.length && output.length < maxRouteSegments; index += 1) {
+                        output.push(allowedChildren[segments[index]] ? segments[index] : ':id');
+                    }
+                    return ('/' + output.join('/')).slice(0, 120);
+                }
+                function sanitizeSwVersion(value) {
+                    var normalized = safeShort(value, 80);
+                    return (/^event-genix(?:-api)?-v[a-zA-Z0-9_.:-]+$/).test(normalized) ? normalized : 'unknown';
+                }
+                function sanitizeEntry(entry, timestamp) {
+                    if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+                    var event = String(entry.event || '');
+                    if (!({
+                        'auth-bootstrap': true,
+                        'auth-session-failure': true,
+                        'auth-refresh': true,
+                        'auth-redirect': true,
+                        'auth-storage-clear': true,
+                        'navigation-click': true,
+                        'navigation-transition': true,
+                        'shell-lifecycle': true,
+                        'sw-offline-navigation': true
+                    })[event]) return null;
+                    var at = Number(entry.at || 0);
+                    if (!Number.isFinite(at) || at <= 0 || at < timestamp - maxAgeMs || at > timestamp + 60000) return null;
+                    var result = {
+                        event: event,
+                        at: at,
+                        tabId: (/^tab-[a-z0-9-]{4,44}$/i).test(String(entry.tabId || '')) || entry.tabId === 'sw-offline-page' ? String(entry.tabId) : 'tab-unavailable',
+                        buildVersion: safeShort(entry.buildVersion || '', 32),
+                        swVersion: sanitizeSwVersion(entry.swVersion || 'unknown'),
+                        route: normalizeRoute(entry.route),
+                        visibility: ({ visible: true, hidden: true, prerender: true, unloaded: true })[entry.visibility] ? entry.visibility : 'unknown'
+                    };
+                    if (entry.status >= 100 && entry.status <= 599) result.status = Number(entry.status);
+                    if (({ network: true, http: true, 'offline-navigation': true })[entry.reason]) result.reason = entry.reason;
+                    if (({ 'offline-navigation': true })[entry.lifecycle]) result.lifecycle = entry.lifecycle;
+                    return result;
+                }
+                var now = Date.now();
+                var parsed = JSON.parse(localStorage.getItem(key) || '{}');
+                var entries = Array.isArray(parsed.entries)
+                    ? parsed.entries.map(function (entry) { return sanitizeEntry(entry, now); }).filter(Boolean)
+                    : [];
+                entries.push({
+                    event: 'sw-offline-navigation',
+                    at: now,
+                    tabId: sessionStorage.getItem('pzp_redirect_diagnostics_tab_id') || 'sw-offline-page',
+                    buildVersion: '',
+                    swVersion: '${CACHE_NAME}',
+                    route: normalizeRoute(location.pathname),
+                    visibility: document.visibilityState || 'unknown',
+                    lifecycle: 'offline-navigation',
+                    status: 503,
+                    reason: 'offline-navigation'
+                });
+                entries = entries.map(function (entry) { return sanitizeEntry(entry, now); }).filter(Boolean).slice(-maxEntries);
+                var payload = JSON.stringify({ schema: 'eventgenix.redirect-diagnostics.v1', entries: entries });
+                while (payload.length > maxBytes && entries.length > 0) {
+                    entries = entries.slice(1);
+                    payload = JSON.stringify({ schema: 'eventgenix.redirect-diagnostics.v1', entries: entries });
+                }
+                localStorage.setItem(key, payload);
+            } catch (_) {}
+        })();
+        window.addEventListener('online', function () {
+            setTimeout(function () { location.reload(); }, 100);
+        }, { once: true });
+    </script>
+</body>
+</html>`, {
+        status: 503,
+        statusText: 'Service Unavailable',
+        headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'no-store'
+        }
+    });
+}
+
 // ==========================================
 // INSTALL — Pre-cache App Shell
 // ==========================================
@@ -175,6 +359,16 @@ self.addEventListener('activate', (event) => {
             .then(() => clearOfflineMutationQueue())
             .then(() => self.clients.claim())
     );
+});
+
+self.addEventListener('message', (event) => {
+    if (event?.data?.type !== 'redirect-diagnostics:get-version') return;
+    try {
+        event.ports?.[0]?.postMessage?.({
+            type: 'redirect-diagnostics:version',
+            swVersion: CACHE_NAME
+        });
+    } catch (err) {}
 });
 
 // ==========================================
@@ -306,10 +500,13 @@ async function networkFirstPage(request) {
         const cachedResponse = await caches.match(request);
         if (cachedResponse) return cachedResponse;
 
-        const shell = await caches.match(OFFLINE_FALLBACK_URL);
-        if (shell) return shell;
+        const pathname = new URL(request.url).pathname;
+        if (pathname === '/' || pathname === OFFLINE_FALLBACK_URL) {
+            const shell = await caches.match(OFFLINE_FALLBACK_URL);
+            if (shell) return shell;
+        }
 
-        return new Response('Offline', { status: 503, statusText: 'Service Unavailable' });
+        return offlineNavigationResponse(request);
     }
 }
 

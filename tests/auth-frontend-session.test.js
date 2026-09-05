@@ -46,7 +46,8 @@ function loadApi(fetchImpl, initialStore = {}) {
         document: {
             documentElement: { classList: { contains() { return false; } } }
         },
-        fetch: fetchImpl
+        fetch: fetchImpl,
+        recordApiRedirectDiagnostic() {}
     };
     context.window.self = context.window;
     context.window.top = context.window;
@@ -113,6 +114,7 @@ function loadCheckSessionHarness(overrides = {}) {
         getApiAuthSessionFailure: () => null,
         isApiAuthSessionFailureTransient: () => false,
         renderAuthSessionBootstrapError: options => calls.push(['renderAuthSessionBootstrapError', options]),
+        recordRedirectDiagnostic() {},
         clearAuthStorage: () => {
             calls.push(['clearAuthStorage']);
             store.delete('pzp_token');
@@ -172,7 +174,7 @@ function extractSourceFunction(source, functionName) {
 }
 
 function extractAuthFunction(functionName) {
-    return extractSourceFunction(AUTH_CODE, functionName);
+    return `function recordRedirectDiagnostic() {}\n${extractSourceFunction(AUTH_CODE, functionName)}`;
 }
 
 function loadAutoFillHarness(options = {}) {

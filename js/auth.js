@@ -23,6 +23,528 @@ let crossTabLogoutInProgress = false;
 let crossTabSessionSyncInProgress = false;
 let authOwnedTransition = null;
 
+function installRedirectDiagnosticsRuntime(global = window) {
+    if (!global || global.RedirectDiagnostics) return global?.RedirectDiagnostics || null;
+
+    const STORAGE_KEY = 'pzp_redirect_diagnostics_v1';
+    const TAB_ID_KEY = 'pzp_redirect_diagnostics_tab_id';
+    const SW_VERSION_KEY = 'pzp_redirect_diagnostics_sw_version';
+    const MAX_ENTRIES = 80;
+    const MAX_STORAGE_BYTES = 32768;
+    const MAX_ENTRY_AGE_MS = 24 * 60 * 60 * 1000;
+    const DEDUP_WINDOW_MS = 2000;
+    const MAX_ROUTE_LENGTH = 120;
+    const MAX_ROUTE_SEGMENTS = 3;
+    const SAFE_EVENT_NAMES = new Set([
+        'auth-bootstrap',
+        'auth-session-failure',
+        'auth-refresh',
+        'auth-redirect',
+        'auth-storage-clear',
+        'navigation-click',
+        'navigation-transition',
+        'shell-lifecycle',
+        'sw-offline-navigation'
+    ]);
+    const SAFE_DETAIL_KEYS = new Set([
+        'stage',
+        'status',
+        'code',
+        'reason',
+        'requestId',
+        'refreshOutcome',
+        'redirectReason',
+        'storageClearReason',
+        'lifecycle',
+        'bucket',
+        'retryAfterSeconds',
+        'targetRoute'
+    ]);
+    const SAFE_ENTRY_KEYS = new Set([
+        'event',
+        'at',
+        'updatedAt',
+        'count',
+        'tabId',
+        'buildVersion',
+        'swVersion',
+        'route',
+        'visibility',
+        ...SAFE_DETAIL_KEYS
+    ]);
+    const SAFE_ROUTE_MODULES = new Set([
+        '',
+        'dashboard',
+        'sales-funnel',
+        'customers',
+        'certificates',
+        'tasks',
+        'profile',
+        'staff',
+        'hr',
+        'reports',
+        'analytics',
+        'finance',
+        'settings',
+        'chat',
+        'warehouse',
+        'designs',
+        'programs',
+        'bookings',
+        'afisha',
+        'training',
+        'invite',
+        'sound',
+        'omni',
+        'timeline',
+        'maysternya-doli',
+        'kleshnya',
+        'copilot',
+        'guardian-ops',
+        'hermes-studio',
+        'status'
+    ]);
+    const SAFE_STATIC_ROUTE_CHILDREN = new Map([
+        ['certificates', new Set(['new', 'batch'])],
+        ['embed', new Set(['designs', 'programs', 'graduation'])],
+        ['omni', new Set(['accounts'])]
+    ]);
+    const SAFE_CODE_VALUES = new Set([
+        'unknown',
+        'auth_availability_rate_limited',
+        'auth_session_temporarily_unavailable',
+        'auth_token_missing',
+        'auth_token_invalid',
+        'auth_user_missing',
+        'auth_user_deactivated',
+        'auth_user_inactive',
+        'auth_session_revoked',
+        'auth_identity_changed',
+        'refresh_already_rotated'
+    ]);
+    const SAFE_REASON_VALUES = new Set([
+        'unknown',
+        'network',
+        'http',
+        'offline',
+        'missing-session',
+        'missing-or-terminal-session',
+        'session-changed',
+        'session-changed-retry',
+        'session-transition',
+        'malformed-response',
+        'rate-limit-retry-later',
+        'rate-limit-retry-exhausted',
+        'refresh-already-rotated',
+        'refresh-identity-mismatch',
+        'forbidden-session',
+        'unauthorized',
+        'page-access-denied',
+        'login-page',
+        'authenticated-start-page',
+        'context-access-denied',
+        'auth-storage-clear',
+        'api-auth-session-clear',
+        'logout',
+        'refresh-terminal',
+        'refresh-identity-mismatch',
+        'verify-forbidden-session',
+        'verify-unauthorized',
+        'verify-terminal',
+        'offline-navigation',
+        'bootstrap-error'
+    ]);
+    const SAFE_STAGE_VALUES = new Set([
+        'unknown',
+        'check-session-start',
+        'session-bootstrap',
+        'business-profile',
+        'permissions',
+        'verify',
+        'refresh',
+        'request',
+        'user-merge',
+        'cleanup',
+        'complete',
+        'post-login',
+        'show-login-screen',
+        'page-access',
+        'business-context',
+        'sidebar-click',
+        'page-exiting',
+        'recover-shell',
+        'auto-fill',
+        'bootstrap-error'
+    ]);
+    const SAFE_OUTCOME_VALUES = new Set(['unknown', 'success', 'empty', 'missing', 'transient', 'terminal', 'superseded']);
+    const SAFE_LIFECYCLE_VALUES = new Set(['unknown', 'pageshow-persisted', 'visibility-resume', 'offline-navigation']);
+    const SAFE_BUCKET_VALUES = new Set(['unknown', 'auth_availability_ip', 'login_account_ip', 'login_ip', 'refresh_ip']);
+    const SAFE_VISIBILITY_VALUES = new Set(['unknown', 'visible', 'hidden', 'prerender', 'unloaded']);
+
+    const now = () => Date.now();
+    const storage = () => {
+        try { return global.localStorage || null; }
+        catch { return null; }
+    };
+    const tabStorage = () => {
+        try { return global.sessionStorage || null; }
+        catch { return null; }
+    };
+
+    function safeShort(value, maxLength = 80) {
+        if (value === undefined || value === null) return '';
+        return String(value)
+            .replace(/[^a-zA-Z0-9_.:-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, maxLength);
+    }
+
+    function normalizeToken(value) {
+        return safeShort(value, 80).toLowerCase();
+    }
+
+    function controlledValue(value, allowedValues, fallback = 'unknown') {
+        const normalized = normalizeToken(value);
+        return allowedValues.has(normalized) ? normalized : fallback;
+    }
+
+    function tabId() {
+        const session = tabStorage();
+        if (!session) return 'tab-unavailable';
+        try {
+            const existing = session.getItem(TAB_ID_KEY);
+            if (existing && /^tab-[a-z0-9-]{4,44}$/i.test(existing)) return existing;
+            const random = global.crypto?.getRandomValues
+                ? Array.from(global.crypto.getRandomValues(new Uint8Array(8)), byte => byte.toString(16).padStart(2, '0')).join('')
+                : Math.random().toString(36).slice(2, 18);
+            const value = `tab-${random}`.slice(0, 48);
+            session.setItem(TAB_ID_KEY, value);
+            return value;
+        } catch {
+            return 'tab-unavailable';
+        }
+    }
+
+    function buildVersion() {
+        try {
+            const scripts = Array.from(global.document?.scripts || []);
+            const versionScript = scripts.find(script => /(^|\/)js\/auth\.js/i.test(script.getAttribute('src') || ''))
+                || scripts.find(script => /[?&]v=/.test(script.getAttribute('src') || ''));
+            if (!versionScript) return '';
+            return safeShort(new URL(versionScript.src, global.location?.href || 'http://localhost/').searchParams.get('v') || '', 32);
+        } catch {
+            return '';
+        }
+    }
+
+    function sanitizeServiceWorkerVersion(value) {
+        const normalized = safeShort(value, 80);
+        return /^event-genix(?:-api)?-v[a-zA-Z0-9_.:-]+$/.test(normalized) ? normalized : 'unknown';
+    }
+
+    function rememberServiceWorkerVersion(value) {
+        const normalized = sanitizeServiceWorkerVersion(value);
+        if (normalized === 'unknown') return normalized;
+        try { tabStorage()?.setItem(SW_VERSION_KEY, normalized); } catch {}
+        try { storage()?.setItem(SW_VERSION_KEY, normalized); } catch {}
+        return normalized;
+    }
+
+    function serviceWorkerVersion() {
+        try {
+            return sanitizeServiceWorkerVersion(tabStorage()?.getItem(SW_VERSION_KEY) || storage()?.getItem(SW_VERSION_KEY) || 'unknown');
+        } catch {
+            return 'unknown';
+        }
+    }
+
+    function refreshServiceWorkerVersion(timeoutMs = 800) {
+        return new Promise(resolve => {
+            try {
+                const controller = global.navigator?.serviceWorker?.controller;
+                const Channel = global.MessageChannel || (typeof MessageChannel === 'function' ? MessageChannel : null);
+                if (!controller || typeof controller.postMessage !== 'function' || !Channel) {
+                    resolve(serviceWorkerVersion());
+                    return;
+                }
+                const channel = new Channel();
+                let settled = false;
+                const finish = value => {
+                    if (settled) return;
+                    settled = true;
+                    resolve(rememberServiceWorkerVersion(value));
+                };
+                const setTimer = global.setTimeout || (typeof setTimeout === 'function' ? setTimeout : null);
+                const clearTimer = global.clearTimeout || (typeof clearTimeout === 'function' ? clearTimeout : null);
+                const timer = setTimer ? setTimer(() => finish('unknown'), timeoutMs) : null;
+                channel.port1.onmessage = event => {
+                    if (timer && clearTimer) clearTimer(timer);
+                    if (event?.data?.type === 'redirect-diagnostics:version') finish(event.data.swVersion);
+                    else finish('unknown');
+                };
+                controller.postMessage({ type: 'redirect-diagnostics:get-version' }, [channel.port2]);
+            } catch {
+                resolve(serviceWorkerVersion());
+            }
+        });
+    }
+
+    function safeRouteSegment(segment) {
+        let decoded = String(segment || '');
+        try { decoded = decodeURIComponent(decoded); } catch {}
+        return decoded
+            .trim()
+            .toLowerCase()
+            .replace(/[^a-z0-9_.:-]/g, '-')
+            .replace(/-+/g, '-')
+            .replace(/^-|-$/g, '')
+            .slice(0, 48);
+    }
+
+    function normalizeRoute(value) {
+        let pathname = value;
+        try {
+            if (!pathname) pathname = global.location?.pathname || '/';
+            pathname = new URL(String(pathname), global.location?.origin || 'http://localhost').pathname || '/';
+        } catch {
+            pathname = String(pathname || '/').split(/[?#]/)[0] || '/';
+        }
+        const segments = String(pathname || '/')
+            .split('/')
+            .filter(Boolean)
+            .map(safeRouteSegment)
+            .filter(Boolean);
+        if (!segments.length) return '/';
+        const moduleName = segments[0];
+        if (!SAFE_ROUTE_MODULES.has(moduleName)) return '/:unknown';
+        const output = [moduleName];
+        const staticChildren = SAFE_STATIC_ROUTE_CHILDREN.get(moduleName) || new Set();
+        for (let index = 1; index < segments.length && output.length < MAX_ROUTE_SEGMENTS; index += 1) {
+            const segment = segments[index];
+            output.push(staticChildren.has(segment) ? segment : ':id');
+        }
+        const route = '/' + output.join('/');
+        return route.length > MAX_ROUTE_LENGTH ? route.slice(0, MAX_ROUTE_LENGTH) : route;
+    }
+
+    function sanitizeDetails(details = {}) {
+        const result = {};
+        for (const key of SAFE_DETAIL_KEYS) {
+            if (!Object.prototype.hasOwnProperty.call(details, key)) continue;
+            if (key === 'status') {
+                const status = Number(details[key]);
+                if (Number.isInteger(status) && status >= 100 && status <= 599) result.status = status;
+                continue;
+            }
+            if (key === 'retryAfterSeconds') {
+                const seconds = Number(details[key]);
+                if (Number.isFinite(seconds) && seconds > 0 && seconds <= 86400) result.retryAfterSeconds = Math.ceil(seconds);
+                continue;
+            }
+            if (key === 'targetRoute') {
+                result.targetRoute = normalizeRoute(details[key]);
+                continue;
+            }
+            if (key === 'requestId') {
+                const requestId = safeShort(details[key], 80);
+                if (requestId) result.requestId = requestId;
+                continue;
+            }
+            if (key === 'code') {
+                result.code = controlledValue(details[key], SAFE_CODE_VALUES);
+                continue;
+            }
+            if (key === 'stage') {
+                result.stage = controlledValue(details[key], SAFE_STAGE_VALUES);
+                continue;
+            }
+            if (key === 'reason' || key === 'redirectReason' || key === 'storageClearReason') {
+                result[key] = controlledValue(details[key], SAFE_REASON_VALUES);
+                continue;
+            }
+            if (key === 'refreshOutcome') {
+                result.refreshOutcome = controlledValue(details[key], SAFE_OUTCOME_VALUES);
+                continue;
+            }
+            if (key === 'lifecycle') {
+                result.lifecycle = controlledValue(details[key], SAFE_LIFECYCLE_VALUES);
+                continue;
+            }
+            if (key === 'bucket') {
+                result.bucket = controlledValue(details[key], SAFE_BUCKET_VALUES);
+            }
+        }
+        return result;
+    }
+
+    function sanitizeEntry(entry, timestamp = now()) {
+        if (!entry || typeof entry !== 'object' || Array.isArray(entry)) return null;
+        const eventName = SAFE_EVENT_NAMES.has(String(entry.event || '')) ? String(entry.event) : null;
+        const at = Number(entry.at || 0);
+        if (!eventName || !Number.isFinite(at) || at <= 0) return null;
+        if (at < timestamp - MAX_ENTRY_AGE_MS || at > timestamp + 60000) return null;
+        const result = {
+            event: eventName,
+            at,
+            tabId: /^tab-[a-z0-9-]{4,44}$/i.test(String(entry.tabId || '')) || entry.tabId === 'sw-offline-page'
+                ? String(entry.tabId)
+                : 'tab-unavailable',
+            buildVersion: safeShort(entry.buildVersion || '', 32),
+            swVersion: sanitizeServiceWorkerVersion(entry.swVersion || 'unknown'),
+            route: normalizeRoute(entry.route),
+            visibility: controlledValue(entry.visibility, SAFE_VISIBILITY_VALUES)
+        };
+        Object.assign(result, sanitizeDetails(entry));
+        const updatedAt = Number(entry.updatedAt || 0);
+        if (Number.isFinite(updatedAt) && updatedAt >= at && updatedAt <= timestamp + 60000) result.updatedAt = updatedAt;
+        const count = Number(entry.count || 0);
+        if (Number.isInteger(count) && count > 1) result.count = Math.min(count, 999);
+        const alwaysKeepKeys = new Set(['event', 'at', 'tabId', 'buildVersion', 'swVersion', 'route', 'visibility']);
+        return Object.fromEntries(Object.entries(result).filter(([key, value]) => (
+            SAFE_ENTRY_KEYS.has(key)
+            && value !== undefined
+            && (value !== '' || alwaysKeepKeys.has(key))
+        )));
+    }
+
+    function readEntries() {
+        const local = storage();
+        if (!local) return [];
+        try {
+            const parsed = JSON.parse(local.getItem(STORAGE_KEY) || '{}');
+            return Array.isArray(parsed.entries)
+                ? parsed.entries.map(entry => sanitizeEntry(entry)).filter(Boolean).slice(-MAX_ENTRIES)
+                : [];
+        } catch {
+            return [];
+        }
+    }
+
+    function writeEntries(entries) {
+        const local = storage();
+        if (!local) return false;
+        let bounded = entries.map(entry => sanitizeEntry(entry)).filter(Boolean).slice(-MAX_ENTRIES);
+        let payload = JSON.stringify({ schema: 'eventgenix.redirect-diagnostics.v1', entries: bounded });
+        while (payload.length > MAX_STORAGE_BYTES && bounded.length > 0) {
+            bounded = bounded.slice(1);
+            payload = JSON.stringify({ schema: 'eventgenix.redirect-diagnostics.v1', entries: bounded });
+        }
+        try {
+            local.setItem(STORAGE_KEY, payload);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function sameDedupKey(left, right) {
+        return ['event', 'tabId', 'route', 'stage', 'status', 'code', 'reason', 'requestId', 'refreshOutcome', 'redirectReason', 'storageClearReason', 'lifecycle', 'targetRoute']
+            .every(key => String(left?.[key] || '') === String(right?.[key] || ''));
+    }
+
+    function record(event, details = {}) {
+        try {
+            const entry = sanitizeEntry({
+                event: SAFE_EVENT_NAMES.has(String(event || '')) ? String(event) : 'auth-bootstrap',
+                at: now(),
+                tabId: tabId(),
+                buildVersion: buildVersion(),
+                swVersion: serviceWorkerVersion(),
+                route: normalizeRoute(details.route),
+                visibility: controlledValue(global.document?.visibilityState || 'unknown', SAFE_VISIBILITY_VALUES),
+                ...sanitizeDetails(details)
+            });
+            if (!entry) return false;
+            const entries = readEntries();
+            const previous = entries[entries.length - 1];
+            if (previous && sameDedupKey(previous, entry) && entry.at - Number(previous.updatedAt || previous.at || 0) <= DEDUP_WINDOW_MS) {
+                previous.updatedAt = entry.at;
+                previous.count = Number(previous.count || 1) + 1;
+            } else {
+                entries.push(entry);
+            }
+            writeEntries(entries);
+            return true;
+        } catch {
+            return false;
+        }
+    }
+
+    function exportDiagnostics() {
+        try {
+            const entries = readEntries();
+            writeEntries(entries);
+            return {
+                schema: 'eventgenix.redirect-diagnostics.v1',
+                generatedAt: new Date(now()).toISOString(),
+                tabId: tabId(),
+                buildVersion: buildVersion(),
+                swVersion: serviceWorkerVersion(),
+                entries
+            };
+        } catch {
+            return {
+                schema: 'eventgenix.redirect-diagnostics.v1',
+                generatedAt: new Date().toISOString(),
+                tabId: 'tab-unavailable',
+                swVersion: 'unknown',
+                entries: []
+            };
+        }
+    }
+
+    async function copy() {
+        await refreshServiceWorkerVersion().catch(() => 'unknown');
+        const text = JSON.stringify(exportDiagnostics(), null, 2);
+        try {
+            if (global.navigator?.clipboard?.writeText) {
+                await global.navigator.clipboard.writeText(text);
+                return { copied: true, text };
+            }
+        } catch {}
+        return { copied: false, text };
+    }
+
+    function clear() {
+        try { storage()?.removeItem(STORAGE_KEY); } catch {}
+    }
+
+    try {
+        global.navigator?.serviceWorker?.addEventListener?.('controllerchange', () => {
+            void refreshServiceWorkerVersion();
+        });
+        void refreshServiceWorkerVersion();
+    } catch {}
+
+    global.RedirectDiagnostics = {
+        record,
+        export: exportDiagnostics,
+        copy,
+        clear,
+        normalizeRoute,
+        refreshServiceWorkerVersion,
+        storageKey: STORAGE_KEY,
+        limits: Object.freeze({
+            maxEntries: MAX_ENTRIES,
+            maxStorageBytes: MAX_STORAGE_BYTES,
+            maxEntryAgeMs: MAX_ENTRY_AGE_MS,
+            maxRouteLength: MAX_ROUTE_LENGTH
+        })
+    };
+    return global.RedirectDiagnostics;
+}
+
+if (typeof window !== 'undefined') {
+    installRedirectDiagnosticsRuntime(window);
+}
+
+function recordRedirectDiagnostic(event, details = {}) {
+    try {
+        window.RedirectDiagnostics?.record(event, details);
+    } catch {}
+}
+
 function getActiveAuthTransitionMarker() {
     const marker = localStorage.getItem(AUTH_TRANSITION_KEY) || '';
     if (!marker) return '';
@@ -325,7 +847,9 @@ async function checkSession() {
 }
 
 async function checkSessionAttempt(sessionChangeRetry = 0) {
+    recordRedirectDiagnostic('auth-bootstrap', { stage: 'check-session-start' });
     const restartAfterSessionChange = async stage => {
+        recordRedirectDiagnostic('auth-bootstrap', { stage, reason: 'session-changed' });
         const sessionChangeError = authBootstrapSessionChangedError(stage);
         resetAuthenticatedRuntimeReady();
         if (typeof AppState !== 'undefined' && AppState?.currentUser) {
@@ -340,6 +864,7 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
             || localStorage.getItem(AUTH_REFRESH_TOKEN_KEY)
         );
         if (sessionStillExists && sessionChangeRetry < 1) {
+            recordRedirectDiagnostic('auth-bootstrap', { stage, reason: 'session-changed-retry' });
             return checkSessionAttempt(sessionChangeRetry + 1);
         }
         if (sessionStillExists) {
@@ -350,7 +875,7 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
             });
             return false;
         }
-        clearAuthStorage();
+        clearAuthStorage({ reason: 'session-changed-terminal' });
         clearPrivateClientCaches();
         showLoginScreen();
         return false;
@@ -364,6 +889,10 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
         try {
             // Verify token with server
             verifiedUser = await apiVerifyToken();
+            recordRedirectDiagnostic('auth-bootstrap', {
+                stage: 'verify',
+                refreshOutcome: verifiedUser ? 'success' : 'empty'
+            });
             if (verifiedUser) {
                 clearAuthSessionBootstrapError();
                 bootstrapSession = captureAuthBootstrapSession(verifiedUser);
@@ -389,6 +918,7 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
                 }
                 window.WorkingRole?.hydrate?.();
                 showMainApp();
+                recordRedirectDiagnostic('auth-bootstrap', { stage: 'complete', refreshOutcome: 'success' });
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
                 return true;
             }
@@ -398,6 +928,11 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
                 return restartAfterSessionChange(err?.stage || 'session-bootstrap');
             }
             if (verifiedUser) {
+                recordRedirectDiagnostic('auth-bootstrap', {
+                    stage: err?.stage || 'bootstrap-error',
+                    status: Number(err?.status || 0),
+                    reason: 'bootstrap-error'
+                });
                 resetAuthenticatedRuntimeReady();
                 showAuthenticatedPageShell({ markRuntimeReady: false });
                 renderAuthSessionBootstrapError({
@@ -413,6 +948,14 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
         const transientAuthFailure = typeof isApiAuthSessionFailureTransient === 'function'
             && isApiAuthSessionFailureTransient(authFailure);
         if ((typeof navigator !== 'undefined' && navigator.onLine === false) || transientAuthFailure) {
+            recordRedirectDiagnostic('auth-bootstrap', {
+                stage: authFailure?.stage || 'verify',
+                status: authFailure?.status,
+                code: authFailure?.code,
+                reason: authFailure?.reason || (typeof navigator !== 'undefined' && navigator.onLine === false ? 'offline' : 'transient'),
+                requestId: authFailure?.requestId,
+                retryAfterSeconds: authFailure?.retryAfterSeconds
+            });
             resetAuthenticatedRuntimeReady();
             if (typeof navigator !== 'undefined' && navigator.onLine === false) scheduleOfflineSessionRecovery();
             renderAuthSessionBootstrapError({ retry: checkSession, failure: authFailure });
@@ -422,7 +965,8 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
         resetAuthenticatedRuntimeReady();
     }
     // Canonical cleanup also covers partial storage left behind without tokens.
-    clearAuthStorage();
+    recordRedirectDiagnostic('auth-bootstrap', { stage: 'cleanup', reason: 'missing-or-terminal-session' });
+    clearAuthStorage({ reason: 'missing-or-terminal-session' });
     clearPrivateClientCaches();
     showLoginScreen();
     return false;
@@ -484,6 +1028,11 @@ async function login(username, password) {
         const currentRoute = `${currentPath}${window.location.search || ''}`;
         const startPage = getAuthenticatedTimelineStartPage(data.user || AppState.currentUser);
         if (currentRoute !== startPage) {
+            recordRedirectDiagnostic('auth-redirect', {
+                stage: 'post-login',
+                redirectReason: 'authenticated-start-page',
+                targetRoute: startPage
+            });
             window.location.href = startPage;
             return { success: true };
         }
@@ -519,6 +1068,7 @@ function resetAuthExitVisualState(options = {}) {
 }
 
 function logout() {
+    recordRedirectDiagnostic('auth-storage-clear', { storageClearReason: 'logout' });
     // v9.1: Disconnect WebSocket on logout
     if (typeof ParkWS !== 'undefined') ParkWS.disconnect();
     revokeStoredRefreshToken();
@@ -526,7 +1076,7 @@ function logout() {
     AppState.currentUser = null;
     resetAuthenticatedRuntimeReady();
     window.dispatchEvent(new CustomEvent('crm:auth-cleared', { detail: { reason: 'logout' } }));
-    clearAuthStorage({ revokeImpersonationRefresh: false });
+    clearAuthStorage({ revokeImpersonationRefresh: false, reason: 'logout' });
     clearPrivateClientCaches();
     showLoginScreen();
 }
@@ -744,6 +1294,7 @@ function clearImpersonationBackup(options = {}) {
 }
 
 function clearAuthStorage(options = {}) {
+    recordRedirectDiagnostic('auth-storage-clear', { storageClearReason: options.reason || 'auth-storage-clear' });
     const runtimeUser = typeof AppState !== 'undefined' && AppState ? AppState.currentUser : null;
     if (typeof clearRuntimePermissionCatalog === 'function') clearRuntimePermissionCatalog(runtimeUser);
     if (typeof setPermissionLifecycle === 'function') setPermissionLifecycle('idle');
@@ -1025,7 +1576,8 @@ function renderAuthSessionBootstrapError(options = {}) {
         || ensureAuthSessionRecoverySurface();
     if (!target) return;
     const retry = typeof options.retry === 'function' ? options.retry : null;
-    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p>${retry ? '<button type="button" class="btn btn-primary" data-auth-session-retry>Повторити</button>' : ''}</div>`;
+    const diagnosticsAvailable = Boolean(window.RedirectDiagnostics?.copy);
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p><div class="auth-session-bootstrap-actions">${retry ? '<button type="button" class="btn btn-primary" data-auth-session-retry>Повторити</button>' : ''}${diagnosticsAvailable ? '<button type="button" class="btn btn-secondary" data-auth-session-copy-diagnostics>Скопіювати діагностику</button>' : ''}</div><p class="muted" data-auth-session-diagnostics-status hidden></p></div>`;
     const button = target.querySelector?.('[data-auth-session-retry]');
     if (button && retry) {
         button.addEventListener('click', async () => {
@@ -1036,6 +1588,30 @@ function renderAuthSessionBootstrapError(options = {}) {
             finally {
                 button.disabled = false;
                 button.removeAttribute('aria-busy');
+            }
+        });
+    }
+    const diagnosticsButton = target.querySelector?.('[data-auth-session-copy-diagnostics]');
+    const diagnosticsStatus = target.querySelector?.('[data-auth-session-diagnostics-status]');
+    if (diagnosticsButton && diagnosticsAvailable) {
+        diagnosticsButton.addEventListener('click', async () => {
+            if (diagnosticsButton.disabled) return;
+            diagnosticsButton.disabled = true;
+            try {
+                const result = await window.RedirectDiagnostics.copy();
+                if (diagnosticsStatus) {
+                    diagnosticsStatus.hidden = false;
+                    diagnosticsStatus.textContent = result?.copied
+                        ? 'Діагностику скопійовано. Передайте її підтримці.'
+                        : 'Clipboard недоступний. Виконайте в консолі: JSON.stringify(window.RedirectDiagnostics.export(), null, 2)';
+                }
+            } catch {
+                if (diagnosticsStatus) {
+                    diagnosticsStatus.hidden = false;
+                    diagnosticsStatus.textContent = 'Не вдалося скопіювати діагностику. Навігація та авторизація не змінені.';
+                }
+            } finally {
+                diagnosticsButton.disabled = false;
             }
         });
     }
@@ -1296,6 +1872,11 @@ function showLoginScreen() {
     // v31.7.1: Redirect to canonical login page from sub-pages
     const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
     if (path !== '/' && path !== '/index') {
+        recordRedirectDiagnostic('auth-redirect', {
+            stage: 'show-login-screen',
+            redirectReason: 'login-page',
+            targetRoute: '/'
+        });
         resetAuthExitVisualState({ preserveShellReady: true });
         document.body.classList.remove('authenticated-shell', 'auth-screen');
         if (typeof window.location.replace === 'function') window.location.replace('/');
@@ -2358,6 +2939,11 @@ function enforceCurrentPageAccess(user = AppState.currentUser) {
 
     const fallback = getAuthenticatedTimelineStartPage(user || AppState.currentUser) || '/dashboard';
     if (window.location.pathname !== fallback) {
+        recordRedirectDiagnostic('auth-redirect', {
+            stage: 'page-access',
+            redirectReason: 'page-access-denied',
+            targetRoute: fallback
+        });
         window.location.replace(fallback);
     }
     return false;
@@ -2384,6 +2970,11 @@ function showMainApp() {
 
     if (window.TimelineBusinessContext?.current().key === 'maysternya_doli'
         && !window.TimelineBusinessContext.canAccessContext(AppState.currentUser)) {
+        recordRedirectDiagnostic('auth-redirect', {
+            stage: 'business-context',
+            redirectReason: 'context-access-denied',
+            targetRoute: '/dashboard'
+        });
         window.location.href = '/dashboard';
         return;
     }

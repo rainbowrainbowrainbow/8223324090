@@ -1479,6 +1479,62 @@ const Sidebar = (() => {
         document.documentElement.classList.remove('shell-ready');
     }
 
+    function _recordRedirectDiagnostic(event, details = {}) {
+        try {
+            window.RedirectDiagnostics?.record(event, details);
+        } catch {}
+    }
+
+    function _shellVisibilityContainers() {
+        const selectors = ['#mainApp', '#main-content', '.page-container', '.main-content'];
+        return Array.from(new Set(selectors
+            .map(selector => document.querySelector(selector))
+            .filter(Boolean)));
+    }
+
+    function _hasAuthenticatedShellState() {
+        if (document.body.classList.contains('auth-screen')) return false;
+        return document.body.classList.contains('authenticated-shell')
+            || document.body.classList.contains('shell-ready');
+    }
+
+    function _isAuthenticatedShellVisible() {
+        if (!_hasAuthenticatedShellState()) return false;
+        const containers = _shellVisibilityContainers();
+        if (!containers.length) return false;
+        return containers.some(container => {
+            if (container.classList.contains('hidden')) return false;
+            if (container.hidden === true) return false;
+            return container.style.display !== 'none';
+        });
+    }
+
+    function _restoreShellAfterPageLifecycle(event = {}) {
+        const needsRecovery = document.body.classList.contains('page-exiting') || event.persisted === true;
+        if (!needsRecovery || !_isAuthenticatedShellVisible()) return;
+        _recordRedirectDiagnostic('shell-lifecycle', {
+            lifecycle: event.persisted === true ? 'pageshow-persisted' : 'visibility-resume',
+            stage: 'recover-shell'
+        });
+        document.body.classList.remove('shell-baseline', 'page-exiting');
+        document.body.removeAttribute('aria-busy');
+        _shellVisibilityContainers().forEach(container => {
+            container.classList.remove('hidden');
+            if (container.style.display === 'none') container.style.display = '';
+            if (container.style.visibility === 'hidden') container.style.visibility = '';
+        });
+        _markShellReady();
+    }
+
+    function _bindShellLifecycleRecovery() {
+        if (_state.shellLifecycleRecoveryBound) return;
+        _state.shellLifecycleRecoveryBound = true;
+        window.addEventListener('pageshow', _restoreShellAfterPageLifecycle);
+        document.addEventListener('visibilitychange', () => {
+            if (document.visibilityState === 'visible') _restoreShellAfterPageLifecycle();
+        });
+    }
+
     // ═══ TOGGLE GROUP ══════════════════════════════════════════════
     function _setSidebarGroupPanelState(btn, items, expanded) {
         if (!btn || !items) return;
@@ -4550,6 +4606,7 @@ const Sidebar = (() => {
         void _ensureSidebarBusinessProfile();
         initToggle();
         _initPageTransitions();
+        _bindShellLifecycleRecovery();
         // Fill user card immediately + keep retrying until avatar shows real initial
         if (!_state.userRetryStarted) {
             _state.userRetryStarted = true;
@@ -4616,14 +4673,28 @@ const Sidebar = (() => {
             }
 
             e.preventDefault();
+            _recordRedirectDiagnostic('navigation-click', {
+                stage: 'sidebar-click',
+                targetRoute: href
+            });
             const sidebar = document.getElementById('sidebarNav');
             if (sidebar) sidebar.scrollTop = 0;
             document.body.classList.add('shell-baseline', 'page-exiting');
             document.body.classList.remove('shell-ready');
             document.body.setAttribute('aria-busy', 'true');
-            const navigate = () => { window.location.assign(href); };
+            _recordRedirectDiagnostic('navigation-transition', {
+                stage: 'page-exiting',
+                targetRoute: href
+            });
+            let navigationStarted = false;
+            const navigate = () => {
+                if (navigationStarted) return;
+                navigationStarted = true;
+                window.location.assign(href);
+            };
             if (typeof requestAnimationFrame === 'function') {
                 requestAnimationFrame(navigate);
+                setTimeout(navigate, 120);
             } else {
                 navigate();
             }

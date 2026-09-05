@@ -58,7 +58,14 @@ const authHarnessSource = [
     extractFunction(AUTH_CODE, 'markAuthenticatedRuntimeReady'),
     extractFunction(AUTH_CODE, 'resetAuthenticatedRuntimeReady'),
     extractFunction(AUTH_CODE, 'scheduleOfflineSessionRecovery'),
+    extractFunction(AUTH_CODE, 'readAuthBootstrapStoredUser'),
+    extractFunction(AUTH_CODE, 'authBootstrapUsersShareIdentity'),
+    extractFunction(AUTH_CODE, 'captureAuthBootstrapSession'),
+    extractFunction(AUTH_CODE, 'isAuthBootstrapSessionCurrent'),
+    extractFunction(AUTH_CODE, 'authBootstrapSessionChangedError'),
+    extractFunction(AUTH_CODE, 'clearAuthSessionBootstrapError'),
     extractFunction(AUTH_CODE, 'checkSession'),
+    extractFunction(AUTH_CODE, 'checkSessionAttempt'),
     extractFunction(AUTH_CODE, 'clearPrivateClientCaches')
 ].join('\n');
 
@@ -82,6 +89,11 @@ function htmlHarness() {
         let authenticatedRuntimeReady = false;
         let offlineSessionRecoveryBound = false;
         window.__smoke = { loginScreens: 0, mainScreens: 0 };
+        window.__testOnline = true;
+        Object.defineProperty(navigator, 'onLine', {
+            configurable: true,
+            get() { return window.__testOnline; }
+        });
 
         ${authHarnessSource}
 
@@ -91,10 +103,12 @@ function htmlHarness() {
             return Boolean(localStorage.getItem(AUTH_REFRESH_TOKEN_KEY));
         }
         async function apiVerifyToken() {
-            return navigator.onLine ? { id: 17, username: 'qa.operator' } : null;
+            return window.__testOnline ? { id: 17, username: 'qa.operator' } : null;
         }
         async function hydrateBusinessOperatingProfile() {}
-        async function hydrateActionPermissions() {}
+        async function hydrateActionPermissions() {
+            return { capabilityCatalog: { pageRoles: {}, actionRoles: {} }, capabilities: {} };
+        }
         function showLoginScreen() {
             window.__smoke.loginScreens += 1;
             document.getElementById('status').textContent = 'login';
@@ -103,6 +117,13 @@ function htmlHarness() {
             window.__smoke.mainScreens += 1;
             markAuthenticatedRuntimeReady();
             document.getElementById('status').textContent = 'authenticated';
+        }
+        function showAuthenticatedPageShell() {}
+        function renderAuthSessionBootstrapError() {
+            showLoginScreen();
+        }
+        function renderPermissionBootstrapError() {
+            showLoginScreen();
         }
         function clearAuthStorage() {
             for (const key of ['pzp_token', AUTH_ACCESS_TOKEN_KEY, AUTH_REFRESH_TOKEN_KEY, 'pzp_current_user', 'pzp_session']) {
@@ -141,11 +162,16 @@ function htmlHarness() {
 </html>`;
 }
 
+function rewriteWorkerCacheNames(source, runtimeCacheName, apiCacheName) {
+    return source
+        .replace(/const CACHE_NAME = '[^']+';/, `const CACHE_NAME = '${runtimeCacheName}';`)
+        .replace(/const API_CACHE_NAME = '[^']+';/, `const API_CACHE_NAME = '${apiCacheName}';`);
+}
+
 function workerSource() {
-    if (serveCurrentWorker) return CURRENT_SW;
-    return CURRENT_SW
-        .replace(`const CACHE_NAME = '${CURRENT_RUNTIME_CACHE}';`, `const CACHE_NAME = '${OLD_RUNTIME_CACHE}';`)
-        .replace(`const API_CACHE_NAME = '${CURRENT_API_CACHE}';`, `const API_CACHE_NAME = '${OLD_API_CACHE}';`);
+    return serveCurrentWorker
+        ? rewriteWorkerCacheNames(CURRENT_SW, CURRENT_RUNTIME_CACHE, CURRENT_API_CACHE)
+        : rewriteWorkerCacheNames(CURRENT_SW, OLD_RUNTIME_CACHE, OLD_API_CACHE);
 }
 
 function send(response, status, contentType, body, extraHeaders = {}) {
@@ -266,21 +292,59 @@ async function run() {
         assert.equal(Object.values(snapshot).flat().some(pathname => pathname.startsWith('/uploads/')), false);
 
         await context.setOffline(true);
+        await page.evaluate(() => { window.__testOnline = false; });
         await page.evaluate(() => window.testPrepareOfflineSession());
         assert.equal(await page.evaluate(() => checkSession()), false);
         assert.equal(await page.evaluate(() => localStorage.getItem('pzp_token')), 'browser-token');
         assert.equal(await page.evaluate(() => window.__smoke.loginScreens), 1);
         await context.setOffline(false);
-        await page.waitForFunction(() => window.__smoke.mainScreens === 1);
+        const recoveryProbe = await page.evaluate(async () => {
+            window.__testOnline = true;
+            const before = { ...window.__smoke };
+            window.dispatchEvent(new Event('online'));
+            const result = await checkSession();
+            return {
+                result,
+                before,
+                after: { ...window.__smoke },
+                online: navigator.onLine,
+                failure: typeof getApiAuthSessionFailure === 'function' ? getApiAuthSessionFailure() : null,
+                status: document.getElementById('status')?.textContent || null
+            };
+        });
+        assert.ok(recoveryProbe.after.mainScreens >= 1, `offline recovery did not restore authenticated UI: ${JSON.stringify(recoveryProbe)}`);
+        await page.waitForFunction(() => window.__smoke.mainScreens >= 1);
         assert.equal(await page.evaluate(() => localStorage.getItem('pzp_token')), 'browser-token');
 
         await page.evaluate(() => fetch('/__use-current-sw'));
-        await page.evaluate(async () => {
+        const updateProbe = await page.evaluate(async ({ currentRuntimeCache, oldRuntimeCache }) => {
+            const beforeController = navigator.serviceWorker.controller?.scriptURL || null;
+            let controllerChanges = 0;
+            const controllerChanged = new Promise(resolve => {
+                const timer = setTimeout(() => resolve(false), 10000);
+                navigator.serviceWorker.addEventListener('controllerchange', () => {
+                    controllerChanges += 1;
+                    clearTimeout(timer);
+                    resolve(true);
+                }, { once: true });
+            });
             const registration = await navigator.serviceWorker.getRegistration();
             await registration.update();
-        });
-        await page.waitForFunction(async cacheName => (await caches.keys()).includes(cacheName), CURRENT_RUNTIME_CACHE);
-        await page.waitForFunction(async cacheName => !(await caches.keys()).includes(cacheName), OLD_RUNTIME_CACHE);
+            const changed = await controllerChanged;
+            const cacheNames = await caches.keys();
+            return {
+                beforeController,
+                afterController: navigator.serviceWorker.controller?.scriptURL || null,
+                changed,
+                controllerChanges,
+                hasCurrentRuntimeCache: cacheNames.includes(currentRuntimeCache),
+                hasOldRuntimeCache: cacheNames.includes(oldRuntimeCache)
+            };
+        }, { currentRuntimeCache: CURRENT_RUNTIME_CACHE, oldRuntimeCache: OLD_RUNTIME_CACHE });
+        assert.equal(updateProbe.changed, true, `updated service worker must activate and claim the existing tab: ${JSON.stringify(updateProbe)}`);
+        assert.ok(updateProbe.controllerChanges >= 1, `controllerchange was not observed: ${JSON.stringify(updateProbe)}`);
+        assert.equal(updateProbe.hasCurrentRuntimeCache, true, `current runtime cache was not created: ${JSON.stringify(updateProbe)}`);
+        assert.equal(updateProbe.hasOldRuntimeCache, false, `old runtime cache survived activation: ${JSON.stringify(updateProbe)}`);
 
         await page.evaluate(async ({ cacheName, apiCacheName }) => {
             const runtimeCache = await caches.open(cacheName);

@@ -61,6 +61,9 @@ const MODES = {
     'my-day-browser': [
         'tests/browser/my-day-actual-app-browser-smoke.js'
     ],
+    'redirect-auth': [
+        'tests/browser/redirect-auth-postgres-browser-smoke.js'
+    ],
     'cashier-smoke': [
         'tests/integration/checkbox-park-cashier-smoke.integration.test.js'
     ],
@@ -97,7 +100,7 @@ const MODES = {
 };
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|my-day|my-day-browser|cashier-smoke|checkbox-config|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|my-day|my-day-browser|redirect-auth|cashier-smoke|checkbox-config|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
@@ -605,6 +608,7 @@ async function runSuite(testDb, testFile, suiteMode) {
         RUN_CATALOG_SALE_LOCAL_QA_INTEGRATION: catalogSaleLocalQa ? 'true' : 'false',
         RUN_MY_DAY_POSTGRES_INTEGRATION: testFile.includes('my-day-postgres.integration') ? 'true' : 'false',
         RUN_MY_DAY_ACTUAL_APP_BROWSER_SMOKE: testFile.includes('my-day-actual-app-browser-smoke') ? 'true' : 'false',
+        RUN_REDIRECT_AUTH_POSTGRES_BROWSER: testFile.includes('redirect-auth-postgres-browser-smoke') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CASHIER_SMOKE_INTEGRATION: testFile.includes('checkbox-park-cashier-smoke') ? 'true' : 'false',
         RUN_CHECKBOX_PARK_CONFIG_INTEGRATION: testFile.includes('checkbox-park-config') ? 'true' : 'false',
         RUN_HR_ONBOARDING_INTEGRATION: testFile.includes('hr-onboarding-hire') ? 'true' : 'false',
@@ -722,7 +726,7 @@ async function runSuite(testDb, testFile, suiteMode) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'catalog-sale', 'catalog-sale-local-qa', 'my-day', 'my-day-browser', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'checkbox-ui-testmode-preflight', 'checkbox-ui-testmode', 'checkbox-ui-testmode-card-recovery', 'checkbox-ui-testmode-final-card-close', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'catalog-sale', 'catalog-sale-local-qa', 'my-day', 'my-day-browser', 'redirect-auth', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'checkbox-ui-testmode-preflight', 'checkbox-ui-testmode', 'checkbox-ui-testmode-card-recovery', 'checkbox-ui-testmode-final-card-close', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
     const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'
         || mode === 'checkbox-ui-testmode'

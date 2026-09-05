@@ -152,6 +152,46 @@
 .cashier-catalog-filters input {
     width: 100%;
     min-height: 46px;
+    padding: 10px 14px;
+    border: 1px solid var(--gray-200);
+    border-radius: 14px;
+    background-color: var(--white);
+    color: var(--gray-900);
+    font: inherit;
+    font-weight: 700;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, .04);
+    transition: border-color .16s ease, box-shadow .16s ease, background-color .16s ease;
+}
+
+.cashier-route-card select,
+.cashier-catalog-filters select {
+    appearance: none;
+    padding-right: 42px;
+    background-image:
+        linear-gradient(45deg, transparent 50%, #64748b 50%),
+        linear-gradient(135deg, #64748b 50%, transparent 50%);
+    background-position:
+        calc(100% - 19px) 50%,
+        calc(100% - 13px) 50%;
+    background-size: 6px 6px, 6px 6px;
+    background-repeat: no-repeat;
+}
+
+.cashier-route-card select:focus-visible,
+.cashier-catalog-filters select:focus-visible,
+.cashier-catalog-filters input:focus-visible {
+    border-color: var(--primary);
+    outline: 3px solid rgba(99,102,241,.22);
+    outline-offset: 1px;
+    box-shadow: 0 0 0 1px rgba(99,102,241,.08);
+}
+
+.cashier-route-card select:disabled,
+.cashier-catalog-filters select:disabled,
+.cashier-catalog-filters input:disabled {
+    cursor: not-allowed;
+    opacity: .72;
+    background-color: var(--gray-50);
 }
 
 .cashier-cart-summary {
@@ -1018,10 +1058,20 @@ body.dark-mode .cashier-checkbox-row,
 body.dark-mode .cashier-catalog-line,
 body.dark-mode .cashier-catalog-line select,
 body.dark-mode .cashier-catalog-line input,
+body.dark-mode .cashier-route-card select,
+body.dark-mode .cashier-catalog-filters select,
+body.dark-mode .cashier-catalog-filters input,
 body.dark-mode #paymentCashierBinding,
 body.dark-mode #catalogDiscountRule {
     background: rgba(15,23,42,.82);
     border-color: rgba(255,255,255,.10);
+}
+
+body.dark-mode .cashier-route-card select:disabled,
+body.dark-mode .cashier-catalog-filters select:disabled,
+body.dark-mode .cashier-catalog-filters input:disabled {
+    background-color: rgba(30,41,59,.72);
+    color: #cbd5e1;
 }
 
 body.dark-mode .cashier-local-qa-banner {
@@ -1103,6 +1153,9 @@ body.dark-mode .cashier-disclosure-heading [role="heading"],
 body.dark-mode .cashier-scope-card strong,
 body.dark-mode .cashier-meta-grid dd,
 body.dark-mode .cashier-field input,
+body.dark-mode .cashier-route-card select,
+body.dark-mode .cashier-catalog-filters select,
+body.dark-mode .cashier-catalog-filters input,
 body.dark-mode .cashier-total-row strong,
 body.dark-mode .cashier-change strong,
 body.dark-mode .cashier-exact-amount strong {

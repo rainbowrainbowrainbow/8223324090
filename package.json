@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.73",
+  "version": "0.81.74",
   "eventGenix": {
-    "releaseLabel": "PARK/DAR Catalog Sale"
+    "releaseLabel": "PARK/DAR Cashier Status UI"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

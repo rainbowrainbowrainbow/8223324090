@@ -23,7 +23,9 @@
     const PAYMENT_TERMINAL_STATUSES = new Set(['confirmed']);
     const FISCAL_TERMINAL_STATUSES = new Set(['fiscalized', 'failed_terminal', 'validation_failed', 'blocked', 'cancelled', 'not_required', 'dead']);
     const POLLING_INTERVAL_MS = 2500;
-    const POLLING_TIMEOUT_MS = 60000;
+    const POLLING_FAST_WINDOW_MS = boundedTestTiming('pollFastWindowMs', 60000);
+    const POLLING_RECOVERY_INTERVAL_MS = boundedTestTiming('pollRecoveryIntervalMs', 15000);
+    const POLLING_TIMEOUT_MS = boundedTestTiming('pollTimeoutMs', 15 * 60 * 1000);
     const READINESS_REFRESH_MIN_MS = 15000;
     const READINESS_REFRESH_MAX_MS = 60000;
     const READINESS_REQUEST_TIMEOUT_MS = 8000;
@@ -436,8 +438,10 @@
         const timeoutMs = Number(options.timeoutMs || 0);
         const controller = timeoutMs > 0 ? new AbortController() : null;
         const timeoutId = controller ? window.setTimeout(() => controller.abort(), timeoutMs) : null;
+        const method = String(options.method || 'GET').toUpperCase();
         try {
             const response = await fetch(path, {
+                cache: method === 'GET' ? 'no-store' : 'default',
                 ...options,
                 signal: controller?.signal || options.signal,
                 headers: { ...(options.headers || {}) }
@@ -948,7 +952,8 @@
         const loadGeneration = ++state.orderLoadGeneration;
         const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(orderId)}`, {
             method: 'GET',
-            headers: apiHeaders()
+            headers: apiHeaders(),
+            cache: 'no-store'
         });
         if (loadGeneration !== state.orderLoadGeneration) return state.orderDetails;
         const currentOrder = state.orderDetails?.order;
@@ -1114,6 +1119,10 @@
 
     function scheduleOrderPoll() {
         if (!state.pollingOrderId) return;
+        const elapsedMs = Math.max(0, Date.now() - state.pollingStartedAt);
+        const delayMs = elapsedMs >= POLLING_FAST_WINDOW_MS
+            ? POLLING_RECOVERY_INTERVAL_MS
+            : POLLING_INTERVAL_MS;
         state.pollingTimer = window.setTimeout(async () => {
             state.pollingTimer = null;
             const orderId = state.pollingOrderId;
@@ -1130,7 +1139,7 @@
                 notify(paymentUiError(error), 'error');
                 scheduleOrderPoll();
             }
-        }, POLLING_INTERVAL_MS);
+        }, delayMs);
     }
 
     function paymentUiError(error) {

@@ -62,6 +62,8 @@ test('production catalog UI exposes safe route selection and no browser price/pr
     assert.match(script, /\/api\/payments\/catalog\/orders/);
     assert.match(script, /items: catalogLinesPayload\(\)/);
     assert.match(script, /routeOptionId: PILOT_SCOPE\.routeOptionId/);
+    assert.match(script, /cache: 'no-store'/);
+    assert.match(script, /POLLING_RECOVERY_INTERVAL_MS/);
     assert.doesNotMatch(script, /items:\s*catalogLinesPayload\(\)[\s\S]{0,120}(?:price|amount)/);
     assert.match(script, /local_qa_identity_not_confirmed/);
 });

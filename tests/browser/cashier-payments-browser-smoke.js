@@ -785,7 +785,15 @@ async function run() {
         await selectorContext.close();
 
         let context = await browser.newContext({ timezoneId: 'UTC' });
-        await context.addInitScript(() => { localStorage.setItem('pzp_token', 'smoke-token'); localStorage.setItem('pzp_dark_mode', 'false'); });
+        await context.addInitScript(() => {
+            localStorage.setItem('pzp_token', 'smoke-token');
+            localStorage.setItem('pzp_dark_mode', 'false');
+            window.__EVENTGENIX_TEST_CASHIER_QUEUE_TIMING__ = {
+                pollFastWindowMs: 500,
+                pollRecoveryIntervalMs: 100,
+                pollTimeoutMs: 5000
+            };
+        });
         let page = await context.newPage();
         await page.goto(`${base}/cashier-payments?saleMode=admission`, { waitUntil: 'domcontentloaded' });
         await page.waitForSelector('#paymentOrderForm');
@@ -945,6 +953,18 @@ async function run() {
         assert.equal(await page.getAttribute('#unresolvedOrdersPanel', 'open'), '', 'a paid unresolved receipt opens the safety disclosure');
         assert.equal(await page.isDisabled('#confirmCashBtn'), true, 'cash repeat submit is blocked after fiscal pending');
         assert.equal(state.confirmKeys.length, 1, 'cash confirmation should submit once after double-click guard');
+        await page.waitForTimeout(700);
+        const recoveredCashOrder = state.orders.get(state.nextOrderId);
+        recoveredCashOrder.fiscalStatus = 'fiscalized';
+        await page.waitForFunction(() => (
+            document.querySelector('#fiscalReceiptBadge')?.textContent.trim() === 'чек створено'
+            && window.CashierPaymentsPage.state.pollingOrderId === null
+        ));
+        assert.equal(
+            await page.evaluate(() => window.CashierPaymentsPage.state.pollingOrderId),
+            null,
+            'receipt polling continues at the recovery cadence after the fast window and stops on fiscalization'
+        );
         await context.close();
 
         context = await browser.newContext({ timezoneId: 'UTC' });

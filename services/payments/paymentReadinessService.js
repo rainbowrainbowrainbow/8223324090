@@ -3334,11 +3334,18 @@ async function loadPhase1CloseFiscalBinding(client, shift) {
            JOIN fiscal_cashier_bindings binding
              ON binding.fiscal_profile_id = open_operation.fiscal_profile_id
             AND binding.fiscal_register_id = open_operation.fiscal_register_id
-            AND binding.fiscal_location_id = open_operation.fiscal_location_id
-            AND binding.provider = open_operation.provider
-            AND binding.provider_cashier_id IS NOT DISTINCT FROM open_operation.provider_cashier_id
-            AND binding.provider_cashier_login_ref = open_operation.cashier_credential_ref
-            AND binding.status = 'active'
+             AND binding.fiscal_location_id = open_operation.fiscal_location_id
+             AND binding.provider = open_operation.provider
+             AND binding.provider_cashier_id IS NOT DISTINCT FROM open_operation.provider_cashier_id
+             AND binding.provider_cashier_login_ref = open_operation.cashier_credential_ref
+             AND (
+                 NULLIF(BTRIM(open_operation.request_snapshot->>'cashier_binding_id'), '') IS NULL
+                 OR (
+                     open_operation.request_snapshot->>'cashier_binding_id' ~ '^[1-9][0-9]*$'
+                     AND binding.id = (open_operation.request_snapshot->>'cashier_binding_id')::bigint
+                 )
+             )
+             AND binding.status = 'active'
           WHERE open_operation.id = $1
             AND open_operation.fiscal_shift_id = $2
             AND open_operation.fiscal_profile_id = $3

@@ -269,6 +269,21 @@ async function seedFiscalScope({ cashier, secondCashier }) {
         assert.equal(enabledRegister.featureEnabled, true);
         return apply;
     });
+    const acceptingRegister = await pool.query(
+        `UPDATE fiscal_registers
+            SET acceptance_enabled = TRUE,
+                updated_at = NOW()
+          WHERE id = $1
+            AND fiscal_profile_id = $2
+            AND status = 'active'
+            AND feature_enabled = TRUE
+          RETURNING feature_enabled, acceptance_enabled`,
+        [applied.fiscalRegisterId, applied.fiscalProfileId]
+    );
+    assert.equal(acceptingRegister.rowCount, 1, 'isolated mock smoke register must be feature-enabled before payment acceptance');
+    assert.equal(acceptingRegister.rows[0].feature_enabled, true);
+    assert.equal(acceptingRegister.rows[0].acceptance_enabled, true);
+
     const catalogSaleItems = await activeCatalogSaleItems();
     for (const item of catalogSaleItems) {
         await pool.query(
@@ -1199,23 +1214,72 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             );
             return Number(result.rows[0].id);
         };
+        const fiscalBindingContextResult = await pool.query(
+            `SELECT fp.provider_organization_id,
+                    fl.provider_outlet_id,
+                    fr.provider_register_id,
+                    fr.provider_license_ref,
+                    COALESCE(fr.metadata->>'expected_is_test', fr.metadata->>'expectedIsTest')::boolean AS expected_is_test,
+                    binding.id AS cashier_binding_id,
+                    binding.provider_cashier_id,
+                    binding.provider_cashier_login_ref
+               FROM fiscal_profiles fp
+               JOIN fiscal_locations fl
+                 ON fl.fiscal_profile_id = fp.id
+                AND fl.id = $3
+               JOIN fiscal_registers fr
+                 ON fr.fiscal_profile_id = fp.id
+                AND fr.id = $2
+                AND fr.fiscal_location_id = fl.id
+               JOIN fiscal_cashier_bindings binding
+                 ON binding.fiscal_profile_id = fp.id
+                AND binding.fiscal_location_id = fl.id
+                AND binding.fiscal_register_id = fr.id
+                AND binding.user_id = $4
+                AND binding.status = 'active'
+              WHERE fp.id = $1
+              LIMIT 2`,
+            [scope.fiscalProfileId, scope.fiscalRegisterId, scope.fiscalLocationId, cashier.id]
+        );
+        assert.equal(fiscalBindingContextResult.rowCount, 1);
+        const fiscalBindingContext = fiscalBindingContextResult.rows[0];
+        assert.ok(String(fiscalBindingContext.provider_license_ref || '').trim());
+        assert.ok(String(fiscalBindingContext.provider_cashier_login_ref || '').trim());
+
         const createShiftOperation = async (shiftId, operationType, status = 'fiscalized') => {
+            const providerRequestUuid = crypto.randomUUID();
             const result = await pool.query(
                 `INSERT INTO fiscal_operations (
-                     fiscal_profile_id, fiscal_register_id, fiscal_shift_id,
+                     fiscal_profile_id, fiscal_register_id, fiscal_shift_id, fiscal_location_id,
                      operation_type, status, idempotency_key, provider,
-                     provider_operation_id, currency, request_snapshot
-                 )
-                 VALUES ($1, $2, $3, $4, $5, $6, 'checkbox', $7, 'UAH', '{}'::jsonb)
-                 RETURNING id`,
+                     provider_operation_id, currency, request_snapshot, initiated_by_user_id,
+                     provider_organization_id, provider_outlet_id, provider_register_id, provider_cashier_id,
+                     register_credential_ref, cashier_credential_ref, expected_is_test
+                  )
+                  VALUES ($1, $2, $3, $4, $5, $6, $7, 'checkbox', $8, 'UAH', $9::jsonb, $10,
+                          $11, $12, $13, $14, $15, $16, $17)
+                  RETURNING id`,
                 [
                     scope.fiscalProfileId,
                     scope.fiscalRegisterId,
                     shiftId,
+                    scope.fiscalLocationId,
                     operationType,
                     status,
                     `db-invariant:${operationType}:${shiftId}:${crypto.randomUUID()}`,
-                    `db-invariant-operation-${crypto.randomUUID()}`
+                    providerRequestUuid,
+                    JSON.stringify({
+                        cashier_binding_id: Number(fiscalBindingContext.cashier_binding_id),
+                        provider_request_uuid: providerRequestUuid
+                    }),
+                    cashier.id,
+                    fiscalBindingContext.provider_organization_id,
+                    fiscalBindingContext.provider_outlet_id,
+                    fiscalBindingContext.provider_register_id,
+                    fiscalBindingContext.provider_cashier_id,
+                    fiscalBindingContext.provider_license_ref,
+                    fiscalBindingContext.provider_cashier_login_ref,
+                    fiscalBindingContext.expected_is_test
                 ]
             );
             return Number(result.rows[0].id);
@@ -3913,13 +3977,28 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             totalUah: TEST_TICKET_PRICES_UAH.regular_child,
             itemCode: 'regular_child'
         });
-        await confirmOrder({
-            user: secondCashier,
-            order: second,
-            key: 'report-cashier-b',
-            tender: 'cash',
-            amountMinor: '10000'
-        });
+        await pool.query(
+            `UPDATE payment_orders
+                SET status = 'payment_recorded',
+                    payment_status = 'confirmed',
+                    fiscal_status = 'pending',
+                    confirmed_at = NOW(),
+                    sealed_at = COALESCE(sealed_at, NOW()),
+                    received_amount_minor = total_amount_minor,
+                    change_amount_minor = 0,
+                    confirmation_snapshot = jsonb_build_object(
+                        'tender', 'cash',
+                        'amount_minor', total_amount_minor::text,
+                        'received_amount_minor', total_amount_minor::text,
+                        'change_amount_minor', '0',
+                        'confirmed_by_user_id', $2,
+                        'fixture', 'register_wide_unresolved_queue'
+                    ),
+                    updated_at = NOW()
+              WHERE id = $1
+                AND cashier_user_id = $2`,
+            [second.order.id, secondCashier.id]
+        );
 
         const latestJobBefore = await pool.query(
             `SELECT fiscal_profile_id, fiscal_operation_id, payment_order_id

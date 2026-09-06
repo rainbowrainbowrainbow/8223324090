@@ -21,6 +21,9 @@ const {
 const { createCheckboxProviderFactory } = require('../../services/checkbox/provider');
 const { processPaymentOutboxJobs } = require('../../services/payments/paymentOutboxWorker');
 const { requestPhase1ShiftClose } = require('../../services/payments/paymentReadinessService');
+const { requestSharedTestDrain, requestSharedTestResume } = require('../../services/payments/sharedTestDayService');
+const { createCatalogSalePaymentOrder } = require('../../services/payments/catalogSaleService');
+const { handleCheckboxWebhook } = require('../../services/checkbox/webhookService');
 
 const ROOT = path.join(__dirname, '..', '..');
 const BASE_URL = process.env.TEST_URL || '';
@@ -249,6 +252,7 @@ function contextForRequest(req, body, physical) {
 
 async function startMockCheckbox(physical) {
     const state = {
+        requests: [],
         calls: [],
         receipts: new Map(),
         saleBodies: new Map(),
@@ -265,6 +269,7 @@ async function startMockCheckbox(physical) {
             let body = {};
             try { body = raw ? JSON.parse(raw) : {}; } catch { body = {}; }
             const pathname = new URL(req.url, 'http://127.0.0.1').pathname;
+            state.requests.push({ method: req.method, pathname });
             const context = contextForRequest(req, body, physical);
             state.calls.push({ method: req.method, path: pathname, context: context ? 'shared_test' : null, requestId: body?.id || null });
             const send = (status, payload) => {
@@ -276,6 +281,7 @@ async function startMockCheckbox(physical) {
                 return send(200, { access_token: 'local-qa-token-shared', token_type: 'bearer' });
             }
             if (!context) return send(401, { error: 'local_qa_context_missing' });
+            if (state.failReads && req.method === 'GET') return send(503, { error: 'local_qa_read_unavailable' });
             const shift = state.currentShiftId ? state.shifts.get(state.currentShiftId) : null;
             if (pathname === '/api/v1/cashier/me' && req.method === 'GET') {
                 return send(200, {
@@ -292,7 +298,7 @@ async function startMockCheckbox(physical) {
                     id: context.registerProviderId,
                     organization_id: context.organizationId,
                     fiscal_number: 'LOCAL-QA-SHARED',
-                    is_test: true,
+                    is_test: state.registerIsTest !== false,
                     offline_mode: false,
                     stay_offline: false,
                     has_shift: shift?.status === 'OPENED',
@@ -385,11 +391,12 @@ async function startMockCheckbox(physical) {
     return { state, close: () => new Promise(resolve => server.close(resolve)) };
 }
 
-async function api(token, method, pathname, { body, idempotencyKey } = {}) {
+async function api(token, method, pathname, { body, idempotencyKey, routeOptionId } = {}) {
     const response = await fetch(`${BASE_URL}${pathname}`, {
         method,
         headers: {
             Authorization: `Bearer ${token}`,
+            ...(routeOptionId ? { 'X-Fiscal-Route-Option': routeOptionId } : {}),
             ...(body === undefined ? {} : { 'Content-Type': 'application/json' }),
             ...(idempotencyKey ? { 'Idempotency-Key': idempotencyKey } : {})
         },
@@ -433,12 +440,19 @@ async function confirmOrder(token, order, tender, key = crypto.randomUUID()) {
     return { response, body, key };
 }
 
-async function processAllAvailableJobs(provider) {
+async function processAllAvailableJobs(provider, { waitForQueued = true } = {}) {
     const summaries = [];
-    for (let index = 0; index < 20; index += 1) {
+    const deadline = Date.now() + 5000;
+    for (let index = 0; index < (waitForQueued ? 100 : 20); index += 1) {
         const summary = await processPaymentOutboxJobs({ dbPool: pool, provider, batchSize: 25, lockedBy: `catalog-local-qa-${process.pid}` });
         summaries.push(summary);
-        if (summary.claimed === 0) break;
+        if (summary.claimed === 0) {
+            const queued = waitForQueued && (await pool.query("SELECT COUNT(*)::int AS count FROM payment_outbox_jobs WHERE status='queued'")).rows[0].count;
+            if (!queued || Date.now() >= deadline) break;
+            // SKIP LOCKED may temporarily produce no claim even while a job remains queued.
+            // Do not alter job state/backoff or retry failed/unknown work in this wait.
+            await new Promise(resolve => setTimeout(resolve, 50));
+        }
     }
     return summaries;
 }
@@ -477,7 +491,146 @@ async function assertProviderPayload(mock, orderId) {
     return uuid;
 }
 
-async function closeQaShift({ fixture, businessContext, provider }) {
+async function assertConcurrentPaymentAdmission({ fixture, shiftId, itemCode }) {
+    let releaseStop;
+    const released = new Promise(resolve => { releaseStop = resolve; });
+    let reachedInsert;
+    const atInsert = new Promise(resolve => { reachedInsert = resolve; });
+    const stopPool = { connect: async () => {
+        const client = await pool.connect();
+        return { release: () => client.release(), query: async (...args) => {
+            const result = await client.query(...args);
+            if (String(args[0]).includes('INSERT INTO fiscal_register_payment_drains')) {
+                reachedInsert();
+                await released;
+            }
+            return result;
+        } };
+    } };
+    let admissionPid;
+    const admissionPool = { connect: async () => {
+        const client = await pool.connect();
+        admissionPid = (await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        return { release: () => client.release(), query: (...args) => client.query(...args) };
+    } };
+    const before = (await pool.query('SELECT COUNT(*)::int AS count FROM payment_orders')).rows[0].count;
+    const stop = requestSharedTestDrain({ dbPool: stopPool, user: fixture.users.actor, shiftId,
+        routeOptionId: 'park_test', idempotencyKey: 'stop-while-accepted-card-pending', body: {}, env: process.env });
+    let admission;
+    try {
+        await Promise.race([atInsert, stop.then(() => { throw new Error('Stop did not insert a new drain'); })]);
+        admission = createCatalogSalePaymentOrder({ dbPool: admissionPool, user: fixture.users.actor,
+            idempotencyKey: 'concurrent-new-payment-after-stop', requireCheckboxIntegrationReady: true,
+            body: { businessContext: 'event_genix', routeOptionId: 'park_test',
+                cashierBindingId: fixture.contexts.event_genix.selectedBindingId, tender: 'cash',
+                items: [{ itemCode, quantityMillis: 1000 }] }, env: process.env })
+            .then(() => ({ accepted: true }), error => ({ error }));
+        let waiting = false;
+        const deadline = Date.now() + 5000;
+        while (Date.now() < deadline) {
+            if (admissionPid) waiting = (await pool.query(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                WHERE pid=$1 AND wait_event_type='Lock' AND wait_event='advisory') AS waiting`, [admissionPid])).rows[0].waiting;
+            if (waiting) break;
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.equal(waiting, true, 'new payment must wait for the uncommitted physical stop');
+        releaseStop();
+        await stop;
+        assert.equal((await admission).error?.code, 'shared_test_register_draining');
+        assert.equal((await pool.query('SELECT COUNT(*)::int AS count FROM payment_orders')).rows[0].count, before);
+    } finally {
+        releaseStop();
+        await Promise.allSettled([stop, admission].filter(Boolean));
+    }
+}
+
+async function assertWebhookLifecycleSerialization({ fixture, phase, runLifecycle }) {
+    const operation = (await pool.query(`SELECT provider_operation_id FROM fiscal_operations operation
+        WHERE fiscal_register_id=$1 AND operation_type='sale' AND status='fiscalized'
+        AND NOT EXISTS (SELECT 1 FROM payment_outbox_jobs job WHERE job.fiscal_operation_id=operation.id AND job.job_type='receipt_status_lookup')
+        ORDER BY id LIMIT 1`,
+    [fixture.physical.fiscalRegisterId])).rows[0];
+    assert.ok(operation);
+    let releaseLifecycle;
+    const released = new Promise(resolve => { releaseLifecycle = resolve; });
+    let reachedZero;
+    const atZero = new Promise(resolve => { reachedZero = resolve; });
+    let blockerReads = 0;
+    const lifecyclePool = { connect: async () => {
+        const client = await pool.connect();
+        return { release: () => client.release(), query: async (...args) => {
+            const result = await client.query(...args);
+            if (String(args[0]).includes('WITH blocking_orders AS') && ++blockerReads === 2) {
+                assert.equal(result.rows[0].blocker_count, 0);
+                reachedZero();
+                await released;
+            }
+            return result;
+        } };
+    } };
+    let webhookPid;
+    let webhookDone = false;
+    const webhookPool = { connect: async () => {
+        const client = await pool.connect();
+        webhookPid = (await client.query('SELECT pg_backend_pid() AS pid')).rows[0].pid;
+        return { release: () => client.release(), query: (...args) => client.query(...args) };
+    } };
+    const lifecycle = runLifecycle(lifecyclePool);
+    let webhook;
+    try {
+        await Promise.race([atZero, lifecycle.then(() => { throw new Error('Lifecycle skipped authoritative zero check'); })]);
+        webhook = handleCheckboxWebhook({ dbPool: webhookPool, rawBody: Buffer.from(JSON.stringify({
+            event_id: `race-${phase}`, provider_operation_id: operation.provider_operation_id, status: 'DONE'
+        })) }).finally(() => { webhookDone = true; });
+        // Observe the actual PostgreSQL wait, not a delay-based guess about request order.
+        const deadline = Date.now() + 5000;
+        let waiting = false;
+        while (!webhookDone && Date.now() < deadline) {
+            if (webhookPid) waiting = (await pool.query(`SELECT EXISTS(SELECT 1 FROM pg_stat_activity
+                WHERE pid=$1 AND wait_event_type='Lock' AND wait_event='advisory') AS waiting`, [webhookPid])).rows[0].waiting;
+            if (waiting) break;
+            await new Promise(resolve => setTimeout(resolve, 10));
+        }
+        assert.equal(waiting, true, 'webhook must wait for lifecycle physical lock after its final zero-blocker read');
+        assert.equal(webhookDone, false);
+        releaseLifecycle();
+        const result = await lifecycle;
+        const admitted = await webhook;
+        assert.equal(admitted.queued, true, 'needed lookup recovery remains accepted after lifecycle commit');
+        return result;
+    } finally {
+        releaseLifecycle();
+        await Promise.allSettled([lifecycle, webhook].filter(Boolean));
+    }
+}
+
+async function assertCurrentResumeActor({ fixture, drainId, resumeRequest, mock }) {
+    const original = (await pool.query('SELECT is_active, action_denylist, business_contexts FROM users WHERE id=$1', [fixture.users.actor.id])).rows[0];
+    for (const fault of ['is_active', 'action_denylist', 'business_contexts']) {
+        let revoked = false;
+        const beforePosts = mock.state.requests.filter(row => row.method !== 'GET').length;
+        try {
+            await assert.rejects(() => requestSharedTestResume({ user: fixture.users.actor, drainId, ...resumeRequest,
+                fetchImpl: async (url, options) => {
+                    if (!revoked && String(options?.method || 'GET').toUpperCase() === 'GET') {
+                        const value = fault === 'is_active' ? false : fault === 'action_denylist' ? ['fiscal.shift.close'] : ['event_genix'];
+                        await pool.query(`UPDATE users SET ${fault}=$2 WHERE id=$1`, [fixture.users.actor.id, value]);
+                        revoked = true;
+                    }
+                    return fetch(url, options);
+                } }), error => ['FiscalAccessError', 'PaymentReadinessError', 'TestDrainError'].includes(error.name),
+            `resume must rehydrate actor after provider I/O: ${fault}`);
+            assert.equal(revoked, true, 'preflight authorized before fixture access revocation');
+            assert.equal((await pool.query('SELECT status FROM fiscal_register_payment_drains WHERE id=$1', [drainId])).rows[0].status, 'closed');
+            assert.equal(mock.state.requests.filter(row => row.method !== 'GET').length, beforePosts);
+        } finally {
+            await pool.query(`UPDATE users SET is_active=$2, action_denylist=$3, business_contexts=$4 WHERE id=$1`,
+                [fixture.users.actor.id, original.is_active, original.action_denylist, original.business_contexts]);
+        }
+    }
+}
+
+async function closeQaShift({ fixture, businessContext, provider, actorToken, mock }) {
     const shifts = await pool.query(
         `SELECT id, business_context
            FROM fiscal_shifts
@@ -489,15 +642,71 @@ async function closeQaShift({ fixture, businessContext, provider }) {
     );
     assert.equal(shifts.rows.length, 1);
     assert.equal(shifts.rows[0].business_context, businessContext);
-    const close = await requestPhase1ShiftClose({
+    const routeOptionId = SCOPES[businessContext].routeOptionId;
+    const shiftId = Number(shifts.rows[0].id);
+    const request = { body: {}, routeOptionId, idempotencyKey: `local-test-drain-${businessContext}` };
+    const postCount = () => mock.state.requests.filter(row => row.method !== 'GET').length;
+    const beforeDrainPosts = postCount();
+    const drains = await Promise.all([api(actorToken, 'POST', `/api/payments/shifts/${shiftId}/phase1-drain`, request),
+        api(actorToken, 'POST', `/api/payments/shifts/${shiftId}/phase1-drain`, { ...request, idempotencyKey: `${request.idempotencyKey}-second` })]);
+    for (const response of drains) assert.equal(response.status, 200, JSON.stringify(response.body));
+    assert.equal(drains[0].body.drain.id, drains[1].body.drain.id);
+    assert.equal(postCount(), beforeDrainPosts, 'stop performs provider reads only');
+    const drainId = drains[0].body.drain.id;
+    const invariantClient = await pool.connect();
+    try {
+        await invariantClient.query('BEGIN');
+        // Reapplying the additive DDL must preserve an already-active stop and its history.
+        await invariantClient.query(fs.readFileSync(path.join(ROOT, 'db/migrations/352_shared_test_payment_drains.sql'), 'utf8'));
+        const assertConstraint = async (sql, params, code) => {
+            await invariantClient.query('SAVEPOINT invariant_case');
+            await assert.rejects(() => invariantClient.query(sql, params), error => error.code === code);
+            await invariantClient.query('ROLLBACK TO SAVEPOINT invariant_case');
+        };
+        await assertConstraint('UPDATE fiscal_register_payment_drains SET scope_fingerprint=repeat(\'a\',64) WHERE id=$1', [drainId], '23514');
+        await assertConstraint('DELETE FROM fiscal_register_payment_drains WHERE id=$1', [drainId], '23514');
+        await assertConstraint(`INSERT INTO fiscal_register_payment_drains
+            (fiscal_profile_id,fiscal_register_id,fiscal_shift_id,initiating_route_option_id,scope_fingerprint,initiated_by_user_id,drain_idempotency_key,status)
+            SELECT fiscal_profile_id,fiscal_register_id,999999999,initiating_route_option_id,scope_fingerprint,initiated_by_user_id,'drain:bad-fk','draining'
+            FROM fiscal_register_payment_drains WHERE id=$1`, [drainId], '23505');
+        // A separate register with no active row isolates the composite FK from the active unique index.
+        await assertConstraint(`INSERT INTO fiscal_register_payment_drains
+            (fiscal_profile_id,fiscal_register_id,fiscal_shift_id,initiating_route_option_id,scope_fingerprint,initiated_by_user_id,drain_idempotency_key,status)
+            SELECT fiscal_profile_id,999999999,999999999,initiating_route_option_id,scope_fingerprint,initiated_by_user_id,'drain:bad-scope','draining'
+            FROM fiscal_register_payment_drains WHERE id=$1`, [drainId], '23503');
+        await invariantClient.query('ROLLBACK');
+    } finally { invariantClient.release(); }
+    const earlyResume = await api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, {
+        routeOptionId, idempotencyKey: `early-resume-${drainId}`, body: { confirmNextTestDay: true } });
+    assert.equal(earlyResume.status, 409);
+    for (const business of ['event_genix', 'dar']) {
+        const rejected = await api(actorToken, 'POST', '/api/payments/catalog/orders', { idempotencyKey: `blocked-${business}-${drainId}`,
+            body: { businessContext: business, routeOptionId: SCOPES[business].routeOptionId,
+                cashierBindingId: fixture.contexts[business].selectedBindingId, tender: 'cash', items: [{ itemCode: 'dar_logic_single', quantityMillis: 1000 }] } });
+        assert.equal(rejected.status, 409, JSON.stringify(rejected.body));
+        assert.ok(['shared_test_register_draining', 'shared_test_register_owned_by_other_business'].includes(rejected.body.code), JSON.stringify(rejected.body));
+    }
+    const old = (await pool.query("SELECT * FROM fiscal_register_payment_drains WHERE status='resumed' ORDER BY id LIMIT 1")).rows[0];
+    if (old) {
+        const stale = await api(actorToken, 'POST', `/api/payments/test-drains/${old.id}/resume`, { routeOptionId: old.initiating_route_option_id,
+            idempotencyKey: `stale-resume-${old.id}`, body: { confirmNextTestDay: true } });
+        assert.equal(stale.status, 200, JSON.stringify(stale.body));
+        assert.equal(stale.body.activeDrain.id, drainId, 'cycle A replay cannot clear B');
+    }
+    const executeClose = dbPool => requestPhase1ShiftClose({
+        dbPool,
         user: fixture.users.actor,
+        routeOptionId,
         shiftId: shifts.rows[0].id,
         idempotencyKey: `local-qa-close-${businessContext}`,
         body: {},
-        env: { ...process.env, CHECKBOX_ACCEPT_PAYMENTS_ENABLED: 'false' }
+        env: process.env
     });
+    const close = businessContext === 'dar'
+        ? await assertWebhookLifecycleSerialization({ fixture, phase: `close-${businessContext}`, runLifecycle: executeClose })
+        : await executeClose(pool);
     assert.equal(close.status, 'closing');
-    const drain = await processAllAvailableJobs(provider);
+    const drain = await processAllAvailableJobs(provider, { waitForQueued: true });
     assert.equal(drain.reduce((sum, item) => sum + item.failed, 0), 0);
     const final = await pool.query(
         `SELECT
@@ -517,7 +726,56 @@ async function closeQaShift({ fixture, businessContext, provider }) {
                WHERE fiscal_register_id = $2 AND status = 'unknown') AS unknown_operations`,
         [fixture.physical.fiscalProfileId, fixture.physical.fiscalRegisterId]
     );
-    assert.deepEqual(final.rows[0], { active_shifts: 0, pending_jobs: 0, unknown_operations: 0 });
+    const queuedDiagnostics = (await pool.query(`SELECT job_type, status, last_error_code,
+        (next_run_at > NOW()) AS scheduled_later FROM payment_outbox_jobs WHERE status <> 'done'`)).rows;
+    assert.deepEqual(final.rows[0], { active_shifts: 0, pending_jobs: 0, unknown_operations: 0 }, JSON.stringify({ queuedDiagnostics, drain }));
+    assert.equal((await pool.query('SELECT status FROM fiscal_register_payment_drains WHERE id=$1', [drainId])).rows[0].status, 'closed');
+    const beforeResumePosts = postCount();
+    const resumeRequest = { routeOptionId, idempotencyKey: `resume-${drainId}`, body: { confirmNextTestDay: true } };
+    const wrongRoute = await api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, {
+        ...resumeRequest, routeOptionId: routeOptionId === 'park_test' ? 'dar_test' : 'park_test' });
+    assert.notEqual(wrongRoute.status, 200);
+    await assert.rejects(() => requestSharedTestResume({ user: fixture.users.testCashier, drainId, ...resumeRequest }),
+        error => ['FiscalAccessError', 'PaymentReadinessError', 'TestDrainError'].includes(error.name));
+    for (const fault of ['registerIsTest', 'failReads']) {
+        mock.state[fault] = fault === 'failReads';
+        try {
+            const blocked = await api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, resumeRequest);
+            assert.notEqual(blocked.status, 200, `resume fails closed for ${fault}`);
+            assert.equal((await pool.query('SELECT status FROM fiscal_register_payment_drains WHERE id=$1', [drainId])).rows[0].status, 'closed');
+        } finally { delete mock.state[fault]; }
+    }
+    const completedJob = (await pool.query(`SELECT id, status FROM payment_outbox_jobs
+        WHERE payment_order_id IN (SELECT id FROM payment_orders WHERE fiscal_register_id=$1)
+        ORDER BY id LIMIT 1`, [fixture.physical.fiscalRegisterId])).rows[0];
+    assert.ok(completedJob);
+    await pool.query("UPDATE payment_outbox_jobs SET status='failed' WHERE id=$1", [completedJob.id]);
+    try {
+        const unresolved = await api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, resumeRequest);
+        assert.equal(unresolved.status, 409);
+        assert.equal(unresolved.body.code, 'shared_test_resume_blocked_unresolved');
+    } finally { await pool.query('UPDATE payment_outbox_jobs SET status=$2 WHERE id=$1', [completedJob.id, completedJob.status]); }
+    if (businessContext === 'event_genix') {
+        await assertCurrentResumeActor({ fixture, drainId, resumeRequest, mock });
+        const offResume = await assertWebhookLifecycleSerialization({ fixture, phase: `resume-${businessContext}`,
+            runLifecycle: dbPool => requestSharedTestResume({ dbPool, user: fixture.users.actor, drainId, ...resumeRequest,
+                env: { ...process.env, CHECKBOX_ACCEPT_PAYMENTS_ENABLED: 'false' } }) });
+        assert.equal(offResume.drain.status, 'resumed');
+        assert.equal(offResume.paymentAcceptanceEnabled, false, 'resume cannot override global OFF');
+        const recovered = await processAllAvailableJobs(provider);
+        assert.equal(recovered.reduce((sum, item) => sum + item.failed, 0), 0);
+    }
+    const resumes = await Promise.all([api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, resumeRequest),
+        api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, resumeRequest)]);
+    for (const response of resumes) {
+        assert.equal(response.status, 200, JSON.stringify(response.body));
+        assert.equal(response.body.drain.status, 'resumed');
+        assert.equal(response.body.activeDrain, null);
+    }
+    assert.equal(postCount(), beforeResumePosts, 'resume performs no provider authentication or mutation');
+    assert.equal((await pool.query("SELECT COUNT(*)::int AS count FROM fiscal_audit_events WHERE event_type='shared_test_resumed' AND entity_id=$1", [drainId])).rows[0].count, 1);
+    await assert.rejects(() => pool.query(`UPDATE fiscal_register_payment_drains SET status='closed',
+        resumed_at=NULL, resumed_by_user_id=NULL, resume_idempotency_key=NULL WHERE id=$1`, [drainId]), error => error.code === '23514');
 }
 
 test('PARK/DAR catalog_sale full local provider QA', async () => {
@@ -527,6 +785,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
     const created = { park: [], dar: [], admission: [] };
     const qaRunId = crypto.randomUUID();
     let reportWritten = false;
+    let canonicalBrowser = null;
     try {
         const actorToken = await login(fixture.users.actor);
 
@@ -669,8 +928,13 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         });
         assert.equal(weekendTooShort.status, 422, JSON.stringify(weekendTooShort.body));
 
-        const parkCreateKey = 'local-qa-park-cash-create';
-        const parkCash = await createCatalogOrder(actorToken, 'park_test', 'event_genix', fixture.contexts.event_genix.selectedBindingId, 'cash', [{ itemCode: parkItem.itemCode, quantityMillis: 1000 }], { idempotencyKey: parkCreateKey });
+        if (process.env.RUN_PARK_DAR_CANONICAL_BROWSER === 'true') {
+            canonicalBrowser = await require('../browser/park-dar-canonical-two-tab').startCanonicalTwoTab({
+                baseUrl: BASE_URL, actor: fixture.users.actor, itemCode: parkItem.itemCode, pool
+            });
+        }
+        const parkCreateKey = canonicalBrowser?.cash.key || 'local-qa-park-cash-create';
+        const parkCash = canonicalBrowser?.cash || await createCatalogOrder(actorToken, 'park_test', 'event_genix', fixture.contexts.event_genix.selectedBindingId, 'cash', [{ itemCode: parkItem.itemCode, quantityMillis: 1000 }], { idempotencyKey: parkCreateKey });
         created.park.push(parkCash.response.body.order);
         const parkReplay = await api(actorToken, 'POST', '/api/payments/catalog/orders', { body: parkCash.body, idempotencyKey: parkCreateKey });
         assert.equal(parkReplay.status, 200);
@@ -681,13 +945,10 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
             idempotencyKey: parkCreateKey
         });
         assert.equal(parkConflict.status, 409);
-        const parkCard = await createCatalogOrder(actorToken, 'park_test', 'event_genix', fixture.contexts.event_genix.selectedBindingId, 'card_terminal_manual', [{ itemCode: parkItem.itemCode, quantityMillis: 2000 }]);
-        created.park.push(parkCard.response.body.order);
         const parkConfirm = await confirmOrder(actorToken, parkCash.response.body.order, 'cash', 'local-qa-park-cash-confirm');
         const parkConfirmReplay = await api(actorToken, 'POST', `/api/payments/orders/${parkCash.response.body.order.id}/confirm`, { body: parkConfirm.body, idempotencyKey: parkConfirm.key });
         assert.equal(parkConfirmReplay.status, 200);
         assert.equal(parkConfirmReplay.body.replayed, true);
-
         const recoveryOperation = await pool.query(
             `SELECT provider_operation_id
                FROM fiscal_operations
@@ -716,7 +977,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
             allowedOrigins: ['https://api.checkbox.ua']
         });
         const providerFactory = createCheckboxProviderFactory({ env: process.env, fetchImpl: recoveryFetch });
-        const firstDrain = await processAllAvailableJobs(providerFactory);
+        const firstDrain = await processAllAvailableJobs(providerFactory, { waitForQueued: true });
         assert.equal(
             firstDrain.reduce((sum, item) => sum + item.failed, 0),
             1,
@@ -751,6 +1012,18 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
             JSON.stringify({ job: unknownBefore.rows[0], recovery: recoveryFetch.evidence() })
         );
         assert.equal(unknownBefore.rows[0].operation_status, 'unknown');
+        // The actual UI waits for the normal worker to open the shift. Keep the
+        // accepted receipt unresolved while exercising the next-customer flow.
+        if (!canonicalBrowser) {
+            const readyAfterOpen = await api(actorToken, 'POST', '/api/payments/readiness/probe', {
+                body: { force: true, businessContext: 'event_genix', routeOptionId: 'park_test',
+                    cashierBindingId: fixture.contexts.event_genix.selectedBindingId } });
+            assert.equal(readyAfterOpen.status, 200, JSON.stringify(readyAfterOpen.body));
+        }
+        const parkCard = canonicalBrowser ? await canonicalBrowser.createNextCard()
+            : await createCatalogOrder(actorToken, 'park_test', 'event_genix', fixture.contexts.event_genix.selectedBindingId, 'card_terminal_manual', [{ itemCode: parkItem.itemCode, quantityMillis: 2000 }]);
+        created.park.push(parkCard.response.body.order);
+        await canonicalBrowser?.close();
         await pool.query(`UPDATE payment_outbox_jobs SET next_run_at = NOW() WHERE id = $1`, [unknownBefore.rows[0].id]);
         const recoveryDrain = await processAllAvailableJobs(providerFactory);
         assert.ok(recoveryDrain.reduce((sum, item) => sum + item.succeeded, 0) >= 1);
@@ -766,6 +1039,11 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         });
 
         await confirmOrder(actorToken, parkCard.response.body.order, 'card_terminal_manual');
+        const pendingShift = (await pool.query("SELECT id FROM fiscal_shifts WHERE fiscal_register_id=$1 AND status='open'", [fixture.physical.fiscalRegisterId])).rows[0];
+        await assertConcurrentPaymentAdmission({ fixture, shiftId: pendingShift.id, itemCode: parkItem.itemCode });
+        await assert.rejects(() => requestPhase1ShiftClose({ user: fixture.users.actor, shiftId: pendingShift.id,
+            routeOptionId: 'park_test', idempotencyKey: 'close-while-pending', env: process.env }),
+        error => error.code === 'shift_close_blocked_unresolved');
         const parkCardDrain = await processAllAvailableJobs(providerFactory);
         assert.equal(parkCardDrain.reduce((sum, item) => sum + item.failed, 0), 0);
 
@@ -820,7 +1098,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         );
         assert.equal(admissionMappingCount.rows[0].count, 6);
 
-        await closeQaShift({ fixture, businessContext: 'event_genix', provider: providerFactory });
+        await closeQaShift({ fixture, businessContext: 'event_genix', provider: providerFactory, actorToken, mock });
 
         const darReadiness = await api(
             actorToken,
@@ -871,6 +1149,10 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         await confirmOrder(actorToken, darCash.response.body.order, 'cash', 'local-qa-dar-combined-cash-confirm');
         const darCashDrain = await processAllAvailableJobs(providerFactory);
         assert.equal(darCashDrain.reduce((sum, item) => sum + item.failed, 0), 0);
+        const darReadyAfterOpen = await api(actorToken, 'POST', '/api/payments/readiness/probe', {
+            body: { force: true, businessContext: 'dar', routeOptionId: 'dar_test',
+                cashierBindingId: fixture.contexts.dar.selectedBindingId } });
+        assert.equal(darReadyAfterOpen.status, 200, JSON.stringify(darReadyAfterOpen.body));
 
         const darCardConfirm = await confirmOrder(actorToken, darCard.response.body.order, 'card_terminal_manual', 'local-qa-dar-combined-card-confirm');
         const darCardReplay = await api(actorToken, 'POST', `/api/payments/orders/${darCard.response.body.order.id}/confirm`, {
@@ -899,7 +1181,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         assert.ok(darSnapshot.rows.some(row => row.item_code === 'dar_hourly_care_weekday' && row.original_price === '20000' && row.final_price === '16000' && row.discount_amount === '4000'));
         assert.ok(darSnapshot.rows.some(row => row.item_code === 'dar_hourly_care_weekend' && row.original_price === '35000' && row.final_price === '28000' && row.discount_amount === '7000'));
 
-        await closeQaShift({ fixture, businessContext: 'dar', provider: providerFactory });
+        await closeQaShift({ fixture, businessContext: 'dar', provider: providerFactory, actorToken, mock });
 
         const allOrders = [...created.park, ...created.dar, ...created.admission];
         const receiptCountBeforeReplay = mock.state.receipts.size;
@@ -945,7 +1227,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
             catalog_orders: 4,
             admission_orders: 0,
             receipts: 4,
-            jobs: 8,
+            jobs: 10,
             queued: 0,
             failed: 0,
             dead: 0,
@@ -961,6 +1243,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         );
         assert.deepEqual(jobBreakdown.rows, [
             { job_type: 'receipt_sell', count: 4 },
+            { job_type: 'receipt_status_lookup', count: 2 },
             { job_type: 'shift_close', count: 2 },
             { job_type: 'shift_open', count: 2 }
         ]);
@@ -970,6 +1253,15 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
 
         const report = {
             mode: 'disposable_postgresql_and_loopback_mock',
+            canonical_browser: canonicalBrowser?.proof || { executed: false },
+            reusable_test_day: { cycles: 2, history_retained: true, concurrent_replay: true,
+                pending_receipt_finished_after_stop: true, close_blocked_while_pending: true,
+                stale_cycle_cannot_resume_new_cycle: true, resume_with_global_off_stays_disabled: true,
+                stop_resume_provider_mutations: 0, database_identity_delete_fk_active_unique_guards: true,
+                resume_rejects_wrong_owner_route_non_test_unavailable_and_failed_job: true,
+                webhook_close_resume_advisory_serialization: true,
+                concurrent_new_payment_waits_for_stop_and_is_rejected: true,
+                resume_rehydrates_deactivation_capability_and_business_access_after_provider_io: true },
             topology: {
                 physical_test_registers: physicalTopology.rows[0].physical_registers,
                 logical_routes: ['park_test', 'dar_test'],
@@ -1027,6 +1319,7 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
         fs.writeFileSync(path.join(outputDir, 'catalog-sale-local-qa-report.json'), `${serialized}\n`, 'utf8');
         reportWritten = true;
     } finally {
+        await canonicalBrowser?.close();
         process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED = 'false';
         await mock.close();
     }

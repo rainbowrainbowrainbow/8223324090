@@ -4,24 +4,27 @@
 
 ---
 
+## v0.81.80 - PARK/DAR Reusable Test Day
+
+### Release / Versioning / (06.09.2026) [codex]
+- **PARK/DAR Reusable Test Day** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Delivery chain** - this candidate release marker is prepared on top of the separate HOLD startup guard release marker.
+
+---
+
 ## v0.81.79 - PARK/DAR HOLD Startup Guard
 
 ### Release / Versioning / (06.09.2026) [codex]
-- **PARK/DAR HOLD Startup Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+- **PARK/DAR HOLD Startup Guard** - narrow Telegram bot startup configuration skip release marker prepared for the HOLD stage.
 
 ---
 
-## v0.81.78 - PARK/DAR HOLD Startup Guard
+## v0.81.77 - PARK/DAR Reusable Test Day
 
-### Release / Versioning / (06.09.2026) [codex]
-- **PARK/DAR HOLD Startup Guard** - release marker, cache tags and visible version metadata were prepared automatically.
-
----
-
-## v0.81.77 - PARK/DAR HOLD Startup Guard
-
-### Release / Versioning / (06.09.2026) [codex]
-- **PARK/DAR HOLD Startup Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+### Каса PARK / DAR / (06.09.2026) [codex]
+- **Повторюваний тестовий день** — явна зупинка нових оплат обох маршрутів Shared Test, завершення прийнятих чеків і відновлення після перевіреного CLOSED та порожньої черги.
+- **Історія й безпечні повтори** — stop/resume зберігають історію та захищені від конкурентних запитів; глобальне приймання оплат не вмикається автоматично.
+- **Наступний клієнт** — новий кошик після прийнятої оплати, збереження черги чеків, захист від повторів після reload і втрати відповіді; повні назви товарів та читабельний підсумок.
 
 ---
 

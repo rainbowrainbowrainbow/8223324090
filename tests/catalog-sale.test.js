@@ -163,6 +163,7 @@ class CatalogFakeDb {
     async connect() { return this; }
     release() {}
     async query(sql, params = []) {
+        if (sql.includes('FROM fiscal_register_payment_drains')) return { rows: [] };
         const normalized = String(sql).replace(/\s+/g, ' ').trim();
         if (['BEGIN', 'COMMIT', 'ROLLBACK'].includes(normalized) || normalized.includes('pg_advisory_xact_lock')) return { rows: [] };
         if (normalized.includes('FROM fiscal_sale_routes fsr')) return { rows: [{ route_option_id: 'park_production', route_business_context: 'event_genix', route_mode: 'production', route_expected_is_test: false, route_status: 'active', route_feature_enabled: true, route_acceptance_enabled: true, shared_register_group: null, fiscal_profile_id: 20, fiscal_location_id: 30, fiscal_register_id: 40, crm_profile_key: 'event_genix', location_alias: 'park', register_alias: 'middle', legal_entity_key: 'park_fop', legal_entity_name: 'Park FOP', provider: 'checkbox', provider_license_ref: 'register-ref', fiscal_register_status: 'active', feature_enabled: true, acceptance_enabled: true, register_expected_is_test: false }] };

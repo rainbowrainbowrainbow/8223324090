@@ -7,14 +7,14 @@
     <title>Event Genix | Оплата та чек</title>
     <meta name="description" content="Продажі ПАРК і ДАР з контрольованою фіскалізацією Checkbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.79">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.79">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.79">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.79">
-    <link rel="stylesheet" href="css/cashier-payments.css?v=0.81.79">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.79">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.79">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.79">
+    <link rel="stylesheet" href="css/base.css?v=0.81.80">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.80">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.80">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.80">
+    <link rel="stylesheet" href="css/cashier-payments.css?v=0.81.80">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.80">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.80">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.80">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 </head>
@@ -50,7 +50,7 @@
                     <p id="cashierHeroDescription" class="cashier-muted">Простий екран для оплати квитка парку готівкою або через термінал і створення офіційного чека Checkbox.</p>
                 </div>
                 <div class="cashier-scope-card" aria-label="Пілотний профіль">
-                    <span>Business context</span><strong id="cashierScopeBusiness">event_genix</strong>
+                    <span>Напрямок</span><strong id="cashierScopeBusiness">ПАРК</strong>
                     <span>Локація</span><strong id="cashierScopeLocation">парк</strong>
                     <span>Каса</span><strong id="cashierScopeRegister">середня каса</strong>
                     <span>Режим</span><strong id="cashierScopeMode">робочий</strong>
@@ -76,7 +76,7 @@
                         </select>
                     </label>
                 </div>
-                <p id="paymentRouteHelp" class="cashier-help">Передаються лише безпечні внутрішні опції. Конкретний register і режим повторно визначає сервер.</p>
+                <p id="paymentRouteHelp" class="cashier-help">Оберіть напрямок і касу для поточного клієнта.</p>
             </section>
             <section id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning cashier-readiness-card hidden" role="region" aria-labelledby="cashierReadinessSummary">
                 <div id="cashierReadinessSummary" class="cashier-readiness-summary" role="status" aria-live="polite">Перевіряємо готовність каси…</div>
@@ -112,7 +112,7 @@
                 <form id="paymentOrderForm" class="cashier-card cashier-form cashier-step is-active" data-payment-step="1" aria-current="step" aria-labelledby="paymentOrderFormTitle" aria-describedby="createPaymentDisabledReason">
                     <div class="cashier-card-head">
                         <div><p class="cashier-kicker">3. Касир → 4. Товари → 5. Оплата</p><h2 id="paymentOrderFormTitle">Створити оплату</h2></div>
-                        <span class="cashier-pill">ціна і ФОП визначаються сервером</span>
+                        <span class="cashier-pill">актуальні ціни</span>
                     </div>
                     <label class="cashier-field"><span>3. Касир Checkbox</span><select id="paymentCashierBinding" name="cashierBinding" required aria-describedby="paymentCashierHelp"><option value="">Спочатку оберіть касу</option></select></label>
                     <p id="paymentCashierHelp" class="cashier-help">Показані лише активні касири обраної каси.</p>
@@ -133,13 +133,14 @@
                             <label class="cashier-field"><span>Категорія</span><select id="catalogCategory"><option value="">Усі категорії</option></select></label>
                         </div>
                         <div id="catalogSaleLines" class="cashier-catalog-lines" aria-live="polite"></div>
+                        <p id="catalogCartEmpty" class="cashier-help" role="status">Кошик порожній. Додайте товари або послуги.</p>
                         <label id="catalogDiscountField" class="cashier-field hidden"><span>Правило знижки</span><select id="catalogDiscountRule" name="catalogDiscountRule"><option value="">Без знижки</option></select></label>
                         <dl id="catalogCartSummary" class="cashier-cart-summary" aria-live="polite">
                             <div><dt>Початкова сума</dt><dd id="catalogOriginalTotal">0,00 ₴</dd></div>
                             <div><dt>Знижка</dt><dd id="catalogDiscountTotal">0,00 ₴</dd></div>
                             <div class="is-final"><dt>Фінальна сума</dt><dd id="catalogFinalTotal">0,00 ₴</dd></div>
                         </dl>
-                        <p class="cashier-help">Ціну не можна вводити вручну: перед створенням оплати сервер повторно читає її з price_rules.</p>
+                        <p class="cashier-help">Ціни надходять із Центру цін. Суму та знижку буде перевірено під час створення оплати.</p>
                     </div>
                     <fieldset class="cashier-tender-group">
                         <legend>5. Спосіб оплати</legend>
@@ -147,7 +148,7 @@
                         <label><input type="radio" name="paymentTender" value="card_terminal_manual"> Термінал</label>
                     </fieldset>
                     <button type="submit" id="createPaymentOrderBtn" class="btn-page-primary cashier-primary-action" aria-describedby="createPaymentDisabledReason">Створити оплату</button>
-                    <button type="button" id="startNextOrderBtn" class="btn-page-secondary cashier-primary-action hidden" aria-describedby="createPaymentDisabledReason">Нова оплата</button>
+                    <button type="button" id="startNextOrderBtn" class="btn-page-secondary cashier-primary-action hidden" aria-describedby="createPaymentDisabledReason">Наступний клієнт</button>
                     <button type="button" id="cancelDraftOrderBtn" class="btn-page-secondary cashier-primary-action hidden" disabled aria-describedby="createPaymentDisabledReason">Скасувати чернетку</button>
                     <p id="createPaymentDisabledReason" class="cashier-help" aria-live="polite">Касир не може змінити ціну, ФОП, профіль або касу. Позиції фіксуються під час створення оплати.</p>
                 </form>
@@ -158,7 +159,7 @@
                         <span id="internalReceiptLabel" class="cashier-pill">RCP-* — внутрішня квитанція</span>
                     </div>
                     <dl class="cashier-meta-grid">
-                        <div><dt>CRM профіль / ФОП</dt><dd id="cashierFiscalProfile">—</dd></div>
+                        <div><dt>Продавець / ФОП</dt><dd id="cashierFiscalProfile">—</dd></div>
                         <div><dt>Локація / каса</dt><dd id="cashierRegister">—</dd></div>
                         <div><dt>Статус оплати</dt><dd id="cashierPaymentStatus" class="cashier-status">—</dd></div>
                         <div><dt>Статус фіскалізації</dt><dd id="cashierFiscalStatus" class="cashier-status">—</dd></div>
@@ -215,6 +216,12 @@
                 </div>
             </details>
 
+            <section id="sharedTestDayPanel" class="cashier-card hidden" aria-labelledby="sharedTestDayTitle" aria-hidden="true">
+                <h2 id="sharedTestDayTitle">Тестовий день PARK / ДАР</h2>
+                <p id="sharedTestDayNotice" class="cashier-help" role="status" aria-live="polite"></p>
+                <button type="button" id="sharedTestDrainBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="sharedTestDayNotice">Завершити роботу тестової каси</button>
+                <button type="button" id="sharedTestResumeBtn" class="btn-page-secondary cashier-primary-action" disabled aria-describedby="sharedTestDayNotice">Почати наступний тестовий день</button>
+            </section>
             <section id="phase1ShiftPanel" class="cashier-card cashier-result-card hidden" aria-labelledby="phase1ShiftTitle" aria-hidden="true">
                 <div class="cashier-card-head">
                     <div><p class="cashier-kicker">Завершення дня</p><h2 id="phase1ShiftTitle">Зміна Checkbox</h2></div>
@@ -248,6 +255,6 @@
         </main>
     </div>
     <div id="notification" class="notification hidden"><span id="notificationText"></span></div>
-    <script src="js/ui.js?v=0.81.79"></script><script src="js/config.js?v=0.81.79"></script><script src="js/notification.js?v=0.81.79"></script><script src="js/api.js?v=0.81.79"></script><script src="js/auth.js?v=0.81.79"></script><script src="js/components/sidebar.js?v=0.81.79"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.81.79"></script><script src="js/alerts.js?v=0.81.79"></script>
+    <script src="js/ui.js?v=0.81.80"></script><script src="js/config.js?v=0.81.80"></script><script src="js/notification.js?v=0.81.80"></script><script src="js/api.js?v=0.81.80"></script><script src="js/auth.js?v=0.81.80"></script><script src="js/components/sidebar.js?v=0.81.80"></script><script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script><script src="js/cashier-payments-page.js?v=0.81.80"></script><script src="js/alerts.js?v=0.81.80"></script>
 </body>
 </html>

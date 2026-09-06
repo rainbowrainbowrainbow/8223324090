@@ -1,4 +1,5 @@
 'use strict';
+const { TestDrainError, lockFiscalRegister, assertRegisterAccepting } = require('./testDrainGate');
 
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
@@ -222,7 +223,7 @@ async function createCatalogSalePaymentOrder({
     const requestFingerprint = fingerprint({ endpoint: 'create_catalog_sale_payment_order', businessContext: sourceScope.crmProfileKey, routeOptionId, selectedCashierBindingId, tender, lines, discountCodes });
     return withTransaction(dbPool, async client => {
         await client.query(`SELECT pg_advisory_xact_lock(hashtext($1))`, [key]);
-        const route = await resolveCatalogRoute({
+        let route = await resolveCatalogRoute({
             client,
             user,
             routeOptionId,
@@ -230,7 +231,13 @@ async function createCatalogSalePaymentOrder({
             requireMutationReady: requireCheckboxIntegrationReady,
             routeResolver
         });
+        const originalMapping = route.mapping;
+        await lockFiscalRegister(client, originalMapping.fiscal_profile_id, originalMapping.fiscal_register_id);
+        route = await resolveCatalogRoute({ client, user, routeOptionId, businessContext: sourceScope.crmProfileKey,
+            requireMutationReady: requireCheckboxIntegrationReady, routeResolver });
         const mapping = route.mapping;
+        if (String(mapping.fiscal_profile_id) !== String(originalMapping.fiscal_profile_id)
+            || String(mapping.fiscal_register_id) !== String(originalMapping.fiscal_register_id)) throw new TestDrainError('shared_test_scope_changed');
         await authorizer(client, { user, action: 'payments.create', crmProfileKey: route.businessContext });
         const existing = await findOrderByIdempotency(client, key);
         if (existing) {
@@ -249,6 +256,7 @@ async function createCatalogSalePaymentOrder({
             });
             return { replayed: true, order: normalizePaymentOrder(order) };
         }
+        await assertRegisterAccepting(client, mapping.fiscal_profile_id, mapping.fiscal_register_id);
         const selectedBinding = await loadSelectedCashierBinding(client, {
             bindingId: selectedCashierBindingId,
             fiscalProfileId: mapping.fiscal_profile_id,

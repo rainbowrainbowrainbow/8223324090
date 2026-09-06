@@ -1281,7 +1281,7 @@ test('worker treats failed payment jobs as incidents and allows only thin MVP sh
     assert.match(read('services/payments/paymentReadinessService.js'), /'shift\.close_blocked'/);
     assert.match(phaseOneClose, /return \{ shift, replay: null, blocked: \{ blockerCount: blockers \} \}/);
     assert.match(phaseOneClose, /if \(preflight\.blocked\) throw phase1CloseBlockedError/);
-    assert.equal((phaseOneClose.match(/assertPhase1ClosePaymentDrain\(env\)/g) || []).length, 2);
+    assert.equal((phaseOneClose.match(/await assertPhase1ClosePaymentDrain\(env, client, shift, user, routeOptionId\)/g) || []).length, 2);
     assert.match(closeLock, /lock: false/);
     assert.match(closeLock, /SELECT pg_advisory_xact_lock\(\$1, \$2\)/);
     assert.match(closeLock, /lock: true/);

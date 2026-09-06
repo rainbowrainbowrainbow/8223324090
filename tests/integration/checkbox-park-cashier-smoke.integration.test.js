@@ -3279,7 +3279,7 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             confirmAfterCloseResult = confirmationOutcome;
             assert.ok(closeFirstResult.fiscalOperationId, 'close-first flow must create one durable close operation');
             assert.equal(confirmAfterCloseResult.status, 'rejected');
-            assert.equal(confirmAfterCloseResult.error?.code, 'shift_closing');
+            assert.equal(confirmAfterCloseResult.error?.code, 'external_shift_requires_sync');
 
             const rejectedConfirmation = await pool.query(
                 `SELECT

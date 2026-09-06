@@ -19,6 +19,13 @@
 
 ---
 
+## v0.81.78 - PARK/DAR Drain-aware Recovery
+
+### Каса / Відновлення / (06.09.2026) [codex]
+- **Saved recovery marker** - drain-aware recovery remains a separate prepared package; the candidate stage does not apply it automatically.
+
+---
+
 ## v0.81.77 - PARK/DAR Reusable Test Day
 
 ### Каса PARK / DAR / (06.09.2026) [codex]

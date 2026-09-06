@@ -112,6 +112,7 @@ const HERMES_JOB_RESULT_JSON_LIMIT = '20mb';
 const BACKUP_RESTORE_JSON_LIMIT = BACKUP_HTTP_BODY_LIMIT;
 const BACKUP_RECOVERY_MODE = process.env.BACKUP_RECOVERY_MODE === 'true';
 const BACKUP_OUTBOUND_HOLD = process.env.BACKUP_OUTBOUND_HOLD === 'true';
+const SKIP_TELEGRAM_BOT_STARTUP_CONFIG = process.env.SKIP_TELEGRAM_BOT_STARTUP_CONFIG === 'true';
 const BACKUP_RECOVERY_ALLOWED_REQUESTS = new Set([
     'GET /api/health',
     'GET /api/ready',
@@ -749,20 +750,28 @@ initializeDatabaseWithSchemaFence().catch(err => {
             ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
             : null;
         if (appUrl) {
-            const omniOwnsTelegramWebhook = await telegramInboxOwnsGlobalBotToken();
-            if (omniOwnsTelegramWebhook) {
-                log.warn('Skipping legacy Telegram webhook auto-setup because the same bot token is bound as Omni Telegram inbox');
+            if (SKIP_TELEGRAM_BOT_STARTUP_CONFIG) {
+                log.warn('Skipping legacy Telegram webhook auto-setup because SKIP_TELEGRAM_BOT_STARTUP_CONFIG=true');
             } else {
-                ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
+                const omniOwnsTelegramWebhook = await telegramInboxOwnsGlobalBotToken();
+                if (omniOwnsTelegramWebhook) {
+                    log.warn('Skipping legacy Telegram webhook auto-setup because the same bot token is bound as Omni Telegram inbox');
+                } else {
+                    ensureWebhook(appUrl).catch(err => log.error('Webhook auto-setup error', err));
+                }
             }
             ensureReportBotWebhook(appUrl).catch(err => log.error('Report bot webhook setup error', err));
         }
 
         // v11.1: Register bot commands (Telegram menu button)
-        try {
-            const { registerBotCommands } = require('./services/bot');
-            registerBotCommands().catch(err => log.error('Bot commands registration error', err));
-        } catch (e) { log.error('Failed to register bot commands', e); }
+        if (SKIP_TELEGRAM_BOT_STARTUP_CONFIG) {
+            log.warn('Skipping Telegram bot command menu registration because SKIP_TELEGRAM_BOT_STARTUP_CONFIG=true');
+        } else {
+            try {
+                const { registerBotCommands } = require('./services/bot');
+                registerBotCommands().catch(err => log.error('Bot commands registration error', err));
+            } catch (e) { log.error('Failed to register bot commands', e); }
+        }
 
         // v32.5: Register report bot commands
         try {

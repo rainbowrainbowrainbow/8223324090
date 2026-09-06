@@ -126,3 +126,58 @@ Because this changes the candidate SHA, all exact-SHA local proofs and feature C
 - Chrome CDP proof is not Safari/WebKit or physical mobile proof.
 - Production live QA was not run in this block.
 - Exact-SHA CI and exact release-artifact proof must be repeated after the local commit because the current proof was on a dirty worktree.
+
+## Final exact-candidate verification after shallow-checkout correction
+
+Final candidate code commit after the doc/test fixture correction: `b391a34a52334c8eb9520e07aba0b543ef5aa483`. This handoff-only update is documented separately and does not change product/runtime assets.
+
+The previous Fast baseline CI failure on commit `6d8178f620731202d2daaa3e196a6fddcf63ff7e` was closed by `b391a34a52334c8eb9520e07aba0b543ef5aa483`, which keeps the full-history local proof on the real `9ea61f1e` historical blob and uses an explicit modeled old-client fixture only when CI checkout depth cannot contain that historical commit.
+
+Exact local verification for commit `b391a34a52334c8eb9520e07aba0b543ef5aa483` passed before this handoff-only update:
+
+```text
+npm run check:runtime
+# PASS: Node 22.23.1 / npm 10.9.8
+
+npm run check:version
+# PASS: v0.81.77 — Redirect Watchdog Old-Tab Recovery
+
+npm run check:syntax
+# PASS: JavaScript syntax check passed: 1082 files.
+
+git diff --check
+# PASS
+
+node --test tests/auth-frontend-session.test.js tests/auth-api-session-hardening.test.js tests/redirect-auth-regression-gate.test.js tests/redirect-rate-limit-regression-gate.test.js tests/service-worker-redirect-regression-gate.test.js tests/redirect-diagnostics.test.js tests/redirect-postrelease-risk-reproductions.test.js tests/service-worker-policy.test.js
+# PASS: tests 156, pass 156, fail 0
+
+npm test
+# PASS: full verify exited 0; UI smoke Passed 1310 / Failed 0
+
+node scripts/run-isolated-postgres-tests.js redirect-auth
+# PASS: R2 PostgreSQL/browser auth recovery proof passed
+
+node scripts/run-isolated-postgres-tests.js redirect-upgrade
+# PASS: status PASS, failures [], realBfcachePersisted true
+```
+
+The exact `redirect-upgrade` proof for `b391a34a52334c8eb9520e07aba0b543ef5aa483` recorded clean candidate asset hashes:
+
+```json
+{
+  "dirtyPorcelain": "",
+  "sw.js": "dea0fd4bb84db4fe7125c1b54e3c0a7bb2e27059c8a7420090ae6ec2f3207df8",
+  "js/api.js": "55ae5906c6dbf0837317fb8ba765275b3425003ceb15309ee639b1d018d2a61e",
+  "js/auth.js": "002988e628b71387bbceea3a1de4e9ac11c08d112f6fbf7caa0ff2f5ac311244",
+  "js/components/sidebar.js": "e9bf38c47b209d350438e5cef2e4a99c2ef9c82d9abec77787f28e25ece158d7",
+  "index.html": "0bf41186491ff50cde6cd4eb9d0cd9fe3f46001a886264cb78fd4dc628c7db3e",
+  "leads.html": "a306a4ba248a361a7a62007245b0aad3541c9179cc32943cad6f2046cf706c4a",
+  "certificates.html": "f519bfc968a4330cb275181d035cd651aadba4161fdca1029d6c0b5f3d6c2843"
+}
+```
+
+Feature CI for `b391a34a52334c8eb9520e07aba0b543ef5aa483` passed: <https://github.com/rainbowrainbowrainbow/8223324090/actions/runs/34044608159>. Jobs green: Fast baseline, HR and payroll PostgreSQL integration, HR Team browser smoke, Checkbox park PostgreSQL mock integration, My Day browser interactions, My Day PostgreSQL integration.
+
+Read-only production preflight at the time of this handoff: live `/api/version` reports `0.81.76` / `Redirect Reliability Release`, commit `d7aed2573d876c7051e96897a835343ed33573d5`, source branch `codex/eventgenix-production`, complete deployment manifest metadata. `origin/codex/eventgenix-production` is the same SHA and is an ancestor of the candidate.
+
+No production push, deploy, production DB, production QA, schema/settings/secrets, or CI-config changes were performed.

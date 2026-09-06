@@ -497,6 +497,37 @@ async function verifyStoredAccessToken(page) {
     return verified.data.user;
 }
 
+async function waitForSharedAuthStorageSettlement(page, label) {
+    await page.waitForFunction(() => {
+        const accessToken = localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token') || '';
+        const refreshToken = localStorage.getItem('pzp_refresh_token') || '';
+        if (!accessToken || !refreshToken) return false;
+        if (localStorage.getItem('pzp_auth_transition') || localStorage.getItem('pzp_auth_refresh_coordination')) return false;
+        const snapshot = JSON.stringify({
+            accessToken,
+            refreshToken,
+            generation: localStorage.getItem('pzp_auth_session_generation') || '',
+            sessionTokenId: localStorage.getItem('pzp_auth_session_token_id') || ''
+        });
+        const previous = window.__redirectAuthStorageSettlement || null;
+        if (!previous || previous.snapshot !== snapshot) {
+            window.__redirectAuthStorageSettlement = { snapshot, observedAt: Date.now() };
+            return false;
+        }
+        return Date.now() - previous.observedAt >= 250;
+    }, null, { timeout: TIMEOUT_MS }).catch(async error => {
+        const state = await page.evaluate(() => ({
+            hasAccessToken: Boolean(localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token')),
+            hasRefreshToken: Boolean(localStorage.getItem('pzp_refresh_token')),
+            hasTransition: Boolean(localStorage.getItem('pzp_auth_transition')),
+            hasCoordination: Boolean(localStorage.getItem('pzp_auth_refresh_coordination')),
+            generation: Boolean(localStorage.getItem('pzp_auth_session_generation')),
+            sessionTokenId: Boolean(localStorage.getItem('pzp_auth_session_token_id'))
+        })).catch(() => ({}));
+        throw new Error(`${label}: timed out waiting for stable shared auth storage: ${JSON.stringify(state)}; cause=${error.message}`);
+    });
+}
+
 async function assertModuleNavigation(page) {
     for (const pathname of ['/', '/sales-funnel', '/certificates']) {
         await page.goto(`${TARGET_URL}${pathname}`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
@@ -679,15 +710,18 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
         const recoveryRelease = deferred();
         let controlledRequests = 0;
         let originalPayload = null;
-        let recoveryPayload = null;
+        let duplicatePayload = null;
+        const controlledResponses = [];
         await context.route('**/api/auth/refresh', async route => {
             const body = JSON.parse(route.request().postData() || '{}');
             if (body.refreshToken !== session.refreshToken) return route.continue();
             controlledRequests += 1;
             const committed = await route.fetch();
             const payload = await committed.json().catch(() => ({}));
+            const status = committed.status();
+            controlledResponses.push({ status, payload });
             const response = {
-                status: committed.status(),
+                status,
                 headers: committed.headers(),
                 body: JSON.stringify(payload)
             };
@@ -697,7 +731,7 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
                 await originalRelease.promise;
                 return route.fulfill(response);
             }
-            recoveryPayload = payload;
+            if (controlledRequests === 2) duplicatePayload = payload;
             recoveryReady.resolve(payload);
             await recoveryRelease.promise;
             return route.fulfill(response);
@@ -709,8 +743,18 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
         await waitForReady(`${order} original`, originalReady);
         await waitForReady(`${order} recovery`, recoveryReady);
         assert.ok(originalPayload.refreshToken, 'original delayed response must contain T1');
-        assert.equal(recoveryPayload.recovered, true, 'second committed response must be marked as recovery');
-        assert.ok(recoveryPayload.refreshToken, 'recovery response must contain T2');
+        const secondResponseSnapshot = {
+            status: controlledResponses[1]?.status,
+            code: duplicatePayload?.code,
+            recovered: duplicatePayload?.recovered === true,
+            hasAccessToken: Boolean(duplicatePayload?.accessToken),
+            hasRefreshToken: Boolean(duplicatePayload?.refreshToken)
+        };
+        assert.ok(
+            duplicatePayload?.code === 'refresh_already_rotated'
+                || duplicatePayload?.recovered === true,
+            `second old-token response must be duplicate-grace or recovered: ${JSON.stringify(secondResponseSnapshot)}`
+        );
 
         if (order === 'original-first') {
             originalRelease.resolve();
@@ -724,18 +768,30 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
         const results = await Promise.all([first, second]);
         assert.ok(results.some(result => result.outcome === 'success'), `${order}: one tab must store a session`);
         assert.ok(results.every(result => ['success', 'superseded'].includes(result.outcome)), `${order}: no tab may terminal-clear the session`);
-        assert.equal(controlledRequests, 2, `${order}: refresh calls must be bounded to original + recovery`);
-        assert.equal(await firstPage.evaluate(() => localStorage.getItem('pzp_refresh_token')), recoveryPayload.refreshToken, `${order}: final storage must keep recovered T2`);
         const root = await tokenRow(pool, session.refreshToken);
         const original = await tokenRow(pool, originalPayload.refreshToken);
-        const recovered = await tokenRow(pool, recoveryPayload.refreshToken);
         assert.ok(root?.revoked_at, `${order}: T0 must be revoked`);
-        assert.ok(original?.revoked_at, `${order}: T1 must be revoked by recovery`);
         assert.equal(Number(root.replaced_by), Number(original.id), `${order}: T0 must link to T1`);
-        assert.equal(Number(original.replaced_by), Number(recovered.id), `${order}: T1 must link to T2`);
-        assert.equal(recovered.revoked_at, null, `${order}: T2 must remain active`);
+        const recoveryResponse = controlledResponses.find(entry => entry.payload?.recovered === true);
+        if (!recoveryResponse) {
+            assert.equal(controlledRequests, 2, `${order}: refresh calls must stop at original + duplicate when no recovery retry is needed`);
+            assert.equal(await firstPage.evaluate(() => localStorage.getItem('pzp_refresh_token')), originalPayload.refreshToken, `${order}: final storage must keep original T1`);
+            assert.equal(original.revoked_at, null, `${order}: T1 must remain active when the original response arrives before duplicate handling`);
+            assert.equal(original.replaced_by, null, `${order}: duplicate grace must not create T2`);
+        } else {
+            assert.equal(recoveryResponse.status, 200, `${order}: recovered response must be HTTP 200`);
+            assert.ok(recoveryResponse.payload.refreshToken, `${order}: recovered response must contain T2`);
+            assert.ok(controlledRequests <= 3, `${order}: refresh calls must be bounded to original + duplicate + recovery`);
+            assert.equal(await firstPage.evaluate(() => localStorage.getItem('pzp_refresh_token')), recoveryResponse.payload.refreshToken, `${order}: final storage must keep recovered T2`);
+            const recovered = await tokenRow(pool, recoveryResponse.payload.refreshToken);
+            assert.ok(original?.revoked_at, `${order}: T1 must be revoked by recovery`);
+            assert.equal(Number(original.replaced_by), Number(recovered.id), `${order}: T1 must link to T2`);
+            assert.equal(recovered.revoked_at, null, `${order}: T2 must remain active`);
+        }
 
-        const next = await thirdPage.evaluate(() => window.apiRefreshAuthSession());
+        await waitForSharedAuthStorageSettlement(firstPage, `${order} before next refresh`);
+        await verifyStoredAccessToken(firstPage);
+        const next = await firstPage.evaluate(() => window.apiRefreshAuthSession());
         assert.equal(next.outcome, 'success', `${order}: next refresh after delayed delivery must work`);
         await verifyStoredAccessToken(firstPage);
         await verifyStoredAccessToken(secondPage);

@@ -18,8 +18,60 @@ const RELEASE_SHA = 'd7aed2573d876c7051e96897a835343ed33573d5';
 const PRE_RELEASE_SHA = '9ea61f1ea6c38b6f218bbc4b9ceda3f772bedbd5';
 const CURRENT_API_CODE = fs.readFileSync(path.join(ROOT, 'js', 'api.js'), 'utf8');
 const CURRENT_SW_CODE = fs.readFileSync(path.join(ROOT, 'sw.js'), 'utf8');
-const OLD_API_CODE = childProcess.execFileSync('git', ['show', `${PRE_RELEASE_SHA}:js/api.js`], { cwd: ROOT, encoding: 'utf8' });
-const OLD_STATUS_HTML = childProcess.execFileSync('git', ['show', `${PRE_RELEASE_SHA}:status.html`], { cwd: ROOT, encoding: 'utf8' });
+const MODELED_OLD_API_CODE = `
+function getStoredAuthToken() {
+    return localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token');
+}
+function clearApiAuthSessionStorage() {
+    localStorage.removeItem('pzp_token');
+    localStorage.removeItem('pzp_access_token');
+    localStorage.removeItem('pzp_refresh_token');
+    localStorage.removeItem('pzp_refresh_expires_at');
+    localStorage.removeItem('pzp_current_user');
+}
+async function apiRefreshAuthSession() {
+    const refreshToken = localStorage.getItem('pzp_refresh_token');
+    if (!refreshToken) return { accessToken: null, outcome: 'missing' };
+    const accessToken = getStoredAuthToken();
+    const headers = { 'Content-Type': 'application/json' };
+    if (accessToken) headers.Authorization = 'Bearer ' + accessToken;
+    const response = await fetch('/api/auth/refresh', {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ refreshToken })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok || !data.accessToken) {
+        clearApiAuthSessionStorage();
+        return { accessToken: null, outcome: 'terminal' };
+    }
+    localStorage.setItem('pzp_token', data.accessToken);
+    localStorage.setItem('pzp_access_token', data.accessToken);
+    localStorage.setItem('pzp_refresh_token', data.refreshToken);
+    if (data.refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', data.refreshExpiresAt);
+    if (data.user) localStorage.setItem('pzp_current_user', JSON.stringify(data.user));
+    return { accessToken: data.accessToken, outcome: 'success' };
+}
+function getApiAuthSessionFailure() { return null; }
+`;
+function loadHistoricalBlobOrFallback(blobPath, fallback) {
+    try {
+        return {
+            source: 'git-blob',
+            code: childProcess.execFileSync('git', ['show', `${PRE_RELEASE_SHA}:${blobPath}`], { cwd: ROOT, encoding: 'utf8' })
+        };
+    } catch (error) {
+        return {
+            source: 'modeled-fallback',
+            error: String(error?.message || error).slice(0, 240),
+            code: fallback
+        };
+    }
+}
+const OLD_API_BLOB = loadHistoricalBlobOrFallback('js/api.js', MODELED_OLD_API_CODE);
+const OLD_STATUS_BLOB = loadHistoricalBlobOrFallback('status.html', '<!doctype html><meta charset="utf-8"><title>old status v=0.81.75</title>');
+const OLD_API_CODE = OLD_API_BLOB.code;
+const OLD_STATUS_HTML = OLD_STATUS_BLOB.code;
 const OUT_DIR = path.join(ROOT, 'output', 'r9-redirect-risk');
 const REPORT_JSON = path.join(OUT_DIR, 'r9-redirect-risk-results.json');
 
@@ -715,6 +767,8 @@ test('R9 reproduction: old api.js with modeled post-grace terminal401 loses sess
         classification: 'product_failure_old_clients_can_terminal_clear_after_lost_committed_response',
         actual: {
             oldStatusVersionMarker,
+            oldApiSource: OLD_API_BLOB.source,
+            oldStatusSource: OLD_STATUS_BLOB.source,
             oldTabLostResponseOutcome: firstRace.outcome,
             oldSecondTabReplayOutcome: second.outcome,
             storageAfterSecond,

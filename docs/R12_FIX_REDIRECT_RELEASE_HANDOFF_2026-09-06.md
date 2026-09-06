@@ -102,6 +102,24 @@ node scripts/run-isolated-postgres-tests.js redirect-upgrade
 ```
 
 This dirty proof used its own disposable local PostgreSQL 16 container and synthetic accounts only. The wrapper removed the container after completion.
+## CI shallow-checkout fixture correction
+
+Feature CI run `34043580969` for commit `6d8178f620731202d2daaa3e196a6fddcf63ff7e` failed only in the Fast baseline job. Other CI jobs passed. The failing step was `tests/redirect-postrelease-risk-reproductions.test.js` because the GitHub checkout is shallow (`fetch-depth: 1`) and the test tried to load `9ea61f1ea6c38b6f218bbc4b9ceda3f772bedbd5:js/api.js` with `git show`.
+
+This was a test-fixture portability problem, not a product runtime failure. The test now uses the real historical blob when available and falls back in shallow CI to a compact modeled old-client fixture that preserves the specific R9 behavior being reproduced: a lost committed refresh response followed by post-grace terminal401 clearing in old frontend logic. The report records whether the source was `git-blob` or `modeled-fallback`.
+
+Local verification after this fixture correction passed:
+
+```text
+node --check tests/redirect-postrelease-risk-reproductions.test.js
+node --test tests/redirect-postrelease-risk-reproductions.test.js
+# pass 4, fail 0
+
+node --test tests/auth-frontend-session.test.js tests/auth-api-session-hardening.test.js tests/redirect-auth-regression-gate.test.js tests/redirect-rate-limit-regression-gate.test.js tests/service-worker-redirect-regression-gate.test.js tests/redirect-diagnostics.test.js tests/service-worker-policy.test.js
+# pass 152, fail 0
+```
+
+Because this changes the candidate SHA, all exact-SHA local proofs and feature CI must be repeated after commit.
 ## Remaining risks
 
 - R10B remains out of scope: post-rotation replay beyond the 30s backend recovery window can remain terminal under the current backend contract.

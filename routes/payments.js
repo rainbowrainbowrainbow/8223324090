@@ -1,6 +1,7 @@
 'use strict';
 
 const router = require('express').Router();
+const { requestSharedTestDrain, requestSharedTestResume } = require('../services/payments/sharedTestDayService');
 const authMiddleware = require('../middleware/auth');
 const { authenticateToken, requireAction } = authMiddleware;
 const {
@@ -171,6 +172,7 @@ function projectPilotRegisterStateForViewer(user, localState = {}, readiness = {
         registerDisplayName: localState.registerDisplayName || null,
         shift: localState.shift || null,
         phase1Close,
+        sharedTestDay: localState.sharedTestDay || null,
         checklist: null,
         readiness: projectReadinessForViewer(user, readiness),
         readinessCode: readiness.readinessCode || 'unknown',
@@ -721,10 +723,33 @@ router.post('/incidents/:incidentId/resolve', requireAction('fiscal.incident.man
     }
 });
 
+router.post('/shifts/:shiftId/phase1-drain', requireAction('fiscal.shift.close'), async (req, res) => {
+    try {
+        const result = await requestSharedTestDrain({ user: req.user, shiftId: req.params.shiftId,
+            routeOptionId: req.get('X-Fiscal-Route-Option'), body: req.body || {}, idempotencyKey: idempotencyKeyFromRequest(req) });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
+router.post('/test-drains/:drainId/resume', requireAction('fiscal.shift.close'), async (req, res) => {
+    try {
+        const result = await requestSharedTestResume({ user: req.user, drainId: req.params.drainId,
+            routeOptionId: req.get('X-Fiscal-Route-Option'), body: req.body, idempotencyKey: idempotencyKeyFromRequest(req) });
+        return res.status(200).json({ success: true, ...result });
+    } catch (error) {
+        const response = readinessErrorResponse(error);
+        return res.status(response.status).json(response.body);
+    }
+});
+
 router.post('/shifts/:shiftId/phase1-close', requireAction('fiscal.shift.close'), async (req, res) => {
     try {
         const result = await requestPhase1ShiftClose({
             user: req.user,
+            routeOptionId: req.get('X-Fiscal-Route-Option'),
             shiftId: req.params.shiftId,
             idempotencyKey: idempotencyKeyFromRequest(req),
             body: req.body || {}

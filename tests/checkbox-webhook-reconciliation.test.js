@@ -108,7 +108,7 @@ describe('Checkbox webhook route auth boundary', () => {
 class FakeWebhookDb {
     constructor() {
         this.operations = [
-            { id: 501, fiscal_profile_id: 7, payment_order_id: 301, provider: 'checkbox', provider_operation_id: 'op-1', status: 'pending' }
+            { id: 501, fiscal_profile_id: 7, fiscal_register_id: 9, payment_order_id: 301, provider: 'checkbox', provider_operation_id: 'op-1', status: 'pending' }
         ];
         this.receipts = [];
         this.events = [];
@@ -131,6 +131,10 @@ class FakeWebhookClient {
     async query(sql, params = []) {
         const normalized = sql.replace(/\s+/g, ' ').trim();
         if (normalized === 'BEGIN' || normalized === 'COMMIT' || normalized === 'ROLLBACK') return { rows: [] };
+        if (normalized.includes('pg_advisory_xact_lock')) {
+            this.db.onRegisterLock?.();
+            return { rows: [] };
+        }
 
         if (normalized.includes('FROM fiscal_operations fo')) {
             const [operationId, receiptId] = params;
@@ -204,6 +208,15 @@ class FakeWebhookClient {
 }
 
 describe('Checkbox webhook event handling', () => {
+    it('rechecks physical scope after lock wait before any webhook or outbox write', async () => {
+        const dbPool = new FakeWebhookDb();
+        dbPool.onRegisterLock = () => { dbPool.operations = dbPool.operations.map(row => ({ ...row, fiscal_register_id: 10 })); };
+        await assert.rejects(() => handleCheckboxWebhook({ dbPool,
+            rawBody: Buffer.from(JSON.stringify({ event_id: 'scope-race', provider_operation_id: 'op-1' })) }),
+        error => error.code === 'checkbox_webhook_scope_changed');
+        assert.equal(dbPool.events.length, 0);
+        assert.equal(dbPool.jobs.length, 0);
+    });
     it('extracts official nested receipt payload identity and queues canonical polling', async () => {
         const dbPool = new FakeWebhookDb();
         const body = Buffer.from(JSON.stringify({

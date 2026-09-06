@@ -1,4 +1,5 @@
 'use strict';
+const { TestDrainError, lockFiscalRegister, assertRegisterAccepting } = require('./testDrainGate');
 
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
@@ -788,7 +789,20 @@ async function createAdmissionTicketPaymentOrder({
 
     return withTransaction(dbPool, async client => {
         await lockPaymentIdempotency(client, key);
-        const mapping = await loadPilotFiscalMapping(client, fiscalScope);
+        let mapping = await loadPilotFiscalMapping(client, fiscalScope);
+        await lockFiscalRegister(client, mapping.fiscal_profile_id, mapping.fiscal_register_id);
+        const freshMapping = await loadPilotFiscalMapping(client, fiscalScope);
+        if (String(freshMapping.fiscal_register_id) !== String(mapping.fiscal_register_id)
+            || String(freshMapping.fiscal_profile_id) !== String(mapping.fiscal_profile_id)) throw new TestDrainError('shared_test_scope_changed');
+        mapping = freshMapping;
+        if (fiscalRoute?.routeOptionId) {
+            const freshRoute = await require('./fiscalSaleRouteService').resolveFiscalSaleRoute({ client, user,
+                routeOptionId: fiscalRoute.routeOptionId, businessContext: fiscalRoute.businessContext,
+                requireMutationReady: requireCheckboxIntegrationReady });
+            if (String(freshRoute.mapping.fiscal_profile_id) !== String(mapping.fiscal_profile_id)
+                || String(freshRoute.mapping.fiscal_register_id) !== String(mapping.fiscal_register_id)) throw new TestDrainError('shared_test_scope_changed');
+            fiscalRoute = freshRoute;
+        }
         const createAuthorizer = fiscalRoute && authorizer === authorizeFiscalAction
             ? authorizeFiscalActorAction
             : authorizer;
@@ -854,6 +868,7 @@ async function createAdmissionTicketPaymentOrder({
             return { replayed: true, order: normalizePaymentOrder(existingOrder) };
         }
 
+        await assertRegisterAccepting(client, mapping.fiscal_profile_id, mapping.fiscal_register_id);
         const quote = await quoteResolver({
             queryable: client,
             businessContext: mapping.crm_profile_key,
@@ -1056,6 +1071,7 @@ async function confirmPaymentOrder({
             authorizer
         });
         assertPaymentOrderRouteMutationReady(order);
+        await assertRegisterAccepting(client, order.fiscal_profile_id, order.fiscal_register_id);
         await assertCheckboxIntegrationReady(client, {
             env,
             user,
@@ -1218,6 +1234,7 @@ async function confirmPaymentOrder({
             authorizer
         });
         assertPaymentOrderRouteMutationReady(order);
+        await assertRegisterAccepting(client, order.fiscal_profile_id, order.fiscal_register_id);
         let fiscalConfig;
         if (requireCheckboxIntegrationReady) {
             const verifiedRuntime = await assertCheckboxIntegrationReady(client, {
@@ -1784,6 +1801,7 @@ async function getPaymentOrderDetails({
 
 function paymentErrorResponse(error) {
     if (error instanceof PaymentServiceError
+        || error instanceof TestDrainError
         || error instanceof PaymentWorkflowError
         || error instanceof AdmissionTicketError
         || error instanceof FiscalAccessError

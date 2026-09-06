@@ -77,7 +77,7 @@ async function captureVisualArtifact(page, filename) {
     fs.mkdirSync(VISUAL_ARTIFACT_DIR, { recursive: true });
     await page.screenshot({
         path: path.join(VISUAL_ARTIFACT_DIR, filename),
-        fullPage: !filename.includes('close-modal'),
+        fullPage: true,
         animations: 'disabled',
         caret: 'hide'
     });
@@ -431,7 +431,7 @@ async function handleApi(req, res, url) {
             }));
         return json(res, 200, { success: true, internalReport: true, officialZReport: false, page: 1, pageSize: 50, totalCount: orders.length, filters: {}, totals: { paymentTotalMinor: String(orders.length * 50000), cashTotalMinor: '50000', cardTerminalTotalMinor: '50000', statusCounts: { pending: orders.filter(order => order.fiscalStatus === 'pending').length, fiscalized: orders.filter(order => order.fiscalStatus === 'fiscalized').length } }, orders });
     }
-    if (['/api/payments/admission-ticket/orders', '/api/payments/catalog/orders'].includes(url.pathname) && req.method === 'POST') {
+    if (url.pathname === '/api/payments/admission-ticket/orders' && req.method === 'POST') {
         const body = await readBody(req);
         assertParkMiddleScope(body);
         const delayMs = Math.max(0, Number(state.nextCreateDelayMs || 0));
@@ -777,33 +777,6 @@ async function run() {
         );
         assert.equal(await selectorPage.locator('[name="providerRegisterId"], [name="registerAlias"], [name="locationAlias"], [name="isTest"]').count(), 0, 'production UI exposes no raw fiscal/provider inputs');
         await captureVisualArtifact(selectorPage, '00-catalog-park-production.png');
-        assert.equal(await selectorPage.locator('[data-catalog-item]').count(), 0, 'catalog starts with an empty cart');
-        assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true);
-        await selectorPage.click('#addCatalogLineBtn');
-        const longName = 'Абонемент на індивідуальні творчі заняття та розвивальні майстер-класи для дітей';
-        await selectorPage.evaluate(name => {
-            window.CashierPaymentsPage.state.catalogItems[0].name = name;
-            document.querySelector('[data-catalog-item]').dispatchEvent(new Event('change', { bubbles: true }));
-        }, longName);
-        for (const dark of [false, true]) {
-            await selectorPage.evaluate(value => document.body.classList.toggle('dark-mode', value), dark);
-            for (const width of [1440, 390]) {
-                await selectorPage.setViewportSize({ width, height: 1000 });
-                await selectorPage.waitForFunction(() => document.querySelector('#paymentOrderForm').getBoundingClientRect().width > 300);
-                assert.equal(await selectorPage.textContent('[data-catalog-name]'), longName);
-                assert.equal(await selectorPage.locator('[data-catalog-name]').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'full selected product name wraps');
-                const nameWidth = await selectorPage.locator('[data-catalog-name]').evaluate(el => el.getBoundingClientRect().width);
-                assert.ok(nameWidth > 200, `product title retains a readable line width: ${nameWidth} at ${width}`);
-                for (const id of ['paymentBusinessContext', 'paymentRegisterRoute', 'catalogCategory']) {
-                    assert.notEqual(await selectorPage.locator(`#${id}`).evaluate(el => getComputedStyle(el).backgroundImage), 'none', 'select arrow survives theme cascade');
-                }
-                await captureVisualArtifact(selectorPage, `08-catalog-${dark ? 'dark' : 'light'}-${width}.png`);
-            }
-        }
-        await selectorPage.evaluate(() => document.body.classList.remove('dark-mode'));
-        await selectorPage.setViewportSize({ width: 1440, height: 1000 });
-        await selectorPage.click('[data-catalog-remove]');
-        assert.equal(await selectorPage.locator('[data-catalog-item]').count(), 0, 'last row can be removed');
         await selectorPage.selectOption('#paymentRegisterRoute', 'park_test');
         await selectorPage.waitForSelector('#cashierTestModeBanner:not(.hidden)');
         await selectorPage.waitForFunction(() => document.querySelector('#cashierScopeMode')?.textContent.trim() === 'ТЕСТОВИЙ');
@@ -1183,22 +1156,6 @@ async function run() {
         await page.click('#phase1CloseShiftBtn');
         await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]');
         assert.match(await page.textContent('.confirm-overlay .confirm-message'), /нові чеки потребуватимуть відкриття нової зміни/);
-        for (const dark of [false, true]) {
-            await page.evaluate(value => document.body.classList.toggle('dark-mode', value), dark);
-            for (const width of [1440, 390]) {
-                await page.setViewportSize({ width, height: 1000 });
-                await captureVisualArtifact(page, `09-close-modal-${dark ? 'dark' : 'light'}-${width}.png`);
-                assert.equal(await page.locator('.confirm-overlay').evaluate(el => el.scrollWidth <= el.clientWidth), true, 'confirmation fits the viewport');
-            }
-        }
-        await page.evaluate(() => document.body.classList.remove('dark-mode'));
-        await page.setViewportSize({ width: 1440, height: 1000 });
-        await page.keyboard.press('Escape');
-        await page.waitForSelector('.confirm-overlay', { state: 'detached' });
-        assert.equal(state.phase1CloseKeys.length, 0, 'Escape cancels without submitting');
-        assert.equal(await page.evaluate(() => document.activeElement?.id), 'phase1CloseShiftBtn', 'cancel restores trigger focus');
-        await page.click('#phase1CloseShiftBtn');
-        await page.waitForSelector('.confirm-overlay');
         await page.click('.confirm-overlay .confirm-cancel');
         await page.waitForSelector('.confirm-overlay[data-confirm-kind="confirm"]', { state: 'detached' });
         assert.equal(state.phase1CloseKeys.length, 0, 'cancelled final confirmation sends no Phase-1 close request');
@@ -1382,9 +1339,7 @@ async function run() {
     console.log('Cashier payments browser smoke passed');
 }
 
-if (require.main === module) run().catch(error => {
+run().catch(error => {
     console.error(error);
     process.exit(1);
 });
-
-module.exports = { startServer, requirePlaywright, state, permissionPayload };

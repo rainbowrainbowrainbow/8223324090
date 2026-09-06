@@ -65,7 +65,6 @@
         orderDetails: null,
         registerState: null,
         createInFlight: false,
-        draftRevision: '',
         confirmInFlight: false,
         confirmSubmitted: false,
         reportInFlight: false,
@@ -375,37 +374,25 @@
                 .map(row => `${row.querySelector('[data-catalog-item]')?.value || ''}:${row.querySelector('[data-catalog-quantity]')?.value || ''}`)
                 .join('|');
             const discount = $('catalogDiscountRule')?.value || 'none';
-            return `${PILOT_SCOPE.routeOptionId}:catalog:${$('paymentCashierBinding')?.value}:${state.tender}:${lines}:${discount}`;
+            return `${PILOT_SCOPE.routeOptionId}:catalog:${state.tender}:${lines}:${discount}`;
         }
         const date = $('paymentDate')?.value || 'no-date';
         const kids = $('paymentKidsCount')?.value || '0';
         const adults = $('paymentAdultsCount')?.value || '0';
-        return `${PILOT_SCOPE.routeOptionId}:${$('paymentCashierBinding')?.value}:${state.tender}:${date}:${kids}:${adults}`;
-    }
-
-    function createDraft() {
-        const raw = storageGet('createDraft');
-        if (!raw) return null;
-        try { return JSON.parse(raw); }
-        catch { return { payload: {}, key: null }; }
+        return `${PILOT_SCOPE.routeOptionId}:${state.tender}:${date}:${kids}:${adults}`;
     }
 
     function getCreateIdempotencyKey() {
-        const existing = createDraft();
-        if (existing && !existing.key) throw new Error('idempotency_key_required');
-        if (existing && (existing.payload || existing.scope === orderStorageScope())) return existing.key;
+        const key = `create:${orderStorageScope()}`;
+        const existing = storageGet(key);
+        if (existing) return existing;
         const generated = randomKey('cashier-ui-create');
-        // Fail closed when durable browser storage is unavailable; a lost key cannot be retried safely.
-        window.localStorage.setItem(storageKey('createDraft'), JSON.stringify({ key: generated, scope: orderStorageScope() }));
+        storageSet(key, generated);
         return generated;
     }
 
     function clearCreateIdempotencyKey() {
-        window.localStorage.removeItem(storageKey('createDraft'));
-    }
-
-    function invalidateUnsubmittedDraft() {
-        if (!createDraft()?.payload) clearCreateIdempotencyKey();
+        storageRemove(`create:${orderStorageScope()}`);
     }
 
     function getConfirmIdempotencyKey(orderId) {
@@ -644,7 +631,6 @@
         await loadSelectableCashiers();
         await loadCatalogData();
         await loadPilotRegisterState({ silent: true });
-        state.draftRevision = storageGet('draftRevision') || '';
         state.unresolvedAutoRefreshEnabled = true;
         await loadUnresolvedOrders({ silent: true });
         scheduleReadinessRefresh();
@@ -723,7 +709,6 @@
     }
 
     function updateCatalogCartSummary() {
-        $('catalogCartEmpty')?.classList.toggle('hidden', Boolean(document.querySelector('#catalogSaleLines .cashier-catalog-line')));
         let originalTotal = 0;
         let finalTotal = 0;
         const discountCode = String($('catalogDiscountRule')?.value || '').trim();
@@ -776,30 +761,26 @@
             quantity.setAttribute('aria-label', `Кількість: ${item?.name || 'позиція'}`);
         }
         if (price) price.textContent = item ? `${formatMoneyMinor(item.priceMinor)} / ${item.unit || 'шт.'}` : '—';
-        const fullName = row.querySelector('[data-catalog-name]');
-        if (fullName) fullName.textContent = item?.name || '';
         updateCatalogCartSummary();
         syncCreateAvailability();
     }
 
     function addCatalogLine(itemCode = '') {
         const container = $('catalogSaleLines');
-        if (!container || !state.catalogItems.length || state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
-        invalidateUnsubmittedDraft();
+        if (!container || !state.catalogItems.length) return;
         const row = document.createElement('div');
         row.className = 'cashier-catalog-line';
         row.innerHTML = `
-            <label class="cashier-field cashier-catalog-item-field"><span>Позиція</span><select data-catalog-item aria-label="Позиція каталогу"></select><span class="cashier-catalog-name" data-catalog-name></span></label>
+            <label class="cashier-field cashier-catalog-item-field"><span>Позиція</span><select data-catalog-item aria-label="Позиція каталогу"></select></label>
             <label class="cashier-field cashier-catalog-quantity-field"><span>Кількість</span><input data-catalog-quantity type="number" inputmode="decimal" value="1"></label>
-            <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна за одиницю">—</span>
+            <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна із price rules">—</span>
             <button type="button" class="btn-page-secondary cashier-catalog-remove" data-catalog-remove aria-label="Видалити позицію">×</button>`;
         const select = row.querySelector('[data-catalog-item]');
         fillCatalogSelect(select, catalogItemByCode(itemCode)?.itemCode || state.catalogItems[0].itemCode);
         select.addEventListener('change', () => syncCatalogLine(row));
         row.querySelector('[data-catalog-quantity]')?.addEventListener('input', () => syncCatalogLine(row));
         row.querySelector('[data-catalog-remove]')?.addEventListener('click', () => {
-            if (state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
-            invalidateUnsubmittedDraft();
+            if (container.children.length <= 1) return;
             row.remove();
             updateCatalogCartSummary();
             syncCreateAvailability();
@@ -841,9 +822,9 @@
         $('catalogSaleLines')?.replaceChildren();
         renderCatalogCategories();
         renderCatalogDiscounts();
-        updateCatalogCartSummary();
+        addCatalogLine();
         state.catalogReady = true;
-        setText('catalogSaleSummary', `${state.catalogItems.length} активних позицій · актуальні ціни · без ПДВ`);
+        setText('catalogSaleSummary', `${state.catalogItems.length} активних позицій · ціна із price_rules · без ПДВ`);
         syncCreateAvailability();
     }
 
@@ -937,35 +918,22 @@
             notify(paymentUiError(new Error('checkbox_integration_not_ready')), 'error');
             return;
         }
-        if (state.orderDetails?.order?.id) {
-            notify('Для нового продажу натисніть «Наступний клієнт».', 'info');
+        if (activeUnfinishedOrder()) {
+            notify('Завершіть поточну оплату або дочекайтесь чека перед новою оплатою.', 'error');
             return;
         }
         state.createInFlight = true;
         syncCreateAvailability();
         try {
-            if (!window.navigator.locks?.request) throw new Error('Безпечні повтори недоступні у цьому браузері. Відкрийте касу в актуальному браузері через HTTPS.');
-            await window.navigator.locks.request(storageKey('create-order'), async () => {
-                // Another tab may have completed this same draft while we waited for the lock.
-                const existingOrderId = storageGet('lastOrderId');
-                if (existingOrderId) {
-                    await loadPaymentOrder(existingOrderId, { silent: true });
-                    return;
-                }
-                if (state.draftRevision !== (storageGet('draftRevision') || '')) {
-                    notify('Інша вкладка вже почала нового клієнта. Оновіть сторінку перед створенням продажу.', 'info');
-                    return;
-                }
-                const payload = createDraft()?.payload || (state.saleMode === 'catalog_sale' ? buildCatalogSalePayload() : buildAdmissionTicketPayload());
-                const idempotencyKey = getCreateIdempotencyKey();
-                window.localStorage.setItem(storageKey('createDraft'), JSON.stringify({ ...createDraft(), payload }));
-                const endpoint = state.saleMode === 'catalog_sale'
-                    ? '/api/payments/catalog/orders'
-                    : '/api/payments/admission-ticket/orders';
-                const result = await apiRequest(endpoint, {
-                    method: 'POST',
-                    headers: apiHeaders(idempotencyKey),
-                    body: JSON.stringify(payload)
+            const payload = state.saleMode === 'catalog_sale' ? buildCatalogSalePayload() : buildAdmissionTicketPayload();
+            const idempotencyKey = getCreateIdempotencyKey();
+            const endpoint = state.saleMode === 'catalog_sale'
+                ? '/api/payments/catalog/orders'
+                : '/api/payments/admission-ticket/orders';
+            const result = await apiRequest(endpoint, {
+                method: 'POST',
+                headers: apiHeaders(idempotencyKey),
+                body: JSON.stringify(payload)
             });
             const orderId = result.order?.id;
             if (!orderId) throw new Error('payment_order_missing_in_response');
@@ -973,9 +941,7 @@
             await loadPaymentOrder(orderId, { silent: true });
             notify(result.replayed ? 'Цю саму оплату безпечно відкрито повторно.' : 'Оплату створено. Перевірте позиції та підтвердьте отримання грошей.', 'success');
             focusFirstConfirmationControl();
-            });
         } catch (error) {
-            if ([400, 403, 404, 422].includes(Number(error?.status)) && !storageGet('lastOrderId')) clearCreateIdempotencyKey();
             notify(paymentUiError(error), 'error');
         } finally {
             state.createInFlight = false;
@@ -1180,17 +1146,6 @@
     function paymentUiError(error) {
         const code = error?.code || error?.message;
         const messages = {
-            shared_test_register_draining: 'Нові оплати PARK і ДАР зупинені до початку наступного тестового дня.',
-            shared_test_provider_read_access_required: 'Потрібен чинний доступ для перевірки Checkbox. Заборону не знято; відповідальний має перевірити підключення.',
-            shared_test_provider_evidence_invalid: 'Свіже підтвердження стану Checkbox не отримано. Оновіть стан і повторіть перевірку.',
-            shared_test_drain_not_closed: 'Спочатку дочекайтеся підтвердженого закриття зміни.',
-            shared_test_close_not_verified: 'Закриття зміни ще не підтверджене. Приймання оплат залишається зупиненим.',
-            shared_test_resume_blocked_unresolved: 'У касі залишилися незавершені операції. Відновлення заблоковано.',
-            shared_test_owner_mismatch: 'Дію має підтвердити відповідальний, який зупинив цю тестову касу.',
-            shared_test_scope_mismatch: 'Маршрут або налаштування тестової каси не збігаються. Потрібна перевірка відповідального.',
-            shared_test_scope_changed: 'Налаштування каси змінилися. Дію не виконано; потрібна повторна перевірка.',
-            shared_test_other_shift_exists: 'Виявлено іншу зміну. Відновлення заблоковано до звірки.',
-            shared_test_idempotency_conflict: 'Повторний запит не відповідає попередній дії. Оновіть стан каси.',
             cash_amount_invalid: 'Сума готівки має бути у гривнях, максимум з двома знаками після коми.',
             cash_received_too_low: 'Отримана готівка менша за суму оплати. Підтвердження заблоковано.',
             payment_date_required: 'Вкажіть дату квитка.',
@@ -1244,7 +1199,7 @@
         setText('cashierFiscalProfile', `${formatCrmProfile(order.crmProfileKey)} / ${order.legalEntityName || order.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
         setText('cashierRegister', `${PILOT_SCOPE.businessLabel} / ${selectedRoute()?.registerLabel || order.registerDisplayName || 'каса'}`);
         setStatus('cashierPaymentStatus', order.paymentStatus || order.status);
-        setStatus('cashierFiscalStatus', normalizeStatus(order.paymentStatus) === 'unpaid' ? 'not_created' : effectiveFiscalStatus(order));
+        setStatus('cashierFiscalStatus', effectiveFiscalStatus(order));
         setText('internalReceiptLabel', `RCP-${order.id} \u2014 ${INTERNAL_RECEIPT_TEXT}`);
         setText('paymentTotalAmount', formatMoneyMinor(order.totalAmountMinor));
         setText('cardExactAmount', formatMoneyMinor(order.totalAmountMinor));
@@ -1277,7 +1232,7 @@
         const fiscalStatus = effectiveFiscalStatus(order);
         const artifacts = details?.artifacts || {};
         const latestReceipt = Array.isArray(details?.receipts) ? details.receipts[0] : null;
-        setStatus('fiscalReceiptBadge', hasOrder && normalizeStatus(order.paymentStatus) !== 'unpaid' ? fiscalStatus : 'not_created');
+        setStatus('fiscalReceiptBadge', hasOrder ? fiscalStatus : 'not_created');
         const message = $('fiscalPendingMessage');
         const links = $('providerReceiptLinks');
         const pendingNotice = $('pendingReceiptNotice');
@@ -1285,10 +1240,8 @@
         if (hasOfficialReceipt) forgetPendingOrder(order.id);
         if (message) {
             if (!hasOrder) message.textContent = 'Чек ще не створено. Спочатку створіть оплату для поточного клієнта.';
-            else if (hasOfficialReceipt) message.textContent = 'Оплату завершено. Офіційний чек Checkbox отримано. Для нового продажу натисніть «Наступний клієнт».';
-            else if (normalizeStatus(order.paymentStatus) === 'unpaid') message.textContent = 'Оплату ще не підтверджено. Перевірте суму та підтвердьте отримання грошей.';
-            else if (['failed_terminal', 'validation_failed', 'blocked', 'dead'].includes(fiscalStatus)) message.textContent = 'Потрібне втручання адміністратора. Гроші вже зафіксовані; повторно приймати оплату не можна.';
-            else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = 'Гроші зафіксовані. Чек відновлюється; повторно приймати оплату не можна. Стан доступний у незавершених чеках.';
+            else if (hasOfficialReceipt) message.textContent = '\u041e\u0444\u0456\u0446\u0456\u0439\u043d\u0438\u0439 \u0447\u0435\u043a Checkbox \u043e\u0442\u0440\u0438\u043c\u0430\u043d\u043e. RCP-* \u043b\u0438\u0448\u0430\u0454\u0442\u044c\u0441\u044f \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044c\u043e\u044e \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u0454\u044e Event Genix.';
+            else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = 'Чек очікує Checkbox або буде повтор. Оплата вже зафіксована, тому повторно приймати гроші за цей RCP не можна.';
             else message.textContent = '\u041f\u0456\u0441\u043b\u044f \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043e\u043f\u043b\u0430\u0442\u0438 \u0441\u0435\u0440\u0432\u0435\u0440 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u044c \u043e\u0434\u043d\u0443 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0437\u0430\u0434\u0430\u0447\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.';
         }
         if (pendingNotice) {
@@ -1924,7 +1877,6 @@
     function integrationReady() {
         return Boolean(
             state.routeReady === true
-            && state.registerState?.sharedTestDay?.localDrainBlocked !== true
             && state.routeLoading !== true
             && state.registerState?.integrationReady === true
             && state.readinessInFlight !== true
@@ -2070,26 +2022,25 @@
         const order = state.orderDetails?.order;
         const nextAllowed = orderAllowsNextCustomer(order);
         const hasCurrentOrder = Boolean(order?.id);
-        const retryPending = Boolean(createDraft()?.payload) && !hasCurrentOrder;
-        const safeDraftCoordination = Boolean(window.navigator.locks?.request);
         const cashierSelected = Number($('paymentCashierBinding')?.value || 0) > 0;
         let catalogSelectionValid = true;
         if (state.saleMode === 'catalog_sale') {
             try { catalogSelectionValid = state.catalogReady && catalogLinesPayload().length > 0; }
             catch { catalogSelectionValid = false; }
         }
-        const disabled = !safeDraftCoordination || !ready || !state.routeReady || (!retryPending && (!cashierSelected || !catalogSelectionValid)) || state.createInFlight || hasCurrentOrder;
-        const editingDisabled = state.createInFlight || hasCurrentOrder || retryPending;
-        let reason = '';
-        if (!safeDraftCoordination) reason = 'Безпечні повтори недоступні. Відкрийте касу в актуальному браузері через HTTPS.';
-        else if (state.createInFlight) reason = 'Створюємо оплату…';
-        else if (active) reason = 'Спершу підтвердьте або скасуйте поточну чернетку.';
-        else if (hasCurrentOrder) reason = 'Натисніть «Наступний клієнт» для нового продажу.';
-        else if (!state.routeReady) reason = 'Обрана каса ще не готова або приймання оплат для неї вимкнено.';
-        else if (!ready) reason = queueUnavailableReason() || 'Каса не готова: перегляньте повідомлення про готовність вище.';
-        else if (retryPending) reason = 'Результат створення ще не відновлено. Повторіть той самий запит; кошик збережено.';
-        else if (!cashierSelected) reason = 'Оберіть активного касира Checkbox для цієї каси.';
-        else if (!catalogSelectionValid) reason = 'Оберіть доступні позиції та вкажіть дозволену кількість.';
+        const disabled = !ready || !state.routeReady || !cashierSelected || !catalogSelectionValid || active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
+        const editingDisabled = active || state.createInFlight || (hasCurrentOrder && !orderIsComplete(order));
+        const reason = state.createInFlight
+            ? 'Створюємо оплату…'
+            : (!state.routeReady
+                ? 'Обрана каса ще не готова або приймання оплат для неї вимкнено.'
+                : (!cashierSelected
+                ? 'Оберіть активного касира Checkbox для цієї каси.'
+                : (!catalogSelectionValid
+                ? 'Оберіть доступні позиції та вкажіть дозволену кількість.'
+                : (!ready
+                ? (queueUnavailableReason() || 'Каса не готова: перегляньте повідомлення про готовність вище.')
+                : (active ? 'Спершу підтвердьте або скасуйте поточну чернетку.' : (hasCurrentOrder ? 'Натисніть “Нова оплата” для наступного клієнта.' : ''))))));
         const createButton = $('createPaymentOrderBtn');
         if ($('paymentBusinessContext')) $('paymentBusinessContext').disabled = editingDisabled || state.routeLoading;
         if ($('paymentRegisterRoute')) $('paymentRegisterRoute').disabled = editingDisabled || state.routeLoading;
@@ -2107,17 +2058,18 @@
         const addLineButton = $('addCatalogLineBtn');
         if (addLineButton) addLineButton.disabled = editingDisabled || !state.catalogReady;
         document.querySelectorAll('[data-catalog-remove]').forEach(button => {
-            button.disabled = editingDisabled;
+            button.disabled = editingDisabled || document.querySelectorAll('#catalogSaleLines .cashier-catalog-line').length <= 1;
         });
-        setText('createPaymentDisabledReason', reason || 'Каса готова. Перевірте товари, кількість і спосіб оплати.');
+        setText('createPaymentDisabledReason', reason || 'Каса готова. Сервер повторно перевірить маршрут, касира, ціну й режим.');
         setButtonBusy(createButton, state.createInFlight, 'Створюємо оплату…');
-        if (createButton && !state.createInFlight) createButton.textContent = retryPending ? 'Відновити створення оплати' : (state.saleMode === 'catalog_sale' ? 'Створити продаж' : 'Створити оплату');
         setDisabledReason(createButton, disabled, reason);
         const nextButton = $('startNextOrderBtn');
         if (nextButton) {
             nextButton.classList.toggle('hidden', !nextAllowed);
-            setDisabledReason(nextButton, !safeDraftCoordination || (nextAllowed && !unresolvedQueueIsFresh()), !safeDraftCoordination ? reason : queueUnavailableReason());
-            nextButton.textContent = 'Наступний клієнт';
+            setDisabledReason(nextButton, nextAllowed && !unresolvedQueueIsFresh(), queueUnavailableReason());
+            nextButton.textContent = normalizeStatus(order?.paymentStatus) === 'confirmed' && !orderIsComplete(order)
+                ? 'Наступний клієнт'
+                : 'Нова оплата';
         }
         const cancelBtn = $('cancelDraftOrderBtn');
         const canCancel = Boolean(order?.id && normalizeStatus(order.paymentStatus) === 'unpaid' && normalizeStatus(order.status) === 'draft');
@@ -2195,63 +2147,7 @@
         return '';
     }
 
-    let sharedTestDayInFlight = false;
-
-    function renderSharedTestDay() {
-        const day = state.registerState?.sharedTestDay;
-        const panel = $('sharedTestDayPanel');
-        const visible = day?.visible === true;
-        panel?.classList.toggle('hidden', !visible);
-        panel?.setAttribute('aria-hidden', visible ? 'false' : 'true');
-        panel?.setAttribute('aria-busy', sharedTestDayInFlight ? 'true' : 'false');
-        const notice = day?.localDrainBlocked
-            ? (day.activeDrain?.status === 'closed'
-                ? 'Зміну закрито. Приймання оплат PARK і ДАР зупинено до явного початку наступного тестового дня.'
-                : 'Нові оплати PARK і ДАР зупинено. Дочекайтеся завершення черги та окремо закрийте зміну нижче.')
-            : 'Завершення роботи зупиняє нові оплати обох тестових маршрутів. Відновлення не відкриває зміну та не вмикає вимкнені серверні налаштування.';
-        setText('sharedTestDayNotice', sharedTestDayInFlight ? 'Перевіряємо стан тестової каси…' : notice);
-        setDisabledReason($('sharedTestDrainBtn'), !visible || !day?.canDrain || sharedTestDayInFlight, notice);
-        setDisabledReason($('sharedTestResumeBtn'), !visible || !day?.canResume || sharedTestDayInFlight || !unresolvedQueueIsFresh(), notice);
-    }
-
-    async function changeSharedTestDay(action) {
-        if (sharedTestDayInFlight) return;
-        const day = state.registerState?.sharedTestDay;
-        const target = action === 'drain' ? phase1CloseContext()?.shiftId : day?.activeDrain?.id;
-        const route = PILOT_SCOPE.routeOptionId;
-        if (!target || !(action === 'drain' ? day?.canDrain : day?.canResume)) return;
-        const button = $(action === 'drain' ? 'sharedTestDrainBtn' : 'sharedTestResumeBtn');
-        sharedTestDayInFlight = true;
-        renderSharedTestDay();
-        try {
-            const confirmed = await window.confirmModal(action === 'drain'
-                ? 'Зупинити нові оплати PARK і ДАР на спільній тестовій касі? Уже прийняті чеки залишаться в черзі. Закриття зміни потрібно підтвердити окремо.'
-                : 'Почати наступний тестовий день після перевірки CLOSED і порожньої черги? Це лише зніме локальну заборону. Зміна не відкриється, інші серверні обмеження залишаться чинними.');
-            if (!confirmed) return;
-            await loadUnresolvedOrders({ silent: true });
-            await loadPilotRegisterState({ silent: true });
-            const fresh = state.registerState?.sharedTestDay;
-            const currentTarget = action === 'drain' ? phase1CloseContext()?.shiftId : fresh?.activeDrain?.id;
-            if (route !== PILOT_SCOPE.routeOptionId || String(currentTarget) !== String(target)
-                || !(action === 'drain' ? fresh?.canDrain : fresh?.canResume)) throw new Error('Стан каси змінився. Оновіть сторінку перед повторним підтвердженням.');
-            const url = action === 'drain' ? `/api/payments/shifts/${encodeURIComponent(target)}/phase1-drain`
-                : `/api/payments/test-drains/${encodeURIComponent(target)}/resume`;
-            await apiRequest(url, { method: 'POST', headers: apiHeaders(getOperationIdempotencyKey(`test-${action}`, target)),
-                body: JSON.stringify(action === 'drain' ? {} : { confirmNextTestDay: true }) });
-            notify(action === 'drain' ? 'Нові оплати обох маршрутів зупинено. Перевірте чергу перед закриттям зміни.'
-                : 'Локальну заборону знято. Перед новими оплатами перевірте готовність каси.', 'success');
-        } catch (error) {
-            notify(paymentUiError(error), 'error');
-        } finally {
-            sharedTestDayInFlight = false;
-            await loadPilotRegisterState({ silent: true });
-            renderSharedTestDay();
-            button?.focus?.();
-        }
-    }
-
     function renderPhase1ShiftState() {
-        renderSharedTestDay();
         const panel = $('phase1ShiftPanel');
         const button = $('phase1CloseShiftBtn');
         const notice = $('phase1ShiftCloseNotice');
@@ -2577,31 +2473,11 @@
     }
 
     function startNextOrder() {
-        if (!window.navigator.locks?.request) return;
-        return window.navigator.locks.request(storageKey('create-order'), async () => {
-            const latestOrderId = storageGet('lastOrderId');
-            if (latestOrderId && String(latestOrderId) !== String(state.orderDetails?.order?.id)) {
-                await loadPaymentOrder(latestOrderId, { silent: true });
-                return;
-            }
-            if (state.draftRevision !== (storageGet('draftRevision') || '')) {
-                notify('Інша вкладка вже почала нового клієнта. Оновіть сторінку.', 'info');
-                return;
-            }
-            return resetForNextCustomer();
-        }).catch(error => notify(paymentUiError(error), 'error'));
-    }
-
-    function resetForNextCustomer() {
-        if (!orderAllowsNextCustomer() || state.createInFlight || state.confirmInFlight) return;
         if (!unresolvedQueueIsFresh()) {
             notify(queueUnavailableReason(), 'error');
             $('refreshUnresolvedOrdersBtn')?.focus?.({ preventScroll: false });
             return;
         }
-        const revision = randomKey('cashier-ui-customer');
-        window.localStorage.setItem(storageKey('draftRevision'), revision);
-        state.draftRevision = revision;
         clearOrderPolling();
         state.orderLoadGeneration += 1;
         clearCreateIdempotencyKey();
@@ -2615,11 +2491,6 @@
         $('terminalSuccessCheckbox') && ($('terminalSuccessCheckbox').checked = false);
         $('terminalReference') && ($('terminalReference').value = '');
         $('cashReceivedAmount') && ($('cashReceivedAmount').value = '');
-        $('catalogSaleLines')?.replaceChildren();
-        if ($('catalogDiscountRule')) $('catalogDiscountRule').value = '';
-        if ($('catalogSearch')) $('catalogSearch').value = '';
-        if ($('catalogCategory')) $('catalogCategory').value = '';
-        updateCatalogCartSummary();
         setText('internalReceiptLabel', 'RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f');
         setStatus('cashierPaymentStatus', 'unpaid');
         setStatus('cashierFiscalStatus', 'not_created');
@@ -2635,7 +2506,7 @@
         // readiness snapshot was taken. Keep the new draft disabled until both
         // register-wide unresolved visibility and a fresh provider observation
         // converge for the next customer.
-        return (async () => {
+        void (async () => {
             try {
                 await loadUnresolvedOrders({ silent: true });
                 await refreshReadiness({ silent: true, force: true });
@@ -2644,15 +2515,13 @@
                 syncCreateAvailability();
                 syncConfirmationAvailability();
                 (state.saleMode === 'catalog_sale'
-                    ? $('addCatalogLineBtn')
+                    ? document.querySelector('[data-catalog-item]')
                     : $('paymentDate'))?.focus({ preventScroll: false });
             }
         })();
     }
 
     function bindEvents() {
-        $('paymentOrderForm')?.addEventListener('input', invalidateUnsubmittedDraft);
-        $('paymentOrderForm')?.addEventListener('change', invalidateUnsubmittedDraft);
         $('paymentOrderForm')?.addEventListener('submit', createPaymentOrder);
         $('paymentBusinessContext')?.addEventListener('change', () => { void handleBusinessContextChange(); });
         $('paymentRegisterRoute')?.addEventListener('change', () => { void handleRegisterRouteChange(); });
@@ -2685,8 +2554,6 @@
         $('loadCheckboxSalesReportBtn')?.addEventListener('click', () => { void loadCheckboxSalesReport({ silent: false }); });
         $('refreshReadinessBtn')?.addEventListener('click', () => { void refreshReadiness({ silent: false }); });
         $('phase1CloseShiftBtn')?.addEventListener('click', () => { void closePhase1Shift(); });
-        $('sharedTestDrainBtn')?.addEventListener('click', () => { void changeSharedTestDay('drain'); });
-        $('sharedTestResumeBtn')?.addEventListener('click', () => { void changeSharedTestDay('resume'); });
         $('unresolvedOrdersBody')?.addEventListener('click', event => {
             const target = event.target?.closest?.('[data-order-id]');
             const orderId = target?.getAttribute?.('data-order-id');

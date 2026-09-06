@@ -4,11 +4,18 @@
 
 ---
 
+## v0.81.81 - PARK/DAR Drain-aware Recovery
+
+### Release / Versioning / (06.09.2026) [codex]
+- **PARK/DAR Drain-aware Recovery** - release marker, cache tags and visible version metadata were prepared automatically.
+- **Delivery chain** - this recovery release marker is prepared after the separate HOLD startup guard and PARK/DAR candidate release markers.
+
+---
+
 ## v0.81.80 - PARK/DAR Reusable Test Day
 
 ### Release / Versioning / (06.09.2026) [codex]
-- **PARK/DAR Reusable Test Day** - release marker, cache tags and visible version metadata were prepared automatically.
-- **Delivery chain** - this candidate release marker is prepared on top of the separate HOLD startup guard release marker.
+- **PARK/DAR Reusable Test Day** - release marker, cache tags and visible version metadata were prepared for the candidate stage.
 
 ---
 
@@ -19,12 +26,19 @@
 
 ---
 
+## v0.81.78 - PARK/DAR Drain-aware Recovery
+
+### Каса / Відновлення / (06.09.2026) [codex]
+- **Сумісне відновлення інтерфейсу** — повернення попереднього касового UI зі збереженням серверної зупинки Shared Test, історії та безпечного завершення вже прийнятих чеків.
+- **Захист активного тестового дня** — additive schema й stop/resume endpoints залишаються; глобальне приймання оплат не змінюється.
+
+---
+
 ## v0.81.77 - PARK/DAR Reusable Test Day
 
 ### Каса PARK / DAR / (06.09.2026) [codex]
-- **Повторюваний тестовий день** — явна зупинка нових оплат обох маршрутів Shared Test, завершення прийнятих чеків і відновлення після перевіреного CLOSED та порожньої черги.
-- **Історія й безпечні повтори** — stop/resume зберігають історію та захищені від конкурентних запитів; глобальне приймання оплат не вмикається автоматично.
-- **Наступний клієнт** — новий кошик після прийнятої оплати, збереження черги чеків, захист від повторів після reload і втрати відповіді; повні назви товарів та читабельний підсумок.
+- **Повторюваний тестовий день** — явна зупинка нових оплат Shared Test, завершення прийнятих чеків і відновлення після CLOSED та порожньої черги.
+- **Наступний клієнт** — новий кошик зі збереженням черги чеків та захистом від повторів у кількох вкладках.
 
 ---
 

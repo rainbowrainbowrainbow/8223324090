@@ -177,14 +177,6 @@
     background-repeat: no-repeat;
 }
 
-.cashier-catalog-item-field .cashier-catalog-name {
-    white-space: normal;
-    overflow-wrap: anywhere;
-    font-size: 14px;
-    line-height: 1.45;
-    color: var(--gray-900);
-}
-
 .cashier-route-card select:focus-visible,
 .cashier-catalog-filters select:focus-visible,
 .cashier-catalog-filters input:focus-visible {
@@ -203,7 +195,6 @@
 }
 
 .cashier-cart-summary {
-    grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
     margin: 0;
     padding: 14px;
     border: 1px solid var(--gray-100);
@@ -213,22 +204,13 @@
 
 .cashier-cart-summary div {
     display: flex;
-    flex-wrap: wrap;
-    min-width: 0;
     justify-content: space-between;
-    gap: 4px 10px;
+    gap: 10px;
 }
 
 .cashier-cart-summary dt,
 .cashier-cart-summary dd {
     margin: 0;
-    max-width: 100%;
-    overflow-wrap: anywhere;
-}
-
-.cashier-cart-summary dd {
-    margin-left: auto;
-    text-align: right;
 }
 
 .cashier-cart-summary .is-final {
@@ -251,7 +233,6 @@
 
 .cashier-catalog-heading,
 .cashier-catalog-line {
-    flex-wrap: wrap;
     display: flex;
     align-items: flex-end;
     gap: 12px;
@@ -267,8 +248,6 @@
 }
 
 .cashier-catalog-line {
-    display: grid;
-    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) 44px;
     padding: 12px;
     border: 1px solid var(--gray-100);
     border-radius: 16px;
@@ -276,8 +255,7 @@
 }
 
 .cashier-catalog-item-field {
-    grid-column: 1 / -1;
-    flex: 1 0 100%;
+    flex: 1 1 280px;
     min-width: 0;
 }
 
@@ -300,7 +278,7 @@
 }
 
 .cashier-catalog-price {
-    flex: 1 1 100px;
+    flex: 0 0 120px;
     min-height: 44px;
     display: flex;
     align-items: center;
@@ -1085,7 +1063,7 @@ body.dark-mode .cashier-catalog-filters select,
 body.dark-mode .cashier-catalog-filters input,
 body.dark-mode #paymentCashierBinding,
 body.dark-mode #catalogDiscountRule {
-    background-color: rgba(15,23,42,.82);
+    background: rgba(15,23,42,.82);
     border-color: rgba(255,255,255,.10);
 }
 

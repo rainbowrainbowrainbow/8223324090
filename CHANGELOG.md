@@ -4,6 +4,27 @@
 
 ---
 
+## v0.81.79 - PARK/DAR HOLD Startup Guard
+
+### Release / Versioning / (06.09.2026) [codex]
+- **PARK/DAR HOLD Startup Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
+## v0.81.78 - PARK/DAR HOLD Startup Guard
+
+### Release / Versioning / (06.09.2026) [codex]
+- **PARK/DAR HOLD Startup Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
+## v0.81.77 - PARK/DAR HOLD Startup Guard
+
+### Release / Versioning / (06.09.2026) [codex]
+- **PARK/DAR HOLD Startup Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.76 - Redirect Reliability Release
 
 ### Авторизація / Навігація / (05.09.2026) [codex]

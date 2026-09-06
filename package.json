@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.76",
+  "version": "0.81.77",
   "eventGenix": {
-    "releaseLabel": "Redirect Reliability Release"
+    "releaseLabel": "Redirect Watchdog Old-Tab Recovery"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

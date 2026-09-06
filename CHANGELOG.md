@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.77 - Redirect Watchdog Old-Tab Recovery
+
+### Авторизація / Навігація / (06.09.2026) [codex]
+- **Контрольований вихід із завислого refresh** — watchdog повертає керування UI без автоматичного logout, не запускає refresh storm і залишає користувачу явну дію оновлення сторінки зі збереженим безпечним маршрутом.
+- **Повернення на потрібний модуль після retry/login** — збережений маршрут застосовується один раз після актуального permission bootstrap і не перекидає користувача на Timeline, якщо він уже на потрібній сторінці.
+- **Старі вкладки після оновлення** — додано actual-app Chrome CDP proof для pre-release/released вкладок, нового Service Worker, Back/Forward, offline/reconnect, update prompt і logout/account-switch guards.
+- **Межі релізу зафіксовані** — backend replay понад поточне 30s recovery window лишається окремим R10B ризиком; реліз не додає silent recovery для 31/60/120s stale-token replay.
+
+---
+
 ## v0.81.76 - Redirect Reliability Release
 
 ### Авторизація / Навігація / (05.09.2026) [codex]

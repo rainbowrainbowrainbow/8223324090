@@ -27,12 +27,70 @@ function response(status, body = {}) {
     };
 }
 
-function loadApi(fetchImpl, initialStore = {}) {
+function createControlledTimers() {
+    let now = 0;
+    let nextId = 1;
+    const timers = new Map();
+    return {
+        now: () => now,
+        setTimeout(fn, delay = 0) {
+            const id = nextId++;
+            timers.set(id, { at: now + Number(delay || 0), fn });
+            return id;
+        },
+        clearTimeout(id) {
+            timers.delete(id);
+        },
+        advance(ms) {
+            now += Number(ms || 0);
+            let ran = true;
+            while (ran) {
+                ran = false;
+                const due = [...timers.entries()]
+                    .filter(([, timer]) => timer.at <= now)
+                    .sort((a, b) => a[1].at - b[1].at || a[0] - b[0]);
+                for (const [id, timer] of due) {
+                    if (!timers.has(id)) continue;
+                    timers.delete(id);
+                    timer.fn();
+                    ran = true;
+                }
+            }
+        },
+        pendingCount: () => timers.size
+    };
+}
+
+async function flushAsyncTurns(count = 8) {
+    for (let index = 0; index < count; index += 1) await Promise.resolve();
+}
+
+function loadApi(fetchImpl, initialStore = {}, options = {}) {
     const store = new Map(Object.entries(initialStore).map(([key, value]) => [key, String(value)]));
+    const listeners = new Map();
+    const addListener = (type, listener) => {
+        if (!listeners.has(type)) listeners.set(type, new Set());
+        listeners.get(type).add(listener);
+    };
+    const removeListener = (type, listener) => listeners.get(type)?.delete(listener);
+    const dispatchStorageEvent = key => {
+        for (const listener of listeners.get('storage') || []) listener({ key });
+    };
+    const timers = options.timers || null;
+    const diagnostics = options.diagnostics || [];
+    const BaseDate = Date;
+    const RuntimeDate = timers
+        ? class extends BaseDate {
+            static now() { return timers.now(); }
+            static parse(value) { return BaseDate.parse(value); }
+            static UTC(...args) { return BaseDate.UTC(...args); }
+        }
+        : Date;
     const context = {
         console,
         URL,
         URLSearchParams,
+        Date: RuntimeDate,
         CONFIG: { STORAGE: { CURRENT_USER: 'pzp_current_user', SESSION: 'pzp_session' } },
         localStorage: {
             getItem: key => store.get(key) || null,
@@ -41,19 +99,30 @@ function loadApi(fetchImpl, initialStore = {}) {
         },
         window: {
             location: { search: '', href: 'http://localhost/' },
-            history: { replaceState() {} }
+            history: { replaceState() {} },
+            addEventListener: addListener,
+            removeEventListener: removeListener,
+            RedirectDiagnostics: {
+                record: (event, details) => diagnostics.push({ event, details })
+            }
         },
         document: {
             documentElement: { classList: { contains() { return false; } } }
         },
         fetch: fetchImpl,
-        recordApiRedirectDiagnostic() {}
+        recordApiRedirectDiagnostic: (event, details) => diagnostics.push({ event, details })
     };
+    if (timers) {
+        context.setTimeout = timers.setTimeout;
+        context.clearTimeout = timers.clearTimeout;
+        context.window.setTimeout = timers.setTimeout;
+        context.window.clearTimeout = timers.clearTimeout;
+    }
     context.window.self = context.window;
     context.window.top = context.window;
     vm.createContext(context);
     vm.runInContext(API_CODE, context);
-    return { context, store };
+    return { context, store, dispatchStorageEvent, diagnostics, timers };
 }
 
 function loadCheckSessionHarness(overrides = {}) {
@@ -440,6 +509,70 @@ test('apiRefreshAuthSession object argument is expected user override, not diagn
     assert.equal(store.get('pzp_refresh_token'), 'refresh-before');
     assert.equal(store.get('pzp_access_token'), undefined);
     assert.equal(calls.length, 1);
+});
+
+test('apiRefreshAuthSession treats repeated duplicate rotation as retry-later without access-only settlement', async () => {
+    const timers = createControlledTimers();
+    const calls = [];
+    const diagnostics = [];
+    const { context, store, dispatchStorageEvent } = loadApi(async (url, options = {}) => {
+        calls.push({ url, options, at: timers.now() });
+        if (url === '/api/auth/refresh') {
+            assert.deepEqual(JSON.parse(options.body), { refreshToken: 'refresh-before' });
+            return response(409, {
+                code: 'refresh_already_rotated',
+                requestId: `req-duplicate-${calls.length}`
+            });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+    }, {
+        pzp_access_token: 'access-before',
+        pzp_token: 'access-before',
+        pzp_refresh_token: 'refresh-before',
+        pzp_auth_session_generation: 'generation-one',
+        pzp_auth_session_token_id: '41',
+        pzp_current_user: JSON.stringify({ id: 7, username: 'operator' })
+    }, { timers, diagnostics });
+
+    const resultPromise = context.apiRefreshAuthSession();
+    let settled = false;
+    resultPromise.then(() => { settled = true; });
+    await flushAsyncTurns();
+    assert.equal(calls.length, 1, 'first duplicate refresh should be observed');
+
+    timers.advance(100);
+    store.set('pzp_access_token', 'access-from-other-tab');
+    dispatchStorageEvent('pzp_access_token');
+    await flushAsyncTurns();
+
+    timers.advance(250);
+    await flushAsyncTurns();
+    assert.equal(settled, false, 'access-token-only storage events must not settle the duplicate rotation wait');
+    assert.equal(calls.length, 1, 'access-token-only storage events must not trigger early replay');
+
+    timers.advance(4900);
+    await flushAsyncTurns();
+    timers.advance(250);
+    await flushAsyncTurns();
+
+    const result = await resultPromise;
+    assert.equal(calls.length, 2, 'duplicate confirmation should stay bounded to one replay');
+    assert.deepEqual(calls.map(call => call.at), [0, 5500]);
+    assert.equal(result.outcome, 'retry-later');
+    assert.equal(result.retryable, true);
+    assert.equal(result.accessToken, null);
+    assert.equal(result.reason, 'refresh-already-rotated');
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-before');
+    assert.equal(store.get('pzp_auth_session_generation'), 'generation-one');
+    assert.equal(store.get('pzp_auth_session_token_id'), '41');
+    assert.equal(store.get('pzp_current_user'), JSON.stringify({ id: 7, username: 'operator' }));
+    assert.equal(store.get('pzp_access_token'), 'access-from-other-tab');
+    assert.equal(store.get('pzp_token'), 'access-before');
+    assert.equal(context.getApiAuthSessionFailure().kind, 'transient');
+    assert.equal(context.getApiAuthSessionFailure().reason, 'refresh-already-rotated');
+    assert.equal(diagnostics.some(item => item.event === 'auth-refresh'
+        && item.details.refreshOutcome === 'retry-later'
+        && item.details.code === 'refresh_already_rotated'), true);
 });
 
 test('apiRefreshAuthSession success returns access outcome and stores the rotated refresh token', async () => {

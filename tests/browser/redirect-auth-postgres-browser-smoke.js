@@ -407,10 +407,40 @@ async function waitForReady(label, ready) {
 
 async function tokenRow(pool, token) {
     const result = await pool.query(
-        'SELECT id, user_id, revoked_at, replaced_by FROM refresh_tokens WHERE token_hash = $1',
+        `SELECT id, user_id, revoked_at, replaced_by,
+                EXTRACT(EPOCH FROM (clock_timestamp() - revoked_at)) * 1000 AS rotation_age_ms
+         FROM refresh_tokens WHERE token_hash = $1`,
         [hashRefreshToken(token)]
     );
     return result.rows[0] || null;
+}
+
+function decodeJwtPayload(token) {
+    try {
+        const payload = String(token || '').split('.')[1] || '';
+        if (!payload) return {};
+        return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    } catch {
+        return {};
+    }
+}
+
+async function redactedStoredAuthSnapshot(page) {
+    return page.evaluate(() => {
+        const token = localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token') || '';
+        let payload = {};
+        try {
+            payload = JSON.parse(atob((token.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+        } catch {}
+        return {
+            hasAccessToken: Boolean(token),
+            hasRefreshToken: Boolean(localStorage.getItem('pzp_refresh_token')),
+            sessionGeneration: localStorage.getItem('pzp_auth_session_generation') || '',
+            sessionTokenId: Number(payload.sessionTokenId || payload.refreshTokenId || 0) || 0,
+            userId: payload.id || null,
+            usernamePresent: Boolean(payload.username)
+        };
+    });
 }
 
 async function activeSessionCount(pool, userId) {
@@ -712,14 +742,27 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
         let originalPayload = null;
         let duplicatePayload = null;
         const controlledResponses = [];
+        let firstCommitAt = 0;
         await context.route('**/api/auth/refresh', async route => {
             const body = JSON.parse(route.request().postData() || '{}');
             if (body.refreshToken !== session.refreshToken) return route.continue();
             controlledRequests += 1;
+            const requestAt = Date.now();
+            const authorization = route.request().headers().authorization || '';
+            const proofPayload = decodeJwtPayload(authorization.replace(/^Bearer\s+/i, ''));
             const committed = await route.fetch();
             const payload = await committed.json().catch(() => ({}));
             const status = committed.status();
-            controlledResponses.push({ status, payload });
+            if (controlledRequests === 1) firstCommitAt = Date.now();
+            controlledResponses.push({
+                status,
+                payload,
+                requestAt,
+                elapsedFromFirstCommitMs: firstCommitAt ? requestAt - firstCommitAt : 0,
+                hasAuthorization: Boolean(authorization),
+                proofSessionTokenId: Number(proofPayload.sessionTokenId || proofPayload.refreshTokenId || 0) || 0,
+                proofUserId: proofPayload.id || null
+            });
             const response = {
                 status,
                 headers: committed.headers(),
@@ -748,7 +791,12 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
             code: duplicatePayload?.code,
             recovered: duplicatePayload?.recovered === true,
             hasAccessToken: Boolean(duplicatePayload?.accessToken),
-            hasRefreshToken: Boolean(duplicatePayload?.refreshToken)
+            hasRefreshToken: Boolean(duplicatePayload?.refreshToken),
+            elapsedFromFirstCommitMs: controlledResponses[1]?.elapsedFromFirstCommitMs,
+            hasAuthorization: controlledResponses[1]?.hasAuthorization,
+            proofSessionTokenId: controlledResponses[1]?.proofSessionTokenId,
+            rootRow: await tokenRow(pool, session.refreshToken),
+            pageStorage: await redactedStoredAuthSnapshot(secondPage)
         };
         assert.ok(
             duplicatePayload?.code === 'refresh_already_rotated'

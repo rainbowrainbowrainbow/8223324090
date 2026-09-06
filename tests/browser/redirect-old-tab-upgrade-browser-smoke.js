@@ -1354,6 +1354,9 @@ async function waitForModule(page, moduleName) {
             const shellVisible = Boolean(shell && !shell.classList.contains('hidden') && getComputedStyle(shell).visibility !== 'hidden');
             const loginVisible = Boolean(login && !login.classList.contains('hidden'));
             return Boolean(${moduleExpression})
+                && location.pathname === ${JSON.stringify(moduleName === 'timeline' ? '/' : moduleName === 'leads' ? '/sales-funnel' : '/certificates')}
+                && (document.readyState === 'interactive' || document.readyState === 'complete')
+                && typeof window.apiRefreshAuthSession === 'function'
                 && shellVisible
                 && !loginVisible
                 && Boolean(localStorage.getItem('pzp_current_user'))
@@ -1950,15 +1953,69 @@ async function verifyServedBytes(origin, expectedSha, paths, label) {
 }
 
 async function addUnsavedProofInput(page) {
-    await page.evaluate(`(() => {
-        const input = document.createElement('textarea');
+    return page.evaluate(`(() => {
+        let input = document.getElementById('r11-unsaved-proof');
+        if (!input) input = document.createElement('textarea');
+        const proofId = 'r11-proof-' + Date.now() + '-' + Math.random().toString(36).slice(2);
         input.id = 'r11-unsaved-proof';
         input.value = 'unsaved r11 proof';
         input.dataset.dirty = 'true';
-        document.body.appendChild(input);
+        input.dataset.editableSurface = 'true';
+        input.dataset.r11ProofId = proofId;
+        if (!input.parentNode) document.body.appendChild(input);
         window.__eventGenixDirtyForms = true;
-        return true;
+        return {
+            path: location.pathname,
+            documentId: window.__r11?.documentId || '',
+            proofId,
+            isConnected: input.isConnected === true,
+            value: input.value,
+            nodeName: input.nodeName || '',
+            controllerScript: navigator.serviceWorker?.controller?.scriptURL || ''
+        };
     })()`);
+}
+
+async function assertUnsavedProofPrecondition(page, expected, label, checkpoint = {}) {
+    const actual = await page.evaluate(`(() => {
+        const input = document.getElementById('r11-unsaved-proof');
+        return {
+            path: location.pathname,
+            documentId: window.__r11?.documentId || '',
+            expectedDocumentId: ${JSON.stringify(expected?.documentId || '')},
+            proofId: input?.dataset?.r11ProofId || '',
+            expectedProofId: ${JSON.stringify(expected?.proofId || '')},
+            isConnected: input?.isConnected === true,
+            value: input?.value || '',
+            exists: Boolean(input),
+            nodeName: input?.nodeName || '',
+            controllerScript: navigator.serviceWorker?.controller?.scriptURL || '',
+            readyState: document.readyState || '',
+            bodyClass: document.body?.className || '',
+            shellVisible: (() => {
+                const shell = document.getElementById('mainApp') || document.getElementById('main-content');
+                return Boolean(shell && !shell.classList.contains('hidden') && getComputedStyle(shell).visibility !== 'hidden');
+            })()
+        };
+    })()`);
+    const ok = actual.documentId
+        && actual.documentId === expected?.documentId
+        && actual.proofId === expected?.proofId
+        && actual.isConnected === true
+        && actual.value === expected?.value
+        && actual.path === '/sales-funnel';
+    if (!ok) {
+        const failurePath = await writeJsonArtifact(`r11-unsaved-input-precondition-failed-${Date.now()}.json`, {
+            status: 'PRECONDITION_FAILED',
+            label,
+            expected,
+            actual,
+            probe: await safePageProbe(page, `${label}-unsaved-precondition`),
+            trace: page.traceSince(checkpoint)
+        });
+        throw new Error(`${label}: PRECONDITION_FAILED before SW update; evidence=${failurePath}`);
+    }
+    return actual;
 }
 
 async function triggerServiceWorkerUpdate(page) {
@@ -2090,9 +2147,11 @@ async function runOldCohortUpgrade({ origin, chromePort, sourceMode, sourceSha, 
         await waitForModule(pageB, 'certificates');
 
         step(`${label}: sidebar navigation`);
+        const sidebarTraceCheckpoint = pageA.traceCheckpoint();
         const backgroundBeforeActiveClick = await collectSidebarClickReadiness(pageA, '/sales-funnel');
         const sidebarNavigation = await clickSidebarTo(pageA, '/sales-funnel', 'leads', { bringToFront: true });
-        await addUnsavedProofInput(pageA);
+        const unsavedInput = await addUnsavedProofInput(pageA);
+        const unsavedInputPrecondition = await assertUnsavedProofPrecondition(pageA, unsavedInput, label, sidebarTraceCheckpoint);
         await verifyServedBytes(origin, sourceSha, ['index.html', 'leads.html', 'certificates.html', 'js/api.js', 'js/auth.js', 'js/components/sidebar.js', 'sw.js'], label);
 
         const preUpdateProofPath = await writeJsonArtifact(`r11-old-tab-upgrade-${sourceMode}-pre-update-proof.json`, {
@@ -2105,8 +2164,12 @@ async function runOldCohortUpgrade({ origin, chromePort, sourceMode, sourceSha, 
             backgroundControl,
             backgroundBeforeActiveClick,
             sidebarNavigation,
+            sidebarTrace: pageA.traceSince(sidebarTraceCheckpoint),
+            unsavedInput,
+            unsavedInputPrecondition,
             oldLeadsBeforeUpdate: await pageProbe(pageA),
-            oldCertificatesBeforeUpdate: await pageProbe(pageB)
+            oldCertificatesBeforeUpdate: await pageProbe(pageB),
+            unsavedInputBeforeSwUpdate: await assertUnsavedProofPrecondition(pageA, unsavedInput, label, sidebarTraceCheckpoint)
         });
         const swUpdate = await switchToCurrentServiceWorker({ origin, sourceMode, label, pageA, pageB, preUpdateProofPath });
         const afterA = swUpdate.afterA;

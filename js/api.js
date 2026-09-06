@@ -3984,11 +3984,9 @@ function waitForApiAuthRefreshSettlement(refreshToken, sessionGeneration) {
             resolve(!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration));
         };
         const handleStorage = event => {
-            if (!event || [
-                API_AUTH_ACCESS_TOKEN_KEY,
-                API_AUTH_REFRESH_TOKEN_KEY,
-                API_AUTH_SESSION_GENERATION_KEY
-            ].includes(event.key)) finish();
+            if (!event
+                || event.key === API_AUTH_REFRESH_TOKEN_KEY
+                || event.key === API_AUTH_SESSION_GENERATION_KEY) finish();
         };
         if (typeof window !== 'undefined' && typeof window.addEventListener === 'function') {
             window.addEventListener('storage', handleStorage);
@@ -4108,9 +4106,25 @@ async function performApiAuthTokenRefresh(refreshToken, expectedUser = null, ses
                     && String(data?.code || '').toLowerCase() === 'refresh_already_rotated';
             }
             if (!response.ok || !data.accessToken) {
-                const failureKind = alreadyRotated
-                    ? 'terminal'
-                    : (response.ok ? 'transient' : classifyApiAuthHttpFailure(response.status));
+                if (alreadyRotated) {
+                    const failureDetails = {
+                        stage: 'refresh',
+                        status: response.status,
+                        reason: 'refresh-already-rotated',
+                        code: data?.code || 'refresh_already_rotated',
+                        requestId: data?.requestId || data?.request_id || null
+                    };
+                    setApiAuthSessionFailure('transient', failureDetails);
+                    recordApiRedirectDiagnostic('auth-refresh', {
+                        refreshOutcome: 'retry-later',
+                        status: response.status,
+                        code: data?.code,
+                        reason: 'refresh-already-rotated',
+                        requestId: data?.requestId || data?.request_id
+                    });
+                    return buildApiAuthRefreshRetryLaterResult('refresh-already-rotated');
+                }
+                const failureKind = response.ok ? 'transient' : classifyApiAuthHttpFailure(response.status);
                 const rateLimitFailure = getApiAuthRateLimitFailureDetails('refresh', response, data);
                 setApiAuthSessionFailure(failureKind, rateLimitFailure || {
                     stage: 'refresh',
@@ -4200,8 +4214,7 @@ function waitForApiAuthRefreshCoordination(refreshToken, sessionGeneration) {
         };
         const handleStorage = event => {
             if (!event) return finish('storage');
-            if (event.key === API_AUTH_ACCESS_TOKEN_KEY
-                || event.key === API_AUTH_REFRESH_TOKEN_KEY
+            if (event.key === API_AUTH_REFRESH_TOKEN_KEY
                 || event.key === API_AUTH_SESSION_GENERATION_KEY) {
                 return finish('session-changed');
             }

@@ -108,6 +108,7 @@ function loadCheckSessionHarness(overrides = {}) {
         showMainApp: () => calls.push(['showMainApp']),
         showAuthenticatedPageShell: options => calls.push(['showAuthenticatedPageShell', options]),
         renderPermissionBootstrapError: options => calls.push(['renderPermissionBootstrapError', options]),
+        applyAuthReturnRouteAfterLogin: () => false,
         clearAuthSessionBootstrapError: () => calls.push(['clearAuthSessionBootstrapError']),
         resetAuthenticatedRuntimeReady: () => {},
         scheduleOfflineSessionRecovery: () => calls.push(['scheduleOfflineSessionRecovery']),
@@ -243,6 +244,48 @@ function classListHarness(initial = []) {
     };
 }
 
+function createRecoveryElementHarness() {
+    const buttons = new Map();
+    const status = { hidden: true, textContent: '' };
+    const target = {
+        _html: '',
+        set innerHTML(value) {
+            this._html = String(value);
+            buttons.clear();
+            for (const attr of [
+                'data-auth-session-retry',
+                'data-auth-session-reload',
+                'data-auth-session-copy-diagnostics',
+                'data-auth-sw-update-reload',
+                'data-auth-sw-update-later'
+            ]) {
+                if (this._html.includes(attr)) {
+                    const button = {
+                        disabled: false,
+                        attributes: new Map(),
+                        listeners: new Map(),
+                        setAttribute(name, value) { this.attributes.set(name, String(value)); },
+                        removeAttribute(name) { this.attributes.delete(name); },
+                        addEventListener(type, handler) { this.listeners.set(type, handler); },
+                        async click() {
+                            const handler = this.listeners.get('click');
+                            if (handler) await handler();
+                        }
+                    };
+                    buttons.set(`[${attr}]`, button);
+                }
+            }
+        },
+        get innerHTML() { return this._html; },
+        querySelector(selector) {
+            if (selector === '[data-auth-session-diagnostics-status]') return status;
+            return buttons.get(selector) || null;
+        },
+        remove() {}
+    };
+    return { target, buttons, status };
+}
+
 function loadLogoutShellHarness(pathname = '/') {
     const calls = [];
     const bodyClasses = classListHarness(['authenticated-shell', 'shell-ready', 'shell-baseline', 'page-exiting']);
@@ -368,6 +411,70 @@ test('apiVerifyToken refreshes a stored refresh session when the legacy token is
     assert.match(store.get('pzp_current_user'), /new\.operator/);
 });
 
+
+
+test('apiRefreshAuthSession object argument is expected user override, not diagnostic metadata', async () => {
+    const calls = [];
+    const { context, store } = loadApi(async (url, options = {}) => {
+        calls.push({ url, options });
+        if (url === '/api/auth/refresh') {
+            assert.deepEqual(JSON.parse(options.body), { refreshToken: 'refresh-before' });
+            return response(200, {
+                accessToken: 'access-after',
+                refreshToken: 'refresh-after',
+                refreshExpiresAt: '2026-09-06T00:00:00.000Z',
+                sessionTokenId: 44,
+                user: { id: 7, username: 'operator' }
+            });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+    }, {
+        pzp_refresh_token: 'refresh-before',
+        pzp_current_user: JSON.stringify({ id: 7, username: 'operator' })
+    });
+
+    const result = await context.apiRefreshAuthSession({ reason: 'lost-committed-refresh-response' });
+
+    assert.equal(result.outcome, 'superseded');
+    assert.equal(result.accessToken, null);
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-before');
+    assert.equal(store.get('pzp_access_token'), undefined);
+    assert.equal(calls.length, 1);
+});
+
+test('apiRefreshAuthSession success returns access outcome and stores the rotated refresh token', async () => {
+    const calls = [];
+    const { context, store } = loadApi(async (url, options = {}) => {
+        calls.push({ url, options });
+        if (url === '/api/auth/refresh') {
+            assert.deepEqual(JSON.parse(options.body), { refreshToken: 'refresh-old' });
+            return response(200, {
+                accessToken: 'access-new',
+                refreshToken: 'refresh-new',
+                refreshExpiresAt: '2026-09-06T00:00:00.000Z',
+                sessionTokenId: 45,
+                user: { id: 8, username: 'manager' },
+                requestId: 'req-refresh-success'
+            });
+        }
+        throw new Error(`Unexpected fetch: ${url}`);
+    }, {
+        pzp_refresh_token: 'refresh-old',
+        pzp_current_user: JSON.stringify({ id: 8, username: 'manager' })
+    });
+
+    const result = await context.apiRefreshAuthSession();
+
+    assert.equal(result.outcome, 'success');
+    assert.equal(result.accessToken, 'access-new');
+    assert.equal(Object.prototype.hasOwnProperty.call(result, 'refreshToken'), false);
+    assert.equal(store.get('pzp_token'), 'access-new');
+    assert.equal(store.get('pzp_access_token'), 'access-new');
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-new');
+    assert.equal(store.get('pzp_refresh_expires_at'), '2026-09-06T00:00:00.000Z');
+    assert.equal(store.get('pzp_auth_session_token_id'), '45');
+});
+
 test('checkSession falls back to login instead of leaving a blank shell when verify throws', async () => {
     const { context, calls, classSets, store } = loadCheckSessionHarness();
 
@@ -453,6 +560,53 @@ test('checkSession keeps a verified session when permission hydration is tempora
     const recovery = calls.find(call => call[0] === 'renderPermissionBootstrapError');
     assert.equal(recovery?.[1]?.overlay, true);
     assert.equal(typeof recovery?.[1]?.retry, 'function');
+});
+
+test('checkSession applies a saved return route once after permissions recover on retry', async () => {
+    const verifiedUser = { id: 7, username: 'cached.user', role: 'manager' };
+    let permissionsReady = false;
+    let permissionLifecycle = 'loading';
+    const navigations = [];
+    const { context, calls, store } = loadCheckSessionHarness({
+        apiVerifyToken: async () => verifiedUser,
+        hydrateActionPermissions: async () => {
+            calls.push(['hydrateActionPermissions']);
+            if (!permissionsReady) return null;
+            permissionLifecycle = 'ready';
+            return { userId: verifiedUser.id };
+        },
+        getPermissionLifecycle: () => ({ status: permissionLifecycle }),
+        canAccessPage: route => route === '/certificates',
+        window: {
+            WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) },
+            location: {
+                origin: 'http://localhost',
+                href: 'http://localhost/',
+                pathname: '/',
+                search: ''
+            }
+        }
+    });
+    Object.defineProperty(context.window.location, 'href', {
+        get() { return 'http://localhost/'; },
+        set(value) { navigations.push(value); }
+    });
+    vm.runInContext(`
+        const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+        const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+        ${AUTH_CODE.slice(AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES'), AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES')))}
+    `, context, { filename: 'js/auth.js' });
+    store.set('pzp_auth_return_route_v1', JSON.stringify({ route: '/certificates', at: Date.now() }));
+
+    assert.equal(await context.checkSession(), false);
+    assert.equal(store.has('pzp_auth_return_route_v1'), true, 'transient permissions failure must not consume the return-route intent');
+    assert.equal(navigations.length, 0);
+
+    permissionsReady = true;
+    assert.equal(await context.checkSession(), true);
+    assert.deepEqual(navigations, ['/certificates']);
+    assert.equal(store.has('pzp_auth_return_route_v1'), false);
+    assert.equal(calls.some(call => call[0] === 'showMainApp'), false, 'wrong root module must not be shown before return-route navigation');
 });
 
 test('checkSession preserves an offline session and can recover when connectivity returns', async () => {
@@ -737,6 +891,7 @@ test('Service Worker registration is canonical, authenticated, and idempotent', 
         const AUTH_ACCESS_TOKEN_KEY = 'pzp_access_token';
         let serviceWorkerRegistrationPromise = null;
         let authenticatedRuntimeReady = false;
+        function bindAuthenticatedServiceWorkerUpdatePrompt() {}
         ${extractAuthFunction('hasAuthenticatedRuntimeSession')}
         ${extractAuthFunction('isAuthenticatedRuntimeReady')}
         ${extractAuthFunction('registerAuthenticatedServiceWorker')}
@@ -756,6 +911,259 @@ test('Service Worker registration is canonical, authenticated, and idempotent', 
     assert.deepEqual(events, ['crm:authenticated-runtime-ready']);
     assert.equal(context.isAuthenticatedRuntimeReady(), true);
     assert.equal((AUTH_CODE.match(/navigator\.serviceWorker\.register\('\/sw\.js'\)/g) || []).length, 1);
+});
+
+test('login does not navigate from a stale session after delayed Service Worker registration', async () => {
+    const store = new Map();
+    const calls = [];
+    let releaseServiceWorker;
+    let markServiceWorkerStarted;
+    const serviceWorkerStarted = new Promise(resolve => { markServiceWorkerStarted = resolve; });
+    let sessionCurrent = true;
+    const locationState = { pathname: '/', search: '', href: 'http://localhost/' };
+    const storage = {
+        getItem: key => store.get(key) || null,
+        setItem: (key, value) => store.set(key, String(value)),
+        removeItem: key => store.delete(key)
+    };
+    const context = {
+        console: { warn: (...args) => calls.push(['warn', ...args]), error() {}, log() {} },
+        localStorage: storage,
+        AppState: { currentUser: null },
+        window: {
+            WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) },
+            location: locationState
+        },
+        Sidebar: { initUserCard: () => calls.push(['Sidebar.initUserCard']) },
+        AUTH_LOGIN_INTENT_KEY: 'pzp_auth_login_intent',
+        apiLogin: async () => ({
+            accessToken: 'access-a',
+            refreshToken: 'refresh-a',
+            user: { id: 10, username: 'account.a', role: 'manager' }
+        }),
+        rememberAuthSession: data => {
+            store.set('pzp_access_token', data.accessToken);
+            store.set('pzp_refresh_token', data.refreshToken);
+            store.set('pzp_current_user', JSON.stringify(data.user));
+            store.set('pzp_auth_session_generation', 'generation-a');
+            return true;
+        },
+        revokeRefreshTokenValue: token => calls.push(['revokeRefreshTokenValue', token]),
+        captureAuthBootstrapSession: user => ({ userId: user?.id, generation: store.get('pzp_auth_session_generation') || '' }),
+        isAuthBootstrapSessionCurrent: () => sessionCurrent,
+        hydrateBusinessOperatingProfile: async () => calls.push(['hydrateBusinessOperatingProfile']),
+        hydrateActionPermissions: async () => ({ ready: true }),
+        registerAuthenticatedServiceWorker: () => {
+            markServiceWorkerStarted();
+            return new Promise(resolve => { releaseServiceWorker = resolve; });
+        },
+        applyAuthReturnRouteAfterLogin: () => {
+            calls.push(['applyAuthReturnRouteAfterLogin']);
+            return false;
+        },
+        getAuthenticatedTimelineStartPage: () => '/dashboard',
+        recordRedirectDiagnostic: (...args) => calls.push(['recordRedirectDiagnostic', ...args]),
+        showMainApp: () => calls.push(['showMainApp']),
+        checkDailyLogin: () => calls.push(['checkDailyLogin']),
+        resetAuthenticatedRuntimeReady: () => calls.push(['resetAuthenticatedRuntimeReady']),
+        showAuthenticatedPageShell: options => calls.push(['showAuthenticatedPageShell', options]),
+        renderAuthSessionBootstrapError: options => calls.push(['renderAuthSessionBootstrapError', options]),
+        checkSession: () => calls.push(['checkSession'])
+    };
+    Object.defineProperty(locationState, 'href', {
+        get() { return 'http://localhost/'; },
+        set(value) { calls.push(['navigate', value]); }
+    });
+    vm.createContext(context);
+    vm.runInContext(extractSourceFunction(AUTH_CODE, 'login'), context, { filename: 'js/auth.js' });
+
+    const pending = context.login('account.a', 'password');
+    await serviceWorkerStarted;
+    sessionCurrent = false;
+    store.clear();
+    context.AppState.currentUser = null;
+    releaseServiceWorker(null);
+
+    const result = await pending;
+    assert.equal(result.success, true);
+    assert.equal(result.pending, true);
+    assert.equal(calls.some(call => call[0] === 'navigate'), false);
+    assert.equal(calls.some(call => call[0] === 'applyAuthReturnRouteAfterLogin'), false);
+    assert.equal(calls.some(call => call[0] === 'showMainApp'), false);
+    assert.equal(calls.some(call => call[0] === 'Sidebar.initUserCard'), false);
+    assert.equal(context.AppState.currentUser, null);
+});
+
+test('login keeps the current page when the saved return route already matches it', async () => {
+    const store = new Map();
+    const calls = [];
+    const locationState = { pathname: '/certificates', search: '', origin: 'http://localhost' };
+    Object.defineProperty(locationState, 'href', {
+        get() { return 'http://localhost/certificates'; },
+        set(value) { calls.push(['navigate', value]); }
+    });
+    const context = {
+        URL,
+        Date,
+        console: { warn() {}, error() {}, log() {} },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        AppState: { currentUser: null },
+        window: {
+            WorkingRole: { hydrate: () => calls.push(['WorkingRole.hydrate']) },
+            location: locationState
+        },
+        Sidebar: { initUserCard: () => calls.push(['Sidebar.initUserCard']) },
+        apiLogin: async () => ({
+            accessToken: 'access-current',
+            refreshToken: 'refresh-current',
+            user: { id: 10, username: 'account.current', role: 'manager' }
+        }),
+        rememberAuthSession: data => {
+            store.set('pzp_token', data.accessToken);
+            store.set('pzp_access_token', data.accessToken);
+            store.set('pzp_refresh_token', data.refreshToken);
+            store.set('pzp_current_user', JSON.stringify(data.user));
+            store.set('pzp_auth_session_generation', 'generation-current');
+            return true;
+        },
+        revokeRefreshTokenValue: token => calls.push(['revokeRefreshTokenValue', token]),
+        captureAuthBootstrapSession: user => ({ userId: user?.id, generation: store.get('pzp_auth_session_generation') || '' }),
+        isAuthBootstrapSessionCurrent: () => true,
+        hydrateBusinessOperatingProfile: async () => calls.push(['hydrateBusinessOperatingProfile']),
+        hydrateActionPermissions: async () => ({ ready: true }),
+        registerAuthenticatedServiceWorker: async () => null,
+        getAuthenticatedTimelineStartPage: () => '/dashboard',
+        recordRedirectDiagnostic: (...args) => calls.push(['recordRedirectDiagnostic', ...args]),
+        showMainApp: () => calls.push(['showMainApp']),
+        checkDailyLogin: () => calls.push(['checkDailyLogin']),
+        resetAuthenticatedRuntimeReady: () => calls.push(['resetAuthenticatedRuntimeReady']),
+        showAuthenticatedPageShell: options => calls.push(['showAuthenticatedPageShell', options]),
+        renderAuthSessionBootstrapError: options => calls.push(['renderAuthSessionBootstrapError', options]),
+        checkSession: () => calls.push(['checkSession']),
+        getPermissionLifecycle: () => ({ status: 'ready' }),
+        canAccessPage: route => route === '/certificates',
+        document: { getElementById: () => null }
+    };
+    vm.createContext(context);
+    const returnRouteStart = AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES');
+    const returnRouteEnd = AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', returnRouteStart);
+    vm.runInContext(`
+        const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';
+        const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+        const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+        ${AUTH_CODE.slice(returnRouteStart, returnRouteEnd)}
+        ${extractSourceFunction(AUTH_CODE, 'login')}
+    `, context, { filename: 'js/auth.js' });
+
+    store.set('pzp_auth_return_route_v1', JSON.stringify({ route: '/certificates', at: Date.now() }));
+    const result = await context.login('account.current', 'password');
+
+    assert.equal(result.success, true);
+    assert.equal(calls.some(call => call[0] === 'navigate'), false, 'same-route return intent must not fall through to default start redirect');
+    assert.equal(calls.some(call => call[0] === 'showMainApp'), false, 'same-route return intent is already handled by the current document');
+    assert.equal(store.has('pzp_auth_return_route_v1'), false, 'same-route return intent must be consumed exactly once');
+    assert.ok(calls.some(call => call[0] === 'recordRedirectDiagnostic' && call[2]?.redirectReason === 'return-route-current'));
+});
+
+test('service worker update prompt is manual, dirty-guarded, and preserves auth storage', async () => {
+    const store = new Map([
+        ['pzp_token', 'access-token'],
+        ['pzp_access_token', 'access-token'],
+        ['pzp_refresh_token', 'refresh-token'],
+        ['pzp_current_user', JSON.stringify({ id: 14, username: 'operator', role: 'manager' })]
+    ]);
+    const calls = [];
+    const { target, buttons } = createRecoveryElementHarness();
+    const dirtySurface = {
+        dataset: {
+            editableSurface: 'true',
+            dirty: 'true'
+        }
+    };
+    const locationState = {
+        origin: 'http://localhost',
+        href: 'http://localhost/certificates/99?secret=1#frag',
+        pathname: '/certificates/99',
+        reload: () => calls.push(['reload'])
+    };
+    let confirmResult = false;
+    const context = {
+        URL,
+        Date,
+        console: { warn() {}, error() {}, log() {} },
+        AppState: { currentUser: { id: 14, username: 'operator', role: 'manager' } },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        window: {
+            location: locationState,
+            UnsafeDismissGuard: { isDirtySurface: surface => surface === dirtySurface }
+        },
+        navigator: {
+            serviceWorker: {
+                controller: { scriptURL: 'http://localhost/sw.js' }
+            }
+        },
+        document: {
+            body: { appendChild: node => calls.push(['appendChild', node]) },
+            createElement: () => target,
+            getElementById: id => id === 'authServiceWorkerUpdatePrompt' ? target : null,
+            querySelectorAll: selector => selector === '[data-editable-surface="true"]' ? [dirtySurface] : []
+        },
+        confirmModal: async (message, options) => {
+            calls.push(['confirmModal', message, options]);
+            return confirmResult;
+        },
+        showNotification: (...args) => calls.push(['showNotification', ...args]),
+        recordRedirectDiagnostic: (...args) => calls.push(['recordRedirectDiagnostic', ...args]),
+        getPermissionLifecycle: () => ({ status: 'ready' }),
+        canAccessPage: route => route === '/certificates',
+        getAuthenticatedTimelineStartPage: () => '/dashboard'
+    };
+    vm.createContext(context);
+    const returnRouteStart = AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES');
+    const returnRouteEnd = AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', returnRouteStart);
+    vm.runInContext(`
+        const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+        const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+        let authServiceWorkerUpdatePromptVisible = false;
+        let authServiceWorkerUpdateDismissedForController = '';
+        ${AUTH_CODE.slice(returnRouteStart, returnRouteEnd)}
+        ${extractSourceFunction(AUTH_CODE, 'hasAuthenticatedRuntimeSession')}
+        ${extractSourceFunction(AUTH_CODE, 'hasAuthRecoveryUnsavedChanges')}
+        ${extractSourceFunction(AUTH_CODE, 'authenticatedServiceWorkerUpdateControllerKey')}
+        ${extractSourceFunction(AUTH_CODE, 'ensureAuthenticatedServiceWorkerUpdateSurface')}
+        ${extractSourceFunction(AUTH_CODE, 'confirmAuthenticatedServiceWorkerUpdateReload')}
+        ${extractSourceFunction(AUTH_CODE, 'applyAuthenticatedServiceWorkerUpdateReload')}
+        ${extractSourceFunction(AUTH_CODE, 'dismissAuthenticatedServiceWorkerUpdatePrompt')}
+        ${extractSourceFunction(AUTH_CODE, 'renderAuthenticatedServiceWorkerUpdatePrompt')}
+    `, context, { filename: 'js/auth.js' });
+
+    assert.equal(context.renderAuthenticatedServiceWorkerUpdatePrompt('controllerchange'), true);
+    assert.match(target.innerHTML, /data-auth-sw-update-prompt/);
+    assert.match(target.innerHTML, /Оновити/);
+    assert.match(target.innerHTML, /Пізніше/);
+
+    const reloadButton = buttons.get('[data-auth-sw-update-reload]');
+    assert.ok(reloadButton, 'SW update prompt must expose a manual reload action');
+    await reloadButton.click();
+    assert.equal(calls.some(call => call[0] === 'reload'), false, 'dirty cancel must not reload');
+    assert.equal(store.get('pzp_access_token'), 'access-token', 'dirty cancel must preserve access token');
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-token', 'dirty cancel must preserve refresh token');
+    assert.equal(store.has('pzp_auth_return_route_v1'), false, 'dirty cancel must not write a route intent');
+
+    confirmResult = true;
+    await reloadButton.click();
+    assert.equal(calls.some(call => call[0] === 'reload'), true);
+    assert.equal(store.get('pzp_access_token'), 'access-token');
+    assert.equal(store.get('pzp_refresh_token'), 'refresh-token');
+    assert.equal(JSON.parse(store.get('pzp_auth_return_route_v1')).route, '/certificates');
 });
 
 test('showLoginScreen clears logout exit state before showing the canonical login screen', () => {
@@ -2333,4 +2741,211 @@ test('Task 4 protected request surfaces use shared refresh retry and preserve 40
         assert.doesNotMatch(requestCode, /res\.status === 401 \|\| res\.status === 403/);
         assert.match(requestCode, /handleAuthError\(res\)/);
     }
+});
+
+
+test('auth return route strips dynamic segments and applies once after allowed login', () => {
+    const store = new Map();
+    const diagnostics = [];
+    const context = {
+        URL,
+        Date,
+        console: { warn() {}, error() {}, log() {} },
+        AppState: { currentUser: { id: 14, username: 'operator', role: 'animator' } },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        window: {
+            location: {
+                origin: 'http://localhost',
+                href: 'http://localhost/customers/alice%40example.com?token=secret#frag',
+                pathname: '/customers/alice%40example.com'
+            }
+        },
+        recordRedirectDiagnostic: (event, details) => diagnostics.push({ event, details }),
+        getApiAuthSessionFailure: () => ({ kind: 'terminal' }),
+        getPermissionLifecycle: () => ({ status: 'ready' }),
+        canAccessPage: route => route === '/customers',
+        getAuthenticatedTimelineStartPage: () => '/dashboard'
+    };
+    vm.createContext(context);
+    const start = AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES');
+    const end = AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', start);
+    assert.ok(start >= 0 && end > start, 'auth return-route helper block missing');
+    vm.runInContext(`const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+${AUTH_CODE.slice(start, end)}`, context, { filename: 'js/auth.js' });
+
+    assert.equal(context.shouldRememberAuthReturnRouteForAuthFailure(), true);
+    assert.equal(context.rememberAuthReturnRoute('terminal-auth'), true);
+    assert.equal(JSON.parse(store.get('pzp_auth_return_route_v1')).route, '/customers');
+    assert.equal(diagnostics.at(-1).details.targetRoute, '/customers');
+
+    context.window.location.pathname = '/';
+    context.window.location.href = 'http://localhost/';
+    assert.equal(context.applyAuthReturnRouteAfterLogin(context.AppState.currentUser), true);
+    assert.equal(context.window.location.href, '/customers');
+    assert.equal(store.has('pzp_auth_return_route_v1'), false);
+    assert.equal(context.applyAuthReturnRouteAfterLogin(context.AppState.currentUser), false);
+});
+
+test('auth return route rejects external, unknown, expired, and inaccessible routes', () => {
+    const cases = [
+        { route: 'https://evil.example/customers/7', expected: '' },
+        { route: '/unknown/7', expected: '' },
+        { route: '/certificates/new?secret=1', expected: '/certificates/new' },
+        { route: '/customers/7', expected: '/customers' }
+    ];
+    for (const item of cases) {
+        const store = new Map();
+        const context = {
+            URL,
+            Date,
+            console: { warn() {}, error() {}, log() {} },
+            AppState: { currentUser: { id: 14, username: 'operator', role: 'animator' } },
+            localStorage: {
+                getItem: key => store.get(key) || null,
+                setItem: (key, value) => store.set(key, String(value)),
+                removeItem: key => store.delete(key)
+            },
+            window: { location: { origin: 'http://localhost', href: 'http://localhost/', pathname: '/' } },
+            recordRedirectDiagnostic() {},
+            getPermissionLifecycle: () => ({ status: 'ready' }),
+            canAccessPage: route => route !== '/customers',
+            getAuthenticatedTimelineStartPage: () => '/dashboard'
+        };
+        vm.createContext(context);
+        const start = AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES');
+        const end = AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', start);
+        vm.runInContext(`const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+${AUTH_CODE.slice(start, end)}`, context, { filename: 'js/auth.js' });
+        assert.equal(context.normalizeSafeAuthReturnRoute(item.route), item.expected);
+        if (item.expected) {
+            store.set('pzp_auth_return_route_v1', JSON.stringify({ route: item.expected, at: Date.now() - 1000 }));
+            assert.equal(context.consumeAuthReturnRoute(context.AppState.currentUser), item.expected === '/customers' ? '' : item.expected);
+            assert.equal(store.has('pzp_auth_return_route_v1'), false);
+        }
+        store.set('pzp_auth_return_route_v1', JSON.stringify({ route: '/certificates', at: Date.now() - (11 * 60 * 1000) }));
+        assert.equal(context.consumeAuthReturnRoute(context.AppState.currentUser), '');
+    }
+});
+
+
+test('auth return route is not captured for logout or non-terminal login display', () => {
+    const store = new Map();
+    const context = {
+        URL,
+        Date,
+        console: { warn() {}, error() {}, log() {} },
+        AppState: { currentUser: null },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        window: { location: { origin: 'http://localhost', href: 'http://localhost/leads', pathname: '/leads' } },
+        recordRedirectDiagnostic() {},
+        getApiAuthSessionFailure: () => null,
+        getPermissionLifecycle: () => ({ status: 'ready' }),
+        canAccessPage: () => true,
+        getAuthenticatedTimelineStartPage: () => '/dashboard'
+    };
+    vm.createContext(context);
+    const start = AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES');
+    const end = AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', start);
+    vm.runInContext(`const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+${AUTH_CODE.slice(start, end)}`, context, { filename: 'js/auth.js' });
+
+    assert.equal(context.shouldRememberAuthReturnRouteForAuthFailure(), false);
+    assert.equal(store.has('pzp_auth_return_route_v1'), false);
+});
+
+test('refresh watchdog recovery surface exposes explicit reload exit with dirty guard and safe route', async () => {
+    const store = new Map();
+    const calls = [];
+    const { target, buttons } = createRecoveryElementHarness();
+    const dirtySurface = {
+        dataset: {
+            editableSurface: 'true',
+            dirty: 'true'
+        }
+    };
+    let confirmResult = false;
+    const context = {
+        URL,
+        Date,
+        console: { warn() {}, error() {}, log() {} },
+        AppState: { currentUser: { id: 14, username: 'operator', role: 'manager' } },
+        localStorage: {
+            getItem: key => store.get(key) || null,
+            setItem: (key, value) => store.set(key, String(value)),
+            removeItem: key => store.delete(key)
+        },
+        window: {
+            location: {
+                origin: 'http://localhost',
+                href: 'http://localhost/certificates/77?token=secret#frag',
+                pathname: '/certificates/77',
+                reload: () => calls.push(['reload'])
+            },
+            RedirectDiagnostics: { copy: async () => ({ copied: true }) },
+            UnsafeDismissGuard: {
+                isDirtySurface: surface => surface === dirtySurface
+            }
+        },
+        document: {
+            body: { appendChild: node => calls.push(['appendChild', node]) },
+            createElement: () => target,
+            getElementById: id => id === 'authSessionRecovery' ? target : null,
+            querySelectorAll: selector => selector === '[data-editable-surface="true"]' ? [dirtySurface] : []
+        },
+        confirmModal: async (message, options) => {
+            calls.push(['confirmModal', message, options]);
+            return confirmResult;
+        },
+        showNotification: (...args) => calls.push(['showNotification', ...args]),
+        recordRedirectDiagnostic: (...args) => calls.push(['recordRedirectDiagnostic', ...args]),
+        getPermissionLifecycle: () => ({ status: 'ready' }),
+        canAccessPage: route => route === '/certificates',
+        getAuthenticatedTimelineStartPage: () => '/dashboard'
+    };
+    vm.createContext(context);
+    const returnRouteStart = AUTH_CODE.indexOf('const AUTH_SAFE_RETURN_ROUTE_MODULES');
+    const returnRouteEnd = AUTH_CODE.indexOf('function clearAuthSessionBootstrapError', returnRouteStart);
+    assert.ok(returnRouteStart >= 0 && returnRouteEnd > returnRouteStart, 'auth return-route helper block missing');
+    vm.runInContext(`
+        const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+        const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
+        ${extractAuthFunction('_escHtml')}
+        ${extractAuthFunction('authSessionFailureMessage')}
+        ${AUTH_CODE.slice(returnRouteStart, returnRouteEnd)}
+        ${extractAuthFunction('clearAuthSessionBootstrapError')}
+        ${extractAuthFunction('ensureAuthSessionRecoverySurface')}
+        ${extractAuthFunction('hasAuthRecoveryUnsavedChanges')}
+        ${extractAuthFunction('confirmAuthRecoveryReload')}
+        ${extractAuthFunction('reloadAuthSessionRecoveryPage')}
+        ${extractAuthFunction('renderAuthSessionBootstrapError')}
+    `, context, { filename: 'js/auth.js' });
+
+    context.renderAuthSessionBootstrapError({
+        failure: { kind: 'transient', reason: 'refresh-watchdog-timeout' },
+        retry: () => calls.push(['retry'])
+    });
+    assert.match(target.innerHTML, /data-auth-session-reload/);
+    assert.match(target.innerHTML, /не гарантує тихе відновлення/i);
+    const reloadButton = buttons.get('[data-auth-session-reload]');
+    assert.ok(reloadButton, 'watchdog recovery must expose explicit reload action');
+
+    await reloadButton.click();
+    assert.equal(calls.some(call => call[0] === 'reload'), false, 'dirty cancel must not reload');
+    assert.equal(store.has('pzp_auth_return_route_v1'), false, 'cancelled reload must not consume or store a new intent');
+
+    confirmResult = true;
+    await reloadButton.click();
+    assert.equal(calls.some(call => call[0] === 'reload'), true);
+    assert.equal(JSON.parse(store.get('pzp_auth_return_route_v1')).route, '/certificates');
 });

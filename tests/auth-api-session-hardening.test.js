@@ -22,6 +22,8 @@ function response(status, body = {}, headers = {}) {
 
 function loadApi(fetchImpl, initialStore = {}, contextOverrides = {}) {
     const store = new Map(Object.entries(initialStore).map(([key, value]) => [key, String(value)]));
+    const windowOverrides = contextOverrides.window || {};
+    const { window: _ignoredWindow, ...remainingContextOverrides } = contextOverrides;
     const context = {
         console: { warn() {}, error() {}, log() {} },
         URL,
@@ -34,7 +36,8 @@ function loadApi(fetchImpl, initialStore = {}, contextOverrides = {}) {
         },
         window: {
             location: { search: '', href: 'http://localhost/' },
-            history: { replaceState() {} }
+            history: { replaceState() {} },
+            ...windowOverrides
         },
         document: {
             documentElement: { classList: { contains() { return false; } } }
@@ -45,7 +48,7 @@ function loadApi(fetchImpl, initialStore = {}, contextOverrides = {}) {
             return 1;
         },
         clearTimeout() {},
-        ...contextOverrides
+        ...remainingContextOverrides
     };
     context.window.self = context.window;
     context.window.top = context.window;
@@ -60,6 +63,54 @@ function extractFunction(source, functionName, nextFunctionName) {
     assert.ok(start >= 0, `${functionName} function missing`);
     assert.ok(end > start, `${nextFunctionName} must follow ${functionName}`);
     return source.slice(start, end);
+}
+
+
+function createControlledWindowClock() {
+    let now = 0;
+    let nextId = 1;
+    const timers = [];
+    const clock = {
+        setTimeout(callback, ms = 0) {
+            const id = nextId++;
+            timers.push({ id, callback, at: now + Number(ms || 0), cleared: false, ms: Number(ms || 0) });
+            return id;
+        },
+        clearTimeout(id) {
+            const timer = timers.find(item => item.id === id);
+            if (timer) timer.cleared = true;
+        },
+        pending() {
+            return timers.filter(timer => !timer.cleared).map(timer => ({ id: timer.id, at: timer.at, ms: timer.ms }));
+        },
+        async advance(ms) {
+            now += Number(ms || 0);
+            let ran = true;
+            while (ran) {
+                ran = false;
+                timers.sort((left, right) => left.at - right.at || left.id - right.id);
+                const index = timers.findIndex(timer => !timer.cleared && timer.at <= now);
+                if (index >= 0) {
+                    const [timer] = timers.splice(index, 1);
+                    timer.cleared = true;
+                    timer.callback();
+                    ran = true;
+                    await Promise.resolve();
+                }
+            }
+            await Promise.resolve();
+        }
+    };
+    return clock;
+}
+
+async function flushMicrotasks(count = 6) {
+    for (let index = 0; index < count; index += 1) await Promise.resolve();
+}
+
+async function promiseState(promise) {
+    const marker = {};
+    return Promise.race([promise, Promise.resolve(marker)]).then(value => (value === marker ? 'pending' : 'settled'));
 }
 
 test('refresh keeps the hydrated permission snapshot when the response contains a bare user', async () => {
@@ -1491,4 +1542,175 @@ test('login form ignores duplicate submits and restores its UI after failure', a
     assert.equal(button.disabled, false);
     assert.equal(button.textContent, 'Увійти →');
     assert.equal(attributes.has('aria-busy'), false);
+});
+
+
+test('refresh watchdog returns retry-later at the deadline and safely applies a late same-session response', async () => {
+    const clock = createControlledWindowClock();
+    let refreshCalls = 0;
+    let releaseLate;
+    const user = { id: 14, username: 'operator', role: 'animator' };
+    const { context, store } = loadApi(async url => {
+        assert.equal(url, '/api/auth/refresh');
+        refreshCalls += 1;
+        return new Promise(resolve => { releaseLate = resolve; });
+    }, {
+        pzp_token: 'expired-access',
+        pzp_access_token: 'expired-access',
+        pzp_refresh_token: 'watchdog-refresh-old',
+        pzp_auth_session_generation: 'watchdog-generation',
+        pzp_auth_session_token_id: '4',
+        pzp_current_user: JSON.stringify(user)
+    }, {
+        window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout }
+    });
+
+    const first = context.apiRefreshAuthSession();
+    const second = context.apiRefreshAuthSession();
+    assert.equal(first, second, 'repeated action joins the live transport instead of starting a refresh storm');
+    assert.equal(refreshCalls, 1);
+    assert.equal(clock.pending().some(timer => timer.ms === 12000), true);
+
+    await clock.advance(11999);
+    assert.equal(await promiseState(first), 'pending');
+    assert.equal(store.get('pzp_refresh_token'), 'watchdog-refresh-old');
+
+    await clock.advance(1);
+    const timeoutResult = await first;
+    assert.equal(timeoutResult.outcome, 'retry-later');
+    assert.equal(timeoutResult.retryable, true);
+    assert.equal(store.get('pzp_refresh_token'), 'watchdog-refresh-old');
+    assert.equal(store.get('pzp_access_token'), 'expired-access');
+    assert.equal(context.getApiAuthSessionFailure().kind, 'transient');
+    assert.equal(context.getApiAuthSessionFailure().reason, 'refresh-watchdog-timeout');
+
+    const retryDuringTransport = await context.apiRefreshAuthSession();
+    assert.equal(retryDuringTransport.outcome, 'retry-later');
+    assert.equal(refreshCalls, 1, 'retry-later does not launch a parallel refresh while the transport is still open');
+
+    releaseLate(response(200, {
+        accessToken: 'late-access',
+        refreshToken: 'late-refresh',
+        sessionTokenId: 5,
+        user
+    }));
+    await flushMicrotasks();
+    assert.equal(store.get('pzp_access_token'), 'late-access');
+    assert.equal(store.get('pzp_refresh_token'), 'late-refresh');
+    assert.equal(context.getApiAuthSessionFailure(), null);
+});
+
+test('never-settling refresh watchdog keeps the session and blocks retry storms without a fake late response', async () => {
+    const clock = createControlledWindowClock();
+    let refreshCalls = 0;
+    const user = { id: 14, username: 'operator', role: 'animator' };
+    const { context, store } = loadApi(async url => {
+        assert.equal(url, '/api/auth/refresh');
+        refreshCalls += 1;
+        return new Promise(() => {});
+    }, {
+        pzp_token: 'expired-access',
+        pzp_access_token: 'expired-access',
+        pzp_refresh_token: 'watchdog-refresh-never-settles',
+        pzp_auth_session_generation: 'watchdog-generation',
+        pzp_auth_session_token_id: '4',
+        pzp_current_user: JSON.stringify(user)
+    }, {
+        window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout }
+    });
+
+    const first = context.apiRefreshAuthSession();
+    await clock.advance(12000);
+    const firstResult = await first;
+    assert.equal(firstResult.accessToken, null);
+    assert.equal(firstResult.outcome, 'retry-later');
+    assert.equal(firstResult.retryable, true);
+    assert.equal(firstResult.reason, 'refresh-watchdog-timeout');
+    assert.equal(store.get('pzp_refresh_token'), 'watchdog-refresh-never-settles');
+    assert.equal(store.get('pzp_access_token'), 'expired-access');
+
+    const retry = await context.apiRefreshAuthSession();
+    assert.equal(retry.outcome, 'retry-later');
+    assert.equal(refreshCalls, 1, 'retry while the original transport never settles must not reuse the old token in a new rotation');
+    assert.equal(store.get('pzp_refresh_token'), 'watchdog-refresh-never-settles');
+    assert.equal(context.getApiAuthSessionFailure().kind, 'transient');
+});
+
+test('late refresh response after watchdog cannot overwrite logout or a newer account session', async () => {
+    const user = { id: 14, username: 'operator', role: 'animator' };
+    for (const mode of ['logout', 'account-switch']) {
+        const clock = createControlledWindowClock();
+        let releaseLate;
+        let refreshCalls = 0;
+        const { context, store } = loadApi(async url => {
+            assert.equal(url, '/api/auth/refresh');
+            refreshCalls += 1;
+            return new Promise(resolve => { releaseLate = resolve; });
+        }, {
+            pzp_token: 'expired-access',
+            pzp_access_token: 'expired-access',
+            pzp_refresh_token: 'watchdog-refresh-old',
+            pzp_auth_session_generation: 'watchdog-generation',
+            pzp_auth_session_token_id: '4',
+            pzp_current_user: JSON.stringify(user)
+        }, {
+            window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout }
+        });
+
+        const pending = context.apiRefreshAuthSession();
+        await clock.advance(12000);
+        assert.equal((await pending).outcome, 'retry-later');
+        if (mode === 'logout') {
+            for (const key of Array.from(store.keys())) store.delete(key);
+        } else {
+            store.set('pzp_token', 'newer-access');
+            store.set('pzp_access_token', 'newer-access');
+            store.set('pzp_refresh_token', 'newer-refresh');
+            store.set('pzp_auth_session_generation', 'newer-generation');
+            store.set('pzp_auth_session_token_id', '99');
+            store.set('pzp_current_user', JSON.stringify({ id: 88, username: 'newer.user', role: 'manager' }));
+        }
+        releaseLate(response(200, {
+            accessToken: 'late-access',
+            refreshToken: 'late-refresh',
+            sessionTokenId: 5,
+            user
+        }));
+        await flushMicrotasks();
+        assert.equal(refreshCalls, 1);
+        if (mode === 'logout') {
+            assert.equal(store.has('pzp_refresh_token'), false);
+            assert.equal(store.has('pzp_access_token'), false);
+        } else {
+            assert.equal(store.get('pzp_access_token'), 'newer-access');
+            assert.equal(store.get('pzp_refresh_token'), 'newer-refresh');
+            assert.equal(JSON.parse(store.get('pzp_current_user')).id, 88);
+        }
+    }
+});
+
+test('late terminal refresh after watchdog is the only path that clears auth storage', async () => {
+    const clock = createControlledWindowClock();
+    let releaseLate;
+    const { context, store } = loadApi(async () => new Promise(resolve => { releaseLate = resolve; }), {
+        pzp_token: 'expired-access',
+        pzp_access_token: 'expired-access',
+        pzp_refresh_token: 'watchdog-refresh-old',
+        pzp_auth_session_generation: 'watchdog-generation',
+        pzp_current_user: JSON.stringify({ id: 14, username: 'operator' })
+    }, {
+        window: { setTimeout: clock.setTimeout, clearTimeout: clock.clearTimeout }
+    });
+
+    const pending = context.apiRefreshAuthSession();
+    await clock.advance(12000);
+    assert.equal((await pending).outcome, 'retry-later');
+    assert.equal(store.get('pzp_refresh_token'), 'watchdog-refresh-old');
+
+    releaseLate(response(401, { code: 'refresh_token_reuse' }));
+    await flushMicrotasks();
+    assert.equal(store.size, 0);
+    const failure = context.getApiAuthSessionFailure();
+    assert.equal(failure.kind, 'terminal');
+    assert.equal(failure.status, 401);
 });

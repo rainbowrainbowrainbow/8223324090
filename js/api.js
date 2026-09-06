@@ -29,6 +29,7 @@ const API_AUTH_REFRESH_REPLAY_CONFIRM_DELAY_MS = 250;
 const API_AUTH_TRANSITION_MAX_AGE_MS = 15000;
 const API_AUTH_REFRESH_COORDINATION_MAX_AGE_MS = 15000;
 const API_AUTH_REFRESH_COORDINATION_WAIT_MS = 5000;
+const API_AUTH_REFRESH_WATCHDOG_MS = 12000;
 const API_AUTH_RATE_LIMIT_RETRY_MAX = 2;
 const API_AUTH_RATE_LIMIT_RETRY_DEFAULT_MS = 250;
 const API_AUTH_RATE_LIMIT_AUTO_RETRY_MAX_DELAY_MS = 2000;
@@ -390,6 +391,74 @@ function getStoredAuthToken() {
 
 function apiHasStoredAuthSession() {
     return Boolean(getStoredAuthToken() || localStorage.getItem(API_AUTH_REFRESH_TOKEN_KEY));
+}
+
+
+function getApiAuthRefreshWatchdogTimers() {
+    const setTimer = typeof window !== 'undefined' && typeof window.setTimeout === 'function'
+        ? window.setTimeout.bind(window)
+        : null;
+    const clearTimer = typeof window !== 'undefined' && typeof window.clearTimeout === 'function'
+        ? window.clearTimeout.bind(window)
+        : null;
+    return { setTimer, clearTimer };
+}
+
+function clearApiAuthRefreshWatchdog(operation) {
+    if (!operation || operation.watchdogTimer === null || operation.watchdogTimer === undefined) return;
+    const { clearTimer } = getApiAuthRefreshWatchdogTimers();
+    if (clearTimer) clearTimer(operation.watchdogTimer);
+    operation.watchdogTimer = null;
+}
+
+function buildApiAuthRefreshRetryLaterResult(reason = 'refresh-watchdog-timeout') {
+    return { accessToken: null, outcome: 'retry-later', retryable: true, reason };
+}
+
+function createApiAuthRefreshControlledPromise(operation, transportPromise) {
+    const { setTimer } = getApiAuthRefreshWatchdogTimers();
+    return new Promise(resolve => {
+        let settled = false;
+        const settle = result => {
+            if (settled) return;
+            settled = true;
+            clearApiAuthRefreshWatchdog(operation);
+            resolve(result || { accessToken: null, outcome: 'transient' });
+        };
+        operation.resolvePublic = settle;
+        if (setTimer && Number.isFinite(API_AUTH_REFRESH_WATCHDOG_MS) && API_AUTH_REFRESH_WATCHDOG_MS > 0) {
+            operation.watchdogTimer = setTimer(() => {
+                operation.watchdogTimer = null;
+                operation.watchdogFired = true;
+                if (apiAuthRefreshOperation !== operation
+                    || !isApiAuthRefreshOperationCurrent(operation.refreshToken, operation.sessionGeneration)) {
+                    settle({ accessToken: null, outcome: 'superseded' });
+                    return;
+                }
+                setApiAuthSessionFailure('transient', {
+                    stage: 'refresh',
+                    reason: 'refresh-watchdog-timeout'
+                });
+                recordApiRedirectDiagnostic('auth-refresh', {
+                    refreshOutcome: 'retry-later',
+                    reason: 'refresh-watchdog-timeout'
+                });
+                settle(buildApiAuthRefreshRetryLaterResult());
+            }, API_AUTH_REFRESH_WATCHDOG_MS);
+        }
+        transportPromise.then(result => {
+            operation.transportSettled = true;
+            settle(result);
+        }, err => {
+            operation.transportSettled = true;
+            if (isApiAuthRefreshOperationCurrent(operation.refreshToken, operation.sessionGeneration)) {
+                setApiAuthSessionFailure('transient', { stage: 'refresh', reason: 'network' });
+                recordApiRedirectDiagnostic('auth-refresh', { refreshOutcome: 'transient', reason: 'network' });
+            }
+            console.warn('[Auth] refresh failed:', err?.message || err);
+            settle({ accessToken: null, outcome: 'transient' });
+        });
+    });
 }
 
 function formatApiErrorPayload(payload = {}, fallback = 'API error') {
@@ -4196,19 +4265,36 @@ function apiRefreshAuthSession(expectedUserOverride = null) {
         return apiAuthRefreshOperation.promise;
     }
 
-    const operation = { refreshToken, sessionGeneration, expectedIdentityKey, promise: null };
-    const pendingRefresh = runApiAuthRefreshWithCoordination(
+    const operation = {
+        refreshToken,
+        sessionGeneration,
+        expectedIdentityKey,
+        promise: null,
+        transportPromise: null,
+        transportSettled: false,
+        watchdogFired: false,
+        watchdogTimer: null,
+        resolvePublic: null
+    };
+    const transportRefresh = runApiAuthRefreshWithCoordination(
         refreshToken,
         expectedUser,
         sessionGeneration,
         expectedIdentityKey
     );
-    const trackedRefresh = pendingRefresh.finally(() => {
+    operation.transportPromise = transportRefresh;
+    operation.promise = createApiAuthRefreshControlledPromise(operation, transportRefresh);
+    transportRefresh.then(() => {
+        operation.transportSettled = true;
+        clearApiAuthRefreshWatchdog(operation);
+        if (apiAuthRefreshOperation === operation) apiAuthRefreshOperation = null;
+    }, () => {
+        operation.transportSettled = true;
+        clearApiAuthRefreshWatchdog(operation);
         if (apiAuthRefreshOperation === operation) apiAuthRefreshOperation = null;
     });
-    operation.promise = trackedRefresh;
     apiAuthRefreshOperation = operation;
-    return trackedRefresh;
+    return operation.promise;
 }
 
 async function apiRefreshAuthToken() {

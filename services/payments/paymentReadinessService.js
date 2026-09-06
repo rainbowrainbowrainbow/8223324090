@@ -1,6 +1,7 @@
 'use strict';
 
 const crypto = require('node:crypto');
+const { TestDrainError, loadActiveTestDrain } = require('./testDrainGate');
 const { pool } = require('../../db');
 const {
     assertFiscalCashierBindingCapability,
@@ -3317,8 +3318,14 @@ function phase1CloseBlockedError(blockerCount) {
     });
 }
 
-function assertPhase1ClosePaymentDrain(env = process.env) {
+async function assertPhase1ClosePaymentDrain(env = process.env, client, shift, user, routeOptionId) {
     if (isCheckboxPaymentAcceptanceEnabled(env)) {
+        const drain = await loadActiveTestDrain(client, shift.fiscal_profile_id, shift.fiscal_register_id);
+        if (drain && String(drain.fiscal_shift_id) === String(shift.id)) {
+            const scope = await require('./sharedTestDayService').authorizeScope(client, { user, shiftId: shift.id, routeOptionId });
+            if (scope.fingerprint === drain.scope_fingerprint && String(drain.initiated_by_user_id) === String(user.id)
+                && drain.initiating_route_option_id === routeOptionId) return;
+        }
         throw new PaymentReadinessError(
             'phase1_close_requires_payment_drain',
             'Disable new Checkbox payment acceptance before closing the Phase-1 shift',
@@ -3537,6 +3544,7 @@ async function requestPhase1ShiftClose({
     dbPool = pool,
     user,
     shiftId,
+    routeOptionId = null,
     idempotencyKey,
     body = {},
     env = process.env,
@@ -3562,7 +3570,7 @@ async function requestPhase1ShiftClose({
             user,
             shiftId: numericShiftId
         });
-        assertPhase1ClosePaymentDrain(env);
+        await assertPhase1ClosePaymentDrain(env, client, shift, user, routeOptionId);
         const replay = await loadPhase1CloseReplay(client, { operationIdempotencyKey, shift });
         if (replay) return { shift, replay };
         if (shift.status !== 'open' || shift.lifecycle_stage !== 'OPENED' || !shift.provider_shift_id) {
@@ -3605,7 +3613,7 @@ async function requestPhase1ShiftClose({
             user,
             shiftId: numericShiftId
         });
-        assertPhase1ClosePaymentDrain(env);
+        await assertPhase1ClosePaymentDrain(env, client, shift, user, routeOptionId);
         const replay = await loadPhase1CloseReplay(client, { operationIdempotencyKey, shift });
         if (replay) return replay;
         if (shift.status !== 'open' || shift.lifecycle_stage !== 'OPENED' || !shift.provider_shift_id) {
@@ -3950,6 +3958,7 @@ async function runCheckboxReadinessProbeScheduler(options = {}) {
 
 function readinessErrorResponse(error) {
     if (error instanceof PaymentReadinessError
+        || error instanceof TestDrainError
         || error instanceof FiscalAccessError
         || error instanceof CheckboxClientError
         || error?.name === 'FiscalSaleRouteError') {
@@ -3975,6 +3984,8 @@ function readinessErrorResponse(error) {
 }
 
 module.exports = {
+    loadAndAuthorizePhase1CloseShift,
+    loadPhase1CloseFiscalBinding,
     PILOT_CRM_PROFILE_KEY,
     PILOT_LOCATION_ALIAS,
     PILOT_REGISTER_ALIAS,

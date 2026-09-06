@@ -2,6 +2,7 @@
 
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
+const { lockFiscalRegister } = require('../payments/testDrainGate');
 
 const CHECKBOX_PROVIDER = 'checkbox';
 const WEBHOOK_LOOKUP_JOB_TYPE = 'receipt_status_lookup';
@@ -300,7 +301,16 @@ async function handleCheckboxWebhook({ dbPool = pool, rawBody, headers = {} } = 
     const sanitizedPayload = sanitizeProviderPayload(payload);
 
     return withTransaction(dbPool, async client => {
+        const initial = await loadWebhookFiscalOperation(client, identity);
+        // Recovery may add a close/resume blocker even for an already fiscalized sale.
+        // Serialize admission, but never reject needed lookup recovery because of a stop.
+        await lockFiscalRegister(client, initial.fiscal_profile_id, initial.fiscal_register_id);
         const operation = await loadWebhookFiscalOperation(client, identity);
+        if (String(operation.id) !== String(initial.id)
+            || String(operation.fiscal_profile_id) !== String(initial.fiscal_profile_id)
+            || String(operation.fiscal_register_id) !== String(initial.fiscal_register_id)) {
+            throw new CheckboxWebhookError('checkbox_webhook_scope_changed', 'Webhook operation scope changed while acquiring the register lock', { status: 409 });
+        }
         const audit = await insertWebhookAudit(client, { identity, operation, hash, sanitizedPayload });
         if (audit.replayed) {
             return { replayed: true, eventId: audit.eventId, queued: false };

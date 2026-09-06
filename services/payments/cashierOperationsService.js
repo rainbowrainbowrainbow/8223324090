@@ -1,4 +1,5 @@
 'use strict';
+const { TestDrainError, lockFiscalRegister, assertRegisterAccepting } = require('./testDrainGate');
 
 const crypto = require('node:crypto');
 const { pool } = require('../../db');
@@ -176,7 +177,7 @@ function applyPhase1CloseReadiness(phase1Close = {}, readiness = {}) {
     if (readiness.checkboxIntegrationEnabled !== true) {
         return { ...state, allowed: false, reasonCode: 'global_integration_disabled' };
     }
-    if (readiness.paymentAcceptanceEnabled === true) {
+    if (readiness.paymentAcceptanceEnabled === true && phase1Close.testDrainActive !== true) {
         return { ...state, allowed: false, reasonCode: 'phase1_close_requires_payment_drain' };
     }
     if (readiness.providerReady !== true) {
@@ -263,6 +264,7 @@ async function loadOpenShift(client, { fiscalProfileId, fiscalRegisterId }) {
 }
 
 async function assertOpenShift(client, { fiscalProfileId, fiscalRegisterId }) {
+    await assertRegisterAccepting(client, fiscalProfileId, fiscalRegisterId);
     const shift = await loadOpenShift(client, { fiscalProfileId, fiscalRegisterId });
     if (!shift) {
         throw new CashierOperationsError('shift_not_open', 'Fiscal shift must be open for this operation', { status: 409 });
@@ -445,6 +447,7 @@ async function loadImmutableProviderConfiguration(client, {
 }
 
 async function ensureOpenShiftForSale(client, { order, user, fiscalConfig = null }) {
+    await assertRegisterAccepting(client, order.fiscal_profile_id, order.fiscal_register_id);
     const fiscalProfileId = normalizePositiveId(order?.fiscal_profile_id, 'fiscal_profile_required');
     const fiscalRegisterId = normalizePositiveId(order?.fiscal_register_id, 'fiscal_register_required');
     const fiscalLocationId = normalizePositiveId(order?.fiscal_location_id, 'fiscal_location_required');
@@ -768,6 +771,7 @@ async function loadPilotRegisterState({
     locationAlias,
     registerAlias,
     authorizationCrmProfileKey = null,
+    routeOptionId = null,
     cashierBindingId = null
 }) {
     return withTransaction(async client => {
@@ -970,7 +974,12 @@ async function loadPilotRegisterState({
             registerFeatureEnabled: Boolean(row.feature_enabled),
             runtimeConfigResolvable: phase1CloseRuntimeConfigResolvable
         });
+        const sharedTestDay = await require('./sharedTestDayService').loadSharedTestDayState(client, {
+            user, shift, routeOptionId, profileId: row.fiscal_profile_id, registerId: row.fiscal_register_id
+        });
+        phase1Close.testDrainActive = sharedTestDay.visible && sharedTestDay.localDrainBlocked;
         return {
+            sharedTestDay,
             checkboxIntegrationEnabled,
             cashierProEnabled,
             mappingExists: true,
@@ -1384,6 +1393,12 @@ async function insertAndConsumeApproval(client, { approvalResult, operation, act
 }
 
 async function loadShiftForUserAction(client, { user, shiftId, action }) {
+    if (action !== 'fiscal.audit.view') {
+        const scoped = (await client.query('SELECT fiscal_profile_id, fiscal_register_id FROM fiscal_shifts WHERE id=$1',
+            [normalizePositiveId(shiftId, 'fiscal_shift_required')])).rows[0];
+        if (!scoped) throw new CashierOperationsError('shift_not_found', 'Fiscal shift not found', { status: 404 });
+        await lockFiscalRegister(client, scoped.fiscal_profile_id, scoped.fiscal_register_id);
+    }
     const result = await client.query(
         `SELECT fs.*, fr.fiscal_location_id, fr.register_alias, fp.crm_profile_key
            FROM fiscal_shifts fs
@@ -1507,6 +1522,7 @@ async function createReconciliationRevision({ user, shiftId, body = {}, idempote
 
     const transactionResult = await withTransaction(async client => {
         const shift = await loadShiftForUserAction(client, { user, shiftId, action: 'fiscal.reconcile' });
+        await assertRegisterAccepting(client, shift.fiscal_profile_id, shift.fiscal_register_id);
         const checklist = await buildCloseChecklist(client, shift);
         const { actualCash, actualTerminal, difference } = computeDifference({ checklist, body });
         let approval = null;
@@ -1841,6 +1857,10 @@ async function createFullRefund({ user, orderId, body = {}, idempotencyKey }) {
     const reason = requireReason(body.reason, 'refund_reason_required');
 
     const transactionResult = await withTransaction(async client => {
+        const scoped = (await client.query('SELECT fiscal_profile_id, fiscal_register_id FROM payment_orders WHERE id=$1',
+            [normalizePositiveId(orderId, 'payment_order_required')])).rows[0];
+        if (!scoped) throw new CashierOperationsError('paid_order_receipt_not_found', 'Paid fiscalized order not found', { status: 404 });
+        await lockFiscalRegister(client, scoped.fiscal_profile_id, scoped.fiscal_register_id);
         const orderResult = await client.query(
             `SELECT po.*, fr.id AS original_fiscal_receipt_id, fr.provider_receipt_id,
                     freg.fiscal_location_id, fp.crm_profile_key
@@ -2125,7 +2145,7 @@ async function getOperationalReport({ user, shiftId }) {
 }
 
 function cashierOperationsErrorResponse(error) {
-    if (error instanceof CashierOperationsError || error instanceof FiscalAccessError || error instanceof FiscalApprovalError) {
+    if (error instanceof TestDrainError || error instanceof CashierOperationsError || error instanceof FiscalAccessError || error instanceof FiscalApprovalError) {
         return {
             status: error.status || 400,
             body: { success: false, error: error.code, message: error.message, details: error.details || {} }

@@ -235,6 +235,7 @@ class FakePaymentClient {
     release() {}
 
     async query(sql, params = []) {
+        if (sql.includes('FROM fiscal_register_payment_drains')) return { rows: this.db.activeDrain ? [this.db.activeDrain] : [] };
         const normalized = sql.replace(/\s+/g, ' ').trim();
         this.db.queries.push({ sql: normalized, params });
 
@@ -821,6 +822,24 @@ test('separate business scope creates Dar order with Dar mapping and items only'
     assert.equal(db.items[0].tax_mode, 'untaxed');
     assert.equal(db.items[0].provider_tax_id, null);
     assert.ok(db.orders[0].order_key.includes('admission_ticket:dar:dar:front:'));
+});
+
+test('active test drain retains an unpaid order and blocks new admission and confirmation before ledger writes', async () => {
+    const db = new FakePaymentDb();
+    const order = db.seedOrder({ payment_method: 'cash', total_amount_minor: '50000' });
+    db.activeDrain = { id: 91, status: 'closed' };
+    await assert.rejects(() => confirmPaymentOrder({ dbPool: db, user: baseUser(), orderId: order.id,
+        body: { tender: 'cash', confirmedAmountMinor: '50000' }, idempotencyKey: 'stopped-confirm', authorizer: allowAuthorizer }),
+    error => error.code === 'shared_test_register_draining');
+    await assert.rejects(() => createAdmissionTicketPaymentOrder({ dbPool: db, user: baseUser(),
+        body: scopedPaymentBody({ tender: 'cash', admissionTicket: { date: '2099-01-15' } }),
+        idempotencyKey: 'stopped-create', quoteResolver, authorizer: allowAuthorizer }),
+    error => error.code === 'shared_test_register_draining');
+    assert.equal(db.orders.length, 1);
+    assert.equal(db.orders[0].payment_status, 'unpaid');
+    assert.equal(db.attempts.length, 0);
+    assert.equal(db.allocations.length, 0);
+    assert.equal(db.outboxJobs.length, 0);
 });
 
 test('missing cashier credential ref blocks confirmation before monetary or outbox writes', async () => {

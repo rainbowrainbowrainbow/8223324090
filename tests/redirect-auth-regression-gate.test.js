@@ -63,7 +63,7 @@ async function flushMicrotasks(count = 6) {
     for (let index = 0; index < count; index += 1) await Promise.resolve();
 }
 
-test('R2 gate: delayed cross-tab refresh and bounded recovery must not clear the shared session', async () => {
+test('R2 gate: delayed cross-tab refresh coordination timeout does not replay a stale token', async () => {
     const user = { id: 14, username: 'synthetic.qa', role: 'animator' };
     const store = new Map(Object.entries({
         pzp_token: 'synthetic-expired',
@@ -94,15 +94,7 @@ test('R2 gate: delayed cross-tab refresh and bounded recovery must not clear the
         timers,
         fetchImpl: async () => {
             losingCalls += 1;
-            return losingCalls === 1
-                ? response(409, { code: 'refresh_already_rotated', retryable: true })
-                : response(200, {
-                    accessToken: 'synthetic-recovered',
-                    refreshToken: 'synthetic-recovered-refresh',
-                    sessionTokenId: 42,
-                    recovered: true,
-                    user
-                });
+            return response(401, { code: 'refresh_token_reuse' });
         }
     });
 
@@ -110,21 +102,19 @@ test('R2 gate: delayed cross-tab refresh and bounded recovery must not clear the
     const losingRefresh = loser.apiRefreshAuthSession();
     const coordinationWait = await takeTimer(timers);
     coordinationWait.callback();
-    const settlement = await takeTimer(timers);
-    settlement.callback();
-    const confirmation = await takeTimer(timers);
-    confirmation.callback();
     await flushMicrotasks();
     deliverWinner();
 
     const [winningResult, losingResult] = await Promise.all([winningRefresh, losingRefresh]);
-    assert.equal(losingCalls, 2, 'controlled replay crossed the backend duplicate grace window');
-    assert.equal(losingResult.outcome, 'success');
-    assert.equal(winningResult.outcome, 'superseded');
-    assert.equal(store.get('pzp_token'), 'synthetic-recovered');
-    assert.equal(store.get('pzp_access_token'), 'synthetic-recovered');
-    assert.equal(store.get('pzp_refresh_token'), 'synthetic-recovered-refresh');
-    assert.equal(loser.getApiAuthSessionFailure(), null);
+    assert.equal(losingCalls, 0, 'coordination timeout must not send a stale refresh token after duplicate grace');
+    assert.equal(losingResult.outcome, 'retry-later');
+    assert.equal(losingResult.retryable, true);
+    assert.equal(losingResult.reason, 'refresh-coordination-timeout');
+    assert.equal(winningResult.outcome, 'success');
+    assert.equal(store.get('pzp_token'), 'synthetic-new');
+    assert.equal(store.get('pzp_access_token'), 'synthetic-new');
+    assert.equal(store.get('pzp_refresh_token'), 'synthetic-rotated');
+    assert.equal(loser.getApiAuthSessionFailure()?.kind, 'transient');
 });
 
 test('R2 gate: recovered response delivered after an old success must replace the revoked refresh token', async () => {
@@ -173,9 +163,8 @@ test('R2 gate: recovered response delivered after an old success must replace th
     });
 
     const originalRefresh = originalTab.apiRefreshAuthSession();
+    store.delete('pzp_auth_refresh_coordination');
     const recoveredRefresh = recoveryTab.apiRefreshAuthSession();
-    const coordinationWait = await takeTimer(timers);
-    coordinationWait.callback();
     const settlement = await takeTimer(timers);
     settlement.callback();
     const confirmation = await takeTimer(timers);
@@ -240,9 +229,8 @@ test('R2 gate: later server recovery applies even when its client operation star
 
     const earlyStartedRefresh = earlyStartedTab.apiRefreshAuthSession();
     await flushMicrotasks();
+    store.delete('pzp_auth_refresh_coordination');
     const laterStartedRefresh = laterStartedTab.apiRefreshAuthSession();
-    const coordinationWait = await takeTimer(timers);
-    coordinationWait.callback();
     await flushMicrotasks();
 
     deliverLaterStartedFirstServer();
@@ -301,9 +289,8 @@ test('R2 gate: older server rotation cannot overwrite newer storage when client 
     });
 
     const older = olderServerTab.apiRefreshAuthSession();
+    store.delete('pzp_auth_refresh_coordination');
     const newer = newerServerTab.apiRefreshAuthSession();
-    const coordinationWait = await takeTimer(timers);
-    coordinationWait.callback();
     await flushMicrotasks();
 
     deliverNewer();

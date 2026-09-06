@@ -67,6 +67,41 @@ Disposable PostgreSQL containers were created only for these local proofs and re
 - `redirect-upgrade` final dirty-candidate proof observed real BFCache: `realBfcachePersisted: true`.
 - Candidate asset hashes in the dirty proof are recorded in `output/browser/redirect-old-tab-upgrade/r11-old-tab-upgrade-proof.json`.
 
+## Additional R12-FIX correction after dirty proof
+
+The first exact-candidate PostgreSQL proof after commit `a2f3e6e47eec6a5dcaed6ca53c95563a4bc16eb6` exposed a second frontend issue in the two-tab delayed refresh scenario:
+
+```text
+node scripts/run-isolated-postgres-tests.js redirect-auth
+AssertionError: second old-token response must be duplicate-grace or recovered
+status=401 code=refresh_token_reuse elapsedFromFirstCommitMs=5235
+```
+
+Root cause: when another tab owned the same refresh coordination marker, the waiting tab timed out after the frontend coordination budget and then sent the original refresh token. That could cross the server duplicate-grace window and turn a recoverable concurrency case into terminal reuse.
+
+Additional fix in `js/api.js`: if the coordination wait times out while the same refresh operation is still owned by another tab, the waiting tab now returns bounded `retry-later` with reason `refresh-coordination-timeout`, records redacted diagnostics, and does not send stale-token replay or clear auth storage.
+
+Regression coverage was updated to keep the contracts separate:
+
+- cross-tab coordination timeout: no stale network replay, session preserved, retry-later returned;
+- duplicate grace: real Browser→Express→PostgreSQL request returns HTTP 409 `refresh_already_rotated` and does not create T2;
+- post-grace recovery: real lost-response Browser→Express→PostgreSQL scenario still proves T0→T1→T2;
+- delivery-order mock gates still cover original/recovered response order without depending on the foreign coordination marker.
+
+Dirty proof after this correction passed:
+
+```text
+node --test tests/auth-frontend-session.test.js tests/auth-api-session-hardening.test.js tests/redirect-auth-regression-gate.test.js tests/redirect-rate-limit-regression-gate.test.js tests/service-worker-redirect-regression-gate.test.js tests/redirect-diagnostics.test.js tests/redirect-postrelease-risk-reproductions.test.js tests/service-worker-policy.test.js
+# pass 156, fail 0
+
+node scripts/run-isolated-postgres-tests.js redirect-auth
+# R2 PostgreSQL/browser auth recovery proof passed
+
+node scripts/run-isolated-postgres-tests.js redirect-upgrade
+# status PASS; failures []; realBfcachePersisted true
+```
+
+This dirty proof used its own disposable local PostgreSQL 16 container and synthetic accounts only. The wrapper removed the container after completion.
 ## Remaining risks
 
 - R10B remains out of scope: post-rotation replay beyond the 30s backend recovery window can remain terminal under the current backend contract.

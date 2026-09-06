@@ -4235,9 +4235,27 @@ async function runApiAuthRefreshWithCoordination(refreshToken, expectedUser, ses
         const activeMarker = readApiAuthRefreshCoordinationMarker();
         if (apiAuthRefreshCoordinationMatches(activeMarker, refreshToken, sessionGeneration, expectedIdentityKey)
             && activeMarker.id !== operationId) {
-            await waitForApiAuthRefreshCoordination(refreshToken, sessionGeneration);
+            const coordinationOutcome = await waitForApiAuthRefreshCoordination(refreshToken, sessionGeneration);
             if (!isApiAuthRefreshOperationCurrent(refreshToken, sessionGeneration)) {
                 return { accessToken: null, outcome: 'superseded' };
+            }
+            const stillOwnedByOtherRefresh = coordinationOutcome === 'timeout'
+                && apiAuthRefreshCoordinationMatches(
+                    readApiAuthRefreshCoordinationMarker(),
+                    refreshToken,
+                    sessionGeneration,
+                    expectedIdentityKey
+                );
+            if (stillOwnedByOtherRefresh) {
+                setApiAuthSessionFailure('transient', {
+                    stage: 'refresh',
+                    reason: 'refresh-coordination-timeout'
+                });
+                recordApiRedirectDiagnostic('auth-refresh', {
+                    refreshOutcome: 'retry-later',
+                    reason: 'refresh-coordination-timeout'
+                });
+                return buildApiAuthRefreshRetryLaterResult('refresh-coordination-timeout');
             }
         }
 

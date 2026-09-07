@@ -20,7 +20,22 @@ const ENABLED = process.env.RUN_REDIRECT_OLD_TAB_UPGRADE_BROWSER === 'true';
 const TIMEOUT_MS = Number(process.env.REDIRECT_OLD_TAB_BROWSER_TIMEOUT_MS) || 120_000;
 const PRE_RELEASE_SHA = '9ea61f1ea6c38b6f218bbc4b9ceda3f772bedbd5';
 const RELEASED_SHA = 'd7aed2573d876c7051e96897a835343ed33573d5';
-const CURRENT_SHA = childProcess.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim();
+const SOURCE_GIT_ROOT = path.resolve(process.env.REDIRECT_OLD_TAB_SOURCE_GIT_ROOT || ROOT);
+
+function resolveCurrentSha() {
+    const explicit = String(process.env.REDIRECT_OLD_TAB_CURRENT_SHA || '').trim();
+    if (/^[0-9a-f]{40}$/i.test(explicit)) return explicit.toLowerCase();
+    return childProcess.execFileSync('git', ['rev-parse', 'HEAD'], { cwd: SOURCE_GIT_ROOT, encoding: 'utf8' }).trim();
+}
+
+function resolveDirtyPorcelain() {
+    if (Object.prototype.hasOwnProperty.call(process.env, 'REDIRECT_OLD_TAB_DIRTY_PORCELAIN')) {
+        return String(process.env.REDIRECT_OLD_TAB_DIRTY_PORCELAIN || '');
+    }
+    return childProcess.execFileSync('git', ['status', '--porcelain'], { cwd: SOURCE_GIT_ROOT, encoding: 'utf8' }).trim();
+}
+
+const CURRENT_SHA = resolveCurrentSha();
 const OUTPUT_DIR = path.join(ROOT, 'output', 'browser', 'redirect-old-tab-upgrade');
 const CHROME_PROFILE_PREFIX = path.join(os.tmpdir(), 'eventgenix-r11-chrome-');
 const MIME_TYPES = {
@@ -69,7 +84,7 @@ function normalizeAssetPath(pathname) {
 
 function gitBlob(commit, relativePath) {
     return childProcess.execFileSync('git', ['show', `${commit}:${relativePath}`], {
-        cwd: ROOT,
+        cwd: SOURCE_GIT_ROOT,
         encoding: 'buffer',
         maxBuffer: 30 * 1024 * 1024,
         stdio: ['ignore', 'pipe', 'ignore']
@@ -117,7 +132,9 @@ function assetHashForMode(mode, relativePath) {
 function candidateAssetHashes() {
     return {
         headSha: CURRENT_SHA,
-        dirtyPorcelain: childProcess.execFileSync('git', ['status', '--porcelain'], { cwd: ROOT, encoding: 'utf8' }).trim(),
+        dirtyPorcelain: resolveDirtyPorcelain(),
+        artifactRoot: process.env.REDIRECT_OLD_TAB_ARTIFACT_ROOT ? path.resolve(process.env.REDIRECT_OLD_TAB_ARTIFACT_ROOT) : ROOT,
+        sourceGitRoot: SOURCE_GIT_ROOT,
         assets: Object.fromEntries(['sw.js', 'js/api.js', 'js/auth.js', 'js/components/sidebar.js', 'index.html', 'leads.html', 'certificates.html']
             .map(relativePath => [relativePath, assetHashForMode('current', relativePath)]))
     };

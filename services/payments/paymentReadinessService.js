@@ -121,21 +121,64 @@ function paymentPermissionSnapshotDetails(result = {}, requiredTender = null) {
     const permissions = result?.permissions && typeof result.permissions === 'object'
         ? result.permissions
         : {};
-    const unreported = Array.isArray(permissions.unreported)
+    const listedUnreported = Array.isArray(permissions.unreported)
         ? permissions.unreported.map(value => String(value || '').trim()).filter(Boolean)
         : [];
-    const permissionKey = normalizeReadinessTender(requiredTender) === 'cash'
-        ? 'cash_payment'
-        : normalizeReadinessTender(requiredTender) === 'card_terminal_manual'
-            ? 'card_payment'
-            : null;
-    const relevantUnreported = permissionKey
-        ? unreported.filter(value => value === permissionKey)
-        : unreported;
-    return {
-        warning: relevantUnreported.length ? String(permissions.warning || 'permission_unreported') : null,
-        unreported: relevantUnreported
+    const tender = normalizeReadinessTender(requiredTender);
+    const required = tender === 'cash'
+        ? ['sales', 'cash_payment']
+        : tender === 'card_terminal_manual'
+            ? ['sales', 'card_payment']
+            : [];
+    const statusByKey = {
+        sales: permissions.sales,
+        cash_payment: permissions.cash,
+        card_payment: permissions.card
     };
+    const denied = [];
+    const unreported = [];
+    const unreportedPayment = [];
+    const unreportedSales = [];
+    const normalizePermissionStatus = value => {
+        if (value === true) return 'allowed';
+        if (value === false) return 'denied';
+        return String(value || '').trim().toLowerCase();
+    };
+    for (const key of required) {
+        const status = normalizePermissionStatus(statusByKey[key]);
+        if (status === 'allowed') continue;
+        if (status === 'denied') {
+            denied.push(key);
+            continue;
+        }
+        unreported.push(key);
+        if (key === 'sales') unreportedSales.push(key);
+        else unreportedPayment.push(key);
+    }
+    const relevantUnreported = required.length ? unreported : listedUnreported;
+    const warning = relevantUnreported.length || listedUnreported.length
+        ? String(permissions.warning || 'permission_unreported')
+        : null;
+    const blockingCode = denied.length || unreportedSales.length
+        ? 'checkbox_cashier_permissions_missing'
+        : unreportedPayment.length
+            ? 'checkbox_payment_permission_unreported'
+            : null;
+    return {
+        warning,
+        unreported: relevantUnreported,
+        denied,
+        required,
+        unreportedSales,
+        unreportedPayment,
+        blockingCode,
+        onlyUnreportedPayment: Boolean(blockingCode === 'checkbox_payment_permission_unreported' && unreportedPayment.length === unreported.length)
+    };
+}
+
+function paymentPermissionBlockedByPolicy(permissionDetails = {}, permissionPolicy = {}) {
+    if (!permissionDetails.blockingCode) return false;
+    return !(permissionDetails.onlyUnreportedPayment === true && permissionPolicy.allowed === true);
 }
 
 function nowIso(now = new Date()) {
@@ -1829,8 +1872,11 @@ async function loadReadinessState({
     registerAlias,
     action = 'payments.view',
     authorizationCrmProfileKey = null,
+    tender = null,
+    requiredTender = null,
     env = process.env
 } = {}) {
+    const normalizedTender = normalizeReadinessTender(requiredTender || tender);
     return withTransaction(dbPool, async client => {
         const checkboxIntegrationEnabled = isCheckboxIntegrationEnabled(env);
         const scope = await loadScope(client, {
@@ -1878,6 +1924,7 @@ async function loadReadinessState({
         if (!scope.mapping || !runtimeConfig || !canProbeProviderReadiness(local)) {
             return {
                 ...local,
+                requiredTender: normalizedTender,
                 fiscalProfileId: scope.mapping ? Number(scope.mapping.fiscal_profile_id) : null,
                 fiscalLocationId: scope.mapping ? Number(scope.mapping.fiscal_location_id) : null,
                 fiscalRegisterId: scope.mapping ? Number(scope.mapping.fiscal_register_id) : null,
@@ -1890,6 +1937,7 @@ async function loadReadinessState({
             return {
                 ...local,
                 readinessCode: 'readiness_missing',
+                requiredTender: normalizedTender,
                 fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
                 fiscalLocationId: Number(scope.mapping.fiscal_location_id),
                 fiscalRegisterId: Number(scope.mapping.fiscal_register_id),
@@ -1903,11 +1951,12 @@ async function loadReadinessState({
             env,
             expectedIsTest: runtimeConfig.expectedIsTest
         });
-        const permissionDetails = paymentPermissionSnapshotDetails(serialized.result);
-        const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
+        const permissionDetails = paymentPermissionSnapshotDetails(serialized.result, normalizedTender);
+        const permissionBlocked = paymentPermissionBlockedByPolicy(permissionDetails, permissionPolicy);
         const merged = {
             ...local,
             ...serialized,
+            requiredTender: normalizedTender,
             checkboxIntegrationEnabled,
             paymentAcceptanceEnabled,
             localMappingReady: local.localMappingReady,
@@ -1925,11 +1974,12 @@ async function loadReadinessState({
                         ? cachedShift.readinessCode
                 : staleReadiness
                     ? 'readiness_stale'
-                    : unreportedPermissionBlocked
-                        ? 'checkbox_payment_permission_unreported'
+                    : permissionBlocked
+                        ? permissionDetails.blockingCode
                         : serialized.readinessCode,
             paymentPermissionWarning: permissionDetails.warning,
             unreportedPaymentPermissions: permissionDetails.unreported,
+            deniedPaymentPermissions: permissionDetails.denied,
             integrationReady: false,
             fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
             fiscalLocationId: Number(scope.mapping.fiscal_location_id),
@@ -1939,7 +1989,7 @@ async function loadReadinessState({
         return applyPaymentAcceptanceGate(merged, {
             providerReady: !testModeMismatch
                 && cachedShift.matches
-                && !unreportedPermissionBlocked
+                && !permissionBlocked
                 && deriveIntegrationReady(merged)
         });
     });
@@ -1957,8 +2007,11 @@ async function probeCheckboxReadiness({
     env = process.env,
     fetchImpl,
     now = new Date(),
-    force = false
+    force = false,
+    tender = null,
+    requiredTender = null
 } = {}) {
+    const normalizedTender = normalizeReadinessTender(requiredTender || tender);
     const { scope, local } = await prepareReadinessScope({
         dbPool,
         user,
@@ -1975,7 +2028,7 @@ async function probeCheckboxReadiness({
     if (!scope.mapping || !scope.runtimeConfig || !canProbeProviderReadiness(local)) {
         return withTransaction(dbPool, async client => {
             const inserted = scope.mapping ? await insertReadinessSnapshot(client, scope, local, { reason: local.readinessCode }) : null;
-            return { ...local, readinessSnapshot: serializeReadinessSnapshot(inserted) };
+            return { ...local, requiredTender: normalizedTender, readinessSnapshot: serializeReadinessSnapshot(inserted) };
         });
     }
     const latest = await withTransaction(dbPool, async client => loadLatestReadinessSnapshot(client, scope));
@@ -1986,11 +2039,12 @@ async function probeCheckboxReadiness({
             env,
             expectedIsTest: scope.runtimeConfig.expectedIsTest
         });
-        const permissionDetails = paymentPermissionSnapshotDetails(serializedLatest.result);
-        const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
+        const permissionDetails = paymentPermissionSnapshotDetails(serializedLatest.result, normalizedTender);
+        const permissionBlocked = paymentPermissionBlockedByPolicy(permissionDetails, permissionPolicy);
         return applyPaymentAcceptanceGate({
             ...local,
             ...serializedLatest,
+            requiredTender: normalizedTender,
             checkboxIntegrationEnabled: local.checkboxIntegrationEnabled,
             paymentAcceptanceEnabled: local.paymentAcceptanceEnabled,
             localMappingReady: local.localMappingReady,
@@ -2004,16 +2058,17 @@ async function probeCheckboxReadiness({
                 ? 'paid_sale_closed_shift_reconciliation_required'
                 : !cachedShift.matches
                     ? cachedShift.readinessCode
-                : unreportedPermissionBlocked
-                    ? 'checkbox_payment_permission_unreported'
+                : permissionBlocked
+                    ? permissionDetails.blockingCode
                     : serializedLatest.readinessCode,
             paymentPermissionWarning: permissionDetails.warning,
             unreportedPaymentPermissions: permissionDetails.unreported,
+            deniedPaymentPermissions: permissionDetails.denied,
             readinessSnapshot: serializedLatest,
             cached: true
         }, {
             providerReady: cachedShift.matches
-                && !unreportedPermissionBlocked
+                && !permissionBlocked
                 && deriveIntegrationReady({
                     ...local,
                     ...serializedLatest,
@@ -2024,7 +2079,7 @@ async function probeCheckboxReadiness({
     }
     let result;
     try {
-        result = await probeProviderSingleFlight(scope, { fetchImpl, now, env });
+        result = await probeProviderSingleFlight(scope, { fetchImpl, now, env, requiredTender: normalizedTender });
     } catch (error) {
         const info = publicError(error);
         const providerUnavailable = info.retryable === true || info.unknown === true || info.status >= 500 || /timeout|network|fetch|aborted/i.test(info.message);
@@ -2035,6 +2090,14 @@ async function probeCheckboxReadiness({
                 providerUnavailable,
                 staleReadiness: false,
                 integrationReady: false,
+                requiredTender: normalizedTender,
+                paymentPermissionWarning: Array.isArray(info.details?.unreported) && info.details.unreported.length
+                    ? 'permission_unreported'
+                    : null,
+                unreportedPaymentPermissions: Array.isArray(info.details?.unreportedPayment)
+                    ? info.details.unreportedPayment
+                    : (Array.isArray(info.details?.unreported) ? info.details.unreported.filter(key => key !== 'sales') : []),
+                deniedPaymentPermissions: Array.isArray(info.details?.denied) ? info.details.denied : [],
                 latencyMs: null
             },
             details: { error: info }
@@ -2049,7 +2112,7 @@ async function probeCheckboxReadiness({
             fiscalConfigurationHash: scope.configHash || null,
             fiscalTaxFingerprint: scope.paymentTaxContext?.fingerprint || null,
             expectedIsTest: scope.runtimeConfig?.expectedIsTest ?? null,
-            requiredTender: null
+            requiredTender: normalizedTender
         };
         const portalSync = await syncPortalClosedShift(
             client,
@@ -2120,7 +2183,15 @@ function throwPaymentReadinessError(state = {}) {
             shiftState: state.shiftState,
             staleReadiness: state.staleReadiness,
             providerUnavailable: state.providerUnavailable,
-            contextMismatchReasons: contextReasons
+            contextMismatchReasons: contextReasons,
+                paymentPermissionWarning: state.paymentPermissionWarning || null,
+                unreportedPaymentPermissions: Array.isArray(state.unreportedPaymentPermissions)
+                    ? state.unreportedPaymentPermissions
+                    : [],
+                deniedPaymentPermissions: Array.isArray(state.deniedPaymentPermissions)
+                    ? state.deniedPaymentPermissions
+                    : [],
+                requiredTender: normalizeReadinessTender(state.requiredTender || null)
         }
     });
 }
@@ -2331,7 +2402,7 @@ async function assertPaymentReadiness({
             if (normalizeReadinessTender(freshProviderReadiness.requiredTender) !== requiredTender) contextMismatchReasons.push('tender');
             const contextMismatch = contextMismatchReasons.length > 0;
             const providerProbeReady = freshProviderReadiness.providerReady === true;
-            const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
+            const permissionBlocked = paymentPermissionBlockedByPolicy(permissionDetails, permissionPolicy);
             state = {
                 ...local,
                 ...freshProviderReadiness,
@@ -2348,18 +2419,19 @@ async function assertPaymentReadiness({
                     ? 'readiness_context_changed'
                     : staleReadiness
                         ? 'readiness_stale'
-                        : unreportedPermissionBlocked
-                            ? 'checkbox_payment_permission_unreported'
+                        : permissionBlocked
+                            ? permissionDetails.blockingCode
                             : freshProviderReadiness.readinessCode,
                 paymentPermissionWarning: permissionDetails.warning,
                 unreportedPaymentPermissions: permissionDetails.unreported,
+                deniedPaymentPermissions: permissionDetails.denied,
                 contextMismatchReasons,
                 integrationReady: false,
                 fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
                 fiscalLocationId: Number(scope.mapping.fiscal_location_id),
                 fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
             };
-            state.integrationReady = !providerProbeReady || contextMismatch || staleReadiness || unreportedPermissionBlocked
+            state.integrationReady = !providerProbeReady || contextMismatch || staleReadiness || permissionBlocked
                 ? false
                 : deriveIntegrationReady(state);
         } else if (scope.mapping && runtimeConfig && local.readinessCode === 'ready') {
@@ -2390,7 +2462,7 @@ async function assertPaymentReadiness({
                         expectedIsTest: runtimeConfig.expectedIsTest
                     });
                     const permissionDetails = paymentPermissionSnapshotDetails(serialized.result, requiredTender);
-                    const unreportedPermissionBlocked = permissionDetails.unreported.length > 0 && !permissionPolicy.allowed;
+                    const permissionBlocked = paymentPermissionBlockedByPolicy(permissionDetails, permissionPolicy);
                     state = {
                         ...local,
                         ...serialized,
@@ -2405,17 +2477,18 @@ async function assertPaymentReadiness({
                             ? cachedShift.readinessCode
                             : staleReadiness
                             ? 'readiness_stale'
-                            : unreportedPermissionBlocked
-                                ? 'checkbox_payment_permission_unreported'
+                            : permissionBlocked
+                                ? permissionDetails.blockingCode
                                 : serialized.readinessCode,
                         paymentPermissionWarning: permissionDetails.warning,
                         unreportedPaymentPermissions: permissionDetails.unreported,
+                        deniedPaymentPermissions: permissionDetails.denied,
                         integrationReady: false,
                         fiscalProfileId: Number(scope.mapping.fiscal_profile_id),
                         fiscalLocationId: Number(scope.mapping.fiscal_location_id),
                         fiscalRegisterId: Number(scope.mapping.fiscal_register_id)
                     };
-                    state.integrationReady = !cachedShift.matches || unreportedPermissionBlocked
+                    state.integrationReady = !cachedShift.matches || permissionBlocked
                         ? false
                         : deriveIntegrationReady(state);
                 }
@@ -4017,6 +4090,8 @@ module.exports = {
     __readinessProbeTest: Object.freeze({
         loadScope,
         providerReadinessProbeKey,
-        probeProviderSingleFlight
+        probeProviderSingleFlight,
+        paymentPermissionSnapshotDetails,
+        paymentPermissionBlockedByPolicy
     })
 };

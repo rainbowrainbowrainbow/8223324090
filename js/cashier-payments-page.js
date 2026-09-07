@@ -22,6 +22,40 @@
     const FISCAL_DONE_STATUSES = new Set(['fiscalized']);
     const PAYMENT_TERMINAL_STATUSES = new Set(['confirmed']);
     const FISCAL_TERMINAL_STATUSES = new Set(['fiscalized', 'failed_terminal', 'validation_failed', 'blocked', 'cancelled', 'not_required', 'dead']);
+    const KNOWN_PRE_PAYMENT_REJECTION_CODES = new Set([
+        'cash_amount_invalid',
+        'cash_received_too_low',
+        'card_terminal_success_required',
+        'payment_tender_required',
+        'payment_tender_unsupported',
+        'checkbox_integration_not_ready',
+        'checkbox_integration_disabled',
+        'checkbox_payment_acceptance_disabled',
+        'payment_acceptance_disabled',
+        'global_integration_disabled',
+        'readiness_stale',
+        'readiness_missing',
+        'provider_unavailable',
+        'checkbox_provider_unavailable',
+        'checkbox_cashier_permissions_missing',
+        'checkbox_payment_permission_unreported',
+        'checkbox_cashier_permissions_malformed',
+        'checkbox_expected_is_test_mismatch',
+        'fiscal_binding_capability_denied',
+        'tax_mapping_missing',
+        'paid_sale_closed_shift_reconciliation_required',
+        'cashier_binding_required',
+        'cashier_binding_scope_invalid',
+        'fiscal_route_option_required',
+        'fiscal_route_option_invalid',
+        'fiscal_route_mapping_missing',
+        'fiscal_route_feature_disabled',
+        'fiscal_route_acceptance_disabled',
+        'fiscal_route_mode_mismatch',
+        'shared_test_register_draining',
+        'shared_test_register_owned_by_other_business',
+        'shared_test_register_recovery_incomplete'
+    ]);
     const POLLING_INTERVAL_MS = 2500;
     const POLLING_FAST_WINDOW_MS = boundedTestTiming('pollFastWindowMs', 60000);
     const POLLING_RECOVERY_INTERVAL_MS = boundedTestTiming('pollRecoveryIntervalMs', 15000);
@@ -68,6 +102,7 @@
         draftRevision: '',
         confirmInFlight: false,
         confirmSubmitted: false,
+        confirmOutcomePending: false,
         reportInFlight: false,
         receiptHistoryLoaded: false,
         lastReportRefreshAt: null,
@@ -91,6 +126,7 @@
         unresolvedAutoRefreshEnabled: false,
         unresolvedForceOpenChecking: false,
         readinessInFlight: false,
+        readinessLoadGeneration: 0,
         nextCustomerSafetyRefreshInFlight: false,
         readinessTimer: null,
         readinessBackoffMs: READINESS_REFRESH_MIN_MS,
@@ -105,7 +141,8 @@
         orderLoadGeneration: 0,
         pollingTimer: null,
         pollingOrderId: null,
-        pollingStartedAt: 0
+        pollingStartedAt: 0,
+        lastErrorNotificationAt: 0
     };
 
     function $(id) { return document.getElementById(id); }
@@ -114,6 +151,13 @@
         if (typeof showNotification === 'function') showNotification(message, type);
         const el = $('cashierGlobalStatus');
         if (el) {
+            if (type === 'error') state.lastErrorNotificationAt = Date.now();
+            if (type !== 'error'
+                && state.lastErrorNotificationAt
+                && Date.now() - state.lastErrorNotificationAt < 8000
+                && el.classList.contains('cashier-alert-danger')) {
+                return;
+            }
             el.textContent = message;
             el.setAttribute('tabindex', '-1');
             el.classList.remove('hidden', 'cashier-alert-danger');
@@ -441,7 +485,23 @@
         const params = routeQueryParams(extra);
         const bindingId = selectedCashierBindingId();
         if (bindingId) params.set('cashierBindingId', String(bindingId));
+        if (state.tender) params.set('requiredTender', state.tender);
         return params;
+    }
+
+    function readinessContextKey() {
+        return JSON.stringify({
+            routeOptionId: PILOT_SCOPE.routeOptionId || null,
+            cashierBindingId: selectedCashierBindingId(),
+            tender: state.tender || null
+        });
+    }
+
+    function readinessTenderMatches(registerState = state.registerState) {
+        const expected = String(state.tender || '').trim();
+        if (!expected) return false;
+        const actual = String(registerState?.requiredTender || registerState?.readiness?.requiredTender || '').trim();
+        return actual === expected;
     }
 
     function selectedRoute() {
@@ -670,13 +730,21 @@
         return state.catalogItems.find(item => item.itemCode === String(itemCode || '')) || null;
     }
 
-    function filteredCatalogItems(selectedCode = '') {
+    function catalogFilterActive() {
+        return Boolean(String($('catalogSearch')?.value || '').trim() || String($('catalogCategory')?.value || '').trim());
+    }
+
+    function filteredCatalogItems() {
         const search = String($('catalogSearch')?.value || '').trim().toLocaleLowerCase('uk-UA');
         const category = String($('catalogCategory')?.value || '').trim();
-        const filtered = state.catalogItems.filter(item => {
+        return state.catalogItems.filter(item => {
             const matchesSearch = !search || `${item.name || ''} ${item.category || ''}`.toLocaleLowerCase('uk-UA').includes(search);
             return matchesSearch && (!category || item.category === category);
         });
+    }
+
+    function catalogSelectItems(selectedCode = '') {
+        const filtered = filteredCatalogItems();
         const selected = catalogItemByCode(selectedCode);
         return selected && !filtered.some(item => item.itemCode === selected.itemCode)
             ? [selected, ...filtered]
@@ -685,7 +753,7 @@
 
     function fillCatalogSelect(select, selectedCode = '') {
         if (!select) return;
-        const items = filteredCatalogItems(selectedCode);
+        const items = catalogSelectItems(selectedCode);
         select.replaceChildren();
         if (!items.length) {
             const option = document.createElement('option');
@@ -703,12 +771,49 @@
         select.value = items.some(item => item.itemCode === selectedCode) ? selectedCode : items[0].itemCode;
     }
 
+    function renderCatalogSearchResults() {
+        const container = $('catalogSearchResults');
+        if (!container) return;
+        container.replaceChildren();
+        if (state.saleMode !== 'catalog_sale' || !state.catalogReady) {
+            container.classList.add('hidden');
+            return;
+        }
+        const items = filteredCatalogItems();
+        const locked = Boolean(state.orderDetails?.order || state.createInFlight || createDraft()?.payload);
+        if (!catalogFilterActive() && document.querySelector('#catalogSaleLines .cashier-catalog-line')) {
+            container.classList.add('hidden');
+            return;
+        }
+        container.classList.remove('hidden');
+        if (!items.length) {
+            const empty = document.createElement('p');
+            empty.className = 'cashier-help';
+            empty.textContent = 'За цим пошуком немає доступних позицій.';
+            container.appendChild(empty);
+            return;
+        }
+        for (const item of items.slice(0, 24)) {
+            const button = document.createElement('button');
+            button.type = 'button';
+            button.className = 'cashier-catalog-result';
+            button.disabled = locked;
+            if (locked) button.setAttribute('aria-disabled', 'true');
+            button.innerHTML = `
+                <span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category || 'Без категорії')}</small></span>
+                <span>${escapeHtml(formatMoneyMinor(item.priceMinor))}</span>`;
+            button.addEventListener('click', () => addCatalogLine(item.itemCode));
+            container.appendChild(button);
+        }
+    }
+
     function refreshCatalogSelects() {
         document.querySelectorAll('[data-catalog-item]').forEach(select => {
             const selectedCode = select.value;
             fillCatalogSelect(select, selectedCode);
             syncCatalogLine(select.closest('.cashier-catalog-line'));
         });
+        renderCatalogSearchResults();
     }
 
     function renderCatalogCategories() {
@@ -785,6 +890,11 @@
     function addCatalogLine(itemCode = '') {
         const container = $('catalogSaleLines');
         if (!container || !state.catalogItems.length || state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
+        const selectedItem = catalogItemByCode(itemCode) || filteredCatalogItems()[0] || null;
+        if (!selectedItem) {
+            notify('За цим пошуком немає доступних позицій. Змініть пошук або категорію.', 'error');
+            return;
+        }
         invalidateUnsubmittedDraft();
         const row = document.createElement('div');
         row.className = 'cashier-catalog-line';
@@ -794,7 +904,7 @@
             <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна за одиницю">—</span>
             <button type="button" class="btn-page-secondary cashier-catalog-remove" data-catalog-remove aria-label="Видалити позицію">×</button>`;
         const select = row.querySelector('[data-catalog-item]');
-        fillCatalogSelect(select, catalogItemByCode(itemCode)?.itemCode || state.catalogItems[0].itemCode);
+        fillCatalogSelect(select, selectedItem.itemCode);
         select.addEventListener('change', () => syncCatalogLine(row));
         row.querySelector('[data-catalog-quantity]')?.addEventListener('input', () => syncCatalogLine(row));
         row.querySelector('[data-catalog-remove]')?.addEventListener('click', () => {
@@ -802,10 +912,12 @@
             invalidateUnsubmittedDraft();
             row.remove();
             updateCatalogCartSummary();
+            renderCatalogSearchResults();
             syncCreateAvailability();
         });
         container.appendChild(row);
         syncCatalogLine(row);
+        renderCatalogSearchResults();
     }
 
     function renderCatalogDiscounts() {
@@ -841,6 +953,7 @@
         $('catalogSaleLines')?.replaceChildren();
         renderCatalogCategories();
         renderCatalogDiscounts();
+        renderCatalogSearchResults();
         updateCatalogCartSummary();
         state.catalogReady = true;
         setText('catalogSaleSummary', `${state.catalogItems.length} активних позицій · актуальні ціни · без ПДВ`);
@@ -999,7 +1112,10 @@
         }
         state.orderDetails = result;
         state.tender = result.order?.sourceSnapshot?.tender || (result.order?.paymentMethod === 'card_terminal' ? 'card_terminal_manual' : 'cash');
-        state.confirmSubmitted = orderBlocksPayment(result.order);
+        if (orderPaymentConfirmed(result.order) || normalizeStatus(result.order?.status) === 'cancelled') {
+            state.confirmOutcomePending = false;
+        }
+        state.confirmSubmitted = state.confirmOutcomePending || orderBlocksPayment(result.order);
         // Keep confirmation fail-closed while the order's register-wide safety context is refreshed.
         // Rendering a new draft before this transition creates a brief false-ready focus window.
         // Existing paid orders keep the last visible queue snapshot during silent polling to avoid UI blinking.
@@ -1025,6 +1141,8 @@
     }
 
     async function loadPilotRegisterState({ silent = false } = {}) {
+        const loadGeneration = ++state.readinessLoadGeneration;
+        const contextKey = readinessContextKey();
         try {
             const params = readinessRouteParams();
             const result = await apiRequest(`/api/payments/pilot-register-state?${params.toString()}`, {
@@ -1032,11 +1150,17 @@
                 headers: apiHeaders(),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
             });
+            if (loadGeneration !== state.readinessLoadGeneration || contextKey !== readinessContextKey()) {
+                return state.registerState;
+            }
             state.registerState = result;
             renderRegisterState(result);
             if (!silent) notify('Стан каси оновлено.', 'success');
             return result;
         } catch (error) {
+            if (loadGeneration !== state.readinessLoadGeneration || contextKey !== readinessContextKey()) {
+                return state.registerState;
+            }
             state.registerState = null;
             renderRegisterState(null);
             if (!silent) notify(paymentUiError(error), 'error');
@@ -1075,6 +1199,7 @@
                     businessContext: PILOT_SCOPE.crmProfileKey,
                     routeOptionId: PILOT_SCOPE.routeOptionId,
                     ...(cashierBindingId ? { cashierBindingId } : {}),
+                    requiredTender: state.tender,
                     force
                 }),
                 timeoutMs: READINESS_REQUEST_TIMEOUT_MS
@@ -1179,6 +1304,22 @@
 
     function paymentUiError(error) {
         const code = error?.code || error?.message;
+        const details = error?.details && typeof error.details === 'object' ? error.details : {};
+        const unreportedPermissions = Array.isArray(details.unreportedPaymentPermissions)
+            ? details.unreportedPaymentPermissions
+            : [];
+        const permissionLabels = unreportedPermissions.map(permission => ({
+            cash_payment: 'готівку',
+            card_payment: 'картку'
+        }[permission] || permission));
+        const deniedPermissions = Array.isArray(details.deniedPaymentPermissions)
+            ? details.deniedPaymentPermissions
+            : [];
+        const deniedLabels = deniedPermissions.map(permission => ({
+            cash_payment: 'готівку',
+            card_payment: 'картку',
+            sales: 'продажі'
+        }[permission] || permission));
         const messages = {
             shared_test_register_draining: 'Нові оплати PARK і ДАР зупинені до початку наступного тестового дня.',
             shared_test_provider_read_access_required: 'Потрібен чинний доступ для перевірки Checkbox. Заборону не знято; відповідальний має перевірити підключення.',
@@ -1201,6 +1342,16 @@
             checkbox_payment_acceptance_disabled: 'Приймання нових оплат вимкнене. Уже оплачені чеки залишаються у відновленні.',
             readiness_stale: 'Перевірка каси застаріла. Оновіть готовність Checkbox перед оплатою.',
             checkbox_provider_unavailable: 'Checkbox тимчасово недоступний. Нові оплати заблоковано.',
+            checkbox_cashier_permissions_missing: deniedLabels.length
+                ? `Checkbox відхилив право касира на ${deniedLabels.join(' і ')}. Відповідальний має перевірити права касира у Checkbox.`
+                : 'Checkbox не підтвердив право касира на вибраний спосіб оплати. Відповідальний має перевірити права касира у Checkbox.',
+            checkbox_payment_permission_unreported: permissionLabels.length
+                ? `Checkbox не повідомив право касира на ${permissionLabels.join(' і ')}. Оновлення сторінки це не виправить; потрібна перевірка прав у Checkbox.`
+                : 'Checkbox не повідомив право касира на вибраний спосіб оплати. Потрібна перевірка прав у Checkbox.',
+            fiscal_binding_capability_denied: 'Локальна прив’язка касира не дозволяє цю фіскальну дію. Потрібна перевірка прив’язки касира.',
+            payment_tender_required: 'Оберіть спосіб оплати перед перевіркою готовності або підтвердженням.',
+            payment_tender_unsupported: 'Обраний спосіб оплати не підтримується для цієї каси.',
+            payment_confirmation_outcome_unknown: 'Результат підтвердження уточнюється. Не повторюйте оплату і не скасовуйте чернетку, доки відповідальний не звірить стан.',
             external_shift_requires_sync: 'У Checkbox є інша відкрита зміна. Потрібна безпечна звірка відповідальним.',
             kids_count_invalid: 'Кількість дітей має бути більшою за нуль.',
             adults_count_invalid: 'Кількість дорослих не може бути від’ємною.',
@@ -1914,6 +2065,23 @@
         return FISCAL_BLOCKING_STATUSES.has(fiscalStatus) && paymentStatus !== 'unpaid';
     }
 
+    function orderPaymentConfirmed(order = state.orderDetails?.order) {
+        if (!order) return false;
+        return normalizeStatus(order.paymentStatus) === 'confirmed'
+            || normalizeStatus(order.status) === 'payment_recorded';
+    }
+
+    function isDefinitePaymentRejection(error) {
+        const code = String(error?.code || error?.message || '').trim();
+        return KNOWN_PRE_PAYMENT_REJECTION_CODES.has(code);
+    }
+
+    function orderIsUnpaidDraft(order = state.orderDetails?.order) {
+        return Boolean(order?.id
+            && normalizeStatus(order.paymentStatus) === 'unpaid'
+            && normalizeStatus(order.status) === 'draft');
+    }
+
     function orderIsComplete(order = state.orderDetails?.order) {
         if (!order) return false;
         return FISCAL_DONE_STATUSES.has(effectiveFiscalStatus(order))
@@ -1927,6 +2095,7 @@
             && state.registerState?.sharedTestDay?.localDrainBlocked !== true
             && state.routeLoading !== true
             && state.registerState?.integrationReady === true
+            && readinessTenderMatches(state.registerState)
             && state.readinessInFlight !== true
             && state.nextCustomerSafetyRefreshInFlight !== true
             && unresolvedQueueIsFresh()
@@ -2010,6 +2179,9 @@
                 shift_closing: 'Зміна закривається у Checkbox.',
                 readiness_stale: 'Готовність застаріла, потрібна свіжа перевірка.',
                 readiness_missing: 'Готовність ще не перевірена.',
+                checkbox_cashier_permissions_missing: 'Checkbox не підтвердив права касира на вибраний спосіб оплати.',
+                checkbox_payment_permission_unreported: 'Checkbox не повідомив право касира на вибраний спосіб оплати.',
+                fiscal_binding_capability_denied: 'Локальна прив’язка касира не дозволяє цю фіскальну дію.',
                 tax_mapping_missing: 'Фіскальні назви/податки для квитків не налаштовані.',
                 ready: '',
                 unknown: 'Стан готовності каси невідомий.'
@@ -2022,6 +2194,23 @@
             if (state.registerState.featureEnabled === false && state.registerState.registerFeatureEnabled === false) messages.push('Інтеграцію для середньої каси вимкнено.');
             if (state.registerState.checkboxIntegrationEnabled === false) messages.push('Глобальна інтеграція Checkbox вимкнена.');
             if (state.registerState.runtimeConfigResolvable === false) messages.push('Посилання на локальні доступи Checkbox не вдалося знайти в середовищі сервера.');
+            if (state.registerState.integrationReady === true && !readinessTenderMatches(state.registerState)) {
+                messages.push('Готовність Checkbox ще не підтверджена для вибраного способу оплати.');
+            }
+            if (Array.isArray(state.registerState.unreportedPaymentPermissions)
+                && state.registerState.unreportedPaymentPermissions.length) {
+                messages.push(paymentUiError({
+                    code: 'checkbox_payment_permission_unreported',
+                    details: { unreportedPaymentPermissions: state.registerState.unreportedPaymentPermissions }
+                }));
+            }
+            if (Array.isArray(state.registerState.deniedPaymentPermissions)
+                && state.registerState.deniedPaymentPermissions.length) {
+                messages.push(paymentUiError({
+                    code: 'checkbox_cashier_permissions_missing',
+                    details: { deniedPaymentPermissions: state.registerState.deniedPaymentPermissions }
+                }));
+            }
         }
         const queueReason = queueUnavailableReason();
         if (queueReason) messages.push(queueReason);
@@ -2033,7 +2222,9 @@
         const summaryText = state.readinessInFlight
             ? 'Оновлюємо готовність Checkbox…'
             : (ready
-                ? 'Каса готова — можна приймати оплату.'
+                ? (state.tender === 'card_terminal_manual'
+                    ? 'Каса готова до оплати карткою через термінал.'
+                    : 'Каса готова до оплати готівкою.')
                 : (viewOnly
                     ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
                     : 'Каса ще не готова — приймання оплат заблоковано.'));
@@ -2120,10 +2311,13 @@
             nextButton.textContent = 'Наступний клієнт';
         }
         const cancelBtn = $('cancelDraftOrderBtn');
-        const canCancel = Boolean(order?.id && normalizeStatus(order.paymentStatus) === 'unpaid' && normalizeStatus(order.status) === 'draft');
+        const canCancel = orderIsUnpaidDraft(order);
         if (cancelBtn) {
-            cancelBtn.classList.toggle('hidden', !canCancel);
-            setDisabledReason(cancelBtn, !canCancel, canCancel ? '' : 'Скасувати можна тільки неоплачену чернетку.');
+            cancelBtn.classList.toggle('hidden', !canCancel && !state.confirmOutcomePending);
+            const cancelReason = state.confirmOutcomePending
+                ? 'Результат підтвердження уточнюється. Скасування заблоковано до звірки.'
+                : 'Скасувати можна тільки неоплачену чернетку.';
+            setDisabledReason(cancelBtn, !canCancel || state.confirmOutcomePending, canCancel && !state.confirmOutcomePending ? '' : cancelReason);
         }
     }
 
@@ -2436,12 +2630,14 @@
     function syncConfirmationAvailability() {
         const order = state.orderDetails?.order || null;
         const hasOrder = Boolean(order?.id);
-        const blocked = !integrationReady() || !hasOrder || orderBlocksPayment(order) || state.confirmSubmitted || state.confirmInFlight;
+        const blocked = !integrationReady() || !hasOrder || orderBlocksPayment(order) || state.confirmSubmitted || state.confirmOutcomePending || state.confirmInFlight;
         const reason = state.confirmInFlight
             ? 'Підтверджуємо оплату…'
-            : (!integrationReady()
-                ? (queueUnavailableReason() || 'Каса не готова до Checkbox операцій.')
-                : (!hasOrder ? 'Спершу створіть оплату.' : (orderBlocksPayment(order) ? 'Цю оплату вже не можна підтвердити повторно.' : '')));
+            : (state.confirmOutcomePending
+                ? 'Результат підтвердження уточнюється. Не повторюйте оплату; звірте це саме замовлення без нового підтвердження.'
+                : (!integrationReady()
+                    ? (queueUnavailableReason() || 'Каса не готова до Checkbox операцій.')
+                    : (!hasOrder ? 'Спершу створіть оплату.' : (orderBlocksPayment(order) ? 'Цю оплату вже не можна підтвердити повторно.' : ''))));
         const cashReceived = $('cashReceivedAmount');
         const terminalSuccess = $('terminalSuccessCheckbox');
         const terminalReference = $('terminalReference');
@@ -2466,6 +2662,7 @@
         });
         $('cashConfirmationPanel')?.classList.toggle('hidden', state.tender !== 'cash');
         $('cardConfirmationPanel')?.classList.toggle('hidden', state.tender !== 'card_terminal_manual');
+        renderReadinessState();
         syncConfirmationAvailability();
     }
 
@@ -2488,6 +2685,7 @@
         if (!integrationReady()) throw new Error('checkbox_integration_not_ready');
         if (!order?.id) throw new Error('payment_order_missing');
         if (orderBlocksPayment(order)) throw new Error('payment_repeat_blocked');
+        if (state.confirmOutcomePending) throw new Error('payment_confirmation_outcome_unknown');
         if (state.tender === 'cash') {
             const received = parseUahToMinor($('cashReceivedAmount')?.value || '0');
             const total = BigInt(String(order.totalAmountMinor || 0));
@@ -2521,6 +2719,7 @@
         const idempotencyKey = getConfirmIdempotencyKey(orderId || 'missing');
         state.confirmInFlight = true;
         state.confirmSubmitted = true;
+        state.confirmOutcomePending = false;
         syncConfirmationAvailability();
         try {
             const result = await apiRequest(`/api/payments/orders/${encodeURIComponent(orderId)}/confirm`, {
@@ -2529,16 +2728,42 @@
                 body: JSON.stringify(payload)
             });
             if (result.order?.id) storageSet('lastOrderId', result.order.id);
-            await loadPaymentOrder(result.order?.id || orderId, { silent: true });
+            const loaded = await loadPaymentOrder(result.order?.id || orderId, { silent: true });
             await loadUnresolvedOrders({ silent: true });
             refreshReceiptHistoryIfVisible();
+            if (!orderPaymentConfirmed(loaded?.order || state.orderDetails?.order)) {
+                state.confirmSubmitted = true;
+                state.confirmOutcomePending = true;
+                syncConfirmationAvailability();
+                notify('Сервер прийняв запит, але повторне читання замовлення не підтвердило оплату. Не повторюйте оплату; оновіть чергу або зверніться до відповідального.', 'error');
+                return;
+            }
+            state.confirmOutcomePending = false;
             notify(result.replayed ? 'Це саме підтвердження безпечно оброблено повторно.' : '\u041e\u043f\u043b\u0430\u0442\u0443 \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043e. \u0427\u0435\u043a \u043f\u043e\u0441\u0442\u0430\u0432\u043b\u0435\u043d\u043e \u0432 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0447\u0435\u0440\u0433\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.', 'success');
             syncOrderPolling(state.orderDetails?.order);
             focusFiscalResult();
         } catch (error) {
-            notify(paymentUiError(error), 'error');
+            let rereadOrder = null;
+            let rereadSucceeded = false;
+            if (orderId) {
+                try {
+                    const loaded = await loadPaymentOrder(orderId, { silent: true });
+                    rereadOrder = loaded?.order || state.orderDetails?.order || null;
+                    rereadSucceeded = true;
+                } catch {}
+            }
+            if (isDefinitePaymentRejection(error) && rereadSucceeded && orderIsUnpaidDraft(rereadOrder)) {
+                state.confirmSubmitted = false;
+                state.confirmOutcomePending = false;
+                notify(paymentUiError(error), 'error');
+            } else {
+                state.confirmSubmitted = true;
+                state.confirmOutcomePending = true;
+                notify(paymentUiError(new Error('payment_confirmation_outcome_unknown')), 'error');
+            }
         } finally {
             state.confirmInFlight = false;
+            syncCreateAvailability();
             syncConfirmationAvailability();
         }
     }
@@ -2546,6 +2771,10 @@
     async function cancelDraftOrder() {
         const order = state.orderDetails?.order;
         if (!order?.id) return;
+        if (state.confirmOutcomePending) {
+            notify(paymentUiError(new Error('payment_confirmation_outcome_unknown')), 'error');
+            return;
+        }
         if (!(normalizeStatus(order.paymentStatus) === 'unpaid' && normalizeStatus(order.status) === 'draft')) {
             notify(paymentUiError(new Error('payment_order_cancel_denied')), 'error');
             return;
@@ -2610,6 +2839,7 @@
         if (currentOrderId) storageRemove(`confirm:${PILOT_SCOPE.routeOptionId}:${currentOrderId}`);
         state.orderDetails = null;
         state.confirmSubmitted = false;
+        state.confirmOutcomePending = false;
         state.confirmInFlight = false;
         state.nextCustomerSafetyRefreshInFlight = true;
         $('terminalSuccessCheckbox') && ($('terminalSuccessCheckbox').checked = false);
@@ -2619,6 +2849,7 @@
         if ($('catalogDiscountRule')) $('catalogDiscountRule').value = '';
         if ($('catalogSearch')) $('catalogSearch').value = '';
         if ($('catalogCategory')) $('catalogCategory').value = '';
+        renderCatalogSearchResults();
         updateCatalogCartSummary();
         setText('internalReceiptLabel', 'RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f');
         setStatus('cashierPaymentStatus', 'unpaid');
@@ -2672,6 +2903,7 @@
                 if (state.orderDetails?.order) return;
                 state.tender = input.value === 'card_terminal_manual' ? 'card_terminal_manual' : 'cash';
                 syncTenderControls();
+                void loadPilotRegisterState({ silent: true });
             });
         });
         $('cashReceivedAmount')?.addEventListener('input', updateCashChange);

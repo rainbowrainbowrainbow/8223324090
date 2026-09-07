@@ -242,6 +242,9 @@ test('ordinary cashier payment read routes redact configuration diagnostics even
         shiftState: 'closed',
         checkedAt: '2026-09-03T00:00:00.000Z',
         expiresAt: '2026-09-03T00:01:00.000Z',
+        requiredTender: 'cash',
+        paymentPermissionWarning: 'permission_unreported',
+        unreportedPaymentPermissions: ['cash_payment'],
         runtimeSecretsResolvable: false,
         missingFiscalContext: ['provider_cashier_id'],
         missingTaxItemCodes: ['regular_child'],
@@ -272,6 +275,9 @@ test('ordinary cashier payment read routes redact configuration diagnostics even
     assert.equal(cashierReadiness.providerIdentityVerified, true);
     assert.equal(cashierReadiness.signatureCertificateReady, true);
     assert.equal(cashierReadiness.taxMappingReady, true);
+    assert.equal(cashierReadiness.requiredTender, 'cash');
+    assert.equal(cashierReadiness.paymentPermissionWarning, 'permission_unreported');
+    assert.deepEqual(cashierReadiness.unreportedPaymentPermissions, ['cash_payment']);
     assert.equal(cashierReadiness.runtimeSecretsResolvable, undefined);
     assert.equal(cashierReadiness.missingFiscalContext, undefined);
     assert.equal(cashierReadiness.readinessSnapshot, undefined);
@@ -307,6 +313,33 @@ test('ordinary cashier payment read routes redact configuration diagnostics even
         cashierProjection.projectReadinessErrorForViewer(creatorWithThinBinding, readinessError).body.details,
         undefined,
         'ordinary routes never expose administrative diagnostics from a role-level capability'
+    );
+
+    const permissionError = {
+        status: 409,
+        body: {
+            success: false,
+            code: 'checkbox_payment_permission_unreported',
+            error: 'Checkbox is not ready for payment confirmation',
+            details: {
+                readinessCode: 'checkbox_payment_permission_unreported',
+                requiredTender: 'card_terminal_manual',
+                paymentPermissionWarning: 'permission_unreported',
+                unreportedPaymentPermissions: ['card_payment'],
+                credentialRef: 'internal_ref',
+                missing: ['password']
+            }
+        }
+    };
+    assert.deepEqual(
+        cashierProjection.projectReadinessErrorForViewer(cashier, permissionError).body.details,
+        {
+            readinessCode: 'checkbox_payment_permission_unreported',
+            paymentPermissionWarning: 'permission_unreported',
+            requiredTender: 'card_terminal_manual',
+            unreportedPaymentPermissions: ['card_payment']
+        },
+        'cashier readiness errors expose actionable tender permission diagnostics without provider credentials'
     );
 });
 
@@ -831,6 +864,62 @@ test('unreported payment permission override is explicit and test-only', () => {
     });
 });
 
+test('cached cashier permissions are evaluated for the requested tender', () => {
+    const salesOnly = {
+        permissions: {
+            sales: 'allowed',
+            cash: 'unreported',
+            card: 'unreported',
+            unreported: []
+        }
+    };
+    const cash = __readinessProbeTest.paymentPermissionSnapshotDetails(salesOnly, 'cash');
+    assert.equal(cash.blockingCode, 'checkbox_payment_permission_unreported');
+    assert.deepEqual(cash.required, ['sales', 'cash_payment']);
+    assert.deepEqual(cash.unreportedPayment, ['cash_payment']);
+    assert.equal(__readinessProbeTest.paymentPermissionBlockedByPolicy(cash, { allowed: false }), true);
+
+    const card = __readinessProbeTest.paymentPermissionSnapshotDetails(salesOnly, 'card_terminal_manual');
+    assert.equal(card.blockingCode, 'checkbox_payment_permission_unreported');
+    assert.deepEqual(card.required, ['sales', 'card_payment']);
+    assert.deepEqual(card.unreportedPayment, ['card_payment']);
+
+    const general = __readinessProbeTest.paymentPermissionSnapshotDetails(salesOnly, null);
+    assert.equal(general.blockingCode, null);
+    assert.deepEqual(general.unreported, []);
+    assert.equal(__readinessProbeTest.paymentPermissionBlockedByPolicy(general, { allowed: false }), false);
+});
+
+test('cash and card permissions are independent and denied permissions cannot be overridden', () => {
+    const mixed = {
+        permissions: {
+            sales: true,
+            cash: true,
+            card: false,
+            unreported: []
+        }
+    };
+    const cash = __readinessProbeTest.paymentPermissionSnapshotDetails(mixed, 'cash');
+    assert.equal(cash.blockingCode, null);
+    assert.equal(__readinessProbeTest.paymentPermissionBlockedByPolicy(cash, { allowed: false }), false);
+
+    const card = __readinessProbeTest.paymentPermissionSnapshotDetails(mixed, 'card_terminal_manual');
+    assert.equal(card.blockingCode, 'checkbox_cashier_permissions_missing');
+    assert.deepEqual(card.denied, ['card_payment']);
+    assert.equal(__readinessProbeTest.paymentPermissionBlockedByPolicy(card, { allowed: true }), true);
+
+    const cashUnreported = __readinessProbeTest.paymentPermissionSnapshotDetails({
+        permissions: { sales: 'allowed', cash: 'unreported' }
+    }, 'cash');
+    assert.equal(__readinessProbeTest.paymentPermissionBlockedByPolicy(cashUnreported, { allowed: true }), false);
+
+    const salesUnreported = __readinessProbeTest.paymentPermissionSnapshotDetails({
+        permissions: { sales: 'unreported', cash: 'unreported' }
+    }, 'cash');
+    assert.equal(salesUnreported.blockingCode, 'checkbox_cashier_permissions_missing');
+    assert.equal(__readinessProbeTest.paymentPermissionBlockedByPolicy(salesUnreported, { allowed: true }), true);
+});
+
 test('provider readiness remains probeable while payment acceptance stays fail-closed', () => {
     assert.equal(canProbeProviderReadiness({ readinessCode: 'ready' }), true);
     assert.equal(canProbeProviderReadiness({ readinessCode: 'payment_acceptance_disabled' }), true);
@@ -1095,7 +1184,7 @@ test('public readiness details never expose provider identity ids', () => {
 test('payment readiness service keeps provider HTTP outside DB transactions and blocks stale states', () => {
     const service = read('services/payments/paymentReadinessService.js');
     assert.match(service, /async function prepareReadinessScope/);
-    assert.match(service, /result = await probeProviderSingleFlight\(scope, \{ fetchImpl, now, env \}\)/);
+    assert.match(service, /result = await probeProviderSingleFlight\(scope, \{ fetchImpl, now, env, requiredTender: normalizedTender \}\)/);
     assert.match(service, /providerResult = await probeProvider\(scope, \{ fetchImpl, now, env, requiredTender \}\)/);
     assert.match(service, /readiness_stale/);
     assert.match(service, /provider_unavailable/);
@@ -1386,7 +1475,7 @@ test('cashier UI fails closed when unresolved queue is unavailable and refreshes
     assert.match(js, /state\.unresolvedQueueState === 'available'/);
     assert.match(js, /\/api\/payments\/readiness\/probe/);
     assert.match(js, /await loadPilotRegisterState\(\{ silent: true \}\)/);
-    assert.match(js, /JSON\.stringify\(\{[\s\S]*businessContext: PILOT_SCOPE\.crmProfileKey,[\s\S]*routeOptionId: PILOT_SCOPE\.routeOptionId,[\s\S]*cashierBindingId[\s\S]*force/);
+    assert.match(js, /JSON\.stringify\(\{[\s\S]*businessContext: PILOT_SCOPE\.crmProfileKey,[\s\S]*routeOptionId: PILOT_SCOPE\.routeOptionId,[\s\S]*cashierBindingId[\s\S]*requiredTender: state\.tender[\s\S]*force/);
     assert.match(js, /READINESS_REFRESH_MIN_MS/);
     assert.match(js, /READINESS_REFRESH_MAX_MS/);
     assert.match(js, /READINESS_REQUEST_TIMEOUT_MS/);
@@ -1395,6 +1484,35 @@ test('cashier UI fails closed when unresolved queue is unavailable and refreshes
     assert.match(js, /params\.set\('pageSize', String\(UNRESOLVED_PAGE_SIZE\)\)/);
     assert.match(js, /state\.unresolvedRegisterCount/);
     assert.match(js, /loadUnresolvedOrders\(\{ silent: false, append: true \}\)/);
+});
+
+test('cashier readiness endpoints and cached readiness are tender aware', () => {
+    const routes = read('routes/payments.js');
+    const service = read('services/payments/paymentReadinessService.js');
+    const js = read('js/cashier-payments-page.js');
+    const loadStateBlock = service.slice(
+        service.indexOf('async function loadReadinessState'),
+        service.indexOf('async function probeCheckboxReadiness')
+    );
+    const probeBlock = service.slice(
+        service.indexOf('async function probeCheckboxReadiness'),
+        service.indexOf('function readinessFailureStatus')
+    );
+
+    assert.match(routes, /function readinessTenderFromRequest\(req\)/);
+    assert.match(routes, /loadReadinessState\(\{[\s\S]*requiredTender: readinessTenderFromRequest\(req\)/);
+    assert.match(routes, /probeCheckboxReadiness\(\{[\s\S]*requiredTender: readinessTenderFromRequest\(req\)/);
+    assert.match(routes, /projectReadinessForViewer[\s\S]*requiredTender: readiness\.requiredTender \|\| null/);
+    assert.match(routes, /projectReadinessErrorForViewer[\s\S]*unreportedPaymentPermissions/);
+    assert.doesNotMatch(routes, /publicBody\.details = details/);
+
+    assert.match(loadStateBlock, /const normalizedTender = normalizeReadinessTender\(requiredTender \|\| tender\)/);
+    assert.match(loadStateBlock, /paymentPermissionSnapshotDetails\(serialized\.result, normalizedTender\)/);
+    assert.match(loadStateBlock, /requiredTender: normalizedTender/);
+    assert.match(probeBlock, /probeProviderSingleFlight\(scope, \{ fetchImpl, now, env, requiredTender: normalizedTender \}\)/);
+    assert.match(probeBlock, /paymentPermissionSnapshotDetails\(serializedLatest\.result, normalizedTender\)/);
+    assert.match(probeBlock, /requiredTender: normalizedTender/);
+    assert.match(js, /params\.set\('requiredTender', state\.tender\)/);
 });
 
 test('cashier UI strictly validates unresolved responses and fails closed while checking or stale', () => {

@@ -111,6 +111,16 @@ function cashierBindingIdFromRequest(req) {
     return id;
 }
 
+function readinessTenderFromRequest(req) {
+    return req.body?.requiredTender
+        ?? req.body?.required_tender
+        ?? req.body?.tender
+        ?? req.query?.requiredTender
+        ?? req.query?.required_tender
+        ?? req.query?.tender
+        ?? null;
+}
+
 async function resolvePaymentFiscalScope(req) {
     const input = { ...(req.query || {}), ...(req.body || {}) };
     assertNoClientFiscalRouteOverride(input);
@@ -144,6 +154,7 @@ async function resolvePaymentFiscalScope(req) {
 function projectReadinessForViewer(_user, readiness = {}) {
     return {
         readinessCode: readiness.readinessCode || 'unknown',
+        requiredTender: readiness.requiredTender || null,
         integrationReady: readiness.integrationReady === true,
         providerReady: readiness.providerReady === true,
         providerIdentityVerified: readiness.providerIdentityVerified === true,
@@ -154,6 +165,16 @@ function projectReadinessForViewer(_user, readiness = {}) {
         providerUnavailable: readiness.providerUnavailable === true,
         staleReadiness: readiness.staleReadiness !== false,
         shiftState: readiness.shiftState || 'unknown',
+        paymentPermissionWarning: readiness.paymentPermissionWarning || null,
+        unreportedPaymentPermissions: Array.isArray(readiness.unreportedPaymentPermissions)
+            ? readiness.unreportedPaymentPermissions
+            : [],
+        deniedPaymentPermissions: Array.isArray(readiness.deniedPaymentPermissions)
+            ? readiness.deniedPaymentPermissions
+            : [],
+        contextMismatchReasons: Array.isArray(readiness.contextMismatchReasons)
+            ? readiness.contextMismatchReasons
+            : [],
         checkedAt: readiness.checkedAt || null,
         expiresAt: readiness.expiresAt || null
     };
@@ -174,6 +195,7 @@ function projectPilotRegisterStateForViewer(user, localState = {}, readiness = {
         phase1Close,
         sharedTestDay: localState.sharedTestDay || null,
         checklist: null,
+        requiredTender: readiness.requiredTender || null,
         readiness: projectReadinessForViewer(user, readiness),
         readinessCode: readiness.readinessCode || 'unknown',
         integrationReady: readiness.integrationReady === true
@@ -259,6 +281,31 @@ function projectPaymentMutationResultForViewer(user, result = {}) {
 function projectReadinessErrorForViewer(_user, response = {}) {
     if (!response.body) return response;
     const { details, ...publicBody } = response.body;
+    const safeDetails = details && typeof details === 'object' && !Array.isArray(details)
+        ? {
+            readinessCode: details.readinessCode || details.readiness_code || undefined,
+            shiftState: details.shiftState || details.shift_state || undefined,
+            staleReadiness: typeof details.staleReadiness === 'boolean' ? details.staleReadiness : undefined,
+            providerUnavailable: typeof details.providerUnavailable === 'boolean' ? details.providerUnavailable : undefined,
+            paymentPermissionWarning: details.paymentPermissionWarning || details.payment_permission_warning || undefined,
+            requiredTender: details.requiredTender || details.required_tender || undefined,
+            unreportedPaymentPermissions: Array.isArray(details.unreportedPaymentPermissions)
+                ? details.unreportedPaymentPermissions
+                : (Array.isArray(details.unreported_payment_permissions) ? details.unreported_payment_permissions : undefined),
+            deniedPaymentPermissions: Array.isArray(details.deniedPaymentPermissions)
+                ? details.deniedPaymentPermissions
+                : (Array.isArray(details.denied_payment_permissions) ? details.denied_payment_permissions : undefined),
+            contextMismatchReasons: Array.isArray(details.contextMismatchReasons)
+                ? details.contextMismatchReasons
+                : (Array.isArray(details.context_mismatch_reasons) ? details.context_mismatch_reasons : undefined)
+        }
+        : null;
+    if (safeDetails) {
+        Object.keys(safeDetails).forEach(key => {
+            if (safeDetails[key] === undefined) delete safeDetails[key];
+        });
+        if (Object.keys(safeDetails).length) publicBody.details = safeDetails;
+    }
     return { ...response, body: publicBody };
 }
 
@@ -590,7 +637,8 @@ router.get('/pilot-register-state', requireAction('payments.view'), async (req, 
             }),
             loadReadinessState({
                 user: req.user,
-                ...scope
+                ...scope,
+                requiredTender: readinessTenderFromRequest(req)
             })
         ]);
         const phase1Close = applyPhase1CloseReadiness(localState.phase1Close, readiness);
@@ -610,6 +658,7 @@ router.post('/readiness/probe', requireAction('payments.view'), async (req, res)
         const result = await probeCheckboxReadiness({
             user: req.user,
             ...scope,
+            requiredTender: readinessTenderFromRequest(req),
             force: req.body?.force === true || req.body?.force === 'true' || req.query.force === 'true'
         });
         return res.status(200).json({ success: true, ...projectReadinessForViewer(req.user, result) });

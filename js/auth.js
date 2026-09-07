@@ -15,6 +15,8 @@ const AUTH_REFRESH_EXPIRES_KEY = 'pzp_refresh_expires_at';
 const AUTH_SESSION_GENERATION_KEY = 'pzp_auth_session_generation';
 const AUTH_TRANSITION_KEY = 'pzp_auth_transition';
 const AUTH_LOGIN_INTENT_KEY = 'pzp_auth_login_intent';
+const AUTH_RETURN_ROUTE_KEY = 'pzp_auth_return_route_v1';
+const AUTH_RETURN_ROUTE_MAX_AGE_MS = 10 * 60 * 1000;
 const AUTH_TRANSITION_MAX_AGE_MS = 15000;
 let serviceWorkerRegistrationPromise = null;
 let authenticatedRuntimeReady = false;
@@ -22,6 +24,8 @@ let offlineSessionRecoveryBound = false;
 let crossTabLogoutInProgress = false;
 let crossTabSessionSyncInProgress = false;
 let authOwnedTransition = null;
+let authServiceWorkerUpdatePromptVisible = false;
+let authServiceWorkerUpdateDismissedForController = '';
 
 function installRedirectDiagnosticsRuntime(global = window) {
     if (!global || global.RedirectDiagnostics) return global?.RedirectDiagnostics || null;
@@ -152,7 +156,8 @@ function installRedirectDiagnosticsRuntime(global = window) {
         'verify-unauthorized',
         'verify-terminal',
         'offline-navigation',
-        'bootstrap-error'
+        'bootstrap-error',
+        'refresh-watchdog-timeout'
     ]);
     const SAFE_STAGE_VALUES = new Set([
         'unknown',
@@ -176,7 +181,7 @@ function installRedirectDiagnosticsRuntime(global = window) {
         'auto-fill',
         'bootstrap-error'
     ]);
-    const SAFE_OUTCOME_VALUES = new Set(['unknown', 'success', 'empty', 'missing', 'transient', 'terminal', 'superseded']);
+    const SAFE_OUTCOME_VALUES = new Set(['unknown', 'success', 'empty', 'missing', 'transient', 'terminal', 'superseded', 'retry-later']);
     const SAFE_LIFECYCLE_VALUES = new Set(['unknown', 'pageshow-persisted', 'visibility-resume', 'offline-navigation']);
     const SAFE_BUCKET_VALUES = new Set(['unknown', 'auth_availability_ip', 'login_account_ip', 'login_ip', 'refresh_ip']);
     const SAFE_VISIBILITY_VALUES = new Set(['unknown', 'visible', 'hidden', 'prerender', 'unloaded']);
@@ -609,6 +614,10 @@ function registerAuthenticatedServiceWorker() {
     if (serviceWorkerRegistrationPromise) return serviceWorkerRegistrationPromise;
 
     serviceWorkerRegistrationPromise = navigator.serviceWorker.register('/sw.js')
+        .then((registration) => {
+            bindAuthenticatedServiceWorkerUpdatePrompt(registration);
+            return registration;
+        })
         .catch((err) => {
             serviceWorkerRegistrationPromise = null;
             console.warn('[auth] Service Worker registration failed', err);
@@ -917,6 +926,10 @@ async function checkSessionAttempt(sessionChangeRetry = 0) {
                     return false;
                 }
                 window.WorkingRole?.hydrate?.();
+                if (applyAuthReturnRouteAfterLogin(verifiedUser)) {
+                    recordRedirectDiagnostic('auth-bootstrap', { stage: 'complete', refreshOutcome: 'success' });
+                    return true;
+                }
                 showMainApp();
                 recordRedirectDiagnostic('auth-bootstrap', { stage: 'complete', refreshOutcome: 'success' });
                 if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) setTimeout(() => Sidebar.initUserCard(), 100);
@@ -1021,8 +1034,14 @@ async function login(username, password) {
         }
         window.WorkingRole?.hydrate?.();
         await registerAuthenticatedServiceWorker();
+        if (!isAuthBootstrapSessionCurrent(bootstrapSession, authenticatedUser)) {
+            return { success: true, pending: true };
+        }
         // v33.14.0: Init sidebar user card
         if (typeof Sidebar !== 'undefined' && Sidebar.initUserCard) Sidebar.initUserCard();
+        if (applyAuthReturnRouteAfterLogin(data.user || AppState.currentUser)) {
+            return { success: true };
+        }
         // Start every authenticated session from the account's timeline surface.
         const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
         const currentRoute = `${currentPath}${window.location.search || ''}`;
@@ -1550,7 +1569,378 @@ function authSessionFailureMessage(failure = {}) {
     if (typeof navigator !== 'undefined' && navigator.onLine === false) {
         return 'Немає з’єднання з сервером. Сесію збережено — повторіть перевірку після відновлення мережі.';
     }
+    if (failure?.reason === 'refresh-watchdog-timeout') {
+        return 'Сервер довго не відповідає на оновлення сесії. Дані входу збережено — повторіть спробу трохи пізніше або оновіть сторінку вручну.';
+    }
     return 'Не вдалося тимчасово підтвердити сесію. Дані входу збережено — повторіть спробу.';
+}
+
+
+const AUTH_SAFE_RETURN_ROUTE_MODULES = new Set([
+    '',
+    'dashboard',
+    'sales-funnel',
+    'customers',
+    'certificates',
+    'tasks',
+    'profile',
+    'staff',
+    'hr',
+    'reports',
+    'analytics',
+    'finance',
+    'settings',
+    'chat',
+    'warehouse',
+    'designs',
+    'programs',
+    'bookings',
+    'afisha',
+    'training',
+    'invite',
+    'sound',
+    'omni',
+    'timeline',
+    'maysternya-doli',
+    'kleshnya',
+    'copilot',
+    'guardian-ops',
+    'hermes-studio',
+    'status'
+]);
+const AUTH_SAFE_RETURN_STATIC_CHILDREN = new Map([
+    ['certificates', new Set(['new', 'batch'])],
+    ['embed', new Set(['designs', 'programs', 'graduation'])],
+    ['omni', new Set(['accounts'])]
+]);
+
+function normalizeAuthReturnRouteSegment(segment) {
+    let decoded = String(segment || '');
+    try { decoded = decodeURIComponent(decoded); } catch {}
+    return decoded
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_.:-]/g, '-')
+        .replace(/-+/g, '-')
+        .replace(/^-|-$/g, '')
+        .slice(0, 48);
+}
+
+function normalizeSafeAuthReturnRoute(value) {
+    let pathname = '';
+    try {
+        const locationOrigin = window.location?.origin || 'http://localhost';
+        const parsed = new URL(String(value || window.location?.href || window.location?.pathname || '/'), locationOrigin);
+        if (parsed.origin !== locationOrigin) return '';
+        pathname = parsed.pathname || '/';
+    } catch {
+        pathname = String(value || window.location?.pathname || '/').split(/[?#]/)[0] || '/';
+    }
+    const segments = pathname
+        .replace(/\.html$/i, '')
+        .replace(/\/$/, '')
+        .split('/')
+        .filter(Boolean)
+        .map(normalizeAuthReturnRouteSegment)
+        .filter(Boolean);
+    if (!segments.length) return '/';
+    const moduleName = segments[0];
+    if (!AUTH_SAFE_RETURN_ROUTE_MODULES.has(moduleName)) return '';
+    const output = [moduleName];
+    const staticChildren = AUTH_SAFE_RETURN_STATIC_CHILDREN.get(moduleName) || new Set();
+    for (let index = 1; index < segments.length; index += 1) {
+        const segment = segments[index];
+        if (!staticChildren.has(segment)) break;
+        output.push(segment);
+    }
+    return '/' + output.join('/');
+}
+
+function shouldRememberAuthReturnRouteForAuthFailure() {
+    const failure = typeof getApiAuthSessionFailure === 'function'
+        ? getApiAuthSessionFailure()
+        : null;
+    return failure?.kind === 'terminal' || failure?.terminal === true;
+}
+
+function rememberAuthReturnRoute(reason = 'terminal-auth') {
+    const route = normalizeSafeAuthReturnRoute();
+    if (!route || route === '/' || route === '/index') return false;
+    try {
+        localStorage.setItem(AUTH_RETURN_ROUTE_KEY, JSON.stringify({ route, at: Date.now(), reason: String(reason || 'terminal-auth') }));
+        recordRedirectDiagnostic('auth-redirect', {
+            stage: 'show-login-screen',
+            redirectReason: 'login-page',
+            targetRoute: route
+        });
+        return true;
+    } catch {
+        return false;
+    }
+}
+
+function consumeAuthReturnRoute(user = AppState.currentUser) {
+    let entry = null;
+    const clearIntent = () => {
+        try { localStorage.removeItem(AUTH_RETURN_ROUTE_KEY); } catch {}
+    };
+    try {
+        const raw = localStorage.getItem(AUTH_RETURN_ROUTE_KEY) || '';
+        if (raw) entry = JSON.parse(raw);
+    } catch {
+        clearIntent();
+        return '';
+    }
+    const route = normalizeSafeAuthReturnRoute(entry?.route || '');
+    const at = Number(entry?.at || 0);
+    if (!route || route === '/' || route === '/index') {
+        clearIntent();
+        return '';
+    }
+    if (!Number.isFinite(at) || Date.now() - at > AUTH_RETURN_ROUTE_MAX_AGE_MS || at > Date.now() + 60000) {
+        clearIntent();
+        return '';
+    }
+    try {
+        if (typeof canAccessPage === 'function') {
+            const lifecycle = typeof getPermissionLifecycle === 'function'
+                ? getPermissionLifecycle()
+                : { status: 'ready' };
+            if (lifecycle?.status !== 'ready') return '';
+            if (!canAccessPage(route)) {
+                clearIntent();
+                recordRedirectDiagnostic('auth-redirect', {
+                    stage: 'post-login',
+                    redirectReason: 'page-access-denied',
+                    targetRoute: getAuthenticatedTimelineStartPage(user || AppState.currentUser) || '/dashboard'
+                });
+                return '';
+            }
+        }
+    } catch {
+        return '';
+    }
+    clearIntent();
+    return route;
+}
+
+function hasAuthRecoveryUnsavedChanges() {
+    try {
+        if (typeof window !== 'undefined' && window.BookingForm) {
+            if (typeof window.BookingForm.isDirty === 'function' && window.BookingForm.isDirty()) return true;
+            if (window.BookingForm._dirty === true) return true;
+        }
+    } catch {}
+    try {
+        if (typeof document === 'undefined' || typeof document.querySelectorAll !== 'function') return false;
+        const editableSurfaces = Array.from(document.querySelectorAll('[data-editable-surface="true"]'));
+        if (editableSurfaces.some(surface => {
+            try {
+                if (surface?.dataset?.dirty === 'true') return true;
+                if (typeof window !== 'undefined'
+                    && window.UnsafeDismissGuard
+                    && typeof window.UnsafeDismissGuard.isDirtySurface === 'function') {
+                    return window.UnsafeDismissGuard.isDirtySurface(surface);
+                }
+            } catch {}
+            return false;
+        })) return true;
+        return Boolean(document.querySelectorAll('[data-dirty="true"], [data-unsaved-changes="true"], .is-dirty').length);
+    } catch {
+        return false;
+    }
+}
+
+async function confirmAuthRecoveryReload() {
+    if (!hasAuthRecoveryUnsavedChanges()) return true;
+    const message = 'Є незбережені зміни. Оновлення сторінки може їх втратити. Оновити сторінку вручну?';
+    const options = {
+        type: 'warning',
+        okText: 'Оновити сторінку',
+        cancelText: 'Повернутись'
+    };
+    if (typeof confirmModal === 'function') return !!(await confirmModal(message, options));
+    if (typeof customConfirm === 'function') return !!(await customConfirm(message, 'Незбережені зміни'));
+    if (typeof showNotification === 'function') {
+        showNotification('Оновлення заблоковано: потрібно підтвердити втрату незбережених змін.', 'warning');
+    }
+    return false;
+}
+
+async function reloadAuthSessionRecoveryPage() {
+    const allowed = await confirmAuthRecoveryReload();
+    if (!allowed) return false;
+    const route = normalizeSafeAuthReturnRoute() || '/';
+    rememberAuthReturnRoute('refresh-watchdog-reload');
+    recordRedirectDiagnostic('auth-redirect', {
+        stage: 'refresh-watchdog-reload',
+        redirectReason: 'manual-reload',
+        targetRoute: route
+    });
+    if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+        window.location.reload();
+        return true;
+    }
+    if (typeof window !== 'undefined' && window.location) {
+        window.location.href = route;
+        return true;
+    }
+    return false;
+}
+
+function applyAuthReturnRouteAfterLogin(user = AppState.currentUser) {
+    const route = consumeAuthReturnRoute(user);
+    if (!route) return false;
+    const currentPath = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
+    if (currentPath === route) {
+        recordRedirectDiagnostic('auth-redirect', {
+            stage: 'post-login',
+            redirectReason: 'return-route-current',
+            targetRoute: route
+        });
+        return true;
+    }
+    recordRedirectDiagnostic('auth-redirect', {
+        stage: 'post-login',
+        redirectReason: 'authenticated-start-page',
+        targetRoute: route
+    });
+    window.location.href = route;
+    return true;
+}
+
+function authenticatedServiceWorkerUpdateControllerKey() {
+    try {
+        const controller = navigator.serviceWorker?.controller;
+        return controller?.scriptURL || '';
+    } catch {
+        return '';
+    }
+}
+
+function ensureAuthenticatedServiceWorkerUpdateSurface() {
+    let target = document.getElementById('authServiceWorkerUpdatePrompt');
+    if (!target && document.body && typeof document.createElement === 'function') {
+        target = document.createElement('div');
+        target.id = 'authServiceWorkerUpdatePrompt';
+        target.className = 'auth-session-update-prompt';
+        target.setAttribute('role', 'status');
+        target.setAttribute('aria-live', 'polite');
+        target.style.position = 'fixed';
+        target.style.right = '16px';
+        target.style.bottom = '16px';
+        target.style.zIndex = '11000';
+        target.style.maxWidth = '380px';
+        document.body.appendChild(target);
+    }
+    return target;
+}
+
+async function confirmAuthenticatedServiceWorkerUpdateReload() {
+    if (!hasAuthRecoveryUnsavedChanges()) return true;
+    const message = 'Є незбережені зміни. Оновлення CRM перезавантажить сторінку й може їх втратити. Оновити зараз?';
+    const options = {
+        type: 'warning',
+        okText: 'Оновити',
+        cancelText: 'Пізніше'
+    };
+    if (typeof confirmModal === 'function') return !!(await confirmModal(message, options));
+    if (typeof customConfirm === 'function') return !!(await customConfirm(message, 'Незбережені зміни'));
+    if (typeof showNotification === 'function') {
+        showNotification('Оновлення відкладено: потрібно підтвердити втрату незбережених змін.', 'warning');
+    }
+    return false;
+}
+
+async function applyAuthenticatedServiceWorkerUpdateReload() {
+    const allowed = await confirmAuthenticatedServiceWorkerUpdateReload();
+    if (!allowed) return false;
+    const route = normalizeSafeAuthReturnRoute();
+    if (route && route !== '/' && route !== '/index') {
+        rememberAuthReturnRoute('service-worker-update');
+    }
+    recordRedirectDiagnostic('navigation-transition', {
+        stage: 'service-worker-update',
+        redirectReason: 'manual-reload',
+        targetRoute: route || '/'
+    });
+    if (typeof window !== 'undefined' && typeof window.location?.reload === 'function') {
+        window.location.reload();
+        return true;
+    }
+    if (typeof window !== 'undefined' && window.location) {
+        window.location.href = route || '/';
+        return true;
+    }
+    return false;
+}
+
+function dismissAuthenticatedServiceWorkerUpdatePrompt() {
+    const key = authenticatedServiceWorkerUpdateControllerKey() || `dismissed-${Date.now().toString(36)}`;
+    authServiceWorkerUpdateDismissedForController = key;
+    authServiceWorkerUpdatePromptVisible = false;
+    document.getElementById('authServiceWorkerUpdatePrompt')?.remove();
+}
+
+function renderAuthenticatedServiceWorkerUpdatePrompt(reason = 'controllerchange') {
+    if (!hasAuthenticatedRuntimeSession()) return false;
+    const controllerKey = authenticatedServiceWorkerUpdateControllerKey();
+    if (authServiceWorkerUpdatePromptVisible) return true;
+    if (controllerKey && controllerKey === authServiceWorkerUpdateDismissedForController) return false;
+    const target = ensureAuthenticatedServiceWorkerUpdateSurface();
+    if (!target) return false;
+    authServiceWorkerUpdatePromptVisible = true;
+    recordRedirectDiagnostic('shell-lifecycle', {
+        stage: 'service-worker-update-available',
+        reason: 'service-worker-update',
+        lifecycle: reason
+    });
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error" data-auth-sw-update-prompt><h3>Доступне оновлення CRM</h3><p>Щоб отримати нову версію інтерфейсу, оновіть сторінку вручну. Поточну роботу не буде перезавантажено без вашої дії.</p><div class="auth-session-bootstrap-actions"><button type="button" class="btn btn-primary" data-auth-sw-update-reload>Оновити</button><button type="button" class="btn btn-secondary" data-auth-sw-update-later>Пізніше</button></div><p class="muted">Перед оновленням CRM перевірить незбережені зміни й збереже безпечний маршрут.</p></div>`;
+    const reloadButton = target.querySelector?.('[data-auth-sw-update-reload]');
+    const laterButton = target.querySelector?.('[data-auth-sw-update-later]');
+    reloadButton?.addEventListener('click', async () => {
+        if (reloadButton.disabled) return;
+        reloadButton.disabled = true;
+        reloadButton.setAttribute('aria-busy', 'true');
+        try {
+            const reloading = await applyAuthenticatedServiceWorkerUpdateReload();
+            if (!reloading) {
+                reloadButton.disabled = false;
+                reloadButton.removeAttribute('aria-busy');
+            }
+        } catch {
+            reloadButton.disabled = false;
+            reloadButton.removeAttribute('aria-busy');
+            if (typeof showNotification === 'function') {
+                showNotification('Не вдалося оновити CRM. Сторінка та сесія залишилися без змін.', 'error');
+            }
+        }
+    });
+    laterButton?.addEventListener('click', dismissAuthenticatedServiceWorkerUpdatePrompt);
+    return true;
+}
+
+function bindAuthenticatedServiceWorkerUpdatePrompt(registration) {
+    try {
+        if (!registration || registration.__eventGenixUpdatePromptBound) return;
+        registration.__eventGenixUpdatePromptBound = true;
+        const hadController = Boolean(navigator.serviceWorker?.controller);
+        registration.addEventListener?.('updatefound', () => {
+            const worker = registration.installing || registration.waiting;
+            if (!worker) return;
+            worker.addEventListener?.('statechange', () => {
+                if (hadController && (worker.state === 'installed' || worker.state === 'activated')) {
+                    renderAuthenticatedServiceWorkerUpdatePrompt('updatefound');
+                }
+            });
+        });
+        navigator.serviceWorker?.addEventListener?.('controllerchange', () => {
+            if (hadController) renderAuthenticatedServiceWorkerUpdatePrompt('controllerchange');
+        });
+        if (hadController && registration.waiting) {
+            renderAuthenticatedServiceWorkerUpdatePrompt('waiting');
+        }
+    } catch {}
 }
 
 function clearAuthSessionBootstrapError() {
@@ -1577,7 +1967,11 @@ function renderAuthSessionBootstrapError(options = {}) {
     if (!target) return;
     const retry = typeof options.retry === 'function' ? options.retry : null;
     const diagnosticsAvailable = Boolean(window.RedirectDiagnostics?.copy);
-    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p><div class="auth-session-bootstrap-actions">${retry ? '<button type="button" class="btn btn-primary" data-auth-session-retry>Повторити</button>' : ''}${diagnosticsAvailable ? '<button type="button" class="btn btn-secondary" data-auth-session-copy-diagnostics>Скопіювати діагностику</button>' : ''}</div><p class="muted" data-auth-session-diagnostics-status hidden></p></div>`;
+    const canManualReload = options.failure?.reason === 'refresh-watchdog-timeout';
+    const reloadNote = canManualReload
+        ? '<p class="muted" data-auth-session-reload-note>Оновлення сторінки є ручним виходом із завислого запиту. Воно не гарантує тихе відновлення сесії за чинного серверного контракту; якщо є незбережені зміни, CRM спитає підтвердження.</p>'
+        : '';
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error"><h3>Сесію тимчасово не підтверджено</h3><p data-auth-session-state="transient">${_escHtml(authSessionFailureMessage(options.failure))}</p>${reloadNote}<div class="auth-session-bootstrap-actions">${retry ? '<button type="button" class="btn btn-primary" data-auth-session-retry>Повторити</button>' : ''}${canManualReload ? '<button type="button" class="btn btn-secondary" data-auth-session-reload>Оновити сторінку</button>' : ''}${diagnosticsAvailable ? '<button type="button" class="btn btn-secondary" data-auth-session-copy-diagnostics>Скопіювати діагностику</button>' : ''}</div><p class="muted" data-auth-session-diagnostics-status hidden></p></div>`;
     const button = target.querySelector?.('[data-auth-session-retry]');
     if (button && retry) {
         button.addEventListener('click', async () => {
@@ -1588,6 +1982,27 @@ function renderAuthSessionBootstrapError(options = {}) {
             finally {
                 button.disabled = false;
                 button.removeAttribute('aria-busy');
+            }
+        });
+    }
+    const reloadButton = target.querySelector?.('[data-auth-session-reload]');
+    if (reloadButton) {
+        reloadButton.addEventListener('click', async () => {
+            if (reloadButton.disabled) return;
+            reloadButton.disabled = true;
+            reloadButton.setAttribute('aria-busy', 'true');
+            try {
+                const reloading = await reloadAuthSessionRecoveryPage();
+                if (!reloading) {
+                    reloadButton.disabled = false;
+                    reloadButton.removeAttribute('aria-busy');
+                }
+            } catch {
+                reloadButton.disabled = false;
+                reloadButton.removeAttribute('aria-busy');
+                if (typeof showNotification === 'function') {
+                    showNotification('Не вдалося оновити сторінку. Сесія не очищена — спробуйте ще раз.', 'error');
+                }
             }
         });
     }
@@ -1872,6 +2287,11 @@ function showLoginScreen() {
     // v31.7.1: Redirect to canonical login page from sub-pages
     const path = window.location.pathname.replace(/\.html$/, '').replace(/\/$/, '') || '/';
     if (path !== '/' && path !== '/index') {
+        if (typeof shouldRememberAuthReturnRouteForAuthFailure === 'function'
+            && shouldRememberAuthReturnRouteForAuthFailure()
+            && typeof rememberAuthReturnRoute === 'function') {
+            rememberAuthReturnRoute('show-login-screen');
+        }
         recordRedirectDiagnostic('auth-redirect', {
             stage: 'show-login-screen',
             redirectReason: 'login-page',

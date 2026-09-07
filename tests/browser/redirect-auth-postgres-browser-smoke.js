@@ -405,12 +405,55 @@ async function waitForReady(label, ready) {
     return Promise.race([ready.promise, timeout]);
 }
 
+async function waitForOptional(label, promise, timeoutMs = 6500) {
+    let timer = null;
+    const timeout = new Promise(resolve => {
+        timer = setTimeout(() => resolve({ type: 'timeout', label }), timeoutMs);
+    });
+    const result = await Promise.race([
+        promise.then(value => ({ type: 'value', value })),
+        timeout
+    ]);
+    if (timer !== null) clearTimeout(timer);
+    return result;
+}
+
 async function tokenRow(pool, token) {
     const result = await pool.query(
-        'SELECT id, user_id, revoked_at, replaced_by FROM refresh_tokens WHERE token_hash = $1',
+        `SELECT id, user_id, revoked_at, replaced_by,
+                EXTRACT(EPOCH FROM (clock_timestamp() - revoked_at)) * 1000 AS rotation_age_ms
+         FROM refresh_tokens WHERE token_hash = $1`,
         [hashRefreshToken(token)]
     );
     return result.rows[0] || null;
+}
+
+function decodeJwtPayload(token) {
+    try {
+        const payload = String(token || '').split('.')[1] || '';
+        if (!payload) return {};
+        return JSON.parse(Buffer.from(payload.replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+    } catch {
+        return {};
+    }
+}
+
+async function redactedStoredAuthSnapshot(page) {
+    return page.evaluate(() => {
+        const token = localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token') || '';
+        let payload = {};
+        try {
+            payload = JSON.parse(atob((token.split('.')[1] || '').replace(/-/g, '+').replace(/_/g, '/')));
+        } catch {}
+        return {
+            hasAccessToken: Boolean(token),
+            hasRefreshToken: Boolean(localStorage.getItem('pzp_refresh_token')),
+            sessionGeneration: localStorage.getItem('pzp_auth_session_generation') || '',
+            sessionTokenId: Number(payload.sessionTokenId || payload.refreshTokenId || 0) || 0,
+            userId: payload.id || null,
+            usernamePresent: Boolean(payload.username)
+        };
+    });
 }
 
 async function activeSessionCount(pool, userId) {
@@ -497,6 +540,37 @@ async function verifyStoredAccessToken(page) {
     return verified.data.user;
 }
 
+async function waitForSharedAuthStorageSettlement(page, label) {
+    await page.waitForFunction(() => {
+        const accessToken = localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token') || '';
+        const refreshToken = localStorage.getItem('pzp_refresh_token') || '';
+        if (!accessToken || !refreshToken) return false;
+        if (localStorage.getItem('pzp_auth_transition') || localStorage.getItem('pzp_auth_refresh_coordination')) return false;
+        const snapshot = JSON.stringify({
+            accessToken,
+            refreshToken,
+            generation: localStorage.getItem('pzp_auth_session_generation') || '',
+            sessionTokenId: localStorage.getItem('pzp_auth_session_token_id') || ''
+        });
+        const previous = window.__redirectAuthStorageSettlement || null;
+        if (!previous || previous.snapshot !== snapshot) {
+            window.__redirectAuthStorageSettlement = { snapshot, observedAt: Date.now() };
+            return false;
+        }
+        return Date.now() - previous.observedAt >= 250;
+    }, null, { timeout: TIMEOUT_MS }).catch(async error => {
+        const state = await page.evaluate(() => ({
+            hasAccessToken: Boolean(localStorage.getItem('pzp_access_token') || localStorage.getItem('pzp_token')),
+            hasRefreshToken: Boolean(localStorage.getItem('pzp_refresh_token')),
+            hasTransition: Boolean(localStorage.getItem('pzp_auth_transition')),
+            hasCoordination: Boolean(localStorage.getItem('pzp_auth_refresh_coordination')),
+            generation: Boolean(localStorage.getItem('pzp_auth_session_generation')),
+            sessionTokenId: Boolean(localStorage.getItem('pzp_auth_session_token_id'))
+        })).catch(() => ({}));
+        throw new Error(`${label}: timed out waiting for stable shared auth storage: ${JSON.stringify(state)}; cause=${error.message}`);
+    });
+}
+
 async function assertModuleNavigation(page) {
     for (const pathname of ['/', '/sales-funnel', '/certificates']) {
         await page.goto(`${TARGET_URL}${pathname}`, { waitUntil: 'domcontentloaded', timeout: TIMEOUT_MS });
@@ -549,6 +623,61 @@ async function installExternalRequestGuard(context) {
         if (requestUrl.origin !== TARGET_URL) return route.abort('blockedbyclient');
         return route.continue();
     });
+}
+
+async function runDuplicateGraceServerContract(chromium, pool) {
+    const browser = await chromium.launch({ headless: HEADLESS });
+    const diagnostics = createBrowserDiagnostics();
+    try {
+        const context = await browser.newContext();
+        await installExternalRequestGuard(context);
+        const page = await newAppPage(context, diagnostics);
+        const session = await browserLogin(page);
+        const rotated = await page.evaluate(() => window.apiRefreshAuthSession());
+        assert.equal(rotated.outcome, 'success', 'first refresh must rotate T0 to T1');
+        assert.ok(rotated.accessToken, 'first refresh must return a usable access token');
+        const currentRefresh = await page.evaluate(() => localStorage.getItem('pzp_refresh_token'));
+        assert.ok(currentRefresh && currentRefresh !== session.refreshToken, 'storage must hold T1 after first refresh');
+
+        const duplicate = await page.evaluate(async ({ oldAccessToken, oldRefreshToken }) => {
+            const response = await fetch('/api/auth/refresh', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    Authorization: `Bearer ${oldAccessToken}`
+                },
+                body: JSON.stringify({ refreshToken: oldRefreshToken })
+            });
+            const body = await response.json().catch(() => ({}));
+            return {
+                status: response.status,
+                code: body.code || null,
+                recovered: body.recovered === true,
+                hasAccessToken: Boolean(body.accessToken),
+                hasRefreshToken: Boolean(body.refreshToken)
+            };
+        }, {
+            oldAccessToken: session.accessToken,
+            oldRefreshToken: session.refreshToken
+        });
+
+        assert.equal(duplicate.status, 409, `duplicate grace must be HTTP 409: ${JSON.stringify(duplicate)}`);
+        assert.equal(duplicate.code, 'refresh_already_rotated');
+        assert.equal(duplicate.recovered, false, 'duplicate grace must not run recovery');
+        assert.equal(duplicate.hasAccessToken, false, 'duplicate grace must not mint an access token');
+        assert.equal(duplicate.hasRefreshToken, false, 'duplicate grace must not mint T2');
+
+        const root = await tokenRow(pool, session.refreshToken);
+        const t1 = await tokenRow(pool, currentRefresh);
+        assert.ok(root?.revoked_at, 'T0 must be revoked after first rotation');
+        assert.equal(Number(root.replaced_by), Number(t1.id), 'T0 must link to T1');
+        assert.equal(t1.revoked_at, null, 'T1 must remain active after duplicate grace');
+        assert.equal(t1.replaced_by, null, 'duplicate grace must not create T2');
+        await verifyStoredAccessToken(page);
+        assertNoUnexpectedBrowserFaults(diagnostics);
+    } finally {
+        await browser.close();
+    }
 }
 
 async function runLostResponseRecovery(chromium, pool) {
@@ -679,15 +808,31 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
         const recoveryRelease = deferred();
         let controlledRequests = 0;
         let originalPayload = null;
-        let recoveryPayload = null;
+        let duplicatePayload = null;
+        const controlledResponses = [];
+        let firstCommitAt = 0;
         await context.route('**/api/auth/refresh', async route => {
             const body = JSON.parse(route.request().postData() || '{}');
             if (body.refreshToken !== session.refreshToken) return route.continue();
             controlledRequests += 1;
+            const requestAt = Date.now();
+            const authorization = route.request().headers().authorization || '';
+            const proofPayload = decodeJwtPayload(authorization.replace(/^Bearer\s+/i, ''));
             const committed = await route.fetch();
             const payload = await committed.json().catch(() => ({}));
+            const status = committed.status();
+            if (controlledRequests === 1) firstCommitAt = Date.now();
+            controlledResponses.push({
+                status,
+                payload,
+                requestAt,
+                elapsedFromFirstCommitMs: firstCommitAt ? requestAt - firstCommitAt : 0,
+                hasAuthorization: Boolean(authorization),
+                proofSessionTokenId: Number(proofPayload.sessionTokenId || proofPayload.refreshTokenId || 0) || 0,
+                proofUserId: proofPayload.id || null
+            });
             const response = {
-                status: committed.status(),
+                status,
                 headers: committed.headers(),
                 body: JSON.stringify(payload)
             };
@@ -697,7 +842,7 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
                 await originalRelease.promise;
                 return route.fulfill(response);
             }
-            recoveryPayload = payload;
+            if (controlledRequests === 2) duplicatePayload = payload;
             recoveryReady.resolve(payload);
             await recoveryRelease.promise;
             return route.fulfill(response);
@@ -707,35 +852,85 @@ async function runDelayedTwoTabRefresh(chromium, pool, order) {
         await secondPage.waitForTimeout(25);
         const second = secondPage.evaluate(() => window.apiRefreshAuthSession());
         await waitForReady(`${order} original`, originalReady);
-        await waitForReady(`${order} recovery`, recoveryReady);
         assert.ok(originalPayload.refreshToken, 'original delayed response must contain T1');
-        assert.equal(recoveryPayload.recovered, true, 'second committed response must be marked as recovery');
-        assert.ok(recoveryPayload.refreshToken, 'recovery response must contain T2');
+
+        const secondProgress = await waitForOptional(`${order} second refresh progress`, Promise.race([
+            recoveryReady.promise.then(payload => ({ kind: 'network', payload })),
+            second.then(result => ({ kind: 'result', result }))
+        ]));
+        assert.notEqual(secondProgress.type, 'timeout', `${order}: second refresh must reach network or controlled retry-later`);
+        const secondNetworked = secondProgress.value?.kind === 'network';
+        if (secondNetworked) {
+            const secondResponseSnapshot = {
+                status: controlledResponses[1]?.status,
+                code: duplicatePayload?.code,
+                recovered: duplicatePayload?.recovered === true,
+                hasAccessToken: Boolean(duplicatePayload?.accessToken),
+                hasRefreshToken: Boolean(duplicatePayload?.refreshToken),
+                elapsedFromFirstCommitMs: controlledResponses[1]?.elapsedFromFirstCommitMs,
+                hasAuthorization: controlledResponses[1]?.hasAuthorization,
+                proofSessionTokenId: controlledResponses[1]?.proofSessionTokenId,
+                rootRow: await tokenRow(pool, session.refreshToken),
+                pageStorage: await redactedStoredAuthSnapshot(secondPage)
+            };
+            assert.ok(
+                duplicatePayload?.code === 'refresh_already_rotated'
+                    || duplicatePayload?.recovered === true,
+                `second old-token response must be duplicate-grace or recovered: ${JSON.stringify(secondResponseSnapshot)}`
+            );
+            if (duplicatePayload?.code === 'refresh_already_rotated') {
+                assert.ok(
+                    Number(controlledResponses[1]?.elapsedFromFirstCommitMs || 0) <= 5000,
+                    `duplicate grace must arrive inside the server window: ${JSON.stringify(secondResponseSnapshot)}`
+                );
+            }
+        } else {
+            assert.equal(secondProgress.value?.result?.outcome, 'retry-later', `${order}: coordination timeout must be retry-later`);
+            assert.equal(secondProgress.value?.result?.retryable, true, `${order}: coordination timeout must stay retryable`);
+            assert.equal(secondProgress.value?.result?.reason, 'refresh-coordination-timeout', `${order}: retry-later reason must be specific`);
+            assert.equal(controlledRequests, 1, `${order}: coordination timeout must not send stale old-token replay`);
+        }
 
         if (order === 'original-first') {
             originalRelease.resolve();
             await first;
-            recoveryRelease.resolve();
+            if (secondNetworked) recoveryRelease.resolve();
         } else {
-            recoveryRelease.resolve();
-            await second;
+            if (secondNetworked) {
+                recoveryRelease.resolve();
+                await second;
+            } else {
+                await second;
+            }
             originalRelease.resolve();
         }
         const results = await Promise.all([first, second]);
         assert.ok(results.some(result => result.outcome === 'success'), `${order}: one tab must store a session`);
-        assert.ok(results.every(result => ['success', 'superseded'].includes(result.outcome)), `${order}: no tab may terminal-clear the session`);
-        assert.equal(controlledRequests, 2, `${order}: refresh calls must be bounded to original + recovery`);
-        assert.equal(await firstPage.evaluate(() => localStorage.getItem('pzp_refresh_token')), recoveryPayload.refreshToken, `${order}: final storage must keep recovered T2`);
+        assert.ok(results.every(result => ['success', 'superseded', 'retry-later'].includes(result.outcome)), `${order}: no tab may terminal-clear the session`);
         const root = await tokenRow(pool, session.refreshToken);
         const original = await tokenRow(pool, originalPayload.refreshToken);
-        const recovered = await tokenRow(pool, recoveryPayload.refreshToken);
         assert.ok(root?.revoked_at, `${order}: T0 must be revoked`);
-        assert.ok(original?.revoked_at, `${order}: T1 must be revoked by recovery`);
         assert.equal(Number(root.replaced_by), Number(original.id), `${order}: T0 must link to T1`);
-        assert.equal(Number(original.replaced_by), Number(recovered.id), `${order}: T1 must link to T2`);
-        assert.equal(recovered.revoked_at, null, `${order}: T2 must remain active`);
+        const recoveryResponse = controlledResponses.find(entry => entry.payload?.recovered === true);
+        if (!recoveryResponse) {
+            assert.ok(controlledRequests === 1 || controlledRequests === 2, `${order}: refresh calls must stop at original plus optional in-window duplicate`);
+            assert.equal(await firstPage.evaluate(() => localStorage.getItem('pzp_refresh_token')), originalPayload.refreshToken, `${order}: final storage must keep original T1`);
+            assert.equal(original.revoked_at, null, `${order}: T1 must remain active when the original response arrives before duplicate handling`);
+            assert.equal(original.replaced_by, null, `${order}: coordination timeout or duplicate grace must not create T2`);
+        } else {
+            assert.equal(recoveryResponse.status, 200, `${order}: recovered response must be HTTP 200`);
+            assert.ok(recoveryResponse.payload.refreshToken, `${order}: recovered response must contain T2`);
+            assert.ok(controlledRequests <= 3, `${order}: refresh calls must be bounded to original + duplicate + recovery`);
+            assert.equal(await firstPage.evaluate(() => localStorage.getItem('pzp_refresh_token')), recoveryResponse.payload.refreshToken, `${order}: final storage must keep recovered T2`);
+            const recovered = await tokenRow(pool, recoveryResponse.payload.refreshToken);
+            assert.ok(original?.revoked_at, `${order}: T1 must be revoked by recovery`);
+            assert.equal(Number(original.replaced_by), Number(recovered.id), `${order}: T1 must link to T2`);
+            assert.equal(recovered.revoked_at, null, `${order}: T2 must remain active`);
+        }
 
-        const next = await thirdPage.evaluate(() => window.apiRefreshAuthSession());
+        await waitForSharedAuthStorageSettlement(firstPage, `${order} before next refresh`);
+        await verifyStoredAccessToken(firstPage);
+        const next = await firstPage.evaluate(() => window.apiRefreshAuthSession());
         assert.equal(next.outcome, 'success', `${order}: next refresh after delayed delivery must work`);
         await verifyStoredAccessToken(firstPage);
         await verifyStoredAccessToken(secondPage);
@@ -759,6 +954,7 @@ async function main() {
         connectionTimeoutMillis: 10_000
     });
     try {
+        await runDuplicateGraceServerContract(chromium, pool);
         await runLostResponseRecovery(chromium, pool);
         await runDelayedTwoTabRefresh(chromium, pool, 'original-first');
         await runDelayedTwoTabRefresh(chromium, pool, 'recovery-first');

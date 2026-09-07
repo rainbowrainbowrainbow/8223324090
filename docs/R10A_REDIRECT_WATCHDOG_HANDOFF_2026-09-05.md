@@ -115,4 +115,3 @@ R10A-FINISH changed only frontend watchdog/recovery UX and tests. Backend auth/s
 R10B, if approved separately, should address backend exact-session recovery only if product requires silent recovery past the current 30s contract. It must preserve hostile replay, logout, revocation, deactivation, account isolation and no-proof terminal behavior.
 
 R11 should handle SW/version-update UI and real old-tab upgrade browser proof. Do not treat the R10A watchdog or focused recovery/login CDP smoke as proof of old SW/browser cohort upgrade behavior.
-

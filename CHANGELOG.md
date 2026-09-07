@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.81 - Redirect Watchdog Old-Tab Recovery
+
+### Авторизація / Навігація / (07.09.2026) [codex]
+- **Контрольований refresh watchdog** — завислий refresh більше не тримає інтерфейс без виходу; timeout повертає retry-later/reload UX без очищення чинної сесії.
+- **Безпечне повернення на модуль** — після login/bootstrap CRM одноразово відновлює дозволений маршрут і не підставляє Timeline при тимчасовій помилці permissions.
+- **Старі вкладки та SW update** — додано proof для старих відкритих вкладок, sidebar-навігації, Back/Forward, offline/online, update prompt і збереження незбереженого вводу без примусового reload.
+
+---
+
 ## v0.81.80 - PARK/DAR Reusable Test Day
 
 ### Release / Versioning / (06.09.2026) [codex]

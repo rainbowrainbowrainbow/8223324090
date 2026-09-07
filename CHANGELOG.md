@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.81 - PARK/DAR Cashier Payment Guard
+
+### Release / Versioning / (07.09.2026) [codex]
+- **PARK/DAR Cashier Payment Guard** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.80 - PARK/DAR Reusable Test Day
 
 ### Release / Versioning / (06.09.2026) [codex]

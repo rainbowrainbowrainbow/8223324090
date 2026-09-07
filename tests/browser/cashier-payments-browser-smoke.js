@@ -238,7 +238,7 @@ function activeChecklist() {
     };
 }
 
-function registerStatePayload() {
+function registerStatePayload(requiredTender = 'cash') {
     const unresolvedCount = [...state.orders.values()].filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized').length;
     const phase1Close = state.shift ? {
         visible: true,
@@ -266,6 +266,12 @@ function registerStatePayload() {
         runtimeConfigResolvable: true,
         integrationReady: true,
         readinessCode: 'ready',
+        requiredTender,
+        readiness: {
+            integrationReady: true,
+            readinessCode: 'ready',
+            requiredTender
+        },
         shift: state.shift,
         phase1Close,
         checklist: state.shift ? activeChecklist() : null
@@ -301,10 +307,11 @@ async function handleApi(req, res, url) {
     }
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') {
         assertParkMiddleScope(url.searchParams);
+        const requiredTender = url.searchParams.get('requiredTender') || 'cash';
         const delayMs = Math.max(0, Number(state.nextPilotRegisterStateDelayMs || 0));
         state.nextPilotRegisterStateDelayMs = 0;
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
-        return json(res, 200, registerStatePayload());
+        return json(res, 200, registerStatePayload(requiredTender));
     }
     if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') {
         const body = await readBody(req);
@@ -313,7 +320,8 @@ async function handleApi(req, res, url) {
         const delayMs = Math.max(0, Number(state.nextReadinessDelayMs || 0));
         state.nextReadinessDelayMs = 0;
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
-        return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true });
+        const requiredTender = body.requiredTender || 'cash';
+        return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true, requiredTender });
     }
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
         assertParkMiddleScope(url.searchParams);

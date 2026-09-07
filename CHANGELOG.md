@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.82 - Redirect Watchdog After Cashier
+
+### Авторизація / Навігація / (07.09.2026) [codex]
+- **Контрольований refresh watchdog** — завислий або затриманий refresh більше не тримає інтерфейс у нескінченному очікуванні й не очищає сесію без terminal-відповіді сервера.
+- **Безпечне повернення до модуля** — після повторного входу або transient bootstrap error CRM повертає користувача на дозволений маршрут без open redirect, fallback на Timeline або споживання intent іншої сесії.
+- **Старі вкладки й Service Worker update UX** — оновлення лишається ручним, з перевіркою незбережених змін, збереженням маршруту та без примусового reload/logout loop.
+- **Локальна діагностика редіректів** — bounded/redacted export показує route/status/reason/requestId без токенів, cookies, PII, response bodies або повного storage.
+
+---
+
 ## v0.81.81 - PARK/DAR Cashier Payment Guard
 
 ### Release / Versioning / (07.09.2026) [codex]

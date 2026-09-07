@@ -279,7 +279,15 @@ async function seedFiscalScope(cashier) {
             `mock-cashier-${cashier.id}`,
             providerShiftId,
             EXPECTED_IS_TEST,
-            JSON.stringify({ seeded_ready_snapshot_for_ui_smoke: true })
+            JSON.stringify({
+                seeded_ready_snapshot_for_ui_smoke: true,
+                requiredTender: 'cash',
+                permissions: {
+                    sales: 'allowed',
+                    cash: 'allowed',
+                    card: 'allowed'
+                }
+            })
         ]
     );
     return {
@@ -528,6 +536,9 @@ async function run() {
         const registerState = await page.evaluate(() => window.CashierPaymentsPage.state.registerState);
         assert.equal(registerState.readinessCode, 'ready', JSON.stringify(registerState));
         assert.equal(registerState.integrationReady, true, JSON.stringify(registerState));
+        assert.equal(registerState.requiredTender, 'cash', JSON.stringify(registerState));
+        assert.deepEqual(registerState.unreportedPaymentPermissions || [], [], JSON.stringify(registerState));
+        assert.deepEqual(registerState.deniedPaymentPermissions || [], [], JSON.stringify(registerState));
         await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await page.fill('#paymentKidsCount', '1');
         await page.fill('#paymentAdultsCount', '0');

@@ -238,7 +238,23 @@ function activeChecklist() {
     };
 }
 
-function registerStatePayload(requiredTender = 'cash') {
+function routeScope(input) {
+    const get = key => {
+        if (input instanceof URLSearchParams) return input.get(key);
+        return input?.[key] ?? input?.[key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)];
+    };
+    const businessContext = get('businessContext');
+    const routeOptionId = get('routeOptionId');
+    if (businessContext === 'event_genix' && ['park_production', 'park_test'].includes(routeOptionId)) {
+        return { businessContext, routeOptionId, locationAlias: 'park', registerAlias: 'middle', registerDisplayName: 'Middle cash desk', prefix: 'park' };
+    }
+    if (businessContext === 'dar' && ['dar_production', 'dar_test'].includes(routeOptionId)) {
+        return { businessContext, routeOptionId, locationAlias: 'dar', registerAlias: 'shared_test', registerDisplayName: 'Shared test cash desk', prefix: 'dar' };
+    }
+    assert.fail(`unexpected route scope ${businessContext}/${routeOptionId}`);
+}
+
+function registerStatePayload(requiredTender = 'cash', scope = routeScope({ businessContext: 'event_genix', routeOptionId: 'park_production' })) {
     const unresolvedCount = [...state.orders.values()].filter(order => order.paymentStatus === 'confirmed' && order.fiscalStatus !== 'fiscalized').length;
     const phase1Close = state.shift ? {
         visible: true,
@@ -250,14 +266,14 @@ function registerStatePayload(requiredTender = 'cash') {
     return {
         success: true,
         fiscalProfileId: 1,
-        crmProfileKey: 'event_genix',
+        crmProfileKey: scope.businessContext,
         legalEntityKey: 'fop_smoke',
         legalEntityName: 'Smoke FOP',
         fiscalLocationId: 7,
-        locationAlias: 'park',
+        locationAlias: scope.locationAlias,
         fiscalRegisterId: 10,
-        registerAlias: 'middle',
-        registerDisplayName: 'Middle cash desk',
+        registerAlias: scope.registerAlias,
+        registerDisplayName: scope.registerDisplayName,
         featureEnabled: true,
         checkboxIntegrationEnabled: true,
         cashierProEnabled: false,
@@ -278,13 +294,8 @@ function registerStatePayload(requiredTender = 'cash') {
     };
 }
 
-function assertParkMiddleScope(input) {
-    const get = key => {
-        if (input instanceof URLSearchParams) return input.get(key);
-        return input?.[key] ?? input?.[key.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`)];
-    };
-    assert.equal(get('businessContext'), 'event_genix', 'cashier request must include the safe business context');
-    assert.ok(['park_production', 'park_test'].includes(get('routeOptionId')), 'cashier request must include only an allowed safe route option id');
+function assertKnownRouteScope(input) {
+    return routeScope(input);
 }
 
 async function handleApi(req, res, url) {
@@ -294,28 +305,28 @@ async function handleApi(req, res, url) {
         return json(res, 200, routeOptionsPayload({ includeTest: FISCAL_CONFIGURE }));
     }
     if (url.pathname === '/api/payments/catalog/cashiers' && req.method === 'GET') {
-        assertParkMiddleScope(url.searchParams);
-        return json(res, 200, { success: true, cashiers: [{ id: 77, cashierName: 'Касир UI', status: 'active', mode: url.searchParams.get('routeOptionId') === 'park_test' ? 'test' : 'production' }] });
+        const scope = assertKnownRouteScope(url.searchParams);
+        return json(res, 200, { success: true, cashiers: [{ id: 77, cashierName: 'Касир UI', status: 'active', mode: scope.routeOptionId.endsWith('_test') ? 'test' : 'production' }] });
     }
     if (url.pathname === '/api/payments/catalog/items' && req.method === 'GET') {
-        assertParkMiddleScope(url.searchParams);
-        return json(res, 200, { success: true, items: catalogItems(140, 'park') });
+        const scope = assertKnownRouteScope(url.searchParams);
+        return json(res, 200, { success: true, items: catalogItems(140, scope.prefix) });
     }
     if (url.pathname === '/api/payments/catalog/discounts' && req.method === 'GET') {
-        assertParkMiddleScope(url.searchParams);
+        assertKnownRouteScope(url.searchParams);
         return json(res, 200, { success: true, discounts: [] });
     }
     if (url.pathname === '/api/payments/pilot-register-state' && req.method === 'GET') {
-        assertParkMiddleScope(url.searchParams);
+        const scope = assertKnownRouteScope(url.searchParams);
         const requiredTender = url.searchParams.get('requiredTender') || 'cash';
         const delayMs = Math.max(0, Number(state.nextPilotRegisterStateDelayMs || 0));
         state.nextPilotRegisterStateDelayMs = 0;
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
-        return json(res, 200, registerStatePayload(requiredTender));
+        return json(res, 200, registerStatePayload(requiredTender, scope));
     }
     if (url.pathname === '/api/payments/readiness/probe' && req.method === 'POST') {
         const body = await readBody(req);
-        assertParkMiddleScope(body);
+        assertKnownRouteScope(body);
         state.readinessRequestCount += 1;
         const delayMs = Math.max(0, Number(state.nextReadinessDelayMs || 0));
         state.nextReadinessDelayMs = 0;
@@ -324,7 +335,7 @@ async function handleApi(req, res, url) {
         return json(res, 200, { success: true, readinessCode: 'ready', integrationReady: true, requiredTender });
     }
     if (url.pathname === '/api/payments/unresolved-orders' && req.method === 'GET') {
-        assertParkMiddleScope(url.searchParams);
+        assertKnownRouteScope(url.searchParams);
         state.unresolvedRequestCount += 1;
         const delayMs = Math.max(0, Number(state.unresolvedDelayMs || 0));
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -418,7 +429,7 @@ async function handleApi(req, res, url) {
         });
     }
     if (url.pathname === '/api/payments/checkbox-sales-report' && req.method === 'GET') {
-        assertParkMiddleScope(url.searchParams);
+        assertKnownRouteScope(url.searchParams);
         state.salesReportRequestCount += 1;
         const delayMs = Math.max(0, Number(state.nextSalesReportDelayMs || 0));
         state.nextSalesReportDelayMs = 0;
@@ -441,7 +452,7 @@ async function handleApi(req, res, url) {
     }
     if (['/api/payments/admission-ticket/orders', '/api/payments/catalog/orders'].includes(url.pathname) && req.method === 'POST') {
         const body = await readBody(req);
-        assertParkMiddleScope(body);
+        assertKnownRouteScope(body);
         const delayMs = Math.max(0, Number(state.nextCreateDelayMs || 0));
         state.nextCreateDelayMs = 0;
         if (delayMs) await new Promise(resolve => setTimeout(resolve, delayMs));
@@ -818,6 +829,24 @@ async function run() {
         assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
         await captureVisualArtifact(selectorPage, '00-catalog-park-test-disabled.png');
+        await selectorPage.selectOption('#paymentBusinessContext', 'dar');
+        await selectorPage.waitForFunction(() => document.querySelector('#paymentRegisterRoute')?.value === 'dar_production');
+        assert.deepEqual(
+            await selectorPage.locator('#paymentRegisterRoute option').allTextContents(),
+            ['Студія / Каса ДАР · готова', 'Тестова каса · приймання вимкнено'],
+            'fiscal.configure user sees both production and test modes for DAR'
+        );
+        await selectorPage.selectOption('#paymentRegisterRoute', 'dar_test');
+        await selectorPage.waitForSelector('#cashierTestModeBanner:not(.hidden)');
+        await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
+        assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'DAR test route remains blocked while its acceptance gate is disabled');
+        await selectorPage.fill('#catalogSearch', 'Послуга ДАР 10');
+        await selectorPage.waitForSelector('#catalogSearchResults .cashier-catalog-result');
+        assert.match(await selectorPage.textContent('#catalogSearchResults'), /Послуга ДАР 10/);
+        await selectorPage.click('#catalogSearchResults .cashier-catalog-result');
+        assert.equal(await selectorPage.locator('[data-catalog-item]').inputValue(), 'dar_010', 'DAR catalog search selects the matching DAR item');
+        assert.match(await selectorPage.textContent('[data-catalog-price]'), /100,00/, 'DAR catalog renders the selected item price');
+        await captureVisualArtifact(selectorPage, '00-catalog-dar-test-disabled.png');
         await selectorContext.close();
 
         let context = await browser.newContext({ timezoneId: 'UTC' });

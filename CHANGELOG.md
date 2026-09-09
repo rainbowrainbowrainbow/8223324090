@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.83 - PARK/DAR Cashier Smoke After Redirect
+
+### Release / Versioning / (09.09.2026) [codex]
+- **PARK/DAR Cashier Smoke After Redirect** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.82 - Redirect Watchdog After Cashier
 
 ### Авторизація / Навігація / (07.09.2026) [codex]

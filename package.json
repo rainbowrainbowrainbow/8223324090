@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.97",
+  "version": "0.81.98",
   "eventGenix": {
-    "releaseLabel": "Omni Manager and Delivery Review"
+    "releaseLabel": "PARK/DAR Cashier Test Day Recovery"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

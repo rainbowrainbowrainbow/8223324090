@@ -29,6 +29,48 @@ async function request(t, routes, url, {raw,headers={},method='POST'}={}) {
 }
 function signed(raw, key, meta=false){return (meta?'sha256=':'')+crypto.createHmac('sha256',key).update(raw).digest('hex');}
 
+test('Viber setup binds both the provider token and callback URL to the selected business', async t => {
+  const calls = [];
+  mock('../services/omni-viber', { setViberWebhook: async (...args) => { calls.push(args); return { success: true }; } });
+  const routes = router({});
+  const response = await request(t, routes, '/setup/viber?businessContext=dar', {raw:JSON.stringify({url:'https://crm.test/api/omni/webhook/viber?businessContext=event_genix'})});
+  assert.equal(response.status, 200);
+  assert.equal(calls[0][2]?.businessContext, 'dar');
+  const target = new URL(calls[0][0]);
+  assert.equal(target.searchParams.get('business_context'), 'dar');
+  assert.equal(target.searchParams.has('businessContext'), false);
+});
+
+for (const channel of ['viber', 'facebook', 'instagram', 'sms']) {
+  test(`${channel} inbound reaches its business and a storage failure requests provider retry`, async t => {
+    const calls = [];
+    let fail = false;
+    const routes = router({processInboundMessage:async (...args) => { if(fail) throw Error('fixture storage unavailable'); calls.push(args); }});
+    let payload, headers, endpoint;
+    if (channel === 'viber') {
+      payload = {event:'message',message_token:123,sender:{id:'fixture-customer'},message:{type:'text',text:'Fixture inbound'}};
+      endpoint = '/webhook/viber';
+    } else if (channel === 'sms') {
+      payload = {from:'+380000000001',text:'Fixture inbound',message_id:'fixture-sms'};
+      endpoint = '/webhook/sms';
+    } else {
+      payload = {object:channel === 'facebook'?'page':'instagram',entry:[{id:'fixture-page',messaging:[{sender:{id:'fixture-customer'},message:{mid:'fixture-mid',text:'Fixture inbound'}}]}]};
+      endpoint = '/webhook/meta';
+    }
+    const raw=JSON.stringify(payload);
+    headers=channel === 'viber' ? {'x-viber-content-signature':signed(raw,config.viber.token)}
+      : channel === 'sms' ? {'x-webhook-secret':config.sms.webhookSecret}
+      : {'x-hub-signature-256':signed(raw,config[channel].appSecret,true)};
+    assert.equal((await request(t,routes,endpoint+'?businessContext=dar',{raw,headers})).status,200);
+    assert.equal(calls.length,1);
+    assert.equal(calls[0][0].channel,channel);
+    assert.equal(calls[0][0].content,'Fixture inbound');
+    assert.equal(calls[0][1].businessContext,'dar');
+    fail=true;
+    assert.equal((await request(t,routes,endpoint+'?businessContext=dar',{raw,headers})).status,503);
+  });
+}
+
 test('raw-body capture is restricted to Omni webhooks and preserves unsafe numeric IDs without changing message text',()=>{
   const raw=Buffer.from('{ "message_token":4912661846655238145,"text":"4912661846655238145 \\"42\\"" }');
   // A separate valid string fixture keeps escaped strings distinct from numeric tokens.

@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.92",
+  "version": "0.81.94",
   "eventGenix": {
-    "releaseLabel": "Omni Telegram Webhook Ownership"
+    "releaseLabel": "PARK/DAR Cashier UX"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

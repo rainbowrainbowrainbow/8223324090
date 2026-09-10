@@ -150,8 +150,8 @@ async function sendViber(receiverId, text, options = {}) {
  * @param {string[]} [eventTypes] - Event types to subscribe (default: all)
  * @returns {Promise<{success: boolean, error?: string}>}
  */
-async function setViberWebhook(url, eventTypes) {
-    const runtime = await resolveOmniRuntimeConfig('viber');
+async function setViberWebhook(url, eventTypes, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: options.businessContext || options.business_context });
     const token = runtime.token;
     if (!token) {
         log.warn('setViberWebhook called but VIBER_TOKEN not configured');

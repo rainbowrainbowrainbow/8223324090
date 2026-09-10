@@ -16,7 +16,7 @@ function fixture(business = 'event_genix') {
     // Exercise the actual page functions without authentication/bootstrap or external IO.
     const source = fs.readFileSync(path.join(root, 'js/cashier-payments-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });", '')
-        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, renderReadinessState, renderOrder, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
+        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, loadCheckboxSalesReport, renderReadinessState, renderOrder, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
     window.fetch = async () => { throw new Error('offline fixture'); };
     window.showNotification = (message, type) => { window.__notifications.push({ message, type }); };
     window.__notifications = [];
@@ -46,7 +46,7 @@ test('completed order requires next customer and locks cart editing', t => {
     assert.equal(f.el('startNextOrderBtn').textContent, 'Наступний клієнт');
 });
 
-test('completed order exposes next customer beside the locked route without unlocking the paid sale', t => {
+test('completed order exposes next customer beside the fiscal result without unlocking the paid sale', t => {
     const f = fixture(); t.after(() => f.dom.window.close());
     f.page.state.orderDetails = { order: { id: 10, paymentStatus: 'confirmed', fiscalStatus: 'fiscalized' } };
     f.page.syncCreateAvailability();
@@ -54,7 +54,7 @@ test('completed order exposes next customer beside the locked route without unlo
     assert.equal(f.el('paymentRegisterRoute').disabled, true);
     assert.equal(f.el('paymentCashierBinding').disabled, true);
     assert.equal(f.el('createPaymentOrderBtn').disabled, true);
-    assert.equal(f.el('startNextOrderBtn').closest('#cashierRouteSelector'), f.el('cashierRouteSelector'));
+    assert.equal(f.el('startNextOrderBtn').closest('#fiscalResultPanel'), f.el('fiscalResultPanel'));
     assert.equal(f.el('startNextOrderBtn').disabled, false);
     assert.equal(f.el('startNextOrderBtn').classList.contains('hidden'), false);
     assert.match(f.el('paymentRouteHelp').textContent, /продаж №10.*зафіксовані.*Наступний клієнт/);
@@ -366,6 +366,84 @@ test('explicit denial and previous-tender readiness cannot become an allowed war
     assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
 });
 
+for (const [label, registerState, expectedText] of [
+    ['null permission arrays', {
+        readinessCode: 'checkbox_payment_permission_unreported',
+        integrationReady: false,
+        requiredTender: 'cash',
+        readiness: { requiredTender: 'cash', unreportedPaymentPermissions: null, deniedPaymentPermissions: null }
+    }, /Checkbox не повідомив право касира/],
+    ['missing permission arrays', {
+        readinessCode: 'checkbox_payment_permission_unreported',
+        integrationReady: false,
+        requiredTender: 'cash',
+        readiness: { requiredTender: 'cash' }
+    }, /Checkbox не повідомив право касира/],
+    ['malformed permission shape', {
+        readinessCode: 'checkbox_cashier_permissions_malformed',
+        integrationReady: false,
+        requiredTender: 'cash',
+        readiness: { requiredTender: 'cash', unreportedPaymentPermissions: 'cash_payment', deniedPaymentPermissions: { cash_payment: true } }
+    }, /неочікуваний формат прав касира/]
+]) {
+    test(`${label} keeps readiness fail-closed without granting create`, t => {
+        const f = fixture(); t.after(() => f.dom.window.close());
+        f.window.canAccess = () => true;
+        f.page.addCatalogLine();
+        f.page.state.registerState = registerState;
+        f.page.renderReadinessState();
+        f.page.syncCreateAvailability();
+        assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+        assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
+        assert.match(f.el('cashierReadinessTechnicalList').textContent, expectedText);
+        assert.doesNotMatch(f.el('cashierReadinessSummary').textContent, /готова до оплати/);
+    });
+}
+
+test('changing cashier invalidates old green readiness before the new lookup returns', async t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.addCatalogLine();
+    f.page.state.registerState = {
+        success: true,
+        integrationReady: true,
+        readinessCode: 'ready',
+        requiredTender: 'cash',
+        readiness: { integrationReady: true, readinessCode: 'ready', requiredTender: 'cash' }
+    };
+    f.page.renderReadinessState();
+    f.page.syncCreateAvailability();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, false);
+
+    let releaseLookup;
+    const lookup = new Promise(resolve => { releaseLookup = resolve; });
+    f.window.fetch = async (path, options = {}) => {
+        const url = String(path);
+        const method = String(options.method || 'GET').toUpperCase();
+        if (url.startsWith('/api/payments/pilot-register-state') && method === 'GET') {
+            await lookup;
+            return jsonResponse(200, {
+                success: true,
+                integrationReady: true,
+                readinessCode: 'ready',
+                fiscalProfileId: 1,
+                fiscalLocationId: 1,
+                fiscalRegisterId: 2,
+                requiredTender: 'cash',
+                readiness: { readinessCode: 'ready', integrationReady: true, requiredTender: 'cash' }
+            });
+        }
+        throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+
+    f.el('paymentCashierBinding').value = '4';
+    f.el('paymentCashierBinding').dispatchEvent(new f.window.Event('change', { bubbles: true }));
+    assert.equal(f.page.state.registerState, null);
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.match(f.el('cashierReadinessSummary').textContent, /Каса ще не готова|Не вдалося прочитати стан/);
+    releaseLookup();
+    await new Promise(resolve => setTimeout(resolve, 0));
+});
+
 function jsonResponse(status, payload) {
     return {
         ok: status >= 200 && status < 300,
@@ -428,6 +506,19 @@ function installPaymentFetch(f, confirmResponse, options = {}) {
                 orders: []
             });
         }
+        if (url.startsWith('/api/payments/checkbox-sales-report') && method === 'GET') {
+            return jsonResponse(200, {
+                success: true,
+                internalReport: true,
+                officialZReport: false,
+                page: 1,
+                pageSize: 50,
+                totalCount: 0,
+                filters: {},
+                totals: { paymentTotalMinor: '0', cashTotalMinor: '0', cardTerminalTotalMinor: '0', statusCounts: {} },
+                orders: []
+            });
+        }
         throw new Error(`unexpected fetch ${method} ${url}`);
     };
 }
@@ -464,6 +555,7 @@ test('confirm success is not shown and form stays locked when authoritative rere
     assert.equal(f.el('cancelDraftOrderBtn').disabled, true);
     assert.equal(f.window.__notifications.some(item => item.type === 'success' && /Оплату підтверджено/.test(item.message)), false);
     assert.match(f.el('cashierGlobalStatus').textContent, /не підтвердило оплату/);
+    assert.match(f.el('fiscalPendingMessage').textContent, /Результат підтвердження уточнюється/);
 });
 
 test('unknown 409 confirmation result stays pending even when reread shows unpaid draft', async t => {
@@ -480,7 +572,53 @@ test('unknown 409 confirmation result stays pending even when reread shows unpai
     assert.equal(f.page.state.confirmOutcomePending, true);
     assert.equal(f.el('confirmCashBtn').disabled, true);
     assert.match(f.el('cashierGlobalStatus').textContent, /Результат підтвердження уточнюється/);
+    assert.match(f.el('fiscalPendingMessage').textContent, /Результат підтвердження уточнюється/);
 });
+
+test('known 422 pre-payment rejection restores the draft without marking outcome unknown', async t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.state.orderDetails = { order: draftOrder(10), items: [] };
+    f.el('cashReceivedAmount').value = '10';
+    installPaymentFetch(f, () => jsonResponse(422, {
+        success: false,
+        code: 'cashier_binding_scope_invalid',
+        error: 'Cashier binding does not belong to this register'
+    }));
+    await f.page.confirmPayment();
+    assert.equal(f.page.state.confirmSubmitted, false);
+    assert.equal(f.page.state.confirmOutcomePending, false);
+    assert.equal(f.el('confirmCashBtn').disabled, false);
+    assert.equal(f.el('cancelDraftOrderBtn').disabled, false);
+    assert.match(f.el('cashierGlobalStatus').textContent, /Обраний касир не належить цій касі/);
+    assert.doesNotMatch(f.el('fiscalPendingMessage').textContent, /уточнюється/);
+});
+
+for (const [status, code] of [
+    [422, 'unexpected_validation_state'],
+    [503, 'checkbox_payment_permission_unreported']
+]) {
+    test(`HTTP ${status} ${code} keeps the same order locked until reconciliation`, async t => {
+        const f = fixture(); t.after(() => f.dom.window.close());
+        f.page.state.orderDetails = { order: draftOrder(10), items: [] };
+        f.el('cashReceivedAmount').value = '10';
+        installPaymentFetch(f, () => jsonResponse(status, {
+            success: false,
+            code,
+            error: 'Provider result is not safely classified',
+            details: { requiredTender: 'cash', unreportedPaymentPermissions: ['cash_payment'] }
+        }));
+        await f.page.confirmPayment();
+        assert.equal(f.page.state.confirmSubmitted, true);
+        assert.equal(f.page.state.confirmOutcomePending, true);
+        assert.equal(f.el('confirmCashBtn').disabled, true);
+        assert.equal(f.el('cancelDraftOrderBtn').disabled, true);
+        assert.match(f.el('cashierGlobalStatus').textContent, /Результат підтвердження уточнюється/);
+        assert.match(f.el('fiscalPendingMessage').textContent, /Результат підтвердження уточнюється/);
+        await f.page.loadCheckboxSalesReport({ silent: false });
+        assert.match(f.el('cashierGlobalStatus').textContent, /Результат підтвердження уточнюється/);
+        assert.equal(f.window.__notifications.some(item => item.type === 'success' && /Історію чеків/.test(item.message)), false);
+    });
+}
 
 test('known rejection stays pending when authoritative reread fails', async t => {
     const f = fixture(); t.after(() => f.dom.window.close());
@@ -501,6 +639,7 @@ test('known rejection stays pending when authoritative reread fails', async t =>
     assert.equal(f.page.state.confirmOutcomePending, true);
     assert.equal(f.el('confirmCashBtn').disabled, true);
     assert.match(f.el('cashierGlobalStatus').textContent, /Результат підтвердження уточнюється/);
+    assert.match(f.el('fiscalPendingMessage').textContent, /Результат підтвердження уточнюється/);
 });
 
 test('network failure during confirmation keeps same draft locked for clarification', async t => {
@@ -513,6 +652,79 @@ test('network failure during confirmation keeps same draft locked for clarificat
     assert.equal(f.page.state.confirmOutcomePending, true);
     assert.equal(f.el('confirmCashBtn').disabled, true);
     assert.match(f.el('confirmDisabledReason').textContent, /Результат підтвердження уточнюється/);
+    assert.match(f.el('fiscalPendingMessage').textContent, /Результат підтвердження уточнюється/);
+});
+
+test('double confirm click sends one request and keeps the same order idempotency key', async t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.state.orderDetails = { order: draftOrder(10), items: [] };
+    f.el('cashReceivedAmount').value = '10';
+    let releaseConfirm;
+    const confirmStarted = new Promise(resolve => { releaseConfirm = resolve; });
+    let confirmCalls = 0;
+    const confirmKeys = [];
+    f.window.fetch = async (path, request = {}) => {
+        const url = String(path);
+        const method = String(request.method || 'GET').toUpperCase();
+        if (url === '/api/payments/orders/10/confirm' && method === 'POST') {
+            confirmCalls += 1;
+            confirmKeys.push(request.headers?.['Idempotency-Key']);
+            await confirmStarted;
+            return jsonResponse(200, {
+                success: true,
+                order: { ...draftOrder(10), paymentStatus: 'confirmed', status: 'payment_recorded' }
+            });
+        }
+        if (url === '/api/payments/orders/10' && method === 'GET') {
+            return jsonResponse(200, {
+                success: true,
+                order: { ...draftOrder(10), paymentStatus: 'confirmed', status: 'payment_recorded', fiscalStatus: 'pending' },
+                items: [],
+                receipts: [],
+                artifacts: {}
+            });
+        }
+        if (url.startsWith('/api/payments/pilot-register-state') && method === 'GET') {
+            return jsonResponse(200, {
+                success: true,
+                integrationReady: true,
+                readinessCode: 'ready',
+                fiscalProfileId: 1,
+                fiscalLocationId: 1,
+                fiscalRegisterId: 2,
+                requiredTender: 'cash',
+                readiness: { readinessCode: 'ready', integrationReady: true, requiredTender: 'cash' }
+            });
+        }
+        if (url.startsWith('/api/payments/unresolved-orders') && method === 'GET') {
+            return jsonResponse(200, {
+                success: true,
+                registerWide: true,
+                fiscalProfileId: 1,
+                fiscalLocationId: 1,
+                fiscalRegisterId: 2,
+                page: 1,
+                pageSize: 50,
+                registerCount: 1,
+                myCount: 1,
+                hasMore: false,
+                snapshotRevision: 'bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb',
+                nextCursor: null,
+                orders: [{ id: 10, isMine: true, paymentStatus: 'confirmed', fiscalStatus: 'pending', totalAmountMinor: '1000' }]
+            });
+        }
+        throw new Error(`unexpected fetch ${method} ${url}`);
+    };
+    const first = f.page.confirmPayment();
+    const second = f.page.confirmPayment();
+    await new Promise(resolve => setTimeout(resolve, 0));
+    assert.equal(confirmCalls, 1);
+    assert.ok(confirmKeys[0]);
+    releaseConfirm();
+    await Promise.all([first, second]);
+    assert.equal(confirmCalls, 1);
+    assert.deepEqual(confirmKeys, [confirmKeys[0]]);
+    assert.equal(f.page.state.orderDetails.order.id, 10);
 });
 
 test('late readiness responses for the previous tender do not mark the current tender ready', async t => {

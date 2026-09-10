@@ -76,7 +76,7 @@ function fakeHttps(t, resolve) {
         const request = new EventEmitter(); let body = '';
         request.write = value => { body += value; }; request.setTimeout = () => request;
         request.destroy = error => request.emit('error', error);
-        request.end = () => queueMicrotask(() => { const response = new EventEmitter(); response.statusCode = 200; callback(response); response.emit('data', JSON.stringify(resolve(options, body))); response.emit('end'); });
+        request.end = () => queueMicrotask(() => { const response = new EventEmitter(); response.statusCode = 200; callback(response); response.emit('data', JSON.stringify(resolve(options, body))); response.emit('end'); request.emit('close'); });
         return request;
     });
 }
@@ -107,3 +107,60 @@ test('TurboSMS acceptance response codes require success for the selected recipi
     recipientCode = 400;
     assert.equal((await providers.sendSmsViaProvider({ provider: 'turbosms', token: 'fixture-long-token', sender: 'Fixture' }, '+380501112233', 'Fixture')).success, false);
 });
+
+for (const provider of ['turbosms', 'flysms']) {
+    test(`${provider} sends with the configured business credential and sender`, async t => {
+        const seen = [];
+        mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (_channel, options) => {
+            assert.equal(options.businessContext, 'dar');
+            return { provider, token:'fixture-business-token', apiKey:'fixture-business-key', sender:'FixtureDAR' };
+        } });
+        fakeHttps(t, (options, body) => { seen.push({options, body:JSON.parse(body)}); return {success:1,data:{messageID:'fixture-fly'},response_code:800,response_result:[{response_code:0,message_id:'fixture-turbo'}]}; });
+        fresh('../services/omni-sms-providers');
+        const sms=fresh('../services/omni-sms');
+        assert.equal((await sms.sendSMS('+380000000001','Fixture',{businessContext:'dar'})).success,true);
+        assert.equal(seen.length,1);
+        if(provider === 'turbosms') {
+            assert.equal(seen[0].options.headers.Authorization,'Bearer fixture-business-token');
+            assert.equal(seen[0].body.sms.sender,'FixtureDAR');
+        } else {
+            assert.equal(seen[0].body.auth.key,'fixture-business-key');
+            assert.equal(seen[0].body.data.sms.source,'FixtureDAR');
+        }
+    });
+    test(`${provider} cannot send through an environment credential when the selected business has none`, async t => {
+        const envKey = provider === 'turbosms' ? 'TURBOSMS_TOKEN' : 'FLYSMS_API_KEY';
+        const previous = process.env[envKey];
+        process.env[envKey] = 'fixture-global-credential';
+        t.after(() => { if (previous === undefined) delete process.env[envKey]; else process.env[envKey] = previous; });
+        let requests = 0;
+        fakeHttps(t, () => { requests++; return { success: 1, data: { messageID: 'wrong-account' }, response_code: 800, response_result: [{ response_code: 0, message_id: 'wrong-account' }] }; });
+        mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (_channel, options) => { assert.equal(options.businessContext, 'dar'); return { provider }; } });
+        fresh('../services/omni-sms-providers');
+        const sms = fresh('../services/omni-sms');
+        const result = await sms.sendSMS('+380000000001', 'Fixture', { businessContext: 'dar' });
+        assert.equal(result.success, false);
+        assert.equal(requests, 0);
+    });
+}
+
+for (const channel of ['viber', 'facebook', 'instagram']) {
+    test(`${channel} reply uses the selected business credential and customer`, async t => {
+        const seen = [];
+        mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (requested, options) => {
+            assert.equal(requested, channel); assert.equal(options.businessContext, 'dar');
+            return { token: 'fixture-dar-token', pageToken: 'fixture-dar-token', senderName: 'Fixture' };
+        } });
+        fakeHttps(t, (options, body) => { seen.push({ options, body: JSON.parse(body) }); return { status: 0, message_token: '4912661846655238145', message_id: 'fixture-provider-id' }; });
+        const adapter = fresh('../services/omni-' + channel);
+        const send = adapter.sendViber || adapter.sendFacebook || adapter.sendInstagram;
+        assert.equal((await send('fixture-recipient', 'Fixture reply', { businessContext: 'dar' })).success, true);
+        assert.equal(seen.length, 1);
+        assert.equal(channel === 'viber' ? seen[0].body.receiver : seen[0].body.recipient.id, 'fixture-recipient');
+        assert.equal(channel === 'viber' ? seen[0].options.headers['X-Viber-Auth-Token'] : seen[0].options.headers.Authorization, channel === 'viber' ? 'fixture-dar-token' : 'Bearer fixture-dar-token');
+        if (channel === 'viber') {
+            assert.equal((await adapter.setViberWebhook('https://crm.test/api/omni/webhook/viber?business_context=dar', undefined, { businessContext: 'dar' })).success, true);
+            assert.equal(seen[1].options.headers['X-Viber-Auth-Token'], 'fixture-dar-token');
+        }
+    });
+}

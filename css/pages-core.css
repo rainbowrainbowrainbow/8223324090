@@ -514,3 +514,106 @@ body.dark-mode .workspace-command-bar,
 /* ==========================================
    TASK-SPECIFIC STYLES
    ========================================== */
+
+/* Shared filter summaries and empty states used by Omni, tasks, leads and customers. */
+.explain-filter-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin: 10px 0 14px;
+    padding: 10px 12px;
+    border: 1px solid rgba(16,185,129,0.18);
+    border-radius: 8px;
+    background: rgba(16,185,129,0.07);
+    color: var(--gray-700);
+}
+
+.explain-filter-main {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+    min-width: 0;
+}
+
+.explain-filter-label {
+    font-size: 12px;
+    font-weight: 800;
+    color: var(--gray-600);
+}
+
+.explain-chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 26px;
+    padding: 3px 9px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.88);
+    border: 1px solid rgba(16,185,129,0.16);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--gray-700);
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.explain-empty {
+    text-align: center;
+    padding: 34px 20px;
+    color: var(--gray-500);
+    min-width: 0;
+    overflow-wrap: anywhere;
+}
+
+.explain-clear-btn {
+    max-width: 100%;
+    white-space: normal;
+    line-height: 1.4;
+}
+
+.explain-empty-icon {
+    display: block;
+    margin-bottom: 10px;
+    font-size: 34px;
+}
+
+.explain-empty-title {
+    margin-bottom: 4px;
+    color: var(--gray-700);
+    font-size: 15px;
+    font-weight: 900;
+}
+
+.explain-empty-message {
+    max-width: 520px;
+    margin: 0 auto;
+    font-size: 13px;
+    line-height: 1.45;
+}
+
+.explain-empty-actions {
+    margin-top: 12px;
+}
+
+body.dark-mode .explain-filter-summary {
+    background: rgba(16,185,129,0.12);
+    border-color: rgba(16,185,129,0.28);
+    color: var(--text-secondary);
+}
+
+body.dark-mode .explain-filter-label,
+body.dark-mode .explain-empty-message {
+    color: var(--text-muted);
+}
+
+body.dark-mode .explain-chip {
+    background: rgba(255,255,255,0.07);
+    border-color: rgba(255,255,255,0.14);
+    color: var(--text-primary);
+}
+
+body.dark-mode .explain-empty-title {
+    color: var(--text-primary);
+}

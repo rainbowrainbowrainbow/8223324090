@@ -1830,7 +1830,7 @@ function ensureAuthenticatedServiceWorkerUpdateSurface() {
         target.style.right = '16px';
         target.style.bottom = '16px';
         target.style.zIndex = '11000';
-        target.style.maxWidth = '380px';
+        target.style.maxWidth = 'min(380px, calc(100vw - 32px))';
         document.body.appendChild(target);
     }
     return target;
@@ -1895,7 +1895,7 @@ function renderAuthenticatedServiceWorkerUpdatePrompt(reason = 'controllerchange
         reason: 'service-worker-update',
         lifecycle: reason
     });
-    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error" data-auth-sw-update-prompt><h3>Доступне оновлення CRM</h3><p>Щоб отримати нову версію інтерфейсу, оновіть сторінку вручну. Поточну роботу не буде перезавантажено без вашої дії.</p><div class="auth-session-bootstrap-actions"><button type="button" class="btn btn-primary" data-auth-sw-update-reload>Оновити</button><button type="button" class="btn btn-secondary" data-auth-sw-update-later>Пізніше</button></div><p class="muted">Перед оновленням CRM перевірить незбережені зміни й збереже безпечний маршрут.</p></div>`;
+    target.innerHTML = `<div class="page-fatal-error auth-session-bootstrap-error" data-auth-sw-update-prompt><h3>Доступне оновлення CRM</h3><p>Щоб отримати нову версію інтерфейсу, оновіть сторінку вручну. Поточну роботу не буде перезавантажено без вашої дії.</p><div class="auth-session-bootstrap-actions"><button type="button" class="btn-page-primary" data-auth-sw-update-reload>Оновити</button><button type="button" class="btn-page-secondary" data-auth-sw-update-later>Пізніше</button></div><p class="muted">Перед оновленням CRM перевірить незбережені зміни й збереже безпечний маршрут.</p></div>`;
     const reloadButton = target.querySelector?.('[data-auth-sw-update-reload]');
     const laterButton = target.querySelector?.('[data-auth-sw-update-later]');
     reloadButton?.addEventListener('click', async () => {

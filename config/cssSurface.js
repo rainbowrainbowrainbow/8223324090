@@ -10,6 +10,13 @@ const CSS_APP_SHELL_PRECACHE = [
 
 const CSS_SURFACE = [
     {
+        file: 'css/omni-workspace.css',
+        owner: 'omnichannel',
+        category: 'page-scoped',
+        status: 'active',
+        reason: 'Pulse-aligned Omni workspace surfaces, controls, spacing, and responsive states.'
+    },
+    {
         file: 'css/account-access-editor.css',
         owner: 'hr-account-access',
         category: 'page-scoped',

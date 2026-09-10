@@ -1,0 +1,86 @@
+/* Pulse-aligned surfaces and controls; preserve existing mode and mobile behavior. */
+.omni-workspace-title { min-width: 0; }
+.omni-workspace-title p { max-width: 52ch; line-height: 1.5; }
+.omni-workspace-modes {
+    gap: 6px;
+    padding: 6px;
+    border-radius: 12px;
+    border-color: rgba(20,184,166,0.18);
+    background: linear-gradient(135deg, rgba(255,255,255,0.82), rgba(248,250,252,0.70));
+}
+.omni-mode-btn {
+    min-height: 44px;
+    border: 1px solid transparent;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.48);
+}
+.omni-mode-btn.active {
+    color: #0f766e;
+    border-color: rgba(20,184,166,0.48);
+    background: linear-gradient(135deg, rgba(20,184,166,0.14), rgba(255,255,255,0.84));
+    box-shadow: 0 8px 18px rgba(20,184,166,0.10);
+}
+.omni-sidebar, .omni-chat, .omni-mode-panel, .omni-conv-list { min-width: 0; }
+.omni-sidebar-header, .omni-mode-panel { padding: 20px; }
+.omni-stats { gap: 6px 16px; padding: 12px 20px; line-height: 1.5; }
+.omni-stat { white-space: nowrap; }
+.omni-conv-list > .explain-empty { padding: 32px 20px; }
+.omni-search { min-height: 44px; border-radius: 12px; }
+.omni-channel-filters { gap: 6px; flex-wrap: wrap; }
+.omni-channel-btn { min-height: 36px; border-radius: 10px; }
+.omni-settings-link, .omni-secondary-action, .omni-accounts-refresh,
+.omni-account-btn, .omni-chat-header-actions button, .omni-quick-replies button {
+    min-height: 40px;
+    border-radius: 12px;
+    font-family: inherit;
+    line-height: 1.35;
+}
+.omni-workspace-shell button:focus-visible,
+.omni-workspace-shell a:focus-visible,
+.omni-workspace-shell input:focus-visible,
+.omni-workspace-shell textarea:focus-visible {
+    outline: 2px solid var(--primary, #14b8a6);
+    outline-offset: 3px;
+}
+.omni-workspace-shell button:disabled { cursor: not-allowed; opacity: 0.55; }
+.omni-mode-panel-head p, .omni-panel-note, .omni-account-impact,
+.omni-health-message, .omni-connection-webhook, .omni-state-card {
+    overflow-wrap: anywhere;
+    line-height: 1.5;
+}
+.omni-chat-empty { padding: 24px; }
+.omni-chat-empty-card { max-width: 480px; border-radius: 16px; }
+.omni-account-card, .omni-health-kpi, .omni-health-list { border-radius: 14px; }
+.omni-chat-header { flex-wrap: wrap; gap: 12px; }
+.omni-chat-header-actions, .omni-empty-actions { flex-wrap: wrap; }
+.omni-msg.outbound { background: #d1fae5; color: #064e3b; border: 1px solid rgba(20,184,166,0.28); }
+.omni-msg.outbound.ai { background: #ede9fe; color: #4c1d95; border-color: rgba(139,92,246,0.28); }
+.omni-send-btn { background: var(--primary); color: #fff; border-radius: 12px; }
+.omni-send-btn:hover { background: var(--primary-dark); }
+.omni-send-state { line-height: 1.5; }
+.dark-mode .omni-msg.outbound { background: #123e3b; color: #ecfdf5; }
+.dark-mode .omni-msg.outbound.ai { background: #35285a; color: #f5f3ff; }
+.dark-mode .omni-send-state.info, .dark-mode .omni-send-truth.info { color: #93c5fd; }
+.dark-mode .omni-send-state.success, .dark-mode .omni-send-truth.success { color: #6ee7b7; }
+.dark-mode .omni-send-state.warning, .dark-mode .omni-send-truth.warning,
+.dark-mode .omni-case-link.suggested, .dark-mode .omni-case-pill.suggested { color: #fcd34d; }
+.dark-mode .omni-send-state.error, .dark-mode .omni-send-truth.error { color: #fca5a5; }
+.omni-channel-btn.active { background: rgba(20,184,166,0.14); border-color: rgba(20,184,166,0.48); color: #0f766e; }
+.dark-mode .omni-workspace-shell { border-color: rgba(148,163,184,0.18); box-shadow: none; }
+.dark-mode .omni-workspace-modes { background: rgba(15,23,42,0.52); border-color: rgba(148,163,184,0.18); }
+.dark-mode .omni-mode-btn { background: rgba(30,41,59,0.48); color: #cbd5e1; }
+.dark-mode .omni-mode-btn.active { background: rgba(20,184,166,0.12); color: #a7f3d0; border-color: rgba(20,184,166,0.42); box-shadow: inset 0 0 0 1px rgba(20,184,166,0.10); }
+.dark-mode .omni-channel-btn.active { background: rgba(20,184,166,0.14); color: #a7f3d0; border-color: rgba(20,184,166,0.42); }
+@media (max-width: 1100px) {
+    .omni-workspace-topbar { flex-wrap: wrap; gap: 12px; }
+    .omni-workspace-title { flex: 1 1 100%; }
+}
+@media (max-width: 768px) {
+    .omni-workspace-shell { height: auto; min-height: calc(100dvh - 80px); }
+    .omni-sidebar-header, .omni-mode-panel { padding: 16px; }
+    .omni-stats { padding-inline: 16px; }
+    .omni-chat-empty { padding: 20px 16px; }
+    .omni-chat-empty-card { padding: 20px 16px; }
+    .omni-workspace-modes { box-sizing: border-box; }
+    .omni-mode-btn { min-width: 0; padding-inline: 10px; }
+}

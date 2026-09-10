@@ -131,6 +131,7 @@ let monthlyMonth = new Date().getMonth() + 1;
 let leaderboardMode = 'overall'; // 'overall' or 'monthly'
 let rewardClaimPending = new Set();
 let achievementCheckPending = false;
+let profileAutoRewardCheckCompleted = false;
 
 const CABINET_TASK_SEGMENTS = [
     { id: 'all', label: 'Всі мої', hint: 'Усі активні задачі, де ви власник або виконавець' },
@@ -329,9 +330,11 @@ async function refreshProfileRewardSurfaces(options = {}) {
     renderProfile();
 }
 
-async function checkProfileAutoRewards() {
-    if (!isOwnProfile || achievementCheckPending) return;
+async function checkProfileAutoRewards(options = {}) {
+    const force = options.force === true;
+    if (!isOwnProfile || achievementCheckPending || (!force && profileAutoRewardCheckCompleted)) return;
     achievementCheckPending = true;
+    if (!force) profileAutoRewardCheckCompleted = true;
     try {
         const result = await apiPost('/achievements/check', {});
         await apiPost('/quests/check-titles', {});
@@ -1486,6 +1489,7 @@ async function initProfilePage() {
     // Load data
     await loadProfileData(viewUserId);
     renderProfile();
+    if (isOwnProfile) void checkProfileAutoRewards();
     if (typeof showAuthenticatedPageShell === 'function') showAuthenticatedPageShell();
     else if (typeof Sidebar !== 'undefined' && Sidebar.markShellReady) Sidebar.markShellReady();
 }
@@ -9877,8 +9881,6 @@ function attachProfileListeners() {
         });
     });
 
-    // Check for auto-awarded achievements/titles without exposing fake manual claim UX.
-    checkProfileAutoRewards();
 }
 
 async function claimQuest(questId) {

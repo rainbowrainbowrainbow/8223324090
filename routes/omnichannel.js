@@ -76,7 +76,9 @@ async function verifyViberSignature(req) {
 }
 
 async function verifyWebhookSecret(req, envKey, channel, fieldName = 'webhookSecret') {
-    const provided = req.headers['x-webhook-secret'];
+    const provided = channel === 'telegram'
+        ? (req.headers['x-telegram-bot-api-secret-token'] ?? req.headers['x-webhook-secret'])
+        : req.headers['x-webhook-secret'];
     if (!provided) return false;
     const runtime = channel ? await resolveOmniRuntimeConfig(channel, { businessContext: webhookBusinessContext(req) }) : {};
     const secret = runtime[fieldName] || process.env[envKey];

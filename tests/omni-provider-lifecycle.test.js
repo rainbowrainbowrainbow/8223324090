@@ -478,6 +478,35 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
 
     });
 
+    it('accepts native Telegram secret headers and rejects invalid or conflicting credentials', async () => {
+        const inbound = [];
+        const router = loadOmniRouter({
+            processInboundMessage: async message => inbound.push(message),
+        }, { telegram: { webhookSecret: 'telegram-fixture-secret' } });
+        const payload = {
+            update_id: 7001,
+            message: { message_id: 7001, date: 1778676000,
+                from: { id: 9001, first_name: 'Fixture' },
+                chat: { id: 9001, type: 'private' }, text: 'Inbox fixture' },
+        };
+        for (const headers of [
+            {},
+            { 'x-telegram-bot-api-secret-token': 'invalid' },
+            { 'x-telegram-bot-api-secret-token': 'invalid', 'x-webhook-secret': 'telegram-fixture-secret' },
+        ]) {
+            const denied = await postJson(router, '/webhook/telegram', payload, headers);
+            assert.equal(denied.status, 403);
+        }
+        assert.equal(inbound.length, 0);
+        for (const header of ['x-telegram-bot-api-secret-token', 'x-webhook-secret']) {
+            const accepted = await postJson(router, '/webhook/telegram', payload, {
+                [header]: 'telegram-fixture-secret',
+            });
+            assert.equal(accepted.status, 200);
+        }
+        assert.equal(inbound.length, 2);
+    });
+
     it('acknowledges invalid Telegram omni payloads without creating messages', async () => {
         const previous = process.env.OMNI_TELEGRAM_WEBHOOK_SECRET;
         process.env.OMNI_TELEGRAM_WEBHOOK_SECRET = 'omni-test-secret';

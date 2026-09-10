@@ -7397,7 +7397,7 @@ check('Cashier unresolved buttons expose the full fiscal recovery context to ass
     cashierPaymentsJs.includes('function unresolvedOrderAccessibleLabel(order = {})')
     && cashierPaymentsJs.includes('сума ${formatMoneyMinor(order.totalAmountMinor)}')
     && cashierPaymentsJs.includes('оплата ${formatStatus(order.paymentStatus)}')
-    && cashierPaymentsJs.includes('фіскалізація ${formatStatus(order.fiscalStatus)}')
+    && cashierPaymentsJs.includes('фіскалізація ${formatStatus(fiscalStatusForDisplay(order))}')
     && cashierPaymentsJs.includes('escapeAttribute(unresolvedOrderAccessibleLabel(order))'));
 check('Cashier actions expose Ukrainian busy feedback and accessible busy state',
     cashierPaymentsJs.includes('function setButtonBusy(button, busy, busyText)')
@@ -7440,7 +7440,8 @@ check('Cashier payments defines accessible dark warning and overflow containment
     && cashierPaymentsCss.includes('body.dark-mode .cashier-status.is-warn')
     && cashierPaymentsCss.includes('body.dark-mode .cashier-status.is-danger')
     && cashierPaymentsCss.includes('.cashier-secondary-disclosure.has-warning')
-    && cashierPaymentsJs.includes("setStatus('fiscalReceiptBadge', hasOrder && normalizeStatus(order.paymentStatus) !== 'unpaid' ? fiscalStatus : 'not_created')")
+    && cashierPaymentsJs.includes('const displayStatus = fiscalStatusForDisplay(order, details?.outboxJob?.lastErrorCode)')
+    && cashierPaymentsJs.includes("setStatus('fiscalReceiptBadge', hasOrder && normalizeStatus(order.paymentStatus) !== 'unpaid' ? displayStatus : 'not_created')")
     && cashierPaymentsHtml.includes('id="fiscalReceiptBadge" class="cashier-status">ще не створено</span>')
     && cashierPaymentsCss.includes('.cashier-grid > *')
     && cashierPaymentsCss.includes('min-width: 0')

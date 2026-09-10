@@ -536,7 +536,7 @@ async function listenMockCheckbox() {
                     const mode = state.modes.get(id) || 'success';
                     const receipt = {
                         id,
-                        status: mode === 'pending' ? 'CREATED' : 'DONE',
+                        status: ['pending', 'pending_unresolved'].includes(mode) ? 'CREATED' : 'DONE',
                         type: 'SELL',
                         fiscal_code: `FC-${id}`.slice(0, 80),
                         serial: state.calls.filter(item => item.path === '/api/v1/receipts/sell').length,
@@ -552,7 +552,7 @@ async function listenMockCheckbox() {
                         tax_url: `https://api.checkbox.in.ua/api/v1/receipts/${id}`
                     };
                     if (mode === 'malformed') return send(200, { status: 'DONE' });
-                    state.receipts.set(id, { ...receipt, status: 'DONE' });
+                    state.receipts.set(id, { ...receipt, status: mode === 'pending_unresolved' ? 'CREATED' : 'DONE' });
                     if (mode === 'timeout_after_success') {
                         await new Promise(resolve => setTimeout(resolve, 1500));
                         return send(201, receipt);
@@ -4218,13 +4218,13 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             'unknown timeout recovery must lookup without second sell'
         );
 
-        for (const mode of ['pending', 'malformed']) {
+        for (const mode of ['pending', 'pending_unresolved', 'malformed']) {
             const order = await createOrder({
                 user: cashier,
                 key: mode,
                 tender: 'cash',
                 totalUah: TEST_TICKET_PRICES_UAH.regular_child,
-                itemCode: mode === 'pending' ? 'under_3_child' : 'birthday_child'
+                itemCode: mode.startsWith('pending') ? 'under_3_child' : 'birthday_child'
             });
             const confirmed = await confirmOrder({
                 user: cashier,
@@ -4244,6 +4244,35 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                   LIMIT 1`,
                 [confirmed.fiscalOperationId]
             );
+            assert.equal(
+                mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === providerRequestUuid).length,
+                1,
+                `${mode} must never replay SELL`
+            );
+            if (mode.startsWith('pending')) {
+                assert.equal(
+                    mock.state.calls.filter(call => call.method === 'GET' && call.path === `/api/v1/receipts/${providerRequestUuid}`).length,
+                    1,
+                    'pending submission must read the same receipt once after the grace delay'
+                );
+            }
+            if (mode === 'pending') {
+                assert.equal(failedJob.rows[0]?.status, 'succeeded', 'DONE lookup must finish the original job');
+                assert.equal(failedJob.rows[0].attempts, 1);
+                assert.equal(failedJob.rows[0].external_stage, 'complete');
+                assert.equal(failedJob.rows[0].last_error_code, null);
+                const orderState = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [order.order.id]);
+                assert.equal(orderState.rows[0].fiscal_status, 'fiscalized');
+                assert.equal(
+                    await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
+                    1
+                );
+                continue;
+            }
+            if (mode === 'pending_unresolved') {
+                assert.equal(failedJob.rows[0]?.last_error_code, 'checkbox_receipt_pending');
+                assert.equal(failedJob.rows[0].external_stage, 'receipt_lookup');
+            }
             assert.ok(
                 ['failed', 'dead'].includes(failedJob.rows[0]?.status)
                     && Number(failedJob.rows[0]?.attempts || 0) >= 1,

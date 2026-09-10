@@ -32,6 +32,20 @@ function installFixedDate(iso) {
     };
 }
 
+function installMutableDate(iso) {
+    let currentMs = new RealDate(iso).getTime();
+    global.Date = class MutableDate extends RealDate {
+        constructor(...args) {
+            super(...(args.length ? args : [currentMs]));
+        }
+
+        static now() { return currentMs; }
+        static parse(value) { return RealDate.parse(value); }
+        static UTC(...args) { return RealDate.UTC(...args); }
+    };
+    return milliseconds => { currentMs += milliseconds; };
+}
+
 function restoreDate() {
     global.Date = RealDate;
 }
@@ -68,7 +82,7 @@ function createFakePool() {
                 return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
             }
 
-            if (/^INSERT INTO scheduler_executions/i.test(text) && /VALUES \(\$1, NOW\(\), \$2, 'running'/i.test(text)) {
+            if (/^WITH claimed AS/i.test(text) && /VALUES \(\$1, NOW\(\), \$2, 'running'/i.test(text)) {
                 const [name, currentKey, hasDedup, leaseMs, token] = params;
                 const existing = state.rows.get(name);
                 const expired = existing?.result === 'running'
@@ -82,7 +96,12 @@ function createFakePool() {
                         || (!hasDedup && existing.result !== 'running')
                     )
                 );
-                if (!canClaim) return { rows: [], rowCount: 0 };
+                if (!canClaim) {
+                    return {
+                        rows: existing ? [{ ...existing, claim_acquired: false }] : [],
+                        rowCount: existing ? 1 : 0
+                    };
+                }
 
                 const claimed = normalizeRow(name, {
                     ...existing,
@@ -93,7 +112,7 @@ function createFakePool() {
                 });
                 state.rows.set(name, claimed);
                 state.claims.push({ text, params });
-                return { rows: [{ ...claimed }], rowCount: 1 };
+                return { rows: [{ ...claimed, claim_acquired: true }], rowCount: 1 };
             }
 
             if (/^UPDATE scheduler_executions SET last_run_at = NOW\(\) WHERE/i.test(text)) {
@@ -358,6 +377,61 @@ describe('schedulerGuard atomic claim contract', () => {
         assert.equal(calls, 1);
         assert.equal(state.claims.length, 0);
         assert.equal(state.successWrites.length, 1);
+    });
+
+    it('uses a constant daily query budget across repeated minute ticks', async () => {
+        const { guardScheduler } = loadGuard();
+        let calls = 0;
+        const guarded = guardScheduler('dailyBudgetJob', async () => { calls += 1; }, { dedup: 'daily' });
+
+        for (let index = 0; index < 1_440; index += 1) await guarded();
+
+        assert.equal(calls, 1);
+        assert.equal(state.queries.length, 2, 'one atomic claim plus one completion write');
+    });
+
+    it('checks PostgreSQL once when another instance already completed the period', async () => {
+        state.rows.set('completedElsewhereJob', normalizeRow('completedElsewhereJob', {
+            last_run_date: '2026-06-28', result: 'success'
+        }));
+        const { guardScheduler } = loadGuard();
+        let calls = 0;
+        const guarded = guardScheduler('completedElsewhereJob', async () => { calls += 1; }, { dedup: 'daily' });
+
+        for (let index = 0; index < 1_440; index += 1) await guarded();
+
+        assert.equal(calls, 0);
+        assert.equal(state.queries.length, 1);
+    });
+
+    it('queries only at hourly and 5min bucket boundaries', async () => {
+        const advance = installMutableDate('2026-06-28T12:00:00.000Z');
+        const { guardScheduler } = loadGuard();
+        let hourlyCalls = 0;
+        let fiveMinuteCalls = 0;
+        const hourly = guardScheduler('hourlyBudgetJob', async () => { hourlyCalls += 1; }, { dedup: 'hourly' });
+        const fiveMinute = guardScheduler('fiveMinuteBudgetJob', async () => { fiveMinuteCalls += 1; }, { dedup: '5min' });
+
+        for (let minute = 0; minute < 120; minute += 1) {
+            await hourly();
+            await fiveMinute();
+            advance(60_000);
+        }
+
+        assert.equal(hourlyCalls, 2);
+        assert.equal(fiveMinuteCalls, 24);
+        assert.equal(state.queries.length, (2 * 2) + (24 * 2));
+    });
+
+    it('does not cache null-dedup polling cadence', async () => {
+        const { guardScheduler } = loadGuard();
+        let calls = 0;
+        const guarded = guardScheduler('nullBudgetJob', async () => { calls += 1; }, { dedup: null });
+
+        for (let index = 0; index < 10; index += 1) await guarded();
+
+        assert.equal(calls, 10);
+        assert.equal(state.queries.length, 20);
     });
 
     it('rejects unsupported dedup and claim modes before execution', () => {

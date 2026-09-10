@@ -99,37 +99,57 @@ function stateSkipsExecution(state, dedup, currentKey) {
 
 async function tryClaimSchedulerLease(db, { name, dedup, currentKey, leaseMs, token }) {
     const result = await db.query(
-        `INSERT INTO scheduler_executions
-            (scheduler_name, last_run_at, last_run_date, result, consecutive_failures, error_message)
-         VALUES ($1, NOW(), $2, 'running', 0, $5)
-         ON CONFLICT (scheduler_name) DO UPDATE SET
-             last_run_at = NOW(),
-             last_run_date = $2,
-             result = 'running',
-             duration_ms = NULL,
-             error_message = $5
-         WHERE scheduler_executions.is_paused = false
-           AND (
-               scheduler_executions.result = 'error'
-               OR scheduler_executions.result = 'skipped'
-               OR (
-                   scheduler_executions.result = 'running'
-                   AND scheduler_executions.last_run_at <= NOW() - ($4::double precision * INTERVAL '1 millisecond')
+        `WITH claimed AS (
+             INSERT INTO scheduler_executions
+                 (scheduler_name, last_run_at, last_run_date, result, consecutive_failures, error_message)
+             VALUES ($1, NOW(), $2, 'running', 0, $5)
+             ON CONFLICT (scheduler_name) DO UPDATE SET
+                 last_run_at = NOW(),
+                 last_run_date = $2,
+                 result = 'running',
+                 duration_ms = NULL,
+                 error_message = $5
+             WHERE scheduler_executions.is_paused = false
+               AND (
+                   scheduler_executions.result = 'error'
+                   OR scheduler_executions.result = 'skipped'
+                   OR (
+                       scheduler_executions.result = 'running'
+                       AND scheduler_executions.last_run_at <= NOW() - ($4::double precision * INTERVAL '1 millisecond')
+                   )
+                   OR (
+                       $3::boolean = true
+                       AND scheduler_executions.result IS DISTINCT FROM 'running'
+                       AND scheduler_executions.last_run_date IS DISTINCT FROM $2
+                   )
+                   OR (
+                       $3::boolean = false
+                       AND scheduler_executions.result IS DISTINCT FROM 'running'
+                   )
                )
-               OR (
-                   $3::boolean = true
-                   AND scheduler_executions.result IS DISTINCT FROM 'running'
-                   AND scheduler_executions.last_run_date IS DISTINCT FROM $2
-               )
-               OR (
-                   $3::boolean = false
-                   AND scheduler_executions.result IS DISTINCT FROM 'running'
-               )
-           )
-         RETURNING scheduler_name, last_run_at, last_run_date, result, is_paused, consecutive_failures`,
+             RETURNING scheduler_name, last_run_at, last_run_date, result,
+                       is_paused, consecutive_failures, true AS claim_acquired
+         )
+         SELECT * FROM claimed
+         UNION ALL
+         SELECT scheduler_name, last_run_at, last_run_date, result,
+                is_paused, consecutive_failures, false AS claim_acquired
+           FROM scheduler_executions
+          WHERE scheduler_name = $1
+            AND NOT EXISTS (SELECT 1 FROM claimed)
+         LIMIT 1`,
         [name, currentKey, dedup !== null, leaseMs, token]
     );
     return result.rows[0] || null;
+}
+
+function nextStateCheckAt(state, leaseMs, nowMs = Date.now()) {
+    if (!state) return 0;
+    if (state.is_paused) return nowMs + 60_000;
+    if (state.result !== 'running') return 0;
+    const lastRunMs = new Date(state.last_run_at).getTime();
+    if (!Number.isFinite(lastRunMs)) return nowMs + Math.min(leaseMs, 60_000);
+    return Math.max(nowMs, Math.min(lastRunMs + leaseMs, nowMs + 60_000));
 }
 
 function startLeaseHeartbeat(db, { name, token, leaseMs, heartbeatMs }, logger = log) {
@@ -249,19 +269,37 @@ function guardScheduler(name, fn, opts = {}) {
         throw new Error(`Unsupported scheduler claim mode: ${String(claimMode)}`);
     }
 
+    // This cache belongs to one registration in one process. PostgreSQL is
+    // still consulted on process start and every new dedup bucket, preserving
+    // restart and multi-instance correctness while avoiding not-due polling.
+    let completedKey = null;
+    let nextDatabaseCheckAt = 0;
+
     return async function guardedScheduler() {
         const startMs = Date.now();
         const currentKey = schedulerDedupKey(dedup);
+        if (currentKey && completedKey === currentKey) return;
+        if (startMs < nextDatabaseCheckAt) return;
         const token = `claim:${randomUUID()}`;
         let claimAcquired = false;
         let stopHeartbeat = null;
         try {
             if (claimMode === 'owner') {
                 const state = await loadSchedulerState(db, name);
-                if (stateSkipsExecution(state, dedup, currentKey)) return;
+                if (stateSkipsExecution(state, dedup, currentKey)) {
+                    if (currentKey && state?.result === 'success') completedKey = currentKey;
+                    nextDatabaseCheckAt = nextStateCheckAt(state, leaseMs, startMs);
+                    return;
+                }
             } else {
                 const claim = await tryClaimSchedulerLease(db, { name, dedup, currentKey, leaseMs, token });
-                if (!claim) return;
+                if (!claim?.claim_acquired) {
+                    if (currentKey && claim?.result === 'success' && claim.last_run_date === currentKey) {
+                        completedKey = currentKey;
+                    }
+                    nextDatabaseCheckAt = nextStateCheckAt(claim, leaseMs, startMs);
+                    return;
+                }
                 claimAcquired = true;
                 stopHeartbeat = startLeaseHeartbeat(db, {
                     name,
@@ -291,6 +329,8 @@ function guardScheduler(name, fn, opts = {}) {
                 : await recordOwnerSuccess(db, { name, dateKey, durationMs });
             if (claimMode === 'lease' && result.rowCount !== 1) {
                 log.error(`Scheduler "${name}" completed after losing claim ownership`);
+            } else if (currentKey) {
+                completedKey = currentKey;
             }
         } catch (err) {
             const durationMs = Date.now() - startMs;
@@ -329,6 +369,7 @@ module.exports = {
     __schedulerGuardTest: Object.freeze({
         loadSchedulerState,
         normalizeLeaseMs,
+        nextStateCheckAt,
         recordLeaseSuccess,
         releaseSkippedLease,
         startLeaseHeartbeat,

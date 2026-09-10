@@ -2,7 +2,7 @@
   "name": "event-genix",
   "version": "0.81.95",
   "eventGenix": {
-    "releaseLabel": "Omni Webhook Ownership and Health"
+    "releaseLabel": "HR Checklists Theme"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

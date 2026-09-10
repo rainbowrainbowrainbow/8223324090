@@ -68,9 +68,9 @@ function installHarness(options = {}) {
         document: {
             visibilityState: 'visible',
             scripts: [{
-                src: 'https://crm.example/js/auth.js?v=0.81.91',
+                src: 'https://crm.example/js/auth.js?v=0.81.92',
                 getAttribute(name) {
-                    return name === 'src' ? '/js/auth.js?v=0.81.91' : '';
+                    return name === 'src' ? '/js/auth.js?v=0.81.92' : '';
                 }
             }]
         },

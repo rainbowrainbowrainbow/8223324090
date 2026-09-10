@@ -5552,6 +5552,7 @@ function renderProfessionWorkspace() {
 
 async function openProfessionWorkspace({ id = null, key = null, initialTab = 'main', returnContext = null, historyMode = 'push', defaults = {} } = {}) {
     bindProfessionWorkspaceControls();
+    setProfessionChecklistState();
     professionConditionRowStates.clear();
     professionChecklistShowArchived = false;
     const isNew = !id && !key;

@@ -9936,7 +9936,7 @@ body[data-page-group="hr"] .page-container .hr-org-chart-card #btnSaveCompanyStr
 /* Profession checklist templates and dashboard */
 .hr-checklist-dashboard-toolbar {
     display: grid;
-    grid-template-columns: minmax(220px, 1.4fr) repeat(4, minmax(150px, 1fr));
+    grid-template-columns: minmax(0, 1.4fr) repeat(4, minmax(0, 1fr));
     gap: 8px;
     margin: 14px 0;
 }
@@ -10031,6 +10031,14 @@ body[data-page-group="hr"] .page-container .hr-org-chart-card #btnSaveCompanyStr
 .hr-checklist-template-editor.is-saving { opacity: .62; pointer-events: none; }
 .hr-checklist-template-toolbar { display: flex; justify-content: flex-end; }
 .hr-checklist-archived-toggle { display: inline-flex; align-items: center; gap: 6px; color: var(--gray-600); font-size: 12px; font-weight: 750; }
+.hr-checklist-template-toolbar .hr-checklist-archived-toggle { display: inline-flex; }
+.hr-checklist-archived-toggle input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    min-height: 16px;
+    padding: 0;
+    accent-color: var(--primary);
+}
 .hr-checklist-template-list { display: grid; gap: 7px; }
 .hr-checklist-template-item {
     display: grid;
@@ -10106,13 +10114,41 @@ body.dark-mode .hr-checklist-dashboard-row,
 body.dark-mode .hr-checklist-template-item,
 body.dark-mode .hr-checklist-template-actions button,
 body.dark-mode .hr-checklist-template-add input {
-    border-color: rgba(255,255,255,.1);
-    background: var(--gray-900);
-    color: var(--gray-100);
+    border-color: var(--border-color);
+    background: var(--surface);
+    color: var(--text-primary);
 }
-body.dark-mode .hr-checklist-template-item input { color: var(--gray-100); }
+body.dark-mode .hr-checklist-template-item input { color: var(--text-primary); }
+body.dark-mode .hr-checklist-dashboard-toolbar input::placeholder,
+body.dark-mode .hr-checklist-template-add input::placeholder { color: var(--text-muted); }
 body.dark-mode .hr-checklist-template-item input:not([readonly]):hover,
-body.dark-mode .hr-checklist-template-item input:not([readonly]):focus { border-color: rgba(255,255,255,.16); background: rgba(255,255,255,.05); }
+body.dark-mode .hr-checklist-template-item input:not([readonly]):focus { border-color: var(--border-color); background: var(--surface-elevated); }
+body.dark-mode .hr-checklist-dashboard-summary-card:hover,
+body.dark-mode .hr-checklist-dashboard-summary-card:focus-visible,
+body.dark-mode .hr-checklist-dashboard-summary-card.is-active {
+    border-color: var(--info);
+    background: color-mix(in srgb, var(--info) 18%, var(--surface));
+    color: var(--text-primary);
+}
+body.dark-mode .hr-profession-workspace-tabs button[data-profession-workspace-tab="checklist"].active,
+body.dark-mode .hr-checklist-dashboard-person button,
+body.dark-mode .hr-checklist-dashboard-row.is-completed .hr-checklist-dashboard-status,
+body.dark-mode .hr-checklist-template-state[data-state="saved"] {
+    color: color-mix(in srgb, var(--success) 42%, var(--text-primary));
+}
+body.dark-mode .hr-checklist-dashboard-row.is-in_progress .hr-checklist-dashboard-status {
+    color: color-mix(in srgb, var(--warning) 42%, var(--text-primary));
+}
+body.dark-mode .hr-checklist-dashboard-row.is-orphaned .hr-checklist-dashboard-status,
+body.dark-mode .hr-checklist-template-actions button.is-danger,
+body.dark-mode #professionChecklistDashboardState[data-state="error"],
+body.dark-mode .hr-checklist-template-state[data-state="error"] {
+    color: color-mix(in srgb, var(--danger) 42%, var(--text-primary));
+}
+.hr-checklist-template-item input:not([readonly]):focus-visible {
+    outline: 2px solid var(--primary);
+    outline-offset: 2px;
+}
 
 @media (max-width: 1100px) {
     .hr-checklist-dashboard-toolbar { grid-template-columns: repeat(3, minmax(0, 1fr)); }

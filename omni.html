@@ -2733,7 +2733,7 @@
             const disconnected = limited.filter(a => !a.connected);
             accountsAlarm.classList.remove('hidden');
             const message = disconnected.length
-                ? 'Omni: ' + disconnected.length + ' канал(и) не підключені. Відправка заблокована, доки адміністратор не завершить підключення.'
+                ? 'Не підключено каналів: ' + disconnected.length + '. Перевірте стан потрібного каналу в налаштуваннях.'
                 : 'Omni: частина каналів працює в обмеженому режимі. Відкрийте картку, щоб побачити наслідки і наступну дію.';
             accountsAlarm.innerHTML = esc(message) + '<button type="button" data-omni-mode="channels">Відкрити канали</button>';
         }

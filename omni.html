@@ -2160,12 +2160,13 @@
                     <a class="omni-settings-link" href="/chat-settings">Налаштування</a>
                 </div>
                 <div class="omni-accounts-alarm hidden" id="omniAccountsAlarm" role="alert" aria-live="assertive"></div>
+                <div class="omni-channel-action-feedback" id="omniChannelActionFeedback" hidden role="status" aria-live="polite"></div>
                 <div class="omni-container" id="omniContainer" data-omni-mode="inbox">
                 <!-- Conversation sidebar -->
                 <div class="omni-sidebar" id="omniSidebar">
                     <div class="omni-sidebar-header">
                         <h2>Розмови</h2>
-                        <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
+                        <input type="text" class="omni-search" id="omniSearch" placeholder="Ім’я, телефон або текст повідомлення" maxlength="100" aria-label="Пошук розмов">
                         <div class="omni-channel-filters" id="omniFilters">
                             <button type="button" class="omni-channel-btn active" data-channel="all">Всі</button>
                             <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
@@ -2175,7 +2176,7 @@
                             <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
                             <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
-                        <div id="omniExplainability" hidden></div>
+                        <label class="omni-status-filter">Статус <select id="omniStatusFilter" aria-label="Статус розмов"><option value="">Усі статуси</option><option value="open">Відкриті</option><option value="pending">Очікують</option><option value="closed">Закриті</option><option value="spam">Спам</option></select></label><label class="omni-status-filter"><input type="checkbox" id="omniOnlyMine"> Тільки мої розмови</label><div class="omni-business-label" id="omniBusinessLabel"></div><div id="omniExplainability" hidden></div>
                     </div>
                     <div class="omni-stats" id="omniStats">
                         <!-- Filled by JS -->
@@ -2226,17 +2227,19 @@
                         <div id="omniHealthContent" class="omni-health-content" aria-live="polite"></div>
                     </section>
                     <div class="omni-chat-header" id="omniChatHeader" style="display:none">
+                        <button type="button" class="omni-back-button" id="omniBackToList" aria-label="Повернутися до розмов">← Розмови</button>
                         <div class="omni-conv-avatar" id="omniChatAvatar"></div>
                         <div>
                             <div class="omni-chat-header-name" id="omniChatName"></div>
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <button type="button" id="omniToggleAI" title="AI лід і потреби">AI</button>
+                            <select id="omniConversationStatus" aria-label="Змінити статус розмови"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний менеджер"><option value="">Без відповідального</option></select><button type="button" id="omniToggleAI" title="AI лід і потреби">AI</button>
                             <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
                         </div>
                     </div>
                     <div class="omni-case-context" id="omniCaseContext" hidden></div>
+                    <div class="omni-history-controls" id="omniHistoryControls" hidden aria-live="polite"></div>
                     <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
@@ -2324,12 +2327,36 @@
         const API_BASE = (window.APP_CONFIG && APP_CONFIG.API_URL) || '';
         let conversations = [];
         let currentConvId = null;
+        let selectedConversationRecord = null;
+        let selectedDraftKey = null;
+        const conversationDrafts = new Map();
+        const pendingSends = new Set();
+        const sendRequests = new Map();
+        let workspaceEpoch = 0;
+        let conversationsRequestSeq = 0;
+        let messagesRequestSeq = 0;
+        let accountsRequestSeq = 0;
+        let statsRequestSeq = 0;
+        let assistantRequestSeq = 0;
+        let conversationsLoading = false;
+        let messagesLoading = false;
+        let conversationTotal = 0;
+        let loadedConversationFilter = '';
+        let conversationLoadError = '';
+        let messageHistory = [];
+        let messageTotal = 0;
+        let refreshPending = false;
         let selectedConversationQueryId = null;
         let conversationQueryApplied = false;
         let caseContextRequestSeq = 0;
         let quickReplies = [];
         let activeChannel = 'all';
         let searchQuery = '';
+        let activeStatus = '';
+        let onlyMine = false;
+        let connectionReturnFocus = null;
+        let assistantReturnFocus = null;
+        const readThrough = new Map();
         let omniAccounts = [];
         let accountPanelChannel = null;
         let openAccountPanel = false;
@@ -2340,6 +2367,7 @@
         const omniContainer = $('omniContainer');
         const convList = $('omniConvList');
         const messages = $('omniMessages');
+        const historyControls = $('omniHistoryControls');
         const inputArea = $('omniInputArea');
         const chatHeader = $('omniChatHeader');
         const emptyState = $('omniEmpty');
@@ -2406,22 +2434,23 @@
             return 'event_genix';
         }
 
-        function omniApiUrl(path) {
+        function omniApiUrl(path, businessContext = getOmniBusinessContext()) {
             const relative = '/api/omni' + path;
             if (window.CrmBusinessContext && typeof window.CrmBusinessContext.apiUrl === 'function') {
-                return API_BASE + window.CrmBusinessContext.apiUrl(relative, getOmniBusinessContext());
+                return API_BASE + window.CrmBusinessContext.apiUrl(relative, businessContext);
             }
             const joiner = relative.includes('?') ? '&' : '?';
-            return API_BASE + relative + joiner + 'businessContext=' + encodeURIComponent(getOmniBusinessContext());
+            return API_BASE + relative + joiner + 'businessContext=' + encodeURIComponent(businessContext);
         }
 
         async function api(path, opts = {}) {
             try {
-                const res = await fetch(omniApiUrl(path), {
-                    ...opts,
-                    headers: { ...getHeaders(), ...(opts.headers || {}) }
+                const { requestBusinessContext = getOmniBusinessContext(), ...fetchOptions } = opts;
+                const res = await fetch(omniApiUrl(path, requestBusinessContext), {
+                    ...fetchOptions,
+                    headers: { ...getHeaders(), 'X-Business-Context': requestBusinessContext, ...(opts.headers || {}) }
                 });
-                if (res.status === 401 || res.status === 403) {
+                if (res.status === 401) {
                     localStorage.removeItem('pzp_token');
                     window.location.href = '/';
                     return { success: false, error: 'Сесія закінчилась' };
@@ -2439,7 +2468,18 @@
         }
 
         async function reloadOmniForBusinessContext() {
-            currentConvId = null;
+            clearConversationSelection({ skipUrl: true });
+            workspaceEpoch++;
+            conversationsRequestSeq++;
+            accountsRequestSeq++;
+            statsRequestSeq++;
+            conversationsLoading = false;
+            conversations = [];
+            conversationTotal = 0;
+            loadedConversationFilter = '';
+            conversationLoadError = '';
+            omniAccounts = [];
+            setChannelActionFeedback('');
             selectedConversationQueryId = null;
             conversationQueryApplied = true;
             leadAssistantState.settings = null;
@@ -2522,29 +2562,115 @@
                 const active = btn.dataset.omniMode === nextMode;
                 btn.classList.toggle('active', active);
                 btn.setAttribute('aria-selected', active ? 'true' : 'false');
+                btn.tabIndex = active ? 0 : -1;
             });
             if (nextMode === 'health') renderOmniHealthWorkspace();
             if (nextMode === 'channels') highlightAccountFromQuery();
         }
 
         // ---- Load data ----
-        async function loadConversations() {
-            const params = new URLSearchParams({ limit: '100', offset: '0' });
+        async function loadConversations(options = {}) {
+            const epoch = workspaceEpoch;
+            const context = getOmniBusinessContext();
+            const filterKey = [context, activeChannel, activeStatus, onlyMine, searchQuery].join('\n');
+            const sameFilter = loadedConversationFilter === filterKey;
+            const append = !!options.append && sameFilter;
+            const requestSeq = ++conversationsRequestSeq;
+            conversationsLoading = true;
+            conversationLoadError = '';
+            const params = new URLSearchParams({ limit: '100', offset: String(append ? conversations.length : 0) });
             if (activeChannel !== 'all') params.set('channel', activeChannel);
             if (searchQuery) params.set('search', searchQuery);
+            if (activeStatus) params.set('status', activeStatus);
+            if (onlyMine) params.set('mine', 'true');
+            $('omniBusinessLabel').textContent = 'Бізнес: ' + ({ event_genix: 'Парк', dar: 'Дар', maysternya_doli: 'Майстерня долі', crm: 'CRM продажі' }[context] || context);
             const res = await api('/conversations?' + params);
+            if (requestSeq !== conversationsRequestSeq || epoch !== workspaceEpoch || context !== getOmniBusinessContext()) return;
+            conversationsLoading = false;
             if (res.success) {
-                conversations = (res.data && res.data.conversations) || [];
+                const page = (res.data && res.data.conversations) || [];
+                const prefixUnchanged = sameFilter && page.length === Math.min(100, conversations.length)
+                    && page.every((conv, index) => conv.id === conversations[index]?.id);
+                const retained = append ? conversations : (prefixUnchanged ? conversations.slice(100) : []);
+                const merged = append ? retained.concat(page) : page.concat(retained);
+                const recordsById = new Map(retained.concat(page).map(conv => [conv.id, conv]));
+                conversations = Array.from(new Set(merged.map(conv => conv.id))).map(id => recordsById.get(id));
+                conversationTotal = Number(res.data?.total) || 0;
+                conversations = conversations.slice(0, conversationTotal);
+                loadedConversationFilter = filterKey;
+                const selected = conversations.find(conv => conv.id === currentConvId);
+                if (selected) selectedConversationRecord = selected;
+                else if (!sameFilter && currentConvId) clearConversationSelection();
                 renderConversations();
                 await selectConversationFromQuery();
+                updateSendControls(currentConversation());
+            } else {
+                conversationLoadError = res.error || 'Не вдалося завантажити розмови.';
+                if (!sameFilter) {
+                    conversations = [];
+                    conversationTotal = 0;
+                    clearConversationSelection();
+                }
+                renderConversations();
             }
         }
 
-        async function loadMessages(convId) {
-            const res = await api('/conversations/' + convId + '/messages?limit=100');
-            if (res.success) {
-                renderMessages((res.data && res.data.messages) || res.data || []);
+        async function loadMessages(convId, options = {}) {
+            if (!convId || convId !== currentConvId || (messagesLoading && (options.older || options.refresh))) return;
+            const requestSeq = ++messagesRequestSeq;
+            const epoch = workspaceEpoch;
+            const context = getOmniBusinessContext();
+            const previousHeight = messages.scrollHeight;
+            const previousTop = messages.scrollTop;
+            const wasAtBottom = previousHeight - previousTop - messages.clientHeight < 64;
+            const offset = options.older ? messageHistory.length : 0;
+            messagesLoading = true;
+            renderHistoryControls();
+            const res = await api('/conversations/' + convId + '/messages?limit=100&offset=' + offset + '&latest=true');
+            if (requestSeq !== messagesRequestSeq || epoch !== workspaceEpoch || context !== getOmniBusinessContext() || convId !== currentConvId) return;
+            messagesLoading = false;
+            if (!res.success) {
+                renderHistoryControls(res.error || 'Не вдалося завантажити повідомлення.');
+                return;
             }
+            const page = (res.data && res.data.messages) || [];
+            const hasOverlap = page.some(message => messageHistory.some(previous => previous.id === message.id));
+            const combined = options.older ? page.concat(messageHistory) : (options.refresh && hasOverlap ? messageHistory.concat(page) : page);
+            messageHistory = Array.from(new Map(combined.map(message => [message.id, message])).values())
+                .sort((a, b) => new Date(a.createdAt) - new Date(b.createdAt) || Number(a.id) - Number(b.id));
+            messageTotal = Number(res.data?.total) || messageHistory.length;
+            renderMessages(messageHistory, { scrollToBottom: !options.older && (!options.refresh || wasAtBottom) });
+            if (options.older) messages.scrollTop = previousTop + messages.scrollHeight - previousHeight;
+            else if (options.refresh && !wasAtBottom) messages.scrollTop = previousTop;
+            renderHistoryControls();
+            if (!options.older && (wasAtBottom || !options.refresh)) markVisibleMessagesRead();
+        }
+
+        async function markVisibleMessagesRead() {
+            if (document.hidden || omniMode !== 'inbox' || !currentConvId) return;
+            const id = currentConvId;
+            const epoch = workspaceEpoch;
+            const key = getOmniBusinessContext() + ':' + id;
+            const through = Math.max(0, ...messageHistory.map(message => Number(message.id) || 0));
+            if (!through || (readThrough.get(key) || 0) >= through || !(currentConversation()?.unreadCount > 0)) return;
+            readThrough.set(key, through);
+            const result = await api('/conversations/' + id + '/read', { method: 'POST', body: JSON.stringify({ through_message_id: through }) });
+            if (!result.success) { readThrough.delete(key); return; }
+            if (epoch !== workspaceEpoch) return;
+            const conv = conversations.find(item => item.id === id);
+            if (conv) conv.unreadCount = result.data.unreadCount;
+            if (currentConvId === id && selectedConversationRecord) selectedConversationRecord.unreadCount = result.data.unreadCount;
+            renderConversations();
+        }
+
+        function renderHistoryControls(error) {
+            if (!historyControls) return;
+            historyControls.hidden = !currentConvId;
+            historyControls.innerHTML = error
+                ? '<span role="status">' + esc(error) + '</span><button type="button" data-omni-history="retry">Спробувати ще</button>'
+                : (messagesLoading ? '<span>Завантаження повідомлень…</span>' : (messageHistory.length < messageTotal
+                    ? '<button type="button" data-omni-history="older">Попередні повідомлення</button><span>' + messageHistory.length + ' з ' + messageTotal + '</span>'
+                    : '<span>' + (messageTotal ? 'Уся історія · ' + messageTotal : 'Повідомлень ще немає') + '</span>'));
         }
 
         async function loadQuickReplies() {
@@ -2555,7 +2681,10 @@
         }
 
         async function loadStats() {
+            const requestSeq = ++statsRequestSeq;
+            const epoch = workspaceEpoch;
             const res = await api('/stats');
+            if (requestSeq !== statsRequestSeq || epoch !== workspaceEpoch) return;
             if (res.success && res.data) {
                 const d = res.data;
                 const byStatus = d.byStatus || {};
@@ -2567,7 +2696,10 @@
         }
 
         async function loadOmniAccounts() {
+            const requestSeq = ++accountsRequestSeq;
+            const epoch = workspaceEpoch;
             const res = await api('/accounts');
+            if (requestSeq !== accountsRequestSeq || epoch !== workspaceEpoch) return;
             if (!res || !res.success) {
                 omniAccounts = [];
                 renderOmniAccounts();
@@ -2794,6 +2926,7 @@
         function closeConnectionModal() {
             if (!connectionModal) return;
             connectionModal.hidden = true;
+            if (connectionReturnFocus?.isConnected) connectionReturnFocus.focus();
             connectionModalState = null;
             if (connectionBody) connectionBody.innerHTML = '';
         }
@@ -2875,6 +3008,7 @@
         }
 
         function openConnectModal(channel) {
+            connectionReturnFocus = document.activeElement;
             const acc = omniAccountForChannel(channel);
             if (!acc || !connectionModal) return;
             const provider = defaultProviderForAccount(acc);
@@ -2894,6 +3028,7 @@
         }
 
         function openDisconnectModal(channel) {
+            connectionReturnFocus = document.activeElement;
             const acc = omniAccountForChannel(channel);
             if (!acc || !connectionModal) return;
             connectionModalState = { mode: 'disconnect', channel: acc.channel };
@@ -2938,6 +3073,8 @@
         async function submitConnectionModal(event) {
             event.preventDefault();
             if (!connectionModalState) return;
+            const actionState = connectionModalState;
+            const epoch = workspaceEpoch;
             const { mode, channel } = connectionModalState;
             connectionSubmit.disabled = true;
             connectionCancel.disabled = true;
@@ -2954,6 +3091,7 @@
             });
             connectionSubmit.disabled = false;
             connectionCancel.disabled = false;
+            if (epoch !== workspaceEpoch || actionState !== connectionModalState) return;
             if (!res.success) {
                 setConnectionResult(res.error || 'Не вдалося виконати дію. Перевірте поля і спробуйте ще раз.', false);
                 return;
@@ -2965,21 +3103,24 @@
                 updateSendControls(currentConversation());
             }
             if (typeof loadAlertBell === 'function') loadAlertBell();
-            setTimeout(closeConnectionModal, 900);
+            setTimeout(() => { if (actionState === connectionModalState) closeConnectionModal(); }, 900);
         }
 
         async function runAccountAction(channel, action, button) {
             if (action === 'connect') return openConnectModal(channel);
             if (action === 'disconnect') return openDisconnectModal(channel);
             if (!['recheck', 'test'].includes(action)) return;
+            const epoch = workspaceEpoch;
             button.disabled = true;
+            setChannelActionFeedback('Перевіряємо ' + (CHANNEL_NAMES[channel] || channel) + '…');
             const path = channel === 'telegram' && action === 'test'
                 ? '/accounts/telegram/inbox/test'
                 : '/accounts/' + encodeURIComponent(channel) + '/' + action;
             const res = await api(path, { method: 'POST' });
             button.disabled = false;
+            if (epoch !== workspaceEpoch) return;
             if (!res.success) {
-                setSendFeedback({ status: 'provider_failed_immediate', channel, message: res.error || 'Не вдалося оновити статус каналу.' });
+                setChannelActionFeedback(res.error || 'Не вдалося оновити статус каналу.', true);
                 return;
             }
             if (res.account) {
@@ -2987,8 +3128,16 @@
                 renderOmniAccounts();
                 updateSendControls(currentConversation());
             }
-            if (res.message) setSendFeedback({ status: 'saved', channel, message: res.message });
+            setChannelActionFeedback(res.message || 'Перевірку каналу завершено.');
             if (typeof loadAlertBell === 'function') loadAlertBell();
+        }
+
+        function setChannelActionFeedback(text, error = false) {
+            const region = $('omniChannelActionFeedback');
+            if (!region) return;
+            region.textContent = text || '';
+            region.hidden = !text;
+            region.classList.toggle('error', error);
         }
 
         function replySlaLabel(conv) {
@@ -3013,8 +3162,9 @@
 
         function renderConversations() {
             renderOmniExplainability();
+            const errorHtml = conversationLoadError ? '<div class="omni-list-feedback" role="status">' + esc(conversationLoadError) + '<button type="button" data-omni-conversations-retry>Спробувати ще</button></div>' : '';
             if (!conversations.length) {
-                convList.innerHTML = omniEmptyHtml();
+                convList.innerHTML = errorHtml || omniEmptyHtml();
                 return;
             }
             convList.innerHTML = conversations.map(c => {
@@ -3023,7 +3173,7 @@
                 const time = c.lastMessageAt ? formatTime(c.lastMessageAt) : '';
                 const badge = c.unreadCount > 0 ? '<span class="omni-conv-badge">' + c.unreadCount + '</span>' : '';
                 const waiting = replyWaitingBadge(c);
-                return '<div class="omni-conv-item' + (isActive ? ' active' : '') + '" data-id="' + c.id + '">' +
+                return '<div class="omni-conv-item' + (isActive ? ' active' : '') + '" data-id="' + c.id + '" role="button" tabindex="0" aria-pressed="' + isActive + '">' +
                     '<div class="omni-conv-avatar-shell">' +
                         '<div class="omni-conv-avatar ch-' + c.channel + '">' + initials + '</div>' +
                         renderChannelDot(c.channel) +
@@ -3041,13 +3191,16 @@
                         waiting +
                     '</div>' +
                 '</div>';
-            }).join('');
+            }).join('') + errorHtml + (conversations.length < conversationTotal
+                ? '<div class="omni-list-feedback"><button type="button" data-omni-conversations-more' + (conversationsLoading ? ' disabled' : '') + '>Ще розмови</button><span>' + conversations.length + ' з ' + conversationTotal + '</span></div>' : '');
         }
 
         function getOmniFilterSummary() {
             const filters = [];
             if (activeChannel !== 'all') filters.push({ label: 'Канал', value: CHANNEL_NAMES[activeChannel] || activeChannel });
             if (searchQuery) filters.push({ label: 'Пошук', value: searchQuery });
+            if (activeStatus) filters.push({ label: 'Статус', value: $('omniStatusFilter').selectedOptions[0]?.textContent || activeStatus });
+            if (onlyMine) filters.push({ label: 'Відповідальний', value: 'Мої розмови' });
             if (selectedConversationQueryId && !currentConvId) filters.push({ label: 'Посилання', value: 'розмова #' + selectedConversationQueryId });
             return filters;
         }
@@ -3081,6 +3234,10 @@
 
         function resetOmniFilters() {
             activeChannel = 'all';
+            activeStatus = '';
+            onlyMine = false;
+            $('omniOnlyMine').checked = false;
+            $('omniStatusFilter').value = '';
             searchQuery = '';
             selectedConversationQueryId = null;
             conversationQueryApplied = true;
@@ -3095,7 +3252,7 @@
         }
 
         function currentConversation() {
-            return conversations.find(c => c.id === currentConvId) || null;
+            return selectedConversationRecord && selectedConversationRecord.id === currentConvId ? selectedConversationRecord : null;
         }
 
         function canSendConversation(conv) {
@@ -3134,7 +3291,7 @@
                 case 'channel_unavailable':
                     return 'Цей канал недоступний для відправки з CRM.';
                 case 'saved':
-                    return 'Повідомлення збережено в CRM. Очікуємо immediate-result провайдера.';
+                    return 'Повідомлення збережено в CRM. Очікуємо відповідь каналу.';
                 default:
                     return 'Стан відправки невідомий.';
             }
@@ -3216,7 +3373,21 @@
             }
         }
 
-        function renderMessages(msgs) {
+        function renderAttachments(message) {
+            const conv = currentConversation();
+            const label = { image: 'Фото', audio: 'Аудіо', video: 'Відео', file: 'Файл', sticker: 'Стікер' }[message.contentType] || 'Вкладення';
+            if (conv?.channel === 'telegram' && message.mediaUrl) return '<button type="button" class="omni-secondary-action" data-omni-attachment="' + Number(message.id) + '">Завантажити · ' + label + '</button>';
+            const attachments = message.meta?.attachments?.length ? message.meta.attachments : (message.mediaUrl ? [{ url: message.mediaUrl }] : []);
+            return attachments.map((attachment, index) => {
+                try {
+                    const url = new URL(attachment.url);
+                    if (url.protocol !== 'https:' || url.username || url.password) return '';
+                    return '<a class="omni-secondary-action" target="_blank" rel="noopener noreferrer" href="' + esc(url.href) + '">' + label + ' ' + (index + 1) + ' ↗</a>';
+                } catch { return ''; }
+            }).join(' ');
+        }
+
+        function renderMessages(msgs, options = {}) {
             messages.innerHTML = msgs.map(m => {
                 const dir = m.direction;
                 const isAI = m.aiGenerated;
@@ -3226,12 +3397,13 @@
                 const sendTruthHtml = dir === 'outbound' ? renderSendTruthState(sendTruthFromMessage(m)) : '';
                 return '<div class="' + cls + '">' +
                     senderHtml +
-                    '<div>' + esc(m.content || '') + '</div>' +
+                    '<div class="omni-msg-content">' + esc(m.content || '') + '</div>' +
+                    renderAttachments(m) +
                     sendTruthHtml +
                     '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>' +
                 '</div>';
             }).join('');
-            messages.scrollTop = messages.scrollHeight;
+            if (options.scrollToBottom !== false) messages.scrollTop = messages.scrollHeight;
         }
 
         function renderQuickReplies() {
@@ -3593,10 +3765,13 @@
         }
 
         async function loadLeadAssistantSettings() {
+            const epoch = workspaceEpoch;
             const res = await api('/lead-assistant/settings');
+            if (epoch !== workspaceEpoch) return;
             if (res.success) {
                 leadAssistantState.settings = res.settings || {};
                 const ctx = await api('/lead-assistant/sales-context');
+                if (epoch !== workspaceEpoch) return;
                 if (ctx.success) leadAssistantState.salesContext = ctx.salesContext || null;
                 const analytics = await api('/lead-assistant/analytics');
                 if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
@@ -3607,15 +3782,21 @@
 
         async function analyzeLeadAssistant() {
             if (!currentConvId) return;
+            const convId = currentConvId;
+            const epoch = workspaceEpoch;
+            const requestSeq = ++assistantRequestSeq;
             leadAssistantState.loading = true;
             leadAssistantState.error = '';
             renderLeadAssistant();
-            const res = await api('/conversations/' + currentConvId + '/lead-assistant/analyze', { method: 'POST' });
+            const res = await api('/conversations/' + convId + '/lead-assistant/analyze', { method: 'POST' });
+            if (requestSeq !== assistantRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId) return;
             leadAssistantState.loading = false;
             if (res.success) {
                 leadAssistantState.analysis = res.analysis;
                 if (res.analysis?.settings) leadAssistantState.settings = res.analysis.settings;
                 const analytics = await api('/lead-assistant/analytics');
+                if (epoch !== workspaceEpoch) return;
+                if (requestSeq !== assistantRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId) return;
                 if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
             } else {
                 leadAssistantState.error = res.error || 'AI аналіз недоступний';
@@ -3625,12 +3806,17 @@
 
         async function openLeadAssistantPanel() {
             if (!currentConvId) return;
+            const convId = currentConvId;
+            const epoch = workspaceEpoch;
+            assistantReturnFocus = document.activeElement;
             leadAssistantState.open = true;
             if (leadAssistantDrawer) leadAssistantDrawer.hidden = false;
             if (leadAssistantBackdrop) leadAssistantBackdrop.hidden = false;
+            leadAssistantDrawer?.querySelector('button')?.focus();
             const conv = currentConversation();
             if (leadAssistantSubtitle) leadAssistantSubtitle.textContent = conv ? (conv.customerName || conv.externalId || 'Розмова') : 'OmniClaw';
             if (!leadAssistantState.settings) await loadLeadAssistantSettings();
+            if (epoch !== workspaceEpoch || convId !== currentConvId || !leadAssistantState.open) return;
             renderLeadAssistant();
             await analyzeLeadAssistant();
         }
@@ -3639,6 +3825,7 @@
             leadAssistantState.open = false;
             if (leadAssistantDrawer) leadAssistantDrawer.hidden = true;
             if (leadAssistantBackdrop) leadAssistantBackdrop.hidden = true;
+            if (assistantReturnFocus?.isConnected) assistantReturnFocus.focus();
         }
 
         function aiCsv(value) {
@@ -3904,6 +4091,7 @@
             const url = new URL(window.location.href);
             if (convId) url.searchParams.set('conversation', String(convId));
             else url.searchParams.delete('conversation');
+            url.searchParams.delete('conversationId');
             const state = convId ? { omniConversation: convId } : {};
             const method = replace ? 'replaceState' : 'pushState';
             history[method](state, '', url.pathname + url.search + url.hash);
@@ -3917,9 +4105,13 @@
 
         async function selectConversationFromQuery() {
             if (!selectedConversationQueryId || conversationQueryApplied) return;
+            const convId = selectedConversationQueryId;
+            const epoch = workspaceEpoch;
+            const listSeq = conversationsRequestSeq;
             let target = conversations.find(c => c.id === selectedConversationQueryId);
             if (!target) {
                 const context = await fetchConversationContext(selectedConversationQueryId);
+                if (epoch !== workspaceEpoch || listSeq !== conversationsRequestSeq || convId !== selectedConversationQueryId) return;
                 target = context && context.conversation;
                 if (target && !conversations.some(c => c.id === target.id)) {
                     conversations = [target].concat(conversations);
@@ -3987,10 +4179,11 @@
         async function loadCaseContext(convId) {
             if (!caseContextEl) return;
             const requestSeq = ++caseContextRequestSeq;
+            const epoch = workspaceEpoch;
             caseContextEl.hidden = false;
             caseContextEl.innerHTML = '<div class="omni-case-row"><span class="omni-case-pill unresolved">Завантаження CRM-контексту...</span></div>';
             const context = await fetchConversationContext(convId);
-            if (requestSeq !== caseContextRequestSeq) return;
+            if (requestSeq !== caseContextRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId) return;
             if (context) {
                 renderCaseContext(context);
             } else {
@@ -3999,10 +4192,65 @@
         }
 
         // ---- Actions ----
+        function saveCurrentDraft() {
+            if (selectedDraftKey) conversationDrafts.set(selectedDraftKey, {
+                text: input.value,
+                replyExpected: !!replyExpectedEl?.checked
+            });
+        }
+
+        function clearConversationSelection(options = {}) {
+            saveCurrentDraft();
+            currentConvId = null;
+            selectedConversationRecord = null;
+            selectedDraftKey = null;
+            selectedConversationQueryId = null;
+            conversationQueryApplied = true;
+            messagesRequestSeq++;
+            caseContextRequestSeq++;
+            assistantRequestSeq++;
+            messagesLoading = false;
+            messageHistory = [];
+            messageTotal = 0;
+            isSending = false;
+            input.value = '';
+            input.style.height = 'auto';
+            emptyState.style.display = '';
+            chatHeader.style.display = 'none';
+            messages.style.display = 'none';
+            messages.innerHTML = '';
+            inputArea.style.display = 'none';
+            quickRepliesEl.style.display = 'none';
+            if (historyControls) historyControls.hidden = true;
+            if (caseContextEl) caseContextEl.hidden = true;
+            closeLeadAssistantPanel();
+            leadAssistantState.analysis = null;
+            leadAssistantState.loading = false;
+            setSendFeedback(null);
+            updateSendControls(null);
+            if (omniContainer) omniContainer.classList.remove('has-conversation');
+            if (!options.skipUrl) setConversationUrl(null, true);
+        }
+
         function selectConversation(convId, options = {}) {
-            currentConvId = convId;
             const conv = conversations.find(c => c.id === convId);
             if (!conv) return;
+            saveCurrentDraft();
+            currentConvId = convId;
+            selectedConversationRecord = conv;
+            selectedDraftKey = getOmniBusinessContext() + ':' + convId;
+            const draft = conversationDrafts.get(selectedDraftKey) || { text: '', replyExpected: false };
+            input.value = draft.text;
+            input.style.height = 'auto';
+            isSending = pendingSends.has(selectedDraftKey);
+            assistantRequestSeq++;
+            leadAssistantState.analysis = null;
+            leadAssistantState.loading = false;
+            messageHistory = [];
+            messageTotal = 0;
+            messages.innerHTML = '';
+            messagesLoading = false;
+            if (omniContainer) omniContainer.classList.add('has-conversation');
             selectedConversationQueryId = convId;
             conversationQueryApplied = true;
             if (!options.skipUrl) setConversationUrl(convId, !!options.replaceUrl);
@@ -4029,13 +4277,46 @@
                 openLeadAssistantPanel();
             }
             setSendFeedback(null);
-            if (replyExpectedEl) replyExpectedEl.checked = false;
+            if (replyExpectedEl) replyExpectedEl.checked = draft.replyExpected;
             updateSendControls(conv);
 
+            $('omniCloseConv').textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
+            $('omniCloseConv').title = $('omniCloseConv').textContent;
             renderConversations();
             loadMessages(convId);
+            loadConversationControls(conv);
             loadCaseContext(convId);
             renderQuickReplies();
+        }
+
+        async function loadConversationControls(conv) {
+            const epoch = workspaceEpoch;
+            $('omniConversationStatus').value = conv.status || 'open';
+            const select = $('omniAssignee');
+            select.disabled = true;
+            select.innerHTML = '<option value="">Завантаження менеджерів…</option>';
+            const res = await api('/operators');
+            if (epoch !== workspaceEpoch || currentConvId !== conv.id) return;
+            if (!res.success || !Array.isArray(res.data)) { select.innerHTML = '<option value="">Менеджери недоступні</option>'; return; }
+            select.innerHTML = '<option value="">Без відповідального</option>' + res.data.map(operator => '<option value="' + esc(operator.username) + '">' + esc(operator.label) + '</option>').join('');
+            if (conv.assignedTo && !res.data.some(operator => operator.username === conv.assignedTo)) select.insertAdjacentHTML('beforeend', '<option value="' + esc(conv.assignedTo) + '" disabled>' + esc(conv.assignedTo) + ' · недоступний</option>');
+            select.value = conv.assignedTo || ''; select.disabled = false;
+        }
+
+        async function updateConversationField(control, field) {
+            const id = currentConvId, epoch = workspaceEpoch;
+            if (!id) return;
+            const conv = currentConversation();
+            const previous = field === 'status' ? (conv.status || 'open') : (conv.assignedTo || '');
+            control.disabled = true;
+            const value = control.value;
+            const res = await api('/conversations/' + id, { method: 'PATCH', body: JSON.stringify({ [field]: value || null }) });
+            if (epoch !== workspaceEpoch || currentConvId !== id) return;
+            control.disabled = false;
+            if (!res.success) { control.value = previous; setSendFeedback({ status: 'provider_failed_immediate', message: res.error || 'Не вдалося оновити розмову.' }); return; }
+            if (field === 'status') conv.status = value; else conv.assignedTo = value || null;
+            $('omniCloseConv').textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
+            loadConversations(); loadStats();
         }
 
         async function sendMessage() {
@@ -4046,23 +4327,52 @@
                 updateSendControls(conv);
                 return;
             }
+            const convId = currentConvId;
+            const draftKey = selectedDraftKey;
+            const epoch = workspaceEpoch;
+            const sendContext = getOmniBusinessContext();
+            const replyExpected = !!(replyExpectedEl && replyExpectedEl.checked);
+            let request = sendRequests.get(draftKey);
+            if (!request || request.text !== text) {
+                request = { text, id: Array.from(crypto.getRandomValues(new Uint8Array(20)), value => value.toString(16).padStart(2, '0')).join('') };
+                sendRequests.set(draftKey, request);
+            }
+            saveCurrentDraft();
+            pendingSends.add(draftKey);
             isSending = true;
             updateSendControls(conv);
-            setSendFeedback({
+            // Keep only a digest and request ID across reloads; never store message text here.
+            const retryKey = 'omni-send-retry:' + draftKey;
+            try {
+                if (crypto.subtle) {
+                    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), value => value.toString(16).padStart(2, '0')).join('');
+                    const previous = JSON.parse(sessionStorage.getItem(retryKey) || 'null');
+                    if (previous?.digest === digest && /^[a-f0-9]{40}$/.test(previous.id)) request.id = previous.id;
+                    sessionStorage.setItem(retryKey, JSON.stringify({ digest, id: request.id }));
+                }
+            } catch { /* The in-memory request ID still protects retries if browser storage is unavailable. */ }
+            if (epoch === workspaceEpoch && convId === currentConvId) setSendFeedback({
                 status: 'saved',
                 channel: conv?.channel,
-                message: 'Зберігаємо в CRM і чекаємо immediate-result провайдера...'
+                message: 'Надсилаємо повідомлення…'
             });
 
-            const res = await api('/conversations/' + currentConvId + '/send', {
+            const res = await api('/conversations/' + convId + '/send', {
                 method: 'POST',
+                requestBusinessContext: sendContext,
                 body: JSON.stringify({
                     text,
-                    reply_expected: !!(replyExpectedEl && replyExpectedEl.checked)
+                    client_request_id: request.id,
+                    reply_expected: replyExpected
                 })
             });
 
-            if (res.success) {
+            pendingSends.delete(draftKey);
+            if (res.success) sendRequests.delete(draftKey);
+            if (res.success) { try { sessionStorage.removeItem(retryKey); } catch {} }
+            const isCurrent = epoch === workspaceEpoch && convId === currentConvId && draftKey === selectedDraftKey;
+            if (res.success && conversationDrafts.get(draftKey)?.text.trim() === text) conversationDrafts.delete(draftKey);
+            if (res.success && isCurrent) {
                 input.value = '';
                 input.style.height = 'auto';
                 if (replyExpectedEl) replyExpectedEl.checked = false;
@@ -4071,33 +4381,37 @@
                     channel: conv?.channel,
                     message: 'Повідомлення збережено, але стан провайдера не повернувся.'
                 });
-                loadMessages(currentConvId);
-                loadConversations();
-            } else {
+                loadMessages(convId, { refresh: true });
+            } else if (!res.success && isCurrent) {
                 setSendFeedback(res.sendTruth || {
                     status: 'provider_failed_immediate',
                     channel: conv?.channel,
                     message: res.error || 'Не вдалося виконати відправку. Повідомлення не вважається доставленим.'
                 });
             }
-            isSending = false;
-            updateSendControls(currentConversation() || conv);
+            if (epoch === workspaceEpoch) loadConversations();
+            isSending = pendingSends.has(selectedDraftKey);
+            updateSendControls(currentConversation());
         }
 
         async function closeConversation() {
             if (!currentConvId) return;
-            await api('/conversations/' + currentConvId, {
+            const convId = currentConvId;
+            const epoch = workspaceEpoch;
+            const closeButton = $('omniCloseConv');
+            if (closeButton.disabled) return;
+            closeButton.disabled = true;
+            const res = await api('/conversations/' + convId, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: 'closed' })
+                body: JSON.stringify({ status: currentConversation()?.status === 'closed' ? 'open' : 'closed' })
             });
-            currentConvId = null;
-            emptyState.style.display = '';
-            chatHeader.style.display = 'none';
-            messages.style.display = 'none';
-            inputArea.style.display = 'none';
-            quickRepliesEl.style.display = 'none';
-            if (caseContextEl) caseContextEl.hidden = true;
-            setConversationUrl(null, true);
+            closeButton.disabled = false;
+            if (epoch !== workspaceEpoch) return;
+            if (!res.success) {
+                if (convId === currentConvId) setSendFeedback({ status: 'provider_failed_immediate', message: res.error || 'Не вдалося закрити розмову.' });
+                return;
+            }
+            if (convId === currentConvId) clearConversationSelection();
             loadConversations();
             loadStats();
         }
@@ -4127,9 +4441,62 @@
         }
 
         // ---- Events ----
+        $('omniOnlyMine').addEventListener('change', event => { onlyMine = event.target.checked; loadConversations(); });
+        $('omniConversationStatus').addEventListener('change', event => updateConversationField(event.target, 'status'));
+        $('omniAssignee').addEventListener('change', event => updateConversationField(event.target, 'assigned_to'));
+        $('omniStatusFilter').addEventListener('change', event => { activeStatus = event.target.value; loadConversations(); });
+        messages.addEventListener('scroll', () => { if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64) markVisibleMessagesRead(); });
+        document.addEventListener('visibilitychange', () => { if (!document.hidden) markVisibleMessagesRead(); });
+        messages.addEventListener('click', async event => {
+            const button = event.target.closest('[data-omni-attachment]');
+            if (!button || button.disabled) return;
+            const label = button.textContent;
+            button.disabled = true; button.textContent = 'Завантаження…';
+            try {
+                const response = await fetch(omniApiUrl('/messages/' + button.dataset.omniAttachment + '/attachment'), { headers: getHeaders() });
+                if (!response.ok) throw new Error((await response.json()).error || 'Не вдалося завантажити');
+                const blobUrl = URL.createObjectURL(await response.blob());
+                const link = document.createElement('a'); link.href = blobUrl;
+                link.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'omni-attachment';
+                link.click(); setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+                button.textContent = label;
+            } catch (error) { button.textContent = error.message + ' · Повторити'; }
+            finally { button.disabled = false; }
+        });
         convList.addEventListener('click', e => {
+            const more = e.target.closest('[data-omni-conversations-more]');
+            if (more) {
+                if (!conversationsLoading) {
+                    more.disabled = true;
+                    loadConversations({ append: true });
+                }
+                return;
+            }
+            if (e.target.closest('[data-omni-conversations-retry]')) {
+                loadConversations();
+                return;
+            }
             const item = e.target.closest('.omni-conv-item');
             if (item) selectConversation(parseInt(item.dataset.id));
+        });
+        convList.addEventListener('keydown', e => {
+            const item = e.target.closest('.omni-conv-item');
+            if (item && (e.key === 'Enter' || e.key === ' ')) {
+                e.preventDefault();
+                selectConversation(parseInt(item.dataset.id));
+            }
+        });
+        if (historyControls) historyControls.addEventListener('click', e => {
+            const button = e.target.closest('[data-omni-history]');
+            if (!button) return;
+            loadMessages(currentConvId, button.dataset.omniHistory === 'older' ? { older: true } : { refresh: true });
+        });
+        $('omniBackToList').addEventListener('click', () => {
+            const selectedId = currentConvId;
+            clearConversationSelection();
+            renderConversations();
+            const previous = convList.querySelector('[data-id="' + selectedId + '"]');
+            if (previous) previous.focus();
         });
 
         $('omniSendBtn').addEventListener('click', sendMessage);
@@ -4223,11 +4590,26 @@
             });
         }
         document.addEventListener('keydown', e => {
+            if (e.target.matches('.omni-mode-btn') && ['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(e.key)) {
+                const tabs = Array.from(document.querySelectorAll('.omni-mode-btn'));
+                const index = tabs.indexOf(e.target);
+                const next = e.key === 'Home' ? 0 : e.key === 'End' ? tabs.length - 1 : (index + (e.key === 'ArrowRight' ? 1 : -1) + tabs.length) % tabs.length;
+                e.preventDefault(); setOmniMode(tabs[next].dataset.omniMode); tabs[next].focus();
+            }
             if (e.key === 'Escape' && leadAssistantState.open) {
                 closeLeadAssistantPanel();
                 return;
             }
             if (e.key === 'Escape' && connectionModal && !connectionModal.hidden) closeConnectionModal();
+            if (e.key === 'Tab') {
+                const modal = connectionModal && !connectionModal.hidden ? connectionModal : (leadAssistantState.open ? leadAssistantDrawer : null);
+                if (!modal) return;
+                const controls = Array.from(modal.querySelectorAll('button, input, select, textarea, a[href], [tabindex="0"]')).filter(el => !el.disabled && !el.hidden && el.getClientRects().length);
+                if (!controls.length) return;
+                const first = controls[0], last = controls[controls.length - 1];
+                if (e.shiftKey && (document.activeElement === first || !modal.contains(document.activeElement))) { e.preventDefault(); last.focus(); }
+                else if (!e.shiftKey && (document.activeElement === last || !modal.contains(document.activeElement))) { e.preventDefault(); first.focus(); }
+            }
         });
         document.addEventListener('click', async e => {
             const modeBtn = e.target.closest('button[data-omni-mode]');
@@ -4279,24 +4661,27 @@
 
         // WebSocket for real-time updates
         function setupWS() {
-            if (typeof window.ws !== 'undefined' && window.ws) {
-                const origOnMessage = window.ws.onmessage;
-                window.ws.onmessage = function(event) {
-                    if (origOnMessage) origOnMessage.call(this, event);
-                    try {
-                        const data = JSON.parse(event.data);
-                        if (data.type === 'omni:message' || data.type === 'omni:conversation') {
-                            var evtBusinessContext = data.data && data.data.conversation && data.data.conversation.businessContext;
-                            if (evtBusinessContext && evtBusinessContext !== getOmniBusinessContext()) return;
-                            loadConversations();
-                            loadStats();
-                            var evtConvId = data.data && (data.data.conversation && data.data.conversation.id || data.data.message && data.data.message.conversationId);
-                        if (currentConvId && evtConvId === currentConvId) {
-                                loadMessages(currentConvId);
-                            }
-                        }
-                    } catch (e) { /* ignore non-JSON */ }
-                };
+            let refreshTimer;
+            document.addEventListener('ws:omni', event => {
+                if (event.detail?.businessContext !== getOmniBusinessContext()) return;
+                clearTimeout(refreshTimer);
+                refreshTimer = setTimeout(refreshOmniWorkspace, 200);
+            });
+            window.addEventListener('ws:reconnected', refreshOmniWorkspace);
+        }
+
+        async function refreshOmniWorkspace() {
+            if (refreshPending || document.hidden) return;
+            refreshPending = true;
+            try {
+                await Promise.all([
+                    loadOmniAccounts(),
+                    conversationsLoading ? Promise.resolve() : loadConversations(),
+                    loadStats(),
+                    currentConvId ? loadMessages(currentConvId, { refresh: true }) : Promise.resolve()
+                ]);
+            } finally {
+                refreshPending = false;
             }
         }
 
@@ -4325,6 +4710,9 @@
                 selectedConversationQueryId = queryConversation;
                 conversationQueryApplied = false;
                 selectConversationFromQuery();
+            } else {
+                clearConversationSelection({ skipUrl: true });
+                renderConversations();
             }
         });
 
@@ -4335,12 +4723,11 @@
             if (openAccountPanel || accountPanelChannel) setOmniMode('channels');
             await Promise.all([loadConversations(), loadQuickReplies(), loadStats()]);
             setupWS();
-            // Refresh every 30s
-            setInterval(() => {
-                loadOmniAccounts();
-                loadConversations();
-                loadStats();
-            }, 30000);
+            // Keep the open conversation current even if live transport is unavailable.
+            setInterval(refreshOmniWorkspace, 15000);
+            document.addEventListener('visibilitychange', () => {
+                if (!document.hidden) refreshOmniWorkspace();
+            });
         }
 
         // Auth check (standalone page pattern — same as chat-page.js)

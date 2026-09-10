@@ -533,8 +533,8 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     && status !== 'misconfigured'
     && status !== 'needs_rebind'
     && Boolean(summary.connected);
-  const sendCapable = Boolean(connected && def.sendSupported && status !== 'history_only' && status !== 'webhook_missing');
-  const receiveCapable = Boolean(connected && def.receiveSupported && status !== 'token_expired');
+  const sendCapable = Boolean(connected && def.sendSupported && status !== 'history_only' && status !== 'provider_unreachable');
+  const receiveCapable = Boolean(connected && def.receiveSupported && !['webhook_missing', 'limited', 'provider_unreachable'].includes(status));
   const limited = status === 'limited' || status === 'webhook_missing' || status === 'history_only' || status === 'provider_unreachable';
 
   const warning = row?.warning
@@ -988,7 +988,7 @@ async function upsertOmniConnection(channel, payload = {}, user = {}, options = 
     throw err;
   }
 
-  const check = await verifyProvider(def, normalized.runtime, { mode: 'connect' });
+  const check = await verifyProvider(def, normalized.runtime, { mode: 'connect', businessContext, expectedWebhookUrl: publicWebhookUrl(def, scopedOptions) });
   const status = statusFromVerification(def, check);
   const display = displayNameFromRuntime(def, normalized.runtime, check);
   const masked = maskedIdentifierFromRuntime(def, normalized.runtime);
@@ -1061,7 +1061,7 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
   const row = await loadConnectionRow(baseDef.channel, scopedOptions);
   const def = activeDefinitionForRow(baseDef, row);
   const runtime = mergeRuntimeConfig(def, row, scopedOptions);
-  const check = await verifyProvider(def, runtime, { mode: options.mode || 'recheck' });
+  const check = await verifyProvider(def, runtime, { mode: options.mode || 'recheck', businessContext, expectedWebhookUrl: publicWebhookUrl(def, scopedOptions) });
   const status = statusFromVerification(def, check);
   const display = displayNameFromRuntime(def, runtime, check);
   const masked = maskedIdentifierFromRuntime(def, runtime);
@@ -1312,6 +1312,17 @@ async function httpsJson(options, body = null) {
   });
 }
 
+function matchesInboxWebhook(actual, expected, businessContext) {
+  try {
+    if (!actual || !expected) return false;
+    const target = new URL(actual);
+    const wanted = new URL(expected, target.origin);
+    return target.protocol === 'https:' && !target.username && !target.password
+      && target.origin === wanted.origin && target.pathname === wanted.pathname
+      && omniBusinessContext({ businessContext: target.searchParams.get('businessContext') || target.searchParams.get('business_context') }) === omniBusinessContext({ businessContext });
+  } catch { return false; }
+}
+
 async function verifyTelegram(runtime, context = {}) {
   if (!runtime.botToken && telegramBridgeRuntimeConfigured(runtime)) {
     return {
@@ -1329,7 +1340,7 @@ async function verifyTelegram(runtime, context = {}) {
     });
     if (result.ok && result.result) {
       const username = result.result.username ? `@${result.result.username}` : runtime.botUsername || 'Telegram bot';
-      const needsReadinessCheck = context.mode === 'test' || context.mode === 'recheck';
+      const needsReadinessCheck = !context.reportBot;
       if (!needsReadinessCheck) {
         return { status: 'success', message: `Токен дійсний. Бот: ${username}.`, displayName: username };
       }
@@ -1350,7 +1361,7 @@ async function verifyTelegram(runtime, context = {}) {
           details: { webhookUrl: null, expectedPath },
         };
       }
-      if (!webhookUrl.includes(expectedPath)) {
+      if (!matchesInboxWebhook(webhookUrl, context.expectedWebhookUrl || expectedPath, context.businessContext)) {
         return {
           status: 'webhook_missing',
           message: `Токен дійсний. Бот: ${username}. Але webhook веде не в Omni inbox (${webhookUrl}). Report Bot webhook не замінює /api/omni/webhook/telegram.`,
@@ -1406,7 +1417,7 @@ async function verifyTelegram(runtime, context = {}) {
 }
 
 async function verifyReportBot(runtime) {
-  const base = await verifyTelegram({ botToken: runtime.botToken, botUsername: runtime.botUsername }, { mode: 'connect' });
+  const base = await verifyTelegram({ botToken: runtime.botToken, botUsername: runtime.botUsername }, { mode: 'connect', reportBot: true });
   if (base.status !== 'success') return base;
   return {
     ...base,
@@ -1414,7 +1425,7 @@ async function verifyReportBot(runtime) {
   };
 }
 
-async function verifyViber(runtime) {
+async function verifyViber(runtime, context = {}) {
   try {
     const result = await httpsJson({
       hostname: 'chatapi.viber.com',
@@ -1423,7 +1434,8 @@ async function verifyViber(runtime) {
       headers: { 'X-Viber-Auth-Token': runtime.token },
     }, {});
     if (result.status === 0) {
-      return { status: 'success', message: `Viber токен дійсний. Акаунт: ${result.name || runtime.senderName || 'Viber bot'}.`, displayName: result.name || runtime.senderName || 'Viber bot' };
+      const ready = matchesInboxWebhook(result.webhook, context.expectedWebhookUrl || '/api/omni/webhook/viber', context.businessContext);
+      return { status: ready ? 'success' : 'webhook_missing', message: ready ? 'Viber токен і адреса webhook перевірені.' : 'Viber токен дійсний, але адреса webhook не відповідає цьому бізнесу CRM.', displayName: result.name || runtime.senderName || 'Viber bot' };
     }
     return { status: 'failed_auth', message: result.status_message || `Viber status ${result.status}`, warning: result.status_message || 'Viber token invalid' };
   } catch (err) {
@@ -1444,15 +1456,15 @@ function verifyMeta(kind) {
         path: `/v21.0/me?fields=id,name&access_token=${encodeURIComponent(token)}`,
         method: 'GET',
       });
-      const hasWebhookSetup = Boolean(runtime.verifyToken || process.env.META_VERIFY_TOKEN);
-      const status = hasWebhookSetup ? 'success' : 'webhook_missing';
+      const hasWebhookSetup = Boolean(runtime.verifyToken && runtime.appSecret);
+      const status = hasWebhookSetup ? 'partial' : 'webhook_missing';
       const message = hasWebhookSetup
-        ? `Meta token дійсний. Акаунт: ${result.name || runtime.pageName || runtime.accountName || kind}.`
+        ? `Meta token дійсний. Підписки webhook, дозволи messaging та доставка ще потребують перевірки в кабінеті Meta.`
         : `Meta token дійсний, але webhook verify token не вказаний. Відправка можлива, прийом подій потребує webhook.`;
       return {
         status,
         message,
-        warning: status === 'webhook_missing' ? 'Webhook verify token не вказаний.' : null,
+        warning: status === 'webhook_missing' ? 'Потрібні webhook verify token та App Secret.' : 'Доступ до профілю підтверджено; прийом і доставка DM ще не підтверджені.',
         displayName: result.name || runtime.pageName || runtime.accountName || kind,
         details: { id: result.id || runtime.pageId || null },
       };

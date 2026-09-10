@@ -333,6 +333,10 @@ var ParkWS = (function () {
         }
 
         switch (message.type) {
+            case 'omni:message':
+            case 'omni:conversation':
+                document.dispatchEvent(new CustomEvent('ws:omni', { detail: message.data || {} }));
+                break;
             case 'auth:success':
                 var wasReconnect = _reconnectAttempts > 0;
                 _connected = true;

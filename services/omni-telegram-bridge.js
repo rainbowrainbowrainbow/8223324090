@@ -43,7 +43,8 @@ async function sendTelegramBridgeMessage(externalId, text, options = {}) {
     try { payload = raw ? JSON.parse(raw) : {}; } catch { payload = { raw }; }
     if (!response.ok) {
       return {
-        ok: false,
+          ok: false,
+          uncertain: response.status >= 500,
         description: payload.detail || payload.error || `Telegram bridge HTTP ${response.status}`,
         error_code: response.status,
       };
@@ -51,7 +52,7 @@ async function sendTelegramBridgeMessage(externalId, text, options = {}) {
     return payload && typeof payload === 'object' ? payload : { ok: true };
   } catch (err) {
     log.warn('Telegram bridge send failed', { error: err.message });
-    return { ok: false, description: err.message || 'Telegram bridge send failed' };
+    return { ok: false, uncertain: true, description: 'Telegram bridge result is unconfirmed' };
   } finally {
     clearTimeout(timer);
   }

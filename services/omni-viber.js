@@ -5,6 +5,7 @@
  * Uses native https module (no axios / no npm deps).
  */
 const https = require('https');
+const { parseProviderJson } = require('./omni-webhook-payload');
 const { createLogger } = require('../utils/logger');
 const { resolveOmniRuntimeConfig } = require('./omni-accounts');
 
@@ -51,7 +52,7 @@ function viberRequest(path, body, token = VIBER_TOKEN) {
                     return;
                 }
                 try {
-                    const parsed = JSON.parse(data);
+                    const parsed = parseProviderJson(data);
                     resolve(parsed);
                 } catch (err) {
                     reject(new Error(`Viber API returned non-JSON (HTTP ${httpRes.statusCode}): ${data.slice(0, 200)}`));
@@ -94,7 +95,7 @@ function viberRequest(path, body, token = VIBER_TOKEN) {
  */
 async function sendViber(receiverId, text, options = {}) {
     const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: options.businessContext || options.business_context });
-    const token = runtime.token || VIBER_TOKEN;
+    const token = runtime.token;
     const senderName = runtime.senderName || VIBER_SENDER_NAME;
     if (!token) {
         log.warn('sendViber called but VIBER_TOKEN not configured');
@@ -139,7 +140,7 @@ async function sendViber(receiverId, text, options = {}) {
         return { success: false, error: response.status_message || `Viber status ${response.status}` };
     } catch (err) {
         log.error('sendViber failed', err);
-        return { success: false, error: err.message };
+        return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message };
     }
 }
 
@@ -151,7 +152,7 @@ async function sendViber(receiverId, text, options = {}) {
  */
 async function setViberWebhook(url, eventTypes) {
     const runtime = await resolveOmniRuntimeConfig('viber');
-    const token = runtime.token || VIBER_TOKEN;
+    const token = runtime.token;
     if (!token) {
         log.warn('setViberWebhook called but VIBER_TOKEN not configured');
         return { success: false, error: 'VIBER_TOKEN not configured' };

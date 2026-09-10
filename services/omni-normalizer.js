@@ -123,7 +123,7 @@ function normalizeTelegram(payload) {
 
   const result = buildResult({
     channel: 'telegram',
-    externalId: String(from.id || message.chat?.id || ''),
+    externalId: String(message.chat?.id || from.id || ''),
     senderName: [from.first_name, from.last_name].filter(Boolean).join(' ') || null,
     text,
     contentType,
@@ -136,6 +136,7 @@ function normalizeTelegram(payload) {
       messageId: message.message_id || null,
       isBot: from.is_bot || false,
       language: from.language_code || null,
+      editedAt: message.edit_date || null,
     },
   });
 
@@ -383,8 +384,9 @@ function pickSmsProviderStatus(payload = {}) {
 function mapSmsDeliveryStatus(status) {
   const normalized = String(status || '').trim().toUpperCase();
   if (!normalized) return null;
-  if (['DELIVRD', 'DELIVERED', 'SUCCESS', 'SENT', 'ACCEPTD', 'ACCEPTED'].includes(normalized)) return 'delivered';
-  if (['UNDELIV', 'UNDELIVERED', 'REJECTD', 'REJECTED', 'EXPIRED', 'FAILED', 'ERROR', 'CANCELLED'].includes(normalized)) {
+  if (['DELIVRD', 'DELIVERED', 'SUCCESS'].includes(normalized)) return 'delivered';
+  if (['SENT', 'ACCEPTD', 'ACCEPTED'].includes(normalized)) return 'accepted';
+  if (['UNDELIV', 'UNDELIVERED', 'REJECTD', 'REJECTED', 'EXPIRED', 'FAILED', 'ERROR', 'CANCELLED', 'STOPED', 'INSUFFICIENTFUNDS', 'REFUND'].includes(normalized)) {
     return 'later_failed';
   }
   return null;
@@ -439,6 +441,7 @@ function classifySmsWebhook(payload = {}) {
 // ---------------------------------------------------------------------------
 
 function normalizeFacebook(payload) {
+  if (!payload || (!payload.entry && (!payload.message || payload.message.is_echo))) return null;
   // Accept both full webhook payload AND individual messaging event (from route pre-parse)
   let messaging;
   if (payload.sender && (payload.message || payload.postback)) {
@@ -449,6 +452,7 @@ function normalizeFacebook(payload) {
   }
   const sender = messaging.sender || {};
   const message = messaging.message || {};
+  if (!messaging.message || message.is_echo) return null;
 
   let contentType = 'text';
   let mediaUrl = null;
@@ -487,10 +491,12 @@ function normalizeFacebook(payload) {
     meta: {
       messageId: message.mid || null,
       timestamp: messaging.timestamp || null,
+      attachments: (message.attachments || []).map(attachment => ({ type: attachment.type || 'file', url: attachment.payload?.url || null })).filter(attachment => attachment.url),
       isEcho: message.is_echo || false,
     },
   });
 
+  if (!result) return null;
   log.debug('Normalized Facebook payload', { externalId: result.externalId, contentType });
   return result;
 }
@@ -500,6 +506,7 @@ function normalizeFacebook(payload) {
 // ---------------------------------------------------------------------------
 
 function normalizeInstagram(payload) {
+  if (!payload || (!payload.entry && (!payload.message || payload.message.is_echo))) return null;
   // Accept both full webhook payload AND individual messaging event (from route pre-parse)
   let messaging;
   if (payload.sender && (payload.message || payload.postback)) {
@@ -510,6 +517,7 @@ function normalizeInstagram(payload) {
   }
   const sender = messaging.sender || {};
   const message = messaging.message || {};
+  if (!messaging.message || message.is_echo) return null;
 
   let contentType = 'text';
   let mediaUrl = null;
@@ -549,10 +557,12 @@ function normalizeInstagram(payload) {
     meta: {
       messageId: message.mid || null,
       timestamp: messaging.timestamp || null,
+      attachments: (message.attachments || []).map(attachment => ({ type: attachment.type || 'file', url: attachment.payload?.url || null })).filter(attachment => attachment.url),
       isStoryReply: !!(message.reply_to && message.reply_to.story),
     },
   });
 
+  if (!result) return null;
   log.debug('Normalized Instagram payload', { externalId: result.externalId, contentType });
   return result;
 }

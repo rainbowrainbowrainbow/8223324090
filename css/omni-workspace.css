@@ -1,5 +1,29 @@
 /* Pulse-aligned surfaces and controls; preserve existing mode and mobile behavior. */
 .omni-workspace-title { min-width: 0; }
+.omni-msg-content { white-space: pre-wrap; overflow-wrap: anywhere; }
+.omni-history-controls, .omni-list-feedback { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 10px 16px; font-size: 12px; color: var(--text-secondary); }
+.omni-history-controls[hidden], .omni-channel-action-feedback[hidden] { display: none; }
+.omni-history-controls button, .omni-list-feedback button, .omni-back-button { min-height: 40px; padding: 8px 12px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; cursor: pointer; }
+.omni-back-button { display: none; }
+.omni-channel-action-feedback { margin: 0 20px 12px; padding: 12px 16px; border: 1px solid var(--border-color); border-radius: 12px; color: var(--text-primary); background: var(--bg-secondary); overflow-wrap: anywhere; }
+.omni-channel-action-feedback.error { border-color: var(--danger, #ef4444); }
+.omni-workspace-shell:has(.omni-container[data-omni-mode="inbox"]) > .omni-channel-action-feedback { display: none; }
+.dark-mode .omni-case-pill.unresolved { color: #e2e8f0; background: #334155; }
+.omni-channel-badge--telegram { color: #075985; }
+.omni-channel-badge--viber { color: #5b21b6; }
+.omni-channel-badge--sms { color: #166534; }
+.omni-channel-badge--facebook { color: #1e40af; }
+.omni-channel-badge--instagram { color: #831843; }
+.omni-channel-badge--binotel { color: #9a3412; }
+.dark-mode .omni-channel-badge--telegram { color: #7dd3fc; }
+.dark-mode .omni-channel-badge--viber { color: #c7bfff; }
+.dark-mode .omni-channel-badge--sms { color: #86efac; }
+.dark-mode .omni-channel-badge--facebook { color: #93c5fd; }
+.dark-mode .omni-channel-badge--instagram { color: #ffd6ec; }
+.dark-mode .omni-channel-badge--binotel { color: #fdba74; }
+.omni-container[data-omni-mode="channels"] .omni-history-controls,
+.omni-container[data-omni-mode="health"] .omni-history-controls { display: none; }
+.omni-conv-item:focus-visible { outline: 2px solid var(--primary); outline-offset: -3px; }
 .omni-workspace-title p { max-width: 52ch; line-height: 1.5; }
 .omni-workspace-modes {
     gap: 6px;
@@ -76,6 +100,11 @@
     .omni-workspace-title { flex: 1 1 100%; }
 }
 @media (max-width: 768px) {
+    .omni-back-button { display: inline-flex; align-items: center; }
+    .omni-container.has-conversation[data-omni-mode="inbox"] .omni-sidebar { display: none; }
+    .omni-chat-input { flex-wrap: wrap; }
+    .omni-chat-input textarea { flex-basis: calc(100% - 60px); }
+    .omni-reply-toggle { order: 2; flex-basis: 100%; }
     .omni-workspace-shell { height: auto; min-height: calc(100dvh - 80px); }
     .omni-sidebar-header, .omni-mode-panel { padding: 16px; }
     .omni-stats { padding-inline: 16px; }
@@ -83,4 +112,19 @@
     .omni-chat-empty-card { padding: 20px 16px; }
     .omni-workspace-modes { box-sizing: border-box; }
     .omni-mode-btn { min-width: 0; padding-inline: 10px; }
+}
+/* Inbox workflow controls share the workspace surfaces and focus treatment. */
+.omni-status-filter { display: flex; align-items: center; gap: 8px; padding-top: 10px; font-size: 12px; }
+.omni-status-filter select { min-width: 0; flex: 1; padding: 8px 10px; border: 1px solid var(--border-color); border-radius: 10px; background: var(--bg-secondary); color: var(--text-primary); font: inherit; }
+.omni-status-filter select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+.omni-msg .omni-secondary-action { display: inline-flex; margin-top: 8px; max-width: 100%; white-space: normal; overflow-wrap: anywhere; }
+.omni-business-label { padding-top: 10px; font-size: 12px; color: var(--text-secondary); }
+.omni-chat-header { flex-wrap: wrap; gap: 10px; }
+.omni-chat-header-actions { flex-wrap: wrap; min-width: 0; }
+.omni-chat-header-actions select { width: auto; max-width: 170px; min-width: 0; min-height: 36px; padding: 7px 10px; border: 1px solid var(--border-color); border-radius: 10px; color: var(--text-primary); background: var(--bg-secondary); font: inherit; font-size: 12px; }
+.omni-chat-header-actions select:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+@media (max-width: 768px) {
+    .omni-chat-header-actions { width: 100%; margin-left: 0; }
+    .omni-chat-header-actions select { flex: 1 1 100px; max-width: 100%; }
+    .omni-chat-header-actions #omniAssignee { order: 1; flex-basis: 100%; }
 }

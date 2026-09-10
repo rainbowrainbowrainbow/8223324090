@@ -104,7 +104,7 @@ function fbRequest(method, path, body, token = FB_PAGE_TOKEN) {
  */
 async function sendFacebook(recipientId, text, options = {}) {
     const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext: options.businessContext || options.business_context });
-    const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
+    const token = runtime.pageToken || runtime.token;
     if (!token) {
         log.warn('sendFacebook called but FB_PAGE_TOKEN not configured');
         return { success: false, error: 'FB_PAGE_TOKEN not configured' };
@@ -149,7 +149,7 @@ async function sendFacebook(recipientId, text, options = {}) {
         return { success: true, messageId: response.message_id };
     } catch (err) {
         log.error('sendFacebook failed', err);
-        return { success: false, error: err.message };
+        return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message };
     }
 }
 
@@ -161,7 +161,7 @@ async function sendFacebook(recipientId, text, options = {}) {
  */
 async function replyToComment(commentId, text) {
     const runtime = await resolveOmniRuntimeConfig('facebook');
-    const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
+    const token = runtime.pageToken || runtime.token;
     if (!token) {
         log.warn('replyToComment called but FB_PAGE_TOKEN not configured');
         return { success: false, error: 'FB_PAGE_TOKEN not configured' };
@@ -192,7 +192,7 @@ async function replyToComment(commentId, text) {
  */
 async function getUserProfile(userId, fields) {
     const runtime = await resolveOmniRuntimeConfig('facebook');
-    const token = runtime.pageToken || runtime.token || FB_PAGE_TOKEN;
+    const token = runtime.pageToken || runtime.token;
     if (!token) {
         log.warn('getUserProfile called but FB_PAGE_TOKEN not configured');
         return { success: false, error: 'FB_PAGE_TOKEN not configured' };

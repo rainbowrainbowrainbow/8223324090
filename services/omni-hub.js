@@ -1,14 +1,16 @@
 'use strict';
 
 const { pool } = require('../db');
-const { generateChatResponse } = require('./kleshnya-chat');
 const { getWSS } = require('./websocket');
 const { sendTelegramMessage } = require('./telegram');
 const { createLogger } = require('../utils/logger');
 const {
   DEFAULT_BUSINESS_CONTEXT,
   normalizeBusinessContext,
+  normalizeKnownBusinessContext,
+  canAccessBusinessContext,
 } = require('./businessContext');
+const { resolveCapability } = require('./accountAccessPolicy');
 
 const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
@@ -217,7 +219,7 @@ function normalizeProviderResult(channel, delivery) {
     });
   }
 
-  if (delivery && (delivery.success === false || delivery.ok === false)) {
+  if (delivery && !delivery.uncertain && (delivery.success === false || delivery.ok === false)) {
     return buildSendTruth('provider_failed_immediate', {
       channel: normalized,
       providerAttempted: true,
@@ -274,6 +276,7 @@ function attemptedDeliveryStatus(deliveryStatus) {
 
 function lifecycleDeliveryStatus(deliveryStatus) {
   return [
+    DELIVERY_STATUS.ACCEPTED,
     DELIVERY_STATUS.DELIVERED,
     DELIVERY_STATUS.READ,
     DELIVERY_STATUS.LATER_FAILED,
@@ -374,7 +377,7 @@ function sendTruthFromDurableRow(row) {
 
 function mergeSendTruthMeta(row) {
   const meta = row?.meta || {};
-  if (meta.sendTruth && !lifecycleDeliveryStatus(row?.delivery_status)) return meta;
+  if (meta.sendTruth && row?.delivery_status !== DELIVERY_STATUS.ATTEMPTED && !lifecycleDeliveryStatus(row?.delivery_status)) return meta;
 
   const sendTruth = sendTruthFromDurableRow(row);
   return sendTruth ? { ...meta, sendTruth } : meta;
@@ -747,6 +750,7 @@ async function findOrCreateConversation(channel, externalId, senderName, phone, 
   try {
     client = await pool.connect();
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [JSON.stringify(["omni-conversation", businessContext, channel, externalId])]);
 
     const existing = await client.query(
       `SELECT * FROM conversations
@@ -812,6 +816,7 @@ async function saveInboundMessage(conversationId, normalized) {
   try {
     client = await pool.connect();
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ["omni-message:" + conversationId]);
 
     if (externalMessageId) {
       const duplicate = await client.query(
@@ -824,6 +829,18 @@ async function saveInboundMessage(conversationId, normalized) {
         [conversationId, externalMessageId]
       );
       if (duplicate.rows.length > 0) {
+        const previous = duplicate.rows[0];
+        if (Number(normalized.meta?.editedAt) > Number(previous.meta?.editedAt || 0)) {
+          const edited = await client.query(
+            `UPDATE conversation_messages SET content = $2, content_type = $3, media_url = $4,
+                meta = COALESCE(meta, '{}'::jsonb) || $5::jsonb
+              WHERE id = $1 RETURNING *`,
+            [previous.id, normalized.content || '', normalized.contentType || 'text', normalized.mediaUrl || null,
+              JSON.stringify(buildInboundMessageMeta(normalized))]
+          );
+          await client.query('COMMIT');
+          return { ...mapMessageRow(edited.rows[0]), edited: true };
+        }
         await client.query('COMMIT');
         if (normalized.channel === 'telegram') {
           logger.info('omni.telegram.message.duplicate', {
@@ -834,7 +851,7 @@ async function saveInboundMessage(conversationId, normalized) {
           });
         }
         logger.info('Duplicate inbound message skipped', { conversationId, externalMessageId });
-        return mapMessageRow(duplicate.rows[0]);
+        return { ...mapMessageRow(duplicate.rows[0]), duplicate: true };
       }
     }
 
@@ -952,6 +969,7 @@ async function saveBotMilestoneMessage(conversationId, normalized) {
   try {
     client = await pool.connect();
     await client.query('BEGIN');
+    await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', ["omni-message:" + conversationId]);
 
     if (externalMessageId) {
       const duplicate = await client.query(
@@ -1341,10 +1359,10 @@ async function saveMessageSendTruth(messageId, sendTruth, options = {}) {
   const durable = durableSendTruthValues(sendTruth, options);
   const result = await pool.query(
     `UPDATE conversation_messages
-       SET meta = COALESCE(meta, '{}'::jsonb) || $2::jsonb,
+       SET meta = CASE WHEN delivery_status IN ('read', 'delivered', 'later_failed') THEN meta ELSE COALESCE(meta, '{}'::jsonb) || $2::jsonb END,
            provider_message_id = COALESCE($3, provider_message_id),
-           delivery_status = $4,
-           delivery_error = $5,
+           delivery_status = CASE WHEN delivery_status IN ('read', 'delivered', 'later_failed') THEN delivery_status ELSE $4 END,
+           delivery_error = CASE WHEN delivery_status IN ('read', 'delivered', 'later_failed') THEN delivery_error ELSE $5 END,
            send_attempted_at = CASE WHEN $6::boolean THEN COALESCE(send_attempted_at, NOW()) ELSE send_attempted_at END,
            provider_accepted_at = CASE WHEN $7::boolean THEN COALESCE(provider_accepted_at, NOW()) ELSE provider_accepted_at END,
            failed_at = CASE WHEN $8::boolean THEN COALESCE(failed_at, NOW()) ELSE failed_at END
@@ -1420,7 +1438,7 @@ function buildLifecycleSendTruth(receipt) {
   });
 }
 
-async function applyProviderLifecycleReceipt(receiptPayload) {
+async function applyProviderLifecycleReceipt(receiptPayload, options = {}) {
   const receipt = normalizeProviderLifecycleReceipt(receiptPayload);
   if (!receipt) {
     logger.warn('Ignoring unsupported provider lifecycle receipt', {
@@ -1462,8 +1480,12 @@ async function applyProviderLifecycleReceipt(receiptPayload) {
        FROM conversations c
       WHERE cm.conversation_id = c.id
         AND c.channel = $1
+        AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $9
         AND cm.direction = 'outbound'
         AND cm.provider_message_id = $2
+        AND NOT (COALESCE(cm.delivery_status, '') IN ('read', 'delivered', 'later_failed') AND $3 = 'accepted')
+        AND NOT (COALESCE(cm.delivery_status, '') = 'read' AND $3 = 'delivered')
+        AND ($5::timestamp IS NULL OR cm.provider_lifecycle_at IS NULL OR cm.provider_lifecycle_at <= $5::timestamp)
       RETURNING cm.*`,
     [
       receipt.channel,
@@ -1474,6 +1496,7 @@ async function applyProviderLifecycleReceipt(receiptPayload) {
       receipt.providerLifecycleEvent,
       receipt.providerLifecycleSource,
       receipt.deliveryError,
+      omniBusinessContext(options),
     ]
   );
 
@@ -1493,7 +1516,7 @@ async function applyProviderLifecycleReceipt(receiptPayload) {
       notifyCRM('omni:conversation', { conversation: clearedConversation });
     }
   }
-  notifyCRM('omni:message', { message, providerLifecycle: message.meta?.providerLifecycle || null });
+  notifyCRM('omni:message', { businessContext: omniBusinessContext(options), message });
   return message;
 }
 
@@ -1512,20 +1535,13 @@ async function processInboundMessage(normalized, options = {}) {
   );
 
   const message = await saveInboundMessage(conversation.id, normalized);
+  if (message.duplicate) return { conversation, message, duplicate: true };
   const updatedConversation = await getConversationById(conversation.id, { businessContext }) || conversation;
 
   notifyCRM('omni:message', { conversation: updatedConversation, message });
   notifyCRM('omni:conversation', { conversation: updatedConversation });
 
-  // AI auto-response when enabled
-  const meta = updatedConversation.meta || {};
-  if (meta.ai_enabled || meta.aiEnabled) {
-    try {
-      await generateAndSendAIResponse(updatedConversation, message);
-    } catch (err) {
-      logger.error('AI auto-response failed', err);
-    }
-  }
+  // Omni is a human-operated inbox. AI suggestions require an explicit manager action.
 
   return { conversation: updatedConversation, message };
 }
@@ -1550,85 +1566,7 @@ async function processBotMilestone(normalized, options = {}) {
 }
 
 // ---------------------------------------------------------------------------
-// 5. generateAndSendAIResponse
-// ---------------------------------------------------------------------------
-
-async function generateAndSendAIResponse(conversation, message) {
-  // Fetch recent history for context
-  const historyResult = await pool.query(
-    `SELECT * FROM conversation_messages
-     WHERE conversation_id = $1
-     ORDER BY created_at DESC
-     LIMIT 20`,
-    [conversation.id]
-  );
-
-  const chatHistory = historyResult.rows
-    .reverse()
-    .map((r) => ({
-      role: r.direction === 'inbound' ? 'user' : 'assistant',
-      content: r.content,
-    }));
-
-  const aiText = await generateChatResponse(
-    message.content,
-    conversation.customerName || 'Guest',
-    chatHistory
-  );
-
-  if (!aiText) {
-    logger.warn('AI returned empty response, skipping');
-    return null;
-  }
-
-  try {
-    await assertRuntimeSendCapable(conversation.channel);
-  } catch (err) {
-    logger.warn(`AI response skipped because ${conversation.channel} is not send-capable: ${err.message}`);
-    return null;
-  }
-
-  let sendTruth = buildSendTruth('saved', {
-    channel: conversation.channel,
-    providerAttempted: false,
-    providerAccepted: null,
-  });
-  const saved = await saveOutboundMessage(conversation.id, aiText, 'text', {
-    aiGenerated: true,
-    sendTruth,
-  });
-  let messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
-
-  // Deliver to the external channel
-  try {
-    messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
-    const delivery = await sendToChannel(conversation.channel, conversation.externalId, aiText, {});
-    sendTruth = normalizeProviderResult(conversation.channel, delivery);
-    messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
-    if (sendTruth.status === 'provider_failed_immediate' || sendTruth.status === 'provider_unknown') {
-      logger.warn(`AI response delivery not confirmed via ${conversation.channel}: ${sendTruth.error || sendTruth.status}`);
-    }
-  } catch (err) {
-    logger.error(`Failed to deliver AI response via ${conversation.channel}`, err);
-    sendTruth = buildSendTruth('provider_failed_immediate', {
-      channel: conversation.channel,
-      providerAttempted: true,
-      providerAccepted: false,
-      error: err.message,
-    });
-    messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || saved;
-  }
-
-  notifyCRM('omni:message', {
-    conversation,
-    message: messageWithTruth,
-  });
-
-  return messageWithTruth;
-}
-
-// ---------------------------------------------------------------------------
-// 6. sendToChannel
+// 5. Provider dispatch
 // ---------------------------------------------------------------------------
 
 async function sendToChannel(channel, externalId, text, meta) {
@@ -1643,8 +1581,8 @@ async function sendToChannel(channel, externalId, text, meta) {
         if (bridgeResult) return bridgeResult;
       }
       return sendTelegramMessage(externalId, text, businessContext === DEFAULT_BUSINESS_CONTEXT
-        ? { skipThread: true }
-        : { skipThread: true, businessContext });
+        ? { skipThread: true, plainText: true, retries: 1 }
+        : { skipThread: true, plainText: true, retries: 1, businessContext });
     case 'viber':
       return sendViber(externalId, text, scopedMeta);
     case 'sms':
@@ -1695,11 +1633,15 @@ async function getConversations(filters = {}) {
     params.push(channel);
   }
   if (search) {
-    conditions.push(`(c.customer_name ILIKE $${idx} OR c.customer_phone ILIKE $${idx})`);
+    conditions.push(`(c.customer_name ILIKE $${idx} OR c.customer_phone ILIKE $${idx} OR c.external_id ILIKE $${idx} OR EXISTS (SELECT 1 FROM conversation_messages search_message WHERE search_message.conversation_id = c.id AND search_message.content ILIKE $${idx}))`);
     params.push(`%${search}%`);
     idx++;
   }
 
+  if (filters.assignedTo) {
+    conditions.push(`c.assigned_to = $${idx++}`);
+    params.push(String(filters.assignedTo));
+  }
   const where = conditions.length ? 'WHERE ' + conditions.join(' AND ') : '';
 
   params.push(limit);
@@ -1736,6 +1678,11 @@ async function getConversations(filters = {}) {
 
 async function getMessages(conversationId, limit = 50, offset = 0, options = {}) {
   const businessContext = options.businessContext ? omniBusinessContext(options) : null;
+  const latest = options.latest === true;
+  const requestedLimit = Number(limit) || 50;
+  const requestedOffset = Number(offset) || 0;
+  limit = Math.max(1, Math.min(Number.isFinite(requestedLimit) ? Math.trunc(requestedLimit) : 50, 200));
+  offset = Math.max(0, Math.min(Number.isFinite(requestedOffset) ? Math.trunc(requestedOffset) : 0, Number.MAX_SAFE_INTEGER));
   const params = [conversationId, limit, offset];
   const businessCondition = businessContext
     ? ` AND ${scopedConversationCondition(params, businessContext, 'c')}`
@@ -1745,7 +1692,7 @@ async function getMessages(conversationId, limit = 50, offset = 0, options = {})
        FROM conversation_messages cm
        JOIN conversations c ON c.id = cm.conversation_id
       WHERE cm.conversation_id = $1${businessCondition}
-      ORDER BY cm.created_at ASC
+      ORDER BY cm.created_at ${latest ? 'DESC' : 'ASC'}, cm.id ${latest ? 'DESC' : 'ASC'}
       LIMIT $2 OFFSET $3`,
     params
   );
@@ -1763,7 +1710,7 @@ async function getMessages(conversationId, limit = 50, offset = 0, options = {})
   );
 
   return {
-    messages: result.rows.map(mapMessageRow),
+    messages: (latest ? result.rows.slice().reverse() : result.rows).map(mapMessageRow),
     total: countResult.rows[0].total,
   };
 }
@@ -1796,19 +1743,40 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
     client = await pool.connect();
     await client.query('BEGIN');
 
+    if (options.clientRequestId) {
+      const requestKey = JSON.stringify(['omni-send', conversation.businessContext, conversationId, senderName, options.clientRequestId]);
+      await client.query('SELECT pg_advisory_xact_lock(hashtextextended($1, 0))', [requestKey]);
+      const prior = await client.query(
+        `SELECT * FROM conversation_messages WHERE conversation_id = $1 AND direction = 'outbound'
+          AND meta->>'clientRequestId' = $2 AND sender_name = $3 ORDER BY id DESC LIMIT 1`,
+        [conversationId, options.clientRequestId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator']
+      );
+      if (prior.rows.length) {
+        if (prior.rows[0].content !== text) throw Object.assign(new Error('Цей ідентифікатор вже використаний для іншого повідомлення'), { statusCode: 409 });
+        await client.query('COMMIT');
+        const message = mapMessageRow(prior.rows[0]);
+        const sendTruth = message.meta?.sendTruth || buildSendTruth('provider_unknown', {
+          channel: conversation.channel, providerAttempted: null, providerAccepted: null,
+          message: 'Відправку вже зареєстровано. Перевірте історію; повторно провайдеру її не надсилаємо.',
+        });
+        return { message, sendTruth, conversation, duplicate: true };
+      }
+    }
+
     const msg = await client.query(
       `INSERT INTO conversation_messages
          (conversation_id, direction, sender_name, content, content_type, ai_generated, meta, created_at)
-       VALUES ($1, 'outbound', $2, $3, 'text', false, '{}'::jsonb, NOW())
+       VALUES ($1, 'outbound', $2, $3, 'text', false, $4::jsonb, NOW())
        RETURNING *`,
-      [conversationId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator', text]
+      [conversationId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator', text,
+        JSON.stringify(options.clientRequestId ? { clientRequestId: options.clientRequestId } : {})]
     );
 
     await client.query(
       `UPDATE conversations
          SET last_message_at = NOW(),
              last_outbound_at = NOW(),
-             unread_count = 0,
+             status = CASE WHEN status = 'closed' THEN 'open' ELSE status END,
              updated_at = NOW()
        WHERE id = $1`,
       [conversationId]
@@ -1866,13 +1834,22 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
         });
       }
       logger.error(`Failed to deliver manual message via ${conversation.channel}`, err);
-      sendTruth = buildSendTruth('provider_failed_immediate', {
-        channel: conversation.channel,
-        providerAttempted: true,
-        providerAccepted: false,
-        error: err.message,
-      });
-      messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
+      // A provider acceptance followed by a DB error is still an acceptance.
+      // Transport exceptions are ambiguous: never encourage an automatic resend.
+      if (sendTruth.providerAccepted !== true) {
+        sendTruth = buildSendTruth('provider_unknown', {
+          channel: conversation.channel, providerAttempted: true, providerAccepted: null,
+          error: 'Не вдалося підтвердити результат. Перевірте діалог перед новою відправкою.',
+        });
+      }
+      messageWithTruth = { ...messageWithTruth, meta: { ...messageWithTruth.meta, sendTruth },
+        deliveryStatus: deliveryStatusFromSendTruth(sendTruth), providerMessageId: sendTruth.providerReference || messageWithTruth.providerMessageId };
+      try {
+        messageWithTruth = await saveMessageSendTruth(saved.id, sendTruth) || messageWithTruth;
+      } catch (persistError) {
+        logger.error('Omni send result could not be persisted', { messageId: saved.id, status: sendTruth.status });
+        sendTruth = { ...sendTruth, persistencePending: true, message: 'Результат провайдера отримано, але CRM не змогла зберегти статус. Не надсилайте повторно.' };
+      }
     }
 
     let conversationWithReplyExpectation = conversation;
@@ -2054,11 +2031,21 @@ function notifyCRM(type, data) {
     const wss = getWSS();
     if (!wss || !wss.clients) return;
 
-    const payload = JSON.stringify({ type, data });
+    const businessContext = normalizeKnownBusinessContext(data?.conversation?.businessContext || data?.businessContext);
+    if (!businessContext) return;
+    // Invalidate the authorized inbox; message content is fetched through HTTP
+    // with fresh access checks instead of broadcasting customer data.
+    const payload = JSON.stringify({ type, data: {
+      businessContext,
+      conversationId: data?.conversation?.id || data?.message?.conversationId,
+    } });
 
     for (const client of wss.clients) {
-      if (client.readyState === 1) {
-        client.send(payload);
+      const user = client._pzp?.accessUser;
+      if (client.readyState === 1 && client._pzp?.authenticated && user
+          && canAccessBusinessContext(user, businessContext)
+          && resolveCapability(user, '/omni', { type: 'page' }).allowed) {
+        try { client.send(payload); } catch { /* One disconnected tab must not block other recipients. */ }
       }
     }
   } catch (err) {
@@ -2077,7 +2064,6 @@ module.exports = {
   saveOutboundMessage,
   processInboundMessage,
   processBotMilestone,
-  generateAndSendAIResponse,
   sendToChannel,
   getConversations,
   getMessages,

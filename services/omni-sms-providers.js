@@ -136,9 +136,9 @@ async function verifySmsRuntime(runtime = {}) {
     };
   }
   return {
-    status: 'success',
-    message: `${providerDef.label} config saved. CRM validated required fields without sending a paid SMS.`,
-    warning: null,
+    status: 'partial',
+    message: `${providerDef.label}: поля збережено. Доступ до API, sender, баланс та доставка ще не підтверджені.`,
+    warning: 'Потрібна перевірка в кабінеті провайдера та погоджена тестова SMS.',
     displayName: runtime.sender || providerDef.label,
     details: { provider },
   };
@@ -217,9 +217,9 @@ async function sendTurboSms(runtime = {}, phone, text) {
     Authorization: `Bearer ${token}`,
   });
 
-  if (response.response_code === 0 && response.response_result) {
-    const result = response.response_result[0];
-    if (result && result.response_code === 0) {
+  if ([0, 800, 801, 802, 803].includes(Number(response.response_code)) && Array.isArray(response.response_result)) {
+    const result = response.response_result.find(item => !item.phone || normalizePhone(item.phone) === normalizedPhone);
+    if (result && [0, 800, 801, 802].includes(Number(result.response_code)) && result.message_id) {
       log.info('TurboSMS sent', { phone: normalizedPhone, messageId: result.message_id });
       return { success: true, provider: 'turbosms', messageId: result.message_id };
     }

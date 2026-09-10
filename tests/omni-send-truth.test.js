@@ -71,6 +71,7 @@ function createManualSendPool(conversation) {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /^omni-message:\d+$/); return { rows: [] }; }
             if (/SELECT reply_expected_message_id FROM conversations/i.test(text)) {
                 return { rows: [] };
             }
@@ -204,6 +205,7 @@ function createInboundPool() {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /^omni-message:\d+$/); return { rows: [] }; }
             if (/FROM conversation_messages/i.test(text) && /external_message_id = \$2/i.test(text)) {
                 state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
                 return { rows: [] };
@@ -260,6 +262,7 @@ function createDuplicateInboundPool() {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /^omni-message:\d+$/); return { rows: [] }; }
             if (/FROM conversation_messages/i.test(text) && /external_message_id = \$2/i.test(text)) {
                 state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
                 return { rows: [existing] };
@@ -315,6 +318,7 @@ function createBotMilestonePool() {
         query: async (sql, params = []) => {
             const text = String(sql).replace(/\s+/g, ' ').trim();
             if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (text === 'SELECT pg_advisory_xact_lock(hashtextextended($1, 0))') { assert.match(params[0], /^omni-message:\d+$/); return { rows: [] }; }
             if (/FROM conversation_messages/i.test(text) && /external_message_id = \$2/i.test(text)) {
                 state.duplicateCheck = { conversationId: params[0], externalMessageId: params[1] };
                 return { rows: [] };
@@ -351,6 +355,63 @@ function createBotMilestonePool() {
 
 describe('Communication Send Truth v1', () => {
     afterEach(clearModules);
+
+    it('binds message search and assignment values in the business-scoped list and count', async () => {
+        const queries = [];
+        const hub = loadHub({ query: async (sql, params) => { queries.push({ sql, params }); return { rows: sql.includes('COUNT(*)') ? [{ total: 0 }] : [] }; } });
+        await hub.getConversations({ businessContext: 'dar', status: 'open', channel: 'telegram', search: "customer's text", assignedTo: 'manager' });
+        for (const query of queries) {
+            assert.match(query.sql, /search_message.content ILIKE \$4/);
+            assert.match(query.sql, /c.assigned_to = \$5/);
+            assert.deepEqual(query.params.slice(0, 5), ['dar', 'open', 'telegram', "%customer's text%", 'manager']);
+            assert.equal(query.sql.includes("customer's text"), false);
+        }
+    });
+
+    it('reuses a durable send request after an HTTP retry and rejects changed content', async () => {
+        const pool = createManualSendPool({ id: 901, channel: 'telegram', external_id: 'fixture', business_context: 'event_genix', meta: {} });
+        const connect = pool.connect;
+        let prior = null; let calls = 0; const locks = [];
+        pool.connect = async () => {
+            const client = await connect();
+            return { release: client.release, query: async (sql, params) => {
+                if (sql.includes('pg_advisory_xact_lock')) { locks.push(JSON.parse(params[0])); return { rows: [] }; }
+                if (sql.includes("meta->>'clientRequestId'")) return { rows: prior ? [prior] : [] };
+                return client.query(sql, params);
+            } };
+        };
+        const hub = loadHub(pool, { sendTelegramMessage: async () => { calls++; return { ok: true, result: { message_id: 42 } }; } });
+        const options = { businessContext: 'event_genix', clientRequestId: 'fixture-request-0001' };
+        const first = await hub.sendManualMessage(901, 'Привіт', 'Manager', options);
+        prior = { id: first.message.id, conversation_id: 901, content: 'Привіт', meta: { sendTruth: first.sendTruth } };
+        const retry = await hub.sendManualMessage(901, 'Привіт', 'Manager', options);
+        assert.equal(retry.duplicate, true); assert.equal(retry.message.id, first.message.id); assert.equal(calls, 1);
+        assert.deepEqual(locks[0], ['omni-send', 'event_genix', 901, 'Manager', options.clientRequestId]);
+        await assert.rejects(hub.sendManualMessage(901, 'Changed', 'Manager', options), error => error.statusCode === 409);
+        assert.equal(calls, 1);
+    });
+
+    it('preserves provider acceptance when saving the result fails, and never resends', async () => {
+        const pool = createManualSendPool({ id: 902, channel: 'telegram', external_id: 'fixture', meta: {} });
+        const query = pool.query; let calls = 0;
+        pool.query = async (sql, params) => {
+            if (sql.includes('UPDATE conversation_messages') && params[3] === 'accepted') throw new Error('DB write failed after acceptance');
+            return query(sql, params);
+        };
+        const hub = loadHub(pool, { sendTelegramMessage: async () => { calls++; return { ok: true, result: { message_id: 42 } }; } });
+        const result = await hub.sendManualMessage(902, 'Привіт', 'Manager');
+        assert.equal(calls, 1); assert.equal(result.sendTruth.providerAccepted, true);
+        assert.equal(result.sendTruth.persistencePending, true); assert.equal(result.message.deliveryStatus, 'accepted');
+        assert.equal(pool.state.deliveryUpdates.some(update => update.failed), false);
+    });
+
+    it('treats transport exceptions and uncertain provider responses as unknown', async () => {
+        const pool = createManualSendPool({ id: 903, channel: 'telegram', external_id: 'fixture', meta: {} });
+        const hub = loadHub(pool, { sendTelegramMessage: async () => { throw new Error('timeout'); } });
+        const result = await hub.sendManualMessage(903, 'Привіт', 'Manager');
+        assert.equal(result.sendTruth.status, 'provider_unknown'); assert.equal(result.sendTruth.providerAccepted, null);
+        assert.equal(hub.normalizeProviderResult('sms', { success: false, uncertain: true, error: 'timeout' }).status, 'provider_unknown');
+    });
 
     it('normalizes Telegram ok=false as immediate provider failure', () => {
         const hub = loadHub();
@@ -877,7 +938,7 @@ describe('Communication Send Truth v1', () => {
         assert.equal(calls.length, 1);
         assert.equal(calls[0][0], '12345');
         assert.equal(calls[0][1], 'Привіт');
-        assert.deepEqual(calls[0][2], { skipThread: true });
+        assert.deepEqual(calls[0][2], { skipThread: true, plainText: true, retries: 1 });
     });
 
     it('sends Telegram inbox replies through the Майстерня bot bridge when configured', async () => {
@@ -1141,7 +1202,8 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /sendTruthFromDurableStatus/);
         assert.match(omniHtml, /renderSendTruthState/);
         assert.match(omniHtml, /id="omniReplyExpected"/);
-        assert.match(omniHtml, /reply_expected: !!\(replyExpectedEl && replyExpectedEl\.checked\)/);
+        assert.match(omniHtml, /const replyExpected = !!\(replyExpectedEl && replyExpectedEl\.checked\)/);
+        assert.match(omniHtml, /reply_expected: replyExpected/);
         assert.match(omniHtml, /replyWaitingBadge/);
         assert.match(omniHtml, /omni-conv-waiting/);
         assert.match(omniHtml, /omni-reply-state/);

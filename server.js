@@ -132,6 +132,7 @@ const BACKUP_RECOVERY_ALLOWED_REQUESTS = new Set([
     'POST /api/v1/auth/login'
 ]);
 const defaultJsonParser = express.json({ limit: '1mb' });
+const omniWebhookJsonParser = express.json({ limit: '1mb', verify: require('./services/omni-webhook-payload').captureOmniWebhookBody });
 
 function isBackupRestoreRequest(req) {
     const requestPath = String(req.originalUrl || req.url || req.path || '').split('?')[0];
@@ -165,6 +166,7 @@ app.use(['/api/hermes/jobs/:id/result', '/api/v1/hermes/jobs/:id/result'], expre
 app.use((req, res, next) => {
     // Backup restore payloads are parsed only after API authentication below.
     if (isBackupRestoreRequest(req)) return next();
+    if (/^\/api(?:\/v1)?\/omni\/webhook\/(viber|meta|sms)\/?$/.test(String(req.originalUrl || req.url).split('?')[0])) return omniWebhookJsonParser(req, res, next);
     return defaultJsonParser(req, res, next);
 });
 app.use(requestIdMiddleware);

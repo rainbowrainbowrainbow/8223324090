@@ -153,8 +153,8 @@ function loadOmniRouter(hubMock, runtimeConfig = TEST_OMNI_WEBHOOK_CONFIG) {
 
 async function postJson(router, routePath, payload, headers = {}) {
     const app = express();
-    app.use(express.json());
-    app.use(router);
+    app.use(express.json({ verify: require('../services/omni-webhook-payload').captureOmniWebhookBody }));
+    app.use('/api/omni', router);
 
     const server = await new Promise(resolve => {
         const listener = app.listen(0, '127.0.0.1', () => resolve(listener));
@@ -162,7 +162,7 @@ async function postJson(router, routePath, payload, headers = {}) {
 
     try {
         const address = server.address();
-        const res = await fetch(`http://127.0.0.1:${address.port}${routePath}`, {
+        const res = await fetch(`http://127.0.0.1:${address.port}/api/omni${routePath}`, {
             method: 'POST',
             headers: { 'content-type': 'application/json', ...integrationHeaders(routePath, payload, headers) },
             body: JSON.stringify(payload),
@@ -542,7 +542,7 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         const router = loadOmniRouter({
             processInboundMessage: async (normalized, options) => calls.inbound.push({ normalized, options }),
             applyProviderLifecycleReceipt: async () => {},
-        });
+        }, { ...TEST_OMNI_WEBHOOK_CONFIG, telegram: { webhookSecret: 'omni-test-secret' } });
 
         try {
             const res = await postJson(router, '/webhook/telegram', {
@@ -587,7 +587,7 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
             },
             processBotMilestone: async (normalized, options) => calls.milestones.push({ normalized, options }),
             applyProviderLifecycleReceipt: async () => {},
-        });
+        }, { ...TEST_OMNI_WEBHOOK_CONFIG, telegram: { webhookSecret: 'omni-test-secret' } });
 
         try {
             const res = await postJson(router, '/webhook/telegram', {

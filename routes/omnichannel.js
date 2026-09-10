@@ -7,6 +7,8 @@
 const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
+const { resolveCapability } = require('../services/accountAccessPolicy');
+const { parseProviderJson } = require('../services/omni-webhook-payload');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken: auth, requireMinRole, requireAction } = require('../middleware/auth');
 const { logAdminAction } = require('../services/adminAudit');
@@ -37,6 +39,10 @@ const {
 const log = createLogger('OmniRoutes');
 
 function requestBusinessContext(req, res) {
+    if (!resolveCapability(req.user, '/omni', { type: 'page' }).allowed) {
+        res.status(403).json({ success: false, error: 'Немає доступу до Omni' });
+        return null;
+    }
     const businessContext = businessContextFromRequest(req);
     if (!requireBusinessContext(req, res, businessContext)) return null;
     return businessContext;
@@ -67,10 +73,10 @@ async function verifyViberSignature(req) {
     const sig = req.headers['x-viber-content-signature'];
     if (!sig) return false;
     const runtime = await resolveOmniRuntimeConfig('viber', { businessContext: webhookBusinessContext(req) });
-    const token = runtime.token || process.env.VIBER_TOKEN;
-    if (!token) return false;
+    const token = runtime.token;
+    if (!token || !Buffer.isBuffer(req.omniRawBody)) return false;
     const expected = crypto.createHmac('sha256', token)
-        .update(JSON.stringify(req.body))
+        .update(req.omniRawBody)
         .digest('hex');
     return timingSafeTextEqual(sig, expected);
 }
@@ -81,7 +87,7 @@ async function verifyWebhookSecret(req, envKey, channel, fieldName = 'webhookSec
         : req.headers['x-webhook-secret'];
     if (!provided) return false;
     const runtime = channel ? await resolveOmniRuntimeConfig(channel, { businessContext: webhookBusinessContext(req) }) : {};
-    const secret = runtime[fieldName] || process.env[envKey];
+    const secret = runtime[fieldName] || (webhookBusinessContext(req) === 'event_genix' ? process.env[envKey] : null);
     if (!secret) return false;
     return timingSafeTextEqual(provided, secret);
 }
@@ -90,12 +96,12 @@ async function verifyMetaSignature(req) {
     const sig = req.headers['x-hub-signature-256'];
     if (!sig) return false;
     const businessContext = webhookBusinessContext(req);
-    const facebook = await resolveOmniRuntimeConfig('facebook', { businessContext });
-    const instagram = await resolveOmniRuntimeConfig('instagram', { businessContext });
-    const secret = facebook.appSecret || instagram.appSecret || process.env.META_APP_SECRET;
-    if (!secret) return false;
+    const channel = req.body?.object === 'instagram' ? 'instagram' : 'facebook';
+    const runtime = await resolveOmniRuntimeConfig(channel, { businessContext });
+    const secret = runtime.appSecret;
+    if (!secret || !Buffer.isBuffer(req.omniRawBody)) return false;
     const expected = 'sha256=' + crypto.createHmac('sha256', secret)
-        .update(JSON.stringify(req.body))
+        .update(req.omniRawBody)
         .digest('hex');
     return timingSafeTextEqual(sig, expected);
 }
@@ -106,6 +112,12 @@ function parseId(val) {
 }
 
 function collectSmsWebhookPayloads(body) {
+    if (body?.type && body?.data && body?.signature) {
+        // TurboSMS also posts Viber events here. Only SMS receipts belong to this channel.
+        if (body.type !== 'DLR_SMS_API') return [];
+        const records = Array.isArray(body.data) ? body.data : [body.data];
+        return records.map(record => ({ ...record, provider: 'turbosms' }));
+    }
     if (Array.isArray(body)) return body;
     for (const key of ['messages', 'reports', 'delivery_reports', 'deliveryReports']) {
         if (Array.isArray(body && body[key])) return body[key];
@@ -168,7 +180,7 @@ router.post('/webhook/telegram', async (req, res) => {
             error: err.message,
         });
         log.error('Telegram webhook error:', err.message);
-        res.json({ ok: true }); // always 200 for webhooks
+        res.status(503).json({ ok: false, error: 'processing_failed' });
     }
 });
 
@@ -180,7 +192,7 @@ router.post('/webhook/viber', async (req, res) => {
             log.warn('Viber webhook signature verification failed');
             return res.status(403).json({ status: 1, status_message: 'invalid signature' });
         }
-        const body = req.body;
+        const body = parseProviderJson(req.omniRawBody);
         // Viber sends webhook verification
         if (body.event === 'webhook') {
             return res.json({ status: 0, status_message: 'ok' });
@@ -192,12 +204,12 @@ router.post('/webhook/viber', async (req, res) => {
             (classified.type === 'delivery_receipt' || classified.type === 'read_receipt')
             && classified.receipt
         ) {
-            await getHub().applyProviderLifecycleReceipt(classified.receipt);
+            await getHub().applyProviderLifecycleReceipt(classified.receipt, { businessContext });
         }
         res.json({ status: 0, status_message: 'ok' });
     } catch (err) {
         log.error('Viber webhook error:', err.message);
-        res.json({ status: 0, status_message: 'ok' });
+        res.status(503).json({ status: 1, status_message: 'processing_failed' });
     }
 });
 
@@ -205,7 +217,13 @@ router.post('/webhook/viber', async (req, res) => {
 router.post('/webhook/sms', async (req, res) => {
     try {
         const businessContext = webhookBusinessContext(req);
-        if (!await verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET', 'sms')) {
+        const runtime = await resolveOmniRuntimeConfig('sms', { businessContext });
+        const isTurbo = runtime.provider === 'turbosms' && req.body?.signature && req.body?.id;
+        const verified = isTurbo
+            ? Boolean(runtime.webhookSecret && timingSafeTextEqual(req.body.signature,
+                crypto.createHash('sha1').update(String(runtime.webhookSecret) + String(req.body.id)).digest('hex')))
+            : await verifyWebhookSecret(req, 'SMS_WEBHOOK_SECRET', 'sms');
+        if (!verified) {
             log.warn('SMS webhook secret verification failed');
             return res.status(403).json({ ok: false, error: 'invalid secret' });
         }
@@ -214,26 +232,30 @@ router.post('/webhook/sms', async (req, res) => {
             if (classified.type === 'inbound_message' && classified.normalized) {
                 await getHub().processInboundMessage(classified.normalized, { businessContext });
             } else if (classified.type === 'delivery_receipt' && classified.receipt) {
-                await getHub().applyProviderLifecycleReceipt(classified.receipt);
+                await getHub().applyProviderLifecycleReceipt(classified.receipt, { businessContext });
             }
         }
         res.json({ ok: true });
     } catch (err) {
         log.error('SMS webhook error:', err.message);
-        res.json({ ok: true });
+        res.status(503).json({ ok: false, error: 'processing_failed' });
     }
 });
 
 // Meta webhook (Facebook + Instagram)
-router.get('/webhook/meta', (req, res) => {
+router.get('/webhook/meta', async (req, res) => {
     // Verification challenge for FB/IG webhook setup
     const mode = req.query['hub.mode'];
     const token = req.query['hub.verify_token'];
     const challenge = req.query['hub.challenge'];
-    if (mode === 'subscribe' && timingSafeTextEqual(token, process.env.META_VERIFY_TOKEN)) {
-        return res.status(200).send(challenge);
-    }
-    res.sendStatus(403);
+    try {
+        const businessContext = webhookBusinessContext(req);
+        const configs = await Promise.all(['facebook', 'instagram'].map(channel => resolveOmniRuntimeConfig(channel, { businessContext })));
+        if (mode === 'subscribe' && configs.some(config => timingSafeTextEqual(token, config.verifyToken))) {
+            return res.status(200).send(challenge);
+        }
+        res.sendStatus(403);
+    } catch { res.status(503).json({ ok: false, error: 'processing_failed' }); }
 });
 
 router.post('/webhook/meta', async (req, res) => {
@@ -245,11 +267,18 @@ router.post('/webhook/meta', async (req, res) => {
         }
         const body = req.body;
         if (body.object === 'page' || body.object === 'instagram') {
+            const channel = body.object === 'instagram' ? 'instagram' : 'facebook';
+            const runtime = await resolveOmniRuntimeConfig(channel, { businessContext });
             const entries = body.entry || [];
             for (const entry of entries) {
+                if (runtime.pageId && String(entry.id) !== String(runtime.pageId)) continue;
                 const messaging = entry.messaging || [];
                 for (const event of messaging) {
-                    const channel = body.object === 'instagram' ? 'instagram' : 'facebook';
+                    if (event.delivery || event.read) {
+                        const ids = await require('../services/omni-inbox').applyMetaReceipt(channel, event, businessContext);
+                        for (const id of ids) getHub().notifyCRM('omni:conversation', { conversation: { id, businessContext } });
+                        continue;
+                    }
                     const normFn = channel === 'instagram'
                         ? getNormalizer().normalizeInstagram
                         : getNormalizer().normalizeFacebook;
@@ -263,7 +292,7 @@ router.post('/webhook/meta', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         log.error('Meta webhook error:', err.message);
-        res.json({ ok: true });
+        res.status(503).json({ ok: false, error: 'processing_failed' });
     }
 });
 
@@ -282,7 +311,7 @@ router.post('/webhook/binotel', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         log.error('Binotel webhook error:', err.message);
-        res.json({ ok: true });
+        res.status(503).json({ ok: false, error: 'processing_failed' });
     }
 });
 
@@ -309,7 +338,7 @@ async function auditConnectionAction(req, action, channel, result) {
 }
 
 // Account/channel connectivity control-plane
-router.get('/accounts', auth, manageConnections, async (req, res) => {
+router.get('/accounts', auth, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
         if (!businessContext) return;
@@ -433,6 +462,7 @@ router.get('/conversations', auth, async (req, res) => {
         const { status, channel, search, limit = 50, offset = 0 } = req.query;
         const conversations = await getHub().getConversations({
             status, channel, search,
+            assignedTo: req.query.mine === 'true' ? req.user.username : undefined,
             limit: Math.min(parseInt(limit) || 50, 100),
             offset: parseInt(offset) || 0,
             businessContext
@@ -609,19 +639,48 @@ router.get('/conversations/:id/messages', auth, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
         if (!businessContext) return;
-        const { limit = 50, offset = 0 } = req.query;
+        const { limit = 50, offset = 0, latest } = req.query;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const messages = await getHub().getMessages(
             id,
-            Math.min(parseInt(limit) || 50, 200),
-            parseInt(offset) || 0,
-            { businessContext }
+            Math.max(1, Math.min(parseInt(limit, 10) || 50, 200)),
+            Math.max(0, parseInt(offset, 10) || 0),
+            { businessContext, latest: latest === 'true' }
         );
         res.json({ success: true, data: messages });
     } catch (err) {
         log.error('Get messages error:', err.message);
         res.status(500).json({ success: false, error: 'Помилка завантаження повідомлень' });
+    }
+});
+
+router.post('/conversations/:id/read', auth, async (req, res) => {
+    const businessContext = requestBusinessContext(req, res);
+    if (!businessContext) return;
+    const id = parseId(req.params.id);
+    const through = Number(req.body.through_message_id);
+    if (!id || !Number.isSafeInteger(through) || through <= 0) return res.status(400).json({ success: false, error: 'Невалідне повідомлення' });
+    try {
+        const data = await require('../services/omni-inbox').markConversationRead(id, through, businessContext);
+        getHub().notifyCRM('omni:conversation', { businessContext, conversation: { id, businessContext } });
+        res.json({ success: true, data });
+    } catch (error) { res.status(error.statusCode || 500).json({ success: false, error: 'Не вдалося позначити прочитаним' }); }
+});
+
+router.get('/messages/:id/attachment', auth, async (req, res) => {
+    const businessContext = requestBusinessContext(req, res);
+    if (!businessContext) return;
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID' });
+    try {
+        const file = await require('../services/omni-inbox').getTelegramAttachment(id, businessContext);
+        res.set({ 'Cache-Control': 'private, no-store', 'Content-Type': 'application/octet-stream',
+            'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="${file.filename}"` });
+        res.send(file.buffer);
+    } catch (error) {
+        // Never expose upstream URLs: Telegram file URLs contain the bot token.
+        res.status(error.statusCode || 502).json({ success: false, error: error.statusCode ? error.message : 'Вкладення недоступне. Спробуйте пізніше або відкрийте Telegram.' });
     }
 });
 
@@ -633,8 +692,13 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
         const { text, reply_expected, reply_sla_at } = req.body;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        if (!text || !text.trim()) {
+        if (typeof text !== 'string' || !text.trim()) {
             return res.status(400).json({ success: false, error: 'Текст повідомлення обов\'язковий' });
+        }
+        if (text.trim().length > 4000) return res.status(400).json({ success: false, error: 'Повідомлення завелике: максимум 4000 символів.' });
+        const clientRequestId = req.body.client_request_id;
+        if (clientRequestId !== undefined && (typeof clientRequestId !== 'string' || !/^[a-zA-Z0-9_-]{16,80}$/.test(clientRequestId))) {
+            return res.status(400).json({ success: false, error: 'Невалідний ідентифікатор відправки' });
         }
         const replyOwner = req.user?.name || req.user?.username || null;
         const replyOwnerUserId = req.user?.id || null;
@@ -648,6 +712,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
                 replyOwnerUserId,
                 replySlaAt: reply_sla_at || null,
                 businessContext,
+                clientRequestId,
             }
         );
         res.json({
@@ -659,6 +724,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
         });
     } catch (err) {
         log.error('Send message error:', err.message);
+        if (err.statusCode === 409) return res.status(409).json({ success: false, error: err.message });
         if (err.code === 'CHANNEL_UNAVAILABLE') {
             return res.status(err.statusCode || 400).json({
                 success: false,
@@ -670,6 +736,13 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
     }
 });
 
+router.get('/operators', auth, async (req, res) => {
+    const businessContext = requestBusinessContext(req, res);
+    if (!businessContext) return;
+    try { res.json({ success: true, data: await require('../services/omni-inbox').listOmniOperators(businessContext) }); }
+    catch { res.status(500).json({ success: false, error: 'Не вдалося завантажити менеджерів' }); }
+});
+
 // Update conversation status
 router.patch('/conversations/:id', auth, async (req, res) => {
     try {
@@ -678,6 +751,11 @@ router.patch('/conversations/:id', auth, async (req, res) => {
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
         const { status, assigned_to, meta } = req.body;
+        if (status !== undefined && !['open', 'pending', 'closed', 'spam'].includes(status)) return res.status(400).json({ success: false, error: 'Невалідний статус' });
+        if (assigned_to !== undefined && assigned_to !== null) {
+            const operators = await require('../services/omni-inbox').listOmniOperators(businessContext);
+            if (!operators.some(operator => operator.username === assigned_to)) return res.status(400).json({ success: false, error: 'Менеджер не має доступу до цього inbox' });
+        }
         const updated = await getHub().updateConversationStatus(
             id,
             status,

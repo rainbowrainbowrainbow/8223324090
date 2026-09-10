@@ -56,7 +56,9 @@ test('OmniClaw follows the selected business context across UI, routes, and pers
 
     assert.match(api, /maysternya_doli:[\s\S]*modules:[\s\S]*'omni'/);
     assert.match(omni, /X-Business-Context[\s\S]*getOmniBusinessContext/);
-    assert.match(omni, /CrmBusinessContext\.apiUrl\(relative, getOmniBusinessContext\(\)\)/);
+    assert.match(omni, /function omniApiUrl\(path, businessContext = getOmniBusinessContext\(\)\)/);
+    assert.match(omni, /CrmBusinessContext\.apiUrl\(relative, businessContext\)/);
+    assert.match(omni, /requestBusinessContext: sendContext/);
     assert.match(omni, /CrmBusinessContext\.initPage\(\{[\s\S]*pageId:\s*'system'[\s\S]*onChange:\s*async/);
     assert.match(route, /businessContextFromRequest/);
     assert.match(route, /requireBusinessContext/);

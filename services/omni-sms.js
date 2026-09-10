@@ -35,7 +35,7 @@ async function sendSMS(phone, text, options = {}) {
         return await sendSmsViaProvider(runtime, phone, text);
     } catch (err) {
         log.error('sendSMS failed', err);
-        return { success: false, error: err.message };
+        return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message };
     }
 }
 

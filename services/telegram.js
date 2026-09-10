@@ -223,7 +223,7 @@ async function sendTelegramMessage(chatId, text, options = {}) {
             const payload = {
                 chat_id: chatId,
                 text: text,
-                parse_mode: 'HTML',
+                ...(options.plainText ? {} : { parse_mode: 'HTML' }),
                 disable_notification: options.silent !== false
             };
             if (threadId) payload.message_thread_id = threadId;

@@ -76,7 +76,7 @@ No migration, account activation, provider setup or secret changes in this block
   Telegram lastCheckedAt `2026-09-10T21:51:27.966Z`, fresh successful check,
   pending update count zero. Other channels remain disconnected.
 
-## Release 3 — attachments and Meta events
+## Release 3 candidate 0.81.99 — attachments and Meta events
 
 Production impact: yes. Same authorized branch/service and task envelope.
 Scope includes additive migration 354 (scoped file bytes and expiring grants),
@@ -99,6 +99,9 @@ No customer message, provider setup, production secret or external account activ
   zero production business writes; screenshots inspected.
 - Local full baseline before final targeted refinements passed: 2639 unit tests,
   334 My Day tests, 1312 UI assertions. Final exact-SHA CI remains the release gate.
+- Final targeted regressions: 138 passed; real PostgreSQL and browser fixtures passed.
+- Functional commit `7894375f2`; upstream live 0.81.98 / `4ec3f0c12f45cb64df2d9fc5b853a325c0701d73`
+  merged normally before preparing 0.81.99. Parallel PARK/DAR cashier changes retained.
 - Scope and external activation dependencies: `OMNI_CHANNEL_ACTIVATION_2026-09-11.md`.
-- Rollback retains additive tables, promotes the exact previous .97 SHA only through
+- Rollback retains additive tables, promotes the exact previous .98 SHA only through
   the release helper. No destructive down migration or secret changes.

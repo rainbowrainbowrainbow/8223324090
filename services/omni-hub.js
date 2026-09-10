@@ -1483,6 +1483,8 @@ async function applyProviderLifecycleReceipt(receiptPayload, options = {}) {
         AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $9
         AND cm.direction = 'outbound'
         AND cm.provider_message_id = $2
+        AND ($10::bigint IS NULL OR cm.id = $10)
+        AND (NOT $11::boolean OR COALESCE(cm.delivery_status, '') NOT IN ('delivered', 'read', 'later_failed'))
         AND NOT (COALESCE(cm.delivery_status, '') IN ('read', 'delivered', 'later_failed') AND $3 = 'accepted')
         AND NOT (COALESCE(cm.delivery_status, '') = 'read' AND $3 = 'delivered')
         AND ($5::timestamp IS NULL OR cm.provider_lifecycle_at IS NULL OR cm.provider_lifecycle_at <= $5::timestamp)
@@ -1497,6 +1499,8 @@ async function applyProviderLifecycleReceipt(receiptPayload, options = {}) {
       receipt.providerLifecycleSource,
       receipt.deliveryError,
       omniBusinessContext(options),
+      options.messageId || null,
+      options.reconcileOnly === true,
     ]
   );
 
@@ -1936,13 +1940,30 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
     const businessCondition = businessContext
       ? ` AND ${scopedConversationCondition(params, businessContext)}`
       : '';
+    let expectedCondition = '';
+    if (options.expected && status !== undefined && Object.hasOwn(options.expected, 'status')) {
+      params.push(options.expected.status);
+      expectedCondition += ` AND status IS NOT DISTINCT FROM $${params.length}::text`;
+    }
+    if (options.expected && assignedTo !== undefined && Object.hasOwn(options.expected, 'assigned_to')) {
+      params.push(options.expected.assigned_to);
+      expectedCondition += ` AND assigned_to IS NOT DISTINCT FROM $${params.length}::text`;
+    }
     const result = await client.query(
-      `UPDATE conversations SET ${sets.join(', ')} WHERE id = $${idx}${businessCondition} RETURNING *`,
+      `UPDATE conversations SET ${sets.join(', ')} WHERE id = $${idx}${businessCondition}${expectedCondition} RETURNING *`,
       params
     );
 
     if (result.rows.length === 0) {
-      throw new Error(`Conversation ${conversationId} not found`);
+      const currentParams = [conversationId];
+      const scope = businessContext ? ' AND ' + scopedConversationCondition(currentParams, businessContext) : '';
+      const current = await client.query(`SELECT * FROM conversations WHERE id = $1${scope}`, currentParams);
+      if (current.rows[0] && expectedCondition) {
+        throw Object.assign(new Error('Інший менеджер уже змінив це поле. Перевірте актуальний стан.'), {
+          statusCode: 409, code: 'OMNI_CONVERSATION_CONFLICT', current: mapConversationRow(current.rows[0]),
+        });
+      }
+      throw Object.assign(new Error('Розмову не знайдено'), { statusCode: 404 });
     }
 
     await client.query('COMMIT');
@@ -1953,7 +1974,7 @@ async function updateConversationStatus(conversationId, status, assignedTo, meta
     return conversation;
   } catch (e) {
     if (client) await client.query('ROLLBACK').catch(() => {});
-    logger.error('updateConversationStatus error', e);
+    logger.error('updateConversationStatus error', { code: e.code || null, message: e.message });
     throw e;
   } finally {
     if (client) client.release();

@@ -42,3 +42,27 @@ commit/push, exact-SHA CI, manual Railway deployment and read-only live QA.
 Remaining plan blocks: concurrent manager controls; media and physical-mobile QA;
 delivery reconciliation; provider activation and Meta comment/interactive events.
 Provider E2E requires the specified test accounts and separately bounded messages.
+
+## Release 1 delivered
+
+- Version 0.81.96 / `a52725f867cbe2d21188198ce0b0e7a51a7c52d2`.
+- CI run 34531334428: all six jobs successful.
+- Railway deployment `ce8be69f-7920-4925-9883-d92e6d9c7111`; exact-SHA version smoke passed.
+- Test-account read-only live API: Telegram account/history return 200; optional
+  channels stay disconnected; DAR remains outside this test account's access.
+
+## Release 2 candidate — manager concurrency and delivery review
+
+Production impact: yes. Same authorized service, branch and delivery envelope.
+No migration, account activation, provider setup or secret changes in this block.
+
+- Open conversation controls refresh while preserving drafts and focused edits.
+- PATCH compares the expected value of only the changed field, returning 409 with
+  current state when another manager has already changed that field.
+- TurboSMS status lookup validates message ID, SMS type and recipient, never sends.
+- Manual verification is append-only metadata distinct from provider confirmation.
+- Late status queries cannot overwrite a terminal receipt.
+- Targeted tests: 83 pass; local disposable PostgreSQL concurrency and receipt/manual
+  review persistence pass. The first receipt fixture incorrectly used Telegram,
+  which has no delivery receipts; the corrected SMS scenario passed.
+- Live QA remains read-only; actual two-manager mutations and SMS require test scope.

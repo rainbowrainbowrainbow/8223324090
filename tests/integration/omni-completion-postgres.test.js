@@ -42,6 +42,50 @@ test('Omni ownership serialization and health migration on a disposable local Po
     assert.equal(state.diagnostics.stale, false);
     assert.equal((await health.attachHealth([{ channel: 'telegram' }], 'dar'))[0].diagnostics.failedEvents, 0);
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM omni_channel_errors')).rows[0].n, 1);
+    await pool.query(`CREATE TABLE conversations (
+      id SERIAL PRIMARY KEY, channel TEXT, external_id TEXT, business_context TEXT, status TEXT,
+      assigned_to TEXT, customer_phone TEXT, meta JSONB DEFAULT '{}'::jsonb, updated_at TIMESTAMPTZ DEFAULT NOW())`);
+    await pool.query("INSERT INTO conversations (channel, external_id, business_context, status) VALUES ('telegram', 'fixture', 'event_genix', 'open')");
+    const wsId = require.resolve('../../services/websocket');
+    require.cache[wsId] = { id: wsId, filename: wsId, loaded: true, exports: { getWSS: () => ({ clients: [] }) } };
+    const hub = require('../../services/omni-hub');
+    const competing = await Promise.allSettled(['closed', 'pending'].map(status =>
+      hub.updateConversationStatus(1, status, undefined, undefined,
+        { businessContext: 'event_genix', expected: { status: 'open' } })));
+    assert.equal(competing.filter(item => item.status === 'fulfilled').length, 1);
+    const conflict = competing.find(item => item.status === 'rejected');
+    assert.equal(conflict.reason.statusCode, 409);
+    assert.equal(conflict.reason.current.id, 1);
+    await pool.query("UPDATE conversations SET status = 'open', assigned_to = NULL");
+    await Promise.all([
+      hub.updateConversationStatus(1, 'pending', undefined, undefined, { businessContext: 'event_genix', expected: { status: 'open' } }),
+      hub.updateConversationStatus(1, undefined, 'manager', undefined, { businessContext: 'event_genix', expected: { assigned_to: null } }),
+    ]);
+    const updated = (await pool.query('SELECT status, assigned_to FROM conversations WHERE id = 1')).rows[0];
+    assert.equal(updated.status, 'pending'); assert.equal(updated.assigned_to, 'manager');
+    await assert.rejects(hub.updateConversationStatus(1, 'closed', undefined, undefined,
+      { businessContext: 'dar', expected: { status: 'pending' } }), { statusCode: 404 });
+    await pool.query(`CREATE TABLE conversation_messages (
+      id BIGSERIAL PRIMARY KEY, conversation_id INT, direction TEXT, content TEXT,
+      meta JSONB, provider_message_id TEXT, delivery_status TEXT, delivery_error TEXT,
+      provider_lifecycle_at TIMESTAMP, provider_lifecycle_event TEXT, provider_lifecycle_source TEXT,
+      send_attempted_at TIMESTAMP, provider_accepted_at TIMESTAMP, failed_at TIMESTAMP)`);
+    await pool.query(`INSERT INTO conversation_messages (conversation_id, direction, content, provider_message_id, delivery_status)
+      VALUES (1, 'outbound', 'fixture', 'fixture-id', 'unknown')`);
+    const review = require('../../services/omni-delivery-review');
+    await review.recordManualVerification(1, 'event_genix', { id: 42, username: 'fixture-manager' },
+      { outcome: 'observed_present', note: 'Checked in the test channel' });
+    assert.equal((await pool.query('SELECT delivery_status FROM conversation_messages')).rows[0].delivery_status, 'unknown');
+    await pool.query("UPDATE conversations SET channel = 'sms' WHERE id = 1");
+    await hub.applyProviderLifecycleReceipt({ channel: 'sms', providerMessageId: 'fixture-id', deliveryStatus: 'delivered' }, { businessContext: 'event_genix' });
+    await hub.applyProviderLifecycleReceipt({ channel: 'sms', providerMessageId: 'fixture-id', deliveryStatus: 'accepted' },
+      { businessContext: 'event_genix', messageId: 1, reconcileOnly: true });
+    const confirmed = (await pool.query('SELECT * FROM conversation_messages')).rows[0];
+    assert.equal(confirmed.delivery_status, 'delivered');
+    assert.equal(confirmed.meta.manualVerification.by, 'fixture-manager');
+    assert.equal(confirmed.meta.manualVerifications.length, 1);
+    await assert.rejects(review.recordManualVerification(1, 'dar', { id: 42 },
+      { outcome: 'unresolved', note: 'No access' }), { statusCode: 404 });
   } finally {
     if (previous) require.cache[dbId] = previous; else delete require.cache[dbId];
     if (pool) await pool.end();

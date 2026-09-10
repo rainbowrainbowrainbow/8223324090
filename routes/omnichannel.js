@@ -764,6 +764,32 @@ router.get('/operators', auth, async (req, res) => {
     catch { res.status(500).json({ success: false, error: 'Не вдалося завантажити менеджерів' }); }
 });
 
+router.post('/messages/:id/reconcile', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID повідомлення' });
+        const result = await require('../services/omni-delivery-review').reconcileMessage(id, businessContext);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(error.statusCode || 502).json({ success: false, error: error.statusCode ? error.message : 'Не вдалося перевірити доставку. Повідомлення повторно не надсилалось.' });
+    }
+});
+
+router.post('/messages/:id/manual-verification', auth, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID повідомлення' });
+        const result = await require('../services/omni-delivery-review').recordManualVerification(id, businessContext, req.user, req.body);
+        res.json({ success: true, data: result });
+    } catch (error) {
+        res.status(error.statusCode || 500).json({ success: false, error: error.statusCode ? error.message : 'Не вдалося зберегти ручну перевірку.' });
+    }
+});
+
 // Update conversation status
 router.patch('/conversations/:id', auth, async (req, res) => {
     try {
@@ -771,7 +797,13 @@ router.patch('/conversations/:id', auth, async (req, res) => {
         if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        const { status, assigned_to, meta } = req.body;
+        const { status, assigned_to, meta, expected } = req.body;
+        if (expected !== undefined && (!expected || typeof expected !== 'object' || Array.isArray(expected)
+            || Object.keys(expected).some(key => !['status', 'assigned_to'].includes(key))
+            || (Object.hasOwn(expected, 'status') && !['open', 'pending', 'closed', 'spam'].includes(expected.status))
+            || (Object.hasOwn(expected, 'assigned_to') && expected.assigned_to !== null && (typeof expected.assigned_to !== 'string' || expected.assigned_to.length > 100)))) {
+            return res.status(400).json({ success: false, error: 'Невалідний попередній стан розмови' });
+        }
         if (status !== undefined && !['open', 'pending', 'closed', 'spam'].includes(status)) return res.status(400).json({ success: false, error: 'Невалідний статус' });
         if (assigned_to !== undefined && assigned_to !== null) {
             const operators = await require('../services/omni-inbox').listOmniOperators(businessContext);
@@ -782,11 +814,13 @@ router.patch('/conversations/:id', auth, async (req, res) => {
             status,
             assigned_to,
             meta,
-            { businessContext }
+            { businessContext, expected }
         );
         res.json({ success: true, data: updated });
     } catch (err) {
         log.error('Update conversation error:', err.message);
+        if (err.code === 'OMNI_CONVERSATION_CONFLICT') return res.status(409).json({ success: false, code: err.code, error: err.message, data: err.current });
+        if (err.statusCode === 404) return res.status(404).json({ success: false, error: 'Розмову не знайдено' });
         res.status(500).json({ success: false, error: 'Помилка оновлення розмови' });
     }
 });

@@ -2331,6 +2331,7 @@
         let selectedDraftKey = null;
         const conversationDrafts = new Map();
         const pendingSends = new Set();
+        const pendingConversationFields = new Set();
         const sendRequests = new Map();
         let workspaceEpoch = 0;
         let conversationsRequestSeq = 0;
@@ -2604,6 +2605,7 @@
                 renderConversations();
                 await selectConversationFromQuery();
                 updateSendControls(currentConversation());
+                syncConversationControls(currentConversation());
             } else {
                 conversationLoadError = res.error || 'Не вдалося завантажити розмови.';
                 if (!sameFilter) {
@@ -2616,6 +2618,7 @@
         }
 
         async function loadMessages(convId, options = {}) {
+            if (options.refresh && messages.querySelector('[data-delivery-review-form]:focus-within')) return;
             if (!convId || convId !== currentConvId || (messagesLoading && (options.older || options.refresh))) return;
             const requestSeq = ++messagesRequestSeq;
             const epoch = workspaceEpoch;
@@ -3409,6 +3412,24 @@
             }).join(' ');
         }
 
+        function renderDeliveryReview(message) {
+            if (message.direction !== 'outbound') return '';
+            const review = message.meta?.manualVerification;
+            const outcomes = { observed_present: 'Бачу повідомлення в каналі', observed_absent: 'Не знайшов повідомлення в каналі', unresolved: 'Не вдалося перевірити' };
+            const recorded = review ? '<div class="omni-delivery-note">Ручна перевірка · ' + esc(review.by) + ' · ' + esc(formatAccountTime(review.at)) +
+                '<br>' + esc(outcomes[review.outcome] || 'Результат невідомий') + ': ' + esc(review.note) + '<br>Це позначка менеджера, а не підтвердження провайдера.</div>' : '';
+            const truth = sendTruthFromMessage(message);
+            if (!['saved', 'attempted', 'accepted', 'unknown'].includes(message.deliveryStatus) && !truth?.persistencePending
+                && !['saved', 'provider_unknown', 'provider_attempted'].includes(truth?.status)) return recorded;
+            return recorded + '<div class="omni-delivery-review">' +
+                (message.providerMessageId ? '<div class="omni-delivery-note">ID провайдера: ' + esc(message.providerMessageId) + '</div>' : '') +
+                '<button type="button" class="omni-secondary-action" data-delivery-reconcile="' + Number(message.id) + '">Перевірити доставку</button>' +
+                '<details><summary>Звірити вручну</summary><form data-delivery-review-form="' + Number(message.id) + '">' +
+                '<label>Результат<select name="outcome" required><option value="observed_present">Бачу повідомлення в каналі</option><option value="observed_absent">Не знайшов у каналі</option><option value="unresolved">Не вдалося перевірити</option></select></label>' +
+                '<label>Що перевірено<textarea name="note" maxlength="500" required rows="2"></textarea></label>' +
+                '<button type="submit" class="omni-secondary-action">Зберегти перевірку</button></form></details></div>';
+        }
+
         function renderMessages(msgs, options = {}) {
             messages.innerHTML = msgs.map(m => {
                 const dir = m.direction;
@@ -3422,6 +3443,7 @@
                     '<div class="omni-msg-content">' + esc(m.content || '') + '</div>' +
                     renderAttachments(m) +
                     sendTruthHtml +
+                    renderDeliveryReview(m) +
                     '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>' +
                 '</div>';
             }).join('');
@@ -4311,33 +4333,80 @@
             renderQuickReplies();
         }
 
+        function conversationFieldKey(id, field, epoch = workspaceEpoch) {
+            return epoch + '/' + id + '/' + field;
+        }
+
+        function syncConversationControls(conv, force = false) {
+            if (!conv || conv.id !== currentConvId) return;
+            for (const [field, controlId, value] of [
+                ['status', 'omniConversationStatus', conv.status || 'open'],
+                ['assigned_to', 'omniAssignee', conv.assignedTo || null]
+            ]) {
+                const control = $(controlId);
+                const pending = pendingConversationFields.has(conversationFieldKey(conv.id, field));
+                if (field === 'assigned_to' && control.dataset.loadedFor !== String(conv.id)) continue;
+                control.disabled = pending;
+                if (pending || (!force && document.activeElement === control)) continue;
+                if (field === 'assigned_to' && value && !Array.from(control.options).some(option => option.value === value)) {
+                    control.insertAdjacentHTML('beforeend', '<option value="' + esc(value) + '" disabled>' + esc(value) + ' · недоступний</option>');
+                }
+                control.value = value || '';
+                control.dataset.expectedValue = JSON.stringify(value);
+            }
+            const close = $('omniCloseConv');
+            close.disabled = pendingConversationFields.has(conversationFieldKey(conv.id, 'status'));
+            close.textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
+            close.title = close.textContent;
+        }
+
+        function applyConversationResponse(record) {
+            if (!record || record.id !== currentConvId) return;
+            selectedConversationRecord = { ...currentConversation(), ...record };
+            conversations = conversations.map(conv => conv.id === record.id ? selectedConversationRecord : conv);
+            renderConversations();
+            syncConversationControls(selectedConversationRecord, true);
+        }
+
         async function loadConversationControls(conv) {
             const epoch = workspaceEpoch;
-            $('omniConversationStatus').value = conv.status || 'open';
+            syncConversationControls(conv, true);
             const select = $('omniAssignee');
+            select.dataset.loadedFor = '';
             select.disabled = true;
             select.innerHTML = '<option value="">Завантаження менеджерів…</option>';
             const res = await api('/operators');
             if (epoch !== workspaceEpoch || currentConvId !== conv.id) return;
             if (!res.success || !Array.isArray(res.data)) { select.innerHTML = '<option value="">Менеджери недоступні</option>'; return; }
             select.innerHTML = '<option value="">Без відповідального</option>' + res.data.map(operator => '<option value="' + esc(operator.username) + '">' + esc(operator.label) + '</option>').join('');
-            if (conv.assignedTo && !res.data.some(operator => operator.username === conv.assignedTo)) select.insertAdjacentHTML('beforeend', '<option value="' + esc(conv.assignedTo) + '" disabled>' + esc(conv.assignedTo) + ' · недоступний</option>');
-            select.value = conv.assignedTo || ''; select.disabled = false;
+            select.dataset.loadedFor = String(conv.id);
+            syncConversationControls(currentConversation(), true);
         }
 
         async function updateConversationField(control, field) {
             const id = currentConvId, epoch = workspaceEpoch;
             if (!id) return;
             const conv = currentConversation();
-            const previous = field === 'status' ? (conv.status || 'open') : (conv.assignedTo || '');
+            const previous = control.dataset.expectedValue !== undefined ? JSON.parse(control.dataset.expectedValue)
+                : (field === 'status' ? (conv.status || 'open') : (conv.assignedTo || null));
+            const key = conversationFieldKey(id, field, epoch);
+            if (pendingConversationFields.has(key)) return;
+            pendingConversationFields.add(key);
             control.disabled = true;
             const value = control.value;
-            const res = await api('/conversations/' + id, { method: 'PATCH', body: JSON.stringify({ [field]: value || null }) });
+            syncConversationControls(conv);
+            const res = await api('/conversations/' + id, { method: 'PATCH', body: JSON.stringify({ [field]: value || null, expected: { [field]: previous } }) });
+            pendingConversationFields.delete(key);
             if (epoch !== workspaceEpoch || currentConvId !== id) return;
             control.disabled = false;
-            if (!res.success) { control.value = previous; setSendFeedback({ status: 'provider_failed_immediate', message: res.error || 'Не вдалося оновити розмову.' }); return; }
+            if (!res.success) {
+                if (res.code === 'OMNI_CONVERSATION_CONFLICT' && res.data) applyConversationResponse(res.data);
+                else syncConversationControls(currentConversation(), true);
+                setSendFeedback({ status: 'provider_failed_immediate', message: res.error || 'Не вдалося оновити розмову.' });
+                return;
+            }
             if (field === 'status') conv.status = value; else conv.assignedTo = value || null;
-            $('omniCloseConv').textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
+            applyConversationResponse(res.data?.id ? res.data : conv);
             loadConversations(); loadStats();
         }
 
@@ -4422,14 +4491,20 @@
             const epoch = workspaceEpoch;
             const closeButton = $('omniCloseConv');
             if (closeButton.disabled) return;
+            const previous = currentConversation()?.status || 'open';
+            const key = conversationFieldKey(convId, 'status', epoch);
+            if (pendingConversationFields.has(key)) return;
+            pendingConversationFields.add(key);
             closeButton.disabled = true;
             const res = await api('/conversations/' + convId, {
                 method: 'PATCH',
-                body: JSON.stringify({ status: currentConversation()?.status === 'closed' ? 'open' : 'closed' })
+                body: JSON.stringify({ status: previous === 'closed' ? 'open' : 'closed', expected: { status: previous } })
             });
-            closeButton.disabled = false;
+            pendingConversationFields.delete(key);
             if (epoch !== workspaceEpoch) return;
+            syncConversationControls(currentConversation(), true);
             if (!res.success) {
+                if (convId === currentConvId && res.code === 'OMNI_CONVERSATION_CONFLICT' && res.data) applyConversationResponse(res.data);
                 if (convId === currentConvId) setSendFeedback({ status: 'provider_failed_immediate', message: res.error || 'Не вдалося закрити розмову.' });
                 return;
             }
@@ -4466,6 +4541,41 @@
         $('omniOnlyMine').addEventListener('change', event => { onlyMine = event.target.checked; loadConversations(); });
         $('omniConversationStatus').addEventListener('change', event => updateConversationField(event.target, 'status'));
         $('omniAssignee').addEventListener('change', event => updateConversationField(event.target, 'assigned_to'));
+        for (const id of ['omniConversationStatus', 'omniAssignee']) {
+            $(id).addEventListener('blur', () => syncConversationControls(currentConversation()));
+        }
+
+        messages.addEventListener('click', async event => {
+            const button = event.target.closest('[data-delivery-reconcile]');
+            if (!button || button.disabled) return;
+            const id = currentConvId, epoch = workspaceEpoch;
+            button.disabled = true;
+            const res = await api('/messages/' + Number(button.dataset.deliveryReconcile) + '/reconcile', { method: 'POST', body: '{}' });
+            button.disabled = false;
+            if (id !== currentConvId || epoch !== workspaceEpoch) return;
+            setSendFeedback(null, res.success ? res.data.nextAction : res.error);
+            await loadMessages(id, { refresh: true });
+        });
+        messages.addEventListener('submit', async event => {
+            const form = event.target.closest('[data-delivery-review-form]');
+            if (!form) return;
+            event.preventDefault();
+            const button = form.querySelector('button');
+            if (button.disabled) return;
+            const id = currentConvId, epoch = workspaceEpoch;
+            const data = new FormData(form);
+            button.disabled = true;
+            const res = await api('/messages/' + Number(form.dataset.deliveryReviewForm) + '/manual-verification', {
+                method: 'POST', body: JSON.stringify({ outcome: data.get('outcome'), note: data.get('note') })
+            });
+            button.disabled = false;
+            if (id !== currentConvId || epoch !== workspaceEpoch) return;
+            if (!res.success) { setSendFeedback(null, res.error); return; }
+            if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
+            form.closest('details').open = false;
+            setSendFeedback(null, 'Ручну перевірку збережено окремо від статусу провайдера.');
+            await loadMessages(id, { refresh: true });
+        });
         $('omniStatusFilter').addEventListener('change', event => { activeStatus = event.target.value; loadConversations(); });
         messages.addEventListener('scroll', () => { if (messages.scrollHeight - messages.scrollTop - messages.clientHeight < 64) markVisibleMessagesRead(); });
         document.addEventListener('visibilitychange', () => { if (!document.hidden) markVisibleMessagesRead(); });

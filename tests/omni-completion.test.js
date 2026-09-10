@@ -20,14 +20,44 @@ afterEach(() => { for (const [id, old] of cache) { if (old) require.cache[id] = 
 function fakeHttps(t, response) {
   t.mock.method(https, 'request', (options, callback) => {
     const req = new EventEmitter();
-    req.write = () => {}; req.setTimeout = () => req; req.destroy = e => req.emit('error', e);
+    let body = '';
+    req.write = chunk => { body += chunk; }; req.setTimeout = () => req; req.destroy = e => req.emit('error', e);
     req.end = () => queueMicrotask(() => {
       const res = new EventEmitter(); res.statusCode = 200; callback(res);
-      res.emit('data', JSON.stringify(response(options))); res.emit('end'); req.emit('close');
+      res.emit('data', JSON.stringify(response(options, body))); res.emit('end'); req.emit('close');
     });
     return req;
   });
 }
+
+test('TurboSMS reconciliation only queries the exact ID and recipient; unknown stays unknown', async t => {
+  let status = 'Delivered'; let recipient = '+380501234567'; let requests = 0;
+  fakeHttps(t, (options, body) => {
+    requests++;
+    assert.equal(options.path, '/message/status.json');
+    assert.deepEqual(JSON.parse(body), { messages: ['fixture-id'] });
+    return { response_code: 0, response_result: [{ message_id: 'fixture-id', response_code: 0, type: 'sms', status, recipient }] };
+  });
+  const { getTurboSmsDeliveryStatus } = fresh('../services/omni-sms-providers');
+  const check = () => getTurboSmsDeliveryStatus({ provider: 'turbosms', token: 'fixture' }, 'fixture-id', '+380501234567');
+  assert.equal((await check()).deliveryStatus, 'delivered');
+  status = 'Unknown'; assert.equal((await check()).deliveryStatus, null);
+  recipient = '+380501234568'; await assert.rejects(check());
+  assert.equal(requests, 3);
+});
+
+test('delivery review never contacts a provider for a foreign message or missing provider ID', async () => {
+  let row; let resolved = false;
+  mock('../db', { pool: { query: async () => ({ rows: row ? [row] : [] }) } });
+  mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async () => { resolved = true; throw new Error('Unexpected provider access'); } });
+  mock('../services/omni-hub', { mapMessageRow: value => value });
+  const review = fresh('../services/omni-delivery-review');
+  await assert.rejects(review.reconcileMessage(1, 'dar'), { statusCode: 404 });
+  row = { id: 1, direction: 'outbound', delivery_status: 'unknown' };
+  const result = await review.reconcileMessage(1, 'event_genix');
+  assert.equal(result.message.delivery_status, 'unknown');
+  assert.match(result.nextAction, /Немає ID/); assert.equal(resolved, false);
+});
 
 test('Telegram current webhook failure is limited, recovered historical error is healthy, and no message is sent', async t => {
   mock('../db', { pool: {} }); const accounts = fresh('../services/omni-accounts');

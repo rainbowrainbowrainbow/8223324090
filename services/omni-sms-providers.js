@@ -202,6 +202,23 @@ async function sendSmsViaProvider(runtime = {}, phone, text) {
   return sendTurboSms(runtime, phone, text);
 }
 
+async function getTurboSmsDeliveryStatus(runtime, messageId, recipient) {
+  if (runtime.provider !== 'turbosms' || !runtime.token) {
+    throw Object.assign(new Error('Для звірки потрібне активне підключення TurboSMS.'), { statusCode: 409 });
+  }
+  const response = await httpsJsonRequest('https://api.turbosms.ua/message/status.json',
+    { messages: [String(messageId)] }, { Authorization: `Bearer ${runtime.token}` });
+  const item = Array.isArray(response.response_result)
+    ? response.response_result.find(row => String(row.message_id) === String(messageId)) : null;
+  if (Number(response.response_code) !== 0 || !item || Number(item.response_code) !== 0 || item.type !== 'sms'
+      || !item.recipient || normalizePhone(item.recipient) !== normalizePhone(recipient)) {
+    throw Object.assign(new Error('TurboSMS не підтвердив статус саме цього SMS. Звірте його в кабінеті провайдера.'), { statusCode: 502 });
+  }
+  const statuses = { Queued: 'accepted', Accepted: 'accepted', Sent: 'accepted', Delivered: 'delivered', Read: 'read',
+    Expired: 'later_failed', Undelivered: 'later_failed', Rejected: 'later_failed', Failed: 'later_failed', Cancelled: 'later_failed' };
+  return { deliveryStatus: statuses[item.status] || null, providerStatus: String(item.status || 'Unknown') };
+}
+
 async function sendTurboSms(runtime = {}, phone, text) {
   // Environment fallback belongs to the scoped account resolver, not transport.
   const token = runtime.token;
@@ -297,5 +314,6 @@ module.exports = {
   verifySmsRuntime,
   normalizePhone,
   sendSmsViaProvider,
+  getTurboSmsDeliveryStatus,
   sendBulkSmsViaProvider,
 };

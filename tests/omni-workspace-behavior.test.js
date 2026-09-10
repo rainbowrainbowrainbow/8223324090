@@ -34,6 +34,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         selectConversation, sendMessage, closeConversation, clearConversationSelection, renderMessages,
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
         accountNeedsAttention, renderOmniAccountsAlarm,
+        updateConversationField, syncConversationControls,
         request: api,
         setApi(fn) { api = fn; },
         setRecords(value) { conversations = value; conversationTotal = value.length; renderConversations(); },
@@ -65,6 +66,44 @@ test('an inbound failure requires attention even when sending still works', t =>
     assert.equal(h.app.accountNeedsAttention({ channel: 'sms', connected: true, sendCapable: true, receiveCapable: false }), false);
 });
 
+test('manager refresh updates open status and assignee without replacing a draft', async t => {
+    let record = { ...conversation(1), status: 'open', assignedTo: 'first' };
+    const h = harness(t, [record]);
+    h.app.setApi(async requestPath => requestPath === '/operators'
+        ? { success: true, data: [{ username: 'first', label: 'First' }, { username: 'second', label: 'Second' }] }
+        : requestPath.startsWith('/conversations?') ? { success: true, data: { conversations: [record], total: 1 } }
+        : h.defaultApi(requestPath));
+    h.app.selectConversation(1); await h.flush();
+    h.document.getElementById('omniInput').value = 'Preserve draft';
+    record = { ...record, status: 'closed', assignedTo: 'second' };
+    await h.app.loadConversations();
+    assert.equal(h.document.getElementById('omniConversationStatus').value, 'closed');
+    assert.equal(h.document.getElementById('omniAssignee').value, 'second');
+    assert.equal(h.document.getElementById('omniInput').value, 'Preserve draft');
+});
+
+test('a focused manager control retains its original expectation and a conflict shows the current record', async t => {
+    let record = { ...conversation(1), status: 'open' }; let patch;
+    const h = harness(t, [record]);
+    h.app.setApi(async (requestPath, options) => {
+        if (options?.method === 'PATCH') {
+            patch = JSON.parse(options.body);
+            return { success: false, code: 'OMNI_CONVERSATION_CONFLICT', error: 'Changed by another manager', data: record };
+        }
+        if (requestPath.startsWith('/conversations?')) return { success: true, data: { conversations: [record], total: 1 } };
+        return h.defaultApi(requestPath);
+    });
+    h.app.selectConversation(1); await h.flush();
+    const control = h.document.getElementById('omniConversationStatus');
+    control.focus();
+    record = { ...record, status: 'closed' }; await h.app.loadConversations();
+    assert.equal(control.value, 'open');
+    control.value = 'pending'; await h.app.updateConversationField(control, 'status');
+    assert.equal(patch.expected.status, 'open');
+    assert.equal(control.value, 'closed');
+    assert.match(h.document.querySelector('.omni-send-truth').textContent, /Changed by another manager/);
+});
+
 test('forbidden requests preserve the authenticated session', async t => {
     const h = harness(t);
     h.window.localStorage.setItem('pzp_token', 'fixture-session');
@@ -72,6 +111,21 @@ test('forbidden requests preserve the authenticated session', async t => {
     assert.equal((await h.app.request('/accounts')).success, false);
     assert.equal(h.window.localStorage.getItem('pzp_token'), 'fixture-session');
     assert.equal(h.window.location.pathname, '/omni');
+});
+
+test('unknown delivery can be reconciled without invoking send and manual notes are escaped', async t => {
+    const h = harness(t); const writes = [];
+    h.app.selectConversation(1); await h.flush();
+    h.app.setApi(async (requestPath, options) => {
+        if (options?.method === 'POST') { writes.push(requestPath); return { success: true, data: { nextAction: 'Still unknown' } }; }
+        return h.defaultApi(requestPath);
+    });
+    h.app.renderMessages([{ ...message(1), direction: 'outbound', deliveryStatus: 'unknown',
+        meta: { manualVerification: { outcome: 'unresolved', note: '<img src=x onerror=alert(1)>', by: 'Manager' } } }]);
+    assert.equal(h.document.querySelector('.omni-delivery-review img'), null);
+    h.document.querySelector('[data-delivery-reconcile]').click(); await h.flush();
+    assert.deepEqual(writes, ['/messages/1/reconcile']);
+    assert.match(h.document.querySelector('.omni-send-truth').textContent, /Still unknown/);
 });
 
 test('send hashing preserves the clicked recipient, business and reply expectation across navigation', async t => {

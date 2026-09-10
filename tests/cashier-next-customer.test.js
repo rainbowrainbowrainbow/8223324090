@@ -16,7 +16,7 @@ function fixture(business = 'event_genix') {
     // Exercise the actual page functions without authentication/bootstrap or external IO.
     const source = fs.readFileSync(path.join(root, 'js/cashier-payments-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });", '')
-        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, renderReadinessState, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
+        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, renderReadinessState, renderOrder, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
     window.fetch = async () => { throw new Error('offline fixture'); };
     window.showNotification = (message, type) => { window.__notifications.push({ message, type }); };
     window.__notifications = [];
@@ -45,6 +45,76 @@ test('completed order requires next customer and locks cart editing', t => {
     assert.equal(f.el('addCatalogLineBtn').disabled, true);
     assert.equal(f.el('startNextOrderBtn').textContent, 'Наступний клієнт');
 });
+
+test('completed order exposes next customer beside the locked route without unlocking the paid sale', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.state.orderDetails = { order: { id: 10, paymentStatus: 'confirmed', fiscalStatus: 'fiscalized' } };
+    f.page.syncCreateAvailability();
+    assert.equal(f.el('paymentBusinessContext').disabled, true);
+    assert.equal(f.el('paymentRegisterRoute').disabled, true);
+    assert.equal(f.el('paymentCashierBinding').disabled, true);
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.el('startNextOrderBtn').closest('#cashierRouteSelector'), f.el('cashierRouteSelector'));
+    assert.equal(f.el('startNextOrderBtn').disabled, false);
+    assert.equal(f.el('startNextOrderBtn').classList.contains('hidden'), false);
+    assert.match(f.el('paymentRouteHelp').textContent, /продаж №10.*зафіксовані.*Наступний клієнт/);
+    f.page.state.unresolvedQueueState = 'unknown';
+    f.page.syncCreateAvailability();
+    assert.equal(f.el('startNextOrderBtn').disabled, true);
+    assert.match(f.el('paymentRouteHelp').textContent, /Черга незавершених чеків ще не перевірена/);
+});
+
+test('seller legal entity and selected test cashier remain distinct when rendering a paid order', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.el('paymentCashierBinding').options[0].textContent = 'Test cashier';
+    const details = { order: { id: 10, paymentStatus: 'confirmed', fiscalStatus: 'fiscalized', crmProfileKey: 'event_genix', legalEntityName: 'Test legal seller', totalAmountMinor: '1000' } };
+    f.page.state.orderDetails = details;
+    f.page.renderOrder(details);
+    assert.match(f.el('cashierFiscalProfile').textContent, /Test legal seller/);
+    assert.equal(f.el('paymentCashierBinding').selectedOptions[0].textContent, 'Test cashier');
+    assert.equal(f.el('paymentCashierBinding').value, '3');
+});
+
+for (const blocker of ['queue', 'route', 'drain_open', 'drain_closed']) {
+    test(`server-approved test permission warning does not blame provider rights for a ${blocker} blocker`, t => {
+        const f = fixture(); t.after(() => f.dom.window.close());
+        f.window.canAccess = () => true;
+        Object.assign(f.page.state.registerState, {
+            readinessCode: 'ready', integrationReady: true,
+            readiness: { unreportedPaymentPermissions: ['cash_payment'], deniedPaymentPermissions: [] }
+        });
+        if (blocker === 'queue') f.page.state.unresolvedQueueState = 'unavailable';
+        else if (blocker === 'route') {
+            f.page.state.routeReady = false;
+            f.page.state.routeOptions = [{ id: f.page.PILOT_SCOPE.routeOptionId, mode: 'test', sequentialReady: false, readinessCode: 'shared_test_register_owned_by_other_business' }];
+        } else {
+            f.page.state.registerState.sharedTestDay = {
+                localDrainBlocked: true, canResume: blocker === 'drain_closed',
+                activeDrain: { status: blocker === 'drain_closed' ? 'closed' : 'draining' }
+            };
+        }
+        f.page.addCatalogLine();
+        f.page.renderReadinessState();
+        const text = f.el('cashierReadinessTechnicalList').textContent;
+        assert.match(text, /сервер застосував погоджений тестовий виняток/);
+        assert.doesNotMatch(text, /потрібна перевірка прав у Checkbox/);
+        const reasons = {
+            queue: /Черга незавершених чеків недоступна/,
+            route: /Спільну тестову зміну використовує інший напрямок/,
+            drain_open: /Приймання оплат зупинене для завершення тестового дня/,
+            drain_closed: /Тестову зміну закрито.*Почати наступний тестовий день/
+        };
+        assert.match(text, reasons[blocker]);
+        if (blocker.startsWith('drain_')) {
+            assert.match(f.el('cashierReadinessSummary').textContent, reasons[blocker]);
+            assert.match(f.el('createPaymentDisabledReason').textContent, reasons[blocker]);
+            assert.equal(f.page.state.registerState.sharedTestDay.localDrainBlocked, true);
+        }
+        assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
+        assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+        assert.equal(f.page.state.registerState.integrationReady, true);
+    });
+}
 
 test('next customer clears items, quantities, discount and confirmation but preserves pending queue', async t => {
     const f = fixture(); t.after(() => f.dom.window.close());

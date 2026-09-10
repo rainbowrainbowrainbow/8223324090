@@ -77,6 +77,7 @@
                     </label>
                 </div>
                 <p id="paymentRouteHelp" class="cashier-help">Оберіть напрямок і касу для поточного клієнта.</p>
+                <button type="button" id="startNextOrderBtn" class="btn-page-secondary cashier-primary-action hidden" aria-describedby="paymentRouteHelp">Наступний клієнт</button>
             </section>
             <section id="cashierReadinessStatus" class="cashier-alert cashier-alert-warning cashier-readiness-card hidden" role="region" aria-labelledby="cashierReadinessSummary">
                 <div id="cashierReadinessSummary" class="cashier-readiness-summary" role="status" aria-live="polite">Перевіряємо готовність каси…</div>
@@ -149,7 +150,6 @@
                         <label><input type="radio" name="paymentTender" value="card_terminal_manual"> Термінал</label>
                     </fieldset>
                     <button type="submit" id="createPaymentOrderBtn" class="btn-page-primary cashier-primary-action" aria-describedby="createPaymentDisabledReason">Створити оплату</button>
-                    <button type="button" id="startNextOrderBtn" class="btn-page-secondary cashier-primary-action hidden" aria-describedby="createPaymentDisabledReason">Наступний клієнт</button>
                     <button type="button" id="cancelDraftOrderBtn" class="btn-page-secondary cashier-primary-action hidden" disabled aria-describedby="createPaymentDisabledReason">Скасувати чернетку</button>
                     <p id="createPaymentDisabledReason" class="cashier-help" aria-live="polite">Касир не може змінити ціну, ФОП, профіль або касу. Позиції фіксуються під час створення оплати.</p>
                 </form>

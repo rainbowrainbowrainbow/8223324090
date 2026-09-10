@@ -2102,6 +2102,17 @@
         );
     }
 
+    function sharedTestDayBlockReason() {
+        const day = state.registerState?.sharedTestDay;
+        if (day?.localDrainBlocked !== true) return '';
+        if (day.activeDrain?.status === 'closed') {
+            return day.canResume === true
+                ? 'Тестову зміну закрито. Нові оплати зупинено до дії «Почати наступний тестовий день» у блоці спільної тестової каси.'
+                : 'Тестову зміну закрито. Нові оплати зупинено; початок наступного тестового дня ще недоступний для цього користувача або маршруту.';
+        }
+        return 'Приймання оплат зупинене для завершення тестового дня. Спочатку дочекайтеся завершення черги та підтвердженого закриття зміни.';
+    }
+
     function queueUnavailableReason() {
         const queueState = effectiveUnresolvedQueueState();
         if (queueState === 'available') return '';
@@ -2202,12 +2213,18 @@
                 messages.push('Готовність Checkbox ще не підтверджена для вибраного способу оплати.');
             }
             if (Array.isArray(unreportedPermissions) && unreportedPermissions.length) {
-                const serverAllowsWithWarning = integrationReady() && code === 'ready'
+                const serverAllowsWithWarning = state.registerState.integrationReady === true
+                    && readinessTenderMatches(state.registerState) && code === 'ready'
                     && !deniedPermissions.length;
-                (serverAllowsWithWarning ? warnings : messages).push(paymentUiError({
-                    code: 'checkbox_payment_permission_unreported',
-                    details: { unreportedPaymentPermissions: unreportedPermissions }
-                }));
+                if (serverAllowsWithWarning) {
+                    const tenderLabel = state.tender === 'card_terminal_manual' ? 'оплату карткою' : 'готівку';
+                    warnings.push(`Checkbox не повідомив право на ${tenderLabel}; сервер застосував погоджений тестовий виняток. Інші перевірки каси залишаються обов'язковими.`);
+                } else {
+                    messages.push(paymentUiError({
+                        code: 'checkbox_payment_permission_unreported',
+                        details: { unreportedPaymentPermissions: unreportedPermissions }
+                    }));
+                }
             }
             if (Array.isArray(deniedPermissions) && deniedPermissions.length) {
                 messages.push(paymentUiError({
@@ -2216,6 +2233,11 @@
                 }));
             }
         }
+        if (!state.routeReady && selectedRoute()?.readinessCode === 'shared_test_register_owned_by_other_business') {
+            messages.push('Спільну тестову зміну використовує інший напрямок. Для переходу потрібне штатне завершення його тестового дня.');
+        }
+        const testDayReason = sharedTestDayBlockReason();
+        if (testDayReason) messages.push(testDayReason);
         const queueReason = queueUnavailableReason();
         if (queueReason) messages.push(queueReason);
         const ready = integrationReady() && messages.length === 0;
@@ -2233,7 +2255,7 @@
                     : 'Каса готова до оплати готівкою.')
                 : (viewOnly
                     ? 'Оплати поки вимкнені — сторінка працює лише для перегляду.'
-                    : 'Каса ще не готова — приймання оплат заблоковано.'));
+                    : testDayReason || 'Каса ще не готова — приймання оплат заблоковано.'));
         if (summary) summary.textContent = summaryText;
         if (technicalList) {
             technicalList.innerHTML = canViewTechnicalDetails && (messages.length || warnings.length)
@@ -2282,6 +2304,7 @@
         else if (state.createInFlight) reason = 'Створюємо оплату…';
         else if (active) reason = 'Спершу підтвердьте або скасуйте поточну чернетку.';
         else if (hasCurrentOrder) reason = 'Натисніть «Наступний клієнт» для нового продажу.';
+        else if (sharedTestDayBlockReason()) reason = sharedTestDayBlockReason();
         else if (!state.routeReady) reason = 'Обрана каса ще не готова або приймання оплат для неї вимкнено.';
         else if (!ready) reason = queueUnavailableReason() || 'Каса не готова: перегляньте повідомлення про готовність вище.';
         else if (retryPending) reason = 'Результат створення ще не відновлено. Повторіть той самий запит; кошик збережено.';
@@ -2307,6 +2330,9 @@
             button.disabled = editingDisabled;
         });
         setText('createPaymentDisabledReason', reason || 'Каса готова. Перевірте товари, кількість і спосіб оплати.');
+        setText('paymentRouteHelp', hasCurrentOrder
+            ? `Відкрито продаж №${order.id}. Напрямок, каса й касир зафіксовані.${nextAllowed ? ' Для нового продажу натисніть «Наступний клієнт».' : ''}${nextAllowed && !unresolvedQueueIsFresh() ? ` ${queueUnavailableReason()}` : ''}`
+            : 'Оберіть напрямок і касу для поточного клієнта.');
         setButtonBusy(createButton, state.createInFlight, 'Створюємо оплату…');
         if (createButton && !state.createInFlight) createButton.textContent = retryPending ? 'Відновити створення оплати' : (state.saleMode === 'catalog_sale' ? 'Створити продаж' : 'Створити оплату');
         setDisabledReason(createButton, disabled, reason);

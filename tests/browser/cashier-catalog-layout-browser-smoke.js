@@ -41,12 +41,70 @@ async function run() {
         });
         await page.goto(`http://127.0.0.1:${server.address().port}/cashier-payments?businessContext=event_genix&routeOptionId=park_production`);
         await page.waitForSelector('#addCatalogLineBtn:not([disabled])');
+        assert.equal(await page.locator('#catalogPicker').isVisible(), false);
+        assert.equal(await page.getAttribute('#addCatalogLineBtn', 'aria-expanded'), 'false');
         await page.click('#addCatalogLineBtn');
+        await page.evaluate(() => {
+            const names = [
+                'Англійська мова — абонемент на 8 занять',
+                'Арт-терапія — разове заняття',
+                'Ліплення та творчість — абонемент на 8 занять',
+                'Підготовка до школи — разове заняття',
+                'Денний догляд 09:00–13:00, місяць',
+                'Абонемент на індивідуальні творчі заняття та розвивальні майстер-класи для дітей'
+            ];
+            window.CashierPaymentsPage.state.catalogItems.forEach((item, index) => {
+                item.name = names[index % names.length];
+                item.category = 'Гуртки та творчість';
+                item.priceMinor = '175000';
+                item.unit = 'абонемент';
+            });
+            document.getElementById('catalogSearch').dispatchEvent(new Event('input', { bubbles: true }));
+        });
+        report.pickerCases = [];
+        for (const [width, dark] of [2069, 1440, 1024, 768, 390, 320].flatMap(width => [[width, false], [width, true]])) {
+            await page.setViewportSize({ width, height: 990 });
+            await page.evaluate(dark => document.body.classList.toggle('dark-mode', dark), dark);
+            await page.evaluate(() => new Promise(resolve => setTimeout(resolve, 400)));
+            const result = await page.evaluate(() => {
+                const list = document.getElementById('catalogSearchResults');
+                const rows = [...list.querySelectorAll('[data-catalog-add]')];
+                const box = el => el.getBoundingClientRect();
+                return {
+                    rowCount: rows.length,
+                    firstHeight: box(rows[0]).height,
+                    firstTextHeight: box(rows[0].children[0]).height,
+                    contentContained: rows.every(row => [...row.querySelectorAll('strong, small')].every(text => {
+                        const r = box(row), t = box(text);
+                        return t.top >= r.top && t.bottom <= r.bottom && t.left >= r.left && t.right <= r.right;
+                    })),
+                    singleColumn: rows.every((row, index) => !index || box(rows[index - 1]).bottom <= box(row).top),
+                    priceSeparated: rows.every(row => box(row.children[0]).right + 4 <= box(row.children[1]).left),
+                    fits: list.scrollWidth <= list.clientWidth + 1 && rows.every(row => row.scrollWidth <= row.clientWidth + 1)
+                };
+            });
+            report.pickerCases.push({ width, dark, result });
+            await page.locator('.cashier-catalog-workspace').screenshot({ path: path.join(output, `picker-${width}-${dark ? 'dark' : 'light'}.png`), animations: 'disabled' });
+            assert.equal(result.contentContained, true, JSON.stringify(report.pickerCases.at(-1)));
+            assert.equal(result.singleColumn, true, JSON.stringify(report.pickerCases.at(-1)));
+            assert.equal(result.priceSeparated, true, JSON.stringify(report.pickerCases.at(-1)));
+            assert.equal(result.fits, true, JSON.stringify(report.pickerCases.at(-1)));
+        }
         assert.equal(await page.locator('[data-catalog-item]').count(), 0);
         await page.locator('[data-catalog-add]').first().click();
         assert.equal(await page.locator('[data-catalog-add]').count(), 140);
         await page.locator('[data-catalog-add]').first().click();
         assert.equal(await page.inputValue('[data-catalog-quantity]'), '2');
+        await page.click('#addCatalogLineBtn');
+        assert.equal(await page.locator('#catalogPicker').isVisible(), false);
+        assert.equal(await page.inputValue('[data-catalog-quantity]'), '2');
+        await page.locator('#addCatalogLineBtn').press('Enter');
+        assert.equal(await page.locator('#catalogSearch').evaluate(el => el === document.activeElement), true);
+        await page.locator('#catalogSearch').press('Escape');
+        assert.equal(await page.locator('#catalogPicker').isVisible(), false);
+        assert.equal(await page.locator('#addCatalogLineBtn').evaluate(el => el === document.activeElement), true);
+        await page.locator('#addCatalogLineBtn').press('Space');
+        assert.equal(await page.locator('#catalogPicker').isVisible(), true);
         await page.evaluate(() => {
             window.CashierPaymentsPage.state.catalogItems[0].name = 'Абонемент на індивідуальні творчі заняття та розвивальні майстер-класи для дітей';
             document.querySelector('[data-catalog-item]').dispatchEvent(new Event('change', { bubbles: true }));
@@ -115,6 +173,7 @@ async function run() {
         report.polling = { result: 'PASS', orderReads, final: 'fiscalized', paymentPosts: mutations.length };
 
         await page.goto(`http://127.0.0.1:${server.address().port}/cashier-payments?businessContext=dar&routeOptionId=dar_production`);
+        await page.click('#addCatalogLineBtn');
         await page.waitForSelector('[data-catalog-add]');
         await page.fill('#catalogSearch', 'dar_010');
         await page.locator('[data-catalog-add="dar_010"]').click();
@@ -138,7 +197,7 @@ async function run() {
         await browser.close();
         await new Promise(resolve => server.close(resolve));
     }
-    console.log(`Cashier catalog layout PASS: ${report.cases.length} cases; ${output}`);
+    console.log(`Cashier catalog layout PASS: ${report.pickerCases.length} picker + ${report.cases.length} summary cases; ${output}`);
 }
 
 run().catch(error => { console.error(error); process.exitCode = 1; });

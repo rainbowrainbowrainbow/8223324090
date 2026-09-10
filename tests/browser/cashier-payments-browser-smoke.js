@@ -798,6 +798,8 @@ async function run() {
         await captureVisualArtifact(selectorPage, '00-catalog-park-production.png');
         assert.equal(await selectorPage.locator('[data-catalog-item]').count(), 0, 'catalog starts with an empty cart');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true);
+        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), false);
+        await selectorPage.click('#addCatalogLineBtn');
         await selectorPage.locator('[data-catalog-add]').first().click();
         const longName = 'Абонемент на індивідуальні творчі заняття та розвивальні майстер-класи для дітей';
         await selectorPage.evaluate(name => {
@@ -828,7 +830,9 @@ async function run() {
         await selectorPage.waitForFunction(() => document.querySelector('#cashierScopeMode')?.textContent.trim() === 'ТЕСТОВИЙ');
         await selectorPage.waitForFunction(() => window.CashierPaymentsPage.state.catalogReady && !window.CashierPaymentsPage.state.routeLoading);
         assert.equal(await selectorPage.inputValue('#catalogSearch'), '', 'PARK initial catalog needs no search');
-        assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'PARK initial catalog is visible after async loading');
+        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), false, 'route change collapses the PARK picker');
+        await selectorPage.click('#addCatalogLineBtn');
+        assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'PARK picker opens without requiring search');
         assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
         await captureVisualArtifact(selectorPage, '00-catalog-park-test-disabled.png');
@@ -844,7 +848,9 @@ async function run() {
         await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
         await selectorPage.waitForFunction(() => window.CashierPaymentsPage.state.catalogReady && !window.CashierPaymentsPage.state.routeLoading);
         assert.equal(await selectorPage.inputValue('#catalogSearch'), '', 'DAR initial catalog needs no search');
-        assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'DAR initial catalog is visible after async loading');
+        assert.equal(await selectorPage.locator('#catalogPicker').isVisible(), false, 'route change collapses the DAR picker');
+        await selectorPage.click('#addCatalogLineBtn');
+        assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'DAR picker opens without requiring search');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'DAR test route remains blocked while its acceptance gate is disabled');
         await selectorPage.fill('#catalogSearch', 'Послуга ДАР 10');
         await selectorPage.waitForSelector('#catalogSearchResults .cashier-catalog-result');

@@ -46,6 +46,7 @@ async function run() {
                 console.error(await page.evaluate(() => ({ ready: document.readyState, page: Boolean(window.CashierPaymentsPage), user: window.CashierPaymentsPage?.state?.user?.id, saleMode: window.CashierPaymentsPage?.state?.saleMode, routeReady: window.CashierPaymentsPage?.state?.routeReady, deniedHidden: document.querySelector('#cashierAccessDenied')?.className })));
                 throw error;
             });
+            await page.click('#addCatalogLineBtn');
             await page.locator('[data-catalog-add]').first().click();
             await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         }
@@ -77,6 +78,7 @@ async function run() {
         assert.equal(await first.locator(`#unresolvedOrdersBody [data-order-id="${firstId}"]`).count(), 1, 'previous paid receipt remains in recovery');
         await second.click('#startNextOrderBtn');
         assert.equal(await second.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id), firstId, 'stale tab cannot reset another customer');
+        await first.click('#addCatalogLineBtn');
         await first.locator('[data-catalog-add]').first().click();
         await first.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         await first.click('#createPaymentOrderBtn');

@@ -127,10 +127,10 @@
                     <div id="catalogSaleFields" class="cashier-catalog-fields hidden">
                         <div class="cashier-catalog-heading">
                             <div><strong>4. Товари та послуги</strong><p id="catalogSaleSummary" class="cashier-help">Завантажуємо актуальні ціни із Центру цін…</p></div>
-                            <button type="button" id="addCatalogLineBtn" class="btn-page-secondary">Обрати товари</button>
+                            <button type="button" id="addCatalogLineBtn" class="btn-page-secondary" aria-expanded="false" aria-controls="catalogPicker">Обрати товари</button>
                         </div>
                         <div class="cashier-catalog-workspace">
-                        <section class="cashier-catalog-picker" aria-label="Каталог товарів та послуг">
+                        <section id="catalogPicker" class="cashier-catalog-picker" aria-label="Каталог товарів та послуг" hidden>
                         <div class="cashier-catalog-filters">
                             <label class="cashier-field"><span>Пошук</span><input id="catalogSearch" type="search" autocomplete="off" placeholder="Назва або код"></label>
                             <label class="cashier-field"><span>Категорія</span><select id="catalogCategory"><option value="">Усі категорії</option></select></label>

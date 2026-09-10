@@ -779,6 +779,14 @@
         select.value = items.some(item => item.itemCode === selectedCode) ? selectedCode : items[0].itemCode;
     }
 
+    function setCatalogPickerOpen(open) {
+        const picker = $('catalogPicker');
+        if (!picker) return;
+        picker.hidden = !open;
+        $('addCatalogLineBtn')?.setAttribute('aria-expanded', String(open));
+        setText('addCatalogLineBtn', open ? 'Згорнути список' : 'Обрати товари');
+    }
+
     function renderCatalogSearchResults() {
         const container = $('catalogSearchResults');
         if (!container) return;
@@ -977,6 +985,7 @@
 
     async function loadCatalogData() {
         if (state.saleMode !== 'catalog_sale') return;
+        setCatalogPickerOpen(false);
         state.catalogReady = false;
         const params = routeQueryParams();
         const [catalog, discounts] = await Promise.all([
@@ -2919,6 +2928,7 @@
         if ($('catalogDiscountRule')) $('catalogDiscountRule').value = '';
         if ($('catalogSearch')) $('catalogSearch').value = '';
         if ($('catalogCategory')) $('catalogCategory').value = '';
+        setCatalogPickerOpen(false);
         renderCatalogSearchResults();
         updateCatalogCartSummary();
         setText('internalReceiptLabel', 'RCP-* \u2014 \u0432\u043d\u0443\u0442\u0440\u0456\u0448\u043d\u044f \u043a\u0432\u0438\u0442\u0430\u043d\u0446\u0456\u044f');
@@ -2962,8 +2972,15 @@
             await loadPilotRegisterState({ silent: true });
         });
         $('addCatalogLineBtn')?.addEventListener('click', () => {
-            $('catalogSearch')?.focus();
-            $('catalogSearchResults')?.scrollIntoView({ block: 'nearest' });
+            const open = Boolean($('catalogPicker')?.hidden);
+            setCatalogPickerOpen(open);
+            if (open) $('catalogSearch')?.focus({ preventScroll: true });
+        });
+        $('catalogPicker')?.addEventListener('keydown', event => {
+            if (event.key !== 'Escape') return;
+            event.preventDefault();
+            setCatalogPickerOpen(false);
+            $('addCatalogLineBtn')?.focus({ preventScroll: true });
         });
         $('catalogDiscountRule')?.addEventListener('change', () => {
             updateCatalogCartSummary();

@@ -192,6 +192,10 @@ for (const business of ['event_genix', 'dar']) {
         assert.equal(reads.length, 2);
         assert.equal(f.page.state.catalogReady, true);
         assert.equal(f.el('catalogSearch').value, '');
+        assert.equal(f.el('catalogPicker').hidden, true);
+        assert.equal(f.el('addCatalogLineBtn').getAttribute('aria-expanded'), 'false');
+        f.el('addCatalogLineBtn').click();
+        assert.equal(f.el('catalogPicker').hidden, false);
         assert.equal(f.el('catalogSearchResults').classList.contains('hidden'), false);
         const results = f.el('catalogSearchResults').querySelectorAll('button');
         assert.equal(results.length, items.length);
@@ -240,8 +244,10 @@ for (const business of ['event_genix', 'dar']) {
             itemCode: `extra-${index}`, name: `Service ${index}`, category: 'Services', priceMinor: '1000'
         })));
         f.page.refreshCatalogSelects();
+        f.el('addCatalogLineBtn').click();
         assert.equal(f.el('catalogSearchResults').querySelectorAll('button').length, 32);
         f.el('catalogSearchResults').querySelector('button').click();
+        assert.equal(f.el('catalogPicker').hidden, false);
         assert.equal(f.el('catalogSearchResults').classList.contains('hidden'), false);
         f.el('catalogSearchResults').querySelector('button').click();
         assert.equal(f.el('catalogSaleLines').children.length, 1);
@@ -263,12 +269,27 @@ for (const business of ['event_genix', 'dar']) {
     });
 }
 
-test('choose products focuses the picker without silently adding its first item', t => {
+test('picker toggle and Escape preserve cart, search, tender and focus without adding products', t => {
     const f = fixture(); t.after(() => f.dom.window.close());
-    f.el('catalogSearchResults').scrollIntoView = () => {};
+    assert.equal(f.el('catalogPicker').hidden, true);
     f.el('addCatalogLineBtn').click();
     assert.equal(f.el('catalogSaleLines').children.length, 0);
     assert.equal(f.window.document.activeElement, f.el('catalogSearch'));
+    assert.equal(f.el('addCatalogLineBtn').getAttribute('aria-expanded'), 'true');
+    f.page.addCatalogLine();
+    f.el('catalogSearch').value = 'extra';
+    const tender = f.page.state.tender;
+    f.el('addCatalogLineBtn').click();
+    assert.equal(f.el('catalogPicker').hidden, true);
+    assert.equal(f.el('catalogSaleLines').children.length, 1);
+    f.el('addCatalogLineBtn').click();
+    assert.equal(f.el('catalogSearch').value, 'extra');
+    assert.equal(f.page.state.tender, tender);
+    f.el('catalogSearch').dispatchEvent(new f.window.KeyboardEvent('keydown', { key: 'Escape', bubbles: true }));
+    assert.equal(f.el('catalogPicker').hidden, true);
+    assert.equal(f.el('addCatalogLineBtn').getAttribute('aria-expanded'), 'false');
+    assert.equal(f.window.document.activeElement, f.el('addCatalogLineBtn'));
+    assert.equal(f.el('catalogSaleLines').children.length, 1);
 });
 
 test('second direction discount explains zero eligibility and updates after basket changes', t => {

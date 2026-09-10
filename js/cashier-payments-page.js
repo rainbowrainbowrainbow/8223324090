@@ -148,22 +148,37 @@
     function $(id) { return document.getElementById(id); }
 
     function notify(message, type = 'info') {
-        if (typeof showNotification === 'function') showNotification(message, type);
         const el = $('cashierGlobalStatus');
+        if (el && type !== 'error'
+            && state.confirmOutcomePending
+            && el.classList.contains('cashier-alert-danger')) {
+            return;
+        }
+        if (el && type !== 'error'
+            && state.lastErrorNotificationAt
+            && Date.now() - state.lastErrorNotificationAt < 8000
+            && el.classList.contains('cashier-alert-danger')) {
+            return;
+        }
+        if (typeof showNotification === 'function') showNotification(message, type);
         if (el) {
             if (type === 'error') state.lastErrorNotificationAt = Date.now();
-            if (type !== 'error'
-                && state.lastErrorNotificationAt
-                && Date.now() - state.lastErrorNotificationAt < 8000
-                && el.classList.contains('cashier-alert-danger')) {
-                return;
-            }
             el.textContent = message;
             el.setAttribute('tabindex', '-1');
             el.classList.remove('hidden', 'cashier-alert-danger');
             if (type === 'error') el.classList.add('cashier-alert-danger');
-            if (type === 'error') el.focus({ preventScroll: false });
+            if (type === 'error') el.focus({ preventScroll: true });
         }
+    }
+
+    function clearGlobalStatus({ preserveError = true } = {}) {
+        const el = $('cashierGlobalStatus');
+        if (!el) return;
+        if (preserveError && el.classList.contains('cashier-alert-danger')) return;
+        el.textContent = '';
+        el.classList.add('hidden');
+        el.classList.remove('cashier-alert-danger');
+        el.removeAttribute('tabindex');
     }
 
     function setText(id, value) {
@@ -288,6 +303,34 @@
         if (method === 'card_terminal' || method === 'card_terminal_manual') return 'Термінал';
         if (method === 'cash') return 'Готівка';
         return 'Оплата';
+    }
+
+    function selectedCashierLabel() {
+        const select = $('paymentCashierBinding');
+        const option = select?.selectedOptions?.[0];
+        const label = String(option?.textContent || '').trim();
+        if (!select || !select.value || !label || /оберіть|завантаження|немає/i.test(label)) return 'не обрано';
+        return label;
+    }
+
+    function renderCompactContext() {
+        const route = selectedRoute();
+        setText('cashierScopeBusiness', PILOT_SCOPE.businessLabel);
+        setText('cashierScopeRegister', route?.registerLabel || PILOT_SCOPE.registerLabel);
+        setText('cashierScopeCashier', selectedCashierLabel());
+        setText('cashierScopeTender', formatPaymentMethod(state.tender).toLowerCase());
+        setText('cashierScopeMode', route?.mode === 'test' ? 'ТЕСТОВИЙ' : (state.localQa?.enabled === true ? 'LOCAL QA · MOCK' : 'РОБОЧИЙ'));
+    }
+
+    function placeCheckoutActions() {
+        const target = state.saleMode === 'catalog_sale' && $('catalogCheckoutActions')
+            ? $('catalogCheckoutActions')
+            : $('defaultCheckoutActions');
+        if (!target) return;
+        ['paymentTenderGroup', 'createPaymentOrderBtn', 'cancelDraftOrderBtn', 'createPaymentDisabledReason']
+            .map(id => $(id))
+            .filter(Boolean)
+            .forEach(el => target.appendChild(el));
     }
 
     function formatRecoveryText(order = {}) {
@@ -550,10 +593,6 @@
         setText('cashierHeroDescription', catalogMode
             ? 'Робочий продаж товарів і послуг із серверними цінами та контрольованим вибором каси й касира.'
             : 'Простий екран для оплати квитка парку готівкою або через термінал і створення офіційного чека Checkbox.');
-        setText('cashierScopeBusiness', PILOT_SCOPE.businessLabel);
-        setText('cashierScopeLocation', PILOT_SCOPE.locationLabel);
-        setText('cashierScopeRegister', route?.registerLabel || PILOT_SCOPE.registerLabel);
-        setText('cashierScopeMode', route?.mode === 'test' ? 'ТЕСТОВИЙ' : 'РОБОЧИЙ');
         $('cashierTestModeBanner')?.classList.toggle('hidden', route?.mode !== 'test');
         $('cashierRouteSelector')?.classList.toggle('is-test-route', route?.mode === 'test');
         $('admissionTicketFields')?.classList.toggle('hidden', catalogMode);
@@ -562,6 +601,8 @@
         $('paymentKidsCount') && ($('paymentKidsCount').required = !catalogMode);
         setText('paymentOrderFormTitle', catalogMode ? 'Створити продаж із каталогу' : 'Створити оплату');
         if ($('createPaymentOrderBtn')) $('createPaymentOrderBtn').textContent = catalogMode ? 'Створити продаж' : 'Створити оплату';
+        placeCheckoutActions();
+        renderCompactContext();
     }
 
     async function loadLocalQaStatus() {
@@ -580,7 +621,7 @@
         const banner = $('localQaBanner');
         banner?.classList.remove('hidden');
         setText('localQaBannerDetails', `${PILOT_SCOPE.businessLabel} · ${selectedRoute()?.registerLabel || 'каса'} · тільки localhost · зовнішній Checkbox заблоковано`);
-        setText('cashierScopeMode', 'LOCAL QA · MOCK');
+        renderCompactContext();
         return result;
     }
 
@@ -784,7 +825,7 @@
         if (!picker) return;
         picker.hidden = !open;
         $('addCatalogLineBtn')?.setAttribute('aria-expanded', String(open));
-        setText('addCatalogLineBtn', open ? 'Згорнути список' : 'Обрати товари');
+        setText('addCatalogLineBtn', open ? 'Сховати каталог' : 'Показати каталог');
     }
 
     function renderCatalogSearchResults() {
@@ -1085,6 +1126,7 @@
         setText('paymentCashierHelp', cashiers.length
             ? 'Оберіть активного касира саме цієї каси.'
             : 'Для цієї каси немає активного касира з налаштованим credential reference.');
+        renderCompactContext();
         syncCreateAvailability();
     }
 
@@ -1277,14 +1319,14 @@
 
     function focusFirstConfirmationControl() {
         const target = state.tender === 'card_terminal_manual' ? $('terminalSuccessCheckbox') : $('cashReceivedAmount');
-        target?.focus?.({ preventScroll: false });
+        target?.focus?.({ preventScroll: true });
     }
 
     function focusFiscalResult() {
         const panel = $('fiscalResultPanel');
         if (!panel) return;
         panel.setAttribute('tabindex', '-1');
-        panel.focus({ preventScroll: false });
+        panel.focus({ preventScroll: true });
     }
 
     function clearOrderPolling() {
@@ -1390,6 +1432,7 @@
             checkbox_cashier_permissions_missing: deniedLabels.length
                 ? `Checkbox відхилив право касира на ${deniedLabels.join(' і ')}. Відповідальний має перевірити права касира у Checkbox.`
                 : 'Checkbox не підтвердив право касира на вибраний спосіб оплати. Відповідальний має перевірити права касира у Checkbox.',
+            checkbox_cashier_permissions_malformed: 'Checkbox повернув неочікуваний формат прав касира. Приймання оплати заблоковано до перевірки відповідальним.',
             checkbox_payment_permission_unreported: permissionLabels.length
                 ? `Checkbox не повідомив право касира на ${permissionLabels.join(' і ')}. Оновлення сторінки це не виправить; потрібна перевірка прав у Checkbox.`
                 : 'Checkbox не повідомив право касира на вибраний спосіб оплати. Потрібна перевірка прав у Checkbox.',
@@ -1479,10 +1522,14 @@
         const links = $('providerReceiptLinks');
         const pendingNotice = $('pendingReceiptNotice');
         const hasOfficialReceipt = FISCAL_DONE_STATUSES.has(fiscalStatus) || latestReceipt?.status === 'fiscalized';
-        if (hasOfficialReceipt) forgetPendingOrder(order.id);
+        if (hasOfficialReceipt) {
+            forgetPendingOrder(order.id);
+            clearGlobalStatus();
+        }
         if (message) {
             if (!hasOrder) message.textContent = 'Чек ще не створено. Спочатку створіть оплату для поточного клієнта.';
             else if (hasOfficialReceipt) message.textContent = 'Оплату завершено. Офіційний чек Checkbox отримано. Для нового продажу натисніть «Наступний клієнт».';
+            else if (state.confirmOutcomePending) message.textContent = 'Результат підтвердження уточнюється. Не повторюйте оплату й не скасовуйте чернетку, доки відповідальний не звірить цей продаж.';
             else if (normalizeStatus(order.paymentStatus) === 'unpaid') message.textContent = 'Оплату ще не підтверджено. Перевірте суму та підтвердьте отримання грошей.';
             else if (displayStatus === 'awaiting_receipt' || fiscalStatus === 'pending') message.textContent = 'Оплату зафіксовано. Очікуємо чек Checkbox; стан перевіряється автоматично. Повторно оплачувати не потрібно.';
             else if (['failed_terminal', 'validation_failed', 'blocked', 'dead'].includes(fiscalStatus)) message.textContent = 'Потрібне втручання адміністратора. Гроші вже зафіксовані; повторно приймати оплату не можна.';
@@ -2119,6 +2166,8 @@
     }
 
     function isDefinitePaymentRejection(error) {
+        const status = Number(error?.status || 0);
+        if (status >= 500) return false;
         const code = String(error?.code || error?.message || '').trim();
         return KNOWN_PRE_PAYMENT_REJECTION_CODES.has(code);
     }
@@ -2242,6 +2291,7 @@
                 readiness_stale: 'Готовність застаріла, потрібна свіжа перевірка.',
                 readiness_missing: 'Готовність ще не перевірена.',
                 checkbox_cashier_permissions_missing: 'Checkbox не підтвердив права касира на вибраний спосіб оплати.',
+                checkbox_cashier_permissions_malformed: 'Checkbox повернув неочікуваний формат прав касира.',
                 checkbox_payment_permission_unreported: 'Checkbox не повідомив право касира на вибраний спосіб оплати.',
                 fiscal_binding_capability_denied: 'Локальна прив’язка касира не дозволяє цю фіскальну дію.',
                 tax_mapping_missing: 'Фіскальні назви/податки для квитків не налаштовані.',
@@ -2349,6 +2399,7 @@
         let reason = '';
         if (!safeDraftCoordination) reason = 'Безпечні повтори недоступні. Відкрийте касу в актуальному браузері через HTTPS.';
         else if (state.createInFlight) reason = 'Створюємо оплату…';
+        else if (state.confirmOutcomePending) reason = 'Результат підтвердження уточнюється. Не повторюйте оплату й не скасовуйте чернетку до звірки.';
         else if (active) reason = 'Спершу підтвердьте або скасуйте поточну чернетку.';
         else if (hasCurrentOrder) reason = 'Натисніть «Наступний клієнт» для нового продажу.';
         else if (sharedTestDayBlockReason()) reason = sharedTestDayBlockReason();
@@ -2741,6 +2792,7 @@
         });
         $('cashConfirmationPanel')?.classList.toggle('hidden', state.tender !== 'cash');
         $('cardConfirmationPanel')?.classList.toggle('hidden', state.tender !== 'card_terminal_manual');
+        renderCompactContext();
         renderReadinessState();
         syncConfirmationAvailability();
     }
@@ -2814,6 +2866,7 @@
                 state.confirmSubmitted = true;
                 state.confirmOutcomePending = true;
                 syncConfirmationAvailability();
+                if (state.orderDetails?.order) renderFiscalResult(state.orderDetails);
                 notify('Сервер прийняв запит, але повторне читання замовлення не підтвердило оплату. Не повторюйте оплату; оновіть чергу або зверніться до відповідального.', 'error');
                 return;
             }
@@ -2838,6 +2891,7 @@
             } else {
                 state.confirmSubmitted = true;
                 state.confirmOutcomePending = true;
+                if (state.orderDetails?.order) renderFiscalResult(state.orderDetails);
                 notify(paymentUiError(new Error('payment_confirmation_outcome_unknown')), 'error');
             }
         } finally {
@@ -2921,6 +2975,7 @@
         state.confirmOutcomePending = false;
         state.confirmInFlight = false;
         state.nextCustomerSafetyRefreshInFlight = true;
+        clearGlobalStatus({ preserveError: false });
         $('terminalSuccessCheckbox') && ($('terminalSuccessCheckbox').checked = false);
         $('terminalReference') && ($('terminalReference').value = '');
         $('cashReceivedAmount') && ($('cashReceivedAmount').value = '');
@@ -2956,7 +3011,7 @@
                 syncConfirmationAvailability();
                 (state.saleMode === 'catalog_sale'
                     ? $('addCatalogLineBtn')
-                    : $('paymentDate'))?.focus({ preventScroll: false });
+                    : $('paymentDate'))?.focus({ preventScroll: true });
             }
         })();
     }
@@ -2968,6 +3023,10 @@
         $('paymentBusinessContext')?.addEventListener('change', () => { void handleBusinessContextChange(); });
         $('paymentRegisterRoute')?.addEventListener('change', () => { void handleRegisterRouteChange(); });
         $('paymentCashierBinding')?.addEventListener('change', async () => {
+            state.readinessLoadGeneration += 1;
+            state.registerState = null;
+            renderRegisterState(null);
+            renderCompactContext();
             syncCreateAvailability();
             await loadPilotRegisterState({ silent: true });
         });

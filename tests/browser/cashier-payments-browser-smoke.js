@@ -675,11 +675,23 @@ async function refreshUnresolvedOrders(page) {
 }
 
 async function assertNoCashierPageOverflow(page) {
-    const widths = [360, 390, 640, 800, 961, 1023, 1024, 1440];
+    const viewportCases = [
+        { width: 360, height: 900, label: '360x900' },
+        { width: 390, height: 844, label: '390x844' },
+        { width: 640, height: 900, label: '640x900' },
+        { width: 720, height: 450, label: '1440x900 effective 200% zoom viewport' },
+        { width: 768, height: 1024, label: '768x1024' },
+        { width: 800, height: 900, label: '800x900' },
+        { width: 961, height: 900, label: '961x900' },
+        { width: 1023, height: 900, label: '1023x900' },
+        { width: 1024, height: 900, label: '1024x900' },
+        { width: 1280, height: 800, label: '1280x800' },
+        { width: 1440, height: 900, label: '1440x900' }
+    ];
     const originalDisclosureState = await page.evaluate(() => [...document.querySelectorAll('.cashier-secondary-disclosure')].map(item => item.open));
     await page.evaluate(() => document.querySelectorAll('.cashier-secondary-disclosure').forEach(item => { item.open = true; }));
-    for (const width of widths) {
-        await page.setViewportSize({ width, height: 900 });
+    for (const { width, height, label } of viewportCases) {
+        await page.setViewportSize({ width, height });
         await page.waitForTimeout(500);
         const layout = await page.evaluate(() => {
             const viewportWidth = document.documentElement.clientWidth;
@@ -709,10 +721,10 @@ async function assertNoCashierPageOverflow(page) {
                 offenders
             };
         });
-        assert.ok(layout.documentScrollWidth <= layout.viewportWidth + 1, `document does not overflow at ${width}px: ${JSON.stringify(layout)}`);
-        assert.ok(layout.bodyScrollWidth <= layout.viewportWidth + 1, `body does not overflow at ${width}px: ${JSON.stringify(layout)}`);
-        assert.ok(layout.tableScrollWidth <= layout.tableClientWidth + 1, `positions table stays readable without hidden horizontal scrolling at ${width}px: ${JSON.stringify(layout)}`);
-        assert.deepEqual(layout.offenders, [], `cashier cards stay inside the viewport at ${width}px`);
+        assert.ok(layout.documentScrollWidth <= layout.viewportWidth + 1, `document does not overflow at ${label}: ${JSON.stringify(layout)}`);
+        assert.ok(layout.bodyScrollWidth <= layout.viewportWidth + 1, `body does not overflow at ${label}: ${JSON.stringify(layout)}`);
+        assert.ok(layout.tableScrollWidth <= layout.tableClientWidth + 1, `positions table stays readable without hidden horizontal scrolling at ${label}: ${JSON.stringify(layout)}`);
+        assert.deepEqual(layout.offenders, [], `cashier cards stay inside the viewport at ${label}`);
     }
     await page.setViewportSize({ width: 1280, height: 900 });
     await page.evaluate(states => {

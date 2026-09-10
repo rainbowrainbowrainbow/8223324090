@@ -730,11 +730,17 @@ async function closeQaShift({ fixture, businessContext, provider, actorToken, mo
         (next_run_at > NOW()) AS scheduled_later FROM payment_outbox_jobs WHERE status <> 'done'`)).rows;
     assert.deepEqual(final.rows[0], { active_shifts: 0, pending_jobs: 0, unknown_operations: 0 }, JSON.stringify({ queuedDiagnostics, drain }));
     assert.equal((await pool.query('SELECT status FROM fiscal_register_payment_drains WHERE id=$1', [drainId])).rows[0].status, 'closed');
+    const resumeRouteOptionId = businessContext === 'dar' ? 'park_test' : routeOptionId;
+    const resumeContext = resumeRouteOptionId === 'park_test' ? 'event_genix' : 'dar';
+    const resumeRequest = { routeOptionId: resumeRouteOptionId, idempotencyKey: `resume-${drainId}`, body: { confirmNextTestDay: true } };
+    if (resumeRouteOptionId !== routeOptionId) {
+        const crossRouteState = await api(actorToken, 'GET',
+            `/api/payments/pilot-register-state?businessContext=${resumeContext}&routeOptionId=${resumeRouteOptionId}&cashierBindingId=${fixture.contexts[resumeContext].selectedBindingId}`);
+        assert.equal(crossRouteState.status, 200, JSON.stringify(crossRouteState.body));
+        assert.equal(crossRouteState.body.sharedTestDay?.activeDrain?.id, drainId, JSON.stringify(crossRouteState.body.sharedTestDay));
+        assert.equal(crossRouteState.body.sharedTestDay?.canResume, true, JSON.stringify(crossRouteState.body.sharedTestDay));
+    }
     const beforeResumePosts = postCount();
-    const resumeRequest = { routeOptionId, idempotencyKey: `resume-${drainId}`, body: { confirmNextTestDay: true } };
-    const wrongRoute = await api(actorToken, 'POST', `/api/payments/test-drains/${drainId}/resume`, {
-        ...resumeRequest, routeOptionId: routeOptionId === 'park_test' ? 'dar_test' : 'park_test' });
-    assert.notEqual(wrongRoute.status, 200);
     await assert.rejects(() => requestSharedTestResume({ user: fixture.users.testCashier, drainId, ...resumeRequest }),
         error => ['FiscalAccessError', 'PaymentReadinessError', 'TestDrainError'].includes(error.name));
     for (const fault of ['registerIsTest', 'failReads']) {
@@ -1258,7 +1264,8 @@ test('PARK/DAR catalog_sale full local provider QA', async () => {
                 pending_receipt_finished_after_stop: true, close_blocked_while_pending: true,
                 stale_cycle_cannot_resume_new_cycle: true, resume_with_global_off_stays_disabled: true,
                 stop_resume_provider_mutations: 0, database_identity_delete_fk_active_unique_guards: true,
-                resume_rejects_wrong_owner_route_non_test_unavailable_and_failed_job: true,
+                resume_allows_authorized_shared_route_after_closed_stop: true,
+                resume_rejects_unprivileged_non_test_unavailable_and_failed_job: true,
                 webhook_close_resume_advisory_serialization: true,
                 concurrent_new_payment_waits_for_stop_and_is_rejected: true,
                 resume_rehydrates_deactivation_capability_and_business_access_after_provider_io: true },

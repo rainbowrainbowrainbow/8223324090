@@ -39,7 +39,7 @@ function projectDrain(row) {
         startedAt: row.started_at, closedAt: row.closed_at, resumedAt: row.resumed_at } : null;
 }
 
-async function authorizeScope(client, { user, shiftId, routeOptionId }) {
+async function authorizeScope(client, { user, shiftId, routeOptionId, allowSharedRegisterResume = false }) {
     const { loadAndAuthorizePhase1CloseShift, loadPhase1CloseFiscalBinding } = require('./paymentReadinessService');
     const shift = await loadAndAuthorizePhase1CloseShift(client, { user, shiftId, requireProviderOpen: false });
     await lockFiscalRegister(client, shift.fiscal_profile_id, shift.fiscal_register_id);
@@ -59,12 +59,16 @@ async function authorizeScope(client, { user, shiftId, routeOptionId }) {
     const routes = (await client.query(`SELECT * FROM fiscal_sale_routes
         WHERE fiscal_register_id = $1 ORDER BY route_option_id FOR SHARE`, [shift.fiscal_register_id])).rows;
     const expected = { dar_test: 'dar', park_test: 'event_genix' };
+    const routeBusinessContext = expected[routeOptionId] || null;
+    const routeIsConfigured = routes.some(route => route.route_option_id === routeOptionId
+        && route.business_context === routeBusinessContext);
+    const routeMatchesShift = routeBusinessContext === locked.business_context;
     if (routes.length !== 2 || !routes.every(route => expected[route.route_option_id] === route.business_context
         && route.mode === 'test' && route.expected_is_test === true
         && String(route.fiscal_profile_id) === String(locked.fiscal_profile_id)
         && String(route.fiscal_location_id) === String(locked.fiscal_location_id)
         && route.shared_register_group && route.shared_register_group === routes[0].shared_register_group)
-        || !expected[routeOptionId] || expected[routeOptionId] !== locked.business_context
+        || !routeIsConfigured || (!allowSharedRegisterResume && !routeMatchesShift)
         || !['true', '1'].includes(String(locked.register_expected_is_test).toLowerCase())) {
         throw new TestDrainError('shared_test_scope_mismatch');
     }
@@ -79,11 +83,15 @@ async function authorizeScope(client, { user, shiftId, routeOptionId }) {
     return { shift: locked, binding, routes, fingerprint };
 }
 
-function assertOwner(row, scope, user, routeOptionId) {
-    if (String(row.initiated_by_user_id) !== String(user?.id) || row.initiating_route_option_id !== routeOptionId) {
+function assertScopeFingerprint(row, scope) {
+    if (row.scope_fingerprint !== scope.fingerprint) throw new TestDrainError('shared_test_scope_changed');
+}
+
+function assertOwner(row, scope, user, routeOptionId, { requireInitiator = true } = {}) {
+    if (requireInitiator && (String(row.initiated_by_user_id) !== String(user?.id) || row.initiating_route_option_id !== routeOptionId)) {
         throw new TestDrainError('shared_test_owner_mismatch', 403);
     }
-    if (row.scope_fingerprint !== scope.fingerprint) throw new TestDrainError('shared_test_scope_changed');
+    assertScopeFingerprint(row, scope);
 }
 
 async function readProviderEvidence(scope, { env, fetchImpl }) {
@@ -135,13 +143,14 @@ async function resultFor(client, row, scope, env, replayed = false) {
 async function findReplay(client, action, key, targetId, scope, user, routeOptionId) {
     const column = action === 'drain' ? 'drain_idempotency_key' : 'resume_idempotency_key';
     const keyed = (await client.query(`SELECT * FROM fiscal_register_payment_drains WHERE ${column} = $1`, [key])).rows[0];
-    if (keyed && (String(action === 'drain' ? keyed.fiscal_shift_id : keyed.id) !== String(targetId)
-        || String(keyed.initiated_by_user_id) !== String(user?.id) || keyed.initiating_route_option_id !== routeOptionId)) {
+    const targetMatches = row => String(action === 'drain' ? row.fiscal_shift_id : row.id) === String(targetId);
+    if (keyed && (!targetMatches(keyed) || (action === 'drain'
+        && (String(keyed.initiated_by_user_id) !== String(user?.id) || keyed.initiating_route_option_id !== routeOptionId)))) {
         throw new TestDrainError('shared_test_idempotency_conflict');
     }
     const target = (await client.query(`SELECT * FROM fiscal_register_payment_drains
         WHERE ${action === 'drain' ? 'fiscal_shift_id' : 'id'} = $1 FOR UPDATE`, [targetId])).rows[0];
-    if (target) assertOwner(target, scope, user, routeOptionId);
+    if (target) assertOwner(target, scope, user, routeOptionId, { requireInitiator: action === 'drain' });
     return target || null;
 }
 
@@ -203,7 +212,7 @@ async function requestSharedTestResume({ dbPool = pool, user, drainId, routeOpti
     const prepare = async client => {
         const row = (await client.query('SELECT * FROM fiscal_register_payment_drains WHERE id = $1', [id])).rows[0];
         if (!row) throw new TestDrainError('shared_test_drain_not_found', 404);
-        const scope = await authorizeScope(client, { user, shiftId: row.fiscal_shift_id, routeOptionId });
+        const scope = await authorizeScope(client, { user, shiftId: row.fiscal_shift_id, routeOptionId, allowSharedRegisterResume: true });
         const current = await findReplay(client, 'resume', key, id, scope, user, routeOptionId);
         return { row: current, scope };
     };
@@ -234,8 +243,11 @@ async function loadSharedTestDayState(client, { user, shift, routeOptionId, prof
         localDrainBlocked: Boolean(active), reasonCode: active ? 'shared_test_register_draining' : 'ready' };
     if (!shift || !['park_test', 'dar_test'].includes(routeOptionId)) return state;
     try {
-        const scope = await authorizeScope(client, { user, shiftId: active?.fiscal_shift_id || shift.id, routeOptionId });
-        if (active) assertOwner(active, scope, user, routeOptionId);
+        const allowSharedRegisterResume = active?.status === 'closed';
+        const scope = await authorizeScope(client, {
+            user, shiftId: active?.fiscal_shift_id || shift.id, routeOptionId, allowSharedRegisterResume
+        });
+        if (active) assertOwner(active, scope, user, routeOptionId, { requireInitiator: !allowSharedRegisterResume });
         state.visible = true;
         state.canDrain = !active && scope.shift.status === 'open' && scope.shift.lifecycle_stage === 'OPENED';
         if (active?.status === 'closed') {

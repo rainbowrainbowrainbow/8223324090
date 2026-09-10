@@ -235,10 +235,14 @@
         return normalizeStatus(order?.fiscalQueueStatus || order?.fiscalStatus);
     }
 
+    function isReceiptPendingCode(value) {
+        return ['checkbox_receipt_pending', 'provider_receipt_pending', 'receipt_lookup_required_before_retry'].includes(normalizeStatus(value));
+    }
+
     function fiscalStatusForDisplay(order, errorCode = order?.lastErrorCode || order?.incidentReason) {
         const status = effectiveFiscalStatus(order);
         // Presentation only: canonical statuses still govern payment, polling and close guards.
-        return errorCode === 'checkbox_receipt_pending' && ['pending', 'unknown', 'failed_retryable'].includes(status)
+        return isReceiptPendingCode(errorCode) && ['pending', 'unknown', 'failed_retryable'].includes(status)
             ? 'awaiting_receipt' : status;
     }
 
@@ -279,6 +283,8 @@
         if (!value) return '';
         const labels = {
             checkbox_receipt_pending: 'Checkbox ще обробляє чек. Повторна оплата не потрібна.',
+            provider_receipt_pending: 'Checkbox ще обробляє чек. Повторна оплата не потрібна.',
+            receipt_lookup_required_before_retry: 'Checkbox ще звіряє чек. Повторна оплата не потрібна.',
             provider_unavailable: 'Checkbox тимчасово недоступний; система повторить перевірку.',
             provider_shift_closed_before_sale_submit: 'Зміну закрито до відправлення чека; потрібна ручна звірка.',
             paid_sale_closed_shift_reconciliation_required: 'Потрібна ручна звірка оплаченого чека.',
@@ -911,8 +917,8 @@
             explanation.hidden = !discount;
             explanation.textContent = discount?.code === 'dar_second_club_direction_10'
                 ? (originalTotal > finalTotal
-                    ? '10% застосовано лише до іншого гурткового напрямку. Перший напрямок — за повною ціною.'
-                    : 'Знижку не застосовано: 10% діють на другий відмінний гуртковий напрямок у кошику, а не на першу позицію.')
+                    ? 'Правило 10% застосовано тільки до другого іншого гурткового напрямку. Перший напрямок лишається за повною ціною.'
+                    : '0 грн знижки зараз коректно: правило 10% спрацює тільки після додавання другого іншого гурткового напрямку.')
                 : (discount ? `Знижка: ${formatMoneyMinor(Math.round((originalTotal - finalTotal) * 100))}.` : '');
         }
     }
@@ -2198,13 +2204,20 @@
         );
     }
 
+    function sharedTestDaySpecificReason(day) {
+        const code = normalizeStatus(day?.reasonCode);
+        if (!code || code === 'ready' || code === 'shared_test_register_draining') return '';
+        return paymentUiError({ code });
+    }
+
     function sharedTestDayBlockReason() {
         const day = state.registerState?.sharedTestDay;
         if (day?.localDrainBlocked !== true) return '';
+        const specificReason = sharedTestDaySpecificReason(day);
         if (day.activeDrain?.status === 'closed') {
             return day.canResume === true
                 ? 'Тестову зміну закрито. Нові оплати зупинено до дії «Почати наступний тестовий день» у блоці спільної тестової каси.'
-                : 'Тестову зміну закрито. Нові оплати зупинено; початок наступного тестового дня ще недоступний для цього користувача або маршруту.';
+                : `Тестову зміну закрито. Нові оплати зупинено; початок наступного тестового дня недоступний.${specificReason ? ` ${specificReason}` : ''}`;
         }
         return 'Приймання оплат зупинене для завершення тестового дня. Спочатку дочекайтеся завершення черги та підтвердженого закриття зміни.';
     }
@@ -2528,9 +2541,14 @@
         panel?.classList.toggle('hidden', !visible);
         panel?.setAttribute('aria-hidden', visible ? 'false' : 'true');
         panel?.setAttribute('aria-busy', sharedTestDayInFlight ? 'true' : 'false');
+        const specificReason = day?.localDrainBlocked && !day?.canResume
+            ? sharedTestDaySpecificReason(day)
+            : '';
         const notice = day?.localDrainBlocked
             ? (day.activeDrain?.status === 'closed'
-                ? 'Зміну закрито. Приймання оплат PARK і ДАР зупинено до явного початку наступного тестового дня.'
+                ? (day.canResume
+                    ? 'Зміну закрито. Приймання оплат PARK і ДАР зупинено до явного початку наступного тестового дня.'
+                    : `Зміну закрито, але початок наступного тестового дня зараз недоступний.${specificReason ? ` ${specificReason}` : ''}`)
                 : 'Нові оплати PARK і ДАР зупинено. Дочекайтеся завершення черги та окремо закрийте зміну нижче.')
             : 'Завершення роботи зупиняє нові оплати обох тестових маршрутів. Відновлення не відкриває зміну та не вмикає вимкнені серверні налаштування.';
         setText('sharedTestDayNotice', sharedTestDayInFlight ? 'Перевіряємо стан тестової каси…' : notice);

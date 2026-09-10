@@ -480,6 +480,22 @@ describe('agent activity scheduler wrapper behavior', () => {
         return require('../services/agentTracker');
     }
 
+    function snapshotCommit(hash, author, message, date, diffStat = '') {
+        return `\x1e${hash}\x1f${author}\x1f${message}\x1f${date}\n${diffStat}\n`;
+    }
+
+    function createTrackerLogger() {
+        const entries = { info: [], warn: [], error: [] };
+        return {
+            entries,
+            logger: {
+                info: (...args) => entries.info.push(args),
+                warn: (...args) => entries.warn.push(args),
+                error: (...args) => entries.error.push(args)
+            }
+        };
+    }
+
     it('syncAgentActivities scans the default 24 hour window and reports empty or successful syncs', async () => {
         const tracker = loadAgentTracker();
         const windows = [];
@@ -566,5 +582,117 @@ describe('agent activity scheduler wrapper behavior', () => {
         assert.deepEqual(recovered, { synced: true, added: 1 });
         assert.equal(logs.length, 1);
         assert.match(String(logs[0][0]), /syncAgentActivities failed/);
+    });
+
+    it('runs one bounded async git log process without a shell or event-loop blocking', async () => {
+        const { __agentTrackerTest: { runGitLog } } = loadAgentTracker();
+        let invocation;
+        let eventLoopAdvanced = false;
+        const resultPromise = runGitLog('2026-09-10T00:00:00.000Z', {
+            cwd: process.cwd(),
+            execFileImpl: (command, args, options, callback) => {
+                invocation = { command, args, options };
+                setTimeout(() => callback(null, 'snapshot', ''), 25);
+            }
+        });
+        setImmediate(() => { eventLoopAdvanced = true; });
+
+        const result = await resultPromise;
+
+        assert.equal(result, 'snapshot');
+        assert.equal(eventLoopAdvanced, true);
+        assert.equal(invocation.command, 'git');
+        assert.ok(invocation.args.includes('--shortstat'));
+        assert.ok(invocation.args.includes('--no-merges'));
+        assert.equal(invocation.options.timeout, 10_000);
+        assert.equal(invocation.options.maxBuffer, 2 * 1024 * 1024);
+        assert.equal(invocation.options.windowsHide, true);
+        assert.equal(invocation.options.shell, undefined);
+    });
+
+    it('returns a safe no-git result without logging stderr content', async () => {
+        const { parseGitLog } = loadAgentTracker();
+        const sensitiveStderr = 'secret local diff content';
+        const error = new Error(sensitiveStderr);
+        error.code = 128;
+        const { logger, entries } = createTrackerLogger();
+        const db = { query: async () => { throw new Error('DB must not be queried'); } };
+
+        const added = await parseGitLog(24, {
+            db,
+            logger,
+            execFileImpl: (command, args, options, callback) => callback(error, '', sensitiveStderr)
+        });
+
+        assert.equal(added, 0);
+        assert.equal(entries.warn.length, 1);
+        assert.equal(JSON.stringify(entries).includes(sensitiveStderr), false);
+        assert.deepEqual(entries.warn[0][1], { code: 128, timedOut: false });
+    });
+
+    it('parses few commits with one idempotency lookup and preserves shortstat', async () => {
+        const { parseGitLog } = loadAgentTracker();
+        const snapshot = [
+            snapshotCommit('a'.repeat(40), 'Alice', 'feat: async tracker', '2026-09-11 10:00:00 +0300', '2 files changed, 8 insertions(+), 1 deletion(-)'),
+            snapshotCommit('b'.repeat(40), 'Bob', 'fix: existing commit', '2026-09-11 09:00:00 +0300', '1 file changed, 1 insertion(+)')
+        ].join('');
+        const queries = [];
+        const db = {
+            async query(sql, params) {
+                queries.push({ sql: String(sql), params });
+                if (/SELECT details->>'commit_hash'/i.test(sql)) return rows([{ commit_hash: 'b'.repeat(40) }]);
+                if (/INSERT INTO agent_activities/i.test(sql)) return rows([{ id: 17 }]);
+                throw new Error(`Unexpected query: ${sql}`);
+            }
+        };
+
+        const added = await parseGitLog(24, {
+            db,
+            logger: createTrackerLogger().logger,
+            runGitLog: async () => snapshot
+        });
+
+        assert.equal(added, 1);
+        assert.equal(queries.length, 2);
+        assert.equal(queries[0].params[0].length, 2);
+        assert.equal(queries[1].params[1], 'feature');
+        const details = JSON.parse(queries[1].params[3]);
+        assert.equal(details.commit_hash, 'a'.repeat(40));
+        assert.equal(details.diff_stat, '2 files changed, 8 insertions(+), 1 deletion(-)');
+    });
+
+    it('handles a 500-commit snapshot with one lookup query', async () => {
+        const { parseGitLog, __agentTrackerTest: { parseGitLogSnapshot } } = loadAgentTracker();
+        const snapshot = Array.from({ length: 500 }, (_, index) => snapshotCommit(
+            index.toString(16).padStart(40, '0'),
+            'Load Test Author',
+            `chore: commit ${index}`,
+            '2026-09-11 08:00:00 +0300',
+            '1 file changed, 1 insertion(+)'
+        )).join('');
+        let lookupCount = 0;
+        const db = {
+            async query(sql, params) {
+                assert.match(String(sql), /SELECT details->>'commit_hash'/i);
+                lookupCount += 1;
+                return rows(params[0].map(commit_hash => ({ commit_hash })));
+            }
+        };
+
+        const added = await parseGitLog(24, {
+            db,
+            logger: createTrackerLogger().logger,
+            runGitLog: async () => snapshot
+        });
+
+        assert.equal(added, 0);
+        assert.equal(lookupCount, 1);
+        assert.equal(parseGitLogSnapshot(snapshot).length, 500);
+    });
+
+    it('contains no synchronous git subprocess path', () => {
+        const source = fs.readFileSync(path.join(__dirname, '..', 'services', 'agentTracker.js'), 'utf8');
+        assert.doesNotMatch(source, /execSync|spawnSync|execFileSync/);
+        assert.doesNotMatch(source, /git diff --shortstat/);
     });
 });

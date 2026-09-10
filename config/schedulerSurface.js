@@ -1,4 +1,5 @@
 const GUARDED_SCHEDULER_JOBS = [
+    { name: 'recheckActiveOmniConnections', functionName: 'recheckActiveOmniConnections', sourceFile: 'services/omni-health.js', owner: 'omni', interval: '5 * 60 * 1000', dedup: null, sideEffects: ['database', 'provider-read'], tests: ['tests/omni-completion.test.js'] },
     { name: 'checkAutoDigest', functionName: 'checkAutoDigest', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings', 'bookings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkAutoReminder', functionName: 'checkAutoReminder', sourceFile: 'services/scheduler.js', owner: 'bookings', interval: '60000', dedup: 'daily', sideEffects: ['telegram', 'settings', 'bookings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },
     { name: 'checkAutoBackup', functionName: 'checkAutoBackup', sourceFile: 'services/scheduler.js', owner: 'backup', interval: '60000', dedup: null, sideEffects: ['telegram', 'settings'], tests: ['tests/scheduler-notification-jobs-hardening.test.js'] },

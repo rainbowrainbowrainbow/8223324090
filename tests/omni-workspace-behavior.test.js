@@ -33,6 +33,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         loadConversations, loadMessages, loadOmniAccounts, loadCaseContext, reloadOmniForBusinessContext,
         selectConversation, sendMessage, closeConversation, clearConversationSelection, renderMessages,
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
+        accountNeedsAttention, renderOmniAccountsAlarm,
         request: api,
         setApi(fn) { api = fn; },
         setRecords(value) { conversations = value; conversationTotal = value.length; renderConversations(); },
@@ -57,6 +58,12 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         async flush() { await new Promise(resolve => setImmediate(resolve)); }
     };
 }
+
+test('an inbound failure requires attention even when sending still works', t => {
+    const h = harness(t);
+    assert.equal(h.app.accountNeedsAttention({ channel: 'telegram', connected: true, sendCapable: true, receiveCapable: false }), true);
+    assert.equal(h.app.accountNeedsAttention({ channel: 'sms', connected: true, sendCapable: true, receiveCapable: false }), false);
+});
 
 test('forbidden requests preserve the authenticated session', async t => {
     const h = harness(t);

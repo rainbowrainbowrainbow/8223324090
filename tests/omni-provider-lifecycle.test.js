@@ -139,6 +139,7 @@ function loadOmniRouter(hubMock, runtimeConfig = TEST_OMNI_WEBHOOK_CONFIG) {
         requireAction: () => (req, res, next) => next(),
     });
     installMock('../services/adminAudit', { logAdminAction: async () => {} });
+    installMock('../services/omni-health', { recordWebhook: async () => {} });
     installMock('../services/omni-accounts', {
         resolveOmniRuntimeConfig: async channel => runtimeConfig[channel] || {},
         getOmniAccountStatusesAsync: async () => [],

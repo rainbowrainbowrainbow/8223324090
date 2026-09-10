@@ -525,7 +525,7 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
   const scopedOptions = { ...options, businessContext };
   const runtime = mergeRuntimeConfig(def, row, scopedOptions);
   const summary = publicConnectionSummary(def, row, runtime, scopedOptions);
-  let status = row?.status || (summary.connected ? (def.inboundOnly ? 'history_only' : 'connected') : 'disconnected');
+  let status = row?.status || (summary.connected ? (def.inboundOnly ? 'history_only' : 'limited') : 'disconnected');
 
   if (status === 'connected' && def.inboundOnly) status = 'history_only';
   const connected = status !== 'disconnected'
@@ -554,6 +554,8 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     status,
     statusLabel: STATUS_COPY[status] || status,
     connected,
+    configured: Boolean(summary.connected),
+    requiredDirections: { send: Boolean(def.sendSupported), receive: Boolean(def.receiveSupported && def.channel !== 'sms') },
     sendCapable,
     receiveCapable,
     limited,
@@ -563,7 +565,7 @@ function statusFromRowOrEnv(def, row, now = new Date(), options = {}) {
     nextActionHint,
     businessImpact: def.businessImpact,
     webhookNote: def.webhookNote || null,
-    lastCheckedAt: row?.last_checked_at ? new Date(row.last_checked_at).toISOString() : now.toISOString(),
+    lastCheckedAt: row?.last_checked_at ? new Date(row.last_checked_at).toISOString() : null,
     lastChangedAt: row?.last_changed_at ? new Date(row.last_changed_at).toISOString() : null,
     changedBy: row?.changed_by || null,
     lastTestAt: row?.last_test_at ? new Date(row.last_test_at).toISOString() : null,
@@ -618,7 +620,7 @@ function publicWebhookUrl(def, options = {}) {
   const businessContext = omniBusinessContext(options);
   const scopedPath = businessContext === DEFAULT_BUSINESS_CONTEXT
     ? path
-    : `${path}${path.includes('?') ? '&' : '?'}businessContext=${encodeURIComponent(businessContext)}`;
+    : `${path}${path.includes('?') ? '&' : '?'}business_context=${encodeURIComponent(businessContext)}`;
   return base ? `${base.replace(/\/$/, '')}${scopedPath}` : scopedPath;
 }
 
@@ -819,7 +821,7 @@ async function loadConnectionRows(options = {}) {
 async function loadConnectionRow(channel, options = {}) {
   const businessContext = omniBusinessContext(options);
   try {
-    const result = await pool.query(
+    const result = await (options.ownershipClient || pool).query(
       `SELECT * FROM ${CONNECTION_TABLE}
         WHERE channel = $1
           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
@@ -839,7 +841,8 @@ async function loadConnectionRow(channel, options = {}) {
 async function getOmniAccountStatusesAsync(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
   const rows = await loadConnectionRows(options);
-  return CHANNELS.map(def => statusFromRowOrEnv(def, rows.get(def.channel), now, options));
+  const accounts = CHANNELS.map(def => statusFromRowOrEnv(def, rows.get(def.channel), now, options));
+  return require('./omni-health').attachHealth(accounts, omniBusinessContext(options), now);
 }
 
 async function getOmniAccountStatusAsync(channel, options = {}) {
@@ -875,13 +878,54 @@ async function resolveOmniRuntimeConfig(channel, options = {}) {
 }
 
 async function isTelegramInboxConnectionUsingToken(botToken, options = {}) {
-  const token = String(botToken || '').trim();
-  if (!token) return false;
-  const def = providerDefinition('telegram');
-  const row = await loadConnectionRow('telegram', options);
-  if (!def || !row || row.status === 'disconnected' || row.status === 'needs_rebind') return false;
-  const rowRuntime = runtimeValuesFromConnection(activeDefinitionForRow(def, row), row);
-  return Boolean(rowRuntime.botToken && rowRuntime.botToken === token);
+  const owners = await getTelegramTokenOwners(botToken, options.client || pool);
+  return owners.some(owner => owner.channel === 'telegram');
+}
+
+function telegramBotIdentity(token) {
+  const value = String(token || '').trim();
+  return /^\d{6,}:/.test(value) ? value.split(':')[0] : value;
+}
+
+async function getTelegramTokenOwners(token, client = pool) {
+  const identity = telegramBotIdentity(token);
+  if (!identity) return [];
+  const result = await client.query(
+    `SELECT * FROM ${CONNECTION_TABLE} WHERE channel IN ('telegram', 'report_bot')
+       AND status NOT IN ('disconnected', 'needs_rebind')`
+  );
+  return result.rows.filter(row => {
+    const def = providerDefinition(row.channel);
+    return telegramBotIdentity(runtimeValuesFromConnection(activeDefinitionForRow(def, row), row).botToken) === identity;
+  }).map(row => ({ channel: row.channel, businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT }));
+}
+
+async function withTelegramOwnership(token, owner, action) {
+  if (!token) return action(null);
+  const client = await pool.connect();
+  let locked = false;
+  try {
+    // One lock also serializes token rotation and bindings across businesses.
+    await client.query('SELECT pg_advisory_lock(187188, 1)');
+    locked = true;
+    const owners = await getTelegramTokenOwners(token, client);
+    const identity = telegramBotIdentity(token);
+    if (process.env.REPORT_BOT_TOKEN && telegramBotIdentity(process.env.REPORT_BOT_TOKEN) === identity) {
+      owners.push({ channel: 'report_bot', businessContext: DEFAULT_BUSINESS_CONTEXT });
+    }
+    const conflict = owners.some(item => item.channel !== owner.channel || item.businessContext !== owner.businessContext);
+    if (conflict) {
+      throw Object.assign(new Error('Цей Telegram-бот уже має іншого власника webhook. Використайте окремого бота.'), {
+        statusCode: 409, code: 'TELEGRAM_OWNER_CONFLICT',
+      });
+    }
+    return await action(client);
+  } finally {
+    let releaseError;
+    try { if (locked) await client.query('SELECT pg_advisory_unlock(187188, 1)'); }
+    catch (error) { releaseError = error; throw error; }
+    finally { client.release(releaseError); }
+  }
 }
 
 async function hasActiveTelegramInboxConnection() {
@@ -978,6 +1022,10 @@ async function upsertOmniConnection(channel, payload = {}, user = {}, options = 
   const existingRow = await loadConnectionRow(baseDef.channel, scopedOptions);
   const def = activeDefinitionForPayload(baseDef, payload, existingRow);
   const normalized = normalizePayloadFields(def, payload, existingRow, scopedOptions);
+  if (['telegram', 'report_bot'].includes(def.channel) && normalized.runtime.botToken && !options.ownershipClient) {
+    return withTelegramOwnership(normalized.runtime.botToken, { channel: def.channel, businessContext },
+      client => upsertOmniConnection(channel, payload, user, { ...options, ownershipClient: client }));
+  }
   const providerErrors = [
     ...normalized.errors,
     ...(def.localValidation ? def.localValidation(normalized.runtime) : []),
@@ -995,7 +1043,7 @@ async function upsertOmniConnection(channel, payload = {}, user = {}, options = 
   const masked = maskedIdentifierFromRuntime(def, normalized.runtime);
   const changedBy = userLabel(user);
 
-  const result = await pool.query(
+  const result = await (options.ownershipClient || pool).query(
     `INSERT INTO ${CONNECTION_TABLE}
        (business_context, channel, provider, purpose, provider_kind, status, credentials, account_display_name, masked_identifier,
         send_enabled, receive_enabled, warning, last_checked_at, last_changed_at, changed_by_user_id,
@@ -1043,6 +1091,7 @@ async function upsertOmniConnection(channel, payload = {}, user = {}, options = 
   );
 
   const account = statusFromRowOrEnv(def, result.rows[0], new Date(), scopedOptions);
+  await require('./omni-health').saveCheck(def.channel, businessContext, check, options.ownershipClient || pool);
   return {
     account,
     result: safeVerificationResult(check),
@@ -1103,6 +1152,7 @@ async function recheckOmniConnection(channel, user = {}, options = {}) {
   }
 
   const account = statusFromRowOrEnv(def, updatedRow, new Date(), scopedOptions);
+  await require('./omni-health').saveCheck(def.channel, businessContext, check);
   return {
     account,
     result: safeVerificationResult(check),
@@ -1372,6 +1422,22 @@ async function verifyTelegram(runtime, context = {}) {
         };
       }
 
+      const pendingUpdates = Math.max(0, Number(webhook.result?.pending_update_count) || 0);
+      const errorSeconds = Number(webhook.result?.last_error_date) || 0;
+      const recentError = errorSeconds > 0 && Date.now() / 1000 - errorSeconds < 15 * 60;
+      const diagnostics = {
+        pendingUpdates,
+        lastProviderErrorAt: errorSeconds ? new Date(errorSeconds * 1000).toISOString() : null,
+        providerError: webhook.result?.last_error_message
+          ? ('Telegram webhook' + (String(webhook.result.last_error_message).match(/\b[45]\d{2}\b/)?.[0] ? ' HTTP ' + String(webhook.result.last_error_message).match(/\b[45]\d{2}\b/)[0] : ' error'))
+          : null,
+      };
+      if (pendingUpdates > 0 && recentError && diagnostics.providerError) {
+        return { status: 'partial', displayName: username,
+          message: 'Telegram не може передати вхідні події. Перевірте журнал webhook і повторіть перевірку.',
+          warning: 'Помилка приймання Telegram; події очікують доставки.',
+          details: { ...diagnostics, webhookUrl, expectedPath } };
+      }
       let outboundNote = 'Тестову відправку пропущено: тестовий chat ID не вказаний.';
       let outboundOk = null;
       if (context.mode === 'test' && runtime.defaultChatId) {
@@ -1408,7 +1474,7 @@ async function verifyTelegram(runtime, context = {}) {
         status: 'success',
         message: `Токен дійсний. Бот: ${username}. Webhook inbox готовий. ${outboundNote}`,
         displayName: username,
-        details: { webhookUrl, expectedPath, outboundOk },
+        details: { ...diagnostics, webhookUrl, expectedPath, outboundOk },
       };
     }
     return { status: 'failed_auth', message: result.description || 'Telegram не підтвердив токен.', warning: result.description || 'Telegram token invalid' };
@@ -1511,6 +1577,9 @@ module.exports = {
   getOmniUnavailableMessageAsync,
   resolveOmniRuntimeConfig,
   isTelegramInboxConnectionUsingToken,
+  withTelegramOwnership,
+  getTelegramTokenOwners,
+  publicWebhookUrl,
   hasActiveTelegramInboxConnection,
   upsertOmniConnection,
   recheckOmniConnection,

@@ -20,7 +20,7 @@ const https = require('https');
 const crypto = require('crypto');
 const { pool } = require('../db');
 const { createLogger } = require('../utils/logger');
-const { resolveOmniRuntimeConfig } = require('./omni-accounts');
+const { resolveOmniRuntimeConfig, withTelegramOwnership } = require('./omni-accounts');
 
 const log = createLogger('ReportBot');
 
@@ -49,9 +49,13 @@ function isCircuitOpen() {
     return true;
 }
 
-async function reportBotRequest(method, body) {
-    const runtime = await resolveOmniRuntimeConfig('report_bot');
-    const token = runtime.botToken || REPORT_BOT_TOKEN;
+async function reportBotRequest(method, body, ownedToken = null) {
+    const runtime = ownedToken ? {} : await resolveOmniRuntimeConfig('report_bot');
+    const token = ownedToken || runtime.botToken || REPORT_BOT_TOKEN;
+    if (token && !ownedToken && ['setWebhook', 'deleteWebhook', 'getUpdates'].includes(method)) {
+        return withTelegramOwnership(token, { channel: 'report_bot', businessContext: 'event_genix' },
+            () => reportBotRequest(method, body, token));
+    }
     if (!token) {
         return Promise.resolve({ ok: false, description: 'No report bot token' });
     }

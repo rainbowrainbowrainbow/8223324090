@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { formatBookingNotification } = require('./templates');
 const { createLogger } = require('../utils/logger');
-const { resolveOmniRuntimeConfig, isTelegramInboxConnectionUsingToken } = require('./omni-accounts');
+const { resolveOmniRuntimeConfig, isTelegramInboxConnectionUsingToken, withTelegramOwnership } = require('./omni-accounts');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     normalizeTimelineContext,
@@ -83,15 +83,19 @@ let webhookSet = false;
 let cachedBotUsername = null;
 
 async function telegramRequest(method, body, options = {}) {
-    const runtime = await resolveOmniRuntimeConfig('telegram', { businessContext: options.businessContext || options.business_context });
-    const token = runtime.botToken || TELEGRAM_BOT_TOKEN;
+    const runtime = options.ownedToken ? {} : await resolveOmniRuntimeConfig('telegram', { businessContext: options.businessContext || options.business_context });
+    const token = options.ownedToken || runtime.botToken || TELEGRAM_BOT_TOKEN;
     // Legacy discovery/setup must never take over an inbox bot's update queue.
-    if (['setWebhook', 'deleteWebhook', 'getUpdates'].includes(method)
+    if (!options.ownedToken && ['setWebhook', 'deleteWebhook', 'getUpdates'].includes(method)
         && await isTelegramInboxConnectionUsingToken(token, {
             businessContext: options.businessContext || options.business_context,
             strict: true
         })) {
         return { ok: false, error_code: 409, description: 'Telegram webhook is owned by Omni inbox', reason: 'omni_inbox_owns_webhook' };
+    }
+    if (token && !options.ownedToken && ['setWebhook', 'deleteWebhook', 'getUpdates'].includes(method)) {
+        return withTelegramOwnership(token, { channel: 'legacy', businessContext: 'event_genix' },
+            () => telegramRequest(method, body, { ...options, ownedToken: token }));
     }
     // Skip if no token configured
     if (!token) {

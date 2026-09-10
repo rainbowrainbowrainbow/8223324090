@@ -13,7 +13,9 @@ afterEach(()=>{for(const [id,value] of modules){if(value)require.cache[id]=value
 const config={viber:{token:'fixture-viber'},facebook:{appSecret:'fixture-fb',verifyToken:'fixture-verify'},instagram:{appSecret:'fixture-ig',verifyToken:'fixture-ig-verify'},telegram:{webhookSecret:'fixture-telegram'},sms:{provider:'turbosms',webhookSecret:'fixture-sms'}};
 function router(hub, runtime=config, user={id:1,role:'creator',username:'fixture'}) {
   mock('../services/omni-hub',hub);
-  mock('../services/omni-accounts',{resolveOmniRuntimeConfig:async channel=>runtime[channel]||{},getOmniAccountStatusesAsync:async()=>[]});
+  mock('../services/omni-accounts',{resolveOmniRuntimeConfig:async channel=>runtime[channel]||{},getOmniAccountStatusesAsync:async()=>[],
+    providerDefinition:channel=>({channel}),publicWebhookUrl:(def,options)=>'https://crm.test/api/omni/webhook/'+def.channel+'?business_context='+options.businessContext});
+  mock('../services/omni-health',{recordWebhook:async()=>{}});
   mock('../middleware/auth',{authenticateToken:(req,res,next)=>{req.user=user;next();},requireMinRole:()=> (req,res,next)=>next(),requireAction:()=> (req,res,next)=>next()});
   mock('../services/adminAudit',{});mock('../services/omniLeadAssistant',{});
   mock('../services/omni-inbox',{applyMetaReceipt:async()=>[]});
@@ -33,7 +35,7 @@ test('Viber setup binds both the provider token and callback URL to the selected
   const calls = [];
   mock('../services/omni-viber', { setViberWebhook: async (...args) => { calls.push(args); return { success: true }; } });
   const routes = router({});
-  const response = await request(t, routes, '/setup/viber?businessContext=dar', {raw:JSON.stringify({url:'https://crm.test/api/omni/webhook/viber?businessContext=event_genix'})});
+  const response = await request(t, routes, '/setup/viber?businessContext=dar', {raw:JSON.stringify({})});
   assert.equal(response.status, 200);
   assert.equal(calls[0][2]?.businessContext, 'dar');
   const target = new URL(calls[0][0]);

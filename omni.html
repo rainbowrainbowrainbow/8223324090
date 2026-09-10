@@ -2719,13 +2719,14 @@
 
         function omniAccountTone(acc) {
             if (!acc) return 'warning';
-            if (acc.connected && acc.sendCapable) return 'healthy';
+            if (acc.connected && !accountNeedsAttention(acc)) return 'healthy';
             if (acc.connected) return 'warning';
             return 'danger';
         }
 
         function omniAccountStatusLabel(acc) {
             if (!acc) return 'Статус невідомий';
+            if (acc.connected && accountNeedsAttention(acc)) return 'Потребує перевірки';
             return acc.statusLabel || (acc.connected && acc.sendCapable ? 'Підключено' : (acc.connected ? 'Обмежено' : 'Не підключено'));
         }
 
@@ -2752,6 +2753,8 @@
 
         function accountNextActionText(acc) {
             if (!acc) return 'Оновіть стан каналу або зверніться до адміністратора.';
+            if (acc.diagnostics?.activeProcessingError) return 'Перевірте причину помилки webhook. Повторні події не потрібно надсилати вручну.';
+            if (acc.connected && acc.diagnostics?.stale) return 'Оновіть перевірку: дані про справність каналу застарілі.';
             if (!acc.connected) return acc.nextActionHint || 'Підключіть акаунт і збережіть дані провайдера.';
             if (acc.sendCapable === false) return acc.nextActionHint || 'Запустіть перевірку каналу і виправте причину блокування.';
             return acc.nextActionHint || 'Канал готовий до роботи.';
@@ -2759,8 +2762,8 @@
 
         function renderOmniAccountSummary() {
             if (!accountSummaryEl) return;
-            const connected = omniAccounts.filter(a => a.connected && a.sendCapable).length;
-            const warnings = omniAccounts.filter(a => a.connected && !a.sendCapable).length;
+            const connected = omniAccounts.filter(a => a.connected && !accountNeedsAttention(a)).length;
+            const warnings = omniAccounts.filter(a => a.connected && accountNeedsAttention(a)).length;
             const broken = omniAccounts.filter(a => !a.connected).length;
             accountSummaryEl.innerHTML =
                 '<div class="omni-account-summary-item"><strong>' + connected + '</strong><span>готові</span></div>' +
@@ -2841,6 +2844,7 @@
                     '<div class="omni-account-impact">' + esc(accountImpactText(acc)) + '</div>' +
                     '<div class="omni-account-hint">' + esc(accountNextActionText(acc)) + '</div>' +
                     (audit ? '<div class="omni-account-hint">' + esc(audit) + '</div>' : '') +
+                    '<div class="omni-account-hint">' + esc(accountDiagnosticsText(acc)) + '</div>' +
                     '<div class="omni-account-actions">' +
                         '<button type="button" class="omni-account-btn" data-account-action="connect" data-channel="' + esc(acc.channel) + '">' + actionLabel + '</button>' +
                         '<button type="button" class="omni-account-btn secondary" data-account-action="recheck" data-channel="' + esc(acc.channel) + '">Перевірити</button>' +
@@ -2854,9 +2858,27 @@
             highlightAccountFromQuery();
         }
 
+        function accountNeedsAttention(account) {
+            const required = account.requiredDirections || { send: true, receive: account.channel !== 'sms' };
+            return (required.send && account.sendCapable === false) || (required.receive && account.receiveCapable === false)
+                || account.diagnostics?.stale === true || account.diagnostics?.activeProcessingError === true;
+        }
+
+        function accountDiagnosticsText(account) {
+            const d = account.diagnostics;
+            if (!d) return '';
+            return 'Перевірено: ' + (account.lastCheckedAt ? formatAccountTime(account.lastCheckedAt) : 'ще не перевірено') +
+                (d.stale ? ' · дані застарілі' : '') +
+                ' · Останній прийом: ' + (d.lastInboundAt ? formatAccountTime(d.lastInboundAt) : 'ще немає') +
+                (d.pendingUpdates != null ? ' · У черзі: ' + Number(d.pendingUpdates) : '') +
+                (d.providerError && d.lastProviderErrorAt ? ' · Остання помилка провайдера: ' + d.providerError + ' · ' + formatAccountTime(d.lastProviderErrorAt) : '') +
+                ' · Помилок подій: ' + Number(d.failedEvents || 0) +
+                (d.activeProcessingError ? ' · Помилка: ' + ({ processing_failed: 'обробка webhook', invalid_signature: 'підпис webhook', unsupported_event: 'непідтримувана подія' }[d.lastErrorCode] || 'перевірте канал') : '');
+        }
+
         function renderOmniAccountsAlarm() {
             if (!accountsAlarm) return;
-            const limited = omniAccounts.filter(a => !a.connected || a.sendCapable === false);
+            const limited = omniAccounts.filter(a => a.connected && accountNeedsAttention(a));
             if (!limited.length) {
                 accountsAlarm.classList.add('hidden');
                 accountsAlarm.textContent = '';
@@ -2876,8 +2898,8 @@
                 healthContent.innerHTML = '<div class="omni-state-card"><strong>Стан ще не завантажений</strong><span>Натисніть «Оновити», щоб отримати актуальний зріз каналів.</span></div>';
                 return;
             }
-            const ready = omniAccounts.filter(a => a.connected && a.sendCapable).length;
-            const limited = omniAccounts.filter(a => a.connected && !a.sendCapable).length;
+            const ready = omniAccounts.filter(a => a.connected && !accountNeedsAttention(a)).length;
+            const limited = omniAccounts.filter(a => a.connected && accountNeedsAttention(a)).length;
             const broken = omniAccounts.filter(a => !a.connected).length;
             const rows = omniAccounts.map(acc => {
                 const tone = omniAccountTone(acc);
@@ -2886,7 +2908,7 @@
                 return '<div class="omni-health-row">' +
                     '<div class="omni-health-channel">' + esc(accountDisplayLabel(acc)) + '</div>' +
                     '<span class="omni-account-status ' + tone + '">' + esc(label) + '</span>' +
-                    '<div class="omni-health-message">' + esc(message) + '</div>' +
+                    '<div class="omni-health-message">' + esc(message) + '<br>' + esc(accountDiagnosticsText(acc)) + '</div>' +
                     '<button type="button" class="omni-account-btn secondary" data-account-action="' + (acc.connected ? 'recheck' : 'connect') + '" data-channel="' + esc(acc.channel) + '">' + (acc.connected ? 'Перевірити' : 'Підключити') + '</button>' +
                 '</div>';
             }).join('');

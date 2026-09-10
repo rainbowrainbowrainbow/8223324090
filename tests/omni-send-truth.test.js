@@ -481,7 +481,7 @@ describe('Communication Send Truth v1', () => {
             const sms = statuses.find(acc => acc.channel === 'sms');
             const telegram = statuses.find(acc => acc.channel === 'telegram');
             const binotel = statuses.find(acc => acc.channel === 'binotel');
-            assert.equal(sms.status, 'connected');
+            assert.equal(sms.status, 'limited');
             assert.equal(sms.sendCapable, true);
             assert.equal(telegram.status, 'disconnected');
             assert.equal(telegram.sendCapable, false);
@@ -609,7 +609,8 @@ describe('Communication Send Truth v1', () => {
                 .find(acc => acc.channel === 'telegram');
             assert.equal(telegram.connected, true);
             assert.equal(telegram.sendCapable, true);
-            assert.equal(telegram.receiveCapable, true);
+            assert.equal(telegram.receiveCapable, false);
+            assert.equal(telegram.lastCheckedAt, null);
             assert.equal(telegram.source, 'environment');
             assert.match(telegram.accountName, /Telegram bot bridge/);
         } finally {

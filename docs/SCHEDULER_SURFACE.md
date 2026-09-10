@@ -17,6 +17,10 @@ document, and test coverage when behavior changes.
 
 Do not remove retry or fallback paths until failure semantics are documented.
 
+Omni diagnostic checks are read-only against providers and never send messages
+or configure webhooks. A PostgreSQL advisory lock prevents concurrent sweeps.
+Coverage: `tests/omni-completion.test.js`.
+
 ## Guarded Jobs
 
 These jobs are wrapped with `guardScheduler` and are tracked in
@@ -24,6 +28,7 @@ These jobs are wrapped with `guardScheduler` and are tracked in
 
 | Job | Function | Source | Owner | Interval | Dedup |
 | --- | --- | --- | --- | --- | --- |
+| `recheckActiveOmniConnections` | `recheckActiveOmniConnections` | `services/omni-health.js` | omni | `5 * 60 * 1000` | none |
 | `checkAutoDigest` | `checkAutoDigest` | `services/scheduler.js` | bookings | `60000` | `daily` |
 | `checkAutoReminder` | `checkAutoReminder` | `services/scheduler.js` | bookings | `60000` | `daily` |
 | `checkAutoBackup` | `checkAutoBackup` | `services/scheduler.js` | backup | `60000` | none |

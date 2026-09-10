@@ -34,9 +34,26 @@ const {
     testOmniConnection,
     disconnectOmniConnection,
     resolveOmniRuntimeConfig,
+    publicWebhookUrl,
+    providerDefinition,
 } = require('../services/omni-accounts');
 
 const log = createLogger('OmniRoutes');
+
+router.use((req, res, next) => {
+    const name = req.path.match(/^\/webhook\/(telegram|viber|sms|meta)$/)?.[1];
+    if (req.method === 'POST' && name) {
+        res.on('finish', () => {
+            const channel = name === 'meta' ? (req.body?.object === 'instagram' ? 'instagram' : 'facebook') : name;
+            const errorCode = res.statusCode >= 500 ? 'processing_failed'
+                : res.statusCode === 403 ? 'invalid_signature' : req.omniUnsupported ? 'unsupported_event' : null;
+            require('../services/omni-health').recordWebhook(channel, webhookBusinessContext(req), {
+                inbound: res.statusCode < 300 && req.omniInboundAccepted === true, errorCode,
+            }).catch(() => log.warn('Webhook diagnostics unavailable', { channel }));
+        });
+    }
+    next();
+});
 
 function requestBusinessContext(req, res) {
     if (!resolveCapability(req.user, '/omni', { type: 'page' }).allowed) {
@@ -173,6 +190,7 @@ router.post('/webhook/telegram', async (req, res) => {
             return res.json({ ok: true, ignored: true, reason: 'invalid_payload' });
         }
         await getHub().processInboundMessage(normalized, { businessContext });
+        req.omniInboundAccepted = true;
         res.json({ ok: true });
     } catch (err) {
         log.error('omni.telegram.webhook.ignored', {
@@ -200,6 +218,7 @@ router.post('/webhook/viber', async (req, res) => {
         const classified = getNormalizer().classifyViberWebhook(body);
         if (classified.type === 'inbound_message' && classified.normalized) {
             await getHub().processInboundMessage(classified.normalized, { businessContext });
+            req.omniInboundAccepted = true;
         } else if (
             (classified.type === 'delivery_receipt' || classified.type === 'read_receipt')
             && classified.receipt
@@ -231,6 +250,7 @@ router.post('/webhook/sms', async (req, res) => {
             const classified = getNormalizer().classifySmsWebhook(payload);
             if (classified.type === 'inbound_message' && classified.normalized) {
                 await getHub().processInboundMessage(classified.normalized, { businessContext });
+                req.omniInboundAccepted = true;
             } else if (classified.type === 'delivery_receipt' && classified.receipt) {
                 await getHub().applyProviderLifecycleReceipt(classified.receipt, { businessContext });
             }
@@ -285,6 +305,7 @@ router.post('/webhook/meta', async (req, res) => {
                     const normalized = normFn(event);
                     if (normalized) {
                         await getHub().processInboundMessage(normalized, { businessContext });
+                        req.omniInboundAccepted = true;
                     }
                 }
             }
@@ -797,18 +818,18 @@ router.get('/quick-replies', auth, async (req, res) => {
 });
 
 // Setup Viber webhook
-router.post('/setup/viber', auth, async (req, res) => {
+router.post('/setup/viber', auth, manageConnections, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
         if (!businessContext) return;
-        const { url } = req.body;
         let webhookUrl;
-        try { webhookUrl = new URL(url); } catch { /* Rejected below. */ }
+        try { webhookUrl = new URL(publicWebhookUrl(providerDefinition('viber'), { businessContext })); } catch { /* Fail closed below. */ }
         if (!webhookUrl || webhookUrl.protocol !== 'https:' || webhookUrl.username || webhookUrl.password) {
-            return res.status(400).json({ success: false, error: 'Потрібен валідний HTTPS URL' });
+            return res.status(409).json({ success: false, error: 'Канонічну HTTPS адресу CRM не налаштовано.' });
         }
-        webhookUrl.searchParams.delete('businessContext');
-        webhookUrl.searchParams.set('business_context', businessContext);
+        if (req.body.url !== undefined && req.body.url !== webhookUrl.toString()) {
+            return res.status(400).json({ success: false, error: 'Дозволено лише канонічний webhook цього бізнесу.' });
+        }
         const { setViberWebhook } = require('../services/omni-viber');
         const result = await setViberWebhook(webhookUrl.toString(), undefined, { businessContext });
         res.json(result);

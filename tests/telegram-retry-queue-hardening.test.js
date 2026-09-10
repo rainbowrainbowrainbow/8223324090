@@ -17,6 +17,7 @@ function webhookFixture({ owned = true, lookupFailure = false } = {}) {
         require(name) {
             if (name === './omni-accounts') return {
                 resolveOmniRuntimeConfig: async () => ({ botToken: 'inbox-fixture-token' }),
+                withTelegramOwnership: async (token, owner, action) => action(),
                 isTelegramInboxConnectionUsingToken: async (token, options) => {
                     ownershipChecks.push({ token, options });
                     if (lookupFailure) throw new Error('fixture DB unavailable');

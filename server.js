@@ -903,6 +903,8 @@ initializeDatabaseWithSchemaFence().catch(err => {
             await flushLearnBatch();
         }
         schedulerIntervals.push(setInterval(guardScheduler('flushGuardianLearn', flushGuardianLearn, { dedup: null }), 5 * 60 * 1000));
+        const { recheckActiveOmniConnections } = require('./services/omni-health');
+        schedulerIntervals.push(setInterval(guardScheduler('recheckActiveOmniConnections', recheckActiveOmniConnections, { dedup: null }), 5 * 60 * 1000));
 
         // Contour 2: Agent activity tracking — parse git log every 30 min
         schedulerIntervals.push(setInterval(guardScheduler('syncAgentActivities', syncAgentActivities, { dedup: 'hourly' }), 30 * 60 * 1000));

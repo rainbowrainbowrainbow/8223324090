@@ -78,6 +78,7 @@ const CHANNELS = [
     },
     fields: [
       { name: 'botToken', label: 'Inbox bot token', type: 'secret', required: true, placeholder: '123456:ABC-DEF...', hint: 'Токен саме Telegram inbox-бота з BotFather. Не вставляйте сюди report/alerts bot token.' },
+      { name: 'webhookSecret', label: 'Webhook secret', type: 'secret', required: false, placeholder: 'секрет Telegram webhook', hint: 'Секрет має збігатися з secret_token під час налаштування Telegram webhook.' },
       { name: 'botUsername', label: 'Username inbox-бота', type: 'text', required: false, placeholder: '@eventgenix_inbox_bot', hint: 'Не обовʼязково: CRM спробує отримати username через безпечну перевірку getMe.' },
       { name: 'defaultChatId', label: 'Тестовий chat ID', type: 'text', required: false, placeholder: '-1001234567890', hint: 'Опційно для тестової відправки inbox-ботом. Це не report bot і не замінює webhook.' },
     ],

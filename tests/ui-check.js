@@ -5043,6 +5043,25 @@ check('Explainability empty states are styled by the shared shell without task C
     cssTextWithImports('css/pages-shell.css').includes('.explain-empty')
     && cssTextWithImports('css/pages-shell.css').includes('.explain-filter-summary')
     && fileText('js/ui.js').includes('explain-clear-btn btn-page-secondary'));
+{
+    const omniSource = fileText('omni.html');
+    const handlerStart = omniSource.indexOf("document.addEventListener('click', async e => {");
+    const handlerEnd = omniSource.indexOf('// Search', handlerStart);
+    const dom = new JSDOM('<button data-omni-mode="channels">Channels</button><div data-omni-mode="inbox"><button data-explain-clear="omni"><span>Clear</span></button><div class="message">Text</div></div>');
+    const modes = [];
+    let resets = 0;
+    require('node:vm').runInNewContext(omniSource.slice(handlerStart, handlerEnd), {
+        document: dom.window.document,
+        setOmniMode: mode => modes.push(mode),
+        resetOmniFilters: () => { resets += 1; }
+    });
+    dom.window.document.querySelector('[data-explain-clear] span').click();
+    dom.window.document.querySelector('.message').click();
+    dom.window.document.querySelector('button[data-omni-mode]').click();
+    check('Omni reset actions and message clicks are not swallowed by the workspace mode container',
+        resets === 1 && modes.length === 1 && modes[0] === 'channels');
+    dom.window.close();
+}
 check('Timeline responsive density updates JS cell geometry with viewport', uiCode.includes('function applyTimelineResponsiveDensity') && uiCode.includes('_timelineResponsiveCellWidth') && uiCode.includes('--timeline-cell-w') && htmlContains('js/app.js', 'initTimelineResponsiveResize'));
 check('Timeline Android density reads lexical CONFIG and visual viewport', uiCode.includes("typeof CONFIG === 'undefined'") && !uiCode.includes('if (!window.CONFIG || !CONFIG.TIMELINE)') && uiCode.includes('let lastViewportSignature =') && uiCode.includes('if (viewportSignature === lastViewportSignature) return') && uiCode.includes('window.visualViewport?.addEventListener?.(\'resize\'') && uiCode.includes('window.visualViewport?.addEventListener?.(\'scroll\''));
 check('Timeline iOS and iPad viewport hardening is explicit', uiCode.includes('function syncTimelineViewportMetrics') && uiCode.includes('--eg-viewport-height') && uiCode.includes('--eg-viewport-width') && uiCode.includes('timeline-dashboard-root') && htmlContains('css/timeline.css', 'var(--eg-viewport-height') && responsiveCss.includes('v0.63.5: iPad/tablet timeline shell') && responsiveCss.includes('html.timeline-dashboard-root') && responsiveCss.includes('body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header'));

@@ -4230,7 +4230,7 @@
             if (e.key === 'Escape' && connectionModal && !connectionModal.hidden) closeConnectionModal();
         });
         document.addEventListener('click', async e => {
-            const modeBtn = e.target.closest('[data-omni-mode]');
+            const modeBtn = e.target.closest('button[data-omni-mode]');
             if (modeBtn && modeBtn.dataset.omniMode) {
                 e.preventDefault();
                 setOmniMode(modeBtn.dataset.omniMode);

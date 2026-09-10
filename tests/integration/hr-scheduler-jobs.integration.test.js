@@ -11,6 +11,7 @@ const {
 } = require('../../services/hr');
 const { recordAttendanceClockOut, recordAttendanceStatus } = require('../../services/hrAttendance');
 const { lockAttendanceWriteTarget } = require('../../services/attendanceWriteLock');
+const { guardScheduler } = require('../../services/schedulerGuard');
 
 const enabled = process.env.RUN_HR_SCHEDULER_JOBS_INTEGRATION === 'true';
 const LOCK_STATE_TIMEOUT_MS = 5_000;
@@ -170,6 +171,112 @@ describe('HR scheduler jobs on isolated PostgreSQL', { skip: !enabled, concurren
 
     after(async () => {
         await pool?.end();
+    });
+
+    test('scheduler guard gives one of two PostgreSQL connections the side-effect claim', async () => {
+        const testDb = requireIsolatedDatabase();
+        const firstPool = new Pool({
+            connectionString: testDb.url.toString(), ssl: testDb.isLocal ? false : { rejectUnauthorized: false }, max: 1
+        });
+        const secondPool = new Pool({
+            connectionString: testDb.url.toString(), ssl: testDb.isLocal ? false : { rejectUnauthorized: false }, max: 1
+        });
+        const name = `integrationSchedulerClaim-${process.pid}-${Date.now()}`;
+        const entered = deferred();
+        const release = deferred();
+        let sideEffects = 0;
+
+        try {
+            const first = guardScheduler(name, async () => {
+                sideEffects += 1;
+                entered.resolve();
+                await release.promise;
+            }, { dedup: 'daily', dbPool: firstPool, leaseMs: 2_000, heartbeatMs: 250 })();
+            await entered.promise;
+            const second = guardScheduler(name, async () => { sideEffects += 1; }, {
+                dedup: 'daily', dbPool: secondPool, leaseMs: 2_000, heartbeatMs: 250
+            })();
+
+            await withDeadline(second, 'second scheduler claim');
+            assert.equal(sideEffects, 1);
+            release.resolve();
+            await withDeadline(first, 'first scheduler claim');
+            const stored = await pool.query(
+                'SELECT result, consecutive_failures, error_message FROM scheduler_executions WHERE scheduler_name = $1',
+                [name]
+            );
+            assert.deepEqual(stored.rows[0], { result: 'success', consecutive_failures: 0, error_message: null });
+        } finally {
+            release.resolve();
+            await pool.query('DELETE FROM scheduler_executions WHERE scheduler_name = $1', [name]);
+            await Promise.all([firstPool.end(), secondPool.end()]);
+        }
+    });
+
+    test('scheduler guard heartbeat protects a long job and expired claims recover', async () => {
+        const testDb = requireIsolatedDatabase();
+        const firstPool = new Pool({
+            connectionString: testDb.url.toString(), ssl: testDb.isLocal ? false : { rejectUnauthorized: false }, max: 1
+        });
+        const secondPool = new Pool({
+            connectionString: testDb.url.toString(), ssl: testDb.isLocal ? false : { rejectUnauthorized: false }, max: 1
+        });
+        const name = `integrationSchedulerLease-${process.pid}-${Date.now()}`;
+        const entered = deferred();
+        const release = deferred();
+        let sideEffects = 0;
+
+        try {
+            const first = guardScheduler(name, async () => {
+                sideEffects += 1;
+                entered.resolve();
+                await release.promise;
+            }, { dedup: null, dbPool: firstPool, leaseMs: 100, heartbeatMs: 50 })();
+            await entered.promise;
+            await new Promise(resolve => setTimeout(resolve, 180));
+            await guardScheduler(name, async () => { sideEffects += 1; }, {
+                dedup: null, dbPool: secondPool, leaseMs: 100, heartbeatMs: 50
+            })();
+            assert.equal(sideEffects, 1, 'heartbeat must retain the active claim');
+            release.resolve();
+            await withDeadline(first, 'long scheduler claim');
+
+            await pool.query(
+                `UPDATE scheduler_executions
+                    SET result = 'running', last_run_at = NOW() - INTERVAL '1 second', error_message = 'claim:crashed'
+                  WHERE scheduler_name = $1`,
+                [name]
+            );
+            await guardScheduler(name, async () => { sideEffects += 1; }, {
+                dedup: null, dbPool: secondPool, leaseMs: 100, heartbeatMs: 50
+            })();
+            assert.equal(sideEffects, 2, 'expired process claims must be recoverable');
+        } finally {
+            release.resolve();
+            await pool.query('DELETE FROM scheduler_executions WHERE scheduler_name = $1', [name]);
+            await Promise.all([firstPool.end(), secondPool.end()]);
+        }
+    });
+
+    test('scheduler guard does not hold the only pool connection while owner work runs', async () => {
+        const testDb = requireIsolatedDatabase();
+        const singleConnectionPool = new Pool({
+            connectionString: testDb.url.toString(),
+            ssl: testDb.isLocal ? false : { rejectUnauthorized: false },
+            max: 1,
+            connectionTimeoutMillis: 1_000
+        });
+        const name = `integrationSchedulerPool-${process.pid}-${Date.now()}`;
+
+        try {
+            await withDeadline(guardScheduler(name, async () => {
+                const result = await singleConnectionPool.query('SELECT 1 AS ok');
+                assert.equal(result.rows[0].ok, 1);
+            }, { dedup: 'daily', dbPool: singleConnectionPool })(), 'single-connection scheduler job', 3_000);
+        } finally {
+            await pool.query('DELETE FROM scheduler_executions WHERE scheduler_name = $1', [name]);
+            await singleConnectionPool.end();
+        }
     });
 
     test('checkHrAutoClose records an empty successful daily tick without touching attendance rows', async () => {

@@ -10,11 +10,7 @@ function installMock(modulePath, exports) {
 }
 
 function clearModules() {
-    [
-        '../db',
-        '../services/schedulerGuard',
-        '../utils/logger'
-    ].forEach(modulePath => {
+    ['../db', '../services/schedulerGuard', '../utils/logger'].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     });
 }
@@ -30,17 +26,9 @@ function installFixedDate(iso) {
             super(...(args.length ? args : [fixedMs]));
         }
 
-        static now() {
-            return fixedMs;
-        }
-
-        static parse(value) {
-            return RealDate.parse(value);
-        }
-
-        static UTC(...args) {
-            return RealDate.UTC(...args);
-        }
+        static now() { return fixedMs; }
+        static parse(value) { return RealDate.parse(value); }
+        static UTC(...args) { return RealDate.UTC(...args); }
     };
 }
 
@@ -50,11 +38,22 @@ function restoreDate() {
 
 function resetState() {
     state = {
-        rows: new Map(),
-        queries: [],
-        successWrites: [],
-        errorWrites: [],
-        loggerErrors: []
+        rows: new Map(), queries: [], claims: [], successWrites: [],
+        skippedWrites: [], errorWrites: [], heartbeatWrites: [],
+        loggerErrors: [], loggerWarnings: []
+    };
+}
+
+function normalizeRow(name, row = {}) {
+    return {
+        scheduler_name: name,
+        last_run_date: null,
+        last_run_at: null,
+        result: null,
+        is_paused: false,
+        consecutive_failures: 0,
+        error_message: null,
+        ...row
     };
 }
 
@@ -64,38 +63,110 @@ function createFakePool() {
             const text = compact(sql);
             state.queries.push({ text, params });
 
-            if (/SELECT last_run_date, is_paused, consecutive_failures FROM scheduler_executions WHERE scheduler_name = \$1/i.test(text)) {
+            if (/^SELECT last_run_date, last_run_at, result, is_paused, consecutive_failures/i.test(text)) {
                 const row = state.rows.get(params[0]);
                 return { rows: row ? [{ ...row }] : [], rowCount: row ? 1 : 0 };
             }
 
-            if (/INSERT INTO scheduler_executions/i.test(text) && /last_run_date/i.test(text)) {
-                state.successWrites.push({ text, params });
-                state.rows.set(params[0], {
-                    scheduler_name: params[0],
-                    last_run_date: params[1],
-                    is_paused: false,
-                    consecutive_failures: 0
+            if (/^INSERT INTO scheduler_executions/i.test(text) && /VALUES \(\$1, NOW\(\), \$2, 'running'/i.test(text)) {
+                const [name, currentKey, hasDedup, leaseMs, token] = params;
+                const existing = state.rows.get(name);
+                const expired = existing?.result === 'running'
+                    && Number(existing.last_run_at) <= Date.now() - leaseMs;
+                const canClaim = !existing || (
+                    !existing.is_paused && (
+                        existing.result === 'error'
+                        || existing.result === 'skipped'
+                        || expired
+                        || (hasDedup && existing.result !== 'running' && existing.last_run_date !== currentKey)
+                        || (!hasDedup && existing.result !== 'running')
+                    )
+                );
+                if (!canClaim) return { rows: [], rowCount: 0 };
+
+                const claimed = normalizeRow(name, {
+                    ...existing,
+                    last_run_at: Date.now(),
+                    last_run_date: currentKey,
+                    result: 'running',
+                    error_message: token
                 });
+                state.rows.set(name, claimed);
+                state.claims.push({ text, params });
+                return { rows: [{ ...claimed }], rowCount: 1 };
+            }
+
+            if (/^UPDATE scheduler_executions SET last_run_at = NOW\(\) WHERE/i.test(text)) {
+                const [name, token] = params;
+                const row = state.rows.get(name);
+                const owned = row?.result === 'running' && row.error_message === token;
+                if (owned) row.last_run_at = Date.now();
+                state.heartbeatWrites.push({ text, params });
+                return { rows: [], rowCount: owned ? 1 : 0 };
+            }
+
+            if (/^UPDATE scheduler_executions SET last_run_at = NOW\(\), last_run_date = \$3, result = 'success'/i.test(text)) {
+                const [name, token, dateKey] = params;
+                const row = state.rows.get(name);
+                const owned = row?.result === 'running' && row.error_message === token;
+                if (owned) {
+                    Object.assign(row, {
+                        last_run_at: Date.now(), last_run_date: dateKey, result: 'success',
+                        consecutive_failures: 0, is_paused: false, error_message: null
+                    });
+                }
+                state.successWrites.push({ text, params });
+                return { rows: owned ? [{ scheduler_name: name }] : [], rowCount: owned ? 1 : 0 };
+            }
+
+            if (/^UPDATE scheduler_executions SET last_run_at = NOW\(\), last_run_date = NULL, result = 'skipped'/i.test(text)) {
+                const [name, token] = params;
+                const row = state.rows.get(name);
+                const owned = row?.result === 'running' && row.error_message === token;
+                if (owned) Object.assign(row, { last_run_date: null, result: 'skipped', error_message: null });
+                state.skippedWrites.push({ text, params });
+                return { rows: [], rowCount: owned ? 1 : 0 };
+            }
+
+            if (/^UPDATE scheduler_executions SET last_run_at = NOW\(\), result = 'error'/i.test(text)) {
+                const [name, token, message, , autoPause] = params;
+                const row = state.rows.get(name);
+                const owned = row?.result === 'running' && row.error_message === token;
+                if (!owned) return { rows: [], rowCount: 0 };
+                const consecutiveFailures = row.consecutive_failures + 1;
+                Object.assign(row, {
+                    last_run_at: Date.now(), result: 'error',
+                    consecutive_failures: consecutiveFailures,
+                    is_paused: row.is_paused || (autoPause && consecutiveFailures >= 10),
+                    error_message: message
+                });
+                state.errorWrites.push({ text, params });
+                return {
+                    rows: [{ consecutive_failures: consecutiveFailures, is_paused: row.is_paused }],
+                    rowCount: 1
+                };
+            }
+
+            if (/^INSERT INTO scheduler_executions/i.test(text) && /VALUES \(\$1, NOW\(\), \$2, 'success'/i.test(text)) {
+                const [name, dateKey] = params;
+                state.rows.set(name, normalizeRow(name, {
+                    last_run_at: Date.now(), last_run_date: dateKey, result: 'success'
+                }));
+                state.successWrites.push({ text, params });
                 return { rows: [], rowCount: 1 };
             }
 
-            if (/INSERT INTO scheduler_executions/i.test(text) && /error_message/i.test(text)) {
+            if (/^INSERT INTO scheduler_executions/i.test(text) && /VALUES \(\$1, NOW\(\), 'error'/i.test(text)) {
+                const [name, message, , autoPause] = params;
+                const row = normalizeRow(name, state.rows.get(name));
+                row.consecutive_failures += 1;
+                row.result = 'error';
+                row.error_message = message;
+                row.is_paused ||= autoPause && row.consecutive_failures >= 10;
+                state.rows.set(name, row);
                 state.errorWrites.push({ text, params });
-                const existing = state.rows.get(params[0]) || {};
-                const consecutiveFailures = (existing.consecutive_failures || 0) + 1;
-                const autoPause = params[3] !== false;
-                const isPaused = (autoPause && consecutiveFailures >= 10) || existing.is_paused === true;
-                state.rows.set(params[0], {
-                    ...existing,
-                    scheduler_name: params[0],
-                    consecutive_failures: consecutiveFailures,
-                    is_paused: isPaused,
-                    result: 'error',
-                    error_message: params[1]
-                });
                 return {
-                    rows: [{ consecutive_failures: consecutiveFailures, is_paused: isPaused }],
+                    rows: [{ consecutive_failures: row.consecutive_failures, is_paused: row.is_paused }],
                     rowCount: 1
                 };
             }
@@ -112,13 +183,13 @@ function loadGuard() {
         createLogger: () => ({
             error: (...args) => state.loggerErrors.push(args),
             info: () => {},
-            warn: () => {}
+            warn: (...args) => state.loggerWarnings.push(args)
         })
     });
     return require('../services/schedulerGuard');
 }
 
-describe('schedulerGuard dedup contract', () => {
+describe('schedulerGuard atomic claim contract', () => {
     beforeEach(() => {
         resetState();
         installFixedDate('2026-06-28T12:07:30.000Z');
@@ -129,140 +200,191 @@ describe('schedulerGuard dedup contract', () => {
         clearModules();
     });
 
-    it('skips daily jobs that already ran today', async () => {
-        state.rows.set('dailyJob', { last_run_date: '2026-06-28', is_paused: false, consecutive_failures: 0 });
+    it('allows only one side-effect claimant across concurrent wrappers', async () => {
         const { guardScheduler } = loadGuard();
         let calls = 0;
+        const job = async () => { calls += 1; };
 
-        await guardScheduler('dailyJob', async () => { calls++; }, { dedup: 'daily' })();
-
-        assert.equal(calls, 0);
-        assert.equal(state.successWrites.length, 0);
-    });
-
-    it('runs daily jobs on a new day and stores the current day key', async () => {
-        state.rows.set('dailyJob', { last_run_date: '2026-06-27', is_paused: false, consecutive_failures: 0 });
-        const { guardScheduler } = loadGuard();
-        let calls = 0;
-
-        await guardScheduler('dailyJob', async () => { calls++; }, { dedup: 'daily' })();
+        await Promise.all([
+            guardScheduler('raceJob', job, { dedup: 'daily' })(),
+            guardScheduler('raceJob', job, { dedup: 'daily' })()
+        ]);
 
         assert.equal(calls, 1);
+        assert.equal(state.claims.length, 1);
         assert.equal(state.successWrites.length, 1);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28');
+        assert.equal(state.rows.get('raceJob').result, 'success');
     });
 
-    it('skips hourly jobs that already ran in the current hour', async () => {
-        state.rows.set('hourlyJob', { last_run_date: '2026-06-28T15', is_paused: false, consecutive_failures: 0 });
+    it('skips successful daily, hourly, and 5min periods', async () => {
         const { guardScheduler } = loadGuard();
+        const cases = [
+            ['dailyJob', 'daily', '2026-06-28'],
+            ['hourlyJob', 'hourly', '2026-06-28T15'],
+            ['fiveMinJob', '5min', '2026-06-28T15:05']
+        ];
         let calls = 0;
-
-        await guardScheduler('hourlyJob', async () => { calls++; }, { dedup: 'hourly' })();
+        for (const [name, dedup, key] of cases) {
+            state.rows.set(name, normalizeRow(name, { last_run_date: key, result: 'success' }));
+            await guardScheduler(name, async () => { calls += 1; }, { dedup })();
+        }
 
         assert.equal(calls, 0);
-        assert.equal(state.successWrites.length, 0);
+        assert.equal(state.claims.length, 0);
     });
 
-    it('runs hourly jobs in a new hour and stores the current hour key', async () => {
-        state.rows.set('hourlyJob', { last_run_date: '2026-06-28T14', is_paused: false, consecutive_failures: 0 });
+    it('stores Kyiv period keys for daily, hourly, and 5min executions', async () => {
         const { guardScheduler } = loadGuard();
-        let calls = 0;
-
-        await guardScheduler('hourlyJob', async () => { calls++; }, { dedup: 'hourly' })();
-
-        assert.equal(calls, 1);
-        assert.equal(state.successWrites.length, 1);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28T15');
+        const cases = [
+            ['dailyJob', 'daily', '2026-06-28'],
+            ['hourlyJob', 'hourly', '2026-06-28T15'],
+            ['fiveMinJob', '5min', '2026-06-28T15:05']
+        ];
+        for (const [name, dedup, expected] of cases) {
+            await guardScheduler(name, async () => {}, { dedup })();
+            assert.equal(state.rows.get(name).last_run_date, expected);
+        }
     });
 
-    it('runs null-dedup jobs every call while still writing tracking rows', async () => {
-        state.rows.set('noDedupJob', { last_run_date: '2026-06-28T15:07', is_paused: false, consecutive_failures: 0 });
+    it('runs null-dedup jobs on every completed call', async () => {
         const { guardScheduler } = loadGuard();
         let calls = 0;
-        const guarded = guardScheduler('noDedupJob', async () => { calls++; }, { dedup: null });
+        const guarded = guardScheduler('pollingJob', async () => { calls += 1; }, { dedup: null });
 
         await guarded();
         await guarded();
 
         assert.equal(calls, 2);
+        assert.equal(state.claims.length, 2);
         assert.equal(state.successWrites.length, 2);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28T15:07');
-        assert.equal(state.successWrites[1].params[1], '2026-06-28T15:07');
     });
 
-    it('does not record a polling no-op as scheduler success', async () => {
+    it('releases polling no-ops without marking success', async () => {
         const { guardScheduler, skipSchedulerTracking } = loadGuard();
 
-        await guardScheduler(
-            'pollingJob',
-            async () => skipSchedulerTracking(),
-            { dedup: null }
-        )();
+        await guardScheduler('pollingJob', async () => skipSchedulerTracking(), { dedup: null })();
 
         assert.equal(state.successWrites.length, 0);
-        assert.equal(state.errorWrites.length, 0);
+        assert.equal(state.skippedWrites.length, 1);
+        assert.equal(state.rows.get('pollingJob').result, 'skipped');
     });
 
-    it('skips paused scheduler rows without writing success', async () => {
-        state.rows.set('pausedJob', { last_run_date: '2026-06-27', is_paused: true, consecutive_failures: 3 });
+    it('does not claim paused scheduler rows', async () => {
+        state.rows.set('pausedJob', normalizeRow('pausedJob', {
+            last_run_date: '2026-06-27', result: 'error', is_paused: true, consecutive_failures: 10
+        }));
         const { guardScheduler } = loadGuard();
         let calls = 0;
 
-        await guardScheduler('pausedJob', async () => { calls++; }, { dedup: 'daily' })();
+        await guardScheduler('pausedJob', async () => { calls += 1; }, { dedup: 'daily' })();
 
         assert.equal(calls, 0);
-        assert.equal(state.successWrites.length, 0);
-        assert.equal(state.errorWrites.length, 0);
+        assert.equal(state.claims.length, 0);
     });
 
-    it('tracks failures and swallows job errors', async () => {
-        state.rows.set('failingJob', { last_run_date: '2026-06-27', is_paused: false, consecutive_failures: 4 });
-        const { guardScheduler } = loadGuard();
-
-        await assert.doesNotReject(
-            guardScheduler('failingJob', async () => {
-                throw new Error('planned failure');
-            }, { dedup: 'daily' })()
-        );
-
-        assert.equal(state.successWrites.length, 0);
-        assert.equal(state.errorWrites.length, 1);
-        assert.equal(state.errorWrites[0].params[0], 'failingJob');
-        assert.equal(state.errorWrites[0].params[1], 'planned failure');
-        assert.match(state.errorWrites[0].text, /consecutive_failures = scheduler_executions\.consecutive_failures \+ 1/i);
-        assert.match(state.errorWrites[0].text, /is_paused = CASE/i);
-    });
-
-    it('skips 5min jobs inside the current five-minute bucket', async () => {
-        state.rows.set('fiveMinJob', { last_run_date: '2026-06-28T15:05', is_paused: false, consecutive_failures: 0 });
+    it('releases an errored claim for retry and preserves failure count', async () => {
         const { guardScheduler } = loadGuard();
         let calls = 0;
+        const guarded = guardScheduler('retryJob', async () => {
+            calls += 1;
+            if (calls === 1) throw new Error('planned failure');
+        }, { dedup: 'daily' });
 
-        await guardScheduler('fiveMinJob', async () => { calls++; }, { dedup: '5min' })();
+        await assert.doesNotReject(guarded());
+        assert.equal(state.rows.get('retryJob').result, 'error');
+        assert.equal(state.rows.get('retryJob').consecutive_failures, 1);
 
-        assert.equal(calls, 0);
-        assert.equal(state.successWrites.length, 0);
+        await guarded();
+        assert.equal(calls, 2);
+        assert.equal(state.rows.get('retryJob').result, 'success');
+        assert.equal(state.rows.get('retryJob').consecutive_failures, 0);
     });
 
-    it('runs 5min jobs in the next five-minute bucket and stores the bucket key', async () => {
-        state.rows.set('fiveMinJob', { last_run_date: '2026-06-28T15:00', is_paused: false, consecutive_failures: 0 });
+    it('auto-pauses on the tenth failure and respects autoPause false', async () => {
         const { guardScheduler } = loadGuard();
+        state.rows.set('pauseJob', normalizeRow('pauseJob', { result: 'error', consecutive_failures: 9 }));
+        state.rows.set('noPauseJob', normalizeRow('noPauseJob', { result: 'error', consecutive_failures: 9 }));
+
+        await guardScheduler('pauseJob', async () => { throw new Error('failure'); }, { dedup: null })();
+        await guardScheduler('noPauseJob', async () => { throw new Error('failure'); }, { dedup: null, autoPause: false })();
+
+        assert.equal(state.rows.get('pauseJob').is_paused, true);
+        assert.equal(state.rows.get('noPauseJob').is_paused, false);
+    });
+
+    it('recovers a claim after its lease expires', async () => {
+        const { guardScheduler } = loadGuard();
+        state.rows.set('crashedJob', normalizeRow('crashedJob', {
+            last_run_date: '2026-06-28',
+            last_run_at: Date.now() - 101,
+            result: 'running',
+            error_message: 'claim:dead-process'
+        }));
         let calls = 0;
 
-        await guardScheduler('fiveMinJob', async () => { calls++; }, { dedup: '5min' })();
+        await guardScheduler('crashedJob', async () => { calls += 1; }, {
+            dedup: 'daily', leaseMs: 100, heartbeatMs: 100
+        })();
 
         assert.equal(calls, 1);
-        assert.equal(state.successWrites.length, 1);
-        assert.equal(state.successWrites[0].params[1], '2026-06-28T15:05');
+        assert.equal(state.rows.get('crashedJob').result, 'success');
     });
 
-    it('rejects unsupported dedup values before a job can run', () => {
+    it('leaves active long-running claims to their current owner', async () => {
         const { guardScheduler } = loadGuard();
+        state.rows.set('activeJob', normalizeRow('activeJob', {
+            last_run_date: '2026-06-28',
+            last_run_at: Date.now() - 99,
+            result: 'running',
+            error_message: 'claim:live-process'
+        }));
+        let calls = 0;
 
-        assert.throws(
-            () => guardScheduler('badJob', async () => {}, { dedup: 'invalid' }),
-            /Unsupported scheduler dedup: invalid/
-        );
+        await guardScheduler('activeJob', async () => { calls += 1; }, {
+            dedup: 'daily', leaseMs: 100, heartbeatMs: 100
+        })();
+
+        assert.equal(calls, 0);
+        assert.equal(state.rows.get('activeJob').error_message, 'claim:live-process');
+    });
+
+    it('keeps owner-managed jobs on their existing concurrency mechanism', async () => {
+        state.rows.set('checkScheduledChatMessages', normalizeRow('checkScheduledChatMessages', { result: 'success' }));
+        const { guardScheduler } = loadGuard();
+        let calls = 0;
+
+        await guardScheduler('checkScheduledChatMessages', async () => { calls += 1; }, { dedup: null })();
+
+        assert.equal(calls, 1);
+        assert.equal(state.claims.length, 0);
+        assert.equal(state.successWrites.length, 1);
+    });
+
+    it('rejects unsupported dedup and claim modes before execution', () => {
+        const { guardScheduler } = loadGuard();
+        assert.throws(() => guardScheduler('badDedup', async () => {}, { dedup: 'invalid' }), /Unsupported scheduler dedup/);
+        assert.throws(() => guardScheduler('badClaim', async () => {}, { claimMode: 'invalid' }), /Unsupported scheduler claim mode/);
         assert.equal(state.queries.length, 0);
+    });
+});
+
+describe('scheduler execution policy', () => {
+    it('classifies every guarded registration and isolates owner-managed claims', () => {
+        const {
+            GUARDED_SCHEDULER_JOBS,
+            OWNER_MANAGED_SCHEDULER_CLAIMS,
+            schedulerExecutionPolicy
+        } = require('../config/schedulerSurface');
+
+        assert.equal(GUARDED_SCHEDULER_JOBS.length, 54);
+        assert.equal(Object.keys(OWNER_MANAGED_SCHEDULER_CLAIMS).length, 6);
+        for (const job of GUARDED_SCHEDULER_JOBS) {
+            const policy = schedulerExecutionPolicy(job.name);
+            assert.ok(['lease', 'owner'].includes(policy.claimMode), job.name);
+            assert.ok(policy.leaseMs >= 5 * 60 * 1000, job.name);
+        }
+        for (const name of Object.keys(OWNER_MANAGED_SCHEDULER_CLAIMS)) {
+            assert.equal(schedulerExecutionPolicy(name).claimMode, 'owner', name);
+        }
     });
 });

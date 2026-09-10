@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.83",
+  "version": "0.81.84",
   "eventGenix": {
-    "releaseLabel": "PARK/DAR Cashier Smoke After Redirect"
+    "releaseLabel": "PARK/DAR Catalog and Permission Warning"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

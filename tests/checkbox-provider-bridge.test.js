@@ -6,12 +6,110 @@ const crypto = require('node:crypto');
 const { CheckboxClientError, redactCheckboxDiagnostics } = require('../services/checkbox/errors');
 const CHECKBOX_OPENAPI_CONTRACT = require('../config/checkboxOpenApiContract');
 const {
+    CheckboxRuntimeProvider,
     classifyShiftStatus,
     createCheckboxProviderFactory,
     createProviderFromConfig,
     normalizeReceiptArtifacts,
     normalizeShiftResponse
 } = require('../services/checkbox/provider');
+
+function delayedSaleFixture({ submit, lookup, wait } = {}) {
+    const id = crypto.randomUUID();
+    const calls = [];
+    const client = {
+        baseUrl: 'https://api.checkbox.in.ua',
+        setAccessToken() {},
+        signIn: async () => { calls.push('auth'); return {}; },
+        getCashierProfile: async () => cashierProfile(),
+        getCurrentShift: async () => openedShift(),
+        getShiftById: async () => openedShift(),
+        createSaleReceipt: async payload => {
+            calls.push('sell');
+            assert.equal(payload.providerRequestUuid, id);
+            return submit ? submit(id) : checkboxReceipt(id, { status: 'CREATED' });
+        },
+        lookupReceipt: async ({ receiptId }) => {
+            assert.equal(receiptId, id);
+            calls.push('lookup');
+            return lookup ? lookup(id, calls) : checkboxReceipt(id);
+        }
+    };
+    const provider = new CheckboxRuntimeProvider({ client, expectedIsTest: false, tokenCache: new Map(), receiptWait: async ms => {
+        assert.equal(ms, 2000);
+        calls.push('wait');
+        if (wait) await wait();
+    } });
+    provider.authenticated = true;
+    return { provider, calls, input: saleInput(id, { beforeExternalMutation: async () => { calls.push('boundary'); } }) };
+}
+
+test('pending SELL waits two seconds before one lookup of the same durable UUID', async () => {
+    let releaseWait;
+    let waiting;
+    const reachedWait = new Promise(resolve => { waiting = resolve; });
+    const f = delayedSaleFixture({ wait: () => {
+        waiting();
+        return new Promise(resolve => { releaseWait = resolve; });
+    } });
+    const result = f.provider.submitSaleReceipt(f.input);
+    await reachedWait;
+    assert.deepEqual(f.calls, ['boundary', 'sell', 'wait']);
+    releaseWait();
+    assert.equal((await result).verified, true);
+    assert.deepEqual(f.calls, ['boundary', 'sell', 'wait', 'lookup']);
+});
+
+test('immediate DONE has no delay or extra lookup; invalid submit does not get a grace retry', async () => {
+    const done = delayedSaleFixture({ submit: id => checkboxReceipt(id) });
+    assert.equal((await done.provider.createSaleReceipt(done.input)).verified, true);
+    assert.deepEqual(done.calls, ['boundary', 'sell']);
+    const invalid = delayedSaleFixture({ submit: () => checkboxReceipt(crypto.randomUUID(), { status: 'CREATED' }) });
+    await assert.rejects(() => invalid.provider.submitSaleReceipt(invalid.input), error => error.code.includes('mismatch'));
+    assert.deepEqual(invalid.calls, ['boundary', 'sell']);
+});
+
+for (const kind of ['pending', 'not_found', 'timeout', 'conflict', 'invalid_amount']) {
+    test(`delayed lookup ${kind} stays unresolved without another SELL`, async () => {
+        const f = delayedSaleFixture({ lookup: id => {
+            if (kind === 'pending') return checkboxReceipt(id, { status: 'CREATED' });
+            if (kind === 'invalid_amount') return checkboxReceipt(id, { total_sum: 1 });
+            throw new CheckboxClientError(kind, kind, { status: kind === 'not_found' ? 404 : kind === 'conflict' ? 409 : 504, unknown: true });
+        } });
+        await assert.rejects(() => f.provider.submitSaleReceipt(f.input), error => {
+            if (['pending', 'not_found'].includes(kind)) return error.code === 'checkbox_receipt_pending';
+            if (kind === 'invalid_amount') return error.code.includes('mismatch');
+            return error.code === kind;
+        });
+        assert.deepEqual(f.calls, ['boundary', 'sell', 'wait', 'lookup']);
+    });
+}
+
+test('a delayed lookup 401 retries only lookup authentication, never the sale', async () => {
+    const f = delayedSaleFixture({ lookup: (id, calls) => {
+        if (calls.filter(call => call === 'lookup').length === 1) throw new CheckboxClientError('unauthorized', 'Unauthorized', { status: 401 });
+        return checkboxReceipt(id);
+    } });
+    assert.equal((await f.provider.submitSaleReceipt(f.input)).verified, true);
+    assert.deepEqual(f.calls, ['boundary', 'sell', 'wait', 'lookup', 'auth', 'lookup']);
+});
+
+test('delayed cash receipt retains exact tender, received amount and change checks', async () => {
+    const cashReceipt = (id, overrides = {}) => checkboxReceipt(id, {
+        payments: [{ type: 'CASH', value: 13000 }], total_payment: 13000, total_rest: 655, ...overrides
+    });
+    for (const incorrectChange of [false, true]) {
+        const f = delayedSaleFixture({
+            submit: id => cashReceipt(id, { status: 'CREATED' }),
+            lookup: id => cashReceipt(id, incorrectChange ? { total_rest: 0 } : {})
+        });
+        Object.assign(f.input.paymentOrder, { payment_method: 'cash', confirmation_snapshot: { received_amount_minor: '13000', change_amount_minor: '655' } });
+        if (incorrectChange) {
+            await assert.rejects(() => f.provider.submitSaleReceipt(f.input), error => error.code.includes('mismatch'));
+        } else assert.equal((await f.provider.submitSaleReceipt(f.input)).verified, true);
+        assert.deepEqual(f.calls, ['boundary', 'sell', 'wait', 'lookup']);
+    }
+});
 const { loadCheckboxRuntimeConfig } = require('../services/checkbox/config');
 const { classifyWorkerError, processPaymentOutboxJobs, runShiftJob } = require('../services/payments/paymentOutboxWorker');
 

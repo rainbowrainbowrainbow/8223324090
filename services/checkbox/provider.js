@@ -948,7 +948,7 @@ function validateSaleResponse(response) {
 }
 
 class CheckboxRuntimeProvider {
-    constructor({ client, authMode = 'password', login, password, pinCode, credentialRef = null, licenseRef = null, expectedIsTest = null, allowUnreportedPaymentPermissions = false, tokenCache = TOKEN_CACHE, tokenTtlMs = 10 * 60 * 1000 } = {}) {
+    constructor({ client, authMode = 'password', login, password, pinCode, credentialRef = null, licenseRef = null, expectedIsTest = null, allowUnreportedPaymentPermissions = false, tokenCache = TOKEN_CACHE, tokenTtlMs = 10 * 60 * 1000, receiptWait = ms => new Promise(resolve => setTimeout(resolve, ms)) } = {}) {
         if (!client) throw new CheckboxProviderConfigError('checkbox_client_required', 'Checkbox client is required');
         this.client = client;
         this.login = login;
@@ -963,6 +963,7 @@ class CheckboxRuntimeProvider {
         this.tokenTtlMs = Math.max(60 * 1000, Math.min(Number(tokenTtlMs || 10 * 60 * 1000), 60 * 60 * 1000));
         this.authenticated = false;
         this.readyChecked = false;
+        this.receiptWait = receiptWait;
     }
 
     tokenCacheKey() {
@@ -1471,25 +1472,28 @@ class CheckboxRuntimeProvider {
     }
 
     async createSaleReceipt(input = {}) {
-        const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
-        expected.expectedReceiptType = 'SELL';
-        return this.withAuth(expected, async () => {
-            const shift = await this.recheckExactOpenedShiftBeforeSale(input, expected);
-            await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
-            const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
-            return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
-        });
+        return this.submitSaleReceipt(input);
     }
 
     async submitSaleReceipt(input = {}) {
         const expected = expectedContextFromInput(input, { expectedIsTest: this.expectedIsTest });
         expected.expectedReceiptType = 'SELL';
-        return this.withAuth(expected, async () => {
-            const shift = await this.recheckExactOpenedShiftBeforeSale(input, expected);
-            await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
-            const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
-            return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
-        });
+        try {
+            return await this.withAuth(expected, async () => {
+                const shift = await this.recheckExactOpenedShiftBeforeSale(input, expected);
+                await input.beforeExternalMutation?.({ operation: 'receipt_sell' });
+                const receipt = await this.client.createSaleReceipt(this.toSalePayload(input, { providerShiftId: shift.id }));
+                return normalizeReceiptArtifacts(receipt, this.client, { ...expected, expectedShiftId: shift.id });
+            });
+        } catch (error) {
+            if (!(error instanceof CheckboxClientError) || error.code !== 'checkbox_receipt_pending') throw error;
+            // Keep lookup outside the submit auth retry: a lookup 401 must never replay SELL.
+            // A durable submit boundary already exists; unresolved outcomes stay in the outbox.
+            await this.receiptWait(2000);
+            const result = await this.lookupReceipt(input);
+            if (result.found) return result.receipt;
+            throw error;
+        }
     }
 
     async createReturnReceipt(input = {}) {

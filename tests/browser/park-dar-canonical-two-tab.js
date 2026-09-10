@@ -45,8 +45,7 @@ async function startCanonicalTwoTab({ baseUrl, actor, itemCode, pool }) {
         for (const page of [first, second]) {
             await page.goto(url, { waitUntil: 'domcontentloaded' });
             await page.waitForSelector('#addCatalogLineBtn:not([disabled])', { timeout: 30000 });
-            await page.click('#addCatalogLineBtn');
-            await page.selectOption('[data-catalog-item]', itemCode);
+            await page.locator(`[data-catalog-add="${itemCode}"]`).click();
             await page.waitForSelector('#createPaymentOrderBtn:not([disabled])');
         }
         await first.click('#createPaymentOrderBtn');
@@ -82,8 +81,7 @@ async function startCanonicalTwoTab({ baseUrl, actor, itemCode, pool }) {
                 assert.equal(await first.locator(`#unresolvedOrdersBody [data-order-id="${orderId}"]`).count(), 1);
                 await second.click('#startNextOrderBtn');
                 assert.equal(await second.evaluate(() => window.CashierPaymentsPage.state.orderDetails.order.id), orderId);
-                await first.click('#addCatalogLineBtn');
-                await first.selectOption('[data-catalog-item]', itemCode);
+                await first.locator(`[data-catalog-add="${itemCode}"]`).click();
                 await first.fill('[data-catalog-quantity]', '2');
                 await first.check('input[name="paymentTender"][value="card_terminal_manual"]');
                 await first.waitForSelector('#createPaymentOrderBtn:not([disabled])');

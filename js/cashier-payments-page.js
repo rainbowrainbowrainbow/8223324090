@@ -186,7 +186,7 @@
             draft: 'чернетка', unpaid: 'не оплачено', not_created: 'ще не створено', pending: 'очікує', unknown: 'невідомо', confirmed: 'оплачено', created: 'створюється', open: 'відкрита', opened: 'відкрита', opening: 'відкривається', closing: 'закривається', closed: 'закрита', blocked: 'заблоковано',
             payment_recorded: 'оплату зафіксовано', fiscalized: 'чек створено', failed: 'помилка з повтором', failed_retryable: 'помилка, буде повтор', failed_terminal: 'помилка без автоповтору', dead: 'потрібна ручна перевірка', cancelled: 'скасовано',
             validation_failed: 'помилка перевірки', ready_to_send: 'готово до відправки', sending: 'відправляється', validating: 'перевіряється', not_open: 'не відкрита', not_required: 'не потрібен',
-            mapping_missing: 'налаштування каси відсутнє', credentials_missing: 'доступи не налаштовані', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', paid_sale_closed_shift_reconciliation_required: 'потрібна ручна звірка оплаченого чека', ready: 'готово'
+            mapping_missing: 'налаштування каси відсутнє', credentials_missing: 'доступи не налаштовані', provider_unavailable: 'Checkbox недоступний', identity_mismatch: 'невірна каса Checkbox', shift_opening: 'зміна відкривається', paid_sale_closed_shift_reconciliation_required: 'потрібна ручна звірка оплаченого чека', ready: 'готово', awaiting_receipt: 'Checkbox обробляє чек'
         };
         return labels[status] || 'потребує перевірки';
     }
@@ -194,7 +194,7 @@
     function classifyStatus(value) {
         const status = normalizeStatus(value);
         if (['confirmed', 'payment_recorded', 'fiscalized', 'open', 'closed'].includes(status)) return 'is-ok';
-        if (['pending', 'unknown', 'ready_to_send', 'sending', 'validating', 'opening', 'closing', 'failed', 'failed_retryable'].includes(status)) return 'is-warn';
+        if (['pending', 'unknown', 'ready_to_send', 'sending', 'validating', 'opening', 'closing', 'failed', 'failed_retryable', 'awaiting_receipt'].includes(status)) return 'is-warn';
         if (['failed_terminal', 'dead', 'validation_failed', 'blocked', 'cancelled', 'paid_sale_closed_shift_reconciliation_required'].includes(status)) return 'is-danger';
         return '';
     }
@@ -218,6 +218,13 @@
 
     function effectiveFiscalStatus(order = state.orderDetails?.order) {
         return normalizeStatus(order?.fiscalQueueStatus || order?.fiscalStatus);
+    }
+
+    function fiscalStatusForDisplay(order, errorCode = order?.lastErrorCode || order?.incidentReason) {
+        const status = effectiveFiscalStatus(order);
+        // Presentation only: canonical statuses still govern payment, polling and close guards.
+        return errorCode === 'checkbox_receipt_pending' && ['pending', 'unknown', 'failed_retryable'].includes(status)
+            ? 'awaiting_receipt' : status;
     }
 
     function setStatus(id, value) {
@@ -256,6 +263,7 @@
         const code = normalizeStatus(value);
         if (!value) return '';
         const labels = {
+            checkbox_receipt_pending: 'Checkbox ще обробляє чек. Повторна оплата не потрібна.',
             provider_unavailable: 'Checkbox тимчасово недоступний; система повторить перевірку.',
             provider_shift_closed_before_sale_submit: 'Зміну закрито до відправлення чека; потрібна ручна звірка.',
             paid_sale_closed_shift_reconciliation_required: 'Потрібна ручна звірка оплаченого чека.',
@@ -288,8 +296,8 @@
         if (['dead', 'failed_terminal', 'validation_failed', 'blocked'].includes(fiscalStatus)) {
             return 'Автоповтор зупинено — потрібна перевірка відповідального.';
         }
-        if (order.nextRunAt) return `Чек очікує Checkbox — буде повтор ${formatKyivDateTime(order.nextRunAt)}.`;
-        return 'Чек очікує Checkbox — система повторить автоматично.';
+        if (order.nextRunAt) return `Наступна серверна перевірка: ${formatKyivDateTime(order.nextRunAt)}. Повторно не оплачуйте.`;
+        return 'Стан чека перевіряється автоматично. Повторно не оплачуйте.';
     }
 
     function updateTextIfPresent(id, value) {
@@ -738,13 +746,13 @@
         const search = String($('catalogSearch')?.value || '').trim().toLocaleLowerCase('uk-UA');
         const category = String($('catalogCategory')?.value || '').trim();
         return state.catalogItems.filter(item => {
-            const matchesSearch = !search || `${item.name || ''} ${item.category || ''}`.toLocaleLowerCase('uk-UA').includes(search);
+            const matchesSearch = !search || `${item.name || ''} ${item.itemCode || ''} ${item.category || ''}`.toLocaleLowerCase('uk-UA').includes(search);
             return matchesSearch && (!category || item.category === category);
         });
     }
 
     function catalogSelectItems(selectedCode = '') {
-        const filtered = filteredCatalogItems();
+        const filtered = state.catalogItems;
         const selected = catalogItemByCode(selectedCode);
         return selected && !filtered.some(item => item.itemCode === selected.itemCode)
             ? [selected, ...filtered]
@@ -781,11 +789,8 @@
         }
         const items = filteredCatalogItems();
         const locked = Boolean(state.orderDetails?.order || state.createInFlight || createDraft()?.payload);
-        if (!catalogFilterActive() && document.querySelector('#catalogSaleLines .cashier-catalog-line')) {
-            container.classList.add('hidden');
-            return;
-        }
         container.classList.remove('hidden');
+        setText('catalogResultsCount', `${items.length} позицій`);
         if (!items.length) {
             const empty = document.createElement('p');
             empty.className = 'cashier-help';
@@ -793,26 +798,25 @@
             container.appendChild(empty);
             return;
         }
-        for (const item of items.slice(0, 24)) {
+        for (const item of items) {
             const button = document.createElement('button');
             button.type = 'button';
             button.className = 'cashier-catalog-result';
+            button.dataset.catalogAdd = item.itemCode;
+            button.setAttribute('aria-label', `Додати: ${item.name}, ${formatMoneyMinor(item.priceMinor)}`);
             button.disabled = locked;
             if (locked) button.setAttribute('aria-disabled', 'true');
             button.innerHTML = `
                 <span><strong>${escapeHtml(item.name)}</strong><small>${escapeHtml(item.category || 'Без категорії')}</small></span>
-                <span>${escapeHtml(formatMoneyMinor(item.priceMinor))}</span>`;
+                <span class="cashier-catalog-result-price">${escapeHtml(formatMoneyMinor(item.priceMinor))}<small>${escapeHtml(item.unit || 'шт.')}</small></span>
+                <span class="cashier-catalog-add-icon" aria-hidden="true">+</span>`;
             button.addEventListener('click', () => addCatalogLine(item.itemCode));
             container.appendChild(button);
         }
     }
 
     function refreshCatalogSelects() {
-        document.querySelectorAll('[data-catalog-item]').forEach(select => {
-            const selectedCode = select.value;
-            fillCatalogSelect(select, selectedCode);
-            syncCatalogLine(select.closest('.cashier-catalog-line'));
-        });
+        // Filtering the picker never modifies the basket or its quantities.
         renderCatalogSearchResults();
     }
 
@@ -853,6 +857,15 @@
         setText('catalogOriginalTotal', formatMoneyMinor(Math.round(originalTotal * 100)));
         setText('catalogDiscountTotal', formatMoneyMinor(Math.round((originalTotal - finalTotal) * 100)));
         setText('catalogFinalTotal', formatMoneyMinor(Math.round(finalTotal * 100)));
+        const explanation = $('catalogDiscountExplanation');
+        if (explanation) {
+            explanation.hidden = !discount;
+            explanation.textContent = discount?.code === 'dar_second_club_direction_10'
+                ? (originalTotal > finalTotal
+                    ? '10% застосовано лише до іншого гурткового напрямку. Перший напрямок — за повною ціною.'
+                    : 'Знижку не застосовано: 10% діють на другий відмінний гуртковий напрямок у кошику, а не на першу позицію.')
+                : (discount ? `Знижка: ${formatMoneyMinor(Math.round((originalTotal - finalTotal) * 100))}.` : '');
+        }
     }
 
     function quantityRule(item) {
@@ -881,6 +894,8 @@
             quantity.setAttribute('aria-label', `Кількість: ${item?.name || 'позиція'}`);
         }
         if (price) price.textContent = item ? `${formatMoneyMinor(item.priceMinor)} / ${item.unit || 'шт.'}` : '—';
+        const total = row.querySelector('[data-catalog-line-total]');
+        if (total) total.textContent = item ? formatMoneyMinor(Math.round(Number(item.priceMinor) * Number(quantity?.value || 0))) : '—';
         const fullName = row.querySelector('[data-catalog-name]');
         if (fullName) fullName.textContent = item?.name || '';
         updateCatalogCartSummary();
@@ -890,23 +905,45 @@
     function addCatalogLine(itemCode = '') {
         const container = $('catalogSaleLines');
         if (!container || !state.catalogItems.length || state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
-        const selectedItem = catalogItemByCode(itemCode) || filteredCatalogItems()[0] || null;
+        const selectedItem = itemCode ? catalogItemByCode(itemCode) : filteredCatalogItems()[0];
         if (!selectedItem) {
             notify('За цим пошуком немає доступних позицій. Змініть пошук або категорію.', 'error');
             return;
         }
         invalidateUnsubmittedDraft();
+        const existing = [...container.querySelectorAll('.cashier-catalog-line')]
+            .find(row => row.querySelector('[data-catalog-item]')?.value === selectedItem.itemCode);
+        if (existing) {
+            const quantity = existing.querySelector('[data-catalog-quantity]');
+            quantity.value = String((Math.round(Number(quantity.value) * 1000) + quantityRule(selectedItem).stepMillis) / 1000);
+            syncCatalogLine(existing);
+            return;
+        }
         const row = document.createElement('div');
         row.className = 'cashier-catalog-line';
         row.innerHTML = `
-            <label class="cashier-field cashier-catalog-item-field"><span>Позиція</span><select data-catalog-item aria-label="Позиція каталогу"></select><span class="cashier-catalog-name" data-catalog-name></span></label>
-            <label class="cashier-field cashier-catalog-quantity-field"><span>Кількість</span><input data-catalog-quantity type="number" inputmode="decimal" value="1"></label>
+            <div class="cashier-field cashier-catalog-item-field"><select data-catalog-item hidden aria-hidden="true" tabindex="-1"></select><strong class="cashier-catalog-name" data-catalog-name></strong></div>
             <span class="cashier-catalog-price" data-catalog-price aria-label="Ціна за одиницю">—</span>
-            <button type="button" class="btn-page-secondary cashier-catalog-remove" data-catalog-remove aria-label="Видалити позицію">×</button>`;
+            <div class="cashier-catalog-stepper">
+                <button type="button" data-catalog-step="-1" title="Зменшити кількість" aria-label="Зменшити кількість">−</button>
+                <input data-catalog-quantity type="number" inputmode="decimal" value="1">
+                <button type="button" data-catalog-step="1" title="Збільшити кількість" aria-label="Збільшити кількість">+</button>
+            </div>
+            <strong data-catalog-line-total aria-label="Сума позиції до знижки"></strong>
+            <button type="button" class="btn-page-secondary cashier-catalog-remove" data-catalog-remove title="Видалити позицію" aria-label="Видалити позицію">×</button>`;
         const select = row.querySelector('[data-catalog-item]');
         fillCatalogSelect(select, selectedItem.itemCode);
         select.addEventListener('change', () => syncCatalogLine(row));
         row.querySelector('[data-catalog-quantity]')?.addEventListener('input', () => syncCatalogLine(row));
+        row.querySelectorAll('[data-catalog-step]').forEach(button => button.addEventListener('click', () => {
+            if (state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
+            invalidateUnsubmittedDraft();
+            const quantity = row.querySelector('[data-catalog-quantity]');
+            const rule = quantityRule(catalogItemByCode(select.value));
+            const next = Math.round(Number(quantity.value || 0) * 1000) + Number(button.dataset.catalogStep) * rule.stepMillis;
+            quantity.value = String(Math.max(rule.minimumMillis, next) / 1000);
+            syncCatalogLine(row);
+        }));
         row.querySelector('[data-catalog-remove]')?.addEventListener('click', () => {
             if (state.orderDetails?.order?.id || state.createInFlight || createDraft()?.payload) return;
             invalidateUnsubmittedDraft();
@@ -917,7 +954,6 @@
         });
         container.appendChild(row);
         syncCatalogLine(row);
-        renderCatalogSearchResults();
     }
 
     function renderCatalogDiscounts() {
@@ -1395,7 +1431,7 @@
         setText('cashierFiscalProfile', `${formatCrmProfile(order.crmProfileKey)} / ${order.legalEntityName || order.legalEntityKey || '\u0424\u041e\u041f \u043d\u0435 \u043d\u0430\u043b\u0430\u0448\u0442\u043e\u0432\u0430\u043d\u043e'}`);
         setText('cashierRegister', `${PILOT_SCOPE.businessLabel} / ${selectedRoute()?.registerLabel || order.registerDisplayName || 'каса'}`);
         setStatus('cashierPaymentStatus', order.paymentStatus || order.status);
-        setStatus('cashierFiscalStatus', normalizeStatus(order.paymentStatus) === 'unpaid' ? 'not_created' : effectiveFiscalStatus(order));
+        setStatus('cashierFiscalStatus', normalizeStatus(order.paymentStatus) === 'unpaid' ? 'not_created' : fiscalStatusForDisplay(order, details?.outboxJob?.lastErrorCode));
         setText('internalReceiptLabel', `RCP-${order.id} \u2014 ${INTERNAL_RECEIPT_TEXT}`);
         setText('paymentTotalAmount', formatMoneyMinor(order.totalAmountMinor));
         setText('cardExactAmount', formatMoneyMinor(order.totalAmountMinor));
@@ -1428,7 +1464,8 @@
         const fiscalStatus = effectiveFiscalStatus(order);
         const artifacts = details?.artifacts || {};
         const latestReceipt = Array.isArray(details?.receipts) ? details.receipts[0] : null;
-        setStatus('fiscalReceiptBadge', hasOrder && normalizeStatus(order.paymentStatus) !== 'unpaid' ? fiscalStatus : 'not_created');
+        const displayStatus = fiscalStatusForDisplay(order, details?.outboxJob?.lastErrorCode);
+        setStatus('fiscalReceiptBadge', hasOrder && normalizeStatus(order.paymentStatus) !== 'unpaid' ? displayStatus : 'not_created');
         const message = $('fiscalPendingMessage');
         const links = $('providerReceiptLinks');
         const pendingNotice = $('pendingReceiptNotice');
@@ -1438,6 +1475,7 @@
             if (!hasOrder) message.textContent = 'Чек ще не створено. Спочатку створіть оплату для поточного клієнта.';
             else if (hasOfficialReceipt) message.textContent = 'Оплату завершено. Офіційний чек Checkbox отримано. Для нового продажу натисніть «Наступний клієнт».';
             else if (normalizeStatus(order.paymentStatus) === 'unpaid') message.textContent = 'Оплату ще не підтверджено. Перевірте суму та підтвердьте отримання грошей.';
+            else if (displayStatus === 'awaiting_receipt' || fiscalStatus === 'pending') message.textContent = 'Оплату зафіксовано. Очікуємо чек Checkbox; стан перевіряється автоматично. Повторно оплачувати не потрібно.';
             else if (['failed_terminal', 'validation_failed', 'blocked', 'dead'].includes(fiscalStatus)) message.textContent = 'Потрібне втручання адміністратора. Гроші вже зафіксовані; повторно приймати оплату не можна.';
             else if (FISCAL_BLOCKING_STATUSES.has(fiscalStatus)) message.textContent = 'Гроші зафіксовані. Чек відновлюється; повторно приймати оплату не можна. Стан доступний у незавершених чеках.';
             else message.textContent = '\u041f\u0456\u0441\u043b\u044f \u043f\u0456\u0434\u0442\u0432\u0435\u0440\u0434\u0436\u0435\u043d\u043d\u044f \u043e\u043f\u043b\u0430\u0442\u0438 \u0441\u0435\u0440\u0432\u0435\u0440 \u0441\u0442\u0432\u043e\u0440\u0438\u0442\u044c \u043e\u0434\u043d\u0443 \u043d\u0430\u0434\u0456\u0439\u043d\u0443 \u0437\u0430\u0434\u0430\u0447\u0443 \u0444\u0456\u0441\u043a\u0430\u043b\u0456\u0437\u0430\u0446\u0456\u0457.';
@@ -1500,7 +1538,7 @@
         const recoverySubject = ids.length === 1 ? 'Він залишається' : 'Вони залишаються';
         const repeatSubject = ids.length === 1 ? 'нього' : 'них';
         pendingNotice.textContent = ids.length
-            ? `Чек очікує Checkbox / буде повтор: ${ids.map(id => `RCP-${id}`).join(', ')}${remainingCount ? ` та ще ${remainingCount}` : ''}. ${recoverySubject} у серверній черзі нижче; повторну оплату для ${repeatSubject} не створюйте.`
+            ? `Незавершені чеки: ${ids.map(id => `RCP-${id}`).join(', ')}${remainingCount ? ` та ще ${remainingCount}` : ''}. ${recoverySubject} у серверній черзі нижче; повторну оплату для ${repeatSubject} не створюйте.`
             : '';
     }
 
@@ -1694,7 +1732,7 @@
                 <span class="cashier-receipt-money">${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
                 <span>${escapeHtml(formatPaymentMethod(order.paymentMethod || order.tender))}</span>
                 <span>${escapeHtml(formatStatus(order.paymentStatus))}</span>
-                <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
+                <span class="cashier-status ${escapeAttribute(classifyStatus(fiscalStatusForDisplay(order)))}">${escapeHtml(formatStatus(fiscalStatusForDisplay(order)))}</span>
                 <span class="cashier-recovery-text">${escapeHtml(formatRecoveryText(order))}</span>
                 <span class="cashier-recovery-reason">${escapeHtml(formatIncidentReason(order.incidentReason))}</span>
             </button>
@@ -1769,7 +1807,7 @@
             ownership,
             `сума ${formatMoneyMinor(order.totalAmountMinor)}`,
             `оплата ${formatStatus(order.paymentStatus)}`,
-            `фіскалізація ${formatStatus(order.fiscalStatus)}`,
+            `фіскалізація ${formatStatus(fiscalStatusForDisplay(order))}`,
             retry,
             incident ? `причина: ${incident}` : 'без зафіксованої причини інциденту'
         ].join('. ');
@@ -1906,7 +1944,7 @@
                 <span class="cashier-receipt-id"><strong>RCP-${escapeHtml(order.id)}</strong><small>${escapeHtml(order.confirmedAt ? formatKyivDateTime(order.confirmedAt) : 'час не підтверджено')}</small></span>
                 <span>${escapeHtml(formatPaymentMethod(order.paymentMethod))}</span>
                 <span class="cashier-receipt-money">${escapeHtml(formatMoneyMinor(order.totalAmountMinor))}</span>
-                <span class="cashier-status ${escapeAttribute(classifyStatus(order.fiscalStatus))}">${escapeHtml(formatStatus(order.fiscalStatus))}</span>
+                <span class="cashier-status ${escapeAttribute(classifyStatus(fiscalStatusForDisplay(order)))}">${escapeHtml(formatStatus(fiscalStatusForDisplay(order)))}</span>
                 <span class="cashier-recovery-text">${escapeHtml(formatRecoveryText(order))}</span>
                 ${renderReceiptHistoryActions(order)}
             </div>
@@ -2326,7 +2364,7 @@
         }
         const addLineButton = $('addCatalogLineBtn');
         if (addLineButton) addLineButton.disabled = editingDisabled || !state.catalogReady;
-        document.querySelectorAll('[data-catalog-remove]').forEach(button => {
+        document.querySelectorAll('[data-catalog-remove], [data-catalog-step], [data-catalog-add]').forEach(button => {
             button.disabled = editingDisabled;
         });
         setText('createPaymentDisabledReason', reason || 'Каса готова. Перевірте товари, кількість і спосіб оплати.');
@@ -2923,7 +2961,10 @@
             syncCreateAvailability();
             await loadPilotRegisterState({ silent: true });
         });
-        $('addCatalogLineBtn')?.addEventListener('click', () => addCatalogLine());
+        $('addCatalogLineBtn')?.addEventListener('click', () => {
+            $('catalogSearch')?.focus();
+            $('catalogSearchResults')?.scrollIntoView({ block: 'nearest' });
+        });
         $('catalogDiscountRule')?.addEventListener('change', () => {
             updateCatalogCartSummary();
             syncCreateAvailability();

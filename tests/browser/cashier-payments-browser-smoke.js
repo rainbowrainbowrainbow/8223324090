@@ -798,7 +798,7 @@ async function run() {
         await captureVisualArtifact(selectorPage, '00-catalog-park-production.png');
         assert.equal(await selectorPage.locator('[data-catalog-item]').count(), 0, 'catalog starts with an empty cart');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true);
-        await selectorPage.click('#addCatalogLineBtn');
+        await selectorPage.locator('[data-catalog-add]').first().click();
         const longName = 'Абонемент на індивідуальні творчі заняття та розвивальні майстер-класи для дітей';
         await selectorPage.evaluate(name => {
             window.CashierPaymentsPage.state.catalogItems[0].name = name;

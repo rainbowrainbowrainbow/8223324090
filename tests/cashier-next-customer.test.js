@@ -233,6 +233,83 @@ test('projected explicit permission denial stays visible and blocked', t => {
     assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
 });
 
+for (const business of ['event_genix', 'dar']) {
+    test(`${business} picker stays visible, never truncates at 24 and merges repeated choices without losing filtered cart`, t => {
+        const f = fixture(business); t.after(() => f.dom.window.close());
+        f.page.state.catalogItems.push(...Array.from({ length: 30 }, (_, index) => ({
+            itemCode: `extra-${index}`, name: `Service ${index}`, category: 'Services', priceMinor: '1000'
+        })));
+        f.page.refreshCatalogSelects();
+        assert.equal(f.el('catalogSearchResults').querySelectorAll('button').length, 32);
+        f.el('catalogSearchResults').querySelector('button').click();
+        assert.equal(f.el('catalogSearchResults').classList.contains('hidden'), false);
+        f.el('catalogSearchResults').querySelector('button').click();
+        assert.equal(f.el('catalogSaleLines').children.length, 1);
+        assert.equal(f.window.document.querySelector('[data-catalog-quantity]').value, '2');
+        f.window.document.querySelector('[data-catalog-step="-1"]').click();
+        assert.equal(f.window.document.querySelector('[data-catalog-quantity]').value, '1');
+        f.el('catalogSearch').value = 'extra-29';
+        f.page.refreshCatalogSelects();
+        assert.equal(f.el('catalogSearchResults').querySelectorAll('button').length, 1);
+        assert.equal(f.window.document.querySelector('[data-catalog-item]').value, 'same');
+        assert.equal(f.window.document.querySelector('[data-catalog-quantity]').value, '1');
+        f.el('catalogSearch').value = 'not present';
+        f.page.refreshCatalogSelects();
+        assert.match(f.el('catalogSearchResults').textContent, /немає доступних позицій/);
+        assert.equal(f.el('catalogSaleLines').children.length, 1);
+        f.page.state.orderDetails = { order: { id: 10, paymentStatus: 'confirmed', fiscalStatus: 'unknown' } };
+        f.page.syncCreateAvailability();
+        assert.equal(f.window.document.querySelector('[data-catalog-step="1"]').disabled, true);
+    });
+}
+
+test('choose products focuses the picker without silently adding its first item', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.el('catalogSearchResults').scrollIntoView = () => {};
+    f.el('addCatalogLineBtn').click();
+    assert.equal(f.el('catalogSaleLines').children.length, 0);
+    assert.equal(f.window.document.activeElement, f.el('catalogSearch'));
+});
+
+test('second direction discount explains zero eligibility and updates after basket changes', t => {
+    const f = fixture('dar'); t.after(() => f.dom.window.close());
+    f.page.state.catalogItems[0].quantityRule = { club_direction: 'painting' };
+    f.page.state.catalogItems[1].quantityRule = { club_direction: 'logic' };
+    f.page.state.catalogDiscounts = [{ code: 'dar_second_club_direction_10', rateBps: 1000 }];
+    f.el('catalogDiscountRule').innerHTML = '<option value="dar_second_club_direction_10">10%</option>';
+    f.page.addCatalogLine('same');
+    assert.match(f.el('catalogDiscountExplanation').textContent, /не застосовано/);
+    assert.match(f.el('catalogDiscountTotal').textContent, /0,00/);
+    f.page.addCatalogLine('vip');
+    assert.match(f.el('catalogDiscountExplanation').textContent, /лише до іншого/);
+    assert.match(f.el('catalogDiscountTotal').textContent, /2,50/);
+    f.el('catalogSaleLines').lastElementChild.querySelector('[data-catalog-remove]').click();
+    assert.match(f.el('catalogDiscountExplanation').textContent, /не застосовано/);
+});
+
+for (const [status, error, label] of [
+    ['failed_retryable', 'checkbox_receipt_pending', /Checkbox обробляє чек/],
+    ['failed_retryable', 'provider_timeout', /помилка/],
+    ['failed_terminal', 'checkbox_receipt_pending', /помилка без автоповтору/],
+    ['fiscalized', 'checkbox_receipt_pending', /чек створено/]
+]) {
+    test(`receipt display ${status}/${error} does not alter canonical outcome or unlock payment`, t => {
+        const f = fixture(); t.after(() => f.dom.window.close());
+        const details = { order: { id: 10, paymentStatus: 'confirmed', fiscalStatus: status }, outboxJob: { lastErrorCode: error } };
+        f.page.state.orderDetails = details;
+        f.page.renderOrder(details);
+        f.page.syncConfirmationAvailability();
+        assert.match(f.el('cashierFiscalStatus').textContent, label);
+        assert.match(f.el('fiscalReceiptBadge').textContent, label);
+        assert.equal(details.order.fiscalStatus, status);
+        assert.equal(f.el('confirmCashBtn').disabled, true);
+        assert.equal(f.el('confirmCardBtn').disabled, true);
+        if (error === 'checkbox_receipt_pending' && status === 'failed_retryable') {
+            assert.match(f.el('fiscalPendingMessage').textContent, /перевіряється автоматично/);
+        }
+    });
+}
+
 test('unreported permission without server approval stays blocked; rendering never grants readiness', t => {
     const f = fixture(); t.after(() => f.dom.window.close());
     Object.assign(f.page.state.registerState, {

@@ -41,7 +41,7 @@ async function run() {
         const page = await context.newPage();
         await page.goto(`http://127.0.0.1:${server.address().port}/cashier-payments?businessContext=event_genix&routeOptionId=park_test`);
         await page.waitForSelector('#sharedTestDrainBtn:not([disabled])');
-        await page.click('#addCatalogLineBtn');
+        await page.locator('[data-catalog-add]').first().click();
         await page.click('#sharedTestDrainBtn');
         await page.waitForSelector('.confirm-overlay');
         await page.keyboard.press('Escape');

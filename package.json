@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.87",
+  "version": "0.81.88",
   "eventGenix": {
-    "releaseLabel": "Omni Human Inbox and UI Polish"
+    "releaseLabel": "Omni Inbox Action Fix"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

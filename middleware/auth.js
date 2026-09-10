@@ -25,6 +25,7 @@ const {
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
 
 const log = createLogger('Auth');
+const AUTHENTICATED_REQUEST = Symbol('eventgenix.authenticatedRequest');
 
 const JWT_SECRET = process.env.JWT_SECRET || crypto.randomBytes(64).toString('hex');
 if (!process.env.JWT_SECRET) {
@@ -247,6 +248,12 @@ async function authenticateToken(req, res, next) {
         });
     }
 
+    const authenticatedRequest = req[AUTHENTICATED_REQUEST];
+    if (authenticatedRequest?.token === token && authenticatedRequest.user) {
+        req.user = authenticatedRequest.user;
+        return next();
+    }
+
     try {
         const user = jwt.verify(token, JWT_SECRET);
         if (isDemoTokenPrincipal(user)) {
@@ -257,6 +264,7 @@ async function authenticateToken(req, res, next) {
                 });
             }
             req.user = user;
+            req[AUTHENTICATED_REQUEST] = { token, user };
             return next();
         }
         const recoveryMode = process.env.BACKUP_RECOVERY_MODE === 'true';
@@ -265,6 +273,7 @@ async function authenticateToken(req, res, next) {
             requireIdentityMatch: recoveryMode
         });
         req.user = requestUser;
+        req[AUTHENTICATED_REQUEST] = { token, user: requestUser };
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)
         // Recovery requests must not mutate the snapshot after a restore commit.

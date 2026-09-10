@@ -737,6 +737,90 @@ function creatorToken() {
     return jwt.sign({ id: 1, username: 'creator', name: 'Creator', role: 'creator' }, TEST_JWT_SECRET, { expiresIn: '1h' });
 }
 
+test('global API boundary and route-local guard authenticate once per request', async () => {
+    process.env.JWT_SECRET = TEST_JWT_SECRET;
+    clearModules();
+    const fakePool = createFakePool();
+    installMock('../db', { pool: fakePool });
+
+    const { authenticateToken } = require('../middleware/auth');
+    const { apiAuthBoundary } = require('../middleware/apiAuthBoundary');
+    const app = express();
+    app.use('/api', apiAuthBoundary(authenticateToken));
+    app.get('/api/protected-auth-budget', authenticateToken, (req, res) => {
+        res.json({ success: true, userId: req.user.id });
+    });
+    app.get('/api/protected-auth-token-swap', (req, _res, next) => {
+        req.headers.authorization = `Bearer ${req.headers['x-next-token']}`;
+        next();
+    }, authenticateToken, (req, res) => {
+        res.json({ success: true, userId: req.user.id });
+    });
+
+    const { server, baseUrl } = await listen(app);
+    try {
+        const firstStatement = fakePool.state.queryStatements.length;
+        const response = await request(
+            baseUrl,
+            'GET',
+            '/api/protected-auth-budget',
+            undefined,
+            creatorToken()
+        );
+        assert.equal(response.status, 200, JSON.stringify(response.data));
+        assert.deepEqual(response.data, { success: true, userId: 1 });
+        const authSelects = fakePool.state.queryStatements
+            .slice(firstStatement)
+            .filter(statement => /^SELECT /i.test(statement));
+        assert.equal(authSelects.length, 2, `expected 2 authentication SELECTs, got ${authSelects.length}`);
+
+        const secondRequestStart = fakePool.state.queryStatements.length;
+        const secondResponse = await request(
+            baseUrl,
+            'GET',
+            '/api/protected-auth-budget',
+            undefined,
+            creatorToken()
+        );
+        assert.equal(secondResponse.status, 200, JSON.stringify(secondResponse.data));
+        assert.equal(
+            fakePool.state.queryStatements.slice(secondRequestStart).filter(statement => /^SELECT /i.test(statement)).length,
+            2,
+            'a later request must perform its own authentication reads'
+        );
+
+        fakePool.state.users.push({
+            ...fakePool.state.users[0],
+            id: 2,
+            username: 'second-user',
+            name: 'Second User',
+            role: 'manager'
+        });
+        const secondToken = jwt.sign({ id: 2, username: 'second-user', role: 'manager' }, TEST_JWT_SECRET, { expiresIn: '1h' });
+        const tokenSwapStart = fakePool.state.queryStatements.length;
+        const tokenSwapResponse = await request(
+            baseUrl,
+            'GET',
+            '/api/protected-auth-token-swap',
+            undefined,
+            creatorToken(),
+            { 'x-next-token': secondToken }
+        );
+        assert.equal(tokenSwapResponse.status, 200, JSON.stringify(tokenSwapResponse.data));
+        assert.deepEqual(tokenSwapResponse.data, { success: true, userId: 2 });
+        assert.equal(
+            fakePool.state.queryStatements.slice(tokenSwapStart).filter(statement => /^SELECT /i.test(statement)).length,
+            4,
+            'changing the bearer token on the same request must force fresh authentication'
+        );
+    } finally {
+        await close(server);
+        clearModules();
+        if (originalJwtSecret === undefined) delete process.env.JWT_SECRET;
+        else process.env.JWT_SECRET = originalJwtSecret;
+    }
+});
+
 test('login revalidates the locked account before issuing tokens after a concurrent password reset', async () => {
     await withAuthApp(async ({ baseUrl, fakePool }) => {
         const user = fakePool.state.users[0];

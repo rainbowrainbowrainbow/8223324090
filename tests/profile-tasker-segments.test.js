@@ -112,6 +112,39 @@ test('profile tasker segments match canonical task mode, visibility, workflow an
     assert.deepEqual(tasks.filter(task => ctx.cabinetTaskMatchesSegment(task, 'idea')).map(task => task.id), [5]);
 });
 
+test('profile auto rewards run once per page lifecycle instead of after partial renders', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    ctx.apiPost = async path => {
+        calls.push(path);
+        return path === '/achievements/check' ? { awarded: [], count: 0 } : { newTitles: [] };
+    };
+    vm.runInContext('isOwnProfile = true;', ctx);
+
+    await ctx.checkProfileAutoRewards();
+    await ctx.checkProfileAutoRewards();
+
+    assert.deepEqual(calls, ['/achievements/check', '/quests/check-titles']);
+
+    await ctx.checkProfileAutoRewards({ force: true });
+    assert.deepEqual(calls, [
+        '/achievements/check',
+        '/quests/check-titles',
+        '/achievements/check',
+        '/quests/check-titles'
+    ], 'an explicit manual refresh may run one additional check pair');
+
+    const source = fs.readFileSync(path.join(ROOT, 'js', 'profile-page.js'), 'utf8');
+    const attachStart = source.indexOf('function attachProfileListeners()');
+    const attachEnd = source.indexOf('\nasync function claimQuest(', attachStart);
+    assert.ok(attachStart >= 0 && attachEnd > attachStart);
+    assert.doesNotMatch(
+        source.slice(attachStart, attachEnd),
+        /checkProfileAutoRewards\(/,
+        'partial-render listener binding must not own reward mutations'
+    );
+});
+
 test('profile my day ordering keeps decomposed groups and sorts newest tasks first inside the slice', () => {
     const ctx = loadProfileTaskerContext();
     const tasks = [

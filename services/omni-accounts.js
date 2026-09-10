@@ -155,7 +155,7 @@ const CHANNELS = [
     },
     fields: [
       { name: 'pageToken', label: 'Page access token', type: 'secret', required: true, placeholder: 'EAAB...', hint: 'Токен сторінки Facebook з дозволами для Messenger.' },
-      { name: 'pageId', label: 'Page ID', type: 'text', required: false, placeholder: '1234567890', hint: 'ID сторінки допомагає швидше діагностувати webhook.' },
+      { name: 'pageId', label: 'Page ID', type: 'text', required: true, placeholder: '1234567890', hint: 'ID сторінки привʼязує вхідні події до правильного бізнесу.' },
       { name: 'pageName', label: 'Назва сторінки', type: 'text', required: false, placeholder: 'Event Genix', hint: 'Людська назва для адмінів.' },
       { name: 'appSecret', label: 'Meta app secret', type: 'secret', required: false, placeholder: 'app secret', hint: 'Потрібно для перевірки підпису Meta webhook.' },
       { name: 'verifyToken', label: 'Webhook verify token', type: 'secret', required: false, placeholder: 'verify token', hint: 'Токен, який Meta перевіряє під час підписки webhook.' },
@@ -180,13 +180,15 @@ const CHANNELS = [
     credentialMap: {
       pageToken: 'IG_PAGE_TOKEN',
       pageId: 'IG_PAGE_ID',
+      instagramAccountId: 'IG_ACCOUNT_ID',
       accountName: 'IG_ACCOUNT_NAME',
       appSecret: 'META_APP_SECRET',
       verifyToken: 'META_VERIFY_TOKEN',
     },
     fields: [
-      { name: 'pageToken', label: 'Instagram page token', type: 'secret', required: true, placeholder: 'EAAB...', hint: 'Meta token для Instagram Messaging API.' },
-      { name: 'pageId', label: 'Instagram/Page ID', type: 'text', required: false, placeholder: '1784...', hint: 'ID Instagram business account або повʼязаної сторінки.' },
+      { name: 'pageToken', label: 'Facebook Page access token', type: 'secret', required: true, placeholder: 'EAAB...', hint: 'Токен Facebook Page, повʼязаної з професійним Instagram-акаунтом.' },
+      { name: 'pageId', label: 'Facebook Page ID', type: 'text', required: true, placeholder: '1234567890', hint: 'ID повʼязаної сторінки Facebook.' },
+      { name: 'instagramAccountId', label: 'Instagram account ID', type: 'text', required: true, placeholder: '1784...', hint: 'Окремий ID Instagram Business/Creator акаунта; використовується для перевірки власника вхідних подій.' },
       { name: 'accountName', label: 'Назва акаунта', type: 'text', required: false, placeholder: '@eventgenix', hint: 'Показується у CRM після підключення.' },
       { name: 'appSecret', label: 'Meta app secret', type: 'secret', required: false, placeholder: 'app secret', hint: 'Потрібно для перевірки підпису Meta webhook.' },
       { name: 'verifyToken', label: 'Webhook verify token', type: 'secret', required: false, placeholder: 'verify token', hint: 'Потрібно для прийому нових Instagram подій.' },
@@ -841,7 +843,8 @@ async function loadConnectionRow(channel, options = {}) {
 async function getOmniAccountStatusesAsync(options = {}) {
   const now = options.now instanceof Date ? options.now : new Date();
   const rows = await loadConnectionRows(options);
-  const accounts = CHANNELS.map(def => statusFromRowOrEnv(def, rows.get(def.channel), now, options));
+  const accounts = CHANNELS.map(def => ({ ...statusFromRowOrEnv(def, rows.get(def.channel), now, options),
+    attachmentTypes: require('./omni-attachments').capabilities(def.channel) }));
   return require('./omni-health').attachHealth(accounts, omniBusinessContext(options), now);
 }
 
@@ -1520,9 +1523,14 @@ function verifyMeta(kind) {
     try {
       const result = await httpsJson({
         hostname: 'graph.facebook.com',
-        path: `/v21.0/me?fields=id,name&access_token=${encodeURIComponent(token)}`,
+        path: '/v21.0/me?fields=' + (kind === 'instagram' ? 'id,name,instagram_business_account' : 'id,name'),
         method: 'GET',
+        headers: { Authorization: `Bearer ${token}` },
       });
+      if (runtime.pageId && String(result.id) !== String(runtime.pageId)) return { status: 'missing_config', message: 'Facebook Page ID не відповідає токену сторінки.', warning: 'Звірте Facebook Page ID.' };
+      if (kind === 'instagram' && (!result.instagram_business_account?.id || (runtime.instagramAccountId && String(result.instagram_business_account.id) !== String(runtime.instagramAccountId)))) {
+        return { status: 'missing_config', message: 'До Facebook Page не привʼязаний указаний Instagram Business/Creator акаунт.', warning: 'Перевірте звʼязок Facebook Page та Instagram.' };
+      }
       const hasWebhookSetup = Boolean(runtime.verifyToken && runtime.appSecret);
       const status = hasWebhookSetup ? 'partial' : 'webhook_missing';
       const message = hasWebhookSetup

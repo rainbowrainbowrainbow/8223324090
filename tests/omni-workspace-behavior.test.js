@@ -128,6 +128,29 @@ test('unknown delivery can be reconciled without invoking send and manual notes 
     assert.match(h.document.querySelector('.omni-send-truth').textContent, /Still unknown/);
 });
 
+test('Meta comments require an explicit public or private target and retain the clicked mode', async t => {
+    const h = harness(t, [{ ...conversation(1, 'facebook'), externalId: 'comment:123' }]);
+    h.app.selectConversation(1); await h.flush();
+    h.app.renderMessages([{ ...message(12), meta: { eventType: 'comment', commentId: '123', postUrl: 'https://www.facebook.com/12_34' } }]);
+    assert.equal(h.document.querySelector('#omniSendBtn').disabled, true);
+    assert.equal(h.document.querySelector('#omniChooseFile').disabled, true);
+    let sent;
+    h.app.setApi(async (path, options) => {
+        if (path.endsWith('/send')) { sent = JSON.parse(options.body); return { success: true, data: {} }; }
+        return h.defaultApi(path);
+    });
+    h.document.querySelector('[data-comment-reply="public_comment"]').click();
+    assert.match(h.document.querySelector('#omniReplyTarget').textContent, /публічною/);
+    h.document.querySelector('#omniInput').value = 'Explicit public fixture'; await h.app.sendMessage();
+    assert.equal(sent.reply_mode, 'public_comment'); assert.equal(sent.reply_to_message_id, 12);
+});
+
+test('normally accepted Telegram messages do not repeat an unavailable delivery-check action', async t => {
+    const h = harness(t); h.app.selectConversation(1); await h.flush();
+    h.app.renderMessages([{ ...message(1), direction: 'outbound', deliveryStatus: 'accepted' }]);
+    assert.equal(h.document.querySelector('[data-delivery-reconcile]'), null);
+});
+
 test('send hashing preserves the clicked recipient, business and reply expectation across navigation', async t => {
     const h = harness(t); const hash = deferred(); const sent = [];
     Object.defineProperty(h.window.crypto, 'subtle', { value: { digest: () => hash.promise } });

@@ -20,8 +20,8 @@ async function saveCheck(channel, businessContext, check, client = pool) {
   );
 }
 
-async function recordWebhook(channel, businessContext, { inbound = false, errorCode = null } = {}) {
-  if (!inbound && !errorCode) return;
+async function recordWebhook(channel, businessContext, { inbound = false, processed = inbound, errorCode = null } = {}) {
+  if (!processed && !inbound && !errorCode) return;
   const allowed = ['processing_failed', 'invalid_signature', 'unsupported_event'];
   const error = allowed.includes(errorCode) ? errorCode : null;
   await pool.query(
@@ -30,9 +30,9 @@ async function recordWebhook(channel, businessContext, { inbound = false, errorC
      ON CONFLICT (business_context, channel) DO UPDATE SET
        last_inbound_at = COALESCE(EXCLUDED.last_inbound_at, omni_channel_health.last_inbound_at),
        last_error_at = COALESCE(EXCLUDED.last_error_at, omni_channel_health.last_error_at),
-       last_error_code = COALESCE(EXCLUDED.last_error_code, omni_channel_health.last_error_code),
+       last_error_code = CASE WHEN $5::boolean AND $4::text IS NULL THEN NULL ELSE COALESCE(EXCLUDED.last_error_code, omni_channel_health.last_error_code) END,
        failed_events = omni_channel_health.failed_events + EXCLUDED.failed_events`,
-    [businessContext, channel, inbound, error]
+    [businessContext, channel, inbound, error, processed || inbound]
   );
   if (error) await pool.query(
     'INSERT INTO omni_channel_errors (business_context, channel, error_code) VALUES ($1, $2, $3)',
@@ -46,13 +46,24 @@ async function attachHealth(accounts, businessContext, now = new Date()) {
     const health = result.rows.find(row => row.channel === account.channel);
     const checkedAt = health?.checked_at || account.lastCheckedAt;
     const checkedMs = checkedAt ? new Date(checkedAt).getTime() : null;
+    if (account.source === 'environment' && health?.checked_at) {
+      const statuses = { success: 'connected', partial: 'limited', webhook_missing: 'webhook_missing', failed_auth: 'token_expired', missing_config: 'misconfigured', provider_unreachable: 'provider_unreachable' };
+      const status = account.status === 'history_only' && health.check_result?.status === 'success' ? 'history_only' : statuses[health.check_result?.status] || 'limited';
+      const configured = account.configured;
+      const labels = { connected: 'Підключено', limited: 'Обмежено', webhook_missing: 'Потрібен webhook', token_expired: 'Токен недійсний', misconfigured: 'Перевірте налаштування', provider_unreachable: 'Провайдер недоступний', history_only: 'Лише історія' };
+      account = { ...account, status, statusLabel: labels[status], warning: status === 'connected' ? null : account.warning,
+        nextActionHint: status === 'connected' ? 'Канал перевірено. Нові події відображатимуться в діагностиці.' : account.nextActionHint,
+        connected: configured && !['token_expired', 'misconfigured'].includes(status),
+        sendCapable: configured && account.requiredDirections?.send && ['connected', 'limited', 'webhook_missing'].includes(status),
+        receiveCapable: configured && account.requiredDirections?.receive && ['connected', 'history_only'].includes(status), limited: status !== 'connected' };
+    }
     return { ...account, lastCheckedAt: checkedAt ? new Date(checkedAt).toISOString() : null,
       diagnostics: {
         checked: checkedMs !== null, stale: checkedMs === null || now.getTime() - checkedMs > 15 * 60 * 1000,
         lastInboundAt: health?.last_inbound_at || null,
         lastErrorAt: health?.last_error_at || null,
         lastErrorCode: health?.last_error_code || null,
-        activeProcessingError: Boolean(health?.last_error_at && (!health.last_inbound_at || new Date(health.last_error_at) > new Date(health.last_inbound_at))),
+        activeProcessingError: Boolean(health?.last_error_code && health?.last_error_at && (!health.last_inbound_at || new Date(health.last_error_at) > new Date(health.last_inbound_at))),
         failedEvents: Number(health?.failed_events) || 0,
         ...(health?.check_result || {}),
       } };
@@ -67,6 +78,9 @@ async function recheckActiveOmniConnections() {
     locked = lock.rows[0]?.acquired === true;
     if (!locked) return;
     const rows = await client.query("SELECT business_context, channel FROM omni_provider_connections WHERE status NOT IN ('disconnected', 'needs_rebind')");
+    const environment = require('./omni-accounts').getOmniAccountStatuses().filter(account => account.configured);
+    const allRows = await client.query('SELECT business_context, channel FROM omni_provider_connections');
+    for (const account of environment) if (!allRows.rows.some(row => row.business_context === 'event_genix' && row.channel === account.channel)) rows.rows.push({ business_context: 'event_genix', channel: account.channel });
     for (const row of rows.rows) {
       try {
         await require('./omni-accounts').recheckOmniConnection(row.channel, {}, { businessContext: row.business_context, mode: 'recheck' });

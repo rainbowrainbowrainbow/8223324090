@@ -202,3 +202,15 @@ This pack is considered done when all of these remain true:
   commit.
 - New remote storage providers update `config/storageSurface.js`,
   `docs/STORAGE_SURFACE.md`, and focused service tests in the same commit.
+# Scoped Omni attachments
+
+`services/omni-attachments.js` stores JPEG, PNG and PDF in PostgreSQL
+`omni_attachments` (migration `354_omni_attachments.sql`), capped at 10 MB plus
+the provider's smaller format limit. These files have no public static mount or
+local filesystem fallback. `/api/omni/messages/:id/attachment` checks the business
+and conversation. `/api/omni/media/:grant/:filename` uses `omni_attachment_grants`
+for a single file with one-hour expiry; grant hashes only are stored. New external
+object storage and production secrets are not needed. Retain blobs on rollback.
+Inbound URL downloads resolve and pin public IPv4, reject redirects and private
+addresses, bound response size/time, and validate file signatures before storing.
+Evidence: `tests/omni-completion.test.js`, `tests/integration/omni-completion-postgres.test.js`.

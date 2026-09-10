@@ -20,6 +20,7 @@ focused tests.
 
 | Entry | Owner | Reason |
 | --- | --- | --- |
+| `GET /omni/media/:grant/:filename` | omnichannel | `omniAttachmentGrant`: 256-bit random grant, SHA-256 only in DB, expires after one hour, authorizes exactly one attachment. Guarded by `services/omni-attachments.js` and tested in `tests/omni-completion.test.js`. |
 | `ANY /auth/*` | auth | Authentication endpoints own their own login, refresh, logout, and credential guards. |
 | `GET /health` | settings | Public health endpoint for uptime checks and lightweight operational smoke. |
 | `GET /ready` | settings | Public readiness endpoint verifies database and schema compatibility before/after deploy. |

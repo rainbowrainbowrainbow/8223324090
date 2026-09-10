@@ -159,8 +159,8 @@ async function sendFacebook(recipientId, text, options = {}) {
  * @param {string} text - Reply text
  * @returns {Promise<{success: boolean, commentId?: string, error?: string}>}
  */
-async function replyToComment(commentId, text) {
-    const runtime = await resolveOmniRuntimeConfig('facebook');
+async function replyToComment(commentId, text, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext: options.businessContext });
     const token = runtime.pageToken || runtime.token;
     if (!token) {
         log.warn('replyToComment called but FB_PAGE_TOKEN not configured');
@@ -177,12 +177,23 @@ async function replyToComment(commentId, text) {
         const response = await fbRequest('POST', `/${commentId}/comments`, { message: text }, token);
 
         log.info('FB comment reply sent', { parentCommentId: commentId, replyId: response.id });
-        return { success: true, commentId: response.id };
+        return { success: true, commentId: response.id, messageId: response.id };
     } catch (err) {
         log.error('replyToComment failed', err);
-        return { success: false, error: err.message };
+        return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message };
     }
 }
+
+async function sendPrivateReply(commentId, text, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('facebook', { businessContext: options.businessContext });
+    const token = runtime.pageToken || runtime.token;
+    if (!token) return { success: false, error: 'Facebook не підключено.' };
+    try {
+        const result = await fbRequest('POST', '/' + encodeURIComponent(commentId) + '/private_replies', { message: text }, token);
+        return { success: true, messageId: result.id };
+    } catch (err) { return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message }; }
+}
+
 
 /**
  * Get a Facebook user's profile information.
@@ -232,4 +243,4 @@ async function getUserProfile(userId, fields) {
     }
 }
 
-module.exports = { sendFacebook, replyToComment, getUserProfile };
+module.exports = { sendFacebook, replyToComment, getUserProfile, sendPrivateReply };

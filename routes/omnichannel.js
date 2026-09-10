@@ -7,6 +7,7 @@
 const crypto = require('crypto');
 const express = require('express');
 const router = express.Router();
+const attachmentUpload = require('multer')({ storage: require('multer').memoryStorage(), limits: { fileSize: 10 * 1024 * 1024, files: 1, fields: 0 } }).single('file');
 const { resolveCapability } = require('../services/accountAccessPolicy');
 const { parseProviderJson } = require('../services/omni-webhook-payload');
 const { createLogger } = require('../utils/logger');
@@ -48,6 +49,7 @@ router.use((req, res, next) => {
             const errorCode = res.statusCode >= 500 ? 'processing_failed'
                 : res.statusCode === 403 ? 'invalid_signature' : req.omniUnsupported ? 'unsupported_event' : null;
             require('../services/omni-health').recordWebhook(channel, webhookBusinessContext(req), {
+                processed: req.omniEventProcessed === true || req.omniInboundAccepted === true,
                 inbound: res.statusCode < 300 && req.omniInboundAccepted === true, errorCode,
             }).catch(() => log.warn('Webhook diagnostics unavailable', { channel }));
         });
@@ -224,6 +226,7 @@ router.post('/webhook/viber', async (req, res) => {
             && classified.receipt
         ) {
             await getHub().applyProviderLifecycleReceipt(classified.receipt, { businessContext });
+            req.omniEventProcessed = true;
         }
         res.json({ status: 0, status_message: 'ok' });
     } catch (err) {
@@ -253,6 +256,7 @@ router.post('/webhook/sms', async (req, res) => {
                 req.omniInboundAccepted = true;
             } else if (classified.type === 'delivery_receipt' && classified.receipt) {
                 await getHub().applyProviderLifecycleReceipt(classified.receipt, { businessContext });
+                req.omniEventProcessed = true;
             }
         }
         res.json({ ok: true });
@@ -289,24 +293,34 @@ router.post('/webhook/meta', async (req, res) => {
         if (body.object === 'page' || body.object === 'instagram') {
             const channel = body.object === 'instagram' ? 'instagram' : 'facebook';
             const runtime = await resolveOmniRuntimeConfig(channel, { businessContext });
+            const targetId = channel === 'instagram' ? runtime.instagramAccountId || runtime.pageId : runtime.pageId;
             const entries = body.entry || [];
+            if (!targetId && entries.length) return res.status(503).json({ ok: false, error: 'account_identity_missing' });
             for (const entry of entries) {
-                if (runtime.pageId && String(entry.id) !== String(runtime.pageId)) continue;
+                if (targetId && String(entry.id) !== String(targetId)) { req.omniUnsupported = true; continue; }
                 const messaging = entry.messaging || [];
                 for (const event of messaging) {
                     if (event.delivery || event.read) {
                         const ids = await require('../services/omni-inbox').applyMetaReceipt(channel, event, businessContext);
+                        req.omniEventProcessed = true;
                         for (const id of ids) getHub().notifyCRM('omni:conversation', { conversation: { id, businessContext } });
                         continue;
                     }
-                    const normFn = channel === 'instagram'
-                        ? getNormalizer().normalizeInstagram
-                        : getNormalizer().normalizeFacebook;
-                    const normalized = normFn(event);
+                    const normalized = require('../services/omni-meta-events').normalizeInteraction(channel, event);
                     if (normalized) {
                         await getHub().processInboundMessage(normalized, { businessContext });
                         req.omniInboundAccepted = true;
-                    }
+                    } else if (!event.message?.is_echo) req.omniUnsupported = true;
+                }
+                const changes = entry.changes || (entry.field ? [entry] : []);
+                for (const change of changes) {
+                    if (String(change.value?.from?.id || '') === String(entry.id)) continue;
+                    const metaEvents = require('../services/omni-meta-events');
+                    const normalized = metaEvents.normalizeComment(channel, change, entry);
+                    if (!normalized) { req.omniUnsupported = true; continue; }
+                    await metaEvents.enrichComment(normalized, businessContext);
+                    await getHub().processInboundMessage(normalized, { businessContext });
+                    req.omniInboundAccepted = true;
                 }
             }
         }
@@ -341,6 +355,32 @@ router.post('/webhook/binotel', async (req, res) => {
 // ═══════════════════════════════════════════════
 
 const manageConnections = requireMinRole('manager');
+
+function sendAttachmentFile(res, file) {
+    res.set({ 'Cache-Control': 'private, no-store', 'Content-Type': file.mime_type || 'application/octet-stream',
+        'X-Content-Type-Options': 'nosniff', 'Content-Security-Policy': "default-src 'none'; sandbox", 'Referrer-Policy': 'no-referrer',
+        'Content-Disposition': "attachment; filename*=UTF-8''" + encodeURIComponent(file.filename) });
+    res.send(file.content || file.buffer);
+}
+
+router.get('/media/:grant/:filename', async (req, res) => {
+    try { sendAttachmentFile(res, await require('../services/omni-attachments').grantedFile(req.params.grant)); }
+    catch { res.status(404).json({ success: false, error: 'Посилання недоступне або прострочене.' }); }
+});
+
+router.post('/conversations/:id/attachments', auth, async (req, res) => {
+    const businessContext = requestBusinessContext(req, res);
+    if (!businessContext) return;
+    const id = parseId(req.params.id);
+    if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови.' });
+    try { await require('../services/omni-attachments').conversation(id, businessContext); }
+    catch { return res.status(404).json({ success: false, error: 'Розмову не знайдено.' }); }
+    attachmentUpload(req, res, async error => {
+        if (error) return res.status(413).json({ success: false, error: 'Оберіть один файл до 10 МБ.' });
+        try { res.json({ success: true, data: await require('../services/omni-attachments').storeFile(id, businessContext, req.file) }); }
+        catch (err) { res.status(err.statusCode || 500).json({ success: false, error: err.statusCode ? err.message : 'Не вдалося зберегти файл.' }); }
+    });
+});
 const manageLeadAssistantSettings = requireAction('manage_settings');
 
 async function auditConnectionAction(req, action, channel, result) {
@@ -695,6 +735,11 @@ router.get('/messages/:id/attachment', auth, async (req, res) => {
     const id = parseId(req.params.id);
     if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID' });
     try {
+        const attachmentId = req.query.attachmentId || null;
+        if (attachmentId && !/^[a-f0-9-]{36}$/i.test(attachmentId)) return res.status(400).json({ success: false, error: 'Невалідне вкладення.' });
+        const stored = await require('../services/omni-attachments').fileForMessage(id, businessContext, attachmentId);
+        if (stored) return sendAttachmentFile(res, stored);
+        if (attachmentId) return res.status(404).json({ success: false, error: 'Вкладення не знайдено.' });
         const file = await require('../services/omni-inbox').getTelegramAttachment(id, businessContext);
         res.set({ 'Cache-Control': 'private, no-store', 'Content-Type': 'application/octet-stream',
             'X-Content-Type-Options': 'nosniff', 'Content-Disposition': `attachment; filename="${file.filename}"` });
@@ -710,14 +755,19 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
         if (!businessContext) return;
-        const { text, reply_expected, reply_sla_at } = req.body;
+        const { reply_expected, reply_sla_at, attachment_id } = req.body;
+        const text = req.body.text === undefined && attachment_id ? '' : req.body.text;
+        if (attachment_id !== undefined && (typeof attachment_id !== 'string' || !/^[a-f0-9-]{36}$/i.test(attachment_id))) return res.status(400).json({ success: false, error: 'Невалідне вкладення.' });
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        if (typeof text !== 'string' || !text.trim()) {
+        if (typeof text !== 'string' || (!text.trim() && !attachment_id)) {
             return res.status(400).json({ success: false, error: 'Текст повідомлення обов\'язковий' });
         }
         if (text.trim().length > 4000) return res.status(400).json({ success: false, error: 'Повідомлення завелике: максимум 4000 символів.' });
         const clientRequestId = req.body.client_request_id;
+        if ((attachment_id || req.body.reply_mode || req.body.reply_to_message_id) && !clientRequestId) {
+            return res.status(400).json({ success: false, error: 'Для вкладення або відповіді на коментар потрібен ідентифікатор відправки.' });
+        }
         if (clientRequestId !== undefined && (typeof clientRequestId !== 'string' || !/^[a-zA-Z0-9_-]{16,80}$/.test(clientRequestId))) {
             return res.status(400).json({ success: false, error: 'Невалідний ідентифікатор відправки' });
         }
@@ -734,6 +784,9 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
                 replySlaAt: reply_sla_at || null,
                 businessContext,
                 clientRequestId,
+                attachmentId: attachment_id || null,
+                replyToMessageId: parseId(req.body.reply_to_message_id),
+                replyMode: req.body.reply_mode || null,
             }
         );
         res.json({
@@ -745,7 +798,7 @@ router.post('/conversations/:id/send', auth, async (req, res) => {
         });
     } catch (err) {
         log.error('Send message error:', err.message);
-        if (err.statusCode === 409) return res.status(409).json({ success: false, error: err.message });
+        if ([400, 404, 409, 413, 415].includes(err.statusCode)) return res.status(err.statusCode).json({ success: false, error: err.message });
         if (err.code === 'CHANNEL_UNAVAILABLE') {
             return res.status(err.statusCode || 400).json({
                 success: false,

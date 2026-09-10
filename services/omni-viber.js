@@ -102,7 +102,7 @@ async function sendViber(receiverId, text, options = {}) {
         return { success: false, error: 'VIBER_TOKEN not configured' };
     }
 
-    if (!receiverId || !text) {
+    if (!receiverId || (!text && !options.mediaUrl)) {
         return { success: false, error: 'receiverId and text are required' };
     }
 
@@ -120,6 +120,7 @@ async function sendViber(receiverId, text, options = {}) {
         if (options.mediaUrl) {
             body.media = options.mediaUrl;
         }
+        if (body.type === 'file') { body.size = options.size; body.file_name = options.fileName; delete body.text; }
         if (options.thumbnail) {
             body.thumbnail = options.thumbnail;
         }

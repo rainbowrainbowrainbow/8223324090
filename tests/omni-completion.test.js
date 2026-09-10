@@ -157,6 +157,16 @@ test('health scheduler skips concurrent run and always releases its connection',
   assert.equal(released, true);
 });
 
+test('health scheduler checks environment bindings but respects an explicit disconnected row', async () => {
+  const checks = [];
+  mock('../db', { pool: { connect: async () => ({ release() {}, query: async sql => ({ rows: sql.includes('pg_try_advisory_lock') ? [{ acquired: true }]
+    : sql === 'SELECT business_context, channel FROM omni_provider_connections' ? [{ business_context: 'event_genix', channel: 'viber' }] : [] }) }) } });
+  mock('../services/omni-accounts', { getOmniAccountStatuses: () => [{ channel: 'telegram', configured: true }, { channel: 'viber', configured: true }],
+    recheckOmniConnection: async channel => checks.push(channel) });
+  await fresh('../services/omni-health').recheckActiveOmniConnections();
+  assert.deepEqual(checks, ['telegram']);
+});
+
 test('health metadata retains real freshness and excludes arbitrary provider response fields', async () => {
   const calls = [];
   mock('../db', { pool: { query: async (sql, values) => { calls.push({ sql, values }); return { rows: [] }; } } });
@@ -167,4 +177,81 @@ test('health metadata retains real freshness and excludes arbitrary provider res
   const accounts = await health.attachHealth([{ channel: 'telegram', lastCheckedAt: null }], 'dar');
   assert.equal(accounts[0].lastCheckedAt, null);
   assert.equal(accounts[0].diagnostics.stale, true);
+});
+
+test('attachment policies reject spoofed files, oversized images and unsupported channels before sending', () => {
+  mock('../db', { pool: {} }); const files = fresh('../services/omni-attachments');
+  const png = Buffer.from('89504e470d0a1a0a0000000049454e44ae426082', 'hex');
+  assert.equal(files.validateFile({ buffer: png, mimetype: 'image/png', originalname: '../file.png' }, 'telegram').mime, 'image/png');
+  assert.throws(() => files.validateFile({ buffer: png, mimetype: 'application/pdf' }, 'telegram'), { statusCode: 415 });
+  assert.throws(() => files.validateFile({ buffer: png }, 'sms'), { statusCode: 415 });
+  const huge = Buffer.alloc(1024 * 1024 + 1); png.copy(huge);
+  assert.throws(() => files.validateFile({ buffer: huge }, 'viber'), { statusCode: 413 });
+  assert.throws(() => files.validateFile({ buffer: Buffer.from('%PDF-fixture') }, 'instagram'), { statusCode: 415 });
+  for (const address of ['127.0.0.1', '10.1.2.3', '169.254.169.254', '172.17.0.1', '192.168.0.1', '100.64.0.1', '::1']) assert.equal(files.publicAddress(address), false, address);
+  assert.equal(files.publicAddress('1.1.1.1'), true);
+});
+
+test('expiring attachment grant has a narrow API exception and missing grant cannot reveal bytes', async () => {
+  mock('../db', { pool: { query: async () => ({ rows: [] }) } });
+  const files = fresh('../services/omni-attachments');
+  await assert.rejects(files.grantedFile('a'.repeat(64)), { statusCode: 404 });
+  await assert.rejects(files.grantedFile('../file'), { statusCode: 404 });
+  const { isPublicApiRequest } = fresh('../middleware/apiAuthBoundary');
+  assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/media/' + 'a'.repeat(64) + '/fixture.png' }), true);
+  assert.equal(isPublicApiRequest({ method: 'POST', path: '/omni/media/' + 'a'.repeat(64) + '/fixture.png' }), false);
+  assert.equal(isPublicApiRequest({ method: 'GET', path: '/omni/messages/1/attachment' }), false);
+});
+
+test('Telegram attachment transport sends one scoped multipart request', async t => {
+  mock('../db', { pool: {} });
+  mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (channel, options) => {
+    assert.equal(options.businessContext, 'dar'); return { botToken: 'fixture-dar' };
+  } });
+  let calls = 0;
+  t.mock.method(global, 'fetch', async (url, options) => {
+    calls++; assert.equal(url, 'https://api.telegram.org/botfixture-dar/sendDocument');
+    assert.equal(options.body.get('chat_id'), 'fixture-recipient');
+    assert.equal(options.body.get('document').type, 'application/pdf');
+    return { ok: true, json: async () => ({ ok: true, result: { message_id: 77 } }) };
+  });
+  const files = fresh('../services/omni-attachments');
+  const file = { content: Buffer.from('%PDF-fixture'), mime_type: 'application/pdf', filename: 'fixture.pdf' };
+  assert.equal((await files.sendAttachment('telegram', 'fixture-recipient', '', file, 'dar')).messageId, 77);
+  assert.equal(calls, 1);
+  t.mock.method(global, 'fetch', async () => { throw new Error('fixture transport URL containing token'); });
+  const uncertain = await files.sendAttachment('telegram', 'fixture-recipient', '', file, 'dar');
+  assert.equal(uncertain.uncertain, true); assert.doesNotMatch(uncertain.error, /token/);
+});
+
+test('remote attachment downloads block private DNS results before any HTTP request', async t => {
+  mock('../db', { pool: {} }); const files = fresh('../services/omni-attachments');
+  t.mock.method(require('node:dns').promises, 'lookup', async () => ({ address: '169.254.169.254', family: 4 }));
+  let requests = 0; t.mock.method(https, 'get', () => { requests++; throw new Error('Unexpected HTTP request'); });
+  await assert.rejects(files.downloadRemote('https://fixture.invalid/file.png'));
+  assert.equal(requests, 0);
+});
+
+test('Meta comments and interactions carry stable deduplication IDs and explicit reply semantics', () => {
+  mock('../db', { pool: {} }); const events = fresh('../services/omni-meta-events');
+  const fb = events.normalizeComment('facebook', { field: 'feed', value: { item: 'comment', verb: 'add', comment_id: '12_34', post_id: '12_56', from: { id: '78' }, message: 'Fixture' } }, { id: '12' });
+  assert.equal(fb.externalId, 'comment:12_34'); assert.equal(fb.meta.eventType, 'comment');
+  assert.equal(fb.meta.postUrl, 'https://www.facebook.com/12_56');
+  const ig = events.normalizeComment('instagram', { field: 'comments', value: { id: '34', text: 'Fixture', from: { username: 'fixture' }, media: { id: '56' } } }, { id: '12' });
+  assert.equal(ig.externalMessageId, 'comment:34');
+  const event = { sender: { id: '78' }, timestamp: 123456, postback: { title: 'Choice', payload: 'choice' } };
+  assert.equal(events.normalizeInteraction('facebook', event).externalMessageId, events.normalizeInteraction('facebook', event).externalMessageId);
+  assert.equal(events.normalizeInteraction('instagram', { sender: { id: '78' }, message: { mid: 'fixture-mid', text: 'Yes', quick_reply: { payload: 'yes' } } }).meta.eventType, 'quick_reply');
+});
+
+for (const channel of ['facebook', 'instagram']) test(channel + ' public and private comment replies use different scoped endpoints', async t => {
+  const calls = [];
+  mock('../services/omni-accounts', { resolveOmniRuntimeConfig: async (_, options) => { assert.equal(options.businessContext, 'dar'); return { pageToken: 'fixture-dar' }; } });
+  fakeHttps(t, (options, body) => { calls.push({ options, body: JSON.parse(body) }); return { id: '1', message_id: '2' }; });
+  const adapter = fresh('../services/omni-' + channel);
+  assert.equal((await adapter.replyToComment('123', 'Public', { businessContext: 'dar' })).success, true);
+  assert.equal((await adapter.sendPrivateReply('123', 'Private', { businessContext: 'dar' })).success, true);
+  assert.notEqual(calls[0].options.path, calls[1].options.path);
+  assert.equal(calls[0].options.headers.Authorization, 'Bearer fixture-dar');
+  if (channel === 'instagram') assert.deepEqual(calls[1].body.recipient, { comment_id: '123' });
 });

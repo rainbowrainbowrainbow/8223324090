@@ -203,8 +203,9 @@ async function sendSmsViaProvider(runtime = {}, phone, text) {
 }
 
 async function sendTurboSms(runtime = {}, phone, text) {
-  const token = runtime.token || firstEnv(SMS_PROVIDER_DEFINITIONS.turbosms.envKeys);
-  const sender = runtime.sender || firstEnv(SMS_PROVIDER_DEFINITIONS.turbosms.accountEnvKeys) || 'EventGenix';
+  // Environment fallback belongs to the scoped account resolver, not transport.
+  const token = runtime.token;
+  const sender = runtime.sender || 'EventGenix';
   if (!token) return { success: false, error: 'TurboSMS token is not configured' };
   if (!phone || !text) return { success: false, error: 'phone and text are required' };
 
@@ -234,13 +235,13 @@ async function sendTurboSms(runtime = {}, phone, text) {
 }
 
 async function sendFlySms(runtime = {}, phone, text) {
-  const apiKey = runtime.apiKey || firstEnv(SMS_PROVIDER_DEFINITIONS.flysms.envKeys);
-  const sender = runtime.sender || firstEnv(SMS_PROVIDER_DEFINITIONS.flysms.accountEnvKeys) || 'EventGenix';
+  const apiKey = runtime.apiKey;
+  const sender = runtime.sender || 'EventGenix';
   if (!apiKey) return { success: false, provider: 'flysms', error: 'FlySMS API key is not configured' };
   if (!phone || !text) return { success: false, provider: 'flysms', error: 'phone and text are required' };
 
   const recipient = normalizePhone(phone).replace(/^\+/, '');
-  const apiUrl = runtime.apiUrl || firstEnv(['FLYSMS_API_URL', 'SMS_FLY_API_URL']) || FLYSMS_DEFAULT_API_URL;
+  const apiUrl = runtime.apiUrl || FLYSMS_DEFAULT_API_URL;
   const body = {
     auth: { key: apiKey },
     action: 'SENDMESSAGE',

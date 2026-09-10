@@ -799,12 +799,18 @@ router.get('/quick-replies', auth, async (req, res) => {
 // Setup Viber webhook
 router.post('/setup/viber', auth, async (req, res) => {
     try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
         const { url } = req.body;
-        if (!url || typeof url !== 'string' || !url.startsWith('https://')) {
+        let webhookUrl;
+        try { webhookUrl = new URL(url); } catch { /* Rejected below. */ }
+        if (!webhookUrl || webhookUrl.protocol !== 'https:' || webhookUrl.username || webhookUrl.password) {
             return res.status(400).json({ success: false, error: 'Потрібен валідний HTTPS URL' });
         }
+        webhookUrl.searchParams.delete('businessContext');
+        webhookUrl.searchParams.set('business_context', businessContext);
         const { setViberWebhook } = require('../services/omni-viber');
-        const result = await setViberWebhook(url);
+        const result = await setViberWebhook(webhookUrl.toString(), undefined, { businessContext });
         res.json(result);
     } catch (err) {
         log.error('Setup Viber error:', err.message);

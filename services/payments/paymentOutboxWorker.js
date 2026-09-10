@@ -15,6 +15,7 @@ const WORKER_NAME = 'payment-outbox-worker';
 const DEFAULT_BATCH_SIZE = 1;
 const DEFAULT_LOCK_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_BACKOFF_MS = 60 * 60 * 1000;
+const RECEIPT_PENDING_RETRY_DELAY_MS = 2 * 1000;
 const RETRYABLE_JOB_TYPES = Object.freeze([
     'receipt_sell',
     'receipt_status_lookup',
@@ -175,10 +176,33 @@ function classifyWorkerError(error) {
     return { retryable: true, unknown, ...sanitizeError(error) };
 }
 
-function computeBackoffMs(attempts) {
+function isReceiptPendingRetry(errorInfo = {}) {
+    const code = String(errorInfo.code || '').trim().toLowerCase();
+    const jobType = String(errorInfo.jobType || '').trim();
+    return ['receipt_sell', 'receipt_status_lookup'].includes(jobType)
+        && ['checkbox_receipt_pending', 'provider_receipt_pending', 'receipt_lookup_required_before_retry'].includes(code);
+}
+
+function computeBackoffMs(attempts, errorInfo = {}) {
+    if (isReceiptPendingRetry(errorInfo)) return RECEIPT_PENDING_RETRY_DELAY_MS;
     const safeAttempts = Math.max(1, Math.min(Number(attempts || 1), 10));
     const base = 30 * 1000;
     return Math.min(MAX_BACKOFF_MS, base * (2 ** (safeAttempts - 1)));
+}
+
+function schedulePaymentOutboxRetryWakeup(delayMs, reason = 'receipt_pending_retry') {
+    const safeDelayMs = Math.max(0, Math.min(Number(delayMs) || 0, RECEIPT_PENDING_RETRY_DELAY_MS));
+    if (!safeDelayMs) return false;
+    const timer = setTimeout(() => {
+        try {
+            const { requestPaymentOutboxWakeup } = require('./paymentOutboxWakeup');
+            requestPaymentOutboxWakeup({ batchSize: 1, reason });
+        } catch {
+            // Scheduler fallback will still drain due jobs if the in-process wake-up is unavailable.
+        }
+    }, safeDelayMs);
+    if (typeof timer.unref === 'function') timer.unref();
+    return true;
 }
 
 function workerId() {
@@ -1347,7 +1371,11 @@ async function markJobSucceeded(client, job) {
 
 async function markJobFailed(client, context, errorInfo) {
     const dead = Number(context.job.attempts || 0) >= Number(context.job.max_attempts || 1) || errorInfo.retryable === false;
-    const nextRun = new Date(Date.now() + computeBackoffMs(context.job.attempts)).toISOString();
+    const retryDelayMs = computeBackoffMs(context.job.attempts, {
+        ...errorInfo,
+        jobType: context.job.job_type
+    });
+    const nextRun = new Date(Date.now() + retryDelayMs).toISOString();
     await client.query(
         `UPDATE payment_outbox_jobs
             SET status = $3::text,
@@ -1492,6 +1520,7 @@ async function markJobFailed(client, context, errorInfo) {
             `${nextStatus === 'unknown' ? 'fiscal.unknown' : 'fiscal.receipt_failed'}:${context.job.fiscal_operation_id}:${context.job.attempts}`
         );
     }
+    return dead ? null : retryDelayMs;
 }
 
 async function markJobConfigUnavailable(client, context, errorInfo) {
@@ -2364,8 +2393,13 @@ async function finalizeJobFailure(dbPool, context, errorInfo) {
         if (await requeueActiveShiftJobAfterPortalClose(client, context, errorInfo)) {
             return { ok: false, recoveryQueued: true, jobId: Number(context.job.id), error: errorInfo };
         }
-        await markJobFailed(client, context, errorInfo);
-        return { ok: false, jobId: Number(context.job.id), error: errorInfo };
+        const retryDelayMs = await markJobFailed(client, context, errorInfo);
+        return {
+            ok: false,
+            jobId: Number(context.job.id),
+            error: errorInfo,
+            retryWakeupDelayMs: isReceiptPendingRetry({ ...errorInfo, jobType: context.job.job_type }) ? retryDelayMs : null
+        };
     });
 }
 
@@ -2470,8 +2504,10 @@ async function processPaymentOutboxJobs({
     batchSize = DEFAULT_BATCH_SIZE,
     lockedBy = workerId(),
     lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS,
+    scheduleRetryWakeup = null,
     throwOnDegraded = false
 } = {}) {
+    const shouldScheduleRetryWakeup = scheduleRetryWakeup !== false && provider == null;
     const effectiveProvider = provider || createCheckboxProviderFactory();
     let eligibleFiscalProfileIds = null;
     let eligibleRuntimeContexts = null;
@@ -2509,7 +2545,11 @@ async function processPaymentOutboxJobs({
         const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize: 1, lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
         const job = claimed[0];
         if (!job) break;
-        results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job, lockExpiryMs }));
+        const result = await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job, lockExpiryMs });
+        results.push(result);
+        if (shouldScheduleRetryWakeup && result?.retryWakeupDelayMs) {
+            schedulePaymentOutboxRetryWakeup(result.retryWakeupDelayMs, `receipt_pending_retry:${result.error?.code || 'unknown'}`);
+        }
     }
     const summary = {
         claimed: results.length,

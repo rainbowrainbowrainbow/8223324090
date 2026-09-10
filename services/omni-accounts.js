@@ -714,8 +714,7 @@ function isReportBotShapedConnection(row) {
   return Boolean(
     values.apiKey
     || secrets.apiKey
-    || values.webhookSecret
-    || secrets.webhookSecret
+    || ((values.webhookSecret || secrets.webhookSecret) && !(values.botToken || secrets.botToken))
     || /report|звіт|zvit|alerts?/.test(text)
   );
 }

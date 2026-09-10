@@ -653,6 +653,18 @@ describe('Communication Send Truth v1', () => {
         }
     });
 
+    it('keeps a token-backed Telegram inbox with a webhook secret owned by inbox', async () => {
+        clearModules();
+        installMock('../db', { pool: { query: async () => ({ rows: [{
+            channel: 'telegram', purpose: 'inbox', status: 'connected',
+            credentials: { values: { botUsername: '@fixture_inbox_bot' },
+                secrets: { botToken: 'encrypted-fixture', webhookSecret: 'encrypted-fixture' } },
+        }] }) } });
+        const accounts = require('../services/omni-accounts');
+        assert.equal(await accounts.hasActiveTelegramInboxConnection(), true);
+        clearModules();
+    });
+
     it('treats needs_rebind Telegram inbox rows as disconnected and non-send-capable', async () => {
         clearModules();
         installMock('../db', {

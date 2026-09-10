@@ -2,10 +2,86 @@ const { describe, it, beforeEach, afterEach } = require('node:test');
 const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
+const vm = require('node:vm');
+const { EventEmitter } = require('node:events');
 
 const originalEnv = { ...process.env };
 const originalDateNow = Date.now;
 let state;
+
+function webhookFixture({ owned = true, lookupFailure = false } = {}) {
+    const requests = [];
+    const ownershipChecks = [];
+    const sandbox = { module: { exports: {} }, Buffer, setTimeout, clearTimeout,
+        process: { env: { TELEGRAM_BOT_TOKEN: 'legacy-fixture-token' } },
+        require(name) {
+            if (name === './omni-accounts') return {
+                resolveOmniRuntimeConfig: async () => ({ botToken: 'inbox-fixture-token' }),
+                isTelegramInboxConnectionUsingToken: async (token, options) => {
+                    ownershipChecks.push({ token, options });
+                    if (lookupFailure) throw new Error('fixture DB unavailable');
+                    return owned;
+                }
+            };
+            if (name === '../db') return { pool: { query: async () => ({ rows: [{ chat_id: 'fixture-chat', title: 'Fixture', type: 'private' }] }) } };
+            if (name === './templates') return {};
+            if (name === './timelineBusinessScope') return {};
+            if (name === '../utils/logger') return { createLogger: () => ({ info() {}, warn() {}, error() {} }) };
+            if (name === 'https') return { request(options, callback) {
+                requests.push(options.path.split('/').pop());
+                const req = new EventEmitter();
+                req.setTimeout = () => req;
+                req.write = () => {};
+                req.end = () => queueMicrotask(() => {
+                    const response = new EventEmitter();
+                    response.statusCode = 200;
+                    response.setTimeout = () => response;
+                    callback(response);
+                    response.emit('data', JSON.stringify({ ok: true, result: [] }));
+                    response.emit('end');
+                });
+                return req;
+            } };
+            return require(name);
+        }
+    };
+    vm.runInNewContext(fs.readFileSync(path.join(__dirname, '../services/telegram.js'), 'utf8'), sandbox);
+    return { telegram: sandbox.module.exports, requests, ownershipChecks };
+}
+
+describe('Telegram inbox webhook ownership', () => {
+    for (const method of ['setWebhook', 'deleteWebhook', 'getUpdates']) {
+        it(`blocks legacy ${method} against the resolved inbox token`, async () => {
+            const fixture = webhookFixture();
+            const result = await fixture.telegram.telegramRequest(method, {}, { businessContext: 'dar' });
+            assert.equal(result.reason, 'omni_inbox_owns_webhook');
+            assert.equal(fixture.requests.length, 0);
+            assert.equal(fixture.ownershipChecks[0].token, 'inbox-fixture-token');
+            assert.equal(fixture.ownershipChecks[0].options.businessContext, 'dar');
+            assert.equal(fixture.ownershipChecks[0].options.strict, true);
+        });
+    }
+    for (const webhookSet of [false, true]) {
+        it(`lists known chats without replacing the inbox webhook when flag=${webhookSet}`, async () => {
+            const fixture = webhookFixture();
+            fixture.telegram.setWebhookFlag(webhookSet);
+            const chats = await fixture.telegram.getTelegramChatId();
+            assert.equal(chats[0].id, 'fixture-chat');
+            assert.equal(fixture.requests.length, 0);
+        });
+    }
+    it('blocks webhook setup when ownership cannot be established', async () => {
+        const fixture = webhookFixture({ lookupFailure: true });
+        assert.equal((await fixture.telegram.ensureWebhook('https://crm.test')).ok, false);
+        assert.equal((await fixture.telegram.getTelegramChatId()).length, 1);
+        assert.equal(fixture.requests.length, 0);
+    });
+    it('keeps legacy webhook setup available for a bot without inbox ownership', async () => {
+        const fixture = webhookFixture({ owned: false });
+        assert.equal((await fixture.telegram.ensureWebhook('https://crm.test')).ok, true);
+        assert.deepEqual(fixture.requests, ['setWebhook']);
+    });
+});
 
 function installMock(modulePath, exports) {
     const id = require.resolve(modulePath);

@@ -828,6 +828,7 @@ async function loadConnectionRow(channel, options = {}) {
     );
     return result.rows[0] || null;
   } catch (err) {
+    if (options.strict === true) throw err;
     if (!/omni_provider_connections|does not exist|relation/i.test(err.message || '')) {
       log.warn('Unable to load Omni provider connection', { channel, error: err.message });
     }
@@ -873,11 +874,11 @@ async function resolveOmniRuntimeConfig(channel, options = {}) {
   return mergeRuntimeConfig(activeDefinitionForRow(def, row), row, options);
 }
 
-async function isTelegramInboxConnectionUsingToken(botToken) {
+async function isTelegramInboxConnectionUsingToken(botToken, options = {}) {
   const token = String(botToken || '').trim();
   if (!token) return false;
   const def = providerDefinition('telegram');
-  const row = await loadConnectionRow('telegram');
+  const row = await loadConnectionRow('telegram', options);
   if (!def || !row || row.status === 'disconnected' || row.status === 'needs_rebind') return false;
   const rowRuntime = runtimeValuesFromConnection(activeDefinitionForRow(def, row), row);
   return Boolean(rowRuntime.botToken && rowRuntime.botToken === token);

@@ -6,7 +6,7 @@ const crypto = require('crypto');
 const { pool } = require('../db');
 const { formatBookingNotification } = require('./templates');
 const { createLogger } = require('../utils/logger');
-const { resolveOmniRuntimeConfig } = require('./omni-accounts');
+const { resolveOmniRuntimeConfig, isTelegramInboxConnectionUsingToken } = require('./omni-accounts');
 const {
     DEFAULT_TIMELINE_CONTEXT,
     normalizeTimelineContext,
@@ -85,6 +85,14 @@ let cachedBotUsername = null;
 async function telegramRequest(method, body, options = {}) {
     const runtime = await resolveOmniRuntimeConfig('telegram', { businessContext: options.businessContext || options.business_context });
     const token = runtime.botToken || TELEGRAM_BOT_TOKEN;
+    // Legacy discovery/setup must never take over an inbox bot's update queue.
+    if (['setWebhook', 'deleteWebhook', 'getUpdates'].includes(method)
+        && await isTelegramInboxConnectionUsingToken(token, {
+            businessContext: options.businessContext || options.business_context,
+            strict: true
+        })) {
+        return { ok: false, error_code: 409, description: 'Telegram webhook is owned by Omni inbox', reason: 'omni_inbox_owns_webhook' };
+    }
     // Skip if no token configured
     if (!token) {
         return Promise.resolve({ ok: false, description: 'No bot token configured' });
@@ -545,6 +553,16 @@ async function getTelegramChatId() {
         }
     } catch (e) {
         log.error(`DB known chats error: ${e.message}`);
+    }
+
+    try {
+        const runtime = await resolveOmniRuntimeConfig('telegram');
+        if (await isTelegramInboxConnectionUsingToken(runtime.botToken || TELEGRAM_BOT_TOKEN, { strict: true })) {
+            return Array.from(chatMap.values());
+        }
+    } catch {
+        log.warn('Telegram chat discovery skipped: webhook ownership unavailable');
+        return Array.from(chatMap.values());
     }
 
     try {

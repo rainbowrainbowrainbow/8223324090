@@ -4271,7 +4271,8 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
             }
             if (mode === 'pending_unresolved') {
                 assert.equal(failedJob.rows[0]?.last_error_code, 'checkbox_receipt_pending');
-                assert.equal(failedJob.rows[0].external_stage, 'receipt_lookup');
+                // The provider's grace GET retains the committed submit boundary.
+                assert.equal(failedJob.rows[0].external_stage, 'sale_submit');
             }
             assert.ok(
                 ['failed', 'dead'].includes(failedJob.rows[0]?.status)
@@ -4287,6 +4288,28 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
                 await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
                 0
             );
+            if (mode === 'pending_unresolved') {
+                mock.state.receipts.set(providerRequestUuid, { ...mock.state.receipts.get(providerRequestUuid), status: 'DONE' });
+                await forceRetryNow(confirmed.fiscalOperationId);
+                const recovery = await runWorkerUntilIdle(createHttpProvider(mock));
+                assert.ok(recovery.some(batch => batch.results.some(result => result.ok && result.source === 'lookup')));
+                assert.equal(
+                    mock.state.calls.filter(call => call.path === '/api/v1/receipts/sell' && call.body?.id === providerRequestUuid).length,
+                    1,
+                    'worker recovery after the grace GET must not resubmit SELL'
+                );
+                assert.equal(
+                    mock.state.calls.filter(call => call.method === 'GET' && call.path === `/api/v1/receipts/${providerRequestUuid}`).length,
+                    2,
+                    'worker recovery must read the same receipt after the initial pending lookup'
+                );
+                const recoveredOrder = await pool.query('SELECT fiscal_status FROM payment_orders WHERE id = $1', [order.order.id]);
+                assert.equal(recoveredOrder.rows[0].fiscal_status, 'fiscalized');
+                assert.equal(
+                    await countRows('SELECT COUNT(*)::integer AS count FROM fiscal_receipts WHERE payment_order_id = $1', [order.order.id]),
+                    1
+                );
+            }
         }
 
         const invalidAmountOrder = await createOrder({

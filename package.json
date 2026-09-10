@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.85",
+  "version": "0.81.86",
   "eventGenix": {
-    "releaseLabel": "Telegram Omni Inbox Repair"
+    "releaseLabel": "PARK/DAR Test Day and Next Customer"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

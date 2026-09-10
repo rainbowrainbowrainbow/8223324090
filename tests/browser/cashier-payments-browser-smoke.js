@@ -826,6 +826,9 @@ async function run() {
         await selectorPage.selectOption('#paymentRegisterRoute', 'park_test');
         await selectorPage.waitForSelector('#cashierTestModeBanner:not(.hidden)');
         await selectorPage.waitForFunction(() => document.querySelector('#cashierScopeMode')?.textContent.trim() === 'ТЕСТОВИЙ');
+        await selectorPage.waitForFunction(() => window.CashierPaymentsPage.state.catalogReady && !window.CashierPaymentsPage.state.routeLoading);
+        assert.equal(await selectorPage.inputValue('#catalogSearch'), '', 'PARK initial catalog needs no search');
+        assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'PARK initial catalog is visible after async loading');
         assert.match(await selectorPage.textContent('#cashierTestModeBanner'), /ТЕСТОВА КАСА/i, 'test route has a prominent warning');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'test route remains blocked while its acceptance gate is disabled');
         await captureVisualArtifact(selectorPage, '00-catalog-park-test-disabled.png');
@@ -839,6 +842,9 @@ async function run() {
         await selectorPage.selectOption('#paymentRegisterRoute', 'dar_test');
         await selectorPage.waitForSelector('#cashierTestModeBanner:not(.hidden)');
         await selectorPage.waitForFunction(() => document.querySelector('#catalogSaleSummary')?.textContent.includes('140 активних позицій'));
+        await selectorPage.waitForFunction(() => window.CashierPaymentsPage.state.catalogReady && !window.CashierPaymentsPage.state.routeLoading);
+        assert.equal(await selectorPage.inputValue('#catalogSearch'), '', 'DAR initial catalog needs no search');
+        assert.equal(await selectorPage.locator('#catalogSearchResults .cashier-catalog-result').first().isVisible(), true, 'DAR initial catalog is visible after async loading');
         assert.equal(await selectorPage.isDisabled('#createPaymentOrderBtn'), true, 'DAR test route remains blocked while its acceptance gate is disabled');
         await selectorPage.fill('#catalogSearch', 'Послуга ДАР 10');
         await selectorPage.waitForSelector('#catalogSearchResults .cashier-catalog-result');

@@ -6,17 +6,17 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { JSDOM } = require('jsdom');
 
-function fixture() {
+function fixture(business = 'event_genix') {
     const root = path.join(__dirname, '..');
     const dom = new JSDOM(fs.readFileSync(path.join(root, 'cashier-payments.html'), 'utf8'), {
-        url: 'http://localhost/cashier-payments', runScripts: 'outside-only'
+        url: `http://localhost/cashier-payments?saleMode=catalog&businessContext=${business}`, runScripts: 'outside-only'
     });
     const { window } = dom;
     Object.defineProperty(window.navigator, 'locks', { value: { request: (_key, callback) => callback() } });
     // Exercise the actual page functions without authentication/bootstrap or external IO.
     const source = fs.readFileSync(path.join(root, 'js/cashier-payments-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });", '')
-        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
+        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, renderReadinessState, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
     window.fetch = async () => { throw new Error('offline fixture'); };
     window.showNotification = (message, type) => { window.__notifications.push({ message, type }); };
     window.__notifications = [];
@@ -103,6 +103,99 @@ test('add catalog line respects active filters and does not pick the first unrel
     assert.equal(f.el('catalogSaleLines').children.length, 0);
     assert.equal(f.el('cashierGlobalStatus').classList.contains('cashier-alert-danger'), true);
     assert.match(f.el('cashierGlobalStatus').textContent, /немає доступних позицій/);
+});
+
+for (const business of ['event_genix', 'dar']) {
+    test(`${business} async catalog bootstrap displays items before any search or manual refresh`, async t => {
+        const f = fixture(business); t.after(() => f.dom.window.close());
+        const items = f.page.state.catalogItems;
+        const reads = [];
+        f.window.fetch = async url => {
+            const parsed = new URL(url, 'http://localhost');
+            assert.equal(parsed.searchParams.get('businessContext'), business);
+            reads.push(parsed.pathname);
+            if (parsed.pathname === '/api/payments/catalog/items') return jsonResponse(200, { items });
+            if (parsed.pathname === '/api/payments/catalog/discounts') return jsonResponse(200, { discounts: [] });
+            throw new Error('unexpected catalog request');
+        };
+        await f.page.loadCatalogData();
+        assert.equal(reads.length, 2);
+        assert.equal(f.page.state.catalogReady, true);
+        assert.equal(f.el('catalogSearch').value, '');
+        assert.equal(f.el('catalogSearchResults').classList.contains('hidden'), false);
+        const results = f.el('catalogSearchResults').querySelectorAll('button');
+        assert.equal(results.length, items.length);
+        results[0].click();
+        assert.equal(f.el('catalogSaleLines').children.length, 1);
+        assert.equal(f.el('createPaymentOrderBtn').disabled, false);
+    });
+}
+
+for (const nested of [false, true]) for (const [tender, permission] of [['cash', 'cash_payment'], ['card_terminal_manual', 'card_payment']]) {
+    test(`server-approved ${tender} readiness (${nested ? 'projected' : 'flat'}) displays unreported permission as a warning without contradicting controls`, t => {
+        const f = fixture(); t.after(() => f.dom.window.close());
+        f.page.state.tender = tender;
+        Object.assign(f.page.state.registerState, {
+            requiredTender: tender, readinessCode: 'ready', integrationReady: true
+        });
+        const permissionFields = { unreportedPaymentPermissions: [permission], deniedPaymentPermissions: [] };
+        Object.assign(f.page.state.registerState, nested ? { readiness: permissionFields } : permissionFields);
+        f.page.addCatalogLine();
+        f.page.syncCreateAvailability();
+        f.page.renderReadinessState();
+        assert.equal(f.el('createPaymentOrderBtn').disabled, false);
+        assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), false);
+        assert.equal(f.el('cashierReadinessStatus').classList.contains('is-ready'), false);
+        assert.equal(f.el('cashierReadinessStatus').classList.contains('cashier-alert-warning'), true);
+        assert.match(f.el('cashierReadinessSummary').textContent, /Сервер дозволив.*попередженням.*не повідомив/);
+        assert.deepEqual(permissionFields.unreportedPaymentPermissions, [permission]);
+    });
+}
+
+test('projected explicit permission denial stays visible and blocked', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    Object.assign(f.page.state.registerState, {
+        readinessCode: 'checkbox_cashier_permissions_missing', integrationReady: false,
+        readiness: { deniedPaymentPermissions: ['cash_payment'], unreportedPaymentPermissions: [] }
+    });
+    f.page.addCatalogLine(); f.page.renderReadinessState();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
+});
+
+test('unreported permission without server approval stays blocked; rendering never grants readiness', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    Object.assign(f.page.state.registerState, {
+        readinessCode: 'checkbox_payment_permission_unreported', integrationReady: false,
+        unreportedPaymentPermissions: ['cash_payment'], deniedPaymentPermissions: []
+    });
+    f.page.addCatalogLine();
+    f.page.syncCreateAvailability();
+    f.page.renderReadinessState();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.page.state.registerState.integrationReady, false);
+    assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
+    assert.match(f.el('cashierReadinessSummary').textContent, /приймання оплат заблоковано/);
+});
+
+test('explicit denial and previous-tender readiness cannot become an allowed warning', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.page.addCatalogLine();
+    Object.assign(f.page.state.registerState, {
+        readinessCode: 'checkbox_cashier_permissions_missing', integrationReady: false,
+        unreportedPaymentPermissions: ['cash_payment'], deniedPaymentPermissions: ['sales']
+    });
+    f.page.syncCreateAvailability();
+    f.page.renderReadinessState();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
+    Object.assign(f.page.state.registerState, {
+        readinessCode: 'ready', integrationReady: true, deniedPaymentPermissions: [], requiredTender: 'card_terminal_manual'
+    });
+    f.page.syncCreateAvailability();
+    f.page.renderReadinessState();
+    assert.equal(f.el('createPaymentOrderBtn').disabled, true);
+    assert.equal(f.el('cashierReadinessStatus').classList.contains('is-blocked'), true);
 });
 
 function jsonResponse(status, payload) {

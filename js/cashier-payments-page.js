@@ -950,12 +950,12 @@
         state.catalogItems = Array.isArray(catalog.items) ? catalog.items : [];
         state.catalogDiscounts = Array.isArray(discounts.discounts) ? discounts.discounts : [];
         if (!state.catalogItems.length) throw new Error('catalog_items_unavailable');
+        state.catalogReady = true;
         $('catalogSaleLines')?.replaceChildren();
         renderCatalogCategories();
         renderCatalogDiscounts();
         renderCatalogSearchResults();
         updateCatalogCartSummary();
-        state.catalogReady = true;
         setText('catalogSaleSummary', `${state.catalogItems.length} активних позицій · актуальні ціни · без ПДВ`);
         syncCreateAvailability();
     }
@@ -2155,10 +2155,14 @@
         const technicalList = $('cashierReadinessTechnicalList');
         const canViewTechnicalDetails = hasAction('fiscal.configure');
         const messages = [];
+        const warnings = [];
         if (!state.registerState) {
             messages.push('Не вдалося прочитати стан пілотної каси.');
         } else {
             const code = state.registerState.readinessCode || 'unknown';
+            const readinessDetails = state.registerState.readiness || state.registerState;
+            const unreportedPermissions = readinessDetails.unreportedPaymentPermissions || [];
+            const deniedPermissions = readinessDetails.deniedPaymentPermissions || [];
             const labels = {
                 mapping_missing: 'Немає налаштування відповідності для парку та середньої каси.',
                 mapping_ambiguous: 'Налаштування парку та середньої каси неоднозначне.',
@@ -2197,18 +2201,18 @@
             if (state.registerState.integrationReady === true && !readinessTenderMatches(state.registerState)) {
                 messages.push('Готовність Checkbox ще не підтверджена для вибраного способу оплати.');
             }
-            if (Array.isArray(state.registerState.unreportedPaymentPermissions)
-                && state.registerState.unreportedPaymentPermissions.length) {
-                messages.push(paymentUiError({
+            if (Array.isArray(unreportedPermissions) && unreportedPermissions.length) {
+                const serverAllowsWithWarning = integrationReady() && code === 'ready'
+                    && !deniedPermissions.length;
+                (serverAllowsWithWarning ? warnings : messages).push(paymentUiError({
                     code: 'checkbox_payment_permission_unreported',
-                    details: { unreportedPaymentPermissions: state.registerState.unreportedPaymentPermissions }
+                    details: { unreportedPaymentPermissions: unreportedPermissions }
                 }));
             }
-            if (Array.isArray(state.registerState.deniedPaymentPermissions)
-                && state.registerState.deniedPaymentPermissions.length) {
+            if (Array.isArray(deniedPermissions) && deniedPermissions.length) {
                 messages.push(paymentUiError({
                     code: 'checkbox_cashier_permissions_missing',
-                    details: { deniedPaymentPermissions: state.registerState.deniedPaymentPermissions }
+                    details: { deniedPaymentPermissions: deniedPermissions }
                 }));
             }
         }
@@ -2222,7 +2226,9 @@
         const summaryText = state.readinessInFlight
             ? 'Оновлюємо готовність Checkbox…'
             : (ready
-                ? (state.tender === 'card_terminal_manual'
+                ? (warnings.length
+                    ? 'Сервер дозволив приймання оплати з попередженням: Checkbox не повідомив право на вибраний спосіб оплати.'
+                    : state.tender === 'card_terminal_manual'
                     ? 'Каса готова до оплати карткою через термінал.'
                     : 'Каса готова до оплати готівкою.')
                 : (viewOnly
@@ -2230,8 +2236,8 @@
                     : 'Каса ще не готова — приймання оплат заблоковано.'));
         if (summary) summary.textContent = summaryText;
         if (technicalList) {
-            technicalList.innerHTML = canViewTechnicalDetails && messages.length
-                ? [...new Set(messages)].map(message => `<li>${escapeHtml(message)}</li>`).join('')
+            technicalList.innerHTML = canViewTechnicalDetails && (messages.length || warnings.length)
+                ? [...new Set([...messages, ...warnings])].map(message => `<li>${escapeHtml(message)}</li>`).join('')
                 : (canViewTechnicalDetails ? '<li>Усі перевірки готовності пройдено.</li>' : '');
         }
         if (details) {
@@ -2239,9 +2245,9 @@
             if (!canViewTechnicalDetails) details.open = false;
         }
         panel.classList.remove('hidden');
-        panel.classList.toggle('is-ready', ready);
+        panel.classList.toggle('is-ready', ready && warnings.length === 0);
         panel.classList.toggle('is-blocked', !ready);
-        panel.classList.toggle('cashier-alert-warning', !ready);
+        panel.classList.toggle('cashier-alert-warning', !ready || warnings.length > 0);
         panel.setAttribute('aria-busy', state.readinessInFlight ? 'true' : 'false');
         syncFlowOverview();
     }

@@ -513,7 +513,7 @@ if (!window.Explainability) {
             }).join('');
             const note = options.note ? `<span class="explain-chip">${esc(options.note)}</span>` : '';
             const clear = options.clearAction
-                ? `<button type="button" class="explain-clear-btn" data-explain-clear="${esc(options.clearAction)}">${esc(options.clearLabel || 'Очистити')}</button>`
+                ? `<button type="button" class="explain-clear-btn btn-page-secondary" data-explain-clear="${esc(options.clearAction)}">${esc(options.clearLabel || 'Очистити')}</button>`
                 : '';
             return `
                 <div class="explain-filter-summary" role="status" aria-live="polite">
@@ -531,7 +531,7 @@ if (!window.Explainability) {
             const title = options.title || 'Немає даних';
             const message = options.message || '';
             const action = options.clearAction
-                ? `<div class="explain-empty-actions"><button type="button" class="explain-clear-btn" data-explain-clear="${esc(options.clearAction)}">${esc(options.clearLabel || 'Очистити фільтри')}</button></div>`
+                ? `<div class="explain-empty-actions"><button type="button" class="explain-clear-btn btn-page-secondary" data-explain-clear="${esc(options.clearAction)}">${esc(options.clearLabel || 'Очистити фільтри')}</button></div>`
                 : '';
             return `
                 <div class="explain-empty">

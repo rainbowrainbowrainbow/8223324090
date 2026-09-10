@@ -5039,6 +5039,10 @@ check('Critical booking mutations use normalized failure contract and user-visib
     && bookingMutationCode.includes('const failures = []')
     && bookingMutationCode.includes('Скасовано ${successCount}/${ids.length}. ${failures[0]}'));
 check('Explainability shared styles exist', pagesCss.includes('.explain-filter-summary') && pagesCss.includes('.explain-empty') && pagesCss.includes('.explain-clear-btn'));
+check('Explainability empty states are styled by the shared shell without task CSS',
+    cssTextWithImports('css/pages-shell.css').includes('.explain-empty')
+    && cssTextWithImports('css/pages-shell.css').includes('.explain-filter-summary')
+    && fileText('js/ui.js').includes('explain-clear-btn btn-page-secondary'));
 check('Timeline responsive density updates JS cell geometry with viewport', uiCode.includes('function applyTimelineResponsiveDensity') && uiCode.includes('_timelineResponsiveCellWidth') && uiCode.includes('--timeline-cell-w') && htmlContains('js/app.js', 'initTimelineResponsiveResize'));
 check('Timeline Android density reads lexical CONFIG and visual viewport', uiCode.includes("typeof CONFIG === 'undefined'") && !uiCode.includes('if (!window.CONFIG || !CONFIG.TIMELINE)') && uiCode.includes('let lastViewportSignature =') && uiCode.includes('if (viewportSignature === lastViewportSignature) return') && uiCode.includes('window.visualViewport?.addEventListener?.(\'resize\'') && uiCode.includes('window.visualViewport?.addEventListener?.(\'scroll\''));
 check('Timeline iOS and iPad viewport hardening is explicit', uiCode.includes('function syncTimelineViewportMetrics') && uiCode.includes('--eg-viewport-height') && uiCode.includes('--eg-viewport-width') && uiCode.includes('timeline-dashboard-root') && htmlContains('css/timeline.css', 'var(--eg-viewport-height') && responsiveCss.includes('v0.63.5: iPad/tablet timeline shell') && responsiveCss.includes('html.timeline-dashboard-root') && responsiveCss.includes('body.timeline-dashboard-page.shell-ready .sidebar-nav:not(.collapsed) ~ .header'));

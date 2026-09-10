@@ -21,15 +21,19 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
-        .main-content { padding: 0 !important; max-width: none !important; }
+        .main-content { padding: clamp(12px, 2vw, 24px) !important; max-width: none !important; }
 
         /* OmniClaw Layout */
         .omni-workspace-shell {
-            height: calc(100vh - 56px);
+            height: calc(100dvh - 56px - clamp(24px, 4vw, 48px));
             display: flex;
             flex-direction: column;
             min-height: 0;
             background: var(--bg-primary, #fff);
+            border: 1px solid rgba(148,163,184,0.22);
+            border-radius: 16px;
+            overflow: hidden;
+            box-shadow: 0 12px 28px rgba(15,23,42,0.06);
         }
 
         .omni-workspace-topbar {
@@ -111,7 +115,7 @@
 
         .omni-container {
             display: grid;
-            grid-template-columns: minmax(320px, 390px) 1fr;
+            grid-template-columns: minmax(280px, 350px) minmax(0, 1fr);
             flex: 1;
             min-height: 0;
             overflow: hidden;
@@ -1375,6 +1379,7 @@
         /* Stats bar */
         .omni-stats {
             display: flex;
+            flex-wrap: wrap;
             gap: 16px;
             padding: 8px 16px;
             font-size: 12px;
@@ -2088,6 +2093,7 @@
             color: #FBBF24;
         }
     </style>
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.86">
 </head>
 <body data-page-group="system">
     <script>
@@ -2144,7 +2150,7 @@
                 <div class="omni-workspace-topbar">
                     <div class="omni-workspace-title">
                         <h1>OmniClaw</h1>
-                        <p>Робочий inbox, підключення каналів і стан інтеграцій в окремих режимах.</p>
+                        <p>Повідомлення клієнтів і відповіді команди в одному місці.</p>
                     </div>
                     <div class="omni-workspace-modes" role="tablist" aria-label="Режими OmniClaw">
                         <button type="button" class="omni-mode-btn active" data-omni-mode="inbox" role="tab" aria-selected="true">Inbox</button>
@@ -2158,7 +2164,7 @@
                 <!-- Conversation sidebar -->
                 <div class="omni-sidebar" id="omniSidebar">
                     <div class="omni-sidebar-header">
-                        <h2>OmniClaw</h2>
+                        <h2>Розмови</h2>
                         <input type="text" class="omni-search" id="omniSearch" placeholder="Пошук розмов..." maxlength="100" aria-label="Пошук розмов">
                         <div class="omni-channel-filters" id="omniFilters">
                             <button type="button" class="omni-channel-btn active" data-channel="all">Всі</button>
@@ -2185,7 +2191,7 @@
                         <div class="omni-chat-empty-card">
                             <div class="omni-chat-empty-icon">✉</div>
                             <div class="omni-chat-empty-title">Оберіть розмову</div>
-                            <div class="omni-chat-empty-text">Inbox показує тільки переписки. Підключення каналів і діагностика винесені у вкладки вище.</div>
+                            <div class="omni-chat-empty-text">Виберіть діалог у списку, щоб прочитати повідомлення й відповісти клієнту.</div>
                             <div class="omni-empty-actions">
                                 <button type="button" class="omni-secondary-action" data-omni-mode="channels">Канали</button>
                                 <button type="button" class="omni-secondary-action" data-omni-mode="health">Стан</button>
@@ -2239,7 +2245,7 @@
                             <input type="checkbox" id="omniReplyExpected">
                             <span>Очікуємо відповідь</span>
                         </label>
-                        <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити">&gt;</button>
+                        <button type="button" class="omni-send-btn" id="omniSendBtn" title="Відправити" aria-label="Надіслати повідомлення">&gt;</button>
                     </div>
                     <div class="omni-send-truth" id="omniSendTruth" hidden aria-live="polite"></div>
                 </div>

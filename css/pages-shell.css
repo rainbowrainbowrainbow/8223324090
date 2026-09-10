@@ -44,3 +44,35 @@ body.dark-mode .auth-session-recovery-overlay .page-fatal-error {
     background: #172033;
     color: #f8fafc;
 }
+
+/* Update notices use the same actions and surfaces as the page shell. */
+.auth-session-update-prompt .page-fatal-error {
+    border-color: color-mix(in srgb, var(--primary) 28%, transparent);
+    border-radius: 16px;
+    padding: 20px;
+    background: var(--white);
+    color: var(--gray-700);
+}
+
+.auth-session-update-prompt .auth-session-bootstrap-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-bottom: 14px;
+}
+
+.auth-session-update-prompt .page-fatal-error p:last-child {
+    margin-bottom: 0;
+    font-size: 12px;
+    line-height: 1.5;
+    color: var(--gray-500);
+}
+
+body.dark-mode .auth-session-update-prompt .page-fatal-error {
+    background: #172033;
+    color: #f8fafc;
+}
+
+body.dark-mode .auth-session-update-prompt .page-fatal-error p:last-child {
+    color: #cbd5e1;
+}

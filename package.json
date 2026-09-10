@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.94",
+  "version": "0.81.95",
   "eventGenix": {
-    "releaseLabel": "PARK/DAR Cashier UX"
+    "releaseLabel": "Omni Webhook Ownership and Health"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

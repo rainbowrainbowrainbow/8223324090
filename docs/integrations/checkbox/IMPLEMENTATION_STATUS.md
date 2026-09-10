@@ -9,8 +9,8 @@ recovery source. Historical live observations below are not fresh delivery proof
 
 ## Verified source and delivery state
 
-- Release package baseline prepared for this handoff: `0.81.94` (`PARK/DAR Cashier UX`).
-- Release `0.81.94` is the package baseline prepared in this handoff.
+- Release package baseline prepared for this handoff: `0.81.95` (`Omni Webhook Ownership and Health`).
+- Release `0.81.95` is the package baseline prepared in this handoff.
 - These two tooling-owned package markers describe the checkout baseline; they do not publish the local follow-up diff.
 - Public `/api/version` and `/api/health` read on 2026-09-05: version `0.81.75`, label `PARK/DAR Shift Close UX`, SHA `9ea61f1ea6c38b6f218bbc4b9ceda3f772bedbd5`, branch `codex/eventgenix-production`, health `ok`.
 - Read-only `git ls-remote` returned the same production branch SHA.

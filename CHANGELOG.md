@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.95 - Omni Webhook Ownership and Health
+
+### Release / Versioning / (11.09.2026) [codex]
+- **Omni Webhook Ownership and Health** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.94 - PARK/DAR Cashier UX
 
 ### Каса / PARK-DAR / (10.09.2026) [codex]

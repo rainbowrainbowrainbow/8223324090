@@ -1333,6 +1333,9 @@ describe('work queue endpoint', () => {
                 <div id="workQueueBody"></div>
             </section>
             <div id="dashboardGrid"></div>
+            <section id="dashboardBoardShell">
+                <div id="dashboardBoardCanvas"></div>
+            </section>
         `, {
             url: 'http://localhost/dashboard',
             runScripts: 'outside-only'

@@ -471,6 +471,7 @@ const DashboardPage = (() => {
 
     let _config = createDefaultDashboardConfig();
     let _widgetData = {};
+    const _widgetDataRequests = new Map();
     let _personalTaskerView = 'assigned_to_me';
     let _boardInteractionMode = BOARD_INTERACTION_MODE;
     let _boardSelectedId = null;
@@ -3306,7 +3307,7 @@ const DashboardPage = (() => {
         [...new Set(allKeys)].forEach(widgetKey => loadWidgetData(widgetKey));
     }
 
-    function renderFlatWidgetGrid(grid) {
+    function renderFlatWidgetGrid(grid, options = {}) {
         grid.className = 'dashboard-grid';
         const widgets = normalizeDashboardWidgets(_config.widgets || []);
         grid.innerHTML = '';
@@ -3314,7 +3315,7 @@ const DashboardPage = (() => {
         for (const widgetKey of widgets) {
             if (!canUseWidget(widgetKey)) continue;
             grid.insertAdjacentHTML('beforeend', renderSceneWidgetCard(widgetKey, 'default'));
-            loadWidgetData(widgetKey);
+            if (options.hydrateData !== false) loadWidgetData(widgetKey);
         }
 
         if (grid.children.length === 0) {
@@ -3459,7 +3460,7 @@ const DashboardPage = (() => {
 
         _config.mode = DASHBOARD_WORKSPACE_MODE;
         _config.layout.mode = DASHBOARD_WORKSPACE_MODE;
-        renderFlatWidgetGrid(grid);
+        renderFlatWidgetGrid(grid, { hydrateData: false });
         grid.setAttribute('aria-hidden', 'true');
         grid.classList.add('dashboard-compat-widget-cache');
         grid.classList.add('hidden');
@@ -3470,7 +3471,7 @@ const DashboardPage = (() => {
     function ensureUnifiedWorkspaceSeed() {
         if (!_config?.boardState) _config.boardState = createDefaultDashboardConfig().boardState;
         if (getBoardItems().length || getBoardDrawings().length || getBoardConnectors().length) return;
-        seedBoardWidgets({ persist: false });
+        seedBoardWidgets({ persist: false, render: false });
     }
 
     function getBoardItems() {
@@ -5163,6 +5164,7 @@ const DashboardPage = (() => {
     function seedBoardWidgets(options = {}) {
         if (getBoardItems().length) return;
         const shouldPersist = options.persist !== false;
+        const shouldRender = options.render !== false;
         if (shouldPersist) pushBoardUndo('seed-widgets');
         normalizeDashboardWidgets(_config.widgets || [])
             .filter(canUseWidget)
@@ -5183,7 +5185,7 @@ const DashboardPage = (() => {
                 if (item) getBoardItems().push(item);
             });
         if (shouldPersist) markBoardDirty('seed-widgets');
-        renderBoard();
+        if (shouldRender) renderBoard();
     }
 
     function runBoardCreateAction(kind, payload = {}) {
@@ -5916,6 +5918,40 @@ const DashboardPage = (() => {
         return dashboardScopedApiUrl(path);
     }
 
+    function dashboardWidgetRequestKey(type, url) {
+        const user = AppState.currentUser || {};
+        let sessionGeneration = '';
+        try {
+            sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || '';
+        } catch {}
+        return JSON.stringify({
+            type,
+            url,
+            user: String(user.id ?? user.userId ?? user.username ?? ''),
+            role: getEffectiveDashboardRole(),
+            sessionGeneration
+        });
+    }
+
+    function requestWidgetData(type) {
+        const url = buildWidgetDataUrl(type);
+        const key = dashboardWidgetRequestKey(type, url);
+        const pending = _widgetDataRequests.get(key);
+        if (pending) return pending;
+        const request = fetch(url, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+        }).then(async response => ({
+            ok: response.ok,
+            status: response.status,
+            result: response.ok ? await response.json() : null,
+            requestKey: key
+        })).finally(() => {
+            if (_widgetDataRequests.get(key) === request) _widgetDataRequests.delete(key);
+        });
+        _widgetDataRequests.set(key, request);
+        return request;
+    }
+
     async function loadWidgetData(type, targetContainer = null) {
         const container = targetContainer || document.getElementById(`widget-${type}`);
         if (DASHBOARD_REVENUE_WIDGETS.has(type) && !canViewDashboardRevenue()) {
@@ -5931,11 +5967,10 @@ const DashboardPage = (() => {
         }
 
         try {
-            const resp = await fetch(buildWidgetDataUrl(type), {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
-            });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            const result = await resp.json();
+            const response = await requestWidgetData(type);
+            if (response.requestKey !== dashboardWidgetRequestKey(type, buildWidgetDataUrl(type))) return;
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const result = response.result;
 
             if (result.success) {
                 _widgetData[type] = result.data;
@@ -5951,15 +5986,14 @@ const DashboardPage = (() => {
 
     async function loadFunnelWidget(container) {
         try {
-            const resp = await fetch(dashboardScopedApiUrl('/api/dashboard/widgets/funnel'), {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
-            });
-            if (resp.status === 403 || resp.status === 401) {
+            const response = await requestWidgetData('funnel');
+            if (response.requestKey !== dashboardWidgetRequestKey('funnel', buildWidgetDataUrl('funnel'))) return;
+            if (response.status === 403 || response.status === 401) {
                 container.innerHTML = '<div class="widget-empty">Воронка недоступна для вашої ролі</div>';
                 return;
             }
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            const result = await resp.json();
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const result = response.result;
             const queue = result.data || {};
             _widgetData.funnel = queue;
             renderCompactFunnelWidget(queue, container);
@@ -8610,19 +8644,24 @@ const DashboardPage = (() => {
         );
     }
 
+    function dashboardWidgetContainers(type) {
+        const containers = [];
+        const compatibilityContainer = document.getElementById(`widget-${type}`);
+        if (compatibilityContainer) containers.push(compatibilityContainer);
+        document.querySelectorAll(`[data-widget-type="${type}"] .board-widget-live`).forEach(container => {
+            if (!containers.includes(container)) containers.push(container);
+        });
+        return containers;
+    }
+
     function refreshWidget(type) {
-        loadWidgetData(type);
+        return Promise.allSettled(dashboardWidgetContainers(type).map(container => loadWidgetData(type, container)));
     }
 
     const TASK_RELATED_WIDGET_TYPES = ['tasks', 'personal_tasker', 'my_focus', 'team_tasks', 'task_health'];
 
     function refreshTaskRelatedWidgets() {
-        TASK_RELATED_WIDGET_TYPES.forEach(type => {
-            loadWidgetData(type);
-            document.querySelectorAll(`[data-widget-type="${type}"] .board-widget-live`).forEach(container => {
-                loadWidgetData(type, container);
-            });
-        });
+        return Promise.allSettled(TASK_RELATED_WIDGET_TYPES.map(type => refreshWidget(type)));
     }
 
     // Helpers

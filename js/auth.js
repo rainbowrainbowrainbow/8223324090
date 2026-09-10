@@ -2924,6 +2924,31 @@ function getWorkingRoleState(user = AppState.currentUser) {
     };
 }
 
+let _lastAppliedRoleShellFingerprint = '';
+let _lastRenderedRoleShellFingerprint = '';
+
+function getRoleShellStateFingerprint(state, user = AppState.currentUser) {
+    const normalizeList = value => Array.from(new Set((Array.isArray(value) ? value : [])
+        .map(item => String(item || '').trim())
+        .filter(Boolean)))
+        .sort();
+    const permissions = AppState.authPermissions || user?.permissions || null;
+    let permissionFingerprint = '';
+    try {
+        permissionFingerprint = permissions ? JSON.stringify(permissions) : '';
+    } catch {}
+    return JSON.stringify({
+        user: String(user?.id ?? user?.userId ?? user?.username ?? ''),
+        baseRole: state?.baseRole || '',
+        activeRole: state?.activeRole || '',
+        previewRole: state?.previewRole || '',
+        effectiveRole: state?.effectiveRole || '',
+        extraRoles: normalizeList(state?.extraRoles),
+        availableRoles: normalizeList(state?.availableRoles),
+        permissionFingerprint
+    });
+}
+
 function syncWorkingRoleToCurrentUser(state = getWorkingRoleState()) {
     const user = AppState.currentUser;
     if (!user) return;
@@ -2936,8 +2961,14 @@ function syncWorkingRoleToCurrentUser(state = getWorkingRoleState()) {
     } catch {}
 }
 
-function applyRoleShellState(state) {
+function applyRoleShellState(state, options = {}) {
     syncWorkingRoleToCurrentUser(state);
+    const fingerprint = getRoleShellStateFingerprint(state);
+    const sidebarAvailable = typeof Sidebar !== 'undefined' && typeof Sidebar.render === 'function';
+    const unchanged = fingerprint === _lastAppliedRoleShellFingerprint;
+    const sidebarAlreadyRendered = !sidebarAvailable || fingerprint === _lastRenderedRoleShellFingerprint;
+    if (options.force !== true && unchanged && sidebarAlreadyRendered) return false;
+    _lastAppliedRoleShellFingerprint = fingerprint;
     document.body?.classList.toggle('role-preview-active', Boolean(state.previewRole));
     document.body?.classList.toggle('working-role-active', Boolean(state.activeRole && state.baseRole && state.activeRole !== state.baseRole));
     if (state.previewRole) {
@@ -2950,9 +2981,14 @@ function applyRoleShellState(state) {
     } else {
         document.body?.removeAttribute('data-working-role');
     }
+    let sidebarRendered = false;
     if (typeof Sidebar !== 'undefined') {
         Sidebar.render?.();
         Sidebar.initUserCard?.();
+        if (sidebarAvailable) {
+            _lastRenderedRoleShellFingerprint = fingerprint;
+            sidebarRendered = true;
+        }
     }
     document.querySelectorAll('[data-page-access]').forEach(el => {
         const page = _normalizePagePath(el.dataset.pageAccess);
@@ -2966,6 +3002,7 @@ function applyRoleShellState(state) {
         const viewerRoles = ['waiter', 'dishwasher', 'maintenance', 'cleaning', 'wardrobe', 'barista', 'reception', 'animator', 'pastry_chef', 'cook', 'instructor'];
         el.classList.toggle('hidden', viewerRoles.includes(state.effectiveRole));
     });
+    return sidebarRendered;
 }
 
 const WorkingRole = {
@@ -3019,9 +3056,9 @@ const WorkingRole = {
     },
     refreshShell(detail = {}) {
         const state = this.getState();
-        applyRoleShellState(state);
-        window.dispatchEvent(new CustomEvent('workingRoleChanged', { detail: { ...state, ...detail } }));
-        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail } }));
+        const shellApplied = applyRoleShellState(state, { force: true });
+        window.dispatchEvent(new CustomEvent('workingRoleChanged', { detail: { ...state, ...detail, shellApplied } }));
+        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail, shellApplied } }));
     }
 };
 window.WorkingRole = WorkingRole;
@@ -3086,9 +3123,9 @@ const RolePreview = {
     },
     refreshShell(detail = {}) {
         const state = this.getState();
-        applyRoleShellState(state);
-        window.dispatchEvent(new CustomEvent('rolePreviewChanged', { detail: { ...state, ...detail } }));
-        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail } }));
+        const shellApplied = applyRoleShellState(state, { force: true });
+        window.dispatchEvent(new CustomEvent('rolePreviewChanged', { detail: { ...state, ...detail, shellApplied } }));
+        window.dispatchEvent(new CustomEvent('roleSwitched', { detail: { role: state.effectiveRole, ...detail, shellApplied } }));
     }
 };
 window.RolePreview = RolePreview;

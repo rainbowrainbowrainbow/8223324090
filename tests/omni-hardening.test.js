@@ -10,7 +10,7 @@ function mock(name, value) {
 }
 function fresh(name) {const id=require.resolve(name);if(!modules.has(id))modules.set(id,require.cache[id]);delete require.cache[id];return require(name);}
 afterEach(()=>{for(const [id,value] of modules){if(value)require.cache[id]=value;else delete require.cache[id];}modules.clear();});
-const config={viber:{token:'fixture-viber'},facebook:{appSecret:'fixture-fb',verifyToken:'fixture-verify'},instagram:{appSecret:'fixture-ig',verifyToken:'fixture-ig-verify'},telegram:{webhookSecret:'fixture-telegram'},sms:{provider:'turbosms',webhookSecret:'fixture-sms'}};
+const config={viber:{token:'fixture-viber'},facebook:{pageId:'fixture-page',appSecret:'fixture-fb',verifyToken:'fixture-verify'},instagram:{instagramAccountId:'fixture-page',appSecret:'fixture-ig',verifyToken:'fixture-ig-verify'},telegram:{webhookSecret:'fixture-telegram'},sms:{provider:'turbosms',webhookSecret:'fixture-sms'}};
 function router(hub, runtime=config, user={id:1,role:'creator',username:'fixture'}) {
   mock('../services/omni-hub',hub);
   mock('../services/omni-accounts',{resolveOmniRuntimeConfig:async channel=>runtime[channel]||{},getOmniAccountStatusesAsync:async()=>[],
@@ -30,6 +30,21 @@ async function request(t, routes, url, {raw,headers={},method='POST'}={}) {
   } finally { await new Promise(resolve=>server.close(resolve)); }
 }
 function signed(raw, key, meta=false){return (meta?'sha256=':'')+crypto.createHmac('sha256',key).update(raw).digest('hex');}
+
+test('attachment and comment sends require an idempotency key before dispatch', async t => {
+  let sends = 0;
+  const routes = router({ sendManualMessage: async () => { sends++; return {}; } });
+  for (const body of [
+    { attachment_id: '12345678-1234-1234-1234-123456789abc' },
+    { text: 'Fixture reply', reply_mode: 'public_comment', reply_to_message_id: 1 },
+  ]) {
+    const response = await request(t, routes, '/conversations/1/send', { raw: JSON.stringify(body) });
+    assert.equal(response.status, 400);
+  }
+  assert.equal(sends, 0);
+  assert.equal((await request(t, routes, '/conversations/1/send', { raw: JSON.stringify({ text: 'Legacy text' }) })).status, 200);
+  assert.equal(sends, 1);
+});
 
 test('Viber setup binds both the provider token and callback URL to the selected business', async t => {
   const calls = [];
@@ -97,7 +112,7 @@ test('Meta verifies the stored token and the correct channel secret; service eve
   const calls=[];const routes=router({processInboundMessage:async(...args)=>calls.push(args)});
   const challenge=await request(t,routes,'/webhook/meta?hub.mode=subscribe&hub.verify_token=fixture-ig-verify&hub.challenge=42',{method:'GET'});
   assert.equal(challenge.status,200);assert.equal(challenge.text,'42');
-  const raw=JSON.stringify({object:'instagram',entry:[{messaging:[{sender:{id:'customer'},read:{watermark:1}},{sender:{id:'page'},message:{is_echo:true,text:'echo'}},{sender:{id:'customer'},message:{mid:'mid1',text:'Hello'}}]}]});
+  const raw=JSON.stringify({object:'instagram',entry:[{id:'fixture-page',messaging:[{sender:{id:'customer'},read:{watermark:1}},{sender:{id:'page'},message:{is_echo:true,text:'echo'}},{sender:{id:'customer'},message:{mid:'mid1',text:'Hello'}}]}]});
   assert.equal((await request(t,routes,'/webhook/meta',{raw,headers:{'x-hub-signature-256':signed(raw,config.facebook.appSecret,true)}})).status,403);
   assert.equal((await request(t,routes,'/webhook/meta',{raw,headers:{'x-hub-signature-256':signed(raw,config.instagram.appSecret,true)}})).status,200);
   assert.equal(calls.length,1);assert.equal(calls[0][0].content,'Hello');
@@ -108,6 +123,26 @@ test('failed durable Telegram processing returns a retryable response',async t=>
   const raw=JSON.stringify({message:{message_id:1,chat:{id:1},from:{id:1},text:'fixture'}});
   const r=await request(t,routes,'/webhook/telegram',{raw,headers:{'x-telegram-bot-api-secret-token':'fixture-telegram'}});
   assert.equal(r.status,503);assert.equal(JSON.parse(r.text).ok,false);
+});
+
+test('signed Meta comments, postbacks and quick replies are processed while unknown events remain diagnostic', async t => {
+  const calls = []; const diagnostics = [];
+  const routes = router({ processInboundMessage: async (...args) => calls.push(args) }, { ...config, facebook: { ...config.facebook, pageId: '12' } });
+  mock('../services/omni-health', { recordWebhook: async (...args) => diagnostics.push(args) });
+  const raw = JSON.stringify({ object: 'page', entry: [{ id: '12', changes: [
+    { field: 'feed', value: { item: 'comment', verb: 'add', comment_id: '12_34', post_id: '12_56', from: { id: '78' }, message: 'Fixture' } },
+    { field: 'unsupported_fixture', value: {} },
+  ], messaging: [
+    { sender: { id: '78' }, timestamp: 123456789, postback: { title: 'Button', payload: 'action' } },
+    { sender: { id: '78' }, message: { mid: 'fixture-quick', text: 'Yes', quick_reply: { payload: 'yes' } } },
+  ] }] });
+  const result = await request(t, routes, '/webhook/meta?businessContext=dar', { raw, headers: { 'x-hub-signature-256': signed(raw, config.facebook.appSecret, true) } });
+  assert.equal(result.status, 200); assert.equal(calls.length, 3);
+  assert.deepEqual(calls.map(call => call[0].meta.eventType).sort(), ['comment', 'postback', 'quick_reply']);
+  assert.ok(calls.every(call => call[1].businessContext === 'dar'));
+  assert.equal(diagnostics.at(-1)[2].errorCode, 'unsupported_event');
+  const tampered = await request(t, routes, '/webhook/meta', { raw: raw + ' ', headers: { 'x-hub-signature-256': signed(raw, config.facebook.appSecret, true) } });
+  assert.equal(tampered.status, 403); assert.equal(calls.length, 3);
 });
 
 test('TurboSMS native signature and data envelope reach only the scoped delivery updater',async t=>{

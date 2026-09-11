@@ -15,6 +15,7 @@ const WORKER_NAME = 'payment-outbox-worker';
 const DEFAULT_BATCH_SIZE = 1;
 const DEFAULT_LOCK_EXPIRY_MS = 5 * 60 * 1000;
 const MAX_BACKOFF_MS = 60 * 60 * 1000;
+const RECEIPT_PENDING_RETRY_DELAY_MS = 2 * 1000;
 const RETRYABLE_JOB_TYPES = Object.freeze([
     'receipt_sell',
     'receipt_status_lookup',
@@ -175,10 +176,33 @@ function classifyWorkerError(error) {
     return { retryable: true, unknown, ...sanitizeError(error) };
 }
 
-function computeBackoffMs(attempts) {
+function isReceiptPendingRetry(errorInfo = {}) {
+    const code = String(errorInfo.code || '').trim().toLowerCase();
+    const jobType = String(errorInfo.jobType || '').trim();
+    return ['receipt_sell', 'receipt_status_lookup'].includes(jobType)
+        && ['checkbox_receipt_pending', 'provider_receipt_pending', 'receipt_lookup_required_before_retry'].includes(code);
+}
+
+function computeBackoffMs(attempts, errorInfo = {}) {
+    if (isReceiptPendingRetry(errorInfo)) return RECEIPT_PENDING_RETRY_DELAY_MS;
     const safeAttempts = Math.max(1, Math.min(Number(attempts || 1), 10));
     const base = 30 * 1000;
     return Math.min(MAX_BACKOFF_MS, base * (2 ** (safeAttempts - 1)));
+}
+
+function schedulePaymentOutboxRetryWakeup(delayMs, reason = 'receipt_pending_retry') {
+    const safeDelayMs = Math.max(0, Math.min(Number(delayMs) || 0, RECEIPT_PENDING_RETRY_DELAY_MS));
+    if (!safeDelayMs) return false;
+    const timer = setTimeout(() => {
+        try {
+            const { requestPaymentOutboxWakeup } = require('./paymentOutboxWakeup');
+            requestPaymentOutboxWakeup({ batchSize: 1, reason });
+        } catch {
+            // Scheduler fallback will still drain due jobs if the in-process wake-up is unavailable.
+        }
+    }, safeDelayMs);
+    if (typeof timer.unref === 'function') timer.unref();
+    return true;
 }
 
 function workerId() {
@@ -1328,6 +1352,64 @@ async function markFiscalized(client, context, receipt) {
     );
 }
 
+async function resolveCompletedTestSalePendingIncidents(client, context) {
+    const job = context.job;
+    // Limit this lifecycle repair to the shared PARK/DAR test register.
+    // The caller has already validated and persisted the immutable DONE receipt.
+    if (job.operation_type !== 'sale'
+        || !['receipt_sell', 'receipt_status_lookup'].includes(job.job_type)
+        || job.expected_is_test !== true
+        || String(job.current_expected_is_test) !== 'true'
+        || job.register_alias !== 'shared_test'
+        || job.current_crm_profile_key !== 'event_genix'
+        || job.current_profile_crm_profile_key !== 'event_genix'
+        || !job.payment_order_id) return;
+
+    await client.query(
+        `WITH resolved_receipt_pending AS (
+            UPDATE fiscal_operational_incidents AS incident
+               SET status = 'resolved',
+                   resolved_at = NOW(),
+                   details = incident.details || jsonb_build_object(
+                       'auto_resolved_at', NOW(),
+                       'auto_resolved_reason', 'verified_sale_receipt_completed',
+                       'resolution_job_id', $5::bigint
+                   )
+             WHERE incident.fiscal_profile_id = $1
+               AND incident.fiscal_register_id = $2
+               AND incident.fiscal_operation_id = $3
+               AND incident.payment_order_id = $4
+               AND incident.status IN ('open', 'acknowledged')
+               AND incident.incident_type IN ('fiscal.unknown', 'payment_outbox.failed')
+               AND incident.details->>'error_code' IN ('checkbox_receipt_pending', 'provider_receipt_pending')
+               AND incident.details->>'external_stage' IN ('sale_submit', 'receipt_lookup')
+               AND EXISTS (
+                   SELECT 1 FROM payment_outbox_jobs AS source_job
+                    WHERE source_job.fiscal_profile_id = incident.fiscal_profile_id
+                      AND source_job.fiscal_operation_id = incident.fiscal_operation_id
+                      AND source_job.payment_order_id = incident.payment_order_id
+                      AND source_job.job_type IN ('receipt_sell', 'receipt_status_lookup')
+                      AND incident.details->>'job_id' = source_job.id::text
+                      AND incident.idempotency_key = 'payment_outbox_incident:' || source_job.id::text || ':' || (incident.details->>'error_code')
+               )
+             RETURNING incident.id, incident.fiscal_profile_id, incident.recurrence_count,
+                       incident.resolved_at, incident.details
+        )
+        INSERT INTO fiscal_audit_events (
+            fiscal_profile_id, actor_user_id, event_type, entity_table, entity_id,
+            idempotency_key, after_snapshot, metadata
+        )
+        SELECT fiscal_profile_id, NULL, 'fiscal_incident_resolved', 'fiscal_operational_incidents', id,
+               'receipt_pending_resolved:' || id::text || ':' || recurrence_count::text,
+               jsonb_build_object('status', 'resolved', 'resolved_at', resolved_at),
+               jsonb_build_object('reason', 'verified_sale_receipt_completed',
+                   'fiscal_operation_id', $3::bigint, 'payment_order_id', $4::bigint,
+                   'resolution_job_id', $5::bigint, 'original_error_code', details->>'error_code')
+          FROM resolved_receipt_pending`,
+        [job.fiscal_profile_id, job.fiscal_register_id, job.fiscal_operation_id, job.payment_order_id, job.id]
+    );
+}
+
 async function markJobSucceeded(client, job) {
     await client.query(
         `UPDATE payment_outbox_jobs
@@ -1347,7 +1429,11 @@ async function markJobSucceeded(client, job) {
 
 async function markJobFailed(client, context, errorInfo) {
     const dead = Number(context.job.attempts || 0) >= Number(context.job.max_attempts || 1) || errorInfo.retryable === false;
-    const nextRun = new Date(Date.now() + computeBackoffMs(context.job.attempts)).toISOString();
+    const retryDelayMs = computeBackoffMs(context.job.attempts, {
+        ...errorInfo,
+        jobType: context.job.job_type
+    });
+    const nextRun = new Date(Date.now() + retryDelayMs).toISOString();
     await client.query(
         `UPDATE payment_outbox_jobs
             SET status = $3::text,
@@ -1492,6 +1578,7 @@ async function markJobFailed(client, context, errorInfo) {
             `${nextStatus === 'unknown' ? 'fiscal.unknown' : 'fiscal.receipt_failed'}:${context.job.fiscal_operation_id}:${context.job.attempts}`
         );
     }
+    return dead ? null : retryDelayMs;
 }
 
 async function markJobConfigUnavailable(client, context, errorInfo) {
@@ -2364,8 +2451,13 @@ async function finalizeJobFailure(dbPool, context, errorInfo) {
         if (await requeueActiveShiftJobAfterPortalClose(client, context, errorInfo)) {
             return { ok: false, recoveryQueued: true, jobId: Number(context.job.id), error: errorInfo };
         }
-        await markJobFailed(client, context, errorInfo);
-        return { ok: false, jobId: Number(context.job.id), error: errorInfo };
+        const retryDelayMs = await markJobFailed(client, context, errorInfo);
+        return {
+            ok: false,
+            jobId: Number(context.job.id),
+            error: errorInfo,
+            retryWakeupDelayMs: isReceiptPendingRetry({ ...errorInfo, jobType: context.job.job_type }) ? retryDelayMs : null
+        };
     });
 }
 
@@ -2394,6 +2486,7 @@ async function finalizeReceiptJobInTransaction(client, context, result, { record
         await recordExternalStageInTransaction(client, context, 'complete');
     }
     await markJobSucceeded(client, context.job);
+    await resolveCompletedTestSalePendingIncidents(client, context);
     return { ok: true, jobId: Number(context.job.id), source: result.source };
 }
 
@@ -2470,8 +2563,10 @@ async function processPaymentOutboxJobs({
     batchSize = DEFAULT_BATCH_SIZE,
     lockedBy = workerId(),
     lockExpiryMs = DEFAULT_LOCK_EXPIRY_MS,
+    scheduleRetryWakeup = null,
     throwOnDegraded = false
 } = {}) {
+    const shouldScheduleRetryWakeup = scheduleRetryWakeup !== false && provider == null;
     const effectiveProvider = provider || createCheckboxProviderFactory();
     let eligibleFiscalProfileIds = null;
     let eligibleRuntimeContexts = null;
@@ -2509,7 +2604,11 @@ async function processPaymentOutboxJobs({
         const claimed = await withTransaction(dbPool, client => claimPaymentOutboxJobs(client, { batchSize: 1, lockedBy, lockExpiryMs, eligibleFiscalProfileIds, eligibleRuntimeContexts }));
         const job = claimed[0];
         if (!job) break;
-        results.push(await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job, lockExpiryMs }));
+        const result = await processOnePaymentOutboxJob({ dbPool, provider: effectiveProvider, job, lockExpiryMs });
+        results.push(result);
+        if (shouldScheduleRetryWakeup && result?.retryWakeupDelayMs) {
+            schedulePaymentOutboxRetryWakeup(result.retryWakeupDelayMs, `receipt_pending_retry:${result.error?.code || 'unknown'}`);
+        }
     }
     const summary = {
         claimed: results.length,
@@ -2543,6 +2642,7 @@ module.exports = {
     finalizeJobSuccess,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs,
+    resolveCompletedTestSalePendingIncidents,
     runReceiptReturnJob,
     runReceiptSaleJob,
     runServiceReceiptJob,

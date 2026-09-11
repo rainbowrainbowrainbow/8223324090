@@ -1,4 +1,4 @@
-# Omni completion — release 1
+# Omni completion — staged releases
 
 Production impact: yes. The user explicitly requested implementation of the six-block
 plan, including additive migrations, the Viber management guard, webhook ownership,
@@ -39,7 +39,7 @@ commit/push, exact-SHA CI, manual Railway deployment and read-only live QA.
   All prepared metadata was preserved in commit `7d4db3517`, followed by a normal
   upstream merge `07ee4fbec` and the new release number.
 
-Remaining plan blocks: concurrent manager controls; media and physical-mobile QA;
+Remaining plan blocks at release 1: concurrent manager controls; media and physical-mobile QA;
 delivery reconciliation; provider activation and Meta comment/interactive events.
 Provider E2E requires the specified test accounts and separately bounded messages.
 
@@ -66,3 +66,42 @@ No migration, account activation, provider setup or secret changes in this block
   review persistence pass. The first receipt fixture incorrectly used Telegram,
   which has no delivery receipts; the corrected SMS scenario passed.
 - Live QA remains read-only; actual two-manager mutations and SMS require test scope.
+
+## Release 2 delivered
+
+- Version 0.81.97 / `7e51aaec1f31967fbf72191573dccd02956b78b6`.
+- Functional commit `13e291a3b`; CI run 34532704149: all six jobs successful.
+- Railway deployment `512ac9a5-2fb9-491a-b723-58efb7b87016`; exact-SHA version smoke passed.
+- Read-only live account diagnostics prove the scheduled check actually ran:
+  Telegram lastCheckedAt `2026-09-10T21:51:27.966Z`, fresh successful check,
+  pending update count zero. Other channels remain disconnected.
+
+## Release 3 candidate 0.81.99 — attachments and Meta events
+
+Production impact: yes. Same authorized branch/service and task envelope.
+Scope includes additive migration 354 (scoped file bytes and expiring grants),
+narrow file-grant auth boundary explicitly required by block 4, channel adapter
+changes, signed Meta comment/interactive events, UI composer, and health recovery.
+No customer message, provider setup, production secret or external account activation.
+
+- File routes, `omni-attachments`, adapters and workspace: durable scoped JPEG/PNG/PDF;
+  upload validation before provider send, checksum-bound idempotency, expiring single-file
+  grants, safe inbound archival, separate visible archival errors.
+- `omni-meta-events`: normal DM compatibility, comment/postback/quick-reply normalization,
+  deduplication, scoped Page/IG identity, explicit public/private reply dispatch.
+- Health follow-up: validated receipt clears a processing alarm without inventing an
+  inbound timestamp; environment-backed connections receive actual scheduled checks.
+- Real PostgreSQL fixtures: migrations reapply; expiry/business isolation; simultaneous
+  attachment sends call the provider stub once; changed checksum conflicts; incoming
+  archival is reused on duplicate webhook. Existing CAS/ownership/review tests pass.
+- Browser fixtures 1440/390: two clients, CAS feedback and draft preservation, file
+  isolation and single send, controls and mobile composer/back. Ten simulated mutations,
+  zero production business writes; screenshots inspected.
+- Local full baseline before final targeted refinements passed: 2639 unit tests,
+  334 My Day tests, 1312 UI assertions. Final exact-SHA CI remains the release gate.
+- Final targeted regressions: 138 passed; real PostgreSQL and browser fixtures passed.
+- Functional commit `7894375f2`; upstream live 0.81.98 / `4ec3f0c12f45cb64df2d9fc5b853a325c0701d73`
+  merged normally before preparing 0.81.99. Parallel PARK/DAR cashier changes retained.
+- Scope and external activation dependencies: `OMNI_CHANNEL_ACTIVATION_2026-09-11.md`.
+- Rollback retains additive tables, promotes the exact previous .98 SHA only through
+  the release helper. No destructive down migration or secret changes.

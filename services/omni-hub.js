@@ -1538,7 +1538,10 @@ async function processInboundMessage(normalized, options = {}) {
     { businessContext }
   );
 
-  const message = await saveInboundMessage(conversation.id, normalized);
+  let message = await saveInboundMessage(conversation.id, normalized);
+  if (normalized.mediaUrl && (['image', 'file'].includes(normalized.contentType) || normalized.meta?.isStoryReply)) {
+    message = await require('./omni-attachments').preserveInbound(message, normalized, businessContext);
+  }
   if (message.duplicate) return { conversation, message, duplicate: true };
   const updatedConversation = await getConversationById(conversation.id, { businessContext }) || conversation;
 
@@ -1740,6 +1743,16 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
 
   const conversation = mapConversationRow(convResult.rows[0]);
   await assertRuntimeSendCapable(conversation.channel, { businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT });
+  const commentReply = options.replyToMessageId ? await require('./omni-meta-events').replyTarget(conversationId, conversation.businessContext, options.replyToMessageId, options.replyMode) : null;
+  if (String(conversation.externalId).startsWith('comment:') && !commentReply) throw Object.assign(new Error('Для коментаря оберіть публічну або приватну відповідь.'), { statusCode: 400 });
+  if (commentReply && options.attachmentId) throw Object.assign(new Error('Відповіді на коментарі наразі підтримують текст.'), { statusCode: 400 });
+  let attachment = null;
+  if (options.attachmentId) {
+    attachment = await require('./omni-attachments').getFile(options.attachmentId, conversationId, conversation.businessContext);
+    require('./omni-attachments').validateFile({ buffer: attachment.content, mimetype: attachment.mime_type, originalname: attachment.filename }, conversation.channel);
+    const captionLimit = conversation.channel === 'telegram' ? 1024 : conversation.channel === 'viber' && attachment.mime_type.startsWith('image/') ? 768 : 0;
+    if (text.length > captionLimit) throw Object.assign(new Error(captionLimit ? 'Підпис завеликий: максимум ' + captionLimit + ' символів.' : 'Цей формат не підтримує підпис. Надішліть текст окремим повідомленням.'), { statusCode: 400 });
+  }
   const replyExpectation = normalizeReplyExpectationOptions(options);
 
   let client;
@@ -1756,7 +1769,8 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
         [conversationId, options.clientRequestId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator']
       );
       if (prior.rows.length) {
-        if (prior.rows[0].content !== text) throw Object.assign(new Error('Цей ідентифікатор вже використаний для іншого повідомлення'), { statusCode: 409 });
+        if (prior.rows[0].content !== text || (prior.rows[0].meta?.attachment?.checksum || null) !== (attachment?.checksum || null)) throw Object.assign(new Error('Цей ідентифікатор вже використаний для іншого повідомлення'), { statusCode: 409 });
+        if (JSON.stringify(prior.rows[0].meta?.commentReply || null) !== JSON.stringify(commentReply)) throw Object.assign(new Error('Цей запит уже використаний для іншого типу відповіді.'), { statusCode: 409 });
         await client.query('COMMIT');
         const message = mapMessageRow(prior.rows[0]);
         const sendTruth = message.meta?.sendTruth || buildSendTruth('provider_unknown', {
@@ -1773,7 +1787,9 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
        VALUES ($1, 'outbound', $2, $3, 'text', false, $4::jsonb, NOW())
        RETURNING *`,
       [conversationId, safeTruncate(senderName, MAX_NAME_LEN) || 'Operator', text,
-        JSON.stringify(options.clientRequestId ? { clientRequestId: options.clientRequestId } : {})]
+        JSON.stringify({ ...(options.clientRequestId ? { clientRequestId: options.clientRequestId } : {}),
+          ...(attachment ? { attachment: require('./omni-attachments').metadata(attachment) } : {}),
+          ...(commentReply ? { commentReply } : {}) })]
     );
 
     await client.query(
@@ -1800,7 +1816,9 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
 
     try {
       messageWithTruth = await markMessageSendAttempted(saved.id, sendTruth) || messageWithTruth;
-      const delivery = await sendToChannel(conversation.channel, conversation.externalId, text, {
+      const delivery = commentReply ? await require('./omni-meta-events').sendReply(commentReply, text, conversation.businessContext)
+        : attachment ? await require('./omni-attachments').sendAttachment(conversation.channel, conversation.externalId, text, attachment, conversation.businessContext)
+        : await sendToChannel(conversation.channel, conversation.externalId, text, {
         businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT
       });
       sendTruth = normalizeProviderResult(conversation.channel, delivery);

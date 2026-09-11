@@ -1,4 +1,5 @@
 const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
+    omniAttachmentGrant: { owner: 'omnichannel', authentication: 'expiring single-file random grant', guardFiles: [{ file: 'routes/omnichannel.js', needles: ["router.get('/media/:grant/:filename'", 'grantedFile(req.params.grant)'] }, { file: 'services/omni-attachments.js', needles: ['g.expires_at > NOW()', 'token_hash = $1'] }], testFiles: ['tests/omni-completion.test.js'] },
     telegramWebhook: { owner: 'telegram', authentication: 'webhook secret header', guardFiles: [{ file: 'routes/telegram.js', needles: ["router.post('/webhook'", 'secretHeader !== WEBHOOK_SECRET'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/route-smoke.test.js'] },
     omniWebhooks: { owner: 'omnichannel', authentication: 'provider secret or signature', guardFiles: [{ file: 'routes/omnichannel.js', needles: ['verifyViberSignature', 'verifyWebhookSecret', 'verifyMetaSignature'] }], testFiles: ['tests/auth-boundary.test.js', 'tests/omni-provider-lifecycle.test.js'] },
     checkboxWebhook: { owner: 'checkbox', authentication: 'route-specific raw-body HMAC signature', guardFiles: [{ file: 'routes/checkbox-webhook.js', needles: ["express.raw({ type: '*/*', limit: '256kb' })", 'verifyCheckboxWebhookSignature', 'CHECKBOX_WEBHOOK_SIGNATURE_HEADER'] }, { file: 'server.js', needles: ["app.use('/api/checkbox/webhook', require('./routes/checkbox-webhook'))"] }], testFiles: ['tests/auth-boundary.test.js', 'tests/checkbox-webhook-reconciliation.test.js'] },
@@ -14,6 +15,12 @@ const INTEGRATION_AUTH_CONTRACTS = Object.freeze({
 });
 
 const PUBLIC_API_ROUTES = [
+    {
+        method: 'GET', regex: /^\/omni\/media\/[a-f0-9]{64}\/[^/]+$/,
+        label: 'GET /omni/media/:grant/:filename', examplePath: '/omni/media/' + 'a'.repeat(64) + '/fixture.jpg',
+        owner: 'omnichannel', integrationContract: 'omniAttachmentGrant',
+        reason: 'Provider fetch uses an expiring random grant for exactly one attachment; no CRM session is exposed.'
+    },
     {
         prefix: '/auth/',
         owner: 'auth',

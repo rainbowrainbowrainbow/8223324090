@@ -14,6 +14,7 @@ test('Omni ownership serialization and health migration on a disposable local Po
   const admin = new Pool({ host: '/var/run/postgresql', user: 'postgres', database: 'postgres' });
   let pool; let created = false;
   const dbId = require.resolve('../../db'); const previous = require.cache[dbId];
+  const previousToken = process.env.TELEGRAM_BOT_TOKEN;
   try {
     await admin.query('CREATE DATABASE "' + name + '"'); created = true;
     pool = new Pool({ host: '/var/run/postgresql', user: 'postgres', database: name, max: 2 });
@@ -86,7 +87,50 @@ test('Omni ownership serialization and health migration on a disposable local Po
     assert.equal(confirmed.meta.manualVerifications.length, 1);
     await assert.rejects(review.recordManualVerification(1, 'dar', { id: 42 },
       { outcome: 'unresolved', note: 'No access' }), { statusCode: 404 });
+    const mediaMigration = fs.readFileSync(path.join(__dirname, '../../db/migrations/354_omni_attachments.sql'), 'utf8');
+    await pool.query(mediaMigration); await pool.query(mediaMigration);
+    await pool.query("UPDATE conversations SET channel = 'telegram' WHERE id = 1");
+    const files = require('../../services/omni-attachments');
+    const file = { buffer: Buffer.from('%PDF-fixture'), mimetype: 'application/pdf', originalname: 'fixture.pdf' };
+    const stored = await files.storeFile(1, 'event_genix', file);
+    await assert.rejects(files.getFile(stored.id, 1, 'dar'), { statusCode: 404 });
+    assert.equal((await files.getFile(stored.id, 1, 'event_genix')).content.toString(), '%PDF-fixture');
+    const token = 'a'.repeat(64), hash = require('node:crypto').createHash('sha256').update(token).digest('hex');
+    await pool.query("INSERT INTO omni_attachment_grants VALUES ($1, $2, NOW() + INTERVAL '1 minute')", [hash, stored.id]);
+    assert.equal((await files.grantedFile(token)).id, stored.id);
+    await pool.query("UPDATE omni_attachment_grants SET expires_at = NOW() - INTERVAL '1 minute'");
+    await assert.rejects(files.grantedFile(token), { statusCode: 404 });
+    await pool.query(`ALTER TABLE conversation_messages ADD COLUMN sender_name TEXT, ADD COLUMN content_type TEXT,
+      ADD COLUMN ai_generated BOOLEAN, ADD COLUMN created_at TIMESTAMPTZ DEFAULT NOW()`);
+    await pool.query('ALTER TABLE conversations ADD COLUMN last_message_at TIMESTAMPTZ, ADD COLUMN last_outbound_at TIMESTAMPTZ');
+    process.env.TELEGRAM_BOT_TOKEN = '654321:fixture-transport';
+    let sends = 0;
+    files.sendAttachment = async () => { sends++; return { success: true, messageId: 'fixture-media-send' }; };
+    const sendOptions = { businessContext: 'event_genix', clientRequestId: 'fixture-attachment-request', attachmentId: stored.id };
+    const sent = await Promise.all([1, 2].map(() => hub.sendManualMessage(1, '', 'fixture-manager', sendOptions)));
+    assert.equal(sends, 1); assert.equal(sent[0].message.id, sent[1].message.id);
+    assert.equal((await files.fileForMessage(sent[0].message.id, 'event_genix')).id, stored.id);
+    const different = await files.storeFile(1, 'event_genix', { ...file, buffer: Buffer.from('%PDF-different') });
+    await assert.rejects(hub.sendManualMessage(1, '', 'fixture-manager', { ...sendOptions, attachmentId: different.id }), { statusCode: 409 });
+    assert.equal(sends, 1);
+    const incoming = (await pool.query("INSERT INTO conversation_messages (conversation_id, direction, content, meta) VALUES (1, 'inbound', '', '{}') RETURNING *")).rows[0];
+    let downloads = 0;
+    require('../../services/omni-inbox').getTelegramAttachment = async () => { downloads++; return { buffer: file.buffer, filename: file.originalname }; };
+    const normalized = { channel: 'telegram', mediaUrl: 'fixture-file-id', contentType: 'file' };
+    const archived = await files.preserveInbound(hub.mapMessageRow(incoming), normalized, 'event_genix');
+    assert.equal(archived.meta.storedAttachments.length, 1);
+    await files.preserveInbound(archived, normalized, 'event_genix');
+    assert.equal(downloads, 1);
+    assert.equal((await files.fileForMessage(incoming.id, 'event_genix', archived.meta.storedAttachments[0].id)).content.toString(), '%PDF-fixture');
+    assert.equal(await files.fileForMessage(incoming.id, 'dar', archived.meta.storedAttachments[0].id), null);
+    const lastInbound = (await health.attachHealth([{ channel: 'telegram' }], 'event_genix'))[0].diagnostics.lastInboundAt;
+    await health.recordWebhook('telegram', 'event_genix', { errorCode: 'processing_failed' });
+    await health.recordWebhook('telegram', 'event_genix', { processed: true });
+    const recovered = (await health.attachHealth([{ channel: 'telegram' }], 'event_genix'))[0].diagnostics;
+    assert.equal(recovered.activeProcessingError, false);
+    assert.equal(String(recovered.lastInboundAt), String(lastInbound));
   } finally {
+    if (previousToken === undefined) delete process.env.TELEGRAM_BOT_TOKEN; else process.env.TELEGRAM_BOT_TOKEN = previousToken;
     if (previous) require.cache[dbId] = previous; else delete require.cache[dbId];
     if (pool) await pool.end();
     try { if (created) await admin.query('DROP DATABASE "' + name + '"'); }

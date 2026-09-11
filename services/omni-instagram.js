@@ -106,19 +106,19 @@ async function sendInstagram(recipientId, text, options = {}) {
         return { success: false, error: 'IG_PAGE_TOKEN not configured' };
     }
 
-    if (!recipientId || !text) {
+    if (!recipientId || (!text && !options.attachment)) {
         return { success: false, error: 'recipientId and text are required' };
     }
 
     try {
         const body = {
             recipient: { id: recipientId },
-            message: { text }
+            message: options.attachment ? { attachment: options.attachment } : { text }
         };
 
         log.debug('Sending Instagram DM', { recipientId });
 
-        const response = await igRequest('POST', '/me/messages', body, token);
+        const response = await igRequest('POST', '/' + encodeURIComponent(runtime.instagramAccountId || 'me') + '/messages', body, token);
 
         log.info('Instagram DM sent', { recipientId, messageId: response.message_id });
         return { success: true, messageId: response.message_id };
@@ -134,8 +134,8 @@ async function sendInstagram(recipientId, text, options = {}) {
  * @param {string} text - Reply text
  * @returns {Promise<{success: boolean, commentId?: string, error?: string}>}
  */
-async function replyToComment(commentId, text) {
-    const runtime = await resolveOmniRuntimeConfig('instagram');
+async function replyToComment(commentId, text, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('instagram', { businessContext: options.businessContext });
     const token = runtime.pageToken || runtime.token;
     if (!token) {
         log.warn('replyToComment called but IG_PAGE_TOKEN not configured');
@@ -152,11 +152,29 @@ async function replyToComment(commentId, text) {
         const response = await igRequest('POST', `/${commentId}/replies`, { message: text }, token);
 
         log.info('IG comment reply sent', { parentCommentId: commentId, replyId: response.id });
-        return { success: true, commentId: response.id };
+        return { success: true, commentId: response.id, messageId: response.id };
     } catch (err) {
         log.error('replyToComment failed', err);
-        return { success: false, error: err.message };
+        return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message };
     }
 }
 
-module.exports = { sendInstagram, replyToComment };
+async function sendPrivateReply(commentId, text, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('instagram', { businessContext: options.businessContext });
+    const token = runtime.pageToken || runtime.token;
+    if (!token) return { success: false, error: 'Instagram не підключено.' };
+    try {
+        const result = await igRequest('POST', '/' + encodeURIComponent(runtime.instagramAccountId || 'me') + '/messages', { recipient: { comment_id: commentId }, message: { text } }, token);
+        return { success: true, messageId: result.message_id };
+    } catch (err) { return { success: false, uncertain: !err.statusCode || err.statusCode >= 500, error: err.message }; }
+}
+
+async function getMediaPermalink(mediaId, options = {}) {
+    const runtime = await resolveOmniRuntimeConfig('instagram', { businessContext: options.businessContext });
+    const result = await igRequest('GET', '/' + encodeURIComponent(mediaId) + '?fields=permalink', null, runtime.pageToken || runtime.token);
+    const url = new URL(result.permalink);
+    if (url.protocol !== 'https:' || !['instagram.com', 'www.instagram.com'].includes(url.hostname)) throw new Error('Invalid permalink');
+    return url.href;
+}
+
+module.exports = { sendInstagram, replyToComment, sendPrivateReply, getMediaPermalink };

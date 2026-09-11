@@ -209,6 +209,8 @@ async function initPage() {
     if (activeProductTab === 'catalogs') await loadCatalogEntries();
     updateProductTabPanels();
 
+    bindProductRouteNavigation();
+
     document.getElementById('addProductBtn')?.addEventListener('click', () => openProductForm());
     document.getElementById('saveProductBtn')?.addEventListener('click', () => saveProduct());
     document.getElementById('saveProductNextBtn')?.addEventListener('click', () => saveProduct({ addNext: true }));
@@ -337,8 +339,7 @@ function readInitialProductTab() {
     if (Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_HASH_TO_ID, hash)) return 'programs';
     if (hash === '#catalogs') return 'catalogs';
     if (hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'kitchen';
-    const stored = safeReadProductPreference(PRODUCT_TAB_STORAGE_KEY, 'programs');
-    return ['programs', 'kitchen', 'catalogs'].includes(stored) ? stored : 'programs';
+    return 'programs';
 }
 
 function readInitialCategory() {
@@ -356,6 +357,9 @@ let activeKitchenTab = readInitialKitchenTab();
 let activeMenuSection = 'all';
 let currentCategory = readInitialCategory();
 let allProducts = [];
+let productsLoadGeneration = 0;
+let productsLoadState = 'ready';
+let productRouteNavigationBound = false;
 let productCatalogs = [];
 let catalogEntriesLoaded = false;
 let editingDocumentProductId = null;
@@ -537,9 +541,52 @@ function getBusinessHash() {
     return '';
 }
 
-function syncProductsRouteState() {
+function syncProductsRouteState(mode = 'push') {
     const hash = getBusinessHash();
-    window.history.replaceState(null, '', hash || window.location.pathname);
+    const url = window.location.pathname + window.location.search + hash;
+    if (url !== window.location.pathname + window.location.search + window.location.hash) {
+        window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
+    }
+    renderProductOverviewState();
+}
+
+function renderProductOverviewState() {
+    document.querySelectorAll('[data-product-route]').forEach(link => {
+        const hash = link.dataset.productRoute;
+        const active = hash === getBusinessHash();
+        if (active) link.setAttribute('aria-current', 'page');
+        else link.removeAttribute('aria-current');
+    });
+}
+
+function bindProductRouteNavigation() {
+    if (productRouteNavigationBound) return;
+    productRouteNavigationBound = true;
+    const restore = () => {
+        // Business context remains owned by the shared context lifecycle.
+        if (!isParkProductsContext()) return;
+        const hash = window.location.hash;
+        if (hash && !PRODUCT_CATEGORY_HASH_TO_ID[hash]
+            && !['#catalogs', '#kitchen', '#kitchen-cakes', '#kitchen-menu'].includes(hash)) return;
+        activeProductTab = readInitialProductTab();
+        currentCategory = readInitialCategory();
+        activeKitchenTab = readInitialKitchenTab();
+        closeProductForm();
+        renderProductIaTabs();
+        renderCategoryTabs();
+        renderKitchenSubtabs();
+        renderMenuSectionFilter();
+        updateProductTabPanels();
+        renderProducts();
+        if (activeProductTab === 'catalogs' && !catalogEntriesLoaded) void loadCatalogEntries();
+    };
+    window.addEventListener('popstate', restore);
+    window.addEventListener('hashchange', restore);
+    const refreshCatalogAccess = () => {
+        if (catalogEntriesLoaded) renderCatalogEntries();
+    };
+    window.addEventListener('permissions:lifecycle', refreshCatalogAccess);
+    window.addEventListener('roleSwitched', refreshCatalogAccess);
 }
 
 function renderProductBusinessSelector() {
@@ -649,7 +696,7 @@ async function applyProductBusinessContext(context) {
     if (nextContext === activeBusinessContext) return;
     activeBusinessContext = nextContext;
     closeProductForm();
-    syncProductsRouteState();
+    syncProductsRouteState('replace');
     renderProductBusinessSelector();
     renderProductIaTabs();
     renderKitchenSubtabs();
@@ -674,6 +721,15 @@ function renderProductIaTabs() {
             ${tab.name}
         </button>
     `).join('');
+    if (isParkProductsContext()) {
+        container.insertAdjacentHTML('beforeend', `<nav class="product-overview" aria-label="Категорії продуктів">
+            <a href="#animation" data-product-route="#animation">Анімації</a>
+            <a href="#kitchen-cakes" data-product-route="#kitchen-cakes">Торти</a>
+            <a href="#kitchen-menu" data-product-route="#kitchen-menu">Меню</a>
+            <a href="#catalogs" data-product-route="#catalogs">Каталоги</a>
+        </nav>`);
+        renderProductOverviewState();
+    }
     container.querySelectorAll('[data-product-tab]').forEach(button => {
         if (isParkProductsContext()) {
             button.addEventListener('click', () => setProductTab(button.dataset.productTab));
@@ -726,6 +782,7 @@ function updateProductTabPanels() {
         const context = getActiveBusinessContext();
         pageSubtitle.textContent = context.subtitle;
     }
+    if (parkContext && activeProductTab === 'catalogs' && catalogEntriesLoaded) renderCatalogEntries();
 }
 
 function renderKitchenSubtabs() {
@@ -842,23 +899,38 @@ function renderCategoryTabs() {
 // ==========================================
 
 async function loadProducts() {
-    const grid = document.getElementById('productsGrid');
-    const kitchenGrid = document.getElementById('kitchenGrid');
-    if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження продуктів…</div>';
-    if (kitchenGrid) kitchenGrid.innerHTML = '<div class="loading-spinner">Завантаження кухні…</div>';
+    const generation = ++productsLoadGeneration;
+    const context = activeBusinessContext;
+    allProducts = [];
+    productsLoadState = 'loading';
+    renderProducts();
     try {
-        allProducts = await apiGetProducts(true, { businessContext: getProductApiBusinessContext() }) || [];
+        const products = await apiGetProducts(true, { businessContext: getProductApiBusinessContext() });
+        if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;
+        if (!Array.isArray(products)) throw new Error('Products unavailable');
+        allProducts = products;
+        productsLoadState = 'ready';
         renderMenuSectionFilter();
         renderProducts();
     } catch (err) {
+        if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;
+        productsLoadState = 'error';
         console.error('loadProducts error:', err);
         showNotification('Помилка завантаження продуктів', 'error');
-        if (grid) grid.innerHTML = '';
-        if (kitchenGrid) kitchenGrid.innerHTML = '';
+        renderProducts();
     }
 }
 
 function renderProducts() {
+    if (productsLoadState !== 'ready') {
+        const message = productsLoadState === 'loading'
+            ? 'Завантаження продуктів…' : 'Не вдалося завантажити продукти. Оновіть сторінку, щоб повторити.';
+        for (const id of ['productsGrid', 'kitchenGrid', 'maysternyaProductsGrid']) {
+            const host = document.getElementById(id);
+            if (host) host.innerHTML = `<div class="product-load-state" role="status">${message}</div>`;
+        }
+        return;
+    }
     if (!isParkProductsContext()) {
         renderMaysternyaProducts();
         syncProductReadOnlyUi();
@@ -1515,7 +1587,7 @@ function renderProgramProducts(grid, canManage) {
                         <span class="card-title">${escapeHtml(p.name)}</span>
                         ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
                     </div>
-                    <span class="program-price">${formatPrice(p.price)}${p.isPerChild ? '/дит' : ''}</span>
+                    <span class="program-price">${renderProductPrice(p)}</span>
                 </div>
                 <div class="card-meta">
                     <span>${escapeHtml(p.code)}</span>
@@ -1524,7 +1596,8 @@ function renderProgramProducts(grid, canManage) {
                     ${p.ageRange ? `<span>${escapeHtml(p.ageRange)}</span>` : ''}
                     ${p.kidsCapacity ? `<span>${escapeHtml(p.kidsCapacity)} діт</span>` : ''}
                 </div>
-                ${p.description ? `<p class="program-desc">${escapeHtml(p.description).substring(0, 120)}${p.description.length > 120 ? '...' : ''}</p>` : ''}
+                ${p.description ? `<p class="program-desc">${escapeHtml(p.description.substring(0, 120))}${p.description.length > 120 ? '...' : ''}</p>` : ''}
+                ${renderProductDetails(p)}
                 ${renderProgramIconPanel(p, canManage)}
                 ${renderDocumentPanel(p, canManage)}
                 ${canManage ? `
@@ -1567,11 +1640,45 @@ function renderMenuCompletenessBadge(product) {
 }
 
 function renderKitchenPrice(product) {
-    if (Number(product.price || 0) > 0) {
-        return `${formatPrice(product.price)}${product.servingUnit ? `/${escapeHtml(product.servingUnit)}` : (product.isPerChild ? '/дит' : '')}`;
-    }
-    if (product.priceVariantNote) return 'Варіанти';
-    return formatPrice(product.price);
+    return renderProductPrice(product, true);
+}
+
+function renderProductPrice(product, kitchen = false) {
+    const hasPrice = product.price !== null && product.price !== undefined && product.price !== ''
+        && Number.isFinite(Number(product.price));
+    if (!hasPrice) return product.priceVariantNote ? 'Варіанти' : 'Ціну не вказано';
+    // Preserve the existing variant-price label for zero-valued variants.
+    if (Number(product.price) === 0 && product.priceVariantNote) return 'Варіанти';
+    const unit = kitchen && product.servingUnit ? `/${escapeHtml(product.servingUnit)}`
+        : (product.isPerChild ? '/дит' : '');
+    return `${formatPrice(product.price)}${unit}`;
+}
+
+function productDetailImageError(img) {
+    const media = img?.closest('.product-detail-media');
+    if (media) media.textContent = 'Зображення недоступне';
+}
+
+function renderProductDetails(product) {
+    const kitchen = getProductDomain(product) === 'kitchen';
+    const imageUrl = kitchen ? productMenuImageUrl(product) : productMenuSafeImageUrl(product.iconUrl);
+    const fields = [['Опис', product.description]];
+    if (kitchen) fields.push(['Короткий опис', product.shortDescription]);
+    const text = fields.filter(([, value]) => value).map(([label, value]) =>
+        `<div><strong>${label}</strong><p>${escapeHtml(String(value))}</p></div>`).join('');
+    return `<details class="product-details" data-product-id="${escapeHtml(String(product.id))}" data-business-context="${escapeHtml(product.businessContext || '')}">
+        <summary>Детальніше</summary>
+        <div class="product-details-content">
+            <div class="product-detail-media">${imageUrl
+                ? `<img loading="lazy" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name || '')}" onerror="productDetailImageError(this)">`
+                : 'Зображення відсутнє'}</div>
+            <div class="product-detail-copy"><strong>${escapeHtml(product.name || '')}</strong>
+                <p>${renderProductPrice(product, kitchen)}</p>
+                ${text || '<p>Опис ще не додано</p>'}
+                ${kitchen ? renderKitchenDetailPanel(product, true) : ''}
+            </div>
+        </div>
+    </details>`;
 }
 
 function renderKitchenProducts(grid, canManage) {
@@ -1627,6 +1734,7 @@ function renderKitchenProducts(grid, canManage) {
                     ${renderKitchenMenuAiActions(p, canManage)}
                 </div>
                 ${renderKitchenDetailPanel(p)}
+                ${renderProductDetails(p)}
                 ${renderKitchenMenuImageStudio(p, canManage)}
                 ${canManage ? `
                     <div class="card-actions">
@@ -1640,7 +1748,7 @@ function renderKitchenProducts(grid, canManage) {
     }).join('');
 }
 
-function renderKitchenDetailPanel(product) {
+function renderKitchenDetailPanel(product, full = false) {
     const items = [
         ['Розділ', product.menuSection],
         ['Складська техкарта', product.techCardMode === 'detailed' ? `детальна · ${Number(product.techCardLinkedIngredientCount || 0)} з ${Number(product.techCardIngredientCount || 0)} позицій привʼязано до складу` : null],
@@ -1659,7 +1767,7 @@ function renderKitchenDetailPanel(product) {
         .map(([label, value]) => `
             <div class="kitchen-detail-item">
                 <strong>${escapeHtml(label)}</strong>
-                <span>${escapeHtml(String(value)).substring(0, 180)}${String(value).length > 180 ? '...' : ''}</span>
+                <span>${escapeHtml(full ? String(value) : String(value).substring(0, 180))}${!full && String(value).length > 180 ? '...' : ''}</span>
             </div>
         `)
         .join('');
@@ -2016,6 +2124,12 @@ function renderCatalogEntries() {
         return;
     }
 
+    const canOpenGraduation = isParkProductsContext()
+        && productBusinessScope().mode === 'single'
+        && typeof getPermissionLifecycle === 'function'
+        && getPermissionLifecycle()?.status === 'ready'
+        && typeof canAccessPage === 'function'
+        && canAccessPage('/graduation');
     grid.innerHTML = productCatalogs.map(catalog => `
         <article class="product-catalog-card">
             <div class="product-catalog-icon">${escapeHtml(catalog.emoji || '📂')}</div>
@@ -2031,6 +2145,7 @@ function renderCatalogEntries() {
             <div class="product-catalog-actions">
                 <a class="btn-page-primary" href="${escapeHtml(catalog.href || '/designs#catalogs')}">${escapeHtml(catalog.actionLabel || 'Відкрити каталог')}</a>
                 ${catalog.secondaryHref ? `<a class="btn-page-secondary" href="${escapeHtml(catalog.secondaryHref)}">У Designs</a>` : ''}
+                ${catalog.id === 'graduation' && canOpenGraduation ? '<a class="btn-page-secondary" href="/graduation">Конструктор випускного</a>' : ''}
             </div>
         </article>
     `).join('');

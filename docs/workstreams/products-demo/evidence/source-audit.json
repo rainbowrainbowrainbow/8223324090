@@ -1,0 +1,100 @@
+{
+  "base": "a52725f867cbe2d21188198ce0b0e7a51a7c52d2",
+  "branch": "codex/products-demo-plan-20260911",
+  "tracked": [
+    "css/graduation.css",
+    "css/pages-products.css",
+    "designs.html",
+    "js/designs-page.js",
+    "js/programs-page.js"
+  ],
+  "added": [
+    "tests/products-demo-flow.test.js",
+    "tests/products-demo-catalog.test.js",
+    "tests/products-demo-graduation.test.js",
+    "tests/browser/products-demo.spec.js"
+  ],
+  "unchanged": [
+    {
+      "file": "js/graduation.js",
+      "unchanged": true,
+      "blob": "8dd07637d4fbe01767dbd6c194b19e3adae7d9db"
+    },
+    {
+      "file": "services/productPricing.js",
+      "unchanged": true,
+      "blob": "3054f32af9453c235c687d2e188e1f0ecae48d3c"
+    },
+    {
+      "file": "services/bookingPackage.js",
+      "unchanged": true,
+      "blob": "d267e77588463140a5c8f3406d70113a3e45164e"
+    },
+    {
+      "file": "js/components/sidebar.js",
+      "unchanged": true,
+      "blob": "b03329f383c830f1af6f098a092e169e706ca9c6"
+    },
+    {
+      "file": "js/auth.js",
+      "unchanged": true,
+      "blob": "a55c885a87ab3a6c8ea6d889b22af1354de7b8c2"
+    },
+    {
+      "file": "middleware/auth.js",
+      "unchanged": true,
+      "blob": "360e388888a69d0f3ccf3e29e0751da797e2f7e3"
+    },
+    {
+      "file": "server.js",
+      "unchanged": true,
+      "blob": "494a2284e0e9fda3f98b1f027d2611f914c6354b"
+    },
+    {
+      "file": "css/catalog.css",
+      "unchanged": true,
+      "blob": "f161a7ac0d85aa1c24bc097bd3025e232516eccc"
+    },
+    {
+      "file": "css/base.css",
+      "unchanged": true,
+      "blob": "3e4e764bc6b1cda0a5341023ad85bd9297afbb65"
+    },
+    {
+      "file": "css/dark-mode.css",
+      "unchanged": true,
+      "blob": "568227d5e4df1d92289f64069dfb2d7656977d10"
+    },
+    {
+      "file": "package.json",
+      "unchanged": true,
+      "blob": "7f540abc37a8cbd65f47ab3a3b8a255082932540"
+    },
+    {
+      "file": "package-lock.json",
+      "unchanged": true,
+      "blob": "8d6d148d067cf64bc6ca636e72a898c513de3457"
+    },
+    {
+      "file": "js/config.js",
+      "unchanged": true,
+      "blob": "feccc82998a1ca516106c8eab4ba2d5b99c8d476"
+    },
+    {
+      "file": "js/booking.js",
+      "unchanged": true,
+      "blob": "66f1f9fc28d6d7d2bdf392003b8a035bb2942714"
+    },
+    {
+      "file": "hr.html",
+      "unchanged": true,
+      "blob": "63a42794380d5e618e30f8d1bdb04526b8b2bbbb"
+    },
+    {
+      "file": "js/hr-page.js",
+      "unchanged": true,
+      "blob": "c32aed493d1beaaedc0f2dbb019a034f877a3d99"
+    }
+  ],
+  "patchSha256": "a63e41567ec8b678e21a66953d8154bf02750bff8a7d4f17f3bb965768774026"
+}

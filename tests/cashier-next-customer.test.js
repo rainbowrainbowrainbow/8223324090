@@ -16,7 +16,7 @@ function fixture(business = 'event_genix') {
     // Exercise the actual page functions without authentication/bootstrap or external IO.
     const source = fs.readFileSync(path.join(root, 'js/cashier-payments-page.js'), 'utf8')
         .replace("document.addEventListener('DOMContentLoaded', () => { void initCashierPaymentsPage(); });", '')
-        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, loadCheckboxSalesReport, renderReadinessState, renderOrder, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
+        .replace('window.CashierPaymentsPage = {', 'window.CashierPaymentsPage = { loadCatalogData, loadCheckboxSalesReport, renderReadinessState, renderSharedTestDay, renderOrder, syncCreateAvailability, syncConfirmationAvailability, refreshCatalogSelects, startNextOrder, addCatalogLine, confirmPayment, bindEvents, clearCreateIdempotencyKey, cancelDraftOrder,');
     window.fetch = async () => { throw new Error('offline fixture'); };
     window.showNotification = (message, type) => { window.__notifications.push({ message, type }); };
     window.__notifications = [];
@@ -35,6 +35,30 @@ function fixture(business = 'event_genix') {
     page.bindEvents();
     return { dom, window, page, el: id => window.document.getElementById(id) };
 }
+
+test('closed shared test day explains the exact resume blocker', t => {
+    const f = fixture(); t.after(() => f.dom.window.close());
+    f.window.canAccess = () => true;
+    Object.assign(f.page.state.registerState, {
+        readinessCode: 'ready',
+        integrationReady: true,
+        sharedTestDay: {
+            visible: true,
+            localDrainBlocked: true,
+            canResume: false,
+            reasonCode: 'shared_test_owner_mismatch',
+            activeDrain: { id: 91, status: 'closed' }
+        }
+    });
+    f.page.addCatalogLine();
+    f.page.renderReadinessState();
+    f.page.renderSharedTestDay();
+
+    assert.match(f.el('cashierReadinessSummary').textContent, /початок наступного тестового дня недоступний/);
+    assert.match(f.el('cashierReadinessTechnicalList').textContent, /відповідальний, який зупинив цю тестову касу/);
+    assert.match(f.el('sharedTestDayNotice').textContent, /відповідальний, який зупинив цю тестову касу/);
+    assert.equal(f.el('sharedTestResumeBtn').disabled, true);
+});
 
 test('completed order requires next customer and locks cart editing', t => {
     const f = fixture(); t.after(() => f.dom.window.close());
@@ -299,17 +323,19 @@ test('second direction discount explains zero eligibility and updates after bask
     f.page.state.catalogDiscounts = [{ code: 'dar_second_club_direction_10', rateBps: 1000 }];
     f.el('catalogDiscountRule').innerHTML = '<option value="dar_second_club_direction_10">10%</option>';
     f.page.addCatalogLine('same');
-    assert.match(f.el('catalogDiscountExplanation').textContent, /не застосовано/);
+    assert.match(f.el('catalogDiscountExplanation').textContent, /0 грн знижки/);
     assert.match(f.el('catalogDiscountTotal').textContent, /0,00/);
     f.page.addCatalogLine('vip');
-    assert.match(f.el('catalogDiscountExplanation').textContent, /лише до іншого/);
+    assert.match(f.el('catalogDiscountExplanation').textContent, /другого іншого/);
     assert.match(f.el('catalogDiscountTotal').textContent, /2,50/);
     f.el('catalogSaleLines').lastElementChild.querySelector('[data-catalog-remove]').click();
-    assert.match(f.el('catalogDiscountExplanation').textContent, /не застосовано/);
+    assert.match(f.el('catalogDiscountExplanation').textContent, /0 грн знижки/);
 });
 
 for (const [status, error, label] of [
     ['failed_retryable', 'checkbox_receipt_pending', /Checkbox обробляє чек/],
+    ['failed_retryable', 'provider_receipt_pending', /Checkbox обробляє чек/],
+    ['failed_retryable', 'receipt_lookup_required_before_retry', /Checkbox обробляє чек/],
     ['failed_retryable', 'provider_timeout', /помилка/],
     ['failed_terminal', 'checkbox_receipt_pending', /помилка без автоповтору/],
     ['fiscalized', 'checkbox_receipt_pending', /чек створено/]
@@ -325,7 +351,7 @@ for (const [status, error, label] of [
         assert.equal(details.order.fiscalStatus, status);
         assert.equal(f.el('confirmCashBtn').disabled, true);
         assert.equal(f.el('confirmCardBtn').disabled, true);
-        if (error === 'checkbox_receipt_pending' && status === 'failed_retryable') {
+        if (['checkbox_receipt_pending', 'provider_receipt_pending', 'receipt_lookup_required_before_retry'].includes(error) && status === 'failed_retryable') {
             assert.match(f.el('fiscalPendingMessage').textContent, /перевіряється автоматично/);
         }
     });

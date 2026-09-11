@@ -41,6 +41,7 @@ const {
     DEFAULT_LOCK_EXPIRY_MS,
     claimPaymentOutboxJobs,
     finalizeJobSuccess,
+    resolveCompletedTestSalePendingIncidents,
     processOnePaymentOutboxJob,
     processPaymentOutboxJobs
 } = require('../../services/payments/paymentOutboxWorker');
@@ -807,6 +808,15 @@ describe('Checkbox park thin MVP on fresh PostgreSQL and local HTTP mock', {
         }
         if (mock) await mock.close().catch(() => {});
         await pool.end().catch(() => {});
+    });
+
+    test('completed shared test receipt resolves only its pending incidents with atomic audit', async () => {
+        requireIsolatedDatabase();
+        const { assertReceiptPendingSql } = require('../helpers/receipt-pending-incident-fixture');
+        const client = await pool.connect();
+        try {
+            await assertReceiptPendingSql(client, resolveCompletedTestSalePendingIncidents);
+        } finally { client.release(); }
     });
 
     test('operator recovery authorization is enforced by real PostgreSQL user, binding and integration owner rows', async () => {

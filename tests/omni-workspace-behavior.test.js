@@ -66,6 +66,45 @@ test('an inbound failure requires attention even when sending still works', t =>
     assert.equal(h.app.accountNeedsAttention({ channel: 'sms', connected: true, sendCapable: true, receiveCapable: false }), false);
 });
 
+test('search typing rejects an older response immediately and clear keeps the channel filter', async t => {
+    const h = harness(t);
+    const pending = deferred();
+    const requests = [];
+    h.app.setApi(async requestPath => { requests.push(requestPath); return pending.promise; });
+    const previous = h.app.loadConversations();
+    const search = h.document.getElementById('omniSearch');
+    search.value = 'New query';
+    search.dispatchEvent(new h.window.Event('input'));
+    pending.resolve({ success: true, data: { conversations: [conversation(99)], total: 1 } });
+    await previous;
+    assert.notEqual(h.app.state().conversations[0]?.id, 99);
+    h.app.setApi(h.defaultApi);
+    h.document.querySelector('[data-channel="telegram"]').click();
+    await h.flush();
+    h.app.setApi(async requestPath => { requests.push(requestPath); return h.defaultApi(requestPath); });
+    h.document.getElementById('omniClearSearch').click();
+    await new Promise(resolve => setTimeout(resolve, 350));
+    assert.equal(search.value, '');
+    assert.equal(h.document.getElementById('omniClearSearch').hidden, true);
+    assert.ok(requests.at(-1).includes('channel=telegram'));
+    assert.ok(!requests.at(-1).includes('search='));
+});
+
+test('IME confirmation and Shift+Enter do not send a draft', async t => {
+    const h = harness(t);
+    h.app.selectConversation(1);
+    await h.flush();
+    let sends = 0;
+    h.app.setApi(async requestPath => { if (requestPath.endsWith('/send')) sends++; return h.defaultApi(requestPath); });
+    const input = h.document.getElementById('omniInput');
+    input.value = 'Draft being composed';
+    input.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', isComposing: true, bubbles: true }));
+    input.dispatchEvent(new h.window.KeyboardEvent('keydown', { key: 'Enter', shiftKey: true, bubbles: true }));
+    await h.flush();
+    assert.equal(sends, 0);
+    assert.equal(input.value, 'Draft being composed');
+});
+
 test('manager refresh updates open status and assignee without replacing a draft', async t => {
     let record = { ...conversation(1), status: 'open', assignedTo: 'first' };
     const h = harness(t, [record]);
@@ -126,6 +165,29 @@ test('unknown delivery can be reconciled without invoking send and manual notes 
     h.document.querySelector('[data-delivery-reconcile]').click(); await h.flush();
     assert.deepEqual(writes, ['/messages/1/reconcile']);
     assert.match(h.document.querySelector('.omni-send-truth').textContent, /Still unknown/);
+});
+
+test('Meta comments require an explicit public or private target and retain the clicked mode', async t => {
+    const h = harness(t, [{ ...conversation(1, 'facebook'), externalId: 'comment:123' }]);
+    h.app.selectConversation(1); await h.flush();
+    h.app.renderMessages([{ ...message(12), meta: { eventType: 'comment', commentId: '123', postUrl: 'https://www.facebook.com/12_34' } }]);
+    assert.equal(h.document.querySelector('#omniSendBtn').disabled, true);
+    assert.equal(h.document.querySelector('#omniChooseFile').disabled, true);
+    let sent;
+    h.app.setApi(async (path, options) => {
+        if (path.endsWith('/send')) { sent = JSON.parse(options.body); return { success: true, data: {} }; }
+        return h.defaultApi(path);
+    });
+    h.document.querySelector('[data-comment-reply="public_comment"]').click();
+    assert.match(h.document.querySelector('#omniReplyTarget').textContent, /публічною/);
+    h.document.querySelector('#omniInput').value = 'Explicit public fixture'; await h.app.sendMessage();
+    assert.equal(sent.reply_mode, 'public_comment'); assert.equal(sent.reply_to_message_id, 12);
+});
+
+test('normally accepted Telegram messages do not repeat an unavailable delivery-check action', async t => {
+    const h = harness(t); h.app.selectConversation(1); await h.flush();
+    h.app.renderMessages([{ ...message(1), direction: 'outbound', deliveryStatus: 'accepted' }]);
+    assert.equal(h.document.querySelector('[data-delivery-reconcile]'), null);
 });
 
 test('send hashing preserves the clicked recipient, business and reply expectation across navigation', async t => {

@@ -7,17 +7,17 @@
     </script>
 
     <script type="text/javascript">(function(c,l,a,r,i,t,y){c[a]=c[a]||function(){(c[a].q=c[a].q||[]).push(arguments)};t=l.createElement(r);t.async=1;t.src="https://www.clarity.ms/tag/"+i;y=l.getElementsByTagName(r)[0];y.parentNode.insertBefore(t,y);})(window,document,"clarity","script","w841e2emn0");</script>
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.97">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.97">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.97">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.97">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.97">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.97">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.97">
+    <link rel="stylesheet" href="css/base.css?v=0.81.102">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.102">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.102">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.102">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.102">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.102">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.102">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -2093,7 +2093,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.97">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.102">
 </head>
 <body data-page-group="system">
     <script>
@@ -2166,7 +2166,10 @@
                 <div class="omni-sidebar" id="omniSidebar">
                     <div class="omni-sidebar-header">
                         <h2>Розмови</h2>
-                        <input type="text" class="omni-search" id="omniSearch" placeholder="Ім’я, телефон або текст повідомлення" maxlength="100" aria-label="Пошук розмов">
+                        <div class="omni-search-field">
+                            <input type="search" class="omni-search" id="omniSearch" placeholder="Ім’я, телефон або текст повідомлення" maxlength="100" aria-label="Пошук розмов">
+                            <button type="button" id="omniClearSearch" aria-label="Очистити пошук" hidden>×</button>
+                        </div>
                         <div class="omni-channel-filters" id="omniFilters">
                             <button type="button" class="omni-channel-btn active" data-channel="all">Всі</button>
                             <button type="button" class="omni-channel-btn" data-channel="telegram">TG</button>
@@ -2229,7 +2232,7 @@
                     <div class="omni-chat-header" id="omniChatHeader" style="display:none">
                         <button type="button" class="omni-back-button" id="omniBackToList" aria-label="Повернутися до розмов">← Розмови</button>
                         <div class="omni-conv-avatar" id="omniChatAvatar"></div>
-                        <div>
+                        <div class="omni-chat-identity">
                             <div class="omni-chat-header-name" id="omniChatName"></div>
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
@@ -2243,6 +2246,14 @@
                     <div class="omni-chat-messages" id="omniMessages" style="display:none"></div>
                     <div class="omni-quick-replies" id="omniQuickReplies" style="display:none"></div>
                     <div class="omni-chat-input" id="omniInputArea" style="display:none">
+                        <div class="omni-file-composer">
+                            <button type="button" class="omni-secondary-action" id="omniChooseFile">Додати файл</button>
+                            <input type="file" id="omniFileInput" accept="image/jpeg,image/png,application/pdf" hidden>
+                            <span id="omniFileHint">JPEG, PNG, PDF · до 10 МБ</span>
+                            <span id="omniSelectedFile" aria-live="polite"></span>
+                            <span id="omniReplyTarget" aria-live="polite"></span>
+                            <button type="button" class="omni-secondary-action" id="omniCancelFile" hidden>Скасувати файл</button>
+                        </div>
                         <textarea id="omniInput" rows="1" placeholder="Написати повідомлення..." maxlength="4000" aria-label="Повідомлення"></textarea>
                         <label class="omni-reply-toggle" title="Позначити, що після цього повідомлення очікуємо відповідь клієнта">
                             <input type="checkbox" id="omniReplyExpected">
@@ -2310,12 +2321,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.97"></script>
-    <script src="js/api.js?v=0.81.97"></script>
-    <script src="js/auth.js?v=0.81.97"></script>
-    <script src="js/components/sidebar.js?v=0.81.97"></script>
+    <script src="js/config.js?v=0.81.102"></script>
+    <script src="js/api.js?v=0.81.102"></script>
+    <script src="js/auth.js?v=0.81.102"></script>
+    <script src="js/components/sidebar.js?v=0.81.102"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.97"></script>
+    <script src="js/ws.js?v=0.81.102"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2329,6 +2340,8 @@
         let currentConvId = null;
         let selectedConversationRecord = null;
         let selectedDraftKey = null;
+        const attachmentDrafts = new Map();
+        const commentReplyDrafts = new Map();
         const conversationDrafts = new Map();
         const pendingSends = new Set();
         const pendingConversationFields = new Set();
@@ -3186,6 +3199,7 @@
         }
 
         function renderConversations() {
+            $('omniClearSearch').hidden = !searchInput.value;
             renderOmniExplainability();
             const errorHtml = conversationLoadError ? '<div class="omni-list-feedback" role="status">' + esc(conversationLoadError) + '<button type="button" data-omni-conversations-retry>Спробувати ще</button></div>' : '';
             if (!conversations.length) {
@@ -3386,6 +3400,7 @@
             const canSend = canSendConversation(conv);
             input.disabled = !canSend || isSending;
             sendBtn.disabled = !canSend || isSending;
+            renderFileComposer(conv);
             if (replyExpectedEl) replyExpectedEl.disabled = !canSend || isSending;
             input.placeholder = canSend ? 'Написати повідомлення...' : 'Канал доступний лише для перегляду';
             if (!canSend && replyExpectedEl) replyExpectedEl.checked = false;
@@ -3399,6 +3414,10 @@
         }
 
         function renderAttachments(message) {
+            const meta = parseMessageMeta(message.meta);
+            const stored = meta.storedAttachments || (meta.attachment ? [meta.attachment] : []);
+            const errorHtml = meta.attachmentError ? '<div class="omni-file-error">' + esc(meta.attachmentError) + '</div>' : '';
+            if (stored.length || errorHtml) return stored.map(attachment => '<button type="button" class="omni-secondary-action" data-omni-attachment="' + Number(message.id) + '" data-file-id="' + esc(attachment.id) + '">Завантажити · ' + esc(attachment.filename) + ' · ' + Math.ceil(attachment.size / 1024) + ' КБ</button>').join(' ') + errorHtml;
             const conv = currentConversation();
             const label = { image: 'Фото', audio: 'Аудіо', video: 'Відео', file: 'Файл', sticker: 'Стікер' }[message.contentType] || 'Вкладення';
             if (conv?.channel === 'telegram' && message.mediaUrl) return '<button type="button" class="omni-secondary-action" data-omni-attachment="' + Number(message.id) + '">Завантажити · ' + label + '</button>';
@@ -3414,13 +3433,14 @@
 
         function renderDeliveryReview(message) {
             if (message.direction !== 'outbound') return '';
-            const review = message.meta?.manualVerification;
+            const review = parseMessageMeta(message.meta).manualVerification;
             const outcomes = { observed_present: 'Бачу повідомлення в каналі', observed_absent: 'Не знайшов повідомлення в каналі', unresolved: 'Не вдалося перевірити' };
             const recorded = review ? '<div class="omni-delivery-note">Ручна перевірка · ' + esc(review.by) + ' · ' + esc(formatAccountTime(review.at)) +
                 '<br>' + esc(outcomes[review.outcome] || 'Результат невідомий') + ': ' + esc(review.note) + '<br>Це позначка менеджера, а не підтвердження провайдера.</div>' : '';
             const truth = sendTruthFromMessage(message);
-            if (!['saved', 'attempted', 'accepted', 'unknown'].includes(message.deliveryStatus) && !truth?.persistencePending
-                && !['saved', 'provider_unknown', 'provider_attempted'].includes(truth?.status)) return recorded;
+            const smsPending = currentConversation()?.channel === 'sms' && message.deliveryStatus === 'accepted';
+            if (!['saved', 'attempted', 'unknown'].includes(message.deliveryStatus) && !truth?.persistencePending && !smsPending
+                && !['saved', 'provider_unknown'].includes(truth?.status)) return recorded;
             return recorded + '<div class="omni-delivery-review">' +
                 (message.providerMessageId ? '<div class="omni-delivery-note">ID провайдера: ' + esc(message.providerMessageId) + '</div>' : '') +
                 '<button type="button" class="omni-secondary-action" data-delivery-reconcile="' + Number(message.id) + '">Перевірити доставку</button>' +
@@ -3442,6 +3462,7 @@
                     senderHtml +
                     '<div class="omni-msg-content">' + esc(m.content || '') + '</div>' +
                     renderAttachments(m) +
+                    renderCommentActions(m) +
                     sendTruthHtml +
                     renderDeliveryReview(m) +
                     '<div class="omni-msg-time">' + formatTime(m.createdAt) + '</div>' +
@@ -4236,6 +4257,59 @@
         }
 
         // ---- Actions ----
+        function renderCommentActions(message) {
+            const meta = parseMessageMeta(message.meta);
+            if (meta.commentReply) return '<div class="omni-delivery-note">' + (meta.commentReply.mode === 'public_comment' ? 'Публічна відповідь на коментар' : 'Приватна відповідь автору коментаря') + '</div>';
+            if (meta.eventType === 'postback' || meta.eventType === 'quick_reply') return '<div class="omni-delivery-note">Натискання кнопки</div>';
+            if (meta.eventType !== 'comment') return '';
+            let link = '';
+            try { const url = new URL(meta.postUrl); if (url.protocol === 'https:' && ['www.facebook.com', 'facebook.com', 'www.instagram.com', 'instagram.com'].includes(url.hostname)) link = '<a href="' + esc(url.href) + '" target="_blank" rel="noopener noreferrer">Відкрити публікацію</a>'; } catch {}
+            return '<div class="omni-comment-actions"><strong>Публічний коментар</strong> ' + (link || '<span>Посилання на публікацію недоступне</span>') +
+                '<button type="button" class="omni-secondary-action" data-comment-reply="public_comment" data-message-id="' + Number(message.id) + '">Відповісти публічно</button>' +
+                '<button type="button" class="omni-secondary-action" data-comment-reply="private_reply" data-message-id="' + Number(message.id) + '">Написати приватно</button></div>';
+        }
+        function filePolicy(conv) {
+            const advertised = omniAccountForChannel(conv?.channel)?.attachmentTypes;
+            if (Array.isArray(advertised)) return advertised;
+            return ['telegram', 'viber', 'facebook', 'instagram'].includes(conv?.channel)
+                ? ['image/jpeg', 'image/png', ...(conv.channel === 'instagram' ? [] : ['application/pdf'])].map(mime => ({ mime,
+                    maxBytes: (mime === 'application/pdf' ? 10 : conv.channel === 'viber' ? 1 : conv.channel === 'instagram' ? 8 : 10) * 1024 * 1024 })) : [];
+        }
+        function renderFileComposer(conv = currentConversation()) {
+            const policy = filePolicy(conv);
+            const draft = attachmentDrafts.get(selectedDraftKey);
+            $('omniChooseFile').disabled = !canSendConversation(conv) || isSending || !policy.length || !!draft?.uploading;
+            $('omniFileInput').accept = policy.map(item => item.mime).join(',');
+            $('omniFileHint').textContent = policy.length ? policy.map(item => item.mime.split('/')[1].toUpperCase() + ' ≤ ' + item.maxBytes / 1024 / 1024 + ' МБ').join(' · ') : 'Цей канал не підтримує вкладення';
+            $('omniSelectedFile').textContent = draft ? draft.filename + ' · ' + Math.ceil(draft.size / 1024) + ' КБ' + (draft.uploading ? ' · Збереження…' : '') : '';
+            $('omniCancelFile').hidden = !draft;
+            $('omniCancelFile').disabled = isSending;
+            if (draft?.uploading) sendBtn.disabled = true;
+            const isComment = String(conv?.externalId || '').startsWith('comment:');
+            const reply = commentReplyDrafts.get(selectedDraftKey);
+            if (isComment) { $('omniChooseFile').disabled = true; if (!reply) sendBtn.disabled = true; }
+            $('omniReplyTarget').textContent = reply ? (reply.mode === 'public_comment' ? 'Відповідь буде публічною.' : 'Одна приватна відповідь автору; подальше листування — після його відповіді.')
+                : isComment ? 'Оберіть під коментарем публічну або приватну відповідь.' : '';
+        }
+        async function chooseAttachment(file) {
+            if (!file || !currentConvId || isSending) return;
+            const conv = currentConversation(), key = selectedDraftKey, id = currentConvId, epoch = workspaceEpoch, context = getOmniBusinessContext();
+            const policy = filePolicy(conv).find(item => item.mime === file.type);
+            if (!policy || !file.size || file.size > policy.maxBytes) { setSendFeedback(null, 'Формат або розмір файлу не підтримується цим каналом.'); return; }
+            const draft = { filename: file.name, size: file.size, uploading: true };
+            attachmentDrafts.set(key, draft); updateSendControls(conv);
+            try {
+                const body = new FormData(); body.append('file', file);
+                const headers = { ...getHeaders(), 'X-Business-Context': context }; delete headers['Content-Type']; delete headers['content-type'];
+                const response = await fetch(omniApiUrl('/conversations/' + id + '/attachments', context), { method: 'POST', headers, body });
+                const result = await response.json();
+                if (!response.ok || !result.success) throw new Error(result.error || 'Не вдалося зберегти файл.');
+                if (attachmentDrafts.get(key) === draft) attachmentDrafts.set(key, result.data);
+            } catch (error) {
+                if (attachmentDrafts.get(key) === draft) attachmentDrafts.delete(key);
+                if (key === selectedDraftKey && epoch === workspaceEpoch) setSendFeedback(null, error.message);
+            } finally { if (key === selectedDraftKey && epoch === workspaceEpoch) updateSendControls(currentConversation()); }
+        }
         function saveCurrentDraft() {
             if (selectedDraftKey) conversationDrafts.set(selectedDraftKey, {
                 text: input.value,
@@ -4287,6 +4361,7 @@
             input.value = draft.text;
             input.style.height = 'auto';
             isSending = pendingSends.has(selectedDraftKey);
+            renderFileComposer(conv);
             assistantRequestSeq++;
             leadAssistantState.analysis = null;
             leadAssistantState.loading = false;
@@ -4304,6 +4379,7 @@
             messages.style.display = 'flex';
             inputArea.style.display = 'flex';
             quickRepliesEl.style.display = 'flex';
+            resizeComposer();
 
             $('omniChatName').textContent = conv.customerName || conv.externalId;
             $('omniChatChannel').innerHTML = renderChannelBadge(conv.channel, 'header') + replyWaitingBadge(conv, 'omni-reply-state');
@@ -4413,7 +4489,9 @@
         async function sendMessage() {
             const text = input.value.trim();
             const conv = currentConversation();
-            if (!text || !currentConvId || isSending) return;
+            const attachment = attachmentDrafts.get(selectedDraftKey);
+            const commentReply = commentReplyDrafts.get(selectedDraftKey);
+            if ((!text && !attachment?.id) || attachment?.uploading || !currentConvId || isSending) return;
             if (!canSendConversation(conv)) {
                 updateSendControls(conv);
                 return;
@@ -4424,8 +4502,9 @@
             const sendContext = getOmniBusinessContext();
             const replyExpected = !!(replyExpectedEl && replyExpectedEl.checked);
             let request = sendRequests.get(draftKey);
-            if (!request || request.text !== text) {
-                request = { text, id: Array.from(crypto.getRandomValues(new Uint8Array(20)), value => value.toString(16).padStart(2, '0')).join('') };
+            const replyKey = JSON.stringify(commentReply || null);
+            if (!request || request.text !== text || request.checksum !== attachment?.checksum || request.replyKey !== replyKey) {
+                request = { text, checksum: attachment?.checksum, replyKey, id: Array.from(crypto.getRandomValues(new Uint8Array(20)), value => value.toString(16).padStart(2, '0')).join('') };
                 sendRequests.set(draftKey, request);
             }
             saveCurrentDraft();
@@ -4436,7 +4515,7 @@
             const retryKey = 'omni-send-retry:' + draftKey;
             try {
                 if (crypto.subtle) {
-                    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text))), value => value.toString(16).padStart(2, '0')).join('');
+                    const digest = Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(text + (attachment ? '\nattachment:' + attachment.checksum : '') + (commentReply ? '\nreply:' + replyKey : '')))), value => value.toString(16).padStart(2, '0')).join('');
                     const previous = JSON.parse(sessionStorage.getItem(retryKey) || 'null');
                     if (previous?.digest === digest && /^[a-f0-9]{40}$/.test(previous.id)) request.id = previous.id;
                     sessionStorage.setItem(retryKey, JSON.stringify({ digest, id: request.id }));
@@ -4454,12 +4533,17 @@
                 body: JSON.stringify({
                     text,
                     client_request_id: request.id,
+                    attachment_id: attachment?.id,
+                    reply_to_message_id: commentReply?.messageId,
+                    reply_mode: commentReply?.mode,
                     reply_expected: replyExpected
                 })
             });
 
             pendingSends.delete(draftKey);
             if (res.success) sendRequests.delete(draftKey);
+            if (res.success && attachmentDrafts.get(draftKey) === attachment) attachmentDrafts.delete(draftKey);
+            if (res.success && commentReplyDrafts.get(draftKey) === commentReply) commentReplyDrafts.delete(draftKey);
             if (res.success) { try { sessionStorage.removeItem(retryKey); } catch {} }
             const isCurrent = epoch === workspaceEpoch && convId === currentConvId && draftKey === selectedDraftKey;
             if (res.success && conversationDrafts.get(draftKey)?.text.trim() === text) conversationDrafts.delete(draftKey);
@@ -4538,6 +4622,15 @@
         }
 
         // ---- Events ----
+        messages.addEventListener('click', event => {
+            const button = event.target.closest('[data-comment-reply]');
+            if (!button || !currentConvId || isSending) return;
+            commentReplyDrafts.set(selectedDraftKey, { messageId: Number(button.dataset.messageId), mode: button.dataset.commentReply });
+            attachmentDrafts.delete(selectedDraftKey); updateSendControls(currentConversation()); input.focus();
+        });
+        $('omniChooseFile').addEventListener('click', () => $('omniFileInput').click());
+        $('omniFileInput').addEventListener('change', event => { const file = event.target.files[0]; event.target.value = ''; chooseAttachment(file); });
+        $('omniCancelFile').addEventListener('click', () => { if (!isSending) { attachmentDrafts.delete(selectedDraftKey); updateSendControls(currentConversation()); } });
         $('omniOnlyMine').addEventListener('change', event => { onlyMine = event.target.checked; loadConversations(); });
         $('omniConversationStatus').addEventListener('change', event => updateConversationField(event.target, 'status'));
         $('omniAssignee').addEventListener('change', event => updateConversationField(event.target, 'assigned_to'));
@@ -4585,11 +4678,12 @@
             const label = button.textContent;
             button.disabled = true; button.textContent = 'Завантаження…';
             try {
-                const response = await fetch(omniApiUrl('/messages/' + button.dataset.omniAttachment + '/attachment'), { headers: getHeaders() });
+                const response = await fetch(omniApiUrl('/messages/' + button.dataset.omniAttachment + '/attachment' + (button.dataset.fileId ? '?attachmentId=' + encodeURIComponent(button.dataset.fileId) : '')), { headers: getHeaders() });
                 if (!response.ok) throw new Error((await response.json()).error || 'Не вдалося завантажити');
                 const blobUrl = URL.createObjectURL(await response.blob());
                 const link = document.createElement('a'); link.href = blobUrl;
-                link.download = response.headers.get('Content-Disposition')?.match(/filename="([^"]+)"/)?.[1] || 'omni-attachment';
+                const disposition = response.headers.get('Content-Disposition') || '';
+                link.download = disposition.includes("filename*=UTF-8''") ? decodeURIComponent(disposition.split("filename*=UTF-8''")[1]) : disposition.match(/filename="([^"]+)"/)?.[1] || 'omni-attachment';
                 link.click(); setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
                 button.textContent = label;
             } catch (error) { button.textContent = error.message + ' · Повторити'; }
@@ -4633,17 +4727,29 @@
 
         $('omniSendBtn').addEventListener('click', sendMessage);
         input.addEventListener('keydown', e => {
-            if (e.key === 'Enter' && !e.shiftKey) {
+            if (e.key === 'Enter' && !e.shiftKey && !e.isComposing && e.keyCode !== 229) {
                 e.preventDefault();
                 sendMessage();
             }
         });
 
         // Auto-resize textarea
-        input.addEventListener('input', () => {
+        function resizeComposer() {
             input.style.height = 'auto';
             input.style.height = Math.min(input.scrollHeight, 120) + 'px';
-        });
+        }
+        input.addEventListener('input', resizeComposer);
+        function syncOmniViewport() {
+            const viewport = window.visualViewport;
+            const height = viewport?.height || window.innerHeight;
+            omniContainer.style.setProperty('--omni-viewport-height', height + 'px');
+            omniContainer.style.setProperty('--omni-viewport-top', (viewport?.offsetTop || 0) + 'px');
+            omniContainer.classList.toggle('omni-compact-input', height < 540);
+        }
+        window.addEventListener('resize', syncOmniViewport);
+        window.visualViewport?.addEventListener('resize', syncOmniViewport);
+        window.visualViewport?.addEventListener('scroll', syncOmniViewport);
+        syncOmniViewport();
 
         $('omniCloseConv').addEventListener('click', closeConversation);
         $('omniToggleAI').addEventListener('click', toggleAI);
@@ -4775,11 +4881,22 @@
         let searchTimeout;
         searchInput.addEventListener('input', () => {
             clearTimeout(searchTimeout);
+            conversationsRequestSeq++;
+            searchQuery = searchInput.value.trim();
+            $('omniClearSearch').hidden = !searchInput.value;
+            conversationQueryApplied = true;
             searchTimeout = setTimeout(() => {
-                searchQuery = searchInput.value.trim();
-                conversationQueryApplied = true;
                 loadConversations();
             }, 300);
+        });
+        function clearOmniSearch() {
+            searchInput.value = '';
+            searchInput.dispatchEvent(new Event('input'));
+            searchInput.focus();
+        }
+        $('omniClearSearch').addEventListener('click', clearOmniSearch);
+        searchInput.addEventListener('keydown', event => {
+            if (event.key === 'Escape' && searchInput.value) { event.preventDefault(); clearOmniSearch(); }
         });
 
         // Quick replies
@@ -4787,6 +4904,7 @@
             const btn = e.target.closest('.omni-quick-btn');
             if (btn && !btn.disabled && !input.disabled) {
                 input.value = btn.dataset.content;
+                resizeComposer();
                 input.focus();
             }
         });
@@ -4887,7 +5005,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.97"></script>
-    <script src="js/alerts.js?v=0.81.97"></script>
+<script src="js/ui.js?v=0.81.102"></script>
+    <script src="js/alerts.js?v=0.81.102"></script>
 </body>
 </html>

@@ -861,12 +861,34 @@ describe('payment outbox worker reconciliation', () => {
 
     it('does not repeat sale when an unknown operation has no provider receipt yet', async () => {
         const dbPool = FakeWorkerDb.oneJob({ id: 1, operationStatus: 'unknown', operationId: 'op-unknown', externalStage: 'sale_submit' });
+        const startedAt = Date.now();
         const provider = createProvider();
         const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-unknown' });
         assert.equal(result.failed, 1);
+        assert.equal(result.results[0].retryWakeupDelayMs, 2000);
         assert.equal(provider.calls.lookup.length, 1);
         assert.equal(provider.calls.create.length, 0);
+        assert.equal(dbPool.jobs[0].last_error_code, 'receipt_lookup_required_before_retry');
         assert.equal(dbPool.operations[0].status, 'unknown');
+        const retryDelayMs = new Date(dbPool.jobs[0].next_run_at).getTime() - startedAt;
+        assert.ok(retryDelayMs >= 1000 && retryDelayMs <= 6000, `expected short receipt lookup retry delay, got ${retryDelayMs}ms`);
+    });
+
+    it('schedules receipt-pending sale retry quickly without sending a second sale', async () => {
+        const dbPool = FakeWorkerDb.oneJob({ id: 1, operationId: 'op-pending' });
+        const startedAt = Date.now();
+        const provider = createProvider({ receiptOverrides: { status: 'CREATED' } });
+        const result = await processPaymentOutboxJobs({ dbPool, provider, batchSize: 1, lockedBy: 'worker-pending-retry' });
+
+        assert.equal(result.failed, 1);
+        assert.equal(provider.calls.create.length, 1);
+        assert.equal(provider.calls.lookup.length, 0);
+        assert.equal(dbPool.jobs[0].status, 'failed');
+        assert.equal(dbPool.jobs[0].last_error_code, 'provider_receipt_pending');
+        assert.equal(dbPool.operations[0].status, 'unknown');
+        assert.equal(result.results[0].retryWakeupDelayMs, 2000);
+        const retryDelayMs = new Date(dbPool.jobs[0].next_run_at).getTime() - startedAt;
+        assert.ok(retryDelayMs >= 1000 && retryDelayMs <= 6000, `expected short receipt retry delay, got ${retryDelayMs}ms`);
     });
 
     it('reconciles timeout-after-provider-success through lookup without a second receipt UUID', async () => {

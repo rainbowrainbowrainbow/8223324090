@@ -1,0 +1,1214 @@
+diff --git a/css/graduation.css b/css/graduation.css
+index 7a18a59fd..b5e5650f6 100644
+--- a/css/graduation.css
++++ b/css/graduation.css
+@@ -19,6 +19,9 @@
+     color: var(--gray-900);
+ }
+ 
++/* The shared page container already supplies the outer content spacing. */
++.page-container > .grad-page { padding: 0; }
++
+ /* === TABS === */
+ .grad-tabs {
+     display: flex;
+@@ -285,9 +288,9 @@
+     font-size: 14px;
+     font-weight: 600;
+     color: var(--gray-900);
+-    white-space: nowrap;
+-    overflow: hidden;
+-    text-overflow: ellipsis;
++    white-space: normal;
++    overflow-wrap: anywhere;
++    flex-wrap: wrap;
+     display: flex;
+     align-items: center;
+     gap: 6px;
+@@ -653,6 +656,7 @@
+ /* === PACKAGES === */
+ .grad-packages-kids-row {
+     display: flex;
++    flex-wrap: wrap;
+     align-items: center;
+     gap: 12px;
+     margin-bottom: 20px;
+@@ -660,6 +664,14 @@
+     color: var(--gray-700);
+ }
+ 
++.grad-packages-kids-row .grad-stepper input {
++    min-height: 44px;
++    background: var(--white);
++    color: var(--gray-900);
++    border: 1px solid var(--gray-300);
++    font-family: inherit;
++}
++
+ .grad-packages-grid {
+     display: grid;
+     grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+diff --git a/css/pages-products.css b/css/pages-products.css
+index cae7403c7..2e8d98a23 100644
+--- a/css/pages-products.css
++++ b/css/pages-products.css
+@@ -1,3 +1,53 @@
++.product-overview {
++    display: flex;
++    flex: 0 0 100%;
++    flex-wrap: wrap;
++    gap: 8px;
++    padding: 8px 4px 4px;
++    border-top: 1px solid var(--gray-200);
++}
++.product-overview a {
++    padding: 10px 14px;
++    border-radius: 10px;
++    color: var(--gray-900);
++    background: var(--gray-100);
++    text-decoration: none;
++    font-weight: 700;
++}
++.product-overview a[aria-current="page"] {
++    color: var(--primary-dark);
++    box-shadow: inset 0 0 0 2px var(--primary);
++}
++.product-overview a:focus-visible,
++.product-details summary:focus-visible {
++    outline: 2px solid var(--primary);
++    outline-offset: 3px;
++}
++.product-details {
++    min-width: 0;
++    border: 1px solid var(--gray-200);
++    border-radius: 12px;
++    background: var(--gray-50);
++    color: var(--gray-900);
++    overflow-wrap: anywhere;
++}
++.product-details summary { padding: 12px; cursor: pointer; font-weight: 800; }
++.product-details-content { display: grid; gap: 16px; padding: 0 12px 16px; }
++.product-detail-media {
++    display: grid;
++    place-items: center;
++    min-height: 96px;
++    border-radius: 10px;
++    background: var(--gray-100);
++    color: var(--gray-600);
++}
++.product-detail-media img { width: 100%; max-height: 360px; object-fit: contain; border-radius: inherit; }
++.product-detail-copy { min-width: 0; }
++.product-detail-copy p { white-space: pre-wrap; line-height: 1.6; margin: 8px 0 16px; }
++.product-load-state { padding: 24px; color: var(--gray-600); }
++.program-card .card-header { flex-wrap: wrap; gap: 8px; }
++.program-card .card-title, .kitchen-product-card .card-title { overflow-wrap: anywhere; }
++
+ .kitchen-product-card {
+     display: grid;
+     gap: 12px;
+diff --git a/designs.html b/designs.html
+index d573c63da..dac627d49 100644
+--- a/designs.html
++++ b/designs.html
+@@ -33,6 +33,16 @@
+     <link rel="preconnect" href="https://fonts.googleapis.com">
+     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
+     <style>
++        /* Screen-only graduation viewer; shared catalog and print styles stay unchanged. */
++        @media screen {
++            body.catalog-graduation-viewer-open #tabCatalogs > :not(#catalogViewer) { display: none !important; }
++            body.catalog-graduation-viewer-open .cat-title,
++            body.catalog-graduation-viewer-open .csvc-name { overflow-wrap: anywhere; }
++            body.catalog-graduation-viewer-open .cat-page { max-height: none; }
++            body.catalog-graduation-viewer-open .cat-body { overflow: visible; }
++            body.catalog-graduation-viewer-open .btn-catalog-nav:disabled { opacity: .45; cursor: default; }
++            body.catalog-graduation-viewer-open .btn-catalog-nav:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
++        }
+         /* ==========================================
+            DESIGN BOARD — page-specific styles
+            ========================================== */
+@@ -1353,7 +1363,7 @@
+                         </div>
+                         <div class="catalog-card-body">
+                             <div class="catalog-card-title">Випускні 2026</div>
+-                            <div class="catalog-card-meta">7 пакетів · <span id="catalogUpdated">—</span></div>
++                            <div class="catalog-card-meta"><span id="catalogPackageCount">Пакетів: —</span> · <span id="catalogUpdated">—</span></div>
+                             <div class="catalog-card-btns">
+                                 <button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog('graduation','Випускні 2026')" title="Зберегти як PDF">📄 PDF</button>
+                             </div>
+@@ -1366,12 +1376,12 @@
+                 <!-- Fullscreen catalog viewer -->
+                 <div class="catalog-viewer" id="catalogViewer" style="display:none;">
+                     <div class="catalog-viewer-nav">
+-                        <button type="button" class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
+-                        <span class="catalog-page-indicator" id="catalogPageIndicator">1 / 7</span>
+-                        <button type="button" class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
+-                        <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&#10005;</button>
++                        <button type="button" class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn" aria-label="Попередня сторінка">&#9664;</button>
++                        <span class="catalog-page-indicator" id="catalogPageIndicator">0 / 0</span>
++                        <button type="button" class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn" aria-label="Наступна сторінка">&#9654;</button>
++                        <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()" aria-label="Закрити каталог">&#10005;</button>
+                     </div>
+-                    <div class="catalog-pages-container" id="catalogPages"></div>
++                    <div class="catalog-pages-container" id="catalogPages" aria-live="polite"></div>
+                 </div>
+             </div>
+         </main>
+diff --git a/js/designs-page.js b/js/designs-page.js
+index f0d3b83e6..1b64c8a9d 100644
+--- a/js/designs-page.js
++++ b/js/designs-page.js
+@@ -1319,6 +1319,9 @@ const PAGE_THEMES = {
+ };
+ 
+ let catalogPackages = [];
++let catalogOpenGeneration = 0;
++let catalogMetadataGeneration = 0;
++let catalogViewerMessage = '';
+ let currentCatalogPage = 0;
+ let _viewerCatalogType = 'graduation'; // 'graduation' or auto-catalog slug
+ const CATALOG_UI_MODES = {
+@@ -1366,40 +1369,52 @@ function setCatalogUiMode(mode) {
+ }
+ 
+ async function loadCatalogs() {
++    const generation = ++catalogMetadataGeneration;
++    const countEl = document.getElementById('catalogPackageCount');
++    if (countEl) countEl.textContent = 'Пакетів: —';
+     try {
+         const res = await apiFetch('/api/graduation/packages');
+-        if (!res || !res.ok) return;
++        if (!res || !res.ok) return null;
+         const data = await res.json();
+-        catalogPackages = Array.isArray(data) ? data : [];
+-        const updatedEl = document.getElementById('catalogUpdated');
+-        if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
++        if (!Array.isArray(data)) return null;
++        if (generation === catalogMetadataGeneration) {
++            if (countEl) countEl.textContent = 'Пакетів: ' + data.length;
++            const updatedEl = document.getElementById('catalogUpdated');
++            if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
++        }
++        return data;
+     } catch (err) {
+         console.error('Load catalogs error:', err);
++        return null;
+     }
+ }
+ 
+ async function openCatalog(catalogId) {
+-    if (catalogId === 'graduation') {
+-        _viewerCatalogType = 'graduation';
+-        if (catalogPackages.length === 0) await loadCatalogs();
+-        if (catalogPackages.length > 0) renderCatalogViewer();
+-    } else {
+-        // Auto-catalog: fetch pages from API
+-        _viewerCatalogType = catalogId;
+-        try {
+-            const res = await apiFetch(`/api/catalogs/${catalogId}/pages`);
+-            if (!res || !res.ok) return;
++    const generation = ++catalogOpenGeneration;
++    _viewerCatalogType = catalogId;
++    catalogPackages = [];
++    catalogViewerMessage = 'Завантаження каталогу…';
++    renderCatalogViewer();
++    try {
++        let pages;
++        if (catalogId === 'graduation') {
++            pages = await loadCatalogs();
++        } else {
++            const res = await apiFetch(`/api/catalogs/${encodeURIComponent(catalogId)}/pages`);
++            if (!res || !res.ok) throw new Error('Catalog unavailable');
+             const data = await res.json();
+-            const pages = (data.pages || []).filter(p => p.is_active !== false);
+-            if (pages.length === 0) {
+-                if (typeof showNotification === 'function') showNotification('Каталог порожній — додайте сторінки', 'error');
+-                return;
+-            }
+-            catalogPackages = pages;
+-            renderCatalogViewer();
+-        } catch (err) {
+-            console.error('openCatalog auto error:', err);
++            pages = Array.isArray(data.pages) ? data.pages.filter(p => p.is_active !== false) : null;
+         }
++        if (generation !== catalogOpenGeneration) return;
++        if (!Array.isArray(pages)) throw new Error('Catalog unavailable');
++        catalogPackages = pages;
++        catalogViewerMessage = 'Каталог порожній';
++        renderCurrentPage();
++    } catch (err) {
++        if (generation !== catalogOpenGeneration) return;
++        catalogPackages = [];
++        catalogViewerMessage = 'Не вдалося завантажити каталог. Закрийте перегляд і спробуйте ще раз.';
++        renderCurrentPage();
+     }
+ }
+ function renderCatalogViewer() {
+@@ -1407,9 +1422,11 @@ function renderCatalogViewer() {
+     const viewer = document.getElementById('catalogViewer');
+     if (!viewer) return;
+     const inline = document.getElementById('inlineCatalogView');
+-    _catalogReturnMode = (document.body.classList.contains('catalog-inline-open') || (inline && inline.style.display !== 'none' && inline.offsetParent !== null))
+-        ? CATALOG_UI_MODES.INLINE
+-        : CATALOG_UI_MODES.LIST;
++    if (_catalogUiMode !== CATALOG_UI_MODES.VIEWER) {
++        _catalogReturnMode = (document.body.classList.contains('catalog-inline-open') || (inline && inline.style.display !== 'none' && inline.offsetParent !== null))
++            ? CATALOG_UI_MODES.INLINE
++            : CATALOG_UI_MODES.LIST;
++    }
+     setCatalogUiMode(CATALOG_UI_MODES.VIEWER);
+     renderCurrentPage();
+ 
+@@ -1418,6 +1435,7 @@ function renderCatalogViewer() {
+         document.removeEventListener('keydown', viewer._keyHandler);
+     }
+     viewer._keyHandler = (e) => {
++        if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
+         if (e.key === 'ArrowRight') catalogNext();
+         else if (e.key === 'ArrowLeft') catalogPrev();
+         else if (e.key === 'Escape') closeCatalog();
+@@ -1427,7 +1445,15 @@ function renderCatalogViewer() {
+ 
+ function renderCurrentPage() {
+     const pkg = catalogPackages[currentCatalogPage];
+-    if (!pkg) return;
++    const prev = document.getElementById('catalogPrevBtn');
++    const next = document.getElementById('catalogNextBtn');
++    if (prev) prev.disabled = !pkg || currentCatalogPage === 0;
++    if (next) next.disabled = !pkg || currentCatalogPage >= catalogPackages.length - 1;
++    if (!pkg) {
++        document.getElementById('catalogPages').textContent = catalogViewerMessage;
++        document.getElementById('catalogPageIndicator').textContent = '0 / 0';
++        return;
++    }
+     const html = _viewerCatalogType === 'graduation'
+         ? buildCatalogPageHtml(pkg)
+         : buildAutoPageHtml(pkg);
+@@ -1451,6 +1477,7 @@ function catalogPrev() {
+ }
+ 
+ function closeCatalog() {
++    ++catalogOpenGeneration;
+     const viewer = document.getElementById('catalogViewer');
+     if (viewer && viewer._keyHandler) {
+         document.removeEventListener('keydown', viewer._keyHandler);
+diff --git a/js/programs-page.js b/js/programs-page.js
+index 99d5126e7..ec8c77cc0 100644
+--- a/js/programs-page.js
++++ b/js/programs-page.js
+@@ -209,6 +209,8 @@ async function initPage() {
+     if (activeProductTab === 'catalogs') await loadCatalogEntries();
+     updateProductTabPanels();
+ 
++    bindProductRouteNavigation();
++
+     document.getElementById('addProductBtn')?.addEventListener('click', () => openProductForm());
+     document.getElementById('saveProductBtn')?.addEventListener('click', () => saveProduct());
+     document.getElementById('saveProductNextBtn')?.addEventListener('click', () => saveProduct({ addNext: true }));
+@@ -337,8 +339,7 @@ function readInitialProductTab() {
+     if (Object.prototype.hasOwnProperty.call(PRODUCT_CATEGORY_HASH_TO_ID, hash)) return 'programs';
+     if (hash === '#catalogs') return 'catalogs';
+     if (hash === '#kitchen' || hash === '#kitchen-cakes' || hash === '#kitchen-menu') return 'kitchen';
+-    const stored = safeReadProductPreference(PRODUCT_TAB_STORAGE_KEY, 'programs');
+-    return ['programs', 'kitchen', 'catalogs'].includes(stored) ? stored : 'programs';
++    return 'programs';
+ }
+ 
+ function readInitialCategory() {
+@@ -356,6 +357,9 @@ let activeKitchenTab = readInitialKitchenTab();
+ let activeMenuSection = 'all';
+ let currentCategory = readInitialCategory();
+ let allProducts = [];
++let productsLoadGeneration = 0;
++let productsLoadState = 'ready';
++let productRouteNavigationBound = false;
+ let productCatalogs = [];
+ let catalogEntriesLoaded = false;
+ let editingDocumentProductId = null;
+@@ -537,9 +541,52 @@ function getBusinessHash() {
+     return '';
+ }
+ 
+-function syncProductsRouteState() {
++function syncProductsRouteState(mode = 'push') {
+     const hash = getBusinessHash();
+-    window.history.replaceState(null, '', hash || window.location.pathname);
++    const url = window.location.pathname + window.location.search + hash;
++    if (url !== window.location.pathname + window.location.search + window.location.hash) {
++        window.history[mode === 'replace' ? 'replaceState' : 'pushState'](null, '', url);
++    }
++    renderProductOverviewState();
++}
++
++function renderProductOverviewState() {
++    document.querySelectorAll('[data-product-route]').forEach(link => {
++        const hash = link.dataset.productRoute;
++        const active = hash === getBusinessHash();
++        if (active) link.setAttribute('aria-current', 'page');
++        else link.removeAttribute('aria-current');
++    });
++}
++
++function bindProductRouteNavigation() {
++    if (productRouteNavigationBound) return;
++    productRouteNavigationBound = true;
++    const restore = () => {
++        // Business context remains owned by the shared context lifecycle.
++        if (!isParkProductsContext()) return;
++        const hash = window.location.hash;
++        if (hash && !PRODUCT_CATEGORY_HASH_TO_ID[hash]
++            && !['#catalogs', '#kitchen', '#kitchen-cakes', '#kitchen-menu'].includes(hash)) return;
++        activeProductTab = readInitialProductTab();
++        currentCategory = readInitialCategory();
++        activeKitchenTab = readInitialKitchenTab();
++        closeProductForm();
++        renderProductIaTabs();
++        renderCategoryTabs();
++        renderKitchenSubtabs();
++        renderMenuSectionFilter();
++        updateProductTabPanels();
++        renderProducts();
++        if (activeProductTab === 'catalogs' && !catalogEntriesLoaded) void loadCatalogEntries();
++    };
++    window.addEventListener('popstate', restore);
++    window.addEventListener('hashchange', restore);
++    const refreshCatalogAccess = () => {
++        if (catalogEntriesLoaded) renderCatalogEntries();
++    };
++    window.addEventListener('permissions:lifecycle', refreshCatalogAccess);
++    window.addEventListener('roleSwitched', refreshCatalogAccess);
+ }
+ 
+ function renderProductBusinessSelector() {
+@@ -649,7 +696,7 @@ async function applyProductBusinessContext(context) {
+     if (nextContext === activeBusinessContext) return;
+     activeBusinessContext = nextContext;
+     closeProductForm();
+-    syncProductsRouteState();
++    syncProductsRouteState('replace');
+     renderProductBusinessSelector();
+     renderProductIaTabs();
+     renderKitchenSubtabs();
+@@ -674,6 +721,15 @@ function renderProductIaTabs() {
+             ${tab.name}
+         </button>
+     `).join('');
++    if (isParkProductsContext()) {
++        container.insertAdjacentHTML('beforeend', `<nav class="product-overview" aria-label="Категорії продуктів">
++            <a href="#animation" data-product-route="#animation">Анімації</a>
++            <a href="#kitchen-cakes" data-product-route="#kitchen-cakes">Торти</a>
++            <a href="#kitchen-menu" data-product-route="#kitchen-menu">Меню</a>
++            <a href="#catalogs" data-product-route="#catalogs">Каталоги</a>
++        </nav>`);
++        renderProductOverviewState();
++    }
+     container.querySelectorAll('[data-product-tab]').forEach(button => {
+         if (isParkProductsContext()) {
+             button.addEventListener('click', () => setProductTab(button.dataset.productTab));
+@@ -726,6 +782,7 @@ function updateProductTabPanels() {
+         const context = getActiveBusinessContext();
+         pageSubtitle.textContent = context.subtitle;
+     }
++    if (parkContext && activeProductTab === 'catalogs' && catalogEntriesLoaded) renderCatalogEntries();
+ }
+ 
+ function renderKitchenSubtabs() {
+@@ -842,23 +899,38 @@ function renderCategoryTabs() {
+ // ==========================================
+ 
+ async function loadProducts() {
+-    const grid = document.getElementById('productsGrid');
+-    const kitchenGrid = document.getElementById('kitchenGrid');
+-    if (grid) grid.innerHTML = '<div class="loading-spinner">Завантаження продуктів…</div>';
+-    if (kitchenGrid) kitchenGrid.innerHTML = '<div class="loading-spinner">Завантаження кухні…</div>';
++    const generation = ++productsLoadGeneration;
++    const context = activeBusinessContext;
++    allProducts = [];
++    productsLoadState = 'loading';
++    renderProducts();
+     try {
+-        allProducts = await apiGetProducts(true, { businessContext: getProductApiBusinessContext() }) || [];
++        const products = await apiGetProducts(true, { businessContext: getProductApiBusinessContext() });
++        if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;
++        if (!Array.isArray(products)) throw new Error('Products unavailable');
++        allProducts = products;
++        productsLoadState = 'ready';
+         renderMenuSectionFilter();
+         renderProducts();
+     } catch (err) {
++        if (generation !== productsLoadGeneration || context !== activeBusinessContext) return;
++        productsLoadState = 'error';
+         console.error('loadProducts error:', err);
+         showNotification('Помилка завантаження продуктів', 'error');
+-        if (grid) grid.innerHTML = '';
+-        if (kitchenGrid) kitchenGrid.innerHTML = '';
++        renderProducts();
+     }
+ }
+ 
+ function renderProducts() {
++    if (productsLoadState !== 'ready') {
++        const message = productsLoadState === 'loading'
++            ? 'Завантаження продуктів…' : 'Не вдалося завантажити продукти. Оновіть сторінку, щоб повторити.';
++        for (const id of ['productsGrid', 'kitchenGrid', 'maysternyaProductsGrid']) {
++            const host = document.getElementById(id);
++            if (host) host.innerHTML = `<div class="product-load-state" role="status">${message}</div>`;
++        }
++        return;
++    }
+     if (!isParkProductsContext()) {
+         renderMaysternyaProducts();
+         syncProductReadOnlyUi();
+@@ -1515,7 +1587,7 @@ function renderProgramProducts(grid, canManage) {
+                         <span class="card-title">${escapeHtml(p.name)}</span>
+                         ${p.isActive === false ? '<span class="badge badge-normal">неактивна</span>' : ''}
+                     </div>
+-                    <span class="program-price">${formatPrice(p.price)}${p.isPerChild ? '/дит' : ''}</span>
++                    <span class="program-price">${renderProductPrice(p)}</span>
+                 </div>
+                 <div class="card-meta">
+                     <span>${escapeHtml(p.code)}</span>
+@@ -1524,7 +1596,8 @@ function renderProgramProducts(grid, canManage) {
+                     ${p.ageRange ? `<span>${escapeHtml(p.ageRange)}</span>` : ''}
+                     ${p.kidsCapacity ? `<span>${escapeHtml(p.kidsCapacity)} діт</span>` : ''}
+                 </div>
+-                ${p.description ? `<p class="program-desc">${escapeHtml(p.description).substring(0, 120)}${p.description.length > 120 ? '...' : ''}</p>` : ''}
++                ${p.description ? `<p class="program-desc">${escapeHtml(p.description.substring(0, 120))}${p.description.length > 120 ? '...' : ''}</p>` : ''}
++                ${renderProductDetails(p)}
+                 ${renderProgramIconPanel(p, canManage)}
+                 ${renderDocumentPanel(p, canManage)}
+                 ${canManage ? `
+@@ -1567,11 +1640,45 @@ function renderMenuCompletenessBadge(product) {
+ }
+ 
+ function renderKitchenPrice(product) {
+-    if (Number(product.price || 0) > 0) {
+-        return `${formatPrice(product.price)}${product.servingUnit ? `/${escapeHtml(product.servingUnit)}` : (product.isPerChild ? '/дит' : '')}`;
+-    }
+-    if (product.priceVariantNote) return 'Варіанти';
+-    return formatPrice(product.price);
++    return renderProductPrice(product, true);
++}
++
++function renderProductPrice(product, kitchen = false) {
++    const hasPrice = product.price !== null && product.price !== undefined && product.price !== ''
++        && Number.isFinite(Number(product.price));
++    if (!hasPrice) return product.priceVariantNote ? 'Варіанти' : 'Ціну не вказано';
++    // Preserve the existing variant-price label for zero-valued variants.
++    if (Number(product.price) === 0 && product.priceVariantNote) return 'Варіанти';
++    const unit = kitchen && product.servingUnit ? `/${escapeHtml(product.servingUnit)}`
++        : (product.isPerChild ? '/дит' : '');
++    return `${formatPrice(product.price)}${unit}`;
++}
++
++function productDetailImageError(img) {
++    const media = img?.closest('.product-detail-media');
++    if (media) media.textContent = 'Зображення недоступне';
++}
++
++function renderProductDetails(product) {
++    const kitchen = getProductDomain(product) === 'kitchen';
++    const imageUrl = kitchen ? productMenuImageUrl(product) : productMenuSafeImageUrl(product.iconUrl);
++    const fields = [['Опис', product.description]];
++    if (kitchen) fields.push(['Короткий опис', product.shortDescription]);
++    const text = fields.filter(([, value]) => value).map(([label, value]) =>
++        `<div><strong>${label}</strong><p>${escapeHtml(String(value))}</p></div>`).join('');
++    return `<details class="product-details" data-product-id="${escapeHtml(String(product.id))}" data-business-context="${escapeHtml(product.businessContext || '')}">
++        <summary>Детальніше</summary>
++        <div class="product-details-content">
++            <div class="product-detail-media">${imageUrl
++                ? `<img loading="lazy" src="${escapeHtml(imageUrl)}" alt="${escapeHtml(product.name || '')}" onerror="productDetailImageError(this)">`
++                : 'Зображення відсутнє'}</div>
++            <div class="product-detail-copy"><strong>${escapeHtml(product.name || '')}</strong>
++                <p>${renderProductPrice(product, kitchen)}</p>
++                ${text || '<p>Опис ще не додано</p>'}
++                ${kitchen ? renderKitchenDetailPanel(product, true) : ''}
++            </div>
++        </div>
++    </details>`;
+ }
+ 
+ function renderKitchenProducts(grid, canManage) {
+@@ -1627,6 +1734,7 @@ function renderKitchenProducts(grid, canManage) {
+                     ${renderKitchenMenuAiActions(p, canManage)}
+                 </div>
+                 ${renderKitchenDetailPanel(p)}
++                ${renderProductDetails(p)}
+                 ${renderKitchenMenuImageStudio(p, canManage)}
+                 ${canManage ? `
+                     <div class="card-actions">
+@@ -1640,7 +1748,7 @@ function renderKitchenProducts(grid, canManage) {
+     }).join('');
+ }
+ 
+-function renderKitchenDetailPanel(product) {
++function renderKitchenDetailPanel(product, full = false) {
+     const items = [
+         ['Розділ', product.menuSection],
+         ['Складська техкарта', product.techCardMode === 'detailed' ? `детальна · ${Number(product.techCardLinkedIngredientCount || 0)} з ${Number(product.techCardIngredientCount || 0)} позицій привʼязано до складу` : null],
+@@ -1659,7 +1767,7 @@ function renderKitchenDetailPanel(product) {
+         .map(([label, value]) => `
+             <div class="kitchen-detail-item">
+                 <strong>${escapeHtml(label)}</strong>
+-                <span>${escapeHtml(String(value)).substring(0, 180)}${String(value).length > 180 ? '...' : ''}</span>
++                <span>${escapeHtml(full ? String(value) : String(value).substring(0, 180))}${!full && String(value).length > 180 ? '...' : ''}</span>
+             </div>
+         `)
+         .join('');
+@@ -2016,6 +2124,12 @@ function renderCatalogEntries() {
+         return;
+     }
+ 
++    const canOpenGraduation = isParkProductsContext()
++        && productBusinessScope().mode === 'single'
++        && typeof getPermissionLifecycle === 'function'
++        && getPermissionLifecycle()?.status === 'ready'
++        && typeof canAccessPage === 'function'
++        && canAccessPage('/graduation');
+     grid.innerHTML = productCatalogs.map(catalog => `
+         <article class="product-catalog-card">
+             <div class="product-catalog-icon">${escapeHtml(catalog.emoji || '📂')}</div>
+@@ -2031,6 +2145,7 @@ function renderCatalogEntries() {
+             <div class="product-catalog-actions">
+                 <a class="btn-page-primary" href="${escapeHtml(catalog.href || '/designs#catalogs')}">${escapeHtml(catalog.actionLabel || 'Відкрити каталог')}</a>
+                 ${catalog.secondaryHref ? `<a class="btn-page-secondary" href="${escapeHtml(catalog.secondaryHref)}">У Designs</a>` : ''}
++                ${catalog.id === 'graduation' && canOpenGraduation ? '<a class="btn-page-secondary" href="/graduation">Конструктор випускного</a>' : ''}
+             </div>
+         </article>
+     `).join('');
+diff --git a/tests/products-demo-flow.test.js b/tests/products-demo-flow.test.js
+new file mode 100644
+--- /dev/null
++++ b/tests/products-demo-flow.test.js
+@@ -0,0 +1,204 @@
++'use strict';
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const vm = require('node:vm');
++const { JSDOM } = require('jsdom');
++const ROOT = path.resolve(__dirname, '..');
++
++function setup(hash = '', stored = 'kitchen') {
++    const dom = new JSDOM(fs.readFileSync(path.join(ROOT, 'programs.html'), 'utf8'), {
++        url: `http://localhost/programs?fixture=1${hash}`, runScripts: 'outside-only'
++    });
++    const w = dom.window;
++    w.localStorage.setItem('pzp_products_active_tab_park_zakrevsky', stored);
++    w.AppState = { currentUser: { role: 'viewer' } };
++    w.formatPrice = value => `${Number(value)} ₴`;
++    w.showNotification = () => {};
++    w.EventCards = { renderEventCardImage: () => '' };
++    vm.runInContext(fs.readFileSync(path.join(ROOT, 'js/programs-page.js'), 'utf8')
++        .replace("document.addEventListener('DOMContentLoaded', initPage);", ''), dom.getInternalVMContext());
++    return { w, close: () => dom.window.close() };
++}
++
++test('constructor link is unique, graduation-only and requires ready allowed single-business access', () => {
++    const h = setup('#catalogs');
++    try {
++        h.w.eval("productCatalogs = [{id:'graduation',title:'Graduation'}, {id:'other',title:'Other'}]");
++        for (const [status, allowed, mode, count] of [
++            ['pending', true, 'single', 0], ['ready', false, 'single', 0],
++            ['ready', true, 'aggregate', 0], ['ready', true, 'single', 1]
++        ]) {
++            h.w.getPermissionLifecycle = () => ({ status });
++            h.w.canAccessPage = page => page === '/graduation' && allowed;
++            h.w.CrmBusinessContext = { scope: () => ({ mode, activeContext: 'event_genix' }) };
++            h.w.renderCatalogEntries();
++            h.w.renderCatalogEntries();
++            assert.equal(h.w.document.querySelectorAll('#catalogsGrid a[href="/graduation"]').length, count);
++        }
++    } finally { h.close(); }
++});
++
++test('reopening cached catalogs rechecks constructor visibility without another catalog request', async () => {
++    const h = setup('#catalogs');
++    try {
++        h.w.eval("productCatalogs = [{id:'graduation',title:'Graduation'}]; catalogEntriesLoaded = true");
++        h.w.getPermissionLifecycle = () => ({ status: 'ready' });
++        h.w.canAccessPage = () => true;
++        h.w.renderCatalogEntries();
++        assert.ok(h.w.document.querySelector('#catalogsGrid a[href="/graduation"]'));
++        await h.w.setProductTab('programs');
++        h.w.canAccessPage = () => false;
++        h.w.apiGetProductCatalogs = () => { throw new Error('Cached navigation must not fetch'); };
++        await h.w.setProductTab('catalogs');
++        assert.equal(h.w.document.querySelector('#catalogsGrid a[href="/graduation"]'), null);
++        h.w.bindProductRouteNavigation();
++        h.w.canAccessPage = () => true;
++        h.w.dispatchEvent(new h.w.Event('permissions:lifecycle'));
++        assert.ok(h.w.document.querySelector('#catalogsGrid a[href="/graduation"]'));
++        h.w.canAccessPage = () => false;
++        h.w.dispatchEvent(new h.w.Event('roleSwitched'));
++        assert.equal(h.w.document.querySelector('#catalogsGrid a[href="/graduation"]'), null);
++    } finally { h.close(); }
++});
++
++test('bare Products starts with programs despite saved kitchen; explicit old hashes still win', () => {
++    for (const [hash, tab, category, kitchen] of [
++        ['', 'programs', 'all', 'cake'], ['#animation', 'programs', 'animation', 'cake'],
++        ['#animations', 'programs', 'animation', 'cake'], ['#kitchen', 'kitchen', 'all', 'cake'],
++        ['#kitchen-cakes', 'kitchen', 'all', 'cake'], ['#kitchen-menu', 'kitchen', 'all', 'menu'],
++        ['#catalogs', 'catalogs', 'all', 'cake'], ['#quest', 'programs', 'quest', 'cake']
++    ]) {
++        const h = setup(hash);
++        try {
++            assert.equal(h.w.readInitialProductTab(), tab, hash || 'bare');
++            assert.equal(h.w.readInitialCategory(), category);
++            assert.equal(h.w.readInitialKitchenTab(), kitchen);
++        } finally { h.close(); }
++    }
++});
++
++test('local overview exposes category links and navigation keeps query and history', async () => {
++    const h = setup();
++    try {
++        h.w.renderProductIaTabs();
++        h.w.bindProductRouteNavigation();
++        for (const hash of ['#animation', '#kitchen-cakes', '#kitchen-menu', '#catalogs']) {
++            assert.ok(h.w.document.querySelector(`[data-product-route="${hash}"]`));
++        }
++        await h.w.setProductTab('kitchen');
++        h.w.setKitchenTab('menu');
++        assert.equal(h.w.location.hash, '#kitchen-menu');
++        assert.equal(h.w.location.search, '?fixture=1');
++        assert.equal(h.w.history.length, 3);
++        const restored = new Promise(resolve => h.w.addEventListener('popstate', resolve, { once: true }));
++        h.w.history.back();
++        await restored;
++        assert.equal(h.w.location.hash, '#kitchen-cakes');
++        assert.equal(h.w.eval('activeKitchenTab'), 'cake');
++        assert.equal(h.w.history.length, 3);
++    } finally { h.close(); }
++});
++
++test('same-document sidebar hash change updates products without another history entry', () => {
++    const h = setup();
++    try {
++        h.w.bindProductRouteNavigation();
++        h.w.history.pushState(null, '', '?fixture=1#animation');
++        h.w.dispatchEvent(new h.w.HashChangeEvent('hashchange'));
++        assert.equal(h.w.eval('currentCategory'), 'animation');
++        assert.equal(h.w.eval('activeProductTab'), 'programs');
++        assert.equal(h.w.history.length, 2);
++    } finally { h.close(); }
++});
++
++test('a slow earlier products request cannot replace the newer records', async () => {
++    const h = setup();
++    try {
++        let resolveOld;
++        h.w.apiGetProducts = () => new Promise(resolve => { resolveOld = resolve; });
++        const old = h.w.loadProducts();
++        h.w.apiGetProducts = async () => [{ id: 'new', name: 'New', domain: 'program', category: 'animation', price: 0 }];
++        await h.w.loadProducts();
++        resolveOld([{ id: 'old', name: 'Old', price: 20 }]);
++        await old;
++        assert.equal(h.w.eval('allProducts[0].id'), 'new');
++        assert.ok(h.w.document.querySelector('[data-id="new"]'));
++        assert.equal(h.w.document.querySelector('[data-id="old"]'), null);
++    } finally { h.close(); }
++});
++
++test('context switch clears old details even when both contexts contain the same product ID', async () => {
++    const h = setup();
++    try {
++        const requests = [];
++        let resolveNew;
++        h.w.apiGetProducts = async (_, options) => {
++            requests.push(options.businessContext);
++            return [{ id: 'same', name: 'Park record', businessContext: 'event_genix', category: 'animation' }];
++        };
++        await h.w.loadProducts();
++        h.w.apiGetProducts = (_, options) => {
++            requests.push(options.businessContext);
++            return new Promise(resolve => { resolveNew = resolve; });
++        };
++        const pending = h.w.applyProductBusinessContext('maysternya_doli');
++        assert.doesNotMatch(h.w.document.getElementById('productsGrid').textContent, /Park record/);
++        resolveNew([{ id: 'same', name: 'Other record', businessContext: 'maysternya_doli' }]);
++        await pending;
++        assert.deepEqual(requests, ['event_genix', 'maysternya_doli']);
++        const host = h.w.document.createElement('div');
++        host.innerHTML = h.w.renderProductDetails(h.w.eval('allProducts[0]'));
++        assert.equal(host.querySelector('details').dataset.businessContext, 'maysternya_doli');
++        assert.doesNotMatch(host.textContent, /Park record/);
++    } finally { h.close(); }
++});
++
++test('product failure stays an error across tab changes, while [] is a genuine empty state', async () => {
++    const h = setup();
++    try {
++        h.w.apiGetProducts = async () => null;
++        await h.w.loadProducts();
++        await h.w.setProductTab('kitchen');
++        assert.match(h.w.document.getElementById('kitchenGrid').textContent, /Не вдалося/);
++        h.w.apiGetProducts = async () => [];
++        await h.w.loadProducts();
++        assert.doesNotMatch(h.w.document.getElementById('kitchenGrid').textContent, /Не вдалося/);
++    } finally { h.close(); }
++});
++
++test('details preserve full escaped text, identity, zero price and neutral absent image', () => {
++    const h = setup();
++    try {
++        const description = '<script>alert(1)</script> ' + 'Довгий опис & '.repeat(40);
++        for (const type of ['animation', 'cake', 'menu']) {
++            const product = { id: `fixture-${type}`, businessContext: 'event_genix', name: type,
++                domain: type === 'animation' ? 'program' : 'kitchen', kitchenType: type,
++                category: type, description, price: 0, servingUnit: 'порція' };
++            const host = h.w.document.createElement('div');
++            host.innerHTML = h.w.renderProductDetails(product);
++            assert.ok(host.querySelector('details summary'));
++            assert.equal(host.querySelector('script'), null);
++            assert.ok(host.textContent.includes(description));
++            assert.match(host.textContent, /0 ₴/);
++            assert.match(host.textContent, /Зображення відсутнє/);
++            assert.equal(host.querySelector('details').dataset.productId, product.id);
++        }
++    } finally { h.close(); }
++});
++
++test('missing price is not zero; zero retains kitchen unit and missing image fails locally', () => {
++    const h = setup();
++    try {
++        assert.match(h.w.renderKitchenPrice({ price: null }), /Ціну не вказано/);
++        assert.match(h.w.renderKitchenPrice({ price: 0, servingUnit: '100 г' }), /0 ₴\/100 г/);
++        assert.equal(h.w.renderKitchenPrice({ price: null, priceVariantNote: 'За розміром' }), 'Варіанти');
++        const host = h.w.document.createElement('div');
++        host.innerHTML = h.w.renderProductDetails({ id: 'image', price: 50, iconUrl: '/missing.png' });
++        const img = host.querySelector('img');
++        h.w.productDetailImageError(img);
++        assert.equal(host.querySelector('img'), null);
++        assert.match(host.textContent, /Зображення недоступне/);
++    } finally { h.close(); }
++});
+diff --git a/tests/products-demo-catalog.test.js b/tests/products-demo-catalog.test.js
+new file mode 100644
+--- /dev/null
++++ b/tests/products-demo-catalog.test.js
+@@ -0,0 +1,136 @@
++'use strict';
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const vm = require('node:vm');
++const { JSDOM } = require('jsdom');
++const ROOT = path.resolve(__dirname, '..');
++function setup() {
++    const dom = new JSDOM(fs.readFileSync(path.join(ROOT, 'designs.html'), 'utf8'), {
++        url: 'http://localhost/designs#catalog-graduation', runScripts: 'outside-only'
++    });
++    const w = dom.window;
++    w.buildCatalogPageHtml = p => { assert.ok(p.services, 'graduation requires package shape'); return `<p>${p.name}</p>`; };
++    w.buildAutoPageHtml = p => { assert.ok('page_number' in p); return `<p>${p.title}</p>`; };
++    const source = fs.readFileSync(path.join(ROOT, 'js/designs-page.js'), 'utf8');
++    vm.runInContext(source.slice(source.indexOf('let catalogPackages ='), source.indexOf('function buildCatalogPageHtml(')), dom.getInternalVMContext());
++    return { w, close: () => w.close(), content: () => w.document.getElementById('catalogPages').textContent };
++}
++const packages = [{ name: 'Fixture graduation A', services: [] }, { name: 'Fixture graduation B', services: [] }];
++const response = body => ({ ok: true, json: async () => body });
++
++test('graduation package count uses loaded packages, preserves zero and never labels failure as empty', async () => {
++    const h = setup();
++    try {
++        const count = () => h.w.document.getElementById('catalogPackageCount')?.textContent;
++        h.w.apiFetch = async () => response(packages);
++        await h.w.loadCatalogs();
++        assert.equal(count(), 'Пакетів: 2');
++        h.w.apiFetch = async () => response([]);
++        await h.w.loadCatalogs();
++        assert.equal(count(), 'Пакетів: 0');
++        h.w.apiFetch = async () => ({ ok: false });
++        await h.w.loadCatalogs();
++        assert.equal(count(), 'Пакетів: —');
++        let finishOld;
++        h.w.apiFetch = () => new Promise(resolve => { finishOld = resolve; });
++        const old = h.w.loadCatalogs();
++        h.w.apiFetch = async () => response([]);
++        await h.w.loadCatalogs();
++        finishOld(response(packages));
++        await old;
++        assert.equal(count(), 'Пакетів: 0');
++    } finally { h.close(); }
++});
++
++test('background graduation refresh cannot overwrite an active generic viewer or its local print payload', async () => {
++    const h = setup();
++    try {
++        h.w.apiFetch = async url => response(url === '/api/graduation/packages'
++            ? packages : { pages: [{ page_number: 0, title: 'Menu page' }] });
++        await h.w.openCatalog('menu');
++        const loaded = await h.w.loadCatalogs();
++        assert.equal(loaded.length, 2);
++        assert.equal(h.content(), 'Menu page');
++        const scheduled = [];
++        let prints = 0;
++        h.w.setTimeout = callback => scheduled.push(callback);
++        h.w.print = () => { prints++; assert.equal(h.content(), 'Menu page'); };
++        h.w.doPrintCatalog();
++        scheduled.shift()();
++        assert.equal(prints, 1);
++        assert.equal(h.w.document.body.classList.contains('printing-catalog'), false);
++    } finally { h.close(); }
++});
++
++test('read-only price bridge load followed by graduation open selects the proper package source', async () => {
++    const h = setup();
++    try {
++        h.w.apiFetch = async () => response(packages);
++        await h.w.loadCatalogs();
++        await h.w.openCatalog('graduation');
++        assert.equal(h.content(), 'Fixture graduation A');
++        let exportUrl;
++        h.w.open = url => { exportUrl = url; return {}; };
++        h.w.printCatalog('graduation');
++        assert.match(exportUrl, /^\/api\/graduation\/catalog\/export\?/);
++    } finally { h.close(); }
++});
++
++test('generic -> graduation loads correct source, arrows navigate and close removes listener', async () => {
++    const h = setup();
++    try {
++        const requests = [];
++        h.w.apiFetch = async url => {
++            requests.push(url);
++            return response(url === '/api/graduation/packages' ? packages : { pages: [{ page_number: 0, title: 'Other' }] });
++        };
++        await h.w.openCatalog('menu');
++        assert.equal(h.content(), 'Other');
++        await h.w.openCatalog('graduation');
++        assert.equal(h.content(), 'Fixture graduation A');
++        assert.ok(requests.includes('/api/graduation/packages'));
++        h.w.document.dispatchEvent(new h.w.KeyboardEvent('keydown', { key: 'ArrowRight' }));
++        assert.equal(h.content(), 'Fixture graduation B');
++        assert.equal(h.w.document.getElementById('catalogNextBtn').disabled, true);
++        h.w.closeCatalog();
++        assert.equal(h.w.document.getElementById('catalogViewer')._keyHandler, null);
++        assert.equal(h.w.document.body.style.overflow, '');
++    } finally { h.close(); }
++});
++
++test('late generic response cannot overwrite graduation; close cancels an in-flight open', async () => {
++    const h = setup();
++    try {
++        let resolveOld;
++        h.w.apiFetch = url => url === '/api/graduation/packages' ? Promise.resolve(response(packages))
++            : new Promise(resolve => { resolveOld = resolve; });
++        const old = h.w.openCatalog('menu');
++        await h.w.openCatalog('graduation');
++        resolveOld(response({ pages: [{ page_number: 0, title: 'Old other' }] }));
++        await old;
++        assert.equal(h.content(), 'Fixture graduation A');
++        const pending = h.w.openCatalog('menu');
++        h.w.closeCatalog();
++        resolveOld(response({ pages: [{ page_number: 0, title: 'Closed' }] }));
++        await pending;
++        assert.equal(h.w.document.getElementById('catalogViewer').style.display, 'none');
++    } finally { h.close(); }
++});
++
++test('empty and failed graduation requests clear previous pages and expose distinct states', async () => {
++    const h = setup();
++    try {
++        h.w.apiFetch = async () => response(packages);
++        await h.w.openCatalog('graduation');
++        h.w.apiFetch = async () => response([]);
++        await h.w.openCatalog('graduation');
++        assert.match(h.content(), /Каталог порожній/);
++        h.w.apiFetch = async () => ({ ok: false });
++        await h.w.openCatalog('graduation');
++        assert.match(h.content(), /Не вдалося/);
++        assert.doesNotMatch(h.content(), /Fixture graduation/);
++        assert.equal(h.w.document.getElementById('catalogPrevBtn').disabled, true);
++    } finally { h.close(); }
++});
+diff --git a/tests/products-demo-graduation.test.js b/tests/products-demo-graduation.test.js
+new file mode 100644
+--- /dev/null
++++ b/tests/products-demo-graduation.test.js
+@@ -0,0 +1,78 @@
++'use strict';
++const test = require('node:test');
++const assert = require('node:assert/strict');
++const fs = require('node:fs');
++const path = require('node:path');
++const vm = require('node:vm');
++const pricing = require('../services/productPricing');
++const bookingPackage = require('../services/bookingPackage');
++const source = fs.readFileSync(path.join(__dirname, '../js/graduation.js'), 'utf8');
++const formula = source.slice(source.indexOf('    function getCoefficient()'), source.indexOf('    function timeToMinutes('));
++const packageFormula = source.slice(source.indexOf('    function calcPackageTotals('), source.indexOf('    function renderPackages('));
++const services = [
++    { id: 1, name: 'Entry fixture', priceType: 'fixed', pricePerChild: 50, entryRule: { 10: 10, 50: 15 } },
++    { id: 2, name: 'Formula fixture', priceType: 'formula', pricePark: 600, durationMin: 60 },
++    { id: 3, name: 'Fixed fixture', priceType: 'fixed', pricePerChild: 80, durationMin: 30 }
++];
++function calculate(kids, discount, expression) {
++    const context = vm.createContext({
++        settings: {}, services, selectedServiceIds: new Set([1, 2, 3]),
++        currentKidsCount: kids, currentDiscount: discount, currentTab: 'constructor',
++        document: { getElementById: () => null }, getServiceIcon: () => ''
++    });
++    vm.runInContext(formula + packageFormula, context);
++    return JSON.parse(JSON.stringify(vm.runInContext(expression, context)));
++}
++
++test('kitchen booking lines preserve product, serving unit and quantity subtotal', () => {
++    const line = bookingPackage.normalizeMenuPosition({ productId: 'fixture-cake', name: 'Fixture cake', quantity: 2.5, unitPrice: 80, servingUnit: '100 г', kitchenType: 'cake' });
++    assert.equal(line.productId, 'fixture-cake');
++    assert.equal(line.servingUnit, '100 г');
++    assert.equal(line.quantity, 2.5);
++    assert.equal(line.subtotal, 200);
++    assert.equal(bookingPackage.menuPositionsSubtotal([line]), 200);
++});
++test('unchanged graduation formulas retain baseline totals across thresholds and discounts', () => {
++    // Recorded from base a52725f; fixtures are synthetic, not commercial prices.
++    for (const [kids, total, perChild, entry] of [[10,2500,250,500],[11,2950,268,750],[15,3750,250,750]]) {
++        for (const discount of [0, 10]) {
++            const actual = calculate(kids, discount, 'calcTotals()');
++            assert.equal(actual.totalAll, total * (1 - discount / 100));
++            assert.equal(actual.totalPerChild, perChild);
++            assert.equal(actual.entryFlat, entry);
++            assert.equal(actual.totalDuration, 90);
++            assert.equal(actual.animators, kids === 10 ? 1 : 2);
++        }
++    }
++});
++test('package override keeps existing zero fallback and positive override semantics', () => {
++    const actual = calculate(15, 0, 'calcPackageTotals({services:[{serviceId:2,overridePrice:0},{serviceId:3,overridePrice:90}]})');
++    assert.equal(actual.totalPerChild, 210);
++    assert.equal(actual.rows[0].price, 120);
++    assert.equal(actual.rows[1].price, 90);
++    assert.equal(actual.totalDuration, 90);
++});
++test('product pricing retains date, context, zero, next rule and booking subtotal semantics', async () => {
++    const row = { id: 'fixture-animation', business_context: 'event_genix', is_per_child: true,
++        price: 999, price_rule_code: 'fixture-rule', price_rule_value: 100, price_rule_unit: 'child',
++        price_rule_effective_from: '2026-09-01', next_price_rule_value: 120, next_price_rule_effective_from: '2026-10-01' };
++    const mapped = pricing.mapProductPriceFields(row, { priceDate: '2026-09-11' });
++    assert.equal(mapped.price, 100);
++    assert.equal(mapped.nextPrice, 120);
++    assert.equal(mapped.effectivePriceDate, '2026-09-11');
++    assert.equal(pricing.mapProductPriceFields({ ...row, price_rule_value: 0 }).price, 0);
++    assert.equal(pricing.mapProductPriceFields({ price: null }).price, null);
++    const queryable = { query: async (sql, values) => {
++        assert.deepEqual(values, ['fixture-animation', '2026-09-11', 'event_genix']);
++        assert.match(sql, /effective_from <= \$2/);
++        assert.match(sql, /effective_from > \$2/);
++        return { rows: [row] };
++    } };
++    const booking = { programId: row.id, businessContext: 'event_genix', date: '2026-09-11', kidsCount: 10,
++        extraData: { bookingPackage: { positionsSubtotal: 200, entrySubtotal: 50 } } };
++    const snapshot = await pricing.applyEffectiveBookingPrice(queryable, booking);
++    assert.equal(snapshot.productId, row.id);
++    assert.equal(snapshot.price, 100);
++    assert.equal(booking.price, 1250);
++    assert.equal(snapshot.source, 'price_rules');
++});
+diff --git a/tests/browser/products-demo.spec.js b/tests/browser/products-demo.spec.js
+new file mode 100644
+--- /dev/null
++++ b/tests/browser/products-demo.spec.js
+@@ -0,0 +1,198 @@
++'use strict';
++const { test, expect } = require('@playwright/test');
++const fs = require('node:fs');
++const path = require('node:path');
++const http = require('node:http');
++const ROOT = path.resolve(__dirname, '../..');
++const EVIDENCE = path.join(ROOT, 'docs/workstreams/products-demo/evidence');
++const read = file => fs.readFileSync(path.join(ROOT, file), 'utf8');
++const description = 'Наявний опис тестового продукту. '.repeat(14);
++const products = [
++    { id: 'fixture-animation', businessContext: 'event_genix', domain: 'program', category: 'animation', name: 'Тестова анімація', description, price: 100, isPerChild: true, duration: 60, hosts: 1 },
++    { id: 'fixture-cake', businessContext: 'event_genix', domain: 'kitchen', kitchenType: 'cake', category: 'cake', name: 'Тестовий торт', description, price: 0, servingUnit: '100 г', iconUrl: '/images/catalogs/graduation/super-party-banner.png' },
++    { id: 'fixture-menu', businessContext: 'event_genix', domain: 'kitchen', kitchenType: 'menu', category: 'menu', name: 'Тестова позиція меню', description, price: null, servingUnit: 'порція', menuSection: 'Основні страви', promoDescription: description, ingredients: 'Синтетичний склад', iconUrl: '/missing.png' }
++];
++const services = [
++    { id: 1, name: 'Вхід', category: 'extra', priceType: 'fixed', pricePerChild: 50, entryRule: { 10: 10, 50: 15 }, durationMin: 0 },
++    { id: 2, name: 'Анімація', category: 'main', priceType: 'formula', pricePark: 600, durationMin: 60, description },
++    { id: 3, name: 'Майстер-клас із довгою назвою для перевірки перенесення', category: 'masterclass', priceType: 'fixed', pricePerChild: 80, durationMin: 30, description }
++];
++const packages = ['super-party', 'science-party', 'fixture-no-image'].map((slug, i) => ({
++    id: i + 1, slug, name: `Тестовий випускний ${i + 1}`, minKids: 7, maxKids: 50,
++    totalPerChild: 250, totalDuration: 90, services: services.map(s => ({ serviceId: s.id, serviceName: s.name, durationMin: s.durationMin, pricePerChild: 80 }))
++}));
++
++function bootstrap() {
++    return `
++window.fixtureProducts=${JSON.stringify(products)}; window.fixturePackages=${JSON.stringify(packages)};
++window.fixtureServices=${JSON.stringify(services)};
++window.AppState={currentUser:{id:123456,name:'Fixture operator',username:'fixture',role:'animator'}};
++localStorage.setItem('pzp_current_user', JSON.stringify(AppState.currentUser));
++localStorage.setItem('pzp_products_active_tab_park_zakrevsky','kitchen');
++window.getUserRole=()=>AppState.currentUser.role;
++window.canAccess=()=>true; window.canAccessPage=()=>true;
++window.getPermissionLifecycle=()=>({status:'ready'});
++window.resolveCapability=()=>({allowed:true});
++window.getStoredPreviewRole=()=>null;
++window.CrmBusinessContext={normalize:v=>v||'event_genix',current:()=> 'event_genix',scope:()=>({mode:'single',activeContext:'event_genix'}),isReadOnly:()=>false,renderShell:()=>{},initPage:()=> 'event_genix'};
++window.getAuthHeaders=()=>({}); window.API_BASE='/api';
++window.showNotification=()=>{}; window.initDarkMode=()=>{};
++window.apiHasStoredAuthSession=()=>true;
++window.apiVerifyToken=async()=>AppState.currentUser;
++window.hydrateActionPermissions=async()=>{};
++window.bindLogoutButton=()=>{};
++window.formatPrice=v=>new Intl.NumberFormat('uk-UA',{maximumFractionDigits:2}).format(Number(v))+' ₴';
++window.apiGetProducts=async()=>fixtureProducts;
++window.apiGetProductCatalogs=async()=>[{id:'graduation',title:'Випускні',href:'/designs#catalog-graduation',pageCount:2}];
++window.apiCall=async(method,url)=>{if(method!=='GET')throw Error('Fixture forbids mutations'); if(url==='/graduation/services')return fixtureServices;if(url==='/graduation/packages')return fixturePackages;if(url==='/graduation/settings')return {};return [];};
++window.apiFetch=async url=>({ok:true,json:async()=>url==='/api/graduation/packages'?fixturePackages:{pages:[{page_number:0,title:'Інший каталог',details:{},items:[]}]}});
++window.esc=s=>String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
++window.showAuthenticatedPageShell=()=>{document.getElementById('mainApp')?.classList.remove('hidden');Sidebar.markShellReady();};
++document.getElementById('loginOverlay')?.remove();
++`;
++}
++
++function fixtureHtml(page) {
++    let html = read(`${page}.html`);
++    const gradInit = page === 'graduation' ? [...html.matchAll(/<script\b[^>]*>([\s\S]*?)<\/script>/gi)]
++        .map(m => m[1]).find(s => s.includes('GradPage.init()')) : '';
++    html = html.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '');
++    html = html.replace('</head>', `<script>document.documentElement.dataset.theme=new URLSearchParams(location.search).get('theme')||'light';</script></head>`);
++    const common = `<script src="/fixture-bootstrap.js"></script><script>if(document.documentElement.dataset.theme==='dark')document.body.classList.add('dark-mode');</script><script src="/js/components/sidebar.js"></script>`;
++    let scripts;
++    if (page === 'programs') scripts = `<script src="/js/event-cards.js"></script><script src="/js/programs-page.js"></script><script>Sidebar.init('#sidebarLinks');</script>`;
++    if (page === 'designs') scripts = `<script src="/js/designs-page.js"></script><script>Sidebar.init('#sidebarLinks');</script>`;
++    if (page === 'graduation') scripts = `<script src="/js/graduation.js"></script><script>${gradInit}</script><script>Sidebar.markShellReady();</script>`;
++    return html.replace('</body>', `${common}${scripts}</body>`);
++}
++
++let server, baseUrl;
++test.beforeAll(async () => {
++    fs.mkdirSync(EVIDENCE, { recursive: true });
++    server = http.createServer((req, res) => {
++        const url = new URL(req.url, 'http://localhost');
++        let body, type = 'text/html; charset=utf-8';
++        if (['/programs', '/designs', '/graduation'].includes(url.pathname)) body = fixtureHtml(url.pathname.slice(1));
++        else if (url.pathname === '/center') body = '<h1>Fixture destination</h1>';
++        else if (url.pathname === '/fixture-parent') body = '<nav><a href="/programs">Parent products</a></nav><iframe title="Graduation" src="/graduation?embedded=1" style="width:100%;height:900px;border:0"></iframe>';
++        else if (url.pathname === '/fixture-bootstrap.js') { type = 'application/javascript'; body = bootstrap(); }
++        else if (url.pathname.startsWith('/api/')) {
++            if (req.method !== 'GET') { res.writeHead(405); res.end(); return; }
++            type = 'application/json';
++            body = JSON.stringify(url.pathname === '/api/graduation/packages' ? packages
++                : url.pathname === '/api/designs' ? { items: [], total: 0 }
++                : ['/api/designs/collections', '/api/designs/tags'].includes(url.pathname) ? [] : {});
++        }
++        else {
++            const file = path.resolve(ROOT, '.' + url.pathname);
++            if (!file.startsWith(ROOT + path.sep) || !/^\/(css|js|images)\//.test(url.pathname) || !/\.(css|js|png|svg|jpg|webp)$/.test(file) || !fs.existsSync(file)) {
++                res.writeHead(404); res.end(); return;
++            }
++            type = file.endsWith('.css') ? 'text/css' : file.endsWith('.js') ? 'application/javascript' : file.endsWith('.svg') ? 'image/svg+xml' : 'image/png';
++            body = fs.readFileSync(file);
++        }
++        res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'no-store' }); res.end(body);
++    });
++    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
++    baseUrl = `http://127.0.0.1:${server.address().port}`;
++});
++test.afterAll(async () => { await new Promise(resolve => server.close(resolve)); });
++test.beforeEach(async ({ page }) => {
++    await page.route('**/*', route => new URL(route.request().url()).hostname === '127.0.0.1' ? route.continue() : route.abort());
++});
++
++for (const theme of ['light', 'dark']) {
++    test(`Products and catalog actual markup: ${theme}, three viewport widths`, async ({ page }) => {
++        const errors = []; page.on('pageerror', e => { errors.push(e.message); console.error(e.message); });
++        for (const width of [390, 768, 1440]) {
++            await page.setViewportSize({ width, height: 1000 });
++            await page.goto(`${baseUrl}/programs?theme=${theme}`);
++            await expect(page.locator('[data-id="fixture-animation"]')).toBeVisible();
++            await page.locator('[data-product-route="#kitchen-cakes"]').click();
++            await expect(page.locator('[data-id="fixture-cake"]')).toBeVisible();
++            await page.locator('[data-id="fixture-cake"] .product-details summary').click();
++            await expect(page.locator('[data-id="fixture-cake"] .product-detail-copy')).toContainText(description);
++            const summary = page.locator('[data-id="fixture-cake"] .product-details summary');
++            await summary.focus();
++            await page.keyboard.press('Enter');
++            await expect(page.locator('[data-id="fixture-cake"] details')).not.toHaveAttribute('open');
++            await page.keyboard.press('Enter');
++            await expect(summary).toBeFocused();
++            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
++            await page.screenshot({ path: path.join(EVIDENCE, `products-${theme}-${width}.png`), fullPage: true });
++            await page.locator('[data-product-route="#kitchen-menu"]').click();
++            await page.locator('[data-id="fixture-menu"] .product-details summary').click();
++            await expect(page.locator('[data-id="fixture-menu"] .product-detail-media')).toContainText('Зображення недоступне');
++            await page.goto(`${baseUrl}/designs?theme=${theme}#catalog-graduation`);
++            await expect(page.locator('#catalogPages')).toContainText('ТЕСТОВИЙ ВИПУСКНИЙ 1');
++            await page.locator('#catalogNextBtn').click();
++            await expect(page.locator('#catalogPages')).toContainText('ТЕСТОВИЙ ВИПУСКНИЙ 2');
++            expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
++            await page.screenshot({ path: path.join(EVIDENCE, `catalog-${theme}-${width}.png`), fullPage: true });
++            await page.keyboard.press('ArrowRight');
++            await expect(page.locator('#catalogPages')).toContainText('ТЕСТОВИЙ ВИПУСКНИЙ 3');
++            await expect(page.locator('.cat-hero-img')).toBeHidden();
++            await page.reload();
++            await expect(page.locator('#catalogPageIndicator')).toHaveText('1 / 3');
++            await page.getByLabel('Закрити каталог', { exact: true }).click();
++            await expect(page.locator('#catalogViewer')).toBeHidden();
++            await expect(page.locator('#catalogPackageCount')).toHaveText('Пакетів: 3');
++        }
++        expect(errors).toEqual([]);
++    });
++
++    test(`Graduation standalone: ${theme} layout and shared sidebar navigation`, async ({ page }) => {
++        const errors = []; page.on('pageerror', e => errors.push(e.message));
++        for (const width of [390, 768, 1440]) {
++            await page.setViewportSize({ width, height: 1000 });
++            await page.goto(`${baseUrl}/graduation?theme=${theme}`);
++            await expect(page.locator('.grad-controls')).toBeVisible();
++            await expect(page.locator('.grad-service-card').first()).toBeVisible();
++            await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
++            await page.screenshot({ path: path.join(EVIDENCE, `graduation-${theme}-${width}.png`), fullPage: true });
++            await page.locator('.grad-tab[data-tab="packages"]').click();
++            await expect(page.locator('#gradContent')).toContainText('Тестовий випускний 2');
++            await expect.poll(() => page.locator('.grad-packages-kids-row').evaluate(row => {
++                const bounds = row.getBoundingClientRect();
++                return [...row.children].filter(el => !el.hidden).every(el => {
++                    const child = el.getBoundingClientRect();
++                    return child.left >= bounds.left - 1 && child.right <= bounds.right + 1;
++                });
++            })).toBe(true);
++            await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 2)).toBe(true);
++            await page.screenshot({ path: path.join(EVIDENCE, `graduation-packages-${theme}-${width}.png`), fullPage: true });
++        }
++        const productGroup = page.locator('.sidebar-group-header[aria-controls="sidebarGroupItems-product"]');
++        if (await productGroup.getAttribute('aria-expanded') !== 'true') await productGroup.click();
++        await page.locator('#sidebarLinks a[href="/programs"]').click();
++        await expect(page).toHaveURL(`${baseUrl}/programs`);
++        await expect(page.locator('[data-id="fixture-animation"]')).toBeVisible();
++        await page.goBack();
++        await expect(page.locator('.grad-controls')).toBeVisible();
++        await page.reload();
++        await expect(page.locator('.grad-controls')).toBeVisible();
++        await page.locator('.grad-info-btn').first().click();
++        await expect(page.locator('#gradInfoModal')).toBeVisible();
++        await page.locator('#gradInfoModal .grad-modal-close').click();
++        await expect(page.locator('#gradInfoModal')).toBeHidden();
++        for (const destination of ['/designs', '/center']) {
++            const link = page.locator(`#sidebarLinks a[href="${destination}"]`).first();
++            const header = page.locator('.sidebar-group').filter({ has: page.locator(`a[href="${destination}"]`) }).locator('.sidebar-group-header');
++            if (await header.count() && await header.getAttribute('aria-expanded') !== 'true') await header.click();
++            await link.click();
++            await expect(page).toHaveURL(`${baseUrl}${destination}`);
++            await page.goBack();
++            await expect(page.locator('.grad-controls')).toBeVisible();
++        }
++        await page.goto(`${baseUrl}/programs?theme=${theme}#catalogs`);
++        await page.locator('#catalogsGrid a[href="/graduation"]').click();
++        await expect(page.locator('.grad-controls')).toBeVisible();
++        await page.goto(`${baseUrl}/fixture-parent`);
++        const embedded = page.frameLocator('iframe');
++        await expect(embedded.locator('.grad-controls')).toBeVisible();
++        await expect(embedded.locator('.sidebar-nav')).toBeHidden();
++        await page.getByRole('link', { name: 'Parent products' }).click();
++        await expect(page).toHaveURL(`${baseUrl}/programs`);
++        expect(errors).toEqual([]);
++    });
++}

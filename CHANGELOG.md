@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.105 - Продукти: точні підсумки та навігація
+
+### Release / Versioning / (11.09.2026) [codex]
+- **Продукти: точні підсумки та навігація** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.104 - Оптимізація повторюваних бронювань і звуку
 
 ### Продуктивність / Бронювання та звук / (11.09.2026) [codex]

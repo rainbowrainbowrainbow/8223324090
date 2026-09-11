@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.118",
+  "version": "0.81.119",
   "eventGenix": {
-    "releaseLabel": "Випускні: ізоляція бізнесів"
+    "releaseLabel": "PARK/DAR PIN і service-out"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

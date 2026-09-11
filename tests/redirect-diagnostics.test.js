@@ -7,6 +7,7 @@ const test = require('node:test');
 const vm = require('node:vm');
 
 const ROOT = path.join(__dirname, '..');
+const PACKAGE_VERSION = require('../package.json').version;
 const AUTH_SOURCE = fs.readFileSync(path.join(ROOT, 'js', 'auth.js'), 'utf8');
 
 function extractFunction(source, functionName) {
@@ -68,9 +69,9 @@ function installHarness(options = {}) {
         document: {
             visibilityState: 'visible',
             scripts: [{
-                src: 'https://crm.example/js/auth.js?v=0.81.101',
+                src: `https://crm.example/js/auth.js?v=${PACKAGE_VERSION}`,
                 getAttribute(name) {
-                    return name === 'src' ? '/js/auth.js?v=0.81.101' : '';
+                    return name === 'src' ? `/js/auth.js?v=${PACKAGE_VERSION}` : '';
                 }
             }]
         },

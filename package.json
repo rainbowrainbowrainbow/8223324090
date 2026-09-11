@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.99",
+  "version": "0.81.100",
   "eventGenix": {
-    "releaseLabel": "Omni Attachments and Meta Events"
+    "releaseLabel": "PARK/DAR Receipt Incident Resolution"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

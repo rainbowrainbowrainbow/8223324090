@@ -10,11 +10,11 @@ HR-доробки реалізовано локально на базі `2b6a51d
 | CHK-R02 | DONE LOCAL: незалежні сторінки, debounce, retry, stale response, оновлення каталогу; browser 0/1/199/200/201/401, actual DB 201 |
 | CHK-R03 | DONE LOCAL: native pending, пояснення lock, окремі чернетки, A→B→A, focus і duplicate guards |
 | CHK-R04 | IMPLEMENTED / AUTOMATED QA PASS: keyboard, dialogs, focus; ручний screen-reader pass ще не виконаний |
-| CHK-R05 | PREPARED: npm scripts, чинні CI jobs/artifacts, виправлений metadata endpoint; remote CI ще не запускався |
-| CHK-R06 | LOCAL REGRESSION PASS: база оновлена без втрати правок; commit/push/deploy/live QA цього блоку не виконувалися |
+| CHK-R05 | PARTIAL: npm scripts/tests/metadata у HR-коміті; workflow diff залишений окремо, його коміт відхилений auto-review як Red без точного дозволу; remote CI не запускався |
+| CHK-R06 | RELEASE PREP: HR-коміт перенесений у чисту release-гілку на базі `58c899de7`; push/deploy/live QA цього блоку не виконувалися |
 | SYS-R01 | BLOCKED / OUT OF SCOPE: Wallet не змінено; потрібна окрема задача й точний дозвіл на цей захищений напрям |
 
-Дозвіл на HR-план покриває описані локальні service/UI/CI-code доробки. Нижче збережено **початковий аудит до реалізації**: його OPEN/BLOCKED формулювання й попередні кількості тестів є історичними, а не поточним статусом. Нова перевірка: 52/52 browser assertions, PostgreSQL PASS без checklist findings, `npm test` PASS.
+Дозволені локальні service/UI доробки виконані; публікація CI workflow потребує окремого точного дозволу, як зафіксувала автоматична перевірка. Нижче збережено **початковий аудит до реалізації**: його OPEN/BLOCKED формулювання й попередні кількості тестів є історичними, а не поточним статусом. Нова перевірка: 52/52 browser assertions, PostgreSQL PASS без checklist findings, `npm test` PASS.
 
 ## Початковий аудит і вихідний план
 

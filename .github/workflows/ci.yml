@@ -101,6 +101,20 @@ jobs:
       - name: Run HR Team browser smoke
         run: npm run test:browser:hr-team
 
+      - name: Run HR Checklists themes and interaction regression
+        run: |
+          npm run test:browser:hr-checklists:theme
+          npm run test:browser:hr-checklists:quality
+
+      - name: Upload HR Checklists browser evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hr-checklists-browser
+          path: |
+            output/playwright/hr-checklists/after-shell
+            output/hr-checklists-quality/async
+
       - name: Run HR Today metrics browser smoke
         run: npm run test:browser:hr-today
 
@@ -166,6 +180,21 @@ jobs:
           TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_my_day_browser_ci_test
           TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
         run: npm run test:browser:my-day-actual-app:isolated
+
+      - name: Run HR Checklists actual app and database regression
+        env:
+          TEST_DATABASE_URL: postgres://postgres:postgres@127.0.0.1:5432/eventgenix_my_day_browser_ci_test
+          TEST_DATABASE_RESET_CONFIRM: RESET_DISPOSABLE_TEST_DATABASE
+        run: npm run test:browser:hr-checklists:isolated
+
+      - name: Upload HR Checklists database evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: hr-checklists-postgres
+          path: |
+            output/playwright/hr-checklists/postgres
+            output/hr-checklists-quality/access/runtime-matrix.json
 
   hr-payroll-postgres:
     name: HR and payroll PostgreSQL integration

@@ -4,6 +4,15 @@
 
 ---
 
+## v0.81.111 - Scheduler claims без дублювання
+
+### Scheduler / Надійність / Продуктивність / (11.09.2026) [codex]
+- **Atomic scheduler claims** - guarded jobs отримали ownership claim до side effect, щоб два app instances не виконували один і той самий scheduler key паралельно.
+- **Менше not-due polling** - daily/hourly/5min jobs більше не перевіряють базу щохвилини без потреби; null-dedup polling лишився без cache, де це потрібно контрактом.
+- **Agent tracker без блокування event loop** - git history scan переведено з `execSync` на bounded async child process із timeout, overlap guard і без логування diff content.
+
+---
+
 ## v0.81.110 - Профілі ЗП: доступність і CI smoke
 
 ### HR / ЗП та KPI / QA / (11.09.2026) [codex]

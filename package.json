@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.114",
+  "version": "0.81.115",
   "eventGenix": {
-    "releaseLabel": "Wallet: стабільна історія монет"
+    "releaseLabel": "HR чеклісти: стабільні перевірки"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

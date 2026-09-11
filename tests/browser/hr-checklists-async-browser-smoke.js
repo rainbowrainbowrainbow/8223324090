@@ -137,6 +137,41 @@ async function run() {
             activePage = page;
             page.on('pageerror', error => results.pageErrors.push(error.message));
             await install(page, dark);
+            await page.evaluate(() => { qa.count = 2; return loadProfessionChecklists(); });
+            const returnTrigger = page.locator('[data-checklist-feed="assignments"] [data-checklist-open-profession]').nth(1);
+            await returnTrigger.focus();
+            await page.evaluate(() => {
+                qa.returnTrigger = document.activeElement;
+                qa.returnFocusContext = captureProfessionReturnContext({ tab: 'checklists' });
+                qa.returnStaffId = qa.returnTrigger.closest('.hr-checklist-dashboard-row').querySelector('[data-checklist-open-staff]').dataset.checklistOpenStaff;
+                return openProfessionWorkspace({
+                    key: qa.returnTrigger.dataset.checklistOpenProfession,
+                    initialTab: 'checklist', historyMode: 'none',
+                    returnContext: qa.returnFocusContext
+                });
+            });
+            await close(page);
+            await page.waitForFunction(() => professionChecklistDashboardState.loadState === 'ready');
+            record(theme, 'workspace_return_focus_survives_dashboard_reload', await page.evaluate(() =>
+                document.activeElement.matches('[data-checklist-open-profession]')
+                && document.activeElement.dataset.checklistOpenProfession === qa.returnTrigger.dataset.checklistOpenProfession
+                && document.activeElement.closest('.hr-checklist-dashboard-row').querySelector('[data-checklist-open-staff]')?.dataset.checklistOpenStaff === qa.returnStaffId
+                && document.activeElement !== qa.returnTrigger
+            ), await focused(page));
+            record(theme, 'workspace_return_does_not_steal_new_user_focus', await page.evaluate(async () => {
+                const search = document.getElementById('professionChecklistDashboardSearch');
+                search.focus();
+                await restoreProfessionReturnContext(qa.returnFocusContext);
+                return document.activeElement === search;
+            }), {});
+            record(theme, 'workspace_missing_return_row_focuses_search', await page.evaluate(async () => {
+                qa.count = 0;
+                await loadProfessionChecklists();
+                document.activeElement.blur();
+                await restoreProfessionReturnContext(qa.returnFocusContext);
+                return document.activeElement.id === 'professionChecklistDashboardSearch';
+            }), {});
+            await page.evaluate(() => { qa.count = undefined; return loadProfessionChecklists(); });
             const trigger = page.locator('[data-checklist-open-profession]').first();
             await trigger.focus();
             await open(page);

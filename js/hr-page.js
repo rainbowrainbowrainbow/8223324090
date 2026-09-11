@@ -4379,6 +4379,14 @@ function captureProfessionReturnContext(overrides = {}) {
         pageScrollY: Number(window.scrollY || 0),
         ...overrides
     };
+    if (tab === 'checklists') {
+        const trigger = document.activeElement?.closest('[data-checklist-open-profession]');
+        if (trigger) context.checklistFocus = {
+            professionKey: trigger.dataset.checklistOpenProfession,
+            feed: trigger.closest('[data-checklist-feed]')?.dataset.checklistFeed || '',
+            staffId: trigger.closest('.hr-checklist-dashboard-row')?.querySelector('[data-checklist-open-staff]')?.dataset.checklistOpenStaff || ''
+        };
+    }
     if (tab === 'structure') {
         const canvas = document.querySelector('#companyOrgChart')?.closest('.hr-org-canvas');
         context.nodeId = overrides.nodeId || selectedCompanyStructureNodeId || null;
@@ -4390,6 +4398,18 @@ function captureProfessionReturnContext(overrides = {}) {
 
 async function restoreProfessionReturnContext(context = {}) {
     if (!context || typeof context !== 'object') return;
+    if (context.tab === 'checklists' && context.checklistFocus
+        && [document.body, document.documentElement].includes(document.activeElement)) {
+        // Tab activation reloads the dashboard and removes the original trigger.
+        // Resolve its replacement only after loading; preserve any newer user focus.
+        const identity = context.checklistFocus;
+        const target = Array.from(document.querySelectorAll('#tab-checklists [data-checklist-open-profession]')).find(button =>
+            button.dataset.checklistOpenProfession === identity.professionKey
+            && (button.closest('[data-checklist-feed]')?.dataset.checklistFeed || '') === identity.feed
+            && (button.closest('.hr-checklist-dashboard-row')?.querySelector('[data-checklist-open-staff]')?.dataset.checklistOpenStaff || '') === identity.staffId
+        );
+        (target || document.getElementById('professionChecklistDashboardSearch'))?.focus({ preventScroll: true });
+    }
     if (context.tab === 'structure') {
         selectCompanyOrgNodeById(context.nodeId);
         const canvas = document.querySelector('#companyOrgChart')?.closest('.hr-org-canvas');

@@ -14,8 +14,7 @@ const Sidebar = (() => {
         identityMetaLoading: false,
         identityMetaLoadedAt: 0,
         identityMetaDetails: {},
-        liveCountersPromise: null,
-        liveCountersUrl: '',
+        requestCache: new Map(),
         roleRenderApplied: false,
         extraEditingId: '',
         railCloseTimer: null,
@@ -119,6 +118,7 @@ const Sidebar = (() => {
         Object.freeze({ key: 'rooms', label: 'Кімнати' })
     ]);
     const SIDEBAR_TIMELINE_SUMMARY_CACHE_TTL = 60 * 1000;
+    const SIDEBAR_OPERATIONAL_REQUEST_TTL = 5 * 1000;
     const SIDEBAR_TIMELINE_COUNT_PLACEHOLDER = '–';
     const SIDEBAR_TIMELINE_MONTHS_SHORT = Object.freeze(['січ.', 'лют.', 'бер.', 'квіт.', 'трав.', 'черв.', 'лип.', 'серп.', 'вер.', 'жовт.', 'лист.', 'груд.']);
     const EXTRA_MENU_DEFAULT_DESCRIPTION = 'вкладка CRM';
@@ -1460,11 +1460,13 @@ const Sidebar = (() => {
         _queueActiveIndicatorUpdate();
     }
 
-    function _refreshSidebarOperationalWidgets() {
-        if (!_isAuthenticatedSidebarRuntimeReady()) return;
-        _fetchLiveBadges();
-        _refreshTaskMiniWidget();
-        _refreshFunnelWidget();
+    function _refreshSidebarOperationalWidgets(options = {}) {
+        if (!_isAuthenticatedSidebarRuntimeReady()) return Promise.resolve([]);
+        return Promise.allSettled([
+            _fetchLiveBadges(options),
+            _refreshTaskMiniWidget(options),
+            _refreshFunnelWidget(options)
+        ]);
     }
 
     function _markShellReady() {
@@ -2038,25 +2040,69 @@ const Sidebar = (() => {
         return token ? { 'Authorization': 'Bearer ' + token } : {};
     }
 
-    async function _fetchBusinessLiveCounters(authHeaders = null) {
+    function _sidebarRequestScopeKey(url = '') {
+        const user = _getCurrentSidebarUser() || {};
+        const scope = window.CrmBusinessContext?.scope?.(user) || {};
+        const selectedContexts = Array.isArray(scope.selectedContexts)
+            ? scope.selectedContexts.map(value => String(value || '')).filter(Boolean).sort()
+            : [];
+        let sessionGeneration = '';
+        try {
+            sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || '';
+        } catch {}
+        return JSON.stringify({
+            user: String(user.id ?? user.userId ?? user.username ?? ''),
+            role: _getSidebarActiveRole(user),
+            sessionGeneration,
+            mode: scope.mode || 'single',
+            activeContext: scope.activeContext || window.CrmBusinessContext?.current?.(user) || '',
+            selectedContexts,
+            url
+        });
+    }
+
+    function _coalesceSidebarRequest(kind, url, requestFactory, options = {}) {
+        const key = `${kind}:${_sidebarRequestScopeKey(url)}`;
+        const now = Date.now();
+        _state.requestCache.forEach((entry, entryKey) => {
+            if (!entry?.promise && entry?.expiresAt <= now) _state.requestCache.delete(entryKey);
+        });
+        const cached = _state.requestCache.get(key);
+        if (cached?.promise) return cached.promise;
+        if (options.force !== true && cached?.expiresAt > now) {
+            return Promise.resolve(cached.value);
+        }
+        const request = Promise.resolve()
+            .then(requestFactory)
+            .then(value => {
+                if (_state.requestCache.get(key)?.promise === request) {
+                    if (value === null || value === undefined) {
+                        _state.requestCache.delete(key);
+                    } else {
+                        _state.requestCache.set(key, {
+                            value,
+                            expiresAt: Date.now() + SIDEBAR_OPERATIONAL_REQUEST_TTL
+                        });
+                    }
+                }
+                return value;
+            })
+            .catch(() => {
+                if (_state.requestCache.get(key)?.promise === request) _state.requestCache.delete(key);
+                return null;
+            });
+        _state.requestCache.set(key, { promise: request, expiresAt: 0, value: null });
+        return request;
+    }
+
+    async function _fetchBusinessLiveCounters(authHeaders = null, options = {}) {
         const token = localStorage.getItem('pzp_token');
         if (!token) return null;
         const url = _sidebarScopedApiUrl('/api/business/live-counters');
-        if (_state.liveCountersPromise && _state.liveCountersUrl === url) return _state.liveCountersPromise;
         const headers = authHeaders || _sidebarAuthHeaders(token);
-        const request = fetch(url, { headers })
+        return _coalesceSidebarRequest('live-counters', url, () => fetch(url, { headers })
             .then(response => response.ok ? response.json() : null)
-            .then(payload => payload?.success ? payload : null)
-            .catch(() => null)
-            .finally(() => {
-                if (_state.liveCountersPromise === request) {
-                    _state.liveCountersPromise = null;
-                    _state.liveCountersUrl = '';
-                }
-            });
-        _state.liveCountersPromise = request;
-        _state.liveCountersUrl = url;
-        return request;
+            .then(payload => payload?.success ? payload : null), options);
     }
 
     function _businessLiveCounterScope(payload = {}) {
@@ -2907,7 +2953,13 @@ const Sidebar = (() => {
     }
 
     // ═══ LIVE BADGES ═══
-    async function _fetchLiveBadges() {
+    async function _fetchSidebarAlerts(authHeaders, options = {}) {
+        const url = _sidebarScopedApiUrl('/api/dashboard/alerts');
+        return _coalesceSidebarRequest('alerts', url, () => fetch(url, { headers: authHeaders })
+            .then(response => response.ok ? response.json() : null), options);
+    }
+
+    async function _fetchLiveBadges(options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (_state.badgeTimer) {
             clearTimeout(_state.badgeTimer);
@@ -2915,20 +2967,27 @@ const Sidebar = (() => {
         }
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
+        const requestScope = _sidebarRequestScopeKey('operational-badges');
         try {
             const authHeaders = _sidebarAuthHeaders(token);
             const [alertsR, countersR] = await Promise.allSettled([
-                fetch(_sidebarScopedApiUrl('/api/dashboard/alerts'), { headers: authHeaders }).then(r => r.json()),
-                _fetchBusinessLiveCounters(authHeaders),
+                _fetchSidebarAlerts(authHeaders, options),
+                _fetchBusinessLiveCounters(authHeaders, options),
             ]);
-            const alertCount = alertsR.status === 'fulfilled' ? (alertsR.value?.count || 0) : 0;
+            if (requestScope !== _sidebarRequestScopeKey('operational-badges')) return;
+            const alerts = alertsR.status === 'fulfilled' ? alertsR.value : null;
+            const alertCount = alerts?.count || 0;
             const liveCounters = countersR.status === 'fulfilled' ? countersR.value : null;
             const leadCounters = _businessLiveCounterBucket(liveCounters).leads || {};
             const leadsNew = _toSidebarCounterValue(leadCounters.new);
             const scopeLabel = _businessScopeCounterLabel(_businessLiveCounterScope(liveCounters || {}));
-            _setBadge('alerts', alertCount > 0 ? alertCount : null);
-            if (alertsR.status === 'fulfilled') _renderSidebarAlerts(alertsR.value);
-            _setBadge('leads_new', leadsNew > 0 ? leadsNew : null, `Нові ліди: ${leadsNew}. ${scopeLabel}.`);
+            if (alerts) {
+                _setBadge('alerts', alertCount > 0 ? alertCount : null);
+                _renderSidebarAlerts(alerts);
+            }
+            if (liveCounters) {
+                _setBadge('leads_new', leadsNew > 0 ? leadsNew : null, `Нові ліди: ${leadsNew}. ${scopeLabel}.`);
+            }
         } catch {}
         const chatUnread = typeof ChatState !== 'undefined' ? (ChatState.totalUnread || 0) : 0;
         _setBadge('unread', chatUnread > 0 ? chatUnread : null);
@@ -3893,7 +3952,7 @@ const Sidebar = (() => {
         window.location.href = '/dashboard';
     }
 
-    async function _refreshTaskMiniWidget() {
+    async function _refreshTaskMiniWidget(options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (_state.taskWidgetTimer) {
             clearTimeout(_state.taskWidgetTimer);
@@ -3916,14 +3975,17 @@ const Sidebar = (() => {
             _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
             return;
         }
+        const requestScope = _sidebarRequestScopeKey('task-widget');
         try {
             const authHeaders = typeof getAuthHeaders === 'function'
                 ? getAuthHeaders(false)
                 : { 'Authorization': 'Bearer ' + token };
             const scopedApiUrl = window.CrmBusinessContext?.apiUrl || (url => url);
-            const cabinet = await fetch(scopedApiUrl('/api/tasks/my-cabinet'), {
+            const cabinetUrl = scopedApiUrl('/api/tasks/my-cabinet');
+            const cabinet = await _coalesceSidebarRequest('task-cabinet', cabinetUrl, () => fetch(cabinetUrl, {
                 headers: authHeaders
-            }).then(r => r.ok ? r.json() : null).catch(() => null);
+            }).then(r => r.ok ? r.json() : null), options);
+            if (requestScope !== _sidebarRequestScopeKey('task-widget')) return;
             let completedCount = 0;
             let activeCount = 0;
             let overdueCount = 0;
@@ -3974,7 +4036,7 @@ const Sidebar = (() => {
         _state.taskWidgetTimer = setTimeout(_refreshTaskMiniWidget, 300000);
     }
 
-    async function _refreshFunnelWidget() {
+    async function _refreshFunnelWidget(options = {}) {
         if (!_isAuthenticatedSidebarRuntimeReady()) return;
         if (_state.funnelWidgetTimer) {
             clearTimeout(_state.funnelWidgetTimer);
@@ -3992,7 +4054,7 @@ const Sidebar = (() => {
         const token = localStorage.getItem('pzp_token');
         if (!token) return;
         try {
-            const liveCounters = await _fetchBusinessLiveCounters(_sidebarAuthHeaders(token));
+            const liveCounters = await _fetchBusinessLiveCounters(_sidebarAuthHeaders(token), options);
             const scope = _businessLiveCounterScope(liveCounters || {});
             const scopeLabel = _businessScopeCounterLabel(scope);
             const leadCounters = _businessLiveCounterBucket(liveCounters).leads || {};
@@ -4736,11 +4798,13 @@ const Sidebar = (() => {
         } catch {}
     }
 
-    window.addEventListener('roleSwitched', () => {
+    window.addEventListener('roleSwitched', (event) => {
+        if (event.detail?.shellApplied) return;
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c) render('#' + c.id);
     });
-    window.addEventListener('rolePreviewChanged', () => {
+    window.addEventListener('rolePreviewChanged', (event) => {
+        if (event.detail?.shellApplied) return;
         const c = document.querySelector('#sidebarLinks') || document.querySelector('#sidebarNav .sidebar-links');
         if (c) render('#' + c.id);
         initUserCard();
@@ -4749,7 +4813,7 @@ const Sidebar = (() => {
         _renderSidebarAlerts({ alerts: event.detail?.alerts || [] });
     });
     window.addEventListener('crm:tasks-updated', () => {
-        _refreshTaskMiniWidget();
+        _refreshTaskMiniWidget({ force: true });
     });
     window.addEventListener('crm:authenticated-runtime-ready', () => {
         void _ensureSidebarBusinessProfile();

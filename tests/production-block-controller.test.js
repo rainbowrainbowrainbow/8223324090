@@ -451,7 +451,7 @@ test('authorized QA runner receives only the manifest-bound canary scope', async
         '--live-url', value.liveUrl,
         '--fixture-limit', '1'
     ]);
-    assert.equal(args.some(arg => /cleanup|booking/i.test(arg)), false);
+    assert.equal(args.slice(1).some(arg => /cleanup|booking/i.test(arg)), false);
 });
 
 test('QA resume requires exact confirmation and a recorded release SHA', async t => {

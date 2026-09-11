@@ -4,7 +4,7 @@
  * Converts incoming payloads from different messaging channels
  * into a unified internal format for Event Genix CRM processing.
  *
- * Supported channels: telegram, viber, sms, facebook, instagram, binotel
+ * Supported channels: telegram, viber, sms, facebook, instagram, whatsapp, binotel
  */
 const { createLogger } = require('../utils/logger');
 
@@ -567,6 +567,135 @@ function normalizeInstagram(payload) {
   return result;
 }
 
+
+// ---------------------------------------------------------------------------
+// WhatsApp Business Platform / Cloud API
+// ---------------------------------------------------------------------------
+
+function whatsappMessageContent(message = {}) {
+  const type = String(message.type || 'text').toLowerCase();
+  if (type === 'text') return { contentType: 'text', text: message.text?.body || null, mediaUrl: null };
+  if (type === 'button') return { contentType: 'text', text: message.button?.text || message.button?.payload || null, mediaUrl: null };
+  if (type === 'interactive') {
+    const interactive = message.interactive || {};
+    return {
+      contentType: 'text',
+      text: interactive.button_reply?.title || interactive.button_reply?.id || interactive.list_reply?.title || interactive.list_reply?.id || null,
+      mediaUrl: null,
+    };
+  }
+  if (type === 'location') {
+    return { contentType: 'location', text: safeCoords(message.location?.latitude, message.location?.longitude), mediaUrl: null };
+  }
+  if (type === 'contacts') {
+    const contact = Array.isArray(message.contacts) ? message.contacts[0] : null;
+    const phone = contact?.phones?.[0]?.phone || contact?.phones?.[0]?.wa_id || null;
+    return { contentType: 'contact', text: phone, mediaUrl: null };
+  }
+  if (['image', 'video', 'audio', 'document', 'sticker'].includes(type)) {
+    const node = message[type] || {};
+    return {
+      contentType: type === 'document' ? 'file' : type,
+      text: node.caption || null,
+      mediaUrl: node.link || node.id || null,
+    };
+  }
+  return { contentType: 'unsupported', text: null, mediaUrl: null };
+}
+
+function normalizeWhatsAppMessage(message, value = {}) {
+  const contacts = Array.isArray(value.contacts) ? value.contacts : [];
+  const contact = contacts.find(item => String(item.wa_id || '') === String(message?.from || '')) || contacts[0] || {};
+  const waId = contact.wa_id || message?.from || null;
+  const content = whatsappMessageContent(message || {});
+  const unsupportedContent = content.contentType === 'unsupported' || (!content.text && !content.mediaUrl);
+
+  const result = buildResult({
+    channel: 'whatsapp',
+    externalId: message?.from || waId,
+    senderName: contact.profile?.name || waId || null,
+    text: content.text,
+    contentType: content.contentType === 'unsupported' ? 'text' : content.contentType,
+    mediaUrl: content.mediaUrl,
+    phone: waId ? `+${String(waId).replace(/^\+/, '')}` : null,
+    externalMessageId: message?.id || null,
+    rawEvent: { message, value },
+    meta: {
+      provider: 'whatsapp_cloud_api',
+      wamid: message?.id || null,
+      messageId: message?.id || null,
+      timestamp: normalizeProviderTimestamp(message?.timestamp),
+      phoneNumberId: value.metadata?.phone_number_id || null,
+      displayPhoneNumber: value.metadata?.display_phone_number || null,
+      waId: waId || null,
+      type: message?.type || null,
+      unsupportedContent,
+    },
+  });
+
+  if (!result) return null;
+  log.debug('Normalized WhatsApp payload', { externalId: result.externalId, contentType: result.contentType });
+  return result;
+}
+
+function mapWhatsAppDeliveryStatus(status) {
+  const normalized = String(status || '').trim().toLowerCase();
+  if (normalized === 'sent') return 'accepted';
+  if (normalized === 'delivered') return 'delivered';
+  if (normalized === 'read') return 'read';
+  if (['failed', 'deleted'].includes(normalized)) return 'later_failed';
+  return null;
+}
+
+function normalizeWhatsAppStatus(status, value = {}) {
+  const providerMessageId = status?.id || null;
+  const deliveryStatus = mapWhatsAppDeliveryStatus(status?.status);
+  if (!providerMessageId || !deliveryStatus) return null;
+  const error = Array.isArray(status.errors) && status.errors.length
+    ? (status.errors[0].message || status.errors[0].title || status.errors[0].code || 'WhatsApp delivery failed')
+    : null;
+  return {
+    channel: 'whatsapp',
+    providerMessageId: String(providerMessageId),
+    deliveryStatus,
+    deliveryError: deliveryStatus === 'later_failed' ? safeString(error || 'WhatsApp delivery failed', 1000) : null,
+    providerLifecycleAt: normalizeProviderTimestamp(status.timestamp),
+    providerLifecycleEvent: status.status || null,
+    providerLifecycleSource: 'whatsapp_webhook',
+    meta: {
+      provider: 'whatsapp_cloud_api',
+      recipientId: status.recipient_id || null,
+      conversationId: status.conversation?.id || null,
+      pricingCategory: status.pricing?.category || null,
+      phoneNumberId: value.metadata?.phone_number_id || null,
+    },
+  };
+}
+
+function classifyWhatsAppWebhook(payload = {}) {
+  const events = [];
+  const entries = Array.isArray(payload.entry) ? payload.entry : [];
+  for (const entry of entries) {
+    const changes = Array.isArray(entry.changes) ? entry.changes : [];
+    for (const change of changes) {
+      const value = change.value || {};
+      for (const message of Array.isArray(value.messages) ? value.messages : []) {
+        const normalized = normalizeWhatsAppMessage(message, value);
+        events.push(normalized ? { type: 'inbound_message', normalized, entry, change } : classifyIgnored('invalid_whatsapp_message', { entry, change }));
+      }
+      for (const status of Array.isArray(value.statuses) ? value.statuses : []) {
+        const receipt = normalizeWhatsAppStatus(status, value);
+        events.push(receipt ? { type: receipt.deliveryStatus === 'read' ? 'read_receipt' : 'delivery_receipt', receipt, entry, change } : classifyIgnored('unsupported_whatsapp_status', { entry, change }));
+      }
+      if (!Array.isArray(value.messages) && !Array.isArray(value.statuses)) {
+        events.push(classifyIgnored('unsupported_whatsapp_change', { entry, change }));
+      }
+    }
+  }
+  return events.length ? events : [classifyIgnored('empty_whatsapp_webhook')];
+}
+
+
 // ---------------------------------------------------------------------------
 // Binotel (Ukrainian cloud PBX — webhook on call events)
 // ---------------------------------------------------------------------------
@@ -611,6 +740,7 @@ const normalizers = {
   sms: normalizeSms,
   facebook: normalizeFacebook,
   instagram: normalizeInstagram,
+  whatsapp: normalizeWhatsAppMessage,
   binotel: normalizeBinotel,
 };
 
@@ -654,6 +784,10 @@ module.exports = {
   mapTurboSmsDeliveryStatus: mapSmsDeliveryStatus,
   normalizeFacebook,
   normalizeInstagram,
+  normalizeWhatsAppMessage,
+  classifyWhatsAppWebhook,
+  normalizeWhatsAppStatus,
+  mapWhatsAppDeliveryStatus,
   normalizeBinotel,
   normalize,
 };

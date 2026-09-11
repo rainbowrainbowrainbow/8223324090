@@ -24,6 +24,7 @@ function clearModules() {
         '../services/omni-sms',
         '../services/omni-facebook',
         '../services/omni-instagram',
+        '../services/omni-whatsapp',
         '../services/adminAudit',
         '../middleware/auth',
     ].forEach(modulePath => {
@@ -41,6 +42,7 @@ function loadHub(pool) {
     installMock('../services/omni-sms', { sendSMS: async () => ({ success: true, messageId: 'sms-44' }) });
     installMock('../services/omni-facebook', { sendFacebook: async () => ({ success: true, messageId: 'fb-45' }) });
     installMock('../services/omni-instagram', { sendInstagram: async () => ({ success: true, messageId: 'ig-46' }) });
+    installMock('../services/omni-whatsapp', { sendWhatsApp: async () => ({ success: true, messageId: 'wamid.out-47' }), whatsappReplyWindowState: () => ({ open: true }) });
     return require('../services/omni-hub');
 }
 
@@ -189,6 +191,12 @@ function integrationHeaders(routePath, payload, headers) {
     }
     if (routePath === '/webhook/meta' && !next['x-hub-signature-256']) {
         const digest = crypto.createHmac('sha256', TEST_OMNI_WEBHOOK_CONFIG.facebook.appSecret)
+            .update(JSON.stringify(payload))
+            .digest('hex');
+        next['x-hub-signature-256'] = `sha256=${digest}`;
+    }
+    if (routePath === '/webhook/whatsapp' && !next['x-hub-signature-256']) {
+        const digest = crypto.createHmac('sha256', TEST_OMNI_WEBHOOK_CONFIG.whatsapp.appSecret)
             .update(JSON.stringify(payload))
             .digest('hex');
         next['x-hub-signature-256'] = `sha256=${digest}`;
@@ -464,6 +472,7 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
             ['/webhook/viber', { event: 'message' }, { 'x-viber-content-signature': 'wrong' }],
             ['/webhook/sms', { message_id: 'sms-denied', status: 'DELIVRD' }, { 'x-webhook-secret': 'wrong' }],
             ['/webhook/meta', { object: 'page', entry: [] }, { 'x-hub-signature-256': 'sha256=wrong' }],
+            ['/webhook/whatsapp', { object: 'whatsapp_business_account', entry: [] }, { 'x-hub-signature-256': 'sha256=wrong' }],
             ['/webhook/binotel', { call_id: 'binotel-denied' }, { 'x-webhook-secret': 'wrong' }]
         ];
         for (const [routePath, payload, headers] of denied) {
@@ -642,6 +651,100 @@ describe('Provider Lifecycle v1 for Viber and SMS providers', () => {
         assert.equal(calls.lifecycle[1].deliveryStatus, 'later_failed');
     });
 
+    it('classifies WhatsApp Cloud API inbound messages and receipts', () => {
+        const normalizer = require('../services/omni-normalizer');
+        const payload = {
+            object: 'whatsapp_business_account',
+            entry: [{
+                id: 'waba-1',
+                changes: [{
+                    field: 'messages',
+                    value: {
+                        messaging_product: 'whatsapp',
+                        metadata: { display_phone_number: '+380501112233', phone_number_id: 'phone-1' },
+                        contacts: [{ wa_id: '380671112233', profile: { name: 'Guest WA' } }],
+                        messages: [{ from: '380671112233', id: 'wamid.inbound-1', timestamp: '1778676000', type: 'text', text: { body: 'Хочу день народження' } }],
+                        statuses: [{ id: 'wamid.outbound-1', status: 'delivered', timestamp: '1778676010', recipient_id: '380671112233' }],
+                    },
+                }],
+            }],
+        };
+
+        const events = normalizer.classifyWhatsAppWebhook(payload);
+        assert.equal(events.length, 2);
+        assert.equal(events[0].type, 'inbound_message');
+        assert.equal(events[0].normalized.channel, 'whatsapp');
+        assert.equal(events[0].normalized.externalId, '380671112233');
+        assert.equal(events[0].normalized.senderName, 'Guest WA');
+        assert.equal(events[0].normalized.phone, '+380671112233');
+        assert.equal(events[0].normalized.text, 'Хочу день народження');
+        assert.equal(events[0].normalized.externalMessageId, 'wamid.inbound-1');
+        assert.equal(events[0].normalized.meta.phoneNumberId, 'phone-1');
+        assert.equal(events[1].type, 'delivery_receipt');
+        assert.equal(events[1].receipt.channel, 'whatsapp');
+        assert.equal(events[1].receipt.deliveryStatus, 'delivered');
+        assert.equal(events[1].receipt.providerMessageId, 'wamid.outbound-1');
+        assert.equal(events[1].receipt.providerLifecycleSource, 'whatsapp_webhook');
+    });
+
+    it('routes signed WhatsApp webhook events and ignores mismatched accounts before persistence', async () => {
+        const calls = { inbound: [], lifecycle: [] };
+        const router = loadOmniRouter({
+            processInboundMessage: async (normalized, options) => calls.inbound.push({ normalized, options }),
+            applyProviderLifecycleReceipt: async (receipt, options) => calls.lifecycle.push({ receipt, options }),
+        });
+        const payload = {
+            object: 'whatsapp_business_account',
+            entry: [{
+                id: 'waba-1',
+                changes: [{
+                    field: 'messages',
+                    value: {
+                        metadata: { display_phone_number: '+380501112233', phone_number_id: 'phone-1' },
+                        contacts: [{ wa_id: '380671112233', profile: { name: 'Guest WA' } }],
+                        messages: [{ from: '380671112233', id: 'wamid.inbound-2', timestamp: '1778676000', type: 'text', text: { body: 'Привіт' } }],
+                        statuses: [{ id: 'wamid.outbound-2', status: 'read', timestamp: '1778676010', recipient_id: '380671112233' }],
+                    },
+                }],
+            }],
+        };
+
+        const res = await postJson(router, '/webhook/whatsapp', payload, { 'x-business-context': 'maysternya_doli' });
+        assert.equal(res.status, 200);
+        assert.equal(res.body.ok, true);
+        assert.equal(res.body.inbound, 1);
+        assert.equal(res.body.receipts, 1);
+        assert.equal(calls.inbound.length, 1);
+        assert.equal(calls.inbound[0].normalized.channel, 'whatsapp');
+        assert.equal(calls.inbound[0].options.businessContext, 'maysternya_doli');
+        assert.equal(calls.lifecycle.length, 1);
+        assert.equal(calls.lifecycle[0].receipt.deliveryStatus, 'read');
+
+        const mismatched = structuredClone(payload);
+        mismatched.entry[0].changes[0].value.metadata.phone_number_id = 'wrong-phone';
+        const ignored = await postJson(router, '/webhook/whatsapp', mismatched);
+        assert.equal(ignored.status, 200);
+        assert.equal(ignored.body.ignored, true);
+        assert.equal(ignored.body.reason, 'phone_number_mismatch');
+        assert.equal(calls.inbound.length, 1);
+        assert.equal(calls.lifecycle.length, 1);
+    });
+
+    it('defines the minimal WhatsApp channel migration without data backfill', () => {
+        const repoRoot = path.resolve(__dirname, '..');
+        const migration = fs.readFileSync(
+            path.join(repoRoot, 'db/migrations/356_omni_whatsapp_channel.sql'),
+            'utf8'
+        );
+
+        assert.match(migration, /MIGRATION_KIND: schema/);
+        assert.match(migration, /conversations_channel_check_v356/);
+        assert.match(migration, /'whatsapp'/);
+        assert.doesNotMatch(migration, /\bUPDATE\s+conversations\b/i);
+        assert.doesNotMatch(migration, /\bINSERT\s+INTO\s+conversations\b/i);
+        assert.doesNotMatch(migration, /\bDELETE\s+FROM\s+conversations\b/i);
+    });
+
     it('defines the additive provider lifecycle migration without lifecycle backfill', () => {
         const repoRoot = path.resolve(__dirname, '..');
         const migration = fs.readFileSync(
@@ -665,5 +768,6 @@ const TEST_OMNI_WEBHOOK_CONFIG = Object.freeze({
     viber: { token: 'omni-viber-test-secret' },
     sms: { webhookSecret: 'omni-sms-test-secret' },
     binotel: { webhookSecret: 'omni-binotel-test-secret' },
-    facebook: { appSecret: 'omni-meta-test-secret' }
+    facebook: { appSecret: 'omni-meta-test-secret' },
+    whatsapp: { appSecret: 'omni-whatsapp-test-secret', verifyToken: 'omni-whatsapp-verify', wabaId: 'waba-1', phoneNumberId: 'phone-1' }
 });

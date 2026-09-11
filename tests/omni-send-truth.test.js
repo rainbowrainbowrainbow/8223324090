@@ -21,7 +21,8 @@ function clearModules() {
         '../services/omni-viber',
         '../services/omni-sms',
         '../services/omni-facebook',
-        '../services/omni-instagram'
+        '../services/omni-instagram',
+        '../services/omni-whatsapp'
     ].forEach(modulePath => {
         try { delete require.cache[require.resolve(modulePath)]; } catch {}
     });
@@ -38,6 +39,11 @@ function loadHub(pool, providerMocks = {}) {
     installMock('../services/omni-sms', { sendSMS: providerMocks.sendSMS || (async () => ({ success: true, messageId: 'sms-44' })) });
     installMock('../services/omni-facebook', { sendFacebook: providerMocks.sendFacebook || (async () => ({ success: true, messageId: 'fb-45' })) });
     installMock('../services/omni-instagram', { sendInstagram: providerMocks.sendInstagram || (async () => ({ success: true, messageId: 'ig-46' })) });
+    installMock('../services/omni-whatsapp', {
+        sendWhatsApp: providerMocks.sendWhatsApp || (async () => ({ success: true, messageId: 'wamid.out-47', messages: [{ id: 'wamid.out-47' }] })),
+        whatsappReplyWindowState: providerMocks.whatsappReplyWindowState || (() => ({ open: true })),
+        WHATSAPP_REPLY_WINDOW_MS: 24 * 60 * 60 * 1000,
+    });
     return require('../services/omni-hub');
 }
 
@@ -917,6 +923,68 @@ describe('Communication Send Truth v1', () => {
         );
     });
 
+
+    it('persists WhatsApp provider references through the shared send truth flow', async () => {
+        const pool = createManualSendPool({
+            id: 906,
+            channel: 'whatsapp',
+            external_id: '380671112233',
+            customer_name: 'WhatsApp Lead',
+            status: 'open',
+            last_inbound_at: '2099-05-13T09:30:00Z',
+            meta: {}
+        });
+        const calls = [];
+        const hub = loadHub(pool, {
+            sendWhatsApp: async (...args) => {
+                calls.push(args);
+                return { success: true, messages: [{ id: 'wamid.outbound-906' }], result: { messages: [{ id: 'wamid.outbound-906' }] } };
+            },
+            whatsappReplyWindowState: () => ({ open: true }),
+        });
+
+        const result = await hub.sendManualMessage(906, 'Привіт у WhatsApp', 'Manager');
+        assert.equal(calls.length, 1);
+        assert.equal(calls[0][0], '380671112233');
+        assert.equal(calls[0][1], 'Привіт у WhatsApp');
+        assert.equal(result.sendTruth.status, 'provider_attempted');
+        assert.equal(result.message.deliveryStatus, 'accepted');
+        assert.equal(result.message.providerMessageId, 'wamid.outbound-906');
+        assert.equal(pool.state.savedTruth.providerReference, 'wamid.outbound-906');
+        assert.deepEqual(
+            pool.state.deliveryUpdates.map(update => update.deliveryStatus),
+            ['saved', 'attempted', 'accepted']
+        );
+    });
+
+    it('blocks free-form WhatsApp replies when the customer care window is closed', async () => {
+        const pool = createManualSendPool({
+            id: 907,
+            channel: 'whatsapp',
+            external_id: '380671112233',
+            customer_name: 'WhatsApp Lead',
+            status: 'open',
+            last_inbound_at: '2099-05-11T09:30:00Z',
+            meta: {}
+        });
+        const hub = loadHub(pool, {
+            sendWhatsApp: async () => { throw new Error('WhatsApp send must not be attempted outside the reply window'); },
+            whatsappReplyWindowState: () => ({ open: false, message: 'WhatsApp customer care window is closed.' }),
+        });
+
+        await assert.rejects(
+            () => hub.sendManualMessage(907, 'Запізніла відповідь', 'Manager'),
+            error => {
+                assert.equal(error.code, 'WHATSAPP_REPLY_WINDOW_CLOSED');
+                assert.equal(error.statusCode, 400);
+                assert.equal(error.sendTruth.status, 'channel_unavailable');
+                return true;
+            }
+        );
+        assert.equal(pool.state.connectCalled, false);
+        assert.equal(pool.state.deliveryUpdates.length, 0);
+    });
+
     it('sends Telegram inbox replies without the global forum thread id', async () => {
         const pool = createManualSendPool({
             id: 916,
@@ -1244,6 +1312,9 @@ describe('Communication Send Truth v1', () => {
         assert.match(accountsService, /hasActiveTelegramInboxConnection/);
         assert.match(accountsService, /report_bot/);
         assert.match(accountsService, /repairTelegramLegacyBindings/);
+        assert.match(accountsService, /channel: 'whatsapp'/);
+        assert.match(accountsService, /WhatsApp Business Account ID/);
+        assert.match(accountsService, /verifyWhatsApp/);
         assert.match(accountsService, /purposeLabel/);
         const server = fs.readFileSync(path.join(repoRoot, 'server.js'), 'utf8');
         assert.match(server, /telegramInboxOwnsGlobalBotToken/);
@@ -1290,6 +1361,7 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /sms:\s*\{\s*key:\s*'sms'/);
         assert.match(omniHtml, /facebook:\s*\{\s*key:\s*'facebook'/);
         assert.match(omniHtml, /instagram:\s*\{\s*key:\s*'instagram'/);
+        assert.match(omniHtml, /whatsapp:\s*\{\s*key:\s*'whatsapp'/);
         assert.match(omniHtml, /binotel:\s*\{\s*key:\s*'binotel'/);
         assert.match(omniHtml, /function renderChannelDot/);
         assert.match(omniHtml, /function renderChannelBadge/);
@@ -1298,5 +1370,7 @@ describe('Communication Send Truth v1', () => {
         assert.match(omniHtml, /renderChannelBadge\(conv\.channel,\s*'header'\)/);
         assert.match(omniHtml, /omni-channel-badge--telegram/);
         assert.match(omniHtml, /omni-channel-dot--instagram/);
+        assert.match(omniHtml, /omni-channel-dot--whatsapp/);
+        assert.match(omniHtml, /data-channel="whatsapp"/);
     });
 });

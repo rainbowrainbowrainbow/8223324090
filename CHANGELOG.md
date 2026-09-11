@@ -4,6 +4,18 @@
 
 ---
 
+## v0.81.122 - Omni: WhatsApp inbox
+
+### Omni / WhatsApp / (12.09.2026) [codex]
+- **WhatsApp у спільному Omni inbox** — додано канал `whatsapp` у ті самі розмови, фільтри, відповідальних, статуси, ручне створення ліда та AI-заповнення чернетки, без окремого lead pipeline.
+- **Захищений webhook Cloud API** — окремий `/api/omni/webhook/whatsapp` перевіряє `X-Hub-Signature-256`, WABA ID і Phone Number ID до будь-якого запису в CRM.
+- **Чесна ручна відповідь** — довільні WhatsApp-відповіді блокуються поза 24-годинним customer-care window з поясненням про approved template.
+- **Receipts без дублів** — `sent`, `delivered`, `read` і `failed` оновлюють delivery truth, а не створюють нові клієнтські повідомлення.
+- **Мінімальна міграція каналу** — додано governed migration для `conversations.channel CHECK`, яка лише дозволяє `whatsapp` і не виконує backfill чи зміну даних.
+- **Активація окремо** — реліз не перепідключає реальний номер, не змінює Meta subscriptions/secrets і лишає WhatsApp у `ACTIVATION_PENDING` до надання тестового WABA/номера.
+
+---
+
 ## v0.81.121 - Omni: AI-заповнення ліда
 
 ### Release / Versioning / (11.09.2026) [codex]

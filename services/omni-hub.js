@@ -16,6 +16,7 @@ const { sendViber } = require('./omni-viber');
 const { sendSMS } = require('./omni-sms');
 const { sendFacebook } = require('./omni-facebook');
 const { sendInstagram } = require('./omni-instagram');
+const { sendWhatsApp, whatsappReplyWindowState } = require('./omni-whatsapp');
 const { sendTelegramBridgeMessage } = require('./omni-telegram-bridge');
 const {
   getOmniAccountStatus,
@@ -36,7 +37,7 @@ const {
 
 const logger = createLogger('omni-hub');
 
-const VALID_CHANNELS = ['telegram', 'viber', 'sms', 'facebook', 'instagram', 'binotel'];
+const VALID_CHANNELS = ['telegram', 'viber', 'sms', 'facebook', 'instagram', 'whatsapp', 'binotel'];
 const VALID_STATUSES = ['open', 'closed', 'pending', 'spam'];
 const REPLY_OWNER_ASSIGNABLE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager'];
 const INBOUND_ONLY_CHANNELS = new Set(['binotel']);
@@ -50,7 +51,7 @@ const DELIVERY_STATUS = Object.freeze({
   LATER_FAILED: 'later_failed',
   UNKNOWN: 'unknown',
 });
-const LIFECYCLE_SUPPORTED_CHANNELS = new Set(['viber', 'sms']);
+const LIFECYCLE_SUPPORTED_CHANNELS = new Set(['viber', 'sms', 'whatsapp']);
 const MAX_NAME_LEN = 255;
 const MAX_SEARCH_LEN = 255;
 
@@ -192,6 +193,8 @@ function providerReference(delivery) {
   return delivery?.messageId
     || delivery?.messageToken
     || delivery?.commentId
+    || delivery?.messages?.[0]?.id
+    || delivery?.result?.messages?.[0]?.id
     || delivery?.result?.message_id
     || delivery?.result?.messageId
     || null;
@@ -1598,6 +1601,8 @@ async function sendToChannel(channel, externalId, text, meta) {
       return sendFacebook(externalId, text, scopedMeta);
     case 'instagram':
       return sendInstagram(externalId, text, businessContext === DEFAULT_BUSINESS_CONTEXT ? {} : { businessContext });
+    case 'whatsapp':
+      return sendWhatsApp(externalId, text, scopedMeta);
     case 'binotel':
       logger.info(`Binotel is inbound-only, skipping outbound to ${externalId}`);
       return { success: false, error: 'Binotel is inbound-only', code: 'channel_unavailable' };
@@ -1743,6 +1748,23 @@ async function sendManualMessage(conversationId, text, senderName, options = {})
 
   const conversation = mapConversationRow(convResult.rows[0]);
   await assertRuntimeSendCapable(conversation.channel, { businessContext: conversation.businessContext || businessContext || DEFAULT_BUSINESS_CONTEXT });
+  if (conversation.channel === 'whatsapp') {
+    const windowState = whatsappReplyWindowState(conversation.lastInboundAt);
+    if (!windowState.open) {
+      throw Object.assign(new Error(windowState.message), {
+        statusCode: 400,
+        code: 'WHATSAPP_REPLY_WINDOW_CLOSED',
+        sendTruth: buildSendTruth('channel_unavailable', {
+          channel: 'whatsapp',
+          savedInCrm: false,
+          providerAttempted: false,
+          providerAccepted: false,
+          error: windowState.message,
+          message: windowState.message,
+        }),
+      });
+    }
+  }
   const commentReply = options.replyToMessageId ? await require('./omni-meta-events').replyTarget(conversationId, conversation.businessContext, options.replyToMessageId, options.replyMode) : null;
   if (String(conversation.externalId).startsWith('comment:') && !commentReply) throw Object.assign(new Error('Для коментаря оберіть публічну або приватну відповідь.'), { statusCode: 400 });
   if (commentReply && options.attachmentId) throw Object.assign(new Error('Відповіді на коментарі наразі підтримують текст.'), { statusCode: 400 });

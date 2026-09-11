@@ -146,3 +146,58 @@ Notes for OMNI-L4/AI:
 - Live QA should use only test accounts and synthetic Omni conversations; do not send external messages.
 - The L4/AI activator allows up to 5 live AI-preview requests through the existing OpenAI connection. Verify missing-key/provider error handling only if safe in the active environment; do not change secrets or env.
 - Important scenarios: manual create still works; AI preview fills empty fields only; manual values are preserved; evidence/missing/conflicts render; stale preview after chat switch is ignored; outbound manager suggestions are not accepted as client facts.
+
+## OMNI-L5 — WhatsApp in shared Omni inbox
+
+Status: complete locally on top of L1–L3; ready for OMNI-L4/WhatsApp. Commit/push/deploy were not run because the L5 activator explicitly leaves them for L4/WhatsApp.
+
+Worktree / branch:
+
+- Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
+- Branch: `codex/omni-l1-chat-to-lead`
+- Base SHA before L5: `bcf1bfac59812a254c3ac23b54abd48df7f792a3`
+- Commit SHA: none yet
+
+Implemented:
+
+- Added `whatsapp` as a first-class Omni channel through the existing account connection registry, shared inbox filters, conversation visuals, send truth and lead/AI draft flows.
+- Added official WhatsApp Business Platform / Cloud API text-send adapter in `services/omni-whatsapp.js`, using existing encrypted connection/runtime config boundaries and no new dependencies.
+- Added 24-hour WhatsApp customer-care-window guard for manual free-form replies. Closed-window sends are blocked before DB insert/provider call with a clear `WHATSAPP_REPLY_WINDOW_CLOSED` send truth.
+- Added dedicated `/api/omni/webhook/whatsapp` GET verification and POST webhook route with raw-body HMAC `X-Hub-Signature-256`, object check, WABA ID and Phone Number ID match before any CRM write.
+- Added WhatsApp webhook normalizer for inbound text/buttons/interactive/contact/location/media captions and lifecycle receipts (`sent`, `delivered`, `read`, `failed`). Receipts update provider lifecycle and do not create inbound messages.
+- Added raw-body capture for WhatsApp in both `server.js` and `services/omni-webhook-payload.js`.
+- Added minimal governed migration `db/migrations/356_omni_whatsapp_channel.sql` to replace the `conversations.channel` CHECK constraint with a list that includes `whatsapp`. No rows are inserted, updated, deleted or backfilled.
+- Added UI channel filter/button/name/badge/avatar support for WhatsApp in `omni.html`. Existing manual lead create and AI draft preview use the shared L1–L3 drawer automatically for WhatsApp conversations.
+- Added regression coverage for signed WhatsApp webhooks, account mismatch ignore-before-persistence, normalizer message/receipt mapping, WhatsApp send truth provider references, closed reply window blocking, channel migration and UI filter wiring.
+
+Changed files:
+
+- `server.js`
+- `routes/omnichannel.js`
+- `services/omni-accounts.js`
+- `services/omni-hub.js`
+- `services/omni-normalizer.js`
+- `services/omni-webhook-payload.js`
+- `services/omni-whatsapp.js`
+- `omni.html`
+- `db/migrations/356_omni_whatsapp_channel.sql`
+- `tests/omni-provider-lifecycle.test.js`
+- `tests/omni-send-truth.test.js`
+- `tests/omni-workspace-behavior.test.js`
+
+Verification performed:
+
+- `node --check services/omni-normalizer.js routes/omnichannel.js services/omni-accounts.js services/omni-whatsapp.js tests/omni-provider-lifecycle.test.js tests/omni-send-truth.test.js tests/omni-workspace-behavior.test.js` — passed.
+- `node --test tests/omni-provider-lifecycle.test.js tests/omni-send-truth.test.js tests/omni-workspace-behavior.test.js tests/omni-lead-assistant.test.js tests/omni-case-link.test.js` — first sandbox run failed with Windows `spawn EPERM`; rerun outside sandbox passed, 102/102.
+- `npm run check:migrations` — passed after adding required `-- OPERATOR_APPROVAL: required` governance header for the CHECK-constraint replacement.
+- `npm run check:syntax` — first sandbox run failed with `spawnSync ... EPERM`; rerun outside sandbox passed, 1137 files.
+- `npm run check:runtime` — passed, Node 22.23.1 / npm 10.9.8.
+- `npm run check:api-surface` — passed.
+- `npm run check:static-surface` — passed.
+
+ACTIVATION_PENDING for L4/WhatsApp:
+
+- No real WhatsApp secrets, env vars, Meta subscriptions, business settings or numbers were changed.
+- No external WhatsApp messages were sent.
+- Live activation still needs a concrete test WABA ID, Phone Number ID, Meta app secret, verify token, access token, public webhook URL subscription to WhatsApp `messages`, and an explicitly approved test recipient/number.
+- L4/WhatsApp should release the code/migration, verify existing channels, verify truthful disconnected/misconfigured WhatsApp state if credentials are absent, and avoid claiming `LIVE_CONNECTED` until a signed test webhook and safe test exchange are completed with approved test credentials.

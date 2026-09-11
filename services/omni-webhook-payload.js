@@ -3,7 +3,7 @@
 // Preserve the signed bytes only for Omni provider callbacks.
 function captureOmniWebhookBody(req, res, buffer) {
   const pathname = String(req.originalUrl || req.url || '').split('?')[0];
-  if (/^\/api(?:\/v1)?\/omni\/webhook\/(viber|meta|sms)\/?$/.test(pathname)) {
+  if (/^\/api(?:\/v1)?\/omni\/webhook\/(viber|meta|sms|whatsapp)\/?$/.test(pathname)) {
     req.omniRawBody = Buffer.from(buffer);
   }
 }

@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.121">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.121">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.121">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.121">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.121">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.121">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.121">
+    <link rel="stylesheet" href="css/base.css?v=0.81.122">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.122">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.122">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.122">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.122">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.122">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.122">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -668,6 +668,7 @@
         .omni-conv-avatar.ch-sms { background: #48bb78; }
         .omni-conv-avatar.ch-facebook { background: #1877f2; }
         .omni-conv-avatar.ch-instagram { background: linear-gradient(45deg, #f09433, #e6683c, #dc2743, #cc2366, #bc1888); }
+        .omni-conv-avatar.ch-whatsapp { background: #25d366; }
         .omni-conv-avatar.ch-binotel { background: #ff6b35; }
 
         .omni-channel-dot {
@@ -818,6 +819,15 @@
             background: linear-gradient(45deg, #f09433, #dc2743, #bc1888);
             color: #fff;
         }
+
+        .omni-channel-badge--whatsapp,
+        .omni-channel-dot--whatsapp {
+            background: rgba(37,211,102,.18);
+            color: #86efac;
+            border-color: rgba(37,211,102,.42);
+        }
+
+        .omni-channel-dot--whatsapp { background: #25d366; color: #052e18; }
 
         .omni-channel-badge--binotel,
         .omni-channel-dot--binotel {
@@ -2117,7 +2127,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.121">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.122">
 </head>
 <body data-page-group="system">
     <script>
@@ -2201,6 +2211,7 @@
                             <button type="button" class="omni-channel-btn" data-channel="sms">SMS</button>
                             <button type="button" class="omni-channel-btn" data-channel="facebook">FB</button>
                             <button type="button" class="omni-channel-btn" data-channel="instagram">IG</button>
+                            <button type="button" class="omni-channel-btn" data-channel="whatsapp">WA</button>
                             <button type="button" class="omni-channel-btn" data-channel="binotel">Tel</button>
                         </div>
                         <label class="omni-status-filter">Статус <select id="omniStatusFilter" aria-label="Статус розмов"><option value="">Усі статуси</option><option value="open">Відкриті</option><option value="pending">Очікують</option><option value="closed">Закриті</option><option value="spam">Спам</option></select></label><label class="omni-status-filter"><input type="checkbox" id="omniOnlyMine"> Тільки мої розмови</label><div class="omni-business-label" id="omniBusinessLabel"></div><div id="omniExplainability" hidden></div>
@@ -2345,12 +2356,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.121"></script>
-    <script src="js/api.js?v=0.81.121"></script>
-    <script src="js/auth.js?v=0.81.121"></script>
-    <script src="js/components/sidebar.js?v=0.81.121"></script>
+    <script src="js/config.js?v=0.81.122"></script>
+    <script src="js/api.js?v=0.81.122"></script>
+    <script src="js/auth.js?v=0.81.122"></script>
+    <script src="js/components/sidebar.js?v=0.81.122"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.121"></script>
+    <script src="js/ws.js?v=0.81.122"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2560,6 +2571,7 @@
             sms: { key: 'sms', label: 'SMS', short: 'SMS', icon: '✉' },
             facebook: { key: 'facebook', label: 'Facebook', short: 'FB', icon: 'f' },
             instagram: { key: 'instagram', label: 'Instagram', short: 'IG', icon: '◎' },
+            whatsapp: { key: 'whatsapp', label: 'WhatsApp', short: 'WA', icon: '☎' },
             binotel: { key: 'binotel', label: 'Телефонія', short: 'Tel', icon: '☎' },
             report_bot: { key: 'telegram', label: 'Telegram reports', short: 'TG', icon: '↗' },
             unknown: { key: 'unknown', label: 'Канал', short: 'CH', icon: '•' }
@@ -2571,7 +2583,7 @@
 
         const CHANNEL_NAMES = {
             telegram: 'Telegram', viber: 'Viber', sms: 'SMS',
-            facebook: 'Facebook', instagram: 'Instagram', binotel: 'Binotel',
+            facebook: 'Facebook', instagram: 'Instagram', whatsapp: 'WhatsApp', binotel: 'Binotel',
             report_bot: 'Бот звітів'
         };
         const SEND_DISABLED_CHANNELS = new Set(['binotel']);
@@ -5395,7 +5407,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.121"></script>
-    <script src="js/alerts.js?v=0.81.121"></script>
+<script src="js/ui.js?v=0.81.122"></script>
+    <script src="js/alerts.js?v=0.81.122"></script>
 </body>
 </html>

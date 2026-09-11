@@ -200,6 +200,44 @@ const CHANNELS = [
     envWarning: 'Instagram account token is not configured',
   },
   {
+    channel: 'whatsapp',
+    label: 'WhatsApp',
+    provider: 'whatsapp_cloud_api',
+    purpose: 'inbox',
+    purposeLabel: 'WhatsApp inbox',
+    providerKind: 'meta',
+    envKeys: ['WHATSAPP_ACCESS_TOKEN', 'WHATSAPP_PHONE_NUMBER_ID', 'WHATSAPP_WABA_ID'],
+    accountEnvKeys: ['WHATSAPP_DISPLAY_PHONE_NUMBER', 'WHATSAPP_ACCOUNT_NAME'],
+    sendSupported: true,
+    receiveSupported: true,
+    credentialMap: {
+      accessToken: 'WHATSAPP_ACCESS_TOKEN',
+      phoneNumberId: 'WHATSAPP_PHONE_NUMBER_ID',
+      wabaId: 'WHATSAPP_WABA_ID',
+      displayPhoneNumber: 'WHATSAPP_DISPLAY_PHONE_NUMBER',
+      accountName: 'WHATSAPP_ACCOUNT_NAME',
+      appSecret: 'WHATSAPP_APP_SECRET',
+      verifyToken: 'WHATSAPP_VERIFY_TOKEN',
+      apiVersion: 'WHATSAPP_GRAPH_API_VERSION',
+    },
+    fields: [
+      { name: 'accessToken', label: 'WhatsApp access token', type: 'secret', required: true, placeholder: 'EAAG...', hint: 'Permanent або system user token для WhatsApp Cloud API.' },
+      { name: 'phoneNumberId', label: 'Phone Number ID', type: 'text', required: true, placeholder: '1234567890', hint: 'ID номера з WhatsApp Business Platform; webhook прийматиме тільки події цього номера.' },
+      { name: 'wabaId', label: 'WhatsApp Business Account ID', type: 'text', required: true, placeholder: '1234567890', hint: 'WABA ID потрібен, щоб відсікти події чужого акаунта до запису в CRM.' },
+      { name: 'appSecret', label: 'Meta app secret', type: 'secret', required: true, placeholder: 'app secret', hint: 'Потрібен для перевірки X-Hub-Signature-256 на webhook.' },
+      { name: 'verifyToken', label: 'Webhook verify token', type: 'secret', required: true, placeholder: 'verify token', hint: 'Токен, який Meta перевіряє під час підписки webhook.' },
+      { name: 'displayPhoneNumber', label: 'Display phone number', type: 'text', required: false, placeholder: '+380...', hint: 'Людський номер для адмінів; CRM не використовує його як секрет.' },
+      { name: 'accountName', label: 'Назва акаунта', type: 'text', required: false, placeholder: 'Event Genix WhatsApp', hint: 'Показується в картці підключення.' },
+      { name: 'apiVersion', label: 'Graph API version', type: 'text', required: false, placeholder: 'v21.0', hint: 'Опційно. За замовчуванням CRM використовує v21.0.' },
+    ],
+    webhookPath: '/api/omni/webhook/whatsapp',
+    webhookNote: 'У Meta Webhooks підпишіть WhatsApp Business Account на messages. CRM приймає тільки підписані події з очікуваними WABA ID та Phone Number ID.',
+    businessImpact: 'WhatsApp у CRM працює через офіційну WhatsApp Business Platform / Cloud API. Ручна довільна відповідь можлива лише у 24-годинному customer care window; template-відправки не входять у цей MVP.',
+    localValidation: validateWhatsApp,
+    verifier: verifyWhatsApp,
+    envWarning: 'WhatsApp Cloud API is not configured',
+  },
+  {
     channel: 'binotel',
     label: 'Binotel',
     provider: 'binotel',
@@ -489,6 +527,7 @@ function publicConnectionSummary(def, row, runtime = {}, options = {}) {
     row?.account_display_name
     || runtime.botUsername
     || runtime.accountName
+    || runtime.displayPhoneNumber
     || runtime.pageName
     || runtime.senderName
     || runtime.sender
@@ -499,7 +538,7 @@ function publicConnectionSummary(def, row, runtime = {}, options = {}) {
     connected,
     accountName,
     maskedIdentifier: row?.masked_identifier || maskIdentifier(
-      runtime.defaultChatId || runtime.pageId || runtime.sender || runtime.apiKey || runtime.botUsername || runtime.bridgeSendUrl || firstEnv(def.accountEnvKeys, options, def)
+      runtime.defaultChatId || runtime.pageId || runtime.phoneNumberId || runtime.displayPhoneNumber || runtime.sender || runtime.apiKey || runtime.botUsername || runtime.bridgeSendUrl || firstEnv(def.accountEnvKeys, options, def)
     ),
   };
 }
@@ -1273,6 +1312,7 @@ function displayNameFromRuntime(def, runtime, check) {
     || runtime.botUsername
     || (telegramBridgeRuntimeConfigured(runtime) ? 'Telegram bot bridge' : null)
     || runtime.accountName
+    || runtime.displayPhoneNumber
     || runtime.pageName
     || runtime.senderName
     || runtime.sender
@@ -1284,11 +1324,14 @@ function maskedIdentifierFromRuntime(def, runtime) {
   return maskIdentifier(
     runtime.defaultChatId
     || runtime.pageId
+    || runtime.phoneNumberId
+    || runtime.displayPhoneNumber
     || runtime.sender
     || runtime.apiKey
     || runtime.botUsername
     || runtime.bridgeSendUrl
     || runtime.accountName
+    || runtime.displayPhoneNumber
     || runtime.pageName
     || def.channel
   );
@@ -1327,6 +1370,17 @@ function validateSms(runtime) {
 function validateMeta(runtime) {
   const token = runtime.pageToken || runtime.token;
   return token && String(token).length >= 20 ? [] : ['Meta page token має бути довшим і схожим на access token.'];
+}
+
+function validateWhatsApp(runtime) {
+  const errors = [];
+  if (!runtime.accessToken || String(runtime.accessToken).length < 20) errors.push('WhatsApp access token має бути довшим і схожим на Meta token.');
+  if (!/^\d{6,}$/.test(String(runtime.phoneNumberId || ''))) errors.push('WhatsApp Phone Number ID має бути числовим ID з Meta.');
+  if (!/^\d{6,}$/.test(String(runtime.wabaId || ''))) errors.push('WhatsApp Business Account ID має бути числовим ID з Meta.');
+  if (!runtime.appSecret || String(runtime.appSecret).length < 8) errors.push('Meta app secret обовʼязковий для WhatsApp webhook.');
+  if (!runtime.verifyToken || String(runtime.verifyToken).length < 8) errors.push('Webhook verify token обовʼязковий для WhatsApp webhook.');
+  if (runtime.apiVersion && !/^v\d+\.\d+$/.test(String(runtime.apiVersion))) errors.push('Graph API version має формат v21.0.');
+  return errors;
 }
 
 function validateBinotel(runtime) {
@@ -1547,6 +1601,33 @@ function verifyMeta(kind) {
       return verificationErrorToStatus('Meta', err);
     }
   };
+}
+
+async function verifyWhatsApp(runtime) {
+  const version = /^v\d+\.\d+$/.test(String(runtime.apiVersion || '')) ? runtime.apiVersion : 'v21.0';
+  try {
+    const result = await httpsJson({
+      hostname: 'graph.facebook.com',
+      path: `/${version}/${encodeURIComponent(runtime.phoneNumberId)}?fields=id,display_phone_number,verified_name`,
+      method: 'GET',
+      headers: { Authorization: `Bearer ${runtime.accessToken}` },
+    });
+    if (runtime.phoneNumberId && String(result.id) !== String(runtime.phoneNumberId)) {
+      return { status: 'missing_config', message: 'WhatsApp Phone Number ID не відповідає токену.', warning: 'Звірте Phone Number ID у WhatsApp Business Platform.' };
+    }
+    const hasWebhookSetup = Boolean(runtime.verifyToken && runtime.appSecret && runtime.wabaId);
+    return {
+      status: hasWebhookSetup ? 'partial' : 'webhook_missing',
+      message: hasWebhookSetup
+        ? 'WhatsApp token і Phone Number ID підтверджені. Підписку webhook у Meta потрібно перевірити живою подією.'
+        : 'WhatsApp token дійсний, але webhook verify token, App Secret або WABA ID не вказані.',
+      warning: hasWebhookSetup ? 'Live webhook delivery ще потребує перевірки у Meta.' : 'Потрібні WABA ID, webhook verify token та App Secret.',
+      displayName: runtime.accountName || result.verified_name || result.display_phone_number || 'WhatsApp',
+      details: { id: result.id || runtime.phoneNumberId || null, displayPhoneNumber: result.display_phone_number || runtime.displayPhoneNumber || null },
+    };
+  } catch (err) {
+    return verificationErrorToStatus('WhatsApp', err);
+  }
 }
 
 async function verifyBinotel(runtime) {

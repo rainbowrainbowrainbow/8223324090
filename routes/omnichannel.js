@@ -1,7 +1,7 @@
 /**
  * routes/omnichannel.js — OmniClaw: Omnichannel communication routes
  *
- * Public webhooks (no auth): /webhook/viber, /webhook/sms, /webhook/meta, /webhook/binotel
+ * Public webhooks (no auth): /webhook/viber, /webhook/sms, /webhook/meta, /webhook/whatsapp, /webhook/binotel
  * CRM API (auth required): conversations, messages, send, stats, quick-replies
  */
 const crypto = require('crypto');
@@ -49,7 +49,7 @@ const log = createLogger('OmniRoutes');
 const omniLeadPreviewLimiter = createWriteRateLimiter('omni-lead-preview', { windowMs: 60_000, max: 12, methods: ['POST'] });
 
 router.use((req, res, next) => {
-    const name = req.path.match(/^\/webhook\/(telegram|viber|sms|meta)$/)?.[1];
+    const name = req.path.match(/^\/webhook\/(telegram|viber|sms|meta|whatsapp)$/)?.[1];
     if (req.method === 'POST' && name) {
         res.on('finish', () => {
             const channel = name === 'meta' ? (req.body?.object === 'instagram' ? 'instagram' : 'facebook') : name;
@@ -151,6 +151,35 @@ async function verifyMetaSignature(req) {
         .digest('hex');
     return timingSafeTextEqual(sig, expected);
 }
+
+
+async function verifyWhatsAppSignature(req) {
+    const sig = req.headers['x-hub-signature-256'];
+    if (!sig) return false;
+    const businessContext = webhookBusinessContext(req);
+    const runtime = await resolveOmniRuntimeConfig('whatsapp', { businessContext });
+    const secret = runtime.appSecret;
+    if (!secret || !Buffer.isBuffer(req.omniRawBody)) return false;
+    const expected = 'sha256=' + crypto.createHmac('sha256', secret)
+        .update(req.omniRawBody)
+        .digest('hex');
+    return timingSafeTextEqual(sig, expected);
+}
+
+function whatsAppWebhookAccountMatches(body = {}, runtime = {}) {
+    const entries = Array.isArray(body.entry) ? body.entry : [];
+    if (!runtime.wabaId && !runtime.phoneNumberId && entries.length) return { ok: false, reason: 'account_identity_missing' };
+    for (const entry of entries) {
+        if (runtime.wabaId && String(entry.id || '') !== String(runtime.wabaId)) return { ok: false, reason: 'waba_mismatch' };
+        const changes = Array.isArray(entry.changes) ? entry.changes : [];
+        for (const change of changes) {
+            const phoneNumberId = change.value?.metadata?.phone_number_id;
+            if (runtime.phoneNumberId && String(phoneNumberId || '') !== String(runtime.phoneNumberId)) return { ok: false, reason: 'phone_number_mismatch' };
+        }
+    }
+    return { ok: true };
+}
+
 
 function parseId(val) {
     const n = parseInt(val, 10);
@@ -354,6 +383,63 @@ router.post('/webhook/meta', async (req, res) => {
         res.json({ ok: true });
     } catch (err) {
         log.error('Meta webhook error:', err.message);
+        res.status(503).json({ ok: false, error: 'processing_failed' });
+    }
+});
+
+
+// WhatsApp Business Platform / Cloud API webhook
+router.get('/webhook/whatsapp', async (req, res) => {
+    const mode = req.query['hub.mode'];
+    const token = req.query['hub.verify_token'];
+    const challenge = req.query['hub.challenge'];
+    try {
+        const businessContext = webhookBusinessContext(req);
+        const runtime = await resolveOmniRuntimeConfig('whatsapp', { businessContext });
+        if (mode === 'subscribe' && timingSafeTextEqual(token, runtime.verifyToken)) {
+            return res.status(200).send(challenge);
+        }
+        res.sendStatus(403);
+    } catch { res.status(503).json({ ok: false, error: 'processing_failed' }); }
+});
+
+router.post('/webhook/whatsapp', async (req, res) => {
+    try {
+        const businessContext = webhookBusinessContext(req);
+        if (!await verifyWhatsAppSignature(req)) {
+            log.warn('WhatsApp webhook signature verification failed');
+            return res.status(403).json({ ok: false, error: 'invalid signature' });
+        }
+        const body = req.body;
+        if (body.object !== 'whatsapp_business_account') {
+            req.omniUnsupported = true;
+            return res.json({ ok: true, ignored: true, reason: 'unsupported_object' });
+        }
+        const runtime = await resolveOmniRuntimeConfig('whatsapp', { businessContext });
+        const match = whatsAppWebhookAccountMatches(body, runtime);
+        if (!match.ok) {
+            req.omniUnsupported = true;
+            return res.json({ ok: true, ignored: true, reason: match.reason });
+        }
+        const events = getNormalizer().classifyWhatsAppWebhook(body);
+        let inbound = 0;
+        let receipts = 0;
+        for (const event of events) {
+            if (event.type === 'inbound_message' && event.normalized) {
+                await getHub().processInboundMessage(event.normalized, { businessContext });
+                req.omniInboundAccepted = true;
+                inbound += 1;
+            } else if ((event.type === 'delivery_receipt' || event.type === 'read_receipt') && event.receipt) {
+                await getHub().applyProviderLifecycleReceipt(event.receipt, { businessContext });
+                req.omniEventProcessed = true;
+                receipts += 1;
+            } else {
+                req.omniUnsupported = true;
+            }
+        }
+        res.json({ ok: true, inbound, receipts });
+    } catch (err) {
+        log.error('WhatsApp webhook error:', err.message);
         res.status(503).json({ ok: false, error: 'processing_failed' });
     }
 });

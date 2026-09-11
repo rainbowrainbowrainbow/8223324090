@@ -467,9 +467,17 @@ test('filter excluding a selected chat clears it safely and preserves its draft'
     await h.app.loadConversations();
     h.app.selectConversation(1);
     h.document.getElementById('omniInput').value = 'Keep this draft';
-    h.app.setApi(requestPath => requestPath.includes('channel=viber')
-        ? Promise.resolve({ success: true, data: { conversations: [], total: 0 } })
-        : h.defaultApi(requestPath));
+    const requests = [];
+    h.app.setApi(requestPath => {
+        requests.push(requestPath);
+        return requestPath.includes('channel=viber') || requestPath.includes('channel=whatsapp')
+            ? Promise.resolve({ success: true, data: { conversations: [], total: 0 } })
+            : h.defaultApi(requestPath);
+    });
+    assert.ok(h.document.querySelector('[data-channel="whatsapp"]'));
+    h.document.querySelector('[data-channel="whatsapp"]').click();
+    await h.flush();
+    assert.ok(requests.some(requestPath => requestPath.includes('channel=whatsapp')));
     h.document.querySelector('[data-channel="viber"]').click();
     await h.flush();
     assert.equal(h.app.state().currentConvId, null);

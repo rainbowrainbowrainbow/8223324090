@@ -44,7 +44,7 @@ test('business context normalizes legacy product aliases to the canonical CRM co
   assert.equal(normalizeBusinessContext('dar'), 'dar');
   assert.equal(normalizeBusinessContext('maysternya_doli'), 'maysternya_doli');
   assert.equal(normalizeBusinessContext('crm_sales'), 'crm');
-  assert.equal(normalizeBusinessContext('unknown'), 'event_genix');
+  assert.equal(normalizeBusinessContext('unknown'), 'unknown');
 });
 
 test('business context can be read from query, body, or header input', () => {

@@ -74,6 +74,7 @@ focused route tests in the same pack.
 | `/api/my-day/habits` | `routes/my-day-habits.js` | personal My Day habits and check-ins |
 | `/api/notes` | `routes/notes.js` | notes |
 | `/api/omni` | `routes/omnichannel.js` | omnichannel |
+| `/api/organizations` | `routes/organizations.js` | organization and business membership lifecycle |
 | `/api/packages` | `routes/packages.js` | packages |
 | `/api/page-statuses` | `routes/page-statuses.js` | page-statuses |
 | `/api/payroll` | `routes/payroll.js` | payroll |

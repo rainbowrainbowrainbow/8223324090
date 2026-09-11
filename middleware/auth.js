@@ -23,6 +23,7 @@ const {
     resolveCapability
 } = require('../services/accountAccessPolicy');
 const { resolveActiveQaCreatorLease } = require('../services/qaCreatorLease');
+const { applyMembershipAccess, loadMembershipAccess } = require('../services/businessMembership');
 
 const log = createLogger('Auth');
 const AUTHENTICATED_REQUEST = Symbol('eventgenix.authenticatedRequest');
@@ -272,8 +273,13 @@ async function authenticateToken(req, res, next) {
             requireFresh: recoveryMode,
             requireIdentityMatch: recoveryMode
         });
-        req.user = requestUser;
-        req[AUTHENTICATED_REQUEST] = { token, user: requestUser };
+        const requestedBusinessContext = req?.body?.businessContext || req?.body?.business_context
+            || req?.query?.businessContext || req?.query?.business_context
+            || req?.headers?.['x-business-context'] || null;
+        const membershipAccess = await loadMembershipAccess(pool, requestUser, requestedBusinessContext);
+        const resolvedRequestUser = applyMembershipAccess(requestUser, membershipAccess);
+        req.user = resolvedRequestUser;
+        req[AUTHENTICATED_REQUEST] = { token, user: resolvedRequestUser };
 
         // v19.1: Update employee activity (fire-and-forget, throttled to 1/min per user)
         // Recovery requests must not mutate the snapshot after a restore commit.

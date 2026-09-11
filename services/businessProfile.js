@@ -66,8 +66,10 @@ function moduleEnabledByTimelineCabinet(moduleId, timelineDisplay = {}) {
   return entries.some(timelineModule => enabledModules[timelineModule] !== false);
 }
 
-function buildModuleMap(context, timelineDisplay = {}, cabinet = null) {
-  const baseModules = businessModulesForContext(context);
+function buildModuleMap(context, timelineDisplay = {}, cabinet = null, configuredModules = null) {
+  const baseModules = Array.isArray(configuredModules) && configuredModules.length
+    ? configuredModules
+    : businessModulesForContext(context);
   const enabled = {};
   baseModules.forEach(moduleId => { enabled[moduleId] = true; });
 
@@ -146,10 +148,13 @@ async function summarizeOmniIntegrations(context, modules) {
 
 async function buildBusinessEntry(db, context, options = {}) {
   const key = normalizeBusinessContext(context);
-  const catalogEntry = businessContextCatalog().find(item => item.key === key) || { key, label: key, shortLabel: key };
+  const membership = options.user?.businessMembershipAccess?.memberships?.find(item => item.businessContext === key) || null;
+  const catalogEntry = membership
+    ? { key, label: membership.businessLabel, shortLabel: membership.businessShortLabel, modules: membership.businessModules }
+    : (businessContextCatalog().find(item => item.key === key) || { key, label: key, shortLabel: key });
   const cabinet = await getBusinessCabinetSettings(db, key);
   const timelineDisplay = cabinet.timeline;
-  const modules = buildModuleMap(key, timelineDisplay, cabinet);
+  const modules = buildModuleMap(key, timelineDisplay, cabinet, catalogEntry.modules);
   const startPath = startPagePathForBusiness(key, timelineDisplay, cabinet);
   const entry = {
     ...catalogEntry,
@@ -192,7 +197,7 @@ async function buildBusinessOperatingProfile(db, user, options = {}) {
   const businesses = [];
 
   for (const context of allowed) {
-    businesses.push(await buildBusinessEntry(db, context, options));
+    businesses.push(await buildBusinessEntry(db, context, { ...options, user }));
   }
 
   const activeContext = normalizeBusinessContext(

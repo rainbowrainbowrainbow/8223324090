@@ -53,6 +53,7 @@
     "audit:account-access": "node scripts/audit-account-access.js",
     "audit:payroll-activation-preflight": "node scripts/audit-payroll-activation-preflight.js",
     "audit:payroll-post-release": "node scripts/audit-payroll-post-release.js",
+    "audit:multibusiness-readiness": "node scripts/audit-multibusiness-readiness.js",
     "audit:staff-schedule": "node scripts/audit-staff-schedule.js",
     "reconcile:hr-shifts": "node scripts/reconcile-hr-shifts.js",
     "audit:lead-customers": "node scripts/audit-lead-customer-cards.js",

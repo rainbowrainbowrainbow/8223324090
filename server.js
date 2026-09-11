@@ -277,6 +277,7 @@ app.use('/api', apiAudit);
 
 // --- Mount route modules ---
 app.use('/api/auth', require('./routes/auth'));
+app.use('/api/organizations', require('./routes/organizations'));
 app.use('/api/bookings', require('./routes/bookings'));
 app.use('/api/banquets', require('./routes/banquets'));
 app.use('/api/banquet-deposits', require('./routes/banquet-deposits'));

@@ -58,6 +58,8 @@ const {
     requireWritableBusinessScope,
     pushBusinessScopeCondition
 } = require('../services/businessContext');
+const { buildBusinessOperatingProfile } = require('../services/businessProfile');
+const { loadMembershipAccess } = require('../services/businessMembership');
 
 const log = createLogger('Auth');
 const PROFILE_COCKPIT_WIDGET_IDS = Object.freeze([
@@ -78,6 +80,31 @@ const DEFAULT_PROFILE_COCKPIT_WIDGETS = Object.freeze([
     'certificates',
     'achievements'
 ]);
+
+// Canonical business/organization profile. Existing clients can keep using the
+// settings endpoint while the multi-business lifecycle UI moves here.
+router.get('/business-profile', authenticateToken, async (req, res) => {
+    try {
+        const membershipAccess = req.user.businessMembershipAccess
+            || await loadMembershipAccess(pool, req.user, req.query?.businessContext || null);
+        const businessProfile = await buildBusinessOperatingProfile(pool, req.user, {
+            scope: resolveBusinessScope(req),
+            includeIntegrations: true
+        });
+        res.json({
+            success: true,
+            businessProfile: {
+                ...businessProfile,
+                organizations: membershipAccess.memberships ? membershipAccess.organizationIds.map(id => ({ id })) : [],
+                activeMembership: membershipAccess.activeMembership || null,
+                membershipMode: membershipAccess.membershipEnabled === true ? 'membership' : 'compatibility'
+            }
+        });
+    } catch (error) {
+        log.error('GET /auth/business-profile failed', error);
+        res.status(503).json({ error: 'Business profile is temporarily unavailable', code: 'business_profile_unavailable' });
+    }
+});
 
 const profileAvatarUpload = multer({
     storage: multer.memoryStorage(),

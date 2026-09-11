@@ -78,7 +78,11 @@ const BUSINESS_SCOPE_READ_ONLY = Object.freeze([
 function normalizeBusinessContext(value) {
   const raw = String(value || '').trim().toLowerCase();
   if (BUSINESS_CONTEXT_ALIASES[raw]) return BUSINESS_CONTEXT_ALIASES[raw];
-  return BUSINESS_CONTEXTS[raw] ? raw : DEFAULT_BUSINESS_CONTEXT;
+  if (BUSINESS_CONTEXTS[raw]) return raw;
+  // New organizations receive a globally stable context key. Unknown keys are
+  // still denied by membership policy; retaining a valid key here avoids
+  // silently routing a future business into the Event Genix data partition.
+  return /^[a-z][a-z0-9_]{2,63}$/.test(raw) ? raw : DEFAULT_BUSINESS_CONTEXT;
 }
 
 function normalizeKnownBusinessContext(value) {
@@ -130,7 +134,7 @@ function normalizeBusinessContextList(value, fallback = [DEFAULT_BUSINESS_CONTEX
   const normalized = [];
   source.forEach(item => {
     const key = normalizeBusinessContext(item);
-    if (!BUSINESS_CONTEXTS[key] || seen.has(key)) return;
+    if (!key || seen.has(key)) return;
     seen.add(key);
     normalized.push(key);
   });
@@ -214,6 +218,9 @@ function explicitDefaultBusinessContext(user) {
 
 function allowedBusinessContextsForUser(user) {
   if (!user) return [];
+  if (user?.businessMembershipAccess?.membershipEnabled) {
+    return normalizeBusinessContextList(user.businessMembershipAccess.businessContexts, []);
+  }
   if (!isBusinessContextSwitchRole(user)) return [DEFAULT_BUSINESS_CONTEXT];
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
   if (assigned.length) return assigned;
@@ -258,7 +265,8 @@ function resolveForcedBusinessContext(user) {
 function resolveBusinessContextPolicy(user) {
   const allowed = allowedBusinessContextsForUser(user);
   const assigned = normalizeBusinessContextList(rawBusinessContextList(user), []);
-  const canSwitch = Boolean(user && allowed.length > 1 && (isBusinessContextSwitchRole(user) || assigned.length > 1));
+  const membershipDriven = user?.businessMembershipAccess?.membershipEnabled === true;
+  const canSwitch = Boolean(user && allowed.length > 1 && (membershipDriven || isBusinessContextSwitchRole(user) || assigned.length > 1));
   const forced = canSwitch ? null : resolveForcedBusinessContext(user);
   const defaultContext = resolveDefaultBusinessContext(user, allowed);
   return {

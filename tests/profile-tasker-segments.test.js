@@ -7,6 +7,7 @@ const vm = require('node:vm');
 const ROOT = path.resolve(__dirname, '..');
 
 function loadProfileTaskerContext() {
+    const localState = new Map();
     const sandbox = {
         console,
         fetch: async (url) => {
@@ -42,9 +43,9 @@ function loadProfileTaskerContext() {
         clearTimeout,
         document: { addEventListener() {} },
         localStorage: {
-            getItem() { return null; },
-            setItem() {},
-            removeItem() {}
+            getItem(key) { return localState.has(key) ? localState.get(key) : null; },
+            setItem(key, value) { localState.set(key, String(value)); },
+            removeItem(key) { localState.delete(key); }
         },
         sessionStorage: (() => {
             const state = new Map();
@@ -143,6 +144,55 @@ test('profile auto rewards run once per page lifecycle instead of after partial 
         /checkProfileAutoRewards\(/,
         'partial-render listener binding must not own reward mutations'
     );
+});
+
+test('profile auto rewards retry after failure and complete only after both checks succeed', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    let failAchievements = true;
+    ctx.apiPost = async path => {
+        calls.push(path);
+        if (path === '/achievements/check' && failAchievements) {
+            failAchievements = false;
+            throw new Error('temporary failure');
+        }
+        return path === '/achievements/check' ? { awarded: [], count: 0 } : { newTitles: [] };
+    };
+    vm.runInContext("isOwnProfile = true; currentUserId = 42; AppState = { currentUser: { id: 42, username: 'first' } };", ctx);
+
+    assert.equal((await ctx.checkProfileAutoRewards()).success, false);
+    assert.equal((await ctx.checkProfileAutoRewards()).success, true);
+    await ctx.checkProfileAutoRewards();
+
+    assert.deepEqual(calls, [
+        '/achievements/check',
+        '/achievements/check',
+        '/quests/check-titles'
+    ]);
+});
+
+test('profile auto rewards are scoped to account and auth session generation', async () => {
+    const ctx = loadProfileTaskerContext();
+    const calls = [];
+    ctx.apiPost = async path => {
+        calls.push(path);
+        return path === '/achievements/check' ? { awarded: [], count: 0 } : { newTitles: [] };
+    };
+    vm.runInContext("isOwnProfile = true; currentUserId = 42; AppState = { currentUser: { id: 42, username: 'first' } };", ctx);
+    ctx.localStorage.setItem('pzp_auth_session_generation', 'generation-1');
+
+    await ctx.checkProfileAutoRewards();
+    await ctx.checkProfileAutoRewards();
+    ctx.localStorage.setItem('pzp_auth_session_generation', 'generation-2');
+    await ctx.checkProfileAutoRewards();
+    vm.runInContext("currentUserId = 77; AppState.currentUser = { id: 77, username: 'second' };", ctx);
+    await ctx.checkProfileAutoRewards();
+
+    assert.deepEqual(calls, [
+        '/achievements/check', '/quests/check-titles',
+        '/achievements/check', '/quests/check-titles',
+        '/achievements/check', '/quests/check-titles'
+    ]);
 });
 
 test('profile my day ordering keeps decomposed groups and sorts newest tasks first inside the slice', () => {

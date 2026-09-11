@@ -219,9 +219,7 @@
     "test:cashier-payment-state": "node tests/cashier-next-customer.test.js"
   },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.75.0",
     "bcryptjs": "^3.0.3",
-    "chart.js": "^4.5.1",
     "compression": "^1.8.1",
     "cors": "^2.8.5",
     "exceljs": "^4.4.0",

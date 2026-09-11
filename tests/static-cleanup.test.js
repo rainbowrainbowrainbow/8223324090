@@ -4,6 +4,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const { staticDocGuard } = require('../middleware/staticDocGuard');
+const { buildInventory } = require('../scripts/cleanup-inventory');
 
 const ROOT = path.join(__dirname, '..');
 const LANDING = path.join(ROOT, 'landing');
@@ -111,6 +112,40 @@ describe('static cleanup routing', () => {
             const response = await fetch(`${baseUrl}${canonicalPath}`);
             assert.equal(response.status, 200, `${canonicalPath} should be public landing material`);
             assert.match(await response.text(), /Event Genix/);
+        }
+    });
+});
+
+describe('cleanup inventory', () => {
+    it('uses repository-tracked files instead of walking untracked checkout folders', () => {
+        const inventoryScript = fs.readFileSync(path.join(ROOT, 'scripts', 'cleanup-inventory.js'), 'utf8');
+        assert.match(inventoryScript, /execFileSync\('git', \['ls-files', '-z'\]/);
+        assert.doesNotMatch(inventoryScript, /fs\.readdirSync/);
+    });
+
+    it('is deterministic and ignores untracked temporary inventory noise', () => {
+        const tempDir = path.join(ROOT, '.codex-temp', 'cleanup-inventory-test');
+        fs.mkdirSync(tempDir, { recursive: true });
+        fs.writeFileSync(path.join(tempDir, 'untracked-noise.html'), '<script>ignored()</script>\n');
+
+        try {
+            const trackedFiles = [
+                'AGENTS.md',
+                'README.md',
+                'server.js',
+                'routes/banquets.js',
+                'services/banquetCancellation.js',
+                'landing/index.html',
+                'docs/TIMELINE_PROTECTED_SURFACE.md',
+                'db/migrations/001_initial_schema.sql'
+            ];
+            const first = buildInventory({ trackedFiles });
+            const second = buildInventory({ trackedFiles });
+            assert.deepEqual(second, first);
+            assert.equal(first.largestFiles.some(file => file.path.includes('untracked-noise.html')), false);
+            assert.equal(first.rootHtml.some(file => file.file === 'untracked-noise.html'), false);
+        } finally {
+            fs.rmSync(tempDir, { recursive: true, force: true });
         }
     });
 });

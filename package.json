@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.116",
+  "version": "0.81.117",
   "eventGenix": {
-    "releaseLabel": "HR чеклісти: повернення фокуса"
+    "releaseLabel": "PARK/DAR PIN і service-out"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

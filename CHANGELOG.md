@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.117 - PARK/DAR PIN і service-out
+
+### Release / Versioning / (11.09.2026) [codex]
+- **Action PIN для каси** — додано серверний hash-only lifecycle для PIN підтверджень іншого актора, без повернення сирого PIN у відповіді чи збереження в браузері.
+- **Service-out без повторного submit** — PARK/DAR test service-out отримав scoped recovery за ключем запиту, requester-only cancel до погодження/відправки та operation-bound approval.
+- **Вузький test-only gate** — новий narrow flag відкриває лише exact PARK/DAR Checkbox test service-out шлях, не вмикаючи широкий Cashier PRO і не змінюючи production settings.
+- **Перевірки** — додано поведінкові PIN/service-out регресії, UI guardrails і Chromium smoke на synthetic fixtures для світлої/темної теми.
+
+---
+
 ## v0.81.116 - HR чеклісти: повернення фокуса
 
 ### HR / Чеклісти / Доступність / (11.09.2026) [codex]

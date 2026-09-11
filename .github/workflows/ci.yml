@@ -108,7 +108,7 @@ jobs:
 
       - name: Upload HR Checklists browser evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hr-checklists-browser
           path: |
@@ -189,7 +189,7 @@ jobs:
 
       - name: Upload HR Checklists database evidence
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: hr-checklists-postgres
           path: |

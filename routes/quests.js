@@ -258,60 +258,62 @@ async function checkTitles(userId) {
         ]);
 
         const earnedSet = new Set(earned.rows.map(r => r.title_code));
+        const unearnedTitles = definitions.rows.filter(title => !earnedSet.has(title.code));
+        const conditionTypes = new Set(unearnedTitles.map(title => title.condition_type));
+        const criteriaQueries = new Map();
+        const addCriteriaQuery = (type, sql, params = [userId]) => {
+            if (conditionTypes.has(type)) criteriaQueries.set(type, pool.query(sql, params));
+        };
+        addCriteriaQuery('tasks_completed', `
+            SELECT COUNT(*)
+            FROM tasks t
+            WHERE t.owner_user_id = $1
+              AND ${taskKpiEligibleSql('t')}
+              AND ${taskKpiCompletedSql('t')}
+        `);
+        addCriteriaQuery('items_owned', 'SELECT COUNT(*) FROM user_inventory WHERE user_id = $1');
+        addCriteriaQuery('total_earned', 'SELECT total_earned FROM game_wallets WHERE user_id = $1');
+        addCriteriaQuery('games_played', 'SELECT COUNT(*) FROM minigame_sessions WHERE user_id = $1');
+        addCriteriaQuery('room_items', "SELECT COUNT(*) FROM user_inventory ui JOIN shop_items si ON si.id = ui.item_id WHERE ui.user_id = $1 AND si.category = 'furniture'");
+        addCriteriaQuery('days_active', 'SELECT created_at FROM users WHERE id = $1');
+        addCriteriaQuery('leaderboard_top', 'SELECT user_id FROM game_wallets ORDER BY total_earned DESC LIMIT 1', []);
+        const criteria = new Map(await Promise.all(
+            Array.from(criteriaQueries, async ([type, query]) => [type, (await query).rows[0] || null])
+        ));
         const newTitles = [];
 
-        for (const title of definitions.rows) {
-            if (earnedSet.has(title.code)) continue;
-
+        for (const title of unearnedTitles) {
             let qualifies = false;
             switch (title.condition_type) {
                 case 'registration':
                     qualifies = true; // always qualifies
                     break;
-                case 'tasks_completed': {
-                    const r = await pool.query(`
-                        SELECT COUNT(*)
-                        FROM tasks t
-                        WHERE t.owner_user_id = $1
-                          AND ${taskKpiEligibleSql('t')}
-                          AND ${taskKpiCompletedSql('t')}
-                    `, [userId]);
-                    qualifies = parseInt(r.rows[0].count) >= title.condition_value;
+                case 'tasks_completed':
+                    qualifies = parseInt(criteria.get('tasks_completed')?.count || 0) >= title.condition_value;
                     break;
-                }
-                case 'items_owned': {
-                    const r = await pool.query('SELECT COUNT(*) FROM user_inventory WHERE user_id = $1', [userId]);
-                    qualifies = parseInt(r.rows[0].count) >= title.condition_value;
+                case 'items_owned':
+                    qualifies = parseInt(criteria.get('items_owned')?.count || 0) >= title.condition_value;
                     break;
-                }
-                case 'total_earned': {
-                    const r = await pool.query('SELECT total_earned FROM game_wallets WHERE user_id = $1', [userId]);
-                    qualifies = r.rows[0] && r.rows[0].total_earned >= title.condition_value;
+                case 'total_earned':
+                    qualifies = Number(criteria.get('total_earned')?.total_earned || 0) >= title.condition_value;
                     break;
-                }
-                case 'games_played': {
-                    const r = await pool.query('SELECT COUNT(*) FROM minigame_sessions WHERE user_id = $1', [userId]);
-                    qualifies = parseInt(r.rows[0].count) >= title.condition_value;
+                case 'games_played':
+                    qualifies = parseInt(criteria.get('games_played')?.count || 0) >= title.condition_value;
                     break;
-                }
-                case 'room_items': {
-                    const r = await pool.query("SELECT COUNT(*) FROM user_inventory ui JOIN shop_items si ON si.id = ui.item_id WHERE ui.user_id = $1 AND si.category = 'furniture'", [userId]);
-                    qualifies = parseInt(r.rows[0].count) >= title.condition_value;
+                case 'room_items':
+                    qualifies = parseInt(criteria.get('room_items')?.count || 0) >= title.condition_value;
                     break;
-                }
                 case 'days_active': {
-                    const r = await pool.query('SELECT created_at FROM users WHERE id = $1', [userId]);
-                    if (r.rows[0]) {
-                        const days = Math.floor((Date.now() - new Date(r.rows[0].created_at).getTime()) / 86400000);
+                    const createdAt = criteria.get('days_active')?.created_at;
+                    if (createdAt) {
+                        const days = Math.floor((Date.now() - new Date(createdAt).getTime()) / 86400000);
                         qualifies = days >= title.condition_value;
                     }
                     break;
                 }
-                case 'leaderboard_top': {
-                    const r = await pool.query('SELECT user_id FROM game_wallets ORDER BY total_earned DESC LIMIT 1');
-                    qualifies = r.rows[0] && r.rows[0].user_id === userId;
+                case 'leaderboard_top':
+                    qualifies = Number(criteria.get('leaderboard_top')?.user_id) === Number(userId);
                     break;
-                }
                 // messages_sent and early_checkins tracked externally
             }
 

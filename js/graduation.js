@@ -168,12 +168,13 @@
 
     function getEffectivePrice(svc) {
         if (svc.priceType === 'formula' && svc.pricePark) return calcFormulaPrice(svc.pricePark);
-        return svc.pricePerChild || 0;
+        // PostgreSQL decimal fields can arrive as strings; totals must add numbers.
+        return Number(svc.pricePerChild || 0);
     }
 
     function getKidsCount() {
         const pkgEl = document.getElementById('gradPkgKids');
-        if (currentTab === 'packages' && pkgEl) return Math.max(1, parseInt(pkgEl.value) || 15);
+        if (currentTab === 'packages' && pkgEl) return Math.max(1, Math.min(99, parseInt(pkgEl.value) || 15));
         return currentKidsCount;
     }
 
@@ -190,11 +191,11 @@
 
     function calcServiceCost(svc, kids) {
         if (svc.costType === 'mk_external') return null;
-        let cost = (svc.costHost || 0) + (svc.costCostume || 0) +
-            (svc.costDelivery || 0) + (svc.costIce || 0) +
-            (svc.costOther || 0) + (svc.costBox || 0) +
-            (svc.costMarkers || 0) + (svc.costSolution || 0) +
-            (svc.costCleaning || 0);
+        let cost = Number(svc.costHost || 0) + Number(svc.costCostume || 0) +
+            Number(svc.costDelivery || 0) + Number(svc.costIce || 0) +
+            Number(svc.costOther || 0) + Number(svc.costBox || 0) +
+            Number(svc.costMarkers || 0) + Number(svc.costSolution || 0) +
+            Number(svc.costCleaning || 0);
         cost += (svc.costBalloonsPerKid || 0) * kids;
         cost += (svc.costAquagrimPerKid || 0) * kids;
         cost += (svc.costPrintPerKid || 0) * kids;
@@ -828,7 +829,7 @@
 
     function getPackageImageHtml(slug, name, cssClass, imageUrl) {
         const gradient = PACKAGE_GRADIENTS[slug] || 'linear-gradient(135deg, #C9A84C, #B8942F)';
-        const src = imageUrl || `images/catalogs/graduation/${slug}.png`;
+        const src = imageUrl || `images/catalogs/graduation/${slug}-banner.png`;
         const safeName = name.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;');
         return `<img class="${cssClass}" src="${src}" alt="${safeName}"
             onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
@@ -842,7 +843,7 @@
         for (const item of pkg.services) {
             const svc = services.find(s => s.id === item.serviceId);
             if (svc) {
-                const price = item.overridePrice || getEffectivePrice(svc);
+                const price = Number(item.overridePrice || getEffectivePrice(svc));
                 totalPerChild += price;
                 totalDuration += svc.durationMin || 0;
                 rows.push({ name: svc.name, price, duration: svc.durationMin || 0, icon: getServiceIcon(svc), description: svc.description || '' });
@@ -880,7 +881,8 @@
             const cardBg = gradient.replace(/,\s*#\w+\)/, ', rgba(255,255,255,0.02))').replace(/#\w+,/, 'rgba(' + hexToRgb(borderColor) + ',0.06),');
 
             html += `
-            <div class="grad-package-card" style="border-top:3px solid ${borderColor}" onclick="GradPage.openCatalogViewer(${packages.indexOf(pkg)})" role="button" tabindex="0">
+            <div class="grad-package-card" style="border-top:3px solid ${borderColor}" onclick="GradPage.openCatalogViewer(${packages.indexOf(pkg)})" role="button" tabindex="0"
+                onkeydown="if(event.target===this && (event.key==='Enter' || event.key===' ')){event.preventDefault();GradPage.openCatalogViewer(${packages.indexOf(pkg)});}">
                 <div class="grad-pkg-image-wrap">
                     ${getPackageImageHtml(pkg.slug, pkg.name, 'grad-pkg-thumb', pkg.imageUrl)}
                 </div>
@@ -991,7 +993,7 @@
         const maxKids = pkg.maxKids || 50;
 
         // Hero image or placeholder
-        const imgSrc = pkg.imageUrl || `images/catalogs/graduation/${pkg.slug}.png`;
+        const imgSrc = pkg.imageUrl || `images/catalogs/graduation/${pkg.slug}-banner.png`;
         const heroHtml = `
             <img class="catalog-hero-img" src="${imgSrc}" alt="${_esc(pkg.name)}"
                 onerror="this.style.display='none';this.nextElementSibling.style.display='flex'">
@@ -1199,7 +1201,7 @@
             let total = 0;
             for (const item of pkg.services) {
                 const svc = services.find(s => s.id === item.serviceId);
-                if (svc) total += item.overridePrice || getEffectivePrice(svc);
+                if (svc) total += Number(item.overridePrice || getEffectivePrice(svc));
             }
             return `<td style="text-align:center;font-weight:800;color:#C9A84C">${formatPrice(total)}/дит</td>`;
         });
@@ -2396,6 +2398,12 @@
 
         window.addEventListener('app:user-changed', () => syncGraduationAccessUi(true));
         window.addEventListener('permissions:lifecycle', () => syncGraduationAccessUi(true));
+
+        document.addEventListener('keydown', (event) => {
+            if (event.key !== 'Escape') return;
+            const modal = document.getElementById('gradInfoModal');
+            if (modal) modal.style.display = 'none';
+        });
 
         // Close customer dropdown on outside click
         document.addEventListener('click', (e) => {

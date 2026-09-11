@@ -246,6 +246,14 @@ function projectPaymentOrderDetailsForViewer(_user, details = {}) {
     }) : [];
     return {
         ...details,
+        progress: details.progress ? {
+            stage: details.progress.stage,
+            stageUpdatedAt: details.progress.stageUpdatedAt ?? null,
+            lastCheckAt: details.progress.lastCheckAt ?? null,
+            nextCheckAt: details.progress.nextCheckAt ?? null,
+            waitDeadlineAt: details.progress.waitDeadlineAt ?? null,
+            attentionReason: details.progress.attentionReason ?? null
+        } : null,
         order,
         items: Array.isArray(details.items) ? details.items.map(item => {
             const {

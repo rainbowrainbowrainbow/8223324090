@@ -406,6 +406,19 @@
     background: rgba(99,102,241,0.12);
     color: var(--primary);
 }
+#hrNav [data-hr-nav-group="payroll"] .hr-tab[data-tab="profiles"] .hr-nav-beta-badge {
+    display: inline-flex;
+    align-items: center;
+    min-height: 18px;
+    padding: 2px 6px;
+    border: 1px solid rgba(20,184,166,0.24);
+    border-radius: 999px;
+    background: rgba(20,184,166,0.10);
+    color: #0F766E;
+    font-size: 10px;
+    font-weight: 900;
+    line-height: 1;
+}
 .hr-nav-empty {
     color: var(--gray-400);
     font-size: var(--font-xs);
@@ -507,6 +520,12 @@ body.dark-mode .hr-today-date {
 }
 body.dark-mode .hr-nav-count { background: rgba(255,255,255,0.08); color: #CBD5E1; }
 body.dark-mode .hr-tab.active .hr-nav-count { background: rgba(129,140,248,0.18); color: var(--primary-light); }
+body.dark-mode #hrNav [data-hr-nav-group="payroll"] .hr-tab[data-tab="profiles"] .hr-nav-beta-badge,
+[data-theme="dark"] #hrNav [data-hr-nav-group="payroll"] .hr-tab[data-tab="profiles"] .hr-nav-beta-badge {
+    border-color: rgba(94,234,212,0.28);
+    background: rgba(20,184,166,0.18);
+    color: #5EEAD4;
+}
 
 .hr-tab-content { display: none; }
 .hr-tab-content.active { display: block; }
@@ -2034,6 +2053,207 @@ body.dark-mode .hr-org-detail {
 .hr-payroll-profile-diff-row strong {
     display: block;
     color: var(--gray-900);
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-filters,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-filters {
+    border-color: rgba(148,163,184,0.18);
+    background: linear-gradient(135deg, rgba(30,30,56,0.86), rgba(15,23,42,0.58));
+    box-shadow: 0 8px 22px rgba(0,0,0,0.18);
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-card,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector,
+body.dark-mode #tab-profiles .hr-payroll-profile-editor,
+body.dark-mode #tab-profiles .hr-payroll-profile-compare,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-card,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-card,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-editor,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-compare,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-card {
+    border-color: rgba(148,163,184,0.18);
+    background: rgba(30,30,56,0.94);
+    box-shadow: 0 10px 28px rgba(0,0,0,0.26);
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-card.is-selected,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-card.is-selected {
+    border-color: rgba(45,212,191,0.44);
+    border-left-color: #2DD4BF;
+    box-shadow: 0 14px 34px rgba(20,184,166,0.20);
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-title,
+body.dark-mode #tab-profiles .hr-payroll-profile-rate-grid strong,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-stats strong,
+body.dark-mode #tab-profiles .hr-payroll-profile-impact-grid strong,
+body.dark-mode #tab-profiles .hr-payroll-profile-period-grid strong,
+body.dark-mode #tab-profiles .hr-payroll-profile-editor-title strong,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-head strong,
+body.dark-mode #tab-profiles .hr-payroll-profile-diff-row strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-title,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-rate-grid strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-stats strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-impact-grid strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-period-grid strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-editor-title strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-head strong,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-diff-row strong {
+    color: #F8FAFC;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-title:hover,
+body.dark-mode #tab-profiles .hr-payroll-profile-title:focus-visible,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-title:hover,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-title:focus-visible {
+    color: #5EEAD4;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-meta,
+body.dark-mode #tab-profiles .hr-payroll-profile-card-footer,
+body.dark-mode #tab-profiles .hr-payroll-profile-editor-title span,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-head span,
+body.dark-mode #tab-profiles .hr-payroll-profile-rate-grid span,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-stats span,
+body.dark-mode #tab-profiles .hr-payroll-profile-impact-grid span,
+body.dark-mode #tab-profiles .hr-payroll-profile-rate-grid small,
+body.dark-mode #tab-profiles .hr-payroll-profile-impact-grid small,
+body.dark-mode #tab-profiles .hr-payroll-profile-period-grid small,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-meta,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-card-footer,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-editor-title span,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-head span,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-rate-grid span,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-stats span,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-impact-grid span,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-rate-grid small,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-impact-grid small,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-period-grid small {
+    color: #CBD5E1;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-period-grid span,
+body.dark-mode #tab-profiles .hr-payroll-profile-form-grid label,
+body.dark-mode #tab-profiles .hr-payroll-profile-quick-fill label,
+body.dark-mode #tab-profiles .hr-payroll-profile-day-editor label,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-period-grid span,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-form-grid label,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-quick-fill label,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-day-editor label {
+    color: #E2E8F0;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-badge,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge {
+    background: rgba(148,163,184,0.14);
+    color: #CBD5E1;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-badge.is-active,
+body.dark-mode #tab-profiles .hr-payroll-profile-badge.is-ready,
+body.dark-mode #tab-profiles .hr-payroll-profile-badge.is-default,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge.is-active,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge.is-ready,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge.is-default {
+    background: rgba(16,185,129,0.18);
+    color: #6EE7B7;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-badge.is-draft,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge.is-draft {
+    background: rgba(245,158,11,0.18);
+    color: #FCD34D;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-badge.is-archived,
+body.dark-mode #tab-profiles .hr-payroll-profile-badge.is-legacy,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge.is-archived,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-badge.is-legacy {
+    background: rgba(148,163,184,0.14);
+    color: #CBD5E1;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-rate-grid > div,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-stats > div,
+body.dark-mode #tab-profiles .hr-payroll-profile-impact-grid > div,
+body.dark-mode #tab-profiles .hr-payroll-profile-diff-row,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-rate-grid > div,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-stats > div,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-impact-grid > div,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-diff-row {
+    border-color: rgba(148,163,184,0.16);
+    background: rgba(15,23,42,0.40);
+    color: #E2E8F0;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-period-grid > div,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-period-grid > div {
+    background: rgba(20,184,166,0.12);
+    border-color: rgba(45,212,191,0.24);
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-period-grid > div.is-mixed,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-period-grid > div.is-mixed {
+    background: rgba(245,158,11,0.14);
+    border-color: rgba(251,191,36,0.30);
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-day,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-day {
+    border-color: rgba(148,163,184,0.18);
+    background: rgba(15,23,42,0.42);
+    color: #E2E8F0;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-day.is-override,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-day.is-override {
+    border-color: rgba(45,212,191,0.34);
+    background: rgba(20,184,166,0.16);
+    color: #5EEAD4;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-day.is-empty,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-day.is-empty {
+    color: #94A3B8;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-actions button,
+body.dark-mode #tab-profiles .hr-payroll-profile-inspector-head button,
+body.dark-mode #tab-profiles .hr-payroll-profile-quick-fill button,
+body.dark-mode #tab-profiles .hr-payroll-profile-compare-load,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-actions button,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-inspector-head button,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-quick-fill button,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-compare-load {
+    border-color: rgba(45,212,191,0.30);
+    background: rgba(20,184,166,0.16);
+    color: #5EEAD4;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-empty-state,
+body.dark-mode #tab-profiles .hr-payroll-profile-compare-empty,
+body.dark-mode #tab-profiles .hr-payroll-profile-impact-note,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-empty-state,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-compare-empty,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-impact-note {
+    border-color: rgba(148,163,184,0.24);
+    background: rgba(15,23,42,0.32);
+    color: #CBD5E1;
+}
+
+body.dark-mode #tab-profiles .hr-payroll-profile-form-grid input,
+body.dark-mode #tab-profiles .hr-payroll-profile-form-grid select,
+body.dark-mode #tab-profiles .hr-payroll-profile-quick-fill input,
+body.dark-mode #tab-profiles .hr-payroll-profile-day-editor input,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-form-grid input,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-form-grid select,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-quick-fill input,
+[data-theme="dark"] #tab-profiles .hr-payroll-profile-day-editor input {
+    border-color: rgba(148,163,184,0.28);
+    background: rgba(15,23,42,0.54);
+    color: #F8FAFC;
+    color-scheme: dark;
 }
 
 @media (max-width: 1180px) {

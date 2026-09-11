@@ -19,6 +19,7 @@ const {
     removeAudioObject,
     makeAudioFilename
 } = require('../services/audioStorage');
+const { readSoundProjects } = require('../services/soundProjects');
 const log = createLogger('Music');
 
 // File upload for sound library
@@ -631,15 +632,8 @@ router.delete('/library/:id', requireRole('admin', 'director'), async (req, res)
 
 router.get('/projects', async (req, res) => {
     try {
-        const projects = await pool.query('SELECT * FROM sound_projects ORDER BY created_at DESC LIMIT 200');
-        const result = [];
-        for (const p of projects.rows) {
-            const tracks = await pool.query(
-                `SELECT s.* FROM sounds s JOIN sound_project_tracks t ON t.sound_id = s.id
-                 WHERE t.project_id = $1 ORDER BY t.sort_order`, [p.id]);
-            result.push({ ...p, tracks: tracks.rows });
-        }
-        res.json({ projects: result });
+        const projects = await readSoundProjects(pool, { limit: 200 });
+        res.json({ projects });
     } catch (err) { res.status(500).json({ error: 'Internal server error' }); }
 });
 

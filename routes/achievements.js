@@ -29,7 +29,7 @@ async function writeAchievementProgress({ userId, username, achievement, progres
             VALUES ($1, $6, $2, $7, $3, $4, $5)
             ON CONFLICT (user_id, achievement_id) DO UPDATE SET
                 progress = GREATEST(user_achievements.progress, $3),
-                completed = $4,
+                completed = COALESCE(user_achievements.completed, false) OR $4,
                 completed_at = CASE WHEN $4 AND NOT user_achievements.completed THEN NOW() ELSE user_achievements.completed_at END,
                 times_completed = CASE WHEN $4 AND NOT user_achievements.completed THEN user_achievements.times_completed + 1 ELSE user_achievements.times_completed END
         `, [userId, achievement.id, progress, completed, completedAt, username, achievement.code]);
@@ -55,20 +55,53 @@ async function writeAchievementProgress({ userId, username, achievement, progres
     }
 }
 
-async function awardAchievementCoins(userId, achievement) {
+async function awardAchievementCoins(userId, username, achievement, db = pool) {
+    const wallet = await db.query(
+        `UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2`,
+        [achievement.reward_coins, userId]
+    );
+    if (wallet.rowCount !== 1) {
+        throw new Error('Achievement wallet is unavailable');
+    }
+    await db.query(
+        `INSERT INTO coin_transactions
+            (user_id, username, amount, type, description, reference_id)
+         VALUES ($1, $2, $3, $4, $5, $6)`,
+        [userId, username, achievement.reward_coins, 'achievement', `Ачівка: ${achievement.name}`, achievement.id]
+    );
+}
+
+async function completeAchievementAndAward({ userId, username, achievement, progress }) {
+    const client = await pool.connect();
     try {
-        await pool.query(
-            `UPDATE game_wallets SET coins = coins + $1, total_earned = total_earned + $1, updated_at = NOW() WHERE user_id = $2`,
-            [achievement.reward_coins, userId]
-        );
-        await pool.query(
-            'INSERT INTO coin_transactions (user_id, amount, type, description, reference_id) VALUES ($1, $2, $3, $4, $5)',
-            [userId, achievement.reward_coins, 'achievement', `Ачівка: ${achievement.name}`, achievement.id]
-        );
+        await client.query('BEGIN');
+        const completion = await client.query(`
+            INSERT INTO user_achievements
+                (user_id, username, achievement_id, achievement_key, progress, completed, completed_at)
+            VALUES ($1, $4, $2, $5, $3, true, NOW())
+            ON CONFLICT (user_id, achievement_id) DO UPDATE SET
+                progress = GREATEST(user_achievements.progress, EXCLUDED.progress),
+                completed = true,
+                completed_at = NOW(),
+                times_completed = COALESCE(user_achievements.times_completed, 0) + 1
+            WHERE NOT COALESCE(user_achievements.completed, false)
+            RETURNING id
+        `, [userId, achievement.id, progress, username, achievement.code]);
+
+        if (completion.rowCount !== 1) {
+            await client.query('COMMIT');
+            return false;
+        }
+
+        await awardAchievementCoins(userId, username, achievement, client);
+        await client.query('COMMIT');
         return true;
     } catch (err) {
-        log.warn('Achievement coin award skipped', { code: err.code, message: err.message });
+        await client.query('ROLLBACK').catch(() => {});
+        log.warn('Achievement completion and reward rolled back', { code: err.code, message: err.message });
         return false;
+    } finally {
+        client.release();
     }
 }
 
@@ -292,19 +325,24 @@ router.post('/check', requireRole(...ANY_ROLE), async (req, res) => {
 
             // Update progress
             if (progress > 0 || achieved) {
-                const progressWritten = await writeAchievementProgress({
-                    userId,
-                    username: req.user.username,
-                    achievement: ach,
-                    progress,
-                    completed: achieved,
-                    completedAt: achieved ? new Date() : null
-                });
-
-                if (achieved && progressWritten) {
-                    // Award coins
-                    await awardAchievementCoins(userId, ach);
+                if (achieved) {
+                    const rewardWinner = await completeAchievementAndAward({
+                        userId,
+                        username: req.user.username,
+                        achievement: ach,
+                        progress
+                    });
+                    if (!rewardWinner) continue;
                     awarded.push({ code: ach.code, name: ach.name, icon: ach.icon, coins: ach.reward_coins });
+                } else {
+                    await writeAchievementProgress({
+                        userId,
+                        username: req.user.username,
+                        achievement: ach,
+                        progress,
+                        completed: false,
+                        completedAt: null
+                    });
                 }
             }
         }

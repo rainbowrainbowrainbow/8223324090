@@ -17,6 +17,7 @@ const {
     normalizeTender
 } = require('./paymentStateMachine');
 const { requestPaymentOutboxWakeup } = require('./paymentOutboxWakeup');
+const { paymentProgress } = require('./paymentProgress');
 const {
     PaymentReadinessError,
     assertFreshPaymentReadiness,
@@ -1750,11 +1751,14 @@ async function getPaymentOrderDetails({
                 [order.fiscal_profile_id, order.id]
             ),
             client.query(
-                `SELECT *
-                   FROM fiscal_operations
-                  WHERE fiscal_profile_id = $1
-                    AND payment_order_id = $2
-                  ORDER BY created_at DESC, id DESC
+                `SELECT operation.*, shift.lifecycle_stage AS related_shift_lifecycle_stage
+                   FROM fiscal_operations operation
+                   LEFT JOIN fiscal_shifts shift
+                     ON shift.id = operation.fiscal_shift_id
+                    AND shift.fiscal_profile_id = operation.fiscal_profile_id
+                  WHERE operation.fiscal_profile_id = $1
+                    AND operation.payment_order_id = $2
+                  ORDER BY operation.created_at DESC, operation.id DESC
                   LIMIT 1`,
                 [order.fiscal_profile_id, order.id]
             ),
@@ -1767,7 +1771,7 @@ async function getPaymentOrderDetails({
                 [order.fiscal_profile_id, order.id]
             ),
             client.query(
-                `SELECT id, job_type, status, external_stage, attempts, max_attempts, next_run_at, last_error_code
+                `SELECT id, job_type, status, external_stage, attempts, max_attempts, next_run_at, last_error_code, payload
                    FROM payment_outbox_jobs
                   WHERE fiscal_profile_id = $1
                     AND payment_order_id = $2
@@ -1792,6 +1796,7 @@ async function getPaymentOrderDetails({
             order: publicOrder,
             items: itemsResult.rows.map(normalizePaymentOrderItem),
             fiscalOperation: normalizeFiscalOperation(operationsResult.rows[0]),
+            progress: paymentProgress({ order, operation: operationsResult.rows[0] || {}, job: outboxResult.rows[0] || {} }),
             outboxJob,
             receipts,
             artifacts: receiptArtifacts(receipts)

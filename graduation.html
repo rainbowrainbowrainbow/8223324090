@@ -21,14 +21,14 @@
         try { if (window.self !== window.top) document.documentElement.classList.add('embed-mode'); } catch(e) { document.documentElement.classList.add('embed-mode'); }
     })();
     </script>
-    <link rel="stylesheet" href="css/base.css?v=0.81.103">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.103">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.103">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.103">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.103">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.103">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.103">
-    <link rel="stylesheet" href="css/graduation.css?v=0.81.103">
+    <link rel="stylesheet" href="css/base.css?v=0.81.110">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.110">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.110">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.110">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.110">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.110">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.110">
+    <link rel="stylesheet" href="css/graduation.css?v=0.81.110">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -131,14 +131,14 @@
     <!-- Notification -->
     <div id="notification" class="notification" style="display:none"></div>
 
-    <script src="js/config.js?v=0.81.103"></script>
-    <script src="js/notification.js?v=0.81.103"></script>
-    <script src="js/api.js?v=0.81.103"></script>
-    <script src="js/auth.js?v=0.81.103"></script>
-    <script src="js/components/sidebar.js?v=0.81.103"></script>
-    <script src="js/graduation.js?v=0.81.103"></script>
+    <script src="js/config.js?v=0.81.110"></script>
+    <script src="js/notification.js?v=0.81.110"></script>
+    <script src="js/api.js?v=0.81.110"></script>
+    <script src="js/auth.js?v=0.81.110"></script>
+    <script src="js/components/sidebar.js?v=0.81.110"></script>
+    <script src="js/graduation.js?v=0.81.110"></script>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             const isEmbedded = new URLSearchParams(location.search).get('embedded') === '1'
                 || window.self !== window.top;
             if (isEmbedded) {
@@ -170,6 +170,42 @@
                     }
                 } catch (e) { /* cross-origin — token should already be shared via same-origin localStorage */ }
             } else {
+                try {
+                    const user = await apiVerifyToken();
+                    if (!user) {
+                        if (handleTransientAuthSessionBootstrap({ containerId: 'main-content' })) return;
+                        clearAuthStorage();
+                        clearAuthenticatedPageShell();
+                        window.location.href = '/';
+                        return;
+                    }
+                    await hydrateBusinessOperatingProfile(user);
+                    const permissions = await hydrateActionPermissions(user);
+                    if (!permissions) {
+                        showAuthenticatedPageShell({ markRuntimeReady: false });
+                        renderPermissionBootstrapError({
+                            containerId: 'main-content',
+                            retry: () => window.location.reload()
+                        });
+                        return;
+                    }
+                    AppState.currentUser = user;
+                    window.WorkingRole?.hydrate?.();
+                    if (!enforceCurrentPageAccess(user)) return;
+                    showAuthenticatedPageShell();
+                    bindLogoutButton();
+                } catch (error) {
+                    if (handleTransientAuthSessionBootstrap({ containerId: 'main-content' })) return;
+                    handleStandaloneInitError('graduation', error, () => {
+                        renderStandaloneFatalError({
+                            containerId: 'main-content',
+                            title: 'Не вдалося відкрити конструктор випускного',
+                            message: 'Не вдалося підготувати сторінку. Спробуйте оновити її.',
+                            moduleName: 'graduation', error
+                        });
+                    });
+                    return;
+                }
                 if (typeof Sidebar !== 'undefined') Sidebar.init('#sidebarLinks');
             }
             try {
@@ -183,11 +219,11 @@
             } catch (err) {
                 console.error('[Graduation] Init error:', err);
                 const content = document.getElementById('gradContent');
-                if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#999">Помилка: ' + err.message + '</div>';
+                if (content) content.textContent = 'Не вдалося завантажити конструктор. Спробуйте оновити сторінку.';
             }
         });
     </script>
-    <script src="js/ui.js?v=0.81.103"></script>
-    <script src="js/alerts.js?v=0.81.103"></script>
+    <script src="js/ui.js?v=0.81.110"></script>
+    <script src="js/alerts.js?v=0.81.110"></script>
 </body>
 </html>

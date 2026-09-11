@@ -22,6 +22,24 @@ function setup(hash = '', stored = 'kitchen') {
     return { w, close: () => dom.window.close() };
 }
 
+test('graduation hub count follows package response instead of generic catalog metadata', async () => {
+    const h = setup('#catalogs');
+    try {
+        h.w.apiGetProductCatalogs = async () => [{ id: 'graduation', title: 'Graduation', pageCount: 8, itemCount: 0 }];
+        for (const [response, expected] of [[[{id:1},{id:2}], 'Пакетів: 2'], [[], 'Пакетів: 0'], [null, 'Кількість пакетів недоступна']]) {
+            h.w.apiCall = async (method, url) => {
+                assert.equal(method, 'GET');
+                assert.equal(url, '/graduation/packages');
+                return response;
+            };
+            await h.w.loadCatalogEntries();
+            const text = h.w.document.querySelector('#catalogsGrid').textContent;
+            assert.ok(text.includes(expected));
+            assert.doesNotMatch(text, /8 стор\.|0 елементів/);
+        }
+    } finally { h.close(); }
+});
+
 test('constructor link is unique, graduation-only and requires ready allowed single-business access', () => {
     const h = setup('#catalogs');
     try {

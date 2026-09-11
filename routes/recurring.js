@@ -127,33 +127,46 @@ function sendRecurringCancellationError(res, err) {
 router.get('/', async (req, res) => {
     try {
         const templates = await pool.query('SELECT * FROM recurring_templates ORDER BY created_at DESC');
-        const result = [];
+        if (templates.rows.length === 0) return res.json([]);
 
-        for (const tpl of templates.rows) {
-            // Count active instances
-            const instanceCount = await pool.query(
-                "SELECT COUNT(*) FROM bookings WHERE recurring_template_id = $1 AND status != 'cancelled'",
-                [tpl.id]
-            );
-            // Count skips
-            const skipCount = await pool.query(
-                'SELECT COUNT(*) FROM recurring_booking_skips WHERE template_id = $1',
-                [tpl.id]
-            );
-            // Next upcoming instance
-            const todayStr = getKyivDateStr();
-            const nextInstance = await pool.query(
-                "SELECT date FROM bookings WHERE recurring_template_id = $1 AND date >= $2 AND status != 'cancelled' ORDER BY date LIMIT 1",
-                [tpl.id, todayStr]
-            );
-
-            result.push({
-                ...mapTemplateRow(tpl),
-                instanceCount: parseInt(instanceCount.rows[0].count),
-                skipCount: parseInt(skipCount.rows[0].count),
-                nextDate: nextInstance.rows[0]?.date || null
-            });
-        }
+        const templateIds = templates.rows.map(template => template.id);
+        const todayStr = getKyivDateStr();
+        const stats = await pool.query(
+            `WITH booking_stats AS (
+                 SELECT recurring_template_id AS template_id,
+                        COUNT(*) AS instance_count,
+                        MIN(date) FILTER (WHERE date >= $2) AS next_date
+                 FROM bookings
+                 WHERE recurring_template_id = ANY($1::int[])
+                   AND status != 'cancelled'
+                 GROUP BY recurring_template_id
+             ),
+             skip_stats AS (
+                 SELECT template_id, COUNT(*) AS skip_count
+                 FROM recurring_booking_skips
+                 WHERE template_id = ANY($1::int[])
+                 GROUP BY template_id
+             )
+             SELECT ids.template_id,
+                    COALESCE(booking_stats.instance_count, 0) AS instance_count,
+                    COALESCE(skip_stats.skip_count, 0) AS skip_count,
+                    booking_stats.next_date
+             FROM unnest($1::int[]) WITH ORDINALITY AS ids(template_id, ordinal)
+             LEFT JOIN booking_stats ON booking_stats.template_id = ids.template_id
+             LEFT JOIN skip_stats ON skip_stats.template_id = ids.template_id
+             ORDER BY ids.ordinal`,
+            [templateIds, todayStr]
+        );
+        const statsByTemplateId = new Map(stats.rows.map(row => [String(row.template_id), row]));
+        const result = templates.rows.map(template => {
+            const templateStats = statsByTemplateId.get(String(template.id)) || {};
+            return {
+                ...mapTemplateRow(template),
+                instanceCount: parseInt(templateStats.instance_count || 0),
+                skipCount: parseInt(templateStats.skip_count || 0),
+                nextDate: templateStats.next_date || null
+            };
+        });
 
         res.json(result);
     } catch (err) {

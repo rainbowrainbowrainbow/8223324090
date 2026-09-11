@@ -101,6 +101,9 @@ jobs:
       - name: Run HR Team browser smoke
         run: npm run test:browser:hr-team
 
+      - name: Run HR payroll profiles browser smoke
+        run: npm run test:browser:hr-payroll-profiles
+
       - name: Run HR Checklists themes and interaction regression
         run: |
           npm run test:browser:hr-checklists:theme

@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.119">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.119">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.119">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.119">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.119">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.119">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.119">
+    <link rel="stylesheet" href="css/base.css?v=0.81.120">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.120">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.120">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.120">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.120">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.120">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.120">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -1624,18 +1624,6 @@
             gap: 8px;
         }
 
-        .omni-lead-action {
-            border-color: #0F766E !important;
-            background: #0F766E !important;
-            color: #FFFFFF !important;
-            font-weight: 800;
-        }
-
-        .omni-lead-action.linked {
-            border-color: #2563EB !important;
-            background: #2563EB !important;
-        }
-
         .omni-ai-field {
             border: 1px solid #E2E8F0;
             border-radius: 8px;
@@ -1675,71 +1663,27 @@
             line-height: 1.42;
         }
 
-        .omni-lead-form {
-            display: grid;
-            gap: 12px;
-        }
-
-        .omni-lead-form-grid {
-            display: grid;
-            grid-template-columns: repeat(2, minmax(0, 1fr));
-            gap: 10px;
-        }
-
-        .omni-lead-field {
-            display: grid;
-            gap: 5px;
-        }
-
-        .omni-lead-field.full {
-            grid-column: 1 / -1;
-        }
-
-        .omni-lead-field label {
-            color: #475569;
-            font-size: 12px;
-            font-weight: 900;
-        }
-
+        .omni-lead-form-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+        .omni-lead-field { display: grid; gap: 5px; }
+        .omni-lead-field.full { grid-column: 1 / -1; }
+        .omni-lead-field label { color: var(--text-secondary); font-size: 12px; font-weight: 900; }
         .omni-lead-field input,
-        .omni-lead-field select,
         .omni-lead-field textarea {
             width: 100%;
             min-height: 38px;
-            border: 1px solid #CBD5E1;
+            border: 1px solid var(--border-color);
             border-radius: 8px;
-            background: #FFFFFF;
-            color: #0F172A;
+            background: var(--bg-primary);
+            color: var(--text-primary);
             padding: 8px 10px;
             font: inherit;
             font-size: 13px;
         }
-
-        .omni-lead-field textarea {
-            min-height: 92px;
-            resize: vertical;
-        }
-
+        .omni-lead-field textarea { min-height: 92px; resize: vertical; }
         .omni-lead-field input:focus,
-        .omni-lead-field select:focus,
         .omni-lead-field textarea:focus {
-            border-color: #0F766E;
-            box-shadow: 0 0 0 3px rgba(15,118,110,0.14);
+            border-color: var(--accent-color);
             outline: none;
-        }
-
-        .omni-lead-result {
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            flex-wrap: wrap;
-            padding: 10px;
-            border: 1px solid #A7F3D0;
-            border-radius: 8px;
-            background: #ECFDF5;
-            color: #065F46;
-            font-size: 13px;
-            font-weight: 800;
         }
 
         .omni-ai-settings summary {
@@ -2133,7 +2077,6 @@
         }
         .dark-mode .omni-ai-subtitle,
         .dark-mode .omni-ai-summary,
-        .dark-mode .omni-lead-field label,
         .dark-mode .omni-ai-need span,
         .dark-mode .omni-ai-field span,
         .dark-mode .omni-ai-status {
@@ -2141,7 +2084,6 @@
         }
         .dark-mode .omni-ai-need,
         .dark-mode .omni-ai-field,
-        .dark-mode .omni-lead-result,
         .dark-mode .omni-ai-btn,
         .dark-mode .omni-ai-score-box,
         .dark-mode .omni-ai-scenario-box,
@@ -2153,9 +2095,6 @@
             color: #F8FAFC;
         }
         .dark-mode .omni-ai-reply-box,
-        .dark-mode .omni-lead-field input,
-        .dark-mode .omni-lead-field select,
-        .dark-mode .omni-lead-field textarea,
         .dark-mode .omni-ai-setting-row input,
         .dark-mode .omni-ai-setting-row select,
         .dark-mode .omni-ai-script-rules,
@@ -2178,7 +2117,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.119">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.120">
 </head>
 <body data-page-group="system">
     <script>
@@ -2406,12 +2345,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.119"></script>
-    <script src="js/api.js?v=0.81.119"></script>
-    <script src="js/auth.js?v=0.81.119"></script>
-    <script src="js/components/sidebar.js?v=0.81.119"></script>
+    <script src="js/config.js?v=0.81.120"></script>
+    <script src="js/api.js?v=0.81.120"></script>
+    <script src="js/auth.js?v=0.81.120"></script>
+    <script src="js/components/sidebar.js?v=0.81.120"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.119"></script>
+    <script src="js/ws.js?v=0.81.120"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -3710,7 +3649,7 @@
                         '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : 'Чернетка ліда') + '</span>' +
                         '<span class="omni-ai-status-pill">' + esc(leadId ? 'Лід привʼязано' : 'Ручне створення без AI') + '</span>' +
                     '</div>' +
-                    '<div class="omni-ai-actions" style="margin-top:10px">' +
+                    '<div class="omni-ai-actions omni-ai-row-actions">' +
                         '<button type="button" class="omni-ai-btn accent" data-ai-action="save-draft-lead"' + (leadAssistantState.creating || leadId ? ' disabled' : '') + '>' + (leadAssistantState.creating ? 'Створюємо...' : 'Зберегти лід') + '</button>' +
                         (leadId ? '<button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(leadId)) + '">Відкрити лід</button>' : '') +
                         '<button type="button" class="omni-ai-btn" data-ai-action="open-ai">AI-помічник</button>' +
@@ -3808,8 +3747,8 @@
             }
             const linkedLeadId = linkedLeadIdFromConversation(conv) || draft.result?.leadId;
             leadAssistantContent.innerHTML =
-                (draft.error ? '<div class="omni-ai-summary" style="border-color:#FCA5A5;background:#FEF2F2;color:#991B1B">' + esc(draft.error) + '</div>' : '') +
-                (linkedLeadId ? '<div class="omni-lead-result"><strong>Лід #' + esc(String(linkedLeadId)) + ' привʼязано до діалогу.</strong><button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(linkedLeadId)) + '">Відкрити лід</button></div>' : '') +
+                (draft.error ? '<div class="omni-ai-summary">' + esc(draft.error) + '</div>' : '') +
+                (linkedLeadId ? '<div class="omni-ai-summary"><strong>Лід #' + esc(String(linkedLeadId)) + ' привʼязано до діалогу.</strong><div class="omni-ai-row-actions"><button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(linkedLeadId)) + '">Відкрити лід</button></div></div>' : '') +
                 '<form class="omni-lead-form" id="omniLeadDraftForm">' +
                     '<div class="omni-ai-summary">Перевірте дані з переписки й збережіть лід. Ця форма не запускає AI і не створює запис, доки менеджер не натисне «Зберегти лід».</div>' +
                     '<div class="omni-lead-form-grid">' +
@@ -5366,7 +5305,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.119"></script>
-    <script src="js/alerts.js?v=0.81.119"></script>
+<script src="js/ui.js?v=0.81.120"></script>
+    <script src="js/alerts.js?v=0.81.120"></script>
 </body>
 </html>

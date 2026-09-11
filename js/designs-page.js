@@ -1319,6 +1319,9 @@ const PAGE_THEMES = {
 };
 
 let catalogPackages = [];
+let catalogOpenGeneration = 0;
+let catalogMetadataGeneration = 0;
+let catalogViewerMessage = '';
 let currentCatalogPage = 0;
 let _viewerCatalogType = 'graduation'; // 'graduation' or auto-catalog slug
 const CATALOG_UI_MODES = {
@@ -1366,40 +1369,52 @@ function setCatalogUiMode(mode) {
 }
 
 async function loadCatalogs() {
+    const generation = ++catalogMetadataGeneration;
+    const countEl = document.getElementById('catalogPackageCount');
+    if (countEl) countEl.textContent = 'Пакетів: —';
     try {
         const res = await apiFetch('/api/graduation/packages');
-        if (!res || !res.ok) return;
+        if (!res || !res.ok) return null;
         const data = await res.json();
-        catalogPackages = Array.isArray(data) ? data : [];
-        const updatedEl = document.getElementById('catalogUpdated');
-        if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
+        if (!Array.isArray(data)) return null;
+        if (generation === catalogMetadataGeneration) {
+            if (countEl) countEl.textContent = 'Пакетів: ' + data.length;
+            const updatedEl = document.getElementById('catalogUpdated');
+            if (updatedEl) updatedEl.textContent = 'Оновлено: ' + new Date().toLocaleDateString('uk-UA');
+        }
+        return data;
     } catch (err) {
         console.error('Load catalogs error:', err);
+        return null;
     }
 }
 
 async function openCatalog(catalogId) {
-    if (catalogId === 'graduation') {
-        _viewerCatalogType = 'graduation';
-        if (catalogPackages.length === 0) await loadCatalogs();
-        if (catalogPackages.length > 0) renderCatalogViewer();
-    } else {
-        // Auto-catalog: fetch pages from API
-        _viewerCatalogType = catalogId;
-        try {
-            const res = await apiFetch(`/api/catalogs/${catalogId}/pages`);
-            if (!res || !res.ok) return;
+    const generation = ++catalogOpenGeneration;
+    _viewerCatalogType = catalogId;
+    catalogPackages = [];
+    catalogViewerMessage = 'Завантаження каталогу…';
+    renderCatalogViewer();
+    try {
+        let pages;
+        if (catalogId === 'graduation') {
+            pages = await loadCatalogs();
+        } else {
+            const res = await apiFetch(`/api/catalogs/${encodeURIComponent(catalogId)}/pages`);
+            if (!res || !res.ok) throw new Error('Catalog unavailable');
             const data = await res.json();
-            const pages = (data.pages || []).filter(p => p.is_active !== false);
-            if (pages.length === 0) {
-                if (typeof showNotification === 'function') showNotification('Каталог порожній — додайте сторінки', 'error');
-                return;
-            }
-            catalogPackages = pages;
-            renderCatalogViewer();
-        } catch (err) {
-            console.error('openCatalog auto error:', err);
+            pages = Array.isArray(data.pages) ? data.pages.filter(p => p.is_active !== false) : null;
         }
+        if (generation !== catalogOpenGeneration) return;
+        if (!Array.isArray(pages)) throw new Error('Catalog unavailable');
+        catalogPackages = pages;
+        catalogViewerMessage = 'Каталог порожній';
+        renderCurrentPage();
+    } catch (err) {
+        if (generation !== catalogOpenGeneration) return;
+        catalogPackages = [];
+        catalogViewerMessage = 'Не вдалося завантажити каталог. Закрийте перегляд і спробуйте ще раз.';
+        renderCurrentPage();
     }
 }
 function renderCatalogViewer() {
@@ -1407,9 +1422,11 @@ function renderCatalogViewer() {
     const viewer = document.getElementById('catalogViewer');
     if (!viewer) return;
     const inline = document.getElementById('inlineCatalogView');
-    _catalogReturnMode = (document.body.classList.contains('catalog-inline-open') || (inline && inline.style.display !== 'none' && inline.offsetParent !== null))
-        ? CATALOG_UI_MODES.INLINE
-        : CATALOG_UI_MODES.LIST;
+    if (_catalogUiMode !== CATALOG_UI_MODES.VIEWER) {
+        _catalogReturnMode = (document.body.classList.contains('catalog-inline-open') || (inline && inline.style.display !== 'none' && inline.offsetParent !== null))
+            ? CATALOG_UI_MODES.INLINE
+            : CATALOG_UI_MODES.LIST;
+    }
     setCatalogUiMode(CATALOG_UI_MODES.VIEWER);
     renderCurrentPage();
 
@@ -1418,6 +1435,7 @@ function renderCatalogViewer() {
         document.removeEventListener('keydown', viewer._keyHandler);
     }
     viewer._keyHandler = (e) => {
+        if (e.target?.closest?.('input, textarea, select, [contenteditable="true"]')) return;
         if (e.key === 'ArrowRight') catalogNext();
         else if (e.key === 'ArrowLeft') catalogPrev();
         else if (e.key === 'Escape') closeCatalog();
@@ -1427,7 +1445,15 @@ function renderCatalogViewer() {
 
 function renderCurrentPage() {
     const pkg = catalogPackages[currentCatalogPage];
-    if (!pkg) return;
+    const prev = document.getElementById('catalogPrevBtn');
+    const next = document.getElementById('catalogNextBtn');
+    if (prev) prev.disabled = !pkg || currentCatalogPage === 0;
+    if (next) next.disabled = !pkg || currentCatalogPage >= catalogPackages.length - 1;
+    if (!pkg) {
+        document.getElementById('catalogPages').textContent = catalogViewerMessage;
+        document.getElementById('catalogPageIndicator').textContent = '0 / 0';
+        return;
+    }
     const html = _viewerCatalogType === 'graduation'
         ? buildCatalogPageHtml(pkg)
         : buildAutoPageHtml(pkg);
@@ -1451,6 +1477,7 @@ function catalogPrev() {
 }
 
 function closeCatalog() {
+    ++catalogOpenGeneration;
     const viewer = document.getElementById('catalogViewer');
     if (viewer && viewer._keyHandler) {
         document.removeEventListener('keydown', viewer._keyHandler);

@@ -19,6 +19,9 @@
     color: var(--gray-900);
 }
 
+/* The shared page container already supplies the outer content spacing. */
+.page-container > .grad-page { padding: 0; }
+
 /* === TABS === */
 .grad-tabs {
     display: flex;
@@ -285,9 +288,9 @@
     font-size: 14px;
     font-weight: 600;
     color: var(--gray-900);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    white-space: normal;
+    overflow-wrap: anywhere;
+    flex-wrap: wrap;
     display: flex;
     align-items: center;
     gap: 6px;
@@ -653,11 +656,20 @@
 /* === PACKAGES === */
 .grad-packages-kids-row {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 12px;
     margin-bottom: 20px;
     font-size: 15px;
     color: var(--gray-700);
+}
+
+.grad-packages-kids-row .grad-stepper input {
+    min-height: 44px;
+    background: var(--white);
+    color: var(--gray-900);
+    border: 1px solid var(--gray-300);
+    font-family: inherit;
 }
 
 .grad-packages-grid {

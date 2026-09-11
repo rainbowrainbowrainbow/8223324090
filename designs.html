@@ -33,6 +33,16 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700;800&family=Inter:wght@300;400;500;600&display=swap" rel="stylesheet">
     <style>
+        /* Screen-only graduation viewer; shared catalog and print styles stay unchanged. */
+        @media screen {
+            body.catalog-graduation-viewer-open #tabCatalogs > :not(#catalogViewer) { display: none !important; }
+            body.catalog-graduation-viewer-open .cat-title,
+            body.catalog-graduation-viewer-open .csvc-name { overflow-wrap: anywhere; }
+            body.catalog-graduation-viewer-open .cat-page { max-height: none; }
+            body.catalog-graduation-viewer-open .cat-body { overflow: visible; }
+            body.catalog-graduation-viewer-open .btn-catalog-nav:disabled { opacity: .45; cursor: default; }
+            body.catalog-graduation-viewer-open .btn-catalog-nav:focus-visible { outline: 2px solid var(--primary); outline-offset: 2px; }
+        }
         /* ==========================================
            DESIGN BOARD — page-specific styles
            ========================================== */
@@ -1353,7 +1363,7 @@
                         </div>
                         <div class="catalog-card-body">
                             <div class="catalog-card-title">Випускні 2026</div>
-                            <div class="catalog-card-meta">7 пакетів · <span id="catalogUpdated">—</span></div>
+                            <div class="catalog-card-meta"><span id="catalogPackageCount">Пакетів: —</span> · <span id="catalogUpdated">—</span></div>
                             <div class="catalog-card-btns">
                                 <button class="catalog-download-btn" onclick="event.stopPropagation();downloadCatalog('graduation','Випускні 2026')" title="Зберегти як PDF">📄 PDF</button>
                             </div>
@@ -1366,12 +1376,12 @@
                 <!-- Fullscreen catalog viewer -->
                 <div class="catalog-viewer" id="catalogViewer" style="display:none;">
                     <div class="catalog-viewer-nav">
-                        <button type="button" class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn">&#9664;</button>
-                        <span class="catalog-page-indicator" id="catalogPageIndicator">1 / 7</span>
-                        <button type="button" class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn">&#9654;</button>
-                        <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()">&#10005;</button>
+                        <button type="button" class="btn-catalog-nav" onclick="catalogPrev()" id="catalogPrevBtn" aria-label="Попередня сторінка">&#9664;</button>
+                        <span class="catalog-page-indicator" id="catalogPageIndicator">0 / 0</span>
+                        <button type="button" class="btn-catalog-nav" onclick="catalogNext()" id="catalogNextBtn" aria-label="Наступна сторінка">&#9654;</button>
+                        <button type="button" class="btn-catalog-nav btn-catalog-close" onclick="closeCatalog()" aria-label="Закрити каталог">&#10005;</button>
                     </div>
-                    <div class="catalog-pages-container" id="catalogPages"></div>
+                    <div class="catalog-pages-container" id="catalogPages" aria-live="polite"></div>
                 </div>
             </div>
         </main>

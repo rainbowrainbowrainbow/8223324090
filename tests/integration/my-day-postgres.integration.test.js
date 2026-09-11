@@ -1459,4 +1459,131 @@ describe('My Day disposable PostgreSQL backend contracts', { skip: !enabled }, (
         const outboxAfter = await query('SELECT COUNT(*)::int AS count FROM notification_outbox');
         assert.equal(outboxAfter.rows[0].count, outboxBefore.rows[0].count);
     });
+
+    it('awards one achievement reward for two concurrent checks', async () => {
+        const user = await createUser('achievement_atomic');
+        const code = `atomic_${crypto.randomBytes(6).toString('hex')}`;
+        const reward = 37;
+        const definition = await query(
+            `INSERT INTO achievements (code, name, description, icon, category, type, rarity, reward_coins, condition, is_active)
+             VALUES ($1, $2, 'Concurrent reward test', 'A', 'general', 'one_time', 'common', $3, $4::jsonb, true)
+             RETURNING id`,
+            [code, `Atomic reward ${suffix}`, reward, JSON.stringify({ type: 'login', count: 1 })]
+        );
+        const achievementId = Number(definition.rows[0].id);
+        await query(
+            `INSERT INTO user_achievements
+                (user_id, username, achievement_id, achievement_key, progress, completed, completed_at)
+             SELECT $1, $2, a.id, a.code, 1, true, NOW()
+             FROM achievements a
+             WHERE a.is_active = true AND a.id <> $3
+             ON CONFLICT (user_id, achievement_id) DO UPDATE SET completed = true`,
+            [user.id, user.username, achievementId]
+        );
+        await query(
+            `INSERT INTO game_wallets (user_id, coins, total_earned, total_spent)
+             VALUES ($1, 0, 0, 0)
+             ON CONFLICT (user_id) DO UPDATE SET coins = 0, total_earned = 0, total_spent = 0`,
+            [user.id]
+        );
+        await query('DELETE FROM coin_transactions WHERE user_id = $1', [user.id]);
+
+        const responses = await Promise.all([
+            request('POST', '/api/achievements/check', {}, user.token),
+            request('POST', '/api/achievements/check', {}, user.token)
+        ]);
+        responses.forEach(response => assert.equal(response.status, 200, JSON.stringify(response.data)));
+        const awards = responses.flatMap(response => response.data?.awarded || []).filter(item => item.code === code);
+        assert.equal(awards.length, 1, 'exactly one concurrent caller must win the reward');
+
+        const [completion, wallet, transactions] = await Promise.all([
+            query(
+                `SELECT completed, progress, completed_at
+                 FROM user_achievements
+                 WHERE user_id = $1 AND achievement_id = $2`,
+                [user.id, achievementId]
+            ),
+            query('SELECT coins, total_earned FROM game_wallets WHERE user_id = $1', [user.id]),
+            query(
+                `SELECT COUNT(*)::int AS count, COALESCE(SUM(amount), 0)::int AS amount
+                 FROM coin_transactions
+                 WHERE user_id = $1 AND type = 'achievement' AND reference_id = $2`,
+                [user.id, achievementId]
+            )
+        ]);
+        assert.equal(completion.rows.length, 1);
+        assert.equal(completion.rows[0].completed, true);
+        assert.ok(completion.rows[0].completed_at);
+        assert.deepEqual(wallet.rows[0], { coins: reward, total_earned: reward });
+        assert.deepEqual(transactions.rows[0], { count: 1, amount: reward });
+    });
+
+    it('rolls back achievement completion and wallet credit when transaction history fails', async () => {
+        const user = await createUser('achievement_rollback');
+        const code = `rollback_${crypto.randomBytes(5).toString('hex')}`;
+        const reward = 41;
+        const definition = await query(
+            `INSERT INTO achievements (code, name, description, icon, category, type, rarity, reward_coins, condition, is_active)
+             VALUES ($1, $2, 'Rollback reward test', 'R', 'general', 'one_time', 'common', $3, $4::jsonb, true)
+             RETURNING id`,
+            [code, `Rollback reward ${suffix}`, reward, JSON.stringify({ type: 'login', count: 1 })]
+        );
+        const achievementId = Number(definition.rows[0].id);
+        await query(
+            `INSERT INTO user_achievements
+                (user_id, username, achievement_id, achievement_key, progress, completed, completed_at)
+             SELECT $1, $2, a.id, a.code, 1, true, NOW()
+             FROM achievements a
+             WHERE a.is_active = true AND a.id <> $3
+             ON CONFLICT (user_id, achievement_id) DO UPDATE SET completed = true`,
+            [user.id, user.username, achievementId]
+        );
+        await query(
+            `INSERT INTO game_wallets (user_id, coins, total_earned, total_spent)
+             VALUES ($1, 0, 0, 0)
+             ON CONFLICT (user_id) DO UPDATE SET coins = 0, total_earned = 0, total_spent = 0`,
+            [user.id]
+        );
+        await query(`
+            CREATE OR REPLACE FUNCTION fail_atomic_achievement_transaction()
+            RETURNS trigger AS $$
+            BEGIN
+                IF NEW.type = 'achievement' AND NEW.reference_id = ${achievementId} THEN
+                    RAISE EXCEPTION 'forced achievement transaction failure';
+                END IF;
+                RETURN NEW;
+            END;
+            $$ LANGUAGE plpgsql;
+            DROP TRIGGER IF EXISTS trg_fail_atomic_achievement_transaction ON coin_transactions;
+            CREATE TRIGGER trg_fail_atomic_achievement_transaction
+            BEFORE INSERT ON coin_transactions
+            FOR EACH ROW
+            EXECUTE FUNCTION fail_atomic_achievement_transaction();
+        `);
+        try {
+            const response = await request('POST', '/api/achievements/check', {}, user.token);
+            assert.equal(response.status, 200, JSON.stringify(response.data));
+            assert.equal((response.data?.awarded || []).some(item => item.code === code), false);
+        } finally {
+            await query('DROP TRIGGER IF EXISTS trg_fail_atomic_achievement_transaction ON coin_transactions');
+            await query('DROP FUNCTION IF EXISTS fail_atomic_achievement_transaction()');
+        }
+
+        const [completion, wallet, transactions] = await Promise.all([
+            query(
+                'SELECT COUNT(*)::int AS count FROM user_achievements WHERE user_id = $1 AND achievement_id = $2',
+                [user.id, achievementId]
+            ),
+            query('SELECT coins, total_earned FROM game_wallets WHERE user_id = $1', [user.id]),
+            query(
+                `SELECT COUNT(*)::int AS count
+                 FROM coin_transactions
+                 WHERE user_id = $1 AND type = 'achievement' AND reference_id = $2`,
+                [user.id, achievementId]
+            )
+        ]);
+        assert.equal(completion.rows[0].count, 0, 'failed reward must not leave completion state');
+        assert.deepEqual(wallet.rows[0], { coins: 0, total_earned: 0 });
+        assert.equal(transactions.rows[0].count, 0);
+    });
 });

@@ -171,11 +171,17 @@ async function installHarness(page, theme, width) {
 async function assertNavigation(page) {
     const tabs = await page.$$eval('#hrNav .hr-tab', buttons => buttons.map(button => ({
         tab: button.dataset.tab,
+        text: button.textContent.replace(/\s+/g, ' ').trim(),
         beta: button.querySelector('.hr-nav-beta-badge')?.textContent.trim() || '',
+        betaAriaHidden: button.querySelector('.hr-nav-beta-badge')?.getAttribute('aria-hidden') || '',
+        ariaLabel: button.getAttribute('aria-label') || '',
         active: button.classList.contains('active')
     })));
     assert.deepEqual(tabs.map(tab => tab.tab), ['salary', 'zrs', 'kpi', 'profiles']);
+    assert.deepEqual(tabs.map(tab => tab.text), ['Зарплата', 'ЗРС', 'KPI', 'Профілі Beta']);
     assert.equal(tabs[3].beta, 'Beta');
+    assert.equal(tabs[3].betaAriaHidden, 'true');
+    assert.equal(tabs[3].ariaLabel, 'Профілі, Beta');
     assert.equal(tabs[3].active, true);
 
     const sidebarActive = await page.$eval('#sidebarLinks .nav-link.active[aria-current="page"]', link => ({

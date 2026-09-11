@@ -2954,12 +2954,14 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                     const tabId = item.tab || item.id;
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
                     if (cardMode) return renderHrPulseNavButton(item);
-                    const betaBadge = group.id === 'payroll' && item.id === 'profiles'
-                        ? '<span class="hr-nav-beta-badge">Beta</span>'
+                    const isPayrollProfilesBeta = group.id === 'payroll' && item.id === 'profiles';
+                    const betaBadge = isPayrollProfilesBeta
+                        ? '<span class="hr-nav-beta-badge" aria-hidden="true">Beta</span>'
                         : '';
-                    const content = `${escapeHtml(item.label)}${countBadge}${betaBadge}`;
+                    const content = `${escapeHtml(item.label)}${countBadge}${betaBadge ? ` ${betaBadge}` : ''}`;
+                    const ariaLabel = isPayrollProfilesBeta ? ' aria-label="Профілі, Beta"' : '';
                     return `
-                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${content}</button>
+                    <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}${ariaLabel}>${content}</button>
                 `;
                 }).join('')}
             </div>

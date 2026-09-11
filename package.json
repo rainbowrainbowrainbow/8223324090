@@ -127,6 +127,7 @@
     "test:browser:hr-structure": "npx --yes --package playwright node tests/browser/hr-structure-tree-browser-smoke.js",
     "test:browser:hr-today": "npm exec --yes --package=playwright -c \"node tests/browser/hr-today-metrics-browser-smoke.js\"",
     "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\"",
+    "test:browser:hr-payroll-profiles": "npm exec --yes --package=playwright -c \"node tests/browser/hr-payroll-profiles-browser-smoke.js\"",
     "test:browser:hr-checklists:theme": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-theme-browser-smoke.js --shell\"",
     "test:browser:hr-checklists:quality": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-async-browser-smoke.js --verify-local-fixes\"",
     "test:browser:hr-checklists:isolated": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-postgres-browser-smoke.js --isolated\"",

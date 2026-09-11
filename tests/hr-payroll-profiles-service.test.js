@@ -19,7 +19,10 @@ const hrPageCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const hrHtmlCode = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const hrCssCode = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
 const hrTeamBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'hr-team-browser-smoke.js'), 'utf8');
+const hrPayrollProfilesBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'hr-payroll-profiles-browser-smoke.js'), 'utf8');
 const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
+const packageJsonCode = fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8');
+const ciWorkflowCode = fs.readFileSync(path.join(ROOT, '.github', 'workflows', 'ci.yml'), 'utf8');
 
 function functionBlock(source, name) {
     const start = source.indexOf(`async function ${name}`);
@@ -226,8 +229,9 @@ test('payroll profile catalog is wired into the existing HR payroll workspace', 
     assert.ok(zrsTabIndex > salaryTabIndex, 'payroll nav uses the actual second tab label ЗРС');
     assert.ok(kpiTabIndex > zrsTabIndex, 'payroll nav keeps KPI after ЗРС');
     assert.ok(profilesTabIndex > kpiTabIndex, 'payroll nav moves profiles after KPI');
-    assert.match(hrPageCode, /const betaBadge = group\.id === 'payroll' && item\.id === 'profiles'/);
-    assert.match(hrPageCode, /class="hr-nav-beta-badge">Beta<\/span>/);
+    assert.match(hrPageCode, /const isPayrollProfilesBeta = group\.id === 'payroll' && item\.id === 'profiles'/);
+    assert.match(hrPageCode, /class="hr-nav-beta-badge" aria-hidden="true">Beta<\/span>/);
+    assert.match(hrPageCode, /aria-label="Профілі, Beta"/);
     assert.match(sidebarCode, /href: '\/hr#payroll'[\s\S]*activeHashes: \['payroll', 'salary', 'zrs', 'kpi', 'profiles'\]/);
     assert.match(hrPageCode, /profiles: loadPayrollProfilesCatalog/);
     assert.match(hrPageCode, /bindPayrollProfileCatalogControls/);
@@ -324,6 +328,13 @@ test('HR team browser smoke covers staff-card payroll profile panel', () => {
     assert.match(hrTeamBrowserSmokeCode, /#editStaffPayrollProfiles/);
     assert.match(hrTeamBrowserSmokeCode, /#editPayrollProfileSimulator/);
     assert.match(hrTeamBrowserSmokeCode, /legacy не використовується/);
+});
+
+test('payroll profile browser smoke is wired into npm and CI', () => {
+    assert.match(packageJsonCode, /"test:browser:hr-payroll-profiles": "npm exec --yes --package=playwright -c \\"node tests\/browser\/hr-payroll-profiles-browser-smoke\.js\\""/);
+    assert.match(ciWorkflowCode, /Run HR payroll profiles browser smoke[\s\S]*npm run test:browser:hr-payroll-profiles/);
+    assert.match(hrPayrollProfilesBrowserSmokeCode, /assert\.deepEqual\(tabs\.map\(tab => tab\.text\), \['Зарплата', 'ЗРС', 'KPI', 'Профілі Beta'\]\)/);
+    assert.match(hrPayrollProfilesBrowserSmokeCode, /ariaLabel: button\.getAttribute\('aria-label'\) \|\| ''/);
 });
 
 test('payroll profile catalog exposes Task 6 planning and safety tools', () => {

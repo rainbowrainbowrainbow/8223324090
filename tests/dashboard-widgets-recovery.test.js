@@ -3,6 +3,8 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 
+require('./dashboard-hydration-request-budget.test');
+
 const ROOT = path.join(__dirname, '..');
 
 function read(relPath) {

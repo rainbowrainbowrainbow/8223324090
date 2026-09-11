@@ -201,7 +201,7 @@ test('saved board coalesces duplicate containers and repeated render reuses curr
 
     const counts = widgetRequestCounts(harness.requests);
     assert.equal(counts['/api/dashboard/widgets/weather?businessContext=event_genix'], 1);
-    assert.equal(counts['/api/dashboard/widgets/funnel?businessContext=event_genix'], 1);
+    assert.equal(counts['/api/dashboard/widgets/funnel?businessContext=event_genix'] || 0, 0);
     assert.equal(harness.dom.window.document.querySelectorAll('[data-widget-type="weather"] .board-widget-live').length, 2);
     harness.dom.window.close();
 });

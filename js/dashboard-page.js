@@ -471,6 +471,8 @@ const DashboardPage = (() => {
 
     let _config = createDefaultDashboardConfig();
     let _widgetData = {};
+    const _widgetDataRequests = new Map();
+    const _widgetDataContextKeys = new Map();
     let _personalTaskerView = 'assigned_to_me';
     let _boardInteractionMode = BOARD_INTERACTION_MODE;
     let _boardSelectedId = null;
@@ -3306,7 +3308,7 @@ const DashboardPage = (() => {
         [...new Set(allKeys)].forEach(widgetKey => loadWidgetData(widgetKey));
     }
 
-    function renderFlatWidgetGrid(grid) {
+    function renderFlatWidgetGrid(grid, options = {}) {
         grid.className = 'dashboard-grid';
         const widgets = normalizeDashboardWidgets(_config.widgets || []);
         grid.innerHTML = '';
@@ -3314,7 +3316,7 @@ const DashboardPage = (() => {
         for (const widgetKey of widgets) {
             if (!canUseWidget(widgetKey)) continue;
             grid.insertAdjacentHTML('beforeend', renderSceneWidgetCard(widgetKey, 'default'));
-            loadWidgetData(widgetKey);
+            if (options.hydrateData !== false) loadWidgetData(widgetKey);
         }
 
         if (grid.children.length === 0) {
@@ -3459,7 +3461,7 @@ const DashboardPage = (() => {
 
         _config.mode = DASHBOARD_WORKSPACE_MODE;
         _config.layout.mode = DASHBOARD_WORKSPACE_MODE;
-        renderFlatWidgetGrid(grid);
+        renderFlatWidgetGrid(grid, { hydrateData: false });
         grid.setAttribute('aria-hidden', 'true');
         grid.classList.add('dashboard-compat-widget-cache');
         grid.classList.add('hidden');
@@ -3470,7 +3472,7 @@ const DashboardPage = (() => {
     function ensureUnifiedWorkspaceSeed() {
         if (!_config?.boardState) _config.boardState = createDefaultDashboardConfig().boardState;
         if (getBoardItems().length || getBoardDrawings().length || getBoardConnectors().length) return;
-        seedBoardWidgets({ persist: false });
+        seedBoardWidgets({ persist: false, render: false });
     }
 
     function getBoardItems() {
@@ -5163,6 +5165,7 @@ const DashboardPage = (() => {
     function seedBoardWidgets(options = {}) {
         if (getBoardItems().length) return;
         const shouldPersist = options.persist !== false;
+        const shouldRender = options.render !== false;
         if (shouldPersist) pushBoardUndo('seed-widgets');
         normalizeDashboardWidgets(_config.widgets || [])
             .filter(canUseWidget)
@@ -5183,7 +5186,7 @@ const DashboardPage = (() => {
                 if (item) getBoardItems().push(item);
             });
         if (shouldPersist) markBoardDirty('seed-widgets');
-        renderBoard();
+        if (shouldRender) renderBoard();
     }
 
     function runBoardCreateAction(kind, payload = {}) {
@@ -5898,7 +5901,7 @@ const DashboardPage = (() => {
     function setTeamOnlineHistory(enabled) {
         if (enabled) localStorage.setItem('pzp_team_online_history', '1');
         else localStorage.removeItem('pzp_team_online_history');
-        loadWidgetData('team_online');
+        refreshWidget('team_online');
     }
 
     function dashboardScopedApiUrl(path) {
@@ -5916,54 +5919,148 @@ const DashboardPage = (() => {
         return dashboardScopedApiUrl(path);
     }
 
-    async function loadWidgetData(type, targetContainer = null) {
+    function dashboardBusinessScopeKey() {
+        const context = window.CrmBusinessContext;
+        let current = '';
+        let scope = {};
+        try {
+            current = typeof context?.current === 'function' ? context.current() : '';
+            scope = typeof context?.scope === 'function' ? (context.scope() || {}) : {};
+        } catch {}
+        return {
+            current: String(current || ''),
+            mode: String(scope.mode || ''),
+            activeContext: String(scope.activeContext || ''),
+            selectedContexts: Array.isArray(scope.selectedContexts)
+                ? scope.selectedContexts.map(value => String(value || '')).filter(Boolean)
+                : []
+        };
+    }
+
+    function dashboardWidgetRequestContext(type) {
+        const user = AppState.currentUser || {};
+        let sessionGeneration = '';
+        try {
+            sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || '';
+        } catch {}
+        const url = buildWidgetDataUrl(type);
+        return {
+            url,
+            key: JSON.stringify({
+                type,
+                url,
+                user: String(user.id ?? user.userId ?? user.username ?? ''),
+                role: getEffectiveDashboardRole(),
+                sessionGeneration,
+                business: dashboardBusinessScopeKey()
+            })
+        };
+    }
+
+    function requestWidgetData(type, requestContext = dashboardWidgetRequestContext(type)) {
+        const pending = _widgetDataRequests.get(requestContext.key);
+        if (pending) return pending;
+        const request = fetch(requestContext.url, {
+            headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
+        }).then(async response => ({
+            ok: response.ok,
+            status: response.status,
+            result: response.ok ? await response.json() : null,
+            requestKey: requestContext.key
+        })).finally(() => {
+            if (_widgetDataRequests.get(requestContext.key) === request) {
+                _widgetDataRequests.delete(requestContext.key);
+            }
+        });
+        _widgetDataRequests.set(requestContext.key, request);
+        return request;
+    }
+
+    function hasCurrentWidgetData(type, requestKey) {
+        return _widgetDataContextKeys.get(type) === requestKey
+            && Object.prototype.hasOwnProperty.call(_widgetData, type);
+    }
+
+    function isCurrentWidgetRequest(type, requestKey) {
+        return dashboardWidgetRequestContext(type).key === requestKey;
+    }
+
+    async function loadWidgetData(type, targetContainer = null, options = {}) {
         const container = targetContainer || document.getElementById(`widget-${type}`);
         if (DASHBOARD_REVENUE_WIDGETS.has(type) && !canViewDashboardRevenue()) {
             delete _widgetData[type];
+            _widgetDataContextKeys.delete(type);
             if (container) container.innerHTML = '';
             return;
         }
         if (!container) return;
 
+        const requestContext = dashboardWidgetRequestContext(type);
+        if (options.force !== true && hasCurrentWidgetData(type, requestContext.key)) {
+            try {
+                renderWidgetContent(type, _widgetData[type], container);
+                return { cached: true };
+            } catch (err) {
+                console.error(`Widget ${type} cached render error:`, err);
+                container.innerHTML = '<div class="widget-empty">Помилка завантаження</div>';
+                return;
+            }
+        }
+
         if (type === 'funnel') {
-            await loadFunnelWidget(container);
-            return;
+            return loadFunnelWidget(container, options, requestContext);
         }
 
         try {
-            const resp = await fetch(buildWidgetDataUrl(type), {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
-            });
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            const result = await resp.json();
+            const response = await requestWidgetData(type, requestContext);
+            if (!isCurrentWidgetRequest(type, response.requestKey)) return { stale: true };
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const result = response.result;
 
             if (result.success) {
                 _widgetData[type] = result.data;
+                _widgetDataContextKeys.set(type, response.requestKey);
                 renderWidgetContent(type, result.data, container);
             } else {
+                _widgetDataContextKeys.delete(type);
                 container.innerHTML = '<div class="widget-empty">Помилка завантаження</div>';
             }
         } catch (err) {
+            if (!isCurrentWidgetRequest(type, requestContext.key)) return { stale: true };
+            _widgetDataContextKeys.delete(type);
             console.error(`Widget ${type} load error:`, err);
             container.innerHTML = '<div class="widget-empty">Помилка з\'єднання</div>';
         }
     }
 
-    async function loadFunnelWidget(container) {
+    async function loadFunnelWidget(container, options = {}, requestContext = dashboardWidgetRequestContext('funnel')) {
+        if (options.force !== true && hasCurrentWidgetData('funnel', requestContext.key)) {
+            try {
+                renderCompactFunnelWidget(_widgetData.funnel, container);
+                return { cached: true };
+            } catch (err) {
+                console.error('Funnel widget cached render error:', err);
+                container.innerHTML = '<div class="widget-empty">Не вдалося завантажити воронку</div>';
+                return;
+            }
+        }
         try {
-            const resp = await fetch(dashboardScopedApiUrl('/api/dashboard/widgets/funnel'), {
-                headers: { 'Authorization': 'Bearer ' + localStorage.getItem('pzp_token') }
-            });
-            if (resp.status === 403 || resp.status === 401) {
+            const response = await requestWidgetData('funnel', requestContext);
+            if (!isCurrentWidgetRequest('funnel', response.requestKey)) return { stale: true };
+            if (response.status === 403 || response.status === 401) {
+                _widgetDataContextKeys.delete('funnel');
                 container.innerHTML = '<div class="widget-empty">Воронка недоступна для вашої ролі</div>';
                 return;
             }
-            if (!resp.ok) throw new Error('HTTP ' + resp.status);
-            const result = await resp.json();
+            if (!response.ok) throw new Error('HTTP ' + response.status);
+            const result = response.result;
             const queue = result.data || {};
             _widgetData.funnel = queue;
+            _widgetDataContextKeys.set('funnel', response.requestKey);
             renderCompactFunnelWidget(queue, container);
         } catch (err) {
+            if (!isCurrentWidgetRequest('funnel', requestContext.key)) return { stale: true };
+            _widgetDataContextKeys.delete('funnel');
             console.error('Funnel widget load error:', err);
             container.innerHTML = '<div class="widget-empty">Не вдалося завантажити воронку</div>';
         }
@@ -7838,10 +7935,9 @@ const DashboardPage = (() => {
 
     function refreshWorkQueue() {
         if (document.getElementById('widget-funnel')) {
-            loadWidgetData('funnel');
-            return;
+            return refreshWidget('funnel');
         }
-        loadWorkQueue();
+        return loadWorkQueue();
     }
 
     function setWorkQueueReplyScope(scope) {
@@ -8610,19 +8706,26 @@ const DashboardPage = (() => {
         );
     }
 
+    function dashboardWidgetContainers(type) {
+        const containers = [];
+        const compatibilityContainer = document.getElementById(`widget-${type}`);
+        if (compatibilityContainer) containers.push(compatibilityContainer);
+        document.querySelectorAll(`[data-widget-type="${type}"] .board-widget-live`).forEach(container => {
+            if (!containers.includes(container)) containers.push(container);
+        });
+        return containers;
+    }
+
     function refreshWidget(type) {
-        loadWidgetData(type);
+        return Promise.allSettled(
+            dashboardWidgetContainers(type).map(container => loadWidgetData(type, container, { force: true }))
+        );
     }
 
     const TASK_RELATED_WIDGET_TYPES = ['tasks', 'personal_tasker', 'my_focus', 'team_tasks', 'task_health'];
 
     function refreshTaskRelatedWidgets() {
-        TASK_RELATED_WIDGET_TYPES.forEach(type => {
-            loadWidgetData(type);
-            document.querySelectorAll(`[data-widget-type="${type}"] .board-widget-live`).forEach(container => {
-                loadWidgetData(type, container);
-            });
-        });
+        return Promise.allSettled(TASK_RELATED_WIDGET_TYPES.map(type => refreshWidget(type)));
     }
 
     // Helpers

@@ -4,6 +4,13 @@
 
 ---
 
+## v0.81.102 - Продукти · Каталоги · Конструктор випускного
+
+### Release / Versioning / (11.09.2026) [codex]
+- **Продукти · Каталоги · Конструктор випускного** - release marker, cache tags and visible version metadata were prepared automatically.
+
+---
+
 ## v0.81.101 - Omni Mobile and Search UX
 
 ### Omni / Зручність інтерфейсу / (11.09.2026) [codex]

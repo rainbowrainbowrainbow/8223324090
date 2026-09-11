@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.108 - Авторизація та нагороди без дублювання
+
+### Авторизація / Нагороди / Продуктивність / (11.09.2026) [codex]
+- Common authenticated request більше не перечитує того самого користувача повторно, але route-local auth defense збережено для захищених API.
+- Завершення achievement і coin reward тепер мають одного transactional winner: паралельні перевірки не створюють дубльовані wallet/transaction записи.
+- Profile auto rewards запускаються тільки в межах auth lifecycle і повторюються після помилки без зайвих POST під час звичайних render/navigation.
+- Automatic title checks читають умови пакетно: N=1/10/100 unearned titles мають сталий query budget без зміни eligibility або reward semantics.
+
+---
+
 ## v0.81.107 - Профілі зарплати у ЗП та KPI
 
 ### HR / ЗП та KPI / (11.09.2026) [codex]

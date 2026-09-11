@@ -4,7 +4,7 @@ This register is the active cleanup map for the Event Genix CRM monolith. It is
 not a historical audit. Use it to choose small cleanup packs, record why each
 pack matters, and keep deletion/refactor work tied to tests.
 
-Last refreshed: 2026-08-28
+Last refreshed: 2026-09-11
 Current product version source: `package.json`
 
 ## Operating Model
@@ -55,6 +55,41 @@ Do not treat aggregate CSS entrypoints such as `css/assistant-rail.css`,
 `css/chat.css`, `css/sidebar-aurora.css`, `css/dashboard.css`, or
 `css/pages.css` as large-file targets by filename alone. Their payload now
 lives in ordered modules listed in `docs/CSS_SURFACE.md`.
+
+2026-09-11 Evidence-gated dead-code cleanup pass:
+
+- `cleanup:inventory`: removed checkout filesystem walking from the inventory
+  script. It now uses canonical `git ls-files -z`, so inaccessible untracked
+  folders, generated `node_modules`, `.codex-temp`, and worktrees do not affect
+  the tracked cleanup inventory. Regression coverage lives in
+  `tests/static-cleanup.test.js`.
+- PostgreSQL runner: `test:db:isolated` now uses explicit `ci` mode. The old
+  `all` name was misleading because it skipped declared modes; `all` now
+  expands every runner mode while preserving per-mode safety gates. Regression
+  coverage lives in `tests/isolated-postgres-test-flow.test.js`.
+- Orphan tests: `tests/browser/banquet-ws-two-tab-browser-smoke.js` is now
+  exposed as `npm run test:browser:banquet-ws-two-tab`, and
+  `tests/banquet-cancellation-hardening.test.js` is part of `test:unit`.
+- Landing release markers: retained/no-op. Current `origin/codex/eventgenix-production`
+  base has no tracked `v38.13` marker.
+- Dependencies: removed package-managed `@anthropic-ai/sdk` and package-managed
+  `chart.js`. Static graph evidence found no runtime imports or dynamic
+  requires; current Anthropic-labelled model usage is OpenRouter-owned via
+  `services/ai-config.js`, and the Center Chart.js runtime is the protected CDN
+  script in `center.html`, which was intentionally retained.
+- `js/kleshnya-page.js`: retained/blocked, not deleted. Current `/kleshnya`
+  routing is documented as `/chat`, and no production HTML script tag was found,
+  but the file is still part of the tracked JS surface in `tests/ui-check.js`.
+  It needs browser coverage or an owner-approved contract change before removal.
+- Duplicate media/assets: retained/blocked. Existing duplicate-root media
+  cleanup remains covered by `tests/static-cleanup.test.js`; no new asset was
+  deleted because durable DB/external URL proof was not established in this pass.
+- Protected booking cancellation block: retained, not deleted. Current evidence
+  shows active canonical ownership in `routes/banquets.js` and
+  `services/banquetCancellation.js`, with readiness-driven UI in `js/booking.js`
+  and focused regressions in `tests/banquet-cancellation-hardening.test.js` and
+  `tests/booking-banquet-links.test.js`. This is not a C3 unreachable block on
+  the current base.
 
 2026-08-27 Task 30 legacy upload backfill proof:
 

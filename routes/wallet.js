@@ -74,8 +74,9 @@ router.get('/', requireRole(...ANY_ROLE), async (req, res) => {
 const DAILY_REWARDS = [10, 15, 20, 25, 30, 40, 50];
 
 router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         await client.query('BEGIN');
 
         const wallet = await client.query(
@@ -168,11 +169,11 @@ router.post('/daily-login', requireRole(...ANY_ROLE), async (req, res) => {
             nextReward: DAILY_REWARDS[(dayIndex + 1) % 7]
         });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('Daily login error', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 });
 
@@ -228,8 +229,9 @@ router.post('/transfer', requireRole(...ANY_ROLE), async (req, res) => {
         return res.status(400).json({ error: 'Не можна переказати монети собі' });
     }
 
-    const client = await pool.connect();
+    let client;
     try {
+        client = await pool.connect();
         await client.query('BEGIN');
 
         // Check recipient exists
@@ -284,11 +286,11 @@ router.post('/transfer', requireRole(...ANY_ROLE), async (req, res) => {
         await client.query('COMMIT');
         res.json({ success: true, message: `Переказано ${amount} монет` });
     } catch (err) {
-        await client.query('ROLLBACK').catch(() => {});
+        if (client) await client.query('ROLLBACK').catch(() => {});
         log.error('Transfer error', err);
         res.status(500).json({ error: 'Internal server error' });
     } finally {
-        client.release();
+        if (client) client.release();
     }
 });
 

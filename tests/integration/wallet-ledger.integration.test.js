@@ -65,9 +65,14 @@ if (process.argv.includes('--isolated')) {
             assert.ok(token, 'Authenticated synthetic user');
             return { id, username, token };
         };
-        const balance = async user => (await db.query('SELECT coins, total_earned, total_spent, login_streak, last_login_reward FROM game_wallets WHERE user_id = $1', [user.id])).rows[0];
+        const balance = async user => (await db.query('SELECT coins, total_earned, total_spent, login_streak, last_login_reward, updated_at FROM game_wallets WHERE user_id = $1', [user.id])).rows[0];
         const ledger = async user => (await db.query(`SELECT ct.user_id, ${deployed ? 'u.username' : 'ct.username'}, ct.amount, ct.type, ct.reference_id FROM coin_transactions ct JOIN users u ON u.id=ct.user_id WHERE ct.user_id = $1 ORDER BY ct.id`, [user.id])).rows;
         const check = async (name, fn) => t.test(name, async () => { await fn(); evidence.checks.push({ name, status: 'PASS' }); });
+        const assertServerError = result => {
+            assert.equal(typeof result.requestId, 'string');
+            assert.ok(result.requestId.length > 0);
+            assert.deepEqual(result, { error: 'Internal server error', success: false, requestId: result.requestId });
+        };
         const rejectLedger = async (user, type, fn) => {
             assert.ok(Number.isSafeInteger(user.id));
             assert.ok(['starter_bonus', 'daily_login', 'gift'].includes(type));
@@ -289,6 +294,124 @@ if (process.argv.includes('--isolated')) {
                     assert.deepEqual(await ledger(recipient), []);
                 });
             }
+            for (const column of ['coins', 'total_earned']) {
+                await check(`daily ${column} overflow returns the existing 500 contract and rolls back`, async () => {
+                    const user = await fixture(100);
+                    await db.query(`UPDATE game_wallets SET ${column}=2147483642 WHERE user_id=$1`, [user.id]);
+                    const before = await balance(user);
+                    assertServerError(await request(user, 'wallet/daily-login', {}, 500));
+                    assert.deepEqual(await balance(user), before);
+                    assert.deepEqual(await ledger(user), []);
+                    // Restore five units of headroom only in this synthetic fixture.
+                    await db.query(`UPDATE game_wallets SET ${column}=${column}-5 WHERE user_id=$1`, [user.id]);
+                    assert.equal((await request(user, 'wallet/daily-login', {})).reward, 10);
+                    assert.equal((await balance(user))[column], 2147483647);
+                    assert.equal((await ledger(user)).length, 1);
+                });
+            }
+            for (const [owner, column] of [['sender', 'total_spent'], ['recipient', 'coins'], ['recipient', 'total_earned']]) {
+                await check(`transfer ${owner} ${column} overflow rolls back both wallets and permits the exact boundary`, async () => {
+                    const sender = await fixture(100);
+                    const recipient = await fixture(100);
+                    const user = owner === 'sender' ? sender : recipient;
+                    await db.query(`UPDATE game_wallets SET ${column}=2147483642 WHERE user_id=$1`, [user.id]);
+                    const before = [await balance(sender), await balance(recipient)];
+                    assertServerError(await request(sender, 'wallet/transfer', { to_user_id: recipient.id, amount: 10 }, 500));
+                    assert.deepEqual([await balance(sender), await balance(recipient)], before);
+                    assert.deepEqual(await ledger(sender), []);
+                    assert.deepEqual(await ledger(recipient), []);
+                    await request(sender, 'wallet/transfer', { to_user_id: recipient.id, amount: 5 });
+                    assert.equal((await balance(user))[column], 2147483647);
+                    assert.equal((await ledger(sender)).length, 1);
+                    assert.equal((await ledger(recipient)).length, 1);
+                    assert.equal((await ledger(sender))[0].amount + (await ledger(recipient))[0].amount, 0);
+                });
+            }
+            await check('maximum INTEGER amount transfers exactly without truncation', async () => {
+                const sender = await fixture(2147483647);
+                const recipient = await fixture(0);
+                await request(sender, 'wallet/transfer', { to_user_id: recipient.id, amount: 2147483647 });
+                assert.equal((await balance(sender)).coins, 0);
+                assert.equal((await balance(sender)).total_spent, 2147483647);
+                assert.equal((await balance(recipient)).coins, 2147483647);
+                assert.equal((await balance(recipient)).total_earned, 2147483647);
+                assert.equal((await ledger(sender))[0].amount, -2147483647);
+                assert.equal((await ledger(recipient))[0].amount, 2147483647);
+            });
+            await check('streak overflow rolls back the entire daily claim', async () => {
+                const user = await daySevenUser();
+                await db.query('UPDATE game_wallets SET login_streak=2147483647 WHERE user_id=$1', [user.id]);
+                const before = await balance(user);
+                assertServerError(await request(user, 'wallet/daily-login', {}, 500));
+                assert.deepEqual(await balance(user), before);
+                assert.deepEqual(await ledger(user), []);
+                assert.deepEqual(await inventory(user), []);
+            });
+            if (deployed) await check('inventory quantity overflow rolls back coins, date, streak and ledger', async () => {
+                const user = await daySevenUser();
+                await db.query("INSERT INTO user_inventory(user_id,item_id,quantity,username,obtained_from) VALUES($1,$2,2147483647,$3,'daily_login')", [user.id, item.id, user.username]);
+                const before = await balance(user);
+                const beforeInventory = await inventory(user);
+                assertServerError(await request(user, 'wallet/daily-login', {}, 500));
+                assert.deepEqual(await balance(user), before);
+                assert.deepEqual(await ledger(user), []);
+                assert.deepEqual(await inventory(user), beforeInventory);
+            });
+            await check('opposing transfers wait on the same first wallet and conserve balances without deadlock', async () => {
+                const first = await fixture(100);
+                const second = await fixture(200);
+                assert.ok(first.id < second.id);
+                const blocker = await db.connect();
+                let requests;
+                try {
+                    await blocker.query('BEGIN');
+                    await blocker.query('SELECT 1 FROM game_wallets WHERE user_id=$1 FOR UPDATE', [first.id]);
+                    requests = Promise.allSettled([
+                        request(first, 'wallet/transfer', { to_user_id: second.id, amount: 17 }),
+                        request(second, 'wallet/transfer', { to_user_id: first.id, amount: 23 })
+                    ]);
+                    const deadline = Date.now() + 5000;
+                    let waiting = 0;
+                    while (Date.now() < deadline) {
+                        const result = await db.query("SELECT COUNT(*)::int AS count FROM pg_stat_activity WHERE datname=current_database() AND wait_event_type='Lock' AND query='SELECT 1 FROM game_wallets WHERE user_id = $1 FOR UPDATE'");
+                        waiting = result.rows[0].count;
+                        if (waiting === 2) break;
+                        await new Promise(resolve => setTimeout(resolve, 25));
+                    }
+                    assert.equal(waiting, 2, 'Both directions must overlap while waiting for the lower-ID wallet');
+                } finally {
+                    await blocker.query('ROLLBACK');
+                    blocker.release();
+                    if (requests) assert.ok((await requests).every(result => result.status === 'fulfilled' && result.value.success));
+                }
+                const a = await balance(first);
+                const b = await balance(second);
+                assert.deepEqual([a.coins, a.total_earned, a.total_spent], [106, 123, 17]);
+                assert.deepEqual([b.coins, b.total_earned, b.total_spent], [194, 217, 23]);
+                assert.equal(a.coins + b.coins, 300);
+                const entries = [...await ledger(first), ...await ledger(second)];
+                assert.equal(entries.length, 4);
+                assert.equal(entries.reduce((sum, row) => sum + row.amount, 0), 0);
+                for (const [user, other, amounts] of [[first, second, [-17, 23]], [second, first, [-23, 17]]]) {
+                    const rows = await ledger(user);
+                    assert.deepEqual(rows.map(row => row.amount).sort((x, y) => x - y), amounts);
+                    assert.ok(rows.every(row => row.reference_id === other.id && row.username === user.username));
+                }
+            });
+            await check('legacy timestamp metadata cannot establish the historical UTC day without its write timezone', async () => {
+                const column = (await db.query("SELECT data_type FROM information_schema.columns WHERE table_schema=current_schema() AND table_name='coin_transactions' AND column_name='created_at'")).rows[0];
+                assert.equal(column.data_type, 'timestamp without time zone');
+                const dates = (await db.query(`SELECT
+                    to_char(('2026-09-11 23:30:00'::timestamp AT TIME ZONE 'UTC') AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS utc_writer,
+                    to_char(('2026-09-11 23:30:00'::timestamp AT TIME ZONE 'America/Los_Angeles') AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS la_writer`)).rows[0];
+                assert.deepEqual(dates, { utc_writer: '2026-09-11', la_writer: '2026-09-12' });
+                evidence.historicalTimezone = {
+                    status: 'BLOCKED_SOURCE_TIMEZONE_UNPROVEN',
+                    currentSession: timezone,
+                    reason: 'The same stored wall-clock timestamp maps to different UTC days; no original offset is stored.',
+                    syntheticExample: dates
+                };
+            });
             await check('rejected insufficient funds and numeric self-transfer do not create ledger entries', async () => {
                 const sender = await fixture(5);
                 const recipient = await fixture(0);

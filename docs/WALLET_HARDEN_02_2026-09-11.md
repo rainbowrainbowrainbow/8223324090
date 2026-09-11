@@ -53,7 +53,9 @@ Production impact: yes — якщо цей код буде випущено, з�
 
 **Notes/Risks:** міграція 039 створює `shop_items.is_active`, `user_inventory(username, item_id, acquired_via)` з FK на `character_items`. Wallet очікує відсутній `is_available` та `user_inventory(user_id, item_id, quantity, obtained_from)` із shop ID. Міграція 040 додає rarity/equip_slot, але не виправляє цей контракт. Підміна ID чи мовчазне пропускання предмета змінили б правила винагороди. Виправлення streak робить шлях сьомого дня досяжним, тому **не випускати поточний Wallet diff до закриття цього блоку**.
 
-### WALLET-RESILIENCE-04 — заплановано, ризики з code review
+### WALLET-RESILIENCE-04 — локальні виправлення й перевірки PASS; історична timezone BLOCKED
+
+Оновлення 11.09.2026: обробку відмови з'єднання виправлено; 8 handler-тестів і 174 PostgreSQL Node-тести проходять. Переповнення відкочує транзакції, зустрічні перекази завершуються без deadlock у перевіреному сценарії. Історичний timezone неможливо довести за поточною конфігурацією та TIMESTAMP без offset. Деталі, межі й залишки: [WALLET_RESILIENCE_04_2026-09-11.md](WALLET_RESILIENCE_04_2026-09-11.md). Нижче збережено вихідний план; push/deploy цього diff не виконувалися.
 
 **Goal:** підтвердити передбачувану поведінку при недоступній БД і граничних балансах.
 

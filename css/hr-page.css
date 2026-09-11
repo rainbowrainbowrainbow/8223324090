@@ -10503,3 +10503,19 @@ body.dark-mode .hr-payroll-installment-action { color: #c4b5fd; }
     font-variant-numeric: tabular-nums;
     white-space: nowrap;
 }
+.hr-checklist-dashboard-feed {
+    display: grid;
+    gap: 10px;
+    min-width: 0;
+}
+
+.hr-checklist-pagination {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+}
+
+.hr-checklist-pagination > span {
+    flex: 1 1 180px;
+}

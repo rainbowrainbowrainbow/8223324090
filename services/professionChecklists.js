@@ -57,7 +57,7 @@ function safeRows(result) {
 
 function normalizePositiveInteger(value, fieldName = 'id') {
     const number = Number(value);
-    if (!Number.isInteger(number) || number <= 0) {
+    if (!Number.isInteger(number) || number <= 0 || number > 2147483647) {
         throw professionChecklistError(
             `Потрібне коректне значення ${fieldName}`,
             400,
@@ -1153,6 +1153,7 @@ async function validateStaffProfessionChecklistTarget(client, params = {}, optio
 
 async function toggleStaffProfessionChecklistProgress(client, params = {}, options = {}) {
     const completed = normalizeChecklistCompleted(params.completed);
+    const hasNotes = params.notes !== undefined;
     const notes = normalizeChecklistNotes(params.notes);
     const actor = normalizeChecklistActor(
         options.actor ?? params.actor,
@@ -1206,7 +1207,7 @@ async function toggleStaffProfessionChecklistProgress(client, params = {}, optio
                 ELSE NULL
             END,
             completed_by = CASE WHEN $6 THEN $7 ELSE NULL END,
-            notes = EXCLUDED.notes,
+            notes = CASE WHEN $9 THEN EXCLUDED.notes ELSE hr_staff_profession_checklist_progress.notes END,
             updated_at = NOW()
          RETURNING id AS progress_id, staff_id, profession_key,
                    checklist_item_id AS progress_checklist_item_id,
@@ -1221,7 +1222,8 @@ async function toggleStaffProfessionChecklistProgress(client, params = {}, optio
             context.item.title,
             completed,
             actor,
-            notes
+            notes,
+            hasNotes
         ]
     );
     const after = normalizeChecklistProgressRow(safeRows(result)[0]);
@@ -1632,6 +1634,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                    $7::text IS NULL
                    OR profession.key ILIKE $7
                    OR profession.title ILIKE $7
+                   OR COALESCE(profession.department, '') ILIKE $7
                    OR member.name ILIKE $7
                    OR item.title ILIKE $7
                )
@@ -1672,6 +1675,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                $7::text IS NULL
                OR profession.key ILIKE $7
                OR profession.title ILIKE $7
+               OR COALESCE(profession.department, '') ILIKE $7
                OR member.name ILIKE $7
                OR item.title ILIKE $7
            )`,
@@ -1726,6 +1730,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                    $7::text IS NULL
                    OR progress.profession_key ILIKE $7
                    OR COALESCE(profession.title, '') ILIKE $7
+                   OR COALESCE(profession.department, '') ILIKE $7
                    OR member.name ILIKE $7
                    OR progress.title ILIKE $7
                )
@@ -1770,6 +1775,7 @@ async function loadProfessionChecklistDashboard(db, rawFilters = {}) {
                $7::text IS NULL
                OR progress.profession_key ILIKE $7
                OR COALESCE(profession.title, '') ILIKE $7
+               OR COALESCE(profession.department, '') ILIKE $7
                OR member.name ILIKE $7
                OR progress.title ILIKE $7
            )`,

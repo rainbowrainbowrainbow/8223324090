@@ -130,8 +130,8 @@ let monthlyYear = new Date().getFullYear();
 let monthlyMonth = new Date().getMonth() + 1;
 let leaderboardMode = 'overall'; // 'overall' or 'monthly'
 let rewardClaimPending = new Set();
-let achievementCheckPending = false;
-let profileAutoRewardCheckCompleted = false;
+let profileAutoRewardCheckCompletedKey = '';
+const profileAutoRewardChecksPending = new Map();
 
 const CABINET_TASK_SEGMENTS = [
     { id: 'all', label: 'Всі мої', hint: 'Усі активні задачі, де ви власник або виконавець' },
@@ -330,30 +330,61 @@ async function refreshProfileRewardSurfaces(options = {}) {
     renderProfile();
 }
 
-async function checkProfileAutoRewards(options = {}) {
-    const force = options.force === true;
-    if (!isOwnProfile || achievementCheckPending || (!force && profileAutoRewardCheckCompleted)) return;
-    achievementCheckPending = true;
-    if (!force) profileAutoRewardCheckCompleted = true;
+function profileAutoRewardContextKey() {
+    const user = (typeof AppState !== 'undefined' && AppState.currentUser) ? AppState.currentUser : {};
+    let sessionGeneration = '';
     try {
-        const result = await apiPost('/achievements/check', {});
-        await apiPost('/quests/check-titles', {});
-        const awardedCount = result?.count || result?.awarded?.length || 0;
-        if (awardedCount > 0) {
-            if (typeof showNotification === 'function') {
-                showNotification(`🎉 Нові досягнення: ${awardedCount}. Нагороду зараховано`, 'success');
+        sessionGeneration = localStorage.getItem('pzp_auth_session_generation') || '';
+    } catch {}
+    return JSON.stringify({
+        userId: String(user.id ?? user.userId ?? currentUserId ?? ''),
+        username: String(user.username || ''),
+        sessionGeneration
+    });
+}
+
+function isProfileAutoRewardContextCurrent(contextKey) {
+    return isOwnProfile && profileAutoRewardContextKey() === contextKey;
+}
+
+function checkProfileAutoRewards(options = {}) {
+    if (!isOwnProfile) return Promise.resolve();
+    const force = options.force === true;
+    const contextKey = profileAutoRewardContextKey();
+    const pending = profileAutoRewardChecksPending.get(contextKey);
+    if (pending) return pending;
+    if (!force && profileAutoRewardCheckCompletedKey === contextKey) return Promise.resolve();
+
+    const request = (async () => {
+        try {
+            const result = await apiPost('/achievements/check', {});
+            if (!isProfileAutoRewardContextCurrent(contextKey)) return { stale: true };
+            await apiPost('/quests/check-titles', {});
+            if (!isProfileAutoRewardContextCurrent(contextKey)) return { stale: true };
+            profileAutoRewardCheckCompletedKey = contextKey;
+            const awardedCount = result?.count || result?.awarded?.length || 0;
+            if (awardedCount > 0) {
+                if (typeof showNotification === 'function') {
+                    showNotification(`🎉 Нові досягнення: ${awardedCount}. Нагороду зараховано`, 'success');
+                }
+                await refreshProfileRewardSurfaces({
+                    reloadAchievements: true,
+                    reloadQuests: false,
+                    reloadWallet: true
+                });
             }
-            await refreshProfileRewardSurfaces({
-                reloadAchievements: true,
-                reloadQuests: false,
-                reloadWallet: true
-            });
+            return { success: true };
+        } catch (error) {
+            console.warn('Profile auto reward check failed', error);
+            return { success: false };
+        } finally {
+            if (profileAutoRewardChecksPending.get(contextKey) === request) {
+                profileAutoRewardChecksPending.delete(contextKey);
+            }
         }
-    } catch (error) {
-        console.warn('Profile auto reward check failed', error);
-    } finally {
-        achievementCheckPending = false;
-    }
+    })();
+    profileAutoRewardChecksPending.set(contextKey, request);
+    return request;
 }
 
 function escapeHtml(str) {

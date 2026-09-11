@@ -17,6 +17,9 @@ const DEFAULT_MODEL = process.env.OMNI_LEAD_AI_MODEL
   || process.env.SUMMARY_MODEL
   || DEFAULT_MODELS.openrouter;
 
+const LEAD_ASSIGNEE_ROLES = ['creator', 'director', 'vice_director', 'senior_manager', 'manager', 'marketer', 'admin'];
+const LEAD_EVENT_GUEST_MAX = 200;
+
 const FIELD_DEFINITIONS = {
   client_name: {
     label: "Ім'я клієнта",
@@ -627,6 +630,13 @@ function parsePositiveInt(value) {
   return rounded > 0 ? rounded : null;
 }
 
+function parseNonNegativeGuestCount(value) {
+  if (value === null || value === undefined || value === '') return 0;
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed < 0 || parsed > LEAD_EVENT_GUEST_MAX) return null;
+  return parsed;
+}
+
 function parseMoney(value) {
   if (value === null || value === undefined || value === '') return null;
   const parsed = Number(String(value).replace(/[^\d.]/g, ''));
@@ -744,6 +754,7 @@ function normalizeCelebrants(value) {
 function normalizeLeadDraft(input = {}) {
   const eventType = normalizeEventType(input.eventType || input.event_type, input.notes);
   const childrenCount = parsePositiveInt(input.childrenCount ?? input.children_count);
+  const adultsCount = parseNonNegativeGuestCount(input.adultsCount ?? input.adults_count ?? input.adultCount ?? input.adult_count);
   const childAge = parsePositiveInt(input.childAge ?? input.child_age);
   const eventDate = toIsoDate(input.eventDate || input.event_date);
   return {
@@ -754,14 +765,56 @@ function normalizeLeadDraft(input = {}) {
     eventDate,
     eventDateText: compactString(input.eventDateText || input.event_date_text, 80) || null,
     childrenCount,
+    adultsCount: adultsCount === null ? 0 : adultsCount,
     childAge,
     celebrants: normalizeCelebrants(input.celebrants),
     budget: parseMoney(input.budget),
     programPreferences: compactString(input.programPreferences || input.program_preferences, 260) || null,
     notes: cleanLongText(input.notes, 1200) || null,
+    eventPreference: normalizeLeadEventPreference(input),
+    assignedTo: parsePositiveInt(input.assignedTo ?? input.assigned_to),
     leadType: normalizeLeadType(input.leadType || input.lead_type),
     qualityCategory: compactString(input.qualityCategory || input.quality_category || EVENT_TYPE_TO_QUALITY[eventType], 40) || null,
     confidence: Math.max(0, Math.min(1, Number(input.confidence) || 0.35)),
+  };
+}
+
+function normalizeLeadEventPreference(input = {}) {
+  const raw = input.eventPreference || input.event_preference || {};
+  const source = raw && typeof raw === 'object' ? raw : {};
+  const preferredDate = toIsoDate(
+    source.preferredDate
+    || source.preferred_date
+    || source.date
+    || source.eventDate
+    || source.event_date
+    || input.eventDate
+    || input.event_date
+  );
+  const childrenCount = parseNonNegativeGuestCount(
+    source.childrenCount
+    ?? source.children_count
+    ?? input.childrenCount
+    ?? input.children_count
+  );
+  const adultsCount = parseNonNegativeGuestCount(
+    source.adultsCount
+    ?? source.adults_count
+    ?? source.adultCount
+    ?? source.adult_count
+    ?? input.adultsCount
+    ?? input.adults_count
+    ?? input.adultCount
+    ?? input.adult_count
+  );
+  const notes = cleanLongText(source.notes || source.note || source.dateNotes || source.date_notes, 500) || null;
+
+  if (!preferredDate && !childrenCount && !adultsCount && !notes) return null;
+  return {
+    preferredDate,
+    childrenCount: childrenCount === null ? 0 : childrenCount,
+    adultsCount: adultsCount === null ? 0 : adultsCount,
+    notes,
   };
 }
 
@@ -1588,11 +1641,11 @@ function linkedLeadIdFromMeta(meta) {
   return parsePositiveInt(meta.lead_id || meta.leadId || meta?.crm?.leadId || meta?.leadAssistant?.leadId);
 }
 
-async function findExistingLinkedLead(conversation) {
+async function findExistingLinkedLead(conversation, db = pool) {
   const businessContext = normalizeBusinessContext(conversation?.business_context || DEFAULT_BUSINESS_CONTEXT);
   const metaLeadId = linkedLeadIdFromMeta(conversation?.meta);
   if (metaLeadId) {
-    const byMeta = await pool.query(
+    const byMeta = await db.query(
       `SELECT * FROM leads
         WHERE id = $1
           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
@@ -1603,7 +1656,7 @@ async function findExistingLinkedLead(conversation) {
   }
 
   const externalId = `omni_conv_${conversation.id}`;
-  const byExternal = await pool.query(
+  const byExternal = await db.query(
     `SELECT *
        FROM leads
       WHERE COALESCE(business_context, $1) = $1
@@ -1685,6 +1738,7 @@ function buildLeadNotes(analysis, bundle) {
   return [
     `Створено з OmniClaw розмови #${bundle.conversation.id}.`,
     analysis?.summary ? `AI summary: ${analysis.summary}` : null,
+    lead.notes ? `Нотатки менеджера: ${lead.notes}` : null,
     lead.programPreferences ? `Побажання: ${lead.programPreferences}` : null,
     lead.budget ? `Бюджет: ${lead.budget} грн` : null,
     analysis?.nextBestQuestion ? `Наступне питання: ${analysis.nextBestQuestion}` : null,
@@ -1701,8 +1755,29 @@ function primaryProgramIdFromMaterials(materials = []) {
   return match?.sourceId || null;
 }
 
+function firstDefined(...values) {
+  for (const value of values) {
+    if (value !== undefined) return value;
+  }
+  return undefined;
+}
+
+function leadDraftInputFromOptions(analysis, options = {}) {
+  return options.leadDraft
+    || options.draft
+    || options.lead
+    || analysis?.lead
+    || {};
+}
+
+function leadCreateSource(options = {}) {
+  return options.leadDraft || options.draft || options.lead
+    ? 'omni_lead_manual'
+    : 'omni_lead_assistant';
+}
+
 function buildLeadInsertDraft(analysis, bundle, options = {}) {
-  const lead = normalizeLeadDraft(analysis?.lead || {});
+  const lead = normalizeLeadDraft(leadDraftInputFromOptions(analysis, options));
   const conversation = bundle.conversation || {};
   const businessContext = normalizeBusinessContext(options.businessContext || options.business_context || DEFAULT_BUSINESS_CONTEXT);
   const fallbackName = compactString(conversation.customer_name, 160);
@@ -1710,6 +1785,11 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
   const phone = lead.phone || normalizePhone(conversation.customer_phone) || null;
   const externalId = `omni_conv_${conversation.id}`;
   const notes = buildLeadNotes({ ...analysis, lead }, bundle);
+  const eventPreference = lead.eventPreference || normalizeLeadEventPreference(lead);
+  const effectiveEventDate = eventPreference?.preferredDate || lead.eventDate || null;
+  const effectiveChildrenCount = eventPreference
+    ? (eventPreference.childrenCount || lead.childrenCount || null)
+    : lead.childrenCount;
 
   return {
     businessContext,
@@ -1719,12 +1799,21 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
     source: conversation.channel || 'omni',
     sourceChannel: conversation.channel || 'omni',
     externalId,
-    eventDate: lead.eventDate,
-    childrenCount: lead.childrenCount,
+    eventDate: effectiveEventDate,
+    childrenCount: effectiveChildrenCount,
+    adultsCount: eventPreference?.adultsCount || lead.adultsCount || 0,
+    eventPreference,
     childAge: lead.childAge,
-    programId: primaryProgramIdFromMaterials(analysis?.recommendedMaterials || []),
+    programId: parsePositiveInt(options.programId ?? options.program_id ?? lead.programId ?? lead.program_id)
+      || primaryProgramIdFromMaterials(analysis?.recommendedMaterials || []),
     celebrants: lead.celebrants || [],
     notes,
+    assignedTo: parsePositiveInt(firstDefined(
+      lead.assignedTo,
+      lead.assigned_to,
+      options.assignedTo,
+      options.assigned_to
+    )),
     leadType: lead.leadType || 'quality',
     qualityCategory: lead.qualityCategory || EVENT_TYPE_TO_QUALITY[lead.eventType] || null,
     eventType: lead.eventType || null,
@@ -1732,29 +1821,160 @@ function buildLeadInsertDraft(analysis, bundle, options = {}) {
   };
 }
 
+async function ensureAssignableLeadUser(userId, db = pool) {
+  if (!userId) return true;
+  const result = await db.query(
+    `SELECT id
+       FROM users
+      WHERE id = $1
+        AND COALESCE(is_active, true) = true
+        AND role = ANY($2::text[])
+      LIMIT 1`,
+    [userId, LEAD_ASSIGNEE_ROLES]
+  );
+  return result.rows.length > 0;
+}
+
+async function resolveConversationAssignedTo(conversation, db = pool) {
+  const owner = compactString(conversation?.assigned_to, 100);
+  if (!owner) return null;
+  const result = await db.query(
+    `SELECT id
+       FROM users
+      WHERE COALESCE(is_active, true) = true
+        AND role = ANY($2::text[])
+        AND (username = $1 OR name = $1)
+      ORDER BY CASE WHEN username = $1 THEN 0 ELSE 1 END, id ASC
+      LIMIT 1`,
+    [owner, LEAD_ASSIGNEE_ROLES]
+  );
+  return result.rows[0]?.id || null;
+}
+
+async function resolveLeadAssignedTo(draft, conversation, db = pool) {
+  if (draft.assignedTo) {
+    if (!(await ensureAssignableLeadUser(draft.assignedTo, db))) {
+      const err = new Error('Відповідального не знайдено або він неактивний');
+      err.status = 400;
+      throw err;
+    }
+    return draft.assignedTo;
+  }
+  return resolveConversationAssignedTo(conversation, db);
+}
+
+function mapLeadEventPreference(row = null) {
+  if (!row || typeof row !== 'object') return null;
+  const preferredDate = toIsoDate(row.preferredDate || row.preferred_date);
+  const childrenCount = parseNonNegativeGuestCount(row.childrenCount ?? row.children_count) || 0;
+  const adultsCount = parseNonNegativeGuestCount(row.adultsCount ?? row.adults_count) || 0;
+  const notes = cleanLongText(row.notes, 500) || null;
+  if (!row.id && !preferredDate && !childrenCount && !adultsCount && !notes) return null;
+  return {
+    id: row.id ?? null,
+    leadId: row.leadId ?? row.lead_id ?? null,
+    lead_id: row.lead_id ?? row.leadId ?? null,
+    businessContext: normalizeBusinessContext(row.businessContext || row.business_context) || DEFAULT_BUSINESS_CONTEXT,
+    business_context: normalizeBusinessContext(row.businessContext || row.business_context) || DEFAULT_BUSINESS_CONTEXT,
+    preferredDate,
+    preferred_date: preferredDate,
+    childrenCount,
+    children_count: childrenCount,
+    adultsCount,
+    adults_count: adultsCount,
+    notes,
+    createdAt: row.createdAt || row.created_at || null,
+    created_at: row.created_at || row.createdAt || null,
+    updatedAt: row.updatedAt || row.updated_at || null,
+    updated_at: row.updated_at || row.updatedAt || null,
+  };
+}
+
+async function saveLeadEventPreference(db, { leadId, businessContext, preference }) {
+  if (!preference || (!preference.preferredDate && !preference.childrenCount && !preference.adultsCount && !preference.notes)) {
+    return null;
+  }
+  const result = await db.query(
+    `INSERT INTO lead_event_preferences (
+        lead_id,
+        business_context,
+        preferred_date,
+        children_count,
+        adults_count,
+        notes
+      )
+      VALUES ($1, $2, $3, $4, $5, $6)
+      ON CONFLICT (business_context, lead_id) DO UPDATE
+      SET preferred_date = EXCLUDED.preferred_date,
+          children_count = EXCLUDED.children_count,
+          adults_count = EXCLUDED.adults_count,
+          notes = EXCLUDED.notes,
+          updated_at = NOW()
+      RETURNING json_build_object(
+        'id', id,
+        'lead_id', lead_id,
+        'business_context', business_context,
+        'preferred_date', preferred_date,
+        'children_count', children_count,
+        'adults_count', adults_count,
+        'notes', notes,
+        'created_at', created_at,
+        'updated_at', updated_at
+      ) AS event_preference`,
+    [
+      leadId,
+      businessContext,
+      preference.preferredDate || null,
+      preference.childrenCount || 0,
+      preference.adultsCount || 0,
+      preference.notes || null,
+    ]
+  );
+  return mapLeadEventPreference(result.rows[0]?.event_preference);
+}
+
 async function createLeadFromConversation(conversationId, analysis, options = {}) {
   const bundle = await getConversationBundle(conversationId, 120, options);
-  const existing = await findExistingLinkedLead(bundle.conversation);
-  if (existing) {
-    await markConversationLead(bundle.conversation.id, existing.id, analysis).catch(err => {
-      log.warn('Conversation lead relink skipped', { conversationId: bundle.conversation.id, leadId: existing.id, message: err.message });
-    });
-    return { created: false, lead: existing, analysis };
-  }
-
   const draft = buildLeadInsertDraft(analysis, bundle, options);
   const client = await pool.connect();
   try {
     await client.query('BEGIN');
+    const lockedConversationResult = await client.query(
+      `SELECT *
+         FROM conversations
+        WHERE id = $1
+          AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+        FOR UPDATE`,
+      [bundle.conversation.id, draft.businessContext]
+    );
+    const lockedConversation = lockedConversationResult.rows[0];
+    if (!lockedConversation) {
+      const err = new Error('Розмову не знайдено');
+      err.status = 404;
+      throw err;
+    }
+    bundle.conversation = lockedConversation;
+
+    const existing = await findExistingLinkedLead(lockedConversation, client);
+    if (existing) {
+      await markConversationLead(lockedConversation.id, existing.id, analysis, client);
+      await client.query('COMMIT');
+      return { created: false, lead: existing, analysis };
+    }
+
+    draft.assignedTo = await resolveLeadAssignedTo(draft, lockedConversation, client);
     const result = await client.query(
       `INSERT INTO leads
          (business_context, client_name, phone, instagram, source, source_channel, external_id,
-          program_id, event_date, children_count, potential_value, child_age, notes, status, pipeline_stage, lead_type,
+          program_id, event_date, children_count, potential_value, child_age, notes, assigned_to, status, pipeline_stage, lead_type,
           quality_category, celebrants, raw_payload)
         VALUES
           ($1, $2, $3, $4, $5, $6, $7,
-           $8, $9, $10, $11, $12, $13, 'new', 'new', $14,
-           $15, $16::jsonb, $17::jsonb)
+           $8, $9, $10, $11, $12, $13, $14, 'new', 'new', $15,
+           $16, $17::jsonb, $18::jsonb)
+        ON CONFLICT (business_context, source_channel, external_id)
+          WHERE external_id IS NOT NULL
+          DO NOTHING
         RETURNING *`,
       [
         draft.businessContext,
@@ -1770,12 +1990,19 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
         draft.budget,
         draft.childAge,
         draft.notes,
+        draft.assignedTo,
         draft.leadType,
         draft.qualityCategory,
         JSON.stringify(draft.celebrants),
         JSON.stringify({
-          source: 'omni_lead_assistant',
+          source: leadCreateSource(options),
           conversationId: bundle.conversation.id,
+          draft: {
+            eventPreference: draft.eventPreference || null,
+            assignedTo: draft.assignedTo || null,
+            sourceChannel: draft.sourceChannel,
+            externalId: draft.externalId,
+          },
           analysis: {
             summary: analysis?.summary || null,
             missingRequiredKeys: analysis?.missingRequiredKeys || [],
@@ -1787,7 +2014,28 @@ async function createLeadFromConversation(conversationId, analysis, options = {}
         }),
       ]
     );
-    const lead = result.rows[0];
+    let lead = result.rows[0];
+    if (!lead) {
+      lead = await findExistingLinkedLead(lockedConversation, client);
+      if (!lead) {
+        const err = new Error('Лід уже створюється. Оновіть розмову й повторіть дію.');
+        err.status = 409;
+        throw err;
+      }
+      await markConversationLead(lockedConversation.id, lead.id, analysis, client);
+      await client.query('COMMIT');
+      return { created: false, lead, analysis };
+    }
+
+    if (draft.eventPreference) {
+      const eventPreference = await saveLeadEventPreference(client, {
+        leadId: lead.id,
+        businessContext: draft.businessContext,
+        preference: draft.eventPreference,
+      });
+      lead.event_preference = eventPreference;
+      lead.eventPreference = eventPreference;
+    }
 
     await markConversationLead(bundle.conversation.id, lead.id, analysis, client);
 

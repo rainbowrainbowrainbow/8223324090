@@ -33,13 +33,15 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         loadConversations, loadMessages, loadOmniAccounts, loadCaseContext, reloadOmniForBusinessContext,
         selectConversation, sendMessage, closeConversation, clearConversationSelection, renderMessages,
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
+        openLeadAssistantPanel, createLeadFromDraft,
         accountNeedsAttention, renderOmniAccountsAlarm,
         updateConversationField, syncConversationControls,
         request: api,
         setApi(fn) { api = fn; },
         setRecords(value) { conversations = value; conversationTotal = value.length; renderConversations(); },
         state() { return { currentConvId, conversations, conversationTotal, messageHistory, messageTotal,
-            accounts: omniAccounts, analysis: leadAssistantState.analysis, selectedDraftKey, messagesLoading }; }
+            accounts: omniAccounts, analysis: leadAssistantState.analysis, leadMode: leadAssistantState.mode,
+            leadDrafts: Array.from(leadDrafts.entries()), selectedDraftKey, messagesLoading }; }
     };`;
     const end = script.lastIndexOf('})();');
     vm.runInContext(script.slice(0, end) + exports + script.slice(end), dom.getInternalVMContext());
@@ -502,6 +504,69 @@ test('stale AI analysis is discarded after switching conversations', async t => 
     analysis.resolve({ success: true, analysis: { summary: 'Wrong customer result' } });
     await pending;
     assert.equal(h.app.state().analysis, null);
+});
+
+test('manual lead draft opens without starting AI analysis', async t => {
+    const h = harness(t);
+    const requests = [];
+    h.app.setApi((requestPath, options) => {
+        requests.push({ requestPath, method: options?.method || 'GET' });
+        return h.defaultApi(requestPath);
+    });
+    h.app.selectConversation(1);
+    await h.flush();
+    await h.app.openLeadAssistantPanel('draft');
+    assert.equal(h.app.state().leadMode, 'draft');
+    assert.equal(h.document.getElementById('omniLeadDraftClientName').value, 'Customer 1');
+    assert.equal(h.document.getElementById('omniLeadAssistantSettingsPanel').hidden, true);
+    assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/analyze')), false);
+    assert.equal(requests.some(item => item.requestPath === '/lead-assistant/settings'), false);
+    assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/create-lead')), false);
+});
+
+test('manual lead draft creates a lead from reviewed fields without analysis payload', async t => {
+    const h = harness(t);
+    let sent;
+    h.app.setApi(async (requestPath, options) => {
+        if (requestPath.endsWith('/lead-assistant/create-lead')) {
+            sent = { requestPath, options, body: JSON.parse(options.body) };
+            return { success: true, created: true, lead: { id: 501 } };
+        }
+        return h.defaultApi(requestPath);
+    });
+    h.app.selectConversation(1);
+    await h.flush();
+    await h.app.openLeadAssistantPanel('draft');
+    h.document.getElementById('omniLeadDraftClientName').value = 'Nataly Fedorova';
+    h.document.getElementById('omniLeadDraftPhone').value = '+380501112233';
+    h.document.getElementById('omniLeadDraftEventType').value = 'День народження';
+    h.document.getElementById('omniLeadDraftChildrenCount').value = '12';
+    await h.app.createLeadFromDraft();
+    assert.equal(sent.requestPath, '/conversations/1/lead-assistant/create-lead');
+    assert.equal(sent.options.requestBusinessContext, 'event_genix');
+    assert.equal(sent.body.analysis, undefined);
+    assert.equal(sent.body.draft.clientName, 'Nataly Fedorova');
+    assert.equal(sent.body.draft.childrenCount, 12);
+    assert.equal(h.document.getElementById('omniCreateLead').textContent, 'Відкрити лід');
+    assert.equal(h.app.state().conversations[0].meta.lead_id, 501);
+});
+
+test('stale manual lead creation result is ignored after switching chats', async t => {
+    const h = harness(t);
+    const create = deferred();
+    h.app.setApi((requestPath, options) => requestPath.endsWith('/lead-assistant/create-lead')
+        ? create.promise
+        : h.defaultApi(requestPath, options));
+    h.app.selectConversation(1);
+    await h.flush();
+    await h.app.openLeadAssistantPanel('draft');
+    const pending = h.app.createLeadFromDraft();
+    h.app.selectConversation(2);
+    create.resolve({ success: true, created: true, lead: { id: 777 } });
+    await pending;
+    assert.equal(h.app.state().currentConvId, 2);
+    assert.equal(h.document.getElementById('omniCreateLead').textContent, 'Створити лід');
+    assert.equal(h.app.state().conversations[1].meta.lead_id, undefined);
 });
 
 test('history failure exposes retry and does not display the previous customer history', async t => {

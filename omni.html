@@ -1624,6 +1624,18 @@
             gap: 8px;
         }
 
+        .omni-lead-action {
+            border-color: #0F766E !important;
+            background: #0F766E !important;
+            color: #FFFFFF !important;
+            font-weight: 800;
+        }
+
+        .omni-lead-action.linked {
+            border-color: #2563EB !important;
+            background: #2563EB !important;
+        }
+
         .omni-ai-field {
             border: 1px solid #E2E8F0;
             border-radius: 8px;
@@ -1661,6 +1673,73 @@
             font: inherit;
             font-size: 14px;
             line-height: 1.42;
+        }
+
+        .omni-lead-form {
+            display: grid;
+            gap: 12px;
+        }
+
+        .omni-lead-form-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 10px;
+        }
+
+        .omni-lead-field {
+            display: grid;
+            gap: 5px;
+        }
+
+        .omni-lead-field.full {
+            grid-column: 1 / -1;
+        }
+
+        .omni-lead-field label {
+            color: #475569;
+            font-size: 12px;
+            font-weight: 900;
+        }
+
+        .omni-lead-field input,
+        .omni-lead-field select,
+        .omni-lead-field textarea {
+            width: 100%;
+            min-height: 38px;
+            border: 1px solid #CBD5E1;
+            border-radius: 8px;
+            background: #FFFFFF;
+            color: #0F172A;
+            padding: 8px 10px;
+            font: inherit;
+            font-size: 13px;
+        }
+
+        .omni-lead-field textarea {
+            min-height: 92px;
+            resize: vertical;
+        }
+
+        .omni-lead-field input:focus,
+        .omni-lead-field select:focus,
+        .omni-lead-field textarea:focus {
+            border-color: #0F766E;
+            box-shadow: 0 0 0 3px rgba(15,118,110,0.14);
+            outline: none;
+        }
+
+        .omni-lead-result {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            flex-wrap: wrap;
+            padding: 10px;
+            border: 1px solid #A7F3D0;
+            border-radius: 8px;
+            background: #ECFDF5;
+            color: #065F46;
+            font-size: 13px;
+            font-weight: 800;
         }
 
         .omni-ai-settings summary {
@@ -1957,6 +2036,7 @@
                 width: 100vw;
             }
             .omni-ai-draft-grid,
+            .omni-lead-form-grid,
             .omni-ai-setting-row,
             .omni-ai-score-strip,
             .omni-ai-material-row,
@@ -2053,6 +2133,7 @@
         }
         .dark-mode .omni-ai-subtitle,
         .dark-mode .omni-ai-summary,
+        .dark-mode .omni-lead-field label,
         .dark-mode .omni-ai-need span,
         .dark-mode .omni-ai-field span,
         .dark-mode .omni-ai-status {
@@ -2060,6 +2141,7 @@
         }
         .dark-mode .omni-ai-need,
         .dark-mode .omni-ai-field,
+        .dark-mode .omni-lead-result,
         .dark-mode .omni-ai-btn,
         .dark-mode .omni-ai-score-box,
         .dark-mode .omni-ai-scenario-box,
@@ -2071,6 +2153,9 @@
             color: #F8FAFC;
         }
         .dark-mode .omni-ai-reply-box,
+        .dark-mode .omni-lead-field input,
+        .dark-mode .omni-lead-field select,
+        .dark-mode .omni-lead-field textarea,
         .dark-mode .omni-ai-setting-row input,
         .dark-mode .omni-ai-setting-row select,
         .dark-mode .omni-ai-script-rules,
@@ -2237,7 +2322,7 @@
                             <div class="omni-chat-header-channel" id="omniChatChannel"></div>
                         </div>
                         <div class="omni-chat-header-actions">
-                            <select id="omniConversationStatus" aria-label="Змінити статус розмови"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний менеджер"><option value="">Без відповідального</option></select><button type="button" id="omniToggleAI" title="AI лід і потреби">AI</button>
+                            <select id="omniConversationStatus" aria-label="Статус діалогу" title="Статус діалогу"><option value="open">Відкрита</option><option value="pending">Очікує</option><option value="closed">Закрита</option><option value="spam">Спам</option></select><select id="omniAssignee" aria-label="Відповідальний" title="Відповідальний"><option value="">Без відповідального</option></select><button type="button" id="omniCreateLead" class="omni-lead-action" title="Створити лід з діалогу">Створити лід</button><button type="button" id="omniToggleAI" title="AI лід і потреби">AI</button>
                             <button type="button" id="omniCloseConv" title="Закрити розмову">Закрити</button>
                         </div>
                     </div>
@@ -2291,10 +2376,10 @@
     <aside class="omni-ai-drawer" id="omniLeadAssistantDrawer" hidden role="dialog" aria-modal="true" aria-labelledby="omniLeadAssistantTitle">
         <div class="omni-ai-head">
             <div>
-                <h2 class="omni-ai-title" id="omniLeadAssistantTitle">AI лід з діалогу</h2>
+                <h2 class="omni-ai-title" id="omniLeadAssistantTitle">Чернетка ліда з діалогу</h2>
                 <div class="omni-ai-subtitle" id="omniLeadAssistantSubtitle">OmniClaw</div>
             </div>
-            <button type="button" class="omni-ai-close" id="omniLeadAssistantClose" aria-label="Закрити AI панель">×</button>
+            <button type="button" class="omni-ai-close" id="omniLeadAssistantClose" aria-label="Закрити панель ліда">×</button>
         </div>
         <div class="omni-ai-body">
             <div class="omni-ai-panel" id="omniLeadAssistantStatus"></div>
@@ -2343,6 +2428,7 @@
         const attachmentDrafts = new Map();
         const commentReplyDrafts = new Map();
         const conversationDrafts = new Map();
+        const leadDrafts = new Map();
         const pendingSends = new Set();
         const pendingConversationFields = new Set();
         const sendRequests = new Map();
@@ -2352,6 +2438,7 @@
         let accountsRequestSeq = 0;
         let statsRequestSeq = 0;
         let assistantRequestSeq = 0;
+        let leadDraftRequestSeq = 0;
         let conversationsLoading = false;
         let messagesLoading = false;
         let conversationTotal = 0;
@@ -2417,6 +2504,7 @@
         let isSending = false;
         let leadAssistantState = {
             open: false,
+            mode: 'draft',
             loading: false,
             creating: false,
             creatingTask: false,
@@ -3489,8 +3577,146 @@
             return 'warning';
         }
 
+        function leadDraftKey(convId = currentConvId, businessContext = getOmniBusinessContext()) {
+            return convId ? businessContext + ':' + convId : '';
+        }
+
+        function linkedLeadIdFromConversation(conv) {
+            const meta = conv?.meta || {};
+            return meta.lead_id || meta.leadId || meta.leadAssistant?.leadId || conv?.leadId || null;
+        }
+
+        function leadUrl(leadId) {
+            return '/sales-funnel?lead=' + encodeURIComponent(leadId);
+        }
+
+        function openLeadUrl(leadId) {
+            if (!leadId) return;
+            window.location.href = leadUrl(leadId);
+        }
+
+        function leadSourceFromConversation(conv) {
+            const channel = String(conv?.channel || '').trim();
+            return CHANNEL_NAMES[channel] || channel || 'Omni';
+        }
+
+        function initialLeadDraft(conv, businessContext = getOmniBusinessContext()) {
+            const name = String(conv?.customerName || '').trim();
+            const unknownName = !name || /^клієнт$/i.test(name);
+            return {
+                businessContext,
+                conversationId: conv?.id || null,
+                clientName: unknownName ? '' : name,
+                phone: conv?.customerPhone || conv?.phone || '',
+                instagram: String(conv?.channel || '').toLowerCase() === 'instagram' ? String(conv?.externalId || '').replace(/^@/, '') : '',
+                source: leadSourceFromConversation(conv),
+                eventType: '',
+                eventDate: '',
+                childrenCount: '',
+                adultsCount: '',
+                childAge: '',
+                programPreferences: '',
+                notes: '',
+                error: '',
+                result: null
+            };
+        }
+
+        function getLeadDraft(conv = currentConversation()) {
+            if (!conv) return null;
+            const businessContext = getOmniBusinessContext();
+            const key = leadDraftKey(conv.id, businessContext);
+            if (!leadDrafts.has(key)) leadDrafts.set(key, initialLeadDraft(conv, businessContext));
+            return leadDrafts.get(key);
+        }
+
+        function numericDraftValue(value) {
+            const raw = String(value ?? '').trim();
+            if (!raw) return null;
+            const parsed = Number.parseInt(raw, 10);
+            return Number.isFinite(parsed) && parsed >= 0 ? parsed : null;
+        }
+
+        function saveLeadDraftFromForm() {
+            const draft = getLeadDraft();
+            if (!draft) return null;
+            for (const [key, id] of [
+                ['clientName', 'omniLeadDraftClientName'],
+                ['phone', 'omniLeadDraftPhone'],
+                ['instagram', 'omniLeadDraftInstagram'],
+                ['source', 'omniLeadDraftSource'],
+                ['eventType', 'omniLeadDraftEventType'],
+                ['eventDate', 'omniLeadDraftEventDate'],
+                ['childrenCount', 'omniLeadDraftChildrenCount'],
+                ['adultsCount', 'omniLeadDraftAdultsCount'],
+                ['childAge', 'omniLeadDraftChildAge'],
+                ['programPreferences', 'omniLeadDraftProgramPreferences'],
+                ['notes', 'omniLeadDraftNotes']
+            ]) {
+                const el = $(id);
+                if (el) draft[key] = el.value;
+            }
+            return draft;
+        }
+
+        function leadDraftPayload(draft) {
+            const childrenCount = numericDraftValue(draft.childrenCount);
+            const adultsCount = numericDraftValue(draft.adultsCount);
+            const childAge = numericDraftValue(draft.childAge);
+            const eventPreference = (draft.eventDate || childrenCount !== null || adultsCount !== null || draft.programPreferences)
+                ? {
+                    preferredDate: draft.eventDate || null,
+                    childrenCount,
+                    adultsCount,
+                    notes: [draft.eventType, draft.programPreferences].filter(Boolean).join(' · ') || null
+                }
+                : null;
+            return {
+                clientName: String(draft.clientName || '').trim(),
+                phone: String(draft.phone || '').trim(),
+                instagram: String(draft.instagram || '').trim(),
+                source: String(draft.source || '').trim() || 'Omni',
+                eventType: String(draft.eventType || '').trim() || null,
+                eventDate: String(draft.eventDate || '').trim() || null,
+                childrenCount,
+                adultsCount,
+                childAge,
+                programPreferences: String(draft.programPreferences || '').trim(),
+                notes: String(draft.notes || '').trim(),
+                eventPreference
+            };
+        }
+
+        function updateLeadAction(conv = currentConversation()) {
+            const button = $('omniCreateLead');
+            if (!button) return;
+            const leadId = linkedLeadIdFromConversation(conv);
+            button.classList.toggle('linked', !!leadId);
+            button.textContent = leadId ? 'Відкрити лід' : 'Створити лід';
+            button.title = leadId ? 'Відкрити привʼязаний лід' : 'Створити лід з діалогу';
+            button.disabled = !conv;
+            if (leadId) button.dataset.leadId = String(leadId);
+            else delete button.dataset.leadId;
+        }
+
         function renderLeadAssistantStatus() {
             if (!leadAssistantStatus) return;
+            if (leadAssistantState.mode === 'draft') {
+                const conv = currentConversation();
+                const draft = getLeadDraft(conv);
+                const leadId = linkedLeadIdFromConversation(conv) || draft?.result?.leadId;
+                leadAssistantStatus.innerHTML =
+                    '<div class="omni-ai-status">' +
+                        '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : 'Чернетка ліда') + '</span>' +
+                        '<span class="omni-ai-status-pill">' + esc(leadId ? 'Лід привʼязано' : 'Ручне створення без AI') + '</span>' +
+                    '</div>' +
+                    '<div class="omni-ai-actions" style="margin-top:10px">' +
+                        '<button type="button" class="omni-ai-btn accent" data-ai-action="save-draft-lead"' + (leadAssistantState.creating || leadId ? ' disabled' : '') + '>' + (leadAssistantState.creating ? 'Створюємо...' : 'Зберегти лід') + '</button>' +
+                        (leadId ? '<button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(leadId)) + '">Відкрити лід</button>' : '') +
+                        '<button type="button" class="omni-ai-btn" data-ai-action="open-ai">AI-помічник</button>' +
+                    '</div>';
+                return;
+            }
             const analysis = leadAssistantState.analysis;
             const provider = analysis?.provider;
             const conv = currentConversation();
@@ -3505,6 +3731,7 @@
                     '<span class="omni-ai-status-pill ' + leadAssistantStatusTone(provider) + '">' + esc(statusText) + '</span>' +
                 '</div>' +
                 '<div class="omni-ai-actions" style="margin-top:10px">' +
+                    '<button type="button" class="omni-ai-btn" data-ai-action="back-to-draft">Чернетка ліда</button>' +
                     '<button type="button" class="omni-ai-btn primary" data-ai-action="reanalyze"' + (leadAssistantState.loading ? ' disabled' : '') + '>Оновити аналіз</button>' +
                     '<button type="button" class="omni-ai-btn accent" data-ai-action="create-lead"' + (!analysis || leadAssistantState.creating ? ' disabled' : '') + '>Створити лід</button>' +
                     '<button type="button" class="omni-ai-btn" data-ai-action="create-followup"' + (!analysis || leadAssistantState.creatingTask ? ' disabled' : '') + '>Follow-up задача</button>' +
@@ -3572,8 +3799,41 @@
             ).join('') + '</div>';
         }
 
+        function renderLeadDraftContent() {
+            const conv = currentConversation();
+            const draft = getLeadDraft(conv);
+            if (!draft) {
+                leadAssistantContent.innerHTML = '<div class="omni-ai-summary">Оберіть діалог, щоб створити лід.</div>';
+                return;
+            }
+            const linkedLeadId = linkedLeadIdFromConversation(conv) || draft.result?.leadId;
+            leadAssistantContent.innerHTML =
+                (draft.error ? '<div class="omni-ai-summary" style="border-color:#FCA5A5;background:#FEF2F2;color:#991B1B">' + esc(draft.error) + '</div>' : '') +
+                (linkedLeadId ? '<div class="omni-lead-result"><strong>Лід #' + esc(String(linkedLeadId)) + ' привʼязано до діалогу.</strong><button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(linkedLeadId)) + '">Відкрити лід</button></div>' : '') +
+                '<form class="omni-lead-form" id="omniLeadDraftForm">' +
+                    '<div class="omni-ai-summary">Перевірте дані з переписки й збережіть лід. Ця форма не запускає AI і не створює запис, доки менеджер не натисне «Зберегти лід».</div>' +
+                    '<div class="omni-lead-form-grid">' +
+                        '<div class="omni-lead-field full"><label for="omniLeadDraftClientName">Імʼя клієнта</label><input id="omniLeadDraftClientName" maxlength="160" autocomplete="name" value="' + esc(draft.clientName) + '" required></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftPhone">Телефон</label><input id="omniLeadDraftPhone" maxlength="50" autocomplete="tel" value="' + esc(draft.phone) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftInstagram">Instagram / нік</label><input id="omniLeadDraftInstagram" maxlength="120" value="' + esc(draft.instagram) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftSource">Джерело</label><input id="omniLeadDraftSource" maxlength="120" value="' + esc(draft.source) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftEventType">Подія</label><input id="omniLeadDraftEventType" maxlength="160" value="' + esc(draft.eventType) + '" placeholder="День народження, випускний..."></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftEventDate">Бажана дата</label><input id="omniLeadDraftEventDate" type="date" value="' + esc(draft.eventDate) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftChildrenCount">Дітей</label><input id="omniLeadDraftChildrenCount" type="number" min="0" max="999" value="' + esc(draft.childrenCount) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftAdultsCount">Дорослих</label><input id="omniLeadDraftAdultsCount" type="number" min="0" max="999" value="' + esc(draft.adultsCount) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftChildAge">Вік дітей</label><input id="omniLeadDraftChildAge" type="number" min="0" max="99" value="' + esc(draft.childAge) + '"></div>' +
+                        '<div class="omni-lead-field"><label for="omniLeadDraftProgramPreferences">Побажання по програмі</label><input id="omniLeadDraftProgramPreferences" maxlength="500" value="' + esc(draft.programPreferences) + '"></div>' +
+                        '<div class="omni-lead-field full"><label for="omniLeadDraftNotes">Нотатка менеджера</label><textarea id="omniLeadDraftNotes" maxlength="4000">' + esc(draft.notes) + '</textarea></div>' +
+                    '</div>' +
+                '</form>';
+        }
+
         function renderLeadAssistantContent() {
             if (!leadAssistantContent) return;
+            if (leadAssistantState.mode === 'draft') {
+                renderLeadDraftContent();
+                return;
+            }
             if (leadAssistantState.loading && !leadAssistantState.analysis) {
                 leadAssistantContent.innerHTML = '<div class="omni-ai-summary">Зчитую історію повідомлень і збираю draft ліда.</div>';
                 return;
@@ -3824,9 +4084,11 @@
         }
 
         function renderLeadAssistant() {
+            const settingsPanel = $('omniLeadAssistantSettingsPanel');
+            if (settingsPanel) settingsPanel.hidden = leadAssistantState.mode === 'draft';
             renderLeadAssistantStatus();
             renderLeadAssistantContent();
-            renderLeadAssistantSettings();
+            if (leadAssistantState.mode === 'ai') renderLeadAssistantSettings();
         }
 
         async function loadLeadAssistantSettings() {
@@ -3850,6 +4112,7 @@
             const convId = currentConvId;
             const epoch = workspaceEpoch;
             const requestSeq = ++assistantRequestSeq;
+            leadAssistantState.mode = 'ai';
             leadAssistantState.loading = true;
             leadAssistantState.error = '';
             renderLeadAssistant();
@@ -3869,21 +4132,25 @@
             renderLeadAssistant();
         }
 
-        async function openLeadAssistantPanel() {
+        async function openLeadAssistantPanel(mode = 'draft', options = {}) {
             if (!currentConvId) return;
             const convId = currentConvId;
             const epoch = workspaceEpoch;
             assistantReturnFocus = document.activeElement;
             leadAssistantState.open = true;
+            leadAssistantState.mode = mode === 'ai' ? 'ai' : 'draft';
+            leadAssistantState.error = '';
             if (leadAssistantDrawer) leadAssistantDrawer.hidden = false;
             if (leadAssistantBackdrop) leadAssistantBackdrop.hidden = false;
-            leadAssistantDrawer?.querySelector('button')?.focus();
             const conv = currentConversation();
             if (leadAssistantSubtitle) leadAssistantSubtitle.textContent = conv ? (conv.customerName || conv.externalId || 'Розмова') : 'OmniClaw';
-            if (!leadAssistantState.settings) await loadLeadAssistantSettings();
+            renderLeadAssistant();
+            const firstDraftInput = $('omniLeadDraftClientName');
+            (firstDraftInput || leadAssistantDrawer?.querySelector('button'))?.focus();
+            if (leadAssistantState.mode === 'ai' && !leadAssistantState.settings) await loadLeadAssistantSettings();
             if (epoch !== workspaceEpoch || convId !== currentConvId || !leadAssistantState.open) return;
             renderLeadAssistant();
-            await analyzeLeadAssistant();
+            if (leadAssistantState.mode === 'ai' && options.analyze === true) await analyzeLeadAssistant();
         }
 
         function closeLeadAssistantPanel() {
@@ -4111,19 +4378,86 @@
             renderLeadAssistantSettings();
         }
 
+        function applyLeadCreationResult(convId, leadId, response) {
+            const conv = currentConversation();
+            if (!conv || conv.id !== convId || !leadId) return;
+            const nextMeta = {
+                ...(conv.meta || {}),
+                lead_id: leadId,
+                leadAssistant: {
+                    ...((conv.meta || {}).leadAssistant || {}),
+                    leadId,
+                    linkedAt: new Date().toISOString()
+                }
+            };
+            applyConversationResponse({ ...conv, meta: nextMeta });
+            const draft = getLeadDraft(currentConversation());
+            if (draft) draft.result = { leadId, created: response?.created !== false, link: leadUrl(leadId) };
+            updateLeadAction(currentConversation());
+        }
+
+        async function createLeadFromDraft() {
+            const draft = saveLeadDraftFromForm();
+            const convId = currentConvId;
+            const epoch = workspaceEpoch;
+            const businessContext = getOmniBusinessContext();
+            const key = leadDraftKey(convId, businessContext);
+            if (!convId || !draft || leadAssistantState.creating) return;
+            draft.error = '';
+            const payload = leadDraftPayload(draft);
+            if (!payload.clientName && !payload.phone && !payload.instagram) {
+                draft.error = 'Додайте імʼя, телефон або Instagram клієнта перед створенням ліда.';
+                renderLeadAssistant();
+                $('omniLeadDraftClientName')?.focus();
+                return;
+            }
+            leadAssistantState.creating = true;
+            renderLeadAssistant();
+            const requestSeq = ++leadDraftRequestSeq;
+            const res = await api('/conversations/' + convId + '/lead-assistant/create-lead', {
+                method: 'POST',
+                requestBusinessContext: businessContext,
+                body: JSON.stringify({ draft: payload })
+            });
+            const stale = requestSeq !== leadDraftRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId || businessContext !== getOmniBusinessContext() || key !== leadDraftKey(currentConvId, getOmniBusinessContext());
+            if (stale) {
+                leadAssistantState.creating = false;
+                return;
+            }
+            leadAssistantState.creating = false;
+            if (res.success) {
+                const leadId = res.lead?.id || res.leadId || res.data?.leadId || res.data?.lead?.id;
+                if (leadId) applyLeadCreationResult(convId, leadId, res);
+                leadAssistantNotify(res.created === false ? 'Лід вже був привʼязаний до розмови' : 'Лід створено з діалогу', 'success');
+                await loadCaseContext(convId);
+            } else {
+                draft.error = res.error || 'Не вдалося створити лід';
+                leadAssistantNotify(draft.error, 'error');
+            }
+            renderLeadAssistant();
+        }
+
         async function createLeadFromAssistant() {
             if (!currentConvId || !leadAssistantState.analysis || leadAssistantState.creating) return;
+            const convId = currentConvId;
+            const epoch = workspaceEpoch;
             leadAssistantState.creating = true;
             renderLeadAssistantStatus();
-            const res = await api('/conversations/' + currentConvId + '/lead-assistant/create-lead', {
+            const res = await api('/conversations/' + convId + '/lead-assistant/create-lead', {
                 method: 'POST',
                 body: JSON.stringify({ analysis: leadAssistantState.analysis })
             });
+            if (epoch !== workspaceEpoch || convId !== currentConvId) {
+                leadAssistantState.creating = false;
+                return;
+            }
             leadAssistantState.creating = false;
             renderLeadAssistantStatus();
             if (res.success) {
+                const leadId = res.lead?.id || res.leadId || res.data?.leadId || res.data?.lead?.id;
+                if (leadId) applyLeadCreationResult(convId, leadId, res);
                 leadAssistantNotify(res.created ? 'Лід створено з Omni-діалогу' : 'Лід вже був привʼязаний до розмови', 'success');
-                await loadCaseContext(currentConvId);
+                await loadCaseContext(convId);
                 await loadConversations();
                 const analytics = await api('/lead-assistant/analytics');
                 if (analytics.success) leadAssistantState.analytics = analytics.analytics || null;
@@ -4315,6 +4649,7 @@
                 text: input.value,
                 replyExpected: !!replyExpectedEl?.checked
             });
+            if (leadAssistantState.open && leadAssistantState.mode === 'draft') saveLeadDraftFromForm();
         }
 
         function clearConversationSelection(options = {}) {
@@ -4327,6 +4662,7 @@
             messagesRequestSeq++;
             caseContextRequestSeq++;
             assistantRequestSeq++;
+            leadDraftRequestSeq++;
             messagesLoading = false;
             messageHistory = [];
             messageTotal = 0;
@@ -4344,6 +4680,7 @@
             closeLeadAssistantPanel();
             leadAssistantState.analysis = null;
             leadAssistantState.loading = false;
+            leadAssistantState.creating = false;
             setSendFeedback(null);
             updateSendControls(null);
             if (omniContainer) omniContainer.classList.remove('has-conversation');
@@ -4365,6 +4702,8 @@
             assistantRequestSeq++;
             leadAssistantState.analysis = null;
             leadAssistantState.loading = false;
+            leadAssistantState.creating = false;
+            leadDraftRequestSeq++;
             messageHistory = [];
             messageTotal = 0;
             messages.innerHTML = '';
@@ -4388,13 +4727,14 @@
 
             const aiBtn = $('omniToggleAI');
             const aiEnabled = conv.meta && conv.meta.ai_enabled;
-            const leadLinked = conv.meta && (conv.meta.lead_id || conv.meta.leadId || conv.meta.leadAssistant?.leadId);
+            const leadLinked = linkedLeadIdFromConversation(conv);
             aiBtn.style.background = leadLinked ? '#0F766E' : (aiEnabled ? '#667eea' : '');
             aiBtn.style.color = (leadLinked || aiEnabled) ? '#fff' : '';
             aiBtn.title = leadLinked ? 'AI лід привʼязано' : 'AI лід і потреби';
+            updateLeadAction(conv);
             if (leadAssistantState.open) {
                 leadAssistantState.analysis = null;
-                openLeadAssistantPanel();
+                openLeadAssistantPanel(leadAssistantState.mode);
             }
             setSendFeedback(null);
             if (replyExpectedEl) replyExpectedEl.checked = draft.replyExpected;
@@ -4434,6 +4774,7 @@
             close.disabled = pendingConversationFields.has(conversationFieldKey(conv.id, 'status'));
             close.textContent = conv.status === 'closed' ? 'Відкрити знову' : 'Закрити';
             close.title = close.textContent;
+            updateLeadAction(conv);
         }
 
         function applyConversationResponse(record) {
@@ -4442,6 +4783,7 @@
             conversations = conversations.map(conv => conv.id === record.id ? selectedConversationRecord : conv);
             renderConversations();
             syncConversationControls(selectedConversationRecord, true);
+            updateLeadAction(selectedConversationRecord);
         }
 
         async function loadConversationControls(conv) {
@@ -4598,7 +4940,16 @@
         }
 
         async function toggleAI() {
-            await openLeadAssistantPanel();
+            await openLeadAssistantPanel('ai');
+        }
+
+        async function openLeadAction() {
+            const leadId = linkedLeadIdFromConversation(currentConversation());
+            if (leadId) {
+                openLeadUrl(leadId);
+                return;
+            }
+            await openLeadAssistantPanel('draft');
         }
 
         // ---- Helpers ----
@@ -4752,6 +5103,7 @@
         syncOmniViewport();
 
         $('omniCloseConv').addEventListener('click', closeConversation);
+        $('omniCreateLead').addEventListener('click', openLeadAction);
         $('omniToggleAI').addEventListener('click', toggleAI);
         if (leadAssistantClose) leadAssistantClose.addEventListener('click', closeLeadAssistantPanel);
         if (leadAssistantBackdrop) leadAssistantBackdrop.addEventListener('click', closeLeadAssistantPanel);
@@ -4761,6 +5113,10 @@
                 if (!btn) return;
                 const action = btn.dataset.aiAction;
                 if (action === 'reanalyze') await analyzeLeadAssistant();
+                if (action === 'save-draft-lead') await createLeadFromDraft();
+                if (action === 'open-lead') openLeadUrl(btn.dataset.leadId);
+                if (action === 'open-ai') await openLeadAssistantPanel('ai');
+                if (action === 'back-to-draft') await openLeadAssistantPanel('draft');
                 if (action === 'create-lead') await createLeadFromAssistant();
                 if (action === 'create-followup') await createFollowUpFromAssistant();
                 if (action === 'insert-reply') insertLeadAssistantReply();
@@ -4775,6 +5131,11 @@
                 if (action === 'insert-material') insertLeadAssistantMaterial(btn.dataset.aiMaterialIndex, false);
                 if (action === 'append-material') insertLeadAssistantMaterial(btn.dataset.aiMaterialIndex, true);
                 if (action === 'test-script') await testLeadAssistantScript();
+            });
+            leadAssistantDrawer.addEventListener('submit', async e => {
+                if (!e.target.closest('#omniLeadDraftForm')) return;
+                e.preventDefault();
+                await createLeadFromDraft();
             });
         }
 

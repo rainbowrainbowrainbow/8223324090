@@ -1,5 +1,6 @@
 const assert = require('node:assert/strict');
 const test = require('node:test');
+const { pool } = require('../db');
 
 const {
     normalizeLeadAssistantConfig,
@@ -8,7 +9,8 @@ const {
     normalizeAnalysis,
     normalizeRecommendedMaterials,
     buildLeadInsertDraft,
-    buildFollowUpTaskDraft
+    buildFollowUpTaskDraft,
+    createLeadFromConversation
 } = require('../services/omniLeadAssistant');
 
 test('normalizes Omni lead assistant script fields', () => {
@@ -155,10 +157,187 @@ test('builds a lead insert draft linked to the Omni conversation', () => {
     assert.equal(draft.sourceChannel, 'instagram');
     assert.equal(draft.externalId, 'omni_conv_77');
     assert.equal(draft.businessContext, 'event_genix');
+    assert.equal(draft.eventPreference.preferredDate, '2026-06-14');
+    assert.equal(draft.eventPreference.childrenCount, 10);
     assert.match(draft.notes, /OmniClaw розмови #77/);
     assert.match(draft.notes, /квест/);
+    assert.match(draft.notes, /Любить динозаврів/);
     assert.equal(Object.hasOwn(draft, 'customerCardNotes'), false);
 });
+
+function withFakeOmniPool(handler) {
+    const originalQuery = pool.query;
+    const originalConnect = pool.connect;
+    return async () => {
+        try {
+            await handler({
+                setQuery(fn) {
+                    pool.query = fn;
+                },
+                setConnect(fn) {
+                    pool.connect = fn;
+                }
+            });
+        } finally {
+            pool.query = originalQuery;
+            pool.connect = originalConnect;
+        }
+    };
+}
+
+function createConversationFixture(overrides = {}) {
+    return {
+        id: 77,
+        business_context: 'event_genix',
+        channel: 'telegram',
+        external_id: 'tg-77',
+        customer_name: 'Олена',
+        customer_phone: '+380501112233',
+        assigned_to: 'vitalina',
+        meta: {},
+        ...overrides
+    };
+}
+
+test('creates a reviewed Omni draft atomically with owner and event preference', withFakeOmniPool(async fake => {
+    const conversation = createConversationFixture();
+    const clientQueries = [];
+    fake.setQuery(async (text, params = []) => {
+        if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) return { rows: [conversation] };
+        if (/FROM conversation_messages/i.test(text)) return { rows: [] };
+        throw new Error(`Unexpected pool query: ${text}`);
+    });
+    fake.setConnect(async () => ({
+        async query(text, params = []) {
+            clientQueries.push({ text, params });
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
+            if (/FROM leads/i.test(text) && /external_id = \$3/i.test(text)) return { rows: [] };
+            if (/FROM users/i.test(text) && /\(username = \$1 OR name = \$1\)/i.test(text)) return { rows: [{ id: 12 }] };
+            if (/INSERT INTO leads/i.test(text)) {
+                return {
+                    rows: [{
+                        id: 501,
+                        business_context: params[0],
+                        client_name: params[1],
+                        phone: params[2],
+                        source_channel: params[5],
+                        external_id: params[6],
+                        event_date: params[8],
+                        children_count: params[9],
+                        notes: params[12],
+                        assigned_to: params[13],
+                        raw_payload: JSON.parse(params[17])
+                    }]
+                };
+            }
+            if (/INSERT INTO lead_event_preferences/i.test(text)) {
+                return {
+                    rows: [{
+                        event_preference: {
+                            id: 701,
+                            lead_id: params[0],
+                            business_context: params[1],
+                            preferred_date: params[2],
+                            children_count: params[3],
+                            adults_count: params[4],
+                            notes: params[5]
+                        }
+                    }]
+                };
+            }
+            if (/UPDATE conversations/i.test(text)) return { rows: [], rowCount: 1 };
+            throw new Error(`Unexpected client query: ${text}`);
+        },
+        release() {}
+    }));
+
+    const result = await createLeadFromConversation(77, null, {
+        businessContext: 'event_genix',
+        leadDraft: {
+            clientName: 'Олена',
+            eventDate: '2026-06-14',
+            childrenCount: 10,
+            adultsCount: 4,
+            notes: 'Любить динозаврів'
+        }
+    });
+
+    assert.equal(result.created, true);
+    assert.equal(result.lead.assigned_to, 12);
+    assert.equal(result.lead.eventPreference.preferredDate, '2026-06-14');
+    assert.equal(result.lead.eventPreference.adultsCount, 4);
+    assert.match(result.lead.notes, /Любить динозаврів/);
+    assert.ok(clientQueries.some(query => query.text === 'COMMIT'));
+    assert.ok(!clientQueries.some(query => query.text === 'ROLLBACK'));
+}));
+
+test('returns the existing Omni lead when insert loses the unique-source race', withFakeOmniPool(async fake => {
+    const conversation = createConversationFixture();
+    const existingLead = { id: 777, business_context: 'event_genix', source_channel: 'telegram', external_id: 'omni_conv_77' };
+    let externalLookupCount = 0;
+    fake.setQuery(async (text) => {
+        if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) return { rows: [conversation] };
+        if (/FROM conversation_messages/i.test(text)) return { rows: [] };
+        throw new Error(`Unexpected pool query: ${text}`);
+    });
+    fake.setConnect(async () => ({
+        async query(text) {
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
+            if (/FROM leads/i.test(text) && /external_id = \$3/i.test(text)) {
+                externalLookupCount += 1;
+                return { rows: externalLookupCount > 1 ? [existingLead] : [] };
+            }
+            if (/FROM users/i.test(text)) return { rows: [] };
+            if (/INSERT INTO leads/i.test(text)) return { rows: [] };
+            if (/UPDATE conversations/i.test(text)) return { rows: [], rowCount: 1 };
+            throw new Error(`Unexpected client query: ${text}`);
+        },
+        release() {}
+    }));
+
+    const result = await createLeadFromConversation(77, null, {
+        businessContext: 'event_genix',
+        leadDraft: { clientName: 'Олена' }
+    });
+
+    assert.equal(result.created, false);
+    assert.equal(result.lead.id, 777);
+}));
+
+test('rolls back the Omni lead insert when conversation linking fails', withFakeOmniPool(async fake => {
+    const conversation = createConversationFixture();
+    const clientQueries = [];
+    fake.setQuery(async (text) => {
+        if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) return { rows: [conversation] };
+        if (/FROM conversation_messages/i.test(text)) return { rows: [] };
+        throw new Error(`Unexpected pool query: ${text}`);
+    });
+    fake.setConnect(async () => ({
+        async query(text, params = []) {
+            clientQueries.push({ text, params });
+            if (text === 'BEGIN' || text === 'COMMIT' || text === 'ROLLBACK') return { rows: [] };
+            if (/FROM conversations/i.test(text) && /FOR UPDATE/i.test(text)) return { rows: [conversation] };
+            if (/FROM leads/i.test(text) && /external_id = \$3/i.test(text)) return { rows: [] };
+            if (/FROM users/i.test(text)) return { rows: [] };
+            if (/INSERT INTO leads/i.test(text)) return { rows: [{ id: 501, business_context: 'event_genix' }] };
+            if (/UPDATE conversations/i.test(text)) throw new Error('synthetic link failure');
+            throw new Error(`Unexpected client query: ${text}`);
+        },
+        release() {}
+    }));
+
+    await assert.rejects(
+        () => createLeadFromConversation(77, null, {
+            businessContext: 'event_genix',
+            leadDraft: { clientName: 'Олена' }
+        }),
+        /synthetic link failure/
+    );
+    assert.ok(clientQueries.some(query => query.text === 'ROLLBACK'));
+    assert.ok(!clientQueries.some(query => query.text === 'COMMIT'));
+}));
 
 test('builds an Omni follow-up task draft from lead analysis', () => {
     const analysis = normalizeAnalysis({

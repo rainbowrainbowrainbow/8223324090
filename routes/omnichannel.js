@@ -12,6 +12,10 @@ const { resolveCapability } = require('../services/accountAccessPolicy');
 const { parseProviderJson } = require('../services/omni-webhook-payload');
 const { createLogger } = require('../utils/logger');
 const { authenticateToken: auth, requireMinRole, requireAction } = require('../middleware/auth');
+const {
+    requireRole = () => (_req, _res, next) => next(),
+    canUseAction = () => false,
+} = require('../middleware/auth');
 const { logAdminAction } = require('../services/adminAudit');
 const {
     businessContextFromRequest,
@@ -65,6 +69,26 @@ function requestBusinessContext(req, res) {
     const businessContext = businessContextFromRequest(req);
     if (!requireBusinessContext(req, res, businessContext)) return null;
     return businessContext;
+}
+
+function redactLeadRevenueFields(value) {
+    if (Array.isArray(value)) return value.map(redactLeadRevenueFields);
+    if (!value || typeof value !== 'object') return value;
+    if (value instanceof Date || Buffer.isBuffer(value)) return value;
+    const stripped = {};
+    for (const [key, nested] of Object.entries(value)) {
+        const normalized = String(key).replace(/[^a-z0-9]/gi, '').toLowerCase();
+        if (['potentialvalue', 'budget', 'budgetapprox'].includes(normalized)) continue;
+        stripped[key] = redactLeadRevenueFields(nested);
+    }
+    return stripped;
+}
+
+function shapeOmniLeadCreateResponse(req, res, next) {
+    if (canUseAction(req.user, 'view_revenue')) return next();
+    const sendJson = res.json.bind(res);
+    res.json = payload => sendJson(redactLeadRevenueFields(payload));
+    return next();
 }
 
 function webhookBusinessContext(req) {
@@ -670,17 +694,21 @@ router.post('/conversations/:id/lead-assistant/analyze', auth, async (req, res) 
     }
 });
 
-// Create and link a CRM lead from the latest assistant draft.
-router.post('/conversations/:id/lead-assistant/create-lead', auth, async (req, res) => {
+// Create and link a CRM lead from a reviewed Omni draft.
+router.post('/conversations/:id/lead-assistant/create-lead', auth, requireRole('manager', 'marketer'), shapeOmniLeadCreateResponse, async (req, res) => {
     try {
         const businessContext = requestBusinessContext(req, res);
         if (!businessContext) return;
         const id = parseId(req.params.id);
         if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
-        const analysis = req.body?.analysis || await analyzeConversationLead(id, { businessContext });
+        const explicitDraft = req.body?.draft || req.body?.leadDraft || req.body?.lead || null;
+        const analysis = req.body?.analysis || (explicitDraft ? null : await analyzeConversationLead(id, { businessContext }));
         const result = await createLeadFromConversation(id, analysis, {
             businessContext,
             user: req.user,
+            leadDraft: explicitDraft,
+            assignedTo: req.body?.assignedTo ?? req.body?.assigned_to,
+            programId: req.body?.programId ?? req.body?.program_id,
         });
         res.status(result.created ? 201 : 200).json({
             success: true,

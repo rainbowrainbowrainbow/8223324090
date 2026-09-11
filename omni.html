@@ -11,13 +11,13 @@
     <title>Event Genix | OmniClaw</title>
     <meta name="description" content="Event Genix — OmniClaw омніканальний inbox">
     <link rel="icon" type="image/png" href="images/favicon-32.png" sizes="32x32">
-    <link rel="stylesheet" href="css/base.css?v=0.81.120">
-    <link rel="stylesheet" href="css/layout.css?v=0.81.120">
-    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.120">
-    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.120">
-    <link rel="stylesheet" href="css/modals.css?v=0.81.120">
-    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.120">
-    <link rel="stylesheet" href="css/responsive.css?v=0.81.120">
+    <link rel="stylesheet" href="css/base.css?v=0.81.121">
+    <link rel="stylesheet" href="css/layout.css?v=0.81.121">
+    <link rel="stylesheet" href="css/sidebar-aurora.css?v=0.81.121">
+    <link rel="stylesheet" href="css/pages-shell.css?v=0.81.121">
+    <link rel="stylesheet" href="css/modals.css?v=0.81.121">
+    <link rel="stylesheet" href="css/dark-mode.css?v=0.81.121">
+    <link rel="stylesheet" href="css/responsive.css?v=0.81.121">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&family=Inter:wght@400;600;700;800;900&display=swap" rel="stylesheet">
     <style>
@@ -2117,7 +2117,7 @@
             color: #FBBF24;
         }
     </style>
-    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.120">
+    <link rel="stylesheet" href="css/omni-workspace.css?v=0.81.121">
 </head>
 <body data-page-group="system">
     <script>
@@ -2345,12 +2345,12 @@
         <span id="notificationText"></span>
     </div>
 
-    <script src="js/config.js?v=0.81.120"></script>
-    <script src="js/api.js?v=0.81.120"></script>
-    <script src="js/auth.js?v=0.81.120"></script>
-    <script src="js/components/sidebar.js?v=0.81.120"></script>
+    <script src="js/config.js?v=0.81.121"></script>
+    <script src="js/api.js?v=0.81.121"></script>
+    <script src="js/auth.js?v=0.81.121"></script>
+    <script src="js/components/sidebar.js?v=0.81.121"></script>
     <script>if (typeof Sidebar !== "undefined") Sidebar.init("#sidebarLinks");</script>
-    <script src="js/ws.js?v=0.81.120"></script>
+    <script src="js/ws.js?v=0.81.121"></script>
     <script>
     /**
      * OmniClaw Page — omnichannel inbox UI
@@ -2447,6 +2447,7 @@
             loading: false,
             creating: false,
             creatingTask: false,
+            previewingDraft: false,
             savingSettings: false,
             testingScript: false,
             analysis: null,
@@ -3539,6 +3540,32 @@
             return CHANNEL_NAMES[channel] || channel || 'Omni';
         }
 
+        const LEAD_DRAFT_FIELD_IDS = [
+            ['clientName', 'omniLeadDraftClientName'],
+            ['phone', 'omniLeadDraftPhone'],
+            ['instagram', 'omniLeadDraftInstagram'],
+            ['source', 'omniLeadDraftSource'],
+            ['eventType', 'omniLeadDraftEventType'],
+            ['eventDate', 'omniLeadDraftEventDate'],
+            ['childrenCount', 'omniLeadDraftChildrenCount'],
+            ['adultsCount', 'omniLeadDraftAdultsCount'],
+            ['childAge', 'omniLeadDraftChildAge'],
+            ['programPreferences', 'omniLeadDraftProgramPreferences'],
+            ['notes', 'omniLeadDraftNotes']
+        ];
+        const LEAD_DRAFT_FIELD_LABELS = {
+            clientName: 'Імʼя',
+            phone: 'Телефон',
+            instagram: 'Instagram',
+            eventType: 'Подія',
+            eventDate: 'Дата',
+            childrenCount: 'Дітей',
+            adultsCount: 'Дорослих',
+            childAge: 'Вік',
+            programPreferences: 'Програма',
+            notes: 'Нотатка'
+        };
+
         function initialLeadDraft(conv, businessContext = getOmniBusinessContext()) {
             const name = String(conv?.customerName || '').trim();
             const unknownName = !name || /^клієнт$/i.test(name);
@@ -3557,6 +3584,8 @@
                 programPreferences: '',
                 notes: '',
                 error: '',
+                aiPreview: null,
+                aiPreviewError: '',
                 result: null
             };
         }
@@ -3579,23 +3608,48 @@
         function saveLeadDraftFromForm() {
             const draft = getLeadDraft();
             if (!draft) return null;
-            for (const [key, id] of [
-                ['clientName', 'omniLeadDraftClientName'],
-                ['phone', 'omniLeadDraftPhone'],
-                ['instagram', 'omniLeadDraftInstagram'],
-                ['source', 'omniLeadDraftSource'],
-                ['eventType', 'omniLeadDraftEventType'],
-                ['eventDate', 'omniLeadDraftEventDate'],
-                ['childrenCount', 'omniLeadDraftChildrenCount'],
-                ['adultsCount', 'omniLeadDraftAdultsCount'],
-                ['childAge', 'omniLeadDraftChildAge'],
-                ['programPreferences', 'omniLeadDraftProgramPreferences'],
-                ['notes', 'omniLeadDraftNotes']
-            ]) {
+            for (const [key, id] of LEAD_DRAFT_FIELD_IDS) {
                 const el = $(id);
                 if (el) draft[key] = el.value;
             }
             return draft;
+        }
+
+        function leadDraftValueEmpty(value) {
+            return value === null || value === undefined || String(value).trim() === '';
+        }
+
+        function applyLeadDraftAiPreview(draft, preview) {
+            const aiDraft = preview?.draft || {};
+            const appliedFields = [];
+            for (const field of Object.keys(LEAD_DRAFT_FIELD_LABELS)) {
+                if (leadDraftValueEmpty(aiDraft[field])) continue;
+                if (!leadDraftValueEmpty(draft[field])) continue;
+                draft[field] = String(aiDraft[field]);
+                appliedFields.push(field);
+            }
+            draft.aiPreview = { ...(preview || {}), appliedFields };
+            draft.aiPreviewError = '';
+            return appliedFields;
+        }
+
+        function renderLeadDraftAiPreview(draft) {
+            if (draft.aiPreviewError) {
+                return '<div class="omni-ai-summary">' + esc(draft.aiPreviewError) + '</div>';
+            }
+            const preview = draft.aiPreview;
+            if (!preview) return '';
+            const applied = (preview.appliedFields || []).map(field => LEAD_DRAFT_FIELD_LABELS[field] || field);
+            const missing = (preview.missing || []).filter(field => LEAD_DRAFT_FIELD_LABELS[field]).map(field => LEAD_DRAFT_FIELD_LABELS[field]);
+            const conflicts = Array.isArray(preview.conflicts) ? preview.conflicts : [];
+            const provider = preview.provider?.model ? ' · ' + preview.provider.model : '';
+            return '<div class="omni-ai-summary">' +
+                '<strong>AI заповнення з чату' + esc(provider) + '</strong>' +
+                (applied.length ? '<div>Заповнено: ' + esc(applied.join(', ')) + '.</div>' : '<div>AI не змінив поля: у чернетці вже були значення або бракує підтвердження клієнта.</div>') +
+                (missing.length ? '<div>Потрібно уточнити: ' + esc(missing.slice(0, 6).join(', ')) + '.</div>' : '') +
+                (conflicts.length ? '<div>Є конфлікти: ' + esc(conflicts.map(item => LEAD_DRAFT_FIELD_LABELS[item.field] || item.field).slice(0, 4).join(', ')) + '.</div>' : '') +
+                '<div>AI використовує тільки повідомлення клієнта як evidence; менеджер перевіряє чернетку перед збереженням.</div>' +
+            '</div>';
         }
 
         function leadDraftPayload(draft) {
@@ -3647,10 +3701,11 @@
                 leadAssistantStatus.innerHTML =
                     '<div class="omni-ai-status">' +
                         '<span>' + esc(conv ? ((conv.customerName || conv.externalId || 'Розмова') + ' · ' + (CHANNEL_NAMES[conv.channel] || conv.channel)) : 'Чернетка ліда') + '</span>' +
-                        '<span class="omni-ai-status-pill">' + esc(leadId ? 'Лід привʼязано' : 'Ручне створення без AI') + '</span>' +
+                        '<span class="omni-ai-status-pill">' + esc(leadId ? 'Лід привʼязано' : (leadAssistantState.previewingDraft ? 'AI заповнює чернетку' : 'Чернетка під контролем менеджера')) + '</span>' +
                     '</div>' +
                     '<div class="omni-ai-actions omni-ai-row-actions">' +
-                        '<button type="button" class="omni-ai-btn accent" data-ai-action="save-draft-lead"' + (leadAssistantState.creating || leadId ? ' disabled' : '') + '>' + (leadAssistantState.creating ? 'Створюємо...' : 'Зберегти лід') + '</button>' +
+                        '<button type="button" class="omni-ai-btn primary" data-ai-action="fill-draft-ai"' + (leadAssistantState.previewingDraft || leadAssistantState.creating || leadId ? ' disabled' : '') + '>' + (leadAssistantState.previewingDraft ? 'Заповнюємо...' : 'Заповнити з чату AI') + '</button>' +
+                        '<button type="button" class="omni-ai-btn accent" data-ai-action="save-draft-lead"' + (leadAssistantState.creating || leadAssistantState.previewingDraft || leadId ? ' disabled' : '') + '>' + (leadAssistantState.creating ? 'Створюємо...' : 'Зберегти лід') + '</button>' +
                         (leadId ? '<button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(leadId)) + '">Відкрити лід</button>' : '') +
                         '<button type="button" class="omni-ai-btn" data-ai-action="open-ai">AI-помічник</button>' +
                     '</div>';
@@ -3749,8 +3804,9 @@
             leadAssistantContent.innerHTML =
                 (draft.error ? '<div class="omni-ai-summary">' + esc(draft.error) + '</div>' : '') +
                 (linkedLeadId ? '<div class="omni-ai-summary"><strong>Лід #' + esc(String(linkedLeadId)) + ' привʼязано до діалогу.</strong><div class="omni-ai-row-actions"><button type="button" class="omni-ai-btn primary" data-ai-action="open-lead" data-lead-id="' + esc(String(linkedLeadId)) + '">Відкрити лід</button></div></div>' : '') +
+                renderLeadDraftAiPreview(draft) +
                 '<form class="omni-lead-form" id="omniLeadDraftForm">' +
-                    '<div class="omni-ai-summary">Перевірте дані з переписки й збережіть лід. Ця форма не запускає AI і не створює запис, доки менеджер не натисне «Зберегти лід».</div>' +
+                    '<div class="omni-ai-summary">Перевірте дані з переписки й збережіть лід. AI може лише підставити чернетку з повідомлень клієнта; запис створюється тільки після «Зберегти лід».</div>' +
                     '<div class="omni-lead-form-grid">' +
                         '<div class="omni-lead-field full"><label for="omniLeadDraftClientName">Імʼя клієнта</label><input id="omniLeadDraftClientName" maxlength="160" autocomplete="name" value="' + esc(draft.clientName) + '" required></div>' +
                         '<div class="omni-lead-field"><label for="omniLeadDraftPhone">Телефон</label><input id="omniLeadDraftPhone" maxlength="50" autocomplete="tel" value="' + esc(draft.phone) + '"></div>' +
@@ -4333,6 +4389,39 @@
             const draft = getLeadDraft(currentConversation());
             if (draft) draft.result = { leadId, created: response?.created !== false, link: leadUrl(leadId) };
             updateLeadAction(currentConversation());
+        }
+
+        async function fillLeadDraftFromAi() {
+            const draft = saveLeadDraftFromForm();
+            const convId = currentConvId;
+            const epoch = workspaceEpoch;
+            const businessContext = getOmniBusinessContext();
+            const key = leadDraftKey(convId, businessContext);
+            if (!convId || !draft || leadAssistantState.previewingDraft) return;
+            draft.error = '';
+            draft.aiPreviewError = '';
+            leadAssistantState.previewingDraft = true;
+            const requestSeq = ++leadDraftRequestSeq;
+            renderLeadAssistant();
+            const res = await api('/conversations/' + convId + '/lead-assistant/preview-draft', {
+                method: 'POST',
+                requestBusinessContext: businessContext,
+                body: JSON.stringify({})
+            });
+            const stale = requestSeq !== leadDraftRequestSeq || epoch !== workspaceEpoch || convId !== currentConvId || businessContext !== getOmniBusinessContext() || key !== leadDraftKey(currentConvId, getOmniBusinessContext());
+            if (stale) {
+                leadAssistantState.previewingDraft = false;
+                return;
+            }
+            leadAssistantState.previewingDraft = false;
+            if (res.success && res.preview) {
+                const appliedFields = applyLeadDraftAiPreview(draft, res.preview);
+                leadAssistantNotify(appliedFields.length ? 'AI заповнив чернетку з чату' : 'AI не знайшов нових підтверджених полів', appliedFields.length ? 'success' : 'info');
+            } else {
+                draft.aiPreviewError = res.error || 'Не вдалося заповнити чернетку з чату AI';
+                leadAssistantNotify(draft.aiPreviewError, 'error');
+            }
+            renderLeadAssistant();
         }
 
         async function createLeadFromDraft() {
@@ -5053,6 +5142,7 @@
                 const action = btn.dataset.aiAction;
                 if (action === 'reanalyze') await analyzeLeadAssistant();
                 if (action === 'save-draft-lead') await createLeadFromDraft();
+                if (action === 'fill-draft-ai') await fillLeadDraftFromAi();
                 if (action === 'open-lead') openLeadUrl(btn.dataset.leadId);
                 if (action === 'open-ai') await openLeadAssistantPanel('ai');
                 if (action === 'back-to-draft') await openLeadAssistantPanel('draft');
@@ -5305,7 +5395,7 @@
         });
     })();
     </script>
-<script src="js/ui.js?v=0.81.120"></script>
-    <script src="js/alerts.js?v=0.81.120"></script>
+<script src="js/ui.js?v=0.81.121"></script>
+    <script src="js/alerts.js?v=0.81.121"></script>
 </body>
 </html>

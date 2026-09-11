@@ -4,6 +4,17 @@
 
 ---
 
+## v0.81.121 - Omni: AI-заповнення ліда
+
+### Release / Versioning / (11.09.2026) [codex]
+- **Заповнення чернетки з чату AI** — у reviewed drawer ліда додано дію `Заповнити з чату AI`, яка підставляє знайдені з переписки поля перед ручним збереженням.
+- **Менеджерські правки збережені** — AI заповнює тільки порожні поля й не перетирає вже введені значення у чернетці.
+- **Evidence-first preview** — backend читає latest-window повідомлень, повертає snapshot/evidence/conflicts/missing і приймає значення тільки з inbound customer evidence.
+- **Preview без побічних ефектів** — AI-запит не створює лід, клієнта, задачу, повідомлення чи зміну розмови; створення лишається за кнопкою `Зберегти лід`.
+- **Provider contract** — Omni draft preview зафіксовано як вузький direct OpenAI rail; старий Omni lead assistant text rail лишається на OpenRouter.
+
+---
+
 ## v0.81.120 - Omni: ручне створення ліда
 
 ### Release / Versioning / (11.09.2026) [codex]

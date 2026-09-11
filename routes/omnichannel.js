@@ -17,6 +17,7 @@ const {
     canUseAction = () => false,
 } = require('../middleware/auth');
 const { logAdminAction } = require('../services/adminAudit');
+const { createWriteRateLimiter } = require('../middleware/rateLimit');
 const {
     businessContextFromRequest,
     requireBusinessContext,
@@ -27,6 +28,7 @@ const {
     getLeadAssistantSalesContext,
     getLeadAssistantAnalytics,
     analyzeConversationLead,
+    previewLeadDraftFromConversation,
     testLeadAssistantScript,
     createLeadFromConversation,
     createLeadAssistantFollowUpTask,
@@ -44,6 +46,7 @@ const {
 } = require('../services/omni-accounts');
 
 const log = createLogger('OmniRoutes');
+const omniLeadPreviewLimiter = createWriteRateLimiter('omni-lead-preview', { windowMs: 60_000, max: 12, methods: ['POST'] });
 
 router.use((req, res, next) => {
     const name = req.path.match(/^\/webhook\/(telegram|viber|sms|meta)$/)?.[1];
@@ -676,6 +679,28 @@ router.post('/conversations/:id/lead-assistant/follow-up-task', auth, async (req
     } catch (err) {
         log.error('Omni lead assistant follow-up task error:', err.message);
         res.status(err.status || 500).json({ success: false, error: err.message || 'Помилка створення follow-up задачі з Omni-діалогу' });
+    }
+});
+
+// Fill a reviewed lead draft from the latest Omni chat window. Preview only: no CRM writes.
+router.post('/conversations/:id/lead-assistant/preview-draft', auth, requireRole('manager', 'marketer'), omniLeadPreviewLimiter, async (req, res) => {
+    try {
+        const businessContext = requestBusinessContext(req, res);
+        if (!businessContext) return;
+        const id = parseId(req.params.id);
+        if (!id) return res.status(400).json({ success: false, error: 'Невалідний ID розмови' });
+        const preview = await previewLeadDraftFromConversation(id, {
+            businessContext,
+            user: req.user,
+        });
+        res.json({ success: true, preview });
+    } catch (err) {
+        log.error('Omni lead draft preview error:', err.message);
+        res.status(err.status || 500).json({
+            success: false,
+            code: err.code || 'OMNI_LEAD_PREVIEW_FAILED',
+            error: err.message || 'Помилка AI-заповнення чернетки ліда',
+        });
     }
 });
 

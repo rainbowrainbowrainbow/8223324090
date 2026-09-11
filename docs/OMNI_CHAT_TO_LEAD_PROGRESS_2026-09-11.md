@@ -96,3 +96,53 @@ Commit SHA: none yet
 - The `AI-помічник` button is now a secondary mode. L3 can add a dedicated `Заповнити з чату AI` action that writes AI-proposed fields into the same manual draft instead of creating a lead directly.
 - Keep the stale guard pattern from L2: capture `conversationId`, `businessContext`, `workspaceEpoch` and the draft key before async AI fill/create, then ignore late responses when the user switches chat/business.
 - Live QA is still deferred to L4/manual.
+
+## OMNI-L3 — AI draft preview fill
+
+Status: complete locally on top of first released manual flow; ready for OMNI-L4/AI. Commit/push/deploy and live OpenAI calls were not run in this activator.
+
+Worktree / branch:
+
+- Worktree: `C:/Users/Plotva/OneDrive/Документи/EventGenix/.worktrees/omni-l1-chat-to-lead`
+- Branch: `codex/omni-l1-chat-to-lead`
+- Base release context: first manual release `v0.81.120` on this branch.
+
+Implemented:
+
+- Added `POST /api/omni/conversations/:id/lead-assistant/preview-draft` as a preview-only route guarded by Omni access, manager/marketer role gate and write-rate limiter.
+- Added direct OpenAI Responses adapter for Omni chat-to-lead draft preview in `services/omniLeadAssistant.js`.
+- Added a latest-window conversation reader for this preview path, avoiding the old first-120-message risk in the legacy analyze path.
+- Added strict JSON schema request, timeout handling, missing-key/provider errors and server-side validation of AI output.
+- Server validation accepts a non-null AI field only when it has inbound/customer message evidence from the returned snapshot. Outbound manager suggestions and unsupported message ids are rejected and surfaced as warnings/missing fields.
+- Added `Заповнити з чату AI` button to the existing reviewed lead draft drawer. AI fill updates only empty fields and preserves existing/manual field values. It does not call create-lead, analyze, send, task, customer or conversation mutation endpoints.
+- Added preview summary in the drawer: applied fields, missing fields, conflicts and provider model.
+- Updated provider diagnostics and `docs/AI_PROVIDER_CONTRACT.md` to record this as a narrow direct OpenAI preview rail, without changing the old OpenRouter Omni lead assistant text rail.
+
+Changed files:
+
+- `services/omniLeadAssistant.js`
+- `routes/omnichannel.js`
+- `omni.html`
+- `services/ai-config.js`
+- `docs/AI_PROVIDER_CONTRACT.md`
+- `tests/omni-lead-assistant.test.js`
+- `tests/omni-workspace-behavior.test.js`
+
+Verification performed:
+
+- `npm run check:runtime` — passed: Node 22.23.1 / npm 10.9.8.
+- `node --check services/omniLeadAssistant.js` — passed.
+- `node --check routes/omnichannel.js` — passed.
+- `node --check services/ai-config.js` — passed.
+- `node tests/omni-lead-assistant.test.js` — passed, 11/11.
+- `node tests/omni-workspace-behavior.test.js` — passed, 34/34.
+- `npm run check:api-surface` — passed.
+- `npm run check:static-surface` — passed.
+- `npm run check:syntax` — first sandbox attempt failed with `spawnSync ... EPERM`; rerun outside sandbox passed: JavaScript syntax check passed for 1136 files.
+
+Notes for OMNI-L4/AI:
+
+- Commit/push/CI/deploy/live QA remain pending by design.
+- Live QA should use only test accounts and synthetic Omni conversations; do not send external messages.
+- The L4/AI activator allows up to 5 live AI-preview requests through the existing OpenAI connection. Verify missing-key/provider error handling only if safe in the active environment; do not change secrets or env.
+- Important scenarios: manual create still works; AI preview fills empty fields only; manual values are preserved; evidence/missing/conflicts render; stale preview after chat switch is ignored; outbound manager suggestions are not accepted as client facts.

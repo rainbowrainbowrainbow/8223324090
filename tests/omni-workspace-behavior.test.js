@@ -33,7 +33,7 @@ function harness(t, records = [conversation(1), conversation(2)]) {
         loadConversations, loadMessages, loadOmniAccounts, loadCaseContext, reloadOmniForBusinessContext,
         selectConversation, sendMessage, closeConversation, clearConversationSelection, renderMessages,
         runAccountAction, setOmniMode, refreshOmniWorkspace, analyzeLeadAssistant,
-        openLeadAssistantPanel, createLeadFromDraft,
+        openLeadAssistantPanel, createLeadFromDraft, fillLeadDraftFromAi,
         accountNeedsAttention, renderOmniAccountsAlarm,
         updateConversationField, syncConversationControls,
         request: api,
@@ -522,6 +522,79 @@ test('manual lead draft opens without starting AI analysis', async t => {
     assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/analyze')), false);
     assert.equal(requests.some(item => item.requestPath === '/lead-assistant/settings'), false);
     assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/create-lead')), false);
+});
+
+test('AI draft fill previews chat data without creating a lead or overwriting manual edits', async t => {
+    const h = harness(t);
+    const requests = [];
+    h.app.setApi(async (requestPath, options) => {
+        requests.push({ requestPath, options });
+        if (requestPath.endsWith('/lead-assistant/preview-draft')) {
+            return {
+                success: true,
+                preview: {
+                    provider: { name: 'openai_direct', model: 'gpt-test', status: 'ok' },
+                    draft: {
+                        clientName: 'AI Name',
+                        phone: '+380501112233',
+                        instagram: null,
+                        eventType: 'birthday',
+                        eventDate: '2026-06-14',
+                        childrenCount: 12,
+                        adultsCount: null,
+                        childAge: 8,
+                        programPreferences: 'квест',
+                        notes: 'Клієнт хоче квест.'
+                    },
+                    evidence: {},
+                    missing: ['adultsCount'],
+                    conflicts: [],
+                    confidence: { overall: 0.8 },
+                    snapshot: { window: { newestMessageId: 22 } }
+                }
+            };
+        }
+        return h.defaultApi(requestPath, options);
+    });
+    h.app.selectConversation(1);
+    await h.flush();
+    await h.app.openLeadAssistantPanel('draft');
+    h.document.getElementById('omniLeadDraftClientName').value = 'Manual Manager Name';
+    await h.app.fillLeadDraftFromAi();
+
+    assert.equal(h.document.getElementById('omniLeadDraftClientName').value, 'Manual Manager Name');
+    assert.equal(h.document.getElementById('omniLeadDraftPhone').value, '+380501112233');
+    assert.equal(h.document.getElementById('omniLeadDraftEventDate').value, '2026-06-14');
+    assert.equal(h.document.getElementById('omniLeadDraftChildrenCount').value, '12');
+    assert.ok(requests.some(item => item.requestPath === '/conversations/1/lead-assistant/preview-draft'));
+    assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/analyze')), false);
+    assert.equal(requests.some(item => item.requestPath.endsWith('/lead-assistant/create-lead')), false);
+    assert.match(h.document.getElementById('omniLeadAssistantContent').textContent, /AI заповнення з чату/);
+});
+
+test('stale AI draft preview is ignored after switching chats', async t => {
+    const h = harness(t);
+    const preview = deferred();
+    h.app.setApi((requestPath, options) => requestPath.endsWith('/lead-assistant/preview-draft')
+        ? preview.promise
+        : h.defaultApi(requestPath, options));
+    h.app.selectConversation(1);
+    await h.flush();
+    await h.app.openLeadAssistantPanel('draft');
+    const pending = h.app.fillLeadDraftFromAi();
+    h.app.selectConversation(2);
+    preview.resolve({
+        success: true,
+        preview: {
+            draft: { phone: '+380501112233', eventDate: '2026-06-14' },
+            missing: [],
+            conflicts: [],
+            provider: { model: 'gpt-test' }
+        }
+    });
+    await pending;
+    assert.equal(h.app.state().currentConvId, 2);
+    assert.equal(h.app.state().leadDrafts.some(([, draft]) => draft.phone === '+380501112233'), false);
 });
 
 test('manual lead draft creates a lead from reviewed fields without analysis payload', async t => {

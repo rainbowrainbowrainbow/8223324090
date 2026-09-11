@@ -10,6 +10,7 @@ const {
     normalizeRecommendedMaterials,
     buildLeadInsertDraft,
     buildFollowUpTaskDraft,
+    previewLeadDraftFromConversation,
     createLeadFromConversation
 } = require('../services/omniLeadAssistant');
 
@@ -198,6 +199,115 @@ function createConversationFixture(overrides = {}) {
         ...overrides
     };
 }
+
+function omniPreviewRaw(overrides = {}) {
+    const draft = {
+        clientName: null,
+        phone: null,
+        instagram: null,
+        eventType: null,
+        eventDate: null,
+        childrenCount: null,
+        adultsCount: null,
+        childAge: null,
+        programPreferences: null,
+        notes: null,
+        ...(overrides.draft || {})
+    };
+    const evidence = Object.fromEntries(Object.keys(draft).map(field => [field, []]));
+    for (const [field, items] of Object.entries(overrides.evidence || {})) evidence[field] = items;
+    const confidence = Object.fromEntries([...Object.keys(draft), 'overall'].map(field => [field, null]));
+    return {
+        draft,
+        evidence,
+        missing: overrides.missing || [],
+        conflicts: overrides.conflicts || [],
+        confidence: { ...confidence, ...(overrides.confidence || {}) },
+        summary: overrides.summary || null,
+    };
+}
+
+test('AI draft preview reads the latest chat window and does not mutate CRM data', withFakeOmniPool(async fake => {
+    const conversation = createConversationFixture();
+    const queryLog = [];
+    const latestMessages = Array.from({ length: 160 }, (_, index) => {
+        const id = 61 + index;
+        return {
+            id,
+            conversation_id: 77,
+            direction: 'inbound',
+            content: id === 220 ? 'Потрібно день народження 14.06.2026 для 12 дітей, 8 років, квест.' : `Повідомлення ${id}`,
+            created_at: new Date(Date.UTC(2026, 0, 1, 0, index)).toISOString()
+        };
+    });
+    fake.setQuery(async (text, params = []) => {
+        queryLog.push({ text, params });
+        assert.doesNotMatch(text, /(INSERT|UPDATE|DELETE)/i);
+        if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) return { rows: [conversation] };
+        if (/FROM conversation_messages/i.test(text)) {
+            assert.match(text, /ORDER BY created_at DESC/i);
+            assert.equal(params[0], 77);
+            assert.ok(params[1] >= 120);
+            return { rows: latestMessages };
+        }
+        throw new Error(`Unexpected pool query: ${text}`);
+    });
+
+    const preview = await previewLeadDraftFromConversation(77, {
+        businessContext: 'event_genix',
+        rawPreview: omniPreviewRaw({
+            draft: { eventType: 'birthday', eventDate: '2026-06-14', childrenCount: 12, childAge: 8, programPreferences: 'квест' },
+            evidence: {
+                eventType: [{ messageId: 220, quote: 'день народження' }],
+                eventDate: [{ messageId: 220, quote: '14.06.2026' }],
+                childrenCount: [{ messageId: 220, quote: '12 дітей' }],
+                childAge: [{ messageId: 220, quote: '8 років' }],
+                programPreferences: [{ messageId: 220, quote: 'квест' }]
+            },
+            confidence: { overall: 0.82 }
+        })
+    });
+
+    assert.equal(preview.draft.eventDate, '2026-06-14');
+    assert.equal(preview.draft.childrenCount, 12);
+    assert.equal(preview.draft.programPreferences, 'квест');
+    assert.equal(preview.snapshot.window.newestMessageId, 220);
+    assert.equal(preview.evidence.eventDate[0].messageId, 220);
+    assert.ok(queryLog.every(entry => !/(INSERT|UPDATE|DELETE)/i.test(entry.text)));
+}));
+
+test('AI draft preview rejects manager suggestions as confirmed client data', withFakeOmniPool(async fake => {
+    const conversation = createConversationFixture();
+    fake.setQuery(async (text) => {
+        assert.doesNotMatch(text, /(INSERT|UPDATE|DELETE)/i);
+        if (/SELECT \* FROM conversations WHERE id = \$1/i.test(text)) return { rows: [conversation] };
+        if (/FROM conversation_messages/i.test(text)) return {
+            rows: [
+                { id: 1, conversation_id: 77, direction: 'outbound', content: 'Можемо поставити дату 14.06.2026 і квест.', created_at: '2026-05-25T10:00:00Z' },
+                { id: 2, conversation_id: 77, direction: 'inbound', content: 'Мій телефон 067 111 22 33', created_at: '2026-05-25T10:01:00Z' }
+            ]
+        };
+        throw new Error(`Unexpected pool query: ${text}`);
+    });
+
+    const preview = await previewLeadDraftFromConversation(77, {
+        businessContext: 'event_genix',
+        rawPreview: omniPreviewRaw({
+            draft: { phone: '+380671112233', eventDate: '2026-06-14', programPreferences: 'квест' },
+            evidence: {
+                phone: [{ messageId: 2, quote: '067 111 22 33' }],
+                eventDate: [{ messageId: 1, quote: '14.06.2026' }],
+                programPreferences: [{ messageId: 1, quote: 'квест' }]
+            }
+        })
+    });
+
+    assert.equal(preview.draft.phone, '+380671112233');
+    assert.equal(preview.draft.eventDate, null);
+    assert.equal(preview.draft.programPreferences, null);
+    assert.ok(preview.missing.includes('eventDate'));
+    assert.ok(preview.warnings.some(item => item.code === 'non_customer_message' && item.field === 'eventDate'));
+}));
 
 test('creates a reviewed Omni draft atomically with owner and event preference', withFakeOmniPool(async fake => {
     const conversation = createConversationFixture();

@@ -37,7 +37,10 @@ function loadIsolatedWorker(clock = { now: Date.now() }, { providerFactory } = {
         '../eventBus': { publishInTransaction: async () => {} },
         '../checkbox/errors': errors,
         '../checkbox/provider': { createCheckboxProviderFactory: providerFactory || denied('provider factory') },
-        '../checkbox/config': { isCashierProEnabled: () => false },
+        '../checkbox/config': {
+            isCashierProEnabled: () => false,
+            isParkDarTestServiceOutEnabled: () => false
+        },
         './paymentPendingWait': policy,
         './paymentOutboxWakeup': { requestPaymentOutboxWakeup: value => wakeups.push(value) },
         './closedShiftSaleGuard': {

@@ -4,7 +4,7 @@
 
 HR-код і тести зафіксовано локально: `adbc120cc` у quality-гілці, перенесено без конфліктів як `3d26584a6` до `codex/hr-checklists-release-20260911`. Чиста release-копія: `.codex-temp/hr-checklists-release-20260911`, база `58c899de7` (v0.81.102). Нижче наведена історія попередньої перевірки; її згадки про незакомічений стан більше не є поточним статусом.
 
-Зміна `.github/workflows/ci.yml` **не входить до кандидата**: автоматична перевірка дозволів відхилила її коміт як захищену CI/CD-зміну без точного дозволу. Пропозиція збережена незакоміченою в quality-копії; повторного виконання чи обходу відмови не було. Самі npm scripts і browser/DB тести входять у HR-коміт. Для підключення їх до CI потрібен окремий дозвіл на конкретний workflow diff.
+Після точного дозволу користувача «Дозволяю блок HR-CHK-CI-01» погоджені 29 рядків `.github/workflows/ci.yml` включені окремим локальним комітом `8a2e13291`. Попередні відмови auto-review залишаються історією; нова дія з точним дозволом успішно пройшла перевірку. YAML розібрано PyYAML: додано лише чотири очікувані steps, решта workflow структурно незмінна, три npm scripts і artifact paths існують, disposable DB target збігається з чинним job. Новий HR remote CI ще не запускався.
 
 Міграцій, зміни залежностей, auth/roles, Railway/GitHub settings і production-даних у HR-кандидаті немає. Metadata endpoint у permission registry виправляє лише опис фактичного споживача, без зміни grants. Shared `confirmModal` потребує післярелізної перевірки споживачів поза HR.
 
@@ -57,7 +57,7 @@ Production impact: no — зміни локальні, не опублікова
 - `--verify-local-fixes` тепер вимагає PASS усіх interaction/pagination checks. PostgreSQL regression вимагає збереження notes й пошуку; навмисний invalid-ID 400 перевіряється окремо від несподіваних UI HTTP помилок.
 - Registry consumer metadata вказує чинний `/api/hr/checklists/dashboard`. Role/action grants не змінені.
 - Remote CI НЕ запускався: wiring готовий локально, green CI для нового SHA ще немає.
-- Окремого встановленого YAML parser на host немає; структуру workflow звірено текстово. Остаточну перевірку виконає GitHub Actions після дозволеного push.
+- На етапі погодженого CI-коміту знайдено наявний PyYAML у локальному Python runtime; YAML parse і структурна перевірка пройшли без встановлення залежностей. Remote GitHub Actions лишається окремим неперевіреним середовищем.
 
 ## Фактичні результати
 

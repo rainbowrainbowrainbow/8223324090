@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.102",
+  "version": "0.81.103",
   "eventGenix": {
-    "releaseLabel": "Продукти · Каталоги · Конструктор випускного"
+    "releaseLabel": "HR Чеклісти: надійність і перевірки"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",

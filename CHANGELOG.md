@@ -4,6 +4,16 @@
 
 ---
 
+## v0.81.106 - Оптимізація стартових запитів dashboard
+
+### Продуктивність / Dashboard / (11.09.2026) [codex]
+- Початкові frontend GET-запити для ролі, sidebar counters і dashboard widgets тепер coalesce-яться в межах користувача, ролі, сесії та business context.
+- `WorkingRole.hydrate()` не перемальовує shell без реальної зміни ролі або business context; forced refresh після такої зміни лишається одинарним.
+- Dashboard widgets проходять single-pass hydration: кожен initial widget endpoint читається максимум один раз, із retry після помилки та без cross-user/context cache.
+- Додано request-budget regression tests для initial frontend requests, dashboard hydration, role/context refresh і widget recovery.
+
+---
+
 ## v0.81.105 - Продукти: точні підсумки та навігація
 
 ### Release / Versioning / (11.09.2026) [codex]

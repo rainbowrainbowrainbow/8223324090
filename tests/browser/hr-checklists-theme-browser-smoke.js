@@ -9,6 +9,10 @@ const path = require('node:path');
 const { execFileSync } = require('node:child_process');
 const ROOT = path.resolve(__dirname, '../..');
 const BASELINE = process.argv.includes('--baseline');
+const baselineRefIndex = process.argv.indexOf('--baseline-ref');
+const baselineRef = baselineRefIndex >= 0 ? process.argv[baselineRefIndex + 1] : null;
+assert.ok(!BASELINE || baselineRef, 'Baseline capture requires --baseline-ref <commit>; HEAD is not an implicit historical baseline');
+assert.ok(!BASELINE || /^[a-f0-9]{7,40}$/i.test(baselineRef), 'Use a commit SHA for baseline provenance');
 const NATIVE_ZOOM = process.argv.includes('--native-zoom');
 const SHELL = process.argv.includes('--shell') || NATIVE_ZOOM;
 const OUT = path.join(ROOT, 'output/playwright/hr-checklists', (BASELINE ? 'before' : 'after') + (SHELL ? '-shell' : '') + (NATIVE_ZOOM ? '-zoom' : ''));
@@ -40,7 +44,8 @@ const source = read('hr.html');
 const stylesheetFiles = [...source.matchAll(/href="(css\/[^?" ]+)/g)].map(match => match[1]);
 const styles = stylesheetFiles.map(file => `<link rel="stylesheet" href="/${file}">`).join('');
 const checklistCssPath = 'css/hr-page.css';
-const baselineCss = BASELINE ? execFileSync('git', ['show', 'HEAD:' + checklistCssPath], { cwd: ROOT, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }) : null;
+const baselineCommit = BASELINE ? execFileSync('git', ['rev-parse', '--verify', baselineRef + '^{commit}'], { cwd: ROOT, encoding: 'utf8' }).trim() : null;
+const baselineCss = BASELINE ? execFileSync('git', ['show', baselineCommit + ':' + checklistCssPath], { cwd: ROOT, encoding: 'utf8', maxBuffer: 4 * 1024 * 1024 }) : null;
 const html = SHELL ? source.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, '').replace(/<link\b[^>]*>/gi, '').replace('</head>', `${styles}</head>`)
     : `<!doctype html><html lang="uk"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">${styles}</head><body data-page-group="hr"><main class="page-container" id="main-content">${extractDiv(source, 'tab-checklists')}</main>${extractDiv(source, 'professionWorkspaceOverlay')}</body></html>`;
 const authSource = read('js/auth.js');
@@ -88,6 +93,7 @@ async function install(page) {
         };
         hrFetch = async (request, options = {}) => {
             qa.requests.push({ request, method: options.method || 'GET' });
+            if (request === '/professions') return { success: true, data: [{ ...qa.profession, source: 'db', people: [{ id: 9001, name: 'QA Синтетичний працівник' }] }] };
             if (options.method) {
                 qa.writes.push({ request, ...options });
                 if (qa.holdSave) await new Promise(resolve => { qa.releaseSave = resolve; });
@@ -185,7 +191,7 @@ async function run() {
     page.setDefaultTimeout(8000);
     const errors = [];
     page.on('pageerror', error => errors.push(error.message));
-    const evidence = { mode: BASELINE ? 'baseline' : 'verification', shell: SHELL, themes: {} };
+    const evidence = { mode: BASELINE ? 'baseline' : 'verification', shell: SHELL, provenance: { cssBaselineCommit: baselineCommit, htmlAndJavaScript: 'current working tree', head: execFileSync('git', ['rev-parse', 'HEAD'], { cwd: ROOT, encoding: 'utf8' }).trim() }, themes: {} };
     try {
         await install(page);
         evidence.stylesheets = await page.evaluate(() => {
@@ -329,6 +335,7 @@ async function verifyFlow(page, evidence) {
     const open = async () => {
         await page.locator('[data-checklist-open-profession]').first().click();
         await page.locator('#professionWorkspaceContent').waitFor({ state: 'visible' });
+        await page.waitForFunction(() => document.activeElement.closest('#professionWorkspace'));
     };
     const close = async () => {
         await page.locator('#professionWorkspaceClose').click();
@@ -362,7 +369,11 @@ async function verifyFlow(page, evidence) {
         const titles = page.locator('[data-checklist-item-title]');
         const longTitle = await titles.nth(1).inputValue();
         await titles.nth(1).press('End');
-        assert.ok(await titles.nth(1).evaluate(el => el.selectionStart === el.value.length && el.scrollLeft > 0), 'long single-line item remains reachable by keyboard');
+        await page.waitForFunction(() => {
+            const el = document.querySelectorAll('[data-checklist-item-title]')[1];
+            return el.selectionStart === el.value.length && el.scrollLeft > 0;
+        });
+        assert.equal(await titles.nth(1).evaluate(el => document.activeElement === el), true, 'long single-line item remains reachable by keyboard');
         assert.equal(await titles.nth(1).inputValue(), longTitle);
         assert.equal(await page.locator('[data-checklist-item-action="up"]').first().isDisabled(), true);
         assert.equal(await page.locator('[data-checklist-item-action="down"]').last().isDisabled(), true);

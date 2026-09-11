@@ -1,8 +1,8 @@
 {
   "name": "event-genix",
-  "version": "0.81.102",
+  "version": "0.81.103",
   "eventGenix": {
-    "releaseLabel": "Продукти · Каталоги · Конструктор випускного"
+    "releaseLabel": "HR Чеклісти: надійність і перевірки"
   },
   "description": "Event Genix — AI First CRM для дитячих розважальних центрів",
   "main": "server.js",
@@ -127,6 +127,9 @@
     "test:browser:hr-structure": "npx --yes --package playwright node tests/browser/hr-structure-tree-browser-smoke.js",
     "test:browser:hr-today": "npm exec --yes --package=playwright -c \"node tests/browser/hr-today-metrics-browser-smoke.js\"",
     "test:browser:hr-team": "npm exec --yes --package=playwright -c \"node tests/browser/hr-team-browser-smoke.js\"",
+    "test:browser:hr-checklists:theme": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-theme-browser-smoke.js --shell\"",
+    "test:browser:hr-checklists:quality": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-async-browser-smoke.js --verify-local-fixes\"",
+    "test:browser:hr-checklists:isolated": "npm exec --yes --package=playwright -c \"node tests/browser/hr-checklists-postgres-browser-smoke.js --isolated\"",
     "test:browser:hr-onboarding": "npm exec --yes --package=playwright -c \"node tests/browser/hr-onboarding-flow-browser-smoke.js\"",
     "test:browser:invite": "npx --yes --package playwright node tests/browser/invite-browser-smoke.js",
     "test:browser:service-worker": "npx --yes --package playwright node tests/browser/service-worker-browser-smoke.js",

@@ -324,7 +324,7 @@ function createChecklistDb() {
                 progress.title = String(params[4]);
                 progress.completed_at = params[5] ? (progress.completed_at || '2026-07-02T10:00:00.000Z') : null;
                 progress.completed_by = params[5] ? (params[6] ?? null) : null;
-                progress.notes = params[7] ?? null;
+                if (params[8] || progress.notes === undefined) progress.notes = params[7] ?? null;
                 progress.updated_at = '2026-07-02T10:00:00.000Z';
                 return { rows: [progressRow(progress)], rowCount: 1 };
             }
@@ -499,6 +499,33 @@ describe('profession checklist template mutations', () => {
 });
 
 describe('profession checklist progress', () => {
+    it('preserves omitted notes while toggling and supports explicit clearing', async () => {
+        const db = createChecklistDb();
+        const target = { staffId: 1, professionKey: 'animator', itemKey: 'chk_first' };
+        for (const completed of [false, true]) {
+            const saved = await toggleStaffProfessionChecklistProgress(db, { ...target, completed, notes: undefined });
+            assert.equal(saved.progress.notes, 'Historical note');
+            assert.equal(saved.progress.completed, completed);
+        }
+        const updated = await toggleStaffProfessionChecklistProgress(db, { ...target, completed: true, notes: ' New note ' });
+        assert.equal(updated.progress.notes, 'New note');
+        for (const notes of [null, '']) {
+            const cleared = await toggleStaffProfessionChecklistProgress(db, { ...target, completed: false, notes });
+            assert.equal(cleared.progress.notes, null);
+        }
+        const fresh = await toggleStaffProfessionChecklistProgress(db, { ...target, itemKey: 'chk_second', completed: true });
+        assert.equal(fresh.progress.notes, null);
+    });
+
+    it('rejects integer overflow before issuing database queries', async () => {
+        const db = createChecklistDb();
+        await assert.rejects(toggleStaffProfessionChecklistProgress(db, {
+            staffId: 2147483648, professionKey: 'animator', itemKey: 'chk_first', completed: true
+        }), error => error.statusCode === 400 && error.code === 'PROFESSION_CHECKLIST_INVALID_ID');
+        assert.equal(db.state.queries.length, 0);
+        assert.throws(() => normalizeDashboardFilters({ staffId: '2147483648' }), error => error.statusCode === 400);
+    });
+
     it('validates the staff/profession/item target and stores the canonical item title', async () => {
         const db = createChecklistDb();
         db.state.progress.length = 0;

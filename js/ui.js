@@ -1812,8 +1812,8 @@ function confirmModal(message, options = {}) {
             if (closed) return;
             closed = true;
             if (_activeConfirmClose === close) _activeConfirmClose = null;
+            closeModal(overlay);
             if (!closeOptions.immediate) overlay.classList.add('confirm-exit');
-            document.removeEventListener('keydown', onKey);
             if (closeOptions.immediate) {
                 overlay.remove();
             } else {
@@ -1827,11 +1827,13 @@ function confirmModal(message, options = {}) {
         overlay.querySelector('.confirm-ok').addEventListener('click', () => close(true));
         overlay.addEventListener('click', (e) => { if (e.target === overlay) close(false); });
 
-        const onKey = (e) => { if (e.key === 'Escape') close(false); };
-        document.addEventListener('keydown', onKey);
-
         document.body.appendChild(overlay);
-        requestAnimationFrame(() => overlay.querySelector('.confirm-ok').focus());
+        window.ModalLayer?.ensureTopLayer(overlay);
+        openModal(overlay, document.activeElement, {
+            initialFocus: '.confirm-ok',
+            onRequestClose: () => close(false),
+            hide: () => {}
+        });
     });
 }
 

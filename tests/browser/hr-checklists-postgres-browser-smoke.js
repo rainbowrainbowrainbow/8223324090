@@ -42,18 +42,19 @@ async function run() {
     const db = new Pool({ connectionString: target.url.toString(), max: 1, ssl: false });
     const { chromium } = requirePlaywright();
     const browser = await chromium.launch({ headless: true });
-    const evidence = { target: 'disposable loopback Express/PostgreSQL', themes: {}, apiFailures: [], pageErrors: [] };
+    const evidence = { target: 'disposable loopback Express/PostgreSQL', themes: {}, filters: [], findings: [], apiFailures: [], pageErrors: [] };
     fs.mkdirSync(OUT, { recursive: true });
     let token;
     let page;
-    const api = async (route, body, method = body ? 'POST' : 'GET') => {
+    const api = async (route, body, method = body ? 'POST' : 'GET', expectedStatus = null) => {
         const response = await fetch(`${base}${route}`, {
             method,
             headers: { 'Content-Type': 'application/json', ...(token ? { Authorization: `Bearer ${token}` } : {}) },
             body: body ? JSON.stringify(body) : undefined,
             signal: AbortSignal.timeout(30_000)
         });
-        assert.ok(response.ok, `${method} ${route}: HTTP ${response.status}`);
+        if (expectedStatus !== null) assert.equal(response.status, expectedStatus, `${method} ${route}`);
+        else assert.ok(response.ok, `${method} ${route}: HTTP ${response.status}`);
         return response.json();
     };
     try {
@@ -75,14 +76,6 @@ async function run() {
             fixtures[theme] = { key, endpoint, staffId, first, second };
         }
         const context = await browser.newContext({ viewport: { width: 1440, height: 960 }, serviceWorkers: 'block' });
-        await context.addInitScript(({ session, base }) => {
-            if (location.origin !== base) return;
-            localStorage.setItem('pzp_token', session.accessToken || session.token);
-            localStorage.setItem('pzp_access_token', session.accessToken || session.token);
-            localStorage.setItem('pzp_current_user', JSON.stringify(session.user));
-            if (session.refreshToken) localStorage.setItem('pzp_refresh_token', session.refreshToken);
-            if (session.refreshExpiresAt) localStorage.setItem('pzp_refresh_expires_at', String(session.refreshExpiresAt));
-        }, { session, base });
         await context.route('**/*', route => {
             const url = new URL(route.request().url());
             if (url.origin === base || ['data:', 'blob:'].includes(url.protocol)) return route.continue();
@@ -108,6 +101,46 @@ async function run() {
             await page.locator('#professionWorkspaceClose').click();
             await page.locator('#professionWorkspaceOverlay').waitFor({ state: 'hidden' });
         };
+        await page.goto(`${base}/`, { waitUntil: 'domcontentloaded' });
+        await page.locator('#username').fill(process.env.TEST_USER);
+        await page.locator('#password').fill(process.env.TEST_PASS);
+        await page.locator('#loginForm button[type="submit"]').click();
+        await page.waitForFunction(() => Boolean(localStorage.getItem('pzp_token') || localStorage.getItem('pzp_access_token')));
+        evidence.loginForm = 'PASS';
+        const dashboard = async params => (await api('/api/hr/checklists/dashboard?' + new URLSearchParams(params))).data;
+        for (const theme of ['light', 'dark']) {
+            const { key, staffId } = fixtures[theme];
+            for (const [label, params] of [
+                ['profession', { professionKey: key }],
+                ['search', { search: `QA Checklist Person ${theme}` }],
+                ['staff', { staffId: String(staffId) }],
+                ['combined', { professionKey: key, department: 'qa', staffId: String(staffId), status: 'not_started' }]
+            ]) {
+                const data = await dashboard(params);
+                assert.equal(data.assignments.length, 1, `${theme} ${label} returns one assignment`);
+                assert.equal(data.assignments[0].staffId, staffId);
+                assert.equal(data.assignments[0].professionKey, key);
+                assert.equal(data.assignments[0].total, 2);
+                assert.equal(data.assignments[0].completed, 0);
+                assert.equal(data.summary.not_started, 1);
+                evidence.filters.push({ theme, label, status: 'PASS' });
+            }
+            const empty = await dashboard({ professionKey: key, status: 'completed' });
+            assert.equal(empty.assignments.length, 0);
+            const other = await dashboard({ professionKey: key, staffId: String(fixtures[theme === 'light' ? 'dark' : 'light'].staffId) });
+            assert.equal(other.assignments.length, 0);
+        }
+        const department = await dashboard({ department: 'qa' });
+        assert.equal(department.assignments.length, 2);
+        assert.equal(department.summary.not_started, 2);
+        evidence.filters.push({ label: 'department and reset', status: 'PASS' });
+        const openCompletionThroughProfile = async staffId => {
+            await page.locator(`[data-checklist-open-staff="${staffId}"]`).first().click();
+            await page.locator('#staffEditModal').waitFor({ state: 'visible' });
+            await page.locator('#staffProfileTabTraining').click();
+            await page.locator('#staffProfilePanelTraining').getByRole('button', { name: 'Готовність навчання', exact: true }).click();
+            await page.locator('#staffTrainingReadinessOverlay').waitFor();
+        };
         for (const theme of ['light', 'dark']) {
             console.log(`[checklists-postgres] ${theme}: real template mutations and reload`);
             const { key, endpoint, staffId, first, second } = fixtures[theme];
@@ -131,6 +164,10 @@ async function run() {
             await checkTheme();
             await page.screenshot({ path: path.join(OUT, `dashboard-${theme}.png`), animations: 'disabled' });
             await open();
+            await page.goBack();
+            await page.locator('#professionWorkspaceOverlay').waitFor({ state: 'hidden' });
+            await page.goForward();
+            await page.locator('[data-checklist-item-title]').first().waitFor();
             const title = page.locator(`[data-checklist-item-key="${first.itemKey}"] [data-checklist-item-title]`);
             await title.fill(`QA Renamed ${theme}`);
             await mutate('PUT', `/items/${first.itemKey}`, () => title.press('Enter'));
@@ -178,24 +215,67 @@ async function run() {
             await page.screenshot({ path: path.join(OUT, `editor-reloaded-${theme}.png`), animations: 'disabled' });
             await close();
             console.log(`[checklists-postgres] ${theme}: staff completion UI and database read-back`);
-            // Existing public dialog entry point; data still loads through real HR routes.
-            await page.evaluate(async id => { await loadTeam(); openStaffTrainingReadiness(id); }, staffId);
+            await api(`/api/hr/staff/${staffId}/profession-checklist`, {
+                profession_key: key, checklist_key: first.itemKey, completed: false, notes: 'QA note must survive checkbox-only toggle'
+            }, 'PUT');
+            await openCompletionThroughProfile(staffId);
             const completion = page.locator('#staffTrainingReadinessOverlay .hr-training-check-item').filter({ hasText: `QA Renamed ${theme}` });
-            const toggled = waitApi('PUT', `/staff/${staffId}/profession-checklist`);
-            await completion.click();
-            assert.ok((await toggled).ok());
+            const hitTarget = await completion.evaluate(el => {
+                const box = el.getBoundingClientRect();
+                const hit = document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2);
+                return { reachable: el === hit || el.contains(hit), blocker: hit?.closest('[role="dialog"], .hr-modal-overlay')?.id || hit?.tagName };
+            });
+            if (!hitTarget.reachable) {
+                evidence.findings.push({ id: 'CHK-Q-NESTED-READINESS', theme, expected: 'readiness dialog actions reachable above staff card', actual: hitTarget });
+                await page.screenshot({ path: path.join(OUT, `nested-readiness-${theme}.png`), animations: 'disabled' });
+                await page.locator('#editCloseTop').click();
+            }
+            const [toggled] = await Promise.all([waitApi('PUT', `/staff/${staffId}/profession-checklist`), completion.click()]);
+            assert.ok(toggled.ok());
             await page.locator('#staffTrainingReadinessOverlay .hr-training-check-item.is-done').filter({ hasText: `QA Renamed ${theme}` }).waitFor();
+            const notesAfter = (await db.query('SELECT notes FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [staffId, first.id])).rows[0]?.notes;
+            assert.equal(notesAfter, 'QA note must survive checkbox-only toggle', 'Checkbox-only writes preserve notes');
             await page.reload({ waitUntil: 'domcontentloaded' });
             await page.locator('#mainApp:not(.hidden)').waitFor();
             await checkTheme();
-            await page.evaluate(async id => { await loadTeam(); openStaffTrainingReadiness(id); }, staffId);
+            await page.locator('#professionChecklistDashboardProfession').selectOption(key);
+            await openCompletionThroughProfile(staffId);
             await page.locator('#staffTrainingReadinessOverlay .hr-training-check-item.is-done').filter({ hasText: `QA Renamed ${theme}` }).waitFor();
             const progress = await db.query('SELECT completed_at FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [staffId, first.id]);
             assert.ok(progress.rows[0]?.completed_at, 'completion persists in PostgreSQL');
             await page.screenshot({ path: path.join(OUT, `completion-reloaded-${theme}.png`), animations: 'disabled' });
+            for (const [itemTitle, completedCount, status] of [
+                ['QA Added item', 2, 'completed'],
+                [`QA Renamed ${theme}`, 1, 'in_progress'],
+                ['QA Added item', 0, 'not_started'],
+                [`QA Renamed ${theme}`, 1, 'in_progress']
+            ]) {
+                const action = page.locator('#staffTrainingReadinessOverlay .hr-training-check-item').filter({ hasText: itemTitle });
+                const [response] = await Promise.all([waitApi('PUT', `/staff/${staffId}/profession-checklist`), action.click()]);
+                assert.ok(response.ok());
+                await page.waitForFunction(count => document.querySelectorAll('#staffTrainingReadinessOverlay .hr-training-check-item.is-done').length === count, completedCount);
+                const state = await dashboard({ professionKey: key, status });
+                assert.equal(state.assignments.length, 1);
+                assert.equal(state.assignments[0].completed, completedCount);
+                assert.equal(state.assignments[0].total, 2);
+                assert.equal(state.summary[status], 1);
+                const savedCount = await db.query(`SELECT count(*)::int AS completed
+                    FROM hr_staff_profession_checklist_progress progress
+                    JOIN hr_profession_checklist_items item ON item.id = progress.checklist_item_id
+                    JOIN hr_professions profession ON profession.id = item.profession_id
+                    WHERE progress.staff_id = $1 AND profession.key = $2
+                        AND item.is_active AND progress.completed_at IS NOT NULL`, [staffId, key]);
+                assert.equal(savedCount.rows[0].completed, completedCount, 'UI state matches persisted active completion count');
+            }
             await page.locator('#staffTrainingReadinessOverlay .candidate-detail-close').click();
             await page.locator('#staffTrainingReadinessOverlay').waitFor({ state: 'detached' });
-            evidence.themes[theme] = { templateReload: 'PASS', cancel: 'PASS', renameAddReorderArchive: 'PASS', databaseReadBack: 'PASS', completionReload: 'PASS', statusResetSameAndOtherProfession: 'PASS' };
+            if (await page.locator('#staffEditModal').isVisible()) await page.locator('#editCloseTop').click();
+            const inProgress = await dashboard({ professionKey: key, status: 'in_progress' });
+            assert.equal(inProgress.assignments.length, 1);
+            assert.equal(inProgress.assignments[0].completed, 1);
+            assert.equal(inProgress.assignments[0].total, 2);
+            assert.equal(inProgress.summary.in_progress, 1);
+            evidence.themes[theme] = { templateReload: 'PASS', cancel: 'PASS', renameAddReorderArchive: 'PASS', databaseReadBack: 'PASS', completionReload: 'PASS', completionStateCycle: 'PASS', fullStaffProfileEntry: 'PASS', browserHistory: 'PASS', inProgressFilter: 'PASS', statusResetSameAndOtherProfession: 'PASS' };
         }
         console.log('[checklists-postgres] security: real readonly UI and rejected mutations');
         const readerStaff = await api('/api/staff', {
@@ -260,9 +340,42 @@ async function run() {
             assert.deepEqual(await snapshot(), before, 'rejected writes preserve PostgreSQL template and completion');
             evidence.readonly.databaseUnchanged = 'PASS';
         } finally { await readerContext.close(); }
+        await require('./hr-checklists-access-audit')({ api, browser, base, db, evidence, fixture: fixtures.light });
+        await require('./hr-checklists-scale-audit')({ api, db, evidence, page, base });
+        const trainingFixture = fixtures.light;
+        const trainingCredentials = { username: `chk_training_${Date.now()}`, password: crypto.randomBytes(24).toString('base64url') };
+        await api('/api/users', { ...trainingCredentials, name: 'QA Checklist Training', role: 'admin', staffId: trainingFixture.staffId });
+        const trainingSession = await api('/api/auth/login', trainingCredentials);
+        const lecture = (await db.query(`SELECT lecture.id AS lecture_id, course.id AS course_id
+            FROM training_course_lectures lecture JOIN training_courses course ON course.id = lecture.course_id
+            WHERE lecture.checklist_item_id = $1 AND course.profession_key = $2`, [trainingFixture.first.id, trainingFixture.key])).rows[0];
+        assert.ok(lecture, 'Checklist item is mirrored into Training');
+        await api(`/api/hr/staff/${trainingFixture.staffId}/profession-checklist`, {
+            profession_key: trainingFixture.key, checklist_key: trainingFixture.first.itemKey,
+            completed: false, notes: 'QA cross-surface preserved note'
+        }, 'PUT');
+        let completedAt;
+        for (let attempt = 0; attempt < 2; attempt += 1) {
+            const result = await fetch(`${base}/api/training/courses/${lecture.course_id}/lectures/${lecture.lecture_id}/complete`, {
+                method: 'POST', headers: { Authorization: `Bearer ${trainingSession.accessToken || trainingSession.token}` }, signal: AbortSignal.timeout(30_000)
+            });
+            assert.equal(result.status, 200, 'Training completes the canonical item');
+            const persisted = (await db.query('SELECT notes, completed_at FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0];
+            assert.equal(persisted.notes, 'QA cross-surface preserved note');
+            assert.ok(persisted.completed_at);
+            if (completedAt) assert.equal(persisted.completed_at.toISOString(), completedAt, 'Repeated Training completion is idempotent');
+            completedAt = persisted.completed_at.toISOString();
+        }
+        await api(`/api/hr/professions/${trainingFixture.key}/staff/${trainingFixture.staffId}/checklist/${trainingFixture.first.itemKey}`, { completed: false }, 'PUT');
+        const aliasProgress = (await db.query('SELECT notes, completed_at FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0];
+        assert.equal(aliasProgress.notes, 'QA cross-surface preserved note');
+        assert.equal(aliasProgress.completed_at, null);
+        await api(`/api/hr/professions/${trainingFixture.key}/staff/${trainingFixture.staffId}/checklist/${trainingFixture.first.itemKey}`, { completed: false, notes: null }, 'PUT');
+        assert.equal((await db.query('SELECT notes FROM hr_staff_profession_checklist_progress WHERE staff_id = $1 AND checklist_item_id = $2', [trainingFixture.staffId, trainingFixture.first.id])).rows[0].notes, null);
+        evidence.notesAcrossSurfaces = { hrCheckbox: 'PASS', trainingCompletion: 'PASS', trainingIdempotency: 'PASS', aliasOmittedNotes: 'PASS', explicitClearing: 'PASS' };
         assert.deepEqual(evidence.apiFailures, []);
         assert.deepEqual(evidence.pageErrors, []);
-        evidence.status = 'PASS';
+        evidence.status = evidence.findings.length ? 'COMPLETED_WITH_FINDINGS' : 'PASS';
     } catch (error) {
         evidence.status = 'FAIL';
         evidence.failure = error.message;

@@ -101,13 +101,100 @@ const MODES = {
         'tests/integration/live-multi-segment-runner.integration.test.js'
     ]
 };
+const CI_MODE_NAMES = [
+    'api',
+    'attendance',
+    'hr',
+    'permissions',
+    'payroll',
+    'admission',
+    'my-day',
+    'my-day-browser',
+    'cashier-smoke',
+    'checkbox-config',
+    'checkbox-ui-real',
+    'onboarding',
+    'backfill',
+    'upload-backfill'
+];
 
 function usage() {
-    return 'Usage: node scripts/run-isolated-postgres-tests.js <api|attendance|attendance-datafix|recovery|banquet-recovery|hr|permissions|payroll|payroll-fullstack|admission|catalog-sale|catalog-sale-local-qa|my-day|my-day-browser|redirect-auth|redirect-upgrade|cashier-smoke|checkbox-config|checkbox-ui-real|checkbox-ui-testmode-preflight|checkbox-ui-testmode|checkbox-ui-testmode-card-recovery|checkbox-ui-testmode-final-card-close|onboarding|backfill|upload-backfill|fullstack|qa|all>';
+    return `Usage: node scripts/run-isolated-postgres-tests.js <${[...Object.keys(MODES), 'ci', 'all'].join('|')}>`;
+}
+
+function resolveModeEntries(mode) {
+    const modeNames = mode === 'all'
+        ? Object.keys(MODES)
+        : mode === 'ci'
+            ? CI_MODE_NAMES
+            : [mode];
+    return modeNames.flatMap(suiteMode => {
+        const files = MODES[suiteMode];
+        if (!files) return [];
+        return files.map(testFile => ({ suiteMode, testFile }));
+    });
 }
 
 function isCheckboxPaymentAcceptanceEnabledForParent(value) {
     return /^(1|true)$/i.test(String(value || '').trim());
+}
+
+function validateModePreconditions(mode, testDb, env = process.env) {
+    const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'
+        || mode === 'checkbox-ui-testmode'
+        || mode === 'checkbox-ui-testmode-card-recovery'
+        || mode === 'checkbox-ui-testmode-final-card-close';
+    const checkboxMutationMode = mode === 'checkbox-ui-testmode'
+        || mode === 'checkbox-ui-testmode-card-recovery'
+        || mode === 'checkbox-ui-testmode-final-card-close';
+    if (mode === 'catalog-sale-local-qa') {
+        if (!testDb.isLocal) throw new Error('Catalog-sale local QA requires loopback disposable PostgreSQL');
+        if (isCheckboxPaymentAcceptanceEnabledForParent(env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED)) {
+            throw new Error('Catalog-sale local QA refuses a pre-enabled parent payment acceptance flag');
+        }
+    }
+    if (checkboxTestMode) {
+        if (!testDb.isLocal) throw new Error('Real Checkbox test-mode full-stack proof requires loopback disposable PostgreSQL');
+        if (String(env.NODE_ENV || '').trim().toLowerCase() === 'production'
+            || Object.entries(env).some(([key, value]) => key.startsWith('RAILWAY_') && String(value || '').trim())) {
+            throw new Error('Real Checkbox test-mode full-stack proof is forbidden in production or Railway');
+        }
+        if (String(env.CHECKBOX_EXPECT_IS_TEST || '').trim().toLowerCase() !== 'true') {
+            throw new Error('CHECKBOX_EXPECT_IS_TEST=true is required before starting the isolated server');
+        }
+        if (!String(env.CHECKBOX_FULLSTACK_TESTMODE_CONFIG_FILE || env.CHECKBOX_PILOT_CONFIG_FILE || '').trim()) {
+            throw new Error('CHECKBOX_FULLSTACK_TESTMODE_CONFIG_FILE is required before starting the isolated server');
+        }
+        if (checkboxMutationMode
+            && String(env.CHECKBOX_FULLSTACK_TESTMODE_CONFIRM_MUTATIONS || '').trim().toLowerCase() !== 'sandbox') {
+            throw new Error('Explicit CHECKBOX_FULLSTACK_TESTMODE_CONFIRM_MUTATIONS=sandbox is required before starting the mutation proof');
+        }
+        if (checkboxMutationMode
+            && String(env.CHECKBOX_FULLSTACK_TESTMODE_CLOSE_SHIFT || '').trim().toLowerCase() !== 'true') {
+            throw new Error('CHECKBOX_FULLSTACK_TESTMODE_CLOSE_SHIFT=true is required before starting the mutation proof');
+        }
+        if (checkboxMutationMode
+            && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(env.CHECKBOX_FULLSTACK_TESTMODE_RUN_ID || '').trim())) {
+            throw new Error('A single-use CHECKBOX_FULLSTACK_TESTMODE_RUN_ID UUID is required before starting the mutation proof');
+        }
+        if (checkboxMutationMode
+            && !String(env.CHECKBOX_FULLSTACK_TESTMODE_RUN_LEDGER_DIR || '').trim()) {
+            throw new Error('CHECKBOX_FULLSTACK_TESTMODE_RUN_LEDGER_DIR is required before starting the mutation proof');
+        }
+        if (mode === 'checkbox-ui-testmode-card-recovery'
+            && String(env.CHECKBOX_FULLSTACK_TESTMODE_RECOVERY_CONFIRM || '').trim().toLowerCase() !== 'card-only-after-fiscalized-cash') {
+            throw new Error('Exact card-only recovery confirmation is required before starting the recovery proof');
+        }
+        if (mode === 'checkbox-ui-testmode-final-card-close'
+            && String(env.CHECKBOX_FULLSTACK_TESTMODE_FINAL_CLOSE_CONFIRM || '').trim().toLowerCase() !== 'one-card-canonical-close') {
+            throw new Error('Exact one-card canonical-close confirmation is required before starting the final proof');
+        }
+        if (mode === 'checkbox-ui-testmode-final-card-close'
+            && String(env.CHECKBOX_FULLSTACK_TESTMODE_RESUME_DRAFT_CONFIRM || '').trim()
+            && String(env.CHECKBOX_FULLSTACK_TESTMODE_RESUME_DRAFT_CONFIRM || '').trim().toLowerCase() !== 'resume-one-local-unpaid-draft') {
+            throw new Error('Exact one-card draft-resume confirmation is invalid');
+        }
+    }
 }
 
 function createPool(testDb) {
@@ -730,72 +817,18 @@ async function runSuite(testDb, testFile, suiteMode) {
 
 async function main() {
     const mode = String(process.argv[2] || '').toLowerCase();
-    if (!['api', 'attendance', 'attendance-datafix', 'recovery', 'banquet-recovery', 'hr', 'permissions', 'payroll', 'payroll-fullstack', 'admission', 'catalog-sale', 'catalog-sale-local-qa', 'my-day', 'my-day-browser', 'redirect-auth', 'redirect-upgrade', 'cashier-smoke', 'checkbox-config', 'checkbox-ui-real', 'checkbox-ui-testmode-preflight', 'checkbox-ui-testmode', 'checkbox-ui-testmode-card-recovery', 'checkbox-ui-testmode-final-card-close', 'onboarding', 'backfill', 'upload-backfill', 'fullstack', 'qa', 'all'].includes(mode)) throw new Error(usage());
+    if (![...Object.keys(MODES), 'ci', 'all'].includes(mode)) throw new Error(usage());
     const testDb = assertSafeTestDatabaseUrl(process.env.TEST_DATABASE_URL, process.env);
-    const checkboxTestMode = mode === 'checkbox-ui-testmode-preflight'
-        || mode === 'checkbox-ui-testmode'
-        || mode === 'checkbox-ui-testmode-card-recovery'
-        || mode === 'checkbox-ui-testmode-final-card-close';
-    const checkboxMutationMode = mode === 'checkbox-ui-testmode'
-        || mode === 'checkbox-ui-testmode-card-recovery'
-        || mode === 'checkbox-ui-testmode-final-card-close';
-    if (mode === 'catalog-sale-local-qa') {
-        if (!testDb.isLocal) throw new Error('Catalog-sale local QA requires loopback disposable PostgreSQL');
-        if (isCheckboxPaymentAcceptanceEnabledForParent(process.env.CHECKBOX_ACCEPT_PAYMENTS_ENABLED)) {
-            throw new Error('Catalog-sale local QA refuses a pre-enabled parent payment acceptance flag');
-        }
+    const entries = resolveModeEntries(mode);
+    for (const suiteMode of new Set(entries.map(entry => entry.suiteMode))) {
+        validateModePreconditions(suiteMode, testDb, process.env);
     }
-    if (checkboxTestMode) {
-        if (!testDb.isLocal) throw new Error('Real Checkbox test-mode full-stack proof requires loopback disposable PostgreSQL');
-        if (String(process.env.NODE_ENV || '').trim().toLowerCase() === 'production'
-            || Object.entries(process.env).some(([key, value]) => key.startsWith('RAILWAY_') && String(value || '').trim())) {
-            throw new Error('Real Checkbox test-mode full-stack proof is forbidden in production or Railway');
-        }
-        if (String(process.env.CHECKBOX_EXPECT_IS_TEST || '').trim().toLowerCase() !== 'true') {
-            throw new Error('CHECKBOX_EXPECT_IS_TEST=true is required before starting the isolated server');
-        }
-        if (!String(process.env.CHECKBOX_FULLSTACK_TESTMODE_CONFIG_FILE || process.env.CHECKBOX_PILOT_CONFIG_FILE || '').trim()) {
-            throw new Error('CHECKBOX_FULLSTACK_TESTMODE_CONFIG_FILE is required before starting the isolated server');
-        }
-        if (checkboxMutationMode
-            && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_CONFIRM_MUTATIONS || '').trim().toLowerCase() !== 'sandbox') {
-            throw new Error('Explicit CHECKBOX_FULLSTACK_TESTMODE_CONFIRM_MUTATIONS=sandbox is required before starting the mutation proof');
-        }
-        if (checkboxMutationMode
-            && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_CLOSE_SHIFT || '').trim().toLowerCase() !== 'true') {
-            throw new Error('CHECKBOX_FULLSTACK_TESTMODE_CLOSE_SHIFT=true is required before starting the mutation proof');
-        }
-        if (checkboxMutationMode
-            && !/^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(process.env.CHECKBOX_FULLSTACK_TESTMODE_RUN_ID || '').trim())) {
-            throw new Error('A single-use CHECKBOX_FULLSTACK_TESTMODE_RUN_ID UUID is required before starting the mutation proof');
-        }
-        if (checkboxMutationMode
-            && !String(process.env.CHECKBOX_FULLSTACK_TESTMODE_RUN_LEDGER_DIR || '').trim()) {
-            throw new Error('CHECKBOX_FULLSTACK_TESTMODE_RUN_LEDGER_DIR is required before starting the mutation proof');
-        }
-        if (mode === 'checkbox-ui-testmode-card-recovery'
-            && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_RECOVERY_CONFIRM || '').trim().toLowerCase() !== 'card-only-after-fiscalized-cash') {
-            throw new Error('Exact card-only recovery confirmation is required before starting the recovery proof');
-        }
-        if (mode === 'checkbox-ui-testmode-final-card-close'
-            && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_FINAL_CLOSE_CONFIRM || '').trim().toLowerCase() !== 'one-card-canonical-close') {
-            throw new Error('Exact one-card canonical-close confirmation is required before starting the final proof');
-        }
-        if (mode === 'checkbox-ui-testmode-final-card-close'
-            && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_RESUME_DRAFT_CONFIRM || '').trim()
-            && String(process.env.CHECKBOX_FULLSTACK_TESTMODE_RESUME_DRAFT_CONFIRM || '').trim().toLowerCase() !== 'resume-one-local-unpaid-draft') {
-            throw new Error('Exact one-card draft-resume confirmation is invalid');
-        }
-    }
-    const files = mode === 'all'
-        ? [...MODES.api, ...MODES.attendance, ...MODES.hr, ...MODES.permissions, ...MODES.payroll, ...MODES.admission, ...MODES['my-day'], ...MODES['my-day-browser'], ...MODES['cashier-smoke'], ...MODES['checkbox-config'], ...MODES['checkbox-ui-real'], ...MODES.onboarding, ...MODES.backfill, ...MODES['upload-backfill']]
-        : MODES[mode];
 
     const databaseLock = await acquireIsolatedDatabaseLock(testDb);
     try {
-        for (const testFile of files) {
+        for (const { suiteMode, testFile } of entries) {
             process.stdout.write(`\n[isolated-db] Running ${testFile} against ${testDb.hostname}/${testDb.databaseName}\n`);
-            await runSuite(testDb, testFile, mode);
+            await runSuite(testDb, testFile, suiteMode);
         }
     } finally {
         await databaseLock.release();
@@ -814,5 +847,6 @@ module.exports = {
     assertExactCheckboxCardRecoveryState,
     assertExactCheckboxFinalDraftState,
     assertNoPreservedCheckboxMutationState,
+    resolveModeEntries,
     runSuite
 };

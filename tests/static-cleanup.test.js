@@ -149,3 +149,14 @@ describe('cleanup inventory', () => {
         }
     });
 });
+
+describe('browser smoke ownership', () => {
+    it('exposes the banquet two-tab WebSocket browser smoke through npm scripts', () => {
+        const packageJson = JSON.parse(fs.readFileSync(path.join(ROOT, 'package.json'), 'utf8'));
+        assert.equal(
+            packageJson.scripts['test:browser:banquet-ws-two-tab'],
+            'npx --yes --package playwright node tests/browser/banquet-ws-two-tab-browser-smoke.js'
+        );
+        assert.equal(fs.existsSync(path.join(ROOT, 'tests', 'browser', 'banquet-ws-two-tab-browser-smoke.js')), true);
+    });
+});

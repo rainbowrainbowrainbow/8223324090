@@ -298,6 +298,30 @@ async function seedFiscalScope({ cashier, secondCashier }) {
     assert.equal(acceptingRegister.rows[0].feature_enabled, true);
     assert.equal(acceptingRegister.rows[0].acceptance_enabled, true);
 
+    await pool.query(
+        `INSERT INTO fiscal_sale_routes (
+             route_option_id, business_context, fiscal_profile_id, fiscal_location_id,
+             fiscal_register_id, mode, expected_is_test, status, feature_enabled,
+             acceptance_enabled, shared_register_group, metadata
+         )
+         VALUES ('park_test', $1, $2, $3, $4, 'test', TRUE, 'active', TRUE, TRUE,
+                 'checkbox_park_cashier_smoke', '{}'::jsonb)
+         ON CONFLICT (route_option_id) DO UPDATE
+             SET business_context = EXCLUDED.business_context,
+                 fiscal_profile_id = EXCLUDED.fiscal_profile_id,
+                 fiscal_location_id = EXCLUDED.fiscal_location_id,
+                 fiscal_register_id = EXCLUDED.fiscal_register_id,
+                 mode = EXCLUDED.mode,
+                 expected_is_test = EXCLUDED.expected_is_test,
+                 status = EXCLUDED.status,
+                 feature_enabled = EXCLUDED.feature_enabled,
+                 acceptance_enabled = EXCLUDED.acceptance_enabled,
+                 shared_register_group = EXCLUDED.shared_register_group,
+                 metadata = EXCLUDED.metadata,
+                 updated_at = NOW()`,
+        [CRM_PROFILE_KEY, applied.fiscalProfileId, applied.fiscalLocationId, applied.fiscalRegisterId]
+    );
+
     const catalogSaleItems = await activeCatalogSaleItems();
     for (const item of catalogSaleItems) {
         await pool.query(

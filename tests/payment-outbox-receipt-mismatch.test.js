@@ -15,6 +15,11 @@ function createMismatchFixture({ ownershipGranted = true } = {}) {
         payment_refund_id: null,
         job_type: 'receipt_sell',
         operation_type: 'sale',
+        expected_is_test: true,
+        current_expected_is_test: 'true',
+        register_alias: 'shared_test',
+        current_crm_profile_key: 'event_genix',
+        current_profile_crm_profile_key: 'event_genix',
         attempts: 1,
         max_attempts: 5,
         locked_by: 'receipt-mismatch-test-worker',
@@ -130,6 +135,37 @@ test('receipt mismatch evidence and incident commit atomically without overwriti
     assert.ok(!fixture.calls.some(call => /external_stage[^]*complete/i.test(call.sql)
         && /UPDATE payment_outbox_jobs/i.test(call.sql)), 'mismatch must not be recorded as complete');
     assert.equal(fixture.existingReceipt.provider_fiscal_code, 'immutable-original-fiscal-code');
+    assert.ok(!fixture.calls.some(call => /WITH resolved_receipt_pending/.test(call.sql)), 'mismatch must preserve pending incidents');
+});
+
+test('verified sale finalization resolves pending incidents only after receipt and job success', async () => {
+    const fixture = createMismatchFixture();
+    fixture.providerReceipt.fiscalCode = fixture.existingReceipt.provider_fiscal_code;
+    const result = await finalizeJobSuccess(fixture.dbPool, { job: fixture.job }, { receipt: fixture.providerReceipt, source: 'lookup' });
+    assert.equal(result.ok, true);
+    const resolutionIndex = fixture.calls.findIndex(call => /WITH resolved_receipt_pending/.test(call.sql));
+    const successIndex = fixture.calls.findIndex(call => /UPDATE payment_outbox_jobs[\s\S]*SET status = 'succeeded'/.test(call.sql));
+    const commitIndex = fixture.calls.findIndex(call => call.sql.trim() === 'COMMIT');
+    assert.ok(successIndex >= 0 && resolutionIndex > successIndex && commitIndex > resolutionIndex);
+    assert.deepEqual(fixture.calls[resolutionIndex].params, [11, 31, 21, 41, 101]);
+});
+
+test('incident audit failure rolls back sale finalization instead of losing the audit', async () => {
+    const fixture = createMismatchFixture();
+    fixture.providerReceipt.fiscalCode = fixture.existingReceipt.provider_fiscal_code;
+    const originalConnect = fixture.dbPool.connect;
+    fixture.dbPool.connect = async () => {
+        const client = await originalConnect();
+        const originalQuery = client.query.bind(client);
+        client.query = async (sql, params) => {
+            if (/WITH resolved_receipt_pending/.test(sql)) throw new Error('synthetic incident audit failure');
+            return originalQuery(sql, params);
+        };
+        return client;
+    };
+    await assert.rejects(finalizeJobSuccess(fixture.dbPool, { job: fixture.job }, { receipt: fixture.providerReceipt, source: 'lookup' }), /synthetic incident audit failure/);
+    assert.ok(fixture.calls.some(call => call.sql.trim() === 'ROLLBACK'));
+    assert.ok(!fixture.calls.some(call => call.sql.trim() === 'COMMIT'));
 });
 
 test('stale finalize owner cannot record receipt mismatch evidence', async () => {

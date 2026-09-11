@@ -257,6 +257,7 @@ test('graduation keeps catalog prices public while quote and service financial f
         diploma_context_locked: false,
         notes: 'Initial note',
         created_by: 'creator',
+        business_context: 'event_genix',
         created_at: '2026-08-02T09:00:00.000Z',
         updated_at: '2026-08-02T09:00:00.000Z'
     };
@@ -269,7 +270,8 @@ test('graduation keeps catalog prices public while quote and service financial f
         sort_order: 1,
         min_kids: 7,
         max_kids: 40,
-        is_active: true
+        is_active: true,
+        business_context: 'event_genix'
     };
     const packageItemRow = {
         package_id: 5,
@@ -290,7 +292,7 @@ test('graduation keeps catalog prices public while quote and service financial f
         async query(sql, params = []) {
             const normalized = String(sql).replace(/\s+/g, ' ').trim();
             calls.push({ sql: normalized, params });
-            if (normalized === 'SELECT id FROM graduation_services WHERE id = $1') {
+            if (normalized === "SELECT id FROM graduation_services WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2") {
                 return { rows: [{ id: serviceRow.id }] };
             }
             if (normalized.startsWith('UPDATE graduation_services SET')) {
@@ -300,27 +302,27 @@ test('graduation keeps catalog prices public while quote and service financial f
             if (normalized.includes('FROM graduation_services WHERE is_active = true')) {
                 return { rows: [{ ...serviceRow }] };
             }
-            if (normalized === 'SELECT id, catalog_description FROM graduation_services WHERE catalog_description IS NOT NULL') {
+            if (normalized === "SELECT id, catalog_description FROM graduation_services WHERE catalog_description IS NOT NULL AND COALESCE(business_context, 'event_genix') = $1") {
                 return { rows: [{ id: serviceRow.id, catalog_description: serviceRow.catalog_description }] };
             }
-            if (normalized === "SELECT key, value FROM graduation_settings WHERE key IN ('coefficient', 'markup')") {
+            if (normalized === "SELECT key, value FROM graduation_settings WHERE key IN ('coefficient', 'markup') AND COALESCE(business_context, 'event_genix') = $1") {
                 return { rows: settingsRows.map(row => ({ key: row.key, value: row.value })) };
             }
-            if (normalized === 'SELECT * FROM graduation_settings ORDER BY key') {
+            if (normalized === "SELECT * FROM graduation_settings WHERE COALESCE(business_context, 'event_genix') = $1 ORDER BY key") {
                 return { rows: settingsRows.map(row => ({ ...row })) };
             }
-            if (normalized === 'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order') {
+            if (normalized === "SELECT * FROM graduation_packages WHERE is_active = true AND COALESCE(business_context, 'event_genix') = $1 ORDER BY sort_order") {
                 return { rows: [{ ...packageRow }] };
             }
             if (normalized.includes('FROM graduation_package_items pi')) {
                 return { rows: [{ ...packageItemRow }] };
             }
-            if (normalized === 'SELECT id FROM graduation_quotes WHERE id = $1') {
-                return { rows: [{ id: quoteRow.id }] };
+            if (normalized === "SELECT * FROM graduation_quotes WHERE id = $1 AND COALESCE(business_context, 'event_genix') = $2") {
+                return { rows: [{ ...quoteRow }] };
             }
             if (normalized.startsWith('UPDATE graduation_quotes SET')) {
                 quoteUpdates.push({ sql: normalized, params: [...params] });
-                assert.match(normalized, /^UPDATE graduation_quotes SET notes = \$1, updated_at = NOW\(\) WHERE id = \$2 RETURNING \*$/);
+                assert.match(normalized, /^UPDATE graduation_quotes SET notes = \$1, updated_at = NOW\(\) WHERE id = \$2 AND COALESCE\(business_context, 'event_genix'\) = \$3 RETURNING \*$/);
                 quoteRow = { ...quoteRow, notes: params[0] };
                 return { rows: [{ ...quoteRow }] };
             }
@@ -335,6 +337,27 @@ test('graduation keeps catalog prices public while quote and service financial f
     };
 
     await withMockedGraduationRouter(pool, restrictedDirector, async baseUrl => {
+        const beforeDarContext = calls.length;
+        const darContextResponse = await fetch(`${baseUrl}/api/graduation/services?businessContext=dar`);
+        assert.equal(darContextResponse.status, 403);
+        assert.deepEqual(await darContextResponse.json(), {
+            success: false,
+            error: 'Graduation constructor is not enabled for this business context',
+            code: 'graduation_business_context_unavailable',
+            businessContext: 'dar'
+        });
+        assert.equal(calls.length, beforeDarContext, 'unsupported graduation business context must stop before DB work');
+
+        const beforeAggregateScope = calls.length;
+        const aggregateScopeResponse = await fetch(`${baseUrl}/api/graduation/services?businessScope=all`);
+        assert.equal(aggregateScopeResponse.status, 400);
+        assert.deepEqual(await aggregateScopeResponse.json(), {
+            success: false,
+            error: 'Graduation endpoints require one active business context',
+            code: 'graduation_single_business_required'
+        });
+        assert.equal(calls.length, beforeAggregateScope, 'aggregate graduation scope must stop before DB work');
+
         const servicesResponse = await fetch(`${baseUrl}/api/graduation/services`);
         assert.equal(servicesResponse.status, 200);
         const [service] = await servicesResponse.json();
@@ -402,6 +425,7 @@ test('graduation keeps catalog prices public while quote and service financial f
         for (const update of quoteUpdates) {
             assert.doesNotMatch(update.sql, /package_id|customer_id|event_date|total_all|total_cost/);
             assert.equal(update.params[1], '17');
+            assert.equal(update.params[2], 'event_genix');
         }
 
         for (const financialPayload of [

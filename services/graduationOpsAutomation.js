@@ -1,4 +1,5 @@
 const { pool } = require('../db');
+const { DEFAULT_BUSINESS_CONTEXT } = require('./businessContext');
 const { createLogger } = require('../utils/logger');
 const { emitTaskCreatedNotificationOutboxEvent } = require('./notificationOutbox');
 
@@ -14,6 +15,12 @@ const AUTOMATION_CAPSULE = 'capsule_prep';
 
 const ACTIVE_TASK_SQL = "COALESCE(status, 'todo') NOT IN ('done','archived','cancelled')";
 const LEADERSHIP_ROLES = ['creator', 'director', 'vice_director', 'senior_manager'];
+
+function graduationAutomationBusinessContext(value) {
+    const raw = value ?? DEFAULT_BUSINESS_CONTEXT;
+    const text = String(raw || '').trim();
+    return text || DEFAULT_BUSINESS_CONTEXT;
+}
 
 function safeArray(value) {
     if (Array.isArray(value)) return value;
@@ -209,22 +216,27 @@ function buildGraduationSegments(services = [], serviceTiming = [], eventStartTi
 }
 
 async function buildGraduationSegmentsForQuote(query, quoteRow, serviceTimingOverride = null, eventStartTime = null) {
-    const services = await hydrateSelectedServices(query, quoteRow.selected_services || [], quoteRow.package_id || null);
+    const businessContext = graduationAutomationBusinessContext(quoteRow.business_context || quoteRow.businessContext);
+    const services = await hydrateSelectedServices(query, quoteRow.selected_services || [], quoteRow.package_id || null, businessContext);
     const timing = serviceTimingOverride || quoteRow.service_timing || [];
     return buildGraduationSegments(services, timing, eventStartTime || quoteRow.event_start_time || null);
 }
 
-async function hydrateSelectedServices(query, selectedServices, packageId = null) {
+async function hydrateSelectedServices(query, selectedServices, packageId = null, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const scopedContext = graduationAutomationBusinessContext(businessContext);
     const normalized = normalizeSelectedServices(selectedServices);
     let ids = normalized.map(item => parseInt(item.serviceId, 10)).filter(Number.isInteger);
     if (!ids.length && packageId) {
         const packageRows = await query.query(
             `SELECT s.*
              FROM graduation_package_items pi
-             JOIN graduation_services s ON s.id = pi.service_id
+             JOIN graduation_services s
+               ON s.id = pi.service_id
+              AND COALESCE(s.business_context, 'event_genix') = $2
              WHERE pi.package_id = $1
+               AND COALESCE(pi.business_context, 'event_genix') = $2
              ORDER BY s.sort_order`,
-            [packageId]
+            [packageId, scopedContext]
         );
         return packageRows.rows.map(row => ({
             serviceId: row.id,
@@ -242,8 +254,9 @@ async function hydrateSelectedServices(query, selectedServices, packageId = null
     const details = await query.query(
         `SELECT id, name, sort_order, duration_min, category, timeline_visible, operation_kind
          FROM graduation_services
-         WHERE id = ANY($1::int[])`,
-        [ids]
+         WHERE id = ANY($1::int[])
+           AND COALESCE(business_context, 'event_genix') = $2`,
+        [ids, scopedContext]
     );
     const detailById = new Map(details.rows.map(row => [String(row.id), row]));
     return normalized.map(item => {
@@ -263,29 +276,43 @@ async function hydrateSelectedServices(query, selectedServices, packageId = null
 }
 
 async function buildGraduationTimelineItemsForQuote(query, quoteRow, serviceTimingOverride = null) {
-    const services = await hydrateSelectedServices(query, quoteRow.selected_services || [], quoteRow.package_id || null);
+    const businessContext = graduationAutomationBusinessContext(quoteRow.business_context || quoteRow.businessContext);
+    const services = await hydrateSelectedServices(query, quoteRow.selected_services || [], quoteRow.package_id || null, businessContext);
     const timing = serviceTimingOverride || quoteRow.service_timing || [];
     return buildGraduationTimelineItems(services, timing);
 }
 
-async function loadQuoteContext(query, quoteId) {
+async function loadQuoteContext(query, quoteId, businessContext = null) {
+    const scopedContext = businessContext ? graduationAutomationBusinessContext(businessContext) : null;
+    const params = [quoteId];
+    const businessContextSql = scopedContext
+        ? ` AND COALESCE(q.business_context, 'event_genix') = $${params.push(scopedContext)}`
+        : '';
     const quoteResult = await query.query(
         `SELECT q.*, p.name AS child_pack_name, p.diploma_context_text, p.wording_mode,
                 b.date AS booking_date, b.time AS booking_time, b.created_by AS booking_created_by,
                 COUNT(c.id)::int AS children_count
          FROM graduation_quotes q
-         LEFT JOIN graduation_child_packs p ON p.id = q.child_pack_id
-         LEFT JOIN bookings b ON b.id = q.booking_id
-         LEFT JOIN graduation_children c ON c.graduation_quote_id = q.id OR (q.child_pack_id IS NOT NULL AND c.child_pack_id = q.child_pack_id)
-         WHERE q.id = $1
+         LEFT JOIN graduation_child_packs p
+           ON p.id = q.child_pack_id
+          AND COALESCE(p.business_context, 'event_genix') = COALESCE(q.business_context, 'event_genix')
+         LEFT JOIN bookings b
+           ON b.id = q.booking_id
+          AND COALESCE(b.business_context, 'event_genix') = COALESCE(q.business_context, 'event_genix')
+         LEFT JOIN graduation_children c
+           ON COALESCE(c.business_context, 'event_genix') = COALESCE(q.business_context, 'event_genix')
+          AND (c.graduation_quote_id = q.id OR (q.child_pack_id IS NOT NULL AND c.child_pack_id = q.child_pack_id))
+         WHERE q.id = $1${businessContextSql}
          GROUP BY q.id, p.id, b.id`,
-        [quoteId]
+        params
     );
     const quote = quoteResult.rows[0];
     if (!quote) return null;
-    const services = await hydrateSelectedServices(query, quote.selected_services || [], quote.package_id || null);
+    const quoteBusinessContext = graduationAutomationBusinessContext(quote.business_context || scopedContext);
+    const services = await hydrateSelectedServices(query, quote.selected_services || [], quote.package_id || null, quoteBusinessContext);
     return {
         quote,
+        businessContext: quoteBusinessContext,
         services,
         childrenCount: Number(quote.children_count || 0),
         eventDate: quote.booking_date || (quote.event_date ? String(quote.event_date).slice(0, 10) : null),
@@ -361,28 +388,32 @@ async function ensureTaskObservers(query, taskId, observerIds = [], actorUserId 
     }
 }
 
-async function findAutomationTask(query, sourceType, quoteId) {
+async function findAutomationTask(query, sourceType, quoteId, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const scopedContext = graduationAutomationBusinessContext(businessContext);
     const result = await query.query(
         `SELECT *
          FROM tasks
          WHERE source_type = $1 AND source_id = $2
+           AND COALESCE(business_context, 'event_genix') = $3
          ORDER BY CASE WHEN ${ACTIVE_TASK_SQL} THEN 0 ELSE 1 END, id DESC
          LIMIT 1`,
-        [sourceType, String(quoteId)]
+        [sourceType, String(quoteId), scopedContext]
     );
     return result.rows[0] || null;
 }
 
 async function upsertAutomationState(query, quoteId, key, patch = {}) {
     const payload = patch.payload || {};
+    const businessContext = graduationAutomationBusinessContext(patch.businessContext || patch.business_context);
     const result = await query.query(
         `INSERT INTO graduation_automation_state (
-            graduation_quote_id, booking_id, automation_key, state, task_id, scheduled_for,
+            graduation_quote_id, business_context, booking_id, automation_key, state, task_id, scheduled_for,
             artifact_url, not_ready_reason, payload, last_notified_at
          )
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9::jsonb,$10)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11)
          ON CONFLICT (graduation_quote_id, automation_key) DO UPDATE
-         SET booking_id = EXCLUDED.booking_id,
+         SET business_context = EXCLUDED.business_context,
+             booking_id = EXCLUDED.booking_id,
              state = EXCLUDED.state,
              task_id = EXCLUDED.task_id,
              scheduled_for = EXCLUDED.scheduled_for,
@@ -400,6 +431,7 @@ async function upsertAutomationState(query, quoteId, key, patch = {}) {
          RETURNING *`,
         [
             quoteId,
+            businessContext,
             patch.bookingId || null,
             key,
             patch.state || 'active',
@@ -419,10 +451,12 @@ function taskDateFromTimestamp(iso) {
 }
 
 async function upsertControlledTask(query, sourceType, quoteId, data = {}) {
-    const existing = await findAutomationTask(query, sourceType, quoteId);
+    const businessContext = graduationAutomationBusinessContext(data.businessContext || data.business_context);
+    const existing = await findAutomationTask(query, sourceType, quoteId, businessContext);
     const controlMeta = {
         ...(data.controlMeta || {}),
         automationSource: sourceType,
+        businessContext,
         graduationQuoteId: quoteId,
         bookingId: data.bookingId || null,
         lifecycle: data.lifecycle || 'active'
@@ -481,15 +515,16 @@ async function upsertControlledTask(query, sourceType, quoteId, data = {}) {
                  critical_reason = $20,
                  control_meta = $21::jsonb,
                  pack_status = $22,
+                 business_context = $23,
                  visibility = 'team',
                  task_mode = 'work',
                  task_type = 'human',
                  updated_at = NOW(),
                  archived_at = NULL,
                  archive_reason = NULL
-             WHERE id = $23
+             WHERE id = $24
              RETURNING *`,
-            [...params, existing.id]
+            [...params, businessContext, existing.id]
         );
         return result.rows[0];
     }
@@ -499,16 +534,16 @@ async function upsertControlledTask(query, sourceType, quoteId, data = {}) {
             title, description, date, priority, assigned_to, owner, owner_user_id, created_by,
             task_type, deadline, dependency_ids, control_policy, source_type, source_id,
             category, source_entity_type, source_entity_id, owner_role, type, task_mode,
-            task_kind, visibility, workflow_state, remind_at, next_notification_at,
-            related_entity_type, related_entity_id, source_module, control_mode, critical_reason,
-            control_meta, pack_status
-         )
+             task_kind, visibility, workflow_state, remind_at, next_notification_at,
+             related_entity_type, related_entity_id, source_module, control_mode, critical_reason,
+             control_meta, pack_status, business_context
+          )
          VALUES ($1,$2,$3,$4,$5,$6,$7,'graduation-ops',
             'human',$8,'{}',$9::jsonb,$10,$11,
             $12,$13,$14,$15,'auto','work',
             $16,'team',$17,$18,$19,
             $20,$21,$22,$23,$24,
-            $25::jsonb,$26)
+            $25::jsonb,$26,$27)
          RETURNING *`,
         [
             data.title,
@@ -536,7 +571,8 @@ async function upsertControlledTask(query, sourceType, quoteId, data = {}) {
             data.controlMode || 'normal',
             data.criticalReason || null,
             JSON.stringify(controlMeta),
-            data.packStatus || null
+            data.packStatus || null,
+            businessContext
         ]
     );
     const task = result.rows[0];
@@ -550,8 +586,9 @@ async function upsertControlledTask(query, sourceType, quoteId, data = {}) {
     return task;
 }
 
-async function completeAutomationTask(query, sourceType, quoteId, reason, packStatus = 'ready') {
-    const existing = await findAutomationTask(query, sourceType, quoteId);
+async function completeAutomationTask(query, sourceType, quoteId, reason, packStatus = 'ready', businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const scopedContext = graduationAutomationBusinessContext(businessContext);
+    const existing = await findAutomationTask(query, sourceType, quoteId, scopedContext);
     if (!existing) return null;
     const result = await query.query(
         `UPDATE tasks
@@ -563,14 +600,16 @@ async function completeAutomationTask(query, sourceType, quoteId, reason, packSt
              updated_at = NOW()
          WHERE source_type = $1
            AND source_id = $2
+           AND COALESCE(business_context, 'event_genix') = $5
            AND ${ACTIVE_TASK_SQL}
          RETURNING *`,
-        [sourceType, String(quoteId), packStatus || null, reason || 'resolved']
+        [sourceType, String(quoteId), packStatus || null, reason || 'resolved', scopedContext]
     );
     return result.rows[0] || existing;
 }
 
-async function cancelAutomationTask(query, sourceType, quoteId, reason) {
+async function cancelAutomationTask(query, sourceType, quoteId, reason, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const scopedContext = graduationAutomationBusinessContext(businessContext);
     const result = await query.query(
         `UPDATE tasks
          SET status = 'done',
@@ -582,9 +621,10 @@ async function cancelAutomationTask(query, sourceType, quoteId, reason) {
              updated_at = NOW()
          WHERE source_type = $1
            AND source_id = $2
+           AND COALESCE(business_context, 'event_genix') = $4
            AND ${ACTIVE_TASK_SQL}
          RETURNING *`,
-        [sourceType, String(quoteId), reason || 'automation no longer applies']
+        [sourceType, String(quoteId), reason || 'automation no longer applies', scopedContext]
     );
     return result.rows[0] || null;
 }
@@ -605,9 +645,15 @@ function sourceEntity(context) {
         : { sourceEntityType: null, sourceEntityId: null };
 }
 
+function graduationQuotePdfUrl(context) {
+    const businessContext = graduationAutomationBusinessContext(context.businessContext || context.quote?.business_context);
+    return `/api/graduation/quotes/${context.quote.id}/diplomas/export/pdf?businessContext=${encodeURIComponent(businessContext)}`;
+}
+
 async function ensureMissingRosterTask(query, context, actor = {}, outboxOptions = {}) {
     const manager = await resolveUserByUsername(query, context.managerUsername);
     const source = sourceEntity(context);
+    const artifactUrl = graduationQuotePdfUrl(context);
     const task = await upsertControlledTask(query, SOURCE_ROSTER_MISSING, context.quote.id, {
         title: `Внести список дітей для дипломів ${quoteLabel(context)}`,
         description: [
@@ -632,8 +678,9 @@ async function ensureMissingRosterTask(query, context, actor = {}, outboxOptions
             reason: 'graduation_diploma_roster_missing',
             rosterReady: false,
             childrenCount: context.childrenCount,
-            printArtifactUrl: `/api/graduation/quotes/${context.quote.id}/diplomas/export/pdf`
+            printArtifactUrl: artifactUrl
         },
+        businessContext: context.businessContext,
         ...source,
         ...outboxOptions
     });
@@ -644,6 +691,7 @@ async function ensureMissingRosterTask(query, context, actor = {}, outboxOptions
         state: 'active',
         taskId: task.id,
         notReadyReason: 'missing_roster',
+        businessContext: context.businessContext,
         payload: { childrenCount: context.childrenCount, specialControl: true }
     });
     return task;
@@ -653,7 +701,7 @@ async function ensurePrintReminderTask(query, context, rosterReady, actor = {}, 
     const artDirector = await resolveFirstUserByRoles(query, ['art_director']);
     const reminderDate = computeReminderDate(context.eventDate);
     const reminderAt = reminderDate ? makeKyivTimestamp(reminderDate, '10:00') : null;
-    const artifactUrl = `/api/graduation/quotes/${context.quote.id}/diplomas/export/pdf`;
+    const artifactUrl = graduationQuotePdfUrl(context);
     const readinessLine = rosterReady
         ? `PDF для друку: ${artifactUrl}`
         : 'PDF ще не готовий: бракує заповненого списку дітей.';
@@ -687,6 +735,7 @@ async function ensurePrintReminderTask(query, context, rosterReady, actor = {}, 
             artifactUrl,
             reminderDate
         },
+        businessContext: context.businessContext,
         ...source,
         ...outboxOptions
     });
@@ -701,6 +750,7 @@ async function ensurePrintReminderTask(query, context, rosterReady, actor = {}, 
         scheduledFor: reminderAt,
         artifactUrl: rosterReady ? artifactUrl : null,
         notReadyReason: rosterReady ? null : 'missing_roster',
+        businessContext: context.businessContext,
         payload: { childrenCount: context.childrenCount, rosterReady, reminderDate }
     });
     return task;
@@ -735,6 +785,7 @@ async function ensureCapsulePrepTask(query, context, actor = {}, outboxOptions =
             futureAdapterEvent: 'graduation_capsule_requested',
             vendorBotReady: false
         },
+        businessContext: context.businessContext,
         ...source,
         ...outboxOptions
     });
@@ -743,6 +794,7 @@ async function ensureCapsulePrepTask(query, context, actor = {}, outboxOptions =
         state: 'active',
         taskId: task.id,
         scheduledFor: deadlineAt,
+        businessContext: context.businessContext,
         payload: { futureAdapterEvent: 'graduation_capsule_requested', vendorBotReady: false }
     });
     return task;
@@ -751,38 +803,43 @@ async function ensureCapsulePrepTask(query, context, actor = {}, outboxOptions =
 async function syncGraduationOpsForQuote(quoteId, options = {}) {
     const query = options.query || pool;
     const actor = options.actor || {};
+    const requestedBusinessContext = options.businessContext || options.business_context || null;
     const outboxOptions = {
         hermesOutboxEnabled: options.hermesOutboxEnabled,
         skipHermesOutbox: options.skipHermesOutbox,
         hermesOutboxContext: options.hermesOutboxContext,
         env: options.env
     };
-    const context = await loadQuoteContext(query, quoteId);
+    const context = await loadQuoteContext(query, quoteId, requestedBusinessContext);
     if (!context) return { success: false, reason: 'quote_not_found', quoteId };
+    const businessContext = context.businessContext;
 
     if (String(context.quote.status || '').toLowerCase() === 'cancelled') {
-        const closedRoster = await cancelAutomationTask(query, SOURCE_ROSTER_MISSING, context.quote.id, 'graduation quote cancelled');
-        const closedPrint = await cancelAutomationTask(query, SOURCE_PRINT_REMINDER, context.quote.id, 'graduation quote cancelled');
-        const closedCapsule = await cancelAutomationTask(query, SOURCE_CAPSULE_PREP, context.quote.id, 'graduation quote cancelled');
+        const closedRoster = await cancelAutomationTask(query, SOURCE_ROSTER_MISSING, context.quote.id, 'graduation quote cancelled', businessContext);
+        const closedPrint = await cancelAutomationTask(query, SOURCE_PRINT_REMINDER, context.quote.id, 'graduation quote cancelled', businessContext);
+        const closedCapsule = await cancelAutomationTask(query, SOURCE_CAPSULE_PREP, context.quote.id, 'graduation quote cancelled', businessContext);
         await upsertAutomationState(query, context.quote.id, AUTOMATION_ROSTER, {
             bookingId: context.bookingId,
             state: 'cancelled',
             taskId: closedRoster?.id || null,
+            businessContext,
             payload: { cancelled: true }
         });
         await upsertAutomationState(query, context.quote.id, AUTOMATION_PRINT, {
             bookingId: context.bookingId,
             state: 'cancelled',
             taskId: closedPrint?.id || null,
+            businessContext,
             payload: { cancelled: true }
         });
         await upsertAutomationState(query, context.quote.id, AUTOMATION_CAPSULE, {
             bookingId: context.bookingId,
             state: 'cancelled',
             taskId: closedCapsule?.id || null,
+            businessContext,
             payload: { cancelled: true }
         });
-        return { success: true, quoteId: context.quote.id, readiness: { cancelled: true } };
+        return { success: true, quoteId: context.quote.id, businessContext, readiness: { cancelled: true } };
     }
 
     const diplomaPresent = hasDiplomaService(context.services);
@@ -793,11 +850,12 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
     if (diplomaPresent && !rosterReady) {
         tasks.missingRoster = await ensureMissingRosterTask(query, context, actor, outboxOptions);
     } else {
-        const closed = await completeAutomationTask(query, SOURCE_ROSTER_MISSING, context.quote.id, rosterReady ? 'roster_ready' : 'diploma_removed', rosterReady ? 'ready' : 'cancelled');
+        const closed = await completeAutomationTask(query, SOURCE_ROSTER_MISSING, context.quote.id, rosterReady ? 'roster_ready' : 'diploma_removed', rosterReady ? 'ready' : 'cancelled', businessContext);
         await upsertAutomationState(query, context.quote.id, AUTOMATION_ROSTER, {
             bookingId: context.bookingId,
             state: diplomaPresent ? 'satisfied' : 'cancelled',
             taskId: closed?.id || null,
+            businessContext,
             payload: { childrenCount: context.childrenCount, rosterReady, diplomaPresent }
         });
     }
@@ -805,11 +863,12 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
     if (diplomaPresent) {
         tasks.printReminder = await ensurePrintReminderTask(query, context, rosterReady, actor, outboxOptions);
     } else {
-        const cancelled = await cancelAutomationTask(query, SOURCE_PRINT_REMINDER, context.quote.id, 'diploma service removed');
+        const cancelled = await cancelAutomationTask(query, SOURCE_PRINT_REMINDER, context.quote.id, 'diploma service removed', businessContext);
         await upsertAutomationState(query, context.quote.id, AUTOMATION_PRINT, {
             bookingId: context.bookingId,
             state: 'cancelled',
             taskId: cancelled?.id || null,
+            businessContext,
             payload: { diplomaPresent: false }
         });
     }
@@ -817,11 +876,12 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
     if (capsulePresent) {
         tasks.capsulePrep = await ensureCapsulePrepTask(query, context, actor, outboxOptions);
     } else {
-        const cancelled = await cancelAutomationTask(query, SOURCE_CAPSULE_PREP, context.quote.id, 'capsule service removed');
+        const cancelled = await cancelAutomationTask(query, SOURCE_CAPSULE_PREP, context.quote.id, 'capsule service removed', businessContext);
         await upsertAutomationState(query, context.quote.id, AUTOMATION_CAPSULE, {
             bookingId: context.bookingId,
             state: 'cancelled',
             taskId: cancelled?.id || null,
+            businessContext,
             payload: { capsulePresent: false }
         });
     }
@@ -830,6 +890,7 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
         success: true,
         quoteId: context.quote.id,
         bookingId: context.bookingId,
+        businessContext,
         readiness: {
             diplomaPresent,
             capsulePresent,
@@ -844,23 +905,34 @@ async function syncGraduationOpsForQuote(quoteId, options = {}) {
 async function syncGraduationOpsForUpcoming(options = {}) {
     const query = options.query || pool;
     const limit = Math.max(1, Math.min(Number(options.limit || 200), 500));
+    const requestedBusinessContext = options.businessContext || options.business_context || null;
+    const scopedContext = requestedBusinessContext ? graduationAutomationBusinessContext(requestedBusinessContext) : null;
+    const params = [];
+    const businessContextSql = scopedContext
+        ? ` AND COALESCE(business_context, 'event_genix') = $${params.push(scopedContext)}`
+        : '';
+    const limitParam = params.push(limit);
     const result = await query.query(
-        `SELECT id
+        `SELECT id, COALESCE(business_context, 'event_genix') AS business_context
          FROM graduation_quotes
          WHERE COALESCE(status, 'draft') NOT IN ('cancelled')
+           ${businessContextSql}
            AND (
                 event_date IS NULL
                 OR event_date >= CURRENT_DATE - INTERVAL '2 days'
                 OR booking_id IS NOT NULL
            )
          ORDER BY updated_at DESC, id DESC
-         LIMIT $1`,
-        [limit]
+         LIMIT $${limitParam}`,
+        params
     );
     const synced = [];
     for (const row of result.rows) {
         try {
-            synced.push(await syncGraduationOpsForQuote(row.id, options));
+            synced.push(await syncGraduationOpsForQuote(row.id, {
+                ...options,
+                businessContext: row.business_context || scopedContext || DEFAULT_BUSINESS_CONTEXT
+            }));
         } catch (err) {
             log.warn(`Graduation ops sync skipped for quote ${row.id}: ${err.message}`);
             synced.push({ success: false, quoteId: row.id, error: err.message });
@@ -877,18 +949,28 @@ async function dispatchDuePrintReminders(options = {}) {
     const query = options.query || pool;
     const todayResult = await query.query("SELECT (NOW() AT TIME ZONE 'Europe/Kyiv')::date::text AS today");
     const today = todayResult.rows[0]?.today;
+    const requestedBusinessContext = options.businessContext || options.business_context || null;
+    const scopedContext = requestedBusinessContext ? graduationAutomationBusinessContext(requestedBusinessContext) : null;
+    const params = [AUTOMATION_PRINT, today];
+    const businessContextSql = scopedContext
+        ? ` AND COALESCE(s.business_context, 'event_genix') = $${params.push(scopedContext)}
+           AND COALESCE(q.business_context, 'event_genix') = $${params.length}`
+        : '';
     const due = await query.query(
-        `SELECT s.*, q.quote_number, q.id AS quote_id
+        `SELECT s.*, q.quote_number, q.id AS quote_id, COALESCE(q.business_context, s.business_context, 'event_genix') AS quote_business_context
          FROM graduation_automation_state s
-         JOIN graduation_quotes q ON q.id = s.graduation_quote_id
+         JOIN graduation_quotes q
+           ON q.id = s.graduation_quote_id
+          AND COALESCE(q.business_context, 'event_genix') = COALESCE(s.business_context, 'event_genix')
          WHERE s.automation_key = $1
            AND s.state IN ('scheduled','blocked')
            AND s.scheduled_for IS NOT NULL
            AND DATE(s.scheduled_for AT TIME ZONE 'Europe/Kyiv') <= $2::date
            AND s.last_notified_at IS NULL
+           ${businessContextSql}
          ORDER BY s.scheduled_for ASC
          LIMIT 50`,
-        [AUTOMATION_PRINT, today]
+        params
     );
     if (!due.rows.length) return { sent: 0, blocked: 0 };
 
@@ -896,8 +978,10 @@ async function dispatchDuePrintReminders(options = {}) {
     let blocked = 0;
     const { sendTelegramMessage, getConfiguredChatId } = require('./telegram');
     for (const row of due.rows) {
-        const context = await loadQuoteContext(query, row.graduation_quote_id);
+        const rowBusinessContext = graduationAutomationBusinessContext(row.quote_business_context || row.business_context || scopedContext);
+        const context = await loadQuoteContext(query, row.graduation_quote_id, rowBusinessContext);
         if (!context) continue;
+        const businessContext = context.businessContext;
         const rosterReady = isRosterReady(context);
         const artDirector = await resolveFirstUserByRoles(query, ['art_director']);
         let chatId = null;
@@ -920,12 +1004,13 @@ async function dispatchDuePrintReminders(options = {}) {
                 scheduledFor: row.scheduled_for,
                 artifactUrl: row.artifact_url || null,
                 notReadyReason: 'no_telegram_recipient',
+                businessContext,
                 payload: { ...row.payload, dispatchBlocked: 'no_telegram_recipient' }
             });
             blocked += 1;
             continue;
         }
-        const artifactUrl = `/api/graduation/quotes/${context.quote.id}/diplomas/export/pdf`;
+        const artifactUrl = graduationQuotePdfUrl(context);
         const text = [
             `<b>Дипломи до друку: ${quoteLabel(context)}</b>`,
             `Подія: ${eventLabel(context)}`,
@@ -942,6 +1027,7 @@ async function dispatchDuePrintReminders(options = {}) {
             artifactUrl: rosterReady ? artifactUrl : null,
             notReadyReason: rosterReady ? null : 'missing_roster',
             lastNotifiedAt: new Date().toISOString(),
+            businessContext,
             payload: { ...row.payload, dispatchedTo: artDirector?.id ? 'art_director' : 'default_telegram', rosterReady }
         });
         sent += 1;

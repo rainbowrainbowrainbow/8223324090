@@ -34,6 +34,15 @@
     let graduationStartTime = '10:00';
     let graduationEndTime = '';
 
+    const GRADUATION_DEFAULT_BUSINESS_CONTEXT = 'event_genix';
+    const GRADUATION_CATALOG_EXPORT_TOKEN_PREFIX = '/api/graduation/catalog/export?token=';
+    const GRADUATION_CONTEXT_UNAVAILABLE_CODES = new Set([
+        'graduation_business_context_unavailable',
+        'graduation_single_business_required',
+        'business_context_unavailable',
+        'business_scope_unavailable'
+    ]);
+
     function storedGraduationUser() {
         try {
             const raw = localStorage.getItem('pzp_current_user');
@@ -69,6 +78,102 @@
         if (canViewGraduationRevenue()) return true;
         showNotification('Недостатньо прав для перегляду фінансових даних випускного', 'error');
         return false;
+    }
+
+    function graduationBusinessContext() {
+        const user = currentGraduationUser();
+        try {
+            const api = window.CrmBusinessContext;
+            if (api?.current) return api.current(user) || GRADUATION_DEFAULT_BUSINESS_CONTEXT;
+        } catch (err) {
+            // Fall through to the static fallback below.
+        }
+        try {
+            const params = new URLSearchParams(window.location.search);
+            return params.get('businessContext')
+                || document.body?.dataset?.crmBusinessContext
+                || GRADUATION_DEFAULT_BUSINESS_CONTEXT;
+        } catch (err) {
+            return GRADUATION_DEFAULT_BUSINESS_CONTEXT;
+        }
+    }
+
+    function graduationBusinessLabel() {
+        const businessContext = graduationBusinessContext();
+        const api = window.CrmBusinessContext;
+        try {
+            const normalized = api?.normalize ? api.normalize(businessContext) : businessContext;
+            const profile = api?.profileFor?.(normalized);
+            if (profile?.label) return profile.label;
+            if (profile?.shortLabel) return profile.shortLabel;
+            const activeProfile = api?.activeProfile?.();
+            if (activeProfile && (activeProfile.key === normalized || activeProfile.businessContext === normalized)) {
+                return activeProfile.label || activeProfile.shortLabel || normalized;
+            }
+            const catalogEntry = api?.contexts?.[normalized];
+            return catalogEntry?.label || catalogEntry?.shortLabel || normalized || 'Парк Закревського';
+        } catch (err) {
+            return businessContext === GRADUATION_DEFAULT_BUSINESS_CONTEXT ? 'Парк Закревського' : businessContext;
+        }
+    }
+
+    function graduationBusinessModuleAvailable() {
+        const businessContext = graduationBusinessContext();
+        const api = window.CrmBusinessContext;
+        try {
+            if (api?.hasModule) return api.hasModule(businessContext, 'graduation') === true;
+            const normalized = api?.normalize ? api.normalize(businessContext) : businessContext;
+            const entry = api?.contexts?.[normalized];
+            if (Array.isArray(entry?.modules)) return entry.modules.includes('graduation');
+        } catch (err) {
+            return businessContext === GRADUATION_DEFAULT_BUSINESS_CONTEXT;
+        }
+        return businessContext === GRADUATION_DEFAULT_BUSINESS_CONTEXT;
+    }
+
+    function isGraduationContextUnavailableError(error) {
+        return GRADUATION_CONTEXT_UNAVAILABLE_CODES.has(String(error?.code || '').trim());
+    }
+
+    function renderGraduationContextUnavailable(error = null) {
+        const content = document.getElementById('gradContent');
+        const businessLabel = graduationBusinessLabel();
+        if (content) {
+            content.innerHTML = `
+                <div class="grad-empty" style="padding:40px;text-align:center">
+                    <div style="font-size:40px;margin-bottom:12px">🔒</div>
+                    <h3 style="margin:0 0 8px">Конструктор випускного не підключено</h3>
+                    <p style="margin:0;color:var(--gray-500)">
+                        Бізнес «${_esc(businessLabel)}» поки не має активного модуля випускних.
+                    </p>
+                </div>`;
+        }
+        if (error?.message) console.warn('[Graduation] business context unavailable:', error.message);
+    }
+
+    function graduationApiPath(path) {
+        const businessContext = graduationBusinessContext();
+        const api = window.CrmBusinessContext;
+        if (api?.apiUrl) return api.apiUrl(path, businessContext);
+        try {
+            const target = new URL(String(path), window.location.origin);
+            target.searchParams.set('businessContext', businessContext);
+            target.searchParams.delete('businessScope');
+            target.searchParams.delete('businessContexts');
+            if (target.origin === window.location.origin) {
+                return `${target.pathname}${target.search}${target.hash}`;
+            }
+            return target.toString();
+        } catch (err) {
+            const joiner = String(path).includes('?') ? '&' : '?';
+            return `${path}${joiner}businessContext=${encodeURIComponent(businessContext)}`;
+        }
+    }
+
+    function graduationApiUrl(path) {
+        const scopedPath = graduationApiPath(path);
+        if (/^https?:\/\//i.test(scopedPath)) return scopedPath;
+        return `${API_BASE}${scopedPath.startsWith('/') ? scopedPath : `/${scopedPath}`}`;
     }
 
     function canManageGraduationSettings() {
@@ -304,20 +409,29 @@
     // === API ===
 
     async function gradApi(method, path, body) {
-        const result = await apiCall(method, path, body, { fallback: null });
+        const result = await apiCall(method, graduationApiPath(path), body, { fallback: null });
         if (result === null || result === undefined) throw new Error('API error');
-        if (result.success === false) throw new Error(result.error || 'API error');
+        if (result.success === false) {
+            const error = new Error(result.error || 'API error');
+            error.code = result.code || null;
+            error.businessContext = result.businessContext || null;
+            throw error;
+        }
         return result;
     }
 
     async function loadAll() {
         const content = document.getElementById('gradContent');
         if (content) content.innerHTML = '<div class="grad-loading" style="padding:40px;text-align:center;color:var(--gray-500)">Завантаження...</div>';
+        if (!graduationBusinessModuleAvailable()) {
+            renderGraduationContextUnavailable();
+            return;
+        }
         try {
             const [svc, pkg, sett] = await Promise.all([
-                apiCall('GET', '/graduation/services', null, { fallback: [] }),
-                apiCall('GET', '/graduation/packages', null, { fallback: [] }),
-                apiCall('GET', '/graduation/settings', null, { fallback: {} })
+                gradApi('GET', '/graduation/services'),
+                gradApi('GET', '/graduation/packages'),
+                gradApi('GET', '/graduation/settings')
             ]);
             services = Array.isArray(svc) ? svc : [];
             packages = Array.isArray(pkg) ? pkg : [];
@@ -342,6 +456,10 @@
             }
         } catch (err) {
             console.error('[Graduation] loadAll error:', err);
+            if (isGraduationContextUnavailableError(err)) {
+                renderGraduationContextUnavailable(err);
+                return;
+            }
             if (content) content.innerHTML = '<div style="padding:40px;text-align:center;color:#e74c3c">Помилка завантаження даних</div>';
             showNotification('Помилка завантаження даних', 'error');
         }
@@ -1141,7 +1259,7 @@
     function shareCatalogPage(index) {
         const pkg = packages[index];
         if (!pkg) return;
-        const text = `Випускний "${pkg.name}" — ${formatPrice(calcPackageTotals(pkg).totalPerChild)}/дитина\nПарк Закревського`;
+        const text = `Випускний "${pkg.name}" — ${formatPrice(calcPackageTotals(pkg).totalPerChild)}/дитина\n${graduationBusinessLabel()}`;
         if (navigator.share) {
             navigator.share({ title: `Випускний: ${pkg.name}`, text }).catch(() => {});
         } else {
@@ -1154,7 +1272,8 @@
     function exportCatalog() {
         if (!guardGraduationExport()) return;
         const token = localStorage.getItem('pzp_token');
-        const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token);
+        const exportPath = GRADUATION_CATALOG_EXPORT_TOKEN_PREFIX.replace(/^\/api/, '') + encodeURIComponent(token || '');
+        const url = graduationApiUrl(exportPath);
         if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
         else window.open(url, '_blank', 'noopener,noreferrer');
     }
@@ -1164,7 +1283,8 @@
         const token = localStorage.getItem('pzp_token');
         const pkg = packages[index];
         if (!pkg) return;
-        const url = (window.API_BASE || '') + '/api/graduation/catalog/export?token=' + encodeURIComponent(token) + '#pkg-' + pkg.slug;
+        const exportPath = GRADUATION_CATALOG_EXPORT_TOKEN_PREFIX.replace(/^\/api/, '') + encodeURIComponent(token || '') + '#pkg-' + pkg.slug;
+        const url = graduationApiUrl(exportPath);
         if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
         else window.open(url, '_blank', 'noopener,noreferrer');
     }
@@ -1669,7 +1789,7 @@
         }
         popup.opener = null;
         popup.document.write(`<html><body style="font-family:system-ui;padding:24px">${loadingTitle || 'Завантаження...'}</body></html>`);
-        const response = await fetch(`${API_BASE}${path}`, { headers: getAuthHeaders(false) });
+        const response = await fetch(graduationApiUrl(path), { headers: getAuthHeaders(false) });
         if (handleAuthError(response)) {
             popup.close();
             return;
@@ -1698,7 +1818,7 @@
             ? openTouchDownloadWindow('PDF дипломів')
             : null;
         try {
-            const response = await fetch(`${API_BASE}/graduation/quotes/${diplomaQuoteId}/diplomas/export/pdf`, { headers: getAuthHeaders(false) });
+            const response = await fetch(graduationApiUrl(`/graduation/quotes/${diplomaQuoteId}/diplomas/export/pdf`), { headers: getAuthHeaders(false) });
             if (handleAuthError(response)) {
                 if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
                 return;
@@ -1746,7 +1866,7 @@
             ? openTouchDownloadWindow(`Список дітей ${ext.toUpperCase()}`)
             : null;
         try {
-            const response = await fetch(`${API_BASE}/graduation/quotes/${diplomaQuoteId}/diplomas/export/${ext}`, { headers: getAuthHeaders(false) });
+            const response = await fetch(graduationApiUrl(`/graduation/quotes/${diplomaQuoteId}/diplomas/export/${ext}`), { headers: getAuthHeaders(false) });
             if (handleAuthError(response)) {
                 if (typeof closeTouchDownloadWindow === 'function') closeTouchDownloadWindow(touchWindow);
                 return;
@@ -2195,7 +2315,7 @@
     function viewProposal(id) {
         if (!guardGraduationExport(true)) return;
         const token = localStorage.getItem('pzp_token');
-        const url = `${API_BASE}/graduation/quotes/${encodeURIComponent(id)}/proposal?token=${encodeURIComponent(token || '')}`;
+        const url = graduationApiUrl(`/graduation/quotes/${encodeURIComponent(id)}/proposal?token=${encodeURIComponent(token || '')}`);
         if (typeof openSafeNewTab === 'function') openSafeNewTab(url);
         else window.open(url, '_blank', 'noopener,noreferrer');
     }
@@ -2380,23 +2500,60 @@
         if (rerender) renderCurrentTab();
     }
 
+    function resetGraduationStateForBusinessContext() {
+        services = [];
+        packages = [];
+        quotes = [];
+        settings = {};
+        selectedServiceIds = new Set();
+        comparePackageSlugs = new Set();
+        analyticsData = null;
+        currentKidsCount = 15;
+        currentDiscount = 0;
+        diplomaQuoteId = null;
+        diplomaRoster = [];
+        diplomaSummary = null;
+        diplomaTemplate = null;
+        diplomaPack = null;
+        childPacks = [];
+        graduationEventDate = '';
+        graduationStartTime = '10:00';
+        graduationEndTime = '';
+        closeCatalogViewer();
+    }
+
+    function loadGraduationAnalyticsIfAllowed() {
+        if (!isDirector()) {
+            analyticsData = null;
+            return;
+        }
+        gradApi('GET', '/graduation/analytics').then(data => {
+            analyticsData = data;
+        }).catch(() => {});
+    }
+
+    function reloadGraduationForBusinessContext() {
+        resetGraduationStateForBusinessContext();
+        userRole = currentGraduationUser()?.role || getUserRole();
+        syncGraduationAccessUi();
+        loadAll();
+        loadGraduationAnalyticsIfAllowed();
+    }
+
     function init() {
         userRole = currentGraduationUser()?.role || getUserRole();
         syncGraduationAccessUi();
         loadAll();
 
         // Load analytics in background for popularity badges
-        if (isDirector()) {
-            gradApi('GET', '/graduation/analytics').then(data => {
-                analyticsData = data;
-            }).catch(() => {});
-        }
+        loadGraduationAnalyticsIfAllowed();
 
         document.querySelectorAll('.grad-tab').forEach(tab => {
             tab.addEventListener('click', () => switchTab(tab.dataset.tab));
         });
 
-        window.addEventListener('app:user-changed', () => syncGraduationAccessUi(true));
+        window.addEventListener('app:user-changed', () => reloadGraduationForBusinessContext());
+        window.addEventListener('crmBusinessContextChanged', () => reloadGraduationForBusinessContext());
         window.addEventListener('permissions:lifecycle', () => syncGraduationAccessUi(true));
 
         document.addEventListener('keydown', (event) => {

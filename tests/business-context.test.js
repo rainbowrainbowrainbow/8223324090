@@ -8,6 +8,7 @@ const {
   BUSINESS_SCOPE_SINGLE,
   businessContextCatalog,
   businessContextFromRequest,
+  businessContextHasModule,
   businessScopeContextsFromRequest,
   businessScopeModeFromRequest,
   canAccessBusinessContext,
@@ -286,6 +287,10 @@ test('business catalog exposes all four operator contexts and module boundaries'
   assert.equal(catalog.find(item => item.key === 'crm').modules.includes('leads'), true);
   assert.equal(catalog.find(item => item.key === 'crm').modules.includes('warehouse'), false);
   assert.equal(catalog.find(item => item.key === 'dar').modules.includes('timeline'), true);
+  assert.equal(catalog.find(item => item.key === 'event_genix').modules.includes('graduation'), true);
+  assert.equal(catalog.find(item => item.key === 'dar').modules.includes('graduation'), false);
+  assert.equal(businessContextHasModule('event_genix', 'graduation'), true);
+  assert.equal(businessContextHasModule('dar', 'graduation'), false);
   assert.equal(catalog.find(item => item.key === 'maysternya_doli').modules.includes('omni'), true);
   assert.deepEqual(normalizeBusinessContextList(['park', 'dar', 'дар', 'crm']), ['event_genix', 'dar', 'crm']);
 });

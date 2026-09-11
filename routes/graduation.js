@@ -31,9 +31,38 @@ const {
     buildGraduationSegmentsForQuote,
     syncGraduationOpsForQuote
 } = require('../services/graduationOpsAutomation');
+const {
+    DEFAULT_BUSINESS_CONTEXT,
+    businessContextCatalog,
+    businessContextHasModule,
+    normalizeKnownBusinessContext,
+    resolveBusinessScope,
+    requireBusinessScope,
+    requireWritableBusinessScope,
+    pushBusinessContextCondition
+} = require('../services/businessContext');
 
 const log = createLogger('Graduation');
 const requireGraduationRevenue = requireAction('view_revenue');
+const GRADUATION_MODULE_ID = 'graduation';
+const GRADUATION_BUSINESS_CONTEXT_UNAVAILABLE = 'graduation_business_context_unavailable';
+const GRADUATION_SINGLE_BUSINESS_REQUIRED = 'graduation_single_business_required';
+const GRADUATION_BOOKING_CONTEXT_UNSUPPORTED = 'graduation_booking_context_unsupported';
+const GRADUATION_BOOKING_CONVERSION_CONTEXTS = Object.freeze([DEFAULT_BUSINESS_CONTEXT]);
+const GRADUATION_DEFAULT_PRESENTATION = Object.freeze({
+    businessLabel: 'Парк Закревського',
+    proposalTitle: 'Випускний у Парку Закревського',
+    proposalFooter: 'Парк Закревського Періоду',
+    catalogTitle: 'Випускні 2026 — Парк Закревського',
+    coverSubtitle: 'Парк Закревського періоду',
+    catalogFooterBrand: 'Event Genix · Парк Закревського',
+    catalogFooterContact: 'Київ, вул. Закревського 61/2 · 0800 75 35 53',
+    coverContactLines: [
+        '📞 (050) 344-37-71',
+        '📍 Київ, вул. Закревського 61/2',
+        '💬 @park_zakrevskogo'
+    ]
+});
 const GRADUATION_PRICING_DEFAULTS = Object.freeze({ coefficient: 6, markup: 1.15 });
 const GRADUATION_QUOTE_FINANCIAL_MUTATION_KEYS = new Set([
     'kidsCount',
@@ -55,6 +84,109 @@ const GRADUATION_QUOTE_FINANCIAL_MUTATION_KEYS = new Set([
     'profitMargin',
     'profit_margin'
 ]);
+
+function rawGraduationBusinessContextInput(req) {
+    return req?.body?.businessContext
+        || req?.body?.business_context
+        || req?.query?.businessContext
+        || req?.query?.business_context
+        || req?.headers?.['x-business-context']
+        || null;
+}
+
+function rejectGraduationBusinessContext(res, businessContext, code = GRADUATION_BUSINESS_CONTEXT_UNAVAILABLE) {
+    res.status(403).json({
+        success: false,
+        error: 'Graduation constructor is not enabled for this business context',
+        code,
+        businessContext: businessContext || null
+    });
+}
+
+function requireGraduationBusinessContext(req, res, options = {}) {
+    const rawRequested = rawGraduationBusinessContextInput(req);
+    if (rawRequested && !normalizeKnownBusinessContext(rawRequested)) {
+        rejectGraduationBusinessContext(res, String(rawRequested), GRADUATION_BUSINESS_CONTEXT_UNAVAILABLE);
+        return null;
+    }
+
+    const scope = resolveBusinessScope(req);
+    if (!requireBusinessScope(req, res, scope)) return null;
+    if (options.write && !requireWritableBusinessScope(req, res, scope)) return null;
+    if (scope.mode !== 'single') {
+        res.status(400).json({
+            success: false,
+            error: 'Graduation endpoints require one active business context',
+            code: GRADUATION_SINGLE_BUSINESS_REQUIRED
+        });
+        return null;
+    }
+
+    const businessContext = scope.activeContext || DEFAULT_BUSINESS_CONTEXT;
+    if (!businessContextHasModule(businessContext, GRADUATION_MODULE_ID)) {
+        rejectGraduationBusinessContext(res, businessContext);
+        return null;
+    }
+
+    return businessContext;
+}
+
+function graduationBusinessContext(req) {
+    return req?.graduationBusinessContext || DEFAULT_BUSINESS_CONTEXT;
+}
+
+function graduationBusinessCatalogEntry(businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const normalized = normalizeKnownBusinessContext(businessContext) || DEFAULT_BUSINESS_CONTEXT;
+    return businessContextCatalog().find(item => item.key === normalized) || {
+        key: normalized,
+        label: normalized,
+        shortLabel: normalized
+    };
+}
+
+function graduationBusinessPresentation(businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const entry = graduationBusinessCatalogEntry(businessContext);
+    if (entry.key === DEFAULT_BUSINESS_CONTEXT) return { ...GRADUATION_DEFAULT_PRESENTATION };
+    const businessLabel = entry.label || entry.shortLabel || entry.key;
+    return {
+        businessLabel,
+        proposalTitle: `Випускний — ${businessLabel}`,
+        proposalFooter: businessLabel,
+        catalogTitle: `Випускні 2026 — ${businessLabel}`,
+        coverSubtitle: businessLabel,
+        catalogFooterBrand: businessLabel,
+        catalogFooterContact: '',
+        coverContactLines: [businessLabel]
+    };
+}
+
+function graduationBookingConversionStatus(businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const entry = graduationBusinessCatalogEntry(businessContext);
+    if (GRADUATION_BOOKING_CONVERSION_CONTEXTS.includes(entry.key)) {
+        return { supported: true, businessContext: entry.key };
+    }
+    return {
+        supported: false,
+        businessContext: entry.key,
+        code: GRADUATION_BOOKING_CONTEXT_UNSUPPORTED,
+        error: 'Graduation booking conversion is available only for Event Genix until resource mapping is configured for this business'
+    };
+}
+
+function pushGraduationContextCondition(params, businessContext, alias = '') {
+    return pushBusinessContextCondition(params, businessContext || DEFAULT_BUSINESS_CONTEXT, alias);
+}
+
+function isGraduationWriteRequest(req) {
+    return !['GET', 'HEAD', 'OPTIONS'].includes(String(req?.method || 'GET').toUpperCase());
+}
+
+router.use((req, res, next) => {
+    const businessContext = requireGraduationBusinessContext(req, res, { write: isGraduationWriteRequest(req) });
+    if (!businessContext) return;
+    req.graduationBusinessContext = businessContext;
+    next();
+});
 
 function canViewGraduationRevenue(req) {
     return canUseAction(req.user, 'view_revenue');
@@ -88,9 +220,13 @@ function requireQuoteRevenueForFinancialMutation(req, res, next) {
     return requireGraduationRevenue(req, res, next);
 }
 
-async function loadGraduationPricingSettings() {
+async function loadGraduationPricingSettings(businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const params = [];
+    const contextCondition = pushGraduationContextCondition(params, businessContext);
     const result = await pool.query(
-        "SELECT key, value FROM graduation_settings WHERE key IN ('coefficient', 'markup')"
+        `SELECT key, value FROM graduation_settings
+         WHERE key IN ('coefficient', 'markup') AND ${contextCondition}`,
+        params
     );
     const settings = { ...GRADUATION_PRICING_DEFAULTS };
     for (const row of result.rows) settings[row.key] = Number(row.value);
@@ -109,9 +245,9 @@ function calculateCatalogPrice(row, pricingSettings = GRADUATION_PRICING_DEFAULT
 function getKleshnya() { return require('../services/kleshnya'); }
 function _escH(s) { return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;'); }
 
-async function syncGraduationOpsSafe(quoteId, actor, reason = 'route') {
+async function syncGraduationOpsSafe(quoteId, actor, reason = 'route', businessContext = DEFAULT_BUSINESS_CONTEXT) {
     try {
-        return await syncGraduationOpsForQuote(quoteId, { actor: actor || {}, reason });
+        return await syncGraduationOpsForQuote(quoteId, { actor: actor || {}, reason, businessContext });
     } catch (err) {
         log.error(`Graduation ops sync failed for quote ${quoteId} (${reason}): ${err.message}`);
         return { success: false, reason: 'sync_failed', error: err.message };
@@ -151,7 +287,8 @@ function mapServiceRow(row) {
         catalogDescription: row.catalog_description || null,
         timelineVisible: row.timeline_visible !== false,
         operationKind: row.operation_kind || null,
-        automationFlags: row.automation_flags || {}
+        automationFlags: row.automation_flags || {},
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT
     };
 }
 
@@ -171,7 +308,8 @@ function mapPublicServiceRow(row, pricingSettings) {
         catalogDescription: row.catalog_description || null,
         timelineVisible: row.timeline_visible !== false,
         operationKind: row.operation_kind || null,
-        automationFlags: row.automation_flags || {}
+        automationFlags: row.automation_flags || {},
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT
     };
 }
 
@@ -194,6 +332,7 @@ function mapChildPackRow(row, childrenCountOverride = null) {
         graduationQuoteId: row.graduation_quote_id,
         bookingId: row.booking_id,
         isArchived: row.is_archived,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         childrenCount: childrenCountOverride ?? Number(row.children_count || 0),
         createdBy: row.created_by,
         createdAt: row.created_at,
@@ -272,37 +411,42 @@ function packPayloadToDb(input) {
     ];
 }
 
-async function getQuoteRow(db, id) {
-    const result = await db.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
+async function getQuoteRow(db, id, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const params = [id];
+    const contextCondition = pushGraduationContextCondition(params, businessContext);
+    const result = await db.query(`SELECT * FROM graduation_quotes WHERE id = $1 AND ${contextCondition}`, params);
     return result.rows[0] || null;
 }
 
-async function getChildPackById(db, id) {
+async function getChildPackById(db, id, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     if (!id) return null;
+    const params = [id];
+    const contextCondition = pushGraduationContextCondition(params, businessContext, 'p');
     const result = await db.query(
         `SELECT p.*, COUNT(c.id)::int AS children_count
          FROM graduation_child_packs p
          LEFT JOIN graduation_children c ON c.child_pack_id = p.id
-         WHERE p.id = $1
+            AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+         WHERE p.id = $1 AND ${contextCondition}
          GROUP BY p.id`,
-        [id]
+        params
     );
     return result.rows[0] || null;
 }
 
-async function createChildPack(db, input, { quoteId = null, bookingId = null, username = null } = {}) {
+async function createChildPack(db, input, { quoteId = null, bookingId = null, username = null, businessContext = DEFAULT_BUSINESS_CONTEXT } = {}) {
     const result = await db.query(
         `INSERT INTO graduation_child_packs
             (name, institution_label, school_name, class_label, group_label, diploma_context_text,
-             wording_mode, note, graduation_quote_id, booking_id, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11)
+             wording_mode, note, graduation_quote_id, booking_id, created_by, business_context)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12)
          RETURNING *`,
-        [...packPayloadToDb(input), quoteId, bookingId, username || null]
+        [...packPayloadToDb(input), quoteId, bookingId, username || null, businessContext]
     );
     return result.rows[0];
 }
 
-async function updateChildPack(db, id, input) {
+async function updateChildPack(db, id, input, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const result = await db.query(
         `UPDATE graduation_child_packs SET
             name = $1,
@@ -314,29 +458,29 @@ async function updateChildPack(db, id, input) {
             wording_mode = $7,
             note = $8,
             updated_at = NOW()
-         WHERE id = $9
+         WHERE id = $9 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $10
          RETURNING *`,
-        [...packPayloadToDb(input), id]
+        [...packPayloadToDb(input), id, businessContext]
     );
     return result.rows[0] || null;
 }
 
-async function linkPackToQuote(db, packId, quoteId, { bookingId = null } = {}) {
-    const pack = await getChildPackById(db, packId);
+async function linkPackToQuote(db, packId, quoteId, { bookingId = null, businessContext = DEFAULT_BUSINESS_CONTEXT } = {}) {
+    const pack = await getChildPackById(db, packId, businessContext);
     if (!pack) return null;
     await db.query(
         `UPDATE graduation_quotes
          SET child_pack_id = $1, diploma_context_locked = true, updated_at = NOW()
-         WHERE id = $2`,
-        [packId, quoteId]
+         WHERE id = $2 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+        [packId, quoteId, businessContext]
     );
     await db.query(
         `UPDATE graduation_child_packs
          SET graduation_quote_id = COALESCE(graduation_quote_id, $1),
              booking_id = COALESCE($2, booking_id),
              updated_at = NOW()
-         WHERE id = $3`,
-        [quoteId, bookingId, packId]
+         WHERE id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+        [quoteId, bookingId, packId, businessContext]
     );
     await db.query(
         `UPDATE graduation_children
@@ -345,54 +489,60 @@ async function linkPackToQuote(db, packId, quoteId, { bookingId = null } = {}) {
              source_mode = CASE WHEN child_pack_id IS NULL THEN 'pack_load' ELSE source_mode END,
              updated_at = NOW()
          WHERE graduation_quote_id = $3
-           AND child_pack_id IS NULL`,
-        [packId, bookingId, quoteId]
+           AND child_pack_id IS NULL
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+        [packId, bookingId, quoteId, businessContext]
     );
     await db.query(
         `UPDATE graduation_children
          SET graduation_quote_id = COALESCE(graduation_quote_id, $1),
              booking_id = COALESCE($2, booking_id),
              updated_at = NOW()
-         WHERE child_pack_id = $3`,
-        [quoteId, bookingId, packId]
+         WHERE child_pack_id = $3
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+        [quoteId, bookingId, packId, businessContext]
     );
-    return getChildPackById(db, packId);
+    return getChildPackById(db, packId, businessContext);
 }
 
-async function ensureQuoteChildPack(db, quote, body = {}, username = null) {
+async function ensureQuoteChildPack(db, quote, body = {}, username = null, businessContext = quote?.business_context || DEFAULT_BUSINESS_CONTEXT) {
     if (!quote) return null;
     const explicitPackId = body.childPackId || body.child_pack_id || quote.child_pack_id;
     if (explicitPackId) {
-        const linked = await linkPackToQuote(db, explicitPackId, quote.id, { bookingId: quote.booking_id || null });
+        const linked = await linkPackToQuote(db, explicitPackId, quote.id, { bookingId: quote.booking_id || null, businessContext });
         if (linked) return linked;
     }
     const input = normalizeChildPackInput(body, { name: quote.quote_number || `Graduation ${quote.id}` });
     const created = await createChildPack(db, input, {
         quoteId: quote.id,
         bookingId: quote.booking_id || null,
-        username
+        username,
+        businessContext
     });
     await db.query(
         `UPDATE graduation_quotes
          SET child_pack_id = $1, diploma_context_locked = true, updated_at = NOW()
-         WHERE id = $2`,
-        [created.id, quote.id]
+         WHERE id = $2 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+        [created.id, quote.id, businessContext]
     );
-    return getChildPackById(db, created.id);
+    return getChildPackById(db, created.id, businessContext);
 }
 
-async function loadQuoteChildPack(db, quote) {
+async function loadQuoteChildPack(db, quote, businessContext = quote?.business_context || DEFAULT_BUSINESS_CONTEXT) {
     if (!quote) return null;
-    if (quote.child_pack_id) return getChildPackById(db, quote.child_pack_id);
+    if (quote.child_pack_id) return getChildPackById(db, quote.child_pack_id, businessContext);
+    const params = [quote.id];
+    const contextCondition = pushGraduationContextCondition(params, businessContext, 'p');
     const existing = await db.query(
         `SELECT p.*, COUNT(c.id)::int AS children_count
          FROM graduation_child_packs p
          LEFT JOIN graduation_children c ON c.child_pack_id = p.id
-         WHERE p.graduation_quote_id = $1
+            AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}')
+         WHERE p.graduation_quote_id = $1 AND ${contextCondition}
          GROUP BY p.id
          ORDER BY p.updated_at DESC, p.id DESC
          LIMIT 1`,
-        [quote.id]
+        params
     );
     return existing.rows[0] || null;
 }
@@ -421,6 +571,7 @@ function mapQuoteRow(row, childPack = null) {
         serviceTiming: row.service_timing || [],
         childPackId: row.child_pack_id,
         diplomaContextLocked: row.diploma_context_locked,
+        businessContext: row.business_context || DEFAULT_BUSINESS_CONTEXT,
         childPack: pack,
         diplomaContextText: childPackContextText(pack || childPack),
         diplomaWordingMode: pack?.wordingMode || childPack?.wording_mode || 'standard',
@@ -431,7 +582,7 @@ function mapQuoteRow(row, childPack = null) {
     };
 }
 
-function buildGraduationQuoteUpdate(body, id) {
+function buildGraduationQuoteUpdate(body, id, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const input = body && typeof body === 'object' ? body : {};
     const assignments = [];
     const values = [];
@@ -461,16 +612,108 @@ function buildGraduationQuoteUpdate(body, id) {
 
     assignments.push('updated_at = NOW()');
     values.push(id);
+    values.push(businessContext || DEFAULT_BUSINESS_CONTEXT);
     return {
-        query: `UPDATE graduation_quotes SET ${assignments.join(', ')} WHERE id = $${values.length} RETURNING *`,
+        query: `UPDATE graduation_quotes SET ${assignments.join(', ')} WHERE id = $${values.length - 1} AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $${values.length} RETURNING *`,
         values
     };
+}
+
+function graduationServiceIdsFromPayload(selectedServices) {
+    return [...new Set((Array.isArray(selectedServices) ? selectedServices : [])
+        .map(item => Number(item?.serviceId ?? item?.service_id ?? item?.id ?? item))
+        .filter(Number.isInteger))];
+}
+
+async function requireGraduationPackageReference(packageId, businessContext, res) {
+    if (!packageId) return true;
+    const result = await pool.query(
+        `SELECT id FROM graduation_packages
+         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+        [packageId, businessContext]
+    );
+    if (result.rows.length > 0) return true;
+    res.status(400).json({
+        success: false,
+        error: 'Package is not available in this business context',
+        code: 'graduation_package_context_mismatch'
+    });
+    return false;
+}
+
+async function requireGraduationServiceReferences(selectedServices, businessContext, res) {
+    const serviceIds = graduationServiceIdsFromPayload(selectedServices);
+    if (!serviceIds.length) return true;
+    const result = await pool.query(
+        `SELECT id FROM graduation_services
+         WHERE id = ANY($1::int[])
+           AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+        [serviceIds, businessContext]
+    );
+    const found = new Set(result.rows.map(row => Number(row.id)));
+    const missing = serviceIds.filter(id => !found.has(id));
+    if (missing.length === 0) return true;
+    res.status(400).json({
+        success: false,
+        error: 'One or more services are not available in this business context',
+        code: 'graduation_service_context_mismatch',
+        details: { serviceIds: missing }
+    });
+    return false;
+}
+
+async function requireGraduationCustomerReference(customerId, businessContext, res) {
+    if (!customerId) return true;
+    const result = await pool.query(
+        `SELECT id FROM customers
+         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         LIMIT 1`,
+        [customerId, businessContext]
+    );
+    if (result.rows.length > 0) return true;
+    res.status(400).json({
+        success: false,
+        error: 'Customer is not available in this business context',
+        code: 'graduation_customer_context_mismatch'
+    });
+    return false;
+}
+
+async function requireGraduationBookingReference(bookingId, businessContext, res) {
+    if (!bookingId) return true;
+    const result = await pool.query(
+        `SELECT id FROM bookings
+         WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+         LIMIT 1`,
+        [bookingId, businessContext]
+    );
+    if (result.rows.length > 0) return true;
+    res.status(400).json({
+        success: false,
+        error: 'Booking is not available in this business context',
+        code: 'graduation_booking_context_mismatch'
+    });
+    return false;
+}
+
+async function requireGraduationQuoteReferences(body, businessContext, res) {
+    const input = body && typeof body === 'object' ? body : {};
+    if (!await requireGraduationPackageReference(input.packageId || input.package_id || null, businessContext, res)) return false;
+    if (!await requireGraduationServiceReferences(input.selectedServices || input.selected_services || [], businessContext, res)) return false;
+    if (!await requireGraduationCustomerReference(input.customerId || input.customer_id || null, businessContext, res)) return false;
+    return true;
 }
 
 // GET /api/graduation/settings — глобальні параметри
 router.get('/settings', async (req, res) => {
     try {
-        const result = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
+        const businessContext = graduationBusinessContext(req);
+        const result = await pool.query(
+            `SELECT * FROM graduation_settings
+             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             ORDER BY key`,
+            [businessContext]
+        );
         const settings = {};
         for (const row of result.rows) {
             settings[row.key] = { value: row.value, label: row.label };
@@ -485,6 +728,7 @@ router.get('/settings', async (req, res) => {
 // PUT /api/graduation/settings — оновити параметри (director/creator)
 router.put('/settings', requireRole('creator', 'director'), requireAction('manage_settings'), requireAction('view_revenue'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { settings } = req.body;
         if (!settings || typeof settings !== 'object') {
             return res.status(400).json({ error: 'settings object required' });
@@ -496,8 +740,10 @@ router.put('/settings', requireRole('creator', 'director'), requireAction('manag
             for (const [key, value] of Object.entries(settings)) {
                 if (typeof value !== 'number' || isNaN(value)) continue;
                 await client.query(
-                    'UPDATE graduation_settings SET value = $1, updated_at = NOW() WHERE key = $2',
-                    [value, key]
+                    `UPDATE graduation_settings
+                     SET value = $1, updated_at = NOW()
+                     WHERE key = $2 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+                    [value, key, businessContext]
                 );
             }
             await client.query('COMMIT');
@@ -514,14 +760,19 @@ router.put('/settings', requireRole('creator', 'director'), requireAction('manag
         for (const [key, value] of Object.entries(settings)) {
             if (key === 'coefficient' || key === 'markup') {
                 try {
-                    await onSettingsChanged(key, value, req.user.username);
+                    await onSettingsChanged(key, value, req.user.username, businessContext);
                 } catch (e) {
                     log.error('onSettingsChanged error', e);
                 }
             }
         }
 
-        const result = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
+        const result = await pool.query(
+            `SELECT * FROM graduation_settings
+             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             ORDER BY key`,
+            [businessContext]
+        );
         const updated = {};
         for (const row of result.rows) {
             updated[row.key] = { value: row.value, label: row.label };
@@ -536,12 +787,13 @@ router.put('/settings', requireRole('creator', 'director'), requireAction('manag
 // GET /api/graduation/services — каталог послуг
 router.get('/services', async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const activeOnly = req.query.active !== 'false';
         const query = activeOnly
-            ? 'SELECT * FROM graduation_services WHERE is_active = true ORDER BY sort_order'
-            : 'SELECT * FROM graduation_services ORDER BY sort_order';
-        const result = await pool.query(query);
-        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings();
+            ? `SELECT * FROM graduation_services WHERE is_active = true AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ORDER BY sort_order`
+            : `SELECT * FROM graduation_services WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1 ORDER BY sort_order`;
+        const result = await pool.query(query, [businessContext]);
+        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings(businessContext);
         res.json(result.rows.map(row => mapServiceRowForAccess(row, req, pricingSettings)));
     } catch (err) {
         log.error('List services error', err);
@@ -552,8 +804,13 @@ router.get('/services', async (req, res) => {
 // PUT /api/graduation/services/:id — оновити послугу (director/creator)
 router.put('/services/:id', requireRole('creator', 'director'), requireAction('manage_settings'), requireRevenueForFinancialMutation, async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { id } = req.params;
-        const existing = await pool.query('SELECT id FROM graduation_services WHERE id = $1', [id]);
+        const existing = await pool.query(
+            `SELECT id FROM graduation_services
+             WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [id, businessContext]
+        );
         if (existing.rows.length === 0) {
             return res.status(404).json({ error: 'Service not found' });
         }
@@ -586,14 +843,14 @@ router.put('/services/:id', requireRole('creator', 'director'), requireAction('m
                 sort_order = COALESCE($23, sort_order),
                 is_active = COALESCE($24, is_active),
                 updated_at = NOW()
-            WHERE id = $25 RETURNING *`,
+            WHERE id = $25 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $26 RETURNING *`,
             [
                 b.name, b.description, b.durationMin, b.pricePark, b.pricePerChild,
                 b.priceType, b.costHost, b.costCostume, b.costBalloonsPerKid,
                 b.costAquagrimPerKid, b.costPrintPerKid, b.costDesignPerKid,
                 b.costDelivery, b.costIce, b.costOther, b.costBox, b.costMarkers,
                 b.costSolution, b.costCleaning, b.costDrinksPerKid, b.costType,
-                b.category, b.sortOrder, b.isActive, id
+                b.category, b.sortOrder, b.isActive, id, businessContext
             ]
         );
 
@@ -603,13 +860,13 @@ router.put('/services/:id', requireRole('creator', 'director'), requireAction('m
         // Catalog auto-task: if price changed, create task for affected packages
         if (b.pricePerChild !== undefined || b.pricePark !== undefined) {
             try {
-                await onServicePriceChanged(id, req.user.username);
+                await onServicePriceChanged(id, req.user.username, businessContext);
             } catch (e) {
                 log.error('onServicePriceChanged error', e);
             }
         }
 
-        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings();
+        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings(businessContext);
         res.json(mapServiceRowForAccess(updated, req, pricingSettings));
     } catch (err) {
         log.error('Update service error', err);
@@ -620,8 +877,12 @@ router.put('/services/:id', requireRole('creator', 'director'), requireAction('m
 // GET /api/graduation/packages — готові пакети (з цінами для каталогу)
 router.get('/packages', async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const packages = await pool.query(
-            'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
+            `SELECT * FROM graduation_packages
+             WHERE is_active = true AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             ORDER BY sort_order`,
+            [businessContext]
         );
         const items = await pool.query(
             `SELECT pi.package_id, pi.service_id, pi.override_price,
@@ -630,11 +891,15 @@ router.get('/packages', async (req, res) => {
                     s.sort_order, s.timeline_visible, s.operation_kind
              FROM graduation_package_items pi
              JOIN graduation_services s ON s.id = pi.service_id
+             WHERE COALESCE(pi.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+               AND COALESCE(s.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
              ORDER BY s.sort_order`
+            ,
+            [businessContext]
         );
 
         const itemMap = {};
-        const pricingSettings = await loadGraduationPricingSettings();
+        const pricingSettings = await loadGraduationPricingSettings(businessContext);
         for (const item of items.rows) {
             if (!itemMap[item.package_id]) itemMap[item.package_id] = [];
             const catalogPrice = item.override_price || calculateCatalogPrice(item, pricingSettings);
@@ -666,6 +931,7 @@ router.get('/packages', async (req, res) => {
                 sortOrder: p.sort_order,
                 minKids: p.min_kids || 7,
                 maxKids: p.max_kids || 50,
+                businessContext: p.business_context || DEFAULT_BUSINESS_CONTEXT,
                 services,
                 totalPerChild,
                 totalDuration
@@ -682,8 +948,13 @@ router.get('/packages', async (req, res) => {
 // GET /api/graduation/packages/:slug — пакет з деталями
 router.get('/packages/:slug', async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { slug } = req.params;
-        const pkg = await pool.query('SELECT * FROM graduation_packages WHERE slug = $1', [slug]);
+        const pkg = await pool.query(
+            `SELECT * FROM graduation_packages
+             WHERE slug = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [slug, businessContext]
+        );
         if (pkg.rows.length === 0) {
             return res.status(404).json({ error: 'Package not found' });
         }
@@ -693,17 +964,20 @@ router.get('/packages/:slug', async (req, res) => {
              FROM graduation_package_items pi
              JOIN graduation_services s ON s.id = pi.service_id
              WHERE pi.package_id = $1
+               AND COALESCE(pi.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+               AND COALESCE(s.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              ORDER BY s.sort_order`,
-            [pkg.rows[0].id]
+            [pkg.rows[0].id, businessContext]
         );
 
-        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings();
+        const pricingSettings = canViewGraduationRevenue(req) ? null : await loadGraduationPricingSettings(businessContext);
         res.json({
             id: pkg.rows[0].id,
             name: pkg.rows[0].name,
             slug: pkg.rows[0].slug,
             description: pkg.rows[0].description || '',
             imageUrl: pkg.rows[0].image_url || null,
+            businessContext: pkg.rows[0].business_context || DEFAULT_BUSINESS_CONTEXT,
             services: items.rows.map(r => ({
                 ...mapServiceRowForAccess(r, req, pricingSettings),
                 overridePrice: r.override_price
@@ -718,6 +992,7 @@ router.get('/packages/:slug', async (req, res) => {
 // POST /api/graduation/quotes — створити конфігурацію
 router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('view_revenue'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { kidsCount, discountPercent, selectedServices, packageId, totalPerChild,
                 totalAll, totalCost, totalProfit, profitMargin, notes, customerId,
                 eventDate, eventStartTime, eventEndTime, eventTimeMode, serviceTiming } = req.body;
@@ -725,12 +1000,14 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
         if (!kidsCount || kidsCount < 1) {
             return res.status(400).json({ error: 'kidsCount is required (min 1)' });
         }
+        if (!await requireGraduationQuoteReferences(req.body, businessContext, res)) return;
 
         // Generate quote number: GRAD-YYYY-NNN
         const year = new Date().getFullYear();
         const countResult = await pool.query(
-            "SELECT COUNT(*) FROM graduation_quotes WHERE quote_number LIKE $1",
-            [`GRAD-${year}-%`]
+            `SELECT COUNT(*) FROM graduation_quotes
+             WHERE quote_number LIKE $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+            [`GRAD-${year}-%`, businessContext]
         );
         const seq = parseInt(countResult.rows[0].count) + 1;
         const quoteNumber = `GRAD-${year}-${String(seq).padStart(3, '0')}`;
@@ -740,20 +1017,20 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
                 (quote_number, customer_id, kids_count, discount_percent, selected_services,
                  package_id, total_per_child, total_all, total_cost, total_profit,
                  profit_margin, notes, created_by, event_date, event_start_time, event_end_time,
-                 event_time_mode, service_timing)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18) RETURNING *`,
+                 event_time_mode, service_timing, business_context)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19) RETURNING *`,
             [quoteNumber, customerId || null, kidsCount, discountPercent || 0,
              JSON.stringify(selectedServices || []), packageId || null,
              totalPerChild || 0, totalAll || 0, totalCost || 0, totalProfit || 0,
              profitMargin || 0, notes || null, req.user.username, eventDate || null,
              eventStartTime || null, eventEndTime || null,
              ['manual', 'preset', 'floating'].includes(eventTimeMode) ? eventTimeMode : 'floating',
-             JSON.stringify(Array.isArray(serviceTiming) ? serviceTiming : [])]
+             JSON.stringify(Array.isArray(serviceTiming) ? serviceTiming : []), businessContext]
         );
 
-        const pack = await ensureQuoteChildPack(pool, result.rows[0], req.body || {}, req.user.username);
-        const quoteWithPack = await getQuoteRow(pool, result.rows[0].id);
-        const opsAutomation = await syncGraduationOpsSafe(result.rows[0].id, req.user, 'quote_create');
+        const pack = await ensureQuoteChildPack(pool, result.rows[0], req.body || {}, req.user.username, businessContext);
+        const quoteWithPack = await getQuoteRow(pool, result.rows[0].id, businessContext);
+        const opsAutomation = await syncGraduationOpsSafe(result.rows[0].id, req.user, 'quote_create', businessContext);
 
         log.info(`Quote ${quoteNumber} created by ${req.user.username}`);
         res.status(201).json({
@@ -769,11 +1046,12 @@ router.post('/quotes', requireRole('creator', 'director', 'senior_manager', 'man
 // GET /api/graduation/quotes — список збережених конфігурацій
 router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { status } = req.query;
-        let query = 'SELECT * FROM graduation_quotes';
-        const params = [];
+        let query = `SELECT * FROM graduation_quotes WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`;
+        const params = [businessContext];
         if (status) {
-            query += ' WHERE status = $1';
+            query += ` AND status = $${params.length + 1}`;
             params.push(status);
         }
         query += ' ORDER BY created_at DESC';
@@ -785,9 +1063,11 @@ router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'mana
                 `SELECT p.*, COUNT(c.id)::int AS children_count
                  FROM graduation_child_packs p
                  LEFT JOIN graduation_children c ON c.child_pack_id = p.id
+                    AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
                  WHERE p.id = ANY($1::int[])
+                   AND COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
                  GROUP BY p.id`,
-                [packIds]
+                [packIds, businessContext]
             );
             packsById = new Map(packs.rows.map(row => [String(row.id), row]));
         }
@@ -804,13 +1084,14 @@ router.get('/quotes', requireRole('creator', 'director', 'senior_manager', 'mana
 // GET /api/graduation/quotes/:id — деталі конфігурації
 router.get('/quotes/:id', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { id } = req.params;
-        const result = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
-        if (result.rows.length === 0) {
+        const quote = await getQuoteRow(pool, id, businessContext);
+        if (!quote) {
             return res.status(404).json({ error: 'Quote not found' });
         }
-        const pack = await loadQuoteChildPack(pool, result.rows[0]);
-        res.json(shapeGraduationRevenuePayload(mapQuoteRow(result.rows[0], pack), req));
+        const pack = await loadQuoteChildPack(pool, quote, businessContext);
+        res.json(shapeGraduationRevenuePayload(mapQuoteRow(quote, pack), req));
     } catch (err) {
         log.error('Get quote error', err);
         res.status(500).json({ error: 'Internal server error' });
@@ -820,13 +1101,15 @@ router.get('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
 // PUT /api/graduation/quotes/:id — оновити конфігурацію
 router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', 'manager'), requireQuoteRevenueForFinancialMutation, async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { id } = req.params;
-        const existing = await pool.query('SELECT id FROM graduation_quotes WHERE id = $1', [id]);
-        if (existing.rows.length === 0) {
+        const existing = await getQuoteRow(pool, id, businessContext);
+        if (!existing) {
             return res.status(404).json({ error: 'Quote not found' });
         }
 
         const b = req.body || {};
+        if (!await requireGraduationQuoteReferences(b, businessContext, res)) return;
         if (Object.prototype.hasOwnProperty.call(b, 'eventTimeMode')
             && b.eventTimeMode !== null
             && !['manual', 'preset', 'floating'].includes(b.eventTimeMode)) {
@@ -837,17 +1120,17 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
             && !Array.isArray(b.serviceTiming)) {
             return res.status(400).json({ error: 'serviceTiming must be an array or null' });
         }
-        const update = buildGraduationQuoteUpdate(b, id);
+        const update = buildGraduationQuoteUpdate(b, id, businessContext);
         const result = await pool.query(update.query, update.values);
 
         let pack = null;
         if (b.childPack || b.childPackId || b.child_pack_id || b.diplomaContextText || b.wordingMode) {
-            pack = await ensureQuoteChildPack(pool, result.rows[0], b, req.user.username);
+            pack = await ensureQuoteChildPack(pool, result.rows[0], b, req.user.username, businessContext);
         } else {
-            pack = await loadQuoteChildPack(pool, result.rows[0]);
+            pack = await loadQuoteChildPack(pool, result.rows[0], businessContext);
         }
 
-        const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_update');
+        const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_update', businessContext);
         log.info(`Quote ${id} updated by ${req.user.username}`);
         res.json(shapeGraduationRevenuePayload({
             ...mapQuoteRow(result.rows[0], pack),
@@ -862,6 +1145,7 @@ router.put('/quotes/:id', requireRole('creator', 'director', 'senior_manager', '
 // PATCH /api/graduation/quotes/:id/status — змінити статус
 router.patch('/quotes/:id/status', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { id } = req.params;
         const { status } = req.body;
         const validStatuses = ['draft', 'sent', 'approved', 'booked', 'cancelled'];
@@ -870,15 +1154,18 @@ router.patch('/quotes/:id/status', requireRole('creator', 'director', 'senior_ma
         }
 
         const result = await pool.query(
-            'UPDATE graduation_quotes SET status = $1, updated_at = NOW() WHERE id = $2 RETURNING *',
-            [status, id]
+            `UPDATE graduation_quotes
+             SET status = $1, updated_at = NOW()
+             WHERE id = $2 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
+             RETURNING *`,
+            [status, id, businessContext]
         );
         if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Quote not found' });
         }
 
         log.info(`Quote ${id} status → ${status} by ${req.user.username}`);
-        const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_status');
+        const opsAutomation = await syncGraduationOpsSafe(id, req.user, 'quote_status', businessContext);
         res.json(shapeGraduationRevenuePayload({
             ...mapQuoteRow(result.rows[0]),
             opsAutomation
@@ -892,13 +1179,22 @@ router.patch('/quotes/:id/status', requireRole('creator', 'director', 'senior_ma
 // POST /api/graduation/quotes/:id/booking — створити бронювання
 router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('view_revenue'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { id } = req.params;
-        const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
-        if (quote.rows.length === 0) {
+        const q = await getQuoteRow(pool, id, businessContext);
+        if (!q) {
             return res.status(404).json({ error: 'Quote not found' });
         }
+        const bookingConversion = graduationBookingConversionStatus(businessContext);
+        if (!bookingConversion.supported) {
+            return res.status(409).json({
+                success: false,
+                error: bookingConversion.error,
+                code: bookingConversion.code,
+                businessContext: bookingConversion.businessContext
+            });
+        }
 
-        const q = quote.rows[0];
         if (q.booking_id) {
             return res.status(400).json({ error: 'Quote already has a booking' });
         }
@@ -916,7 +1212,7 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         );
         const bkSeq = parseInt(bkCount.rows[0].count) + 1;
         const bookingId = `BK-${year}-${String(bkSeq).padStart(4, '0')}`;
-        const pack = await ensureQuoteChildPack(pool, q, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, q, {}, req.user.username, businessContext);
         const diplomaContextText = childPackContextText(pack);
         const normalizedServiceTiming = Array.isArray(serviceTiming) ? serviceTiming : (q.service_timing || []);
         const graduationTimelineItems = await buildGraduationTimelineItemsForQuote(pool, q, normalizedServiceTiming);
@@ -925,12 +1221,12 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         const componentDuration = graduationSegmentExtent(graduationSegments) || graduationTimelineItems.reduce((sum, item) => sum + (Number(item.durationMin || 0) || 0), 0);
         const parentDuration = Math.max(15, explicitDuration, componentDuration);
         const workingHoursValidation = validateBookingWithinWorkingHours({
-            businessContext: 'event_genix',
+            businessContext,
             date,
             time,
             duration: parentDuration
         }, {
-            businessContext: 'event_genix'
+            businessContext
         });
         if (!workingHoursValidation.valid) {
             return res.status(400).json({
@@ -944,7 +1240,11 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
         // Get package name if available
         let programName = 'Індивідуальний випускний';
         if (q.package_id) {
-            const pkg = await pool.query('SELECT name FROM graduation_packages WHERE id = $1', [q.package_id]);
+            const pkg = await pool.query(
+                `SELECT name FROM graduation_packages
+                 WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+                [q.package_id, businessContext]
+            );
             if (pkg.rows.length > 0) programName = `Випускний: ${pkg.rows[0].name}`;
         }
 
@@ -955,14 +1255,14 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
                 room: room || null,
                 roomResourceId: req.body.roomResourceId || req.body.room_resource_id || null
             };
-            await canonicalizeBookingRoomResource(client, 'event_genix', roomIdentity, { required: true });
+            await canonicalizeBookingRoomResource(client, businessContext, roomIdentity, { required: true });
 
             await client.query(
                 `INSERT INTO bookings (id, business_context, date, time, line_id, room, room_resource_id, program_name, kids_count,
                     price, category, duration, status, extra_data, created_by)
-                 VALUES ($1, 'event_genix', $2, $3, $4, $5, $6, $7, $8, $9, 'graduation', $10, 'confirmed',
-                    $11, $12)`,
-                [bookingId, date, time, lineId || 'graduation', roomIdentity.room, roomIdentity.roomResourceId, programName, q.kids_count,
+                 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, 'graduation', $11, 'confirmed',
+                    $12, $13)`,
+                [bookingId, businessContext, date, time, lineId || 'graduation', roomIdentity.room, roomIdentity.roomResourceId, programName, q.kids_count,
                  Math.round(q.total_all), parentDuration, JSON.stringify({
                      quoteId: q.id,
                      quoteNumber: q.quote_number,
@@ -984,25 +1284,31 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
             );
 
             await client.query(
-                'UPDATE graduation_quotes SET status = $1, booking_id = $2, updated_at = NOW() WHERE id = $3',
-                ['booked', bookingId, id]
+                `UPDATE graduation_quotes
+                 SET status = $1, booking_id = $2, updated_at = NOW()
+                 WHERE id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+                ['booked', bookingId, id, businessContext]
             );
 
             if (pack?.id) {
                 await client.query(
-                    'UPDATE graduation_child_packs SET booking_id = $1, graduation_quote_id = COALESCE(graduation_quote_id, $2), updated_at = NOW() WHERE id = $3',
-                    [bookingId, q.id, pack.id]
+                    `UPDATE graduation_child_packs
+                     SET booking_id = $1, graduation_quote_id = COALESCE(graduation_quote_id, $2), updated_at = NOW()
+                     WHERE id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+                    [bookingId, q.id, pack.id, businessContext]
                 );
                 await client.query(
-                    'UPDATE graduation_children SET booking_id = $1, graduation_quote_id = COALESCE(graduation_quote_id, $2), updated_at = NOW() WHERE child_pack_id = $3',
-                    [bookingId, q.id, pack.id]
+                    `UPDATE graduation_children
+                     SET booking_id = $1, graduation_quote_id = COALESCE(graduation_quote_id, $2), updated_at = NOW()
+                     WHERE child_pack_id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4`,
+                    [bookingId, q.id, pack.id, businessContext]
                 );
             }
 
             await client.query('COMMIT');
 
             log.info(`Booking ${bookingId} created from quote ${q.quote_number} by ${req.user.username}`);
-            const opsAutomation = await syncGraduationOpsSafe(q.id, req.user, 'quote_booking');
+            const opsAutomation = await syncGraduationOpsSafe(q.id, req.user, 'quote_booking', businessContext);
             res.status(201).json({ bookingId, quoteNumber: q.quote_number, opsAutomation });
         } catch (e) {
             await client.query('ROLLBACK');
@@ -1024,9 +1330,12 @@ router.post('/quotes/:id/booking', requireRole('creator', 'director', 'senior_ma
     }
 });
 
-async function ensureDefaultDiplomaTemplate() {
+async function ensureDefaultDiplomaTemplate(businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const existing = await pool.query(
-        'SELECT * FROM graduation_diploma_templates WHERE is_active = true ORDER BY is_default DESC, id ASC LIMIT 1'
+        `SELECT * FROM graduation_diploma_templates
+         WHERE is_active = true AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+         ORDER BY is_default DESC, id ASC LIMIT 1`,
+        [businessContext]
     );
     if (existing.rows.length > 0) return existing.rows[0];
 
@@ -1034,50 +1343,52 @@ async function ensureDefaultDiplomaTemplate() {
     const inserted = await pool.query(
         `INSERT INTO graduation_diploma_templates
             (code, name, is_default, title_text, subtitle_text, footer_text, principal_name,
-             principal_role, palette_json, layout_json, artwork_image_url, is_active)
-         VALUES ($1,$2,true,$3,$4,$5,$6,$7,$8,$9,$10,true)
-         ON CONFLICT (code) DO UPDATE SET is_active = true, is_default = true, updated_at = NOW()
+             principal_role, palette_json, layout_json, artwork_image_url, is_active, business_context)
+         VALUES ($1,$2,true,$3,$4,$5,$6,$7,$8,$9,$10,true,$11)
+         ON CONFLICT (business_context, code) DO UPDATE SET is_active = true, is_default = true, updated_at = NOW()
          RETURNING *`,
         [
             t.code, t.name, t.titleText, t.subtitleText, t.footerText, t.principalName,
-            t.principalRole, JSON.stringify(t.palette), JSON.stringify(t.layout), t.artworkImageUrl
+            t.principalRole, JSON.stringify(t.palette), JSON.stringify(t.layout), t.artworkImageUrl, businessContext
         ]
     );
     return inserted.rows[0];
 }
 
-async function getGraduationQuoteOr404(id, res) {
-    const result = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
-    if (result.rows.length === 0) {
+async function getGraduationQuoteOr404(id, res, businessContext = DEFAULT_BUSINESS_CONTEXT) {
+    const quote = await getQuoteRow(pool, id, businessContext);
+    if (!quote) {
         res.status(404).json({ error: 'Quote not found' });
         return null;
     }
-    return result.rows[0];
+    return quote;
 }
 
-async function loadDiplomaChildren(quoteId, childPackId = null) {
+async function loadDiplomaChildren(quoteId, childPackId = null, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const result = childPackId
         ? await pool.query(
             `SELECT * FROM graduation_children
-             WHERE graduation_quote_id = $1 OR child_pack_id = $2
+             WHERE (graduation_quote_id = $1 OR child_pack_id = $2)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
              ORDER BY sort_order ASC, id ASC`,
-            [quoteId, childPackId]
+            [quoteId, childPackId, businessContext]
         )
         : await pool.query(
             `SELECT * FROM graduation_children
              WHERE graduation_quote_id = $1
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              ORDER BY sort_order ASC, id ASC`,
-            [quoteId]
+            [quoteId, businessContext]
         );
     return result.rows.map(mapChildRow);
 }
 
-async function markDiplomaExport(quoteId, templateId, exportKind, childrenCount, username) {
+async function markDiplomaExport(quoteId, templateId, exportKind, childrenCount, username, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     await pool.query(
         `INSERT INTO graduation_diploma_exports
-            (graduation_quote_id, template_id, export_kind, children_count, created_by)
-         VALUES ($1,$2,$3,$4,$5)`,
-        [quoteId, templateId || null, exportKind, childrenCount || 0, username || null]
+            (graduation_quote_id, template_id, export_kind, children_count, created_by, business_context)
+         VALUES ($1,$2,$3,$4,$5,$6)`,
+        [quoteId, templateId || null, exportKind, childrenCount || 0, username || null, businessContext]
     );
 }
 
@@ -1093,20 +1404,23 @@ function safeExportFilename(value, fallback = 'graduation_diplomas') {
 // GET /api/graduation/child-packs - reusable graduation child lists
 router.get('/child-packs', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { quoteId, includeArchived } = req.query;
         const where = [];
-        const params = [];
+        const params = [businessContext];
+        where.push(`COALESCE(p.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`);
         if (!['1', 'true', 'yes'].includes(String(includeArchived || '').toLowerCase())) {
             where.push('p.is_archived = false');
         }
         if (quoteId) {
             params.push(quoteId);
-            where.push(`(p.graduation_quote_id = $${params.length} OR p.id = (SELECT child_pack_id FROM graduation_quotes WHERE id = $${params.length}))`);
+            where.push(`(p.graduation_quote_id = $${params.length} OR p.id = (SELECT child_pack_id FROM graduation_quotes WHERE id = $${params.length} AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1))`);
         }
         const result = await pool.query(
             `SELECT p.*, COUNT(c.id)::int AS children_count
              FROM graduation_child_packs p
              LEFT JOIN graduation_children c ON c.child_pack_id = p.id
+                AND COALESCE(c.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
              ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
              GROUP BY p.id
              ORDER BY p.updated_at DESC, p.id DESC`,
@@ -1121,22 +1435,25 @@ router.get('/child-packs', requireRole('creator', 'director', 'senior_manager', 
 
 router.post('/child-packs', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const input = normalizeChildPackInput(req.body || {});
         const quoteId = req.body?.quoteId || req.body?.graduationQuoteId || req.body?.graduation_quote_id || null;
         const bookingId = req.body?.bookingId || req.body?.booking_id || null;
         let quote = null;
         if (quoteId) {
-            quote = await getQuoteRow(pool, quoteId);
+            quote = await getQuoteRow(pool, quoteId, businessContext);
             if (!quote) return res.status(404).json({ error: 'Quote not found' });
         }
+        if (!await requireGraduationBookingReference(bookingId, businessContext, res)) return;
         const pack = await createChildPack(pool, input, {
             quoteId: quote?.id || null,
             bookingId: bookingId || quote?.booking_id || null,
-            username: req.user.username
+            username: req.user.username,
+            businessContext
         });
-        if (quote) await linkPackToQuote(pool, pack.id, quote.id, { bookingId: quote.booking_id || null });
-        const fresh = await getChildPackById(pool, pack.id);
-        const opsAutomation = quote ? await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_create') : null;
+        if (quote) await linkPackToQuote(pool, pack.id, quote.id, { bookingId: quote.booking_id || null, businessContext });
+        const fresh = await getChildPackById(pool, pack.id, businessContext);
+        const opsAutomation = quote ? await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_create', businessContext) : null;
         res.status(201).json({ ...mapChildPackRow(fresh || pack), opsAutomation });
     } catch (err) {
         log.error('Create graduation child pack error', err);
@@ -1146,13 +1463,15 @@ router.post('/child-packs', requireRole('creator', 'director', 'senior_manager',
 
 router.get('/child-packs/:packId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const pack = await getChildPackById(pool, req.params.packId);
+        const businessContext = graduationBusinessContext(req);
+        const pack = await getChildPackById(pool, req.params.packId, businessContext);
         if (!pack) return res.status(404).json({ error: 'Child pack not found' });
         const rows = await pool.query(
             `SELECT * FROM graduation_children
              WHERE child_pack_id = $1
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              ORDER BY sort_order ASC, id ASC`,
-            [req.params.packId]
+            [req.params.packId, businessContext]
         );
         res.json({ pack: mapChildPackRow(pack), children: rows.rows.map(mapChildRow) });
     } catch (err) {
@@ -1163,12 +1482,13 @@ router.get('/child-packs/:packId', requireRole('creator', 'director', 'senior_ma
 
 router.put('/child-packs/:packId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const current = await getChildPackById(pool, req.params.packId);
+        const businessContext = graduationBusinessContext(req);
+        const current = await getChildPackById(pool, req.params.packId, businessContext);
         if (!current) return res.status(404).json({ error: 'Child pack not found' });
         const input = normalizeChildPackInput(req.body || {}, { name: current.name });
-        const updated = await updateChildPack(pool, req.params.packId, input);
+        const updated = await updateChildPack(pool, req.params.packId, input, businessContext);
         const quoteId = updated.graduation_quote_id || current.graduation_quote_id || null;
-        const opsAutomation = quoteId ? await syncGraduationOpsSafe(quoteId, req.user, 'child_pack_update') : null;
+        const opsAutomation = quoteId ? await syncGraduationOpsSafe(quoteId, req.user, 'child_pack_update', businessContext) : null;
         res.json({ ...mapChildPackRow(updated), opsAutomation });
     } catch (err) {
         log.error('Update graduation child pack error', err);
@@ -1178,16 +1498,17 @@ router.put('/child-packs/:packId', requireRole('creator', 'director', 'senior_ma
 
 router.post('/child-packs/:packId/link-quote', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const quoteId = req.body?.quoteId || req.body?.graduationQuoteId || req.body?.graduation_quote_id;
         if (!quoteId) return res.status(400).json({ error: 'quoteId is required' });
-        const quote = await getQuoteRow(pool, quoteId);
+        const quote = await getQuoteRow(pool, quoteId, businessContext);
         if (!quote) return res.status(404).json({ error: 'Quote not found' });
-        const pack = await linkPackToQuote(pool, req.params.packId, quote.id, { bookingId: quote.booking_id || null });
+        const pack = await linkPackToQuote(pool, req.params.packId, quote.id, { bookingId: quote.booking_id || null, businessContext });
         if (!pack) return res.status(404).json({ error: 'Child pack not found' });
-        const opsAutomation = await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_link');
+        const opsAutomation = await syncGraduationOpsSafe(quote.id, req.user, 'child_pack_link', businessContext);
         res.json(shapeGraduationRevenuePayload({
             pack: mapChildPackRow(pack),
-            quote: mapQuoteRow(await getQuoteRow(pool, quote.id), pack),
+            quote: mapQuoteRow(await getQuoteRow(pool, quote.id, businessContext), pack),
             opsAutomation
         }, req));
     } catch (err) {
@@ -1198,7 +1519,8 @@ router.post('/child-packs/:packId/link-quote', requireRole('creator', 'director'
 
 router.get('/diploma/template', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const row = await ensureDefaultDiplomaTemplate();
+        const businessContext = graduationBusinessContext(req);
+        const row = await ensureDefaultDiplomaTemplate(businessContext);
         res.json(toCamelTemplate(row));
     } catch (err) {
         log.error('Get diploma template error', err);
@@ -1209,7 +1531,8 @@ router.get('/diploma/template', requireRole('creator', 'director', 'senior_manag
 // PATCH /api/graduation/diploma/template — update default diploma copy/settings
 router.patch('/diploma/template', requireRole('creator', 'director'), requireAction('manage_settings'), async (req, res) => {
     try {
-        const current = await ensureDefaultDiplomaTemplate();
+        const businessContext = graduationBusinessContext(req);
+        const current = await ensureDefaultDiplomaTemplate(businessContext);
         const b = req.body || {};
         const result = await pool.query(
             `UPDATE graduation_diploma_templates SET
@@ -1223,7 +1546,7 @@ router.patch('/diploma/template', requireRole('creator', 'director'), requireAct
                 layout_json = COALESCE($8, layout_json),
                 artwork_image_url = $9,
                 updated_at = NOW()
-             WHERE id = $10 RETURNING *`,
+             WHERE id = $10 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $11 RETURNING *`,
             [
                 b.name || null,
                 b.titleText || b.title_text || null,
@@ -1234,7 +1557,8 @@ router.patch('/diploma/template', requireRole('creator', 'director'), requireAct
                 b.palette ? JSON.stringify(b.palette) : null,
                 b.layout ? JSON.stringify(b.layout) : null,
                 b.artworkImageUrl || b.artwork_image_url || null,
-                current.id
+                current.id,
+                businessContext
             ]
         );
         res.json(toCamelTemplate(result.rows[0]));
@@ -1247,10 +1571,11 @@ router.patch('/diploma/template', requireRole('creator', 'director'), requireAct
 // GET /api/graduation/quotes/:id/children — diploma roster
 router.get('/quotes/:id/children', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
-        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null, businessContext);
         const summary = {
             total: children.length,
             needsGenderReview: children.filter(c => c.genderSource !== 'manual' && c.genderSource !== 'imported').length,
@@ -1275,32 +1600,35 @@ router.get('/quotes/:id/children', requireRole('creator', 'director', 'senior_ma
 // POST /api/graduation/quotes/:id/children — add child to diploma roster
 router.post('/quotes/:id/children', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
         const child = normalizeChildInput(req.body || {});
         const maxSort = await pool.query(
             `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
              FROM graduation_children
-             WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
-            [req.params.id, pack?.id || null]
+             WHERE (graduation_quote_id = $1 OR child_pack_id = $2)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+            [req.params.id, pack?.id || null, businessContext]
         );
         const sortOrder = Number(maxSort.rows[0]?.max_sort || 0) + 1;
         const result = await pool.query(
             `INSERT INTO graduation_children
                 (graduation_quote_id, booking_id, full_name, first_name, last_name, gender, gender_source,
                  gender_confidence, class_label, custom_wish, auto_wish, final_wish,
-                 diploma_title_override, diploma_status, sort_order, child_pack_id, source_mode)
-             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                 diploma_title_override, diploma_status, sort_order, child_pack_id, source_mode, business_context)
+             VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
              RETURNING *`,
             [
                 req.params.id, quote.booking_id || null, child.fullName, child.firstName, child.lastName,
                 child.gender, child.genderSource, child.genderConfidence, child.classLabel || childPackContextText(pack) || null,
                 child.customWish || null, child.autoWish || null, child.finalWish || null,
-                child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'manual'
+                child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'manual',
+                businessContext
             ]
         );
-        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_create');
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_create', businessContext);
         res.status(201).json({ ...mapChildRow(result.rows[0]), opsAutomation });
     } catch (err) {
         log.error('Create graduation child error', err);
@@ -1312,17 +1640,19 @@ router.post('/quotes/:id/children', requireRole('creator', 'director', 'senior_m
 router.post('/quotes/:id/children/import', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(client, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(client, quote, {}, req.user.username, businessContext);
         const parsed = parseRosterImport(req.body?.text || req.body?.roster || '');
         if (parsed.length === 0) return res.status(400).json({ error: 'No roster rows found' });
         await client.query('BEGIN');
         const maxSort = await client.query(
             `SELECT COALESCE(MAX(sort_order), 0) AS max_sort
              FROM graduation_children
-             WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
-            [req.params.id, pack?.id || null]
+             WHERE (graduation_quote_id = $1 OR child_pack_id = $2)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+            [req.params.id, pack?.id || null, businessContext]
         );
         let sortOrder = Number(maxSort.rows[0]?.max_sort || 0);
         const inserted = [];
@@ -1332,20 +1662,21 @@ router.post('/quotes/:id/children/import', requireRole('creator', 'director', 's
                 `INSERT INTO graduation_children
                     (graduation_quote_id, booking_id, full_name, first_name, last_name, gender, gender_source,
                      gender_confidence, class_label, custom_wish, auto_wish, final_wish,
-                     diploma_title_override, diploma_status, sort_order, child_pack_id, source_mode)
-                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
+                     diploma_title_override, diploma_status, sort_order, child_pack_id, source_mode, business_context)
+                 VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18)
                  RETURNING *`,
                 [
                     req.params.id, quote.booking_id || null, child.fullName, child.firstName, child.lastName,
                     child.gender, child.genderSource, child.genderConfidence, child.classLabel || childPackContextText(pack) || null,
                     child.customWish || null, child.autoWish || null, child.finalWish || null,
-                    child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'import'
+                    child.diplomaTitleOverride || null, child.diplomaStatus, sortOrder, pack?.id || null, 'import',
+                    businessContext
                 ]
             );
             inserted.push(mapChildRow(result.rows[0]));
         }
         await client.query('COMMIT');
-        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'children_import');
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'children_import', businessContext);
         res.status(201).json({ imported: inserted.length, children: inserted, opsAutomation });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1359,9 +1690,10 @@ router.post('/quotes/:id/children/import', requireRole('creator', 'director', 's
 // PUT /api/graduation/quotes/:id/children/:childId — update roster child
 router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
         const child = normalizeChildInput(req.body || {});
         const result = await pool.query(
             `UPDATE graduation_children SET
@@ -1380,18 +1712,21 @@ router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', '
                 diploma_title_override = $12,
                 diploma_status = $13,
                 updated_at = NOW()
-             WHERE id = $14 AND (graduation_quote_id = $15 OR child_pack_id = $16) RETURNING *`,
+             WHERE id = $14
+               AND (graduation_quote_id = $15 OR child_pack_id = $16)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $17
+             RETURNING *`,
             [
                 quote.booking_id || null, child.fullName, child.firstName, child.lastName,
                 child.gender, child.genderSource, child.genderConfidence, child.classLabel || childPackContextText(pack) || null,
                 child.customWish || null, child.autoWish || null,
                 (child.customWish || child.finalWish || child.autoWish || null),
                 child.diplomaTitleOverride || null, child.diplomaStatus,
-                req.params.childId, req.params.id, pack?.id || null
+                req.params.childId, req.params.id, pack?.id || null, businessContext
             ]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
-        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_update');
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_update', businessContext);
         res.json({ ...mapChildRow(result.rows[0]), opsAutomation });
     } catch (err) {
         log.error('Update graduation child error', err);
@@ -1402,14 +1737,19 @@ router.put('/quotes/:id/children/:childId', requireRole('creator', 'director', '
 // DELETE /api/graduation/quotes/:id/children/:childId — remove roster child
 router.delete('/quotes/:id/children/:childId', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
         const result = await pool.query(
-            'DELETE FROM graduation_children WHERE id = $1 AND (graduation_quote_id = $2 OR child_pack_id = $3) RETURNING id',
-            [req.params.childId, req.params.id, quote.child_pack_id || null]
+            `DELETE FROM graduation_children
+             WHERE id = $1
+               AND (graduation_quote_id = $2 OR child_pack_id = $3)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
+             RETURNING id`,
+            [req.params.childId, req.params.id, quote.child_pack_id || null, businessContext]
         );
         if (result.rows.length === 0) return res.status(404).json({ error: 'Child not found' });
-        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_delete');
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'child_delete', businessContext);
         res.json({ success: true, opsAutomation });
     } catch (err) {
         log.error('Delete graduation child error', err);
@@ -1421,14 +1761,16 @@ router.delete('/quotes/:id/children/:childId', requireRole('creator', 'director'
 router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     const client = await pool.connect();
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(client, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(client, quote, {}, req.user.username, businessContext);
         const rows = await client.query(
             `SELECT * FROM graduation_children
-             WHERE graduation_quote_id = $1 OR child_pack_id = $2
+             WHERE (graduation_quote_id = $1 OR child_pack_id = $2)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3
              ORDER BY sort_order ASC, id ASC`,
-            [req.params.id, pack?.id || null]
+            [req.params.id, pack?.id || null, businessContext]
         );
         const used = new Set();
         const updated = [];
@@ -1443,13 +1785,14 @@ router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 's
                     final_wish = $2,
                     diploma_status = CASE WHEN diploma_status = 'draft' THEN 'generated' ELSE diploma_status END,
                     updated_at = NOW()
-                 WHERE id = $3 RETURNING *`,
-                [autoWish, finalWish, child.id]
+                 WHERE id = $3 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $4
+                 RETURNING *`,
+                [autoWish, finalWish, child.id, businessContext]
             );
             updated.push(mapChildRow(result.rows[0]));
         }
         await client.query('COMMIT');
-        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'children_wishes');
+        const opsAutomation = await syncGraduationOpsSafe(req.params.id, req.user, 'children_wishes', businessContext);
         res.json({ updated: updated.length, children: updated, opsAutomation });
     } catch (err) {
         await client.query('ROLLBACK').catch(() => {});
@@ -1463,13 +1806,14 @@ router.post('/quotes/:id/children/wishes', requireRole('creator', 'director', 's
 // GET /api/graduation/quotes/:id/diplomas/preview — single diploma HTML preview
 router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
         const quoteContext = mapQuoteRow(quote, pack);
-        const template = toCamelTemplate(await ensureDefaultDiplomaTemplate());
+        const template = toCamelTemplate(await ensureDefaultDiplomaTemplate(businessContext));
         const childId = req.query.childId;
-        let children = await loadDiplomaChildren(req.params.id, pack?.id || null);
+        let children = await loadDiplomaChildren(req.params.id, pack?.id || null, businessContext);
         if (childId) children = children.filter(child => String(child.id) === String(childId));
         const html = buildDiplomaDocument(children.slice(0, 1), template, quoteContext, { title: 'Preview диплома' });
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
@@ -1483,25 +1827,27 @@ router.get('/quotes/:id/diplomas/preview', requireRole('creator', 'director', 's
 // GET /api/graduation/quotes/:id/diplomas/export/pdf — ready multi-page PDF with all diplomas
 router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
         const quoteContext = mapQuoteRow(quote, pack);
-        const templateRow = await ensureDefaultDiplomaTemplate();
+        const templateRow = await ensureDefaultDiplomaTemplate(businessContext);
         const template = toCamelTemplate(templateRow);
-        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null, businessContext);
         const wantsHtml = ['1', 'true', 'yes'].includes(String(req.query.html || '').toLowerCase())
             || ['html', 'print'].includes(String(req.query.format || '').toLowerCase());
         const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
 
         if (wantsHtml) {
-            await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username);
+            await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username, businessContext);
             await pool.query(
                 `UPDATE graduation_children
                  SET diploma_status = CASE WHEN diploma_status IN ('draft', 'generated') THEN 'exported' ELSE diploma_status END,
                      updated_at = NOW()
-                 WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
-                [req.params.id, pack?.id || null]
+                 WHERE (graduation_quote_id = $1 OR child_pack_id = $2)
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+                [req.params.id, pack?.id || null, businessContext]
             );
             const html = buildDiplomaDocument(children, template, quoteContext, {
                 autoPrint,
@@ -1512,13 +1858,14 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
         }
 
         const pdf = await buildDiplomaPdfBuffer(children, template, quoteContext);
-        await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username);
+        await markDiplomaExport(req.params.id, templateRow.id, 'pdf_batch', children.length, req.user.username, businessContext);
         await pool.query(
             `UPDATE graduation_children
              SET diploma_status = CASE WHEN diploma_status IN ('draft', 'generated') THEN 'exported' ELSE diploma_status END,
                  updated_at = NOW()
-             WHERE graduation_quote_id = $1 OR child_pack_id = $2`,
-            [req.params.id, pack?.id || null]
+             WHERE (graduation_quote_id = $1 OR child_pack_id = $2)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $3`,
+            [req.params.id, pack?.id || null, businessContext]
         );
         const filename = `${safeExportFilename(quote.quote_number || req.params.id)}_diplomas.pdf`;
         res.setHeader('Content-Type', 'application/pdf');
@@ -1534,12 +1881,13 @@ router.get('/quotes/:id/diplomas/export/pdf', requireRole('creator', 'director',
 // GET /api/graduation/quotes/:id/diplomas/export/csv — roster CSV
 router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
-        const templateRow = await ensureDefaultDiplomaTemplate();
-        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
-        await markDiplomaExport(req.params.id, templateRow.id, 'csv', children.length, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
+        const templateRow = await ensureDefaultDiplomaTemplate(businessContext);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null, businessContext);
+        await markDiplomaExport(req.params.id, templateRow.id, 'csv', children.length, req.user.username, businessContext);
         const filename = `graduation_children_${safeExportFilename(quote.quote_number || req.params.id)}.csv`;
         res.setHeader('Content-Type', 'text/csv; charset=utf-8');
         res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
@@ -1553,12 +1901,13 @@ router.get('/quotes/:id/diplomas/export/csv', requireRole('creator', 'director',
 // GET /api/graduation/quotes/:id/diplomas/export/xlsx — roster XLSX
 router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
-        const templateRow = await ensureDefaultDiplomaTemplate();
-        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
-        await markDiplomaExport(req.params.id, templateRow.id, 'xlsx', children.length, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
+        const templateRow = await ensureDefaultDiplomaTemplate(businessContext);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null, businessContext);
+        await markDiplomaExport(req.params.id, templateRow.id, 'xlsx', children.length, req.user.username, businessContext);
 
         const workbook = new ExcelJS.Workbook();
         workbook.creator = 'Event Genix';
@@ -1596,13 +1945,14 @@ router.get('/quotes/:id/diplomas/export/xlsx', requireRole('creator', 'director'
 // GET /api/graduation/quotes/:id/diplomas/print-sheet — roster print sheet
 router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
-        const quote = await getGraduationQuoteOr404(req.params.id, res);
+        const businessContext = graduationBusinessContext(req);
+        const quote = await getGraduationQuoteOr404(req.params.id, res, businessContext);
         if (!quote) return;
-        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username);
+        const pack = await ensureQuoteChildPack(pool, quote, {}, req.user.username, businessContext);
         const quoteContext = mapQuoteRow(quote, pack);
-        const templateRow = await ensureDefaultDiplomaTemplate();
-        const children = await loadDiplomaChildren(req.params.id, pack?.id || null);
-        await markDiplomaExport(req.params.id, templateRow.id, 'print_sheet', children.length, req.user.username);
+        const templateRow = await ensureDefaultDiplomaTemplate(businessContext);
+        const children = await loadDiplomaChildren(req.params.id, pack?.id || null, businessContext);
+        await markDiplomaExport(req.params.id, templateRow.id, 'print_sheet', children.length, req.user.username, businessContext);
         const autoPrint = ['1', 'true', 'yes'].includes(String(req.query.print || '').toLowerCase());
         res.setHeader('Content-Type', 'text/html; charset=utf-8');
         res.send(buildRosterPrintSheet(children, quoteContext, { autoPrint }));
@@ -1616,13 +1966,14 @@ router.get('/quotes/:id/diplomas/print-sheet', requireRole('creator', 'director'
 // Query-token support for window.open lives in middleware/apiAuthBoundary.js.
 router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), requireAction('view_revenue'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
+        const presentation = graduationBusinessPresentation(businessContext);
         const { id } = req.params;
-        const quote = await pool.query('SELECT * FROM graduation_quotes WHERE id = $1', [id]);
-        if (quote.rows.length === 0) {
+        const q = await getQuoteRow(pool, id, businessContext);
+        if (!q) {
             return res.status(404).json({ error: 'Quote not found' });
         }
 
-        const q = quote.rows[0];
         const services = q.selected_services || [];
 
         // Get service details
@@ -1630,15 +1981,22 @@ router.get('/quotes/:id/proposal', requireRole('creator', 'director', 'senior_ma
         let serviceDetails = [];
         if (serviceIds.length > 0) {
             const svcResult = await pool.query(
-                'SELECT * FROM graduation_services WHERE id = ANY($1) ORDER BY sort_order',
-                [serviceIds]
+                `SELECT * FROM graduation_services
+                 WHERE id = ANY($1::int[])
+                   AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+                 ORDER BY sort_order`,
+                [serviceIds, businessContext]
             );
             serviceDetails = svcResult.rows;
         }
 
         let packageName = 'Індивідуальний випускний';
         if (q.package_id) {
-            const pkg = await pool.query('SELECT name FROM graduation_packages WHERE id = $1', [q.package_id]);
+            const pkg = await pool.query(
+                `SELECT name FROM graduation_packages
+                 WHERE id = $1 AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2`,
+                [q.package_id, businessContext]
+            );
             if (pkg.rows.length > 0) packageName = pkg.rows[0].name;
         }
 
@@ -1677,7 +2035,7 @@ h1{font-size:28px;color:#C9A84C;text-align:center;margin-bottom:8px}
 </head>
 <body>
 <div class="proposal">
-<h1>Випускний у Парку Закревського</h1>
+<h1>${_escH(presentation.proposalTitle)}</h1>
 <p class="subtitle">${packageName} — ${q.kids_count} дітей</p>
 
 <div class="services-list">
@@ -1697,7 +2055,7 @@ ${q.discount_percent > 0 ? `<div style="color:#4CAF50;margin-top:4px">Знижк
 </div>
 
 <div class="footer">
-<p>Парк Закревського Періоду</p>
+<p>${_escH(presentation.proposalFooter)}</p>
 <p>Пропозиція ${q.quote_number} від ${new Date(q.created_at).toLocaleDateString('uk-UA', { timeZone: 'Europe/Kyiv' })}</p>
 </div>
 </div>
@@ -1715,6 +2073,7 @@ ${q.discount_percent > 0 ? `<div style="color:#4CAF50;margin-top:4px">Знижк
 // GET /api/graduation/analytics — статистика (#46, #47, #48)
 router.get('/analytics', requireRole('creator', 'director'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         // #46: Service popularity
         const popularityResult = await pool.query(`
             SELECT s.value->>'serviceId' as service_id,
@@ -1723,12 +2082,15 @@ router.get('/analytics', requireRole('creator', 'director'), async (req, res) =>
             FROM graduation_quotes q,
                  jsonb_array_elements(q.selected_services) s
             WHERE q.status != 'cancelled'
+              AND COALESCE(q.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
             GROUP BY s.value->>'serviceId', s.value->>'name'
             ORDER BY usage_count DESC
-        `);
+        `, [businessContext]);
 
         const totalQuotes = await pool.query(
-            "SELECT COUNT(*) FROM graduation_quotes WHERE status != 'cancelled'"
+            `SELECT COUNT(*) FROM graduation_quotes
+             WHERE status != 'cancelled' AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+            [businessContext]
         );
         const total = parseInt(totalQuotes.rows[0].count) || 1;
 
@@ -1748,15 +2110,17 @@ router.get('/analytics', requireRole('creator', 'director'), async (req, res) =>
                 COUNT(*) as total_quotes
             FROM graduation_quotes
             WHERE status IN ('approved', 'booked')
-        `);
+              AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+        `, [businessContext]);
         const avg = avgResult.rows[0];
 
         // #48: Conversion funnel
         const funnelResult = await pool.query(`
             SELECT status, COUNT(*) as cnt
             FROM graduation_quotes
+            WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
             GROUP BY status
-        `);
+        `, [businessContext]);
         const funnel = {};
         let totalAll = 0;
         for (const r of funnelResult.rows) {
@@ -1791,14 +2155,16 @@ router.get('/analytics', requireRole('creator', 'director'), async (req, res) =>
 // GET /api/graduation/customers/search — пошук клієнтів (#26)
 router.get('/customers/search', requireRole('creator', 'director', 'senior_manager', 'manager'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
         const { q } = req.query;
         if (!q || q.length < 2) return res.json([]);
 
         const result = await pool.query(
             `SELECT id, name, phone, email FROM customers
-             WHERE name ILIKE $1 OR phone ILIKE $1
+             WHERE (name ILIKE $1 OR phone ILIKE $1)
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
              ORDER BY name LIMIT 10`,
-            [`%${q}%`]
+            [`%${q}%`, businessContext]
         );
         res.json(result.rows.map(r => ({
             id: r.id,
@@ -1819,16 +2185,20 @@ function formatUAH(amount) {
 
 // --- Catalog auto-tasks on price changes ---
 
-async function onServicePriceChanged(serviceId, username) {
+async function onServicePriceChanged(serviceId, username, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const packages = await pool.query(`
         SELECT DISTINCT gp.name, gp.slug
         FROM graduation_packages gp
         JOIN graduation_package_items gpi ON gpi.package_id = gp.id
-        WHERE gpi.service_id = $1 AND gp.is_active = true
-    `, [serviceId]);
+        WHERE gpi.service_id = $1
+          AND gp.is_active = true
+          AND COALESCE(gp.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+          AND COALESCE(gpi.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $2
+    `, [serviceId, businessContext]);
 
     for (const pkg of packages.rows) {
         await getKleshnya().createTask({
+            businessContext,
             title: `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
             description: `Ціна послуги змінилась. Потрібно оновити каталог та роздрукувати оновлену сторінку пакету "${pkg.name}".`,
             assigned_to: 'sergiy',
@@ -1836,24 +2206,29 @@ async function onServicePriceChanged(serviceId, username) {
             category: 'admin',
             created_by: username,
             source_type: 'graduation_catalog',
-            source_id: `service_price:${serviceId}:${pkg.slug || pkg.name}`,
+            source_id: `${businessContext}:service_price:${serviceId}:${pkg.slug || pkg.name}`,
             duplicateMode: 'skip'
         });
         log.info(`Catalog task created for package "${pkg.name}" (price change)`);
     }
 }
 
-async function onSettingsChanged(key, newValue, username) {
+async function onSettingsChanged(key, newValue, username, businessContext = DEFAULT_BUSINESS_CONTEXT) {
     const packages = await pool.query(`
         SELECT DISTINCT gp.name, gp.slug
         FROM graduation_packages gp
         JOIN graduation_package_items gpi ON gpi.package_id = gp.id
         JOIN graduation_services gs ON gs.id = gpi.service_id
-        WHERE gs.price_type = 'formula' AND gp.is_active = true
-    `);
+        WHERE gs.price_type = 'formula'
+          AND gp.is_active = true
+          AND COALESCE(gp.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+          AND COALESCE(gpi.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+          AND COALESCE(gs.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+    `, [businessContext]);
 
     for (const pkg of packages.rows) {
         await getKleshnya().createTask({
+            businessContext,
             title: `Каталог: оновити та надрукувати сторінку "${pkg.name}"`,
             description: `Глобальний параметр "${key}" змінився (нове значення: ${newValue}). Формульні ціни перераховані. Потрібно оновити каталог та роздрукувати оновлену сторінку.`,
             assigned_to: 'sergiy',
@@ -1861,7 +2236,7 @@ async function onSettingsChanged(key, newValue, username) {
             category: 'admin',
             created_by: username,
             source_type: 'graduation_catalog',
-            source_id: `settings:${key}:${pkg.slug || pkg.name}`,
+            source_id: `${businessContext}:settings:${key}:${pkg.slug || pkg.name}`,
             duplicateMode: 'skip'
         });
         log.info(`Catalog task created for package "${pkg.name}" (${key} changed)`);
@@ -1872,8 +2247,13 @@ async function onSettingsChanged(key, newValue, username) {
 // Query-token support for window.open lives in middleware/apiAuthBoundary.js.
 router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager', 'manager'), requireAction('export_data'), async (req, res) => {
     try {
+        const businessContext = graduationBusinessContext(req);
+        const presentation = graduationBusinessPresentation(businessContext);
         const pkgResult = await pool.query(
-            'SELECT * FROM graduation_packages WHERE is_active = true ORDER BY sort_order'
+            `SELECT * FROM graduation_packages
+             WHERE is_active = true AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             ORDER BY sort_order`,
+            [businessContext]
         );
         const packageSlug = String(req.query.package || req.query.pkg || '').trim();
         const packageRows = packageSlug
@@ -1888,11 +2268,20 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
                     s.description as service_description, s.category, s.price_type, s.price_park
              FROM graduation_package_items pi
              JOIN graduation_services s ON s.id = pi.service_id
+             WHERE COALESCE(pi.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+               AND COALESCE(s.business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
              ORDER BY s.sort_order`
+            ,
+            [businessContext]
         );
 
         // Get settings for formula prices
-        const settingsResult = await pool.query('SELECT * FROM graduation_settings ORDER BY key');
+        const settingsResult = await pool.query(
+            `SELECT * FROM graduation_settings
+             WHERE COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1
+             ORDER BY key`,
+            [businessContext]
+        );
         const gradSettings = {};
         for (const row of settingsResult.rows) {
             gradSettings[row.key] = row.value;
@@ -1919,7 +2308,10 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
 
         // Fetch catalog_description for services
         const catalogDescResult = await pool.query(
-            'SELECT id, catalog_description FROM graduation_services WHERE catalog_description IS NOT NULL'
+            `SELECT id, catalog_description FROM graduation_services
+             WHERE catalog_description IS NOT NULL
+               AND COALESCE(business_context, '${DEFAULT_BUSINESS_CONTEXT}') = $1`,
+            [businessContext]
         );
         const catalogDescMap = {};
         for (const row of catalogDescResult.rows) catalogDescMap[row.id] = row.catalog_description;
@@ -1997,8 +2389,8 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
             </div>
             ${descsHtml ? `<div class="desc-card">${descsHtml}</div>` : ''}
             <footer class="page-footer">
-                <strong>Event Genix · Парк Закревського</strong>
-                <span>Київ, вул. Закревського 61/2 · 0800 75 35 53</span>
+                <strong>${_escH(presentation.catalogFooterBrand)}</strong>
+                ${presentation.catalogFooterContact ? `<span>${_escH(presentation.catalogFooterContact)}</span>` : ''}
             </footer>
         </div>
     </section>`;
@@ -2013,7 +2405,7 @@ router.get('/catalog/export', requireRole('creator', 'director', 'senior_manager
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Випускні 2026 — Парк Закревського</title>
+<title>${_escH(presentation.catalogTitle)}</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
 <style>
@@ -2187,13 +2579,11 @@ body { font-family: 'Nunito', sans-serif; margin: 0; padding: 0; color: #1a1a1a;
     <div class="page cover-page">
         <div class="cover-icon">🎓</div>
         <div class="cover-title">Випускні 2026</div>
-        <div class="cover-subtitle">Парк Закревського періоду</div>
+        <div class="cover-subtitle">${_escH(presentation.coverSubtitle)}</div>
         <div class="cover-divider"></div>
         <div class="cover-info">${packageRows.length} пакетних пропозицій для вашого класу</div>
         <div class="cover-contact">
-            📞 (050) 344-37-71<br>
-            📍 Київ, вул. Закревського 61/2<br>
-            💬 @park_zakrevskogo
+            ${presentation.coverContactLines.map(line => _escH(line)).join('<br>\n            ')}
         </div>
     </div>`}
 ${packagePages}
@@ -2222,5 +2612,14 @@ window.addEventListener('load', function() {
         res.status(500).json({ error: 'Internal server error' });
     }
 });
+
+router.__test = {
+    GRADUATION_BOOKING_CONTEXT_UNSUPPORTED,
+    GRADUATION_BUSINESS_CONTEXT_UNAVAILABLE,
+    GRADUATION_SINGLE_BUSINESS_REQUIRED,
+    graduationBookingConversionStatus,
+    graduationBusinessPresentation,
+    requireGraduationBusinessContext
+};
 
 module.exports = router;

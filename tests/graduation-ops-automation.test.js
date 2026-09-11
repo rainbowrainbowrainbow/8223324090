@@ -39,9 +39,11 @@ function createGraduationOpsOutboxQuery() {
             state.queries.push({ text, params });
 
             if (/FROM graduation_quotes q/i.test(text)) {
+                const businessContext = params[1] || 'event_genix';
                 return {
                     rows: [{
                         id: params[0],
+                        business_context: businessContext,
                         status: 'draft',
                         selected_services: [{ name: 'Diploma ceremony' }],
                         package_id: null,
@@ -61,6 +63,7 @@ function createGraduationOpsOutboxQuery() {
                 return { rows: [{ id: 6, username: 'art_director', name: 'Art Director', role: 'art_director' }] };
             }
             if (/FROM tasks WHERE source_type = \$1 AND source_id = \$2/i.test(text)) {
+                assert.equal(params[2], 'dar');
                 return { rows: [] };
             }
             if (/UPDATE tasks SET status = 'done'/i.test(text) && /archive_reason = \$3/i.test(text)) {
@@ -84,6 +87,8 @@ function createGraduationOpsOutboxQuery() {
                     status: 'todo',
                     workflow_state: params[16],
                     remind_at: params[17],
+                    control_meta: JSON.parse(params[24]),
+                    business_context: params[26],
                     created_at: new Date().toISOString(),
                     updated_at: new Date().toISOString()
                 };
@@ -117,9 +122,10 @@ function createGraduationOpsOutboxQuery() {
             if (/INSERT INTO graduation_automation_state/i.test(text)) {
                 const row = {
                     graduation_quote_id: params[0],
-                    automation_key: params[2],
-                    state: params[3],
-                    task_id: params[4]
+                    business_context: params[1],
+                    automation_key: params[3],
+                    state: params[4],
+                    task_id: params[5]
                 };
                 state.automationStates.push(row);
                 return { rows: [row], rowCount: 1 };
@@ -182,6 +188,40 @@ describe('Graduation ops automation contract', () => {
         assert.match(migration, /operation_kind/);
     });
 
+    it('keeps graduation business data scoped by company without enabling non-Park booking conversion', () => {
+        const migration = readRepoFile('db/migrations/355_graduation_business_context.sql');
+        const graduationRoute = readRepoFile('routes/graduation.js');
+        const graduationUi = readRepoFile('js/graduation.js');
+
+        assert.match(migration, /MIGRATION_KIND: schema/);
+        assert.match(migration, /ALTER TABLE graduation_quotes ADD COLUMN IF NOT EXISTS business_context/);
+        assert.match(migration, /uq_graduation_quotes_business_number_v355 UNIQUE \(business_context, quote_number\)/);
+        assert.match(migration, /uq_graduation_packages_business_slug_v355 UNIQUE \(business_context, slug\)/);
+        assert.match(migration, /idx_grad_children_business_quote_v355/);
+        assert.match(graduationRoute, /GRADUATION_BOOKING_CONTEXT_UNSUPPORTED/);
+        assert.match(graduationRoute, /GRADUATION_BOOKING_CONVERSION_CONTEXTS/);
+        assert.match(graduationRoute, /function graduationBookingConversionStatus/);
+        assert.match(graduationRoute, /!bookingConversion\.supported/);
+        assert.match(graduationRoute, /graduation_booking_context_mismatch/);
+        assert.match(graduationRoute, /FROM bookings[\s\S]*COALESCE\(business_context, '\$\{DEFAULT_BUSINESS_CONTEXT\}'\) = \$2/);
+        assert.match(graduationRoute, /businessContextCatalog/);
+        assert.match(graduationRoute, /function graduationBusinessPresentation/);
+        assert.match(graduationRoute, /catalogFooterContact/);
+        assert.match(graduationRoute, /coverContactLines: \[businessLabel\]/);
+        assert.match(graduationUi, /graduationApiPath/);
+        assert.match(graduationUi, /function graduationBusinessLabel/);
+        assert.match(graduationUi, /profileFor\?\.\(normalized\)/);
+        assert.match(graduationUi, /function graduationBusinessModuleAvailable/);
+        assert.match(graduationUi, /function renderGraduationContextUnavailable/);
+        assert.match(graduationUi, /if \(!graduationBusinessModuleAvailable\(\)\) \{/);
+        assert.match(graduationUi, /isGraduationContextUnavailableError\(err\)/);
+        assert.match(
+            graduationUi.match(/function shareCatalogPage[\s\S]*?function exportCatalog/)?.[0] || '',
+            /\$\{graduationBusinessLabel\(\)\}/
+        );
+        assert.match(graduationUi, /crmBusinessContextChanged/);
+    });
+
     it('wires route, scheduler and UI surfaces to the automation contract', () => {
         const graduationRoute = readRepoFile('routes/graduation.js');
         const scheduler = readRepoFile('services/scheduler.js');
@@ -210,11 +250,16 @@ describe('Graduation ops automation contract', () => {
         const fake = createGraduationOpsOutboxQuery();
         const result = await syncGraduationOpsForQuote(900, {
             query: fake,
+            businessContext: 'dar',
             hermesOutboxEnabled: true
         });
 
         assert.equal(result.success, true);
+        assert.equal(result.businessContext, 'dar');
         assert.equal(fake.state.tasks.length, 2);
+        assert.deepEqual(fake.state.tasks.map(row => row.business_context), ['dar', 'dar']);
+        assert.deepEqual(fake.state.tasks.map(row => row.control_meta.businessContext), ['dar', 'dar']);
+        assert.deepEqual(fake.state.automationStates.map(row => row.business_context), ['dar', 'dar', 'dar']);
         assert.equal(fake.state.outboxInserts.length, 2);
         assert.deepEqual(
             fake.state.outboxInserts.map(row => row.task_id),

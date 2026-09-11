@@ -338,9 +338,9 @@ const HR_NAV_GROUPS = [
         label: 'ЗП та KPI',
         items: [
             { id: 'salary', label: 'Зарплата', visible: () => canViewPayrollWorkspace() },
-            { id: 'profiles', label: 'Профілі', visible: () => canViewPayrollWorkspace() },
             { id: 'zrs', label: 'ЗРС', visible: () => canViewPayrollWorkspace() },
-            { id: 'kpi', label: 'KPI', visible: () => canViewPayrollWorkspace() }
+            { id: 'kpi', label: 'KPI', visible: () => canViewPayrollWorkspace() },
+            { id: 'profiles', label: 'Профілі', visible: () => canViewPayrollWorkspace() }
         ]
     },
     {
@@ -354,7 +354,7 @@ const HR_NAV_GROUPS = [
 ];
 
 const HR_STRUCTURE_WORKSPACE_TABS = new Set(['structure', 'professions', 'checklists', 'accounts']);
-const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'profiles', 'zrs', 'kpi']);
+const HR_PAYROLL_WORKSPACE_TABS = new Set(['salary', 'zrs', 'kpi', 'profiles']);
 const HR_OTHER_WORKSPACE_TABS = new Set(['vacancies']);
 const HR_PULSE_WORKSPACE_TABS = new Set(['today', 'schedule', 'reports']);
 const HR_PEOPLE_WORKSPACE_TABS = new Set(['team']);
@@ -2954,7 +2954,10 @@ function renderHrNav(activeTarget = requestedHrTarget()) {
                     const tabId = item.tab || item.id;
                     const countBadge = item.bucket ? `<span class="hr-nav-count hidden" data-nav-count="${escapeHtml(item.bucket)}">0</span>` : '';
                     if (cardMode) return renderHrPulseNavButton(item);
-                    const content = `${escapeHtml(item.label)}${countBadge}`;
+                    const betaBadge = group.id === 'payroll' && item.id === 'profiles'
+                        ? '<span class="hr-nav-beta-badge">Beta</span>'
+                        : '';
+                    const content = `${escapeHtml(item.label)}${countBadge}${betaBadge}`;
                     return `
                     <button type="button" class="hr-tab" data-nav-id="${escapeHtml(item.id)}" data-tab="${escapeHtml(tabId)}"${item.bucket ? ` data-bucket="${escapeHtml(item.bucket)}"` : ''}${item.href ? ` data-href="${escapeHtml(item.href)}"` : ''}>${content}</button>
                 `;

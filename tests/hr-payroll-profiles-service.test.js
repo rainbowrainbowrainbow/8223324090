@@ -19,6 +19,7 @@ const hrPageCode = fs.readFileSync(path.join(ROOT, 'js', 'hr-page.js'), 'utf8');
 const hrHtmlCode = fs.readFileSync(path.join(ROOT, 'hr.html'), 'utf8');
 const hrCssCode = fs.readFileSync(path.join(ROOT, 'css', 'hr-page.css'), 'utf8');
 const hrTeamBrowserSmokeCode = fs.readFileSync(path.join(ROOT, 'tests', 'browser', 'hr-team-browser-smoke.js'), 'utf8');
+const sidebarCode = fs.readFileSync(path.join(ROOT, 'js', 'components', 'sidebar.js'), 'utf8');
 
 function functionBlock(source, name) {
     const start = source.indexOf(`async function ${name}`);
@@ -212,7 +213,22 @@ test('payroll profile catalog is wired into the existing HR payroll workspace', 
     assert.match(hrHtmlCode, /id="payrollProfileInspector"/);
     assert.match(hrHtmlCode, /id="payrollProfileReadinessFilter"/);
 
-    assert.match(hrPageCode, /HR_PAYROLL_WORKSPACE_TABS = new Set\(\['salary', 'profiles', 'zrs', 'kpi'\]\)/);
+    assert.match(hrPageCode, /HR_PAYROLL_WORKSPACE_TABS = new Set\(\['salary', 'zrs', 'kpi', 'profiles'\]\)/);
+    const payrollNavBlock = hrPageCode.slice(
+        hrPageCode.indexOf("id: 'payroll'"),
+        hrPageCode.indexOf('const HR_PAYROLL_WORKSPACE_TABS')
+    );
+    const salaryTabIndex = payrollNavBlock.indexOf("{ id: 'salary', label: 'Зарплата'");
+    const zrsTabIndex = payrollNavBlock.indexOf("{ id: 'zrs', label: 'ЗРС'");
+    const kpiTabIndex = payrollNavBlock.indexOf("{ id: 'kpi', label: 'KPI'");
+    const profilesTabIndex = payrollNavBlock.indexOf("{ id: 'profiles', label: 'Профілі'");
+    assert.ok(salaryTabIndex >= 0, 'payroll nav keeps salary tab');
+    assert.ok(zrsTabIndex > salaryTabIndex, 'payroll nav uses the actual second tab label ЗРС');
+    assert.ok(kpiTabIndex > zrsTabIndex, 'payroll nav keeps KPI after ЗРС');
+    assert.ok(profilesTabIndex > kpiTabIndex, 'payroll nav moves profiles after KPI');
+    assert.match(hrPageCode, /const betaBadge = group\.id === 'payroll' && item\.id === 'profiles'/);
+    assert.match(hrPageCode, /class="hr-nav-beta-badge">Beta<\/span>/);
+    assert.match(sidebarCode, /href: '\/hr#payroll'[\s\S]*activeHashes: \['payroll', 'salary', 'zrs', 'kpi', 'profiles'\]/);
     assert.match(hrPageCode, /profiles: loadPayrollProfilesCatalog/);
     assert.match(hrPageCode, /bindPayrollProfileCatalogControls/);
     assert.match(hrPageCode, /createPayrollProfileFromCatalog/);
@@ -228,6 +244,11 @@ test('payroll profile catalog is wired into the existing HR payroll workspace', 
     assert.match(hrCssCode, /\.hr-payroll-profile-inspector/);
     assert.match(hrCssCode, /\.hr-payroll-profile-impact-grid/);
     assert.match(hrCssCode, /\.hr-payroll-profile-diff-row/);
+    assert.match(hrCssCode, /#hrNav \[data-hr-nav-group="payroll"\] \.hr-tab\[data-tab="profiles"\] \.hr-nav-beta-badge/);
+    assert.match(hrCssCode, /body\.dark-mode #tab-profiles \.hr-payroll-profile-card/);
+    assert.match(hrCssCode, /\[data-theme="dark"\] #tab-profiles \.hr-payroll-profile-form-grid input/);
+    assert.match(hrCssCode, /body\.dark-mode #tab-profiles \.hr-payroll-profile-badge\.is-draft/);
+    assert.match(hrCssCode, /body\.dark-mode #tab-profiles \.hr-payroll-profile-day\.is-override/);
 });
 
 test('payroll profile list exposes usage counts for catalog filters and archive warnings', () => {
